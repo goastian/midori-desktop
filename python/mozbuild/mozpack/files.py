@@ -13,12 +13,11 @@ import stat
 import subprocess
 import uuid
 from collections import OrderedDict
-from io import BytesIO
+from io import BytesIO, StringIO
 from itertools import chain, takewhile
 from tarfile import TarFile, TarInfo
 from tempfile import NamedTemporaryFile, mkstemp
 
-import six
 from jsmin import JavascriptMinify
 
 import mozbuild.makeutil as makeutil
@@ -49,7 +48,7 @@ else:
 
     def _copyfile(src, dest):
         # False indicates `dest` should be overwritten if it exists already.
-        if isinstance(src, six.text_type) and isinstance(dest, six.text_type):
+        if isinstance(src, str) and isinstance(dest, str):
             _CopyFileW(src, dest, False)
         elif isinstance(src, str) and isinstance(dest, str):
             _CopyFileA(src, dest, False)
@@ -60,12 +59,12 @@ else:
 # Helper function; ensures we always open files with the correct encoding when
 # opening them in text mode.
 def _open(path, mode="r"):
-    if six.PY3 and "b" not in mode:
+    if "b" not in mode:
         return open(path, mode, encoding="utf-8")
     return open(path, mode)
 
 
-class Dest(object):
+class Dest:
     """
     Helper interface for BaseFile.copy. The interface works as follows:
       - read() and write() can be used to sequentially read/write from the underlying file.
@@ -92,8 +91,9 @@ class Dest(object):
         if self.mode != "w":
             self.file = _open(self.path, mode="wb")
             self.mode = "w"
-        to_write = six.ensure_binary(data)
-        return self.file.write(to_write)
+        if isinstance(data, str):
+            data = data.encode()
+        return self.file.write(data)
 
     def exists(self):
         return os.path.exists(self.path)
@@ -105,7 +105,7 @@ class Dest(object):
             self.file = None
 
 
-class BaseFile(object):
+class BaseFile:
     """
     Base interface and helper for file copying. Derived class may implement
     their own copy function, or rely on BaseFile.copy using the open() member
@@ -175,7 +175,7 @@ class BaseFile(object):
         disabled when skip_if_older is False.
         Returns whether a copy was actually performed (True) or not (False).
         """
-        if isinstance(dest, six.string_types):
+        if isinstance(dest, str):
             dest = Dest(dest)
         else:
             assert isinstance(dest, Dest)
@@ -193,11 +193,7 @@ class BaseFile(object):
             if getattr(self, "path", None) and getattr(dest, "path", None):
                 # The destination directory must exist, or CopyFile will fail.
                 destdir = os.path.dirname(dest.path)
-                try:
-                    os.makedirs(destdir)
-                except OSError as e:
-                    if e.errno != errno.EEXIST:
-                        raise
+                os.makedirs(destdir, exist_ok=True)
                 _copyfile(self.path, dest.path)
                 shutil.copystat(self.path, dest.path)
             else:
@@ -217,7 +213,7 @@ class BaseFile(object):
                 break
             # If the read content differs between origin and destination,
             # write what was read up to now, and copy the remainder.
-            if six.ensure_binary(dest_content) != six.ensure_binary(src_content):
+            if dest_content != src_content:
                 dest.write(b"".join(accumulated_src_content))
                 shutil.copyfileobj(src, dest)
                 break
@@ -301,11 +297,11 @@ class ExecutableFile(File):
 
     def copy(self, dest, skip_if_older=True):
         real_dest = dest
-        if not isinstance(dest, six.string_types):
+        if not isinstance(dest, str):
             fd, dest = mkstemp()
             os.close(fd)
             os.remove(dest)
-        assert isinstance(dest, six.string_types)
+        assert isinstance(dest, str)
         # If File.copy didn't actually copy because dest is newer, check the
         # file sizes. If dest is smaller, it means it is already stripped and
         # elfhacked, so we can skip.
@@ -343,7 +339,7 @@ class AbsoluteSymlinkFile(File):
         File.__init__(self, path)
 
     def copy(self, dest, skip_if_older=True):
-        assert isinstance(dest, six.string_types)
+        assert isinstance(dest, str)
 
         # The logic in this function is complicated by the fact that symlinks
         # aren't universally supported. So, where symlinks aren't supported, we
@@ -409,14 +405,14 @@ class AbsoluteSymlinkFile(File):
             os.symlink(self.path, temp_dest)
         # TODO Figure out exactly how symlink creation fails and only trap
         # that.
-        except EnvironmentError:
+        except OSError:
             return File.copy(self, dest, skip_if_older=skip_if_older)
 
         # If removing the original file fails, don't forget to clean up the
         # temporary symlink.
         try:
             os.remove(dest)
-        except EnvironmentError:
+        except OSError:
             os.remove(temp_dest)
             raise
 
@@ -434,7 +430,7 @@ class HardlinkFile(File):
     """
 
     def copy(self, dest, skip_if_older=True):
-        assert isinstance(dest, six.string_types)
+        assert isinstance(dest, str)
 
         if not hasattr(os, "link"):
             return super(HardlinkFile, self).copy(dest, skip_if_older=skip_if_older)
@@ -492,7 +488,7 @@ class ExistingFile(BaseFile):
         self.required = required
 
     def copy(self, dest, skip_if_older=True):
-        if isinstance(dest, six.string_types):
+        if isinstance(dest, str):
             dest = Dest(dest)
         else:
             assert isinstance(dest, Dest)
@@ -544,7 +540,7 @@ class PreprocessedFile(BaseFile):
         """
         Invokes the preprocessor to create the destination file.
         """
-        if isinstance(dest, six.string_types):
+        if isinstance(dest, str):
             dest = Dest(dest)
         else:
             assert isinstance(dest, Dest)
@@ -555,10 +551,8 @@ class PreprocessedFile(BaseFile):
         # destination is not a symlink, we leave it alone, since we're going to
         # overwrite its contents anyway.
         # If symlinks aren't supported at all, we can skip this step.
-        # See comment in AbsoluteSymlinkFile about Windows.
-        if hasattr(os, "symlink") and platform.system() != "Windows":
-            if os.path.islink(dest.path):
-                os.remove(dest.path)
+        if hasattr(os, "symlink") and os.path.islink(dest.path):
+            os.remove(dest.path)
 
         pp_deps = set(self.extra_depends)
 
@@ -612,7 +606,9 @@ class GeneratedFile(BaseFile):
     def content(self):
         if inspect.isfunction(self._content):
             self._content = self._content()
-        return six.ensure_binary(self._content)
+        if isinstance(self._content, str):
+            return self._content.encode()
+        return self._content
 
     @content.setter
     def content(self, content):
@@ -721,7 +717,7 @@ class ManifestFile(BaseFile):
             "%s\n" % e.rebase(self._base)
             for e in chain(self._entries, self._interfaces)
         )
-        return BytesIO(six.ensure_binary(content))
+        return BytesIO(content.encode())
 
     def __iter__(self):
         """
@@ -753,10 +749,10 @@ class MinifiedCommentStripped(BaseFile):
         """
         content = "".join(
             l
-            for l in [six.ensure_text(s) for s in self._file.open().readlines()]
+            for l in [s.decode() for s in self._file.open().readlines()]
             if not l.startswith("#")
         )
-        return BytesIO(six.ensure_binary(content))
+        return BytesIO(content.encode())
 
 
 class MinifiedJavaScript(BaseFile):
@@ -770,13 +766,13 @@ class MinifiedJavaScript(BaseFile):
         self._verify_command = verify_command
 
     def open(self):
-        output = six.StringIO()
+        output = StringIO()
         minify = JavascriptMinify(
             codecs.getreader("utf-8")(self._file.open()), output, quote_chars="'\"`"
         )
         minify.minify()
         output.seek(0)
-        output_source = six.ensure_binary(output.getvalue())
+        output_source = output.getvalue().encode()
         output = BytesIO(output_source)
 
         if not self._verify_command:
@@ -811,7 +807,7 @@ class MinifiedJavaScript(BaseFile):
         return output
 
 
-class BaseFinder(object):
+class BaseFinder:
     def __init__(
         self, base, minify=False, minify_js=False, minify_js_verify_command=None
     ):
@@ -1126,7 +1122,7 @@ class ComposedFinder(BaseFinder):
 
         self.files = FileRegistry()
 
-        for base, finder in sorted(six.iteritems(finders)):
+        for base, finder in sorted(finders.items()):
             if self.files.contains(base):
                 self.files.remove(base)
             for p, f in finder.find(""):
@@ -1141,12 +1137,10 @@ class MercurialFile(BaseFile):
     """File class for holding data from Mercurial."""
 
     def __init__(self, client, rev, path):
-        self._content = client.cat(
-            [six.ensure_binary(path)], rev=six.ensure_binary(rev)
-        )
+        self._content = client.cat([path.encode()], rev=rev.encode())
 
     def open(self):
-        return BytesIO(six.ensure_binary(self._content))
+        return BytesIO(self._content)
 
     def read(self):
         return self._content
@@ -1194,13 +1188,13 @@ class MercurialRevisionFinder(BaseFinder):
             [
                 b"files",
                 b"--rev",
-                six.ensure_binary(self._rev),
+                self._rev.encode(),
             ]
         )
         for relpath in out.splitlines():
             # Mercurial may use \ as path separator on Windows. So use
             # normpath().
-            self._files[six.ensure_text(mozpath.normpath(relpath))] = None
+            self._files[mozpath.normpath(relpath).decode()] = None
 
     def _find(self, pattern):
         if self._recognize_repo_paths:
@@ -1239,8 +1233,7 @@ class FileListFinder(BaseFinder):
     """Finder for a literal list of file names."""
 
     def __init__(self, files):
-        """files must be a sorted list."""
-        self._files = files
+        self._files = sorted(files)
 
     @memoize
     def _match(self, pattern):
@@ -1254,7 +1247,7 @@ class FileListFinder(BaseFinder):
         components = pattern.split("/")
         prefix = "/".join(takewhile(lambda s: "*" not in s, components))
         start = bisect.bisect_left(self._files, prefix)
-        for i in six.moves.range(start, len(self._files)):
+        for i in range(start, len(self._files)):
             f = self._files[i]
             if not f.startswith(prefix):
                 break

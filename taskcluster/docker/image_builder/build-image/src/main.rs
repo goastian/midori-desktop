@@ -28,7 +28,10 @@ fn read_image_digest(path: &str) -> Result<String> {
         .stdout(std::process::Stdio::piped())
         .spawn()?
         .wait_with_output()?;
-    ensure!(output.status.success(), "Could not inspect parent image.");
+    ensure!(
+        output.status.success(),
+        format!("Could not inspect parent image: {}", output.status)
+    );
 
     #[derive(Deserialize, Debug)]
     #[serde(rename_all = "PascalCase")]
@@ -72,12 +75,20 @@ fn build_image(
         .args(&["--context", &format!("tar://{}", context_path)])
         .args(&["--destination", "image"])
         .args(&["--dockerfile", "Dockerfile"])
-        .arg("--no-push")
-        .args(&["--cache-dir", "/workspace/cache"])
+        .args(&["--no-push", "--no-push-cache"])
+        .args(&[
+            "--cache=true",
+            "--cache-dir",
+            "/workspace/cache",
+            "--cache-repo",
+            "oci:/workspace/repo",
+        ])
         .arg("--single-snapshot")
+        // Compressed caching causes OOM with large images
+        .arg("--compressed-caching=false")
         // FIXME: Generating reproducible layers currently causes OOM.
         // .arg("--reproducible")
-        .arg("--whitelist-var-run=false")
+        .arg("--ignore-var-run=false")
         .args(&["--tarPath", dest]);
     if debug {
         command.args(&["-v", "debug"]);
@@ -86,7 +97,10 @@ fn build_image(
         command.args(&["--build-arg", &format!("{}={}", key, value)]);
     }
     let status = command.status()?;
-    ensure!(status.success(), "Could not build image.");
+    ensure!(
+        status.success(),
+        format!("Could not build image: {}", status)
+    );
     Ok(())
 }
 
@@ -97,7 +111,10 @@ fn repack_image(source: &str, dest: &str, image_name: &str) -> Result<()> {
         .arg(format!("docker-archive:{}:{}", dest, image_name))
         .stderr(std::process::Stdio::inherit())
         .status()?;
-    ensure!(status.success(), "Could repack image.");
+    ensure!(
+        status.success(),
+        format!("Could not repack image: {}", status)
+    );
     Ok(())
 }
 

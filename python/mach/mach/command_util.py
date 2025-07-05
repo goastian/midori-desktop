@@ -6,6 +6,7 @@ import argparse
 import ast
 import difflib
 import errno
+import importlib.metadata
 import shlex
 import sys
 import types
@@ -48,11 +49,13 @@ class MachCommandReference:
 
 
 MACH_COMMANDS = {
+    "adb": MachCommandReference("mobile/android/mach_commands.py"),
     "addstory": MachCommandReference("toolkit/content/widgets/mach_commands.py"),
     "addtest": MachCommandReference("testing/mach_commands.py"),
     "addwidget": MachCommandReference("toolkit/content/widgets/mach_commands.py"),
     "android": MachCommandReference("mobile/android/mach_commands.py"),
     "android-emulator": MachCommandReference("mobile/android/mach_commands.py"),
+    "android-test": MachCommandReference("testing/android-test/mach_commands.py"),
     "artifact": MachCommandReference(
         "python/mozbuild/mozbuild/artifact_commands.py",
     ),
@@ -84,7 +87,6 @@ MACH_COMMANDS = {
     ),
     "configure": MachCommandReference("python/mozbuild/mozbuild/build_commands.py"),
     "cppunittest": MachCommandReference("testing/mach_commands.py"),
-    "cramtest": MachCommandReference("testing/mach_commands.py"),
     "crashtest": MachCommandReference("layout/tools/reftest/mach_commands.py"),
     "data-review": MachCommandReference(
         "toolkit/components/glean/build_scripts/mach_commands.py"
@@ -111,11 +113,17 @@ MACH_COMMANDS = {
     ),
     "gen-uuid": MachCommandReference("dom/base/mach_commands.py"),
     "gen-use-counter-metrics": MachCommandReference("dom/base/mach_commands.py"),
+    "generate-python-lockfiles": MachCommandReference(
+        "python/mozbuild/mozbuild/lockfiles/mach_commands.py",
+    ),
     "generate-test-certs": MachCommandReference(
         "security/manager/tools/mach_commands.py"
     ),
     "gifft": MachCommandReference(
         "toolkit/components/telemetry/build_scripts/mach_commands.py"
+    ),
+    "glean": MachCommandReference(
+        "toolkit/components/glean/build_scripts/mach_commands.py"
     ),
     "gradle": MachCommandReference("mobile/android/mach_commands.py"),
     "gradle-install": MachCommandReference("mobile/android/mach_commands.py"),
@@ -132,9 +140,6 @@ MACH_COMMANDS = {
     "jsshell-bench": MachCommandReference("testing/mach_commands.py"),
     "jstestbrowser": MachCommandReference("layout/tools/reftest/mach_commands.py"),
     "jstests": MachCommandReference("testing/mach_commands.py"),
-    "l10n-cross-channel": MachCommandReference(
-        "tools/compare-locales/mach_commands.py"
-    ),
     "lint": MachCommandReference("tools/lint/mach_commands.py"),
     "logspam": MachCommandReference("tools/mach_commands.py"),
     "mach-commands": MachCommandReference("python/mach/mach/commands/commandinfo.py"),
@@ -152,6 +157,7 @@ MACH_COMMANDS = {
     ),
     "mozharness": MachCommandReference("testing/mozharness/mach_commands.py"),
     "mozregression": MachCommandReference("tools/mach_commands.py"),
+    "newtab": MachCommandReference("browser/extensions/newtab/mach_commands.py"),
     "node": MachCommandReference("tools/mach_commands.py"),
     "npm": MachCommandReference("tools/mach_commands.py"),
     "package": MachCommandReference("python/mozbuild/mozbuild/mach_commands.py"),
@@ -170,9 +176,7 @@ MACH_COMMANDS = {
         "python/mozperftest/mozperftest/mach_commands.py"
     ),
     "power": MachCommandReference("tools/power/mach_commands.py"),
-    "prettier-format": MachCommandReference(
-        "python/mozbuild/mozbuild/code_analysis/mach_commands.py"
-    ),
+    "prettier": MachCommandReference("tools/lint/mach_commands.py"),
     "puppeteer-test": MachCommandReference("remote/mach_commands.py"),
     "python": MachCommandReference("python/mach_commands.py"),
     "python-test": MachCommandReference("python/mach_commands.py"),
@@ -222,6 +226,8 @@ MACH_COMMANDS = {
     "update-glean-tags": MachCommandReference(
         "toolkit/components/glean/build_scripts/mach_commands.py"
     ),
+    "update-test": MachCommandReference("testing/update/mach_commands.py"),
+    "use-moz-src": MachCommandReference("tools/use-moz-src/mach_commands.py"),
     "valgrind-test": MachCommandReference("build/valgrind/mach_commands.py"),
     "vcs-setup": MachCommandReference(
         "python/mozboot/mozboot/mach_commands.py",
@@ -246,9 +252,6 @@ MACH_COMMANDS = {
     "webidl-parser-test": MachCommandReference("dom/bindings/mach_commands.py"),
     "wpt": MachCommandReference("testing/web-platform/mach_commands.py"),
     "wpt-fetch-logs": MachCommandReference("testing/web-platform/mach_commands.py"),
-    "wpt-fission-regressions": MachCommandReference(
-        "testing/web-platform/mach_commands.py"
-    ),
     "wpt-interop-score": MachCommandReference("testing/web-platform/mach_commands.py"),
     "wpt-manifest-update": MachCommandReference(
         "testing/web-platform/mach_commands.py"
@@ -464,7 +467,7 @@ def load_commands_from_file(path: Union[str, Path], module_name=None):
 
     try:
         load_source(module_name, str(path))
-    except IOError as e:
+    except OSError as e:
         if e.errno != errno.ENOENT:
             raise
 
@@ -478,7 +481,7 @@ def load_commands_from_spec(
 
     Takes a dictionary mapping command names to their metadata.
     """
-    modules = set(spec[command].module for command in spec)
+    modules = {spec[command].module for command in spec}
 
     for path in modules:
         try:
@@ -496,16 +499,7 @@ def load_commands_from_entry_point(group="mach.providers"):
     This takes an optional group argument which specifies the entry point
     group to use. If not specified, it defaults to 'mach.providers'.
     """
-    try:
-        import pkg_resources
-    except ImportError:
-        print(
-            "Could not find setuptools, ignoring command entry points",
-            file=sys.stderr,
-        )
-        return
-
-    for entry in pkg_resources.iter_entry_points(group=group, name=None):
+    for entry in importlib.metadata.entry_points(group=group):
         paths = [Path(path) for path in entry.load()()]
         if not isinstance(paths, Iterable):
             print(INVALID_ENTRY_POINT % entry)

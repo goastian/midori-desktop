@@ -9,7 +9,11 @@ package org.mozilla.geckoview.test
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
-import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.not
+import org.hamcrest.Matchers.notNullValue
+import org.hamcrest.Matchers.startsWith
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.geckoview.ContentBlocking
@@ -18,6 +22,7 @@ import org.mozilla.geckoview.ContentBlocking.CookieBannerMode
 import org.mozilla.geckoview.ContentBlockingController
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.AssertCalled
+
 @RunWith(AndroidJUnit4::class)
 @MediumTest
 class ContentBlockingControllerTest : BaseSessionTest() {
@@ -488,6 +493,63 @@ class ContentBlockingControllerTest : BaseSessionTest() {
             "The value is updated",
             actualPrefs[0] as String,
             equalTo(contentBlocking.queryParameterStrippingStripList.joinToString(",")),
+        )
+    }
+
+    @Test
+    fun etpCategorySettings() {
+        // Check default value
+        val contentBlocking = sessionRule.runtime.settings.contentBlocking
+
+        assertThat(
+            "Expect correct default value which ETP standard",
+            contentBlocking.getEnhancedTrackingProtectionCategory(),
+            equalTo(ContentBlocking.EtpCategory.STANDARD),
+        )
+
+        // Checks that the pref value is also consistent with the runtime settings
+        val defaultPrefs = sessionRule.getPrefs(
+            "browser.contentblocking.category",
+        )
+
+        assertThat(
+            "Initial value is correct",
+            defaultPrefs[0] as String,
+            equalTo("standard"),
+        )
+
+        contentBlocking.setEnhancedTrackingProtectionCategory(ContentBlocking.EtpCategory.STRICT)
+        assertThat(
+            "The getter returns the updated value for strict",
+            contentBlocking.getEnhancedTrackingProtectionCategory(),
+            equalTo(ContentBlocking.EtpCategory.STRICT),
+        )
+
+        val updatedPrefsStrict = sessionRule.getPrefs(
+            "browser.contentblocking.category",
+        )
+
+        assertThat(
+            "The pref value is updated",
+            updatedPrefsStrict[0] as String,
+            equalTo("strict"),
+        )
+
+        contentBlocking.setEnhancedTrackingProtectionCategory(ContentBlocking.EtpCategory.CUSTOM)
+        assertThat(
+            "The getter returns the updated value for custom",
+            contentBlocking.getEnhancedTrackingProtectionCategory(),
+            equalTo(ContentBlocking.EtpCategory.CUSTOM),
+        )
+
+        val updatedPrefsCustom = sessionRule.getPrefs(
+            "browser.contentblocking.category",
+        )
+
+        assertThat(
+            "The pref value is updated",
+            updatedPrefsCustom[0] as String,
+            equalTo("custom"),
         )
     }
 

@@ -18,6 +18,7 @@ apt_packages+=('ca-certificates')
 apt_packages+=('ccache')
 apt_packages+=('compiz')
 apt_packages+=('curl')
+apt_packages+=('ffmpeg')
 apt_packages+=('fontconfig')
 apt_packages+=('fonts-kacst')
 apt_packages+=('fonts-kacst-one')
@@ -89,9 +90,6 @@ apt_packages+=('xvfb')
 apt_packages+=('xwit')
 apt_packages+=('yasm')
 apt_packages+=('zip')
-
-# xvinfo for test-linux.sh to monitor Xvfb startup
-apt_packages+=('x11-utils')
 
 # Bug 1232407 - this allows the user to start vnc
 apt_packages+=('x11vnc')

@@ -31,12 +31,14 @@ import:
                 action: "MAKE_DEFAULT_BROWSER"
                 trigger-if-all:
                   - USER_ESTABLISHED_INSTALL
+                  - ANDROID_API_BELOW_29
                 exclude-if-any:
                   - I_AM_DEFAULT_BROWSER
                 style: PERSISTENT
                 button-label: preferences_set_as_default_browser
             triggers:
               USER_ESTABLISHED_INSTALL: "number_of_app_launches >=4"
+              ANDROID_API_BELOW_29: "android_version < 29"
 
         # This message displays as a 'push' notification, asking the user to set Firefox as the default.
         # It is triggered three days after install.
@@ -53,9 +55,8 @@ import:
                   - I_AM_DEFAULT_BROWSER
                 action: MAKE_DEFAULT_BROWSER
 
+        # This message displays as a microsurvey prompt after the user taps on the `Print` menu.
         - channel: developer
-          # This message displays as a microsurvey prompt, after the user tap on the `Print` menu.
-          # It will be only available in debug builds.
           value:
             messages:
               microsurvey-printing-example:
@@ -64,17 +65,48 @@ import:
                 surface: microsurvey
                 trigger-if-all:
                   - RECENTLY_PRINTED
-                style: MICRO_SURVEY
+                style: MICROSURVEY
                 microsurvey-config:
+                  utm-content: "homepage"
                   icon: ic_print
-                  options:
-                    - text: microsurvey_survey_5_point_option_0
-                      scale-value: 0
-                    - text: microsurvey_survey_5_point_option_1
-                      scale-value: 1
-                    - text: microsurvey_survey_5_point_option_2
-                      scale-value: 2
-                    - text: microsurvey_survey_5_point_option_3
-                      scale-value: 3
-                    - text: microsurvey_survey_5_point_option_4
-                      scale-value: 4
+                  answers:
+                    - text: likert_scale_option_1
+                      ordering: 0
+                    - text: likert_scale_option_2
+                      ordering: 1
+                    - text: likert_scale_option_3
+                      ordering: 2
+                    - text: likert_scale_option_4
+                      ordering: 3
+                    - text: likert_scale_option_5
+                      ordering: 4
+                    - text: likert_scale_option_6
+                      ordering: 5
+
+        # This message displays as a microsurvey prompt after the user taps on the `Print` menu.
+        - channel: nightly
+          value:
+            messages:
+              microsurvey-printing-example-nightly:
+                title: microsurvey_prompt_printing_title
+                text: microsurvey_survey_printing_title
+                surface: microsurvey
+                trigger-if-all:
+                  - RECENTLY_PRINTED
+                style: MICROSURVEY
+                microsurvey-config:
+                  utm-content: "homepage"
+                  icon: ic_print
+                  answers:
+                    - text: likert_scale_option_1
+                      ordering: 0
+                    - text: likert_scale_option_2
+                      ordering: 1
+                    - text: likert_scale_option_3
+                      ordering: 2
+                    - text: likert_scale_option_4
+                      ordering: 3
+                    - text: likert_scale_option_5
+                      ordering: 4
+                    - text: likert_scale_option_6
+                      ordering: 5

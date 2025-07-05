@@ -130,7 +130,7 @@ def parse_locales_file(locales_file, platform=None):
     """Parse the passed locales file for a list of locales."""
     locales = []
 
-    with open(locales_file, mode="r") as f:
+    with open(locales_file) as f:
         if locales_file.endswith("json"):
             all_locales = json.load(f)
             # XXX Only single locales are fetched
@@ -373,9 +373,9 @@ def make_job_description(config, jobs):
                 "symbol": job["treeherder"]["symbol"],
                 "platform": job["treeherder"]["platform"],
             },
-            "run-on-projects": job.get("run-on-projects")
-            if job.get("run-on-projects")
-            else [],
+            "run-on-projects": (
+                job.get("run-on-projects") if job.get("run-on-projects") else []
+            ),
         }
         if job.get("extra"):
             job_description["extra"] = job["extra"]

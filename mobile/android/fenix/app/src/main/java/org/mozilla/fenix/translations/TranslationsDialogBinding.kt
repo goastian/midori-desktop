@@ -49,8 +49,7 @@ class TranslationsDialogBinding(
         // Applying the flows together
         sessionFlow
             .combine(browserFlow) { sessionState, browserState -> TranslationsFlowState(sessionState, browserState) }
-            .collect {
-                    state ->
+            .collect { state ->
                 // Browser Translations State Behavior (Global)
                 val browserTranslationsState = state.browserState.translationEngine
                 val translateFromLanguages =
@@ -75,6 +74,12 @@ class TranslationsDialogBinding(
 
                 // Session Translations State Behavior (Tab)
                 val sessionTranslationsState = state.sessionState.translationsState
+
+                translationsDialogStore.dispatch(
+                    TranslationsDialogAction.UpdateTranslationInProgress(
+                        sessionTranslationsState.isTranslateProcessing,
+                    ),
+                )
 
                 val fromSelected =
                     sessionTranslationsState.translationEngineState?.initialFromLanguage(
@@ -119,7 +124,11 @@ class TranslationsDialogBinding(
                 }
 
                 if (sessionTranslationsState.isTranslateProcessing) {
-                    updateStoreIfIsTranslateProcessing()
+                    translationsDialogStore.dispatch(
+                        TranslationsDialogAction.DismissDialog(
+                            dismissDialogState = DismissDialogState.WaitingToBeDismissed,
+                        ),
+                    )
                 }
 
                 if (sessionTranslationsState.isTranslated && !sessionTranslationsState.isTranslateProcessing) {
@@ -161,7 +170,6 @@ class TranslationsDialogBinding(
      * @param sessionTranslationsState The session state to consider when dispatching errors.
      * @param browserTranslationsState The browser state to consider when dispatching errors.
      * @param browserState The browser state to consider when fetching information for errors.
-
      */
     private fun updateTranslationError(
         sessionTranslationsState: TranslationsState,
@@ -206,26 +214,7 @@ class TranslationsDialogBinding(
         }
     }
 
-    private fun updateStoreIfIsTranslateProcessing() {
-        translationsDialogStore.dispatch(
-            TranslationsDialogAction.UpdateTranslationInProgress(
-                true,
-            ),
-        )
-        translationsDialogStore.dispatch(
-            TranslationsDialogAction.DismissDialog(
-                dismissDialogState = DismissDialogState.WaitingToBeDismissed,
-            ),
-        )
-    }
-
     private fun updateStoreIfTranslated() {
-        translationsDialogStore.dispatch(
-            TranslationsDialogAction.UpdateTranslationInProgress(
-                false,
-            ),
-        )
-
         if (!translationsDialogStore.state.isTranslated) {
             translationsDialogStore.dispatch(
                 TranslationsDialogAction.UpdateTranslated(

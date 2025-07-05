@@ -7,6 +7,7 @@ task-defaults:
     run-without-variant: false
     variants:
         - 1proc
+        - inc-origin-init
     virtualization: virtual
     mozharness:
         script:
@@ -49,18 +50,39 @@ gtest:
     description: "GTests run"
     suite: gtest
     treeherder-symbol: GTest
-    instance-size: large-noscratch
+    instance-size:
+        by-test-platform:
+            linux.*: large-noscratch
+            windows.*-asan.*: large
+            default: default
     run-on-projects:
         by-variant:
             1proc:
                 by-test-platform:
                     .*android.*: built-projects
-                    .*(devedition|wayland).*: []
-                    linux1804-32-qr/opt: []  # try only, shippable on m-c
-                    linux1804-32-qr/debug: ['mozilla-central']  # try and m-c
-                    linux1804-32-shippable-qr/opt: ['mozilla-central']  # try and m-c
+                    .*-devedition.*: []
+                    .*-wayland.*: []
+                    linux1804-32(-qr)?/opt: []  # try only, shippable on m-c
+                    linux1804-32(-qr)?/debug: ['mozilla-central']  # try and m-c
+                    linux1804-32-shippable(-qr)?/opt: ['mozilla-central']  # try and m-c
                     default: built-projects
+            inc-origin-init:
+                by-test-platform:
+                    .*-asan.*: []
+                    .*-ccov.*: []
+                    linux.*64(-shippable)?(-qr)?/.*: built-projects
+                    macosx.*64(-shippable)?(-qr)?/.*: built-projects
+                    windows1.*64.*(-shippable)?(-qr)?/.*: built-projects
+                    default: []
             default: []
+    mozharness:
+        extra-options:
+            by-variant:
+                inc-origin-init:
+                    - --disable-e10s
+                    - --enable-inc-origin-init
+                    - --filter-set=dom-storage
+                default: []
     target:
         by-test-platform:
             android-em-7.*: geckoview-test_runner.apk
@@ -75,23 +97,24 @@ jittest:
         by-variant:
             1proc:
                 by-test-platform:
-                    android-hw-.*-aarch64-qr/debug: ['mozilla-central', 'release']
-                    android-hw-.*-arm7-qr/debug: ['mozilla-central', 'release']
+                    android-hw-.*-aarch64(-qr)?/debug: ['mozilla-central', 'release']
+                    android-hw-.*-arm7(-qr)?/debug: ['mozilla-central', 'release']
                     default: built-projects
             default: []
     chunks:
         by-test-platform:
-            windows.*-ccov-qr/opt: 6
+            windows.*-ccov.*/opt: 6
             windows.*: 1
             macosx.*/opt: 1
             macosx.*/debug: 3
             android.*/opt: 3
-            android-hw-.*-aarch64-qr/debug: 8
+            android-hw-.*-aarch64(-qr)?/debug: 8
             default: 6
     max-run-time:
         by-test-platform:
             windows.*-ccov.*/.*: 1800
-            android-hw.*: 2400
+            android-hw.*/debug: 3600
+            android-hw.*/opt: 2400
             default: 3600
     mozharness:
         chunked:
@@ -114,7 +137,7 @@ jittest-all:
     treeherder-symbol: Jit
     run-on-projects:
         by-test-platform:
-            android-hw-.*-arm7(?:-shippable)?-qr/.*: ['mozilla-central', 'release']
+            android-hw-.*-arm7(?:-shippable)?(-qr)?/.*: ['mozilla-central', 'release']
             default: []
     chunks:
         by-test-platform:
@@ -127,7 +150,7 @@ jittest-all:
             by-test-platform:
                 android.*:
                     - --jittest-flags=all
-                default: None
+                default: []
     target:
         by-test-platform:
             android-.*: geckoview-test_runner.apk

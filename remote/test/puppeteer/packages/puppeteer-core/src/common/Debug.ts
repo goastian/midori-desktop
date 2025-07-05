@@ -9,8 +9,7 @@ import type Debug from 'debug';
 import {isNode} from '../environment.js';
 
 declare global {
-  // eslint-disable-next-line no-var
-  var __PUPPETEER_DEBUG: string;
+  const __PUPPETEER_DEBUG: string;
 }
 
 /**
@@ -98,7 +97,6 @@ export const debug = (prefix: string): ((...args: unknown[]) => void) => {
       return;
     }
 
-    // eslint-disable-next-line no-console
     console.log(`${prefix}:`, ...logArgs);
   };
 };

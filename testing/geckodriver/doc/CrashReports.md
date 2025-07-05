@@ -1,40 +1,30 @@
 # Analyzing crash data of Firefox
 
-It's not uncommon that under some special platform configurations and while
-running automated tests via Selenium and geckodriver Firefox could crash. In
-those cases it is very helpful to retrieve the generated crash data aka
-minidump files, and report these to us.
+If Firefox crashes whilst under automation, it's helpful to retrieve the
+generated crash data aka minidump files, and report these to us.
 
-## Retrieve the crash information
+## Retrieve the crash data
 
-Because geckodriver creates a temporary user profile for Firefox, it also
-automatically removes all its folders once the tests have been finished. That
-also means that if Firefox or just a tab crashed the created minidump files
-cannot be retrieved. To prevent that the `MINIDUMP_SAVE_PATH` environment
-variable can be used. It needs to be forwarded to geckodriver and has to point
-to an existing folder on the local machine. Then, whenever a crash occurs the
-related crash information will then be written to the `<uuid>.dmp` and
-`<uuid>.extra` files within the given folder.
+Since geckodriver creates a temporary user profile for Firefox, it automatically
+removes all associated folders once the tests complete. As a result, any minidump
+files generated during a crash are also deleted.
 
-```bash
-MINIDUMP_SAVE_PATH="/home/test/crashes" pytest path/to/test.py
+To preserve these files, set the `MINIDUMP_SAVE_PATH` environment variable to an
+existing folder and pass it into geckodriver:
+
+```shell
+MINIDUMP_SAVE_PATH="~/.geckodriver/minidumps" geckodriver
 ```
 
-By running this command Firefox will now write minidump files to that folder:
+For each detected Firefox crash, two files will be stored in the specified folder:
 
-```bash
-$ ls /home/test/crashes
-4ad24258-ec0f-87bd-fd78-496d9170bd35.dmp
-4ad24258-ec0f-87bd-fd78-496d9170bd35.extra
-```
+- **`.dmp` file** – Contains the actual crash data.
+- **`.extra` file** – Includes details about the running Firefox instance.
 
-Note that both of those files are needed when you want to file an issue for
-geckodriver. If more files are present grab them all.
+Both files are essential for further analysis and should be attached to a
+[GitHub issue] for investigation.
 
-Attach the files as best archived as zip file to the created [geckodriver issue]
-on Github.
-
-[geckodriver issue]: https://github.com/mozilla/geckodriver/issues/new
+[GitHub issue]: https://github.com/mozilla/geckodriver/issues/new
 
 ## Getting details of the crash
 
@@ -52,6 +42,10 @@ crash report to the geckodriver issue.
 [view the crash reports]: https://support.mozilla.orgkb/mozillacrashreporter#w_viewing-crash-reports
 
 ## Enabling the crash reporter
+
+**Deprecation warning**: `--enable-crash-reporter` argument is deprecated and planned
+to be removed with the 0.37.0 release of geckodriver. As such it shouldn't be used
+with version 0.36.0 or later anymore. Please use the solution described above.
 
 By default geckodriver disables the crash reporter so it doesn't submit crash
 reports to Mozilla's crash reporting system, and also doesn't interfere with

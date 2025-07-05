@@ -22,8 +22,7 @@
 
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/StaticPrefs_network.h"
-#include "mozilla/Telemetry.h"
-#include "nsAlgorithm.h"
+#include "mozilla/glean/NetwerkProtocolHttpMetrics.h"
 #include "nsHttp.h"
 #include "nsHttpHandler.h"
 #include "nsHttpRequestHead.h"
@@ -354,12 +353,6 @@ nsresult Http2StreamBase::ParseHttpRequestHeaders(const char* buf,
   mFlatHttpRequestHeaders.SetLength(endHeader + 2);
   *countUsed = avail - (oldLen - endHeader) + 4;
   mRequestHeadersDone = 1;
-
-  Http2Stream* selfRegularStream = this->GetHttp2Stream();
-  if (selfRegularStream) {
-    return selfRegularStream->CheckPushCache();
-  }
-
   return NS_OK;
 }
 
@@ -487,7 +480,7 @@ nsresult Http2StreamBase::GenerateOpen() {
     outputOffset += frameLen;
   }
 
-  Telemetry::Accumulate(Telemetry::SPDY_SYN_SIZE, compressedData.Length());
+  glean::spdy::syn_size.Accumulate(compressedData.Length());
 
   mFlatHttpRequestHeaders.Truncate();
 
@@ -797,9 +790,9 @@ nsresult Http2StreamBase::ConvertResponseHeaders(
   }
 
   if (aHeadersIn.Length() && aHeadersOut.Length()) {
-    Telemetry::Accumulate(Telemetry::SPDY_SYN_REPLY_SIZE, aHeadersIn.Length());
+    glean::spdy::syn_reply_size.Accumulate(aHeadersIn.Length());
     uint32_t ratio = aHeadersIn.Length() * 100 / aHeadersOut.Length();
-    Telemetry::Accumulate(Telemetry::SPDY_SYN_REPLY_RATIO, ratio);
+    glean::spdy::syn_reply_ratio.AccumulateSingleSample(ratio);
   }
 
   // The decoding went ok. Now we can customize and clean up.
@@ -960,7 +953,7 @@ void Http2StreamBase::UpdatePriorityDependency() {
 
   mPriorityDependency = GetPriorityDependencyFromTransaction(trans);
 
-  if (gHttpHandler->ActiveTabPriority() &&
+  if (StaticPrefs::network_http_active_tab_priority() &&
       mTransactionBrowserId != mCurrentBrowserId &&
       mPriorityDependency != Http2Session::kUrgentStartGroupID) {
     LOG3(
@@ -990,7 +983,7 @@ void Http2StreamBase::CurrentBrowserIdChanged(uint64_t id) {
 }
 
 void Http2StreamBase::CurrentBrowserIdChangedInternal(uint64_t id) {
-  MOZ_ASSERT(gHttpHandler->ActiveTabPriority());
+  MOZ_ASSERT(StaticPrefs::network_http_active_tab_priority());
   RefPtr<Http2Session> session = Session();
   LOG3(
       ("Http2StreamBase::CurrentBrowserIdChangedInternal "
@@ -1034,8 +1027,8 @@ void Http2StreamBase::UpdatePriority(Http2Session* session) {
     return;
   }
 
-  uint8_t urgency =
-      nsHttpHandler::UrgencyFromCoSFlags(trans->GetClassOfService().Flags());
+  uint8_t urgency = nsHttpHandler::UrgencyFromCoSFlags(
+      trans->GetClassOfService().Flags(), trans->Priority());
   bool incremental = trans->GetClassOfService().Incremental();
   uint32_t streamID = GetWireStreamId();
 
@@ -1261,8 +1254,7 @@ nsresult Http2StreamBase::OnReadSegment(const char* buf, uint32_t count,
       break;
 
     case UPSTREAM_COMPLETE: {
-      MOZ_ASSERT(this->GetHttp2Stream() &&
-                 this->GetHttp2Stream()->IsReadingFromPushStream());
+      MOZ_ASSERT(this->GetHttp2Stream());
       rv = TransmitFrame(nullptr, nullptr, true);
       break;
     }

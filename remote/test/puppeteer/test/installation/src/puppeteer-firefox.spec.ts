@@ -22,34 +22,33 @@ import {readAsset} from './util.js';
       dependencies: ['@puppeteer/browsers', 'puppeteer-core', 'puppeteer'],
       env: cwd => {
         return {
+          PUPPETEER_BROWSER: 'firefox',
           PUPPETEER_CACHE_DIR: join(cwd, '.cache', 'puppeteer'),
-          PUPPETEER_PRODUCT: 'firefox',
+          PUPPETEER_CHROME_SKIP_DOWNLOAD: 'true',
+          PUPPETEER_CHROME_HEADLESS_SHELL_SKIP_DOWNLOAD: 'true',
+          PUPPETEER_FIREFOX_SKIP_DOWNLOAD: 'false',
         };
       },
     });
 
-    describe('with CDP', () => {
+    describe('with WebDriverBiDi', () => {
       it('evaluates CommonJS', async function () {
         const files = await readdir(join(this.sandbox, '.cache', 'puppeteer'));
-        assert.equal(files.length, 1);
+        assert.equal(files.length, 1, files.join());
         assert.equal(files[0], 'firefox');
         const script = await readAsset('puppeteer-core', 'requires.cjs');
         await this.runScript(script, 'cjs');
       });
 
       it('evaluates ES modules', async function () {
+        const files = await readdir(join(this.sandbox, '.cache', 'puppeteer'));
+        assert.equal(files.length, 1, files.join());
+        assert.equal(files[0], 'firefox');
         const script = await readAsset('puppeteer-core', 'imports.js');
         await this.runScript(script, 'mjs');
       });
     });
-
-    describe('with WebDriverBiDi', () => {
-      it('evaluates ES modules', async function () {
-        const script = await readAsset('puppeteer', 'bidi.js');
-        await this.runScript(script, 'mjs');
-      });
-    });
-  }
+  },
 );
 
 describe('Firefox download', () => {
@@ -76,7 +75,7 @@ describe('Firefox download', () => {
           ...process.env,
           PUPPETEER_CACHE_DIR: join(this.sandbox, '.cache', 'puppeteer'),
         },
-      }
+      },
     );
     assert.strictEqual(result.status, 0);
     const files = await readdir(join(this.sandbox, '.cache', 'puppeteer'));

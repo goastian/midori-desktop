@@ -5,7 +5,7 @@
  */
 import type {CDPSession} from '../api/CDPSession.js';
 import {
-  getReadableAsBuffer,
+  getReadableAsTypedArray,
   getReadableFromProtocolStream,
 } from '../common/util.js';
 import {assert} from '../util/assert.js';
@@ -66,7 +66,7 @@ export class Tracing {
   async start(options: TracingOptions = {}): Promise<void> {
     assert(
       !this.#recording,
-      'Cannot start recording trace while already recording trace.'
+      'Cannot start recording trace while already recording trace.',
     );
 
     const defaultCategories = [
@@ -114,17 +114,17 @@ export class Tracing {
    * Stops a trace started with the `start` method.
    * @returns Promise which resolves to buffer with trace data.
    */
-  async stop(): Promise<Buffer | undefined> {
-    const contentDeferred = Deferred.create<Buffer | undefined>();
+  async stop(): Promise<Uint8Array | undefined> {
+    const contentDeferred = Deferred.create<Uint8Array | undefined>();
     this.#client.once('Tracing.tracingComplete', async event => {
       try {
         assert(event.stream, 'Missing "stream"');
         const readable = await getReadableFromProtocolStream(
           this.#client,
-          event.stream
+          event.stream,
         );
-        const buffer = await getReadableAsBuffer(readable, this.#path);
-        contentDeferred.resolve(buffer ?? undefined);
+        const typedArray = await getReadableAsTypedArray(readable, this.#path);
+        contentDeferred.resolve(typedArray ?? undefined);
       } catch (error) {
         if (isErrorLike(error)) {
           contentDeferred.reject(error);

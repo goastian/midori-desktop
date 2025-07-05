@@ -4,12 +4,6 @@
 
 import { GeckoViewModule } from "resource://gre/modules/GeckoViewModule.sys.mjs";
 
-const lazy = {};
-ChromeUtils.defineESModuleGetters(lazy, {
-  isProductURL: "chrome://global/content/shopping/ShoppingProduct.mjs",
-  ShoppingProduct: "chrome://global/content/shopping/ShoppingProduct.mjs",
-});
-
 export class GeckoViewContent extends GeckoViewModule {
   onInit() {
     this.registerListener([
@@ -20,16 +14,6 @@ export class GeckoViewContent extends GeckoViewModule {
       "GeckoView:HasCookieBannerRuleForBrowsingContextTree",
       "GeckoView:RestoreState",
       "GeckoView:ContainsFormData",
-      "GeckoView:RequestCreateAnalysis",
-      "GeckoView:RequestAnalysisStatus",
-      "GeckoView:RequestAnalysisCreationStatus",
-      "GeckoView:PollForAnalysisCompleted",
-      "GeckoView:SendClickAttributionEvent",
-      "GeckoView:SendImpressionAttributionEvent",
-      "GeckoView:SendPlacementAttributionEvent",
-      "GeckoView:RequestAnalysis",
-      "GeckoView:RequestRecommendations",
-      "GeckoView:ReportBackInStock",
       "GeckoView:ScrollBy",
       "GeckoView:ScrollTo",
       "GeckoView:SetActive",
@@ -38,6 +22,8 @@ export class GeckoViewContent extends GeckoViewModule {
       "GeckoView:UpdateInitData",
       "GeckoView:ZoomToInput",
       "GeckoView:IsPdfJs",
+      "GeckoView:GetWebCompatInfo",
+      "GeckoView:SendMoreWebCompatInfo",
     ]);
   }
 
@@ -134,37 +120,57 @@ export class GeckoViewContent extends GeckoViewModule {
     }
   }
 
-  #sendDOMFullScreenEventToAllChildren(aEvent) {
-    let { browsingContext } = this.actor;
+  #sendEnterDOMFullscreenEvent(aRequestOrigin) {
+    // Track the actors that are involved in the fullscreen request. And we will
+    // use them to send the exit message when the fullscreen is exited.
+    this._fullscreenRequest = { actors: [] };
 
-    while (browsingContext) {
-      if (!browsingContext.currentWindowGlobal) {
+    let currentBC = aRequestOrigin.browsingContext;
+    let currentPid = currentBC.currentWindowGlobal.osPid;
+    let parentBC = currentBC.parent;
+
+    while (parentBC) {
+      if (!parentBC.currentWindowGlobal) {
         break;
       }
 
-      const currentPid = browsingContext.currentWindowGlobal.osPid;
-      const parentPid = browsingContext.parent?.currentWindowGlobal.osPid;
-
+      const parentPid = parentBC.currentWindowGlobal.osPid;
       if (currentPid != parentPid) {
-        if (!browsingContext.parent) {
-          // Top level browsing context. Use origin actor (Bug 1505916).
-          const chromeBC = browsingContext.topChromeWindow?.browsingContext;
-          const requestOrigin = chromeBC?.fullscreenRequestOrigin?.get();
-          if (requestOrigin) {
-            requestOrigin.browsingContext.currentWindowGlobal
-              .getActor("GeckoViewContent")
-              .sendAsyncMessage(aEvent, {});
-            delete chromeBC.fullscreenRequestOrigin;
-            return;
-          }
-        }
-        const actor =
-          browsingContext.currentWindowGlobal.getActor("GeckoViewContent");
-        actor.sendAsyncMessage(aEvent, {});
+        const actor = parentBC.currentWindowGlobal.getActor("GeckoViewContent");
+        actor.sendAsyncMessage("GeckoView:DOMFullscreenEntered", {
+          remoteFrameBC: currentBC,
+        });
+        this._fullscreenRequest.actors.push(actor);
+        currentPid = parentPid;
       }
 
-      browsingContext = browsingContext.parent;
+      currentBC = parentBC;
+      parentBC = parentBC.parent;
     }
+
+    const actor =
+      aRequestOrigin.browsingContext.currentWindowGlobal.getActor(
+        "GeckoViewContent"
+      );
+    actor.sendAsyncMessage("GeckoView:DOMFullscreenEntered", {});
+    this._fullscreenRequest.actors.push(actor);
+  }
+
+  #sendExitDOMFullScreenEvent() {
+    if (!this._fullscreenRequest) {
+      return;
+    }
+
+    for (const actor of this._fullscreenRequest.actors) {
+      if (
+        !actor.hasBeenDestroyed() &&
+        actor.windowContext &&
+        !actor.windowContext.isInBFCache
+      ) {
+        actor.sendAsyncMessage("GeckoView:DOMFullscreenExited", {});
+      }
+    }
+    delete this._fullscreenRequest;
   }
 
   // Bundle event handler.
@@ -272,35 +278,11 @@ export class GeckoViewContent extends GeckoViewModule {
       case "GeckoView:ContainsFormData":
         this._containsFormData(aCallback);
         break;
-      case "GeckoView:RequestAnalysis":
-        this._requestAnalysis(aData, aCallback);
+      case "GeckoView:GetWebCompatInfo":
+        this._getWebCompatInfo(aCallback);
         break;
-      case "GeckoView:RequestCreateAnalysis":
-        this._requestCreateAnalysis(aData, aCallback);
-        break;
-      case "GeckoView:RequestAnalysisStatus":
-        this._requestAnalysisStatus(aData, aCallback);
-        break;
-      case "GeckoView:RequestAnalysisCreationStatus":
-        this._requestAnalysisCreationStatus(aData, aCallback);
-        break;
-      case "GeckoView:PollForAnalysisCompleted":
-        this._pollForAnalysisCompleted(aData, aCallback);
-        break;
-      case "GeckoView:SendClickAttributionEvent":
-        this._sendAttributionEvent("click", aData, aCallback);
-        break;
-      case "GeckoView:SendImpressionAttributionEvent":
-        this._sendAttributionEvent("impression", aData, aCallback);
-        break;
-      case "GeckoView:SendPlacementAttributionEvent":
-        this._sendAttributionEvent("placement", aData, aCallback);
-        break;
-      case "GeckoView:RequestRecommendations":
-        this._requestRecommendations(aData, aCallback);
-        break;
-      case "GeckoView:ReportBackInStock":
-        this._reportBackInStock(aData, aCallback);
+      case "GeckoView:SendMoreWebCompatInfo":
+        this._sendMoreWebCompatInfo(aData, aCallback);
         break;
       case "GeckoView:IsPdfJs":
         aCallback.onSuccess(this.isPdfJs);
@@ -330,16 +312,20 @@ export class GeckoViewContent extends GeckoViewModule {
         break;
       case "MozDOMFullscreen:Entered":
         if (this.browser == aEvent.target) {
+          const chromeWindow = this.browser.ownerGlobal;
+          const requestOrigin =
+            chromeWindow.browsingContext?.fullscreenRequestOrigin?.get();
+          if (!requestOrigin) {
+            chromeWindow.document.exitFullscreen();
+            return;
+          }
+
           // Remote browser; dispatch to content process.
-          this.#sendDOMFullScreenEventToAllChildren(
-            "GeckoView:DOMFullscreenEntered"
-          );
+          this.#sendEnterDOMFullscreenEvent(requestOrigin);
         }
         break;
       case "MozDOMFullscreen:Exited":
-        this.#sendDOMFullScreenEventToAllChildren(
-          "GeckoView:DOMFullscreenExited"
-        );
+        this.#sendExitDOMFullScreenEvent();
         break;
       case "pagetitlechanged":
         this.eventDispatcher.sendRequest({
@@ -418,208 +404,63 @@ export class GeckoViewContent extends GeckoViewModule {
     }
   }
 
+  async _getWebCompatInfo(aCallback) {
+    if (
+      Cu.isInAutomation &&
+      Services.prefs.getBoolPref(
+        "browser.webcompat.geckoview.enableAllTestMocks",
+        false
+      )
+    ) {
+      const mockResult = {
+        devicePixelRatio: 2.5,
+        antitracking: { hasTrackingContentBlocked: false },
+      };
+      aCallback.onSuccess(JSON.stringify(mockResult));
+      return;
+    }
+    try {
+      const actor =
+        this.browser.browsingContext.currentWindowGlobal.getActor(
+          "ReportBrokenSite"
+        );
+      const info = await actor.sendQuery("GetWebCompatInfo");
+
+      // Stringify to convert potential non-ASCII
+      // characters in the returned web compat info map.
+      aCallback.onSuccess(JSON.stringify(info));
+    } catch (error) {
+      aCallback.onError(`Cannot get web compat info, error: ${error}`);
+    }
+  }
+
+  async _sendMoreWebCompatInfo(aData, aCallback) {
+    if (
+      Cu.isInAutomation &&
+      Services.prefs.getBoolPref(
+        "browser.webcompat.geckoview.enableAllTestMocks",
+        false
+      )
+    ) {
+      aCallback.onSuccess();
+      return;
+    }
+    let infoObj = JSON.parse(aData.info);
+    try {
+      const actor =
+        this.browser.browsingContext.currentWindowGlobal.getActor(
+          "ReportBrokenSite"
+        );
+
+      await actor.sendQuery("SendDataToWebcompatCom", infoObj);
+      aCallback.onSuccess();
+    } catch (error) {
+      aCallback.onError(`Cannot send more web compat info, error: ${error}`);
+    }
+  }
+
   async _containsFormData(aCallback) {
     aCallback.onSuccess(await this.actor.containsFormData());
-  }
-
-  async _requestAnalysis(aData, aCallback) {
-    if (
-      Services.prefs.getBoolPref("geckoview.shopping.mock_test_response", false)
-    ) {
-      const analysis = {
-        analysis_url: "https://www.example.com/mock_analysis_url",
-        product_id: "ABCDEFG123",
-        grade: "B",
-        adjusted_rating: 4.5,
-        needs_analysis: true,
-        page_not_supported: true,
-        not_enough_reviews: true,
-        highlights: null,
-        last_analysis_time: 12345,
-        deleted_product_reported: true,
-        deleted_product: true,
-      };
-      aCallback.onSuccess({ analysis });
-      return;
-    }
-    const url = Services.io.newURI(aData.url);
-    if (!lazy.isProductURL(url)) {
-      aCallback.onError(`Cannot requestAnalysis on a non-product url.`);
-    } else {
-      const product = new lazy.ShoppingProduct(url);
-      const analysis = await product.requestAnalysis();
-      if (!analysis) {
-        aCallback.onError(`Product analysis returned null.`);
-        return;
-      }
-      aCallback.onSuccess({ analysis });
-    }
-  }
-
-  async _requestCreateAnalysis(aData, aCallback) {
-    if (
-      Services.prefs.getBoolPref("geckoview.shopping.mock_test_response", false)
-    ) {
-      const status = "pending";
-      aCallback.onSuccess(status);
-      return;
-    }
-    const url = Services.io.newURI(aData.url);
-    if (!lazy.isProductURL(url)) {
-      aCallback.onError(`Cannot requestCreateAnalysis on a non-product url.`);
-    } else {
-      const product = new lazy.ShoppingProduct(url);
-      const status = await product.requestCreateAnalysis();
-      if (!status) {
-        aCallback.onError(`Creation of product analysis returned null.`);
-        return;
-      }
-      aCallback.onSuccess(status.status);
-    }
-  }
-
-  async _requestAnalysisCreationStatus(aData, aCallback) {
-    if (
-      Services.prefs.getBoolPref("geckoview.shopping.mock_test_response", false)
-    ) {
-      const status = "in_progress";
-      aCallback.onSuccess(status);
-      return;
-    }
-    const url = Services.io.newURI(aData.url);
-    if (!lazy.isProductURL(url)) {
-      aCallback.onError(
-        `Cannot requestAnalysisCreationStatus on a non-product url.`
-      );
-    } else {
-      const product = new lazy.ShoppingProduct(url);
-      const status = await product.requestAnalysisCreationStatus();
-      if (!status) {
-        aCallback.onError(
-          `Status of creation of product analysis returned null.`
-        );
-        return;
-      }
-      aCallback.onSuccess(status.status);
-    }
-  }
-
-  async _requestAnalysisStatus(aData, aCallback) {
-    if (
-      Services.prefs.getBoolPref("geckoview.shopping.mock_test_response", false)
-    ) {
-      const status = { status: "in_progress", progress: 90.9 };
-      aCallback.onSuccess({ status });
-      return;
-    }
-    const url = Services.io.newURI(aData.url);
-    if (!lazy.isProductURL(url)) {
-      aCallback.onError(`Cannot requestAnalysisStatus on a non-product url.`);
-    } else {
-      const product = new lazy.ShoppingProduct(url);
-      const status = await product.requestAnalysisCreationStatus();
-      if (!status) {
-        aCallback.onError(`Status of product analysis returned null.`);
-        return;
-      }
-      aCallback.onSuccess({ status });
-    }
-  }
-
-  async _pollForAnalysisCompleted(aData, aCallback) {
-    const url = Services.io.newURI(aData.url);
-    if (!lazy.isProductURL(url)) {
-      aCallback.onError(
-        `Cannot pollForAnalysisCompleted on a non-product url.`
-      );
-    } else {
-      const product = new lazy.ShoppingProduct(url);
-      const status = await product.pollForAnalysisCompleted();
-      if (!status) {
-        aCallback.onError(
-          `Polling the status of creation of product analysis returned null.`
-        );
-        return;
-      }
-      aCallback.onSuccess(status.status);
-    }
-  }
-
-  async _sendAttributionEvent(aEvent, aData, aCallback) {
-    let result;
-    if (
-      Services.prefs.getBoolPref("geckoview.shopping.mock_test_response", false)
-    ) {
-      result = { TEST_AID: "TEST_AID_RESPONSE" };
-    } else {
-      result = await lazy.ShoppingProduct.sendAttributionEvent(
-        aEvent,
-        aData.aid,
-        "geckoview_android"
-      );
-    }
-    if (!result || !(aData.aid in result) || !result[aData.aid]) {
-      aCallback.onSuccess(false);
-      return;
-    }
-    aCallback.onSuccess(true);
-  }
-
-  async _requestRecommendations(aData, aCallback) {
-    if (
-      Services.prefs.getBoolPref("geckoview.shopping.mock_test_response", false)
-    ) {
-      const recommendations = [
-        {
-          name: "Mock Product",
-          url: "https://example.com/mock_url",
-          image_url: "https://example.com/mock_image_url",
-          price: "450",
-          currency: "USD",
-          grade: "C",
-          adjusted_rating: 3.5,
-          analysis_url: "https://example.com/mock_analysis_url",
-          sponsored: true,
-          aid: "mock_aid",
-        },
-      ];
-      aCallback.onSuccess({ recommendations });
-      return;
-    }
-    const url = Services.io.newURI(aData.url);
-    if (!lazy.isProductURL(url)) {
-      aCallback.onError(`Cannot requestRecommendations on a non-product url.`);
-    } else {
-      const product = new lazy.ShoppingProduct(url);
-      const recommendations = await product.requestRecommendations();
-      if (!recommendations) {
-        aCallback.onError(`Product recommendations returned null.`);
-        return;
-      }
-      aCallback.onSuccess({ recommendations });
-    }
-  }
-
-  async _reportBackInStock(aData, aCallback) {
-    if (
-      Services.prefs.getBoolPref("geckoview.shopping.mock_test_response", false)
-    ) {
-      const message = "report created";
-      aCallback.onSuccess(message);
-      return;
-    }
-    const url = Services.io.newURI(aData.url);
-    if (!lazy.isProductURL(url)) {
-      aCallback.onError(`Cannot reportBackInStock on a non-product url.`);
-    } else {
-      const product = new lazy.ShoppingProduct(url);
-      const message = await product.sendReport();
-      if (!message) {
-        aCallback.onError(`Reporting back in stock returned null.`);
-        return;
-      }
-      aCallback.onSuccess(message.message);
-    }
   }
 
   async _hasCookieBannerRuleForBrowsingContextTree(aCallback) {

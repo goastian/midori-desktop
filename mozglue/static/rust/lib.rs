@@ -13,6 +13,7 @@ use std::os::raw::c_char;
 use std::os::raw::c_int;
 use std::os::raw::c_void;
 use std::panic;
+use std::panic::PanicHookInfo;
 
 #[link(name = "wrappers")]
 extern "C" {
@@ -68,7 +69,7 @@ impl<const CAP: usize> Deref for ArrayCString<CAP> {
     }
 }
 
-fn panic_hook(info: &panic::PanicInfo) {
+fn panic_hook(info: &PanicHookInfo) {
     // Try to handle &str/String payloads, which should handle 99% of cases.
     let payload = info.payload();
     let message = if let Some(layout) = oom_hook::oom_layout(payload) {

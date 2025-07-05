@@ -5,6 +5,8 @@
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  cleanupCacheBypassState:
+    "chrome://remote/content/shared/NetworkCacheManager.sys.mjs",
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
   Log: "chrome://remote/content/shared/Log.sys.mjs",
   RecommendedPreferences:
@@ -23,6 +25,12 @@ const RECOMMENDED_PREFS = new Map([
   // Enables permission isolation by user context.
   // It should be enabled by default in Nightly in the scope of the bug 1641584.
   ["permissions.isolateBy.userContext", true],
+  // Enables race-cache-with-network, which avoids issues with requests
+  // intercepted in the responseStarted phase. Without this preference, any
+  // subsequent request to the same URL as a suspended request hangs as well.
+  // Bug 1966494: should allow to unblock subsequent request, but might do so
+  // with a timer, slowing down tests. Should be reconsidered once fixed.
+  ["network.http.rcwn.enabled", true],
 ]);
 
 /**
@@ -99,7 +107,7 @@ export class WebDriverBiDi {
   /**
    * Create a new WebDriver session.
    *
-   * @param {Object<string, *>=} capabilities
+   * @param {Record<string, *>=} capabilities
    *     JSON Object containing any of the recognised capabilities as listed
    *     on the `WebDriverSession` class.
    * @param {Set} flags
@@ -108,7 +116,7 @@ export class WebDriverBiDi {
    *     Optional connection that is not yet associated with a WebDriver
    *     session, and has to be associated with the new WebDriver session.
    *
-   * @returns {Object<string, Capabilities>}
+   * @returns {Record<string, Capabilities>}
    *     Object containing the current session ID, and all its capabilities.
    *
    * @throws {SessionNotCreatedError}
@@ -165,6 +173,9 @@ export class WebDriverBiDi {
       this.#agent.server.registerPathHandler(this.#session.path, null);
       lazy.logger.debug(`Unregistered session handler: ${this.#session.path}`);
     }
+
+    // For multiple session check first if the last session was closed.
+    lazy.cleanupCacheBypassState();
 
     this.#session.destroy();
     this.#session = null;

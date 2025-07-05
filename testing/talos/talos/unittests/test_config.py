@@ -6,7 +6,6 @@ from unittest import mock
 import conftest
 import mozunit
 import pytest
-import six
 
 from talos.config import (
     DEFAULTS,
@@ -50,7 +49,6 @@ class mock_test(PageloaderTest):
         "xperf_counters",
         "timeout",
         "shutdown",
-        "responsiveness",
         "profile_path",
         "xperf_providers",
         "xperf_user_providers",
@@ -76,7 +74,7 @@ class mock_test(PageloaderTest):
     fnbpaint = "value"
 
 
-class Test_get_active_tests(object):
+class Test_get_active_tests:
     def test_raises_exception_for_undefined_test(self):
         with pytest.raises(ConfigurationError):
             get_active_tests({"activeTests": "undefined_test"})
@@ -88,7 +86,7 @@ class Test_get_active_tests(object):
             get_active_tests({"activeTests": "undef_test:undef_test2:undef_test3"})
 
 
-class Test_get_test(object):
+class Test_get_test:
     global_overrides = {
         "tpmozafterpaint": "overriden",
         "firstpaint": "overriden",
@@ -157,7 +155,7 @@ class Test_get_test(object):
         assert set(test_dict["xperf_counters"]) == set(counters + ["counter_extra"])
 
 
-class Test_get_browser_config(object):
+class Test_get_browser_config:
     required = (
         "extensions",
         "browser_path",
@@ -220,7 +218,7 @@ class Test_get_browser_config(object):
             pytest.fail("Must not raise exception on missing optional")
 
 
-class Test_get_config(object):
+class Test_get_config:
     @classmethod
     def setup_class(cls):
         cls.argv = "--suite other-e10s --mainthread -e /some/random/path".split()
@@ -287,6 +285,9 @@ class Test_get_config(object):
         cls.argv_tp5o = "--activeTests tp5o -e /some/random/path".split()
         cls.argv_tp5o_webext = "--activeTests tp5o_webext -e /some/random/path".split()
         cls.argv_tp5o_scroll = "--activeTests tp5o_scroll -e /some/random/path".split()
+        cls.argv_tp5o_scroll_paint_skip = (
+            "--activeTests tp5o_scroll_paint_skip -e /some/random/path".split()
+        )
         cls.argv_v8_7 = "--activeTests v8_7 -e /some/random/path".split()
         cls.argv_kraken = "--activeTests kraken -e /some/random/path".split()
         cls.argv_basic_compositor_video = (
@@ -301,6 +302,9 @@ class Test_get_config(object):
             "--activeTests tsvgr_opacity -e /some/random/path".split()
         )
         cls.argv_tscrollx = "--activeTests tscrollx -e /some/random/path".split()
+        cls.argv_tscrollx_paint_skip = (
+            "--activeTests tscrollx_paint_skip -e /some/random/path".split()
+        )
         cls.argv_a11yr = "--activeTests a11yr -e /some/random/path".split()
         cls.argv_perf_reftest = (
             "--activeTests perf_reftest -e /some/random/path".split()
@@ -319,7 +323,7 @@ class Test_get_config(object):
         assert bool(config) is True
 
         # no null values
-        null_keys = [key for key, val in six.iteritems(config) if val is None]
+        null_keys = [key for key, val in config.items() if val is None]
         assert len(null_keys) == 0
 
         # expected keys are there
@@ -364,7 +368,6 @@ class Test_get_config(object):
         assert test_config["filters"] is not None
         assert test_config["tpmozafterpaint"] is True
         # assert test_config['mainthread'] is False
-        # assert test_config['responsiveness'] is False
         # assert test_config['unit'] == 'ms'
 
     def test_ts_paint_webext_has_expected_attributes(self):
@@ -385,7 +388,6 @@ class Test_get_config(object):
         assert test_config["filters"] is not None
         assert test_config["tpmozafterpaint"] is True
         # assert test_config['mainthread'] is False
-        # assert test_config['responsiveness'] is False
         # assert test_config['unit'] == 'ms'
         # TODO: this isn't overriden
         # assert test_config['webextensions'] != '${talos}/webextensions/dummy/dummy-signed.xpi'
@@ -409,7 +411,6 @@ class Test_get_config(object):
         assert test_config["filters"] is not None
         assert test_config["tpmozafterpaint"] is True
         # assert test_config['mainthread'] is False
-        # assert test_config['responsiveness'] is False
         # assert test_config['unit'] == 'ms'
         assert test_config["profile"] == "simple"
 
@@ -984,7 +985,6 @@ class Test_get_config(object):
         assert test_config["win_counters"] == ["% Processor Time"]
         assert test_config["linux_counters"] == ["XRes"]
         assert test_config["mac_counters"] == []
-        assert test_config["responsiveness"] is True
         assert test_config["gecko_profile_interval"] == 2
         assert test_config["gecko_profile_entries"] == 4000000
         assert test_config["filters"] is not None
@@ -1007,7 +1007,6 @@ class Test_get_config(object):
         assert test_config["win_counters"] == ["% Processor Time"]
         assert test_config["linux_counters"] == ["XRes"]
         assert test_config["mac_counters"] == []
-        assert test_config["responsiveness"] is True
         assert test_config["gecko_profile_interval"] == 2
         assert test_config["gecko_profile_entries"] == 4000000
         assert test_config["filters"] is not None
@@ -1306,7 +1305,7 @@ def test_pdfpaint_has_expected_attributes_no_chunk(pdfpaint_dir_info):
     assert test_config["filters"] is not None
     assert test_config["unit"] == "ms"
     assert test_config["lower_is_better"] is True
-    assert test_config["alert_threshold"] == 2.0
+    assert test_config["alert_threshold"] == 6.0
 
 
 @mock.patch("pathlib.Path.unlink", new=mock.MagicMock())
@@ -1338,7 +1337,7 @@ def test_pdfpaint_has_expected_attributes_with_chunk(pdfpaint_dir_info):
     assert test_config["filters"] is not None
     assert test_config["unit"] == "ms"
     assert test_config["lower_is_better"] is True
-    assert test_config["alert_threshold"] == 2.0
+    assert test_config["alert_threshold"] == 6.0
 
 
 def test_pdfpaint_fails_on_bad_chunk(pdfpaint_dir_info):

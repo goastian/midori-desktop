@@ -39,6 +39,7 @@ fi
 : NEED_XVFB                     ${NEED_XVFB:=true}
 : NEED_WINDOW_MANAGER           ${NEED_WINDOW_MANAGER:=false}
 : NEED_PULSEAUDIO               ${NEED_PULSEAUDIO:=false}
+: NEED_PIPEWIRE                 ${NEED_PIPEWIRE:=false}
 : NEED_COMPIZ                   ${NEED_COPMPIZ:=false}
 : START_VNC                     ${START_VNC:=false}
 : TASKCLUSTER_INTERACTIVE       ${TASKCLUSTER_INTERACTIVE:=false}
@@ -63,6 +64,29 @@ maybe_start_pulse() {
         if [ $DISTRIBUTION == "Ubuntu" ]; then
             pulseaudio --daemonize --log-level=4 --log-time=1 --log-target=stderr --start --fail -vvvvv --exit-idle-time=-1 --cleanup-shm --dump-conf
         fi
+    fi
+    if $NEED_PIPEWIRE; then
+        pw_pids=()
+        pipewire &
+        pw_pids+=($!)
+
+        SOCKET="$XDG_RUNTIME_DIR/pipewire-0"
+        attempts=10
+        while [ ! -S "$SOCKET" ] && [ $attempts -gt 0 ]; do
+            sleep 0.1
+            attempts=$((attempts - 1))
+        done
+        [ -S "$SOCKET" ] || exit 1
+
+        wireplumber &
+        pw_pids+=($!)
+        pipewire-pulse &
+        pw_pids+=($!)
+    fi
+}
+cleanup_pipewire() {
+    if [ -n "$pw_pids" ] && [ $TASKCLUSTER_INTERACTIVE = false ]; then
+        kill "${pw_pids[@]}"
     fi
 }
 
@@ -99,6 +123,9 @@ cleanup() {
     if [[ -s $HOME/.xsession-errors ]]; then
       # To share X issues
       cp "$HOME/.xsession-errors" "$WORKING_DIR/artifacts/public/xsession-errors.log"
+    fi
+    if $NEED_PIPEWIRE; then
+        cleanup_pipewire
     fi
     if [ $MOZ_ENABLE_WAYLAND ]; then
         cleanup_mutter
@@ -166,11 +193,16 @@ fi
 if $NEED_WINDOW_MANAGER; then
     # This is read by xsession to select the window manager
     . /etc/lsb-release
-    if [ $DISTRIBUTION == "Ubuntu" ] && [ $RELEASE == "16.04" ]; then
-        echo DESKTOP_SESSION=ubuntu > $HOME/.xsessionrc
-    elif [ $DISTRIBUTION == "Ubuntu" ] && [ $RELEASE == "18.04" ]; then
-        echo export DESKTOP_SESSION=gnome > $HOME/.xsessionrc
-        echo export XDG_CURRENT_DESKTOP=GNOME > $HOME/.xsessionrc
+    if [ $DISTRIBUTION == "Ubuntu" ]; then
+        xsession_args=()
+        if [ $RELEASE = "18.04" ]; then
+            echo export XDG_CURRENT_DESKTOP=GNOME > $HOME/.xsessionrc
+        elif [ $RELEASE = "24.04" ]; then
+            # taken from /usr/share/xsessions/ubuntu.desktop
+            echo export XDG_CURRENT_DESKTOP=ubuntu:GNOME > $HOME/.xsessionrc
+            echo export GNOME_SHELL_SESSION_MODE=ubuntu >> $HOME/.xsessionrc
+            xsession_args=("/usr/bin/gnome-session --session=ubuntu")
+        fi
         if [ $MOZ_ENABLE_WAYLAND ]; then
             echo export XDG_SESSION_TYPE=wayland >> $HOME/.xsessionrc
         else
@@ -179,6 +211,14 @@ if $NEED_WINDOW_MANAGER; then
     else
         :
     fi
+    export XDG_RUNTIME_DIR=$WORKING_DIR
+
+    # Start a session bus early instead of leaving it to Xsession, so that we
+    # can use it for access to e.g. gnome-keyring or the screencast API
+    if test -z "$DBUS_SESSION_BUS_ADDRESS" ; then
+        # if not found, launch a new one
+        eval `dbus-launch --sh-syntax`
+    fi
 
     # DISPLAY has already been set above
     # XXX: it would be ideal to add a semaphore logic to make sure that the
@@ -186,7 +226,7 @@ if $NEED_WINDOW_MANAGER; then
     (
         # if env var is >8K, we have a seg fault in xsession
         unset MOZHARNESS_TEST_PATHS
-        /etc/X11/Xsession 2>&1 &
+        /etc/X11/Xsession "${xsession_args[@]}" 2>&1 &
     )
 
     # Turn off the screen saver and screen locking
@@ -200,17 +240,12 @@ if $NEED_WINDOW_MANAGER; then
     # This starts the gnome-keyring-daemon with an unlocked login keyring. libsecret uses this to
     # store secrets. Firefox uses libsecret to store a key that protects sensitive information like
     # credit card numbers.
-    if test -z "$DBUS_SESSION_BUS_ADDRESS" ; then
-        # if not found, launch a new one
-        eval `dbus-launch --sh-syntax`
-    fi
     eval `echo '' | /usr/bin/gnome-keyring-daemon -r -d --unlock --components=secrets`
 
     # Run mutter as nested wayland compositor to provide Wayland environment
     # on top of XVfb.
     if [ $MOZ_ENABLE_WAYLAND ]; then
       env | grep "DISPLAY"
-      export XDG_RUNTIME_DIR=$WORKING_DIR
       mutter --display=:0 --wayland --nested &
       export WAYLAND_DISPLAY=wayland-0
       retry_count=0
@@ -234,16 +269,11 @@ elif [[ $NEED_COMPIZ == true ]] && [[ $RELEASE == 18.04 ]]; then
 fi
 
 # Bug 1607713 - set cursor position to 0,0 to avoid odd libx11 interaction
-if [ $NEED_WINDOW_MANAGER ] && [ $DISPLAY == ':0' ]; then
+if $NEED_WINDOW_MANAGER && [ $DISPLAY == ':0' ]; then
     xwit -root -warp 0 0
 fi
 
 maybe_start_pulse
-
-# For telemetry purposes, the build process wants information about the
-# source it is running
-export MOZ_SOURCE_REPO="${GECKO_HEAD_REPOSITORY}"
-export MOZ_SOURCE_CHANGESET="${GECKO_HEAD_REV}"
 
 # support multiple, space delimited, config files
 config_cmds=""

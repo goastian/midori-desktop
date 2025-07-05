@@ -63,7 +63,7 @@ sealed class AppAction : Action {
 
     data class OpenSitePermissionOptionsScreen(val sitePermission: SitePermission) : AppAction()
 
-    data class NavigateUp(val tabId: String?) : AppAction()
+    data class NavigateUp(val tabId: String? = null) : AppAction()
 
     /**
      * Forces showing the first run screen.
@@ -121,4 +121,9 @@ sealed class AppAction : Action {
      * State of start Cookie Banner CFR has changed
      */
     data class ShowCookieBannerCfrChange(val value: Boolean) : AppAction()
+
+    /**
+     * State of isPinningSupported has changed
+     */
+    data class UpdateIsPinningSupported(val value: Boolean) : AppAction()
 }

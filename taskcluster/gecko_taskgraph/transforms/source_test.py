@@ -149,7 +149,7 @@ def add_build_dependency(config, job):
     if not matches:
         raise Exception(
             "No build platform found. "
-            "Define 'require-build' for {} in the task config.".format(key)
+            f"Define 'require-build' for {key} in the task config."
         )
 
     if len(matches) > 1:
@@ -234,16 +234,6 @@ def set_code_review_env(config, jobs):
             env = job["worker"].setdefault("env", {})
             env["CODE_REVIEW"] = "1"
 
-        yield job
-
-
-@transforms.add
-def set_worker_exit_code(config, jobs):
-    for job in jobs:
-        worker = job["worker"]
-        worker.setdefault("retry-exit-status", [])
-        if 137 not in worker["retry-exit-status"]:
-            worker["retry-exit-status"].append(137)
         yield job
 
 

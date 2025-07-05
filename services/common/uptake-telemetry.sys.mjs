@@ -24,9 +24,6 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "services.common.uptake.sampleRate"
 );
 
-// Telemetry events id (see Events.yaml).
-const TELEMETRY_EVENTS_ID = "uptake.remotecontent.result";
-
 /**
  * A wrapper around certain low-level operations that can be substituted for testing.
  */
@@ -145,7 +142,7 @@ export class UptakeTelemetry {
   /**
    * Reports the uptake status for the specified source.
    *
-   * @param {string} component     the component reporting the uptake (eg. "normandy").
+   * @param {string} component     the component reporting the uptake (eg. "Normandy").
    * @param {string} status        the uptake status (eg. "network_error")
    * @param {Object} extra         extra values to report
    * @param {string} extra.source  the update source (eg. "recipe-42").
@@ -163,31 +160,13 @@ export class UptakeTelemetry {
       throw new Error(`Unknown status '${status}'`);
     }
 
-    // Report event for real-time monitoring. See Events.yaml for registration.
-    // Contrary to histograms, Telemetry Events are not enabled by default.
-    // Enable them on first call to `report()`.
-    if (!this._eventsEnabled) {
-      Services.telemetry.setEventRecordingEnabled(TELEMETRY_EVENTS_ID, true);
-      this._eventsEnabled = true;
-    }
-
     const hash = await UptakeTelemetry.Policy.getClientIDHash();
     const channel = UptakeTelemetry.Policy.getChannel();
     const shouldSendEvent =
       !["release", "esr"].includes(channel) || hash < lazy.gSampleRate;
     if (shouldSendEvent) {
-      // The Event API requires `extra` values to be of type string. Force it!
-      const extraStr = Object.keys(extra).reduce((acc, k) => {
-        acc[k] = extra[k].toString();
-        return acc;
-      }, {});
-      Services.telemetry.recordEvent(
-        TELEMETRY_EVENTS_ID,
-        "uptake",
-        component,
-        status,
-        extraStr
-      );
+      extra.value = status;
+      Glean.uptakeRemotecontentResult["uptake" + component].record(extra);
     }
   }
 }

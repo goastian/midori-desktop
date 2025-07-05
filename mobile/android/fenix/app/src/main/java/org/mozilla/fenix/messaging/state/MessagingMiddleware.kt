@@ -21,11 +21,13 @@ import org.mozilla.fenix.components.appstate.AppAction.MessagingAction.Restore
 import org.mozilla.fenix.components.appstate.AppAction.MessagingAction.UpdateMessageToShow
 import org.mozilla.fenix.components.appstate.AppAction.MessagingAction.UpdateMessages
 import org.mozilla.fenix.components.appstate.AppState
+import org.mozilla.fenix.utils.Settings
 
 typealias AppStoreMiddlewareContext = MiddlewareContext<AppState, AppAction>
 
 class MessagingMiddleware(
     private val controller: NimbusMessagingControllerInterface,
+    private val settings: Settings,
     private val coroutineScope: CoroutineScope = CoroutineScope(Dispatchers.IO),
 ) : Middleware<AppState, AppAction> {
 
@@ -59,9 +61,25 @@ class MessagingMiddleware(
 
             is MessageDismissed -> onMessageDismissed(context, action.message)
 
-            is MicrosurveyAction.Completed -> {
-                onMicrosurveyCompleted(context, action.message, action.answer)
+            is MicrosurveyAction.Shown -> onMicrosurveyShown(action.id)
+
+            is MicrosurveyAction.OnPrivacyNoticeTapped -> onPrivacyNoticeTapped(action.id)
+
+            is MicrosurveyAction.Dismissed -> {
+                context.store.state.messaging.messages.find { it.id == action.id }?.let { message ->
+                    onMicrosurveyDismissed(context, message)
+                }
             }
+
+            is MicrosurveyAction.Completed -> {
+                context.store.state.messaging.messages.find { it.id == action.id }?.let { message ->
+                    onMicrosurveyCompleted(context, message, action.answer)
+                }
+            }
+
+            is MicrosurveyAction.SentConfirmationShown -> onMicrosurveyConfirmationShown(action.id)
+
+            is MicrosurveyAction.Started -> onMicrosurveyStarted(action.id)
 
             else -> {
                 // no-op
@@ -75,11 +93,41 @@ class MessagingMiddleware(
         message: Message,
         answer: String,
     ) {
-        val newMessages = removeMessage(context, message = message)
+        val newMessages = removeMessage(context, message)
         context.store.dispatch(UpdateMessages(newMessages))
         consumeMessageToShowIfNeeded(context, message)
         coroutineScope.launch {
             controller.onMicrosurveyCompleted(message, answer)
+        }
+    }
+
+    private fun onMicrosurveyShown(id: String) {
+        coroutineScope.launch {
+            controller.onMicrosurveyShown(id)
+        }
+    }
+
+    private fun onMicrosurveyDismissed(
+        context: AppStoreMiddlewareContext,
+        message: Message,
+    ) {
+        val newMessages = removeMessage(context, message)
+        context.store.dispatch(UpdateMessages(newMessages))
+        consumeMessageToShowIfNeeded(context, message)
+        coroutineScope.launch {
+            controller.onMicrosurveyDismissed(message)
+        }
+    }
+
+    private fun onMicrosurveyConfirmationShown(id: String) {
+        coroutineScope.launch {
+            controller.onMicrosurveySentConfirmationShown(id)
+        }
+    }
+
+    private fun onPrivacyNoticeTapped(id: String) {
+        coroutineScope.launch {
+            controller.onMicrosurveyPrivacyNoticeTapped(id)
         }
     }
 
@@ -92,12 +140,14 @@ class MessagingMiddleware(
             val newMessages = if (!newMessage.isExpired) {
                 updateMessage(context, oldMessage, newMessage)
             } else {
-                consumeMessageToShowIfNeeded(context, oldMessage)
+                if (newMessage.isMicrosurvey()) settings.shouldShowMicrosurveyPrompt = false
                 removeMessage(context, oldMessage)
             }
             context.store.dispatch(UpdateMessages(newMessages))
         }
     }
+
+    private fun Message.isMicrosurvey() = surface == "microsurvey"
 
     private fun onMessageDismissed(
         context: AppStoreMiddlewareContext,
@@ -123,6 +173,14 @@ class MessagingMiddleware(
         val newMessages = removeMessage(context, message)
         context.store.dispatch(UpdateMessages(newMessages))
         consumeMessageToShowIfNeeded(context, message)
+    }
+
+    private fun onMicrosurveyStarted(
+        id: String,
+    ) {
+        coroutineScope.launch {
+            controller.onMicrosurveyStarted(id)
+        }
     }
 
     private fun consumeMessageToShowIfNeeded(

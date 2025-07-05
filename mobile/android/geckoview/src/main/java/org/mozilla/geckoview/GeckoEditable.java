@@ -64,6 +64,7 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
 
   private static final boolean DEBUG = false;
   private static final String LOGTAG = "GeckoEditable";
+  private static final long DISMISS_VKB_DELAY_MS = 100;
 
   // Filters to implement Editable's filtering functionality
   private InputFilter[] mFilters;
@@ -106,6 +107,7 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
   private String mIMEModeHint = ""; // Used by IC thread.
   private String mIMEActionHint = ""; // Used by IC thread.
   private String mIMEAutocapitalize = ""; // Used by IC thread.
+  private boolean mIMEAutocorrect = false; // Used by IC thread.
   @IMEContextFlags private int mIMEFlags; // Used by IC thread.
 
   private boolean mIgnoreSelectionChange; // Used by Gecko thread
@@ -115,6 +117,33 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
   private int mLastTextChangeOldEnd = -1; // Used by Gecko thread
   private int mLastTextChangeNewEnd = -1; // Used by Gecko thread
   private boolean mLastTextChangeReplacedSelection; // Used by Gecko thread
+
+  private static class HideSoftInputTask implements Runnable {
+    private GeckoSession mSession;
+    private boolean mCancelled;
+
+    public HideSoftInputTask(final GeckoSession session) {
+      mSession = session;
+      mCancelled = false;
+    }
+
+    @Override
+    public void run() {
+      if (DEBUG) {
+        ThreadUtils.assertOnUiThread();
+      }
+      if (mCancelled) {
+        return;
+      }
+      mSession.getTextInput().getDelegate().hideSoftInput(mSession);
+    }
+
+    public void cancel() {
+      mCancelled = true;
+    }
+  }
+
+  private HideSoftInputTask mHideSoftInputTask;
 
   // Prevent showSoftInput and hideSoftInput from being called multiple times in a row,
   // including reentrant calls on some devices. Used by UI/IC thread.
@@ -1573,6 +1602,10 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
 
     switch (type) {
       case SessionTextInput.EditableListener.NOTIFY_IME_OF_FOCUS:
+        if (mHideSoftInputTask != null) {
+          mHideSoftInputTask.cancel();
+          mHideSoftInputTask = null;
+        }
         if (mFocusedChild != null) {
           // Already focused, so blur first.
           icRestartInput(
@@ -1646,6 +1679,7 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
       final String modeHint,
       final String actionHint,
       final String autocapitalize,
+      final boolean autocorrect,
       @IMEContextFlags final int flags) {
     // On Gecko or binder thread.
     if (DEBUG) {
@@ -1657,6 +1691,8 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
           .append(modeHint)
           .append("\", autocapitalize=\"")
           .append(autocapitalize)
+          .append("\", autocorrect=\"")
+          .append(autocorrect)
           .append("\", flags=0x")
           .append(Integer.toHexString(flags))
           .append(")");
@@ -1675,7 +1711,8 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
         new Runnable() {
           @Override
           public void run() {
-            icNotifyIMEContext(state, typeHint, modeHint, actionHint, autocapitalize, flags);
+            icNotifyIMEContext(
+                state, typeHint, modeHint, actionHint, autocapitalize, autocorrect, flags);
           }
         });
   }
@@ -1686,6 +1723,7 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
       final String modeHint,
       final String actionHint,
       final String autocapitalize,
+      final boolean autocorrect,
       @IMEContextFlags final int flags) {
     if (DEBUG) {
       assertOnIcThread();
@@ -1713,6 +1751,7 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
     mIMEModeHint = (modeHint == null) ? "" : modeHint;
     mIMEActionHint = (actionHint == null) ? "" : actionHint;
     mIMEAutocapitalize = (autocapitalize == null) ? "" : autocapitalize;
+    mIMEAutocorrect = autocorrect;
     mIMEFlags = flags;
 
     if (mListener != null) {
@@ -1815,6 +1854,7 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
     final String modeHint = mIMEModeHint;
     final String actionHint = mIMEActionHint;
     final String autocapitalize = mIMEAutocapitalize;
+    boolean autocorrect = mIMEAutocorrect;
     final int flags = mIMEFlags;
 
     // Some keyboards require us to fill out outAttrs even if we return null.
@@ -1857,7 +1897,7 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
       if (modeHint.equals("tel")) {
         outAttrs.inputType = InputType.TYPE_CLASS_PHONE;
       } else if (modeHint.equals("url")) {
-        outAttrs.inputType = InputType.TYPE_TEXT_VARIATION_URI;
+        outAttrs.inputType = InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_URI;
       } else if (modeHint.equals("email")) {
         outAttrs.inputType |= InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS;
       } else if (modeHint.equals("numeric")) {
@@ -1866,9 +1906,22 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
         outAttrs.inputType = InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL;
       } else {
         // TYPE_TEXT_FLAG_IME_MULTI_LINE flag makes the fullscreen IME line wrap
-        outAttrs.inputType |=
-            InputType.TYPE_TEXT_FLAG_AUTO_CORRECT | InputType.TYPE_TEXT_FLAG_IME_MULTI_LINE;
+        outAttrs.inputType |= InputType.TYPE_TEXT_FLAG_IME_MULTI_LINE;
       }
+    }
+
+    // Even if dom.forms.autocorrect is false, we shouldn't set auto correct flag for email, url and
+    // password.
+    final int validation = outAttrs.inputType & InputType.TYPE_MASK_VARIATION;
+    if (validation == InputType.TYPE_TEXT_VARIATION_PASSWORD
+        || validation == InputType.TYPE_TEXT_VARIATION_URI
+        || validation == InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS) {
+      autocorrect = false;
+    }
+
+    if (autocorrect
+        && ((outAttrs.inputType & InputType.TYPE_MASK_CLASS) == InputType.TYPE_CLASS_TEXT)) {
+      outAttrs.inputType |= InputType.TYPE_TEXT_FLAG_AUTO_CORRECT;
     }
 
     if (autocapitalize.equals("characters")) {
@@ -1928,10 +1981,16 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
     toggleSoftInput(/* force */ false, state);
   }
 
-  /* package */ void toggleSoftInput(final boolean force, final int state) {
+  /* package */ void toggleSoftInput(final boolean force, @IMEState final int state) {
     if (DEBUG) {
-      Log.d(LOGTAG, "toggleSoftInput");
+      final StringBuilder sb = new StringBuilder("toggleSoftInput(force=");
+      sb.append(force)
+          .append(", state=")
+          .append(getConstantName(SessionTextInput.EditableListener.class, "IME_STATE_", state))
+          .append(")");
+      Log.d(LOGTAG, sb.toString());
     }
+
     // Can be called from UI or IC thread.
     final int flags = mIMEFlags;
 
@@ -1982,8 +2041,15 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
                 }
                 return;
               }
+
+              if (mHideSoftInputTask != null) {
+                mHideSoftInputTask.cancel();
+                mHideSoftInputTask = null;
+              }
+
               if (state == SessionTextInput.EditableListener.IME_STATE_DISABLED) {
-                session.getTextInput().getDelegate().hideSoftInput(session);
+                mHideSoftInputTask = new HideSoftInputTask(session);
+                ThreadUtils.postToUiThreadDelayed(mHideSoftInputTask, DISMISS_VKB_DELAY_MS);
                 return;
               }
               {
@@ -2574,6 +2640,7 @@ import org.mozilla.geckoview.SessionTextInput.EditableListener.IMEState;
       case KeyEvent.KEYCODE_FORWARD:
       case KeyEvent.KEYCODE_VOLUME_UP:
       case KeyEvent.KEYCODE_VOLUME_DOWN:
+      case KeyEvent.KEYCODE_VOLUME_MUTE:
       case KeyEvent.KEYCODE_SEARCH:
         // ignore HEADSETHOOK to allow hold-for-voice-search to work
       case KeyEvent.KEYCODE_HEADSETHOOK:

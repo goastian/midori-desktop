@@ -21,6 +21,7 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import org.hamcrest.Matchers.allOf
+import org.junit.Assert.assertTrue
 import org.mozilla.fenix.R
 import org.mozilla.fenix.helpers.Constants.TAG
 import org.mozilla.fenix.helpers.DataGenerationHelper.getStringResource
@@ -31,6 +32,7 @@ import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdContainingText
 import org.mozilla.fenix.helpers.TestAssetHelper.waitingTime
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestHelper.packageName
+import org.mozilla.fenix.helpers.TestHelper.snackbarButton
 import org.mozilla.fenix.helpers.click
 import org.mozilla.fenix.helpers.ext.waitNotNull
 
@@ -146,7 +148,7 @@ class HistoryRobot {
 
     fun verifyUndoDeleteSnackBarButton() {
         Log.i(TAG, "verifyUndoDeleteSnackBarButton: Trying to verify \"Undo\" snackbar button")
-        snackBarUndoButton().check(matches(withText("UNDO")))
+        assertTrue(snackbarButton!!.children.count { it.text == "UNDO" } == 1)
         Log.i(TAG, "verifyUndoDeleteSnackBarButton: Verified \"Undo\" snackbar button")
     }
 
@@ -170,6 +172,15 @@ class HistoryRobot {
     }
 
     class Transition {
+        fun goBackToHomeScreen(interact: HomeScreenRobot.() -> Unit): HomeScreenRobot.Transition {
+            Log.i(TAG, "goBackToHomeScreen: Trying to click go back button")
+            onView(withContentDescription("Navigate up")).click()
+            Log.i(TAG, "goBackToHomeScreen: Clicked go back button")
+
+            HomeScreenRobot().interact()
+            return HomeScreenRobot.Transition()
+        }
+
         fun goBack(interact: BrowserRobot.() -> Unit): BrowserRobot.Transition {
             Log.i(TAG, "goBack: Trying to click go back menu button")
             onView(withContentDescription("Navigate up")).click()
@@ -180,10 +191,20 @@ class HistoryRobot {
         }
 
         fun openWebsite(url: Uri, interact: BrowserRobot.() -> Unit): BrowserRobot.Transition {
-            assertUIObjectExists(itemWithResId("$packageName:id/history_list"))
+            assertUIObjectExists(itemContainingText(url.toString()))
             Log.i(TAG, "openWebsite: Trying to click history item with url: $url")
             onView(withText(url.toString())).click()
             Log.i(TAG, "openWebsite: Clicked history item with url: $url")
+
+            BrowserRobot().interact()
+            return BrowserRobot.Transition()
+        }
+
+        fun openWebsiteFromSearchGroup(url: Uri, interact: BrowserRobot.() -> Unit): BrowserRobot.Transition {
+            assertUIObjectExists(itemWithResId("$packageName:id/history_metadata_group_list"))
+            Log.i(TAG, "openWebsiteFromSearchGroup: Trying to click group item with url: $url")
+            onView(withText(url.toString())).click()
+            Log.i(TAG, "openWebsiteFromSearchGroup: Clicked group item with url: $url")
 
             BrowserRobot().interact()
             return BrowserRobot.Transition()
@@ -225,8 +246,6 @@ private fun deleteButton(title: String) =
     onView(allOf(withContentDescription("Delete"), hasSibling(withText(title))))
 
 private fun deleteButton() = onView(withId(R.id.history_delete))
-
-private fun snackBarUndoButton() = onView(withId(R.id.snackbar_btn))
 
 private fun deleteHistoryEverythingOption() =
     mDevice

@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import json
 import os
 import platform
 import re
@@ -12,7 +13,7 @@ import sys
 import time
 from collections import OrderedDict
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 # Use distro package to retrieve linux platform information
 import distro
@@ -27,6 +28,7 @@ from mach.util import (
 )
 from mozbuild.base import MozbuildObject
 from mozfile import which
+from mozversioncontrol import get_repository_object
 from packaging.version import Version
 
 from mozboot.archlinux import ArchlinuxBootstrapper
@@ -105,9 +107,6 @@ Would you like to run a configuration wizard to ensure Mercurial is
 optimally configured? (This will also ensure 'version-control-tools' is up-to-date)"""
 
 CONFIGURE_GIT = """
-Mozilla recommends using git-cinnabar to work with mozilla-central (or
-mozilla-unified).
-
 Would you like to run a few configuration steps to ensure Git is
 optimally configured?"""
 
@@ -132,6 +131,7 @@ FEDORA_DISTROS = (
     "nobara",
     "oracle",
     "fedora-asahi-remix",
+    "ultramarine",
 )
 
 ADD_GIT_CINNABAR_PATH = """
@@ -154,13 +154,9 @@ Proceed at your own peril.
 """
 
 
-# Version 2.24 changes the "core.commitGraph" setting to be "True" by default.
-MINIMUM_RECOMMENDED_GIT_VERSION = Version("2.24")
-OLD_GIT_WARNING = """
-You are running an older version of git ("{old_version}").
-We recommend upgrading to at least version "{minimum_recommended_version}" to improve
-performance.
-""".strip()
+# The built-in fsmonitor Windows/macOS for git 2.37+ is better than using the watchman hook.
+# Linux users will still need watchman and to enable the hook.
+MINIMUM_GIT_VERSION = Version("2.37")
 
 # Dev Drives were added in 22621.2338 and should be available in all subsequent versions
 DEV_DRIVE_MINIMUM_VERSION = Version("10.0.22621.2338")
@@ -180,6 +176,12 @@ DEV_DRIVE_DETECTION_ERROR = """
 Error encountered while checking for Dev Drive.
  Reason: {} (skipping)
 """
+
+
+class GitVersionError(Exception):
+    """Raised when the installed git version is too old."""
+
+    pass
 
 
 def check_for_hgrc_state_dir_mismatch(state_dir):
@@ -250,7 +252,7 @@ def check_for_hgrc_state_dir_mismatch(state_dir):
         raise Exception(hgrc_state_dir_mismatch_error_message)
 
 
-class Bootstrapper(object):
+class Bootstrapper:
     """Main class that performs system bootstrap."""
 
     def __init__(
@@ -387,8 +389,8 @@ class Bootstrapper(object):
             labels = [
                 "%s. %s" % (i, name) for i, name in enumerate(applications.keys(), 1)
             ]
-            choices = ["  {} [default]".format(labels[0])]
-            choices += ["  {}".format(label) for label in labels[1:]]
+            choices = [f"  {labels[0]} [default]"]
+            choices += [f"  {label}" for label in labels[1:]]
             prompt = APPLICATION_CHOICE % "\n".join(choices)
             prompt_choice = self.instance.prompt_int(
                 prompt=prompt, low=1, high=len(applications)
@@ -440,6 +442,7 @@ class Bootstrapper(object):
 
         if sys.platform.startswith("win"):
             self._check_for_dev_drive(checkout_root)
+            self._add_microsoft_defender_antivirus_exclusions(checkout_root, state_dir)
 
         if self.instance.no_system_changes:
             self.maybe_install_private_packages_or_exit(application, checkout_type)
@@ -482,7 +485,6 @@ class Bootstrapper(object):
             if should_configure_git:
                 configure_git(
                     git,
-                    to_optional_path(which("git-cinnabar")),
                     state_dir,
                     checkout_root,
                 )
@@ -522,54 +524,48 @@ class Bootstrapper(object):
 
         print("Checking for Dev Drive...")
 
+        if not shutil.which("powershell"):
+            print(
+                "PowerShell is not available on the system path. Unable to check for Dev Drive."
+            )
+            return
+
         try:
-            ver_output = subprocess.run(
-                ["cmd.exe", "/c", "ver"], capture_output=True, text=True, check=True
-            ).stdout
+            ver_output = subprocess.check_output(["cmd.exe", "/c", "ver"], text=True)
             current_windows_version = extract_windows_version_number(ver_output)
 
             if current_windows_version < DEV_DRIVE_MINIMUM_VERSION:
                 return
 
-            topsrcdir_drive_letter = Path(topsrcdir).drive[0]
-
-            volume_info = subprocess.run(
+            file_system_info = subprocess.check_output(
                 [
                     "powershell",
-                    "-command",
+                    "Get-Item",
+                    "-Path",
+                    topsrcdir,
+                    "|",
                     "Get-Volume",
-                    "-DriveLetter",
-                    topsrcdir_drive_letter,
+                    "|",
+                    "Select-Object",
+                    "FileSystem",
                 ],
-                capture_output=True,
                 text=True,
-                check=True,
-            ).stdout
-            volume_info = volume_info.lstrip().rstrip().split("\n")
-            type_index = volume_info[0].find("FileSystemType")
-            file_system_type = volume_info[2][type_index : type_index + 4]
-            drive_letter_index = volume_info[0].find("DriveLetter")
-            drive_letter = volume_info[2][drive_letter_index]
+            )
 
-            if topsrcdir_drive_letter == drive_letter:
-                if file_system_type == "ReFS":
-                    print(" The Firefox source repository is on a Dev Drive.")
-                else:
-                    print(
-                        DEV_DRIVE_SUGGESTION.format(
-                            topsrcdir, file_system_type, current_windows_version
-                        )
-                    )
-                    if self.instance.no_interactive:
-                        pass
-                    else:
-                        input("\nPress enter to continue.")
+            file_system_type = file_system_info.strip().split("\n")[2]
+
+            if file_system_type == "ReFS":
+                print(" The Firefox source repository is on a Dev Drive.")
             else:
                 print(
-                    DEV_DRIVE_DETECTION_ERROR.format(
-                        "Drive letter mismatch. Did 'Get-Volume' output change?"
+                    DEV_DRIVE_SUGGESTION.format(
+                        topsrcdir, file_system_type, current_windows_version
                     )
                 )
+                if self.instance.no_interactive:
+                    pass
+                else:
+                    input("\nPress enter to continue.")
 
         except subprocess.CalledProcessError as error:
             print(
@@ -577,12 +573,75 @@ class Bootstrapper(object):
             )
             pass
 
+    def _add_microsoft_defender_antivirus_exclusions(
+        self, topsrcdir: Path, state_dir: Path
+    ):
+        if self.no_system_changes:
+            return
+
+        if os.environ.get("MOZ_AUTOMATION"):
+            return
+
+        # This will trigger a UAC prompt, and since it really only needs to be done
+        # once, we can put a flag_file in the state_dir once we've done it and check
+        # for its existence to prevent us from doing it again.
+        flag_file = state_dir / ".ANTIVIRUS_EXCLUSIONS_DONE"
+        if flag_file.exists():
+            return
+
+        powershell_exe = which("powershell")
+
+        if not powershell_exe:
+            return
+
+        import ctypes
+
+        powershell_exe = str(powershell_exe)
+        paths = []
+
+        # checkout root
+        paths.append(topsrcdir)
+
+        # MOZILLABUILD
+        mozillabuild_dir = os.getenv("MOZILLABUILD")
+        if mozillabuild_dir:
+            paths.append(mozillabuild_dir)
+
+        # .mozbuild
+        paths.append(state_dir)
+
+        joined_paths = "\n".join(f" '{p}'" for p in paths)
+        print(
+            "Attempting to add exclusion paths to Microsoft Defender Antivirus for:\n"
+            f"{joined_paths}"
+        )
+        print(
+            "Note: This will trigger a UAC prompt. If you decline, no exclusions will be added."
+        )
+        print(
+            f"This step will not run again unless you delete the following file: '{flag_file}'\n"
+        )
+
+        args = ";".join(f"Add-MpPreference -ExclusionPath '{path}'" for path in paths)
+        command = f'-Command "{args}"'
+
+        # This will attempt to run as administrator by triggering a UAC prompt
+        # for admin credentials. If "No" is selected, no exclusions are added.
+        ctypes.windll.shell32.ShellExecuteW(
+            None, "runas", powershell_exe, command, None, 0
+        )
+
+        try:
+            flag_file.touch(exist_ok=True)
+        except OSError as e:
+            print(f"Could not write flag_file '{flag_file}': {e}")
+
     def _default_mozconfig_path(self):
         return Path(self.mach_context.topdir) / "mozconfig"
 
     def _read_default_mozconfig(self):
         path = self._default_mozconfig_path()
-        with open(path, "r") as mozconfig_file:
+        with open(path) as mozconfig_file:
             return mozconfig_file.read()
 
     def _write_default_mozconfig(self, raw_mozconfig):
@@ -592,11 +651,12 @@ class Bootstrapper(object):
             print(f'Your requested configuration has been written to "{path}".')
 
     def _show_mozconfig_suggestion(self, raw_mozconfig):
-        suggestion = MOZCONFIG_SUGGESTION_TEMPLATE % (
-            self._default_mozconfig_path(),
-            raw_mozconfig,
-        )
-        print(suggestion, end="")
+        if raw_mozconfig:
+            suggestion = MOZCONFIG_SUGGESTION_TEMPLATE % (
+                self._default_mozconfig_path(),
+                raw_mozconfig,
+            )
+            print(suggestion, end="")
 
     def _check_default_mozconfig_mismatch(
         self, current_mozconfig_info, expected_application, expected_raw_mozconfig
@@ -692,7 +752,9 @@ def update_vct(hg: Path, root_state_dir: Path):
     return vct_dir
 
 
-def configure_mercurial(hg: Optional[Path], root_state_dir: Path):
+def configure_mercurial(
+    hg: Optional[Path], root_state_dir: Path, update_only: bool = False
+):
     """Run the Mercurial configuration wizard."""
     vct_dir = update_vct(hg, root_state_dir)
 
@@ -705,6 +767,8 @@ def configure_mercurial(hg: Optional[Path], root_state_dir: Path):
         f"extensions.configwizard={vct_dir}/hgext/configwizard",
         "configwizard",
     ]
+    if update_only:
+        args += ["--config", "configwizard.steps="]
     subprocess.call(args)
 
 
@@ -794,9 +858,9 @@ def current_firefox_checkout(env, hg: Optional[Path] = None):
     )
 
 
-def update_git_tools(git: Optional[Path], root_state_dir: Path):
+def update_git_cinnabar(root_state_dir: Path):
     """Update git tools, hooks and extensions"""
-    # Ensure git-cinnabar is up to date.
+    # Ensure git-cinnabar is up-to-date.
     cinnabar_dir = root_state_dir / "git-cinnabar"
     cinnabar_exe = cinnabar_dir / "git-cinnabar"
 
@@ -826,7 +890,7 @@ def update_git_tools(git: Optional[Path], root_state_dir: Path):
                 os.chmod(path, stat.S_IRWXU)
                 func(path)
             else:
-                raise
+                raise exc
 
         shutil.rmtree(str(cinnabar_dir), onerror=onerror)
 
@@ -834,6 +898,7 @@ def update_git_tools(git: Optional[Path], root_state_dir: Path):
     exists = cinnabar_exe.exists()
     if exists:
         try:
+            print("\nUpdating git-cinnabar...")
             subprocess.check_call([str(cinnabar_exe), "self-update"])
         except subprocess.CalledProcessError as e:
             print(e)
@@ -841,6 +906,7 @@ def update_git_tools(git: Optional[Path], root_state_dir: Path):
     # git-cinnabar 0.6.0rc1 self-update had a bug that could leave an empty
     # file. If that happens, install from scratch.
     if not exists or cinnabar_exe.stat().st_size == 0:
+        import ssl
         from urllib.request import urlopen
 
         import certifi
@@ -851,10 +917,9 @@ def update_git_tools(git: Optional[Path], root_state_dir: Path):
         cinnabar_url = "https://github.com/glandium/git-cinnabar/"
         download_py = cinnabar_dir / "download.py"
         with open(download_py, "wb") as fh:
+            context = ssl.create_default_context(cafile=certifi.where())
             shutil.copyfileobj(
-                urlopen(
-                    f"{cinnabar_url}/raw/master/download.py", cafile=certifi.where()
-                ),
+                urlopen(f"{cinnabar_url}/raw/master/download.py", context=context),
                 fh,
             )
 
@@ -870,53 +935,275 @@ def update_git_tools(git: Optional[Path], root_state_dir: Path):
     return cinnabar_dir
 
 
+def get_git_config_key_value(key: str):
+    try:
+        value = subprocess.check_output(
+            ["git", "config", "--get", key],
+            stderr=subprocess.DEVNULL,
+            text=True,
+        ).strip()
+        return value or None
+    except subprocess.CalledProcessError:
+        return None
+
+
+def set_git_config_key_value(git_str: str, topsrcdir: Path, key: str, value: str):
+    """
+    Set a git config value in the given repo and print
+    logging output indicating what was done.
+    """
+    subprocess.check_call(
+        [git_str, "config", key, value],
+        cwd=str(topsrcdir),
+    )
+    print(f'Set git config: "{key} = {value}"')
+
+
+def ensure_watchman(topsrcdir: Path, git_str: str):
+    watchman = which("watchman")
+
+    if not watchman:
+        print(
+            "watchman is not installed. Please install `watchman` and "
+            "re-run `./mach vcs-setup` to enable faster git commands."
+        )
+
+    print("Ensuring watchman is properly configured...")
+
+    hooks = Path(
+        subprocess.check_output(
+            [git_str, "rev-parse", "--git-path", "hooks"],
+            cwd=str(topsrcdir),
+            universal_newlines=True,
+        ).strip()
+    )
+
+    watchman_config = hooks / "query-watchman"
+    watchman_sample = hooks / "fsmonitor-watchman.sample"
+
+    if not watchman_sample.exists():
+        print(
+            "watchman is installed but the sample hook (expected here: "
+            f"{watchman_sample}) was not found. Please acquire it and copy"
+            f" it into `.git/hooks/` and re-run `./mach vcs-setup`."
+        )
+        return
+
+    if not watchman_config.exists():
+        copy_cmd = [
+            "cp",
+            watchman_sample,
+            watchman_config,
+        ]
+        print(f"Copying {watchman_sample} to {watchman_config}")
+        subprocess.check_call(copy_cmd, cwd=str(topsrcdir))
+    set_git_config_key_value(
+        git_str, topsrcdir, key="core.fsmonitor", value=watchman_config
+    )
+
+
 def configure_git(
-    git: Optional[Path],
-    cinnabar: Optional[Path],
+    git: Path,
     root_state_dir: Path,
-    top_src_dir: Path,
+    topsrcdir: Path,
+    update_only: bool = False,
 ):
     """Run the Git configuration steps."""
+    if not update_only:
+        git_str = str(git)
 
-    git_str = to_optional_str(git)
+        print("Configuring git...")
 
-    match = re.search(
-        r"(\d+\.\d+\.\d+)",
-        subprocess.check_output([git_str, "--version"], universal_newlines=True),
-    )
-    if not match:
-        raise Exception("Could not find git version")
-    git_version = Version(match.group(1))
-
-    if git_version < MINIMUM_RECOMMENDED_GIT_VERSION:
-        print(
-            OLD_GIT_WARNING.format(
-                old_version=git_version,
-                minimum_recommended_version=MINIMUM_RECOMMENDED_GIT_VERSION,
-            )
+        match = re.search(
+            r"(\d+\.\d+\.\d+)",
+            subprocess.check_output([git_str, "--version"], universal_newlines=True),
         )
+        if not match:
+            raise Exception("Could not find git version")
+        git_version = Version(match.group(1))
 
-    if git_version >= Version("2.17"):
-        # "core.untrackedCache" has a bug before 2.17
-        subprocess.check_call(
-            [git_str, "config", "core.untrackedCache", "true"], cwd=str(top_src_dir)
-        )
-
-    cinnabar_dir = str(update_git_tools(git, root_state_dir))
-
-    if not cinnabar:
-        if "MOZILLABUILD" in os.environ:
-            # Slightly modify the path on Windows to be correct
-            # for the copy/paste into the .bash_profile
-            cinnabar_dir = win_to_msys_path(cinnabar_dir)
-
-            print(
-                ADD_GIT_CINNABAR_PATH.format(
-                    prefix="%USERPROFILE%", cinnabar_dir=cinnabar_dir
+        moz_automation = os.environ.get("MOZ_AUTOMATION")
+        # This hard error is to force users to upgrade for performance benefits. If a CI worker on an old
+        # distro gets here, but can't upgrade to a newer git version, that's not a blocker, so we skip
+        # this check in CI to avoid that scenario.
+        if not moz_automation:
+            if git_version < MINIMUM_GIT_VERSION:
+                raise GitVersionError(
+                    f"Your version of git ({git_version}) is too old. "
+                    f"Please upgrade to at least version '{MINIMUM_GIT_VERSION}' to ensure "
+                    "full compatibility and performance."
                 )
+
+        system = platform.system()
+
+        # https://git-scm.com/docs/git-config#Documentation/git-config.txt-coreuntrackedCache
+        set_git_config_key_value(
+            git_str, topsrcdir, key="core.untrackedCache", value="true"
+        )
+
+        # https://git-scm.com/docs/git-config#Documentation/git-config.txt-corefsmonitor
+        if system == "Windows":
+            # On Windows we enable the built-in fsmonitor which is superior to Watchman.
+            set_git_config_key_value(
+                git_str, topsrcdir, key="core.fscache", value="true"
             )
+            # https://github.com/git-for-windows/git/blob/eaeb5b51c389866f207c52f1546389a336914e07/Documentation/config/core.adoc?plain=1#L688-L692
+            # We can also enable fscache (only supported on git-for-windows).
+            set_git_config_key_value(
+                git_str, topsrcdir, key="core.fsmonitor", value="true"
+            )
+        elif system == "Darwin":
+            # On macOS (Darwin) we enable the built-in fsmonitor which is superior to Watchman.
+            set_git_config_key_value(
+                git_str, topsrcdir, key="core.fsmonitor", value="true"
+            )
+        elif system == "Linux":
+            # On Linux the built-in fsmonitor isn’t available, so we unset it and attempt to set up
+            # Watchman to achieve similar fsmonitor-style speedups.
+            subprocess.run(
+                [git_str, "config", "--unset-all", "core.fsmonitor"],
+                cwd=str(topsrcdir),
+                check=False,
+            )
+            print("Unset git config: `core.fsmonitor`")
+
+            ensure_watchman(topsrcdir, git_str)
+
+    repo = get_repository_object(topsrcdir)
+
+    # Only do cinnabar checks if we're a git cinnabar repo
+    if repo.is_cinnabar_repo():
+        cinnabar_dir = str(update_git_cinnabar(root_state_dir))
+        cinnabar = to_optional_path(which("git-cinnabar"))
+        if not cinnabar:
+            if "MOZILLABUILD" in os.environ:
+                # Slightly modify the path on Windows to be correct
+                # for the copy/paste into the .bash_profile
+                cinnabar_dir = win_to_msys_path(cinnabar_dir)
+
+                print(
+                    ADD_GIT_CINNABAR_PATH.format(
+                        prefix="%USERPROFILE%", cinnabar_dir=cinnabar_dir
+                    )
+                )
+            else:
+                print(
+                    ADD_GIT_CINNABAR_PATH.format(prefix="~", cinnabar_dir=cinnabar_dir)
+                )
+
+
+def jj_config_key_list_value_missing(jj_str: str, key: str):
+    cmd = [jj_str, "config", "list", key]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+    output = (result.stdout or result.stderr).strip()
+
+    warning_prefix = "Warning: No matching config key"
+    if output.startswith(warning_prefix):
+        return True
+
+    if output.startswith(key):
+        return False
+
+    raise ValueError(f"Unexpected output: {output}")
+
+
+def set_jj_config_key_value(jj_str: str, key: str, value: Any):
+    value_str = json.dumps(value)
+    cmd = [jj_str, "config", "set", "--repo", key, value_str]
+    print(f'Set jj config: "{key} = {value_str}"')
+    subprocess.run(cmd, capture_output=False, check=True)
+
+
+def configure_jujutsu(jj: Path, topsrcdir: Path, update_only=False):
+    """Run the Jujutsu configuration steps."""
+    jj_str = str(jj)
+
+    if not update_only:
+        print("\nConfiguring jj...")
+
+        from mozversioncontrol.factory import MINIMUM_SUPPORTED_JJ_VERSION
+
+        version_str = subprocess.check_output([jj_str, "--version"], text=True)
+        if match := re.search(r"(\d+\.\d+\.\d+)", version_str):
+            jj_version = Version(match.group(1))
         else:
-            print(ADD_GIT_CINNABAR_PATH.format(prefix="~", cinnabar_dir=cinnabar_dir))
+            raise Exception("Could not find jj version")
+
+        if jj_version < MINIMUM_SUPPORTED_JJ_VERSION:
+            raise GitVersionError(
+                f"Your version of jj ({jj_version}) is too old. "
+                f"Please upgrade to at least version '{MINIMUM_SUPPORTED_JJ_VERSION}' to ensure "
+                "full compatibility and performance."
+            )
+
+        print(f"Detected jj version `{jj_version}`, which is sufficiently modern.")
+
+        git_dir = topsrcdir / ".git"
+        if not git_dir.exists():
+            raise Exception(f"Could not find a `.git` directory at: {git_dir}\n")
+
+        jj_dir = topsrcdir / ".jj"
+        if not jj_dir.exists():
+            print("Initializing a git colocated jj repository...")
+            subprocess.run([jj_str, "git", "init", "--colocate"])
+            pass
+
+        # Only set these values if they haven't been set yet so that we
+        # don't overwrite existing user preferences.
+
+        # Copy over the user.name and user.email if they've been set there by not for jj
+        username_key = "user.name"
+        username = get_git_config_key_value(username_key)
+        if username and jj_config_key_list_value_missing(jj_str, username_key):
+            set_jj_config_key_value(jj_str, username_key, username)
+
+        email_key = "user.email"
+        email = get_git_config_key_value(email_key)
+        if email and jj_config_key_list_value_missing(jj_str, email_key):
+            set_jj_config_key_value(jj_str, email_key, email)
+
+        jj_revset_immutable_heads_key = 'revset-aliases."immutable_heads()"'
+        if jj_config_key_list_value_missing(jj_str, jj_revset_immutable_heads_key):
+            jj_revset_immutable_heads_value = (
+                "builtin_immutable_heads() | remote_bookmarks(glob:'*', 'origin')"
+            )
+            set_jj_config_key_value(
+                jj_str, jj_revset_immutable_heads_key, jj_revset_immutable_heads_value
+            )
+
+        # This enables `jj fix` which does `./mach lint --fix` on every commit in parallel
+        jj_fix_command_key = "fix.tools.mozlint.command"
+        if jj_config_key_list_value_missing(jj_str, jj_fix_command_key):
+            jj_fix_command_value = [
+                f"{topsrcdir.as_posix()}/tools/lint/pipelint",
+                "$path",
+            ]
+            if sys.platform.startswith("win"):
+                # On Windows pipelint must be invoked via Python explicitly
+                jj_fix_command_value.insert(0, "python3")
+            set_jj_config_key_value(jj_str, jj_fix_command_key, jj_fix_command_value)
+
+        jj_fix_patterns_key = "fix.tools.mozlint.patterns"
+        if jj_config_key_list_value_missing(jj_str, jj_fix_patterns_key):
+            jj_fix_patterns_value = ["glob:**/*"]
+            set_jj_config_key_value(jj_str, jj_fix_patterns_key, jj_fix_patterns_value)
+
+        # This enables watchman, if it's installed.
+        if which("watchman"):
+            jj_watchman_key = "core.fsmonitor"
+            if jj_config_key_list_value_missing(jj_str, jj_watchman_key):
+                jj_watchman_value = "watchman"
+                set_jj_config_key_value(jj_str, jj_watchman_key, jj_watchman_value)
+
+            jj_watchman_snapshot_key = "core.watchman.register-snapshot-trigger"
+            if jj_config_key_list_value_missing(jj_str, jj_watchman_snapshot_key):
+                jj_watchman_snapshot_value = False
+                set_jj_config_key_value(
+                    jj_str, jj_watchman_snapshot_key, jj_watchman_snapshot_value
+                )
+
+    print("Checking if watchman is enabled...")
+    subprocess.run([jj_str, "debug", "watchman", "status"])
 
 
 def _warn_if_risky_revision(path: Path):
@@ -925,7 +1212,6 @@ def _warn_if_risky_revision(path: Path):
     # this case). This is an approximate calculation but is probably good
     # enough for our purposes.
     NUM_SECONDS_IN_MONTH = 60 * 60 * 24 * 30
-    from mozversioncontrol import get_repository_object
 
     repo = get_repository_object(path)
     if (time.time() - repo.get_commit_time()) >= NUM_SECONDS_IN_MONTH:

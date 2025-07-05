@@ -18,7 +18,7 @@ import org.mozilla.fenix.components.appstate.AppState
 import org.mozilla.fenix.home.bookmarks.Bookmark
 import org.mozilla.fenix.home.bookmarks.controller.BookmarksController
 import org.mozilla.fenix.home.pocket.PocketRecommendedStoriesCategory
-import org.mozilla.fenix.home.pocket.PocketStoriesController
+import org.mozilla.fenix.home.pocket.controller.PocketStoriesController
 import org.mozilla.fenix.home.privatebrowsing.controller.PrivateBrowsingController
 import org.mozilla.fenix.home.recentsyncedtabs.RecentSyncedTab
 import org.mozilla.fenix.home.recentsyncedtabs.controller.RecentSyncedTabController
@@ -231,11 +231,11 @@ class SessionControlInteractorTest {
     @Test
     fun `GIVEN a PocketStoriesInteractor WHEN a story is shown THEN handle it in a PocketStoriesController`() {
         val shownStory: PocketStory = mockk()
-        val storyGridLocation = 1 to 2
+        val storyPosition = Triple(1, 2, 3)
 
-        interactor.onStoryShown(shownStory, storyGridLocation)
+        interactor.onStoryShown(shownStory, storyPosition)
 
-        verify { pocketStoriesController.handleStoryShown(shownStory, storyGridLocation) }
+        verify { pocketStoriesController.handleStoryShown(shownStory, storyPosition) }
     }
 
     @Test
@@ -259,11 +259,11 @@ class SessionControlInteractorTest {
     @Test
     fun `GIVEN a PocketStoriesInteractor WHEN a story is clicked THEN handle it in a PocketStoriesController`() {
         val clickedStory: PocketStory = mockk()
-        val storyGridLocation = 1 to 2
+        val storyPosition = Triple(1, 2, 3)
 
-        interactor.onStoryClicked(clickedStory, storyGridLocation)
+        interactor.onStoryClicked(clickedStory, storyPosition)
 
-        verify { pocketStoriesController.handleStoryClicked(clickedStory, storyGridLocation) }
+        verify { pocketStoriesController.handleStoryClicked(clickedStory, storyPosition) }
     }
 
     @Test

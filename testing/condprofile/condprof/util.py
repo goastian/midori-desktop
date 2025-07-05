@@ -147,7 +147,7 @@ def get_firefox_download_link():
         extension = ".dmg"
     elif platform.system() == "Linux":
         arch = platform.machine()
-        extension = ".linux-%s.tar.bz2" % arch
+        extension = ".linux-%s.tar.xz" % arch
     else:
         raise NotImplementedError(platform.system())
 
@@ -293,7 +293,7 @@ def extract_from_dmg(dmg, target):
         os.system("hdiutil detach " + mount)
         shutil.rmtree(mount)
     if not found:
-        raise IOError("No app file found in %s" % dmg)
+        raise OSError("No app file found in %s" % dmg)
 
 
 @contextlib.contextmanager
@@ -311,9 +311,8 @@ def latest_nightly(binary=None):
             binary = "/Volumes/Nightly/Firefox Nightly.app/Contents/MacOS/firefox"
         # on linux we unpack it
         elif platform.system() == "Linux":
-            cmd = "bunzip2 %s" % target
-            os.system(cmd)
-            cmd = "tar -xvf %s" % target[: -len(".bz2")]
+            # Tar should automatically recognize the compression algo (xz/bzip2)
+            cmd = "tar -xvf %s" % target
             os.system(cmd)
             binary = "firefox/firefox"
 

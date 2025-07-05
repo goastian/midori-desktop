@@ -3,6 +3,135 @@
 
 All notable changes to this program are documented in this file.
 
+## 0.36.0 (2025-02-25, `a3d508507022`)
+
+### Known problems
+
+- _Startup hang with Firefox running in a container (e.g. snap, flatpak):_
+
+  When Firefox is packaged inside a container (like the default Firefox browser
+  shipped with Ubuntu 22.04), it may see a different filesystem to the host.
+  This can affect access to the generated profile directory, which may result
+  in a hang when starting Firefox. Workarounds are listed in the geckodriver
+  [usage documentation].
+
+- Virtual Authenticator endpoints are currently unreliable.
+
+  Since their introduction in geckodriver 0.34.0, several Virtual Authenticator
+  endpoints have been reported as non-functional or behaving unexpectedly.
+  We recommend avoiding the use of these commands until the known issues have
+  been resolved.
+
+### Added
+
+- Support for searching the Firefox Developer Edition’s default path on macOS.
+
+  Implemented by [Gatlin Newhouse].
+
+- Ability to push a WebExtension archive as created from a base64 encoded string
+  to an Android device.
+
+- Added an `allowPrivateBrowsing` field for POST `/session/{session id}/moz/addon/install`
+  to allow the installation of a WebExtension that is enabled in Private Browsing mode.
+
+- Introduced the [`--allow-system-access`] command line argument for geckodriver, which will
+  be required for future versions of Firefox (potentially starting with 138.0) to allow
+  testing in the `chrome` context.
+
+- Added support for preserving crash dumps for crash report analysis when
+  Firefox crashes. If the `MINIDUMP_SAVE_PATH` environment variable is set
+  to an existing folder, crash dumps will be saved accordingly. For mobile
+  devices, the generated minidump files will be automatically transferred
+  to the host machine.
+
+  For more details see the documentation of how to handle [crash reports].
+
+### Changed
+
+- Updated the type of the `x` and `y` fields of pointer move actions (mouse and touch)
+  from integer to fractional numbers to ensure a more precise input control.
+
+  Note: Support for fractional values is available starting with Firefox 137.
+  For older versions, clients or tests must explicitly pass integer values for
+  both fields.
+
+- Replaced `serde_yaml` with `yaml-rust` because it's no longer officially supported.
+
+- The `--enable-crash-reporter` command line argument has been deprecated to
+  prevent crash reports from being submitted to Socorro. This argument will be
+  completely removed in the next version.
+
+  Instead, use the `MINIDUMP_SAVE_PATH` environment variable to get minidump
+  files saved to a specified location.
+
+### Fixed
+
+- Fixed route registration for `WebAuthn` commands, which were introduced in
+  geckodriver 0.34.0 but mistakenly registered under `/sessions/` instead of
+  `/session/`, causing them to be non-functional.
+
+### Removed
+
+- Removed the `-no-remote` command-line argument usage for Firefox, which does no longer exist.
+
+## 0.35.0 (2024-08-06, `9f0a0036bea4`)
+
+### Known problems
+
+- _Startup hang with Firefox running in a container (e.g. snap, flatpak):_
+
+  When Firefox is packaged inside a container (like the default Firefox browser
+  shipped with Ubuntu 22.04), it may see a different filesystem to the host.
+  This can affect access to the generated profile directory, which may result
+  in a hang when starting Firefox. Workarounds are listed in the geckodriver
+  [usage documentation].
+
+- Virtual Authenticator endpoints are currently unreliable.
+
+  Since their introduction in geckodriver 0.34.0, several Virtual Authenticator
+  endpoints have been reported as non-functional or behaving unexpectedly.
+  We recommend avoiding the use of these commands until the known issues have
+  been resolved.
+
+### Added
+
+- Support for [Permissions] that allow controlling permission prompts
+  within the browser. This enables automated tests to handle scenarios
+  involving permissions like `geolocation`, `notifications`, and more.
+
+- The command line flag `--enable-crash-reporter` has been added, to allow
+  the crash reporter in Firefox to automatically submit crash reports to
+  Mozilla's crash reporting system if a tab or the browser itself crashes.
+
+  Note that this feature is disabled by default and should only be used when a
+  crash situation needs to be investigated. See our documentation for
+  [crash reports] in how to share these with us.
+
+  Implemented by [Razvan Cojocaru].
+
+### Changed
+
+- The validation of the `unhandledPromptBehavior` capability has been enhanced
+  to support finer configuration options for the [User Prompt Handler] which
+  are particularly used by [WebDriver BiDi].
+
+### Fixed
+
+- The [Switch To Frame] command now correctly raises an "invalid argument"
+  error when the `id` parameter is missing.
+
+  Implemented by [James Hendry].
+
+### Removed
+
+- Removed support for session negotiation using the deprecated
+  `desiredCapabilities` and `requiredCapabilities`.
+
+  Implemented by [James Hendry].
+
+- Removed support for the `moz:useNonSpecCompliantPointerOrigin` capability,
+  which has not been supported since Firefox 116.
+
 ## 0.34.0 (2024-01-03, `c44f0d09630a`)
 
 ### Known problems
@@ -14,6 +143,13 @@ All notable changes to this program are documented in this file.
   This can affect access to the generated profile directory, which may result
   in a hang when starting Firefox. Workarounds are listed in the geckodriver
   [usage documentation].
+
+- Virtual Authenticator endpoints are currently unreliable.
+
+  Since their introduction in geckodriver 0.34.0, several Virtual Authenticator
+  endpoints have been reported as non-functional or behaving unexpectedly.
+  We recommend avoiding the use of these commands until the known issues have
+  been resolved.
 
 ### Added
 
@@ -343,7 +479,7 @@ All notable changes to this program are documented in this file.
 
 ### Added
 
-- Support for WebDriver clients to opt in to WebDriver BiDi.
+- Support for WebDriver clients to opt in to [WebDriver BiDi].
 
   Introduced the new boolean capability [`webSocketUrl`] that can be used by
   WebDriver clients to opt in to a bidirectional connection. A string capability
@@ -382,7 +518,7 @@ All notable changes to this program are documented in this file.
   - Arguments as specified in [`moz:firefoxOptions`] are now used when starting
     Firefox.
 
-  - Port forwards set for Marionette and the WebSocket server (WebDriver BiDi)
+  - Port forwards set for Marionette and the WebSocket server ([WebDriver BiDi])
     are now correctly removed when geckodriver exits.
 
   - The test root folder is now removed when geckodriver exists.
@@ -1792,7 +1928,7 @@ and greater.
 
 - Fix Get Element Rect command to return floats instead of integers
 
-- Fix passing of web elements to Switch To Frame command
+- Fix passing of web elements to [Switch To Frame] command
 
 - Fix serialisation of script commands
 
@@ -1806,7 +1942,8 @@ and greater.
 - Squash compile warnings
 
 [README]: https://github.com/mozilla/geckodriver/blob/master/README.md
-[usage documentation]: <https://firefox-source-docs.mozilla.org/testing/geckodriver/Usage.html#Running-Firefox-in-an-container-based-package>
+[crash reports]: <https://firefox-source-docs.mozilla.org/testing/geckodriver/CrashReports.html>
+[usage documentation]: <https://firefox-source-docs.mozilla.org/testing/geckodriver/Usage.html#running-firefox-in-a-container-based-package>
 [Browser Toolbox]: https://developer.mozilla.org/en-US/docs/Tools/Browser_Toolbox
 [WebDriver conformance]: https://wpt.fyi/results/webdriver/tests?label=experimental
 [`webSocketUrl`]: https://developer.mozilla.org/en-US/docs/Web/WebDriver/Capabilities/webSocketUrl
@@ -1817,8 +1954,8 @@ and greater.
 [Fission]: https://wiki.mozilla.org/Project_Fission
 [Capabilities]: https://firefox-source-docs.mozilla.org/testing/geckodriver/Capabilities.html
 [Flags]: https://firefox-source-docs.mozilla.org/testing/geckodriver/Flags.html
-[`--allow-hosts`]: https://firefox-source-docs.mozilla.org/testing/geckodriver/Flags.html#code-allow-hosts-var-allow-hosts-var-code
-[`--allow-origins`]: https://firefox-source-docs.mozilla.org/testing/geckodriver/Flags.html#code-allow-origins-var-allow-origins-var-code
+[`--allow-hosts`]: https://firefox-source-docs.mozilla.org/testing/geckodriver/Flags.html#allow-hosts-allow-hosts
+[`--allow-origins`]: https://firefox-source-docs.mozilla.org/testing/geckodriver/Flags.html#allow-origins-allow-origins
 [enable remote debugging on the Android device]: https://developers.google.com/web/tools/chrome-devtools/remote-debugging
 [macOS notarization]: https://firefox-source-docs.mozilla.org/testing/geckodriver/Notarization.html
 [Rust]: https://rustup.rs/
@@ -1879,8 +2016,14 @@ and greater.
 [Set Timeouts]: https://w3c.github.io/webdriver/webdriver-spec.html#set-timeouts
 [Set Window Rect]: https://w3c.github.io/webdriver/webdriver-spec.html#set-window-rect
 [Status]: https://w3c.github.io/webdriver/webdriver-spec.html#status
+[Switch to Frame]: https://w3c.github.io/webdriver/#dfn-switch-to-frame
 [Take Element Screenshot]: https://w3c.github.io/webdriver/webdriver-spec.html#take-element-screenshot
+[User Prompt Handler]: https://w3c.github.io/webdriver/#user-prompt-handler
 [WebDriver errors]: https://w3c.github.io/webdriver/webdriver-spec.html#handling-errors
+
+[WebDriver BiDi]: https://w3c.github.io/webdriver-bidi/
+
+[Permissions]: https://www.w3.org/TR/permissions/#automation-webdriver-bidi
 
 [Virtual Authenticators]: https://www.w3.org/TR/webauthn-2/#sctn-automation
 [Add Credential]: https://www.w3.org/TR/webauthn-2/#add-credential
@@ -1907,3 +2050,4 @@ and greater.
 [Sven Jost]: https://github/mythsunwind
 [Vlad Filippov]: https://github.com/vladikoff
 [Olivier Tilloy]: https://github.com/oSoMoN
+[Gatlin Newhouse]: https://github.com/gatlinnewhouse

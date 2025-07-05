@@ -79,7 +79,7 @@ reftest.Runner = class {
    * This will open a non-browser window in which the tests will
    * be loaded, and set up various caches for the reftest run.
    *
-   * @param {Object<number>} urlCount
+   * @param {Record<string, number>} urlCount
    *     Object holding a map of URL: number of times the URL
    *     will be opened during the reftest run, where that's
    *     greater than 1.
@@ -207,15 +207,17 @@ reftest.Runner = class {
     }
     // Make sure the browser element is exactly the right size, no matter
     // what size our window is
-    const windowStyle = `
-      padding: 0px;
-      margin: 0px;
-      border:none;
-      min-width: ${width}px; min-height: ${height}px;
-      max-width: ${width}px; max-height: ${height}px;
-      color-scheme: env(-moz-content-preferred-color-scheme);
-    `;
-    browser.setAttribute("style", windowStyle);
+    browser.style.setProperty("padding", "0px");
+    browser.style.setProperty("margin", "0px");
+    browser.style.setProperty("border", "none");
+    browser.style.setProperty("min-width", `${width}px`);
+    browser.style.setProperty("min-height", `${height}px`);
+    browser.style.setProperty("max-width", `${width}px`);
+    browser.style.setProperty("max-height", `${height}px`);
+    browser.style.setProperty(
+      "color-scheme",
+      "env(-moz-content-preferred-color-scheme)"
+    );
 
     if (!lazy.AppInfo.isAndroid) {
       let doc = reftestWin.document.documentElement;
@@ -367,7 +369,8 @@ reftest.Runner = class {
     let done = false;
 
     while (stack.length && !done) {
-      let [lhsUrl, rhsUrl, references, relation, extras = {}] = stack.pop();
+      let [lhsUrl, rhsUrl, stackframeReferences, relation, extras = {}] =
+        stack.pop();
       result.message += `Testing ${lhsUrl} ${relation} ${rhsUrl}\n`;
 
       let comparison;
@@ -414,9 +417,9 @@ reftest.Runner = class {
       }
 
       if (comparison.passed) {
-        if (references.length) {
-          for (let i = references.length - 1; i >= 0; i--) {
-            let item = references[i];
+        if (stackframeReferences.length) {
+          for (let i = stackframeReferences.length - 1; i >= 0; i--) {
+            let item = stackframeReferences[i];
             stack.push([rhsUrl, ...item]);
           }
         } else {
@@ -608,8 +611,8 @@ reftest.Runner = class {
       (maxDifference === 0 && allowedDiff[0] == 0) ||
       (maxDifference >= allowedDiff[0] &&
         maxDifference <= allowedDiff[1] &&
-        (pixelsDifferent >= allowedPixels[0] ||
-          pixelsDifferent <= allowedPixels[1]))
+        pixelsDifferent >= allowedPixels[0] &&
+        pixelsDifferent <= allowedPixels[1])
     );
   }
 

@@ -11,10 +11,12 @@
 
 #include "CTLogVerifier.h"
 #include "CTVerifyResult.h"
+#include "SignedCertificateTimestamp.h"
 #include "mozpkix/Input.h"
 #include "mozpkix/Result.h"
 #include "mozpkix/Time.h"
-#include "SignedCertificateTimestamp.h"
+#include "signature_cache_ffi.h"
+#include "mozilla/UniquePtr.h"
 
 namespace mozilla {
 namespace ct {
@@ -27,6 +29,8 @@ void DecodeSCTs(pkix::Input encodedSctList,
 // Timestamps from multiple logs.
 class MultiLogCTVerifier {
  public:
+  MultiLogCTVerifier();
+
   // Adds a new log to the list of known logs to verify against.
   void AddLog(CTLogVerifier&& log);
 
@@ -68,19 +72,23 @@ class MultiLogCTVerifier {
   // placing the verification results in |result|. The SCTs in the list
   // come from |origin| (as will be reflected in the origin field of each SCT).
   pkix::Result VerifySCTs(pkix::Input encodedSctList,
-                          const LogEntry& expectedEntry,
-                          VerifiedSCT::Origin origin, pkix::Time time,
-                          CTVerifyResult& result);
+                          const LogEntry& expectedEntry, SCTOrigin origin,
+                          pkix::Time time, CTVerifyResult& result);
 
   // Verifies a single, parsed SCT against all known logs.
   // Note: moves |sct| to the target list in |result|, invalidating |sct|.
   pkix::Result VerifySingleSCT(SignedCertificateTimestamp&& sct,
                                const ct::LogEntry& expectedEntry,
-                               VerifiedSCT::Origin origin, pkix::Time time,
+                               SCTOrigin origin, pkix::Time time,
                                CTVerifyResult& result);
 
   // The list of known logs.
   std::vector<CTLogVerifier> mLogs;
+
+  // If many connections are made to a site using a particular certificate,
+  // this cache will speed up verifications after the first one by saving the
+  // results of verifying the signatures on the SCTs for that certificate.
+  UniquePtr<SignatureCache, decltype(&signature_cache_free)> mSignatureCache;
 };
 
 }  // namespace ct

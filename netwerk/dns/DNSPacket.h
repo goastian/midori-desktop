@@ -52,6 +52,8 @@ class DNSPacket {
   nsresult OnDataAvailable(nsIRequest* aRequest, nsIInputStream* aInputStream,
                            uint64_t aOffset, const uint32_t aCount);
 
+  // Encode the input host name into a sequence of labels.
+  static nsresult EncodeHost(nsCString& aBody, const nsACString& aHost);
   // Encodes the name request into a buffer that represents a DNS packet
   virtual nsresult EncodeRequest(nsCString& aBody, const nsACString& aHost,
                                  uint16_t aType, bool aDisableECS);
@@ -75,11 +77,12 @@ class DNSPacket {
                              const nsACString& aOriginHost);
   void SetNativePacket(bool aNative) { mNativePacket = aNative; }
 
- protected:
-  nsresult PassQName(unsigned int& index, const unsigned char* aBuffer);
   static nsresult GetQname(nsACString& aQname, unsigned int& aIndex,
                            const unsigned char* aBuffer,
                            unsigned int aBodySize);
+
+ protected:
+  nsresult PassQName(unsigned int& index, const unsigned char* aBuffer);
   static nsresult ParseSvcParam(unsigned int svcbIndex, uint16_t key,
                                 SvcFieldValue& field, uint16_t length,
                                 const unsigned char* aBuffer);

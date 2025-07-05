@@ -5,16 +5,20 @@
 package org.mozilla.fenix.components.appstate
 
 import io.mockk.mockk
-import mozilla.components.browser.state.state.createTab
+import mozilla.components.concept.storage.BookmarkNode
+import mozilla.components.concept.storage.BookmarkNodeType
 import mozilla.components.lib.crash.Crash.NativeCodeCrash
+import mozilla.components.support.test.ext.joinBlocking
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.mozilla.fenix.browser.browsingmode.BrowsingMode
+import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.appstate.AppAction.AddNonFatalCrash
 import org.mozilla.fenix.components.appstate.AppAction.RemoveAllNonFatalCrashes
 import org.mozilla.fenix.components.appstate.AppAction.RemoveNonFatalCrash
 import org.mozilla.fenix.components.appstate.AppAction.UpdateInactiveExpanded
+import org.mozilla.fenix.components.appstate.snackbar.SnackbarState
 
 class AppStoreReducerTest {
     @Test
@@ -23,7 +27,10 @@ class AppStoreReducerTest {
             inactiveTabsExpanded = true,
         )
 
-        var updatedState = AppStoreReducer.reduce(initialState, UpdateInactiveExpanded(false))
+        var updatedState = AppStoreReducer.reduce(
+            state = initialState,
+            action = UpdateInactiveExpanded(false),
+        )
         assertFalse(updatedState.inactiveTabsExpanded)
 
         updatedState = AppStoreReducer.reduce(updatedState, UpdateInactiveExpanded(true))
@@ -73,51 +80,6 @@ class AppStoreReducerTest {
     }
 
     @Test
-    fun `GIVEN mode is private WHEN selected tab changes to normal mode THEN state is updated to normal mode`() {
-        val initialState = AppState(
-            selectedTabId = null,
-            mode = BrowsingMode.Private,
-        )
-
-        val updatedState = AppStoreReducer.reduce(
-            initialState,
-            AppAction.SelectedTabChanged(createTab("", private = false)),
-        )
-
-        assertFalse(updatedState.mode.isPrivate)
-    }
-
-    @Test
-    fun `GIVEN mode is normal WHEN selected tab changes to private mode THEN state is updated to private mode`() {
-        val initialState = AppState(
-            selectedTabId = null,
-            mode = BrowsingMode.Normal,
-        )
-
-        val updatedState = AppStoreReducer.reduce(
-            initialState,
-            AppAction.SelectedTabChanged(createTab("", private = true)),
-        )
-
-        assertTrue(updatedState.mode.isPrivate)
-    }
-
-    @Test
-    fun `WHEN selected tab changes to a tab in the same mode THEN mode is unchanged`() {
-        val initialState = AppState(
-            selectedTabId = null,
-            mode = BrowsingMode.Normal,
-        )
-
-        val updatedState = AppStoreReducer.reduce(
-            initialState,
-            AppAction.SelectedTabChanged(createTab("", private = false)),
-        )
-
-        assertFalse(updatedState.mode.isPrivate)
-    }
-
-    @Test
     fun `WHEN UpdateSearchDialogVisibility is called THEN isSearchDialogVisible gets updated`() {
         val initialState = AppState()
 
@@ -136,5 +98,161 @@ class AppStoreReducerTest {
         )
 
         assertFalse(updatedState.isSearchDialogVisible)
+    }
+
+    @Test
+    fun `WHEN translation started action is dispatched THEN snackbar state is updated`() {
+        val appStore = AppStore()
+        val sessionId = "sessionId"
+
+        appStore.dispatch(
+            AppAction.TranslationsAction.TranslationStarted(sessionId = sessionId),
+        ).joinBlocking()
+
+        assertEquals(
+            SnackbarState.TranslationInProgress(sessionId = sessionId),
+            appStore.state.snackbarState,
+        )
+    }
+
+    @Test
+    fun `WHEN bookmark added action is dispatched THEN snackbar state is updated`() {
+        val appStore = AppStore()
+        val guidToEdit = "guidToEdit"
+        val parentNode = BookmarkNode(
+            type = BookmarkNodeType.FOLDER,
+            guid = "456",
+            parentGuid = "123",
+            position = 0u,
+            title = "Mozilla",
+            url = null,
+            dateAdded = 0,
+            lastModified = 0,
+            children = listOf(),
+        )
+
+        appStore.dispatch(
+            AppAction.BookmarkAction.BookmarkAdded(
+                guidToEdit = guidToEdit,
+                parentNode = parentNode,
+            ),
+        )
+            .joinBlocking()
+
+        assertEquals(
+            SnackbarState.BookmarkAdded(
+                guidToEdit = guidToEdit,
+                parentNode = parentNode,
+            ),
+            appStore.state.snackbarState,
+        )
+    }
+
+    @Test
+    fun `WHEN bookmark deleted action is dispatched THEN snackbar state is updated`() {
+        val appStore = AppStore()
+        val bookmarkTitle = "test"
+
+        appStore.dispatch(AppAction.BookmarkAction.BookmarkDeleted(title = bookmarkTitle))
+            .joinBlocking()
+
+        assertEquals(
+            SnackbarState.BookmarkDeleted(title = bookmarkTitle),
+            appStore.state.snackbarState,
+        )
+    }
+
+    @Test
+    fun `WHEN delete and quit selected action is dispatched THEN snackbar state is updated`() {
+        val appStore = AppStore()
+
+        appStore.dispatch(
+            AppAction.DeleteAndQuitStarted,
+        ).joinBlocking()
+
+        assertEquals(
+            SnackbarState.DeletingBrowserDataInProgress,
+            appStore.state.snackbarState,
+        )
+    }
+
+    @Test
+    fun `WHEN open in firefox started action is dispatched THEN open in firefox requested is true`() {
+        val appStore = AppStore()
+        assertFalse(appStore.state.openInFirefoxRequested)
+
+        appStore.dispatch(AppAction.OpenInFirefoxStarted)
+            .joinBlocking()
+
+        assertTrue(appStore.state.openInFirefoxRequested)
+    }
+
+    @Test
+    fun `WHEN open in firefox finished action is dispatched THEN open in firefox requested is false`() {
+        val appStore = AppStore(
+            initialState = AppState(
+                openInFirefoxRequested = true,
+            ),
+        )
+        assertTrue(appStore.state.openInFirefoxRequested)
+
+        appStore.dispatch(AppAction.OpenInFirefoxFinished)
+            .joinBlocking()
+
+        assertFalse(appStore.state.openInFirefoxRequested)
+    }
+
+    @Test
+    fun `WHEN UserAccountAuthenticated action is dispatched THEN snackbar state is updated`() {
+        val appStore = AppStore()
+
+        appStore.dispatch(
+            AppAction.UserAccountAuthenticated,
+        ).joinBlocking()
+
+        assertEquals(
+            SnackbarState.UserAccountAuthenticated,
+            appStore.state.snackbarState,
+        )
+    }
+
+    @Test
+    fun `WHEN site data cleared action is dispatched THEN snackbar state is updated`() {
+        val appStore = AppStore()
+
+        appStore.dispatch(
+            AppAction.SiteDataCleared,
+        ).joinBlocking()
+
+        assertEquals(
+            SnackbarState.SiteDataCleared,
+            appStore.state.snackbarState,
+        )
+    }
+
+    @Test
+    fun `WHEN the current tab is closed THEN show a snackbar`() {
+        val appStore = AppStore()
+
+        appStore.dispatch(
+            AppAction.CurrentTabClosed(true),
+        ).joinBlocking()
+
+        assertEquals(
+            SnackbarState.CurrentTabClosed(true),
+            appStore.state.snackbarState,
+        )
+    }
+
+    @Test
+    fun `WHEN the current tab's URL has been copied THEN show a snackbar`() {
+        val appStore = AppStore()
+
+        appStore.dispatch(AppAction.URLCopiedToClipboard).joinBlocking()
+
+        assertEquals(
+            SnackbarState.URLCopiedToClipboard,
+            appStore.state.snackbarState,
+        )
     }
 }

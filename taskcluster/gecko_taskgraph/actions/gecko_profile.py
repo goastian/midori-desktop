@@ -7,13 +7,10 @@ import logging
 
 import requests
 from requests.exceptions import HTTPError
-from taskgraph.taskgraph import TaskGraph
 from taskgraph.util.taskcluster import get_artifact_from_index, get_task_definition
 
-from gecko_taskgraph.util.taskgraph import find_decision_task
-
 from .registry import register_callback_action
-from .util import combine_task_graph_files, create_tasks
+from .util import combine_task_graph_files, create_tasks, fetch_graph_and_labels
 
 PUSHLOG_TMPL = "{}/json-pushes?version=2&startID={}&endID={}"
 INDEX_TMPL = "gecko.v2.{}.pushlog-id.{}.decision"
@@ -32,15 +29,31 @@ logger = logging.getLogger(__name__)
         "while adding the --gecko-profile cmd arg."
     ),
     order=200,
-    context=[{"test-type": "talos"}, {"test-type": "raptor"}],
-    schema={},
+    context=[
+        {"test-type": "talos"},
+        {"test-type": "raptor"},
+        {"test-type": "mozperftest"},
+    ],
+    schema={
+        "type": "object",
+        "properties": {
+            "depth": {
+                "type": "integer",
+                "default": 1,
+                "minimum": 1,
+                "maximum": 10,
+                "title": "Depth",
+                "description": "How many pushes to backfill the profiling task on.",
+            },
+        },
+    },
     available=lambda parameters: True,
 )
 def geckoprofile_action(parameters, graph_config, input, task_group_id, task_id):
     task = get_task_definition(task_id)
     label = task["metadata"]["name"]
     pushes = []
-    depth = 2
+    depth = input.get("depth", 1)
     end_id = int(parameters["pushlog_id"])
 
     while True:
@@ -64,19 +77,12 @@ def geckoprofile_action(parameters, graph_config, input, task_group_id, task_id)
 
     for push in pushes:
         try:
-            full_task_graph = get_artifact_from_index(
-                INDEX_TMPL.format(parameters["project"], push),
-                "public/full-task-graph.json",
-            )
-            _, full_task_graph = TaskGraph.from_json(full_task_graph)
-            label_to_taskid = get_artifact_from_index(
-                INDEX_TMPL.format(parameters["project"], push),
-                "public/label-to-taskid.json",
-            )
             push_params = get_artifact_from_index(
                 INDEX_TMPL.format(parameters["project"], push), "public/parameters.yml"
             )
-            push_decision_task_id = find_decision_task(push_params, graph_config)
+            push_decision_task_id, full_task_graph, label_to_taskid, _ = (
+                fetch_graph_and_labels(push_params, graph_config)
+            )
         except HTTPError as e:
             logger.info(f"Skipping {push} due to missing index artifacts! Error: {e}")
             continue
@@ -87,10 +93,20 @@ def geckoprofile_action(parameters, graph_config, input, task_group_id, task_id)
                 if task.label != label:
                     return task
 
-                cmd = task.task["payload"]["command"]
-                task.task["payload"]["command"] = add_args_to_perf_command(
-                    cmd, ["--gecko-profile"]
-                )
+                if task.kind == "perftest":
+                    perf_flags = task.task["payload"]["env"].get("PERF_FLAGS")
+                    if perf_flags:
+                        task.task["payload"]["env"][
+                            "PERF_FLAGS"
+                        ] = f"{perf_flags} gecko-profile"
+                    else:
+                        task.task["payload"]["env"]["PERF_FLAGS"] = "gecko-profile"
+                else:
+                    cmd = task.task["payload"]["command"]
+                    task.task["payload"]["command"] = add_args_to_perf_command(
+                        cmd, ["--gecko-profile"]
+                    )
+
                 task.task["extra"]["treeherder"]["symbol"] += "-p"
                 task.task["extra"]["treeherder"]["groupName"] += " (profiling)"
                 return task
@@ -111,7 +127,7 @@ def geckoprofile_action(parameters, graph_config, input, task_group_id, task_id)
     combine_task_graph_files(backfill_pushes)
 
 
-def add_args_to_perf_command(payload_commands, extra_args=[]):
+def add_args_to_perf_command(payload_commands, extra_args=()):
     """
     Add custom command line args to a given command.
     args:
@@ -135,4 +151,5 @@ def add_args_to_perf_command(payload_commands, extra_args=[]):
         perf_command = " ".join(perf_command)
 
     payload_commands[perf_command_idx] = perf_command
+
     return payload_commands

@@ -19,19 +19,24 @@ import org.mozilla.fenix.tabstray.syncedtabs.SyncedTabsListItem
  * @property mode Whether the browser tab list is in multi-select mode or not with the set of
  * currently selected tabs.
  * @property inactiveTabs The list of tabs are considered inactive.
+ * @property inactiveTabsExpanded A flag to know if the Inactive Tabs section of the Tabs Tray
+ * should be expanded when the tray is opened.
  * @property normalTabs The list of normal tabs that do not fall under [inactiveTabs].
  * @property privateTabs The list of tabs that are [ContentState.private].
  * @property syncedTabs The list of synced tabs.
  * @property syncing Whether the Synced Tabs feature should fetch the latest tabs from paired devices.
+ * @property selectedTabId The ID of the currently selected (active) tab.
  */
 data class TabsTrayState(
     val selectedPage: Page = Page.NormalTabs,
     val mode: Mode = Mode.Normal,
     val inactiveTabs: List<TabSessionState> = emptyList(),
+    val inactiveTabsExpanded: Boolean = false,
     val normalTabs: List<TabSessionState> = emptyList(),
     val privateTabs: List<TabSessionState> = emptyList(),
     val syncedTabs: List<SyncedTabsListItem> = emptyList(),
     val syncing: Boolean = false,
+    val selectedTabId: String? = null,
 ) : State {
 
     /**
@@ -132,6 +137,13 @@ sealed class TabsTrayAction : Action {
     object SyncCompleted : TabsTrayAction()
 
     /**
+     * Updates the [TabsTrayState.inactiveTabsExpanded] boolean
+     *
+     * @property expanded The updated boolean to [TabsTrayState.inactiveTabsExpanded]
+     */
+    data class UpdateInactiveExpanded(val expanded: Boolean) : TabsTrayAction()
+
+    /**
      * Updates the list of tabs in [TabsTrayState.inactiveTabs].
      */
     data class UpdateInactiveTabs(val tabs: List<TabSessionState>) : TabsTrayAction()
@@ -150,6 +162,38 @@ sealed class TabsTrayAction : Action {
      * Updates the list of synced tabs in [TabsTrayState.syncedTabs].
      */
     data class UpdateSyncedTabs(val tabs: List<SyncedTabsListItem>) : TabsTrayAction()
+
+    /**
+     * Updates the selected tab id.
+     *
+     * @property tabId The ID of the tab that is currently selected.
+     */
+    data class UpdateSelectedTabId(val tabId: String?) : TabsTrayAction()
+
+    /**
+     * [TabsTrayAction] fired when the tab auto close dialog is shown.
+     */
+    object TabAutoCloseDialogShown : TabsTrayAction()
+
+    /**
+     * [TabsTrayAction] fired when the user requests to share all of their normal tabs.
+     */
+    object ShareAllNormalTabs : TabsTrayAction()
+
+    /**
+     * [TabsTrayAction] fired when the user requests to share all of their private tabs.
+     */
+    object ShareAllPrivateTabs : TabsTrayAction()
+
+    /**
+     * [TabsTrayAction] fired when the user requests to close all normal tabs.
+     */
+    object CloseAllNormalTabs : TabsTrayAction()
+
+    /**
+     * [TabsTrayAction] fired when the user requests to close all private tabs.
+     */
+    object CloseAllPrivateTabs : TabsTrayAction()
 }
 
 /**
@@ -180,6 +224,8 @@ internal object TabsTrayReducer {
                 state.copy(syncing = true)
             is TabsTrayAction.SyncCompleted ->
                 state.copy(syncing = false)
+            is TabsTrayAction.UpdateInactiveExpanded ->
+                state.copy(inactiveTabsExpanded = action.expanded)
             is TabsTrayAction.UpdateInactiveTabs ->
                 state.copy(inactiveTabs = action.tabs)
             is TabsTrayAction.UpdateNormalTabs ->
@@ -188,6 +234,13 @@ internal object TabsTrayReducer {
                 state.copy(privateTabs = action.tabs)
             is TabsTrayAction.UpdateSyncedTabs ->
                 state.copy(syncedTabs = action.tabs)
+            is TabsTrayAction.UpdateSelectedTabId ->
+                state.copy(selectedTabId = action.tabId)
+            is TabsTrayAction.TabAutoCloseDialogShown -> state
+            is TabsTrayAction.ShareAllNormalTabs -> state
+            is TabsTrayAction.ShareAllPrivateTabs -> state
+            is TabsTrayAction.CloseAllNormalTabs -> state
+            is TabsTrayAction.CloseAllPrivateTabs -> state
         }
     }
 }

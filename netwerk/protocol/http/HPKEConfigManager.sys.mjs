@@ -5,7 +5,31 @@
 let knownConfigs = new Map();
 
 export class HPKEConfigManager {
+  /**
+   * Decodes a base64url-encoded key string.
+   * @param {string} aBase64Key
+   * @returns {Uint8Array}
+   */
+  static decodeKey(aBase64Key) {
+    return new Uint8Array(
+      ChromeUtils.base64URLDecode(aBase64Key, { padding: "ignore" })
+    );
+  }
+
   static async get(aURL, aOptions = {}) {
+    // If we're in a child, forward to the parent.
+    let { remoteType } = Services.appinfo;
+    if (remoteType) {
+      if (remoteType != "privilegedabout") {
+        // The remoteTypes definition in the actor definition will enforce
+        // that calling getActor fails, this is a more readable error:
+        throw new Error(
+          "HPKEConfigManager cannot be used outside of the privilegedabout process."
+        );
+      }
+      let actor = ChromeUtils.domProcessChild.getActor("HPKEConfigManager");
+      return actor.sendQuery("getconfig", { url: aURL, options: aOptions });
+    }
     try {
       let config = await this.#getInternal(aURL, aOptions);
       return new Uint8Array(config);
@@ -24,10 +48,10 @@ export class HPKEConfigManager {
     ) {
       return knownConfig.config;
     }
-    return this.fetchAndStore(aURL, aOptions);
+    return this.#fetchAndStore(aURL, aOptions);
   }
 
-  static async fetchAndStore(aURL, aOptions = {}) {
+  static async #fetchAndStore(aURL, aOptions = {}) {
     let fetchDate = Date.now();
     let resp = await fetch(aURL, { signal: aOptions.abortSignal });
     if (!resp?.ok) {
@@ -38,5 +62,14 @@ export class HPKEConfigManager {
     let config = await resp.blob().then(b => b.arrayBuffer());
     knownConfigs.set(aURL, { config, fetchDate });
     return config;
+  }
+}
+
+export class HPKEConfigManagerParent extends JSProcessActorParent {
+  receiveMessage(msg) {
+    if (msg.name == "getconfig") {
+      return HPKEConfigManager.get(msg.data.url, msg.data.options);
+    }
+    return null;
   }
 }

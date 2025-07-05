@@ -100,6 +100,7 @@ import org.mozilla.geckoview.WebNotificationDelegate;
 import org.mozilla.geckoview.WebRequest;
 import org.mozilla.geckoview.WebRequestError;
 import org.mozilla.geckoview.WebResponse;
+import org.mozilla.geckoview_example.utils.WindowUtils;
 
 interface WebExtensionDelegate {
   default GeckoSession toggleBrowserActionPopup(boolean force) {
@@ -143,11 +144,13 @@ class WebExtensionManager
 
   @Nullable
   @Override
-  public GeckoResult<AllowOrDeny> onInstallPrompt(
-      final @NonNull WebExtension extension,
-      @NonNull String[] permissions,
-      @NonNull String[] origins) {
-    return GeckoResult.allow();
+  public GeckoResult<WebExtension.PermissionPromptResponse> onInstallPromptRequest(
+      @NonNull WebExtension extension, @NonNull String[] permissions, @NonNull String[] origins) {
+    return GeckoResult.fromValue(
+        new org.mozilla.geckoview.WebExtension.PermissionPromptResponse(
+            true, // isPermissionsGranted
+            true // isPrivateModeGranted
+            ));
   }
 
   @Nullable
@@ -780,11 +783,13 @@ public class GeckoViewActivity extends AppCompatActivity
       new BooleanSetting(R.string.key_dfpi, R.bool.dfpi_default) {
         @Override
         public void setValue(final GeckoRuntimeSettings settings, final Boolean value) {
-          int cookieBehavior =
-              value
-                  ? ContentBlocking.CookieBehavior.ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS
-                  : ContentBlocking.CookieBehavior.ACCEPT_NON_TRACKERS;
-          settings.getContentBlocking().setCookieBehavior(cookieBehavior);
+          // If dFPI is enabled set appropriate cookieBehavior, else do not overwrite.
+          if (value) {
+            settings
+                .getContentBlocking()
+                .setCookieBehavior(
+                    ContentBlocking.CookieBehavior.ACCEPT_FIRST_PARTY_AND_ISOLATE_OTHERS);
+          }
         }
       };
 
@@ -826,6 +831,8 @@ public class GeckoViewActivity extends AppCompatActivity
     mGeckoView.setActivityContextDelegate(new ExampleActivityDelegate());
     mTabSessionManager = new TabSessionManager();
 
+    WindowUtils.setupPersistentInsets(getWindow());
+    WindowUtils.setupImeBehavior(getWindow());
     setSupportActionBar(findViewById(R.id.toolbar));
 
     SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
@@ -1327,9 +1334,6 @@ public class GeckoViewActivity extends AppCompatActivity
       case R.id.print_page:
         printPage(session);
         break;
-      case R.id.shopping_actions:
-        shoppingActions(session, mCurrentUri);
-        break;
       case R.id.translate:
         translate(session);
         break;
@@ -1338,6 +1342,9 @@ public class GeckoViewActivity extends AppCompatActivity
         break;
       case R.id.translate_manage:
         translateManage();
+        break;
+      case R.id.webcompat_info:
+        webCompatInfo(session);
         break;
       default:
         return super.onOptionsItemSelected(item);
@@ -2029,15 +2036,15 @@ public class GeckoViewActivity extends AppCompatActivity
 
     @Override
     public void onFullScreen(final GeckoSession session, final boolean fullScreen) {
-      getWindow()
-          .setFlags(
-              fullScreen ? WindowManager.LayoutParams.FLAG_FULLSCREEN : 0,
-              WindowManager.LayoutParams.FLAG_FULLSCREEN);
       mFullScreen = fullScreen;
       if (fullScreen) {
         getSupportActionBar().hide();
+        mGeckoView.setDynamicToolbarMaxHeight(0);
+        WindowUtils.enterImmersiveMode(getWindow());
       } else {
         getSupportActionBar().show();
+        mGeckoView.setDynamicToolbarMaxHeight(getSupportActionBar().getHeight());
+        WindowUtils.exitImmersiveMode(getWindow());
       }
     }
 
@@ -2160,16 +2167,19 @@ public class GeckoViewActivity extends AppCompatActivity
     }
 
     @Override
-    public void onProductUrl(@NonNull final GeckoSession session) {
-      Log.d("Gecko", "onProductUrl");
-    }
-
-    @Override
     public void onShowDynamicToolbar(final GeckoSession session) {
       final View toolbar = findViewById(R.id.toolbar);
       if (toolbar != null) {
         toolbar.setTranslationY(0f);
         mGeckoView.setVerticalClipping(0);
+      }
+    }
+
+    @Override
+    public void onHideDynamicToolbar(final GeckoSession session) {
+      final View toolbar = findViewById(R.id.toolbar);
+      if (toolbar != null) {
+        toolbar.setTranslationY(toolbar.getHeight());
       }
     }
 
@@ -2424,201 +2434,29 @@ public class GeckoViewActivity extends AppCompatActivity
     return null;
   }
 
-  public void shoppingActions(@NonNull final GeckoSession session, @NonNull final String url) {
-    Spinner actionSelect = new Spinner(this);
-    List<String> actions =
-        new ArrayList<>(
-            Arrays.asList(
-                new String[] {
-                  "Get Analysis",
-                  "Get Recommendations",
-                  "Create Analysis",
-                  "Get Analysis Status",
-                  "Poll Until Analysis Completed",
-                  "Report Back in Stock",
-                }));
-    ArrayAdapter<String> actionData =
-        new ArrayAdapter<String>(
-            this.getBaseContext(), android.R.layout.simple_spinner_item, actions);
-    actionSelect.setAdapter(actionData);
+  public void webCompatInfo(@NonNull final GeckoSession session) {
+    GeckoResult<JSONObject> result = session.getWebCompatInfo();
+    result.map(
+        getWebCompatInfo -> {
+          Log.d(LOGTAG, "Received web compat info.");
+          if (getWebCompatInfo != null) {
+            JSONObject info = new JSONObject();
+            info.put("reason", "Reason");
+            info.put("description", "Description");
+            info.put("endpointUrl", "https://webcompat.com/issues/new");
+            info.put("reportUrl", "https://www.mozilla.org/en-US/firefox/");
 
-    final AlertDialog.Builder builder = new AlertDialog.Builder(this);
-    builder.setTitle(R.string.shopping_actions);
-    builder.setView(
-        shoppingLayout(
-            actionSelect, R.string.shopping_manage_actions, R.string.shopping_display_log));
-    builder.setPositiveButton(
-        R.string.shopping_query,
-        (dialog, which) -> {
-          final String action = (String) actionSelect.getSelectedItem();
-          switch (action) {
-            case "Get Analysis":
-              requestAnalysis(session, url);
-              break;
-            case "Get Recommendations":
-              requestRecommendations(session, url);
-              break;
-            case "Create Analysis":
-              requestCreateAnalysis(session, url);
-              break;
-            case "Get Analysis Status":
-              requestAnalysisCreationStatus(session, url);
-              break;
-            case "Poll Until Analysis Completed":
-              pollForAnalysisCompleted(session, url);
-              break;
-            case "Report Back in Stock":
-              reportBackInStock(session, url);
-              break;
-            default:
-              throw new RuntimeException("Unknown action: " + action);
+            JSONObject reporterConfig = new JSONObject();
+            reporterConfig.put("src", "android-components-reporter");
+            reporterConfig.put("utm_campaign", "report-site-issue-button");
+            reporterConfig.put("utm_source", "android-components-reporter");
+
+            info.put("reporterConfig", reporterConfig);
+            info.put("webcompatInfo", getWebCompatInfo);
+
+            session.sendMoreWebCompatInfo(info);
           }
-        });
-    builder.setNegativeButton(
-        R.string.cancel,
-        (dialog, which) -> {
-          // Nothing to do
-        });
-
-    builder.show();
-  }
-
-  private RelativeLayout shoppingLayout(Spinner spinnerA, int labelA, int labelInfo) {
-    TextView fromLangLabel = new TextView(this);
-    fromLangLabel.setText(labelA);
-    LinearLayout action = new LinearLayout(this);
-    action.setId(View.generateViewId());
-    action.addView(fromLangLabel);
-    action.addView(spinnerA);
-    RelativeLayout.LayoutParams actionParams =
-        new RelativeLayout.LayoutParams(
-            RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
-    actionParams.setMarginStart(30);
-
-    // Layout
-    RelativeLayout layout = new RelativeLayout(this);
-    layout.addView(action, actionParams);
-
-    // Hint
-    TextView info = new TextView(this);
-    if (labelInfo != -1) {
-      RelativeLayout.LayoutParams infoParams =
-          new RelativeLayout.LayoutParams(
-              RelativeLayout.LayoutParams.WRAP_CONTENT, RelativeLayout.LayoutParams.WRAP_CONTENT);
-      infoParams.setMarginStart(30);
-      infoParams.addRule(RelativeLayout.BELOW, action.getId());
-      info.setText(labelInfo);
-      layout.addView(info, infoParams);
-    }
-
-    return layout;
-  }
-
-  public void requestAnalysis(@NonNull final GeckoSession session, @NonNull final String url) {
-    GeckoResult<GeckoSession.ReviewAnalysis> result = session.requestAnalysis(url);
-    result.map(
-        analysis -> {
-          Log.d(LOGTAG, "Shopping Action: Get analysis: " + analysis);
-          return analysis;
-        });
-  }
-
-  public void requestCreateAnalysis(
-      @NonNull final GeckoSession session, @NonNull final String url) {
-    GeckoResult<String> result = session.requestCreateAnalysis(url);
-    result.map(
-        status -> {
-          Log.d(LOGTAG, "Shopping Action: Create analysis, status: " + status);
-          return status;
-        });
-  }
-
-  public void requestAnalysisCreationStatus(
-      @NonNull final GeckoSession session, @NonNull final String url) {
-    GeckoResult<GeckoSession.AnalysisStatusResponse> result = session.requestAnalysisStatus(url);
-    result.map(
-        status -> {
-          Log.d(LOGTAG, "Shopping Action: Get analysis status: " + status.status);
-          Log.d(LOGTAG, "Shopping Action: Get analysis status Progress: " + status.progress);
-          return status;
-        });
-  }
-
-  public void pollForAnalysisCompleted(
-      @NonNull final GeckoSession session, @NonNull final String url) {
-    Log.d(LOGTAG, "Shopping Action: Poll until analysis completed");
-    GeckoResult<String> result = session.pollForAnalysisCompleted(url);
-    result.map(
-        status -> {
-          Log.d(LOGTAG, "Shopping Action: Get analysis status: " + status);
-          return status;
-        });
-  }
-
-  public void reportBackInStock(@NonNull final GeckoSession session, @NonNull final String url) {
-    Log.d(LOGTAG, "Shopping Action: Report back in stock");
-    GeckoResult<String> result = session.reportBackInStock(url);
-    result.map(
-        message -> {
-          Log.d(LOGTAG, "Shopping Action: Back in stock status: " + message);
-          return message;
-        });
-  }
-
-  public void requestRecommendations(
-      @NonNull final GeckoSession session, @NonNull final String url) {
-    GeckoResult<List<GeckoSession.Recommendation>> result = session.requestRecommendations(url);
-    result.map(
-        recs -> {
-          List<String> aids = new ArrayList<>();
-          for (int i = 0; i < recs.size(); ++i) {
-            aids.add(recs.get(i).aid);
-          }
-          if (aids.size() >= 1) {
-            Log.d(
-                LOGTAG, "Shopping Action: Sending attribution events to first AID: " + aids.get(0));
-            session
-                .sendClickAttributionEvent(aids.get(0))
-                .then(
-                    new GeckoResult.OnValueListener<Boolean, Void>() {
-                      @Override
-                      public GeckoResult<Void> onValue(final Boolean isSuccessful) {
-                        Log.d(
-                            LOGTAG,
-                            "Shopping Action: Success of click attribution event: " + isSuccessful);
-                        return null;
-                      }
-                    });
-            session
-                .sendImpressionAttributionEvent(aids.get(0))
-                .then(
-                    new GeckoResult.OnValueListener<Boolean, Void>() {
-                      @Override
-                      public GeckoResult<Void> onValue(final Boolean isSuccessful) {
-                        Log.d(
-                            LOGTAG,
-                            "Shopping Action: Success of impression attribution event: "
-                                + isSuccessful);
-                        return null;
-                      }
-                    });
-            session
-                .sendPlacementAttributionEvent(aids.get(0))
-                .then(
-                    new GeckoResult.OnValueListener<Boolean, Void>() {
-                      @Override
-                      public GeckoResult<Void> onValue(final Boolean isSuccessful) {
-                        Log.d(
-                            LOGTAG,
-                            "Shopping Action: Success of placement attribution event: "
-                                + isSuccessful);
-                        return null;
-                      }
-                    });
-          } else {
-            Log.d(LOGTAG, "Shopping Action: No recommendations. No attribution events were sent.");
-          }
-          return recs;
+          return getWebCompatInfo;
         });
   }
 

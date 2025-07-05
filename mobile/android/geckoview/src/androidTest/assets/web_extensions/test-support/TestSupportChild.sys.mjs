@@ -24,6 +24,8 @@ export class TestSupportChild extends GeckoViewActorChild {
             repaintDone();
           }
         });
+      case "ZoomToFocusedInput":
+        return this.contentWindow.windowUtils.zoomToFocusedInput();
       case "PromiseAllPaintsDone":
         return new Promise(resolve => {
           const window = this.contentWindow;
@@ -74,6 +76,17 @@ export class TestSupportChild extends GeckoViewActorChild {
       }
       case "WaitForContentTransformsReceived": {
         return this.contentWindow.docShell.browserChild.contentTransformsReceived();
+      }
+      case "SetHandlingUserInput": {
+        const { handlingUserInput } = aMsg.data;
+        this._handlingUserInput?.destruct();
+        this._handlingUserInput = null;
+
+        if (handlingUserInput) {
+          this._handlingUserInput =
+            this.contentWindow.windowUtils.setHandlingUserInput(true);
+        }
+        return Promise.resolve();
       }
     }
     return null;

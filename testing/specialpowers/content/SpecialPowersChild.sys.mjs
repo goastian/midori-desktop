@@ -14,6 +14,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
   MockFilePicker: "resource://testing-common/MockFilePicker.sys.mjs",
   MockPermissionPrompt:
     "resource://testing-common/MockPermissionPrompt.sys.mjs",
+  MockPromptCollection:
+    "resource://testing-common/MockPromptCollection.sys.mjs",
+  MockSound: "resource://testing-common/MockSound.sys.mjs",
   NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   PerTestCoverageUtils:
     "resource://testing-common/PerTestCoverageUtils.sys.mjs",
@@ -22,7 +25,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "resource://testing-common/SpecialPowersSandbox.sys.mjs",
   WrapPrivileged: "resource://testing-common/WrapPrivileged.sys.mjs",
 });
-import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 Cu.crashIfNotInAutomation();
 
@@ -75,7 +77,6 @@ SPConsoleListener.prototype = {
       errorMessage: null,
       cssSelectors: null,
       sourceName: null,
-      sourceLine: null,
       lineNumber: null,
       columnNumber: null,
       category: null,
@@ -88,7 +89,6 @@ SPConsoleListener.prototype = {
       m.errorMessage = msg.errorMessage;
       m.cssSelectors = msg.cssSelectors;
       m.sourceName = msg.sourceName;
-      m.sourceLine = msg.sourceLine;
       m.lineNumber = msg.lineNumber;
       m.columnNumber = msg.columnNumber;
       m.category = msg.category;
@@ -303,6 +303,7 @@ export class SpecialPowersChild extends JSWindowActorChild {
 
       case "Assert":
         {
+          // Handles info & Assert reports from SpecialPowersSandbox.sys.mjs.
           if ("info" in message.data) {
             (this.xpcshellScope || this.SimpleTest).info(message.data.info);
             break;
@@ -311,12 +312,11 @@ export class SpecialPowersChild extends JSWindowActorChild {
           // An assertion has been done in a mochitest chrome script
           let { name, passed, stack, diag, expectFail } = message.data;
 
-          let { SimpleTest } = this;
-          if (SimpleTest) {
-            let expected = expectFail ? "fail" : "pass";
-            SimpleTest.record(passed, name, diag, stack, expected);
-          } else if (this.xpcshellScope) {
+          if (this.xpcshellScope) {
             this.xpcshellScope.do_report_result(passed, name, stack);
+          } else if (this.SimpleTest) {
+            let expected = expectFail ? "fail" : "pass";
+            this.SimpleTest.record(passed, name, diag, stack, expected);
           } else {
             // Well, this is unexpected.
             dump(name + "\n");
@@ -443,8 +443,16 @@ export class SpecialPowersChild extends JSWindowActorChild {
     return lazy.MockColorPicker;
   }
 
+  get MockPromptCollection() {
+    return lazy.MockPromptCollection;
+  }
+
   get MockPermissionPrompt() {
     return lazy.MockPermissionPrompt;
+  }
+
+  get MockSound() {
+    return lazy.MockSound;
   }
 
   quit() {
@@ -472,10 +480,10 @@ export class SpecialPowersChild extends JSWindowActorChild {
     return this.sendQuery("Ping").then(aCallback);
   }
 
-  async registeredServiceWorkers() {
+  async registeredServiceWorkers(aForceCheck) {
     // Please see the comment in SpecialPowersParent.sys.mjs above
     // this._serviceWorkerListener's assignment for what this returns.
-    if (this._serviceWorkerRegistered) {
+    if (this._serviceWorkerRegistered || aForceCheck) {
       // This test registered at least one service worker. Send a synchronous
       // call to the parent to make sure that it called unregister on all of its
       // service workers.
@@ -484,24 +492,6 @@ export class SpecialPowersChild extends JSWindowActorChild {
     }
 
     return [];
-  }
-
-  /*
-   * Load a privileged script that runs same-process. This is different from
-   * |loadChromeScript|, which will run in the parent process in e10s mode.
-   */
-  loadPrivilegedScript(aFunction) {
-    var str = "(" + aFunction.toString() + ")();";
-    let gGlobalObject = Cu.getGlobalForObject(this);
-    let sb = Cu.Sandbox(gGlobalObject);
-    var window = this.contentWindow;
-    var mc = new window.MessageChannel();
-    sb.port = mc.port1;
-    let blob = new Blob([str], { type: "application/javascript" });
-    let blobUrl = URL.createObjectURL(blob);
-    Services.scriptloader.loadSubScript(blobUrl, sb);
-
-    return mc.port2;
   }
 
   _readUrlAsString(aUrl) {
@@ -1516,6 +1506,13 @@ export class SpecialPowersChild extends JSWindowActorChild {
    * The sandbox also has access to an Assert object, as provided by
    * Assert.sys.mjs. Any assertion methods called before the task resolves
    * will be relayed back to the test environment of the caller.
+   * Assertions triggered after a task returns may be relayed back if
+   * setAsDefaultAssertHandler() has been called, until this SpecialPowers
+   * instance is destroyed.
+   *
+   * If your assertions need to outlive this SpecialPowers instance,
+   * use SpecialPowersForProcess from SpecialPowersProcessActor.sys.mjs,
+   * which lives until the specified child process terminates.
    *
    * @param {BrowsingContext or FrameLoaderOwner or WindowProxy} target
    *        The target in which to run the task. This may be any element
@@ -1600,6 +1597,8 @@ export class SpecialPowersChild extends JSWindowActorChild {
       { imports }
     );
 
+    // If more variables are made available, don't forget to update
+    // tools/lint/eslint/eslint-plugin-mozilla/lib/rules/import-content-task-globals.js.
     sb.sandbox.SpecialPowers = this;
     sb.sandbox.ContentTaskUtils = lazy.ContentTaskUtils;
     for (let [global, prop] of Object.entries({
@@ -1732,6 +1731,24 @@ export class SpecialPowersChild extends JSWindowActorChild {
     Cc["@mozilla.org/widget/clipboardhelper;1"]
       .getService(Ci.nsIClipboardHelper)
       .copyString(str);
+  }
+
+  cleanupAllClipboard() {
+    // copied from widget/tests/clipboard_helper.js
+    // there is a write there I didn't want to copy
+    const clipboard = Services.clipboard;
+    const clipboardTypes = [
+      clipboard.kGlobalClipboard,
+      clipboard.kSelectionClipboard,
+      clipboard.kFindClipboard,
+      clipboard.kSelectionCache,
+    ];
+
+    clipboardTypes.forEach(function (type) {
+      if (clipboard.isClipboardTypeSupported(type)) {
+        clipboard.emptyClipboard(type);
+      }
+    });
   }
 
   supportsSelectionClipboard() {
@@ -2291,6 +2308,3 @@ SpecialPowersChild.prototype._proxiedObservers = {
     );
   },
 };
-
-SpecialPowersChild.prototype.EARLY_BETA_OR_EARLIER =
-  AppConstants.EARLY_BETA_OR_EARLIER;

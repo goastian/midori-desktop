@@ -39,7 +39,7 @@ export class CdpTarget extends Target {
   #sessionFactory:
     | ((isAutoAttachEmulated: boolean) => Promise<CDPSession>)
     | undefined;
-
+  #childTargets = new Set<CdpTarget>();
   _initializedDeferred = Deferred.create<InitializationStatus>();
   _isClosedDeferred = Deferred.create<void>();
   _targetId: string;
@@ -56,7 +56,7 @@ export class CdpTarget extends Target {
     targetManager: TargetManager | undefined,
     sessionFactory:
       | ((isAutoAttachEmulated: boolean) => Promise<CDPSession>)
-      | undefined
+      | undefined,
   ) {
     super();
     this.#session = session;
@@ -88,8 +88,20 @@ export class CdpTarget extends Target {
     return this.#session;
   }
 
+  _addChildTarget(target: CdpTarget): void {
+    this.#childTargets.add(target);
+  }
+
+  _removeChildTarget(target: CdpTarget): void {
+    this.#childTargets.delete(target);
+  }
+
+  _childTargets(): ReadonlySet<CdpTarget> {
+    return this.#childTargets;
+  }
+
   protected _sessionFactory(): (
-    isAutoAttachEmulated: boolean
+    isAutoAttachEmulated: boolean,
   ) => Promise<CDPSession> {
     if (!this.#sessionFactory) {
       throw new Error('sessionFactory is not initialized');
@@ -203,7 +215,7 @@ export class PageTarget extends CdpTarget {
     browserContext: BrowserContext,
     targetManager: TargetManager,
     sessionFactory: (isAutoAttachEmulated: boolean) => Promise<CDPSession>,
-    defaultViewport: Viewport | null
+    defaultViewport: Viewport | null,
   ) {
     super(targetInfo, session, browserContext, targetManager, sessionFactory);
     this.#defaultViewport = defaultViewport ?? undefined;
@@ -285,7 +297,7 @@ export class WorkerTarget extends CdpTarget {
           this._targetId,
           this.type(),
           () => {} /* consoleAPICalled */,
-          () => {} /* exceptionThrown */
+          () => {} /* exceptionThrown */,
         );
       });
     }

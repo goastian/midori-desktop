@@ -5,22 +5,23 @@
 package org.mozilla.fenix.settings.deletebrowsingdata
 
 import android.app.Activity
-import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers.IO
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import org.mozilla.fenix.R
-import org.mozilla.fenix.components.FenixSnackbar
+import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.settings
 
 /**
  * Deletes selected browsing data and finishes the activity.
  */
-fun deleteAndQuit(activity: Activity, coroutineScope: CoroutineScope, snackbar: FenixSnackbar?) {
+fun deleteAndQuit(activity: Activity, coroutineScope: CoroutineScope) {
     coroutineScope.launch {
+        val appStore = activity.components.appStore
+        appStore.dispatch(AppAction.DeleteAndQuitStarted)
+
         val settings = activity.settings()
         val controller = DefaultDeleteBrowsingDataController(
             activity.components.useCases.tabsUseCases.removeAllTabs,
@@ -28,26 +29,17 @@ fun deleteAndQuit(activity: Activity, coroutineScope: CoroutineScope, snackbar: 
             activity.components.core.historyStorage,
             activity.components.core.permissionStorage,
             activity.components.core.store,
-            activity.components.core.icons,
             activity.components.core.engine,
             coroutineContext,
         )
 
-        snackbar?.apply {
-            setText(activity.getString(R.string.deleting_browsing_data_in_progress))
-            duration = Snackbar.LENGTH_INDEFINITE
-            show()
-        }
-
-        DeleteBrowsingDataOnQuitType.values().map { type ->
+        DeleteBrowsingDataOnQuitType.entries.map { type ->
             launch {
                 if (settings.getDeleteDataOnQuit(type)) {
                     controller.deleteType(type)
                 }
             }
         }.joinAll()
-
-        snackbar?.dismiss()
 
         activity.finishAndRemoveTask()
     }

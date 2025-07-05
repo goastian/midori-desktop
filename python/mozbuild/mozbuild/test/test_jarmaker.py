@@ -7,13 +7,12 @@ import os.path
 import sys
 import unittest
 from filecmp import dircmp
+from io import StringIO
 from shutil import copy2, rmtree
 from tempfile import mkdtemp
 from zipfile import ZipFile
 
 import mozunit
-import six
-from six import StringIO
 
 from mozbuild.jar import JarMaker
 
@@ -89,7 +88,7 @@ def symlinks_supported(path):
         # Add 1 for a trailing backslash if necessary, and 1 for the terminating
         # null character.
         volpath = ctypes.create_string_buffer(len(path) + 2)
-        rv = GetVolumePathName(six.ensure_binary(path), volpath, len(volpath))
+        rv = GetVolumePathName(path.encode(), volpath, len(volpath))
         if rv == 0:
             raise WinError()
 
@@ -109,7 +108,7 @@ def symlinks_supported(path):
 def _getfileinfo(path):
     """Return information for the given file. This only works on Windows."""
     fh = CreateFile(
-        six.ensure_binary(path),
+        path.encode(),
         GENERIC_READ,
         FILE_SHARE_READ,
         None,
@@ -154,7 +153,7 @@ class _TreeDiff(dircmp):
         rv["diff_files"] += map(lambda l: basepath.format(l), dc.diff_files)
         rv["funny"] += map(lambda l: basepath.format(l), dc.common_funny)
         rv["funny"] += map(lambda l: basepath.format(l), dc.funny_files)
-        for subdir, _dc in six.iteritems(dc.subdirs):
+        for subdir, _dc in dc.subdirs.items():
             self._fillDiff(_dc, rv, basepath.format(subdir + "/{0}"))
 
     def allResults(self, left, right):
@@ -204,10 +203,11 @@ class TestJarMaker(unittest.TestCase):
         for attr in ("topsourcedir", "sourcedirs"):
             if attr in kwargs:
                 setattr(jm, attr, kwargs[attr])
-        jm.makeJar(infile, self.builddir)
         cwd = os.getcwd()
         os.chdir(self.builddir)
         try:
+            jm.makeJar(infile, self.builddir)
+
             # expand build to stage
             for path, dirs, files in os.walk("."):
                 stagedir = os.path.join(self.stagedir, path)
@@ -280,7 +280,7 @@ class TestJarMaker(unittest.TestCase):
         destfoo = os.path.join(self.builddir, "chrome", "test", "dir", "foo")
         self.assertTrue(
             is_symlink_to(destfoo, srcbar),
-            "{0} is not a symlink to {1}".format(destfoo, srcbar),
+            f"{destfoo} is not a symlink to {srcbar}",
         )
 
     def _create_wildcard_setup(self):
@@ -336,12 +336,12 @@ class TestJarMaker(unittest.TestCase):
             ("hoge", "foo", "2"): ("qux", "foo", "2"),
             ("hoge", "baz"): ("qux", "baz"),
         }
-        for dest, src in six.iteritems(expected_symlinks):
+        for dest, src in expected_symlinks.items():
             srcpath = os.path.join(self.srcdir, *src)
             destpath = os.path.join(self.builddir, "chrome", "test", "dir", *dest)
             self.assertTrue(
                 is_symlink_to(destpath, srcpath),
-                "{0} is not a symlink to {1}".format(destpath, srcpath),
+                f"{destpath} is not a symlink to {srcpath}",
             )
 
 
@@ -476,7 +476,7 @@ class Test_fluent(unittest.TestCase):
         srcpath = os.path.join(self.l10nbase, "app", "app", "test.ftl")
         self.assertTrue(
             is_symlink_to(destpath, srcpath),
-            "{0} should be a symlink to {1}".format(destpath, srcpath),
+            f"{destpath} should be a symlink to {srcpath}",
         )
 
         # test2.ftl on the other hand, is only present in en-US dir, and should

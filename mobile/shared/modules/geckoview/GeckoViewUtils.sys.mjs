@@ -2,59 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { Log } from "resource://gre/modules/Log.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  AndroidLog: "resource://gre/modules/AndroidLog.sys.mjs",
   EventDispatcher: "resource://gre/modules/Messaging.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
-/**
- * A formatter that does not prepend time/name/level information to messages,
- * because those fields are logged separately when using the Android logger.
- */
-class AndroidFormatter extends Log.BasicFormatter {
-  format(message) {
-    return this.formatText(message);
-  }
-}
-
-/*
- * AndroidAppender
- * Logs to Android logcat using AndroidLog.sys.mjs
- */
-class AndroidAppender extends Log.Appender {
-  constructor(aFormatter) {
-    super(aFormatter || new AndroidFormatter());
-    this._name = "AndroidAppender";
-
-    // Map log level to AndroidLog.foo method.
-    this._mapping = {
-      [Log.Level.Fatal]: "e",
-      [Log.Level.Error]: "e",
-      [Log.Level.Warn]: "w",
-      [Log.Level.Info]: "i",
-      [Log.Level.Config]: "d",
-      [Log.Level.Debug]: "d",
-      [Log.Level.Trace]: "v",
-    };
-  }
-
-  append(aMessage) {
-    if (!aMessage) {
-      return;
-    }
-
-    // AndroidLog.sys.mjs always prepends "Gecko" to the tag, so we strip any
-    // leading "Gecko" here. Also strip dots to save space.
-    const tag = aMessage.loggerName.replace(/^Gecko|\./g, "");
-    const msg = this._formatter.format(aMessage);
-    lazy.AndroidLog[this._mapping[aMessage.level]](tag, msg);
-  }
+if (AppConstants.platform == "android") {
+  ChromeUtils.defineESModuleGetters(lazy, {
+    AndroidAppender: "resource://gre/modules/AndroidLog.sys.mjs",
+  });
 }
 
 export var GeckoViewUtils = {
@@ -414,7 +376,13 @@ export var GeckoViewUtils = {
   get rootLogger() {
     if (!this._rootLogger) {
       this._rootLogger = Log.repository.getLogger("GeckoView");
-      this._rootLogger.addAppender(new AndroidAppender());
+      // On Android, we'll log to the native android logcat output using
+      // __android_log_write. On iOS, fall back to a dump appender.
+      if (AppConstants.platform == "android") {
+        this._rootLogger.addAppender(new lazy.AndroidAppender());
+      } else {
+        this._rootLogger.addAppender(new Log.DumpAppender());
+      }
       this._rootLogger.manageLevelFromPref("geckoview.logging");
     }
     return this._rootLogger;
@@ -498,6 +466,57 @@ export var GeckoViewUtils = {
    */
   isSupportedPermissionsScheme(scheme) {
     return ["http", "https", "moz-extension", "file"].includes(scheme);
+  },
+
+  /**
+   * Attach nsIOpenWindowInfo when opening GeckoSession
+   *
+   * @param {string} aSessionId A session id
+   * @param {nsIOpenWindowInfo} aOpenWindowInfo Attached nsIOpendWindowInfo
+   * @param {string} aName A window name
+   * @returns {Promise} resolved when nsIOpenWindowInfo is attached
+   */
+  waitAndSetupWindow(aSessionId, aOpenWindowInfo, aName) {
+    if (!aSessionId) {
+      return Promise.reject();
+    }
+
+    return new Promise((resolve, reject) => {
+      const handler = {
+        observe(aSubject, aTopic) {
+          if (
+            aTopic === "geckoview-window-created" &&
+            aSubject.name === aSessionId
+          ) {
+            // This value will be read by nsFrameLoader while it is being initialized.
+            aSubject.browser.openWindowInfo = aOpenWindowInfo;
+
+            // Gecko will use this attribute to set the name of the opened window.
+            if (aName) {
+              aSubject.browser.setAttribute("name", aName);
+            }
+
+            if (
+              !aOpenWindowInfo.isRemote &&
+              aSubject.browser.hasAttribute("remote")
+            ) {
+              // We cannot start in remote mode when we have an opener.
+              aSubject.browser.setAttribute("remote", "false");
+              aSubject.browser.removeAttribute("remoteType");
+            }
+            Services.obs.removeObserver(handler, "geckoview-window-created");
+            if (!aSubject) {
+              reject();
+              return;
+            }
+            resolve(aSubject);
+          }
+        },
+      };
+
+      // This event is emitted from createBrowser() in geckoview.js
+      Services.obs.addObserver(handler, "geckoview-window-created");
+    });
   },
 };
 

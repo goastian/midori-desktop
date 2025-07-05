@@ -10,9 +10,9 @@ task-defaults:
             default: true
     worker-type:
         by-platform:
-            linux1804-64.*: t-linux-xlarge-source
-            macosx1015-64.*: t-osx-1015-r8
-            windows11-64.*: win11-64-2009-source
+            linux1804-64.*: t-linux-docker
+            macosx1470-64.*: t-osx-1400-r8
+            windows11-64.*: win11-64-24h2-source
     worker:
         by-platform:
             linux1804-64.*:
@@ -22,6 +22,9 @@ task-defaults:
                 max-run-time: 3600
                 env:
                     PATH: "/usr/local/bin:/bin:/sbin:/usr/bin:/usr/sbin"
+                    # ensure we don't use internal pypi for these tasks
+                    PIP_INDEX_URL: https://pypi.python.org/simple/
+                    PIP_NO_INDEX: "0"
             default:
                 max-run-time: 3600
     use-python: default
@@ -30,6 +33,7 @@ task-defaults:
         tier: 1
     run:
         using: mach
+        use-caches: [checkout, pip, uv]
     when:
         files-changed:
             - 'config/mozunit/**'
@@ -56,7 +60,7 @@ fog:
     description: Python unit tests for Firefox on Glean
     platform:
         - linux1804-64/opt
-        - macosx1015-64/opt
+        - macosx1470-64/opt
         - windows11-64/opt
     python-version: [3]
     treeherder:
@@ -72,7 +76,7 @@ mach:
     description: python/mach unit tests
     platform:
         - linux1804-64/opt
-        - macosx1015-64/opt
+        - macosx1470-64/opt
         - windows11-64/opt
     python-version: [3]
     treeherder:
@@ -137,7 +141,7 @@ mochitest-harness:
             ./mach python-test --subsuite mochitest
     fetches:
         build:
-            - target.tar.bz2
+            - target.tar.xz
             - artifact: target.common.tests.tar.gz
               dest: tests
             - artifact: target.mochitest.tests.tar.gz
@@ -159,7 +163,7 @@ mozbase:
     description: testing/mozbase unit tests
     platform:
         - linux1804-64/opt
-        - macosx1015-64/opt
+        - macosx1470-64/opt
         - windows11-64/opt
     python-version: [3]
     treeherder:
@@ -173,14 +177,12 @@ mozbase:
 
 mozharness:
     description: mozharness integration tests
+    python-version: [3]
     treeherder:
-        symbol: py3(mh)
+        symbol: mh
     run:
-        using: run-task
-        cache-dotcache: true
-        cwd: '{checkout}/testing/mozharness'
-        command: >
-            /usr/local/bin/tox -e py311-hg6.4
+        using: python-test
+        subsuite: mozharness
     when:
         files-changed:
             - 'testing/mozharness/**'
@@ -189,7 +191,7 @@ mozlint:
     description: python/mozlint unit tests
     platform:
         - linux1804-64/opt
-        - macosx1015-64/opt
+        - macosx1470-64/opt
         - windows11-64/opt
     python-version: [3]
     treeherder:
@@ -202,7 +204,7 @@ mozlint:
         clang-tidy:
             by-platform:
                 linux1804-64/opt: toolchain-linux64-clang-tidy
-                macosx1015-64/opt: toolchain-macosx64-clang-tidy
+                macosx1470-64/opt: toolchain-macosx64-clang-tidy
                 windows11-64/opt: toolchain-win64-clang-tidy
     fetches:
         toolchain:
@@ -210,7 +212,7 @@ mozlint:
                 linux1804-64/opt:
                     - linux64-node
                     - linux64-rust
-                macosx1015-64/opt:
+                macosx1470-64/opt:
                     - macosx64-node
                     - macosx64-rust
                 windows11-64/opt:
@@ -255,7 +257,7 @@ mozversioncontrol:
     description: python/mozversioncontrol unit tests
     platform:
         - linux1804-64/opt
-        - macosx1015-64/opt
+        - macosx1470-64/opt
         - windows11-64/opt
     python-version: [3]
     treeherder:
@@ -271,7 +273,7 @@ raptor:
     description: testing/raptor unit tests
     platform:
         - linux1804-64/opt
-        - macosx1015-64/opt
+        - macosx1470-64/opt
         - windows11-64/opt
     python-version: [3]
     treeherder:
@@ -318,7 +320,7 @@ reftest-harness:
             ./mach python-test --subsuite reftest
     fetches:
         build:
-            - target.tar.bz2
+            - target.tar.xz
             - artifact: target.common.tests.tar.gz
               dest: tests
             - artifact: target.reftest.tests.tar.gz
@@ -371,7 +373,7 @@ mozbuild:
     description: mozbuild unit tests
     platform:
         - linux1804-64/opt
-        - macosx1015-64/opt
+        - macosx1470-64/opt
         - windows11-64/opt
     python-version: [3]
     treeherder:
@@ -384,7 +386,7 @@ mozbuild:
             by-platform:
                 linux1804-64/opt:
                     - linux64-node
-                macosx1015-64/opt:
+                macosx1470-64/opt:
                     - macosx64-node
                 windows11-64/opt:
                     - win64-node
@@ -409,7 +411,7 @@ mozperftest:
     description: mozperftest unit tests
     platform:
         - linux1804-64/opt
-        - macosx1015-64/opt
+        - macosx1470-64/opt
         - windows11-64/opt
     treeherder:
         symbol: mpu
@@ -421,7 +423,7 @@ mozperftest:
                 linux1804-64/opt:
                     - linux64-node
                     - browsertime
-                macosx1015-64/opt:
+                macosx1470-64/opt:
                     - macosx64-node
                     - browsertime
                 windows11-64/opt:
@@ -431,6 +433,46 @@ mozperftest:
         files-changed:
             - 'testing/performance/**'
             - 'python/mozperftest/**'
+
+nimbus:
+    description: >
+        Ensure the targeting context metric is up-to-date with the targeting context definition.
+    platform:
+        - linux1804-64/opt
+    treeherder:
+        symbol: py3(nimbus)
+    require-build:
+        by-project:
+            try:
+                linux1804-64/opt: build-linux64/opt
+            default:
+                linux1804-64/opt: build-linux64/opt
+    fetches:
+        build:
+            - artifact: target.tar.xz
+            - artifact: target.common.tests.tar.gz
+    worker:
+        by-platform:
+            linux1804-64.*:
+                docker-image: {in-tree: "ubuntu1804-test"}
+                max-run-time: 3600
+    run:
+        using: run-task
+        cwd: '{checkout}'
+        command: >
+            export DUMP_TARGETING_CONTEXT_PATH=$(mktemp) &&
+            env LD_LIBRARY_PATH=${MOZ_FETCHES_DIR}/firefox \
+                ${MOZ_FETCHES_DIR}/bin/xpcshell \
+                    -g ${MOZ_FETCHES_DIR}/firefox \
+                    -a ${MOZ_FETCHES_DIR}/firefox/browser \
+                    toolkit/components/nimbus/test/python/dump-targeting-context.js &&
+            export GECKO_BINARY_PATH=${MOZ_FETCHES_DIR}/firefox/firefox &&
+            ./mach python-test --subsuite nimbus
+    when:
+        files-changed:
+            - 'toolkit/components/nimbus/metrics.yaml'
+            - 'toolkit/components/nimbus/lib/TargetingContextRecorder.sys.mjs'
+            - 'toolkit/components/nimbus/test/python/**/*'
 
 fxms-schemas:
     description: >
@@ -448,7 +490,7 @@ fxms-schemas:
                 linux1804-64/opt: build-linux64/opt
     fetches:
         build:
-            - artifact: target.tar.bz2
+            - artifact: target.tar.xz
             - artifact: target.common.tests.tar.gz
     worker:
         by-platform:
@@ -479,7 +521,7 @@ condprof:
     description: testing/condprofile unit tests
     platform:
         - linux1804-64/opt
-        - macosx1015-64/opt
+        - macosx1470-64/opt
         - windows11-64/opt
     python-version: [3]
     treeherder:
@@ -492,32 +534,10 @@ condprof:
             - 'testing/condprofile/condprof**'
             - 'testing/condprofile/setup.py'
 
-featuregates:
-    description: featuregates Python unit tests
-    platform:
-        - linux1804-64/opt
-        - windows11-64/opt
-    python-version: [3]
-    treeherder:
-        symbol: fg
-    run:
-        using: python-test
-        subsuite: featuregates
-    fetches:
-        toolchain:
-            by-platform:
-                linux1804-64/opt:
-                    - linux64-node
-                windows11-64/opt:
-                    - win64-node
-    when:
-        files-changed:
-            - 'toolkit/components/featuregates/**'
-
 skip-fails:
     description: testing/skip-fails unit tests
     always-target: false
-    python-version: [3]
+    use-python: "3.11"
     treeherder:
         symbol: sf
     run:
@@ -584,7 +604,7 @@ telemetry-python:
     description: Python unit tests for Telemetry
     platform:
         - linux1804-64/opt
-        - macosx1015-64/opt
+        - macosx1470-64/opt
         - windows11-64/opt
     python-version: [3]
     treeherder:
@@ -597,7 +617,7 @@ telemetry-python:
             by-platform:
                 linux1804-64/opt:
                     - linux64-node
-                macosx1015-64/opt:
+                macosx1470-64/opt:
                     - macosx64-node
                 windows11-64/opt:
                     - win64-node

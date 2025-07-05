@@ -16,9 +16,9 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
-import org.mozilla.fenix.compose.button.TextButton
+import mozilla.components.compose.base.button.TextButton
 import org.mozilla.fenix.theme.FirefoxTheme
 
 /**
@@ -55,20 +55,20 @@ fun Banner(
         Row(modifier = Modifier.align(Alignment.End)) {
             TextButton(
                 text = button1Text,
-                onClick = onButton2Click,
+                onClick = onButton1Click,
             )
 
             Spacer(modifier = Modifier.width(12.dp))
 
             TextButton(
                 text = button2Text,
-                onClick = onButton1Click,
+                onClick = onButton2Click,
             )
         }
     }
 }
 
-@LightDarkPreview
+@PreviewLightDark
 @Composable
 private fun BannerPreview() {
     FirefoxTheme {

@@ -5,6 +5,7 @@
 
 #include "nsISupports.idl"
 #include "nsILoadInfo.idl"
+#include "nsIReplacedHttpResponse.idl"
 #include "nsIRequest.idl"
 #include "nsITRRSkipReason.idl"
 
@@ -84,7 +85,7 @@ interface nsIHttpChannelInternal : nsISupports
     [must_use]
     void getResponseVersion(out unsigned long major, out unsigned long minor);
 
-    /*
+    /**
      * Retrieves all security messages from the security message queue
      * and empties the queue after retrieval
      */
@@ -97,9 +98,9 @@ interface nsIHttpChannelInternal : nsISupports
      * (URI's, prompters, date headers etc).
      *
      * @param aCookieHeader
-     *        The cookie header to be parsed.
+     *        The cookie header values to be parsed.
      */
-    [must_use] void setCookie(in ACString aCookieHeader);
+    [must_use] void setCookieHeaders(in Array<ACString> aCookieHeaders);
 
     /**
      * Returns true in case this channel is used for auth;
@@ -425,7 +426,7 @@ interface nsIHttpChannelInternal : nsISupports
     [noscript, infallible]
     attribute unsigned long lastRedirectFlags;
 
-      // This is use to determine the duration since navigation started.
+    // This is used to determine the duration since navigation started.
     [noscript] attribute TimeStamp navigationStartTimeStamp;
 
     /**
@@ -467,6 +468,12 @@ interface nsIHttpChannelInternal : nsISupports
     [noscript]
     nsILoadInfo_CrossOriginEmbedderPolicy getResponseEmbedderPolicy(in boolean aIsOriginTrialCoepCredentiallessEnabled);
 
+    /**
+     * Returns the parsed boolean value of the "Origin-Agent-Cluster" header.
+     * @throws NS_ERROR_NOT_AVAILABLE if the header is not present.
+     */
+    [noscript] boolean getOriginAgentClusterHeader();
+
     [noscript, notxpcom, nostdcall]
     void DoDiagnosticAssertWhenOnStopNotCalledOnDestroy();
 
@@ -485,7 +492,7 @@ interface nsIHttpChannelInternal : nsISupports
      */
     [must_use] void setEarlyHintObserver(in nsIEarlyHintObserver aObserver);
 
-    /*
+    /**
      * id of the EarlyHintPreloader to connect back from PreloadService to
      * EarlyHintPreloader.
      */
@@ -493,12 +500,12 @@ interface nsIHttpChannelInternal : nsISupports
 
     [notxpcom, nostdcall] void setConnectionInfo(in nsHttpConnectionInfo aInfo);
 
-    /*
-    * This attribute indicates if the channel was loaded via Proxy.
-    */
+    /**
+     * This attribute indicates if the channel was loaded via Proxy.
+     */
     [must_use] readonly attribute boolean isProxyUsed;
 
-     /**
+    /**
      * Set mWebTransportSessionEventListener.
      */
     [must_use] void setWebTransportSessionEventListener(
@@ -518,6 +525,33 @@ interface nsIHttpChannelInternal : nsISupports
      * overridden header value.
      */
     [must_use] attribute boolean isUserAgentHeaderModified;
+
+    /**
+     * The nsIReplacedHttpResponse will be used to override the response of the
+     * channel. Should be called before connect (http-on-before-connect).
+     * When setResponseOverride is called, the request will bypass the network
+     * and a mocked response based on the nsIReplacedHttpResponse content will
+     * be used instead.
+     */
+    [must_use] void setResponseOverride(
+        in nsIReplacedHttpResponse aReplacedHttpResponse);
+
+    /**
+     * Updates the status and statusText for the response. Must be called after
+     * we start receiving the response, eg. http-on-examine-response.
+     */
+    [must_use] void setResponseStatus(
+        in unsigned long aStatus, in ACString aStatusText);
+
+    readonly attribute nsresult lastTransportStatus;
+
+
+    /**
+     * Same as redirectTo in nsIHttpChannel, but handles internal redirect
+     * so that we add REDIRECT_TRANSPARENT to the flag.
+     */
+    [must_use] void transparentRedirectTo(in nsIURI aTargetURI);
+
 
     /**
      * For testing purposes only.

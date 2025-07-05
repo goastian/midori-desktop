@@ -33,11 +33,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
+import mozilla.components.compose.base.button.PrimaryButton
+import mozilla.components.compose.base.button.SecondaryButton
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
-import org.mozilla.fenix.compose.button.PrimaryButton
-import org.mozilla.fenix.compose.button.SecondaryButton
 import org.mozilla.fenix.theme.FirefoxTheme
 
 /**
@@ -137,11 +137,13 @@ fun ResearchSurfaceSurvey(
                 ) {
                     PrimaryButton(
                         text = onAcceptButtonText,
+                        modifier = Modifier.fillMaxWidth(),
                         onClick = onAccept,
                     )
                     Spacer(modifier = Modifier.height(8.dp))
                     SecondaryButton(
                         text = onDismissButtonText,
+                        modifier = Modifier.fillMaxWidth(),
                         onClick = onDismiss,
                     )
                 }
@@ -151,7 +153,7 @@ fun ResearchSurfaceSurvey(
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun SurveyPreview() {
     FirefoxTheme {
         ResearchSurfaceSurvey(

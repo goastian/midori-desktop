@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { GeckoViewUtils } from "resource://gre/modules/GeckoViewUtils.sys.mjs";
 
 const lazy = {};
@@ -9,24 +10,36 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
   GeckoViewPrompter: "resource://gre/modules/GeckoViewPrompter.sys.mjs",
+  NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
 });
 
 const { debug, warn } = GeckoViewUtils.initLogging("FilePickerDelegate");
 
 export class FilePickerDelegate {
+  _filesInWebKitDirectory = [];
+
   /* ----------  nsIFilePicker  ---------- */
   init(aBrowsingContext, aTitle, aMode) {
-    if (
-      aMode === Ci.nsIFilePicker.modeGetFolder ||
-      aMode === Ci.nsIFilePicker.modeSave
-    ) {
-      throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
+    let mode;
+    switch (aMode) {
+      case Ci.nsIFilePicker.modeOpen:
+        mode = "single";
+        break;
+      case Ci.nsIFilePicker.modeGetFolder:
+        mode = "folder";
+        break;
+      case Ci.nsIFilePicker.modeOpenMultiple:
+        mode = "multiple";
+        break;
+      default:
+        throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
     }
+    this._browsingContext = aBrowsingContext;
     this._prompt = new lazy.GeckoViewPrompter(aBrowsingContext);
     this._msg = {
       type: "file",
       title: aTitle,
-      mode: aMode === Ci.nsIFilePicker.modeOpenMultiple ? "multiple" : "single",
+      mode,
     };
     this._mode = aMode;
     this._mimeTypes = [];
@@ -41,11 +54,14 @@ export class FilePickerDelegate {
     this._mimeTypes.push(aFilter);
   }
 
-  show() {
-    throw Components.Exception("", Cr.NS_ERROR_NOT_IMPLEMENTED);
-  }
-
   open(aFilePickerShownCallback) {
+    if (!this._browsingContext.canOpenModalPicker) {
+      // File pickers are not allowed to open, so we respond to the callback
+      // with returnCancel.
+      aFilePickerShownCallback.done(Ci.nsIFilePicker.returnCancel);
+      return;
+    }
+
     this._msg.mimeTypes = this._mimeTypes;
     this._msg.capture = this._capture;
     this._prompt.asyncShowPrompt(this._msg, result => {
@@ -54,7 +70,11 @@ export class FilePickerDelegate {
       if (!result || !result.files || !result.files.length) {
         aFilePickerShownCallback.done(Ci.nsIFilePicker.returnCancel);
       } else {
-        this._resolveFiles(result.files, aFilePickerShownCallback);
+        this._resolveFilesInWebKitDirectory(result.filesInWebKitDirectory).then(
+          () => {
+            this._resolveFiles(result.files, aFilePickerShownCallback);
+          }
+        );
       }
     });
   }
@@ -64,10 +84,10 @@ export class FilePickerDelegate {
 
     try {
       for (const file of aFiles) {
-        const domFile = await this._getDOMFile(file);
+        const domFileOrDir = await this._getDOMFileOrDir(file);
         fileData.push({
           file,
-          domFile,
+          domFileOrDir,
         });
       }
     } catch (ex) {
@@ -78,6 +98,55 @@ export class FilePickerDelegate {
 
     this._fileData = fileData;
     aCallback.done(Ci.nsIFilePicker.returnOK);
+  }
+
+  async _resolveFilesInWebKitDirectory(files) {
+    if (!files) {
+      return;
+    }
+
+    const filesInWebKitDirectory = [];
+
+    for (const info of files) {
+      const { filePath, uri, name, type, lastModified } = info;
+      if (filePath) {
+        const file = (() => {
+          if (this._prompt.domWin) {
+            return this._prompt.domWin.File.createFromFileName(filePath, {
+              type,
+              lastModified,
+            });
+          }
+          return File.createFromFileName(filePath, {
+            type,
+            lastModified,
+          });
+        })();
+
+        filesInWebKitDirectory.push(await file);
+        continue;
+      }
+
+      // File path cannot be resolved, but we know content URI.
+      const input = Cc[
+        "@mozilla.org/network/android-content-input-stream;1"
+      ].createInstance(Ci.nsIAndroidContentInputStream);
+      input.init(Services.io.newURI(uri));
+      const buffer = lazy.NetUtil.readInputStream(input);
+
+      const file = (() => {
+        if (this._prompt.domWin) {
+          return new this._prompt.domWin.File([buffer], name, {
+            type,
+            lastModified,
+          });
+        }
+        return new File([buffer], name, { type, lastModified });
+      })();
+      filesInWebKitDirectory.push(file);
+    }
+
+    this._filesInWebKitDirectory = filesInWebKitDirectory;
   }
 
   get file() {
@@ -102,7 +171,7 @@ export class FilePickerDelegate {
 
     for (const fileData of this._fileData) {
       if (aDOMFile) {
-        yield fileData.domFile;
+        yield fileData.domFileOrDir;
       }
       yield new lazy.FileUtils.File(fileData.file);
     }
@@ -110,6 +179,20 @@ export class FilePickerDelegate {
 
   get files() {
     return this._getEnumerator(/* aDOMFile */ false);
+  }
+
+  _getDOMFileOrDir(aPath) {
+    if (this.mode == Ci.nsIFilePicker.modeGetFolder) {
+      return this._getDOMDir(aPath);
+    }
+    return this._getDOMFile(aPath);
+  }
+
+  _getDOMDir(aPath) {
+    if (this._prompt.domWin) {
+      return new this._prompt.domWin.Directory(aPath);
+    }
+    return new Directory(aPath);
   }
 
   _getDOMFile(aPath) {
@@ -123,7 +206,7 @@ export class FilePickerDelegate {
     if (!this._fileData) {
       throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
     }
-    return this._fileData[0] ? this._fileData[0].domFile : null;
+    return this._fileData[0]?.domFileOrDir;
   }
 
   get domFileOrDirectoryEnumerator() {
@@ -178,6 +261,23 @@ export class FilePickerDelegate {
 
   set capture(aValue) {
     this._capture = aValue;
+  }
+
+  *_getDOMFilesInWebKitDirectory() {
+    if (
+      this._mode != Ci.nsIFilePicker.modeGetFolder ||
+      AppConstants.platform != "android"
+    ) {
+      throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
+    }
+
+    for (const file of this._filesInWebKitDirectory) {
+      yield file;
+    }
+  }
+
+  get domFilesInWebKitDirectory() {
+    return this._getDOMFilesInWebKitDirectory();
   }
 }
 

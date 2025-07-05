@@ -10,9 +10,11 @@ import type {ClickOptions, ElementHandle} from '../api/ElementHandle.js';
 import type {HTTPResponse} from '../api/HTTPResponse.js';
 import type {
   Page,
+  QueryOptions,
   WaitForSelectorOptions,
   WaitTimeoutOptions,
 } from '../api/Page.js';
+import type {Accessibility} from '../cdp/Accessibility.js';
 import type {DeviceRequestPrompt} from '../cdp/DeviceRequestPrompt.js';
 import type {PuppeteerLifeCycleEvent} from '../cdp/LifecycleWatcher.js';
 import {EventEmitter, type EventType} from '../common/EventEmitter.js';
@@ -25,10 +27,8 @@ import type {
   HandleFor,
   NodeFor,
 } from '../common/types.js';
-import {
-  importFSPromises,
-  withSourcePuppeteerURLIfNone,
-} from '../common/util.js';
+import {withSourcePuppeteerURLIfNone} from '../common/util.js';
+import {environment} from '../environment.js';
 import {assert} from '../util/assert.js';
 import {throwIfDisposed} from '../util/decorators.js';
 
@@ -66,6 +66,10 @@ export interface WaitForOptions {
    * @internal
    */
   ignoreSameDocumentNavigation?: boolean;
+  /**
+   * A signal object that allows you to cancel the call.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -194,11 +198,11 @@ export namespace FrameEvent {
   export const FrameSwapped = Symbol('Frame.FrameSwapped');
   export const LifecycleEvent = Symbol('Frame.LifecycleEvent');
   export const FrameNavigatedWithinDocument = Symbol(
-    'Frame.FrameNavigatedWithinDocument'
+    'Frame.FrameNavigatedWithinDocument',
   );
   export const FrameDetached = Symbol('Frame.FrameDetached');
   export const FrameSwappedByActivation = Symbol(
-    'Frame.FrameSwappedByActivation'
+    'Frame.FrameSwappedByActivation',
   );
 }
 
@@ -295,13 +299,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
   abstract page(): Page;
 
   /**
-   * Is `true` if the frame is an out-of-process (OOP) frame. Otherwise,
-   * `false`.
-   */
-  abstract isOOPFrame(): boolean;
-
-  /**
-   * Navigates the frame to the given `url`.
+   * Navigates the frame or page to the given `url`.
    *
    * @remarks
    * Navigation to `about:blank` or navigation to the same URL with a different
@@ -309,11 +307,15 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    *
    * :::warning
    *
-   * Headless mode doesn't support navigation to a PDF document. See the {@link
-   * https://bugs.chromium.org/p/chromium/issues/detail?id=761295 | upstream
-   * issue}.
+   * Headless shell mode doesn't support navigation to a PDF document. See the
+   * {@link https://crbug.com/761295 | upstream issue}.
    *
    * :::
+   *
+   * In headless shell, this method will not throw an error when any valid HTTP
+   * status code is returned by the remote server, including 404 "Not Found" and
+   * 500 "Internal Server Error". The status code for such responses can be
+   * retrieved by calling {@link HTTPResponse.status}.
    *
    * @param url - URL to navigate the frame to. The URL should include scheme,
    * e.g. `https://`
@@ -324,19 +326,18 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    * @throws If:
    *
    * - there's an SSL error (e.g. in case of self-signed certificates).
-   * - target URL is invalid.
-   * - the timeout is exceeded during navigation.
-   * - the remote server does not respond or is unreachable.
-   * - the main resource failed to load.
    *
-   * This method will not throw an error when any valid HTTP status code is
-   * returned by the remote server, including 404 "Not Found" and 500 "Internal
-   * Server Error". The status code for such responses can be retrieved by
-   * calling {@link HTTPResponse.status}.
+   * - target URL is invalid.
+   *
+   * - the timeout is exceeded during navigation.
+   *
+   * - the remote server does not respond or is unreachable.
+   *
+   * - the main resource failed to load.
    */
   abstract goto(
     url: string,
-    options?: GoToOptions
+    options?: GoToOptions,
   ): Promise<HTTPResponse | null>;
 
   /**
@@ -362,13 +363,18 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    * @returns A promise which resolves to the main resource response.
    */
   abstract waitForNavigation(
-    options?: WaitForOptions
+    options?: WaitForOptions,
   ): Promise<HTTPResponse | null>;
 
   /**
    * @internal
    */
   abstract get client(): CDPSession;
+
+  /**
+   * @internal
+   */
+  abstract get accessibility(): Accessibility;
 
   /**
    * @internal
@@ -387,13 +393,9 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    */
   #document(): Promise<ElementHandle<Document>> {
     if (!this.#_document) {
-      this.#_document = this.isolatedRealm()
-        .evaluateHandle(() => {
-          return document;
-        })
-        .then(handle => {
-          return this.mainRealm().transferHandle(handle);
-        });
+      this.#_document = this.mainRealm().evaluateHandle(() => {
+        return document;
+      });
     }
     return this.#_document;
   }
@@ -422,7 +424,9 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
     for await (using iframe of transposeIterableHandle(list)) {
       const frame = await iframe.contentFrame();
       if (frame?._id === this._id) {
-        return (iframe as HandleFor<HTMLIFrameElement>).move();
+        return (await parentFrame
+          .mainRealm()
+          .adoptHandle(iframe)) as HandleFor<HTMLIFrameElement>;
       }
     }
     return null;
@@ -432,7 +436,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    * Behaves identically to {@link Page.evaluateHandle} except it's run within
    * the context of this frame.
    *
-   * @see {@link Page.evaluateHandle} for details.
+   * See {@link Page.evaluateHandle} for details.
    */
   @throwIfDetached
   async evaluateHandle<
@@ -444,7 +448,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
   ): Promise<HandleFor<Awaited<ReturnType<Func>>>> {
     pageFunction = withSourcePuppeteerURLIfNone(
       this.evaluateHandle.name,
-      pageFunction
+      pageFunction,
     );
     return await this.mainRealm().evaluateHandle(pageFunction, ...args);
   }
@@ -453,7 +457,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    * Behaves identically to {@link Page.evaluate} except it's run within
    * the context of this frame.
    *
-   * @see {@link Page.evaluate} for details.
+   * See {@link Page.evaluate} for details.
    */
   @throwIfDetached
   async evaluate<
@@ -465,7 +469,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
   ): Promise<Awaited<ReturnType<Func>>> {
     pageFunction = withSourcePuppeteerURLIfNone(
       this.evaluate.name,
-      pageFunction
+      pageFunction,
     );
     return await this.mainRealm().evaluate(pageFunction, ...args);
   }
@@ -474,21 +478,29 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    * Creates a locator for the provided selector. See {@link Locator} for
    * details and supported actions.
    *
-   * @remarks
-   * Locators API is experimental and we will not follow semver for breaking
-   * change in the Locators API.
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
    */
   locator<Selector extends string>(
-    selector: Selector
+    selector: Selector,
   ): Locator<NodeFor<Selector>>;
 
   /**
    * Creates a locator for the provided function. See {@link Locator} for
    * details and supported actions.
-   *
-   * @remarks
-   * Locators API is experimental and we will not follow semver for breaking
-   * change in the Locators API.
    */
   locator<Ret>(func: () => Awaitable<Ret>): Locator<Ret>;
 
@@ -497,7 +509,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    */
   @throwIfDetached
   locator<Selector extends string, Ret>(
-    selectorOrFunc: Selector | (() => Awaitable<Ret>)
+    selectorOrFunc: Selector | (() => Awaitable<Ret>),
   ): Locator<NodeFor<Selector>> | Locator<Ret> {
     if (typeof selectorOrFunc === 'string') {
       return NodeLocator.create(this, selectorOrFunc);
@@ -508,13 +520,28 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
   /**
    * Queries the frame for an element matching the given selector.
    *
-   * @param selector - The selector to query for.
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
+   *
    * @returns A {@link ElementHandle | element handle} to the first element
    * matching the given selector. Otherwise, `null`.
    */
   @throwIfDetached
   async $<Selector extends string>(
-    selector: Selector
+    selector: Selector,
   ): Promise<ElementHandle<NodeFor<Selector>> | null> {
     // eslint-disable-next-line rulesdir/use-using -- This is cached.
     const document = await this.#document();
@@ -524,17 +551,33 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
   /**
    * Queries the frame for all elements matching the given selector.
    *
-   * @param selector - The selector to query for.
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
+   *
    * @returns An array of {@link ElementHandle | element handles} that point to
    * elements matching the given selector.
    */
   @throwIfDetached
   async $$<Selector extends string>(
-    selector: Selector
+    selector: Selector,
+    options?: QueryOptions,
   ): Promise<Array<ElementHandle<NodeFor<Selector>>>> {
     // eslint-disable-next-line rulesdir/use-using -- This is cached.
     const document = await this.#document();
-    return await document.$$(selector);
+    return await document.$$(selector, options);
   }
 
   /**
@@ -550,7 +593,21 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    * const searchValue = await frame.$eval('#search', el => el.value);
    * ```
    *
-   * @param selector - The selector to query for.
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
    * @param pageFunction - The function to be evaluated in the frame's context.
    * The first element matching the selector will be passed to the function as
    * its first argument.
@@ -589,7 +646,21 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    * const divsCounts = await frame.$$eval('div', divs => divs.length);
    * ```
    *
-   * @param selector - The selector to query for.
+   * @param selector -
+   * {@link https://pptr.dev/guides/page-interactions#selectors | selector}
+   * to query the page for.
+   * {@link https://developer.mozilla.org/en-US/docs/Web/CSS/CSS_Selectors | CSS selectors}
+   * can be passed as-is and a
+   * {@link https://pptr.dev/guides/page-interactions#non-css-selectors | Puppeteer-specific selector syntax}
+   * allows quering by
+   * {@link https://pptr.dev/guides/page-interactions#text-selectors--p-text | text},
+   * {@link https://pptr.dev/guides/page-interactions#aria-selectors--p-aria | a11y role and name},
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#xpath-selectors--p-xpath | xpath}
+   * and
+   * {@link https://pptr.dev/guides/page-interactions#querying-elements-in-shadow-dom | combining these queries across shadow roots}.
+   * Alternatively, you can specify the selector type using a
+   * {@link https://pptr.dev/guides/page-interactions#prefixed-selector-syntax | prefix}.
    * @param pageFunction - The function to be evaluated in the frame's context.
    * An array of elements matching the given selector will be passed to the
    * function as its first argument.
@@ -653,15 +724,14 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
   @throwIfDetached
   async waitForSelector<Selector extends string>(
     selector: Selector,
-    options: WaitForSelectorOptions = {}
+    options: WaitForSelectorOptions = {},
   ): Promise<ElementHandle<NodeFor<Selector>> | null> {
-    const {updatedSelector, QueryHandler} =
+    const {updatedSelector, QueryHandler, polling} =
       getQueryHandlerAndSelector(selector);
-    return (await QueryHandler.waitFor(
-      this,
-      updatedSelector,
-      options
-    )) as ElementHandle<NodeFor<Selector>> | null;
+    return (await QueryHandler.waitFor(this, updatedSelector, {
+      polling,
+      ...options,
+    })) as ElementHandle<NodeFor<Selector>> | null;
   }
 
   /**
@@ -688,7 +758,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    * await frame.waitForFunction(
    *   selector => !!document.querySelector(selector),
    *   {}, // empty options object
-   *   selector
+   *   selector,
    * );
    * ```
    *
@@ -709,7 +779,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
     return await (this.mainRealm().waitForFunction(
       pageFunction,
       options,
-      ...args
+      ...args,
     ) as Promise<HandleFor<Awaited<ReturnType<Func>>>>);
   }
   /**
@@ -820,19 +890,18 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    */
   @throwIfDetached
   async addScriptTag(
-    options: FrameAddScriptTagOptions
+    options: FrameAddScriptTagOptions,
   ): Promise<ElementHandle<HTMLScriptElement>> {
     let {content = '', type} = options;
     const {path} = options;
     if (+!!options.url + +!!path + +!!content !== 1) {
       throw new Error(
-        'Exactly one of `url`, `path`, or `content` must be specified.'
+        'Exactly one of `url`, `path`, or `content` must be specified.',
       );
     }
 
     if (path) {
-      const fs = await importFSPromises();
-      content = await fs.readFile(path, 'utf8');
+      content = await environment.value.fs.promises.readFile(path, 'utf8');
       content += `//# sourceURL=${path.replace(/\n/g, '')}`;
     }
 
@@ -850,7 +919,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
               event => {
                 reject(new Error(event.message ?? 'Could not load script'));
               },
-              {once: true}
+              {once: true},
             );
             if (id) {
               script.id = id;
@@ -862,7 +931,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
                 () => {
                   resolve(script);
                 },
-                {once: true}
+                {once: true},
               );
               document.head.appendChild(script);
             } else {
@@ -871,8 +940,8 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
             }
           });
         },
-        {...options, type, content}
-      )
+        {...options, type, content},
+      ),
     );
   }
 
@@ -883,7 +952,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    * element.
    */
   async addStyleTag(
-    options: Omit<FrameAddStyleTagOptions, 'url'>
+    options: Omit<FrameAddStyleTagOptions, 'url'>,
   ): Promise<ElementHandle<HTMLStyleElement>>;
 
   /**
@@ -893,7 +962,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    * element.
    */
   async addStyleTag(
-    options: FrameAddStyleTagOptions
+    options: FrameAddStyleTagOptions,
   ): Promise<ElementHandle<HTMLLinkElement>>;
 
   /**
@@ -901,20 +970,18 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    */
   @throwIfDetached
   async addStyleTag(
-    options: FrameAddStyleTagOptions
+    options: FrameAddStyleTagOptions,
   ): Promise<ElementHandle<HTMLStyleElement | HTMLLinkElement>> {
     let {content = ''} = options;
     const {path} = options;
     if (+!!options.url + +!!path + +!!content !== 1) {
       throw new Error(
-        'Exactly one of `url`, `path`, or `content` must be specified.'
+        'Exactly one of `url`, `path`, or `content` must be specified.',
       );
     }
 
     if (path) {
-      const fs = await importFSPromises();
-
-      content = await fs.readFile(path, 'utf8');
+      content = await environment.value.fs.promises.readFile(path, 'utf8');
       content += '/*# sourceURL=' + path.replace(/\n/g, '') + '*/';
       options.content = content;
     }
@@ -938,24 +1005,24 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
               () => {
                 resolve(element);
               },
-              {once: true}
+              {once: true},
             );
             element.addEventListener(
               'error',
               event => {
                 reject(
                   new Error(
-                    (event as ErrorEvent).message ?? 'Could not load style'
-                  )
+                    (event as ErrorEvent).message ?? 'Could not load style',
+                  ),
                 );
               },
-              {once: true}
+              {once: true},
             );
             document.head.appendChild(element);
             return element;
-          }
+          },
         );
-      }, options)
+      }, options),
     );
   }
 
@@ -980,7 +1047,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
   @throwIfDetached
   async click(
     selector: string,
-    options: Readonly<ClickOptions> = {}
+    options: Readonly<ClickOptions> = {},
   ): Promise<void> {
     using handle = await this.$(selector);
     assert(handle, `No element found for selector: ${selector}`);
@@ -1078,7 +1145,7 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
   async type(
     selector: string,
     text: string,
-    options?: Readonly<KeyboardTypeOptions>
+    options?: Readonly<KeyboardTypeOptions>,
   ): Promise<void> {
     using handle = await this.$(selector);
     assert(handle, `No element found for selector: ${selector}`);
@@ -1114,13 +1181,13 @@ export abstract class Frame extends EventEmitter<FrameEvents> {
    *   frame.click('#connect-bluetooth'),
    * ]);
    * await devicePrompt.select(
-   *   await devicePrompt.waitForDevice(({name}) => name.includes('My Device'))
+   *   await devicePrompt.waitForDevice(({name}) => name.includes('My Device')),
    * );
    * ```
    *
    * @internal
    */
   abstract waitForDevicePrompt(
-    options?: WaitTimeoutOptions
+    options?: WaitTimeoutOptions,
   ): Promise<DeviceRequestPrompt>;
 }

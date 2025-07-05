@@ -7,8 +7,6 @@
 with Files("**"):
     BUG_COMPONENT = ("Core", "Networking: DNS")
 
-DIRS += ["tests"]
-
 XPIDL_SOURCES += [
     "nsIDNSAdditionalInfo.idl",
     "nsIDNSByTypeRecord.idl",
@@ -23,10 +21,6 @@ XPIDL_SOURCES += [
 ]
 
 XPIDL_MODULE = "necko_dns"
-
-EXTRA_JS_MODULES["netwerk-dns"] += [
-    "PublicSuffixList.sys.mjs",
-]
 
 XPCSHELL_TESTS_MANIFESTS += ["tests/unit/xpcshell.toml"]
 
@@ -61,9 +55,11 @@ SOURCES += [
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "windows":
     SOURCES += ["PlatformDNSWin.cpp"]
-elif CONFIG["OS_TARGET"] == "Linux" or CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
+elif CONFIG["OS_TARGET"] == "Linux":
     SOURCES += ["PlatformDNSUnix.cpp"]
     OS_LIBS += ["resolv"]
+elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
+    SOURCES += ["PlatformDNSMac.cpp"]
 elif CONFIG["MOZ_WIDGET_TOOLKIT"] == "android":
     SOURCES += ["PlatformDNSAndroid.cpp"]
 else:
@@ -88,7 +84,6 @@ UNIFIED_SOURCES += [
     "nsHostRecord.cpp",
     "nsHostResolver.cpp",
     "nsIDNService.cpp",
-    "punycode.c",
     "TRR.cpp",
     "TRRQuery.cpp",
     "TRRService.cpp",

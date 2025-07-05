@@ -6,20 +6,24 @@ package org.mozilla.fenix.settings.deletebrowsingdata
 
 import io.mockk.coVerify
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.spyk
 import io.mockk.verify
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import mozilla.components.browser.icons.BrowserIcons
 import mozilla.components.browser.state.action.EngineAction
 import mozilla.components.browser.state.action.RecentlyClosedAction
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.Engine
+import mozilla.components.concept.engine.translate.ModelManagementOptions
+import mozilla.components.concept.engine.translate.ModelOperation
+import mozilla.components.concept.engine.translate.OperationLevel
 import mozilla.components.concept.storage.HistoryStorage
 import mozilla.components.feature.downloads.DownloadsUseCases
 import mozilla.components.feature.tabs.TabsUseCases
 import mozilla.components.support.test.rule.MainCoroutineRule
 import mozilla.components.support.test.rule.runTestOnMain
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -36,7 +40,6 @@ class DefaultDeleteBrowsingDataControllerTest {
     private var historyStorage: HistoryStorage = mockk(relaxed = true)
     private var permissionStorage: PermissionStorage = mockk(relaxed = true)
     private var store: BrowserStore = mockk(relaxed = true)
-    private var iconsStorage: BrowserIcons = mockk(relaxed = true)
     private val engine: Engine = mockk(relaxed = true)
     private lateinit var controller: DefaultDeleteBrowsingDataController
 
@@ -49,7 +52,6 @@ class DefaultDeleteBrowsingDataControllerTest {
             historyStorage = historyStorage,
             store = store,
             permissionStorage = permissionStorage,
-            iconsStorage = iconsStorage,
             engine = engine,
             coroutineContext = coroutinesTestRule.testDispatcher,
         )
@@ -73,7 +75,6 @@ class DefaultDeleteBrowsingDataControllerTest {
             historyStorage.deleteEverything()
             store.dispatch(EngineAction.PurgeHistoryAction)
             store.dispatch(RecentlyClosedAction.RemoveAllClosedTabAction)
-            iconsStorage.clear()
         }
     }
 
@@ -94,11 +95,25 @@ class DefaultDeleteBrowsingDataControllerTest {
 
     @Test
     fun deleteCachedFiles() = runTestOnMain {
+        val onSuccessSlot = slot<() -> Unit>()
+        val onErrorSlot = slot<(Throwable) -> Unit>()
+
         controller.deleteCachedFiles()
 
         verify {
+            engine.manageTranslationsLanguageModel(
+                options = ModelManagementOptions(
+                    operation = ModelOperation.DELETE,
+                    operationLevel = OperationLevel.CACHE,
+                ),
+                onSuccess = capture(onSuccessSlot),
+                onError = capture(onErrorSlot),
+            )
             engine.clearData(Engine.BrowsingData.select(Engine.BrowsingData.ALL_CACHES))
         }
+
+        assertTrue(onSuccessSlot.isCaptured)
+        assertTrue(onErrorSlot.isCaptured)
     }
 
     @Test

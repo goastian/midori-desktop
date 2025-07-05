@@ -35,14 +35,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
+import mozilla.components.compose.base.Divider
+import mozilla.components.compose.base.menu.DropdownMenu
+import mozilla.components.compose.base.menu.MenuItem
+import mozilla.components.compose.base.modifier.thenConditional
+import mozilla.components.compose.base.text.Text
 import mozilla.components.support.ktx.kotlin.trimmed
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.ContextualMenu
-import org.mozilla.fenix.compose.Divider
-import org.mozilla.fenix.compose.MenuItem
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
-import org.mozilla.fenix.compose.ext.thenConditional
 import org.mozilla.fenix.compose.list.FaviconListItem
 import org.mozilla.fenix.compose.list.IconListItem
 import org.mozilla.fenix.home.recentvisits.RecentlyVisitedItem
@@ -184,14 +185,16 @@ private fun RecentlyVisitedHistoryGroup(
             description = stringResource(id = captionId, recentVisit.historyMetadata.size),
         )
 
-        ContextualMenu(
-            showMenu = isMenuExpanded,
-            onDismissRequest = { isMenuExpanded = false },
-            menuItems = menuItems.map { item -> MenuItem(item.title) { item.onClick(recentVisit) } },
+        DropdownMenu(
+            menuItems = menuItems.map { item ->
+                MenuItem.TextItem(Text.String(item.title)) { item.onClick(recentVisit) }
+            },
+            expanded = isMenuExpanded,
             modifier = Modifier.semantics {
                 testTagsAsResourceId = true
                 testTag = "recent.visit.menu"
             },
+            onDismissRequest = { isMenuExpanded = false },
         )
     }
 }
@@ -226,20 +229,22 @@ private fun RecentlyVisitedHistoryHighlight(
                 ),
         )
 
-        ContextualMenu(
-            showMenu = isMenuExpanded,
-            onDismissRequest = { isMenuExpanded = false },
-            menuItems = menuItems.map { item -> MenuItem(item.title) { item.onClick(recentVisit) } },
+        DropdownMenu(
+            expanded = isMenuExpanded,
+            menuItems = menuItems.map { item ->
+                MenuItem.TextItem(Text.String(item.title)) { item.onClick(recentVisit) }
+            },
             modifier = Modifier.semantics {
                 testTagsAsResourceId = true
                 testTag = "recent.visit.menu"
             },
+            onDismissRequest = { isMenuExpanded = false },
         )
     }
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun RecentlyVisitedMultipleColumnsPreview() {
     FirefoxTheme {
         Box(
@@ -262,7 +267,7 @@ private fun RecentlyVisitedMultipleColumnsPreview() {
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun RecentlyVisitedSingleColumnPreview() {
     FirefoxTheme {
         Box(

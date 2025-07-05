@@ -10,7 +10,6 @@
 #include "PSMRunnable.h"
 #include "ScopedNSSTypes.h"
 #include "SharedCertVerifier.h"
-#include "SharedSSLState.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Assertions.h"
 #include "mozilla/Casting.h"
@@ -19,8 +18,9 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Span.h"
 #include "mozilla/SpinEventLoopUntil.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/StaticPrefs_security.h"
 #include "mozilla/Unused.h"
+#include "mozilla/glean/SecurityManagerSslMetrics.h"
 #include "mozilla/intl/Localization.h"
 #include "nsContentUtils.h"
 #include "nsIChannel.h"
@@ -149,7 +149,6 @@ nsresult OCSPRequest::DispatchToMainThreadAndWait() {
     lock.Wait();
   }
 
-  TimeStamp endTime = TimeStamp::Now();
   // CERT_VALIDATION_HTTP_REQUEST_RESULT:
   // 0: request timed out
   // 1: request succeeded
@@ -158,22 +157,19 @@ nsresult OCSPRequest::DispatchToMainThreadAndWait() {
   // If mStartTime was never set, we consider this an internal error.
   // Otherwise, we managed to at least send the request.
   if (mStartTime.IsNull()) {
-    Telemetry::Accumulate(Telemetry::CERT_VALIDATION_HTTP_REQUEST_RESULT, 3);
+    glean::cert::validation_http_request_result.AccumulateSingleSample(3);
   } else if (mResponseResult == NS_ERROR_NET_TIMEOUT) {
-    Telemetry::Accumulate(Telemetry::CERT_VALIDATION_HTTP_REQUEST_RESULT, 0);
-    Telemetry::AccumulateTimeDelta(
-        Telemetry::CERT_VALIDATION_HTTP_REQUEST_CANCELED_TIME, mStartTime,
-        endTime);
+    glean::cert::validation_http_request_result.AccumulateSingleSample(0);
+    mozilla::glean::ocsp_request_time::cancel.AccumulateRawDuration(
+        TimeStamp::Now() - mStartTime);
   } else if (NS_SUCCEEDED(mResponseResult)) {
-    Telemetry::Accumulate(Telemetry::CERT_VALIDATION_HTTP_REQUEST_RESULT, 1);
-    Telemetry::AccumulateTimeDelta(
-        Telemetry::CERT_VALIDATION_HTTP_REQUEST_SUCCEEDED_TIME, mStartTime,
-        endTime);
+    glean::cert::validation_http_request_result.AccumulateSingleSample(1);
+    mozilla::glean::ocsp_request_time::success.AccumulateRawDuration(
+        TimeStamp::Now() - mStartTime);
   } else {
-    Telemetry::Accumulate(Telemetry::CERT_VALIDATION_HTTP_REQUEST_RESULT, 2);
-    Telemetry::AccumulateTimeDelta(
-        Telemetry::CERT_VALIDATION_HTTP_REQUEST_FAILED_TIME, mStartTime,
-        endTime);
+    glean::cert::validation_http_request_result.AccumulateSingleSample(2);
+    mozilla::glean::ocsp_request_time::failure.AccumulateRawDuration(
+        TimeStamp::Now() - mStartTime);
   }
   return rv;
 }
@@ -659,6 +655,9 @@ nsCString getKeaGroupName(uint32_t aKeaGroup) {
     case ssl_grp_kem_xyber768d00:
       groupName = "xyber768d00"_ns;
       break;
+    case ssl_grp_kem_mlkem768x25519:
+      groupName = "mlkem768x25519"_ns;
+      break;
     case ssl_grp_ffdhe_2048:
       groupName = "FF 2048"_ns;
       break;
@@ -764,7 +763,7 @@ static void PreliminaryHandshakeDone(PRFileDesc* fd) {
   unsigned int npnlen;
 
   if (SSL_GetNextProto(fd, &state, npnbuf, &npnlen,
-                       AssertedCast<unsigned int>(ArrayLength(npnbuf))) ==
+                       AssertedCast<unsigned int>(std::size(npnbuf))) ==
       SECSuccess) {
     if (state == SSL_NEXT_PROTO_NEGOTIATED ||
         state == SSL_NEXT_PROTO_SELECTED) {
@@ -773,7 +772,7 @@ static void PreliminaryHandshakeDone(PRFileDesc* fd) {
     } else {
       socketControl->SetNegotiatedNPN(nullptr, 0);
     }
-    mozilla::Telemetry::Accumulate(Telemetry::SSL_NPN_TYPE, state);
+    mozilla::glean::ssl::npn_type.AccumulateSingleSample(state);
   } else {
     socketControl->SetNegotiatedNPN(nullptr, 0);
   }
@@ -850,8 +849,8 @@ SECStatus CanFalseStartCallback(PRFileDesc* fd, void* client_data,
   // to the same protocol we previously saw for the server, after the
   // first successful connection to the server.
 
-  Telemetry::Accumulate(Telemetry::SSL_REASONS_FOR_NOT_FALSE_STARTING,
-                        reasonsForNotFalseStarting);
+  glean::ssl::reasons_for_not_false_starting.AccumulateSingleSample(
+      reasonsForNotFalseStarting);
 
   if (reasonsForNotFalseStarting == 0) {
     *canFalseStart = PR_TRUE;
@@ -864,30 +863,28 @@ SECStatus CanFalseStartCallback(PRFileDesc* fd, void* client_data,
   return SECSuccess;
 }
 
-static void AccumulateNonECCKeySize(Telemetry::HistogramID probe,
-                                    uint32_t bits) {
-  unsigned int value = bits < 512      ? 1
-                       : bits == 512   ? 2
-                       : bits < 768    ? 3
-                       : bits == 768   ? 4
-                       : bits < 1024   ? 5
-                       : bits == 1024  ? 6
-                       : bits < 1280   ? 7
-                       : bits == 1280  ? 8
-                       : bits < 1536   ? 9
-                       : bits == 1536  ? 10
-                       : bits < 2048   ? 11
-                       : bits == 2048  ? 12
-                       : bits < 3072   ? 13
-                       : bits == 3072  ? 14
-                       : bits < 4096   ? 15
-                       : bits == 4096  ? 16
-                       : bits < 8192   ? 17
-                       : bits == 8192  ? 18
-                       : bits < 16384  ? 19
-                       : bits == 16384 ? 20
-                                       : 0;
-  Telemetry::Accumulate(probe, value);
+static unsigned int NonECCKeySize(uint32_t bits) {
+  return bits < 512      ? 1
+         : bits == 512   ? 2
+         : bits < 768    ? 3
+         : bits == 768   ? 4
+         : bits < 1024   ? 5
+         : bits == 1024  ? 6
+         : bits < 1280   ? 7
+         : bits == 1280  ? 8
+         : bits < 1536   ? 9
+         : bits == 1536  ? 10
+         : bits < 2048   ? 11
+         : bits == 2048  ? 12
+         : bits < 3072   ? 13
+         : bits == 3072  ? 14
+         : bits < 4096   ? 15
+         : bits == 4096  ? 16
+         : bits < 8192   ? 17
+         : bits == 8192  ? 18
+         : bits < 16384  ? 19
+         : bits == 16384 ? 20
+                         : 0;
 }
 
 // XXX: This attempts to map a bit count to an ECC named curve identifier. In
@@ -896,13 +893,12 @@ static void AccumulateNonECCKeySize(Telemetry::HistogramID probe,
 // available, the mapping would be ambiguous since there could be multiple
 // named curves for a given size (e.g. secp256k1 vs. secp256r1). We punt on
 // that for now. See also NSS bug 323674.
-static void AccumulateECCCurve(Telemetry::HistogramID probe, uint32_t bits) {
-  unsigned int value = bits == 255   ? 29  // Curve25519
-                       : bits == 256 ? 23  // P-256
-                       : bits == 384 ? 24  // P-384
-                       : bits == 521 ? 25  // P-521
-                                     : 0;  // Unknown
-  Telemetry::Accumulate(probe, value);
+static unsigned int ECCCurve(uint32_t bits) {
+  return bits == 255   ? 29  // Curve25519
+         : bits == 256 ? 23  // P-256
+         : bits == 384 ? 24  // P-384
+         : bits == 521 ? 25  // P-521
+                       : 0;  // Unknown
 }
 
 static void AccumulateCipherSuite(const SSLChannelInfo& channelInfo) {
@@ -979,7 +975,7 @@ static void AccumulateCipherSuite(const SSLChannelInfo& channelInfo) {
       break;
   }
   MOZ_ASSERT(value != 0);
-  Telemetry::Accumulate(Telemetry::TLS_CIPHER_SUITE, value);
+  glean::tls::cipher_suite.AccumulateSingleSample(value);
 }
 
 void HandshakeCallback(PRFileDesc* fd, void* client_data) {
@@ -989,8 +985,6 @@ void HandshakeCallback(PRFileDesc* fd, void* client_data) {
   PreliminaryHandshakeDone(fd);
 
   NSSSocketControl* infoObject = (NSSSocketControl*)fd->higher->secret;
-  nsSSLIOLayerHelpers& ioLayerHelpers =
-      infoObject->SharedState().IOLayerHelpers();
 
   SSLVersionRange versions(infoObject->GetTLSVersionRange());
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
@@ -998,10 +992,8 @@ void HandshakeCallback(PRFileDesc* fd, void* client_data) {
            "(0x%04x,0x%04x)\n",
            fd, static_cast<unsigned int>(versions.min),
            static_cast<unsigned int>(versions.max)));
-
   // If the handshake completed, then we know the site is TLS tolerant
-  ioLayerHelpers.rememberTolerantAtVersion(infoObject->GetHostName(),
-                                           infoObject->GetPort(), versions.max);
+  infoObject->RememberTLSTolerant();
 
   SSLChannelInfo channelInfo;
   SECStatus rv = SSL_GetChannelInfo(fd, &channelInfo, sizeof(channelInfo));
@@ -1015,7 +1007,7 @@ void HandshakeCallback(PRFileDesc* fd, void* client_data) {
   // 1=tls1, 2=tls1.1, 3=tls1.2, 4=tls1.3
   unsigned int versionEnum = channelInfo.protocolVersion & 0xFF;
   MOZ_ASSERT(versionEnum > 0);
-  Telemetry::Accumulate(Telemetry::SSL_HANDSHAKE_VERSION, versionEnum);
+  glean::ssl_handshake::version.AccumulateSingleSample(versionEnum);
 
   SSLCipherSuiteInfo cipherInfo;
   rv = SSL_GetCipherSuiteInfo(channelInfo.cipherSuite, &cipherInfo,
@@ -1025,47 +1017,49 @@ void HandshakeCallback(PRFileDesc* fd, void* client_data) {
     return;
   }
   // keyExchange null=0, rsa=1, dh=2, fortezza=3, ecdh=4, ecdh_hybrid=8
-  Telemetry::Accumulate(infoObject->IsFullHandshake()
-                            ? Telemetry::SSL_KEY_EXCHANGE_ALGORITHM_FULL
-                            : Telemetry::SSL_KEY_EXCHANGE_ALGORITHM_RESUMED,
-                        channelInfo.keaType);
+  if (infoObject->IsFullHandshake()) {
+    glean::ssl::key_exchange_algorithm_full.AccumulateSingleSample(
+        channelInfo.keaType);
+  } else {
+    glean::ssl::key_exchange_algorithm_resumed.AccumulateSingleSample(
+        channelInfo.keaType);
+  }
 
   if (infoObject->IsFullHandshake()) {
     switch (channelInfo.keaType) {
       case ssl_kea_rsa:
-        AccumulateNonECCKeySize(Telemetry::SSL_KEA_RSA_KEY_SIZE_FULL,
-                                channelInfo.keaKeyBits);
+        glean::ssl::kea_rsa_key_size_full.AccumulateSingleSample(
+            NonECCKeySize(channelInfo.keaKeyBits));
         break;
       case ssl_kea_dh:
-        AccumulateNonECCKeySize(Telemetry::SSL_KEA_DHE_KEY_SIZE_FULL,
-                                channelInfo.keaKeyBits);
+        glean::ssl::kea_dhe_key_size_full.AccumulateSingleSample(
+            NonECCKeySize(channelInfo.keaKeyBits));
         break;
       case ssl_kea_ecdh:
-        AccumulateECCCurve(Telemetry::SSL_KEA_ECDHE_CURVE_FULL,
-                           channelInfo.keaKeyBits);
+        glean::ssl::kea_ecdhe_curve_full.AccumulateSingleSample(
+            ECCCurve(channelInfo.keaKeyBits));
         break;
       case ssl_kea_ecdh_hybrid:
-        // Bug 1874963: Add probes for Xyber768d00
         break;
       default:
         MOZ_CRASH("impossible KEA");
         break;
     }
 
-    Telemetry::Accumulate(Telemetry::SSL_AUTH_ALGORITHM_FULL,
-                          channelInfo.authType);
+    glean::ssl::auth_algorithm_full.AccumulateSingleSample(
+        channelInfo.authType);
 
     // RSA key exchange doesn't use a signature for auth.
     if (channelInfo.keaType != ssl_kea_rsa) {
       switch (channelInfo.authType) {
         case ssl_auth_rsa:
         case ssl_auth_rsa_sign:
-          AccumulateNonECCKeySize(Telemetry::SSL_AUTH_RSA_KEY_SIZE_FULL,
-                                  channelInfo.authKeyBits);
+          glean::ssl::auth_rsa_key_size_full.AccumulateSingleSample(
+              NonECCKeySize(channelInfo.authKeyBits));
           break;
         case ssl_auth_ecdsa:
-          AccumulateECCCurve(Telemetry::SSL_AUTH_ECDSA_CURVE_FULL,
-                             channelInfo.authKeyBits);
+          glean::ssl::auth_ecdsa_curve_full.AccumulateSingleSample(
+              ECCCurve(channelInfo.authKeyBits));
           break;
         default:
           MOZ_CRASH("impossible auth algorithm");
@@ -1086,8 +1080,9 @@ void HandshakeCallback(PRFileDesc* fd, void* client_data) {
     // TLS 1.3 dropped support for renegotiation.
     siteSupportsSafeRenego = true;
   }
-  bool renegotiationUnsafe = !siteSupportsSafeRenego &&
-                             ioLayerHelpers.treatUnsafeNegotiationAsBroken();
+  bool renegotiationUnsafe =
+      !siteSupportsSafeRenego &&
+      StaticPrefs::security_ssl_treat_unsafe_negotiation_as_broken();
 
   bool deprecatedTlsVer =
       (channelInfo.protocolVersion < SSL_LIBRARY_VERSION_TLS_1_2);
@@ -1101,8 +1096,7 @@ void HandshakeCallback(PRFileDesc* fd, void* client_data) {
     rv = SSL_VersionRangeGetDefault(ssl_variant_stream, &defVersion);
     if (rv == SECSuccess && versions.max >= defVersion.max) {
       // we know this site no longer requires a version fallback
-      ioLayerHelpers.removeInsecureFallbackSite(infoObject->GetHostName(),
-                                                infoObject->GetPort());
+      infoObject->RemoveInsecureTLSFallback();
     }
   }
 
@@ -1130,7 +1124,7 @@ void HandshakeCallback(PRFileDesc* fd, void* client_data) {
     msg.AppendLiteral(" : server does not support RFC 5746, see CVE-2009-3555");
 
     nsContentUtils::LogSimpleConsoleError(
-        msg, "SSL"_ns, !!infoObject->GetOriginAttributes().mPrivateBrowsingId,
+        msg, "SSL"_ns, infoObject->GetOriginAttributes().IsPrivateBrowsing(),
         true /* from chrome context */);
   }
 
@@ -1146,7 +1140,8 @@ void SecretCallback(PRFileDesc* fd, PRUint16 epoch, SSLSecretDirection dir,
   if (epoch == 2 && dir == ssl_secret_read) {
     // |secret| is the server_handshake_traffic_secret. Set a flag to indicate
     // that the Server Hello has been processed successfully. We use this when
-    // deciding whether to retry a connection in which a Xyber share was sent.
+    // deciding whether to retry a connection in which an mlkem768x25519 share
+    // was sent.
     infoObject->SetHasTls13HandshakeSecrets();
   }
 }

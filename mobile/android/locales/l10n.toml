@@ -170,12 +170,24 @@ exclude-multi-locale = [
     l10n = "{l}toolkit/toolkit/about/*Support.ftl"
 
 [[paths]]
-    reference = "toolkit/locales/en-US/crashreporter/*.ftl"
-    l10n = "{l}toolkit/crashreporter/*.ftl"
-
-[[paths]]
     reference = "toolkit/locales/en-US/toolkit/about/*Webrtc.ftl"
     l10n = "{l}toolkit/toolkit/about/*Webrtc.ftl"
+
+[[paths]]
+    reference = "toolkit/locales/en-US/toolkit/about/*Logging.ftl"
+    l10n = "{l}toolkit/toolkit/about/*Logging.ftl"
+
+[[paths]]
+    reference = "toolkit/locales/en-US/toolkit/branding/brandings.ftl"
+    l10n = "{l}toolkit/toolkit/branding/brandings.ftl"
+
+[[paths]]
+    reference = "toolkit/locales/en-US/toolkit/global/processTypes.ftl"
+    l10n = "{l}toolkit/toolkit/global/processTypes.ftl"
+
+[[paths]]
+    reference = "toolkit/locales/en-US/toolkit/global/resetProfile.ftl"
+    l10n = "{l}toolkit/toolkit/global/resetProfile.ftl"
 
 [[filters]]
     path = [

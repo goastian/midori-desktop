@@ -11,10 +11,10 @@ import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
+import mozilla.components.compose.base.button.TextButton
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
-import org.mozilla.fenix.compose.button.TextButton
 import org.mozilla.fenix.theme.FirefoxTheme
 
 /**
@@ -62,7 +62,7 @@ fun NeverTranslateSiteDialogPreference(
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun NeverTranslateSiteDialogPreferencePreview() {
     FirefoxTheme {
         NeverTranslateSiteDialogPreference(

@@ -11,6 +11,12 @@
                 - "--disable-e10s"
                 - "--disable-fission"
 
+confirm-failure:
+    description: "{description} with confirm failures enabled"
+    component: "Testing::General"
+    expiration: "never"
+    suffix: "cf"
+
 headless:
     description: "{description} without a window"
     component: "Firefox::Headless"
@@ -36,7 +42,7 @@ headless:
 a11y-checks:
     description: "{description} with accessibility checks enabled"
     component: "Core::Disability Access APIs"
-    expiration: "2024-09-01"
+    expiration: "2025-09-01"
     suffix: "a11y-checks"
     mozinfo: "a11y_checks"
     replace:
@@ -62,7 +68,7 @@ a11y-checks:
 aab:
     description: "{description} with aab test_runner"
     component: "GeckoView::General"
-    expiration: "2024-09-01"
+    expiration: "2025-09-01"
     when: &gv_e10s_filter
         $eval: '"android" in task["test-platform"]'
     suffix: "aab"
@@ -83,8 +89,8 @@ aab:
 
 geckoview-no-fission:
     description: "{description} without fission enabled"
-    component: "GeckoView::Sandboxing"
-    expiration: "2024-09-01"
+    component: "GeckoView::General"
+    expiration: "2025-09-01"
     when:
         <<: *gv_e10s_filter
     suffix: "nofis"
@@ -96,8 +102,8 @@ geckoview-no-fission:
 
 geckoview-fission:
     description: "{description} with fission enabled and default isolation strategy"
-    component: "GeckoView::Sandboxing"
-    expiration: "2024-09-01"
+    component: "GeckoView::General"
+    expiration: "2025-09-01"
     when:
         <<: *gv_e10s_filter
     suffix: "fis"
@@ -105,8 +111,8 @@ geckoview-fission:
 
 geckoview-fission-isolate-high-value:
     description: "{description} with fission enabled and isolation strategy isolateHighValue"
-    component: "GeckoView::Sandboxing"
-    expiration: "2024-09-01"
+    component: "GeckoView::General"
+    expiration: "2025-09-01"
     when:
         <<: *gv_e10s_filter
     suffix: "fis-hv"
@@ -119,7 +125,7 @@ geckoview-fission-isolate-high-value:
 no-fission:
     description: "{description} without fission enabled"
     component: "Core::DOM: Content Processes"
-    expiration: "2024-09-01"
+    expiration: "2025-09-01"
     suffix: "nofis"
     mozinfo: "fission"
     when:
@@ -132,18 +138,18 @@ no-fission:
             extra-options:
                 - "--disable-fission"
 
-geckoview-no-fission-ship:
+geckoview-no-fission-no-ship:
     description: "{description} with fission disabled and ship enabled"
-    component: "GeckoView::Sandboxing"
-    expiration: "2024-09-01"
-    suffix: "nofis-ship"
+    component: "GeckoView::General"
+    expiration: "2025-09-01"
+    suffix: "nofis-noship"
     when:
         <<: *gv_e10s_filter
     merge:
         mozharness:
             extra-options:
                 - "--disable-fission"
-                - "--setpref=fission.disableSessionHistoryInParent=false"
+                - "--setpref=fission.disableSessionHistoryInParent=true"
 
 xorigin:
     description: "{description} with cross-origin"
@@ -164,7 +170,7 @@ xorigin:
 conditioned_profile:
     description: "{description} with conditioned profile"
     component: "Testing::General"
-    expiration: "2024-09-01"
+    expiration: "2025-09-01"
     suffix: "condprof"
     mozinfo: "condprof"
     when:
@@ -184,6 +190,10 @@ conditioned_profile:
                     || "xpcshell" == task["try-name"]
                 )'
     merge:
+        worker:
+            env:
+                MOZHARNESS_TEST_TAG:
+                    - "condprof"
         mozharness:
             extra-options:
                 - "--conditioned-profile"
@@ -193,7 +203,7 @@ conditioned_profile:
 socketprocess:
     description: "{description} with socket process enabled"
     component: "Core::Networking"
-    expiration: "2025-03-01"
+    expiration: "2025-09-01"
     suffix: "spi"
     mozinfo: "socketprocess_e10s"
     when:
@@ -207,7 +217,7 @@ socketprocess:
 socketprocess_networking:
     description: "{description} with networking on socket process enabled"
     component: "Core::Networking"
-    expiration: "2025-03-01"
+    expiration: "2025-09-01"
     suffix: "spi-nw"
     mozinfo: "socketprocess_networking"
     when:
@@ -232,7 +242,7 @@ socketprocess_networking:
 webrender-dcomp-disabled:
     description: "{description} with dcomp disabled"
     component: "Core::Graphics: WebRender"
-    expiration: "2024-09-01"
+    expiration: "2025-09-01"
     suffix: "wr-dc0"
     when:
         $eval: '"windows1" in task["test-platform"]'
@@ -248,7 +258,7 @@ webrender-dcomp-disabled:
 webrender-dcomp-present:  # Default variant ends up like this.
     description: "{description} with dcomp present but not overlays"
     component: "Core::Graphics: WebRender"
-    expiration: "2024-09-01"
+    expiration: "2025-09-01"
     suffix: "wr-dc1-p"
     when:
         $eval: '"windows1" in task["test-platform"]'
@@ -264,7 +274,7 @@ webrender-dcomp-present:  # Default variant ends up like this.
 webrender-dcomp-overlays:
     description: "{description} with dcomp overlays but not compositing"
     component: "Core::Graphics: WebRender"
-    expiration: "2024-09-01"
+    expiration: "2025-09-01"
     suffix: "wr-dc2-o"
     when:
         $eval: '"windows1" in task["test-platform"]'
@@ -280,7 +290,7 @@ webrender-dcomp-overlays:
 webrender-dcomp-compositing:
     description: "{description} with dcomp compositing"
     component: "Core::Graphics: WebRender"
-    expiration: "2024-09-01"
+    expiration: "2025-09-01"
     suffix: "wr-dc3-c"
     when:
         $eval: '"windows1" in task["test-platform"]'
@@ -307,21 +317,10 @@ webrender-sw:
             extra-options:
                 - "--setpref=gfx.webrender.software=true"
 
-webgl-ipc:
-    description: "{description} with WebGL IPC process enabled"
-    component: "Core::Graphics: CanvasWebGL"
-    expiration: "2024-09-01"
-    suffix: "gli"
-    merge:
-        mozharness:
-            extra-options:
-                - "--setpref=webgl.out-of-process=true"
-                - "--setpref=security.sandbox.content.headless=true"
-
 wmf-media-engine:
     description: "{description} with Windows Media Foundation media engine enabled"
     component: "Core::Audio/Video: Playback"
-    expiration: "2024-10-10"
+    expiration: "never"
     when:
         $eval: '"windows1" in task["test-platform"]'
     suffix: "wmfme"
@@ -329,31 +328,92 @@ wmf-media-engine:
     replace:
         tier: 2
     merge:
+        worker:
+            env:
+                MOZHARNESS_TEST_TAG:
+                    - "media-engine-compatible"
         mozharness:
             extra-options:
-                - "--tag=media-engine-compatible"
                 - "--setpref=media.wmf.media-engine.enabled=1"
                 - "--setpref=media.wmf.media-engine.channel-decoder.enabled=true"
                 - "--setpref=media.eme.wmf.clearkey.enabled=true"
                 - "--setpref=media.wmf.media-engine.bypass-gfx-blocklist=true"
+                - "--setpref=media.eme.mfcdm.origin-filter.enabled=0"
+
+# For EME wpts, where we need non-local connection to the license server
+eme-wmf:
+    description: "{description} with Windows Media Foundation based CDM enabled for EME wpt"
+    component: "Core::Audio/Video: Playback"
+    expiration: "2025-06-30"
+    when:
+        $eval: '"windows1" in task["test-platform"]'
+    suffix: "emewmf"
+    mozinfo: "emewmf"
+    replace:
+        tier: 2
+    merge:
+        worker:
+            env:
+                MOZ_DISABLE_NONLOCAL_CONNECTIONS:
+                    '0'
+        virtualization: virtual-with-gpu
+        mozharness:
+            extra-options:
+                - "--setpref=media.eme.playready.enabled=true"
+                - "--setpref=media.wmf.media-engine.enabled=2"
+                - "--setpref=media.wmf.media-engine.bypass-gfx-blocklist=true"
+                - "--setpref=media.eme.mfcdm.origin-filter.enabled=0"
 
 media-gpu:
     description: "{description} for running media tests on the GPU worker"
     component: "Core::Audio/Video: Playback"
-    expiration: "2024-11-15"
+    expiration: "never"
     suffix: "mda-gpu"
     mozinfo: "mda_gpu"
     when:
         $eval: '
-                    "windows" in task["test-platform"]
-                    || "macosx" in task["test-platform"]
+                    (
+                        "windows" in task["test-platform"]
+                        && "hw" in task["test-platform"]
+                    )
+                    || "macosx" in task["test-platform"] ||
+                    (
+                        "android" in task["test-platform"]
+                        && "hw" in task["test-platform"]
+                    )
                 '
     merge:
+        worker:
+            env:
+                MOZHARNESS_TEST_TAG:
+                    - "media-gpu"
+                USE_HARDWARE: "1"
         virtualization: virtual-with-gpu
         mozharness:
             extra-options:
-                - "--tag=media-gpu"
                 - "--setpref=media.hardware-video-decoding.force-enabled=true"
+
+no-gpu-process:
+    description: "{description} without a dedicated GPU process"
+    component: "Core::Graphics"
+    expiration: "2026-01-15"
+    suffix: "nogpu"
+    mozinfo: "nogpu"
+    when:
+        $eval: '
+                    "windows" in task["test-platform"]
+                    || "android" in task["test-platform"]
+                    || "linux" in task["test-platform"]
+                '
+    replace:
+        virtualization: virtual
+
+    merge:
+        mozharness:
+            extra-options:
+                - "--setpref=layers.gpu-process.enabled=false"
+                - "--setpref=layers.gpu-process.force-enabled=false"
+                - "--setpref=webgl.force-enabled=true"  # Bug 1922686
 
 msix:
     description: "{description} from msix packages"
@@ -363,7 +423,7 @@ msix:
     mozinfo: "msix"
     when:
         $eval: '
-                    "windows1" in task["test-platform"]
+                    "windows11" in task["test-platform"]
                     && "-64" in task["test-platform"]
                     && (
                         "opt" in task["test-platform"]
@@ -371,6 +431,7 @@ msix:
                     ) && !(
                         "asan" in task["test-platform"]
                         || "ccov" in task["test-platform"]
+                        || "devedition" in task["test-platform"]
                     )
                 '
     replace:
@@ -382,7 +443,7 @@ msix:
 http3:
     description: "{description} with http3 server"
     component: "Core::Networking"
-    expiration: "2025-03-01"
+    expiration: "2025-09-01"
     suffix: "http3"
     mozinfo: "http3"
     when:
@@ -401,7 +462,7 @@ http3:
 http2:
     description: "{description} with http2 server"
     component: "Core::Networking"
-    expiration: "2025-03-01"
+    expiration: "2025-09-01"
     suffix: "http2"
     mozinfo: "http2"
     when:
@@ -434,3 +495,78 @@ draw-snapshot:
         mozharness:
             extra-options:
                 - "--setpref=reftest.use-draw-snapshot=true"
+
+async-event-dispatching:
+    description: "{description} with async widget event dispatching"
+    component: "Remote Protocol::Agent"
+    expiration: "2025-10-01"
+    suffix: "async"
+    mozinfo: "remote_async"
+    replace:
+        tier: 3
+    merge:
+        mozharness:
+            extra-options:
+                - "--setpref=remote.events.async.wheel.enabled=true"
+
+vertical-tabs:
+    description: "{description} limited to tests identified as being applicable to also run with vertical tabs enabled"
+    component: "Firefox::Tabbed Browser"
+    expiration: "2025-11-01"
+    suffix: "vt"
+    mozinfo: "vertical_tab"
+    merge:
+        worker:
+            env:
+                MOZHARNESS_TEST_TAG:
+                    - "vertical-tabs"
+        mozharness:
+            extra-options:
+                - "--setpref=sidebar.verticalTabs=true"
+
+inc-origin-init:
+    description: "{description} limited to tests identified as being applicable to also run with incremental origin initialization enabled"
+    component: "Core::Storage: Quota Manager"
+    expiration: "2025-07-01"
+    suffix: "ioi"
+    mozinfo: "inc_origin_init"
+    replace:
+        tier: 3
+    merge:
+        worker:
+            env:
+                MOZHARNESS_TEST_TAG:
+                    - "inc-origin-init"
+                MOZ_ENABLE_INC_ORIGIN_INIT: "1"
+
+privatebrowsing:
+    description: "{description} limited to tests identified as being applicable to also run in private browsing mode"
+    component: "Core::Storage: Quota Manager"
+    expiration: "never"
+    suffix: "pb"
+    mozinfo: "privateBrowsing"
+    merge:
+        worker:
+            env:
+                MOZHARNESS_TEST_TAG:
+                    - "privatebrowsing"
+        mozharness:
+            extra-options:
+                - "--setpref=browser.privatebrowsing.autostart=true"
+
+privatebrowsing-inc-origin-init:
+    description: "{description} limited to tests identified as being applicable to also run in private browsing mode and with incremental origin initialization enabled"
+    component: "Core::Storage: Quota Manager"
+    expiration: "2025-07-01"
+    suffix: "pb-ioi"
+    replace:
+        tier: 3
+    merge:
+        worker:
+            env:
+                MOZHARNESS_TEST_TAG:
+                    - "privatebrowsing-inc-origin-init"
+                MOZ_ENABLE_INC_ORIGIN_INIT: "1"
+        mozharness:
+            extra-options:
+                - "--setpref=browser.privatebrowsing.autostart=true"

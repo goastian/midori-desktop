@@ -12,9 +12,7 @@ import sys
 
 from update_buildconfig_from_gradle import main as update_build_config
 
-CURRENT_DIR = os.path.dirname(os.path.realpath(__file__))
-PROJECT_DIR = os.path.realpath(os.path.join(CURRENT_DIR, "..", "..", ".."))
-OUTPUT_DIR = os.path.join(PROJECT_DIR, "artifacts")
+OUTPUT_DIR = os.environ.get("ARTIFACTS_DIR", "/builds/worker/artifacts")
 BUILDCONFIG_DIFF_FILE_NAME = "buildconfig.diff"
 BUILDCONFIG_DIFF_FILE = os.path.join(OUTPUT_DIR, BUILDCONFIG_DIFF_FILE_NAME)
 BUILDCONFIG_FILE_NAME = ".buildconfig.yml"
@@ -31,7 +29,7 @@ def _buildconfig_files_diff():
         "-I",
         "**/.buildconfig.yml",
     ]
-    p = subprocess.run(cmd, capture_output=True, universal_newlines=True)
+    p = subprocess.run(cmd, capture_output=True, text=True)
     return p.stdout
 
 

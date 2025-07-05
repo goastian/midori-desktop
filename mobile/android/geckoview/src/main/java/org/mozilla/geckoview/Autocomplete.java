@@ -965,7 +965,7 @@ public class Autocomplete {
     }
 
     @SuppressWarnings("checkstyle:javadocmethod")
-    public SaveOption(final @NonNull T value, final @SaveOptionHint int hint) {
+    public SaveOption(final @NonNull T value, final int hint) {
       super(value, hint);
     }
   }
@@ -1015,7 +1015,7 @@ public class Autocomplete {
     }
 
     @SuppressWarnings("checkstyle:javadocmethod")
-    public SelectOption(final @NonNull T value, final @SelectOptionHint int hint) {
+    public SelectOption(final @NonNull T value, final int hint) {
       super(value, hint);
     }
 

@@ -14,6 +14,9 @@ pub enum PseudoElement {
         ${pseudo.capitalized_pseudo()}(thin_vec::ThinVec<Atom>),
         % elif pseudo.pseudo_ident == "highlight":
         ${pseudo.capitalized_pseudo()}(AtomIdent),
+        % elif pseudo.is_named_view_transition_pseudo():
+        /// <pt-name-selector> = '*' | <custom-ident>
+        ${pseudo.capitalized_pseudo()}(AtomIdent),
         % else:
         ${pseudo.capitalized_pseudo()},
         % endif
@@ -138,6 +141,10 @@ impl PseudoElement {
                     debug_assert!(functional_pseudo_parameter.is_none());
                     Some(${pseudo_element_variant(pseudo)})
                 },
+            % elif pseudo.is_named_view_transition_pseudo():
+                PseudoStyleType::${pseudo.pseudo_ident} => {
+                    functional_pseudo_parameter.map(PseudoElement::${pseudo.capitalized_pseudo()})
+                },
             % endif
             % endfor
             PseudoStyleType::highlight => {
@@ -157,7 +164,7 @@ impl PseudoElement {
             % for pseudo in PSEUDOS:
             % if pseudo.is_tree_pseudo_element():
                 PseudoElement::${pseudo.capitalized_pseudo()}(..) => PseudoStyleType::XULTree,
-            % elif pseudo.pseudo_ident == "highlight":
+            % elif pseudo.pseudo_ident == "highlight" or pseudo.is_named_view_transition_pseudo():
                 PseudoElement::${pseudo.capitalized_pseudo()}(..) => PseudoStyleType::${pseudo.pseudo_ident},
             % else:
                 PseudoElement::${pseudo.capitalized_pseudo()} => PseudoStyleType::${pseudo.pseudo_ident},
@@ -240,6 +247,47 @@ impl PseudoElement {
         % endfor
         None
     }
+
+    /// Returns true if this pseudo-element matches the given selector.
+    pub fn matches(&self, pseudo_selector: &PseudoElement) -> bool {
+        if *self == *pseudo_selector {
+            return true;
+        }
+
+        if std::mem::discriminant(self) != std::mem::discriminant(pseudo_selector) {
+            return false;
+        }
+
+        match (self, pseudo_selector) {
+            (
+                &Self::ViewTransitionGroup(ref _name),
+                &Self::ViewTransitionGroup(ref selector_name),
+            )
+            | (
+                &Self::ViewTransitionImagePair(ref _name),
+                &Self::ViewTransitionImagePair(ref selector_name),
+            )
+            | (
+                &Self::ViewTransitionOld(ref _name),
+                &Self::ViewTransitionOld(ref selector_name),
+            )
+            | (
+                &Self::ViewTransitionNew(ref _name),
+                &Self::ViewTransitionNew(ref selector_name),
+            ) => {
+                // Named view transition pseudos accept the universal selector as the name, so we
+                // check it first.
+                // https://drafts.csswg.org/css-view-transitions-1/#named-view-transition-pseudo
+                if selector_name.0 == atom!("*") {
+                    return true;
+                }
+                // We don't need to check if `*_name == *selector_name` here because we already
+                // check if the enums are equal above.
+                false
+            },
+            _ => false,
+        }
+    }
 }
 
 impl ToCss for PseudoElement {
@@ -247,7 +295,21 @@ impl ToCss for PseudoElement {
         dest.write_char(':')?;
         match *self {
             % for pseudo in (p for p in PSEUDOS if p.pseudo_ident != "highlight"):
+            %if pseudo.is_named_view_transition_pseudo():
+                PseudoElement::${pseudo.capitalized_pseudo()}(ref name) => {
+                    dest.write_str("${pseudo.value}(")?;
+                    if name.0 == atom!("*") {
+                        // serialize_atom_identifier() may serialize "*" as "\*", so we handle it
+                        // separately.
+                        dest.write_char('*')?;
+                    } else {
+                        serialize_atom_identifier(name, dest)?;
+                    }
+                    dest.write_char(')')?;
+                }
+            %else:
                 ${pseudo_element_variant(pseudo)} => dest.write_str("${pseudo.value}")?,
+            %endif
             % endfor
             PseudoElement::Highlight(ref name) => {
                 dest.write_str(":highlight(")?;

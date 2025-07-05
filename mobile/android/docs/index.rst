@@ -23,7 +23,6 @@ To set up Mozilla Central, you can follow the general instructions provided in t
 
 Additionally, to set up specifically for mozilla-central, you can refer to the following guide:
 
-- :ref:`Mozilla Central Quick Start <Mozilla Central Quick Start>`
 - :ref:`Quick Start Guide for Git Users <contribute_with_git>`
 
 Bootstrap
@@ -107,6 +106,9 @@ Build Using Android Studio
 
 -  Install `Android
    Studio <https://developer.android.com/studio/install>`_.
+-  If on Windows, create a JAVA_HOME environment variable
+   and set it to the path of the Android Studio jbr. With the default installation locations, it is
+   ``C:\Program Files\Android\Android Studio\jbr``.
 -  Choose File->Open from the toolbar
 -  Navigate to the root of your ``mozilla-central`` source directory and
    click “Open”
@@ -137,6 +139,96 @@ making Android Studio and Gradle do this automatically.
 If you want set up code formatting for Kotlin, please reference
 `IntelliJ IDEA configuration
 <https://pinterest.github.io/ktlint/rules/configuration-intellij-idea/>`_.
+
+Mobile Devices and Emulators
+-------------------------------------
+
+The default mozconfig file, located in the root directory of your ``mozilla-central`` contains
+configurations for running mobile test devices in x86, arm64, and x86_64 architectures.
+
+With the default mozconfig configurations, your machine's architecture should match the test device's
+architecture. On newer Macs built on Apple Silicon, the mozconfig will likely not need to be changed
+since it runs on arm64 and most mobile devices run on arm64.
+
+If your machine has a different architecture compared to your physical test device, you should
+uncomment the option matching your test device. Usually, this means uncommenting the arm64 option:
+
+.. code:: bash
+
+   ac_add_options --target=aarch64
+
+**Note:** When using an emulator, the mozconfig target configuration will most likely need to match
+the architecture of your machine.
+
+Custom AVD
+~~~~~~~~~~
+
+There are several reasons creating a custom AVD can be required, like e.g. the
+default emulator setup might be too old for some tasks, and it might be
+required to run some newer versions of the APIs or others.
+
+Assuming the following environment variables are already set (versions/OS may change):
+
+.. code:: bash
+
+   JAVA_HOME=$HOME/.mozbuild/jdk/jdk-17.0.12+7
+   ANDROID_HOME=$HOME/.mozbuild/android-sdk-linux
+   ANDROID_AVD_HOME=$HOME/.mozbuild/android-device/avd
+   PATH=$ANDROID_HOME/cmdline-tools/12.0/bin/:$PATH
+
+You can identify usable packages already installed on your system via
+
+.. code:: bash
+
+   sdkmanager --list
+
+It will output list of available and installed packages. Packages of interest
+are ``system-images`` and follow the rule ``system-images;android-API;pkg;arch`` where
+
+-  ``API`` is the `Android API level <https://developer.android.com/tools/releases/platforms>`_
+-  ``pkg`` is the set of package installed, e.g., ``default``, ``google_apis``, ``google_apis_playstore``
+-  the last one being the emulator architecture and usually stick to ``x86_64``.
+
+The system image package you will use needs to be installed, so if it is not
+already in the list above, please use (in this example it installs the package
+for Android 14 (API level 34), ``default`` package and ``x86_64`` arch).
+
+.. code:: bash
+
+   sdkmanager "system-images;android-34;default;x86_64"
+
+Then the AVD can be created with:
+
+.. code:: bash
+
+   avdmanager create avd --name android14-x86_64 --package "system-images;android-34;default;x86_64"
+
+The name passed in argument can be whatever you want and the package is one of
+the installed list.  It is then required to modify entries within
+`android_device.py <https://searchfox.org/mozilla-central/rev/d56687458d4e6e8882c4b740e78413a0f0a69d59/testing/mozbase/mozrunner/mozrunner/devices/android_device.py#101-175>`_ to be able to make use of ``mach android-emulator``,
+changing the definition to match the name of the AVD created above. Example below:
+
+.. code:: diff
+
+   diff --git a/testing/mozbase/mozrunner/mozrunner/devices/android_device.py b/testing/mozbase/mozrunner/mozrunner/devices/android_device.py
+   index 4f883261d45c1..07f91c1ab800e 100644
+   --- a/testing/mozbase/mozrunner/mozrunner/devices/android_device.py
+   +++ b/testing/mozbase/mozrunner/mozrunner/devices/android_device.py
+   @@ -151,7 +151,7 @@ AVD_DICT = {
+        ),
+        "x86_64": AvdInfo(
+            "Android x86_64",
+   -        "mozemulator-x86_64",
+   +        "android14-x86_64",
+            [
+                "-skip-adb-auth",
+                "-verbose",
+
+Once the avd is created, it can be customized by changing the ``config.ini``
+file (located under ``$ANDROID_AVD_HOME/<avd-name>.avd/``, e.g.,
+``$HOME/.mozbuild/android-device/avd/android14-x86_64/config.ini`` in the above
+example). It is recommended to enable physical keyboard by changing the value
+``hw.keyboard`` to ``yes`` (otherwise only virtual keyboard input will work).
 
 Custom mozconfig with Android Studio
 ------------------------------------

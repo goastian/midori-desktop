@@ -8,7 +8,7 @@
 
 #include "prthread.h"
 #include "prtypes.h"
-#include "prwin16.h"
+#include "prwin.h"
 #include <stdio.h>
 
 PR_BEGIN_EXTERN_C
@@ -31,9 +31,9 @@ PR_BEGIN_EXTERN_C
 ** The format of the version string is
 **     "<major version>.<minor version>[.<patch level>] [<Beta>]"
 */
-#define PR_VERSION  "4.35"
+#define PR_VERSION  "4.36"
 #define PR_VMAJOR   4
-#define PR_VMINOR   35
+#define PR_VMINOR   36
 #define PR_VPATCH   0
 #define PR_BETA     PR_FALSE
 

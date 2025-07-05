@@ -35,7 +35,7 @@ class EarlyHintsService {
                  nsIChannel* aChannel, const nsACString& aReferrerPolicy,
                  const nsACString& aCSPHeader,
                  dom::CanonicalBrowsingContext* aLoadingBrowsingContext);
-  void FinalResponse(uint32_t aResponseStatus);
+  void Reset();
   void Cancel(const nsACString& aReason);
 
   void RegisterLinksAndGetConnectArgs(
@@ -44,9 +44,6 @@ class EarlyHintsService {
   uint32_t LinkType() const { return mLinkType; }
 
  private:
-  void CollectTelemetry(Maybe<uint32_t> aResponseStatus);
-  void CollectLinkTypeTelemetry(const nsAString& aRel);
-
   Maybe<TimeStamp> mFirstEarlyHint;
   uint32_t mEarlyHintsCount{0};
 

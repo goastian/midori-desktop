@@ -45,21 +45,80 @@ option(
     help="Enable generating content process services with isolatedProcess=true",
     default=False,
 )
+
+isIsolatedProcessEnabled = depends_if("MOZ_ANDROID_CONTENT_SERVICE_ISOLATED_PROCESS")(
+    lambda _: True
+)
 set_config(
     "MOZ_ANDROID_CONTENT_SERVICE_ISOLATED_PROCESS",
-    depends_if("MOZ_ANDROID_CONTENT_SERVICE_ISOLATED_PROCESS")(lambda x: True),
+    isIsolatedProcessEnabled,
+)
+set_define(
+    "MOZ_ANDROID_CONTENT_SERVICE_ISOLATED_PROCESS",
+    isIsolatedProcessEnabled,
 )
 
 option(
     "--enable-geckoview-lite",
-    help="Build GeckoView in Lite mode. Lite mode removes all unnecessary dependencies like Glean.",
+    help="Build GeckoView in Lite mode. Lite mode removes all unnecessary dependencies like Glean",
 )
 
 set_config("MOZ_ANDROID_GECKOVIEW_LITE", True, when="--enable-geckoview-lite")
 
+option(
+    "--enable-android-subproject",
+    choices=(
+        "fenix",
+        "focus",
+        "geckoview_example",
+    ),
+    nargs="?",
+    help="Build a subproject of android. Possible options: fenix/focus/geckoview_example",
+)
+
+
+@depends("--enable-android-subproject")
+def android_subproject(value):
+    if value:
+        return value[0]
+
+
+set_config("MOZ_ANDROID_SUBPROJECT", android_subproject)
+
+
+# The android:debuggable flag controls if a debugger can be attached on to the
+# running app. Default this setting to follow `--enable-debug`. Use this flag to
+# allow attaching debugging to app compiled in an optimized / release
+# configuration.
+#
+# NOTE: There are numerous performance implications for a package marked as
+#       android:debuggable versus a similar one that isn't. Particularly around
+#       AOT compilation heuristics and caches.
+
+option(
+    "--enable-android-debuggable",
+    default=moz_debug,
+    help="{Enable|Disable} the android:debuggable flag in AndroidManifest.xml",
+)
+
+
+@depends("--enable-android-debuggable")
+def android_debuggable(value):
+    if value:
+        return True
+
+
+set_config("MOZ_ANDROID_DEBUGGABLE", android_debuggable)
+
+
 imply_option("MOZ_NORMANDY", False)
 imply_option("MOZ_SERVICES_HEALTHREPORT", True)
 imply_option("MOZ_GECKOVIEW_HISTORY", True)
+
+imply_option("MOZ_APP_UA_NAME", "Firefox")
+imply_option("MOZ_APP_VENDOR", "Mozilla")
+imply_option("MOZ_APP_ID", "{aa3c5121-dab2-40e2-81ca-7ea25febc110}")
+imply_option("BROWSER_CHROME_URL", "chrome://geckoview/content/geckoview.xhtml")
 
 
 @depends(target)
@@ -76,6 +135,7 @@ def check_target(target):
         )
 
 
+include("../shared/moz.configure")
 include("../../toolkit/moz.configure")
 include("../../build/moz.configure/android-sdk.configure")
 include("../../build/moz.configure/java.configure")

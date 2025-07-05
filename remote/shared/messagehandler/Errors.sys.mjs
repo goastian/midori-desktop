@@ -26,7 +26,7 @@ class MessageHandlerError extends RemoteError {
   }
 
   /**
-   * @returns {Object<string, string>}
+   * @returns {Record<string, string>}
    *     JSON serialisation of error prototype.
    */
   toJSON() {
@@ -41,7 +41,7 @@ class MessageHandlerError extends RemoteError {
    * Unmarshals a JSON error representation to the appropriate MessageHandler
    * error type.
    *
-   * @param {Object<string, string>} json
+   * @param {Record<string, string>} json
    *     Error object.
    *
    * @returns {Error}
@@ -69,6 +69,16 @@ class MessageHandlerError extends RemoteError {
 }
 
 /**
+ * A browsing context is no longer available.
+ */
+class DiscardedBrowsingContextError extends MessageHandlerError {
+  constructor(message) {
+    super(message);
+    this.status = `discarded browsing context`;
+  }
+}
+
+/**
  * A command could not be handled by the message handler network.
  */
 class UnsupportedCommandError extends MessageHandlerError {
@@ -79,12 +89,14 @@ class UnsupportedCommandError extends MessageHandlerError {
 }
 
 const STATUSES = new Map([
+  ["discarded browsing context", DiscardedBrowsingContextError],
   ["message handler error", MessageHandlerError],
   ["unsupported message handler command", UnsupportedCommandError],
 ]);
 
 /** @namespace */
 export const error = {
+  DiscardedBrowsingContextError,
   MessageHandlerError,
   UnsupportedCommandError,
 };

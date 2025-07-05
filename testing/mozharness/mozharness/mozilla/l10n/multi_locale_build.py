@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 """multi_locale_build.py
 
 This should be a mostly generic multilocale build script.
@@ -44,24 +42,6 @@ class MultiLocaleBuild(LocalesMixin, MercurialScript):
                 "type": "string",
                 "default": "objdir",
                 "help": "Specify the objdir",
-            },
-        ],
-        [
-            ["--l10n-base"],
-            {
-                "action": "store",
-                "dest": "hg_l10n_base",
-                "type": "string",
-                "help": "Specify the L10n repo base directory",
-            },
-        ],
-        [
-            ["--l10n-tag"],
-            {
-                "action": "store",
-                "dest": "hg_l10n_tag",
-                "type": "string",
-                "help": "Specify the L10n tag",
             },
         ],
     ]

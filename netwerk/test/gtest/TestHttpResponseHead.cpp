@@ -101,15 +101,9 @@ TEST(TestHttpResponseHead, bug1687903)
 {
   nsHttpResponseHead head;
 
-  bool usingStrictParsing = false;
   nsCOMPtr<nsIPrefBranch> prefs = do_GetService(NS_PREFSERVICE_CONTRACTID);
-  if (prefs) {
-    prefs->GetBoolPref("network.http.strict_response_status_line_parsing",
-                       &usingStrictParsing);
-  }
 
-  nsresult expectation =
-      usingStrictParsing ? NS_ERROR_PARSING_HTTP_STATUS_LINE : NS_OK;
+  nsresult expectation = NS_ERROR_PARSING_HTTP_STATUS_LINE;
 
   ASSERT_EQ(expectation, head.ParseStatusLine("HTTP/1.1 "_ns));
   ASSERT_EQ(expectation, head.ParseStatusLine("HTTP/1.1 BLAH"_ns));
@@ -177,6 +171,32 @@ TEST(ContentTypeParsing, CommentHandling3)
 
   ASSERT_TRUE(contentType.EqualsLiteral("text/html"));
   ASSERT_TRUE(contentCharset.EqualsLiteral("gbk"));
+}
+
+TEST(TestHttpResponseHead, MoveConstructor)
+{
+  // Construct an initial response head
+  nsHttpResponseHead originalHead;
+  Unused << originalHead.ParseStatusLine("HTTP/1.1 200 OK"_ns);
+  Unused << originalHead.ParseHeaderLine("content-type: text/plain"_ns);
+  Unused << originalHead.ParseHeaderLine("content-length: 1408"_ns);
+
+  // Move construct a new object from the initial one
+  nsHttpResponseHead movedHead(std::move(originalHead));
+
+  // Ensure the moved head retains the original status
+  ASSERT_EQ(movedHead.Status(), 200);
+  nsCString value;
+  ASSERT_EQ(movedHead.GetHeader(nsHttp::Content_Type, value), NS_OK);
+  ASSERT_EQ(value, "text/plain"_ns);
+  ASSERT_EQ(movedHead.GetHeader(nsHttp::Content_Length, value), NS_OK);
+  ASSERT_EQ(value, "1408"_ns);
+
+  // Check original object is in an unspecified state
+  ASSERT_EQ(originalHead.GetHeader(nsHttp::Content_Type, value),
+            NS_ERROR_NOT_AVAILABLE);
+  ASSERT_FALSE(originalHead.HasHeader(nsHttp::Content_Type));
+  ASSERT_FALSE(originalHead.HasHeader(nsHttp::Content_Length));
 }
 
 }  // namespace net

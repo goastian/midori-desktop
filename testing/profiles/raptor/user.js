@@ -13,7 +13,6 @@ user_pref("browser.tabs.hideStatusPanel", true);
 
 user_pref("dom.performance.time_to_non_blank_paint.enabled", true);
 user_pref("dom.performance.time_to_contentful_paint.enabled", true);
-user_pref("dom.performance.time_to_dom_content_flushed.enabled", false);
 user_pref("dom.performance.time_to_first_interactive.enabled", true);
 
 // required for geckoview logging
@@ -54,3 +53,7 @@ user_pref('media.block-autoplay-until-in-foreground', true);
 
 // Turn off update
 user_pref("app.update.disabledForTesting", true);
+
+// Temporarily turn off the system access check until Browsertime will pass
+// the --remote-allow-system-access argument to Firefox.
+user_pref("remote.system-access-check.enabled", false);

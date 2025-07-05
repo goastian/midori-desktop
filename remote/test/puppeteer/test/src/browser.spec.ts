@@ -33,6 +33,17 @@ describe('Browser specs', function () {
         expect(userAgent).toContain('Gecko');
       }
     });
+    it('should include Browser name', async () => {
+      const {browser, isChrome} = await getTestState();
+
+      const userAgent = await browser.userAgent();
+      expect(userAgent.length).toBeGreaterThan(0);
+      if (isChrome) {
+        expect(userAgent).toContain('Chrome');
+      } else {
+        expect(userAgent).toContain('Firefox');
+      }
+    });
   });
 
   describe('Browser.target', function () {
@@ -64,13 +75,13 @@ describe('Browser specs', function () {
       expect(remoteBrowser.process()).toBe(null);
     });
     it('should keep connected after the last page is closed', async () => {
-      const {browser, close} = await launch({}, {createContext: false});
+      const {browser, close} = await launch({});
       try {
         const pages = await browser.pages();
         await Promise.all(
           pages.map(page => {
             return page.close();
-          })
+          }),
         );
         // Verify the browser is still connected.
         expect(browser.connected).toBe(true);

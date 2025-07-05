@@ -14,7 +14,7 @@ import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.concept.engine.EngineSession
 import mozilla.components.lib.state.Middleware
 import mozilla.components.lib.state.MiddlewareContext
-import mozilla.components.service.glean.private.NoExtras
+import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.focus.GleanMetrics.CookieBanner
 import org.mozilla.focus.cookiebanner.CookieBannerOption
 import org.mozilla.focus.ext.components
@@ -71,7 +71,9 @@ class CfrMiddleware(private val appContext: Context) : Middleware<BrowserState, 
             isCurrentTabSecure = action.securityInfo.secure
         }
         if (shouldShowCfrForTrackingProtection(action = action, browserState = context.state)) {
-            if (!tpExposureAlreadyRecorded) {
+            if (tpExposureAlreadyRecorded) {
+                // do not record exposure twice
+            } else {
                 FocusNimbus.features.onboarding.recordExposure()
                 tpExposureAlreadyRecorded = true
             }

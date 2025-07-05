@@ -8,12 +8,12 @@ import posixpath
 import shutil
 import tempfile
 import time
+from configparser import ConfigParser, RawConfigParser
 
 from mozdevice import ADBError, ADBHost
-from six.moves.configparser import ConfigParser, RawConfigParser
 
 
-class Device(object):
+class Device:
     connected = False
 
     def __init__(self, app_ctx, logdir=None, serial=None, restore=True):
@@ -32,7 +32,7 @@ class Device(object):
         """
         remote_ini = self.app_ctx.remote_profiles_ini
         if not self.device.is_file(remote_ini):
-            raise IOError("Remote file '%s' not found" % remote_ini)
+            raise OSError("Remote file '%s' not found" % remote_ini)
 
         local_ini = tempfile.NamedTemporaryFile()
         self.device.pull(remote_ini, local_ini.name)
@@ -74,7 +74,7 @@ class Device(object):
                 finally:
                     raise e
             else:
-                print("WARNING: {}".format(e))
+                print(f"WARNING: {e}")
         if os.listdir(local_dump_dir):
             self.device.rm(remote_dump_dir, recursive=True)
             self.device.mkdir(remote_dump_dir, parents=True)
@@ -150,7 +150,7 @@ class Device(object):
 
         online_devices = self._get_online_devices()
         if not online_devices:
-            raise IOError(
+            raise OSError(
                 "No devices connected. Ensure the device is on and "
                 "remote debugging via adb is enabled in the settings."
             )

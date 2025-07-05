@@ -9,6 +9,7 @@ kind-dependencies:
     - post-beetmover-dummy
     - release-secondary-balrog-submit-toplevel
     - release-secondary-update-verify-config
+    - toolchain
 
 transforms:
     - gecko_taskgraph.transforms.release_deps:transforms
@@ -44,6 +45,12 @@ tasks:
         attributes:
             build_platform: linux64-shippable
 
+    firefox-secondary-linux64-aarch64:
+        description: linux64-aarch64 secondary channel update verify
+        shipping-product: firefox
+        attributes:
+            build_platform: linux64-aarch64-shippable
+
     firefox-secondary-linux:
         description: linux secondary channel update verify
         shipping-product: firefox
@@ -75,3 +82,6 @@ tasks:
             build_platform: macosx64-shippable
         extra:
             chunks: 30
+        fetches:
+            toolchain:
+                - linux64-libdmg

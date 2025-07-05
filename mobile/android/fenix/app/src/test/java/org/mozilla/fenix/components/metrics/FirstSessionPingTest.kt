@@ -15,6 +15,8 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.spyk
 import io.mockk.verify
+import mozilla.components.browser.state.state.BrowserState
+import mozilla.components.browser.state.store.BrowserStore
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.mozilla.fenix.FenixApplication
@@ -38,8 +40,13 @@ internal class FirstSessionPingTest {
         mockkStatic("org.mozilla.fenix.ext.ContextKt")
         every { mockedContext.settings() } returns mockedSettings
 
+        val mockedState: BrowserState = mockk(relaxed = true)
+        every { mockedState.distributionId } returns null
+
+        val mockedStore: BrowserStore = mockk(relaxed = true)
+        every { mockedStore.state } returns mockedState
+
         val mockAp = spyk(FirstSessionPing(mockedContext), recordPrivateCalls = true)
-        every { mockAp.checkMetricsNotEmpty() } returns true
         every { mockAp.wasAlreadyTriggered() } returns false
         every { mockAp.markAsTriggered() } just Runs
 
@@ -62,7 +69,7 @@ internal class FirstSessionPingTest {
     }
 
     @Test
-    fun `WHEN build version is R installSourcePackage RETURNS the set package name`() {
+    fun `WHEN build version is R THEN installSourcePackage returns the set package name`() {
         val mockedPackageManager: PackageManager = mockk(relaxed = true)
         val testPackageName = "test R"
         mockedPackageManager.mockInstallSourcePackageForBuildMinR(testPackageName)
@@ -78,7 +85,7 @@ internal class FirstSessionPingTest {
     }
 
     @Test
-    fun `GIVEN packageManager throws an exception WHEN Build version is R installSourcePackage RETURNS an empty string`() {
+    fun `GIVEN packageManager throws an exception WHEN build version is R THEN installSourcePackage returns an empty string`() {
         val mockedPackageManager: PackageManager = mockk(relaxed = true)
         every { mockedPackageManager.getInstallSourceInfo(any()).installingPackageName } throws PackageManager.NameNotFoundException()
 
@@ -93,7 +100,7 @@ internal class FirstSessionPingTest {
     }
 
     @Test
-    fun `WHEN build version is more than R installSourcePackage RETURNS the set package name`() {
+    fun `WHEN build version is more than R THEN installSourcePackage returns the set package name`() {
         val mockedPackageManager: PackageManager = mockk(relaxed = true)
         val testPackageName = "test > R"
         mockedPackageManager.mockInstallSourcePackageForBuildMinR(testPackageName)
@@ -110,7 +117,7 @@ internal class FirstSessionPingTest {
     }
 
     @Test
-    fun `GIVEN packageManager throws an exception WHEN Build version is more than R installSourcePackage RETURNS an empty string`() {
+    fun `GIVEN packageManager throws an exception WHEN build version is more than R THEN installSourcePackage returns an empty string`() {
         val mockedPackageManager: PackageManager = mockk(relaxed = true)
         every { mockedPackageManager.getInstallSourceInfo(any()).installingPackageName } throws PackageManager.NameNotFoundException()
 
@@ -126,7 +133,7 @@ internal class FirstSessionPingTest {
     }
 
     @Test
-    fun `WHEN build version is less than R installSourcePackage RETURNS the set package name`() {
+    fun `WHEN build version is less than R THEN installSourcePackage returns the set package name`() {
         val mockedPackageManager: PackageManager = mockk(relaxed = true)
         val testPackageName = "test < R"
         mockedPackageManager.mockInstallSourcePackageForBuildMaxQ(testPackageName)
@@ -143,7 +150,7 @@ internal class FirstSessionPingTest {
     }
 
     @Test
-    fun `GIVEN packageManager throws an exception WHEN Build version is less than R installSourcePackage RETURNS an empty string`() {
+    fun `GIVEN packageManager throws an exception WHEN build version is less than R THEN installSourcePackage returns an empty string`() {
         val mockedPackageManager: PackageManager = mockk(relaxed = true)
         @Suppress("DEPRECATION")
         every { mockedPackageManager.getInstallerPackageName(any()) } throws IllegalArgumentException()

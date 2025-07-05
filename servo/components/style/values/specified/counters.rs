@@ -113,7 +113,7 @@ fn parse_counters<'i, 't>(
 
         let value = match input.try_parse(|input| Integer::parse(context, input)) {
             Ok(start) => {
-                if start.value == i32::min_value() {
+                if start.value() == i32::min_value() {
                     // The spec says that values must be clamped to the valid range,
                     // and we reserve i32::min_value() as an internal magic value.
                     // https://drafts.csswg.org/css-lists/#auto-numbering
@@ -249,6 +249,7 @@ impl Parse for Content {
                         "-moz-alt-content" if context.in_ua_sheet() => {
                             generics::ContentItem::MozAltContent
                         },
+                        #[cfg(feature = "gecko")]
                         "-moz-label-content" if context.chrome_rules_enabled() => {
                             generics::ContentItem::MozLabelContent
                         },

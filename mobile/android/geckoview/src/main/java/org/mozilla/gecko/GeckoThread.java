@@ -13,7 +13,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
 import android.os.MessageQueue;
-import android.os.ParcelFileDescriptor;
 import android.os.Process;
 import android.os.SystemClock;
 import android.text.TextUtils;
@@ -21,7 +20,6 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.annotation.UiThread;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.LinkedList;
@@ -34,6 +32,7 @@ import org.mozilla.gecko.annotation.WrapForJNI;
 import org.mozilla.gecko.mozglue.GeckoLoader;
 import org.mozilla.gecko.process.GeckoProcessManager;
 import org.mozilla.gecko.process.GeckoProcessType;
+import org.mozilla.gecko.process.MemoryController;
 import org.mozilla.gecko.util.GeckoBundle;
 import org.mozilla.gecko.util.ThreadUtils;
 import org.mozilla.geckoview.BuildConfig;
@@ -146,166 +145,15 @@ public class GeckoThread extends Thread {
   public static final int FLAG_PRELOAD_CHILD = 1 << 1; // Preload child during main thread start.
   public static final int FLAG_ENABLE_NATIVE_CRASHREPORTER =
       1 << 2; // Enable native crash reporting.
+  public static final int FLAG_DISABLE_LOW_MEMORY_DETECTION =
+      1 << 3; // Disable low-memory detection and notifications.
+  public static final int FLAG_CHILD = 1 << 4; // This is a child process.
 
   /* package */ static final String EXTRA_ARGS = "args";
 
   private boolean mInitialized;
   private InitInfo mInitInfo;
-
-  public static final class ParcelFileDescriptors {
-    public final @Nullable ParcelFileDescriptor prefs;
-    public final @Nullable ParcelFileDescriptor prefMap;
-    public final @NonNull ParcelFileDescriptor ipc;
-    public final @Nullable ParcelFileDescriptor crashReporter;
-
-    private ParcelFileDescriptors(final Builder builder) {
-      prefs = builder.prefs;
-      prefMap = builder.prefMap;
-      ipc = builder.ipc;
-      crashReporter = builder.crashReporter;
-    }
-
-    public FileDescriptors detach() {
-      return FileDescriptors.builder()
-          .prefs(detach(prefs))
-          .prefMap(detach(prefMap))
-          .ipc(detach(ipc))
-          .crashReporter(detach(crashReporter))
-          .build();
-    }
-
-    private static int detach(final ParcelFileDescriptor pfd) {
-      if (pfd == null) {
-        return INVALID_FD;
-      }
-      return pfd.detachFd();
-    }
-
-    public void close() {
-      close(prefs, prefMap, ipc, crashReporter);
-    }
-
-    private static void close(final ParcelFileDescriptor... pfds) {
-      for (final ParcelFileDescriptor pfd : pfds) {
-        if (pfd != null) {
-          try {
-            pfd.close();
-          } catch (final IOException ex) {
-            // Nothing we can do about this really.
-            Log.w(LOGTAG, "Failed to close File Descriptors.", ex);
-          }
-        }
-      }
-    }
-
-    public static ParcelFileDescriptors from(final FileDescriptors fds) {
-      return ParcelFileDescriptors.builder()
-          .prefs(from(fds.prefs))
-          .prefMap(from(fds.prefMap))
-          .ipc(from(fds.ipc))
-          .crashReporter(from(fds.crashReporter))
-          .build();
-    }
-
-    private static ParcelFileDescriptor from(final int fd) {
-      if (fd == INVALID_FD) {
-        return null;
-      }
-      try {
-        return ParcelFileDescriptor.fromFd(fd);
-      } catch (final IOException ex) {
-        throw new RuntimeException(ex);
-      }
-    }
-
-    public static Builder builder() {
-      return new Builder();
-    }
-
-    public static class Builder {
-      ParcelFileDescriptor prefs;
-      ParcelFileDescriptor prefMap;
-      ParcelFileDescriptor ipc;
-      ParcelFileDescriptor crashReporter;
-
-      private Builder() {}
-
-      public ParcelFileDescriptors build() {
-        return new ParcelFileDescriptors(this);
-      }
-
-      public Builder prefs(final ParcelFileDescriptor prefs) {
-        this.prefs = prefs;
-        return this;
-      }
-
-      public Builder prefMap(final ParcelFileDescriptor prefMap) {
-        this.prefMap = prefMap;
-        return this;
-      }
-
-      public Builder ipc(final ParcelFileDescriptor ipc) {
-        this.ipc = ipc;
-        return this;
-      }
-
-      public Builder crashReporter(final ParcelFileDescriptor crashReporter) {
-        this.crashReporter = crashReporter;
-        return this;
-      }
-    }
-  }
-
-  public static final class FileDescriptors {
-    final int prefs;
-    final int prefMap;
-    final int ipc;
-    final int crashReporter;
-
-    private FileDescriptors(final Builder builder) {
-      prefs = builder.prefs;
-      prefMap = builder.prefMap;
-      ipc = builder.ipc;
-      crashReporter = builder.crashReporter;
-    }
-
-    public static Builder builder() {
-      return new Builder();
-    }
-
-    public static class Builder {
-      int prefs = INVALID_FD;
-      int prefMap = INVALID_FD;
-      int ipc = INVALID_FD;
-      int crashReporter = INVALID_FD;
-
-      private Builder() {}
-
-      public FileDescriptors build() {
-        return new FileDescriptors(this);
-      }
-
-      public Builder prefs(final int prefs) {
-        this.prefs = prefs;
-        return this;
-      }
-
-      public Builder prefMap(final int prefMap) {
-        this.prefMap = prefMap;
-        return this;
-      }
-
-      public Builder ipc(final int ipc) {
-        this.ipc = ipc;
-        return this;
-      }
-
-      public Builder crashReporter(final int crashReporter) {
-        this.crashReporter = crashReporter;
-        return this;
-      }
-    }
-  }
+  private MemoryController mMemoryController;
 
   public static class InitInfo {
     public final String[] args;
@@ -317,7 +165,7 @@ public class GeckoThread extends Thread {
     public final boolean xpcshell;
     public final String outFilePath;
 
-    public final FileDescriptors fds;
+    public final int[] fds;
 
     private InitInfo(final Builder builder) {
       final List<String> result = new ArrayList<>(builder.mArgs.length);
@@ -341,11 +189,7 @@ public class GeckoThread extends Thread {
 
       outFilePath = xpcshell ? builder.mOutFilePath : null;
 
-      if (builder.mFds != null) {
-        fds = builder.mFds;
-      } else {
-        fds = FileDescriptors.builder().build();
-      }
+      fds = builder.mFds;
     }
 
     public static Builder builder() {
@@ -361,7 +205,7 @@ public class GeckoThread extends Thread {
 
       private String mOutFilePath;
 
-      private FileDescriptors mFds;
+      private int[] mFds;
 
       // Prevent direct instantiation
       private Builder() {}
@@ -400,7 +244,7 @@ public class GeckoThread extends Thread {
         return this;
       }
 
-      public Builder fds(final FileDescriptors fds) {
+      public Builder fds(final int[] fds) {
         mFds = fds;
         return this;
       }
@@ -424,7 +268,7 @@ public class GeckoThread extends Thread {
   @WrapForJNI
   private static boolean isChildProcess() {
     final InitInfo info = INSTANCE.mInitInfo;
-    return info != null && info.fds.ipc != INVALID_FD;
+    return info != null && ((info.flags & FLAG_CHILD) != 0);
   }
 
   public static boolean init(final InitInfo info) {
@@ -565,6 +409,17 @@ public class GeckoThread extends Thread {
     return result;
   }
 
+  // See GeckoLoader.java and APKOpen.cpp
+  private int processType() {
+    if (mInitInfo.xpcshell) {
+      return GeckoLoader.PROCESS_TYPE_XPCSHELL;
+    } else if ((mInitInfo.flags & FLAG_CHILD) != 0) {
+      return GeckoLoader.PROCESS_TYPE_CHILD;
+    } else {
+      return GeckoLoader.PROCESS_TYPE_MAIN;
+    }
+  }
+
   @Override
   public void run() {
     Log.i(LOGTAG, "preparing to run Gecko");
@@ -616,6 +471,8 @@ public class GeckoThread extends Thread {
       env.add(0, "MOZ_ANDROID_USER_SERIAL_NUMBER=" + mInitInfo.userSerialNumber);
     }
 
+    maybeRegisterMemoryController(env);
+
     // Start the profiler before even loading mozglue, so we can capture more
     // things that are happening on the JVM side.
     maybeStartGeckoProfiler(env);
@@ -657,13 +514,7 @@ public class GeckoThread extends Thread {
 
     // And go.
     GeckoLoader.nativeRun(
-        args,
-        mInitInfo.fds.prefs,
-        mInitInfo.fds.prefMap,
-        mInitInfo.fds.ipc,
-        mInitInfo.fds.crashReporter,
-        !isChildProcess && mInitInfo.xpcshell,
-        isChildProcess ? null : mInitInfo.outFilePath);
+        args, mInitInfo.fds, processType(), isChildProcess ? null : mInitInfo.outFilePath);
 
     // And... we're done.
     final boolean restarting = isState(State.RESTARTING);
@@ -681,6 +532,50 @@ public class GeckoThread extends Thread {
       // it alive after Gecko exits.
       System.exit(0);
     }
+  }
+
+  // Register the memory controller which will listen to low-memory events from
+  // the Android framework and forward them to Gecko. Note that we only use it
+  // as long as Gecko is running and we don't enable it in tests where it
+  // causes unpredictable behavior.
+  private void maybeRegisterMemoryController(final @NonNull List<String> env) {
+    if ((mInitInfo.flags & GeckoThread.FLAG_DISABLE_LOW_MEMORY_DETECTION) != 0) {
+      return;
+    }
+
+    for (final String envItem : env) {
+      if (envItem == null) {
+        continue;
+      }
+
+      final String mozInAutomationEnv = "MOZ_IN_AUTOMATION=";
+
+      if (envItem.startsWith(mozInAutomationEnv)) {
+        final String value = envItem.substring(mozInAutomationEnv.length());
+
+        if (value.equals("1")) {
+          // We're in automation, do not check for low memory as sending low
+          // memory events creates unpredictable conditions in tests.
+          return;
+        }
+      }
+    }
+
+    final Context context = GeckoAppShell.getApplicationContext();
+
+    mMemoryController = new MemoryController();
+    waitForState(State.RUNNING)
+        .accept(
+            val -> {
+              context.registerComponentCallbacks(mMemoryController);
+            },
+            e -> Log.e(LOGTAG, "Unable to register the MemoryController", e));
+    waitForState(State.EXITING)
+        .accept(
+            val -> {
+              context.unregisterComponentCallbacks(mMemoryController);
+            },
+            e -> Log.e(LOGTAG, "Unable to unregister the MemoryController", e));
   }
 
   // This may start the gecko profiler early by looking at the environment variables.

@@ -10,7 +10,7 @@ task-defaults:
         kind: test
         tier: 1
     platform: lint/opt
-    worker-type: t-linux-xlarge-source
+    worker-type: t-linux-docker
     worker:
         docker-image: {in-tree: "lint"}
         max-run-time: 1800
@@ -20,6 +20,7 @@ task-defaults:
               path: /builds/worker/mozlint.json
     run:
         using: mach
+        use-caches: [checkout, pip, uv]
     when:
         files-changed:
             # Other misc lint related files.
@@ -38,7 +39,6 @@ codespell:
     when:
         files-changed:
             - '**/*.js'
-            - '**/*.jsm'
             - '**/*.jxs'
             - '**/*.mjs'
             - '**/*.xml'
@@ -67,7 +67,6 @@ rejected-words:
     when:
         files-changed:
             - '**/*.js'
-            - '**/*.jsm'
             - '**/*.jxs'
             - '**/*.mjs'
             - '**/*.xml'
@@ -94,9 +93,9 @@ eslint:
     run:
         using: run-task
         cwd: '{checkout}'
+        use-caches: [checkout, pip, uv, npm]
         command: >
-            cp -r /build/node_modules_eslint node_modules &&
-            cp -r /build/node_modules_eslint-plugin-mozilla/ tools/lint/eslint/eslint-plugin-mozilla/node_modules &&
+            cp -r $MOZ_FETCHES_DIR/node_modules node_modules &&
             ln -s ../tools/lint/eslint/eslint-plugin-mozilla node_modules &&
             ln -s ../tools/lint/eslint/eslint-plugin-spidermonkey-js node_modules &&
             ./mach lint -v -l eslint -f treeherder -f json:/builds/worker/mozlint.json .
@@ -104,21 +103,25 @@ eslint:
         files-changed:
             # Files that are likely audited.
             - '**/*.js'
-            - '**/*.jsm'
             - '**/*.json'
             - '**/*.jsx'
             - '**/*.mjs'
             - '**/*.sjs'
             - '**/*.html'
             - '**/*.xhtml'
-            - '**/*.xml'
+            - '**/*.ts'
             - 'tools/lint/eslint.yml'
-            # Run when eslint policies change.
-            - '**/.eslintignore'
+            # Run when eslint or prettier policies change.
             - '**/*eslintrc*'
+            - '.prettier*'
             # The plugin implementing custom checks.
             - 'tools/lint/eslint/eslint-plugin-mozilla/**'
             - 'tools/lint/eslint/eslint-plugin-spidermonkey-js/**'
+    fetches:
+        toolchain:
+            - linux64-node
+            - node-modules
+
 
 eslint-build:
     description: ESLint checks with build data
@@ -134,11 +137,11 @@ eslint-build:
     run:
         using: run-task
         cwd: '{checkout}'
+        use-caches: [checkout, pip, uv, npm]
         command: >
             export MOZ_XPT_ARTIFACTS_DIR="$MOZ_FETCHES_DIR/$MOZ_XPT_ARTIFACTS_DIRNAME" &&
             find "$MOZ_XPT_ARTIFACTS_DIR" &&
-            cp -r /build/node_modules_eslint node_modules &&
-            cp -r /build/node_modules_eslint-plugin-mozilla/ tools/lint/eslint/eslint-plugin-mozilla/node_modules &&
+            cp -r $MOZ_FETCHES_DIR/node_modules node_modules &&
             ln -s ../tools/lint/eslint/eslint-plugin-mozilla node_modules &&
             ln -s ../tools/lint/eslint/eslint-plugin-spidermonkey-js node_modules &&
             ./mach lint -v -l eslint -f treeherder --quiet -f json:/builds/worker/mozlint.json . --rule "mozilla/valid-services-property: error" --rule "mozilla/valid-ci-uses: error"
@@ -151,6 +154,9 @@ eslint-build:
         build:
             - artifact: target.xpt_artifacts.zip
               dest: xpt_artifacts
+        toolchain:
+            - linux64-node
+            - node-modules
 
 stylelint:
     description: CSS lint check
@@ -160,7 +166,9 @@ stylelint:
         using: run-task
         cwd: '{checkout}'
         command: >
-            cp -r /build/node_modules_eslint node_modules &&
+            cp -r $MOZ_FETCHES_DIR/node_modules node_modules &&
+            ln -s ../tools/lint/eslint/eslint-plugin-mozilla node_modules &&
+            ln -s ../tools/lint/eslint/eslint-plugin-spidermonkey-js node_modules &&
             ./mach lint -v -l stylelint -f treeherder -f json:/builds/worker/mozlint.json .
     when:
         files-changed:
@@ -170,6 +178,14 @@ stylelint:
             # Run when stylelint policies change.
             - '**/.stylelintignore'
             - '**/*stylelintrc*'
+            # Run when installed packages change.
+            - 'package*.json'
+            # The plugin implementing custom checks.
+            - 'tools/lint/stylelint/stylelint-plugin-mozilla/**'
+    fetches:
+        toolchain:
+            - linux64-node
+            - node-modules
 
 license:
     description: Check for license blocks in source files.
@@ -189,8 +205,8 @@ license:
             - '**/*.html'
             - '**/*.idl'
             - '**/*.js'
-            - '**/*.jsm'
             - '**/*.jsx'
+            - '**/*.kt'
             - '**/*.m'
             - '**/*.mjs'
             - '**/*.mm'
@@ -224,6 +240,17 @@ lintpref:
             - 'mobile/android/installer/mobile-l10n.js'
             - 'mobile/android/locales/en-US/mobile-l10n.js'
             - 'tools/lint/lintpref.yml'
+
+node-package-names:
+    description: Lint for node package name issues
+    treeherder:
+        symbol: misc(npn)
+    run:
+        mach: lint -v -l node-package-names -f treeherder -f json:/builds/worker/mozlint.json .
+    when:
+        files-changed:
+            - '**/package.json'
+            - 'tools/lint/node-package-names.yml'
 
 mingw-cap:
     description: lint for MinGW Capitalization issues
@@ -294,14 +321,13 @@ py-ruff:
             - 'pyproject.toml'
             - 'tools/lint/ruff.yml'
             - 'tools/lint/python/ruff.py'
-            - 'tools/lint/python/ruff_requirements.txt'
 
 test-manifest:
     description: lint test manifests
     treeherder:
         symbol: misc(tm)
     run:
-        mach: lint -v -l test-manifest-alpha -l test-manifest-disable -l test-manifest-skip-if -f treeherder -f json:/builds/worker/mozlint.json .
+        mach: lint -v -l test-manifest-alpha -l test-manifest-disable -l test-manifest-skip-if -l test-manifest-toml -f treeherder -f json:/builds/worker/mozlint.json .
     when:
         files-changed:
             - '**/*.toml'
@@ -374,7 +400,7 @@ localization:
 
 
 l10n-conflicts:
-    description: l10n tests for strings with errors and conflicts with cross-channel
+    description: l10n tests for strings with errors and conflicts with firefox-l10n-source
     treeherder:
         symbol: l10n(l1nt-conflicts)
     always-target: false
@@ -433,6 +459,8 @@ clippy:
     treeherder:
         symbol: rust(clippy)
     run:
+        prefix-env:
+            PATH: "$MOZ_FETCHES_DIR/rustc/bin/:"
         mach: lint -v -l clippy -f treeherder -f json:/builds/worker/mozlint.json -j 1 .
     when:
         files-changed:
@@ -510,7 +538,6 @@ file-perm:
             - '**/*.html'
             - '**/*.idl'
             - '**/*.js'
-            - '**/*.jsm'
             - '**/*.json'
             - '**/*.jsx'
             - '**/*.m'
@@ -526,6 +553,7 @@ file-perm:
             - '**/*.rst'
             - '**/*.svg'
             - '**/*.toml'
+            - '**/*.ts'
             - '**/*.ttf'
             - '**/*.wasm'
             - '**/*.webidl'
@@ -561,6 +589,9 @@ perfdocs-verify:
             - 'testing/performance/**'
             - 'testing/perfdocs/**'
             - 'tools/lint/perfdocs.yml'
+            - 'toolkit/components/ml/tests/browser/**'
+            - '**/*_perf.js'
+
 
 condprof-addons-verify:
     description: |

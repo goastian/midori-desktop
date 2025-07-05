@@ -36,7 +36,7 @@ class nsHttpRequestHead;
 class nsHttpConnectionInfo;
 class NullHttpTransaction;
 
-enum class WebSocketSupport { UNSURE, NO_SUPPORT, SUPPORTED };
+enum class ExtendedCONNECTSupport { UNSURE, NO_SUPPORT, SUPPORTED };
 
 //----------------------------------------------------------------------------
 // Abstract base class for a HTTP transaction:
@@ -48,16 +48,12 @@ enum class WebSocketSupport { UNSURE, NO_SUPPORT, SUPPORTED };
 //----------------------------------------------------------------------------
 
 // 2af6d634-13e3-494c-8903-c9dce5c22fc0
-#define NS_AHTTPTRANSACTION_IID                      \
-  {                                                  \
-    0x2af6d634, 0x13e3, 0x494c, {                    \
-      0x89, 0x03, 0xc9, 0xdc, 0xe5, 0xc2, 0x2f, 0xc0 \
-    }                                                \
-  }
+#define NS_AHTTPTRANSACTION_IID \
+  {0x2af6d634, 0x13e3, 0x494c, {0x89, 0x03, 0xc9, 0xdc, 0xe5, 0xc2, 0x2f, 0xc0}}
 
 class nsAHttpTransaction : public nsSupportsWeakReference {
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_AHTTPTRANSACTION_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_AHTTPTRANSACTION_IID)
 
   // called by the connection when it takes ownership of the transaction.
   virtual void SetConnection(nsAHttpConnection*) = 0;
@@ -184,7 +180,7 @@ class nsAHttpTransaction : public nsSupportsWeakReference {
   virtual void SetIsHttp2Websocket(bool) {}
   virtual bool IsHttp2Websocket() { return false; }
   virtual void SetTRRInfo(nsIRequest::TRRMode aMode,
-                          TRRSkippedReason aSkipReason){};
+                          TRRSkippedReason aSkipReason) {};
 
   // We call this function if we want to use alt-svc host again on the next
   // restart. If this function is not called on the next restart the
@@ -226,12 +222,14 @@ class nsAHttpTransaction : public nsSupportsWeakReference {
 
   virtual nsresult FetchHTTPSRR() { return NS_ERROR_NOT_IMPLEMENTED; }
   virtual nsresult OnHTTPSRRAvailable(nsIDNSHTTPSSVCRecord* aHTTPSSVCRecord,
-                                      nsISVCBRecord* aHighestPriorityRecord) {
+                                      nsISVCBRecord* aHighestPriorityRecord,
+                                      const nsACString& aCname) {
     return NS_ERROR_NOT_IMPLEMENTED;
   }
+  virtual bool IsForWebTransport() { return false; }
+  virtual bool IsResettingForTunnelConn() { return false; }
+  virtual void SetResettingForTunnelConn(bool aValue) {}
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(nsAHttpTransaction, NS_AHTTPTRANSACTION_IID)
 
 #define NS_DECL_NSAHTTPTRANSACTION                                             \
   void SetConnection(nsAHttpConnection*) override;                             \

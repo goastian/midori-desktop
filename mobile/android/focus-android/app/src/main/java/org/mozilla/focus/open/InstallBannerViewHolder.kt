@@ -7,7 +7,7 @@ import android.view.View
 import android.widget.ImageView
 import androidx.recyclerview.widget.RecyclerView
 import org.mozilla.focus.R
-import org.mozilla.focus.activity.InstallFirefoxActivity.Companion.open
+import org.mozilla.focus.activity.FirefoxInstallationHelper.open
 
 /**
  * View holder for install Firefox item in the [OpenWithFragment] list.
@@ -15,10 +15,9 @@ import org.mozilla.focus.activity.InstallFirefoxActivity.Companion.open
 class InstallBannerViewHolder(
     itemView: View,
 ) : RecyclerView.ViewHolder(itemView), View.OnClickListener {
-    private val iconView: ImageView
+    private val iconView: ImageView = itemView.findViewById(R.id.icon)
 
     init {
-        iconView = itemView.findViewById(R.id.icon)
         itemView.setOnClickListener(this)
     }
 

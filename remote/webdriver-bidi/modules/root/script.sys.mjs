@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Module } from "chrome://remote/content/shared/messagehandler/Module.sys.mjs";
+import { RootBiDiModule } from "chrome://remote/content/webdriver-bidi/modules/RootBiDiModule.sys.mjs";
 
 const lazy = {};
 
@@ -13,6 +13,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
   generateUUID: "chrome://remote/content/shared/UUID.sys.mjs",
   OwnershipModel: "chrome://remote/content/webdriver-bidi/RemoteValue.sys.mjs",
+  pprint: "chrome://remote/content/shared/Format.sys.mjs",
   processExtraData:
     "chrome://remote/content/webdriver-bidi/modules/Intercept.sys.mjs",
   RealmType: "chrome://remote/content/shared/Realm.sys.mjs",
@@ -21,6 +22,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   setDefaultAndAssertSerializationOptions:
     "chrome://remote/content/webdriver-bidi/RemoteValue.sys.mjs",
   TabManager: "chrome://remote/content/shared/TabManager.sys.mjs",
+  UserContextManager:
+    "chrome://remote/content/shared/UserContextManager.sys.mjs",
   WindowGlobalMessageHandler:
     "chrome://remote/content/shared/messagehandler/WindowGlobalMessageHandler.sys.mjs",
 });
@@ -40,7 +43,26 @@ const ScriptEvaluateResultType = {
   Success: "success",
 };
 
-class ScriptModule extends Module {
+/**
+ * An object that holds information about the preload script.
+ *
+ * @typedef PreloadScript
+ *
+ * @property {Array<ChannelValue>=} arguments
+ *    The arguments to pass to the function call.
+ * @property {Array<string>=} navigables
+ *    The list of navigable browser ids where
+ *    the preload script should be executed.
+ * @property {string} functionDeclaration
+ *    The expression to evaluate.
+ * @property {string=} sandbox
+ *    The name of the sandbox.
+ * @property {Array<string>=} userContexts
+ *    The list of internal user context ids where
+ *    the preload script should be executed.
+ */
+
+class ScriptModule extends RootBiDiModule {
   #preloadScriptMap;
   #subscribedEvents;
 
@@ -48,8 +70,7 @@ class ScriptModule extends Module {
     super(messageHandler);
 
     // Map in which the keys are UUIDs, and the values are structs
-    // with an item named expression, which is a string,
-    // and an item named sandbox which is a string or null.
+    // of the type PreloadScript.
     this.#preloadScriptMap = new Map();
 
     // Set of event names which have active subscriptions.
@@ -107,6 +128,8 @@ class ScriptModule extends Module {
    * @param {string=} options.sandbox
    *     The name of the sandbox. If the value is null or empty
    *     string, the default realm will be used.
+   * @param {Array<string>=} options.userContexts
+   *     The list of the user context ids.
    *
    * @returns {AddPreloadScriptResult}
    *
@@ -119,78 +142,112 @@ class ScriptModule extends Module {
       contexts: contextIds = null,
       functionDeclaration,
       sandbox = null,
+      userContexts: userContextIds = null,
     } = options;
-    let contexts = null;
+    let userContexts = null;
+    let navigables = null;
 
-    if (contextIds != null) {
-      lazy.assert.array(
+    if (contextIds !== null) {
+      lazy.assert.isNonEmptyArray(
         contextIds,
-        `Expected "contexts" to be an array, got ${contextIds}`
+        lazy.pprint`Expected "contexts" to be a non-empty array, got ${contextIds}`
       );
-      lazy.assert.that(
-        contexts => !!contexts.length,
-        `Expected "contexts" array to have at least one item, got ${contextIds}`
-      )(contextIds);
 
-      contexts = new Set();
       for (const contextId of contextIds) {
         lazy.assert.string(
           contextId,
-          `Expected elements of "contexts" to be a string, got ${contextId}`
+          lazy.pprint`Expected elements of "contexts" to be a string, got ${contextId}`
         );
-        const context = this.#getBrowsingContext(contextId);
+      }
+    } else if (userContextIds !== null) {
+      lazy.assert.isNonEmptyArray(
+        userContextIds,
+        lazy.pprint`Expected "userContextIds" to be a non-empty array, got ${userContextIds}`
+      );
 
-        if (context.parent) {
-          throw new lazy.error.InvalidArgumentError(
-            `Context with id ${contextId} is not a top-level browsing context`
-          );
-        }
-
-        contexts.add(context.browserId);
+      for (const userContextId of userContextIds) {
+        lazy.assert.string(
+          userContextId,
+          lazy.pprint`Expected elements of "userContexts" to be a string, got ${userContextId}`
+        );
       }
     }
 
     lazy.assert.string(
       functionDeclaration,
-      `Expected "functionDeclaration" to be a string, got ${functionDeclaration}`
+      lazy.pprint`Expected "functionDeclaration" to be a string, got ${functionDeclaration}`
     );
 
     if (sandbox != null) {
       lazy.assert.string(
         sandbox,
-        `Expected "sandbox" to be a string, got ${sandbox}`
+        lazy.pprint`Expected "sandbox" to be a string, got ${sandbox}`
       );
     }
 
     lazy.assert.array(
       commandArguments,
-      `Expected "arguments" to be an array, got ${commandArguments}`
+      lazy.pprint`Expected "arguments" to be an array, got ${commandArguments}`
     );
-    lazy.assert.that(
-      commandArguments =>
-        commandArguments.every(({ type, value }) => {
-          if (type === "channel") {
-            this.#assertChannelArgument(value);
-            return true;
-          }
-          return false;
-        }),
-      `One of the arguments has an unsupported type, only type "channel" is supported`
-    )(commandArguments);
+
+    commandArguments.forEach(({ type, value }) => {
+      lazy.assert.that(
+        t => t === "channel",
+        lazy.pprint`Expected argument "type" to be "channel", got ${type}`
+      )(type);
+      this.#assertChannelArgument(value);
+    });
+
+    if (contextIds !== null && userContextIds !== null) {
+      throw new lazy.error.InvalidArgumentError(
+        `Providing both "contexts" and "userContexts" arguments is not supported`
+      );
+    }
+
+    if (contextIds !== null) {
+      navigables = new Set();
+
+      for (const contextId of contextIds) {
+        const context = this.#getBrowsingContext(contextId);
+
+        lazy.assert.topLevel(
+          context,
+          lazy.pprint`Browsing context with id ${contextId} is not top-level`
+        );
+
+        navigables.add(context.browserId);
+      }
+    } else if (userContextIds !== null) {
+      userContexts = new Set();
+
+      for (const userContextId of userContextIds) {
+        const internalId =
+          lazy.UserContextManager.getInternalIdById(userContextId);
+
+        if (internalId === null) {
+          throw new lazy.error.NoSuchUserContextError(
+            `User context with id: ${userContextId} doesn't exist`
+          );
+        }
+
+        userContexts.add(internalId);
+      }
+    }
 
     const script = lazy.generateUUID();
     const preloadScript = {
       arguments: commandArguments,
-      contexts,
+      contexts: navigables,
       functionDeclaration,
       sandbox,
+      userContexts,
     };
 
     this.#preloadScriptMap.set(script, preloadScript);
 
     const preloadScriptDataItem = {
       category: "preload-script",
-      moduleName: "script",
+      moduleName: "_configuration",
       values: [
         {
           ...preloadScript,
@@ -199,7 +256,7 @@ class ScriptModule extends Module {
       ],
     };
 
-    if (contexts === null) {
+    if (navigables === null && userContexts === null) {
       await this.messageHandler.addSessionDataItem({
         ...preloadScriptDataItem,
         contextDescriptor: {
@@ -208,15 +265,29 @@ class ScriptModule extends Module {
       });
     } else {
       const preloadScriptDataItems = [];
-      for (const id of contexts) {
-        preloadScriptDataItems.push({
-          ...preloadScriptDataItem,
-          contextDescriptor: {
-            type: lazy.ContextDescriptorType.TopBrowsingContext,
-            id,
-          },
-          method: lazy.SessionDataMethod.Add,
-        });
+
+      if (navigables === null) {
+        for (const id of userContexts) {
+          preloadScriptDataItems.push({
+            ...preloadScriptDataItem,
+            contextDescriptor: {
+              type: lazy.ContextDescriptorType.UserContext,
+              id,
+            },
+            method: lazy.SessionDataMethod.Add,
+          });
+        }
+      } else {
+        for (const id of navigables) {
+          preloadScriptDataItems.push({
+            ...preloadScriptDataItem,
+            contextDescriptor: {
+              type: lazy.ContextDescriptorType.TopBrowsingContext,
+              id,
+            },
+            method: lazy.SessionDataMethod.Add,
+          });
+        }
       }
 
       await this.messageHandler.updateSessionData(preloadScriptDataItems);
@@ -333,17 +404,17 @@ class ScriptModule extends Module {
 
     lazy.assert.string(
       functionDeclaration,
-      `Expected "functionDeclaration" to be a string, got ${functionDeclaration}`
+      lazy.pprint`Expected "functionDeclaration" to be a string, got ${functionDeclaration}`
     );
 
     lazy.assert.boolean(
       awaitPromise,
-      `Expected "awaitPromise" to be a boolean, got ${awaitPromise}`
+      lazy.pprint`Expected "awaitPromise" to be a boolean, got ${awaitPromise}`
     );
 
     lazy.assert.boolean(
       userActivation,
-      `Expected "userActivation" to be a boolean, got ${userActivation}`
+      lazy.pprint`Expected "userActivation" to be a boolean, got ${userActivation}`
     );
 
     this.#assertResultOwnership(resultOwnership);
@@ -351,7 +422,7 @@ class ScriptModule extends Module {
     if (commandArguments != null) {
       lazy.assert.array(
         commandArguments,
-        `Expected "arguments" to be an array, got ${commandArguments}`
+        lazy.pprint`Expected "arguments" to be an array, got ${commandArguments}`
       );
       commandArguments.forEach(({ type, value }) => {
         if (type === "channel") {
@@ -364,14 +435,10 @@ class ScriptModule extends Module {
     const context = await this.#getContextFromTarget({ contextId, realmId });
     const serializationOptionsWithDefaults =
       lazy.setDefaultAndAssertSerializationOptions(serializationOptions);
-    const evaluationResult = await this.messageHandler.forwardCommand({
-      moduleName: "script",
-      commandName: "callFunctionDeclaration",
-      destination: {
-        type: lazy.WindowGlobalMessageHandler.type,
-        id: context.id,
-      },
-      params: {
+    const evaluationResult = await this._forwardToWindowGlobal(
+      "callFunctionDeclaration",
+      context.id,
+      {
         awaitPromise,
         commandArguments,
         functionDeclaration,
@@ -381,8 +448,8 @@ class ScriptModule extends Module {
         serializationOptions: serializationOptionsWithDefaults,
         thisParameter,
         userActivation,
-      },
-    });
+      }
+    );
 
     return this.#buildReturnValue(evaluationResult);
   }
@@ -404,29 +471,21 @@ class ScriptModule extends Module {
 
     lazy.assert.array(
       handles,
-      `Expected "handles" to be an array, got ${handles}`
+      lazy.pprint`Expected "handles" to be an array, got ${handles}`
     );
     handles.forEach(handle => {
       lazy.assert.string(
         handle,
-        `Expected "handles" to be an array of strings, got ${handle}`
+        lazy.pprint`Expected "handles" to be an array of strings, got ${handle}`
       );
     });
 
     const { contextId, realmId, sandbox } = this.#assertTarget(target);
     const context = await this.#getContextFromTarget({ contextId, realmId });
-    await this.messageHandler.forwardCommand({
-      moduleName: "script",
-      commandName: "disownHandles",
-      destination: {
-        type: lazy.WindowGlobalMessageHandler.type,
-        id: context.id,
-      },
-      params: {
-        handles,
-        realmId,
-        sandbox,
-      },
+    await this._forwardToWindowGlobal("disownHandles", context.id, {
+      handles,
+      realmId,
+      sandbox,
     });
   }
 
@@ -472,17 +531,17 @@ class ScriptModule extends Module {
 
     lazy.assert.string(
       source,
-      `Expected "expression" to be a string, got ${source}`
+      lazy.pprint`Expected "expression" to be a string, got ${source}`
     );
 
     lazy.assert.boolean(
       awaitPromise,
-      `Expected "awaitPromise" to be a boolean, got ${awaitPromise}`
+      lazy.pprint`Expected "awaitPromise" to be a boolean, got ${awaitPromise}`
     );
 
     lazy.assert.boolean(
       userActivation,
-      `Expected "userActivation" to be a boolean, got ${userActivation}`
+      lazy.pprint`Expected "userActivation" to be a boolean, got ${userActivation}`
     );
 
     this.#assertResultOwnership(resultOwnership);
@@ -491,14 +550,10 @@ class ScriptModule extends Module {
     const context = await this.#getContextFromTarget({ contextId, realmId });
     const serializationOptionsWithDefaults =
       lazy.setDefaultAndAssertSerializationOptions(serializationOptions);
-    const evaluationResult = await this.messageHandler.forwardCommand({
-      moduleName: "script",
-      commandName: "evaluateExpression",
-      destination: {
-        type: lazy.WindowGlobalMessageHandler.type,
-        id: context.id,
-      },
-      params: {
+    const evaluationResult = await this._forwardToWindowGlobal(
+      "evaluateExpression",
+      context.id,
+      {
         awaitPromise,
         expression: source,
         realmId,
@@ -506,8 +561,8 @@ class ScriptModule extends Module {
         sandbox,
         serializationOptions: serializationOptionsWithDefaults,
         userActivation,
-      },
-    });
+      }
+    );
 
     return this.#buildReturnValue(evaluationResult);
   }
@@ -587,7 +642,7 @@ class ScriptModule extends Module {
     if (contextId !== null) {
       lazy.assert.string(
         contextId,
-        `Expected "context" to be a string, got ${contextId}`
+        lazy.pprint`Expected "context" to be a string, got ${contextId}`
       );
       destination.id = this.#getBrowsingContext(contextId).id;
     } else {
@@ -632,7 +687,7 @@ class ScriptModule extends Module {
 
     lazy.assert.string(
       script,
-      `Expected "script" to be a string, got ${script}`
+      lazy.pprint`Expected "script" to be a string, got ${script}`
     );
 
     if (!this.#preloadScriptMap.has(script)) {
@@ -644,7 +699,7 @@ class ScriptModule extends Module {
     const preloadScript = this.#preloadScriptMap.get(script);
     const sessionDataItem = {
       category: "preload-script",
-      moduleName: "script",
+      moduleName: "_configuration",
       values: [
         {
           ...preloadScript,
@@ -653,7 +708,10 @@ class ScriptModule extends Module {
       ],
     };
 
-    if (preloadScript.contexts === null) {
+    if (
+      preloadScript.contexts === null &&
+      preloadScript.userContexts === null
+    ) {
       await this.messageHandler.removeSessionDataItem({
         ...sessionDataItem,
         contextDescriptor: {
@@ -662,15 +720,29 @@ class ScriptModule extends Module {
       });
     } else {
       const sessionDataItemToUpdate = [];
-      for (const id of preloadScript.contexts) {
-        sessionDataItemToUpdate.push({
-          ...sessionDataItem,
-          contextDescriptor: {
-            type: lazy.ContextDescriptorType.TopBrowsingContext,
-            id,
-          },
-          method: lazy.SessionDataMethod.Remove,
-        });
+
+      if (preloadScript.contexts === null) {
+        for (const id of preloadScript.userContexts) {
+          sessionDataItemToUpdate.push({
+            ...sessionDataItem,
+            contextDescriptor: {
+              type: lazy.ContextDescriptorType.UserContext,
+              id,
+            },
+            method: lazy.SessionDataMethod.Remove,
+          });
+        }
+      } else {
+        for (const id of preloadScript.contexts) {
+          sessionDataItemToUpdate.push({
+            ...sessionDataItem,
+            contextDescriptor: {
+              type: lazy.ContextDescriptorType.TopBrowsingContext,
+              id,
+            },
+            method: lazy.SessionDataMethod.Remove,
+          });
+        }
       }
 
       await this.messageHandler.updateSessionData(sessionDataItemToUpdate);
@@ -680,22 +752,28 @@ class ScriptModule extends Module {
   }
 
   #assertChannelArgument(value) {
-    lazy.assert.object(value);
+    lazy.assert.object(
+      value,
+      lazy.pprint`Expected channel argument to be an object, got ${value}`
+    );
     const {
       channel,
       ownership = lazy.OwnershipModel.None,
       serializationOptions,
     } = value;
-    lazy.assert.string(channel);
+    lazy.assert.string(
+      channel,
+      lazy.pprint`Expected channel argument "channel" to be a string, got ${channel}`
+    );
     lazy.setDefaultAndAssertSerializationOptions(serializationOptions);
     lazy.assert.that(
-      ownership =>
+      ownershipValue =>
         [lazy.OwnershipModel.None, lazy.OwnershipModel.Root].includes(
-          ownership
+          ownershipValue
         ),
-      `Expected "ownership" to be one of ${Object.values(
+      `Expected channel argument "ownership" to be one of ${Object.values(
         lazy.OwnershipModel
-      )}, got ${ownership}`
+      )}, ` + lazy.pprint`got ${ownership}`
     )(ownership);
 
     return true;
@@ -710,7 +788,7 @@ class ScriptModule extends Module {
       throw new lazy.error.InvalidArgumentError(
         `Expected "resultOwnership" to be one of ${Object.values(
           lazy.OwnershipModel
-        )}, got ${resultOwnership}`
+        )}, ` + lazy.pprint`got ${resultOwnership}`
       );
     }
   }
@@ -718,7 +796,7 @@ class ScriptModule extends Module {
   #assertTarget(target) {
     lazy.assert.object(
       target,
-      `Expected "target" to be an object, got ${target}`
+      lazy.pprint`Expected "target" to be an object, got ${target}`
     );
 
     const { context: contextId = null, sandbox = null } = target;
@@ -727,13 +805,13 @@ class ScriptModule extends Module {
     if (contextId != null) {
       lazy.assert.string(
         contextId,
-        `Expected "context" to be a string, got ${contextId}`
+        lazy.pprint`Expected target "context" to be a string, got ${contextId}`
       );
 
       if (sandbox != null) {
         lazy.assert.string(
           sandbox,
-          `Expected "sandbox" to be a string, got ${sandbox}`
+          lazy.pprint`Expected target "sandbox" to be a string, got ${sandbox}`
         );
       }
 
@@ -742,7 +820,7 @@ class ScriptModule extends Module {
     } else if (realmId != null) {
       lazy.assert.string(
         realmId,
-        `Expected "realm" to be a string, got ${realmId}`
+        lazy.pprint`Expected target "realm" to be a string, got ${realmId}`
       );
     } else {
       throw new lazy.error.InvalidArgumentError(`No context or realm provided`);
@@ -805,7 +883,7 @@ class ScriptModule extends Module {
       },
     };
     const realms = await this.#getRealmInfos(destination);
-    const realm = realms.find(realm => realm.realm == realmId);
+    const realm = realms.find(el => el.realm == realmId);
 
     if (realm && realm.context !== null) {
       return this.#getBrowsingContext(realm.context);
@@ -822,6 +900,7 @@ class ScriptModule extends Module {
         type: lazy.WindowGlobalMessageHandler.type,
         ...destination,
       },
+      retryOnAbort: true,
     });
 
     const isBroadcast = !!destination.contextDescriptor;
@@ -840,36 +919,27 @@ class ScriptModule extends Module {
   }
 
   #onRealmCreated = (eventName, { realmInfo }) => {
-    // This event is emitted from the parent process but for a given browsing
-    // context. Set the event's contextInfo to the message handler corresponding
-    // to this browsing context.
-    const contextInfo = {
-      contextId: realmInfo.context.id,
-      type: lazy.WindowGlobalMessageHandler.type,
-    };
-
     // Resolve browsing context to a TabManager id.
     const context = lazy.TabManager.getIdForBrowsingContext(realmInfo.context);
+    const browsingContextId = realmInfo.context.id;
 
-    // Don not emit the event, if the browsing context is gone.
+    // Do not emit the event, if the browsing context is gone.
     if (context === null) {
       return;
     }
 
     realmInfo.context = context;
-    this.emitEvent("script.realmCreated", realmInfo, contextInfo);
+    this._emitEventForBrowsingContext(
+      browsingContextId,
+      "script.realmCreated",
+      realmInfo
+    );
   };
 
   #onRealmDestroyed = (eventName, { realm, context }) => {
-    // This event is emitted from the parent process but for a given browsing
-    // context. Set the event's contextInfo to the message handler corresponding
-    // to this browsing context.
-    const contextInfo = {
-      contextId: context.id,
-      type: lazy.WindowGlobalMessageHandler.type,
-    };
-
-    this.emitEvent("script.realmDestroyed", { realm }, contextInfo);
+    this._emitEventForBrowsingContext(context.id, "script.realmDestroyed", {
+      realm,
+    });
   };
 
   #startListingOnRealmCreated() {

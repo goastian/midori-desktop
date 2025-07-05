@@ -5,10 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import os
-import shutil
-import tempfile
 
-import mozcrash
 from cmdline import CHROME_ANDROID_APPS, FIREFOX_ANDROID_APPS
 from logger.logger import RaptorLogger
 from mozdevice import ADBDeviceFactory
@@ -65,14 +62,21 @@ class BrowsertimeAndroid(PerftestAndroid, Browsertime):
             self._initialize_device()
 
             external_storage = self.device.shell_output("echo $EXTERNAL_STORAGE")
-            self._remote_test_root = os.path.join(
-                external_storage,
-                "Android",
-                "data",
-                self.config["binary"],
-                "files",
-                "test_root",
-            )
+            if int(self.device.shell_output("getprop ro.build.version.release")) == 14:
+                # Bug 1910111:
+                # The default external storage path doesn't seem to have the necessary
+                # permissions on the A55/Android 14 when pushing the condprof files.
+                # Instead we can make use of /sdcard/Download.
+                self._remote_test_root = os.path.join(external_storage, "Download")
+            else:
+                self._remote_test_root = os.path.join(
+                    external_storage,
+                    "Android",
+                    "data",
+                    self.config["binary"],
+                    "files",
+                    "test_root",
+                )
 
         return self._remote_test_root
 
@@ -109,13 +113,13 @@ class BrowsertimeAndroid(PerftestAndroid, Browsertime):
                 )
                 activity = "mozilla.telemetry.glean.debug.GleanDebugActivity"
 
-            if int(self.device.shell_output("getprop ro.build.version.release")) > 11:
-                args_list.extend(
-                    [
-                        '--firefox.geckodriverArgs="--android-storage"',
-                        '--firefox.geckodriverArgs="app"',
-                    ]
-                )
+            # all hardware we test on is android 11+
+            args_list.extend(
+                [
+                    '--firefox.geckodriverArgs="--android-storage"',
+                    '--firefox.geckodriverArgs="app"',
+                ]
+            )
 
             args_list.extend(
                 [
@@ -160,9 +164,7 @@ class BrowsertimeAndroid(PerftestAndroid, Browsertime):
                 )
 
                 args_list.extend(["--firefox.android.intentArgument=-d"])
-                args_list.extend(
-                    ["--firefox.android.intentArgument", str("about:blank")]
-                )
+                args_list.extend(["--firefox.android.intentArgument", "about:blank"])
 
         return args_list
 
@@ -205,7 +207,7 @@ class BrowsertimeAndroid(PerftestAndroid, Browsertime):
         if self.config["app"] in FIREFOX_ANDROID_APPS:
             # Merge in the Android profile.
             path = os.path.join(self.profile_data_dir, "raptor-android")
-            LOG.info("Merging profile: {}".format(path))
+            LOG.info(f"Merging profile: {path}")
             self.profile.merge(path)
 
             # There's no great way to have "after" advice in Python, so we do this
@@ -228,30 +230,6 @@ class BrowsertimeAndroid(PerftestAndroid, Browsertime):
         # make sure no remote profile exists
         if self.device.exists(self.geckodriver_profile):
             self.device.rm(self.geckodriver_profile, force=True, recursive=True)
-
-    def check_for_crashes(self):
-        super(BrowsertimeAndroid, self).check_for_crashes()
-
-        try:
-            dump_dir = tempfile.mkdtemp()
-            remote_dir = os.path.join(self.geckodriver_profile, "minidumps")
-            if not self.device.is_dir(remote_dir):
-                return
-            self.device.pull(remote_dir, dump_dir)
-            self.crashes += mozcrash.log_crashes(
-                LOG, dump_dir, self.config["symbols_path"]
-            )
-        except Exception as e:
-            LOG.error(
-                "Could not pull the crash data!",
-                exc_info=True,
-            )
-            raise e
-        finally:
-            try:
-                shutil.rmtree(dump_dir)
-            except Exception:
-                LOG.warning("unable to remove directory: %s" % dump_dir)
 
     def run_test_setup(self, test):
         super(BrowsertimeAndroid, self).run_test_setup(test)

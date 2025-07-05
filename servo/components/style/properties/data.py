@@ -101,17 +101,20 @@ VISITED_DEPENDENT_PROPERTIES = set(
 STYLE_RULE = 1 << 0
 PAGE_RULE = 1 << 1
 KEYFRAME_RULE = 1 << 2
+POSITION_TRY_RULE = 1 << 3
 
 ALL_RULES = STYLE_RULE | PAGE_RULE | KEYFRAME_RULE
 DEFAULT_RULES = STYLE_RULE | KEYFRAME_RULE
 DEFAULT_RULES_AND_PAGE = DEFAULT_RULES | PAGE_RULE
 DEFAULT_RULES_EXCEPT_KEYFRAME = STYLE_RULE
+DEFAULT_RULES_AND_POSITION_TRY = DEFAULT_RULES | POSITION_TRY_RULE
 
 # Rule name to value dict
 RULE_VALUES = {
     "Style": STYLE_RULE,
     "Page": PAGE_RULE,
     "Keyframe": KEYFRAME_RULE,
+    "PositionTry": POSITION_TRY_RULE,
 }
 
 
@@ -349,7 +352,7 @@ class Longhand(Property):
         style_struct,
         name,
         spec=None,
-        animation_value_type=None,
+        animation_type=None,
         keyword=None,
         predefined_type=None,
         servo_pref=None,
@@ -421,17 +424,11 @@ class Longhand(Property):
 
         # This is done like this since just a plain bool argument seemed like
         # really random.
-        if animation_value_type is None:
-            raise TypeError(
-                "animation_value_type should be specified for (" + name + ")"
-            )
-        self.animation_value_type = animation_value_type
-
-        self.animatable = animation_value_type != "none"
-        self.is_animatable_with_computed_value = (
-            animation_value_type == "ComputedValue"
-            or animation_value_type == "discrete"
-        )
+        if animation_type is None:
+            animation_type = "normal"
+        assert animation_type in ["none", "normal", "discrete"]
+        self.animation_type = animation_type
+        self.animatable = animation_type != "none"
 
         # See compute_damage for the various values this can take
         self.servo_restyle_damage = servo_restyle_damage
@@ -557,6 +554,7 @@ class Longhand(Property):
                 "FontStretch",
                 "FontStyle",
                 "FontSynthesis",
+                "FontSynthesisStyle",
                 "FontVariantEastAsian",
                 "FontVariantLigatures",
                 "FontVariantNumeric",
@@ -564,17 +562,19 @@ class Longhand(Property):
                 "GreaterThanOrEqualToOneNumber",
                 "GridAutoFlow",
                 "ImageRendering",
+                "Inert",
                 "InitialLetter",
                 "Integer",
-                "InsetArea",
-                "InsetAreaKeyword",
+                "PositionArea",
+                "PositionAreaKeyword",
+                "PositionProperty",
                 "JustifyContent",
                 "JustifyItems",
                 "JustifySelf",
                 "LineBreak",
                 "LineClamp",
                 "MasonryAutoFlow",
-                "ui::MozTheme",
+                "MozTheme",
                 "BoolInteger",
                 "text::MozControlCharacterVisibility",
                 "MathDepth",
@@ -593,6 +593,7 @@ class Longhand(Property):
                 "OverscrollBehavior",
                 "PageOrientation",
                 "Percentage",
+                "PointerEvents",
                 "PositionTryOrder",
                 "PositionVisibility",
                 "PrintColorAdjust",
@@ -616,8 +617,12 @@ class Longhand(Property):
                 "TextUnderlinePosition",
                 "TouchAction",
                 "TransformStyle",
+                "UserFocus",
+                "UserInput",
                 "UserSelect",
+                "VectorEffect",
                 "WordBreak",
+                "WritingModeProperty",
                 "XSpan",
                 "XTextScale",
                 "ZIndex",
@@ -630,7 +635,7 @@ class Longhand(Property):
     def animated_type(self):
         assert self.animatable
         computed = "<{} as ToComputedValue>::ComputedValue".format(self.base_type())
-        if self.is_animatable_with_computed_value:
+        if self.animation_type == "discrete":
             return computed
         return "<{} as ToAnimatedValue>::AnimatedValue".format(computed)
 
@@ -872,13 +877,13 @@ def _remove_common_first_line_and_first_letter_properties(props, engine):
         props.remove("text-emphasis-position")
         props.remove("text-emphasis-style")
         props.remove("text-emphasis-color")
+        props.remove("text-wrap-style")
 
     props.remove("overflow-wrap")
     props.remove("text-align")
     props.remove("text-justify")
     props.remove("white-space-collapse")
     props.remove("text-wrap-mode")
-    props.remove("text-wrap-style")
     props.remove("word-break")
     props.remove("text-indent")
 

@@ -45,10 +45,6 @@
 
     <dimen name="context_menu_height">48dp</dimen>
     <dimen name="context_menu_x_offset">8dp</dimen>
-    <!-- Dimensions for the CFR (Contextual Feature Recommendation) tooltip triangle. -->
-    <dimen name="cfr_triangle_height">16dp</dimen>
-    <dimen name="cfr_triangle_width">16dp</dimen>
-    <dimen name="cfr_triangle_margin_edge">16dp</dimen>
 
     <!--Preferences-->
     <dimen name="checkbox_preference_padding_vertical">12dp</dimen>
@@ -70,8 +66,9 @@
 
     <!-- Browser Toolbar -->
     <dimen name="browser_toolbar_height">56dp</dimen>
-    <dimen name="browser_navbar_height">48dp</dimen>
-    <dimen name="tab_strip_height">0dp</dimen>
+    <dimen name="browser_navbar_height">49dp</dimen>
+    <dimen name="tab_strip_height">56dp</dimen>
+    <dimen name="browser_microsurvey_height">131dp</dimen>
 
     <!-- Bookmark Edit Fragment  -->
     <dimen name="bookmark_edit_text_height">48dp</dimen>
@@ -88,10 +85,13 @@
     <!--The size of the gap between the tab preview and content layout.-->
     <dimen name="browser_fragment_gesture_preview_offset">48dp</dimen>
     <dimen name="browser_fragment_toolbar_elevation">16dp</dimen>
-    <!-- The download dialogs are shown above the toolbar so they need a bigger elevation. -->
-    <dimen name="browser_fragment_download_dialog_elevation">17dp</dimen>
+    <!-- Panels shown above the toolbar need a bigger elevation. -->
+    <dimen name="browser_fragment_above_toolbar_panels_elevation">17dp</dimen>
+
+    <!-- Display Toolbar -->
     <!-- The size of padding for the display toolbar. -->
-    <dimen name="browser_fragment_display_toolbar_padding">8dp</dimen>
+    <dimen name="browser_fragment_display_toolbar_padding" tools:ignore="UnusedResources">16dp</dimen>
+    <dimen name="mozac_browser_toolbar_button_width" tools:ignore="UnusedResources">48dp</dimen>
 
     <!-- Search Fragment -->
     <dimen name="search_fragment_clipboard_item_height">56dp</dimen>
@@ -139,15 +139,11 @@
     <dimen name="addon_details_rating_view_margin_end">6dp</dimen>
 
     <!-- Tabs Tray -->
-    <dimen name="tab_tray_tab_item_height">88dp</dimen>
     <dimen name="tab_tray_list_item_thumbnail_width">92dp</dimen>
     <dimen name="tab_tray_list_item_thumbnail_height">72dp</dimen>
     <dimen name="tab_tray_grid_item_thumbnail_width">156dp</dimen>
     <dimen name="tab_tray_grid_item_thumbnail_height">156dp</dimen>
     <dimen name="tab_tray_grid_item_border_radius">8dp</dimen>
-    <dimen name="tab_tray_grid_item_outer_border_radius">10dp</dimen>
-    <dimen name="tab_tray_multiselect_handle_height">11dp</dimen>
-    <dimen name="tab_tray_multiselect_handle_top_margin">0dp</dimen>
     <dimen name="tab_tray_new_collection_padding_start">24dp</dimen>
     <dimen name="tab_tray_new_collection_drawable_padding">28dp</dimen>
     <!--  Keeps FAB and snackbar from covering last item in list -->
@@ -185,4 +181,9 @@
     <dimen name="accessibility_min_height">48dp</dimen>
     <dimen name="tap_increase_16">16dp</dimen>
     <dimen name="tap_increase_2">2dp</dimen>
+
+    <!-- Browser Menu -->
+    <dimen name="browser_menu_max_width">640dp</dimen>
+    <dimen name="browser_menu_padding">56dp</dimen>
+
 </resources>

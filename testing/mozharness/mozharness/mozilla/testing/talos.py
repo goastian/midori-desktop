@@ -1,15 +1,12 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 """
 run talos tests in a virtualenv
 """
 
 import copy
-import io
 import json
 import multiprocessing
 import os
@@ -19,7 +16,6 @@ import shutil
 import subprocess
 import sys
 
-import six
 from mozsystemmonitor.resourcemonitor import SystemResourceMonitor
 
 import mozharness
@@ -181,7 +177,10 @@ class Talos(
                     "dest": "gecko_profile",
                     "action": "store_true",
                     "default": False,
-                    "help": "Whether or not to profile the test run and save the profile results",
+                    "help": (
+                        "Whether to profile the test run and save the profile results. "
+                        "Copy paste the parameters used in this profiling run directly from about:profiling in Nightly."
+                    ),
                 },
             ],
             [
@@ -440,7 +439,7 @@ class Talos(
         iframe_pattern = re.compile(r'(iframe.*")(\.\./.*\.html)"')
         for encoding in encodings:
             try:
-                with io.open(path, "r", encoding=encoding) as f:
+                with open(path, encoding=encoding) as f:
                     content = f.read()
 
                 def replace_iframe_src(match):
@@ -460,7 +459,7 @@ class Talos(
                     return match.group(1) + new_url
 
                 content = re.sub(iframe_pattern, replace_iframe_src, content)
-                with io.open(path, "w", encoding=encoding) as f:
+                with open(path, "w", encoding=encoding) as f:
                     f.write(content)
                 break
             except UnicodeDecodeError:
@@ -576,7 +575,7 @@ class Talos(
         kw_options.update(kw)
         # talos expects tests to be in the format (e.g.) 'ts:tp5:tsvg'
         tests = kw_options.get("activeTests")
-        if tests and not isinstance(tests, six.string_types):
+        if tests and not isinstance(tests, str):
             tests = ":".join(tests)  # Talos expects this format
             kw_options["activeTests"] = tests
         for key, value in kw_options.items():
@@ -602,7 +601,7 @@ class Talos(
         if self.config["extra_prefs"]:
             extra_prefs.extend(self.config["extra_prefs"])
 
-        options.extend(["--setpref={}".format(p) for p in extra_prefs])
+        options.extend([f"--setpref={p}" for p in extra_prefs])
 
         # disabling fission can come from the --disable-fission cmd line argument; or in CI
         # it comes from a taskcluster transform which adds a --setpref for fission.autostart

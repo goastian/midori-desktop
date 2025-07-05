@@ -1,17 +1,18 @@
 import os
 import unittest
 
+import mozunit
 from mozharness.base.log import LogMixin
 from mozharness.base.script import ScriptMixin
 from mozharness.mozilla.building.buildbase import MozconfigPathError, get_mozconfig_path
 
 
-class FakeLogger(object):
+class FakeLogger:
     def log_message(self, *args, **kwargs):
         pass
 
 
-class FakeScriptMixin(LogMixin, ScriptMixin, object):
+class FakeScriptMixin(LogMixin, ScriptMixin):
     def __init__(self):
         self.script_obj = self
         self.log_obj = FakeLogger()
@@ -144,3 +145,7 @@ class TestMozconfigPath(unittest.TestCase):
         for config in configs:
             with self.assertRaises(MozconfigPathError):
                 get_mozconfig_path(script, config=config, dirs={})
+
+
+if __name__ == "__main__":
+    mozunit.main()

@@ -38,7 +38,6 @@ pub mod ui;
 pub mod url;
 
 /// A wrapper of Non-negative values.
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 #[derive(
     Animate,
     Clone,
@@ -193,6 +192,8 @@ impl<L> ClipRectOrAuto<L> {
 
 pub use page::PageSize;
 
+pub use text::NumberOrAuto;
+
 /// An optional value, much like `Option<T>`, but with a defined struct layout
 /// to be able to use it from C++ as well.
 ///
@@ -252,6 +253,15 @@ impl<T> Optional<T> {
     pub fn as_ref(&self) -> Option<&T> {
         match *self {
             Self::Some(ref v) => Some(v),
+            Self::None => None,
+        }
+    }
+
+    /// Return a mutable reference to the containing value, if any, as a plain
+    /// rust Option<>.
+    pub fn as_mut(&mut self) -> Option<&mut T> {
+        match *self {
+            Self::Some(ref mut v) => Some(v),
             Self::None => None,
         }
     }

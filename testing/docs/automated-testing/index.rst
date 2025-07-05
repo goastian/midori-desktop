@@ -75,7 +75,7 @@ Functional testing
    "``M(remote)``", "Mochitest Remote Protocol", "All", "Parent, Allow", "Browser", "Yes", "High", "Firefox Remote Protocol (Implements parts of Chrome dev-tools protocol). Based on Mochitest browser-chrome."
    "``SM(...), SM(pkg)``", "`SpiderMonkey automation <https://wiki.mozilla.org/Javascript:Automation_Builds>`__", "Desktop", "N/A", "JSShell", "N/A", "Low", "SpiderMonkey engine shell tests and JSAPI tests."
    "``W``", "`web-platform-tests </web-platform/index.html>`__", "Desktop", "Child", "Content", "Yes", "Low", "Standardized features exposed to ECMAScript in web content; tests are shared with other vendors."
-   "``Wr``", "`web-platform-tests </web-platform/writing-tests/reftests.html>`__", "All", "Child", "Content", "Yes", "Low", "Layout and graphic correctness for standardized features; tests are shared with other vendors."
+   "``Wr``", "`web-platform-tests <https://web-platform-tests.org/writing-tests/reftests.html>`__", "All", "Child", "Content", "Yes", "Low", "Layout and graphic correctness for standardized features; tests are shared with other vendors."
    "``Mn``", "`Marionette </testing/marionette/Testing.html>`__", "Desktop", "?", "Content, Browser", "?", "High", "Large out-of-process function integration tests and tests that do communication with multiple remote Gecko processes."
    "``Fxfn``", "`Firefox UI Tests </remote/Testing.html#puppeteer-tests>`__", "Desktop", "?", "Content, Browser", "Yes", "High", "Integration tests with a focus on the user interface and localization."
    "``tt(c)``", "`telemetry-tests-client </toolkit/components/telemetry/internals/tests.html>`__", "Desktop", "N/A", "Content, Browser", "Yes", "High", "Integration tests for the Firefox Telemetry client."
@@ -102,9 +102,6 @@ Symbol
    the test. The letter in parentheses identifies the actual test suite.
 Name
    Common name used when referring to the test suite.
-File type
-   When adding a new test, you will generally create a file of this type
-   in the source tree and then declare it in a manifest or makefile.
 Platform
    Most test suites are supported only on a subset of the available
    plaforms and operating systems. Unless otherwise noted:
@@ -251,10 +248,24 @@ Need to get more data out of your tests?
 ----------------------------------------
 
 Most test jobs now expose an environment variable named
-``$MOZ_UPLOAD_DIR``. If this variable is set during automated test runs,
+``MOZ_UPLOAD_DIR``. If this variable is set during automated test runs,
 you can drop additional files into this directory, and they will be
 uploaded to a web server when the test finishes. The URLs to retrieve
 the files will be output in the test log.
+
+Passing ``MOZ_RECORD_TEST=1`` as an environment variable when running some
+tests (e.g. mochitests) on Linux Desktop and macOS will trigger a recording of the
+desktop with GNOME Screencast. This works on try as well, in which case the video
+file will be uploaded as an artifact and available in the
+``Artifacts and Debugging Tools`` panel on Treeherder.
+
+For browser chrome mochitests, passing ``MOZ_DEVTOOLS_TEST_SCOPES=1`` as an
+environment variable will record all variables and arguments available in
+the scope of the test when any assert fails. On try, each failed assert will generate
+a JSON file named `scope-variables-[...].json` which will be uploaded as a
+test artifact. When using the feature locally, set MOZ_UPLOAD_DIR to a local
+folder where the JSON files should be saved. Note that Firefox opens JSON files
+with the built-in DevTools JSON viewer.
 
 .. _Need_to_set_preferences_for_test-suites:
 
@@ -281,7 +292,7 @@ that need it as possible. Here are some options:
 
 -  Mochitest plain tests can use
    `SpecialPowers
-   <https://developer.mozilla.org/en-US/docs/Mozilla/Projects/Mochitest/SpecialPowers>`__
+   </testing/mochitest-plain/faq.html#what-if-i-need-to-change-a-preference-to-run-my-test>`__
    to set prefs.
 
 -  All variants of mochitest can set prefs in their manifests. For

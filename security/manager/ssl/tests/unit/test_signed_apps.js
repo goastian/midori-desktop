@@ -79,7 +79,7 @@ function tamper(inFilePath, outFilePath, modifications, newEntries) {
         Ci.nsIStringInputStream
       );
       try {
-        sis.setData(newEntry.content, newEntry.content.length);
+        sis.setByteStringData(newEntry.content);
         writer.addEntryStream(
           newEntry.name,
           new Date() * PR_USEC_PER_MSEC,
@@ -111,7 +111,7 @@ function truncateEntry(entry, entryInput) {
   let content = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(
     Ci.nsIStringInputStream
   );
-  content.data = "";
+  content.setByteStringData("");
 
   return [entry, content];
 }
@@ -1217,6 +1217,17 @@ add_test(function () {
     Ci.nsIX509CertDB.AppXPCShellRoot,
     original_app_path("validity_expired"),
     check_open_result("validity_expired", Cr.NS_OK, [
+      Ci.nsIAppSignatureInfo.PKCS7_WITH_SHA256,
+    ])
+  );
+});
+
+add_signature_test(COSEAndPKCS7WithSHA1OrSHA256, function () {
+  certdb.openSignedAppFileAsync(
+    Ci.nsIX509CertDB.AppXPCShellRoot,
+    original_app_path("alternate-root"),
+    check_open_result("alternate-root", Cr.NS_OK, [
+      Ci.nsIAppSignatureInfo.COSE_WITH_SHA256,
       Ci.nsIAppSignatureInfo.PKCS7_WITH_SHA256,
     ])
   );

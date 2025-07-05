@@ -4,6 +4,8 @@
 
 package org.mozilla.fenix.tabstray
 
+import androidx.compose.animation.core.DecayAnimationSpec
+import androidx.compose.animation.rememberSplineBasedDecay
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -22,6 +24,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -29,12 +32,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.toMutableStateList
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import mozilla.components.browser.state.state.ContentState
 import mozilla.components.browser.state.state.TabSessionState
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
+import org.mozilla.fenix.compose.SwipeToDismissState
+import org.mozilla.fenix.compose.SwipeToDismissState2
 import org.mozilla.fenix.compose.tabstray.TabGridItem
 import org.mozilla.fenix.compose.tabstray.TabListItem
 import org.mozilla.fenix.tabstray.browser.compose.DragItemContainer
@@ -199,19 +207,46 @@ private fun TabGrid(
             items = tabs,
             key = { _, tab -> tab.id },
         ) { index, tab ->
+            val decayAnimationSpec: DecayAnimationSpec<Float> = rememberSplineBasedDecay()
+            val density = LocalDensity.current
+            val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+
+            val swipeState = remember(isInMultiSelectMode, !state.isScrollInProgress) {
+                SwipeToDismissState(
+                    density = density,
+                    enabled = !isInMultiSelectMode && !state.isScrollInProgress,
+                    decayAnimationSpec = decayAnimationSpec,
+                )
+            }
+            val swipeState2 = remember(isInMultiSelectMode, !state.isScrollInProgress) {
+                SwipeToDismissState2(
+                    density = density,
+                    enabled = !isInMultiSelectMode && !state.isScrollInProgress,
+                    decayAnimationSpec = decayAnimationSpec,
+                    isRtl = isRtl,
+                )
+            }
+            val swipingActive by remember(swipeState.swipingActive, swipeState2.swipingActive) {
+                derivedStateOf {
+                    swipeState.swipingActive || swipeState2.swipingActive
+                }
+            }
+
             DragItemContainer(
                 state = reorderState,
                 position = index + if (header != null) 1 else 0,
                 key = tab.id,
+                swipingActive = swipingActive,
             ) {
                 TabGridItem(
                     tab = tab,
                     thumbnailSize = tabThumbnailSize,
                     isSelected = tab.id == selectedTabId,
                     multiSelectionEnabled = isInMultiSelectMode,
-                    multiSelectionSelected = selectionMode.selectedTabs.contains(tab),
+                    multiSelectionSelected = selectionMode.selectedTabs.any { it.id == tab.id },
                     shouldClickListen = reorderState.draggingItemKey != tab.id,
-                    swipingEnabled = !state.isScrollInProgress,
+                    swipeState = swipeState,
+                    swipeState2 = swipeState2,
                     onCloseClick = onTabClose,
                     onMediaClick = onTabMediaClick,
                     onClick = onTabClick,
@@ -303,7 +338,7 @@ private fun TabList(
                     thumbnailSize = tabThumbnailSize,
                     isSelected = tab.id == selectedTabId,
                     multiSelectionEnabled = isInMultiSelectMode,
-                    multiSelectionSelected = selectionMode.selectedTabs.contains(tab),
+                    multiSelectionSelected = selectionMode.selectedTabs.any { it.id == tab.id },
                     shouldClickListen = reorderState.draggingItemKey != tab.id,
                     swipingEnabled = !state.isScrollInProgress,
                     onCloseClick = onTabClose,
@@ -319,7 +354,7 @@ private fun TabList(
     }
 }
 
-@LightDarkPreview
+@PreviewLightDark
 @Composable
 private fun TabListPreview() {
     val tabs = remember { generateFakeTabsList().toMutableStateList() }
@@ -346,7 +381,7 @@ private fun TabListPreview() {
     }
 }
 
-@LightDarkPreview
+@PreviewLightDark
 @Composable
 private fun TabGridPreview() {
     val tabs = remember { generateFakeTabsList().toMutableStateList() }
@@ -373,7 +408,7 @@ private fun TabGridPreview() {
     }
 }
 
-@LightDarkPreview
+@PreviewLightDark
 @Composable
 private fun TabGridSmallPreview() {
     val tabs = remember { generateFakeTabsList().toMutableStateList() }
@@ -403,7 +438,7 @@ private fun TabGridSmallPreview() {
 }
 
 @Suppress("MagicNumber")
-@LightDarkPreview
+@PreviewLightDark
 @Composable
 private fun TabGridMultiSelectPreview() {
     val tabs = generateFakeTabsList()

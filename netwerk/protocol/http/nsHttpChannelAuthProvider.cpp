@@ -41,7 +41,6 @@
 #include "nsIURL.h"
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/StaticPrefs_prompts.h"
-#include "mozilla/Telemetry.h"
 #include "nsIProxiedChannel.h"
 #include "nsIProxyInfo.h"
 
@@ -50,20 +49,6 @@ namespace mozilla::net {
 #define SUBRESOURCE_AUTH_DIALOG_DISALLOW_ALL 0
 #define SUBRESOURCE_AUTH_DIALOG_DISALLOW_CROSS_ORIGIN 1
 #define SUBRESOURCE_AUTH_DIALOG_ALLOW_ALL 2
-
-#define HTTP_AUTH_DIALOG_TOP_LEVEL_DOC 29
-#define HTTP_AUTH_DIALOG_SAME_ORIGIN_SUBRESOURCE 30
-#define HTTP_AUTH_DIALOG_SAME_ORIGIN_XHR 31
-#define HTTP_AUTH_DIALOG_NON_WEB_CONTENT 32
-
-#define HTTP_AUTH_BASIC_INSECURE 0
-#define HTTP_AUTH_BASIC_SECURE 1
-#define HTTP_AUTH_DIGEST_INSECURE 2
-#define HTTP_AUTH_DIGEST_SECURE 3
-#define HTTP_AUTH_NTLM_INSECURE 4
-#define HTTP_AUTH_NTLM_SECURE 5
-#define HTTP_AUTH_NEGOTIATE_INSECURE 6
-#define HTTP_AUTH_NEGOTIATE_SECURE 7
 
 #define MAX_DISPLAYED_USER_LENGTH 64
 #define MAX_DISPLAYED_HOST_LENGTH 64
@@ -185,7 +170,10 @@ nsHttpChannelAuthProvider::ProcessAuthentication(uint32_t httpStatus,
 
   nsAutoCString creds;
   rv = GetCredentials(challenges, mProxyAuth, creds);
-  if (rv == NS_ERROR_IN_PROGRESS) return rv;
+  if (rv == NS_ERROR_IN_PROGRESS || rv == NS_ERROR_BASIC_HTTP_AUTH_DISABLED) {
+    return rv;
+  }
+
   if (NS_FAILED(rv)) {
     LOG(("unable to authenticate\n"));
   } else {
@@ -374,7 +362,7 @@ nsresult nsHttpChannelAuthProvider::GenCredsAndSetEntry(
   sessionState.swap(ss);
   if (NS_FAILED(rv)) return rv;
 
-    // don't log this in release build since it could contain sensitive info.
+  // don't log this in release build since it could contain sensitive info.
 #ifdef DEBUG
   LOG(("generated creds: %s\n", result.BeginReading()));
 #endif
@@ -641,13 +629,23 @@ nsresult nsHttpChannelAuthProvider::GetCredentials(
         return 0;
       }
 
-      // Non-digest challenges should not be reordered when the pref is off.
-      if (lhs.algorithm == 0 || rhs.algorithm == 0) {
+      if (lhs.algorithm == rhs.algorithm) {
         return 0;
       }
 
       return lhs.algorithm < rhs.algorithm ? 1 : -1;
     });
+  }
+
+  nsAutoCString scheme;
+
+  // If a preference to enable basic HTTP Auth is unset and the scheme is HTTP,
+  // check if Basic is the sole available authentication challenge.
+  if (NS_SUCCEEDED(mURI->GetScheme(scheme)) && scheme == "http"_ns &&
+      !StaticPrefs::network_http_basic_http_auth_enabled() &&
+      cc[0].rank == ChallengeRank::Basic) {
+    // HTTP Auth and "Basic" is the sole available authentication.
+    return NS_ERROR_BASIC_HTTP_AUTH_DISABLED;
   }
 
   nsCOMPtr<nsIHttpAuthenticator> auth;
@@ -951,31 +949,6 @@ nsresult nsHttpChannelAuthProvider::GetCredentialsForChallenge(
         level = nsIAuthPrompt2::LEVEL_PW_ENCRYPTED;
       }
 
-      // Collect statistics on how frequently the various types of HTTP
-      // authentication are used over SSL and non-SSL connections.
-      if (Telemetry::CanRecordPrereleaseData()) {
-        if ("basic"_ns.Equals(aAuthType, nsCaseInsensitiveCStringComparator)) {
-          Telemetry::Accumulate(
-              Telemetry::HTTP_AUTH_TYPE_STATS,
-              UsingSSL() ? HTTP_AUTH_BASIC_SECURE : HTTP_AUTH_BASIC_INSECURE);
-        } else if ("digest"_ns.Equals(aAuthType,
-                                      nsCaseInsensitiveCStringComparator)) {
-          Telemetry::Accumulate(
-              Telemetry::HTTP_AUTH_TYPE_STATS,
-              UsingSSL() ? HTTP_AUTH_DIGEST_SECURE : HTTP_AUTH_DIGEST_INSECURE);
-        } else if ("ntlm"_ns.Equals(aAuthType,
-                                    nsCaseInsensitiveCStringComparator)) {
-          Telemetry::Accumulate(
-              Telemetry::HTTP_AUTH_TYPE_STATS,
-              UsingSSL() ? HTTP_AUTH_NTLM_SECURE : HTTP_AUTH_NTLM_INSECURE);
-        } else if ("negotiate"_ns.Equals(aAuthType,
-                                         nsCaseInsensitiveCStringComparator)) {
-          Telemetry::Accumulate(Telemetry::HTTP_AUTH_TYPE_STATS,
-                                UsingSSL() ? HTTP_AUTH_NEGOTIATE_SECURE
-                                           : HTTP_AUTH_NEGOTIATE_INSECURE);
-        }
-      }
-
       // Depending on the pref setting, the authentication dialog may be
       // blocked for all sub-resources, blocked for cross-origin
       // sub-resources, or always allowed for sub-resources.
@@ -1090,28 +1063,6 @@ bool nsHttpChannelAuthProvider::BlockPrompt(bool proxyAuth) {
       nsIPrincipal* loadingPrinc = loadInfo->GetLoadingPrincipal();
       MOZ_ASSERT(loadingPrinc);
       mCrossOrigin = !loadingPrinc->IsSameOrigin(mURI);
-    }
-  }
-
-  if (Telemetry::CanRecordPrereleaseData()) {
-    if (topDoc) {
-      Telemetry::Accumulate(Telemetry::HTTP_AUTH_DIALOG_STATS_3,
-                            HTTP_AUTH_DIALOG_TOP_LEVEL_DOC);
-    } else if (nonWebContent) {
-      Telemetry::Accumulate(Telemetry::HTTP_AUTH_DIALOG_STATS_3,
-                            HTTP_AUTH_DIALOG_NON_WEB_CONTENT);
-    } else if (!mCrossOrigin) {
-      if (xhr) {
-        Telemetry::Accumulate(Telemetry::HTTP_AUTH_DIALOG_STATS_3,
-                              HTTP_AUTH_DIALOG_SAME_ORIGIN_XHR);
-      } else {
-        Telemetry::Accumulate(Telemetry::HTTP_AUTH_DIALOG_STATS_3,
-                              HTTP_AUTH_DIALOG_SAME_ORIGIN_SUBRESOURCE);
-      }
-    } else {
-      Telemetry::Accumulate(
-          Telemetry::HTTP_AUTH_DIALOG_STATS_3,
-          static_cast<uint32_t>(loadInfo->GetExternalContentPolicyType()));
     }
   }
 

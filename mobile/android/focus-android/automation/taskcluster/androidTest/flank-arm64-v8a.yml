@@ -16,7 +16,9 @@ gcloud:
   environment-variables:
     clearPackageData: true
   directories-to-pull:
-    - /sdcard/screenshots
+    - /sdcard/Android/data/org.mozilla.focus.debug/minidumps
+  other-files:
+    /data/local/tmp/org.mozilla.focus.debug-geckoview-config.yaml: ./automation/taskcluster/androidTest/geckoview-configs/org.mozilla.focus.debug-geckoview-config.yaml
   performance-metrics: true
 
   test-targets:
@@ -24,8 +26,8 @@ gcloud:
     - package org.mozilla.focus.privacy
 
   device:
-    - model: Pixel2.arm
-      version: 30
+    - model: MediumPhone.arm
+      version: 34
       locale: en_US
 
 flank:

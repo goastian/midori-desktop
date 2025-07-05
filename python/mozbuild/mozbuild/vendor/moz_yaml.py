@@ -67,276 +67,6 @@ VALID_SOURCE_HOSTS = [
     "yaml-dir",
 ]
 
-"""
----
-# Third-Party Library Template
-# All fields are mandatory unless otherwise noted
-
-# Version of this schema
-schema: 1
-
-bugzilla:
-  # Bugzilla product and component for this directory and subdirectories
-  product: product name
-  component: component name
-
-# Document the source of externally hosted code
-origin:
-
-  # Short name of the package/library
-  name: name of the package
-
-  description: short (one line) description
-
-  # Full URL for the package's homepage/etc
-  # Usually different from repository url
-  url: package's homepage url
-
-  # Human-readable identifier for this version/release
-  # Generally "version NNN", "tag SSS", "bookmark SSS"
-  release: identifier
-
-  # Revision to pull in
-  # Must be a long or short commit SHA (long preferred)
-  revision: sha
-
-  # The package's license, where possible using the mnemonic from
-  # https://spdx.org/licenses/
-  # Multiple licenses can be specified (as a YAML list)
-  # A "LICENSE" file must exist containing the full license text
-  license: MPL-2.0
-
-  # If the package's license is specified in a particular file,
-  # this is the name of the file.
-  # optional
-  license-file: COPYING
-
-  # If there are any mozilla-specific notes you want to put
-  # about a library, they can be put here.
-  notes: Notes about the library
-
-# Configuration for the automated vendoring system.
-# optional
-vendoring:
-
-  # Repository URL to vendor from
-  # eg. https://github.com/kinetiknz/nestegg
-  # Any repository host can be specified here, however initially we'll only
-  # support automated vendoring from selected sources.
-  url: source url (generally repository clone url)
-
-  # Type of hosting for the upstream repository
-  # Valid values are 'gitlab', 'github', googlesource
-  source-hosting: gitlab
-
-  # Type of Vendoring
-  # This is either 'regular', 'individual-files', or 'rust'
-  # If omitted, will default to 'regular'
-  flavor: rust
-
-  # Type of git reference (commit, tag) to track updates from.
-  # You cannot use tag tracking with the individual-files flavor
-  # If omitted, will default to tracking commits.
-  tracking: commit
-
-  # When using tag tracking (only on Github currently) use a release artifact
-  # for the source code instead of the automatically built git-archive exports.
-  # The source repository must build these artifacts with consistent filenames
-  # for every tag. This is useful when the Github repository uses submodules
-  # since they are not included in the git-archives.
-  # Substitution is performed on the filename, {tag} is replaced with the tag name.
-  # optional
-  release-artifact: "rnp-{tag}.tar.gz"
-
-  # Base directory of the location where the source files will live in-tree.
-  # If omitted, will default to the location the moz.yaml file is in.
-  vendor-directory: third_party/directory
-
-  # Allows skipping certain steps of the vendoring process.
-  # Most useful if e.g. vendoring upstream is complicated and should be done by a script
-  # The valid steps that can be skipped are listed below
-  skip-vendoring-steps:
-    - fetch
-    - keep
-    - include
-    - exclude
-    - move-contents
-    - hg-add
-    - spurious-check
-    - update-moz-yaml
-    - update-moz-build
-
-  # List of patch files to apply after vendoring. Applied in the order
-  # specified, and alphabetically if globbing is used. Patches must apply
-  # cleanly before changes are pushed.
-  # Patch files should be relative to the vendor-directory rather than the gecko
-  # root directory.
-  # All patch files are implicitly added to the keep file list.
-  # optional
-  patches:
-    - file
-    - path/to/file
-    - path/*.patch
-    - path/**  # Captures all files and subdirectories below path
-    - path/*   # Captures all files but _not_ subdirectories below path. Equivalent to `path/`
-
-  # List of files that are not removed from the destination directory while vendoring
-  # in a new version of the library. Intended for mozilla files not present in upstream.
-  # Implicitly contains "moz.yaml", "moz.build", and any files referenced in
-  # "patches"
-  # optional
-  keep:
-    - file
-    - path/to/file
-    - another/path
-    - *.mozilla
-
-  # Files/paths that will not be vendored from the upstream repository
-  # Implicitly contains ".git", and ".gitignore"
-  # optional
-  exclude:
-    - file
-    - path/to/file
-    - another/path
-    - docs
-    - src/*.test
-
-  # Files/paths that will always be vendored from source repository, even if
-  # they would otherwise be excluded by "exclude".
-  # optional
-  include:
-    - file
-    - path/to/file
-    - another/path
-    - docs/LICENSE.*
-
-  # Files that are modified as part of the update process.
-  # To avoid creating updates that don't update anything, ./mach vendor will detect
-  # if any in-tree files have changed. If there are files that are always changed
-  # during an update process (e.g. version numbers or source revisions), list them
-  # here to avoid having them counted as substative changes.
-  # This field does NOT support directories or globbing
-  # optional
-  generated:
-    - '{yaml_dir}/vcs_version.h'
-
-  # If neither "exclude" or "include" are set, all files will be vendored
-  # Files/paths in "include" will always be vendored, even if excluded
-  # eg. excluding "docs/" then including "docs/LICENSE" will vendor just the
-  #     LICENSE file from the docs directory
-
-  # All three file/path parameters ("keep", "exclude", and "include") support
-  # filenames, directory names, and globs/wildcards.
-
-  # Actions to take after updating. Applied in order.
-  # The action subfield is required. It must be one of:
-  #   - copy-file
-  #   - move-file
-  #   - move-dir
-  #   - replace-in-file
-  #   - replace-in-file-regex
-  #   - delete-path
-  #   - run-script
-  # Unless otherwise noted, all subfields of action are required.
-  #
-  # If the action is copy-file, move-file, or move-dir:
-  #   from is the source file
-  #   to is the destination
-  #
-  # If the action is replace-in-file or replace-in-file-regex:
-  #   pattern is what in the file to search for. It is an exact strng match.
-  #   with is the string to replace it with. Accepts the special keyword
-  #     '{revision}' for the commit we are updating to.
-  #   File is the file to replace it in.
-  #
-  # If the action is delete-path
-  #   path is the file or directory to recursively delete
-  #
-  # If the action is run-script:
-  #   script is the script to run
-  #   cwd is the directory the script should run with as its cwd
-  #   args is a list of arguments to pass to the script
-  #
-  # If the action is run-command:
-  #   command is the command to run
-  #      Unlike run-script, `command` is _not_ processed to be relative
-  #      to the vendor directory, and is passed directly to python's
-  #      execution code without any path substitution or manipulation
-  #   cwd is the directory the command should run with as its cwd
-  #   args is a list of arguments to pass to the command
-  #
-  #
-  # Unless specified otherwise, all files/directories are relative to the
-  #     vendor-directory. If the vendor-directory is different from the
-  #     directory of the yaml file, the keyword '{yaml_dir}' may be used
-  #     to make the path relative to that directory.
-  # 'run-script' supports the addictional keyword {cwd} which, if used,
-  #     must only be used at the beginning of the path.
-  #
-  # optional
-  update-actions:
-    - action: copy-file
-      from: include/vcs_version.h.in
-      to: '{yaml_dir}/vcs_version.h'
-
-    - action: replace-in-file
-      pattern: '@VCS_TAG@'
-      with: '{revision}'
-      file: '{yaml_dir}/vcs_version.h'
-
-    - action: delete-path
-      path: '{yaml_dir}/config'
-
-    - action: run-script
-      script: '{cwd}/generate_sources.sh'
-      cwd: '{yaml_dir}'
-
-
-# Configuration for automatic updating system.
-# optional
-updatebot:
-
-  # TODO: allow multiple users to be specified
-  # Phabricator username for a maintainer of the library, used for assigning
-  # reviewers. For a review group, preface with #, such as "#build""
-  maintainer-phab: tjr
-
-  # Bugzilla email address for a maintainer of the library, used for needinfos
-  maintainer-bz: tom@mozilla.com
-
-  # Optional: A preset for ./mach try to use. If present, fuzzy-query and fuzzy-paths will
-  # be ignored. If it, fuzzy-query, and fuzzy-path are omitted, ./mach try auto will be used
-  try-preset: media
-
-  # Optional: A query string for ./mach try fuzzy. If try-preset, it and fuzzy-paths are omitted
-  # then ./mach try auto will be used
-  fuzzy-query: media
-
-  # Optional: An array of test paths for ./mach try fuzzy. If try-preset, it and fuzzy-query are
-  # omitted then ./mach try auto will be used
-  fuzzy-paths: ['media']
-
-  # The tasks that Updatebot can run. Only one of each task is currently permitted
-  # optional
-  tasks:
-    - type: commit-alert
-      branch: upstream-branch-name
-      cc: ["bugzilla@email.address", "another@example.com"]
-      needinfo: ["bugzilla@email.address", "another@example.com"]
-      enabled: True
-      filter: security
-      frequency: every
-      platform: windows
-      blocking: 1234
-    - type: vendoring
-      branch: master
-      enabled: False
-
-      # frequency can be 'every', 'release', 'N weeks', 'N commits'
-      # or 'N weeks, M commits' requiring satisfying both constraints.
-      frequency: 2 weeks
-"""
-
 RE_SECTION = re.compile(r"^(\S[^:]*):").search
 RE_FIELD = re.compile(r"^\s\s([^:]+):\s+(\S+)$").search
 
@@ -355,9 +85,9 @@ def load_moz_yaml(filename, verify=True, require_license_file=True):
 
     # Load and parse YAML.
     try:
-        with open(filename, "r") as f:
+        with open(filename) as f:
             manifest = yaml.load(f, Loader=yaml.BaseLoader)
-    except IOError as e:
+    except OSError as e:
         if e.errno == errno.ENOENT:
             raise MozYamlVerifyError(filename, "Failed to find manifest: %s" % filename)
         raise
@@ -468,7 +198,7 @@ def _schema_1():
                         Required("destination"): All(str, Length(min=1)),
                     }
                 ],
-                "individual-files-default-upstream": All(str, Length(min=1)),
+                "individual-files-default-upstream": str,
                 "individual-files-default-destination": All(str, Length(min=1)),
                 "individual-files-list": Unique([str]),
                 "update-actions": All(
@@ -558,7 +288,6 @@ def _schema_1_additional(filename, manifest, require_license_file=True):
         and manifest["vendoring"].get("flavor", "regular") != "regular"
     ):
         for i in [
-            "skip-vendoring-steps",
             "keep",
             "exclude",
             "include",
@@ -569,6 +298,7 @@ def _schema_1_additional(filename, manifest, require_license_file=True):
 
         if manifest["vendoring"].get("flavor", "regular") == "rust":
             for i in [
+                "skip-vendoring-steps",
                 "update-actions",
             ]:
                 if i in manifest["vendoring"]:
@@ -648,6 +378,19 @@ def _schema_1_additional(filename, manifest, require_license_file=True):
                 raise ValueError(
                     "individual-files-default-destination must be used with individual-files-list"
                 )
+            misplaced = []
+            previous = None
+            for current in manifest["vendoring"]["individual-files-list"]:
+                if previous is not None and not (previous.lower() <= current.lower()):
+                    misplaced.append(current)
+                else:
+                    previous = current
+            if len(misplaced) > 0:
+                raise ValueError(
+                    "individual-files-list must be sorted, the following files are misplaced: {}".format(
+                        ", ".join(misplaced)
+                    )
+                )
 
     if "updatebot" in manifest:
         # If there are Updatebot tasks, then certain fields must be present and
@@ -666,7 +409,7 @@ def _schema_1_additional(filename, manifest, require_license_file=True):
                     )
 
     # Check for a simple YAML file
-    with open(filename, "r") as f:
+    with open(filename) as f:
         has_schema = False
         for line in f.readlines():
             m = RE_SECTION(line)
@@ -694,7 +437,7 @@ def _schema_1_transform(manifest):
     return manifest
 
 
-class UpdateActions(object):
+class UpdateActions:
     """Voluptuous validator which verifies the update actions(s) are valid."""
 
     def __call__(self, values):
@@ -751,7 +494,7 @@ class UpdateActions(object):
         return "UpdateActions"
 
 
-class UpdatebotTasks(object):
+class UpdatebotTasks:
     """Voluptuous validator which verifies the updatebot task(s) are valid."""
 
     def __call__(self, values):
@@ -782,7 +525,7 @@ class UpdatebotTasks(object):
         return "UpdatebotTasks"
 
 
-class License(object):
+class License:
     """Voluptuous validator which verifies the license(s) are valid as per our
     allow list."""
 

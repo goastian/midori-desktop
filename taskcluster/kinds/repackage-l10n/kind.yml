@@ -29,6 +29,7 @@ only-for-build-platforms:
     - win64-aarch64-shippable/opt
     - linux-devedition/opt
     - linux64-devedition/opt
+    - linux64-aarch64-devedition/opt
     - macosx64-devedition/opt
     - win32-devedition/opt
     - win64-devedition/opt
@@ -39,12 +40,12 @@ tasks:
         from-deps:
             group-by: single-with-filters
         upstream-mac-kind:
-            by-build-type:
-                debug: shippable-l10n-mac-signing
-                default:
-                    by-project:
-                        mozilla-(central|beta|release|esr.*): shippable-l10n-mac-notarization
-                        default: shippable-l10n-mac-signing
+            by-build-platform:
+                macosx64-(shippable|devedition):
+                    by-release-level:
+                        production: shippable-l10n-mac-notarization
+                        staging: shippable-l10n-mac-signing
+                default: shippable-l10n-mac-signing
         worker-type: b-linux-gcp
         mozharness:
             config:
@@ -83,5 +84,6 @@ tasks:
         fetches:
             toolchain:
                 - linux64-mar-tools
+                - linux64-zucchini-bin
                 - linux64-upx
         treeherder-group: L10n-Rpk

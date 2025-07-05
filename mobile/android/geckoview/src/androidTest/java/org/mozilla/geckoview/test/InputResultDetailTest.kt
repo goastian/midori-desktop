@@ -4,7 +4,7 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
-import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
+import org.hamcrest.Matchers.equalTo
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.geckoview.GeckoResult
@@ -282,13 +282,17 @@ class InputResultDetailTest : BaseSessionTest() {
 
         value = sessionRule.waitForResult(sendDownEvent(50f, 50f))
 
-        // Now the touch event should be handed to the root scroller.
+        // Now the touch event should be handed off to the root scroller.
         assertResultDetail(
             "handoff",
             value,
             PanZoomController.INPUT_RESULT_HANDLED,
             PanZoomController.SCROLLABLE_FLAG_BOTTOM,
-            (PanZoomController.OVERSCROLL_FLAG_HORIZONTAL or PanZoomController.OVERSCROLL_FLAG_VERTICAL),
+            // Although the root scroll container is in fact over-scrollable
+            // vertically, the child scroll container is scrollabe to top,
+            // thus pull-to-refresh should not be triggered, that's the reason
+            // why we don't receive OVERSCROLL_FLAG_VERTICAL here.
+            PanZoomController.OVERSCROLL_FLAG_HORIZONTAL,
         )
     }
 
@@ -363,7 +367,11 @@ class InputResultDetailTest : BaseSessionTest() {
                 value,
                 PanZoomController.INPUT_RESULT_HANDLED,
                 PanZoomController.SCROLLABLE_FLAG_BOTTOM,
-                (PanZoomController.OVERSCROLL_FLAG_HORIZONTAL or PanZoomController.OVERSCROLL_FLAG_VERTICAL),
+                // Although the root scroll container is in fact over-scrollable
+                // vertically, the child scroll container is scrollabe to top,
+                // thus pull-to-refresh should not be triggered, that's the reason
+                // why we don't receive OVERSCROLL_FLAG_VERTICAL here.
+                PanZoomController.OVERSCROLL_FLAG_HORIZONTAL,
             )
         }
     }
@@ -545,6 +553,186 @@ class InputResultDetailTest : BaseSessionTest() {
             value,
             PanZoomController.INPUT_RESULT_HANDLED_CONTENT,
             PanZoomController.SCROLLABLE_FLAG_NONE,
+            (PanZoomController.OVERSCROLL_FLAG_HORIZONTAL or PanZoomController.OVERSCROLL_FLAG_VERTICAL),
+        )
+    }
+
+    @WithDisplay(width = 100, height = 100)
+    @Test
+    fun testOverflow() {
+        for (element in arrayOf("body", "html")) {
+            for (overflow in arrayOf("hidden", "auto")) {
+                for (tall in arrayOf(true, false)) {
+                    var url = OVERFLOW_HTML_PATH + "?element=" + element
+                    url += ("&overflow-y=" + overflow)
+                    if (tall) {
+                        url += "&tall"
+                    }
+
+                    setupDocument(url)
+
+                    var expectedPlace = if (overflow == "auto" && tall) {
+                        PanZoomController.INPUT_RESULT_HANDLED
+                    } else {
+                        PanZoomController.INPUT_RESULT_UNHANDLED
+                    }
+
+                    var expectedScrollableDirections = if (overflow == "auto" && tall) {
+                        PanZoomController.SCROLLABLE_FLAG_BOTTOM
+                    } else {
+                        PanZoomController.SCROLLABLE_FLAG_NONE
+                    }
+
+                    // pull-to-refresh should be disabled for an overflow:hidden
+                    // page (specified on body or html) by NOT setting OVERSCROLL_FLAG_VERTICAL.
+                    // It should be enabeld on overflow:auto pages eve if the page is short.
+                    var expectedOverscrollDirections = PanZoomController.OVERSCROLL_FLAG_HORIZONTAL
+                    if (overflow == "auto") {
+                        expectedOverscrollDirections = expectedOverscrollDirections or PanZoomController.OVERSCROLL_FLAG_VERTICAL
+                    }
+
+                    var value = sessionRule.waitForResult(sendDownEvent(50f, 20f))
+                    assertResultDetail(
+                        "`element=$element, overflow-y=$overflow, tall=$tall`",
+                        value,
+                        expectedPlace,
+                        expectedScrollableDirections,
+                        expectedOverscrollDirections,
+                    )
+                }
+            }
+        }
+
+        // For testing overflow:clip, use a separate test page to work around
+        // https://bugzilla.mozilla.org/show_bug.cgi?id=1819563
+        setupDocument(OVERFLOW_CLIP_HTML_PATH)
+        var value = sessionRule.waitForResult(sendDownEvent(50f, 20f))
+        assertResultDetail(
+            "overflow-y:clip",
+            value,
+            PanZoomController.INPUT_RESULT_UNHANDLED,
+            PanZoomController.SCROLLABLE_FLAG_NONE,
+            PanZoomController.OVERSCROLL_FLAG_HORIZONTAL,
+        )
+    }
+
+    @WithDisplay(width = 100, height = 100)
+    @Test
+    fun testOppositeTouchScrollingDuringFastFling() {
+        sessionRule.setPrefsUntilTestEnd(
+            mapOf(
+                "apz.touch_start_tolerance" to "0", // To avoid touch events fall into slop state.
+                "apz.fling_min_velocity_threshold" to "0", // To trigger fling animations easier.
+                "apz.android.chrome_fling_physics.friction" to "0.0001", // To keep the fling animation alive for a while.
+            ),
+        )
+        setupDocument(BUG1912358_HTML_PATH)
+
+        // Prepare a scroll event listener.
+        val scrollPromise = mainSession.evaluatePromiseJS(
+            """
+            new Promise(resolve => {
+                window.addEventListener('scroll', () => {
+                    resolve(true);
+                }, { once: true });
+            });
+            """.trimIndent(),
+        )
+
+        // Send a series of touch events to trigger a fast fling animation.
+        var downTime = SystemClock.uptimeMillis()
+        var down = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_DOWN,
+            50f,
+            50f,
+            0,
+        )
+        var result = mainSession.panZoomController.onTouchEventForDetailResult(down)
+
+        // Send two touch move events here since with "apz.touch_start_tolerance=0"
+        // a touch move event doesn't scroll.
+        var move = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_MOVE,
+            50f,
+            40f,
+            0,
+        )
+        mainSession.panZoomController.onTouchEvent(move)
+
+        move = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_MOVE,
+            50f,
+            30f,
+            0,
+        )
+        mainSession.panZoomController.onTouchEvent(move)
+
+        // Make sure the content has been scrolled.
+        assertThat("scroll", scrollPromise.value as Boolean, equalTo(true))
+        var value = sessionRule.waitForResult(result)
+        assertResultDetail(
+            "testOppositeTouchScrollingDuringFastFling",
+            value,
+            PanZoomController.INPUT_RESULT_HANDLED,
+            PanZoomController.SCROLLABLE_FLAG_BOTTOM,
+            (PanZoomController.OVERSCROLL_FLAG_HORIZONTAL or PanZoomController.OVERSCROLL_FLAG_VERTICAL),
+        )
+
+        var up = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_UP,
+            50f,
+            10f,
+            0,
+        )
+        mainSession.panZoomController.onTouchEvent(up)
+
+        // Send a new series of upward touch events during the fling animation.
+        downTime = SystemClock.uptimeMillis()
+        down = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_DOWN,
+            50f,
+            50f,
+            0,
+        )
+        result = mainSession.panZoomController.onTouchEventForDetailResult(down)
+
+        move = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_MOVE,
+            50f,
+            60f,
+            0,
+        )
+        mainSession.panZoomController.onTouchEvent(move)
+
+        up = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_UP,
+            50f,
+            60f,
+            0,
+        )
+        mainSession.panZoomController.onTouchEvent(up)
+
+        value = sessionRule.waitForResult(result)
+
+        assertResultDetail(
+            "testOppositeTouchScrollingDuringFastFling",
+            value,
+            PanZoomController.INPUT_RESULT_HANDLED,
+            (PanZoomController.SCROLLABLE_FLAG_BOTTOM or PanZoomController.SCROLLABLE_FLAG_TOP),
             (PanZoomController.OVERSCROLL_FLAG_HORIZONTAL or PanZoomController.OVERSCROLL_FLAG_VERTICAL),
         )
     }

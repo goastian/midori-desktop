@@ -1,7 +1,12 @@
 [DEFAULT]
 tags = "remote"
 subsuite = "remote"
-support-files = ["head.js"]
+support-files = [
+    "amosigned.xpi",
+    "head.js",
+]
+
+["browser_Addon.js"]
 
 ["browser_NavigationManager.js"]
 
@@ -14,3 +19,8 @@ support-files = ["head.js"]
 ["browser_TabManager.js"]
 
 ["browser_UserContextManager.js"]
+
+["browser_WindowManager.js"]
+skip-if = [
+  "display == 'wayland'", # Bug 1923833: Window restoring doesn't work after the window was minimized on Wayland
+]

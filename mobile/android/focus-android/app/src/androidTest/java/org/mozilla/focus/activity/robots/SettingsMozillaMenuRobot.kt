@@ -20,6 +20,7 @@ import mozilla.components.support.utils.ext.getPackageInfoCompat
 import org.hamcrest.Matchers.allOf
 import org.mozilla.focus.R
 import org.mozilla.focus.helpers.TestHelper.appName
+import org.mozilla.focus.helpers.TestHelper.getStringResource
 import org.mozilla.focus.helpers.TestHelper.mDevice
 import org.mozilla.focus.helpers.TestHelper.packageName
 import org.mozilla.focus.helpers.TestHelper.waitingTime
@@ -33,7 +34,7 @@ class SettingsMozillaMenuRobot {
         mozillaSettingsList.waitForExists(waitingTime)
         aboutFocusPageLink.check(matches(isDisplayed()))
         helpPageLink.check(matches(isDisplayed()))
-        yourRightsLink.check(matches(isDisplayed()))
+        termsOfUseLink.check(matches(isDisplayed()))
         privacyNoticeLink.check(matches(isDisplayed()))
         licenseInfo.check(matches(isDisplayed()))
         librariesUsedLink.check(matches(isDisplayed()))
@@ -42,7 +43,7 @@ class SettingsMozillaMenuRobot {
     fun verifyVersionNumbers() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val packageInfo = context.packageManager.getPackageInfoCompat(context.packageName, 0)
-        val versionName = packageInfo.versionName
+        val versionName = packageInfo.versionName ?: ""
         val gvBuildId = org.mozilla.geckoview.BuildConfig.MOZ_APP_BUILDID
         val gvVersion = org.mozilla.geckoview.BuildConfig.MOZ_APP_VERSION
 
@@ -74,6 +75,14 @@ class SettingsMozillaMenuRobot {
             .check(matches(isDisplayed()))
     }
 
+    fun verifyTheLibrariesListNotEmpty() {
+        val librariesList = mDevice.findObject(UiSelector().resourceId("$packageName:id/about_libraries_listview"))
+        assertTrue(
+            "Libraries list is empty",
+            librariesList.childCount > 10,
+        )
+    }
+
     class Transition {
         fun openAboutPage(interact: SettingsMozillaMenuRobot.() -> Unit): Transition {
             aboutFocusPageLink
@@ -91,8 +100,8 @@ class SettingsMozillaMenuRobot {
             return BrowserRobot.Transition()
         }
 
-        fun openYourRightsPage(interact: BrowserRobot.() -> Unit): BrowserRobot.Transition {
-            yourRightsLink
+        fun openTermsOfUsePage(interact: BrowserRobot.() -> Unit): BrowserRobot.Transition {
+            termsOfUseLink
                 .check(matches(isDisplayed()))
                 .perform(click())
 
@@ -153,10 +162,10 @@ private val helpPageLink =
         ),
     )
 
-private val yourRightsLink =
+private val termsOfUseLink =
     onView(
         allOf(
-            withText("Your Rights"),
+            withText(getStringResource(R.string.menu_terms_of_use)),
             withParent(
                 hasSibling(withId(R.id.icon_frame)),
             ),

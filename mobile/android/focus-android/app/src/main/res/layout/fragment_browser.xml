@@ -14,17 +14,12 @@
         android:layout_height="match_parent"
         android:orientation="vertical">
 
-        <View
-            android:id="@+id/status_bar_background"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:background="@drawable/background_gradient" />
-
-        <org.mozilla.focus.widget.ResizableKeyboardCoordinatorLayout
+        <org.mozilla.focus.browser.BrowserCoordinatorLayout
             android:layout_marginTop="0dp"
             android:id="@+id/main_content"
             android:layout_width="match_parent"
             android:layout_height="match_parent"
+            android:background="@drawable/background_gradient"
             android:orientation="vertical"
             android:clipChildren="false">
 
@@ -49,16 +44,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="@dimen/browser_toolbar_height"
                 android:layout_gravity="top"
-                android:background="@drawable/background_gradient"
                 android:clickable="true"
                 android:elevation="4dp"
                 android:focusable="true"
-                android:focusableInTouchMode="true"
-                app:browserToolbarClearColor="?primaryText"
-                app:browserToolbarInsecureColor="?primaryText"
-                app:browserToolbarMenuColor="?primaryText"
-                app:browserToolbarProgressBarGravity="bottom"
-                app:browserToolbarSecureColor="?primaryText" />
+                android:focusableInTouchMode="true" />
 
             <mozilla.components.feature.findinpage.view.FindInPageBar
                 android:id="@+id/find_in_page"
@@ -73,7 +62,7 @@
                 app:findInPageResultCountTextColor="@color/primaryText"
                 android:visibility="gone" />
 
-        </org.mozilla.focus.widget.ResizableKeyboardCoordinatorLayout>
+        </org.mozilla.focus.browser.BrowserCoordinatorLayout>
     </LinearLayout>
 
     <FrameLayout

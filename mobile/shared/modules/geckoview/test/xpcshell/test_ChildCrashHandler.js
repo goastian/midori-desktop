@@ -14,8 +14,8 @@ const { makeFakeAppDir } = ChromeUtils.importESModule(
 
 add_setup(async function () {
   await makeFakeAppDir();
-  // The test harness sets MOZ_CRASHREPORTER_NO_REPORT, which disables crash
-  // reports. This test needs them enabled.
+  // The test harness sets MOZ_CRASHREPORTER_NO_REPORT, which disables
+  // reporting crashes to the user. This test needs them enabled.
   const noReport = Services.env.get("MOZ_CRASHREPORTER_NO_REPORT");
   Services.env.set("MOZ_CRASHREPORTER_NO_REPORT", "");
 
@@ -98,5 +98,9 @@ add_task(async function test_extensions_process_crash() {
     "expected a child crash report"
   );
   Assert.equal("extension", aData?.remoteType, "expected remote type");
-  Assert.equal("BACKGROUND_CHILD", aData?.processType, "expected process type");
+  Assert.equal(
+    "BACKGROUND_CHILD",
+    aData?.processVisibility,
+    "expected process type"
+  );
 });

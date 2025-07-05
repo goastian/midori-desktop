@@ -6,6 +6,7 @@
 
 package org.mozilla.fenix.tabstray.inactivetabs
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -35,16 +36,16 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import mozilla.components.browser.state.state.ContentState
 import mozilla.components.browser.state.state.TabSessionState
+import mozilla.components.compose.base.button.TextButton
 import mozilla.components.compose.cfr.CFRPopup
 import mozilla.components.compose.cfr.CFRPopupLayout
 import mozilla.components.compose.cfr.CFRPopupProperties
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
-import org.mozilla.fenix.compose.button.TextButton
 import org.mozilla.fenix.compose.list.ExpandableListHeader
 import org.mozilla.fenix.compose.list.FaviconListItem
 import org.mozilla.fenix.ext.toShortUrl
@@ -97,7 +98,9 @@ fun InactiveTabsList(
         ),
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .animateContentSize()
+                .fillMaxWidth(),
         ) {
             InactiveTabsHeader(
                 expanded = expanded,
@@ -127,10 +130,10 @@ fun InactiveTabsList(
 
                         FaviconListItem(
                             label = tab.toDisplayTitle(),
+                            url = tabUrl,
                             description = tabUrl,
                             faviconPainter = faviconPainter,
                             onClick = { onTabClick(tab) },
-                            url = tabUrl,
                             iconPainter = painterResource(R.drawable.mozac_ic_cross_24),
                             iconDescription = stringResource(R.string.content_description_close_button),
                             onIconClick = { onTabCloseClick(tab) },
@@ -175,8 +178,6 @@ private fun InactiveTabsHeader(
             dismissButtonColor = FirefoxTheme.colors.iconOnColor.toArgb(),
             indicatorDirection = CFRPopup.IndicatorDirection.UP,
             popupVerticalOffset = (-12).dp,
-            dismissOnBackPress = true,
-            dismissOnClickOutside = false,
         ),
         onCFRShown = onCFRShown,
         onDismiss = { onCFRDismiss() },
@@ -295,7 +296,7 @@ private fun InactiveTabsAutoClosePrompt(
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun InactiveTabsAutoClosePromptPreview() {
     FirefoxTheme {
         Box(Modifier.background(FirefoxTheme.colors.layer1)) {
@@ -308,7 +309,7 @@ private fun InactiveTabsAutoClosePromptPreview() {
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun InactiveTabsListPreview() {
     var expanded by remember { mutableStateOf(true) }
     var showAutoClosePrompt by remember { mutableStateOf(true) }

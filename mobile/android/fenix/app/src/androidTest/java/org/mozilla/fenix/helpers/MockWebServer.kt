@@ -7,6 +7,7 @@ package org.mozilla.fenix.helpers
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
+import androidx.core.net.toUri
 import androidx.test.platform.app.InstrumentationRegistry
 import okhttp3.mockwebserver.Dispatcher
 import okhttp3.mockwebserver.MockResponse
@@ -14,7 +15,6 @@ import okhttp3.mockwebserver.MockWebServer
 import okhttp3.mockwebserver.RecordedRequest
 import okio.Buffer
 import okio.source
-import org.mozilla.fenix.helpers.ext.toUri
 import java.io.IOException
 import java.io.InputStream
 
@@ -56,7 +56,6 @@ object MockWebServerHelper {
  * If the dispatcher is unable to read a requested asset, it will fail the test by throwing an
  * Exception on the main thread.
  *
- * @sample [org.mozilla.fenix.ui.BookmarksTest.verifyBookmarkButtonTest]
  */
 const val HTTP_OK = 200
 const val HTTP_NOT_FOUND = 404
@@ -67,11 +66,12 @@ class AndroidAssetDispatcher : Dispatcher() {
     override fun dispatch(request: RecordedRequest): MockResponse {
         val assetManager = InstrumentationRegistry.getInstrumentation().context.assets
         try {
-            val pathWithoutQueryParams = Uri.parse(request.path!!.drop(1)).path
+            val pathWithoutQueryParams = request.path!!.drop(1).toUri().path
             assetManager.open(pathWithoutQueryParams!!).use { inputStream ->
                 return fileToResponse(pathWithoutQueryParams, inputStream)
             }
-        } catch (e: IOException) { // e.g. file not found.
+        // e.g. file not found.
+        } catch (e: IOException) {
             // We're on a background thread so we need to forward the exception to the main thread.
             mainThreadHandler.postAtFrontOfQueue { throw e }
             return MockResponse().setResponseCode(HTTP_NOT_FOUND)

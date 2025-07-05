@@ -30,7 +30,6 @@ from collections import OrderedDict, defaultdict
 from concurrent.futures.process import ProcessPoolExecutor
 from io import StringIO
 from itertools import chain
-from multiprocessing import cpu_count
 
 import mozpack.path as mozpath
 from mozpack.files import FileFinder
@@ -41,6 +40,7 @@ from mozbuild.util import (
     EmptyValue,
     HierarchicalStringList,
     ReadOnlyDefaultDict,
+    cpu_count,
     memoize,
 )
 
@@ -70,7 +70,7 @@ def log(logger, level, action, params, formatter):
     logger.log(level, formatter, extra={"action": action, "params": params})
 
 
-class EmptyConfig(object):
+class EmptyConfig:
     """A config object that is empty.
 
     This config object is suitable for using with a BuildReader on a vanilla
@@ -379,7 +379,7 @@ class MozbuildSandbox(Sandbox):
         return template_wrapper
 
 
-class TemplateFunction(object):
+class TemplateFunction:
     def __init__(self, func, sandbox):
         self.path = func.__code__.co_filename
         self.name = func.__name__
@@ -799,7 +799,7 @@ class BuildReaderError(Exception):
         s.write("\n")
         s.write("This variable expects the following type(s):\n")
         s.write("\n")
-        if type(inner.args[4]) == type:
+        if type(inner.args[4]) is type:
             s.write("    %s\n" % inner.args[4].__name__)
         else:
             for t in inner.args[4]:
@@ -817,7 +817,7 @@ class BuildReaderError(Exception):
         s.write("    %s\n" % traceback.format_exception_only(type(e), e))
 
 
-class BuildReader(object):
+class BuildReader:
     """Read a tree of mozbuild files into data structures.
 
     This is where the build system starts. You give it a tree configuration
@@ -959,7 +959,7 @@ class BuildReader(object):
             if "moz.build" in files:
                 yield mozpath.join(relpath, "moz.build")
 
-    def find_variables_from_ast(self, variables, path=None):
+    def find_variables_from_ast(self, variables, path=None, all_relevant_files=True):
         """Finds all assignments to the specified variables by parsing
         moz.build abstract syntax trees.
 
@@ -992,6 +992,10 @@ class BuildReader(object):
             path (str): A path relative to the source dir. If specified, only
                 `moz.build` files relevant to this path will be parsed. Otherwise
                 all `moz.build` files are parsed.
+            all_relevant_files (bool): Whether to look at all relevant paths
+                (the default), or only look at the specific path passed in.
+                If you set this to False, `path` must also be specified and
+                point to a moz.build file.
 
         Returns:
             A generator that generates tuples of the form `(<moz.build path>,
@@ -1013,7 +1017,7 @@ class BuildReader(object):
             else:
                 target = node.target
 
-            if isinstance(target, ast.Subscript):
+            if isinstance(target, (ast.Subscript, ast.Attribute)):
                 if not isinstance(target.value, ast.Name):
                     return None, None
                 name = target.value.id
@@ -1037,6 +1041,9 @@ class BuildReader(object):
                     assert isinstance(target.slice, ast.Index)
                     assert isinstance(target.slice.value, ast.Str)
                     key = target.slice.value.s
+            elif isinstance(target, ast.Attribute):
+                assert isinstance(target.attr, str)
+                key = target.attr
 
             return name, key
 
@@ -1067,7 +1074,13 @@ class BuildReader(object):
             def visit_AugAssign(self, node):
                 self.helper(node)
 
-        if path:
+        if not all_relevant_files:
+            if not path:
+                raise Exception(
+                    "all_relevant_files was set to False but you did not pass a path."
+                )
+            mozbuild_paths = [path]
+        elif path:
             mozbuild_paths = chain(*self._find_relevant_mozbuilds([path]).values())
         else:
             mozbuild_paths = self.all_mozbuild_paths()
@@ -1148,7 +1161,7 @@ class BuildReader(object):
             logging.DEBUG,
             "read_mozbuild",
             {"path": path},
-            "Reading file: {path}".format(path=path),
+            f"Reading file: {path}",
         )
 
         time_start = time.monotonic()
@@ -1166,7 +1179,7 @@ class BuildReader(object):
                     logging.WARNING,
                     "read_already",
                     {"path": path},
-                    "File already read. Skipping: {path}".format(path=path),
+                    f"File already read. Skipping: {path}",
                 )
                 return
 

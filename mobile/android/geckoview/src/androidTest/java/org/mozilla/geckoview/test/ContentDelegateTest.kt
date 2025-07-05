@@ -5,24 +5,35 @@
 package org.mozilla.geckoview.test
 
 import android.graphics.SurfaceTexture
-import android.net.Uri
 import android.view.PointerIcon
 import android.view.Surface
 import androidx.annotation.AnyThread
+import androidx.core.net.toUri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
-import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
+import org.hamcrest.Matchers.endsWith
+import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.greaterThan
+import org.hamcrest.Matchers.isEmptyOrNullString
+import org.hamcrest.Matchers.not
+import org.hamcrest.Matchers.notNullValue
+import org.hamcrest.Matchers.startsWith
 import org.json.JSONObject
 import org.junit.Assume.assumeThat
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mozilla.geckoview.* // ktlint-disable no-wildcard-imports
+import org.mozilla.geckoview.AllowOrDeny
 import org.mozilla.geckoview.ContentBlocking.CookieBannerMode
 import org.mozilla.geckoview.GeckoDisplay.SurfaceInfo
+import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSession.ContentDelegate
 import org.mozilla.geckoview.GeckoSession.NavigationDelegate
 import org.mozilla.geckoview.GeckoSession.NavigationDelegate.LoadRequest
 import org.mozilla.geckoview.GeckoSession.ProgressDelegate
+import org.mozilla.geckoview.GeckoSessionSettings
+import org.mozilla.geckoview.SlowScriptResponse
+import org.mozilla.geckoview.WebResponse
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.AssertCalled
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.IgnoreCrash
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.NullDelegate
@@ -313,7 +324,7 @@ class ContentDelegateTest : BaseSessionTest() {
 
                 val icon = manifest.getJSONArray("icons").getJSONObject(0)
 
-                val iconSrc = Uri.parse(icon.getString("src"))
+                val iconSrc = icon.getString("src").toUri()
                 assertThat("icon should have a valid src", iconSrc, notNullValue())
                 assertThat("icon src should be absolute", iconSrc.isAbsolute, equalTo(true))
                 assertThat("icon should have sizes", icon.getString("sizes"), not(isEmptyOrNullString()))

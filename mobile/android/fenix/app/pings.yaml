@@ -33,6 +33,41 @@ first-session:
   notification_emails:
     - android-probes@mozilla.com
 
+play-store-attribution:
+  description: |
+    This ping captures the install referrer attribution data.
+  include_client_id: true
+  send_if_empty: true
+  bugs:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1947786
+  data_reviews:
+    - https://phabricator.services.mozilla.com/D238284
+  notification_emails:
+    - android-probes@mozilla.com
+
+adjust-attribution:
+  description: |
+    This ping captures the Adjust attribution data.
+  include_client_id: true
+  send_if_empty: true
+  bugs:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1947786
+  data_reviews:
+    - https://phabricator.services.mozilla.com/D238284
+  notification_emails:
+    - android-probes@mozilla.com
+
+home:
+  description: |
+    Homepage new tab related instrumentation.
+  include_client_id: true
+  bugs:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1928577
+  data_reviews:
+    - https://phabricator.services.mozilla.com/D233815
+  notification_emails:
+    - android-probes@mozilla.com
+
 topsites-impression:
   description: |
     Recorded when a sponsored top site is rendered and visible on the home
@@ -84,8 +119,11 @@ fx-suggest:
     Distinguishable by its `ping_type`.
     Does not contain a `client_id`, preferring a `context_id` instead.
   include_client_id: false
+  uploader_capabilities:
+    - ohttp
   bugs:
     - https://bugzilla.mozilla.org/show_bug.cgi?id=1857092
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1969155
   data_reviews:
     - https://github.com/mozilla-mobile/firefox-android/pull/3958#issuecomment-1758607927
   notification_emails:
@@ -104,3 +142,124 @@ font-list:
   notification_emails:
     - android-probes@mozilla.com
     - tom@mozilla.com
+
+onboarding-opt-out:
+  description: |
+    Indicates the user has opted out of sending technical and interaction data.
+  include_client_id: false
+  send_if_empty: true
+  bugs:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1936070
+  data_reviews:
+    - https://phabricator.services.mozilla.com/D231582
+    - https://phabricator.services.mozilla.com/D238034
+  notification_emails:
+    - android-probes@mozilla.com
+  metadata:
+    follows_collection_enabled: false
+    include_info_sections: false
+
+dau-reporting:
+  description: |
+    Minimal ping to measure DAU.
+    Sent on the baseline schedule.
+
+    **NOTE**: This ping is deprecated and replaced by the `usage-reporting` ping.
+  include_client_id: true
+  send_if_empty: true
+  bugs:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1923842
+  data_reviews:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1923842
+  notification_emails:
+    - glean-team@mozilla.com
+    - jrediger@mozilla.com
+    - loines@mozilla.com
+  reasons:
+    dirty_startup: |
+      The ping was submitted at startup, because the application process was
+      killed before the Glean SDK had the chance to generate this ping, before
+      becoming inactive, in the last session.
+    inactive: |
+      The ping was submitted when becoming inactive.
+    active: |
+      The ping was submitted when the application became active again,
+      which includes when the application starts.
+
+usage-reporting:
+  description: |
+    Minimal ping to measure the usage frequency of Firefox.
+    Sent on the baseline schedule.
+  include_client_id: false
+  send_if_empty: true
+  bugs:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1921440
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1929832
+  data_reviews:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1921440
+  notification_emails:
+    - glean-team@mozilla.com
+    - jrediger@mozilla.com
+    - loines@mozilla.com
+  metadata:
+    follows_collection_enabled: false
+    include_info_sections: false
+  reasons:
+    dirty_startup: |
+      Defined to avoid error logging.
+      *Note*: this ping will not actually send a ping reason.
+    inactive: |
+      Defined to avoid error logging.
+      *Note*: this ping will not actually send a ping reason.
+    active: |
+      Defined to avoid error logging.
+      *Note*: this ping will not actually send a ping reason.
+
+usage-deletion-request:
+  description: |
+    This ping is submitted when a user opts out of sending usage
+    frequency of Firefox to Mozilla.
+    Sent in response to user action.
+  include_client_id: false
+  send_if_empty: true
+  bugs:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1928975
+  data_reviews:
+    - https://phabricator.services.mozilla.com/D234677
+  notification_emails:
+    - glean-team@mozilla.com
+    - jrediger@mozilla.com
+    - loines@mozilla.com
+  metadata:
+    follows_collection_enabled: false
+    include_info_sections: false
+  reasons:
+    set_upload_enabled: |
+      The ping was submitted between Glean init and Glean shutdown.
+      After init but before shutdown the upload of usage reporting data changed
+      from enabled to disabled.
+
+broken-site-report:
+  description: |
+    A ping containing the data for a user-initiated report for a broken site.
+    Does not contain a `client_id`. All report data is self contained.
+  include_client_id: false
+  bugs:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1925088
+  data_reviews:
+    - https://phabricator.services.mozilla.com/D232122#8037249
+  notification_emails:
+    - twisniewski@mozilla.com
+
+nimbus:
+  description: |
+    This ping is submitted by Nimbus code after the enrollment workflow has completed.
+  include_client_id: true
+  send_if_empty: true
+  bugs:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1951125
+  data_reviews:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1951125
+  notification_emails:
+    - chumphreys@mozilla.com
+    - project-nimbus@mozilla.com

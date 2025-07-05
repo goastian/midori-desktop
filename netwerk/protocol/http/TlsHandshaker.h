@@ -45,8 +45,11 @@ class TlsHandshaker : public nsITlsHandshakeCallbackListener {
     return mEarlyDataState == EarlyData::CANNOT_BE_USED;
   }
   void EarlyDataDone();
+
+#ifndef ANDROID
   void EarlyDataTelemetry(int16_t tlsVersion, bool earlyDataAccepted,
                           int64_t aContentBytesWritten0RTT);
+#endif
 
   bool NPNComplete() const { return mNPNComplete; }
   bool SetupSSLCalled() const { return mSetupSSLCalled; }
@@ -64,11 +67,13 @@ class TlsHandshaker : public nsITlsHandshakeCallbackListener {
   virtual ~TlsHandshaker();
 
   void Check0RttEnabled(nsITLSSocketControl* ssl);
+  void ReportSecureConnectionStart();
 
   // SPDY related
   bool mSetupSSLCalled{false};
   bool mNPNComplete{false};
 
+  bool mSecureConnectionStartReported{false};
   bool mTlsHandshakeComplitionPending{false};
   // Helper variable for 0RTT handshake;
   // Possible 0RTT has been checked.

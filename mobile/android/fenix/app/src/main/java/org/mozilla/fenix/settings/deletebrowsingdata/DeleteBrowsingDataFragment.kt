@@ -22,7 +22,8 @@ import kotlinx.coroutines.withContext
 import mozilla.components.lib.state.ext.flowScoped
 import mozilla.components.ui.widgets.withCenterAlignedButtons
 import org.mozilla.fenix.R
-import org.mozilla.fenix.components.FenixSnackbar
+import org.mozilla.fenix.compose.snackbar.Snackbar
+import org.mozilla.fenix.compose.snackbar.SnackbarState
 import org.mozilla.fenix.databinding.FragmentDeleteBrowsingDataBinding
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
@@ -52,7 +53,6 @@ class DeleteBrowsingDataFragment : Fragment(R.layout.fragment_delete_browsing_da
             requireComponents.core.historyStorage,
             requireComponents.core.permissionStorage,
             requireComponents.core.store,
-            requireComponents.core.icons,
             requireComponents.core.engine,
         )
         settings = requireContext().settings()
@@ -200,13 +200,12 @@ class DeleteBrowsingDataFragment : Fragment(R.layout.fragment_delete_browsing_da
 
         updateItemCounts()
 
-        FenixSnackbar.make(
-            view = requireView(),
-            duration = FenixSnackbar.LENGTH_SHORT,
-            isDisplayedWithBrowserToolbar = true,
-        )
-            .setText(resources.getString(R.string.preferences_delete_browsing_data_snackbar))
-            .show()
+        Snackbar.make(
+            snackBarParentView = requireView(),
+            snackbarState = SnackbarState(
+                message = getString(R.string.preferences_delete_browsing_data_snackbar),
+            ),
+        ).show()
 
         if (popAfter) {
             viewLifecycleOwner.lifecycleScope.launch(Main) {

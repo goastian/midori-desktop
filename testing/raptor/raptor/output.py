@@ -39,7 +39,7 @@ METRIC_BLOCKLIST = [
 
 
 @six.add_metaclass(ABCMeta)
-class PerftestOutput(object):
+class PerftestOutput:
     """Abstract base class to handle output of perftest results"""
 
     def __init__(
@@ -379,7 +379,7 @@ class PerftestOutput(object):
             correctionFactor = 3
             results = _filter(vals)
 
-            # stylebench has 5 tests, each of these are made of up 5 subtests
+            # stylebench has 6 tests. Five of them are made of up 5 subtests
             #
             #   * Adding classes.
             #   * Removing classes.
@@ -411,11 +411,44 @@ class PerftestOutput(object):
             #
             # We receive 76 entries per test, which ads up to 380. We want to use
             # the 5 test entries, not the rest.
-            if len(results) != 380:
+            #
+            # Then there's the sixth "Dynamic media queries" test, which gives
+            # results for viewports in increments of 50px like:
+            #
+            #   Dynamic media queries/Resizing to 300px - 0/Sync
+            #   Dynamic media queries/Resizing to 300px - 0/Async
+            #   Dynamic media queries/Resizing to 300px - 0
+            #   Dynamic media queries/Resizing to 350px - 0/Sync
+            #   Dynamic media queries/Resizing to 350px - 0/Async
+            #   Dynamic media queries/Resizing to 350px - 0
+            #   ...
+            #   Dynamic media queries/Resizing to 800px - 0/Sync
+            #   Dynamic media queries/Resizing to 800px - 0/Async
+            #   Dynamic media queries/Resizing to 800px - 0
+            #   Dynamic media queries/Resizing to 350px - 1/Sync
+            #   Dynamic media queries/Resizing to 350px - 1/Async
+            #   Dynamic media queries/Resizing to 350px - 1
+            #   Dynamic media queries/Resizing to 400px - 1/Sync
+            #   Dynamic media queries/Resizing to 400px - 1/Async
+            #   Dynamic media queries/Resizing to 400px - 1
+            #   ...
+            #   Dynamic media queries/Resizing to 800px - 4/Sync
+            #   Dynamic media queries/Resizing to 800px - 4/Async
+            #   Dynamic media queries/Resizing to 800px - 4
+            #   Dynamic media queries <- What we want
+            #
+            # So len([300, 350, 400, 450, 500, 550, 600, 650, 700, 750, 800]) is 11.
+            #
+            # So, 11 (subtests) *
+            #     5 (repetitions) *
+            #     3 (entries per repetition (sync/async/sum)) =
+            #     165 entries for test before the sum.
+            EXPECTED_ENTRIES = 380 + 166
+            if len(results) != EXPECTED_ENTRIES:
                 raise Exception(
-                    "StyleBench requires 380 entries, found: %s instead" % len(results)
+                    f"StyleBench requires {EXPECTED_ENTRIES} entries, found: {len(results)} instead"
                 )
-            results = results[75::76]
+            results = results[:380][75::76] + [results[-1]]
             # pylint --py3k W1619
             return 60 * 1000 / filters.geometric_mean(results) / correctionFactor
 
@@ -742,9 +775,7 @@ class PerftestOutput(object):
                         3,
                     )
                 except TypeError as e:
-                    LOG.warning(
-                        "[{}][{}] : {} - {}".format(suite, sub, e.__class__.__name__, e)
-                    )
+                    LOG.warning(f"[{suite}][{sub}] : {e.__class__.__name__} - {e}")
 
                 if sub not in _subtests:
                     # subtest not added yet, first pagecycle, so add new one
@@ -818,7 +849,7 @@ class PerftestOutput(object):
 
         failed_tests = []
         for pagecycle in data:
-            for _sub, _value in six.iteritems(pagecycle[0]):
+            for _sub, _value in pagecycle[0].items():
                 if _value["decodedFrames"] == 0:
                     failed_tests.append(
                         "%s test Failed. decodedFrames %s droppedFrames %s."
@@ -840,16 +871,12 @@ class PerftestOutput(object):
 
                 # build a list of subtests and append all related replicates
                 create_subtest_entry(
-                    "{}_decoded_frames".format(_sub),
+                    f"{_sub}_decoded_frames",
                     _value["decodedFrames"],
                     lower_is_better=False,
                 )
-                create_subtest_entry(
-                    "{}_dropped_frames".format(_sub), _value["droppedFrames"]
-                )
-                create_subtest_entry(
-                    "{}_%_dropped_frames".format(_sub), percent_dropped
-                )
+                create_subtest_entry(f"{_sub}_dropped_frames", _value["droppedFrames"])
+                create_subtest_entry(f"{_sub}_%_dropped_frames", percent_dropped)
 
         # Check if any youtube test failed and generate exception
         if len(failed_tests) > 0:
@@ -1742,9 +1769,9 @@ class BrowsertimeOutput(PerftestOutput):
                     try:
                         for alternative_method in self.extra_summary_methods:
                             new_subtest = copy.deepcopy(subtest)
-                            new_subtest[
-                                "name"
-                            ] = f"{new_subtest['name']} ({alternative_method})"
+                            new_subtest["name"] = (
+                                f"{new_subtest['name']} ({alternative_method})"
+                            )
                             _process(new_subtest, alternative_method)
                             new_subtests.append(new_subtest)
                     except Exception as e:
@@ -1854,9 +1881,12 @@ class BrowsertimeOutput(PerftestOutput):
                 subtest["name"] = measurement_name
                 subtest["lowerIsBetter"] = test["subtest_lower_is_better"]
                 subtest["alertThreshold"] = float(test["alert_threshold"])
-                subtest["unit"] = (
-                    "ms" if measurement_name == "cpuTime" else test["subtest_unit"]
-                )
+                if measurement_name == "cpuTime":
+                    subtest["unit"] = "ms"
+                elif measurement_name == "powerUsage":
+                    subtest["unit"] = "uWh"
+                else:
+                    subtest["unit"] = test["subtest_unit"]
 
                 # Add the alert window settings if needed here too in case
                 # there is no summary value in the test
@@ -1899,6 +1929,12 @@ class BrowsertimeOutput(PerftestOutput):
                 test.get("support_class").summarize_test(test, suite)
 
             elif test["type"] in ["pageload", "scenario", "power"]:
+                LOG.warning(
+                    "This test is using a soon-to-be deprecated method for summarizing "
+                    "output. A subclass of browsertime_pageload.py should be built for "
+                    "this instead. Output handling is already built there, and the results "
+                    "parsing will need to be added for this specific test."
+                )
                 for measurement_name, replicates in test["measurements"].items():
                     new_subtest = _process_measurements(measurement_name, replicates)
                     if measurement_name not in suite["subtests"]:
@@ -1959,6 +1995,12 @@ class BrowsertimeOutput(PerftestOutput):
                     _process(cpu_subtest)
                     suite["subtests"].append(cpu_subtest)
 
+                if "powerUsage" in test["measurements"]:
+                    replicates = test["measurements"]["powerUsage"]
+                    power_subtest = _process_measurements("powerUsage", replicates)
+                    power_subtest["value"] = round(filters.mean(replicates), 2)
+                    suite["subtests"].append(power_subtest)
+
                 # summarize results for both benchmark type tests
                 if len(subtests) > 1:
                     suite["value"] = self.construct_summary(vals, testname=test["name"])
@@ -1966,9 +2008,11 @@ class BrowsertimeOutput(PerftestOutput):
 
         # convert suites to list
         suites = [
-            s
-            if ("benchmark" in s["type"] or test.get("support_class"))
-            else _process_suite(s)
+            (
+                s
+                if ("benchmark" in s["type"] or test.get("support_class"))
+                else _process_suite(s)
+            )
             for s in suites.values()
         ]
 

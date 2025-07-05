@@ -239,7 +239,6 @@ existing_tasks:
   build-macosx64-aarch64/debug: GElaSillTBG4b_Zwd3K3Wg
   build-macosx64-aarch64/debug-upload-symbols: CCnZxbebR0as3wb6UL9akA
   build-macosx64-asan-fuzzing/opt: brq55itXS12lOUxW8K08eg
-  build-macosx64-ccov/opt: QfV320DSTL66ZVnJZdK2OQ
   build-macosx64-fuzzing/debug: N3cju-b7SgKqxRRbBpyfDA
   build-macosx64-fuzzing/debug-upload-symbols: UakuD0KpR9SiZFoVYR7Nqg
   build-macosx64-nightlyasrelease/opt: akSrIC6eSGOt23-HXZEeXQ
@@ -453,7 +452,6 @@ existing_tasks:
   fetch-zlib-1.3.1: OumGZd2pR-WTHC3G1r6bIQ
   fuzzing-python: e-4ETrquQVCIGGT3DTTxHQ
   fuzzing-simple: Tx-w9jkzS4u-Z7fi-mwnmg
-  fxrecord-win64-shippable/opt: NwiDzBBxQw-KTlpZYt0C9Q
   geckodriver-mac-notarization-macosx64-aarch64-geckodriver/opt: P111jMnOR5SeBY3SrBtwpA
   geckodriver-mac-notarization-macosx64-geckodriver/opt: GK9gUWFCR7CHNhRIlP4opA
   geckodriver-signing-linux-geckodriver/opt: Y0qAh28dRXKAC5TVxWV9bA

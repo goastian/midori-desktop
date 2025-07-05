@@ -35,6 +35,7 @@ this.AccessibilityUtils = (function () {
     Ci.nsIAccessibleRole.ROLE_PASSWORD_TEXT,
     Ci.nsIAccessibleRole.ROLE_PUSHBUTTON,
     Ci.nsIAccessibleRole.ROLE_RADIOBUTTON,
+    Ci.nsIAccessibleRole.ROLE_SEARCHBOX,
     Ci.nsIAccessibleRole.ROLE_SLIDER,
     Ci.nsIAccessibleRole.ROLE_SPINBUTTON,
     Ci.nsIAccessibleRole.ROLE_SUMMARY,
@@ -121,6 +122,10 @@ this.AccessibilityUtils = (function () {
   let gEnv = {
     ...DEFAULT_ENV,
   };
+
+  // This is set by AccessibilityUtils.init so that we always have a reference
+  // to SimpleTest regardless of changes to the global scope.
+  let SimpleTest = null;
 
   /**
    * Get role attribute for an accessible object if specified for its
@@ -725,6 +730,9 @@ this.AccessibilityUtils = (function () {
         ((role == Ci.nsIAccessibleRole.ROLE_PUSHBUTTON ||
           role == Ci.nsIAccessibleRole.ROLE_TOGGLE_BUTTON) &&
           node.closest('[role="toolbar"]')) ||
+        // <moz-radio-group> also uses a roving tabindex.
+        (role === Ci.nsIAccessibleRole.ROLE_RADIOBUTTON &&
+          node.getRootNode().host?.localName === "moz-radio") ||
         shouldIgnoreTabIndex(node))
     );
   }
@@ -749,7 +757,7 @@ this.AccessibilityUtils = (function () {
    *        Accessible to log along with the failure message.
    */
   function a11yFail(message, { DOMNode }) {
-    SpecialPowers.SimpleTest.ok(false, buildMessage(message, DOMNode));
+    SimpleTest.ok(false, buildMessage(message, DOMNode));
   }
 
   /**
@@ -762,7 +770,7 @@ this.AccessibilityUtils = (function () {
    *        Accessible to log along with the todo message.
    */
   function a11yWarn(message, { DOMNode }) {
-    SpecialPowers.SimpleTest.todo(false, buildMessage(message, DOMNode));
+    SimpleTest.todo(false, buildMessage(message, DOMNode));
   }
 
   /**
@@ -1204,7 +1212,7 @@ this.AccessibilityUtils = (function () {
       this.resetEnv();
     },
 
-    init() {
+    init(simpleTest) {
       this._shouldHandleClicks = true;
       // A top level xul window's DocShell doesn't have a chromeEventHandler
       // attribute. In that case, the chrome event handler is just the global
@@ -1212,11 +1220,13 @@ this.AccessibilityUtils = (function () {
       this._handler ??=
         window.docShell.chromeEventHandler ?? window.docShell.domWindow;
       this._handler.addEventListener("click", this, true, true);
+      SimpleTest = simpleTest;
     },
 
     uninit() {
       this._handler?.removeEventListener("click", this, true);
       this._handler = null;
+      SimpleTest = null;
     },
 
     /**

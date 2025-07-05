@@ -23,6 +23,38 @@ pub enum InlineBaseDirection {
     RightToLeft,
 }
 
+/// The writing-mode property (different from the WritingMode enum).
+/// https://drafts.csswg.org/css-writing-modes/#block-flow
+/// Aliases come from https://drafts.csswg.org/css-writing-modes-4/#svg-writing-mode
+#[allow(missing_docs)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    FromPrimitive,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+)]
+#[repr(u8)]
+pub enum WritingModeProperty {
+    #[parse(aliases = "lr,lr-tb,rl,rl-tb")]
+    HorizontalTb,
+    #[parse(aliases = "tb,tb-rl")]
+    VerticalRl,
+    VerticalLr,
+    #[cfg(feature = "gecko")]
+    SidewaysRl,
+    #[cfg(feature = "gecko")]
+    SidewaysLr,
+}
+
 // TODO: improve the readability of the WritingMode serialization, refer to the Debug:fmt()
 #[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, Serialize)]
 #[repr(C)]
@@ -82,7 +114,6 @@ impl WritingMode {
     /// Return a WritingMode bitflags from the relevant CSS properties.
     pub fn new(inheritedbox_style: &style_structs::InheritedBox) -> Self {
         use crate::properties::longhands::direction::computed_value::T as Direction;
-        use crate::properties::longhands::writing_mode::computed_value::T as SpecifiedWritingMode;
 
         let mut flags = WritingMode::empty();
 
@@ -97,18 +128,18 @@ impl WritingMode {
         }
 
         match writing_mode {
-            SpecifiedWritingMode::HorizontalTb => {
+            WritingModeProperty::HorizontalTb => {
                 if direction == Direction::Rtl {
                     flags.insert(WritingMode::INLINE_REVERSED);
                 }
             },
-            SpecifiedWritingMode::VerticalRl => {
+            WritingModeProperty::VerticalRl => {
                 flags.insert(WritingMode::VERTICAL);
                 if direction == Direction::Rtl {
                     flags.insert(WritingMode::INLINE_REVERSED);
                 }
             },
-            SpecifiedWritingMode::VerticalLr => {
+            WritingModeProperty::VerticalLr => {
                 flags.insert(WritingMode::VERTICAL);
                 flags.insert(WritingMode::VERTICAL_LR);
                 flags.insert(WritingMode::LINE_INVERTED);
@@ -117,7 +148,7 @@ impl WritingMode {
                 }
             },
             #[cfg(feature = "gecko")]
-            SpecifiedWritingMode::SidewaysRl => {
+            WritingModeProperty::SidewaysRl => {
                 flags.insert(WritingMode::VERTICAL);
                 flags.insert(WritingMode::VERTICAL_SIDEWAYS);
                 if direction == Direction::Rtl {
@@ -125,7 +156,7 @@ impl WritingMode {
                 }
             },
             #[cfg(feature = "gecko")]
-            SpecifiedWritingMode::SidewaysLr => {
+            WritingModeProperty::SidewaysLr => {
                 flags.insert(WritingMode::VERTICAL);
                 flags.insert(WritingMode::VERTICAL_LR);
                 flags.insert(WritingMode::VERTICAL_SIDEWAYS);
@@ -142,7 +173,7 @@ impl WritingMode {
             // text-orientation only has an effect for vertical-rl and
             // vertical-lr values of writing-mode.
             match writing_mode {
-                SpecifiedWritingMode::VerticalRl | SpecifiedWritingMode::VerticalLr => {
+                WritingModeProperty::VerticalRl | WritingModeProperty::VerticalLr => {
                     match inheritedbox_style.clone_text_orientation() {
                         TextOrientation::Mixed => {},
                         TextOrientation::Upright => {
@@ -480,14 +511,14 @@ impl<T> LogicalSize<T> {
     }
 }
 
-impl<T: Copy> LogicalSize<T> {
+impl<T: Clone> LogicalSize<T> {
     #[inline]
     pub fn width(&self, mode: WritingMode) -> T {
         self.debug_writing_mode.check(mode);
         if mode.is_vertical() {
-            self.block
+            self.block.clone()
         } else {
-            self.inline
+            self.inline.clone()
         }
     }
 
@@ -505,9 +536,9 @@ impl<T: Copy> LogicalSize<T> {
     pub fn height(&self, mode: WritingMode) -> T {
         self.debug_writing_mode.check(mode);
         if mode.is_vertical() {
-            self.inline
+            self.inline.clone()
         } else {
-            self.block
+            self.block.clone()
         }
     }
 
@@ -525,9 +556,9 @@ impl<T: Copy> LogicalSize<T> {
     pub fn to_physical(&self, mode: WritingMode) -> Size2D<T> {
         self.debug_writing_mode.check(mode);
         if mode.is_vertical() {
-            Size2D::new(self.block, self.inline)
+            Size2D::new(self.block.clone(), self.inline.clone())
         } else {
-            Size2D::new(self.inline, self.block)
+            Size2D::new(self.inline.clone(), self.block.clone())
         }
     }
 
@@ -535,7 +566,7 @@ impl<T: Copy> LogicalSize<T> {
     pub fn convert(&self, mode_from: WritingMode, mode_to: WritingMode) -> LogicalSize<T> {
         if mode_from == mode_to {
             self.debug_writing_mode.check(mode_from);
-            *self
+            self.clone()
         } else {
             LogicalSize::from_physical(mode_to, self.to_physical(mode_from))
         }
@@ -908,10 +939,10 @@ impl<T> LogicalMargin<T> {
     }
 }
 
-impl<T: Copy> LogicalMargin<T> {
+impl<T: Clone> LogicalMargin<T> {
     #[inline]
     pub fn new_all_same(mode: WritingMode, value: T) -> LogicalMargin<T> {
-        LogicalMargin::new(mode, value, value, value, value)
+        LogicalMargin::new(mode, value.clone(), value.clone(), value.clone(), value)
     }
 
     #[inline]
@@ -919,12 +950,12 @@ impl<T: Copy> LogicalMargin<T> {
         self.debug_writing_mode.check(mode);
         if mode.is_vertical() {
             if mode.is_inline_tb() {
-                self.inline_start
+                self.inline_start.clone()
             } else {
-                self.inline_end
+                self.inline_end.clone()
             }
         } else {
-            self.block_start
+            self.block_start.clone()
         }
     }
 
@@ -947,15 +978,15 @@ impl<T: Copy> LogicalMargin<T> {
         self.debug_writing_mode.check(mode);
         if mode.is_vertical() {
             if mode.is_vertical_lr() {
-                self.block_end
+                self.block_end.clone()
             } else {
-                self.block_start
+                self.block_start.clone()
             }
         } else {
             if mode.is_bidi_ltr() {
-                self.inline_end
+                self.inline_end.clone()
             } else {
-                self.inline_start
+                self.inline_start.clone()
             }
         }
     }
@@ -983,12 +1014,12 @@ impl<T: Copy> LogicalMargin<T> {
         self.debug_writing_mode.check(mode);
         if mode.is_vertical() {
             if mode.is_inline_tb() {
-                self.inline_end
+                self.inline_end.clone()
             } else {
-                self.inline_start
+                self.inline_start.clone()
             }
         } else {
-            self.block_end
+            self.block_end.clone()
         }
     }
 
@@ -1011,15 +1042,15 @@ impl<T: Copy> LogicalMargin<T> {
         self.debug_writing_mode.check(mode);
         if mode.is_vertical() {
             if mode.is_vertical_lr() {
-                self.block_start
+                self.block_start.clone()
             } else {
-                self.block_end
+                self.block_end.clone()
             }
         } else {
             if mode.is_bidi_ltr() {
-                self.inline_start
+                self.inline_start.clone()
             } else {
-                self.inline_end
+                self.inline_end.clone()
             }
         }
     }
@@ -1051,28 +1082,28 @@ impl<T: Copy> LogicalMargin<T> {
         let left;
         if mode.is_vertical() {
             if mode.is_vertical_lr() {
-                left = self.block_start;
-                right = self.block_end;
+                left = self.block_start.clone();
+                right = self.block_end.clone();
             } else {
-                right = self.block_start;
-                left = self.block_end;
+                right = self.block_start.clone();
+                left = self.block_end.clone();
             }
             if mode.is_inline_tb() {
-                top = self.inline_start;
-                bottom = self.inline_end;
+                top = self.inline_start.clone();
+                bottom = self.inline_end.clone();
             } else {
-                bottom = self.inline_start;
-                top = self.inline_end;
+                bottom = self.inline_start.clone();
+                top = self.inline_end.clone();
             }
         } else {
-            top = self.block_start;
-            bottom = self.block_end;
+            top = self.block_start.clone();
+            bottom = self.block_end.clone();
             if mode.is_bidi_ltr() {
-                left = self.inline_start;
-                right = self.inline_end;
+                left = self.inline_start.clone();
+                right = self.inline_end.clone();
             } else {
-                right = self.inline_start;
-                left = self.inline_end;
+                right = self.inline_start.clone();
+                left = self.inline_end.clone();
             }
         }
         SideOffsets2D::new(top, right, bottom, left)
@@ -1082,7 +1113,7 @@ impl<T: Copy> LogicalMargin<T> {
     pub fn convert(&self, mode_from: WritingMode, mode_to: WritingMode) -> LogicalMargin<T> {
         if mode_from == mode_to {
             self.debug_writing_mode.check(mode_from);
-            *self
+            self.clone()
         } else {
             LogicalMargin::from_physical(mode_to, self.to_physical(mode_from))
         }

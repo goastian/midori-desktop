@@ -22,7 +22,7 @@
 #include "nsIObserverService.h"
 #include "nsISizeOf.h"
 #include "mozilla/net/MozURL.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/NetwerkCache2Metrics.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Services.h"
 #include "mozilla/SpinEventLoopUntil.h"
@@ -34,7 +34,7 @@
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Preferences.h"
 #include "nsNetUtil.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/NetwerkMetrics.h"
 
 #ifdef MOZ_BACKGROUNDTASKS
 #  include "mozilla/BackgroundTasksRunner.h"
@@ -1191,7 +1191,7 @@ nsresult CacheFileIOManager::Shutdown() {
     return NS_ERROR_NOT_INITIALIZED;
   }
 
-  Telemetry::AutoTimer<Telemetry::NETWORK_DISK_CACHE_SHUTDOWN_V2> shutdownTimer;
+  auto shutdownTimer = glean::network::disk_cache_shutdown_v2.Measure();
 
   CacheIndex::PreShutdown();
 
@@ -1210,8 +1210,8 @@ nsresult CacheFileIOManager::Shutdown() {
   CacheIndex::Shutdown();
 
   if (CacheObserver::ClearCacheOnShutdown()) {
-    Telemetry::AutoTimer<Telemetry::NETWORK_DISK_CACHE2_SHUTDOWN_CLEAR_PRIVATE>
-        totalTimer;
+    auto totalTimer =
+        glean::network::disk_cache2_shutdown_clear_private.Measure();
     gInstance->SyncRemoveAllCacheFiles();
   }
 
@@ -1311,7 +1311,7 @@ nsresult CacheFileIOManager::OnProfile() {
   nsCOMPtr<nsIFile> profilelessDirectory;
   char* cachePath = getenv("CACHE_DIRECTORY");
   if (!directory && cachePath && *cachePath) {
-    rv = NS_NewNativeLocalFile(nsDependentCString(cachePath), true,
+    rv = NS_NewNativeLocalFile(nsDependentCString(cachePath),
                                getter_AddRefs(directory));
     if (NS_SUCCEEDED(rv)) {
       // Save this directory as the profileless path.
@@ -3333,7 +3333,6 @@ nsresult CacheFileIOManager::EvictByContextInternal(
           return false;
         }
       }
-
       return true;
     }();
 
@@ -3364,7 +3363,7 @@ nsresult CacheFileIOManager::EvictByContextInternal(
     mContextEvictor->Init(mCacheDirectory);
   }
 
-  mContextEvictor->AddContext(aLoadContextInfo, aPinned, aOrigin);
+  mContextEvictor->AddContext(aLoadContextInfo, aPinned, aOrigin, aBaseDomain);
 
   return NS_OK;
 }

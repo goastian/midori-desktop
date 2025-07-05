@@ -200,17 +200,25 @@ class LintSandbox(ConfigureSandbox):
         return result
 
     def _check_option(self, option, *args, **kwargs):
+        self._check_help_message(option, *args, **kwargs)
+
         if len(args) == 0:
             return
 
         self._check_prefix_for_bool_option(*args, **kwargs)
         self._check_help_for_option(option, *args, **kwargs)
 
+    def _pretty_current_frame(self):
+        frame = inspect.currentframe()
+        while frame and frame.f_code.co_name != self.option_impl.__name__:
+            frame = frame.f_back
+        return frame
+
     def _check_prefix_for_bool_option(self, *args, **kwargs):
         name = args[0]
         default = kwargs.get("default")
 
-        if type(default) != bool:
+        if type(default) is not bool:
             return
 
         table = {
@@ -224,16 +232,12 @@ class LintSandbox(ConfigureSandbox):
             },
         }
         for prefix, replacement in table[default].items():
-            if name.startswith("--{}-".format(prefix)):
-                frame = inspect.currentframe()
-                while frame and frame.f_code.co_name != self.option_impl.__name__:
-                    frame = frame.f_back
+            if name.startswith(f"--{prefix}-"):
+                frame = self._pretty_current_frame()
                 e = ConfigureError(
                     "{} should be used instead of "
                     "{} with default={}".format(
-                        name.replace(
-                            "--{}-".format(prefix), "--{}-".format(replacement)
-                        ),
+                        name.replace(f"--{prefix}-", f"--{replacement}-"),
                         name,
                         default,
                     )
@@ -273,10 +277,30 @@ class LintSandbox(ConfigureSandbox):
         else:
             rule = "{With|Without}"
 
-        frame = inspect.currentframe()
-        while frame and frame.f_code.co_name != self.option_impl.__name__:
-            frame = frame.f_back
-        e = ConfigureError('`help` should contain "{}" because {}'.format(rule, check))
+        frame = self._pretty_current_frame()
+        e = ConfigureError(f'`help` should contain "{rule}" because {check}')
+        self._raise_from(e, frame.f_back if frame else None)
+
+    def _check_help_message(self, option, *args, **kwargs):
+        help = kwargs["help"]
+        if help[:1].islower():
+            error_msg = f"`{help}` is not properly capitalized"
+        elif help.endswith("."):
+            error_msg = f"`{help}` should not end with a '.'"
+        elif match := re.search(HelpFormatter.RE_FORMAT, help):
+            for choice in match.groups():
+                if choice[:1].islower():
+                    error_msg = f"`{choice}` is not properly capitalized"
+                    break
+            else:
+                return
+        else:
+            return
+
+        frame = self._pretty_current_frame()
+        e = ConfigureError(
+            f'Invalid `help` message for option "{option.option}": {error_msg}'
+        )
         self._raise_from(e, frame.f_back if frame else None)
 
     def unwrap(self, func):
@@ -314,9 +338,7 @@ class LintSandbox(ConfigureSandbox):
                 what = _import.split(".")[0]
                 imports.add(what)
             if _from == "__builtin__" and _import in glob["__builtins__"]:
-                e = NameError(
-                    "builtin '{}' doesn't need to be imported".format(_import)
-                )
+                e = NameError(f"builtin '{_import}' doesn't need to be imported")
                 self._raise_from(e, func)
         for instr in Bytecode(func):
             code = func.__code__
@@ -329,7 +351,7 @@ class LintSandbox(ConfigureSandbox):
             ):
                 # Raise the same kind of error as what would happen during
                 # execution.
-                e = NameError("global name '{}' is not defined".format(instr.argval))
+                e = NameError(f"global name '{instr.argval}' is not defined")
                 if instr.starts_line is None:
                     self._raise_from(e, func)
                 else:

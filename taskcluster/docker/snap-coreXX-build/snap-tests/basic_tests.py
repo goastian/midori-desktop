@@ -8,14 +8,17 @@ import base64
 import io
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import time
 import traceback
 
 from mozlog import formatters, handlers, structuredlog
 from PIL import Image, ImageChops, ImageDraw
+from pixelmatch.contrib.PIL import pixelmatch
 from selenium import webdriver
-from selenium.common.exceptions import TimeoutException
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options
 from selenium.webdriver.firefox.service import Service
@@ -26,23 +29,64 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 
 class SnapTestsBase:
+    _INSTANCE = None
+
     def __init__(self, exp):
+        self._INSTANCE = os.environ.get("TEST_SNAP_INSTANCE")
+
+        self._PROFILE_PATH = f"~/snap/{self._INSTANCE}/common/.mozilla/firefox/"
+        self._LIB_PATH = rf"/snap/{self._INSTANCE}/current/usr/lib/firefox/libxul.so"
+        # This needs to be the snap-based symlink geckodriver to properly setup
+        # the Snap environment
+        self._EXE_PATH = rf"/snap/bin/{self._INSTANCE}.geckodriver"
+
+        # This needs to be the full path to the binary because at the moment of
+        # its execution it will already be under the Snap environment, and
+        # running "snap" command in this context will fail with Permission denied
+        #
+        # This can be trivially verified by the following shell script being used
+        # as binary_location/_BIN_PATH below:
+        #
+        # 8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-
+        # #!/bin/sh
+        # TMPDIR=${TMPDIR:-/tmp}
+        # env > $TMPDIR/snap-test.txt
+        # 8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-8<-
+        #
+        # One should see output generated in the instance-specific temp dir
+        # /tmp/snap-private-tmp/snap.{}/tmp/snap-test.txt
+        # denoting that everything properly runs under Snap as expected.
+        self._BIN_PATH = rf"/snap/{self._INSTANCE}/current/usr/lib/firefox/firefox"
+
+        snap_profile_path = tempfile.mkdtemp(
+            prefix="snap-tests",
+            dir=os.path.expanduser(self._PROFILE_PATH),
+        )
+
+        driver_service_args = []
+        if self.need_allow_system_access():
+            driver_service_args += ["--allow-system-access"]
+
         driver_service = Service(
-            executable_path=r"/snap/firefox/current/usr/lib/firefox/geckodriver",
+            executable_path=self._EXE_PATH,
             log_output=os.path.join(
                 os.environ.get("ARTIFACT_DIR", ""), "geckodriver.log"
             ),
+            service_args=driver_service_args,
         )
+
         options = Options()
         if "TEST_GECKODRIVER_TRACE" in os.environ.keys():
             options.log.level = "trace"
-        options.binary_location = r"/snap/firefox/current/usr/lib/firefox/firefox"
+        options.binary_location = self._BIN_PATH
         if not "TEST_NO_HEADLESS" in os.environ.keys():
             options.add_argument("--headless")
         if "MOZ_AUTOMATION" in os.environ.keys():
             os.environ["MOZ_LOG_FILE"] = os.path.join(
                 os.environ.get("ARTIFACT_DIR"), "gecko.log"
             )
+        options.add_argument("-profile")
+        options.add_argument(snap_profile_path)
         self._driver = webdriver.Firefox(service=driver_service, options=options)
 
         self._logger = structuredlog.StructuredLogger(self.__class__.__name__)
@@ -63,62 +107,106 @@ class SnapTestsBase:
         assert self._dir is not None
 
         self._update_channel = None
+        self._version_major = None
+        self._snap_core_base = None
+
+        self._is_debug_build = None
+        if self.is_debug_build():
+            self._logger.info("Running against a DEBUG build")
+        else:
+            self._logger.info("Running against a OPT build")
+
+        self._driver.maximize_window()
 
         self._wait = WebDriverWait(self._driver, self.get_timeout())
         self._longwait = WebDriverWait(self._driver, 60)
 
-        with open(exp, "r") as j:
+        with open(exp) as j:
             self._expectations = json.load(j)
 
-        rv = False
-        try:
-            first_tab = self._driver.window_handles[0]
-            channel = self.update_channel()
-            for m in object_methods:
+        # exit code ; will be set to 1 at first assertion failure
+        ec = 0
+        first_tab = self._driver.window_handles[0]
+        channel = self.update_channel()
+        if self.is_esr_128():
+            channel = "esr-128"
+
+        core_base = self.snap_core_base()
+        channel_and_core = f"{channel}core{core_base}"
+        self._logger.info(f"Channel & Core: {channel_and_core}")
+
+        for m in object_methods:
+            tabs_before = set()
+            tabs_after = set()
+            self._logger.test_start(m)
+            expectations = (
+                self._expectations[m]
+                if not channel_and_core in self._expectations[m]
+                else self._expectations[m][channel_and_core]
+            )
+            self._driver.switch_to.window(first_tab)
+
+            try:
                 tabs_before = set(self._driver.window_handles)
-                self._driver.switch_to.window(first_tab)
-                self._logger.test_start(m)
-                expectations = (
-                    self._expectations[m]
-                    if not channel in self._expectations[m]
-                    else self._expectations[m][channel]
-                )
                 rv = getattr(self, m)(expectations)
+                assert rv is not None, "test returned no value"
+
+                tabs_after = set(self._driver.window_handles)
+                self._logger.info(f"tabs_after OK {tabs_after}")
+
                 self._driver.switch_to.parent_frame()
                 if rv:
                     self._logger.test_end(m, status="OK")
                 else:
                     self._logger.test_end(m, status="FAIL")
-                tabs_after = set(self._driver.window_handles)
-                tabs_opened = tabs_after - tabs_before
-                self._logger.info("opened {} tabs".format(len(tabs_opened)))
-                for tab in tabs_opened:
-                    self._driver.switch_to.window(tab)
-                    self._driver.close()
-                self._wait.until(EC.number_of_windows_to_be(len(tabs_before)))
-        except Exception as ex:
-            rv = False
-            test_status = "ERROR"
-            if isinstance(ex, AssertionError):
-                test_status = "FAIL"
-            elif isinstance(ex, TimeoutException):
-                test_status = "TIMEOUT"
+            except Exception as ex:
+                ec = 1
+                test_status = "ERROR"
+                if isinstance(ex, AssertionError):
+                    test_status = "FAIL"
+                elif isinstance(ex, TimeoutException):
+                    test_status = "TIMEOUT"
 
-            test_message = repr(ex)
-            self.save_screenshot("screenshot_{}.png".format(test_status.lower()))
-            self._driver.switch_to.parent_frame()
-            self.save_screenshot("screenshot_{}_parent.png".format(test_status.lower()))
-            self._logger.test_end(m, status=test_status, message=test_message)
-            traceback.print_exc()
-        finally:
-            self._driver.switch_to.window(first_tab)
+                test_message = repr(ex)
+                self.save_screenshot(
+                    f"screenshot_{m.lower()}_{test_status.lower()}.png"
+                )
+                self._driver.switch_to.parent_frame()
+                self.save_screenshot(
+                    f"screenshot_{m.lower()}_{test_status.lower()}_parent.png"
+                )
+                self._logger.test_end(m, status=test_status, message=test_message)
+                traceback.print_exc()
+
+                tabs_after = set(self._driver.window_handles)
+                self._logger.info(f"tabs_after EXCEPTION {tabs_after}")
+            finally:
+                self._logger.info(f"tabs_before {tabs_before}")
+                tabs_opened = tabs_after - tabs_before
+                self._logger.info(f"opened {len(tabs_opened)} tabs")
+                self._logger.info(f"opened {tabs_opened} tabs")
+                closed = 0
+                for tab in tabs_opened:
+                    self._logger.info(f"switch to {tab}")
+                    self._driver.switch_to.window(tab)
+                    self._logger.info(f"close {tab}")
+                    self._driver.close()
+                    closed += 1
+                    self._logger.info(
+                        f"wait EC.number_of_windows_to_be({len(tabs_after) - closed})"
+                    )
+                    self._wait.until(
+                        EC.number_of_windows_to_be(len(tabs_after) - closed)
+                    )
+
+                self._driver.switch_to.window(first_tab)
 
         if not "TEST_NO_QUIT" in os.environ.keys():
             self._driver.quit()
 
-        self._logger.info("Exiting with {}".format(rv))
+        self._logger.info(f"Exiting with {ec}")
         self._logger.suite_end()
-        sys.exit(0 if rv is True else 1)
+        sys.exit(ec)
 
     def get_screenshot_destination(self, name):
         final_name = name
@@ -128,17 +216,17 @@ class SnapTestsBase:
 
     def save_screenshot(self, name):
         final_name = self.get_screenshot_destination(name)
-        self._logger.info("Saving screenshot '{}' to '{}'".format(name, final_name))
-        self._driver.save_screenshot(final_name)
+        self._logger.info(f"Saving screenshot '{name}' to '{final_name}'")
+        try:
+            self._driver.save_screenshot(final_name)
+        except WebDriverException as ex:
+            self._logger.info(f"Saving screenshot FAILED due to {ex}")
 
     def get_timeout(self):
         if "TEST_TIMEOUT" in os.environ.keys():
             return int(os.getenv("TEST_TIMEOUT"))
         else:
             return 5
-
-    def is_debug_build(self):
-        return "BUILD_IS_DEBUG" in os.environ.keys()
 
     def maybe_collect_reference(self):
         return "TEST_COLLECT_REFERENCE" in os.environ.keys()
@@ -152,18 +240,58 @@ class SnapTestsBase:
 
         return self._driver.current_window_handle
 
+    def is_debug_build(self):
+        if self._is_debug_build is None:
+            self._is_debug_build = (
+                "with debug_info"
+                in subprocess.check_output(["file", self._LIB_PATH]).decode()
+            )
+        return self._is_debug_build
+
+    def need_allow_system_access(self):
+        geckodriver_output = subprocess.check_output(
+            [self._EXE_PATH, "--help"]
+        ).decode()
+        return "--allow-system-access" in geckodriver_output
+
     def update_channel(self):
         if self._update_channel is None:
             self._driver.set_context("chrome")
             self._update_channel = self._driver.execute_script(
                 "return Services.prefs.getStringPref('app.update.channel');"
             )
-            self._logger.info("Update channel: {}".format(self._update_channel))
+            self._logger.info(f"Update channel: {self._update_channel}")
             self._driver.set_context("content")
         return self._update_channel
 
-    def is_esr(self):
-        return self.update_channel() == "esr"
+    def snap_core_base(self):
+        if self._snap_core_base is None:
+            self._driver.set_context("chrome")
+            self._snap_core_base = self._driver.execute_script(
+                "return Services.sysinfo.getProperty('distroVersion');"
+            )
+            self._logger.info(f"Snap Core: {self._snap_core_base}")
+            self._driver.set_context("content")
+        return self._snap_core_base
+
+    def version(self):
+        self._driver.set_context("chrome")
+        version = self._driver.execute_script("return AppConstants.MOZ_APP_VERSION;")
+        self._driver.set_context("content")
+        return version
+
+    def version_major(self):
+        if self._version_major is None:
+            self._driver.set_context("chrome")
+            self._version_major = self._driver.execute_script(
+                "return AppConstants.MOZ_APP_VERSION.split('.')[0];"
+            )
+            self._logger.info(f"Version major: {self._version_major}")
+            self._driver.set_context("content")
+        return self._version_major
+
+    def is_esr_128(self):
+        return self.update_channel() == "esr" and self.version_major() == "128"
 
     def assert_rendering(self, exp, element_or_driver):
         # wait a bit for things to settle down
@@ -173,9 +301,11 @@ class SnapTestsBase:
         png_bytes = (
             element_or_driver.screenshot_as_png
             if isinstance(element_or_driver, WebElement)
-            else element_or_driver.get_screenshot_as_png()
-            if isinstance(element_or_driver, WebDriver)
-            else base64.b64decode(element_or_driver)
+            else (
+                element_or_driver.get_screenshot_as_png()
+                if isinstance(element_or_driver, WebDriver)
+                else base64.b64decode(element_or_driver)
+            )
         )
         svg_png = Image.open(io.BytesIO(png_bytes)).convert("RGB")
         svg_png_cropped = svg_png.crop((0, 35, svg_png.width - 20, svg_png.height - 10))
@@ -184,9 +314,7 @@ class SnapTestsBase:
             new_ref = "new_{}".format(exp["reference"])
             new_ref_file = self.get_screenshot_destination(new_ref)
             self._logger.info(
-                "Collecting new reference screenshot: {} => {}".format(
-                    new_ref, new_ref_file
-                )
+                f"Collecting new reference screenshot: {new_ref} => {new_ref_file}"
             )
 
             with open(new_ref_file, "wb") as current_screenshot:
@@ -196,15 +324,52 @@ class SnapTestsBase:
 
         svg_ref = Image.open(os.path.join(self._dir, exp["reference"])).convert("RGB")
         diff = ImageChops.difference(svg_ref, svg_png_cropped)
+
         bbox = diff.getbbox()
 
-        if bbox is not None:
-            (diff_r, diff_g, diff_b) = diff.getextrema()
-
-            min_is_black = (diff_r[0] == 0) and (diff_g[0] == 0) and (diff_b[0] == 0)
-            max_is_low_enough = (
-                (diff_r[1] <= 15) and (diff_g[1] <= 15) and (diff_b[1] <= 15)
+        mismatch = 0
+        try:
+            mismatch = pixelmatch(
+                svg_png_cropped, svg_ref, diff, includeAA=False, threshold=0.15
             )
+            if mismatch == 0:
+                return
+            self._logger.info(f"Non empty differences from pixelmatch: {mismatch}")
+        except ValueError as ex:
+            self._logger.info(f"Problem at pixelmatch: {ex}")
+            current_rendering_png = "pixelmatch_current_rendering_{}".format(
+                exp["reference"]
+            )
+            with open(
+                self.get_screenshot_destination(current_rendering_png), "wb"
+            ) as current_screenshot:
+                svg_png_cropped.save(current_screenshot)
+
+            reference_rendering_png = "pixelmatch_reference_rendering_{}".format(
+                exp["reference"]
+            )
+            with open(
+                self.get_screenshot_destination(reference_rendering_png), "wb"
+            ) as current_screenshot:
+                svg_ref.save(current_screenshot)
+
+        if bbox is not None:
+            (left, upper, right, lower) = bbox
+            assert mismatch > 0, "Really mismatching"
+
+            bbox_w = right - left
+            bbox_h = lower - upper
+
+            diff_px_on_bbox = round((mismatch * 1.0 / (bbox_w * bbox_h)) * 100, 3)
+            allowance = exp["allowance"] if "allowance" in exp else 0.15
+            self._logger.info(
+                f"Bbox: {bbox_w}x{bbox_h} => {diff_px_on_bbox}% ({allowance}% allowed)"
+            )
+
+            if diff_px_on_bbox <= allowance:
+                return
+
+            (diff_r, diff_g, diff_b) = diff.getextrema()
 
             draw_ref = ImageDraw.Draw(svg_ref)
             draw_ref.rectangle(bbox, outline="red")
@@ -216,7 +381,7 @@ class SnapTestsBase:
             draw_diff.rectangle(bbox, outline="red")
 
             # Some differences have been found, let's verify
-            self._logger.info("Non empty differences bbox: {}".format(bbox))
+            self._logger.info(f"Non empty differences bbox: {bbox}")
 
             buffered = io.BytesIO()
             diff.save(buffered, format="PNG")
@@ -227,35 +392,47 @@ class SnapTestsBase:
                     "data:image/png;base64,{}".format(diff_b64.decode("utf-8"))
                 )
 
+            differences_png = "differences_{}".format(exp["reference"])
             with open(
-                self.get_screenshot_destination("differences.png"), "wb"
+                self.get_screenshot_destination(differences_png), "wb"
             ) as diff_screenshot:
                 diff_screenshot.write(buffered.getvalue())
 
+            current_rendering_png = "current_rendering_{}".format(exp["reference"])
             with open(
-                self.get_screenshot_destination("current_rendering.png"), "wb"
+                self.get_screenshot_destination(current_rendering_png), "wb"
             ) as current_screenshot:
                 svg_png_cropped.save(current_screenshot)
 
+            reference_rendering_png = "reference_rendering_{}".format(exp["reference"])
             with open(
-                self.get_screenshot_destination("reference_rendering.png"), "wb"
+                self.get_screenshot_destination(reference_rendering_png), "wb"
             ) as current_screenshot:
                 svg_ref.save(current_screenshot)
 
-            # Assume a difference is mismatching if the minimum pixel value in
-            # image difference is NOT black or if the maximum pixel value is
-            # not low enough
+            (left, upper, right, lower) = bbox
+            assert right >= left, f"Inconsistent boundaries right={right} left={left}"
             assert (
-                min_is_black and max_is_low_enough
-            ), "Mismatching screenshots for {} with extremas: {}".format(
-                exp["reference"], (diff_r, diff_g, diff_b)
-            )
+                lower >= upper
+            ), f"Inconsistent boundaries lower={lower} upper={upper}"
+            if ((right - left) <= 2) or ((lower - upper) <= 2):
+                self._logger.info("Difference is a <= 2 pixels band, ignoring")
+                return
+
+            assert (
+                diff_px_on_bbox <= allowance
+            ), "Mismatching screenshots for {}".format(exp["reference"])
 
 
 class SnapTests(SnapTestsBase):
     def __init__(self, exp):
         self._dir = "basic_tests"
-        super(SnapTests, self).__init__(exp)
+        super(__class__, self).__init__(exp)
+
+    def test_snap_core_base(self, exp):
+        assert self.snap_core_base() in ["22", "24"], "Core base should be 22 or 24"
+
+        return True
 
     def test_about_support(self, exp):
         self.open_tab("about:support")
@@ -264,16 +441,14 @@ class SnapTests(SnapTestsBase):
             EC.visibility_of_element_located((By.ID, "version-box"))
         )
         self._wait.until(lambda d: len(version_box.text) > 0)
-        self._logger.info("about:support version: {}".format(version_box.text))
+        self._logger.info(f"about:support version: {version_box.text}")
         assert version_box.text == exp["version_box"], "version text should match"
 
         distributionid_box = self._wait.until(
             EC.visibility_of_element_located((By.ID, "distributionid-box"))
         )
         self._wait.until(lambda d: len(distributionid_box.text) > 0)
-        self._logger.info(
-            "about:support distribution ID: {}".format(distributionid_box.text)
-        )
+        self._logger.info(f"about:support distribution ID: {distributionid_box.text}")
         assert (
             distributionid_box.text == exp["distribution_id"]
         ), "distribution_id should match"
@@ -281,9 +456,7 @@ class SnapTests(SnapTestsBase):
         windowing_protocol = self._driver.execute_script(
             "return document.querySelector('th[data-l10n-id=\"graphics-window-protocol\"').parentNode.lastChild.textContent;"
         )
-        self._logger.info(
-            "about:support windowing protocol: {}".format(windowing_protocol)
-        )
+        self._logger.info(f"about:support windowing protocol: {windowing_protocol}")
         assert windowing_protocol == "wayland", "windowing protocol should be wayland"
 
         return True
@@ -295,7 +468,7 @@ class SnapTests(SnapTestsBase):
             EC.visibility_of_element_located((By.CSS_SELECTOR, "a"))
         )
         self._wait.until(lambda d: len(source_link.text) > 0)
-        self._logger.info("about:buildconfig source: {}".format(source_link.text))
+        self._logger.info(f"about:buildconfig source: {source_link.text}")
         assert source_link.text.startswith(
             exp["source_repo"]
         ), "source repo should exists and match"
@@ -304,7 +477,7 @@ class SnapTests(SnapTestsBase):
             EC.visibility_of_element_located((By.CSS_SELECTOR, "p:last-child"))
         )
         self._wait.until(lambda d: len(build_flags_box.text) > 0)
-        self._logger.info("about:support buildflags: {}".format(build_flags_box.text))
+        self._logger.info(f"about:support buildflags: {build_flags_box.text}")
         assert (
             build_flags_box.text.find(exp["official"]) >= 0
         ), "official build flag should be there"
@@ -312,7 +485,13 @@ class SnapTests(SnapTestsBase):
         return True
 
     def test_youtube(self, exp):
+        # Skip because unreliable
+        return True
+
         self.open_tab("https://www.youtube.com/channel/UCYfdidRxbB8Qhf0Nx7ioOYw")
+
+        # Wait so we leave time to breathe and not be classified as a bot
+        time.sleep(5)
 
         # Wait for the consent dialog and accept it
         self._logger.info("Wait for consent form")
@@ -325,28 +504,68 @@ class SnapTests(SnapTestsBase):
         except TimeoutException:
             self._logger.info("Wait for consent form: timed out, maybe it is not here")
 
+        # Wait so we leave time to breathe and not be classified as a bot
+        time.sleep(3)
+
+        # Wait for the cable TV dialog and accept it
+        self._logger.info("Wait for cable proposal")
+        try:
+            self._wait.until(
+                EC.visibility_of_element_located(
+                    (By.CSS_SELECTOR, "button[aria-label*=Dismiss]")
+                )
+            ).click()
+        except TimeoutException:
+            self._logger.info(
+                "Wait for cable proposal: timed out, maybe it is not here"
+            )
+
+        # Wait so we leave time to breathe and not be classified as a bot
+        time.sleep(3)
+
         # Find first video and click it
         self._logger.info("Wait for one video")
         self._wait.until(
             EC.visibility_of_element_located((By.ID, "video-title-link"))
         ).click()
 
+        # Wait so we leave time to breathe and not be classified as a bot
+        time.sleep(3)
+
         # Wait for duration to be set to something
         self._logger.info("Wait for video to start")
-        video = self._wait.until(
-            EC.visibility_of_element_located((By.CLASS_NAME, "html5-main-video"))
-        )
-        self._wait.until(lambda d: type(video.get_property("duration")) == float)
-        self._logger.info("video duration: {}".format(video.get_property("duration")))
-        assert (
-            video.get_property("duration") > exp["duration"]
-        ), "youtube video should have duration"
+        video = None
+        try:
+            video = self._longwait.until(
+                EC.visibility_of_element_located((By.CLASS_NAME, "html5-main-video"))
+            )
+            self._longwait.until(
+                lambda d: type(video.get_property("duration")) is float
+            )
+            self._logger.info(
+                "video duration: {}".format(video.get_property("duration"))
+            )
+            assert (
+                video.get_property("duration") > exp["duration"]
+            ), "youtube video should have duration"
 
-        self._wait.until(lambda d: video.get_property("currentTime") > exp["playback"])
-        self._logger.info("video played: {}".format(video.get_property("currentTime")))
-        assert (
-            video.get_property("currentTime") > exp["playback"]
-        ), "youtube video should perform playback"
+            self._wait.until(
+                lambda d: video.get_property("currentTime") > exp["playback"]
+            )
+            self._logger.info(
+                "video played: {}".format(video.get_property("currentTime"))
+            )
+            assert (
+                video.get_property("currentTime") > exp["playback"]
+            ), "youtube video should perform playback"
+        except TimeoutException as ex:
+            self._logger.info("video detection timed out")
+            self._logger.info(f"video: {video}")
+            if video:
+                self._logger.info(
+                    "video duration: {}".format(video.get_property("duration"))
+                )
+            raise ex
 
         return True
 
@@ -357,38 +576,32 @@ class SnapTests(SnapTestsBase):
             "Services.prefs.setBoolPref('media.gmp-manager.updateEnabled', true);"
         )
 
-        channel = self._driver.execute_script(
-            "return Services.prefs.getCharPref('app.update.channel');"
+        enable_drm_button = self._wait.until(
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, ".notification-button[label='Enable DRM']")
+            )
         )
-        if channel == "esr":
-            rv = False
-        else:
-            enable_drm_button = self._wait.until(
-                EC.visibility_of_element_located(
-                    (By.CSS_SELECTOR, ".notification-button[label='Enable DRM']")
-                )
+        self._logger.info("Enabling DRMs")
+        enable_drm_button.click()
+        self._wait.until(
+            EC.invisibility_of_element_located(
+                (By.CSS_SELECTOR, ".notification-button[label='Enable DRM']")
             )
-            self._logger.info("Enabling DRMs")
-            enable_drm_button.click()
-            self._wait.until(
-                EC.invisibility_of_element_located(
-                    (By.CSS_SELECTOR, ".notification-button[label='Enable DRM']")
-                )
-            )
+        )
 
-            self._logger.info("Installing DRMs")
-            self._wait.until(
-                EC.visibility_of_element_located(
-                    (By.CSS_SELECTOR, ".infobar[value='drmContentCDMInstalling']")
-                )
+        self._logger.info("Installing DRMs")
+        self._wait.until(
+            EC.visibility_of_element_located(
+                (By.CSS_SELECTOR, ".infobar[value='drmContentCDMInstalling']")
             )
+        )
 
-            self._logger.info("Waiting for DRMs installation to complete")
-            self._longwait.until(
-                EC.invisibility_of_element_located(
-                    (By.CSS_SELECTOR, ".infobar[value='drmContentCDMInstalling']")
-                )
+        self._logger.info("Waiting for DRMs installation to complete")
+        self._longwait.until(
+            EC.invisibility_of_element_located(
+                (By.CSS_SELECTOR, ".infobar[value='drmContentCDMInstalling']")
             )
+        )
 
         self._driver.set_context("content")
         return rv
@@ -409,7 +622,7 @@ class SnapTests(SnapTestsBase):
                 (By.CSS_SELECTOR, "video.html5-main-video")
             )
         )
-        self._wait.until(lambda d: type(video.get_property("duration")) == float)
+        self._wait.until(lambda d: type(video.get_property("duration")) is float)
         self._logger.info("video duration: {}".format(video.get_property("duration")))
         assert (
             video.get_property("duration") > exp["duration"]

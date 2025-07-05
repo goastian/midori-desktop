@@ -22,6 +22,7 @@ include protocol PSocketProcessBackground;
 include protocol PSandboxTesting;
 #endif
 
+include CrashReporterInitArgs;
 include MemoryReportTypes;
 include NeckoChannelParams;
 include PrefsTypes;
@@ -44,6 +45,8 @@ using struct nsID from "nsID.h";
 using mozilla::net::SocketInfo from "mozilla/net/DashboardTypes.h";
 using mozilla::net::DNSCacheEntries from "mozilla/net/DashboardTypes.h";
 using mozilla::net::HttpRetParams from "mozilla/net/DashboardTypes.h";
+using mozilla::net::Http3ConnectionStatsParams from "mozilla/net/DashboardTypes.h";
+using mozilla::net::NetAddr from "mozilla/net/DNS.h";
 using nsIDNSService::DNSFlags from "nsIDNSService.h";
 
 #if defined(XP_WIN)
@@ -102,7 +105,7 @@ sync protocol PSocketProcess
   manages PNativeDNSResolverOverride;
 
 parent:
-  async InitCrashReporter(NativeThreadId threadId);
+  async InitCrashReporter(CrashReporterInitArgs aInitArgs);
   async AddMemoryReport(MemoryReport aReport);
   // Messages for sending telemetry to parent process.
   async AccumulateChildHistograms(HistogramAccumulation[] accumulations);
@@ -123,10 +126,6 @@ parent:
   async InitSocketBackground(Endpoint<PSocketProcessBackgroundParent> aEndpoint);
   async PAltService();
   async PProxyConfigLookup(nullable nsIURI aUri, uint32_t aFlags);
-  async CachePushCheck(nullable nsIURI aPushedURL,
-                       OriginAttributes aOriginAttributes,
-                       nsCString aRequestString)
-    returns (bool aAccepted);
 
   async ExcludeHttp2OrHttp3(HttpConnectionInfoCloneArgs aArgs);
 
@@ -183,8 +182,10 @@ child:
     returns (SocketDataArgs data);
   async GetDNSCacheEntries()
     returns (DNSCacheEntries[] entries);
-   async GetHttpConnectionData()
+  async GetHttpConnectionData()
     returns (HttpRetParams[] params);
+  async GetHttp3ConnectionStatsData()
+    returns (Http3ConnectionStatsParams[] params);
 
   async InitProxyAutoConfigChild(Endpoint<PProxyAutoConfigChild> endpoint);
 
@@ -211,6 +212,9 @@ child:
   */
   async UnblockUntrustedModulesThread();
 #endif  // defined(XP_WIN)
+
+  async AddNetAddrOverride(NetAddr aFrom, NetAddr aTo);
+  async ClearNetAddrOverrides();
 
 both:
   async PDNSRequest(nsCString hostName, nsCString trrServer, int32_t port,

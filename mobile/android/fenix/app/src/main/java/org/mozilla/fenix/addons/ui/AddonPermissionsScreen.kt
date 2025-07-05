@@ -19,17 +19,19 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
+import mozilla.components.compose.base.Divider
 import mozilla.components.feature.addons.Addon
 import mozilla.components.feature.addons.Addon.Companion.isAllURLsPermission
 import mozilla.components.feature.addons.Addon.Permission
 import org.mozilla.fenix.R
 import org.mozilla.fenix.addons.AddonPermissionsUpdateRequest
-import org.mozilla.fenix.compose.Divider
+import org.mozilla.fenix.compose.InfoCard
+import org.mozilla.fenix.compose.InfoType
 import org.mozilla.fenix.compose.LinkText
 import org.mozilla.fenix.compose.LinkTextState
 import org.mozilla.fenix.compose.SwitchWithLabel
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
 import org.mozilla.fenix.compose.list.TextListItem
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.theme.FirefoxTheme
@@ -185,19 +187,18 @@ private fun AllSitesToggle(
     onRemoveAllSitesPermissions: () -> Unit,
 ) {
     SwitchWithLabel(
+        label = stringResource(R.string.addons_permissions_allow_for_all_sites),
+        checked = enabledAllowForAll,
         modifier = Modifier
             .padding(horizontal = 16.dp, vertical = 6.dp),
-        label = stringResource(R.string.addons_permissions_allow_for_all_sites),
         description = stringResource(R.string.addons_permissions_allow_for_all_sites_subtitle),
-        checked = enabledAllowForAll,
-        onCheckedChange = { enabled ->
-            if (enabled) {
-                onAddAllSitesPermissions()
-            } else {
-                onRemoveAllSitesPermissions()
-            }
-        },
-    )
+    ) { enabled ->
+        if (enabled) {
+            onAddAllSitesPermissions()
+        } else {
+            onRemoveAllSitesPermissions()
+        }
+    }
 }
 
 @Composable
@@ -233,40 +234,47 @@ private fun OptionalPermissionSwitch(
     removeOptionalPermission: (AddonPermissionsUpdateRequest) -> Unit,
 ) {
     SwitchWithLabel(
-        modifier = modifier,
         label = localizedPermission.localizedName,
         checked = localizedPermission.permission.granted,
+        modifier = modifier,
         enabled = isEnabled,
-        onCheckedChange = { enabled ->
-            if (enabled) {
-                addOptionalPermission(
-                    AddonPermissionsUpdateRequest(
-                        optionalPermissions = if (!isOriginPermission) {
-                            listOf(localizedPermission.permission.name)
-                        } else { emptyList() },
-                        originPermissions = if (isOriginPermission) {
-                            listOf(localizedPermission.permission.name)
-                        } else { emptyList() },
-                    ),
-                )
-            } else {
-                removeOptionalPermission(
-                    AddonPermissionsUpdateRequest(
-                        optionalPermissions = if (!isOriginPermission) {
-                            listOf(localizedPermission.permission.name)
-                        } else { emptyList() },
-                        originPermissions = if (isOriginPermission) {
-                            listOf(localizedPermission.permission.name)
-                        } else { emptyList() },
-                    ),
-                )
-            }
-        },
-    )
+    ) { enabled ->
+        if (enabled) {
+            addOptionalPermission(
+                AddonPermissionsUpdateRequest(
+                    optionalPermissions = if (!isOriginPermission) {
+                        listOf(localizedPermission.permission.name)
+                    } else { emptyList() },
+                    originPermissions = if (isOriginPermission) {
+                        listOf(localizedPermission.permission.name)
+                    } else { emptyList() },
+                ),
+            )
+        } else {
+            removeOptionalPermission(
+                AddonPermissionsUpdateRequest(
+                    optionalPermissions = if (!isOriginPermission) {
+                        listOf(localizedPermission.permission.name)
+                    } else { emptyList() },
+                    originPermissions = if (isOriginPermission) {
+                        listOf(localizedPermission.permission.name)
+                    } else { emptyList() },
+                ),
+            )
+        }
+    }
+    if (localizedPermission.permission.name == "userScripts") {
+        InfoCard(
+            type = InfoType.Warning,
+            modifier = Modifier
+                .fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+            description = stringResource(R.string.mozac_feature_addons_permissions_user_scripts_extra_warning),
+        )
+    }
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun AddonPermissionsScreenPreview() {
     val permissions: List<String> = listOf("Permission required 1", "Permission required 2")
     val optionalPermissions: List<Addon.LocalizedPermission> = listOf(
@@ -309,13 +317,41 @@ private fun AddonPermissionsScreenPreview() {
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun AddonPermissionsScreenWithPermissionsPreview() {
     FirefoxTheme {
         Column(modifier = Modifier.background(FirefoxTheme.colors.layer1)) {
             AddonPermissionsScreen(
                 permissions = emptyList(),
                 optionalPermissions = emptyList(),
+                originPermissions = emptyList(),
+                isAllSitesSwitchVisible = true,
+                isAllSitesEnabled = false,
+                onAddOptionalPermissions = { _ -> },
+                onRemoveOptionalPermissions = { _ -> },
+                onAddAllSitesPermissions = {},
+                onRemoveAllSitesPermissions = {},
+                onLearnMoreClick = { _ -> },
+            )
+        }
+    }
+}
+
+@Composable
+@PreviewLightDark
+private fun AddonPermissionsScreenWithUserScriptsPermissionsPreview() {
+    val optionalPermissions: List<Addon.LocalizedPermission> = listOf(
+        Addon.LocalizedPermission(
+            "Allow unverified third-party scripts to access your data",
+            Permission("userScripts", false),
+        ),
+    )
+
+    FirefoxTheme {
+        Column(modifier = Modifier.background(FirefoxTheme.colors.layer1)) {
+            AddonPermissionsScreen(
+                permissions = emptyList(),
+                optionalPermissions = optionalPermissions,
                 originPermissions = emptyList(),
                 isAllSitesSwitchVisible = true,
                 isAllSitesEnabled = false,

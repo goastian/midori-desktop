@@ -1,13 +1,16 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-/* import-globals-from pippki.js */
+
 "use strict";
 
 const gCertFileTypes = "*.p7b; *.crt; *.cert; *.cer; *.pem; *.der";
 
 var { NetUtil } = ChromeUtils.importESModule(
   "resource://gre/modules/NetUtil.sys.mjs"
+);
+const { exportToFile, viewCertHelper } = ChromeUtils.importESModule(
+  "resource://gre/modules/psm/pippki.sys.mjs"
 );
 
 var key;
@@ -335,6 +338,95 @@ function LoadCerts() {
   rememberedDecisionsRichList.setButtonState();
 
   enableBackupAllButton();
+
+  document
+    .getElementById("certmanagertabs")
+    .addEventListener("command", event => {
+      switch (event.target.id) {
+        case "mine_viewButton":
+          viewCerts();
+          break;
+        case "mine_backupButton":
+          backupCerts();
+          break;
+        case "mine_backupAllButton":
+          backupAllCerts();
+          break;
+        case "mine_restoreButton":
+          restoreCerts();
+          break;
+        case "mine_deleteButton":
+          deleteCerts();
+          break;
+        case "remembered_deleteButton":
+          rememberedDecisionsRichList.deleteSelectedRichListItem();
+          break;
+        case "remembered_viewButton":
+          rememberedDecisionsRichList.viewSelectedRichListItem();
+          break;
+        case "email_viewButton":
+          viewCerts();
+          break;
+        case "email_addButton":
+          addEmailCert();
+          break;
+        case "email_exportButton":
+          exportCerts();
+          break;
+        case "email_deleteButton":
+          deleteCerts();
+          break;
+        case "websites_deleteButton":
+          serverRichList.deleteSelectedRichListItem();
+          break;
+        case "websites_exceptionButton":
+          serverRichList.addException();
+          break;
+        case "ca_viewButton":
+          viewCerts();
+          break;
+        case "ca_editButton":
+          editCerts();
+          break;
+        case "ca_addButton":
+          addCACerts();
+          break;
+        case "ca_exportButton":
+          exportCerts();
+          break;
+        case "ca_deleteButton":
+          deleteCerts();
+          break;
+        default:
+          // Default means that we are not handling a command so we should
+          // probably let people know.
+          throw new Error("Unhandled command event");
+      }
+    });
+
+  document
+    .getElementById("user-tree")
+    .addEventListener("select", mine_enableButtons);
+  document
+    .getElementById("user-tree-children")
+    .addEventListener("dblclick", viewCerts);
+  document
+    .getElementById("email-tree")
+    .addEventListener("select", email_enableButtons);
+  document
+    .getElementById("email-tree-children")
+    .addEventListener("dblclick", viewCerts);
+  document
+    .getElementById("serverList")
+    .addEventListener("dblclick", () =>
+      serverRichList.viewSelectedRichListItem()
+    );
+  document
+    .getElementById("ca-tree")
+    .addEventListener("select", ca_enableButtons);
+  document
+    .getElementById("ca-tree-children")
+    .addEventListener("dblclick", viewCerts);
 }
 
 function enableBackupAllButton() {
@@ -668,7 +760,7 @@ async function exportCerts() {
   getSelectedCerts();
 
   for (let cert of selected_certs) {
-    await exportToFile(window, cert);
+    await exportToFile(window, document, cert);
   }
 }
 
@@ -769,3 +861,5 @@ async function addEmailCert() {
     }
   });
 }
+
+window.addEventListener("load", LoadCerts);

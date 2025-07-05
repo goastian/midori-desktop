@@ -29,25 +29,55 @@ const {
  *
  * We might need to allow a range of requests because even though we run with
  * cache disabled, different loads can still be coalesced, and whether they're
- * coalesced or not depends on timing.
+ * coalesced or not depends on timing. Additionally, callers can provide a
+ * predicate which will be called with the array of received network event
+ * resources, so that they can perform additional assertions on the requests
+ * received so far. This can be helpful when the total number of requests
+ * is intermittent enough to impact the quality of the measures.
  *
+ * @param {number} minExpectedRequests
+ *        Minimum number of expected requests.
+ * @param {number} maxExpectedRequests
+ *        Maximum number of expected requests.
+ * @param {function|null} predicate
+ *        Predicate provided if the caller needs to assert that specific request
+ *        payloads have been received before considering the test as finished.
+ *        Might be null. Will be called with the array of received network event
+ *        resources.
  * @returns a promise that resolves when the wait is done.
  */
 async function waitForAllRequestsFinished(
   minExpectedRequests,
-  maxExpectedRequests
+  maxExpectedRequests,
+  predicate
 ) {
   let toolbox = getToolbox();
   let window = toolbox.getCurrentPanel().panelWin;
 
+  const requests = [];
   return new Promise(resolve => {
     // Explicitly waiting for specific number of requests arrived
     let payloadReady = 0;
     let resolveWithLessThanMaxRequestsTimer = null;
 
-    function onPayloadReady() {
+    // Keep track of the last time we logged requests to log at most 20 times.
+    let remainingLastDump = Infinity;
+    function onPayloadReady(request) {
       payloadReady++;
-      dump(`Waiting for ${maxExpectedRequests - payloadReady} requests\n`);
+
+      // If a predicate was provided, store the received payload in the requests
+      // array.
+      if (predicate != null) {
+        requests.push(request);
+      }
+      const remaining = maxExpectedRequests - payloadReady;
+      if (remainingLastDump - remaining > maxExpectedRequests / 20) {
+        remainingLastDump = remaining;
+        dump(
+          `[waitForAllRequestsFinished] Waiting for ${remaining} / ${maxExpectedRequests} requests\n`
+        );
+      }
+
       maybeResolve();
     }
 
@@ -64,8 +94,15 @@ async function waitForAllRequestsFinished(
         resolveWithLessThanMaxRequestsTimer = null;
       }
 
-      // Have all the requests finished yet?
+      if (predicate != null && !predicate(requests)) {
+        return;
+      }
+
       if (payloadReady >= maxExpectedRequests) {
+        // Have all the requests finished yet?
+        dump(
+          `[waitForAllRequestsFinished] Received more than ${maxExpectedRequests} (max) requests, resolving\n`
+        );
         doResolve();
         return;
       }
@@ -73,7 +110,12 @@ async function waitForAllRequestsFinished(
       // If we're past the minimum threshold, wait to see if more requests come
       // up, but resolve otherwise.
       if (payloadReady >= minExpectedRequests) {
-        resolveWithLessThanMaxRequestsTimer = setTimeout(doResolve, 1000);
+        resolveWithLessThanMaxRequestsTimer = setTimeout(() => {
+          dump(
+            `[waitForAllRequestsFinished] Received more than ${minExpectedRequests} (min) requests, resolving\n`
+          );
+          doResolve();
+        }, 1000);
       }
     }
 
@@ -107,10 +149,15 @@ exports.waitForNetworkRequests = async function (
   label,
   toolbox,
   minExpectedRequests,
-  maxExpectedRequests = minExpectedRequests
+  maxExpectedRequests = minExpectedRequests,
+  predicate = null
 ) {
   let test = runTest(label + ".requestsFinished.DAMP");
-  await waitForAllRequestsFinished(minExpectedRequests, maxExpectedRequests);
+  await waitForAllRequestsFinished(
+    minExpectedRequests,
+    maxExpectedRequests,
+    predicate
+  );
   test.done();
 };
 

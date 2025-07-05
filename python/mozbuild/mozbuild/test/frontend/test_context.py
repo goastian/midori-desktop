@@ -5,7 +5,6 @@
 import os
 import unittest
 
-import six
 from mozpack import path as mozpath
 from mozunit import main
 
@@ -220,7 +219,7 @@ class TestContext(unittest.TestCase):
         self.assertEqual(test.source_stack, [foo, bar, bar, foo])
 
     def test_context_dirs(self):
-        class Config(object):
+        class Config:
             pass
 
         config = Config()
@@ -285,7 +284,7 @@ class TestSymbols(unittest.TestCase):
 class TestPaths(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        class Config(object):
+        class Config:
             pass
 
         cls.config = config = Config()
@@ -617,7 +616,7 @@ class TestPaths(unittest.TestCase):
 
 class TestTypedRecord(unittest.TestCase):
     def test_fields(self):
-        T = ContextDerivedTypedRecord(("field1", six.text_type), ("field2", list))
+        T = ContextDerivedTypedRecord(("field1", str), ("field2", list))
         inst = T(None)
         self.assertEqual(inst.field1, "")
         self.assertEqual(inst.field2, [])
@@ -632,7 +631,7 @@ class TestTypedRecord(unittest.TestCase):
             inst.field3 = []
 
     def test_coercion(self):
-        T = ContextDerivedTypedRecord(("field1", six.text_type), ("field2", list))
+        T = ContextDerivedTypedRecord(("field1", str), ("field2", list))
         inst = T(None)
         inst.field1 = 3
         inst.field2 += ("bar",)

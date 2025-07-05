@@ -5,10 +5,12 @@
 package org.mozilla.fenix.customtabs
 
 import android.app.assist.AssistContent
-import android.net.Uri
 import android.os.Build
+import android.os.Bundle
+import android.view.MotionEvent
 import androidx.annotation.RequiresApi
 import androidx.annotation.VisibleForTesting
+import androidx.core.net.toUri
 import mozilla.components.browser.state.selector.findCustomTab
 import mozilla.components.browser.state.state.SessionState
 import mozilla.components.support.utils.SafeIntent
@@ -24,6 +26,8 @@ const val EXTRA_IS_SANDBOX_CUSTOM_TAB = "org.mozilla.fenix.customtabs.EXTRA_IS_S
  */
 @Suppress("TooManyFunctions")
 open class ExternalAppBrowserActivity : HomeActivity() {
+    private var isFinishedAnimating = false
+
     override fun onResume() {
         super.onResume()
 
@@ -72,6 +76,24 @@ open class ExternalAppBrowserActivity : HomeActivity() {
     override fun onProvideAssistContent(outContent: AssistContent?) {
         super.onProvideAssistContent(outContent)
         val currentTabUrl = getExternalTab()?.content?.url
-        outContent?.webUri = currentTabUrl?.let { Uri.parse(it) }
+        outContent?.webUri = currentTabUrl?.let { it.toUri() }
+    }
+
+    override fun onRestoreInstanceState(savedInstanceState: Bundle) {
+        super.onRestoreInstanceState(savedInstanceState)
+        isFinishedAnimating = true
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        if (!isFinishedAnimating) {
+            return true
+        }
+
+        return super.dispatchTouchEvent(ev)
+    }
+
+    override fun onEnterAnimationComplete() {
+        super.onEnterAnimationComplete()
+        isFinishedAnimating = true
     }
 }

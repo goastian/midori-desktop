@@ -17,7 +17,7 @@ import com.google.android.material.snackbar.BaseTransientBottomBar
 import com.google.android.material.snackbar.ContentViewCallback
 import com.google.android.material.snackbar.Snackbar
 import org.mozilla.focus.databinding.FocusSnackbarBinding
-import org.mozilla.focus.ext.settings
+import org.mozilla.focus.ext.isAccessibilityEnabled
 
 class FocusSnackbar private constructor(
     parent: ViewGroup,
@@ -70,7 +70,7 @@ class FocusSnackbar private constructor(
             val binding = FocusSnackbarBinding.inflate(inflater, parent, false)
 
             val durationOrAccessibleDuration =
-                if (parent.context.settings.isAccessibilityEnabled()) {
+                if (parent.context.isAccessibilityEnabled()) {
                     LENGTH_ACCESSIBLE
                 } else {
                     duration
@@ -107,7 +107,7 @@ class FocusSnackbar private constructor(
 
                 if (view != null) {
                     val parent = view.parent
-                    view = if (parent is View) parent else null
+                    view = parent as? View
                 }
             } while (view != null)
 
@@ -123,24 +123,24 @@ private class FocusSnackbarCallback(
     override fun animateContentIn(delay: Int, duration: Int) {
         content.translationY = (content.height).toFloat()
         content.animate().apply {
-            translationY(defaultYTranslation)
-            setDuration(animateInDuration)
+            translationY(DEFAULT_Y_TRANSLATION)
+            setDuration(ANIMATE_IN_DURATION)
             startDelay = delay.toLong()
         }
     }
 
     override fun animateContentOut(delay: Int, duration: Int) {
-        content.translationY = defaultYTranslation
+        content.translationY = DEFAULT_Y_TRANSLATION
         content.animate().apply {
             translationY((content.height).toFloat())
-            setDuration(animateOutDuration)
+            setDuration(ANIMATE_OUT_DURATION)
             startDelay = delay.toLong()
         }
     }
 
     companion object {
-        private const val defaultYTranslation = 0f
-        private const val animateInDuration = 200L
-        private const val animateOutDuration = 150L
+        private const val DEFAULT_Y_TRANSLATION = 0f
+        private const val ANIMATE_IN_DURATION = 200L
+        private const val ANIMATE_OUT_DURATION = 150L
     }
 }

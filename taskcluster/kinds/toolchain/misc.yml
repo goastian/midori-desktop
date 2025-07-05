@@ -6,6 +6,7 @@ task-defaults:
     worker-type: b-linux-gcp
     worker:
         max-run-time: 1800
+    use-python: default
 
 linux64-binutils-2.31.1:
     description: "Binutils toolchain build"
@@ -143,6 +144,24 @@ linux64-mar-tools:
             - toolkit/mozapps/update/updater/bspatch/
             - tools/update-packaging/
 
+linux64-zucchini-bin:
+    description: "zucchini bin toolchain build"
+    treeherder:
+        symbol: TL(zucchini-bin)
+    fetches:
+        toolchain:
+            - linux64-clang-toolchain
+        fetch:
+            - chromium-depot-tools
+    worker:
+        env:
+            # Note: this revision is for the "chromium/src" trunk
+            # https://chromium.googlesource.com/chromium/src/+/refs/heads/main
+            CHROMIUM_REVISION: 59c5ba8f94f8b0d4de6da2769d2eedddd08da956
+    run:
+        script: build-zucchini.sh
+        toolchain-artifact: public/build/zucchini.tar.xz
+
 linux64-upx:
     description: "UPX build"
     treeherder:
@@ -190,6 +209,7 @@ macosx64-xz:
         symbol: TM(xz)
     worker:
         max-run-time: 30000
+    use-python: system  # dependency of taskcluster python
     run:
         script: build-xz.sh
         toolchain-artifact: public/build/xz.tar.zst
@@ -200,16 +220,17 @@ macosx64-xz:
             - macosx64-clang-toolchain
             - macosx64-sdk-toolchain
 
-macosx64-custom-car:
-    description: "Custom chromium-as-release build for mac"
-    worker-type: b-osx-1015
+macosx-custom-car:
+    description: "Custom chromium-as-release build for mac (x64, cross compiled on arm)"
+    worker-type: b-osx-arm64
     attributes:
         cached_task: false
     treeherder:
         symbol: TM(custom-car)
+        tier: 2
     worker:
-        max-run-time: 40000
-    use-python: default
+        max-run-time: 50000
+    use-python: "3.11"
     run-on-projects: []
     run:
         script: build-custom-car.sh
@@ -233,19 +254,19 @@ macosx64-custom-car:
         toolchain-artifact: public/build/car_macosx.tar.zst
     fetches:
         toolchain:
-            - macosx64-sdk-14.4
+            - MacOSX15.4.sdk
 
 macosx-arm64-custom-car:
     description: "Custom chromium-as-release build for mac (apple silicon)"
-    worker-type: b-osx-1015
+    worker-type: b-osx-arm64
     attributes:
         cached_task: false
     treeherder:
         symbol: TM(custom-car-arm)
         tier: 2
     worker:
-        max-run-time: 50000
-    use-python: default
+        max-run-time: 40000
+    use-python: "3.11"
     run-on-projects: []
     run:
         script: build-custom-car.sh
@@ -269,7 +290,7 @@ macosx-arm64-custom-car:
         toolchain-artifact: public/build/car_macosx_arm.tar.zst
     fetches:
         toolchain:
-            - macosx64-sdk-14.4
+            - MacOSX15.4.sdk
 
 android-custom-car:
     description: "Custom chromium-as-release build for Android"
@@ -279,8 +300,8 @@ android-custom-car:
         symbol: TL(custom-car-android)
     worker:
         docker-image: {in-tree: custom-car-android}
-        max-run-time: 20000
-    use-python: default
+        max-run-time: 30000
+    use-python: "3.11"
     run-on-projects: []
     run:
         script: build-custom-car.sh
@@ -301,7 +322,6 @@ android-custom-car:
             target_os="android",
             is_android=true,
             is_high_end_android=true,
-            use_v8_context_snapshot=false,
             v8_symbol_level=0
         ]
         toolchain-artifact: public/build/car_android.tar.zst
@@ -314,8 +334,8 @@ linux64-custom-car:
         symbol: TL(custom-car)
     worker:
         docker-image: {in-tree: custom-car-linux}
-        max-run-time: 16200
-    use-python: default
+        max-run-time: 25000
+    use-python: "3.11"
     run-on-projects: []
     run:
         script: build-custom-car.sh
@@ -346,16 +366,15 @@ win64-custom-car:
         symbol: TW64(custom-car)
     worker-type: b-win2022
     worker:
-        max-run-time: 16200
+        max-run-time: 18000
         env:
             MSYSTEM: "MINGW64"
-    use-python: default
+    use-python: "3.11"
     run-on-projects: []
     run:
         script: build-custom-car.sh
         arguments: [
             car_win64.tar.zst,
-            blink_symbol_level=0,
             chrome_pgo_phase=2,
             dcheck_always_on=false,
             enable_nacl=false,
@@ -365,15 +384,14 @@ win64-custom-car:
             is_component_build=false,
             is_debug=false,
             is_official_build=true,
-            symbol_level=0,
+            symbol_level=2,
             target_cpu=\"x64\",
             use_v8_context_snapshot=false,
-            v8_symbol_level=0
         ]
         toolchain-artifact: public/build/car_win64.tar.zst
     fetches:
         toolchain:
-            - win64-vs2022
+            - win64-vs2022-car
 
 browsertime:
     description: "npm install browsertime node_modules"
@@ -387,6 +405,104 @@ browsertime:
             - 'tools/browsertime/package-lock.json'
             - 'tools/browsertime/mach_commands.py'
         toolchain-artifact: public/build/browsertime.tar.zst
+    fetches:
+        toolchain:
+            - linux64-node
+
+aboutwelcome-node-modules:
+    description: "npm install aboutwelcome node_modules"
+    treeherder:
+        symbol: TL(aboutwelcome-node)
+    run:
+        script: generic-node-modules.sh
+        arguments: ['aboutwelcome', 'browser/components/aboutwelcome/']
+        sparse-profile: null
+        resources:
+            - 'browser/components/aboutwelcome/package.json'
+            - 'browser/components/aboutwelcome/package-lock.json'
+        toolchain-artifact: public/build/aboutwelcome-node-modules.tar.zst
+    fetches:
+        toolchain:
+            - linux64-node
+
+asrouter-node-modules:
+    description: "npm install asrouter node_modules"
+    treeherder:
+        symbol: TL(asrouter-node)
+    run:
+        script: generic-node-modules.sh
+        arguments: ['asrouter', 'browser/components/asrouter/']
+        sparse-profile: null
+        resources:
+            - 'browser/components/asrouter/package.json'
+            - 'browser/components/asrouter/package-lock.json'
+        toolchain-artifact: public/build/asrouter-node-modules.tar.zst
+    fetches:
+        toolchain:
+            - linux64-node
+
+eslint-plugin-mozilla:
+    description: "npm install eslint-plugin-mozilla node_modules"
+    treeherder:
+        symbol: TL(epm)
+    run:
+        script: eslint-plugin-mozilla.sh
+        sparse-profile: null
+        resources:
+            - 'tools/lint/eslint/eslint-plugin-mozilla/package.json'
+            - 'tools/lint/eslint/eslint-plugin-mozilla/package-lock.json'
+        toolchain-artifact: public/build/eslint-plugin-mozilla.tar.zst
+    fetches:
+        toolchain:
+            - linux64-node
+
+stylelint-plugin-mozilla:
+    description: "npm install stylelint-plugin-mozilla node_modules"
+    treeherder:
+        symbol: TL(spm)
+    run:
+        script: stylelint-plugin-mozilla.sh
+        sparse-profile: null
+        resources:
+            - 'tools/lint/stylelint/stylelint-plugin-mozilla/package.json'
+            - 'tools/lint/stylelint/stylelint-plugin-mozilla/package-lock.json'
+        toolchain-artifact: public/build/stylelint-plugin-mozilla.tar.zst
+    fetches:
+        toolchain:
+            - linux64-node
+
+newtab-node-modules:
+    description: "npm install newtab node_modules"
+    treeherder:
+        symbol: TL(newtab-node)
+    run:
+        script: generic-node-modules.sh
+        arguments: ['newtab', 'browser/extensions/newtab/']
+        sparse-profile: null
+        resources:
+            - 'browser/extensions/newtab/package.json'
+            - 'browser/extensions/newtab/package-lock.json'
+        toolchain-artifact: public/build/newtab-node-modules.tar.zst
+    fetches:
+        toolchain:
+            - linux64-node
+
+node-modules:
+    description: "npm install top-level node_modules"
+    treeherder:
+        symbol: TL(node)
+    run:
+        script: node-modules.sh
+        sparse-profile: null
+        resources:
+            - 'package.json'
+            - 'package-lock.json'
+            - 'tools/lint/eslint/__init__.py'
+            - 'tools/lint/eslint/setup_helper.py'
+            - 'tools/lint/eslint/eslint-plugin-mozilla/package.json'
+            - 'tools/lint/eslint/eslint-plugin-mozilla/package-lock.json'
+            - 'tools/lint/eslint/eslint-plugin-spidermonkey-js/package.json'
+        toolchain-artifact: public/build/node-modules.tar.zst
     fetches:
         toolchain:
             - linux64-node
@@ -485,6 +601,24 @@ win64-mozmake:
         symbol: TW64(mozmake)
     run:
         script: build-mozmake.sh
+        arguments: ['x86_64-pc-windows-msvc']
+        toolchain-artifact: public/build/mozmake.tar.zst
+    fetches:
+        fetch:
+            - gnumake
+        toolchain:
+            - linux64-clang-toolchain
+            - vs-toolchain
+
+win64-aarch64-mozmake:
+    description: "mozmake for Windows"
+    attributes:
+        local-toolchain: true
+    treeherder:
+        symbol: TWA64(mozmake)
+    run:
+        script: build-mozmake.sh
+        arguments: ['aarch64-pc-windows-msvc']
         toolchain-artifact: public/build/mozmake.tar.zst
     fetches:
         fetch:
@@ -510,6 +644,23 @@ nsis:
             - linux64-clang-toolchain
             - sysroot-x86_64-linux-gnu
 
+win64-vs2022-car:
+    description: "VS 2022 toolchain with SDK 10.0.26100.x, for CaR builds"
+    attributes:
+        local-toolchain: true
+    treeherder:
+        symbol: TW64(msvc2022-car)
+    worker:
+        env:
+            MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE: system
+    run:
+        script: get_vs.py
+        arguments:
+            - build/vs/vs2022-car.yaml
+        resources:
+            - build/vs/vs2022-car.yaml
+        toolchain-artifact: project/gecko/vs/vs.tar.zst
+
 win64-vs2022:
     description: "VS 2022"
     attributes:
@@ -529,6 +680,24 @@ win64-vs2022:
         toolchain-alias:
             - vs
             - vs-toolchain
+
+win64-aarch64-vs2022:
+    description: "VS 2022"
+    attributes:
+        local-toolchain: true
+    treeherder:
+        symbol: TWA64(msvc2022)
+    worker:
+        env:
+            MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE: system
+    run:
+        script: get_vs.py
+        arguments:
+            - build/vs/vs2022-aarch64.yaml
+        resources:
+            - build/vs/vs2022-aarch64.yaml
+        toolchain-artifact: project/gecko/vs/vs.tar.zst
+        toolchain-alias: win64-aarch64-vs
 
 linux64-afl-instrumentation-4.0:
     description: "AFL++ instrumentation toolchain build"
@@ -603,20 +772,6 @@ win64-cmake:
             - linux64-clang-toolchain
             - vs-toolchain
 
-win64-libxml2:
-    description: "libxml2 toolchain build"
-    treeherder:
-        symbol: TW64(libxml2)
-    run:
-        script: build-libxml2.sh
-        toolchain-artifact: public/build/libxml2.tar.zst
-    fetches:
-        fetch:
-            - libxml2
-        toolchain:
-            - linux64-clang-toolchain
-            - vs-toolchain
-
 talos-pdfs:
     description: "Gathers all the PDFs needed for the pdfpaint test"
     attributes:
@@ -634,3 +789,41 @@ talos-pdfs:
     fetches:
         fetch:
             - mozilla-pdf.js
+
+win64-dxc:
+    description: "DirectX Shader Compiler (x86_64)"
+    attributes:
+        local-toolchain: true
+    treeherder:
+        symbol: TW64(dxc)
+    run:
+        script: build-dxc.sh
+        arguments:
+            - "x86_64"
+        toolchain-artifact: public/build/dxc-x86_64-pc-windows-msvc.tar.zst
+        toolchain-alias: dxc-x86_64-pc-windows-msvc
+    fetches:
+        toolchain:
+            - linux64-clang-toolchain
+            - vs-toolchain
+        fetch:
+            - dxc-src
+
+win64-aarch64-dxc:
+    description: "DirectX Shader Compiler (aarch64)"
+    attributes:
+        local-toolchain: true
+    treeherder:
+        symbol: TWA64(dxc)
+    run:
+        script: build-dxc.sh
+        arguments:
+            - "aarch64"
+        toolchain-artifact: public/build/dxc-aarch64-pc-windows-msvc.tar.zst
+        toolchain-alias: dxc-aarch64-pc-windows-msvc
+    fetches:
+        toolchain:
+            - linux64-clang-toolchain
+            - vs-toolchain
+        fetch:
+            - dxc-src

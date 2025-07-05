@@ -8,11 +8,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import org.junit.Before
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.mozilla.fenix.components.toolbar.navbar.BottomToolbarContainerIntegration
-import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 
-@RunWith(FenixRobolectricTestRunner::class)
 class BottomToolbarContainerIntegrationTest {
     private lateinit var feature: BottomToolbarContainerIntegration
 
@@ -21,8 +17,6 @@ class BottomToolbarContainerIntegrationTest {
         feature = BottomToolbarContainerIntegration(
             toolbar = mockk(),
             store = mockk(),
-            appStore = mockk(),
-            bottomToolbarContainerView = mockk(),
             sessionId = null,
         ).apply {
             toolbarController = mockk(relaxed = true)

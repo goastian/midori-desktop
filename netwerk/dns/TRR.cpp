@@ -16,6 +16,7 @@
 #include "nsIIOService.h"
 #include "nsIInputStream.h"
 #include "nsIObliviousHttp.h"
+#include "nsIOService.h"
 #include "nsISupports.h"
 #include "nsISupportsUtils.h"
 #include "nsITimedChannel.h"
@@ -35,21 +36,22 @@
 #include "mozilla/Base64.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Logging.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/StaticPrefs_network.h"
+#include "mozilla/glean/NetwerkDnsMetrics.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Tokenizer.h"
 #include "mozilla/UniquePtr.h"
 // Put DNSLogging.h at the end to avoid LOG being overwritten by other headers.
 #include "DNSLogging.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/NetwerkMetrics.h"
 
 namespace mozilla {
 namespace net {
 
-NS_IMPL_ISUPPORTS(TRR, nsIHttpPushListener, nsIInterfaceRequestor,
-                  nsIStreamListener, nsIRunnable, nsITimerCallback)
+NS_IMPL_ISUPPORTS_INHERITED(TRR, Runnable, nsIStreamListener, nsITimerCallback)
 
 // when firing off a normal A or AAAA query
 TRR::TRR(AHostResolver* aResolver, nsHostRecord* aRec, enum TrrType aType)
@@ -75,13 +77,6 @@ TRR::TRR(AHostResolver* aResolver, nsHostRecord* aRec, nsCString& aHost,
       mPB(aPB),
       mCnameLoop(aLoopCount),
       mOriginSuffix(aRec ? aRec->originSuffix : ""_ns) {
-  MOZ_DIAGNOSTIC_ASSERT(XRE_IsParentProcess() || XRE_IsSocketProcess(),
-                        "TRR must be in parent or socket process");
-}
-
-// used on push
-TRR::TRR(AHostResolver* aResolver, bool aPB)
-    : mozilla::Runnable("TRR"), mHostResolver(aResolver), mPB(aPB) {
   MOZ_DIAGNOSTIC_ASSERT(XRE_IsParentProcess() || XRE_IsSocketProcess(),
                         "TRR must be in parent or socket process");
 }
@@ -302,9 +297,6 @@ nsresult TRR::SendHTTPRequest() {
   channel->SetLoadFlags(loadFlags);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  rv = channel->SetNotificationCallbacks(this);
-  NS_ENSURE_SUCCESS(rv, rv);
-
   nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(channel);
   if (!httpChannel) {
     return NS_ERROR_UNEXPECTED;
@@ -350,7 +342,7 @@ nsresult TRR::SendHTTPRequest() {
         LOG(("TRR::SendHTTPRequest use conn info:%s\n",
              trrConnInfo->HashKey().get()));
       } else {
-        MOZ_DIAGNOSTIC_ASSERT(false);
+        MOZ_DIAGNOSTIC_CRASH("host not equal to trrConnInfo origin");
       }
     } else {
       TRRService::Get()->InitTRRConnectionInfo();
@@ -388,9 +380,8 @@ nsresult TRR::SendHTTPRequest() {
 
   // If the asyncOpen succeeded we can say that we actually attempted to
   // use the TRR connection.
-  RefPtr<AddrHostRecord> addrRec = do_QueryObject(mRec);
-  if (addrRec) {
-    addrRec->mResolverType = ResolverType();
+  if (mRec) {
+    mRec->mResolverType = ResolverType();
   }
 
   NS_NewTimerWithCallback(
@@ -439,185 +430,7 @@ nsresult TRR::SetupTRRServiceChannelInternal(nsIHttpChannel* aChannel,
     LOG(("TRR::SetupTRRServiceChannelInternal: couldn't set content-type!\n"));
   }
 
-  nsCOMPtr<nsITimedChannel> timedChan(do_QueryInterface(httpChannel));
-  if (timedChan) {
-    timedChan->SetTimingEnabled(true);
-  }
-
   return NS_OK;
-}
-
-NS_IMETHODIMP
-TRR::GetInterface(const nsIID& iid, void** result) {
-  if (!iid.Equals(NS_GET_IID(nsIHttpPushListener))) {
-    return NS_ERROR_NO_INTERFACE;
-  }
-
-  nsCOMPtr<nsIHttpPushListener> copy(this);
-  *result = copy.forget().take();
-  return NS_OK;
-}
-
-nsresult TRR::DohDecodeQuery(const nsCString& query, nsCString& host,
-                             enum TrrType& type) {
-  FallibleTArray<uint8_t> binary;
-  bool found_dns = false;
-  LOG(("TRR::DohDecodeQuery %s!\n", query.get()));
-
-  // extract "dns=" from the query string
-  nsAutoCString data;
-  for (const nsACString& token :
-       nsCCharSeparatedTokenizer(query, '&').ToRange()) {
-    nsDependentCSubstring dns = Substring(token, 0, 4);
-    nsAutoCString check(dns);
-    if (check.Equals("dns=")) {
-      nsDependentCSubstring q = Substring(token, 4, -1);
-      data = q;
-      found_dns = true;
-      break;
-    }
-  }
-  if (!found_dns) {
-    LOG(("TRR::DohDecodeQuery no dns= in pushed URI query string\n"));
-    return NS_ERROR_ILLEGAL_VALUE;
-  }
-
-  nsresult rv =
-      Base64URLDecode(data, Base64URLDecodePaddingPolicy::Ignore, binary);
-  NS_ENSURE_SUCCESS(rv, rv);
-  uint32_t avail = binary.Length();
-  if (avail < 12) {
-    return NS_ERROR_FAILURE;
-  }
-  // check the query bit and the opcode
-  if ((binary[2] & 0xf8) != 0) {
-    return NS_ERROR_FAILURE;
-  }
-  uint32_t qdcount = (binary[4] << 8) + binary[5];
-  if (!qdcount) {
-    return NS_ERROR_FAILURE;
-  }
-
-  uint32_t index = 12;
-  uint32_t length = 0;
-  host.Truncate();
-  do {
-    if (avail < (index + 1)) {
-      return NS_ERROR_UNEXPECTED;
-    }
-
-    length = binary[index];
-    if (length) {
-      if (host.Length()) {
-        host.Append(".");
-      }
-      if (avail < (index + 1 + length)) {
-        return NS_ERROR_UNEXPECTED;
-      }
-      host.Append((const char*)(&binary[0]) + index + 1, length);
-    }
-    index += 1 + length;  // skip length byte + label
-  } while (length);
-
-  LOG(("TRR::DohDecodeQuery host %s\n", host.get()));
-
-  if (avail < (index + 2)) {
-    return NS_ERROR_UNEXPECTED;
-  }
-  uint16_t i16 = 0;
-  i16 += binary[index] << 8;
-  i16 += binary[index + 1];
-  type = (enum TrrType)i16;
-
-  LOG(("TRR::DohDecodeQuery type %d\n", (int)type));
-
-  return NS_OK;
-}
-
-nsresult TRR::ReceivePush(nsIHttpChannel* pushed, nsHostRecord* pushedRec) {
-  if (!mHostResolver) {
-    return NS_ERROR_UNEXPECTED;
-  }
-
-  LOG(("TRR::ReceivePush: PUSH incoming!\n"));
-
-  nsCOMPtr<nsIURI> uri;
-  pushed->GetURI(getter_AddRefs(uri));
-  nsAutoCString query;
-  if (uri) {
-    uri->GetQuery(query);
-  }
-
-  if (NS_FAILED(DohDecodeQuery(query, mHost, mType)) ||
-      HostIsIPLiteral(mHost)) {  // literal
-    LOG(("TRR::ReceivePush failed to decode %s\n", mHost.get()));
-    return NS_ERROR_UNEXPECTED;
-  }
-
-  if ((mType != TRRTYPE_A) && (mType != TRRTYPE_AAAA) &&
-      (mType != TRRTYPE_TXT) && (mType != TRRTYPE_HTTPSSVC)) {
-    LOG(("TRR::ReceivePush unknown type %d\n", mType));
-    return NS_ERROR_UNEXPECTED;
-  }
-
-  if (TRRService::Get()->IsExcludedFromTRR(mHost)) {
-    return NS_ERROR_FAILURE;
-  }
-
-  uint32_t type = nsIDNSService::RESOLVE_TYPE_DEFAULT;
-  if (mType == TRRTYPE_TXT) {
-    type = nsIDNSService::RESOLVE_TYPE_TXT;
-  } else if (mType == TRRTYPE_HTTPSSVC) {
-    type = nsIDNSService::RESOLVE_TYPE_HTTPSSVC;
-  }
-
-  RefPtr<nsHostRecord> hostRecord;
-  nsresult rv;
-  rv = mHostResolver->GetHostRecord(
-      mHost, ""_ns, type, pushedRec->flags, pushedRec->af, pushedRec->pb,
-      pushedRec->originSuffix, getter_AddRefs(hostRecord));
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  // Since we don't ever call nsHostResolver::NameLookup for this record,
-  // we need to copy the trr mode from the previous record
-  if (hostRecord->mEffectiveTRRMode == nsIRequest::TRR_DEFAULT_MODE) {
-    hostRecord->mEffectiveTRRMode =
-        static_cast<nsIRequest::TRRMode>(pushedRec->mEffectiveTRRMode);
-  }
-
-  rv = mHostResolver->TrrLookup_unlocked(hostRecord, this);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  rv = pushed->AsyncOpen(this);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  // OK!
-  mChannel = pushed;
-  mRec.swap(hostRecord);
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-TRR::OnPush(nsIHttpChannel* associated, nsIHttpChannel* pushed) {
-  LOG(("TRR::OnPush entry\n"));
-  MOZ_ASSERT(associated == mChannel);
-  if (!mRec) {
-    return NS_ERROR_FAILURE;
-  }
-  if (!UseDefaultServer()) {
-    return NS_ERROR_FAILURE;
-  }
-
-  RefPtr<TRR> trr = new TRR(mHostResolver, mPB);
-  trr->SetPurpose(mPurpose);
-  return trr->ReceivePush(pushed, mRec);
 }
 
 NS_IMETHODIMP
@@ -628,7 +441,9 @@ TRR::OnStartRequest(nsIRequest* aRequest) {
   aRequest->GetStatus(&status);
 
   if (NS_FAILED(status)) {
-    if (NS_IsOffline()) {
+    if (gIOService->InSleepMode()) {
+      RecordReason(TRRSkippedReason::TRR_SYSTEM_SLEEP_MODE);
+    } else if (NS_IsOffline()) {
       RecordReason(TRRSkippedReason::TRR_BROWSER_IS_OFFLINE);
     }
 
@@ -755,6 +570,23 @@ void TRR::StoreIPHintAsDNSRecord(const struct SVCB& aSVCBRecord) {
 }
 
 nsresult TRR::ReturnData(nsIChannel* aChannel) {
+  Maybe<TimeDuration> trrFetchDuration;
+  Maybe<TimeDuration> trrFetchDurationNetworkOnly;
+  // Set timings.
+  nsCOMPtr<nsITimedChannel> timedChan = do_QueryInterface(aChannel);
+  if (timedChan) {
+    TimeStamp asyncOpen, start, end;
+    if (NS_SUCCEEDED(timedChan->GetAsyncOpen(&asyncOpen)) &&
+        !asyncOpen.IsNull()) {
+      trrFetchDuration = Some(TimeStamp::Now() - asyncOpen);
+    }
+    if (NS_SUCCEEDED(timedChan->GetRequestStart(&start)) &&
+        NS_SUCCEEDED(timedChan->GetResponseEnd(&end)) && !start.IsNull() &&
+        !end.IsNull()) {
+      trrFetchDurationNetworkOnly = Some(end - start);
+    }
+  }
+
   if (mType != TRRTYPE_TXT && mType != TRRTYPE_HTTPSSVC) {
     // create and populate an AddrInfo instance to pass on
     RefPtr<AddrInfo> ai(new AddrInfo(mHost, ResolverType(), mType,
@@ -762,21 +594,12 @@ nsresult TRR::ReturnData(nsIChannel* aChannel) {
     auto builder = ai->Build();
     builder.SetAddresses(std::move(mDNS.mAddresses));
     builder.SetCanonicalHostname(mCname);
-
-    // Set timings.
-    nsCOMPtr<nsITimedChannel> timedChan = do_QueryInterface(aChannel);
-    if (timedChan) {
-      TimeStamp asyncOpen, start, end;
-      if (NS_SUCCEEDED(timedChan->GetAsyncOpen(&asyncOpen)) &&
-          !asyncOpen.IsNull()) {
-        builder.SetTrrFetchDuration(
-            (TimeStamp::Now() - asyncOpen).ToMilliseconds());
-      }
-      if (NS_SUCCEEDED(timedChan->GetRequestStart(&start)) &&
-          NS_SUCCEEDED(timedChan->GetResponseEnd(&end)) && !start.IsNull() &&
-          !end.IsNull()) {
-        builder.SetTrrFetchDurationNetworkOnly((end - start).ToMilliseconds());
-      }
+    if (trrFetchDuration) {
+      builder.SetTrrFetchDuration((*trrFetchDuration).ToMilliseconds());
+    }
+    if (trrFetchDurationNetworkOnly) {
+      builder.SetTrrFetchDurationNetworkOnly(
+          (*trrFetchDurationNetworkOnly).ToMilliseconds());
     }
     ai = builder.Finish();
 
@@ -792,6 +615,29 @@ nsresult TRR::ReturnData(nsIChannel* aChannel) {
     RecordReason(TRRSkippedReason::TRR_OK);
     (void)mHostResolver->CompleteLookupByType(mRec, NS_OK, mResult,
                                               mTRRSkippedReason, mTTL, mPB);
+  }
+
+  nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aChannel);
+  if (httpChannel) {
+    nsAutoCString version;
+    if (NS_SUCCEEDED(httpChannel->GetProtocolVersion(version))) {
+      nsAutoCString key("h1"_ns);
+      if (version.Equals("h3"_ns)) {
+        key.Assign("h3"_ns);
+      } else if (version.Equals("h2"_ns)) {
+        key.Assign("h2"_ns);
+      }
+
+      if (trrFetchDuration) {
+        glean::networking::trr_fetch_duration.Get(key).AccumulateRawDuration(
+            *trrFetchDuration);
+      }
+      if (trrFetchDurationNetworkOnly) {
+        key.Append("_network_only"_ns);
+        glean::networking::trr_fetch_duration.Get(key).AccumulateRawDuration(
+            *trrFetchDurationNetworkOnly);
+      }
+    }
   }
   return NS_OK;
 }
@@ -912,9 +758,11 @@ nsresult TRR::FollowCname(nsIChannel* aChannel) {
 nsresult TRR::On200Response(nsIChannel* aChannel) {
   // decode body and create an AddrInfo struct for the response
   nsClassHashtable<nsCStringHashKey, DOHresp> additionalRecords;
-  RefPtr<TypeHostRecord> typeRec = do_QueryObject(mRec);
-  if (typeRec && typeRec->mOriginHost) {
-    GetOrCreateDNSPacket()->SetOriginHost(typeRec->mOriginHost);
+  if (RefPtr<TypeHostRecord> typeRec = do_QueryObject(mRec)) {
+    MutexAutoLock lock(typeRec->mResultsLock);
+    if (typeRec->mOriginHost) {
+      GetOrCreateDNSPacket()->SetOriginHost(typeRec->mOriginHost);
+    }
   }
   nsresult rv = GetOrCreateDNSPacket()->Decode(
       mHost, mType, mCname, StaticPrefs::network_trr_allow_rfc1918(), mDNS,
@@ -961,7 +809,7 @@ void TRR::RecordProcessingTime(nsIChannel* aChannel) {
     return;
   }
 
-  Telemetry::AccumulateTimeDelta(Telemetry::DNS_TRR_PROCESSING_TIME, end);
+  glean::dns::trr_processing_time.AccumulateRawDuration(TimeStamp::Now() - end);
 
   LOG(("Processing DoH response took %f ms",
        (TimeStamp::Now() - end).ToMilliseconds()));

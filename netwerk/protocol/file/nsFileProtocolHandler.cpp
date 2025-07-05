@@ -151,8 +151,8 @@ nsFileProtocolHandler::ReadShellLink(nsIFile* aFile, nsIURI** aURI) {
     return NS_ERROR_FAILURE;
   }
   nsCOMPtr<nsIFile> linkedFile;
-  MOZ_TRY(NS_NewLocalFile(nsDependentString(lpTemp), false,
-                          getter_AddRefs(linkedFile)));
+  MOZ_TRY(
+      NS_NewLocalFile(nsDependentString(lpTemp), getter_AddRefs(linkedFile)));
   return NS_NewFileURI(aURI, linkedFile);
 #else
   return NS_ERROR_NOT_AVAILABLE;
@@ -175,6 +175,17 @@ nsFileProtocolHandler::NewChannel(nsIURI* uri, nsILoadInfo* aLoadInfo,
     chan = new mozilla::net::FileChannelChild(uri);
   } else {
     chan = new nsFileChannel(uri);
+  }
+
+  // file URLs with hostnames should be considered an error
+  // Before bug 1507354 file URLs ignored the host part. So we intentionally
+  // fail the channel if the file URL has a host to prevent any security issues
+  // that might arise.
+  nsAutoCString host;
+  rv = uri->GetHost(host);
+  NS_ENSURE_SUCCESS(rv, rv);
+  if (NS_WARN_IF(!host.IsEmpty())) {
+    return NS_ERROR_FAILURE;
   }
 
   // set the loadInfo on the new channel ; must do this

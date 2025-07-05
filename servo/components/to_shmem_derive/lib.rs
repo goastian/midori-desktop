@@ -4,20 +4,10 @@
 
 #![recursion_limit = "128"]
 
-#[macro_use]
-extern crate darling;
-extern crate derive_common;
-extern crate proc_macro;
-extern crate proc_macro2;
-#[macro_use]
-extern crate quote;
-#[macro_use]
-extern crate syn;
-extern crate synstructure;
-
 use proc_macro::TokenStream;
 
 mod to_shmem;
+mod util;
 
 #[proc_macro_derive(ToShmem, attributes(shmem))]
 pub fn derive_to_shmem(stream: TokenStream) -> TokenStream {

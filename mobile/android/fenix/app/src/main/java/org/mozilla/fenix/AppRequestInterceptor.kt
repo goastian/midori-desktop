@@ -6,12 +6,14 @@ package org.mozilla.fenix
 
 import android.content.Context
 import android.net.ConnectivityManager
+import androidx.annotation.VisibleForTesting
 import androidx.core.content.getSystemService
 import androidx.navigation.NavController
 import mozilla.components.browser.errorpages.ErrorPages
 import mozilla.components.browser.errorpages.ErrorType
 import mozilla.components.concept.engine.EngineSession
 import mozilla.components.concept.engine.request.RequestInterceptor
+import mozilla.components.support.utils.ext.isContentUrl
 import org.mozilla.fenix.GleanMetrics.ErrorPage
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.isOnline
@@ -57,11 +59,16 @@ class AppRequestInterceptor(
         session: EngineSession,
         errorType: ErrorType,
         uri: String?,
-    ): RequestInterceptor.ErrorResponse? {
+    ): RequestInterceptor.ErrorResponse {
         val improvedErrorType = improveErrorType(errorType)
         val riskLevel = getRiskLevel(improvedErrorType)
 
         ErrorPage.visitedError.record(ErrorPage.VisitedErrorExtra(improvedErrorType.name))
+
+        // Record additional telemetry for content URI not found
+        if (uri?.isContentUrl() == true && improvedErrorType == ErrorType.ERROR_FILE_NOT_FOUND) {
+            ErrorPage.visitedError.record(ErrorPage.VisitedErrorExtra(errorType = "ERROR_CONTENT_URI_NOT_FOUND"))
+        }
 
         val errorPageUri = ErrorPages.createUrlEncodedErrorPage(
             context = context,
@@ -83,14 +90,20 @@ class AppRequestInterceptor(
         // This is not an ideal solution. For context, see:
         // https://github.com/mozilla-mobile/android-components/pull/5068#issuecomment-558415367
 
-        val isConnected: Boolean = context.getSystemService<ConnectivityManager>()!!.isOnline()
-
         return when {
-            errorType == ErrorType.ERROR_UNKNOWN_HOST && !isConnected -> ErrorType.ERROR_NO_INTERNET
+            errorType == ErrorType.ERROR_UNKNOWN_HOST && !isConnected() -> ErrorType.ERROR_NO_INTERNET
             errorType == ErrorType.ERROR_HTTPS_ONLY -> ErrorType.ERROR_HTTPS_ONLY
             else -> errorType
         }
     }
+
+    /**
+     * Checks for network availability.
+     *
+     * */
+    @VisibleForTesting
+    internal fun isConnected(): Boolean =
+        context.getSystemService<ConnectivityManager>()!!.isOnline()
 
     private fun getRiskLevel(errorType: ErrorType): RiskLevel = when (errorType) {
         ErrorType.UNKNOWN,

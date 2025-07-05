@@ -16,13 +16,9 @@ interface ARIASelector {
 }
 
 const isKnownAttribute = (
-  attribute: string
+  attribute: string,
 ): attribute is keyof ARIASelector => {
   return ['name', 'role'].includes(attribute);
-};
-
-const normalizeValue = (value: string): string => {
-  return value.replace(/ +/g, ' ').trim();
 };
 
 /**
@@ -39,21 +35,24 @@ const normalizeValue = (value: string): string => {
 const ATTRIBUTE_REGEXP =
   /\[\s*(?<attribute>\w+)\s*=\s*(?<quote>"|')(?<value>\\.|.*?(?=\k<quote>))\k<quote>\s*\]/g;
 const parseARIASelector = (selector: string): ARIASelector => {
+  if (selector.length > 10_000) {
+    throw new Error(`Selector ${selector} is too long`);
+  }
+
   const queryOptions: ARIASelector = {};
   const defaultName = selector.replace(
     ATTRIBUTE_REGEXP,
     (_, attribute, __, value) => {
-      attribute = attribute.trim();
       assert(
         isKnownAttribute(attribute),
-        `Unknown aria attribute "${attribute}" in selector`
+        `Unknown aria attribute "${attribute}" in selector`,
       );
-      queryOptions[attribute] = normalizeValue(value);
+      queryOptions[attribute] = value;
       return '';
-    }
+    },
   );
   if (defaultName && !queryOptions.name) {
-    queryOptions.name = normalizeValue(defaultName);
+    queryOptions.name = defaultName;
   }
   return queryOptions;
 };
@@ -65,14 +64,14 @@ export class ARIAQueryHandler extends QueryHandler {
   static override querySelector: QuerySelector = async (
     node,
     selector,
-    {ariaQuerySelector}
+    {ariaQuerySelector},
   ) => {
     return await ariaQuerySelector(node, selector);
   };
 
   static override async *queryAll(
     element: ElementHandle<Node>,
-    selector: string
+    selector: string,
   ): AwaitableIterable<ElementHandle<Node>> {
     const {name, role} = parseARIASelector(selector);
     yield* element.queryAXTree(name, role);
@@ -80,7 +79,7 @@ export class ARIAQueryHandler extends QueryHandler {
 
   static override queryOne = async (
     element: ElementHandle<Node>,
-    selector: string
+    selector: string,
   ): Promise<ElementHandle<Node> | null> => {
     return (
       (await AsyncIterableUtil.first(this.queryAll(element, selector))) ?? null

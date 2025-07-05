@@ -1,13 +1,22 @@
 package org.mozilla.geckoview.test
 
 import android.os.SystemClock
+import android.view.InputDevice
 import android.view.MotionEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
-import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
+import org.hamcrest.Matchers.closeTo
+import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.greaterThan
+import org.hamcrest.Matchers.greaterThanOrEqualTo
+import org.hamcrest.Matchers.lessThan
+import org.hamcrest.Matchers.lessThanOrEqualTo
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.GeckoSession
+import org.mozilla.geckoview.GeckoSession.CompositorScrollDelegate
+import org.mozilla.geckoview.GeckoSession.ScrollPositionUpdate
 import org.mozilla.geckoview.PanZoomController
 import org.mozilla.geckoview.ScreenLength
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.WithDisplay
@@ -642,6 +651,39 @@ class PanZoomControllerTest : BaseSessionTest() {
         return result
     }
 
+    private fun pan(startY: Float, endY: Float) {
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_DOWN,
+            50f,
+            startY,
+            0,
+        )
+        mainSession.panZoomController.onTouchEvent(down)
+
+        val move = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_MOVE,
+            50f,
+            endY,
+            0,
+        )
+        mainSession.panZoomController.onTouchEvent(move)
+
+        val up = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_UP,
+            50f,
+            endY,
+            0,
+        )
+        mainSession.panZoomController.onTouchEvent(up)
+    }
+
     @WithDisplay(width = 100, height = 100)
     @Test
     fun dontCrashDuringFastFling() {
@@ -679,5 +721,257 @@ class PanZoomControllerTest : BaseSessionTest() {
         // Touch handler with preventDefault
         val value = sessionRule.waitForResult(sendDownEvent(50f, 45f))
         assertThat("Value should match", value, equalTo(PanZoomController.INPUT_RESULT_HANDLED_CONTENT))
+    }
+
+    @WithDisplay(width = 100, height = 100)
+    @Test
+    fun compositorScrollDelegate() {
+        // Reduce touch start tolerance to ensure our touch scroll
+        // gestures cause scrolling
+        sessionRule.setPrefsUntilTestEnd(
+            mapOf(
+                "apz.touch_start_tolerance" to "0.01",
+            ),
+        )
+
+        // Load a simple vertically scrollable page
+        // Query its maximum vertical scroll position for later use
+        setupDocument(SIMPLE_SCROLL_TEST_PATH)
+        val scrollMaxY = (mainSession.evaluateJS("window.scrollMaxY") as Double).toFloat()
+
+        // Set up a CompositorScrollDelegate that appends all updates to
+        // a local list
+        val updates: MutableList<ScrollPositionUpdate> = mutableListOf()
+        mainSession.setCompositorScrollDelegate(object : CompositorScrollDelegate {
+            override fun onScrollChanged(session: GeckoSession, update: ScrollPositionUpdate) {
+                updates.add(update)
+            }
+        })
+
+        val fuzzyEqual = { a: Float, b: Float -> Math.abs(a - b) <= 1.0 }
+
+        // Scroll down to the bottom using touch gestures, and check
+        // that the expected scroll updates are reported
+        while (updates.size == 0 || !fuzzyEqual(updates[updates.size - 1].scrollY, scrollMaxY)) {
+            pan(25f, 15f)
+            mainSession.flushApzRepaints()
+        }
+        for (i in 0 until updates.size - 1) {
+            assertThat(
+                "scroll position is increasing",
+                updates[i].scrollY,
+                lessThanOrEqualTo(updates[i + 1].scrollY),
+            )
+            assertThat(
+                "scroll source is reported correctly for user scroll (${updates[i].scrollY} to ${updates[i + 1].scrollY})",
+                updates[i + 1].source,
+                equalTo(ScrollPositionUpdate.SOURCE_USER_INTERACTION),
+            )
+        }
+
+        updates.clear()
+
+        // Scroll back up to the top using script, and check that
+        // the expected scroll updates are reported
+        while (updates.size == 0 || !fuzzyEqual(updates[updates.size - 1].scrollY, 0.0f)) {
+            mainSession.evaluateJS("window.scrollBy(0, -10)")
+            mainSession.flushApzRepaints()
+        }
+        for (i in 0 until updates.size - 1) {
+            assertThat(
+                "scroll position is decreasing",
+                updates[i].scrollY,
+                greaterThanOrEqualTo(updates[i + 1].scrollY),
+            )
+            assertThat(
+                "scroll source is reported correctly for script scroll (${updates[i].scrollY} to ${updates[i + 1].scrollY})",
+                updates[i + 1].source,
+                equalTo(ScrollPositionUpdate.SOURCE_OTHER),
+            )
+        }
+
+        // Clean up
+        mainSession.setCompositorScrollDelegate(null)
+    }
+
+    @WithDisplay(width = 100, height = 100)
+    @Test
+    fun stylusTilt() {
+        setupDocument(TOUCH_HTML_PATH)
+
+        val tiltX = mainSession.evaluatePromiseJS(
+            """
+            new Promise(resolve =>
+                document.documentElement.addEventListener(
+                    "pointerdown",
+                    e => resolve(e.tiltX),
+                    { once: true }))
+            """.trimIndent(),
+        )
+        val tiltY = mainSession.evaluatePromiseJS(
+            """
+            new Promise(resolve =>
+                document.documentElement.addEventListener(
+                    "pointerup",
+                    e => resolve(e.tiltY),
+                    { once: true }))
+            """.trimIndent(),
+        )
+
+        val pointerProperties = arrayOf(MotionEvent.PointerProperties())
+        pointerProperties[0].id = 0
+        pointerProperties[0].toolType = MotionEvent.TOOL_TYPE_STYLUS
+
+        val pointerCoords = arrayOf(
+            MotionEvent.PointerCoords().apply {
+                x = 50.0f
+                y = 50.0f
+                pressure = 1.0f
+                size = 1.0f
+                pressure = 1.0f
+                orientation = 0.0f
+                setAxisValue(MotionEvent.AXIS_TILT, (Math.PI / 4).toFloat()) // 45 deg
+            },
+        )
+
+        val source = (InputDevice.SOURCE_TOUCHSCREEN or InputDevice.SOURCE_STYLUS)
+        val downTime = SystemClock.uptimeMillis()
+        val down = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_DOWN,
+            1,
+            pointerProperties,
+            pointerCoords,
+            0,
+            0,
+            0.0f,
+            0.0f,
+            0,
+            0,
+            source,
+            0,
+        )
+        mainSession.panZoomController.onTouchEvent(down)
+
+        assertThat(
+            "The tiltX of pointerdown should be 0deg",
+            tiltX.value,
+            equalTo(0.0),
+        )
+
+        val up = MotionEvent.obtain(
+            downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_UP,
+            1,
+            pointerProperties,
+            pointerCoords,
+            0,
+            0,
+            0.0f,
+            0.0f,
+            0,
+            0,
+            source,
+            0,
+        )
+        mainSession.panZoomController.onTouchEvent(up)
+
+        assertThat(
+            "The tiltY of pointerup should be 45deg",
+            tiltY.value,
+            equalTo(45.0),
+        )
+    }
+
+    @WithDisplay(width = 100, height = 100)
+    @Test
+    fun pointerTypeOnPointerEvent() {
+        setupDocument(TOUCH_HTML_PATH)
+
+        for (pointerType in listOf("pen", "touch")) {
+            val pointerTypeDown = mainSession.evaluatePromiseJS(
+                """
+                new Promise(resolve =>
+                    document.documentElement.addEventListener(
+                        "pointerdown",
+                        e => resolve(e.pointerType),
+                        { once: true }))
+                """.trimIndent(),
+            )
+            val pointerTypeUp = mainSession.evaluatePromiseJS(
+                """
+                new Promise(resolve =>
+                    document.documentElement.addEventListener(
+                        "pointerup",
+                        e => resolve(e.pointerType),
+                        { once: true }))
+                """.trimIndent(),
+            )
+
+            val pointerProperties = arrayOf(MotionEvent.PointerProperties())
+            pointerProperties[0].id = 0
+            pointerProperties[0].toolType = when (pointerType) {
+                "pen" -> MotionEvent.TOOL_TYPE_STYLUS
+                else -> MotionEvent.TOOL_TYPE_FINGER
+            }
+
+            val pointerCoords = arrayOf(MotionEvent.PointerCoords())
+            pointerCoords[0].x = 50.0f
+            pointerCoords[0].y = 50.0f
+            pointerCoords[0].pressure = 1.0f
+            pointerCoords[0].size = 1.0f
+
+            val source = (InputDevice.SOURCE_TOUCHSCREEN or InputDevice.SOURCE_STYLUS)
+            val downTime = SystemClock.uptimeMillis()
+            val down = MotionEvent.obtain(
+                downTime,
+                SystemClock.uptimeMillis(),
+                MotionEvent.ACTION_DOWN,
+                1,
+                pointerProperties,
+                pointerCoords,
+                0,
+                0,
+                0.0f,
+                0.0f,
+                0,
+                0,
+                source,
+                0,
+            )
+            mainSession.panZoomController.onTouchEvent(down)
+
+            assertThat(
+                "The pointerType of pointerdown should be pen or touch by MotionEvent",
+                pointerTypeDown.value,
+                equalTo(pointerType),
+            )
+
+            val up = MotionEvent.obtain(
+                downTime,
+                SystemClock.uptimeMillis(),
+                MotionEvent.ACTION_UP,
+                1,
+                pointerProperties,
+                pointerCoords,
+                0,
+                0,
+                0.0f,
+                0.0f,
+                0,
+                0,
+                source,
+                0,
+            )
+            mainSession.panZoomController.onTouchEvent(up)
+
+            assertThat(
+                "The pointerType of pointerup should be pen or touch by MotionEvent",
+                pointerTypeUp.value,
+                equalTo(pointerType),
+            )
+        }
     }
 }

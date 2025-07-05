@@ -11,6 +11,7 @@ import android.content.ClipboardManager.OnPrimaryClipChangedListener;
 import android.content.Context;
 import android.content.res.AssetFileDescriptor;
 import android.os.Build;
+import android.os.PersistableBundle;
 import android.text.TextUtils;
 import android.util.Log;
 import java.io.ByteArrayOutputStream;
@@ -28,6 +29,7 @@ public final class Clipboard {
 
   private static OnPrimaryClipChangedListener sClipboardChangedListener = null;
   private static final AtomicLong sClipboardSequenceNumber = new AtomicLong();
+  private static final AtomicLong sClipboardTimestamp = new AtomicLong();
 
   private Clipboard() {}
 
@@ -133,8 +135,9 @@ public final class Clipboard {
    * @return true if copy is successful.
    */
   @WrapForJNI(calledFrom = "gecko")
-  public static boolean setText(final Context context, final CharSequence text) {
-    return setData(context, ClipData.newPlainText("text", text));
+  public static boolean setText(
+      final Context context, final CharSequence text, final boolean isPrivateData) {
+    return setData(context, ClipData.newPlainText("text", text), isPrivateData);
   }
 
   /**
@@ -147,8 +150,11 @@ public final class Clipboard {
    */
   @WrapForJNI(calledFrom = "gecko")
   private static boolean setHTML(
-      final Context context, final CharSequence text, final String htmlText) {
-    return setData(context, ClipData.newHtmlText("html", text, htmlText));
+      final Context context,
+      final CharSequence text,
+      final String htmlText,
+      final boolean isPrivateData) {
+    return setData(context, ClipData.newHtmlText("html", text, htmlText), isPrivateData);
   }
 
   /**
@@ -158,11 +164,24 @@ public final class Clipboard {
    * @param clipData a {@link android.content.ClipData} to set to clipboard
    * @return true if copy is successful.
    */
-  private static boolean setData(final Context context, final ClipData clipData) {
+  private static boolean setData(
+      final Context context, final ClipData clipData, final boolean isPrivateData) {
     // In API Level 11 and above, CLIPBOARD_SERVICE returns android.content.ClipboardManager,
     // which is a subclass of android.text.ClipboardManager.
     final ClipboardManager cm =
         (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+      if (isPrivateData || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+        final PersistableBundle extras = new PersistableBundle();
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+          extras.putLong("org.mozilla.gecko.clipboard", System.currentTimeMillis());
+        }
+        if (isPrivateData) {
+          extras.putBoolean("android.content.extra.IS_SENSITIVE", true);
+        }
+        clipData.getDescription().setExtras(extras);
+      }
+    }
     try {
       cm.setPrimaryClip(clipData);
     } catch (final NullPointerException e) {
@@ -174,6 +193,7 @@ public final class Clipboard {
       Log.e(LOGTAG, "Couldn't set clip data to clipboard", e);
       return false;
     }
+    updateSequenceNumber(context);
     return true;
   }
 
@@ -228,7 +248,7 @@ public final class Clipboard {
   @WrapForJNI(calledFrom = "gecko")
   private static void clear(final Context context) {
     if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.P) {
-      setText(context, null);
+      setText(context, null, false);
       return;
     }
     // Although we don't know more details of https://crbug.com/1203377, Blink doesn't use
@@ -254,7 +274,7 @@ public final class Clipboard {
         new OnPrimaryClipChangedListener() {
           @Override
           public void onPrimaryClipChanged() {
-            Clipboard.sClipboardSequenceNumber.incrementAndGet();
+            Clipboard.updateSequenceNumber(GeckoAppShell.getApplicationContext());
           }
         };
 
@@ -274,6 +294,55 @@ public final class Clipboard {
         (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
     cm.removePrimaryClipChangedListener(sClipboardChangedListener);
     sClipboardChangedListener = null;
+  }
+
+  private static long getClipboardTimestamp(final Context context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+      return 0;
+    }
+
+    final ClipboardManager cm =
+        (ClipboardManager) context.getSystemService(Context.CLIPBOARD_SERVICE);
+    final ClipDescription description = cm.getPrimaryClipDescription();
+    if (description == null) {
+      return 0;
+    }
+
+    // getTimestamp is added in API Level 26,
+    // https://developer.android.com/reference/kotlin/android/content/ClipDescription?hl=en#gettimestamp
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+      return description.getTimestamp();
+    }
+
+    final PersistableBundle extras = description.getExtras();
+    if (extras == null) {
+      return 0;
+    }
+
+    return extras.getLong("org.mozilla.gecko.clipboard", 0);
+  }
+
+  public static void updateSequenceNumber(final Context context) {
+    final long timestamp = getClipboardTimestamp(context);
+    if (timestamp != 0) {
+      if (timestamp == sClipboardTimestamp.get()) {
+        return;
+      }
+      sClipboardTimestamp.set(timestamp);
+    }
+
+    sClipboardSequenceNumber.incrementAndGet();
+  }
+
+  public static void onPause() {
+    // If ClipDescription#getTimestamp() is not supported, the clipboard
+    // timestamp will be retrieved from the extended data in the clip
+    // description. However, this becomes unreliable if the application is
+    // paused, as other applications can also set the same extended data in
+    // the clip description. Therefore, clear it.
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+      sClipboardTimestamp.set(0);
+    }
   }
 
   /** Get clipboard sequence number. */

@@ -10,14 +10,14 @@ import androidx.preference.CheckBoxPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreference
-import org.mozilla.fenix.FeatureFlags
 import org.mozilla.fenix.GleanMetrics.CustomizeHome
 import org.mozilla.fenix.R
-import org.mozilla.fenix.components.appstate.AppAction
+import org.mozilla.fenix.components.appstate.AppAction.ContentRecommendationsAction
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.navigateWithBreadcrumb
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.ext.showToolbar
+import org.mozilla.fenix.home.pocket.ContentRecommendationsFeatureHelper
 import org.mozilla.fenix.utils.view.addToRadioGroup
 
 /**
@@ -101,12 +101,8 @@ class HomeSettingsFragment : PreferenceFragmentCompat() {
         }
 
         requirePreference<SwitchPreference>(R.string.pref_key_pocket_homescreen_recommendations).apply {
-            isVisible = FeatureFlags.isPocketRecommendationsFeatureEnabled(context)
+            isVisible = ContentRecommendationsFeatureHelper.isPocketRecommendationsFeatureEnabled(context)
             isChecked = context.settings().showPocketRecommendationsFeature
-            summary = context.getString(
-                R.string.customize_toggle_pocket_summary,
-                context.getString(R.string.pocket_product_name),
-            )
             onPreferenceChangeListener = object : SharedPreferenceUpdater() {
                 override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
                     CustomizeHome.preferenceToggled.record(
@@ -122,19 +118,38 @@ class HomeSettingsFragment : PreferenceFragmentCompat() {
         }
 
         requirePreference<CheckBoxPreference>(R.string.pref_key_pocket_sponsored_stories).apply {
-            isVisible = FeatureFlags.isPocketSponsoredStoriesFeatureEnabled(context)
+            isVisible = ContentRecommendationsFeatureHelper.isPocketSponsoredStoriesFeatureEnabled(context)
             isChecked = context.settings().showPocketSponsoredStories
             onPreferenceChangeListener = object : SharedPreferenceUpdater() {
                 override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
                     when (newValue) {
                         true -> {
-                            context.components.core.pocketStoriesService.startPeriodicSponsoredStoriesRefresh()
+                            if (context.settings().marsAPIEnabled) {
+                                context.components.core.pocketStoriesService.startPeriodicSponsoredContentsRefresh()
+                            } else {
+                                context.components.core.pocketStoriesService.startPeriodicSponsoredStoriesRefresh()
+                            }
                         }
                         false -> {
-                            context.components.core.pocketStoriesService.deleteProfile()
-                            context.components.appStore.dispatch(
-                                AppAction.PocketSponsoredStoriesChange(emptyList()),
-                            )
+                            if (context.settings().marsAPIEnabled) {
+                                context.components.core.pocketStoriesService.deleteUser()
+
+                                context.components.appStore.dispatch(
+                                    ContentRecommendationsAction.SponsoredContentsChange(
+                                        sponsoredContents = emptyList(),
+                                        showContentRecommendations = context.settings().showContentRecommendations,
+                                    ),
+                                )
+                            } else {
+                                context.components.core.pocketStoriesService.deleteProfile()
+
+                                context.components.appStore.dispatch(
+                                    ContentRecommendationsAction.PocketSponsoredStoriesChange(
+                                        sponsoredStories = emptyList(),
+                                        showContentRecommendations = context.settings().showContentRecommendations,
+                                    ),
+                                )
+                            }
                         }
                     }
 

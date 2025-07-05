@@ -11,6 +11,7 @@ import io.mockk.verify
 import mozilla.components.ui.tabcounter.TabCounterMenu
 import org.junit.Before
 import org.junit.Test
+import org.mozilla.fenix.components.menu.MenuAccessPoint
 import org.mozilla.fenix.components.toolbar.interactor.DefaultBrowserToolbarInteractor
 
 class DefaultBrowserToolbarInteractorTest {
@@ -89,16 +90,39 @@ class DefaultBrowserToolbarInteractorTest {
     }
 
     @Test
-    fun onShoppingCfrActionClicked() {
-        interactor.onShoppingCfrActionClicked()
-
-        verify { browserToolbarController.handleShoppingCfrActionClick() }
-    }
-
-    @Test
     fun onTranslationsButtonClicked() {
         interactor.onTranslationsButtonClicked()
 
         verify { browserToolbarController.handleTranslationsButtonClick() }
+    }
+
+    @Test
+    fun onNewTabButtonClicked() {
+        interactor.onNewTabButtonClicked()
+
+        verify { browserToolbarController.handleNewTabButtonClick() }
+    }
+
+    @Test
+    fun onNewTabButtonLongClicked() {
+        interactor.onNewTabButtonLongClicked()
+
+        verify { browserToolbarController.handleNewTabButtonLongClick() }
+    }
+
+    @Test
+    fun onMenuButtonClicked() {
+        val accessPoint = MenuAccessPoint.Browser
+
+        interactor.onMenuButtonClicked(accessPoint)
+
+        verify { browserToolbarController.handleMenuButtonClicked(accessPoint) }
+    }
+
+    @Test
+    fun onShareButtonClicked() {
+        interactor.onShareActionClicked()
+
+        verify { browserToolbarController.onShareActionClicked() }
     }
 }

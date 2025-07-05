@@ -13,6 +13,7 @@
 #include "mozStoragePrivateHelpers.h"
 #include "mozStorageBindingParams.h"
 #include "Variant.h"
+#include "sqlite3_static_ext.h"
 
 namespace mozilla::storage {
 
@@ -61,6 +62,25 @@ int sqlite3_T_null(BindingColumnData aData) {
 
 int sqlite3_T_blob(BindingColumnData aData, const void* aBlob, int aSize) {
   return ::sqlite3_bind_blob(aData.stmt, aData.column + 1, aBlob, aSize, free);
+}
+
+int sqlite3_T_array(BindingColumnData aData, void* aArray, int aSize,
+                    int aType) {
+  // In debug builds ensure that the statement includes at least one `carray()`.
+  MOZ_ASSERT(
+      ::strstr(::sqlite3_sql(aData.stmt), "carray("),
+      "Binding arrays to SQL statements requires using the carray() function.");
+
+  if (aType == CARRAY_TEXT) {
+    // We don't manage the string buffers lifecycle, thus let SQLite make its
+    // own copy.
+    int srv = ::sqlite3_carray_bind(aData.stmt, aData.column + 1, aArray, aSize,
+                                    aType, SQLITE_TRANSIENT);
+    free(aArray);
+    return srv;
+  }
+  return ::sqlite3_carray_bind(aData.stmt, aData.column + 1, aArray, aSize,
+                               aType, free);
 }
 
 #include "variantToSQLiteT_impl.h"
@@ -130,8 +150,9 @@ already_AddRefed<mozIStorageError> BindingParams::bind(
       // object with the right message.  Note that we special case
       // SQLITE_MISMATCH, but otherwise get the message from SQLite.
       const char* msg = "Could not covert nsIVariant to SQLite type.";
-      if (rc != SQLITE_MISMATCH)
+      if (rc != SQLITE_MISMATCH) {
         msg = ::sqlite3_errmsg(::sqlite3_db_handle(aStatement));
+      }
 
       nsCOMPtr<mozIStorageError> err(new Error(rc, msg));
       return err.forget();
@@ -143,10 +164,6 @@ already_AddRefed<mozIStorageError> BindingParams::bind(
 
 already_AddRefed<mozIStorageError> AsyncBindingParams::bind(
     sqlite3_stmt* aStatement) {
-  // We should bind by index using the super-class if there is nothing in our
-  // hashtable.
-  if (!mNamedParameters.Count()) return BindingParams::bind(aStatement);
-
   nsCOMPtr<mozIStorageError> err;
 
   for (const auto& entry : mNamedParameters) {
@@ -162,29 +179,19 @@ already_AddRefed<mozIStorageError> AsyncBindingParams::bind(
       nsAutoCString errMsg(key);
       errMsg.AppendLiteral(" is not a valid named parameter.");
       err = new Error(SQLITE_RANGE, errMsg.get());
-      break;
+      return err.forget();
     }
 
-    // XPCVariant's AddRef and Release are not thread-safe and so we must not
-    // do anything that would invoke them here on the async thread.  As such we
-    // can't cram aValue into mParameters using ReplaceObjectAt so that
-    // we can freeload off of the BindingParams::Bind implementation.
-    int rc = variantToSQLiteT(BindingColumnData(aStatement, oneIdx - 1),
-                              entry.GetWeak());
-    if (rc != SQLITE_OK) {
-      // We had an error while trying to bind.  Now we need to create an error
-      // object with the right message.  Note that we special case
-      // SQLITE_MISMATCH, but otherwise get the message from SQLite.
-      const char* msg = "Could not covert nsIVariant to SQLite type.";
-      if (rc != SQLITE_MISMATCH) {
-        msg = ::sqlite3_errmsg(::sqlite3_db_handle(aStatement));
-      }
-      err = new Error(rc, msg);
-      break;
+    if (mParameters.Length() <= static_cast<uint32_t>(oneIdx - 1)) {
+      mParameters.SetLength(oneIdx - 1);
+      mParameters.AppendElement(entry.GetWeak());
+    } else {
+      mParameters.ReplaceElementAt(oneIdx - 1, entry.GetWeak());
     }
   }
 
-  return err.forget();
+  // Now bind using the super class.
+  return BindingParams::bind(aStatement);
 }
 
 ///////////////////////////////////////////////////////////////////////////////
@@ -208,8 +215,7 @@ AsyncBindingParams::BindByName(const nsACString& aName, nsIVariant* aValue) {
 
   RefPtr<Variant_base> variant = convertVariantToStorageVariant(aValue);
   if (!variant) return NS_ERROR_UNEXPECTED;
-
-  mNamedParameters.InsertOrUpdate(aName, nsCOMPtr<nsIVariant>{variant});
+  mNamedParameters.InsertOrUpdate(aName, std::move(variant));
   return NS_OK;
 }
 
@@ -300,6 +306,61 @@ BindingParams::BindAdoptedBlobByName(const nsACString& aName, uint8_t* aValue,
   NS_ENSURE_ARG_MAX(aValueSize, INT_MAX);
   std::pair<uint8_t*, int> data(uniqueValue.release(), int(aValueSize));
   nsCOMPtr<nsIVariant> value(new AdoptedBlobVariant(data));
+
+  return BindByName(aName, value);
+}
+
+NS_IMETHODIMP
+BindingParams::BindArrayOfIntegersByName(const nsACString& aName,
+                                         const nsTArray<int64_t>& aValue) {
+  NS_ENSURE_ARG_MAX(aValue.Length(), INT_MAX);
+  std::pair<const void*, int> data(static_cast<const void*>(aValue.Elements()),
+                                   int(aValue.Length()));
+  nsCOMPtr<nsIVariant> value(new ArrayOfIntegersVariant(data));
+  NS_ENSURE_TRUE(value, NS_ERROR_OUT_OF_MEMORY);
+
+  return BindByName(aName, value);
+}
+
+NS_IMETHODIMP
+BindingParams::BindArrayOfDoublesByName(const nsACString& aName,
+                                        const nsTArray<double>& aValue) {
+  NS_ENSURE_ARG_MAX(aValue.Length(), INT_MAX);
+  std::pair<const void*, int> data(static_cast<const void*>(aValue.Elements()),
+                                   int(aValue.Length()));
+  nsCOMPtr<nsIVariant> value(new ArrayOfDoublesVariant(data));
+  NS_ENSURE_TRUE(value, NS_ERROR_OUT_OF_MEMORY);
+
+  return BindByName(aName, value);
+}
+
+NS_IMETHODIMP
+BindingParams::BindArrayOfStringsByName(const nsACString& aName,
+                                        const nsTArray<nsString>& aValue) {
+  NS_ENSURE_ARG_MAX(aValue.Length(), INT_MAX);
+  nsTArray<nsCString> UTF8Strings(aValue.Length());
+  for (const nsString& str : aValue) {
+    UTF8Strings.AppendElement(NS_ConvertUTF16toUTF8(str));
+  }
+  std::pair<const void*, int> data(
+      static_cast<const void*>(UTF8Strings.Elements()),
+      int(UTF8Strings.Length()));
+  // The variant will make a copy of all the buffers.
+  nsCOMPtr<nsIVariant> value(new ArrayOfUTF8StringsVariant(data));
+  NS_ENSURE_TRUE(value, NS_ERROR_OUT_OF_MEMORY);
+
+  return BindByName(aName, value);
+}
+
+NS_IMETHODIMP
+BindingParams::BindArrayOfUTF8StringsByName(const nsACString& aName,
+                                            const nsTArray<nsCString>& aValue) {
+  NS_ENSURE_ARG_MAX(aValue.Length(), INT_MAX);
+  std::pair<const void*, int> data(static_cast<const void*>(aValue.Elements()),
+                                   int(aValue.Length()));
+  // The variant will make a copy of all the buffers.
+  nsCOMPtr<nsIVariant> value(new ArrayOfUTF8StringsVariant(data));
+  NS_ENSURE_TRUE(value, NS_ERROR_OUT_OF_MEMORY);
 
   return BindByName(aName, value);
 }
@@ -424,6 +485,61 @@ BindingParams::BindAdoptedBlobByIndex(uint32_t aIndex, uint8_t* aValue,
   NS_ENSURE_ARG_MAX(aValueSize, INT_MAX);
   std::pair<uint8_t*, int> data(uniqueValue.release(), int(aValueSize));
   nsCOMPtr<nsIVariant> value(new AdoptedBlobVariant(data));
+
+  return BindByIndex(aIndex, value);
+}
+
+NS_IMETHODIMP
+BindingParams::BindArrayOfIntegersByIndex(uint32_t aIndex,
+                                          const nsTArray<int64_t>& aValue) {
+  NS_ENSURE_ARG_MAX(aValue.Length(), INT_MAX);
+  std::pair<const void*, int> data(static_cast<const void*>(aValue.Elements()),
+                                   int(aValue.Length()));
+  nsCOMPtr<nsIVariant> value(new ArrayOfIntegersVariant(data));
+  NS_ENSURE_TRUE(value, NS_ERROR_OUT_OF_MEMORY);
+
+  return BindByIndex(aIndex, value);
+}
+
+NS_IMETHODIMP
+BindingParams::BindArrayOfDoublesByIndex(uint32_t aIndex,
+                                         const nsTArray<double>& aValue) {
+  NS_ENSURE_ARG_MAX(aValue.Length(), INT_MAX);
+  std::pair<const void*, int> data(static_cast<const void*>(aValue.Elements()),
+                                   int(aValue.Length()));
+  nsCOMPtr<nsIVariant> value(new ArrayOfDoublesVariant(data));
+  NS_ENSURE_TRUE(value, NS_ERROR_OUT_OF_MEMORY);
+
+  return BindByIndex(aIndex, value);
+}
+
+NS_IMETHODIMP
+BindingParams::BindArrayOfStringsByIndex(uint32_t aIndex,
+                                         const nsTArray<nsString>& aValue) {
+  NS_ENSURE_ARG_MAX(aValue.Length(), INT_MAX);
+  nsTArray<nsCString> UTF8Strings(aValue.Length());
+  for (const nsString& str : aValue) {
+    UTF8Strings.AppendElement(NS_ConvertUTF16toUTF8(str).get());
+  }
+  std::pair<const void*, int> data(
+      static_cast<const void*>(UTF8Strings.Elements()),
+      int(UTF8Strings.Length()));
+  // The variant will make a copy of all the buffers.
+  nsCOMPtr<nsIVariant> value(new ArrayOfUTF8StringsVariant(data));
+  NS_ENSURE_TRUE(value, NS_ERROR_OUT_OF_MEMORY);
+
+  return BindByIndex(aIndex, value);
+}
+
+NS_IMETHODIMP
+BindingParams::BindArrayOfUTF8StringsByIndex(
+    uint32_t aIndex, const nsTArray<nsCString>& aValue) {
+  NS_ENSURE_ARG_MAX(aValue.Length(), INT_MAX);
+  std::pair<const void*, int> data(static_cast<const void*>(aValue.Elements()),
+                                   int(aValue.Length()));
+  // The variant will make a copy of all the buffers.
+  nsCOMPtr<nsIVariant> value(new ArrayOfUTF8StringsVariant(data));
+  NS_ENSURE_TRUE(value, NS_ERROR_OUT_OF_MEMORY);
 
   return BindByIndex(aIndex, value);
 }

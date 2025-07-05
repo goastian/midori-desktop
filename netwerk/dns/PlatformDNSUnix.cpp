@@ -5,10 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "GetAddrInfo.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/NetwerkMetrics.h"
 #include "mozilla/net/DNSPacket.h"
 #include "nsIDNSService.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/Mutex.h"
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/ThreadLocal.h"
 
@@ -22,12 +23,14 @@ namespace mozilla::net {
 
 #if defined(HAVE_RES_NINIT)
 MOZ_THREAD_LOCAL(struct __res_state*) sThreadRes;
+mozilla::StaticMutex sMutex MOZ_UNANNOTATED;
 #endif
 
 #define LOG(msg, ...) \
   MOZ_LOG(gGetAddrInfoLog, LogLevel::Debug, ("[DNS]: " msg, ##__VA_ARGS__))
 
-nsresult ResolveHTTPSRecordImpl(const nsACString& aHost, uint16_t aFlags,
+nsresult ResolveHTTPSRecordImpl(const nsACString& aHost,
+                                nsIDNSService::DNSFlags aFlags,
                                 TypeRecordResultType& aResult, uint32_t& aTTL) {
   DNSPacket packet;
   nsAutoCString host(aHost);
@@ -43,9 +46,12 @@ nsresult ResolveHTTPSRecordImpl(const nsACString& aHost, uint16_t aFlags,
   if (!sThreadRes.get()) {
     UniquePtr<struct __res_state> resState(new struct __res_state);
     memset(resState.get(), 0, sizeof(struct __res_state));
-    if (int ret = res_ninit(resState.get())) {
-      LOG("res_ninit failed: %d", ret);
-      return NS_ERROR_UNKNOWN_HOST;
+    {
+      StaticMutexAutoLock lock(sMutex);
+      if (int ret = res_ninit(resState.get())) {
+        LOG("res_ninit failed: %d", ret);
+        return NS_ERROR_UNKNOWN_HOST;
+      }
     }
     sThreadRes.set(resState.release());
   }
@@ -89,7 +95,11 @@ void DNSThreadShutdown() {
   }
 
   sThreadRes.set(nullptr);
-  res_nclose(res);
+  {
+    StaticMutexAutoLock lock(sMutex);
+    res_nclose(res);
+  }
+  free(res);
 #endif
 }
 

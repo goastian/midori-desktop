@@ -9,6 +9,8 @@
 
 #include "HttpLog.h"
 #include "AltServiceChild.h"
+#include "mozilla/glean/NetwerkMetrics.h"
+#include "mozilla/glean/NetwerkProtocolHttpMetrics.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/Unused.h"
@@ -17,7 +19,6 @@
 #include "nsHttpTransaction.h"
 #include "nsICancelable.h"
 #include "nsICachingChannel.h"
-#include "nsIHttpPushListener.h"
 #include "nsIProtocolProxyService2.h"
 #include "nsIOService.h"
 #include "nsISeekableStream.h"
@@ -386,6 +387,9 @@ nsresult TRRServiceChannel::BeginConnect() {
   mRequestHead.SetHTTPS(isHttps);
   mRequestHead.SetOrigin(scheme, host, port);
 
+  gHttpHandler->MaybeAddAltSvcForTesting(mURI, mUsername, mPrivateBrowsing,
+                                         mCallbacks, OriginAttributes());
+
   RefPtr<nsHttpConnectionInfo> connInfo = new nsHttpConnectionInfo(
       host, port, ""_ns, mUsername, proxyInfo, OriginAttributes(), isHttps);
   // TODO: Bug 1622778 for using AltService in socket process.
@@ -425,15 +429,18 @@ nsresult TRRServiceChannel::BeginConnect() {
          this));
     mapping->GetConnectionInfo(getter_AddRefs(mConnectionInfo), proxyInfo,
                                OriginAttributes());
-    Telemetry::Accumulate(Telemetry::HTTP_TRANSACTION_USE_ALTSVC, true);
-    Telemetry::Accumulate(Telemetry::HTTP_TRANSACTION_USE_ALTSVC_OE, !isHttps);
+    glean::http::transaction_use_altsvc
+        .EnumGet(glean::http::TransactionUseAltsvcLabel::eTrue)
+        .Add();
   } else if (mConnectionInfo) {
     LOG(("TRRServiceChannel %p Using channel supplied connection info", this));
   } else {
     LOG(("TRRServiceChannel %p Using default connection info", this));
 
     mConnectionInfo = connInfo;
-    Telemetry::Accumulate(Telemetry::HTTP_TRANSACTION_USE_ALTSVC, false);
+    glean::http::transaction_use_altsvc
+        .EnumGet(glean::http::TransactionUseAltsvcLabel::eFalse)
+        .Add();
   }
 
   // Need to re-ask the handler, since mConnectionInfo may not be the connInfo
@@ -443,10 +450,6 @@ nsresult TRRServiceChannel::BeginConnect() {
     mCaps |= NS_HTTP_DISALLOW_SPDY;
     mConnectionInfo->SetNoSpdy(true);
   }
-
-  // If TimingEnabled flag is not set after OnModifyRequest() then
-  // clear the already recorded AsyncOpen value for consistency.
-  if (!LoadTimingEnabled()) mAsyncOpenTime = TimeStamp();
 
   // if this somehow fails we can go on without it
   Unused << gHttpHandler->AddConnectionHeader(&mRequestHead, mCaps);
@@ -458,19 +461,9 @@ nsresult TRRServiceChannel::BeginConnect() {
     mCaps &= ~(NS_HTTP_ALLOW_KEEPALIVE);
   }
 
-  if (gHttpHandler->CriticalRequestPrioritization()) {
-    if (mClassOfService.Flags() & nsIClassOfService::Leader) {
-      mCaps |= NS_HTTP_LOAD_AS_BLOCKING;
-    }
-    if (mClassOfService.Flags() & nsIClassOfService::Unblocked) {
-      mCaps |= NS_HTTP_LOAD_UNBLOCKED;
-    }
-    if (mClassOfService.Flags() & nsIClassOfService::UrgentStart &&
-        gHttpHandler->IsUrgentStartEnabled()) {
-      mCaps |= NS_HTTP_URGENT_START;
-      SetPriority(nsISupportsPriority::PRIORITY_HIGHEST);
-    }
-  }
+  // TRR requests should never be blocked.
+  mCaps |= (NS_HTTP_LOAD_UNBLOCKED | NS_HTTP_URGENT_START);
+  SetPriority(nsISupportsPriority::PRIORITY_HIGHEST);
 
   if (mCanceled) {
     return mStatus;
@@ -490,7 +483,7 @@ nsresult TRRServiceChannel::ContinueOnBeforeConnect() {
   LOG(("TRRServiceChannel::ContinueOnBeforeConnect [this=%p]\n", this));
 
   // ensure that we are using a valid hostname
-  if (!net_IsValidHostName(nsDependentCString(mConnectionInfo->Origin()))) {
+  if (!net_IsValidDNSHost(nsDependentCString(mConnectionInfo->Origin()))) {
     return NS_ERROR_UNKNOWN_HOST;
   }
 
@@ -514,9 +507,8 @@ nsresult TRRServiceChannel::ContinueOnBeforeConnect() {
   mConnectionInfo->SetIPv6Disabled(mCaps & NS_HTTP_DISABLE_IPV6);
 
   if (mLoadFlags & LOAD_FRESH_CONNECTION) {
-    Telemetry::ScalarAdd(
-        Telemetry::ScalarID::NETWORKING_TRR_CONNECTION_CYCLE_COUNT,
-        NS_ConvertUTF8toUTF16(TRRService::ProviderKey()), 1);
+    glean::networking::trr_connection_cycle_count.Get(TRRService::ProviderKey())
+        .Add(1);
     nsresult rv =
         gHttpHandler->ConnMgr()->DoSingleConnectionCleanup(mConnectionInfo);
     LOG(
@@ -652,115 +644,20 @@ nsresult TRRServiceChannel::SetupTransaction() {
   // See bug #466080. Transfer LOAD_ANONYMOUS flag to socket-layer.
   if (mLoadFlags & LOAD_ANONYMOUS) mCaps |= NS_HTTP_LOAD_ANONYMOUS;
 
-  if (LoadTimingEnabled()) mCaps |= NS_HTTP_TIMING_ENABLED;
-
-  nsCOMPtr<nsIHttpPushListener> pushListener;
-  NS_QueryNotificationCallbacks(mCallbacks, mLoadGroup,
-                                NS_GET_IID(nsIHttpPushListener),
-                                getter_AddRefs(pushListener));
-  HttpTransactionShell::OnPushCallback pushCallback = nullptr;
-  if (pushListener) {
-    mCaps |= NS_HTTP_ONPUSH_LISTENER;
-    nsWeakPtr weakPtrThis(
-        do_GetWeakReference(static_cast<nsIHttpChannel*>(this)));
-    pushCallback = [weakPtrThis](uint32_t aPushedStreamId,
-                                 const nsACString& aUrl,
-                                 const nsACString& aRequestString,
-                                 HttpTransactionShell* aTransaction) {
-      if (nsCOMPtr<nsIHttpChannel> channel = do_QueryReferent(weakPtrThis)) {
-        return static_cast<TRRServiceChannel*>(channel.get())
-            ->OnPush(aPushedStreamId, aUrl, aRequestString, aTransaction);
-      }
-      return NS_ERROR_NOT_AVAILABLE;
-    };
-  }
-
   EnsureRequestContext();
 
-  rv = mTransaction->Init(
-      mCaps, mConnectionInfo, &mRequestHead, mUploadStream, mReqContentLength,
-      LoadUploadStreamHasHeaders(), mCurrentEventTarget, callbacks, this,
-      mBrowserId, HttpTrafficCategory::eInvalid, mRequestContext,
-      mClassOfService, mInitialRwin, LoadResponseTimeoutEnabled(), mChannelId,
-      nullptr, std::move(pushCallback), mTransWithPushedStream,
-      mPushedStreamId);
-
-  mTransWithPushedStream = nullptr;
+  rv = mTransaction->Init(mCaps, mConnectionInfo, &mRequestHead, mUploadStream,
+                          mReqContentLength, LoadUploadStreamHasHeaders(),
+                          mCurrentEventTarget, callbacks, this, mBrowserId,
+                          HttpTrafficCategory::eInvalid, mRequestContext,
+                          mClassOfService, mInitialRwin,
+                          LoadResponseTimeoutEnabled(), mChannelId, nullptr);
 
   if (NS_FAILED(rv)) {
     mTransaction = nullptr;
     return rv;
   }
 
-  return rv;
-}
-
-void TRRServiceChannel::SetPushedStreamTransactionAndId(
-    HttpTransactionShell* aTransWithPushedStream, uint32_t aPushedStreamId) {
-  MOZ_ASSERT(!mTransWithPushedStream);
-  LOG(("TRRServiceChannel::SetPushedStreamTransaction [this=%p] trans=%p", this,
-       aTransWithPushedStream));
-
-  mTransWithPushedStream = aTransWithPushedStream;
-  mPushedStreamId = aPushedStreamId;
-}
-
-nsresult TRRServiceChannel::OnPush(uint32_t aPushedStreamId,
-                                   const nsACString& aUrl,
-                                   const nsACString& aRequestString,
-                                   HttpTransactionShell* aTransaction) {
-  MOZ_ASSERT(aTransaction);
-  LOG(("TRRServiceChannel::OnPush [this=%p, trans=%p]\n", this, aTransaction));
-
-  MOZ_ASSERT(mCaps & NS_HTTP_ONPUSH_LISTENER);
-  nsCOMPtr<nsIHttpPushListener> pushListener;
-  NS_QueryNotificationCallbacks(mCallbacks, mLoadGroup,
-                                NS_GET_IID(nsIHttpPushListener),
-                                getter_AddRefs(pushListener));
-
-  if (!pushListener) {
-    LOG(
-        ("TRRServiceChannel::OnPush [this=%p] notification callbacks do not "
-         "implement nsIHttpPushListener\n",
-         this));
-    return NS_ERROR_NOT_AVAILABLE;
-  }
-
-  nsCOMPtr<nsIURI> pushResource;
-  nsresult rv;
-
-  // Create a Channel for the Push Resource
-  rv = NS_NewURI(getter_AddRefs(pushResource), aUrl);
-  if (NS_FAILED(rv)) {
-    return NS_ERROR_FAILURE;
-  }
-
-  nsCOMPtr<nsILoadInfo> loadInfo =
-      static_cast<TRRLoadInfo*>(mLoadInfo.get())->Clone();
-  nsCOMPtr<nsIChannel> pushHttpChannel;
-  rv = gHttpHandler->CreateTRRServiceChannel(pushResource, nullptr, 0, nullptr,
-                                             loadInfo,
-                                             getter_AddRefs(pushHttpChannel));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = pushHttpChannel->SetLoadFlags(mLoadFlags);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  RefPtr<TRRServiceChannel> channel;
-  CallQueryInterface(pushHttpChannel, channel.StartAssignment());
-  MOZ_ASSERT(channel);
-  if (!channel) {
-    return NS_ERROR_UNEXPECTED;
-  }
-
-  // new channel needs mrqeuesthead and headers from pushedStream
-  channel->mRequestHead.ParseHeaderSet(aRequestString.BeginReading());
-  channel->mLoadGroup = mLoadGroup;
-  channel->mCallbacks = mCallbacks;
-
-  // Link the pushed stream with the new channel and call listener
-  channel->SetPushedStreamTransactionAndId(aTransaction, aPushedStreamId);
-  rv = pushListener->OnPush(this, channel);
   return rv;
 }
 
@@ -777,9 +674,8 @@ void TRRServiceChannel::MaybeStartDNSPrefetch() {
        this, mCaps & NS_HTTP_REFRESH_DNS ? ", refresh requested" : ""));
 
   OriginAttributes originAttributes;
-  mDNSPrefetch =
-      new nsDNSPrefetch(mURI, originAttributes, nsIRequest::GetTRRMode(), this,
-                        LoadTimingEnabled());
+  mDNSPrefetch = new nsDNSPrefetch(mURI, originAttributes,
+                                   nsIRequest::GetTRRMode(), this, true);
   nsIDNSService::DNSFlags dnsFlags = nsIDNSService::RESOLVE_DEFAULT_FLAGS;
   if (mCaps & NS_HTTP_REFRESH_DNS) {
     dnsFlags |= nsIDNSService::RESOLVE_BYPASS_CACHE;
@@ -921,7 +817,8 @@ void TRRServiceChannel::AfterApplyContentConversions(
   }
 }
 
-void TRRServiceChannel::ProcessAltService() {
+void TRRServiceChannel::ProcessAltService(
+    nsHttpConnectionInfo* aTransConnInfo) {
   // e.g. Alt-Svc: h2=":443"; ma=60
   // e.g. Alt-Svc: h2="otherhost:443"
   // Alt-Svc       = 1#( alternative *( OWS ";" OWS parameter ) )
@@ -970,21 +867,23 @@ void TRRServiceChannel::ProcessAltService() {
     proxyInfo = do_QueryInterface(mProxyInfo);
   }
 
+  RefPtr<nsHttpConnectionInfo> connectionInfo = aTransConnInfo;
   auto processHeaderTask = [altSvc, scheme, originHost, originPort,
                             userName(mUsername),
                             privateBrowsing(mPrivateBrowsing), callbacks,
-                            proxyInfo, caps(mCaps)]() {
+                            proxyInfo, caps(mCaps), connectionInfo]() {
     if (XRE_IsSocketProcess()) {
       AltServiceChild::ProcessHeader(altSvc, scheme, originHost, originPort,
                                      userName, privateBrowsing, callbacks,
                                      proxyInfo, caps & NS_HTTP_DISALLOW_SPDY,
-                                     OriginAttributes());
+                                     OriginAttributes(), connectionInfo);
       return;
     }
 
-    AltSvcMapping::ProcessHeader(
-        altSvc, scheme, originHost, originPort, userName, privateBrowsing,
-        callbacks, proxyInfo, caps & NS_HTTP_DISALLOW_SPDY, OriginAttributes());
+    AltSvcMapping::ProcessHeader(altSvc, scheme, originHost, originPort,
+                                 userName, privateBrowsing, callbacks,
+                                 proxyInfo, caps & NS_HTTP_DISALLOW_SPDY,
+                                 OriginAttributes(), connectionInfo);
   };
 
   if (NS_IsMainThread()) {
@@ -1025,7 +924,9 @@ TRRServiceChannel::OnStartRequest(nsIRequest* request) {
     // mTransactionPump doesn't hit OnInputStreamReady and call this until
     // all of the response headers have been acquired, so we can take
     // ownership of them from the transaction.
-    mResponseHead = mTransaction->TakeResponseHead();
+    RefPtr<nsHttpConnectionInfo> connInfo;
+    mResponseHead =
+        mTransaction->TakeResponseHeadAndConnInfo(getter_AddRefs(connInfo));
     if (mResponseHead) {
       uint32_t httpStatus = mResponseHead->Status();
       if (mTransaction->ProxyConnectFailed()) {
@@ -1040,7 +941,7 @@ TRRServiceChannel::OnStartRequest(nsIRequest* request) {
       }
 
       if ((httpStatus < 500) && (httpStatus != 421) && (httpStatus != 407)) {
-        ProcessAltService();
+        ProcessAltService(connInfo);
       }
 
       if (httpStatus == 300 || httpStatus == 301 || httpStatus == 302 ||
@@ -1214,6 +1115,97 @@ TRRServiceChannel::OnDataAvailable(nsIRequest* request, nsIInputStream* input,
   return NS_ERROR_ABORT;
 }
 
+static void TelemetryReport(nsITimedChannel* aTimedChannel,
+                            uint64_t aRequestSize, uint64_t aTransferSize) {
+  TimeStamp asyncOpen;
+  nsresult rv = aTimedChannel->GetAsyncOpen(&asyncOpen);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  TimeStamp domainLookupStart;
+  rv = aTimedChannel->GetDomainLookupStart(&domainLookupStart);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  TimeStamp domainLookupEnd;
+  rv = aTimedChannel->GetDomainLookupEnd(&domainLookupEnd);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  TimeStamp connectStart;
+  rv = aTimedChannel->GetConnectStart(&connectStart);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  TimeStamp secureConnectionStart;
+  rv = aTimedChannel->GetSecureConnectionStart(&secureConnectionStart);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  TimeStamp connectEnd;
+  rv = aTimedChannel->GetConnectEnd(&connectEnd);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  TimeStamp requestStart;
+  rv = aTimedChannel->GetRequestStart(&requestStart);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  TimeStamp responseStart;
+  rv = aTimedChannel->GetResponseStart(&responseStart);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  TimeStamp responseEnd;
+  rv = aTimedChannel->GetResponseEnd(&responseEnd);
+  if (NS_FAILED(rv)) {
+    return;
+  }
+
+  const nsCString& key = TRRService::ProviderKey();
+  if (!domainLookupStart.IsNull()) {
+    mozilla::glean::networking::trr_dns_start.Get(key).AccumulateRawDuration(
+        domainLookupStart - asyncOpen);
+    if (!domainLookupEnd.IsNull()) {
+      mozilla::glean::networking::trr_dns_end.Get(key).AccumulateRawDuration(
+          domainLookupEnd - domainLookupStart);
+    }
+  }
+  if (!connectEnd.IsNull()) {
+    if (!connectStart.IsNull()) {
+      mozilla::glean::networking::trr_tcp_connection.Get(key)
+          .AccumulateRawDuration(connectEnd - connectStart);
+    }
+    if (!secureConnectionStart.IsNull()) {
+      mozilla::glean::networking::trr_tls_handshake.Get(key)
+          .AccumulateRawDuration(connectEnd - secureConnectionStart);
+    }
+  }
+  if (!requestStart.IsNull() && !responseEnd.IsNull()) {
+    mozilla::glean::networking::trr_open_to_first_sent.Get(key)
+        .AccumulateRawDuration(requestStart - asyncOpen);
+    mozilla::glean::networking::trr_first_sent_to_last_received.Get(key)
+        .AccumulateRawDuration(responseEnd - requestStart);
+    mozilla::glean::networking::trr_complete_load.Get(key)
+        .AccumulateRawDuration(responseEnd - asyncOpen);
+    if (!responseStart.IsNull()) {
+      mozilla::glean::networking::trr_open_to_first_received.Get(key)
+          .AccumulateRawDuration(responseStart - asyncOpen);
+    }
+  }
+  glean::networking::trr_request_size.Get(key).Accumulate(aRequestSize);
+  glean::networking::trr_response_size.Get(key).Accumulate(aTransferSize);
+}
+
 NS_IMETHODIMP
 TRRServiceChannel::OnStopRequest(nsIRequest* request, nsresult status) {
   LOG(("TRRServiceChannel::OnStopRequest [this=%p request=%p status=%" PRIx32
@@ -1223,6 +1215,8 @@ TRRServiceChannel::OnStopRequest(nsIRequest* request, nsresult status) {
   if (mCanceled || NS_FAILED(mStatus)) status = mStatus;
 
   mTransactionTimings = mTransaction->Timings();
+  mRequestSize = mTransaction->GetRequestSize();
+  mTransferSize = mTransaction->GetTransferSize();
   mTransaction = nullptr;
   mTransactionPump = nullptr;
 
@@ -1244,6 +1238,7 @@ TRRServiceChannel::OnStopRequest(nsIRequest* request, nsresult status) {
   }
 
   ReleaseListeners();
+  TelemetryReport(this, mRequestSize, mTransferSize);
   return NS_OK;
 }
 

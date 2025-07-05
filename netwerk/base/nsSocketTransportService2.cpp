@@ -7,6 +7,7 @@
 
 #include "mozilla/Atomics.h"
 #include "mozilla/ChaosMode.h"
+#include "mozilla/glean/NetwerkMetrics.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Likely.h"
 #include "mozilla/PodOperations.h"
@@ -406,6 +407,24 @@ bool nsSocketTransportService::CanAttachSocket() {
   MOZ_ASSERT(!mShuttingDown);
   uint32_t total = mActiveList.Length() + mIdleList.Length();
   bool rv = total < gMaxCount;
+
+  if (!rv) {
+    static bool reported_socket_limit_reached = false;
+    if (!reported_socket_limit_reached) {
+      mozilla::glean::networking::os_socket_limit_reached.Add(1);
+      // GLAM EXPERIMENT
+      // This metric is temporary, disabled by default, and will be enabled only
+      // for the purpose of experimenting with client-side sampling of data for
+      // GLAM use. See Bug 1947604 for more information.
+      glean::glam_experiment::os_socket_limit_reached.Add(1);
+      // END GLAM EXPERIMENT
+      reported_socket_limit_reached = true;
+    }
+    SOCKET_LOG(
+        ("nsSocketTransportService::CanAttachSocket failed -  total: %d, "
+         "maxCount: %d\n",
+         total, gMaxCount));
+  }
 
   MOZ_ASSERT(mInitialized);
   return rv;
@@ -1158,11 +1177,9 @@ nsSocketTransportService::Run() {
       DoPollIteration(&singlePollDuration);
 
       if (Telemetry::CanRecordPrereleaseData() && !pollCycleStart.IsNull()) {
-        Telemetry::Accumulate(Telemetry::STS_POLL_BLOCK_TIME,
-                              singlePollDuration.ToMilliseconds());
-        Telemetry::AccumulateTimeDelta(Telemetry::STS_POLL_CYCLE,
-                                       pollCycleStart + singlePollDuration,
-                                       TimeStamp::NowLoRes());
+        glean::sts::poll_block_time.AccumulateRawDuration(singlePollDuration);
+        glean::sts::poll_cycle.AccumulateRawDuration(
+            TimeStamp::NowLoRes() - (pollCycleStart + singlePollDuration));
         pollDuration += singlePollDuration;
       }
 
@@ -1204,9 +1221,8 @@ nsSocketTransportService::Run() {
 
         if (Telemetry::CanRecordPrereleaseData() && !mServingPendingQueue &&
             !startOfIteration.IsNull()) {
-          Telemetry::AccumulateTimeDelta(Telemetry::STS_POLL_AND_EVENTS_CYCLE,
-                                         startOfIteration + pollDuration,
-                                         TimeStamp::NowLoRes());
+          glean::sts::poll_and_events_cycle.AccumulateRawDuration(
+              TimeStamp::NowLoRes() - (startOfIteration + pollDuration));
           pollDuration = nullptr;
         }
       }
@@ -1217,9 +1233,8 @@ nsSocketTransportService::Run() {
     if (mShuttingDown) {
       if (Telemetry::CanRecordPrereleaseData() &&
           !startOfCycleForLastCycleCalc.IsNull()) {
-        Telemetry::AccumulateTimeDelta(
-            Telemetry::STS_POLL_AND_EVENT_THE_LAST_CYCLE,
-            startOfCycleForLastCycleCalc, TimeStamp::NowLoRes());
+        glean::sts::poll_and_event_the_last_cycle.AccumulateRawDuration(
+            TimeStamp::NowLoRes() - startOfCycleForLastCycleCalc);
       }
       break;
     }
@@ -1490,7 +1505,7 @@ nsresult nsSocketTransportService::UpdatePrefs() {
   nsresult rv =
       Preferences::GetInt(KEEPALIVE_IDLE_TIME_PREF, &keepaliveIdleTimeS);
   if (NS_SUCCEEDED(rv)) {
-    mKeepaliveIdleTimeS = clamped(keepaliveIdleTimeS, 1, kMaxTCPKeepIdle);
+    mKeepaliveIdleTimeS = std::clamp(keepaliveIdleTimeS, 1, kMaxTCPKeepIdle);
   }
 
   int32_t keepaliveRetryIntervalS;
@@ -1498,13 +1513,13 @@ nsresult nsSocketTransportService::UpdatePrefs() {
                            &keepaliveRetryIntervalS);
   if (NS_SUCCEEDED(rv)) {
     mKeepaliveRetryIntervalS =
-        clamped(keepaliveRetryIntervalS, 1, kMaxTCPKeepIntvl);
+        std::clamp(keepaliveRetryIntervalS, 1, kMaxTCPKeepIntvl);
   }
 
   int32_t keepaliveProbeCount;
   rv = Preferences::GetInt(KEEPALIVE_PROBE_COUNT_PREF, &keepaliveProbeCount);
   if (NS_SUCCEEDED(rv)) {
-    mKeepaliveProbeCount = clamped(keepaliveProbeCount, 1, kMaxTCPKeepCount);
+    mKeepaliveProbeCount = std::clamp(keepaliveProbeCount, 1, kMaxTCPKeepCount);
   }
   bool keepaliveEnabled = false;
   rv = Preferences::GetBool(KEEPALIVE_ENABLED_PREF, &keepaliveEnabled);
@@ -1661,8 +1676,6 @@ void nsSocketTransportService::ClosePrivateConnections() {
       DetachSocket(mIdleList, &mIdleList[i]);
     }
   }
-
-  ClearPrivateSSLState();
 }
 
 NS_IMETHODIMP
@@ -1688,7 +1701,7 @@ PRStatus nsSocketTransportService::DiscoverMaxCount() {
   // most linux at 1000. We can reliably use [sg]rlimit to
   // query that and raise it if needed.
 
-  struct rlimit rlimitData {};
+  struct rlimit rlimitData{};
   if (getrlimit(RLIMIT_NOFILE, &rlimitData) == -1) {  // rlimit broken - use min
     return PR_SUCCESS;
   }
@@ -1852,11 +1865,20 @@ void nsSocketTransportService::EndPolling() {
 
 #endif
 
-void nsSocketTransportService::TryRepairPollableEvent() {
+void nsSocketTransportService::TryRepairPollableEvent() MOZ_REQUIRES(mLock) {
   mLock.AssertCurrentThreadOwns();
 
+  PollableEvent* pollable = nullptr;
+  {
+    // Bug 1719046: In certain cases PollableEvent constructor can hang
+    // when callign PR_NewTCPSocketPair.
+    // We unlock the mutex to prevent main thread hangs acquiring the lock.
+    MutexAutoUnlock unlock(mLock);
+    pollable = new PollableEvent();
+  }
+
   NS_WARNING("Trying to repair mPollableEvent");
-  mPollableEvent.reset(new PollableEvent());
+  mPollableEvent.reset(pollable);
   if (!mPollableEvent->Valid()) {
     mPollableEvent = nullptr;
   }

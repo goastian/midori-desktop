@@ -93,6 +93,8 @@ function _isUndefined(value) {
   return typeof value === "undefined";
 }
 
+const _cdnURLs = {};
+
 export var Utils = {
   get SERVER_URL() {
     return lazy.allowServerURLOverride
@@ -275,6 +277,39 @@ export var Utils = {
 
       request.send();
     });
+  },
+
+  /**
+   * Retrieves the base URL for attachments from the server configuration.
+   *
+   * If the URL has been previously fetched and cached, it returns the cached URL.
+   *
+   * @async
+   * @function baseAttachmentsURL
+   * @memberof Utils
+   * @returns {Promise<string>} A promise that resolves to the base URL for attachments.
+   *
+   * @throws {Error} If there is an error fetching or parsing the server response.
+   *
+   * @example
+   * const attachmentsURL = await Downloader.baseAttachmentsURL();
+   * console.log(attachmentsURL);
+   */
+  async baseAttachmentsURL() {
+    if (!_cdnURLs[Utils.SERVER_URL]) {
+      const resp = await Utils.fetch(`${Utils.SERVER_URL}/`);
+      const serverInfo = await resp.json();
+      // Server capabilities expose attachments configuration.
+      const {
+        capabilities: {
+          attachments: { base_url },
+        },
+      } = serverInfo;
+      // Make sure the URL always has a trailing slash.
+      _cdnURLs[Utils.SERVER_URL] =
+        base_url + (base_url.endsWith("/") ? "" : "/");
+    }
+    return _cdnURLs[Utils.SERVER_URL];
   },
 
   /**
@@ -470,7 +505,7 @@ export var Utils = {
       } else if (typeof value === "object") {
         return Utils.filterObject(value, entry[filter]);
       } else if (!Object.prototype.hasOwnProperty.call(entry, filter)) {
-        console.error(`The property ${filter} does not exist`);
+        log.debug(`The property ${filter} does not exist`);
         return false;
       }
       return entry[filter] === value;
@@ -500,5 +535,48 @@ export var Utils = {
       }
       return a[field] > b[field] ? direction : -direction;
     });
+  },
+
+  /**
+   * Fetches and extracts a bundle of changesets from the server.
+   *
+   * This function downloads a JSON file with all changesets required during startup, compressed as LZ4.
+   * It writes the LZ4 file to a temporary location, extracts it, and return the array of changesets.
+   * We chose to use LZ4 instead of Zip because extraction can happen off the main thread.
+   *
+   * @async
+   * @function fetchChangesetsBundle
+   * @memberof Utils
+   * @returns {Promise<Array<Object>>} A promise that resolves to an array of parsed changesets.
+   *
+   * @throws {Error} Throws an error if there is an issue fetching the server info or the changeset bundle,
+   *                 or if there is an error during the extraction and parsing of the changesets.
+   */
+  async fetchChangesetsBundle() {
+    const tmpLz4File = await IOUtils.createUniqueFile(
+      PathUtils.tempDir,
+      "remote-settings-startup-bundle-"
+    );
+    try {
+      const baseUrl = await Utils.baseAttachmentsURL();
+      const bundleUrl = `${baseUrl}bundles/startup.json.mozlz4`;
+      const bundleResp = await Utils.fetch(bundleUrl);
+      if (!bundleResp.ok) {
+        throw new Error(`Cannot fetch changeset bundle from ${bundleUrl}`);
+      }
+      // Write down the LZ4 in a temporary file.
+      const downloaded = await bundleResp.arrayBuffer();
+      await IOUtils.write(tmpLz4File, new Uint8Array(downloaded), {
+        tmpPath: `${tmpLz4File}.tmp`,
+      });
+      // Decompress using LZ4
+      const changesetsJson = await IOUtils.readUTF8(tmpLz4File, {
+        decompress: true,
+      });
+      // Parse JSON from string
+      return JSON.parse(changesetsJson);
+    } finally {
+      await IOUtils.remove(tmpLz4File, { ignoreAbsent: true });
+    }
   },
 };

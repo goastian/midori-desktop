@@ -18,7 +18,6 @@ import mozilla.components.concept.engine.webextension.DisabledFlags
 import mozilla.components.concept.engine.webextension.Metadata
 import mozilla.components.concept.engine.webextension.WebExtension
 import mozilla.components.feature.addons.migration.DefaultSupportedAddonsChecker
-import mozilla.components.service.glean.testing.GleanTestRule
 import mozilla.components.support.test.robolectric.testContext
 import mozilla.components.support.utils.BrowsersCache
 import org.junit.Assert.assertEquals
@@ -36,6 +35,11 @@ import org.mozilla.fenix.GleanMetrics.SearchDefaultEngine
 import org.mozilla.fenix.GleanMetrics.TopSites
 import org.mozilla.fenix.components.metrics.MozillaProductDetector
 import org.mozilla.fenix.components.toolbar.ToolbarPosition
+import org.mozilla.fenix.distributions.DefaultDistributionBrowserStoreProvider
+import org.mozilla.fenix.distributions.DistributionIdManager
+import org.mozilla.fenix.distributions.DistributionProviderChecker
+import org.mozilla.fenix.ext.components
+import org.mozilla.fenix.helpers.FenixGleanTestRule
 import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.utils.Settings
 import org.robolectric.Shadows.shadowOf
@@ -44,12 +48,16 @@ import org.robolectric.annotation.Config
 @RunWith(FenixRobolectricTestRunner::class)
 class FenixApplicationTest {
 
-    @get:Rule val gleanTestRule = GleanTestRule(ApplicationProvider.getApplicationContext())
+    @get:Rule val gleanTestRule = FenixGleanTestRule(ApplicationProvider.getApplicationContext())
 
     private lateinit var application: FenixApplication
     private lateinit var browsersCache: BrowsersCache
     private lateinit var mozillaProductDetector: MozillaProductDetector
     private lateinit var browserStore: BrowserStore
+
+    private val testDistributionProviderChecker = object : DistributionProviderChecker {
+        override fun queryProvider(): String? = null
+    }
 
     @Before
     fun setUp() {
@@ -57,6 +65,11 @@ class FenixApplicationTest {
         browsersCache = mockk(relaxed = true)
         mozillaProductDetector = mockk(relaxed = true)
         browserStore = BrowserStore()
+        every { testContext.components.distributionIdManager } returns DistributionIdManager(
+            testContext,
+            DefaultDistributionBrowserStoreProvider(browserStore),
+            testDistributionProviderChecker,
+        )
     }
 
     @Test
@@ -193,7 +206,6 @@ class FenixApplicationTest {
         assertEquals("standard", Preferences.enhancedTrackingProtection.testGetValue())
         assertEquals(listOf("switch", "touch exploration"), Preferences.accessibilityServices.testGetValue())
         assertEquals(true, Preferences.inactiveTabsEnabled.testGetValue())
-        assertEquals(expectedAppInstallSource, Metrics.installSource.testGetValue())
         assertEquals(true, Metrics.defaultWallpaper.testGetValue())
         assertEquals(true, Metrics.ramMoreThanThreshold.testGetValue())
         assertEquals(7L, Metrics.deviceTotalRam.testGetValue())

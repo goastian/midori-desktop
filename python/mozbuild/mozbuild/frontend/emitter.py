@@ -11,13 +11,12 @@ from collections import OrderedDict, defaultdict
 
 import mozinfo
 import mozpack.path as mozpath
-import six
 import toml
 from mach.mixin.logging import LoggingMixin
 from mozpack.chrome.manifest import Manifest
 
 from mozbuild.base import ExecutionSummary
-from mozbuild.util import memoize
+from mozbuild.util import HierarchicalStringList, memoize
 
 from ..testing import REFTEST_FLAVORS, TEST_MANIFESTS, SupportFilesConverter
 from .context import Context, ObjDirPath, Path, SourcePath, SubContext
@@ -50,6 +49,7 @@ from .data import (
     LocalInclude,
     LocalizedFiles,
     LocalizedPreprocessedFiles,
+    MozSrcFiles,
     ObjdirFiles,
     ObjdirPreprocessedFiles,
     PerSourceFlag,
@@ -517,7 +517,7 @@ class TreeMetadataEmitter(LoggingMixin):
             raise SandboxValidationError(
                 "No Cargo.toml file found in %s" % cargo_file, context
             )
-        with open(cargo_file, "r") as f:
+        with open(cargo_file) as f:
             content = toml.load(f)
 
         crate_name = content.get("package", {}).get("name")
@@ -555,9 +555,9 @@ class TreeMetadataEmitter(LoggingMixin):
         self, context, crate_dir, crate_name, dependencies, description="Dependency"
     ):
         """Verify that a crate's dependencies all specify local paths."""
-        for dep_crate_name, values in six.iteritems(dependencies):
+        for dep_crate_name, values in dependencies.items():
             # A simple version number.
-            if isinstance(values, (six.binary_type, six.text_type)):
+            if isinstance(values, (bytes, str)):
                 raise SandboxValidationError(
                     "%s %s of crate %s does not list a path"
                     % (description, dep_crate_name, crate_name),
@@ -623,7 +623,7 @@ class TreeMetadataEmitter(LoggingMixin):
                 "crate-type %s is not permitted for %s" % (crate_type, libname), context
             )
 
-        dependencies = set(six.iterkeys(config.get("dependencies", {})))
+        dependencies = set(config.get("dependencies", {}).keys())
 
         features = context.get(cls.FEATURES_VAR, [])
         unique_features = set(features)
@@ -740,9 +740,11 @@ class TreeMetadataEmitter(LoggingMixin):
                     (
                         context,
                         self._binaries[program],
-                        "HOST_USE_LIBS"
-                        if kind == "HOST_SIMPLE_PROGRAMS"
-                        else "USE_LIBS",
+                        (
+                            "HOST_USE_LIBS"
+                            if kind == "HOST_SIMPLE_PROGRAMS"
+                            else "USE_LIBS"
+                        ),
                     )
                 )
                 add_program(self._binaries[program], kind)
@@ -1083,7 +1085,7 @@ class TreeMetadataEmitter(LoggingMixin):
                 )
 
         no_pgo = context.get("NO_PGO")
-        no_pgo_sources = [f for f, flags in six.iteritems(all_flags) if flags.no_pgo]
+        no_pgo_sources = [f for f, flags in all_flags.items() if flags.no_pgo]
         if no_pgo:
             if no_pgo_sources:
                 raise SandboxValidationError(
@@ -1111,7 +1113,7 @@ class TreeMetadataEmitter(LoggingMixin):
 
         # The inverse of the above, mapping suffixes to their canonical suffix.
         canonicalized_suffix_map = {}
-        for suffix, alternatives in six.iteritems(suffix_map):
+        for suffix, alternatives in suffix_map.items():
             alternatives.add(suffix)
             for a in alternatives:
                 canonicalized_suffix_map[a] = suffix
@@ -1121,7 +1123,7 @@ class TreeMetadataEmitter(LoggingMixin):
         all_suffixes = list(suffix_map.keys())
         varmap = dict(
             SOURCES=(Sources, all_suffixes),
-            HOST_SOURCES=(HostSources, [".c", ".mm", ".cpp"]),
+            HOST_SOURCES=(HostSources, [".c", ".cpp"]),
             UNIFIED_SOURCES=(UnifiedSources, [".c", ".mm", ".m", ".cpp"]),
         )
         # Only include a WasmSources context if there are any WASM_SOURCES.
@@ -1188,7 +1190,7 @@ class TreeMetadataEmitter(LoggingMixin):
                 for suffix, srcs in ctxt_sources["WASM_SOURCES"].items():
                     wasm_linkable.sources[suffix] += srcs
 
-        for f, flags in sorted(six.iteritems(all_flags)):
+        for f, flags in sorted(all_flags.items()):
             if flags.flags:
                 ext = mozpath.splitext(f)[1]
                 yield PerSourceFlag(context, f, flags.flags)
@@ -1309,17 +1311,17 @@ class TreeMetadataEmitter(LoggingMixin):
             passthru.variables["NO_DIST_INSTALL"] = True
 
         # Ideally, this should be done in templates, but this is difficult at
-        # the moment because USE_STATIC_LIBS can be set after a template
+        # the moment because USE_STATIC_MSVCRT can be set after a template
         # returns. Eventually, with context-based templates, it will be
         # possible.
         if (
             context.config.substs.get("OS_ARCH") == "WINNT"
             and context.config.substs.get("CC_TYPE") == "clang-cl"
         ):
-            use_static_lib = context.get(
-                "USE_STATIC_LIBS"
+            use_static_msvcrt = context.get(
+                "USE_STATIC_MSVCRT"
             ) and not context.config.substs.get("MOZ_ASAN")
-            rtl_flag = "-MT" if use_static_lib else "-MD"
+            rtl_flag = "-MT" if use_static_msvcrt else "-MD"
             if context.config.substs.get("MOZ_DEBUG") and not context.config.substs.get(
                 "MOZ_NO_DEBUG_RTL"
             ):
@@ -1436,6 +1438,18 @@ class TreeMetadataEmitter(LoggingMixin):
             ]
         )
 
+        processed_moz_src_files = None
+        if "MOZ_SRC_FILES" in context:
+            # We process MOZ_SRC_FILES separately such that any items in the
+            # list that are in subdirectories automatically get installed to
+            # the same subdirectories in the objdir.
+            processed_moz_src_files = HierarchicalStringList()
+            for file in context.get("MOZ_SRC_FILES"):
+                if "/" in file:
+                    processed_moz_src_files[mozpath.dirname(file)] += [file]
+                else:
+                    processed_moz_src_files += [file]
+
         components = []
         for var, cls in (
             ("EXPORTS", Exports),
@@ -1443,11 +1457,15 @@ class TreeMetadataEmitter(LoggingMixin):
             ("FINAL_TARGET_PP_FILES", FinalTargetPreprocessedFiles),
             ("LOCALIZED_FILES", LocalizedFiles),
             ("LOCALIZED_PP_FILES", LocalizedPreprocessedFiles),
+            ("MOZ_SRC_FILES", MozSrcFiles),
             ("OBJDIR_FILES", ObjdirFiles),
             ("OBJDIR_PP_FILES", ObjdirPreprocessedFiles),
             ("TEST_HARNESS_FILES", TestHarnessFiles),
         ):
-            all_files = context.get(var)
+            if var == "MOZ_SRC_FILES":
+                all_files = processed_moz_src_files
+            else:
+                all_files = context.get(var)
             if not all_files:
                 continue
             if dist_install is False and var != "TEST_HARNESS_FILES":
@@ -1674,7 +1692,7 @@ class TreeMetadataEmitter(LoggingMixin):
                 context,
                 script,
                 "process_define_file",
-                six.text_type(path),
+                str(path),
                 [Path(context, path + ".in")],
             )
 

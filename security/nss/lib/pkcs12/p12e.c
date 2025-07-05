@@ -465,7 +465,7 @@ loser:
     if (slot) {
         PK11_FreeSlot(slot);
     }
-    if (safeInfo->cinfo) {
+    if (safeInfo && safeInfo->cinfo) {
         SEC_PKCS7DestroyContentInfo(safeInfo->cinfo);
     }
 
@@ -1733,7 +1733,7 @@ loser:
 /* The outermost ASN.1 encoder calls this function for output.
 ** This function calls back to the library caller's output routine,
 ** which typically writes to a PKCS12 file.
- */
+*/
 static void
 sec_P12A1OutputCB_Outer(void *arg, const char *buf, unsigned long len,
                         int depth, SEC_ASN1EncodingPart data_kind)
@@ -1747,7 +1747,7 @@ sec_P12A1OutputCB_Outer(void *arg, const char *buf, unsigned long len,
 /* The "middle" and "inner" ASN.1 encoders call this function to output.
 ** This function does HMACing, if appropriate, and then buffers the data.
 ** The buffered data is eventually passed down to the underlying PKCS7 encoder.
- */
+*/
 static void
 sec_P12A1OutputCB_HmacP7Update(void *arg, const char *buf,
                                unsigned long len,
@@ -1887,6 +1887,9 @@ sec_pkcs12_encoder_asafe_process(sec_PKCS12EncoderContext *p12ecx)
         /* finish up safe content info */
         rv = SEC_PKCS7EncoderFinish(innerP7ecx, p12ecx->p12exp->pwfn,
                                     p12ecx->p12exp->pwfnarg);
+        if (rv != SECSuccess) {
+            goto loser;
+        }
     }
     memset(&p12ecx->innerBuf, 0, sizeof p12ecx->innerBuf);
     return SECSuccess;

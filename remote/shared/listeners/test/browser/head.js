@@ -4,6 +4,25 @@
 
 "use strict";
 
+/**
+ * Add a new tab in a given browser, pointing to a given URL and automatically
+ * register the cleanup function to remove it at the end of the test.
+ *
+ * @param {Browser} browser
+ *     The browser element where the tab should be added.
+ * @param {string} url
+ *     The URL for the tab.
+ * @param {object=} options
+ *     Options object to forward to BrowserTestUtils.addTab.
+ * @returns {Tab}
+ *     The created tab.
+ */
+function addTab(browser, url, options) {
+  const tab = BrowserTestUtils.addTab(browser, url, options);
+  registerCleanupFunction(() => browser.removeTab(tab));
+  return tab;
+}
+
 async function clearConsole() {
   for (const tab of gBrowser.tabs) {
     await SpecialPowers.spawn(tab.linkedBrowser, [], () => {
@@ -72,7 +91,6 @@ async function loadURL(browser, url) {
 /**
  * Create a fetch request to `url` from the content page loaded in the provided
  * `browser`.
- *
  *
  * @param {Browser} browser
  *     The browser element where the fetch should be performed.

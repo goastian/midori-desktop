@@ -22,10 +22,10 @@ apt-get install -y --no-install-recommends \
     golang-go \
     gcc \
     libc6-dev \
+    meson \
     python3-minimal \
     python3-wheel \
     python3-pip \
-    python3-poetry \
     python3-venv \
     python3-requests \
     python3-requests-unixsocket \
@@ -38,8 +38,7 @@ mkdir -p /builds/worker/.mozbuild
 chown -R worker:worker /builds/worker/
 export GOPATH=/builds/worker/go
 
-# nodejs 16 for pdfjs
-. install-node.sh
+. install-node-for-pdfjs.sh
 
 # pdf.js setup
 # We want to aviod downloading a ton of packages all the time, so
@@ -67,5 +66,8 @@ git checkout "$UPDATEBOT_REVISION"
 cd /builds/worker/
 chown -R worker:worker .
 chown -R worker:worker .*
+
+python3 -m pip install --break-system-packages -U pip
+python3 -m pip install --break-system-packages poetry==2.1.1
 
 rm -rf /setup

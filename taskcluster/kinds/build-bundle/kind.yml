@@ -13,19 +13,17 @@ transforms:
 kind-dependencies:
     - toolchain
     - build-fat-aar
+    - generate-baseline-profile-firebase
 
 task-defaults:
     aab-artifact-template:
         type: file
         name: 'public/build/target.aab'
-        path: '/builds/worker/checkouts/gecko/mobile/android/{source_project_name}/app/build/outputs/bundle/{variant_name}/app-{gradle_build}-{gradle_build_type}.aab'
+        path: '/builds/worker/workspace/obj-build/gradle/build/mobile/android/{source_project_name}/app/outputs/bundle/{variant_name}/app-{gradle_build}-{gradle_build_type}.aab'
     attributes:
         build_platform: android
     run:
         gradle-package-command: bundle
-        gradle-extra-options:
-            - -Paab
-
 
 tasks:
     focus-debug:
@@ -122,6 +120,12 @@ tasks:
         shipping-product: firefox-android
         dependencies:
             build-fat-aar: build-fat-aar-android-geckoview-fat-aar-shippable/opt
+            baseline-profile: generate-baseline-profile-firebase-fenix
+        fetches:
+            baseline-profile:
+                - artifact: baseline-prof.txt
+                  extract: false
+                  dest: baselineProfiles
         description: 'Fenix release AAB build from source code'
         include-shippable-secrets: true
         include-release-version: true
@@ -130,6 +134,7 @@ tasks:
             gradle-build-type: release
             gradle-build-name: fenixRelease
             gradle-build: fenix
+            baseline-profile-path: /builds/worker/fetches/baselineProfiles
         shipping-phase: promote
         source-project-name: "fenix"
         treeherder:
@@ -159,6 +164,12 @@ tasks:
             shipping-product: fenix
         dependencies:
             build-fat-aar: build-fat-aar-android-geckoview-fat-aar-shippable/opt
+            baseline-profile: generate-baseline-profile-firebase-fenix
+        fetches:
+            baseline-profile:
+                - artifact: baseline-prof.txt
+                  extract: false
+                  dest: baselineProfiles
         description: 'Fenix nightly AAB build from source code'
         include-shippable-secrets: true
         include-nightly-version: true
@@ -167,6 +178,7 @@ tasks:
             gradle-build-type: nightly
             gradle-build-name: fenixNightly
             gradle-build: fenix
+            baseline-profile-path: /builds/worker/fetches/baselineProfiles
         source-project-name: "fenix"
         treeherder:
             platform: fenix-android-all/opt
@@ -200,6 +212,12 @@ tasks:
         shipping-product: firefox-android
         dependencies:
             build-fat-aar: build-fat-aar-android-geckoview-fat-aar-shippable/opt
+            baseline-profile: generate-baseline-profile-firebase-fenix
+        fetches:
+            baseline-profile:
+                - artifact: baseline-prof.txt
+                  extract: false
+                  dest: baselineProfiles
         description: 'Fenix beta AAB build from source code'
         include-shippable-secrets: true
         include-release-version: true
@@ -208,6 +226,7 @@ tasks:
             gradle-build-type: beta
             gradle-build-name: fenixBeta
             gradle-build: fenix
+            baseline-profile-path: /builds/worker/fetches/baselineProfiles
         shipping-phase: promote
         source-project-name: "fenix"
         treeherder:

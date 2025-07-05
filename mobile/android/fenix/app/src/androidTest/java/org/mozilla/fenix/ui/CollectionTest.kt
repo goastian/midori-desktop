@@ -9,12 +9,13 @@ import org.junit.Rule
 import org.junit.Test
 import org.mozilla.fenix.customannotations.SmokeTest
 import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
-import org.mozilla.fenix.helpers.TestAssetHelper
+import org.mozilla.fenix.helpers.MockBrowserDataHelper
 import org.mozilla.fenix.helpers.TestAssetHelper.getGenericAsset
 import org.mozilla.fenix.helpers.TestHelper.clickSnackbarButton
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestHelper.verifySnackBarText
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.browserScreen
 import org.mozilla.fenix.ui.robots.collectionRobot
 import org.mozilla.fenix.ui.robots.composeTabDrawer
@@ -27,25 +28,28 @@ import org.mozilla.fenix.ui.robots.navigationToolbar
  */
 
 class CollectionTest : TestSetup() {
-    private val firstCollectionName = "testcollection_1"
-    private val secondCollectionName = "testcollection_2"
     private val collectionName = "First Collection"
+    private val secondCollectionName = "testcollection_2"
 
     @get:Rule
     val composeTestRule =
         AndroidComposeTestRule(
             HomeActivityIntentTestRule(
                 isHomeOnboardingDialogEnabled = false,
-                isJumpBackInCFREnabled = false,
                 isRecentTabsFeatureEnabled = false,
                 isRecentlyVisitedFeatureEnabled = false,
                 isPocketEnabled = false,
                 isWallpaperOnboardingEnabled = false,
-                isTCPCFREnabled = false,
+                // workaround for toolbar at top position by default
+                // remove with https://bugzilla.mozilla.org/show_bug.cgi?id=1917640
+                shouldUseBottomToolbar = true,
             ),
         ) { it.activity }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/353823
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/353823
     @SmokeTest
     @Test
     fun createFirstCollectionUsingHomeScreenButtonTest() {
@@ -59,7 +63,7 @@ class CollectionTest : TestSetup() {
         }.openNewTab {
         }.submitQuery(secondWebPage.url.toString()) {
             mDevice.waitForIdle()
-        }.goToHomescreen {
+        }.goToHomescreen(composeTestRule) {
         }.clickSaveTabsToCollectionButton(composeTestRule) {
             longClickTab(firstWebPage.title)
             selectTab(secondWebPage.title, numberOfSelectedTabs = 2)
@@ -70,105 +74,98 @@ class CollectionTest : TestSetup() {
 
         composeTabDrawer(composeTestRule) {
             verifySnackBarText("Collection saved!")
-            clickSnackbarButton("VIEW")
+        }.closeTabDrawer {
         }
 
         homeScreen {
-            verifyCollectionIsDisplayed(collectionName)
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2283299
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2283299
     @Test
     fun createFirstCollectionFromMainMenuTest() {
-        val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
+        val defaultWebPage = getGenericAsset(mockWebServer, 1)
 
         navigationToolbar {
         }.enterURLAndEnterToBrowser(defaultWebPage.url) {
         }.openThreeDotMenu {
         }.openSaveToCollection {
             verifyCollectionNameTextField()
+        }.typeCollectionNameAndSave(collectionName) {
+            verifySnackBarText("Collection saved!")
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/343422
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/343422
     @SmokeTest
     @Test
     fun verifyExpandedCollectionItemsTest() {
         val webPage = getGenericAsset(mockWebServer, 1)
+        val webPage2 = getGenericAsset(mockWebServer, 2)
         val webPageUrl = webPage.url.host.toString()
 
-        navigationToolbar {
-        }.enterURLAndEnterToBrowser(webPage.url) {
-        }.openTabDrawer(composeTestRule) {
-            createCollection(webPage.title, collectionName = collectionName)
-            clickSnackbarButton("VIEW")
-        }
+        MockBrowserDataHelper
+            .createCollection(
+                Pair(webPage.url.toString(), webPage.title),
+                Pair(webPage2.url.toString(), webPage2.title),
+                title = collectionName,
+            )
 
         homeScreen {
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
-            verifyTabSavedInCollection(webPage.title)
-            verifyCollectionTabUrl(true, webPageUrl)
-            verifyShareCollectionButtonIsVisible(true)
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
+            verifyTabSavedInCollection(composeTestRule, webPage.title)
+            verifyTabSavedInCollection(composeTestRule, webPage2.title)
+            verifyShareCollectionButtonIsVisible(composeTestRule, true)
             verifyCollectionMenuIsVisible(true, composeTestRule)
             verifyCollectionItemRemoveButtonIsVisible(webPage.title, true)
-        }.collapseCollection(collectionName) {}
+        }.collapseCollection(composeTestRule, collectionName) {}
 
         collectionRobot {
-            verifyTabSavedInCollection(webPage.title, false)
-            verifyShareCollectionButtonIsVisible(false)
+            verifyTabSavedInCollection(composeTestRule, webPage.title, false)
+            verifyShareCollectionButtonIsVisible(composeTestRule, false)
             verifyCollectionMenuIsVisible(false, composeTestRule)
             verifyCollectionTabUrl(false, webPageUrl)
             verifyCollectionItemRemoveButtonIsVisible(webPage.title, false)
         }
 
         homeScreen {
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
-            verifyTabSavedInCollection(webPage.title)
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
+            verifyTabSavedInCollection(composeTestRule, webPage.title)
             verifyCollectionTabUrl(true, webPageUrl)
-            verifyShareCollectionButtonIsVisible(true)
+            verifyShareCollectionButtonIsVisible(composeTestRule, true)
             verifyCollectionMenuIsVisible(true, composeTestRule)
             verifyCollectionItemRemoveButtonIsVisible(webPage.title, true)
-        }.collapseCollection(collectionName) {}
+        }.collapseCollection(composeTestRule, collectionName) {}
 
         collectionRobot {
-            verifyTabSavedInCollection(webPage.title, false)
-            verifyShareCollectionButtonIsVisible(false)
+            verifyTabSavedInCollection(composeTestRule, webPage.title, false)
+            verifyShareCollectionButtonIsVisible(composeTestRule, false)
             verifyCollectionMenuIsVisible(false, composeTestRule)
             verifyCollectionTabUrl(false, webPageUrl)
             verifyCollectionItemRemoveButtonIsVisible(webPage.title, false)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/343425
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/343425
     @SmokeTest
     @Test
     fun openAllTabsFromACollectionTest() {
         val firstTestPage = getGenericAsset(mockWebServer, 1)
         val secondTestPage = getGenericAsset(mockWebServer, 2)
 
-        navigationToolbar {
-        }.enterURLAndEnterToBrowser(firstTestPage.url) {
-            waitForPageToLoad()
-        }.openTabDrawer(composeTestRule) {
-        }.openNewTab {
-        }.submitQuery(secondTestPage.url.toString()) {
-            waitForPageToLoad()
-        }.openTabDrawer(composeTestRule) {
-            createCollection(
-                firstTestPage.title,
-                secondTestPage.title,
-                collectionName = collectionName,
+        MockBrowserDataHelper
+            .createCollection(
+                Pair(firstTestPage.url.toString(), firstTestPage.title),
+                Pair(secondTestPage.url.toString(), secondTestPage.title),
+                title = collectionName,
             )
-        }.openThreeDotMenu {
-        }.closeAllTabs {
-        }
 
         homeScreen {
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
             clickCollectionThreeDotButton(composeTestRule)
             selectOpenTabs(composeTestRule)
         }
@@ -177,7 +174,7 @@ class CollectionTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/343426
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/343426
     @SmokeTest
     @Test
     fun shareAllTabsFromACollectionTest() {
@@ -186,26 +183,23 @@ class CollectionTest : TestSetup() {
         val sharingApp = "Gmail"
         val urlString = "${secondWebsite.url}\n\n${firstWebsite.url}"
 
-        navigationToolbar {
-        }.enterURLAndEnterToBrowser(firstWebsite.url) {
-        }.openTabDrawer(composeTestRule) {
-        }.openNewTab {
-        }.submitQuery(secondWebsite.url.toString()) {
-            waitForPageToLoad()
-        }.openTabDrawer(composeTestRule) {
-            createCollection(firstWebsite.title, secondWebsite.title, collectionName = collectionName)
-            verifySnackBarText("Collection saved!")
-        }.openThreeDotMenu {
-        }.closeAllTabs {
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
-        }.clickShareCollectionButton {
+        MockBrowserDataHelper
+            .createCollection(
+                Pair(firstWebsite.url.toString(), firstWebsite.title),
+                Pair(secondWebsite.url.toString(), secondWebsite.title),
+                title = collectionName,
+            )
+
+        homeScreen {
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
+        }.clickShareCollectionButton(composeTestRule) {
             verifyShareTabsOverlay(firstWebsite.title, secondWebsite.title)
             verifySharingWithSelectedApp(sharingApp, urlString, collectionName)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/343428
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/343428
     // Test running on beta/release builds in CI:
     // caution when making changes to it, so they don't block the builds
     @SmokeTest
@@ -213,52 +207,47 @@ class CollectionTest : TestSetup() {
     fun deleteCollectionTest() {
         val webPage = getGenericAsset(mockWebServer, 1)
 
-        navigationToolbar {
-        }.enterURLAndEnterToBrowser(webPage.url) {
-        }.openTabDrawer(composeTestRule) {
-            createCollection(webPage.title, collectionName = collectionName)
-            clickSnackbarButton("VIEW")
-        }
+        MockBrowserDataHelper
+            .createCollection(
+                Pair(webPage.url.toString(), webPage.title),
+                title = collectionName,
+            )
 
         homeScreen {
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
             clickCollectionThreeDotButton(composeTestRule)
             selectDeleteCollection(composeTestRule)
         }
 
         homeScreen {
             verifySnackBarText("Collection deleted")
-            clickSnackbarButton("UNDO")
-            verifyCollectionIsDisplayed(collectionName, true)
-        }
-
-        homeScreen {
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
+            clickSnackbarButton(composeTestRule, "UNDO")
+            verifyCollectionIsDisplayed(composeTestRule, collectionName, true)
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
             clickCollectionThreeDotButton(composeTestRule)
             selectDeleteCollection(composeTestRule)
         }
 
         homeScreen {
             verifySnackBarText("Collection deleted")
-            verifyNoCollectionsText()
+            verifyNoCollectionsText(composeTestRule)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2319453
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2319453
     // open a webpage, and add currently opened tab to existing collection
     @Test
     fun saveTabToExistingCollectionFromMainMenuTest() {
         val firstWebPage = getGenericAsset(mockWebServer, 1)
         val secondWebPage = getGenericAsset(mockWebServer, 2)
 
-        navigationToolbar {
-        }.enterURLAndEnterToBrowser(firstWebPage.url) {
-        }.openTabDrawer(composeTestRule) {
-            createCollection(firstWebPage.title, collectionName = collectionName)
-            verifySnackBarText("Collection saved!")
-        }.closeTabDrawer {}
+        MockBrowserDataHelper
+            .createCollection(
+                Pair(firstWebPage.url.toString(), firstWebPage.title),
+                title = collectionName,
+            )
 
         navigationToolbar {
         }.enterURLAndEnterToBrowser(secondWebPage.url) {
@@ -267,66 +256,64 @@ class CollectionTest : TestSetup() {
         }.openSaveToCollection {
         }.selectExistingCollection(collectionName) {
             verifySnackBarText("Tab saved!")
-        }.goToHomescreen {
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
-            verifyTabSavedInCollection(firstWebPage.title)
-            verifyTabSavedInCollection(secondWebPage.title)
+        }.goToHomescreen(composeTestRule) {
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
+            verifyTabSavedInCollection(composeTestRule, firstWebPage.title)
+            verifyTabSavedInCollection(composeTestRule, secondWebPage.title)
         }
     }
 
-    // Testrail link: https://testrail.stage.mozaws.net/index.php?/cases/view/343423
+    // Testrail link: https://mozilla.testrail.io/index.php?/cases/view/343423
     @Test
     fun saveTabToExistingCollectionUsingTheAddTabButtonTest() {
         val firstWebPage = getGenericAsset(mockWebServer, 1)
         val secondWebPage = getGenericAsset(mockWebServer, 2)
 
-        navigationToolbar {
-        }.enterURLAndEnterToBrowser(firstWebPage.url) {
-        }.openTabDrawer(composeTestRule) {
-            createCollection(firstWebPage.title, collectionName = collectionName)
-            verifySnackBarText("Collection saved!")
-            closeTab()
-        }
+        MockBrowserDataHelper
+            .createCollection(
+                Pair(firstWebPage.url.toString(), firstWebPage.title),
+                title = collectionName,
+            )
 
         navigationToolbar {
         }.enterURLAndEnterToBrowser(secondWebPage.url) {
-        }.goToHomescreen {
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
+        }.goToHomescreen(composeTestRule) {
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
             clickCollectionThreeDotButton(composeTestRule)
             selectAddTabToCollection(composeTestRule)
             verifyTabsSelectedCounterText(1)
             saveTabsSelectedForCollection()
             verifySnackBarText("Tab saved!")
-            verifyTabSavedInCollection(secondWebPage.title)
+            verifyTabSavedInCollection(composeTestRule, secondWebPage.title)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/343424
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/343424
     @Test
     fun renameCollectionTest() {
         val webPage = getGenericAsset(mockWebServer, 1)
 
-        navigationToolbar {
-        }.enterURLAndEnterToBrowser(webPage.url) {
-        }.openTabDrawer(composeTestRule) {
-            createCollection(webPage.title, collectionName = firstCollectionName)
-            verifySnackBarText("Collection saved!")
-        }.closeTabDrawer {
-        }.goToHomescreen {
-            verifyCollectionIsDisplayed(firstCollectionName)
-        }.expandCollection(firstCollectionName) {
+        MockBrowserDataHelper
+            .createCollection(
+                Pair(webPage.url.toString(), webPage.title),
+                title = collectionName,
+            )
+
+        homeScreen {
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
             clickCollectionThreeDotButton(composeTestRule)
             selectRenameCollection(composeTestRule)
         }.typeCollectionNameAndSave(secondCollectionName) {}
 
         homeScreen {
-            verifyCollectionIsDisplayed(secondCollectionName)
+            verifyCollectionIsDisplayed(composeTestRule, secondCollectionName)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/991248
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/991248
     @Test
     fun createCollectionUsingSelectTabsButtonTest() {
         val firstWebPage = getGenericAsset(mockWebServer, 1)
@@ -340,114 +327,103 @@ class CollectionTest : TestSetup() {
         }.openTabDrawer(composeTestRule) {
             createCollection(
                 tabTitles = arrayOf(firstWebPage.title, secondWebPage.title),
-                collectionName = firstCollectionName,
+                collectionName = collectionName,
             )
             verifySnackBarText("Collection saved!")
         }.closeTabDrawer {
-        }.goToHomescreen {
-            verifyCollectionIsDisplayed(firstCollectionName)
+        }.goToHomescreen(composeTestRule) {
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2319455
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2319455
     @Test
     fun removeTabFromCollectionUsingTheCloseButtonTest() {
         val webPage = getGenericAsset(mockWebServer, 1)
 
-        navigationToolbar {
-        }.enterURLAndEnterToBrowser(webPage.url) {
-        }.openTabDrawer(composeTestRule) {
-            createCollection(webPage.title, collectionName = collectionName)
-            closeTab()
-        }
+        MockBrowserDataHelper
+            .createCollection(
+                Pair(webPage.url.toString(), webPage.title),
+                title = collectionName,
+            )
 
         homeScreen {
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
-            verifyTabSavedInCollection(webPage.title, true)
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
+            verifyTabSavedInCollection(composeTestRule, webPage.title, true)
             removeTabFromCollection(webPage.title)
         }
         homeScreen {
             verifySnackBarText("Collection deleted")
-            clickSnackbarButton("UNDO")
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
-            verifyTabSavedInCollection(webPage.title, true)
+            clickSnackbarButton(composeTestRule, "UNDO")
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
+            verifyTabSavedInCollection(composeTestRule, webPage.title, true)
             removeTabFromCollection(webPage.title)
-            verifyTabSavedInCollection(webPage.title, false)
+            verifyTabSavedInCollection(composeTestRule, webPage.title, false)
         }
         homeScreen {
-            verifyCollectionIsDisplayed(collectionName, false)
+            verifyCollectionIsDisplayed(composeTestRule, collectionName, false)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/343427
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/343427
     @Test
     fun removeTabFromCollectionUsingSwipeLeftActionTest() {
         val testPage = getGenericAsset(mockWebServer, 1)
 
-        navigationToolbar {
-        }.enterURLAndEnterToBrowser(testPage.url) {
-            waitForPageToLoad()
-        }.openTabDrawer(composeTestRule) {
-            createCollection(
-                testPage.title,
-                collectionName = collectionName,
+        MockBrowserDataHelper
+            .createCollection(
+                Pair(testPage.url.toString(), testPage.title),
+                title = collectionName,
             )
-            closeTab()
-        }
 
         homeScreen {
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
             swipeTabLeft(testPage.title, composeTestRule)
-            verifyTabSavedInCollection(testPage.title, false)
+            verifyTabSavedInCollection(composeTestRule, testPage.title, false)
         }
         homeScreen {
             verifySnackBarText("Collection deleted")
-            clickSnackbarButton("UNDO")
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
-            verifyTabSavedInCollection(testPage.title, true)
+            clickSnackbarButton(composeTestRule, "UNDO")
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
+            verifyTabSavedInCollection(composeTestRule, testPage.title, true)
             swipeTabLeft(testPage.title, composeTestRule)
-            verifyTabSavedInCollection(testPage.title, false)
+            verifyTabSavedInCollection(composeTestRule, testPage.title, false)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/991278
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/991278
     @Test
     fun removeTabFromCollectionUsingSwipeRightActionTest() {
         val testPage = getGenericAsset(mockWebServer, 1)
 
-        navigationToolbar {
-        }.enterURLAndEnterToBrowser(testPage.url) {
-            waitForPageToLoad()
-        }.openTabDrawer(composeTestRule) {
-            createCollection(
-                testPage.title,
-                collectionName = collectionName,
+        MockBrowserDataHelper
+            .createCollection(
+                Pair(testPage.url.toString(), testPage.title),
+                title = collectionName,
             )
-            closeTab()
-        }
 
         homeScreen {
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
             swipeTabRight(testPage.title, composeTestRule)
-            verifyTabSavedInCollection(testPage.title, false)
+            verifyTabSavedInCollection(composeTestRule, testPage.title, false)
         }
         homeScreen {
             verifySnackBarText("Collection deleted")
-            clickSnackbarButton("UNDO")
-            verifyCollectionIsDisplayed(collectionName)
-        }.expandCollection(collectionName) {
-            verifyTabSavedInCollection(testPage.title, true)
+            clickSnackbarButton(composeTestRule, "UNDO")
+            verifyCollectionIsDisplayed(composeTestRule, collectionName)
+        }.expandCollection(composeTestRule, collectionName) {
+            verifyTabSavedInCollection(composeTestRule, testPage.title, true)
             swipeTabRight(testPage.title, composeTestRule)
-            verifyTabSavedInCollection(testPage.title, false)
+            verifyTabSavedInCollection(composeTestRule, testPage.title, false)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/991276
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/991276
     @Test
     fun createCollectionByLongPressingOpenTabsTest() {
         val firstWebPage = getGenericAsset(mockWebServer, 1)
@@ -473,14 +449,14 @@ class CollectionTest : TestSetup() {
 
         composeTabDrawer(composeTestRule) {
         }.closeTabDrawer {
-        }.goToHomescreen {
-        }.expandCollection(collectionName) {
-            verifyTabSavedInCollection(firstWebPage.title)
-            verifyTabSavedInCollection(secondWebPage.title)
+        }.goToHomescreen(composeTestRule) {
+        }.expandCollection(composeTestRule, collectionName) {
+            verifyTabSavedInCollection(composeTestRule, firstWebPage.title)
+            verifyTabSavedInCollection(composeTestRule, secondWebPage.title)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/344897
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/344897
     @Test
     fun navigateBackInCollectionFlowTest() {
         val webPage = getGenericAsset(mockWebServer, 1)

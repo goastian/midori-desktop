@@ -107,7 +107,7 @@
 
 <%helpers:shorthand
     name="white-space"
-    engines="gecko"
+    engines="gecko servo"
     sub_properties="text-wrap-mode white-space-collapse"
     derive_value_info="False"
     spec="https://www.w3.org/TR/css-text-4/#white-space-property"
@@ -127,9 +127,6 @@
                 "pre" => (Wrap::Nowrap, Collapse::Preserve),
                 "pre-wrap" => (Wrap::Wrap, Collapse::Preserve),
                 "pre-line" => (Wrap::Wrap, Collapse::PreserveBreaks),
-                // TODO: deprecate/remove -moz-pre-space; the white-space-collapse: preserve-spaces value
-                // should serve this purpose?
-                "-moz-pre-space" => (Wrap::Wrap, Collapse::PreserveSpaces),
             };
             Ok(expanded! {
                 text_wrap_mode: mode,
@@ -181,7 +178,6 @@
                         Collapse::Collapse => return dest.write_str("normal"),
                         Collapse::Preserve => return dest.write_str("pre-wrap"),
                         Collapse::PreserveBreaks => return dest.write_str("pre-line"),
-                        Collapse::PreserveSpaces => return dest.write_str("-moz-pre-space"),
                         _ => (),
                     }
                 },

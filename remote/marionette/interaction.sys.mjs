@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* eslint-disable no-restricted-globals */
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -17,7 +15,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   event: "chrome://remote/content/shared/webdriver/Event.sys.mjs",
   Log: "chrome://remote/content/shared/Log.sys.mjs",
   pprint: "chrome://remote/content/shared/Format.sys.mjs",
-  TimedPromise: "chrome://remote/content/marionette/sync.sys.mjs",
+  TimedPromise: "chrome://remote/content/shared/Sync.sys.mjs",
 });
 
 ChromeUtils.defineLazyGetter(lazy, "logger", () =>
@@ -660,7 +658,9 @@ async function webdriverSendKeysToElement(
   if (el.type !== "file" || strictFileInteractability) {
     let containerEl = lazy.dom.getContainer(el);
 
-    lazy.dom.scrollIntoView(containerEl);
+    if (!lazy.dom.isInView(containerEl)) {
+      lazy.dom.scrollIntoView(containerEl);
+    }
 
     // TODO: Wait for element to be keyboard-interactible
     if (!interaction.isKeyboardInteractable(containerEl)) {

@@ -1,8 +1,11 @@
 FROM $DOCKER_IMAGE_PARENT
 MAINTAINER Mike Hommey <mhommey@mozilla.com>
 
+# Ubuntu 24.04 now ships with user 1000 ...
+RUN userdel --remove ubuntu || true
+
 ### Add worker user and setup its workspace.
-RUN mkdir /builds && \
+RUN mkdir -p /builds && \
     groupadd -g 1000 worker && \
     useradd -u 1000 -g 1000 -d /builds/worker -s /bin/bash -m worker && \
     mkdir -p /builds/worker/workspace && \
@@ -60,7 +63,7 @@ COPY topsrcdir/taskcluster/docker/recipes/dot-config /builds/worker/.config
 # %include taskcluster/scripts/run-task
 COPY topsrcdir/taskcluster/scripts/run-task /builds/worker/bin/run-task
 
-# %include taskcluster/scripts/misc/fetch-content
-ADD topsrcdir/taskcluster/scripts/misc/fetch-content /builds/worker/bin/fetch-content
+# %include third_party/python/taskcluster_taskgraph/taskgraph/run-task/fetch-content
+ADD topsrcdir/third_party/python/taskcluster_taskgraph/taskgraph/run-task/fetch-content /builds/worker/bin/fetch-content
 
 RUN chown -R worker:worker /builds/worker/bin && chmod 755 /builds/worker/bin/*

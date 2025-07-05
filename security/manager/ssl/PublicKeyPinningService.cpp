@@ -12,7 +12,6 @@
 #include "mozilla/Logging.h"
 #include "mozilla/Span.h"
 #include "mozilla/StaticPrefs_security.h"
-#include "mozilla/Telemetry.h"
 #include "nsDependentString.h"
 #include "nsServiceManagerUtils.h"
 #include "nsSiteSecurityService.h"
@@ -206,7 +205,7 @@ static nsresult FindPinningInformation(
             ("pkpin: Querying pinsets for host: '%s'\n", evalHost));
     size_t foundEntryIndex;
     if (BinarySearchIf(kPublicKeyPinningPreloadList, 0,
-                       ArrayLength(kPublicKeyPinningPreloadList),
+                       std::size(kPublicKeyPinningPreloadList),
                        TransportSecurityPreloadBinarySearchComparator(evalHost),
                        &foundEntryIndex)) {
       foundEntry = &kPublicKeyPinningPreloadList[foundEntryIndex];
@@ -286,23 +285,17 @@ static nsresult CheckPinsForHostname(
         return NS_ERROR_FAILURE;
       }
 
-      Telemetry::HistogramID histogram;
       int32_t bucket;
       // We can collect per-host pinning violations for this host because it is
       // operationally critical to Firefox.
       if (staticFingerprints->mIsMoz) {
-        histogram = staticFingerprints->mTestMode
-                        ? Telemetry::CERT_PINNING_MOZ_TEST_RESULTS_BY_HOST
-                        : Telemetry::CERT_PINNING_MOZ_RESULTS_BY_HOST;
         bucket = staticFingerprints->mId * 2 + (enforceTestModeResult ? 1 : 0);
       } else {
-        histogram = staticFingerprints->mTestMode
-                        ? Telemetry::CERT_PINNING_TEST_RESULTS
-                        : Telemetry::CERT_PINNING_RESULTS;
         bucket = enforceTestModeResult ? 1 : 0;
       }
+      pinningTelemetryInfo->isMoz = staticFingerprints->mIsMoz;
+      pinningTelemetryInfo->testMode = staticFingerprints->mTestMode;
       pinningTelemetryInfo->accumulateResult = true;
-      pinningTelemetryInfo->certPinningResultHistogram = Some(histogram);
       pinningTelemetryInfo->certPinningResultBucket = bucket;
 
       // We only collect per-CA pinning statistics upon failures.

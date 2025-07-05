@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 gecko_parameters_schema = {
+    Required("android_perftest_backstop"): bool,
     Required("app_version"): str,
     Required("backstop"): bool,
     Required("build_number"): int,
@@ -88,11 +89,12 @@ gecko_parameters_schema = {
         Optional("routes"): [str],
     },
     Required("version"): str,
+    Optional("head_git_rev"): str,
 }
 
 
 def get_contents(path):
-    with open(path, "r") as fh:
+    with open(path) as fh:
         contents = fh.readline().rstrip()
     return contents
 
@@ -109,12 +111,13 @@ def get_app_version(product_dir="browser"):
 
 def get_defaults(repo_root=None):
     return {
+        "android_perftest_backstop": False,
         "app_version": get_app_version(),
         "backstop": False,
         "base_repository": "https://hg.mozilla.org/mozilla-unified",
         "build_number": 1,
         "enable_always_target": ["docker-image"],
-        "files_changed": sorted(get_locally_changed_files(repo_root)),
+        "files_changed": lambda: sorted(get_locally_changed_files(repo_root)),
         "head_repository": "https://hg.mozilla.org/mozilla-central",
         "hg_branch": "default",
         "message": "",

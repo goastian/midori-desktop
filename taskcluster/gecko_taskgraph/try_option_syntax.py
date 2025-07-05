@@ -122,12 +122,11 @@ UNITTEST_PLATFORM_PRETTY_NAMES = {
         "linux1804-64-asan",
     ],
     "x64": ["linux64", "linux64-asan", "linux1804-64", "linux1804-64-asan"],
-    "Android 7.0 Samsung A51 32bit": ["android-hw-a51-11.0-arm7"],
-    "Android 7.0 Samsung A51 64bit": ["android-hw-a51-11.0-aarch64"],
     "Android 13.0 Google Pixel 5 32bit": ["android-hw-p5-13.0-arm7"],
     "Android 13.0 Google Pixel 5 64bit": ["android-hw-p5-13.0-android-aarch64"],
-    "Android 13.0 Google Pixel 6 64bit": ["android-hw-p6-13.0-android-aarch64"],
-    "Android 13.0 Samsung S21 64bit": ["android-hw-s21-13.0-android-aarch64"],
+    "Android 13.0 Google Pixel 6 64bit": ["android-hw-p6-13.0-aarch64"],
+    "Android 14.0 Samsung A55 64bit": ["android-hw-a55-14.0-aarch64"],
+    "Android 14.0 Samsung S24 64bit": ["android-hw-s24-14.0-aarch64"],
     "Windows 10": ["windows10-64"],
 }
 
@@ -668,25 +667,19 @@ class TryOptionSyntax:
 
                 if tier <= build_task_tier:
                     logger.debug(
-                        "not skipping tier {} test {} because build task {} "
-                        "is tier {}".format(
-                            tier, task.label, build_task.label, build_task_tier
-                        )
+                        f"not skipping tier {tier} test {task.label} because build task {build_task.label} "
+                        f"is tier {build_task_tier}"
                     )
                     return True
                 if 1 not in test_tiers:
                     logger.debug(
-                        "not skipping tier {} test {} without explicit inclusion; "
-                        "it is configured to run on tiers {}".format(
-                            tier, task.label, test_tiers
-                        )
+                        f"not skipping tier {tier} test {task.label} without explicit inclusion; "
+                        f"it is configured to run on tiers {test_tiers}"
                     )
                     return True
                 logger.debug(
-                    "skipping tier {} test {} because build task {} is "
-                    "tier {} and there is a higher-tier test of the same name".format(
-                        tier, task.label, build_task.label, build_task_tier
-                    )
+                    f"skipping tier {tier} test {task.label} because build task {build_task.label} is "
+                    f"tier {build_task_tier} and there is a higher-tier test of the same name"
                 )
                 return False
             if run_by_default:

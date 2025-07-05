@@ -35,22 +35,22 @@ def generate_addon(addon_id, path=None, name=None, xpi=True):
     """
 
     if addon_id not in stubs:
-        raise IOError('Requested addon stub "%s" does not exist' % addon_id)
+        raise OSError('Requested addon stub "%s" does not exist' % addon_id)
 
     # Generate directory structure for addon
     try:
         tmpdir = path or tempfile.mkdtemp()
         addon_dir = os.path.join(tmpdir, name or addon_id)
         os.mkdir(addon_dir)
-    except IOError:
-        raise IOError("Could not generate directory structure for addon stub.")
+    except OSError:
+        raise OSError("Could not generate directory structure for addon stub.")
 
     # Write install.rdf for addon
     if stubs[addon_id]:
         install_rdf = os.path.join(addon_dir, "install.rdf")
         with open(install_rdf, "w") as f:
             manifest = os.path.join(here, "install_manifests", stubs[addon_id])
-            f.write(open(manifest, "r").read())
+            f.write(open(manifest).read())
 
     if not xpi:
         return addon_dir

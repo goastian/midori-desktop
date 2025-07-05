@@ -16,7 +16,7 @@
 
 use crate::applicable_declarations::ApplicableDeclarationBlock;
 use crate::bloom::each_relevant_element_hash;
-use crate::context::{PostAnimationTasks, QuirksMode, SharedStyleContext, UpdateAnimationsTasks};
+use crate::context::{QuirksMode, SharedStyleContext, UpdateAnimationsTasks};
 use crate::data::ElementData;
 use crate::dom::{LayoutIterator, NodeInfo, OpaqueNode, TDocument, TElement, TNode, TShadowRoot};
 use crate::gecko::selector_parser::{NonTSPseudoClass, PseudoElement, SelectorImpl};
@@ -78,6 +78,7 @@ use selectors::matching::VisitedHandlingMode;
 use selectors::matching::{ElementSelectorFlags, MatchingContext};
 use selectors::sink::Push;
 use selectors::{Element, OpaqueElement};
+use selectors::parser::PseudoElement as ParserPseudoElement;
 use servo_arc::{Arc, ArcBorrow};
 use std::cell::Cell;
 use std::fmt;
@@ -850,8 +851,19 @@ impl<'le> GeckoElement<'le> {
     /// This logic is duplicated in Gecko's nsIContent::IsRootOfNativeAnonymousSubtree.
     #[inline]
     fn is_root_of_native_anonymous_subtree(&self) -> bool {
-        use crate::gecko_bindings::structs::NODE_IS_NATIVE_ANONYMOUS_ROOT;
-        return self.flags() & NODE_IS_NATIVE_ANONYMOUS_ROOT != 0;
+        return self.flags() & structs::NODE_IS_NATIVE_ANONYMOUS_ROOT != 0;
+    }
+
+    /// Whether the element is in an anonymous subtree. Note that this includes UA widgets!
+    #[inline]
+    fn in_native_anonymous_subtree(&self) -> bool {
+        (self.flags() & structs::NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE) != 0
+    }
+
+    /// Whether the element has been in a UA widget
+    #[inline]
+    fn in_ua_widget(&self) -> bool {
+        (self.flags() & structs::NODE_HAS_BEEN_IN_UA_WIDGET) != 0
     }
 
     fn css_transitions_info(&self) -> FxHashMap<OwnedPropertyDeclarationId, Arc<AnimationValue>> {
@@ -904,7 +916,6 @@ impl<'le> GeckoElement<'le> {
         let from =
             AnimationValue::from_computed_values(property_declaration_id, before_change_style);
         let to = AnimationValue::from_computed_values(property_declaration_id, after_change_style);
-
         debug_assert!(
             to.is_some() == from.is_some() ||
                 // If the declaration contains a custom property and getComputedValue was previously
@@ -1016,9 +1027,32 @@ impl<'le> TElement for GeckoElement<'le> {
     type ConcreteNode = GeckoNode<'le>;
     type TraversalChildrenIterator = GeckoChildrenIterator<'le>;
 
+    fn implicit_scope_for_sheet_in_shadow_root(
+        opaque_host: OpaqueElement,
+        sheet_index: usize,
+    ) -> Option<ImplicitScopeRoot> {
+        // As long as this "unopaqued" element does not escape this function, we're not leaking
+        // potentially-mutable elements from opaque elements.
+        let e = unsafe {
+            Self(
+                opaque_host
+                    .as_const_ptr::<RawGeckoElement>()
+                    .as_ref()
+                    .unwrap(),
+            )
+        };
+        let shadow_root = match e.shadow_root() {
+            None => return None,
+            Some(r) => r,
+        };
+        shadow_root.implicit_scope_for_sheet(sheet_index)
+    }
+
     fn inheritance_parent(&self) -> Option<Self> {
-        if self.is_pseudo_element() {
-            return self.pseudo_element_originating_element();
+        if let Some(pseudo) = self.implemented_pseudo_element() {
+            if !pseudo.is_element_backed() {
+                return self.pseudo_element_originating_element();
+            }
         }
 
         self.as_node()
@@ -1398,17 +1432,12 @@ impl<'le> TElement for GeckoElement<'le> {
     /// pseudo-elements).
     #[inline]
     fn matches_user_and_content_rules(&self) -> bool {
-        use crate::gecko_bindings::structs::{
-            NODE_HAS_BEEN_IN_UA_WIDGET, NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE,
-        };
-        let flags = self.flags();
-        (flags & NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE) == 0 ||
-            (flags & NODE_HAS_BEEN_IN_UA_WIDGET) != 0
+        !self.in_native_anonymous_subtree() || self.in_ua_widget()
     }
 
     #[inline]
     fn implemented_pseudo_element(&self) -> Option<PseudoElement> {
-        if self.matches_user_and_content_rules() {
+        if !self.in_native_anonymous_subtree() {
             return None;
         }
 
@@ -1416,9 +1445,14 @@ impl<'le> TElement for GeckoElement<'le> {
             return None;
         }
 
+        let name = unsafe { bindings::Gecko_GetImplementedPseudoIdentifier(self.0) };
         PseudoElement::from_pseudo_type(
-            unsafe { bindings::Gecko_GetImplementedPseudo(self.0) },
-            None,
+            unsafe { bindings::Gecko_GetImplementedPseudoType(self.0) },
+            if name.is_null() {
+                None
+            } else {
+                Some(AtomIdent::new(unsafe { Atom::from_raw(name) }))
+            },
         )
     }
 
@@ -1486,30 +1520,6 @@ impl<'le> TElement for GeckoElement<'le> {
         }
         self.as_node()
             .get_bool_flag(nsINode_BooleanFlag::ElementHasAnimations)
-    }
-
-    /// Process various tasks that are a result of animation-only restyle.
-    fn process_post_animation(&self, tasks: PostAnimationTasks) {
-        debug_assert!(!tasks.is_empty(), "Should be involved a task");
-
-        // If display style was changed from none to other, we need to resolve
-        // the descendants in the display:none subtree. Instead of resolving
-        // those styles in animation-only restyle, we defer it to a subsequent
-        // normal restyle.
-        if tasks.intersects(PostAnimationTasks::DISPLAY_CHANGED_FROM_NONE_FOR_SMIL) {
-            debug_assert!(
-                self.implemented_pseudo_element()
-                    .map_or(true, |p| !p.is_before_or_after()),
-                "display property animation shouldn't run on pseudo elements \
-                 since it's only for SMIL"
-            );
-            unsafe {
-                self.note_explicit_hints(
-                    RestyleHint::restyle_subtree(),
-                    nsChangeHint::nsChangeHint_Empty,
-                );
-            }
-        }
     }
 
     /// Update various animation-related state on a given (pseudo-)element as
@@ -1656,6 +1666,22 @@ impl<'le> TElement for GeckoElement<'le> {
         }
 
         unsafe { bindings::Gecko_IsDocumentBody(self.0) }
+    }
+
+    fn synthesize_view_transition_dynamic_rules<V>(&self, rules: &mut V)
+    where
+        V: Push<ApplicableDeclarationBlock>,
+    {
+        use crate::stylesheets::layer_rule::LayerOrder;
+        let declarations =
+            unsafe { bindings::Gecko_GetViewTransitionDynamicRule(self.0).as_ref() };
+        if let Some(decl) = declarations {
+            rules.push(ApplicableDeclarationBlock::from_declarations(
+                unsafe { Arc::from_raw_addrefed(decl) },
+                ServoCascadeLevel::UANormal,
+                LayerOrder::root(),
+            ));
+        }
     }
 
     fn synthesize_presentational_hints_for_legacy_attributes<V>(
@@ -1883,14 +1909,17 @@ impl<'le> ::selectors::Element for GeckoElement<'le> {
     #[inline]
     fn pseudo_element_originating_element(&self) -> Option<Self> {
         debug_assert!(self.is_pseudo_element());
-        debug_assert!(!self.matches_user_and_content_rules());
+        debug_assert!(self.in_native_anonymous_subtree());
+        if self.in_ua_widget() {
+            return self.containing_shadow_host();
+        }
         let mut current = *self;
         loop {
-            if current.is_root_of_native_anonymous_subtree() {
-                return current.traversal_parent();
-            }
-
+            let anon_root = current.is_root_of_native_anonymous_subtree();
             current = current.traversal_parent()?;
+            if anon_root {
+                return Some(current);
+            }
         }
     }
 
@@ -2063,8 +2092,10 @@ impl<'le> ::selectors::Element for GeckoElement<'le> {
             NonTSPseudoClass::MozDirAttrLikeAuto |
             NonTSPseudoClass::Modal |
             NonTSPseudoClass::MozTopmostModal |
+            NonTSPseudoClass::Open |
             NonTSPseudoClass::Active |
             NonTSPseudoClass::Hover |
+            NonTSPseudoClass::HasSlotted |
             NonTSPseudoClass::MozAutofillPreview |
             NonTSPseudoClass::MozRevealed |
             NonTSPseudoClass::MozValueEmpty => self.state().intersects(pseudo_class.state_flag()),
@@ -2150,16 +2181,18 @@ impl<'le> ::selectors::Element for GeckoElement<'le> {
 
     fn match_pseudo_element(
         &self,
-        pseudo_element: &PseudoElement,
+        pseudo_selector: &PseudoElement,
         _context: &mut MatchingContext<Self::Impl>,
     ) -> bool {
         // TODO(emilio): I believe we could assert we are a pseudo-element and
         // match the proper pseudo-element, given how we rulehash the stuff
         // based on the pseudo.
-        match self.implemented_pseudo_element() {
-            Some(ref pseudo) => *pseudo == *pseudo_element,
-            None => false,
-        }
+        let pseudo = match self.implemented_pseudo_element() {
+            Some(pseudo) => pseudo,
+            None => return false,
+        };
+
+        pseudo.matches(pseudo_selector)
     }
 
     #[inline]

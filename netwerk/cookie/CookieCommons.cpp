@@ -6,24 +6,33 @@
 #include "Cookie.h"
 #include "CookieCommons.h"
 #include "CookieLogging.h"
+#include "CookieParser.h"
 #include "CookieService.h"
-#include "mozilla/ConsoleReportCollector.h"
 #include "mozilla/ContentBlockingNotifier.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/StorageAccess.h"
-#include "mozilla/dom/Document.h"
 #include "mozilla/dom/nsMixedContentBlocker.h"
+#include "mozilla/dom/CanonicalBrowsingContext.h"
+#include "mozilla/dom/Document.h"
+#include "mozilla/dom/WindowGlobalParent.h"
+#include "mozilla/dom/WorkerCommon.h"
+#include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/net/CookieJarSettings.h"
+#include "mozilla/Unused.h"
 #include "mozIThirdPartyUtil.h"
 #include "nsContentUtils.h"
 #include "nsICookiePermission.h"
 #include "nsICookieService.h"
 #include "nsIEffectiveTLDService.h"
+#include "nsIGlobalObject.h"
+#include "nsIHttpChannel.h"
 #include "nsIRedirectHistoryEntry.h"
 #include "nsIWebProgressListener.h"
 #include "nsNetUtil.h"
+#include "nsSandboxFlags.h"
 #include "nsScriptSecurityManager.h"
+#include "nsReadableUtils.h"
 #include "ThirdPartyUtil.h"
 
 namespace mozilla {
@@ -43,31 +52,35 @@ bool CookieCommons::DomainMatches(Cookie* aCookie, const nsACString& aHost) {
 
 // static
 bool CookieCommons::PathMatches(Cookie* aCookie, const nsACString& aPath) {
-  nsCString cookiePath(aCookie->GetFilePath());
+  return PathMatches(aCookie->Path(), aPath);
+}
 
+// static
+bool CookieCommons::PathMatches(const nsACString& aCookiePath,
+                                const nsACString& aPath) {
   // if our cookie path is empty we can't really perform our prefix check, and
   // also we can't check the last character of the cookie path, so we would
   // never return a successful match.
-  if (cookiePath.IsEmpty()) {
+  if (aCookiePath.IsEmpty()) {
     return false;
   }
 
   // if the cookie path and the request path are identical, they match.
-  if (cookiePath.Equals(aPath)) {
+  if (aCookiePath.Equals(aPath)) {
     return true;
   }
 
   // if the cookie path is a prefix of the request path, and the last character
   // of the cookie path is %x2F ("/"), they match.
-  bool isPrefix = StringBeginsWith(aPath, cookiePath);
-  if (isPrefix && cookiePath.Last() == '/') {
+  bool isPrefix = StringBeginsWith(aPath, aCookiePath);
+  if (isPrefix && aCookiePath.Last() == '/') {
     return true;
   }
 
   // if the cookie path is a prefix of the request path, and the first character
   // of the request path that is not included in the cookie path is a %x2F ("/")
   // character, they match.
-  uint32_t cookiePathLen = cookiePath.Length();
+  uint32_t cookiePathLen = aCookiePath.Length();
   return isPrefix && aPath[cookiePathLen] == '/';
 }
 
@@ -162,6 +175,11 @@ nsresult CookieCommons::GetBaseDomainFromHost(
   return rv;
 }
 
+/* static */ bool CookieCommons::IsIPv6BaseDomain(
+    const nsACString& aBaseDomain) {
+  return aBaseDomain.Contains(':');
+}
+
 namespace {
 
 void NotifyRejectionToObservers(nsIURI* aHostURI, CookieOperation aOperation) {
@@ -200,9 +218,9 @@ bool CookieCommons::CheckNameAndValueSize(const CookieStruct& aCookieData) {
 
 bool CookieCommons::CheckName(const CookieStruct& aCookieData) {
   const char illegalNameCharacters[] = {
-      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C,
-      0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18,
-      0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x3B, 0x3D, 0x7F, 0x00};
+      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x0A, 0x0B, 0x0C, 0x0D,
+      0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19,
+      0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x3B, 0x3D, 0x7F, 0x00};
 
   const auto* start = aCookieData.name().BeginReading();
   const auto* end = aCookieData.name().EndReading();
@@ -327,45 +345,52 @@ CookieStatus CookieStatusForWindow(nsPIDOMWindowInner* aWindow,
     }
   }
 
-  if (StaticPrefs::network_cookie_thirdparty_sessionOnly()) {
-    return STATUS_ACCEPT_SESSION;
-  }
-
-  if (StaticPrefs::network_cookie_thirdparty_nonsecureSessionOnly() &&
-      !nsMixedContentBlocker::IsPotentiallyTrustworthyOrigin(aDocumentURI)) {
-    return STATUS_ACCEPT_SESSION;
-  }
-
   return STATUS_ACCEPTED;
+}
+
+bool CheckCookieStringFromDocument(const nsACString& aCookieString) {
+  // If the set-cookie-string contains a %x00-08 / %x0A-1F / %x7F character (CTL
+  // characters excluding HTAB): Abort these steps and ignore the
+  // set-cookie-string entirely.
+  const char illegalCharacters[] = {
+      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x0A, 0x0B, 0x0C,
+      0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+      0x18, 0x19, 0x1A, 0x1B, 0x1C, 0x1D, 0x1E, 0x1F, 0x7F, 0x00};
+
+  const auto* start = aCookieString.BeginReading();
+  const auto* end = aCookieString.EndReading();
+
+  auto charFilter = [&](unsigned char c) {
+    if (StaticPrefs::network_cookie_blockUnicode() && c >= 0x80) {
+      return true;
+    }
+    return std::find(std::begin(illegalCharacters), std::end(illegalCharacters),
+                     c) != std::end(illegalCharacters);
+  };
+
+  return std::find_if(start, end, charFilter) == end;
 }
 
 }  // namespace
 
 // static
 already_AddRefed<Cookie> CookieCommons::CreateCookieFromDocument(
-    Document* aDocument, const nsACString& aCookieString,
-    int64_t currentTimeInUsec, nsIEffectiveTLDService* aTLDService,
-    mozIThirdPartyUtil* aThirdPartyUtil,
-    std::function<bool(const nsACString&, const OriginAttributes&)>&&
-        aHasExistingCookiesLambda,
-    nsIURI** aDocumentURI, nsACString& aBaseDomain, OriginAttributes& aAttrs) {
-  nsCOMPtr<nsIURI> principalURI;
-  auto* basePrincipal = BasePrincipal::Cast(aDocument->NodePrincipal());
-  basePrincipal->GetURI(getter_AddRefs(principalURI));
-  if (NS_WARN_IF(!principalURI)) {
-    // Document's principal is not a content or null (may be system), so
-    // can't set cookies
+    CookieParser& aCookieParser, Document* aDocument,
+    const nsACString& aCookieString, int64_t currentTimeInUsec,
+    nsIEffectiveTLDService* aTLDService, mozIThirdPartyUtil* aThirdPartyUtil,
+    nsACString& aBaseDomain, OriginAttributes& aAttrs) {
+  if (!CookieCommons::IsSchemeSupported(aCookieParser.HostURI())) {
     return nullptr;
   }
 
-  if (!CookieCommons::IsSchemeSupported(principalURI)) {
+  if (!CheckCookieStringFromDocument(aCookieString)) {
     return nullptr;
   }
 
   nsAutoCString baseDomain;
   bool requireHostMatch = false;
-  nsresult rv = CookieCommons::GetBaseDomain(aTLDService, principalURI,
-                                             baseDomain, requireHostMatch);
+  nsresult rv = CookieCommons::GetBaseDomain(
+      aTLDService, aCookieParser.HostURI(), baseDomain, requireHostMatch);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return nullptr;
   }
@@ -377,8 +402,9 @@ already_AddRefed<Cookie> CookieCommons::CreateCookieFromDocument(
 
   bool isForeignAndNotAddon = false;
   if (!BasePrincipal::Cast(aDocument->NodePrincipal())->AddonPolicy()) {
-    rv = aThirdPartyUtil->IsThirdPartyWindow(
-        innerWindow->GetOuterWindow(), principalURI, &isForeignAndNotAddon);
+    rv = aThirdPartyUtil->IsThirdPartyWindow(innerWindow->GetOuterWindow(),
+                                             aCookieParser.HostURI(),
+                                             &isForeignAndNotAddon);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       isForeignAndNotAddon = true;
     }
@@ -392,34 +418,31 @@ already_AddRefed<Cookie> CookieCommons::CreateCookieFromDocument(
 
   // If we are here, we have been already accepted by the anti-tracking.
   // We just need to check if we have to be in session-only mode.
-  CookieStatus cookieStatus = CookieStatusForWindow(innerWindow, principalURI);
+  CookieStatus cookieStatus =
+      CookieStatusForWindow(innerWindow, aCookieParser.HostURI());
   MOZ_ASSERT(cookieStatus == STATUS_ACCEPTED ||
              cookieStatus == STATUS_ACCEPT_SESSION);
 
-  // Console report takes care of the correct reporting at the exit of this
-  // method.
-  RefPtr<ConsoleReportCollector> crc = new ConsoleReportCollector();
-  auto scopeExit = MakeScopeExit([&] { crc->FlushConsoleReports(aDocument); });
-
   nsCString cookieString(aCookieString);
 
-  CookieStruct cookieData;
-  MOZ_ASSERT(cookieData.creationTime() == 0, "Must be initialized to 0");
-  bool canSetCookie = false;
-  CookieService::CanSetCookie(
-      principalURI, baseDomain, cookieData, requireHostMatch, cookieStatus,
-      cookieString, false, isForeignAndNotAddon, mustBePartitioned,
-      aDocument->IsInPrivateBrowsing(), crc, canSetCookie);
+  nsCOMPtr<nsILoadInfo> loadInfo =
+      aDocument->GetChannel() ? aDocument->GetChannel()->LoadInfo() : nullptr;
+  const bool on3pcbException = loadInfo && loadInfo->GetIsOn3PCBExceptionList();
 
-  if (!canSetCookie) {
+  aCookieParser.Parse(baseDomain, requireHostMatch, cookieStatus, cookieString,
+                      EmptyCString(), false, isForeignAndNotAddon,
+                      mustBePartitioned, aDocument->IsInPrivateBrowsing(),
+                      on3pcbException);
+
+  if (!aCookieParser.ContainsCookie()) {
     return nullptr;
   }
 
   // check permissions from site permission list.
   if (!CookieCommons::CheckCookiePermission(aDocument->NodePrincipal(),
                                             aDocument->CookieJarSettings(),
-                                            cookieData)) {
-    NotifyRejectionToObservers(principalURI, OPERATION_WRITE);
+                                            aCookieParser.CookieData())) {
+    NotifyRejectionToObservers(aCookieParser.HostURI(), OPERATION_WRITE);
     ContentBlockingNotifier::OnDecision(
         innerWindow, ContentBlockingNotifier::BlockingDecision::eBlock,
         nsIWebProgressListener::STATE_COOKIES_BLOCKED_BY_PERMISSION);
@@ -430,24 +453,31 @@ already_AddRefed<Cookie> CookieCommons::CreateCookieFromDocument(
   // cookie jar independent of context. If the cookies are stored in the
   // partitioned cookie jar anyway no special treatment of CHIPS cookies
   // necessary.
-  bool needPartitioned =
-      StaticPrefs::network_cookie_CHIPS_enabled() && cookieData.isPartitioned();
+  bool needPartitioned = StaticPrefs::network_cookie_CHIPS_enabled() &&
+                         aCookieParser.CookieData().isPartitioned();
   nsCOMPtr<nsIPrincipal> cookiePrincipal =
       needPartitioned ? aDocument->PartitionedPrincipal()
                       : aDocument->EffectiveCookiePrincipal();
   MOZ_ASSERT(cookiePrincipal);
 
-  // Check if limit-foreign is required.
-  uint32_t dummyRejectedReason = 0;
-  if (aDocument->CookieJarSettings()->GetLimitForeignContexts() &&
-      !aHasExistingCookiesLambda(baseDomain,
-                                 cookiePrincipal->OriginAttributesRef()) &&
-      !ShouldAllowAccessFor(innerWindow, principalURI, &dummyRejectedReason)) {
+  nsCOMPtr<nsICookieService> service =
+      do_GetService(NS_COOKIESERVICE_CONTRACTID);
+  if (!service) {
     return nullptr;
   }
 
-  RefPtr<Cookie> cookie =
-      Cookie::Create(cookieData, cookiePrincipal->OriginAttributesRef());
+  // Check if limit-foreign is required.
+  uint32_t dummyRejectedReason = 0;
+  if (aDocument->CookieJarSettings()->GetLimitForeignContexts() &&
+      !service->HasExistingCookies(baseDomain,
+                                   cookiePrincipal->OriginAttributesRef()) &&
+      !ShouldAllowAccessFor(innerWindow, aCookieParser.HostURI(), true,
+                            &dummyRejectedReason)) {
+    return nullptr;
+  }
+
+  RefPtr<Cookie> cookie = Cookie::Create(
+      aCookieParser.CookieData(), cookiePrincipal->OriginAttributesRef());
   MOZ_ASSERT(cookie);
 
   cookie->SetLastAccessed(currentTimeInUsec);
@@ -456,7 +486,6 @@ already_AddRefed<Cookie> CookieCommons::CreateCookieFromDocument(
 
   aBaseDomain = baseDomain;
   aAttrs = cookiePrincipal->OriginAttributesRef();
-  principalURI.forget(aDocumentURI);
 
   return cookie.forget();
 }
@@ -485,30 +514,101 @@ already_AddRefed<nsICookieJarSettings> CookieCommons::GetCookieJarSettings(
 }
 
 // static
-bool CookieCommons::ShouldIncludeCrossSiteCookieForDocument(
-    Cookie* aCookie, dom::Document* aDocument) {
+bool CookieCommons::ShouldIncludeCrossSiteCookie(
+    Cookie* aCookie, nsIURI* aHostURI, bool aPartitionForeign,
+    bool aInPrivateBrowsing, bool aUsingStorageAccess, bool aOn3pcbException) {
   MOZ_ASSERT(aCookie);
-  MOZ_ASSERT(aDocument);
 
   int32_t sameSiteAttr = 0;
   aCookie->GetSameSite(&sameSiteAttr);
+
+  return ShouldIncludeCrossSiteCookie(
+      aHostURI, sameSiteAttr,
+      aCookie->IsPartitioned() && aCookie->RawIsPartitioned(),
+      aPartitionForeign, aInPrivateBrowsing, aUsingStorageAccess,
+      aOn3pcbException);
+}
+
+// static
+bool CookieCommons::ShouldIncludeCrossSiteCookie(
+    nsIURI* aHostURI, int32_t aSameSiteAttr, bool aCookiePartitioned,
+    bool aPartitionForeign, bool aInPrivateBrowsing, bool aUsingStorageAccess,
+    bool aOn3pcbException) {
+  if (aSameSiteAttr == nsICookie::SAMESITE_UNSET) {
+    bool laxByDefault =
+        StaticPrefs::network_cookie_sameSite_laxByDefault() &&
+        !nsContentUtils::IsURIInPrefList(
+            aHostURI, "network.cookie.sameSite.laxByDefault.disabledHosts");
+    aSameSiteAttr =
+        laxByDefault ? nsICookie::SAMESITE_LAX : nsICookie::SAMESITE_NONE;
+  }
 
   // CHIPS - If a third-party has storage access it can access both it's
   // partitioned and unpartitioned cookie jars, else its cookies are blocked.
   //
   // Note that we will only include partitioned cookies that have "partitioned"
   // attribution if we enable opt-in partitioning.
-  if (aDocument->CookieJarSettings()->GetPartitionForeign() &&
+  if (aPartitionForeign &&
       (StaticPrefs::network_cookie_cookieBehavior_optInPartitioning() ||
-       (aDocument->IsInPrivateBrowsing() &&
+       (aInPrivateBrowsing &&
         StaticPrefs::
             network_cookie_cookieBehavior_optInPartitioning_pbmode())) &&
-      !(aCookie->IsPartitioned() && aCookie->RawIsPartitioned()) &&
-      !aDocument->UsingStorageAccess()) {
+      !aCookiePartitioned && !aUsingStorageAccess && !aOn3pcbException) {
     return false;
   }
 
-  return sameSiteAttr == nsICookie::SAMESITE_NONE;
+  return aSameSiteAttr == nsICookie::SAMESITE_NONE;
+}
+
+// static
+bool CookieCommons::IsFirstPartyPartitionedCookieWithoutCHIPS(
+    Cookie* aCookie, const nsACString& aBaseDomain,
+    const OriginAttributes& aOriginAttributes) {
+  MOZ_ASSERT(aCookie);
+
+  // The cookie is set with partitioned attribute. This is a CHIPS cookies.
+  if (aCookie->RawIsPartitioned()) {
+    return false;
+  }
+
+  // The originAttributes is not partitioned. This is not a partitioned cookie.
+  if (aOriginAttributes.mPartitionKey.IsEmpty()) {
+    return false;
+  }
+
+  nsAutoString scheme;
+  nsAutoString baseDomain;
+  int32_t port;
+  bool foreignByAncestorContext;
+  // Bail out early if the partition key is not valid.
+  if (!OriginAttributes::ParsePartitionKey(aOriginAttributes.mPartitionKey,
+                                           scheme, baseDomain, port,
+                                           foreignByAncestorContext)) {
+    return false;
+  }
+
+  // Check whether the base domain of the cookie match the base domain in the
+  // partitionKey and it is not an ABA context
+  return aBaseDomain.Equals(NS_ConvertUTF16toUTF8(baseDomain)) &&
+         !foreignByAncestorContext;
+}
+
+// static
+bool CookieCommons::ShouldEnforceSessionForOriginAttributes(
+    const OriginAttributes& aOriginAttributes) {
+  // We don't need to enforce session for unpartitioned OAs.
+  if (aOriginAttributes.mPartitionKey.IsEmpty()) {
+    return false;
+  }
+
+  // We enforce session cookies if the partitionKey is from a null principal.
+  // This ensures that we don't create dangling cookies that cannot be deleted.
+  // A partitionKey from a null principal ends with ".mozilla".
+  if (StringEndsWith(aOriginAttributes.mPartitionKey, u".mozilla"_ns)) {
+    return true;
+  }
+
+  return false;
 }
 
 bool CookieCommons::IsSafeTopLevelNav(nsIChannel* aChannel) {
@@ -760,6 +860,209 @@ bool CookieCommons::IsSchemeSupported(nsIURI* aURI) {
 bool CookieCommons::IsSchemeSupported(const nsACString& aScheme) {
   return aScheme.Equals("https") || aScheme.Equals("http") ||
          aScheme.Equals("file");
+}
+
+// static
+bool CookieCommons::ChipsLimitEnabledAndChipsCookie(
+    const Cookie& cookie, dom::BrowsingContext* aBrowsingContext) {
+  bool tcpEnabled = false;
+  if (aBrowsingContext) {
+    dom::CanonicalBrowsingContext* canonBC = aBrowsingContext->Canonical();
+    if (canonBC) {
+      dom::WindowGlobalParent* windowParent = canonBC->GetCurrentWindowGlobal();
+      if (windowParent) {
+        nsCOMPtr<nsICookieJarSettings> cjs = windowParent->CookieJarSettings();
+        tcpEnabled = cjs->GetPartitionForeign();
+      }
+    }
+  } else {
+    // calls coming from addNative have no document, channel or browsingContext
+    // to determine if TCP is enabled, so we just create a cookieJarSettings to
+    // check the pref.
+    nsCOMPtr<nsICookieJarSettings> cjs;
+    cjs = CookieJarSettings::Create(CookieJarSettings::eRegular, false);
+    tcpEnabled = cjs->GetPartitionForeign();
+  }
+
+  return StaticPrefs::network_cookie_CHIPS_enabled() &&
+         StaticPrefs::network_cookie_chips_partitionLimitEnabled() &&
+         cookie.IsPartitioned() && cookie.RawIsPartitioned() && tcpEnabled;
+}
+
+void CookieCommons::ComposeCookieString(nsTArray<RefPtr<Cookie>>& aCookieList,
+                                        nsACString& aCookieString) {
+  for (Cookie* cookie : aCookieList) {
+    // check if we have anything to write
+    if (!cookie->Name().IsEmpty() || !cookie->Value().IsEmpty()) {
+      // if we've already added a cookie to the return list, append a "; " so
+      // that subsequent cookies are delimited in the final list.
+      if (!aCookieString.IsEmpty()) {
+        aCookieString.AppendLiteral("; ");
+      }
+
+      if (!cookie->Name().IsEmpty()) {
+        // we have a name and value - write both
+        aCookieString += cookie->Name() + "="_ns + cookie->Value();
+      } else {
+        // just write value
+        aCookieString += cookie->Value();
+      }
+    }
+  }
+}
+
+// static
+CookieCommons::SecurityChecksResult
+CookieCommons::CheckGlobalAndRetrieveCookiePrincipals(
+    Document* aDocument, nsIPrincipal** aCookiePrincipal,
+    nsIPrincipal** aCookiePartitionedPrincipal) {
+  MOZ_ASSERT(aCookiePrincipal);
+
+  nsCOMPtr<nsIPrincipal> cookiePrincipal;
+  nsCOMPtr<nsIPrincipal> cookiePartitionedPrincipal;
+
+  if (!NS_IsMainThread()) {
+    MOZ_ASSERT(!aDocument);
+
+    dom::WorkerPrivate* workerPrivate = dom::GetCurrentThreadWorkerPrivate();
+    MOZ_ASSERT(workerPrivate);
+
+    StorageAccess storageAccess = workerPrivate->StorageAccess();
+    if (storageAccess == StorageAccess::eDeny) {
+      return SecurityChecksResult::eDoNotContinue;
+    }
+
+    cookiePrincipal = workerPrivate->GetPrincipal();
+    if (NS_WARN_IF(!cookiePrincipal) || cookiePrincipal->GetIsNullPrincipal()) {
+      return SecurityChecksResult::eSecurityError;
+    }
+
+    // CHIPS - If CHIPS is enabled the partitioned cookie jar is always
+    // available (and therefore the partitioned principal), the unpartitioned
+    // cookie jar is only available in first-party or third-party with
+    // storageAccess contexts. In both cases, the Worker will have storage
+    // access.
+    bool isCHIPS =
+        StaticPrefs::network_cookie_CHIPS_enabled() &&
+        !workerPrivate->CookieJarSettings()->GetBlockingAllContexts();
+    bool workerHasStorageAccess =
+        workerPrivate->StorageAccess() == StorageAccess::eAllow;
+
+    if (isCHIPS && workerHasStorageAccess) {
+      // Only retrieve the partitioned originAttributes if the partitionKey is
+      // set. The partitionKey could be empty for partitionKey in partitioned
+      // originAttributes if the aWorker is for privilege context, such as the
+      // extension's background page.
+      nsCOMPtr<nsIPrincipal> partitionedPrincipal =
+          workerPrivate->GetPartitionedPrincipal();
+      if (partitionedPrincipal && !partitionedPrincipal->OriginAttributesRef()
+                                       .mPartitionKey.IsEmpty()) {
+        cookiePartitionedPrincipal = partitionedPrincipal;
+      }
+    }
+  } else {
+    if (!aDocument) {
+      return SecurityChecksResult::eDoNotContinue;
+    }
+
+    // If the document's sandboxed origin flag is set, then reading cookies
+    // is prohibited.
+    if (aDocument->GetSandboxFlags() & SANDBOXED_ORIGIN) {
+      return SecurityChecksResult::eSandboxedError;
+    }
+
+    cookiePrincipal = aDocument->EffectiveCookiePrincipal();
+    if (NS_WARN_IF(!cookiePrincipal) || cookiePrincipal->GetIsNullPrincipal()) {
+      return SecurityChecksResult::eSecurityError;
+    }
+
+    if (aDocument->CookieAccessDisabled()) {
+      return SecurityChecksResult::eDoNotContinue;
+    }
+
+    // GTests do not create an inner window and because of these a few security
+    // checks will block this method.
+    if (!StaticPrefs::dom_cookie_testing_enabled()) {
+      StorageAccess storageAccess = CookieAllowedForDocument(aDocument);
+      if (storageAccess == StorageAccess::eDeny) {
+        return SecurityChecksResult::eDoNotContinue;
+      }
+
+      if (ShouldPartitionStorage(storageAccess) &&
+          !StoragePartitioningEnabled(storageAccess,
+                                      aDocument->CookieJarSettings())) {
+        return SecurityChecksResult::eDoNotContinue;
+      }
+
+      // If the document is a cookie-averse Document... return the empty string.
+      if (aDocument->IsCookieAverse()) {
+        return SecurityChecksResult::eDoNotContinue;
+      }
+    }
+
+    // CHIPS - If CHIPS is enabled the partitioned cookie jar is always
+    // available (and therefore the partitioned principal), the unpartitioned
+    // cookie jar is only available in first-party or third-party with
+    // storageAccess contexts. In both cases, the aDocument will have storage
+    // access.
+    bool isCHIPS = StaticPrefs::network_cookie_CHIPS_enabled() &&
+                   !aDocument->CookieJarSettings()->GetBlockingAllContexts();
+    bool documentHasStorageAccess = false;
+    nsresult rv = aDocument->HasStorageAccessSync(documentHasStorageAccess);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return SecurityChecksResult::eDoNotContinue;
+    }
+
+    if (isCHIPS && documentHasStorageAccess) {
+      // Only append the partitioned originAttributes if the partitionKey is
+      // set. The partitionKey could be empty for partitionKey in partitioned
+      // originAttributes if the aDocument is for privilege context, such as the
+      // extension's background page.
+      if (!aDocument->PartitionedPrincipal()
+               ->OriginAttributesRef()
+               .mPartitionKey.IsEmpty()) {
+        cookiePartitionedPrincipal = aDocument->PartitionedPrincipal();
+      }
+    }
+  }
+
+  if (!IsSchemeSupported(cookiePrincipal)) {
+    return SecurityChecksResult::eDoNotContinue;
+  }
+
+  cookiePrincipal.forget(aCookiePrincipal);
+
+  if (aCookiePartitionedPrincipal) {
+    cookiePartitionedPrincipal.forget(aCookiePartitionedPrincipal);
+  }
+
+  return SecurityChecksResult::eContinue;
+}
+// static
+void CookieCommons::GetServerDateHeader(nsIChannel* aChannel,
+                                        nsACString& aServerDateHeader) {
+  if (!aChannel) {
+    return;
+  }
+
+  nsCOMPtr<nsIHttpChannel> channel = do_QueryInterface(aChannel);
+  if (NS_WARN_IF(!channel)) {
+    return;
+  }
+
+  Unused << channel->GetResponseHeader("Date"_ns, aServerDateHeader);
+}
+
+// static
+int64_t CookieCommons::MaybeReduceExpiry(int64_t aCurrentTimeInSec,
+                                         int64_t aExpiryInSec) {
+  int64_t maxageCap = StaticPrefs::network_cookie_maxageCap();
+
+  if (maxageCap) {
+    aExpiryInSec = std::min(aExpiryInSec, aCurrentTimeInSec + maxageCap);
+  }
+
+  return aExpiryInSec;
 }
 
 }  // namespace net

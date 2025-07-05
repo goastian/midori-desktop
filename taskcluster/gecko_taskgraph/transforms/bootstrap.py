@@ -55,8 +55,10 @@ def bootstrap_tasks(config, tasks):
                 # MOZ_AUTOMATION changes the behavior, and we want something closer to user
                 # machines.
                 "unset MOZ_AUTOMATION",
-                f"curl -O {head_repo}/raw-file/{head_rev}/python/mozboot/bin/bootstrap.py",
-                f"python3 bootstrap.py --no-interactive --application-choice {app}",
+                f"curl --retry 5 -L -f -O {head_repo}/raw-file/{head_rev}/python/mozboot/bin/bootstrap.py",
+                # We keep using git-cinnabar here because we rely on being able to pull
+                # the head revision from Mercurial.
+                f"python3 bootstrap.py --vcs=git-cinnabar --no-interactive --application-choice {app}",
                 "cd mozilla-unified",
                 # After bootstrap, configure should go through without its own auto-bootstrap.
                 "./mach configure --enable-bootstrap=no-update",

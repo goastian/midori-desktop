@@ -7,16 +7,21 @@ package org.mozilla.fenix.components
 import android.content.Context
 import mozilla.components.feature.fxsuggest.FxSuggestIngestionScheduler
 import mozilla.components.feature.fxsuggest.FxSuggestStorage
+import mozilla.components.support.remotesettings.RemoteSettingsService
 import org.mozilla.fenix.perf.lazyMonitored
 
 /**
  * Component group for Firefox Suggest.
  *
  * @param context The Android application context.
+ * @param remoteSettingsService: Remote settings service to get suggestions from
  */
-class FxSuggest(context: Context) {
+class FxSuggest(context: Context, remoteSettingsService: RemoteSettingsService) {
     val storage by lazyMonitored {
-        FxSuggestStorage(context)
+        FxSuggestStorage(
+            context,
+            remoteSettingsService,
+        )
     }
 
     val ingestionScheduler by lazyMonitored {

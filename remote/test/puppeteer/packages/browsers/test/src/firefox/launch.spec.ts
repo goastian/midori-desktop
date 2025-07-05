@@ -29,7 +29,7 @@ describe('Firefox', () => {
         buildId: '123',
         cacheDir: '.cache',
       }),
-      path.join('.cache', 'firefox', 'linux-123', 'firefox', 'firefox')
+      path.join('.cache', 'firefox', 'linux-123', 'firefox', 'firefox'),
     );
   });
 
@@ -42,7 +42,7 @@ describe('Firefox', () => {
 
     beforeEach(async () => {
       tmpDir = fs.mkdtempSync(
-        path.join(os.tmpdir(), 'puppeteer-browsers-test')
+        path.join(os.tmpdir(), 'puppeteer-browsers-test'),
       );
       await install({
         cacheDir: tmpDir,
@@ -59,7 +59,7 @@ describe('Firefox', () => {
     it('should launch a Firefox browser', async () => {
       const userDataDir = path.join(tmpDir, 'profile');
       function getArgs(): string[] {
-        const firefoxArguments = ['--no-remote'];
+        const firefoxArguments = [];
         switch (os.platform()) {
           case 'darwin':
             firefoxArguments.push('--foreground');

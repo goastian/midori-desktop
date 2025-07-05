@@ -4,6 +4,7 @@
 
 # class to process, format, and report raptor test results
 # received from the raptor control server
+import builtins
 import json
 import os
 import pathlib
@@ -11,7 +12,6 @@ import shutil
 import tarfile
 from abc import ABCMeta, abstractmethod
 from collections.abc import Iterable
-from io import open
 from pathlib import Path
 
 import six
@@ -35,7 +35,7 @@ NON_FIREFOX_BROWSERS_MOBILE = ("chrome-m", "cstm-car-m")
 
 
 @six.add_metaclass(ABCMeta)
-class PerftestResultsHandler(object):
+class PerftestResultsHandler:
     """Abstract base class to handle perftest results"""
 
     def __init__(
@@ -224,7 +224,7 @@ class PerftestResultsHandler(object):
         )
         LOG.info("Validating PERFHERDER_DATA against %s" % schema_path)
         try:
-            with open(schema_path, encoding="utf-8") as f:
+            with builtins.open(schema_path, encoding="utf-8") as f:
                 schema = json.load(f)
             if output.summarized_results:
                 data = output.summarized_results
@@ -679,7 +679,7 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
             # mdict: a dictionary to look through to find the mname
             #        value.
 
-            if type(mname) != list:
+            if type(mname) is not list:
                 if mname in mdict:
                     return mdict[mname]
                 return retval
@@ -756,8 +756,19 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                 ):
                     bt_result["measurements"].setdefault("cpuTime", []).extend(cpu_vals)
 
+            def _extract_android_power_vals():
+                power_vals = raw_result.get("android").get("power", {})
+                if power_vals:
+                    bt_result["measurements"].setdefault("powerUsage", []).extend(
+                        [
+                            round(vals["powerUsage"] * (1 * 10**-6), 2)
+                            for vals in power_vals
+                        ]
+                    )
+
             if support_class:
                 bt_result["custom_data"] = True
+                support_class.save_data(raw_result, bt_result)
                 support_class.handle_result(
                     bt_result,
                     raw_result,
@@ -811,79 +822,12 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                 if kwargs.get("gather_cpuTime", None):
                     _extract_cpu_vals()
             else:
-                # extracting values from browserScripts and statistics
-                for bt, raptor in conversion:
-                    if measure is not None and bt not in measure:
-                        continue
-                    # chrome and safari we just measure fcp and loadtime; skip fnbpaint and dcf
-                    if (
-                        self.app
-                        and self.app.lower()
-                        in NON_FIREFOX_BROWSERS + NON_FIREFOX_BROWSERS_MOBILE
-                        and bt
-                        in (
-                            "fnbpaint",
-                            "dcf",
-                        )
-                    ):
-                        continue
+                raise Exception(
+                    "Test should be using browsertime_pageload.py as the "
+                    "support_class instead of the results.py/output.py parsing."
+                )
 
-                    # FCP uses a different path to get the timing, so we need to do
-                    # some checks here
-                    if bt == "fcp" and not _get_raptor_val(
-                        raw_result["browserScripts"][0]["timings"],
-                        raptor,
-                    ):
-                        continue
-
-                    # XXX looping several times in the list, could do better
-                    for cycle in raw_result["browserScripts"]:
-                        if bt not in bt_result["measurements"]:
-                            bt_result["measurements"][bt] = []
-                        val = _get_raptor_val(cycle["timings"], raptor)
-                        if not val:
-                            raise MissingResultsError(
-                                "Browsertime cycle missing {} measurement".format(
-                                    raptor
-                                )
-                            )
-                        bt_result["measurements"][bt].append(val)
-
-                    # let's add the browsertime statistics; we'll use those for overall values
-                    # instead of calculating our own based on the replicates
-                    bt_result["statistics"][bt] = _get_raptor_val(
-                        raw_result["statistics"]["timings"], raptor, retval={}
-                    )
-
-                _extract_cpu_vals()
-
-                if self.perfstats:
-                    for cycle in raw_result["geckoPerfStats"]:
-                        for metric in cycle:
-                            bt_result["measurements"].setdefault(
-                                "perfstat-" + metric, []
-                            ).append(cycle[metric])
-
-                if self.browsertime_visualmetrics:
-                    for cycle in raw_result["visualMetrics"]:
-                        for metric in cycle:
-                            if "progress" in metric.lower():
-                                # Bug 1665750 - Determine if we should display progress
-                                continue
-
-                            if metric not in measure:
-                                continue
-
-                            val = cycle[metric]
-                            if not accept_zero_vismet:
-                                if val == 0:
-                                    self.failed_vismets.append(metric)
-                                    continue
-
-                            bt_result["measurements"].setdefault(metric, []).append(val)
-                            bt_result["statistics"][metric] = raw_result["statistics"][
-                                "visualMetrics"
-                            ][metric]
+            _extract_android_power_vals()
 
             results.append(bt_result)
 
@@ -977,7 +921,7 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                 return False
 
             try:
-                with open(bt_res_json, "r", encoding="utf8") as f:
+                with builtins.open(bt_res_json, encoding="utf8") as f:
                     raw_btresults = json.load(f)
             except Exception as e:
                 LOG.error("Exception reading %s" % bt_res_json)
@@ -998,9 +942,9 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                 self._label_video_folder(cold_data, dirpath, "cold")
                 self._label_video_folder(warm_data, dirpath, "warm")
 
-                with open(_cold_path, "w") as f:
+                with builtins.open(_cold_path, "w") as f:
                     json.dump([cold_data], f)
-                with open(_warm_path, "w") as f:
+                with builtins.open(_warm_path, "w") as f:
                     json.dump([warm_data], f)
 
                 raw_btresults[0] = cold_data
@@ -1018,7 +962,7 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                 # Overwrite the contents of the browsertime.json file
                 # to update it with the new file paths
                 try:
-                    with open(bt_res_json, "w", encoding="utf8") as f:
+                    with builtins.open(bt_res_json, "w", encoding="utf8") as f:
                         json.dump(raw_btresults, f)
                 except Exception as e:
                     LOG.error("Exception reading %s" % bt_res_json)
@@ -1036,7 +980,7 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                 ) and os.path.exists(bt_profiling_res_json)
                 if has_extra_profiler_run:
                     try:
-                        with open(bt_profiling_res_json, "r", encoding="utf8") as f:
+                        with builtins.open(bt_profiling_res_json, encoding="utf8") as f:
                             raw_profiling_btresults = json.load(f)
                             split_browsertime_results(
                                 bt_profiling_res_json, raw_profiling_btresults
@@ -1201,9 +1145,7 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
                             item
                         ):
                             # add page cycle custom measurements to the existing results
-                            for measurement in six.iteritems(
-                                new_result["measurements"]
-                            ):
+                            for measurement in new_result["measurements"].items():
                                 self.results[i]["measurements"][measurement[0]].extend(
                                     measurement[1]
                                 )
@@ -1247,14 +1189,21 @@ class BrowsertimeResultsHandler(PerftestResultsHandler):
 
             jobs_file = os.path.join(self.result_dir(), "jobs.json")
             LOG.info(
-                "Writing video jobs and application data {} into {}".format(
-                    jobs_json, jobs_file
-                )
+                f"Writing video jobs and application data {jobs_json} into {jobs_file}"
             )
-            with open(jobs_file, "w") as f:
+            with builtins.open(jobs_file, "w") as f:
                 f.write(json.dumps(jobs_json))
 
-        return (success and validate_success) and len(self.failed_vismets) == 0
+        support_class_success = True
+        for test in tests:
+            if test.get("support_class"):
+                support_class_success = test.get("support_class").report_test_success()
+
+        return (
+            (success and validate_success)
+            and len(self.failed_vismets) == 0
+            and support_class_success
+        )
 
 
 class MissingResultsError(Exception):

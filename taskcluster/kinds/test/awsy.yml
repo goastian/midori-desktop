@@ -8,7 +8,7 @@ task-defaults:
     instance-size: xlarge-noscratch
     virtualization:
         by-test-platform:
-            windows.*(?:-shippable)?-qr/.*: virtual-with-gpu
+            windows.*(?:-shippable)?.*/.*: virtual-with-gpu
             default: virtual
     allow-software-gl-layers: false
     mozharness:
@@ -29,6 +29,9 @@ awsy:
     description: Are we slim yet - tp5 pageset
     treeherder-symbol: SY(sy)
     run-on-projects: []
+    mozharness:
+        extra-options:
+            - --tp5
 
 awsy-tp6:
     description: Are we slim yet - tp6 pageset
@@ -37,11 +40,10 @@ awsy-tp6:
         by-test-platform:
             .*-devedition/.*: []  # don't run on devedition
             windows.*-32.*/opt: []
-            (linux|windows|mac)(?!.*shippable).*/opt: []
+            linux(?!.*shippable).*/opt: []
+            windows(?!.*shippable).*/opt: []
+            mac(?!.*shippable).*/opt: []
             default: [trunk]
-    mozharness:
-        extra-options:
-            - --tp6
 
 awsy-dmd:
     description: Are we slim yet - dmd enabled
@@ -58,7 +60,9 @@ awsy-base:
         by-test-platform:
             .*-devedition/.*: []  # don't run on devedition.
             windows.*-32.*/opt: []
-            (linux|windows|mac)(?!.*shippable).*/opt: []
+            linux(?!.*shippable).*/opt: []
+            windows(?!.*shippable).*/opt: []
+            mac(?!.*shippable).*/opt: []
             default: [trunk]
     tier: default
     mozharness:

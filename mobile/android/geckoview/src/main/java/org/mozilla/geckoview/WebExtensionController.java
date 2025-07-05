@@ -247,23 +247,6 @@ public class WebExtensionController {
    */
   @UiThread
   public interface PromptDelegate {
-    /**
-     * @deprecated This method is no longer called, see the other onInstallPrompt method with the
-     *     explicit permissions and origins arguments.
-     * @param extension The {@link WebExtension} that is about to be installed. You can use {@link
-     *     WebExtension#metaData} to gather information about this extension when building the user
-     *     prompt dialog.
-     * @return A {@link GeckoResult} that completes to either {@link AllowOrDeny#ALLOW ALLOW} if
-     *     this extension should be installed or {@link AllowOrDeny#DENY DENY} if this extension
-     *     should not be installed. A null value will be interpreted as {@link AllowOrDeny#DENY
-     *     DENY}.
-     */
-    @Nullable
-    @Deprecated
-    @DeprecationSchedule(id = "web-extension-required-permissions", version = 133)
-    default GeckoResult<AllowOrDeny> onInstallPrompt(@NonNull final WebExtension extension) {
-      return null;
-    }
 
     /**
      * Called whenever a new extension is being installed. This is intended as an opportunity for
@@ -274,13 +257,11 @@ public class WebExtensionController {
      *     prompt dialog.
      * @param permissions The list of permissions that are granted during installation.
      * @param origins The list of origins that are granted during installation.
-     * @return A {@link GeckoResult} that completes to either {@link AllowOrDeny#ALLOW ALLOW} if
-     *     this extension should be installed or {@link AllowOrDeny#DENY DENY} if this extension
-     *     should not be installed. A null value will be interpreted as {@link AllowOrDeny#DENY
-     *     DENY}.
+     * @return A {@link GeckoResult} that completes with a {@link
+     *     WebExtension.PermissionPromptResponse} containing all the details from the user response.
      */
     @Nullable
-    default GeckoResult<AllowOrDeny> onInstallPrompt(
+    default GeckoResult<WebExtension.PermissionPromptResponse> onInstallPromptRequest(
         @NonNull final WebExtension extension,
         @NonNull final String[] permissions,
         @NonNull final String[] origins) {
@@ -632,7 +613,8 @@ public class WebExtensionController {
    *
    * <p>When calling this method, the GeckoView library will download the extension, validate its
    * manifest and signature, and give you an opportunity to verify its permissions through {@link
-   * PromptDelegate#installPrompt}, you can use this method to prompt the user if appropriate.
+   * PromptDelegate#onInstallPromptRequest}, you can use this method to prompt the user if
+   * appropriate.
    *
    * @param uri URI to the extension's <code>.xpi</code> package. This can be a remote <code>https:
    *     </code> URI or a local <code>file:</code> or <code>resource:</code> URI. Note: the app
@@ -646,7 +628,7 @@ public class WebExtensionController {
    *     exceptionally with a {@link WebExtension.InstallException InstallException} that will
    *     contain the relevant error code in {@link WebExtension.InstallException#code
    *     InstallException#code}.
-   * @see PromptDelegate#installPrompt
+   * @see PromptDelegate#onInstallPromptRequest(WebExtension, String[], String[])
    * @see WebExtension.InstallException.ErrorCodes
    * @see WebExtension#metaData
    */
@@ -683,9 +665,9 @@ public class WebExtensionController {
    *
    * <p>When calling this method, the GeckoView library will download the extension, validate its
    * manifest and signature, and give you an opportunity to verify its permissions through {@link
-   * PromptDelegate#installPrompt}, you can use this method to prompt the user if appropriate. If
-   * you are looking to provide an {@link InstallationMethod}, please use {@link
-   * WebExtensionController#install(String, String)}
+   * PromptDelegate#installPromptRequest(GeckoBundle, EventCallback)}, you can use this method to
+   * prompt the user if appropriate. If you are looking to provide an {@link InstallationMethod},
+   * please use {@link WebExtensionController#install(String, String)}
    *
    * @param uri URI to the extension's <code>.xpi</code> package. This can be a remote <code>https:
    *     </code> URI or a local <code>file:</code> or <code>resource:</code> URI. Note: the app
@@ -698,7 +680,7 @@ public class WebExtensionController {
    *     exceptionally with a {@link WebExtension.InstallException InstallException} that will
    *     contain the relevant error code in {@link WebExtension.InstallException#code
    *     InstallException#code}.
-   * @see PromptDelegate#installPrompt
+   * @see PromptDelegate#installPromptRequest
    * @see WebExtension.InstallException.ErrorCodes
    * @see WebExtension#metaData
    */
@@ -710,7 +692,11 @@ public class WebExtensionController {
 
   /** The method used by the embedder to install the {@link WebExtension}. */
   @Retention(RetentionPolicy.SOURCE)
-  @StringDef({INSTALLATION_METHOD_MANAGER, INSTALLATION_METHOD_FROM_FILE})
+  @StringDef({
+    INSTALLATION_METHOD_MANAGER,
+    INSTALLATION_METHOD_FROM_FILE,
+    INSTALLATION_METHOD_ONBOARDING
+  })
   public @interface InstallationMethod {};
 
   /** Indicates the {@link WebExtension} was installed using from the embedder's add-ons manager. */
@@ -718,6 +704,9 @@ public class WebExtensionController {
 
   /** Indicates the {@link WebExtension} was installed from a file. */
   public static final String INSTALLATION_METHOD_FROM_FILE = "install-from-file";
+
+  /** Indicates the {@link WebExtension} was installed from the embedder's onboarding feature. */
+  public static final String INSTALLATION_METHOD_ONBOARDING = "onboarding";
 
   /**
    * Set whether an extension should be allowed to run in private browsing or not.
@@ -997,7 +986,7 @@ public class WebExtensionController {
    * @return A {@link GeckoResult} that will complete when the update process finishes. If an update
    *     is found and installed successfully, the GeckoResult will return the updated {@link
    *     WebExtension}. If no update is available, null will be returned. If the updated extension
-   *     requires new permissions, the {@link PromptDelegate#installPrompt} will be called.
+   *     requires new permissions, the {@link PromptDelegate#installPromptRequest} will be called.
    * @see PromptDelegate#updatePrompt
    */
   @AnyThread
@@ -1041,7 +1030,7 @@ public class WebExtensionController {
     Log.d(LOGTAG, "handleMessage " + event);
 
     if ("GeckoView:WebExtension:InstallPrompt".equals(event)) {
-      installPrompt(bundle, callback);
+      installPromptRequest(bundle, callback);
       return;
     } else if ("GeckoView:WebExtension:UpdatePrompt".equals(event)) {
       updatePrompt(bundle, callback);
@@ -1166,7 +1155,7 @@ public class WebExtensionController {
             });
   }
 
-  private void installPrompt(final GeckoBundle message, final EventCallback callback) {
+  private void installPromptRequest(final GeckoBundle message, final EventCallback callback) {
     final GeckoBundle extensionBundle = message.getBundle("extension");
     if (extensionBundle == null
         || !extensionBundle.containsKey("webExtensionId")
@@ -1187,18 +1176,18 @@ public class WebExtensionController {
       return;
     }
 
-    final GeckoResult<AllowOrDeny> promptResponse =
-        mPromptDelegate.onInstallPrompt(
+    final GeckoResult<WebExtension.PermissionPromptResponse> promptResponse =
+        mPromptDelegate.onInstallPromptRequest(
             extension, message.getStringArray("permissions"), message.getStringArray("origins"));
     if (promptResponse == null) {
       return;
     }
-
     callback.resolveTo(
         promptResponse.map(
-            allowOrDeny -> {
-              final GeckoBundle response = new GeckoBundle(1);
-              response.putBoolean("allow", AllowOrDeny.ALLOW.equals(allowOrDeny));
+            userResponse -> {
+              final GeckoBundle response = new GeckoBundle(2);
+              response.putBoolean("allow", userResponse.isPermissionsGranted);
+              response.putBoolean("privateBrowsingAllowed", userResponse.isPrivateModeGranted);
               return response;
             }));
   }
@@ -1283,13 +1272,15 @@ public class WebExtensionController {
     final int errorCode = bundle.getInt("error");
     final GeckoBundle extensionBundle = bundle.getBundle("extension");
     WebExtension extension = null;
+    final String extensionId = bundle.getString("addonId");
     final String extensionName = bundle.getString("addonName");
+    final String extensionVersion = bundle.getString("addonVersion");
 
     if (extensionBundle != null) {
       extension = new WebExtension(mDelegateControllerProvider, extensionBundle);
     }
     mAddonManagerDelegate.onInstallationFailed(
-        extension, new InstallException(errorCode, extensionName));
+        extension, new InstallException(errorCode, extensionId, extensionName, extensionVersion));
   }
 
   private void onDisabling(final GeckoBundle bundle) {

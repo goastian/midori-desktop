@@ -7,22 +7,28 @@ package org.mozilla.fenix.ui
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.core.net.toUri
 import mozilla.components.concept.engine.utils.EngineReleaseChannel
-import org.junit.Before
+import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
 import org.mozilla.fenix.customannotations.SmokeTest
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.helpers.AppAndSystemHelper.assertNativeAppOpens
 import org.mozilla.fenix.helpers.AppAndSystemHelper.assertYoutubeAppOpens
+import org.mozilla.fenix.helpers.AppAndSystemHelper.clickSystemHomeScreenShortcutAddButton
 import org.mozilla.fenix.helpers.AppAndSystemHelper.runWithCondition
 import org.mozilla.fenix.helpers.Constants.PackageName.PRINT_SPOOLER
 import org.mozilla.fenix.helpers.DataGenerationHelper.generateRandomString
 import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.MatcherHelper
 import org.mozilla.fenix.helpers.TestAssetHelper
-import org.mozilla.fenix.helpers.TestHelper
+import org.mozilla.fenix.helpers.TestHelper.clickSnackbarButton
+import org.mozilla.fenix.helpers.TestHelper.closeApp
+import org.mozilla.fenix.helpers.TestHelper.exitMenu
 import org.mozilla.fenix.helpers.TestHelper.mDevice
+import org.mozilla.fenix.helpers.TestHelper.restartApp
+import org.mozilla.fenix.helpers.TestHelper.verifySnackBarText
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.nimbus.Translations
 import org.mozilla.fenix.ui.robots.browserScreen
@@ -39,27 +45,18 @@ class MainMenuTest : TestSetup() {
     @get:Rule
     val composeTestRule = AndroidComposeTestRule(activityTestRule) { it.activity }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/233849
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
 
-    @Before
-    override fun setUp() {
-        super.setUp()
-        FxNimbus.features.translations.withInitializer { _, _ ->
-            // These are FML generated objects and enums
-            Translations(
-                mainFlowToolbarEnabled = true,
-                mainFlowBrowserMenuEnabled = true,
-                pageSettingsEnabled = true,
-                globalSettingsEnabled = true,
-                globalLangSettingsEnabled = true,
-                globalSiteSettingsEnabled = true,
-                downloadsEnabled = true,
-            )
-        }
-    }
-
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/233849
     @Test
     fun verifyTabMainMenuItemsTest() {
+        FxNimbus.features.translations.withInitializer { _, _ ->
+            Translations(
+                mainFlowBrowserMenuEnabled = true,
+            )
+        }
+
         val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
 
         navigationToolbar {
@@ -71,24 +68,30 @@ class MainMenuTest : TestSetup() {
     }
 
     // Verifies the list of items in the homescreen's 3 dot main menu
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/233848
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/233848
     @SmokeTest
     @Test
     fun homeMainMenuItemsTest() {
         homeScreen {
         }.openThreeDotMenu {
-            verifyHomeThreeDotMainMenuItems(isRequestDesktopSiteEnabled = false)
-        }.openBookmarks {
-            verifyBookmarksMenuView()
-        }.goBack {
+            verifyHomeThreeDotMainMenuItems()
+        }.openBookmarksMenu(composeTestRule) {
+            verifyEmptyBookmarksMenuView()
+        }.goBackToHomeScreen {
         }.openThreeDotMenu {
         }.openHistory {
             verifyHistoryMenuView()
         }.goBack {
         }.openThreeDotMenu {
-        }.openDownloadsManager() {
+        }.openDownloadsManager {
             verifyEmptyDownloadsList(composeTestRule)
-        }.goBack {
+        }.goBack(composeTestRule) {
+        }.openThreeDotMenu {
+        }.openPasswords {
+            verifySecurityPromptForLogins()
+            tapSetupLater()
+            verifyEmptySavedLoginsListView()
+        }.goBackToHomeScreen {
         }.openThreeDotMenu {
         }.openAddonsManagerMenu {
             verifyAddonsListIsDisplayed(true)
@@ -101,11 +104,11 @@ class MainMenuTest : TestSetup() {
         }.openThreeDotMenu {
         }.openWhatsNew {
             verifyWhatsNewURL()
-        }.goToHomescreen {
+        }.goToHomescreen(composeTestRule) {
         }.openThreeDotMenu {
         }.openHelp {
             verifyHelpUrl()
-        }.goToHomescreen {
+        }.goToHomescreen(composeTestRule) {
         }.openThreeDotMenu {
         }.openCustomizeHome {
             verifyHomePageView()
@@ -116,7 +119,7 @@ class MainMenuTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2284134
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2284134
     @Test
     fun openNewTabTest() {
         val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
@@ -133,7 +136,7 @@ class MainMenuTest : TestSetup() {
 
     // Device or AVD requires a Google Services Android OS installation with Play Store installed
     // Verifies the Open in app button when an app is installed
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/387756
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/387756
     @SmokeTest
     @Test
     fun openInAppFunctionalityTest() {
@@ -148,7 +151,7 @@ class MainMenuTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2284323
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2284323
     @Test
     fun openSyncAndSaveDataTest() {
         val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
@@ -162,7 +165,7 @@ class MainMenuTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/243840
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/243840
     @Test
     fun findInPageTest() {
         val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 3)
@@ -198,7 +201,7 @@ class MainMenuTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2283303
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2283303
     @Test
     fun switchDesktopSiteModeOnOffTest() {
         val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
@@ -215,17 +218,15 @@ class MainMenuTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1314137
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1314137
     @Test
     fun setDesktopSiteBeforePageLoadTest() {
         val webPage = TestAssetHelper.getGenericAsset(mockWebServer, 4)
 
-        homeScreen {
-        }.openThreeDotMenu {
-            verifyDesktopSiteModeEnabled(false)
-        }.switchDesktopSiteMode {
-        }.openNavigationToolbar {
+        navigationToolbar {
         }.enterURLAndEnterToBrowser(webPage.url) {
+        }.openThreeDotMenu {
+        }.switchDesktopSiteMode {
         }.openThreeDotMenu {
             verifyDesktopSiteModeEnabled(true)
         }.closeBrowserMenuToBrowser {
@@ -235,34 +236,19 @@ class MainMenuTest : TestSetup() {
         }.closeBrowserMenuToBrowser {
         }.openNavigationToolbar {
         }.enterURLAndEnterToBrowser(webPage.url) {
+        }.openThreeDotMenu {
+            verifyDesktopSiteModeEnabled(true)
+        }.closeBrowserMenuToBrowser {
             longClickPageObject(MatcherHelper.itemWithText("Link 2"))
             clickContextMenuItem("Open link in new tab")
-            TestHelper.clickSnackbarButton("SWITCH")
+            clickSnackbarButton(composeTestRule, "SWITCH")
         }.openThreeDotMenu {
             verifyDesktopSiteModeEnabled(false)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2283302
-    @Test
-    fun reportSiteIssueTest() {
-        runWithCondition(
-            // This test will not run on RC builds because the "Report site issue button" is not available.
-            activityTestRule.activity.components.core.engine.version.releaseChannel !== EngineReleaseChannel.RELEASE,
-        ) {
-            val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
-
-            navigationToolbar {
-            }.enterURLAndEnterToBrowser(defaultWebPage.url) {
-            }.openThreeDotMenu {
-            }.openReportSiteIssue {
-                verifyUrl("webcompat.com/issues/new")
-            }
-        }
-    }
-
     // Verifies the Add to home screen option in a tab's 3 dot menu
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/410724
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/410724
     @SmokeTest
     @Test
     fun addPageShortcutToHomeScreenTest() {
@@ -285,14 +271,14 @@ class MainMenuTest : TestSetup() {
             verifyShortcutTextFieldTitle("Test_Page_1")
             addShortcutName(shortcutTitle)
             clickAddShortcutButton()
-            clickAddAutomaticallyButton()
+            clickSystemHomeScreenShortcutAddButton()
         }.openHomeScreenShortcut(shortcutTitle) {
             verifyUrl(website.url.toString())
             verifyTabCounter("1")
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/329893
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/329893
     @SmokeTest
     @Test
     fun mainMenuShareButtonTest() {
@@ -306,7 +292,7 @@ class MainMenuTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/233604
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/233604
     @Test
     fun navigateBackAndForwardTest() {
         val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
@@ -328,7 +314,7 @@ class MainMenuTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2195819
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2195819
     @SmokeTest
     @Test
     fun refreshPageButtonTest() {
@@ -344,7 +330,7 @@ class MainMenuTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2265657
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2265657
     @Test
     fun forceRefreshPageTest() {
         val refreshWebPage = TestAssetHelper.getRefreshAsset(mockWebServer)
@@ -359,7 +345,7 @@ class MainMenuTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2282411
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2282411
     @Test
     fun printWebPageFromMainMenuTest() {
         val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
@@ -373,7 +359,7 @@ class MainMenuTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2282408
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2282408
     @Test
     fun printWebPageFromShareMenuTest() {
         val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
@@ -385,6 +371,202 @@ class MainMenuTest : TestSetup() {
         }.clickShareButton {
         }.clickPrintButton {
             assertNativeAppOpens(PRINT_SPOOLER)
+        }
+    }
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2937924
+    @Ignore("Failing, see: https://bugzilla.mozilla.org/show_bug.cgi?id=1967946")
+    @Test
+    fun verifyTheWhatIsBrokenErrorMessageTest() {
+        runWithCondition(
+            // This test will not run on RC builds because the "Report site issue button" is not available.
+            activityTestRule.activity.components.core.engine.version.releaseChannel !== EngineReleaseChannel.RELEASE,
+        ) {
+            val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
+
+            navigationToolbar {
+            }.enterURLAndEnterToBrowser(defaultWebPage.url) {
+            }.openThreeDotMenu {
+            }.openReportBrokenSite {
+                verifyWebCompatReporterViewItems(composeTestRule, defaultWebPage.url.toString())
+                verifyWhatIsBrokenField(composeTestRule)
+                verifySendButtonIsEnabled(composeTestRule, isEnabled = false)
+                clickChooseReasonField(composeTestRule)
+                clickSiteSlowOrNotWorkingReason(composeTestRule)
+                verifyChooseReasonErrorMessageIsNotDisplayed(composeTestRule)
+                verifySendButtonIsEnabled(composeTestRule, isEnabled = true)
+            }
+        }
+    }
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2937926
+    @Ignore("Failing, see: https://bugzilla.mozilla.org/show_bug.cgi?id=1967946")
+    @Test
+    fun verifyThatTheBrokenSiteFormCanBeCanceledTest() {
+        runWithCondition(
+            // This test will not run on RC builds because the "Report site issue button" is not available.
+            activityTestRule.activity.components.core.engine.version.releaseChannel !== EngineReleaseChannel.RELEASE,
+        ) {
+            val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
+
+            navigationToolbar {
+            }.enterURLAndEnterToBrowser(defaultWebPage.url) {
+            }.openThreeDotMenu {
+            }.openReportBrokenSite {
+                verifyWebCompatReporterViewItems(composeTestRule, defaultWebPage.url.toString())
+                clickChooseReasonField(composeTestRule)
+                clickSiteSlowOrNotWorkingReason(composeTestRule)
+                clickBrokenSiteFormCancelButton(composeTestRule)
+            }.openThreeDotMenu {
+            }.openReportBrokenSite {
+                verifyWhatIsBrokenField(composeTestRule)
+            }
+        }
+    }
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2937927
+    @Ignore("Failing, see: https://bugzilla.mozilla.org/show_bug.cgi?id=1967946")
+    @Test
+    fun verifyTheBrokenSiteFormSubmissionTest() {
+        runWithCondition(
+            // This test will not run on RC builds because the "Report site issue button" is not available.
+            activityTestRule.activity.components.core.engine.version.releaseChannel !== EngineReleaseChannel.RELEASE,
+        ) {
+            val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
+
+            navigationToolbar {
+            }.enterURLAndEnterToBrowser(defaultWebPage.url) {
+            }.openThreeDotMenu {
+            }.openReportBrokenSite {
+                verifyWebCompatReporterViewItems(composeTestRule, defaultWebPage.url.toString())
+                clickChooseReasonField(composeTestRule)
+                clickSiteSlowOrNotWorkingReason(composeTestRule)
+                describeBrokenSiteProblem(composeTestRule, problemDescription = "Prolonged page loading time")
+                clickBrokenSiteFormSendButton(composeTestRule)
+            }
+            browserScreen {
+                verifySnackBarText("Your report was sent")
+            }.openThreeDotMenu {
+            }.openReportBrokenSite {
+                verifyWhatIsBrokenField(composeTestRule)
+                verifyBrokenSiteProblem(composeTestRule, problemDescription = "Prolonged page loading time", isDisplayed = false)
+            }
+        }
+    }
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2937930
+    @Ignore("Failing, see: https://bugzilla.mozilla.org/show_bug.cgi?id=1967946")
+    @Test
+    fun verifyThatTheBrokenSiteFormInfoPersistsTest() {
+        runWithCondition(
+            // This test will not run on RC builds because the "Report site issue button" is not available.
+            activityTestRule.activity.components.core.engine.version.releaseChannel !== EngineReleaseChannel.RELEASE,
+        ) {
+            val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
+
+            navigationToolbar {
+            }.enterURLAndEnterToBrowser(defaultWebPage.url) {
+            }.openThreeDotMenu {
+            }.openReportBrokenSite {
+                verifyWebCompatReporterViewItems(composeTestRule, defaultWebPage.url.toString())
+                clickChooseReasonField(composeTestRule)
+                clickSiteSlowOrNotWorkingReason(composeTestRule)
+                describeBrokenSiteProblem(composeTestRule, problemDescription = "Prolonged page loading time")
+            }.closeWebCompatReporter {
+            }.openThreeDotMenu {
+            }.openReportBrokenSite {
+                verifyBrokenSiteProblem(composeTestRule, problemDescription = "Prolonged page loading time", isDisplayed = true)
+            }
+        }
+    }
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2937931
+    @Ignore("Failing, see: https://bugzilla.mozilla.org/show_bug.cgi?id=1967946")
+    @Test
+    fun verifyTheBrokenSiteFormIsEmptyWithoutSubmittingThePreviousOneTest() {
+        runWithCondition(
+            // This test will not run on RC builds because the "Report site issue button" is not available.
+            activityTestRule.activity.components.core.engine.version.releaseChannel !== EngineReleaseChannel.RELEASE,
+        ) {
+            val firstWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
+            val secondWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 2)
+
+            navigationToolbar {
+            }.enterURLAndEnterToBrowser(firstWebPage.url) {
+            }.openThreeDotMenu {
+            }.openReportBrokenSite {
+                verifyWebCompatReporterViewItems(composeTestRule, firstWebPage.url.toString())
+                clickChooseReasonField(composeTestRule)
+                clickSiteSlowOrNotWorkingReason(composeTestRule)
+                describeBrokenSiteProblem(composeTestRule, problemDescription = "Prolonged page loading time")
+            }.closeWebCompatReporter {
+            }.openTabDrawer(composeTestRule) {
+            }.openNewTab {
+            }.submitQuery(secondWebPage.url.toString()) {
+            }.openThreeDotMenu {
+            }.openReportBrokenSite {
+                verifyWhatIsBrokenField(composeTestRule)
+                verifyBrokenSiteProblem(composeTestRule, problemDescription = "Prolonged page loading time", isDisplayed = false)
+            }
+        }
+    }
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2937932
+    @Ignore("Failing, see: https://bugzilla.mozilla.org/show_bug.cgi?id=1967946")
+    @Test
+    fun verifyThatTheBrokenSiteFormInfoIsErasedWhenKillingTheAppTest() {
+        runWithCondition(
+            // This test will not run on RC builds because the "Report site issue button" is not available.
+            activityTestRule.activity.components.core.engine.version.releaseChannel !== EngineReleaseChannel.RELEASE,
+        ) {
+            val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
+
+            navigationToolbar {
+            }.enterURLAndEnterToBrowser(defaultWebPage.url) {
+            }.openThreeDotMenu {
+            }.openReportBrokenSite {
+                verifyWebCompatReporterViewItems(composeTestRule, defaultWebPage.url.toString())
+                clickChooseReasonField(composeTestRule)
+                clickSiteSlowOrNotWorkingReason(composeTestRule)
+                describeBrokenSiteProblem(composeTestRule, problemDescription = "Prolonged page loading time")
+            }
+            closeApp(composeTestRule.activityRule)
+            restartApp(composeTestRule.activityRule)
+
+            browserScreen {
+            }.openThreeDotMenu {
+            }.openReportBrokenSite {
+                verifyWhatIsBrokenField(composeTestRule)
+                verifyBrokenSiteProblem(composeTestRule, problemDescription = "Prolonged page loading time", isDisplayed = false)
+            }
+        }
+    }
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2937933
+    @Test
+    fun verifyReportBrokenSiteFormNotDisplayedWhenTelemetryIsDisabledTest() {
+        runWithCondition(
+            // This test will not run on RC builds because the "Report site issue button" is not available.
+            activityTestRule.activity.components.core.engine.version.releaseChannel !== EngineReleaseChannel.RELEASE,
+        ) {
+            val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
+
+            homeScreen {
+            }.openThreeDotMenu {
+            }.openSettings {
+            }.openSettingsSubMenuDataCollection {
+                clickUsageAndTechnicalDataToggle()
+                verifyUsageAndTechnicalDataToggle(enabled = false)
+            }
+
+            exitMenu()
+
+            navigationToolbar {
+            }.enterURLAndEnterToBrowser(defaultWebPage.url) {
+            }.openThreeDotMenu {
+            }.openReportBrokenSite {
+                verifyUrl("webcompat.com/issues/new")
+            }
         }
     }
 }

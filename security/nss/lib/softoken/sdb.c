@@ -148,18 +148,18 @@ static const int known_attributes_size = PR_ARRAY_SIZE(known_attributes);
 struct SDBPrivateStr {
     char *sqlDBName;                /* invariant, path to this database */
     sqlite3 *sqlXactDB;             /* access protected by dbMon, use protected
-                                    * by the transaction. Current transaction db*/
+                                     * by the transaction. Current transaction db*/
     PRThread *sqlXactThread;        /* protected by dbMon,
-                                    * current transaction thread */
+                                     * current transaction thread */
     sqlite3 *sqlReadDB;             /* use protected by dbMon, value invariant */
     PRIntervalTime lastUpdateTime;  /* last time the cache was updated */
     PRIntervalTime updateInterval;  /* how long the cache can go before it
-                                    * must be updated again */
+                                     * must be updated again */
     sdbDataType type;               /* invariant, database type */
     char *table;                    /* invariant, SQL table which contains the db */
     char *cacheTable;               /* invariant, SQL table cache of db */
     PRMonitor *dbMon;               /* invariant, monitor to protect
-                                    * sqlXact* fields, and use of the sqlReadDB */
+                                     * sqlXact* fields, and use of the sqlReadDB */
     CK_ATTRIBUTE_TYPE *schemaAttrs; /* Attribute columns that exist in the table. */
     unsigned int numSchemaAttrs;
 };
@@ -691,7 +691,7 @@ sdb_openDB(const char *name, sqlite3 **sqlDB, int flags)
     } else {
         openFlags = SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE;
         /* sqlite 3.34 seem to incorrectly open readwrite.
-        * when the file is readonly. Explicitly reject that issue here */
+         * when the file is readonly. Explicitly reject that issue here */
         if ((_NSSUTIL_Access(name, PR_ACCESS_EXISTS) == PR_SUCCESS) && (_NSSUTIL_Access(name, PR_ACCESS_WRITE_OK) != PR_SUCCESS)) {
             return SQLITE_READONLY;
         }
@@ -1664,7 +1664,7 @@ CK_RV
 sdb_GetMetaData(SDB *sdb, const char *id, SECItem *item1, SECItem *item2)
 {
     SDBPrivate *sdb_p = sdb->private;
-    sqlite3 *sqlDB = sdb_p->sqlXactDB;
+    sqlite3 *sqlDB = NULL;
     sqlite3_stmt *stmt = NULL;
     int sqlerr = SQLITE_OK;
     CK_RV error = CKR_OK;

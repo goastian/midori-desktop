@@ -5,6 +5,7 @@
 package org.mozilla.fenix.messaging
 
 import android.content.Context
+import android.os.Build
 import androidx.core.app.NotificationManagerCompat
 import mozilla.components.service.nimbus.messaging.JexlAttributeProvider
 import mozilla.components.support.base.ext.areNotificationsEnabledSafe
@@ -15,7 +16,9 @@ import org.mozilla.fenix.components.metrics.UTMParams.Companion.UTM_CONTENT
 import org.mozilla.fenix.components.metrics.UTMParams.Companion.UTM_MEDIUM
 import org.mozilla.fenix.components.metrics.UTMParams.Companion.UTM_SOURCE
 import org.mozilla.fenix.components.metrics.UTMParams.Companion.UTM_TERM
+import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.utils.isLargeScreenSize
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -33,20 +36,34 @@ object CustomAttributeProvider : JexlAttributeProvider {
      * These are only evaluated right at the beginning of start up, so any first run experiments needing
      * targeting attributes which aren't set until after startup e.g. are_notifications_enabled
      * will unlikely to targeted as expected.
+     *
+     * IMPORTANT: Attributes added here is specifically for advanced targeting purposes within an
+     * experiment.  Any modifications made here must also be reflected on the experimenter side
+     * to ensure that the experimenter dashboard accurately displays the updated advanced targeting
+     * options.
+     *
+     * WARNING: Attributes not initialized during the first startup cannot be used to target
+     * first-run experiments. These target attributes will only become active after the second startup.
      */
     fun getCustomTargetingAttributes(context: Context): JSONObject {
         val settings = context.settings()
         val isFirstRun = settings.isFirstNimbusRun
-        val isReviewCheckerEnabled = settings.isReviewQualityCheckEnabled
         return JSONObject(
             mapOf(
                 // By convention, we should use snake case.
                 "is_first_run" to isFirstRun,
-                "is_review_checker_enabled" to isReviewCheckerEnabled,
-
+                "install_referrer_response_utm_source" to settings.utmSource,
+                "install_referrer_response_utm_medium" to settings.utmMedium,
+                "install_referrer_response_utm_campaign" to settings.utmCampaign,
+                "install_referrer_response_utm_term" to settings.utmTerm,
+                "install_referrer_response_utm_content" to settings.utmContent,
+                "number_of_app_launches" to settings.numberOfAppLaunches,
+                "is_large_device" to context.isLargeScreenSize(),
                 // This camelCase attribute is a boolean value represented as a string.
                 // This is left for backwards compatibility.
                 "isFirstRun" to isFirstRun.toString(),
+                "device_manufacturer" to Build.MANUFACTURER,
+                "device_model" to Build.MODEL,
             ),
         )
     }
@@ -56,6 +73,8 @@ object CustomAttributeProvider : JexlAttributeProvider {
      * was called.
      *
      * This is used to drive display triggers of messages.
+     *
+     * IMPORTANT: Attributes added here are used as triggers in an experiment.
      */
     override fun getCustomAttributes(context: Context): JSONObject {
         val now = Calendar.getInstance()
@@ -81,6 +100,15 @@ object CustomAttributeProvider : JexlAttributeProvider {
                     .areNotificationsEnabledSafe(),
 
                 "search_widget_is_installed" to settings.searchWidgetInstalled,
+
+                "android_version" to android.os.Build.VERSION.SDK_INT,
+
+                "is_fxa_signed_in" to settings.signedInFxaAccount,
+
+                "fxa_connected_devices" to (
+                    context.components.backgroundServices.syncStore.state
+                        .constellationState?.otherDevices?.size ?: 0
+                    ),
             ),
         )
     }

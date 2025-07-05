@@ -14,8 +14,6 @@
 // http://greenbytes.de/tech/webdav/rfc3986.html#rfc.section.5.4
 // http://greenbytes.de/tech/tc/uris/
 
-Services.prefs.setBoolPref("network.url.useDefaultURI", true);
-
 // TEST DATA
 // ---------
 var gTests = [
@@ -799,6 +797,59 @@ add_task(function check_space_escaping() {
   uri = Services.io.newURI("http://example.com/test%20path#test%20path");
 });
 
+add_task(function check_space_with_query_and_ref() {
+  let url = Services.io.newURI("data:space");
+  Assert.equal(url.spec, "data:space");
+
+  url = Services.io.newURI("data:space ?");
+  Assert.equal(url.spec, "data:space ?");
+  url = Services.io.newURI("data:space #");
+  Assert.equal(url.spec, "data:space #");
+
+  url = Services.io.newURI("data:space?");
+  Assert.equal(url.spec, "data:space?");
+  url = Services.io.newURI("data:space#");
+  Assert.equal(url.spec, "data:space#");
+
+  url = Services.io.newURI("data:space ?query");
+  Assert.equal(url.spec, "data:space ?query");
+  url = url.mutate().setQuery("").finalize();
+  Assert.equal(url.spec, "data:space");
+
+  url = Services.io.newURI("data:space #ref");
+  Assert.equal(url.spec, "data:space #ref");
+  url = url.mutate().setRef("").finalize();
+  Assert.equal(url.spec, "data:space");
+
+  url = Services.io.newURI("data:space?query#ref");
+  Assert.equal(url.spec, "data:space?query#ref");
+  url = url.mutate().setRef("").finalize();
+  Assert.equal(url.spec, "data:space?query");
+  url = url.mutate().setQuery("").finalize();
+  Assert.equal(url.spec, "data:space");
+
+  url = Services.io.newURI("data:space#ref?query");
+  Assert.equal(url.spec, "data:space#ref?query");
+  url = url.mutate().setQuery("").finalize();
+  Assert.equal(url.spec, "data:space#ref?query");
+  url = url.mutate().setRef("").finalize();
+  Assert.equal(url.spec, "data:space");
+
+  url = Services.io.newURI("data:space ?query#ref");
+  Assert.equal(url.spec, "data:space ?query#ref");
+  url = url.mutate().setRef("").finalize();
+  Assert.equal(url.spec, "data:space ?query");
+  url = url.mutate().setQuery("").finalize();
+  Assert.equal(url.spec, "data:space");
+
+  url = Services.io.newURI("data:space #ref?query");
+  Assert.equal(url.spec, "data:space #ref?query");
+  url = url.mutate().setQuery("").finalize();
+  Assert.equal(url.spec, "data:space #ref?query");
+  url = url.mutate().setRef("").finalize();
+  Assert.equal(url.spec, "data:space");
+});
+
 add_task(function check_schemeIsNull() {
   let uri = Services.io.newURI("data:text/plain,aaa");
   Assert.ok(!uri.schemeIs(null));
@@ -976,11 +1027,12 @@ add_task(async function test_bug1875119() {
   // but it's scheme is now file.
   // See https://bugzilla.mozilla.org/show_bug.cgi?id=1876483 to disallow this
   uri2 = uri2.mutate().setSpec("file:///path2").finalize();
-  Assert.throws(
-    () => uri1.equals(uri2),
-    /(NS_NOINTERFACE)|(NS_ERROR_FILE_UNRECOGNIZED_PATH)/,
-    "uri2 is in an invalid state and should throw"
-  );
+  // NOTE: this test was originally expecting `uri1.equals(uri2)` to be throwing
+  // a NS_NOINTERFACE error (instead of hitting a crash) when the new test landed
+  // as part of Bug 1875119, then as a side-effect of the fix applied by Bug 1926106
+  // the expected behavior is for the call to not raise an NS_NOINTERFACE error anymore
+  // but to be returning false instead (and so the test has been adjusted accordingly).
+  Assert.ok(!uri1.equals(uri2), "Expect uri1.equals(uri2) to be false");
 });
 
 add_task(async function test_bug1843717() {
@@ -993,4 +1045,120 @@ add_task(async function test_bug1843717() {
   Assert.equal(uri.spec, "file:///abc/def/foo/bar#xy");
   uri = Services.io.newURI("foo\\bar#", null, base);
   Assert.equal(uri.spec, "file:///abc/def/foo/bar#");
+});
+
+add_task(async function test_bug1874118() {
+  let base = Services.io.newURI("file:///tmp/mock/path");
+  let uri = Services.io.newURI("file:c:\\\\foo\\\\bar.html", null, base);
+  Assert.equal(uri.spec, "file:///c://foo//bar.html");
+
+  base = Services.io.newURI("file:///tmp/mock/path");
+  uri = Services.io.newURI("file:c|\\\\foo\\\\bar.html", null, base);
+  Assert.equal(uri.spec, "file:///c://foo//bar.html");
+
+  base = Services.io.newURI("file:///C:/");
+  uri = Services.io.newURI("..", null, base);
+  Assert.equal(uri.spec, "file:///C:/");
+
+  base = Services.io.newURI("file:///");
+  uri = Services.io.newURI("C|/hello/../../", null, base);
+  Assert.equal(uri.spec, "file:///C:/");
+
+  base = Services.io.newURI("file:///");
+  uri = Services.io.newURI("/C:/../../", null, base);
+  Assert.equal(uri.spec, "file:///C:/");
+
+  base = Services.io.newURI("file:///");
+  uri = Services.io.newURI("/C://../../", null, base);
+  Assert.equal(uri.spec, "file:///C:/");
+
+  base = Services.io.newURI("file:///tmp/mock/path");
+  uri = Services.io.newURI("C|/foo/bar", null, base);
+  Assert.equal(uri.spec, "file:///C:/foo/bar");
+
+  base = Services.io.newURI("file:///tmp/mock/path");
+  uri = Services.io.newURI("/C|/foo/bar", null, base);
+  Assert.equal(uri.spec, "file:///C:/foo/bar");
+});
+
+add_task(async function test_bug1911529() {
+  let testcases = [
+    [
+      "https://github.com/coder/coder/edit/main/docs/./enterprise.md",
+      "https://github.com/coder/coder/edit/main/docs/enterprise.md",
+      "enterprise",
+    ],
+    ["https://domain.com/.", "https://domain.com/", ""],
+    ["https://domain.com/%2e", "https://domain.com/", ""],
+    ["https://domain.com/%2e%2E", "https://domain.com/", ""],
+    ["https://domain.com/%2e%2E/.", "https://domain.com/", ""],
+    ["https://domain.com/./test.md", "https://domain.com/test.md", "test"],
+    [
+      "https://domain.com/dir/sub/%2e%2e/%2e/test.md",
+      "https://domain.com/dir/test.md",
+      "test",
+    ],
+    ["https://domain.com/dir/..", "https://domain.com/", ""],
+  ];
+
+  for (let t of testcases) {
+    let uri = Services.io.newURI(t[0]);
+    let uri2 = Services.io.newURI(t[1]);
+    Assert.ok(uri.equals(uri2), `${uri} must equal ${uri2}`);
+    Assert.equal(t[2], uri.QueryInterface(Ci.nsIURL).fileBaseName);
+  }
+});
+
+add_task(async function test_bug1939493() {
+  let uri = Services.io.newURI("resource:///components/");
+  uri = uri
+    .mutate()
+    .setUserPass("")
+    .setUsername("")
+    .setPassword("")
+    .setPort(-1)
+    .finalize();
+  Assert.equal(uri.spec, "resource:///components/");
+
+  Assert.throws(() => {
+    uri = uri.mutate().setUserPass("a:b").finalize();
+  }, /NS_ERROR_UNEXPECTED/);
+  Assert.throws(() => {
+    uri = uri.mutate().setUsername("a").finalize();
+  }, /NS_ERROR_UNEXPECTED/);
+  Assert.throws(() => {
+    uri = uri.mutate().setPassword("b").finalize();
+  }, /NS_ERROR_UNEXPECTED/);
+  Assert.throws(() => {
+    uri = uri.mutate().setPort(10).finalize();
+  }, /NS_ERROR_UNEXPECTED/);
+
+  // username, password and port doesn't really make sense for a resource URL
+  // but they still behave as regular URLs so this should be valid.
+  uri = uri.mutate().setHost("gre").finalize();
+  Assert.equal(uri.spec, "resource://gre/components/");
+  uri = uri.mutate().setUserPass("a:b").finalize();
+  Assert.equal(uri.spec, "resource://a:b@gre/components/");
+  uri = uri.mutate().setUsername("user").finalize();
+  Assert.equal(uri.spec, "resource://user:b@gre/components/");
+  uri = uri.mutate().setPassword("pass").finalize();
+  Assert.equal(uri.spec, "resource://user:pass@gre/components/");
+  uri = uri.mutate().setPort(10).finalize();
+  Assert.equal(uri.spec, "resource://user:pass@gre:10/components/");
+
+  // Clearing the host should fail, as there are still user, port, pass in play.
+  Assert.throws(() => {
+    uri = uri.mutate().setHost("").finalize();
+  }, /NS_ERROR_MALFORMED_URI/);
+
+  uri = uri
+    .mutate()
+    .setUserPass("")
+    .setUsername("")
+    .setPassword("")
+    .setPort(-1)
+    .setHost("")
+    .finalize();
+
+  Assert.equal(uri.spec, "resource:///components/");
 });

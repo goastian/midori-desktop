@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -23,21 +24,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.selector.findTab
 import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.state.createTab
 import mozilla.components.browser.state.store.BrowserStore
-import mozilla.components.concept.storage.EncryptedLogin
+import mozilla.components.compose.base.button.PrimaryButton
 import mozilla.components.concept.storage.Login
 import mozilla.components.concept.storage.LoginEntry
 import mozilla.components.concept.storage.LoginsStorage
 import mozilla.components.lib.state.ext.observeAsComposableState
 import mozilla.components.support.ktx.kotlin.tryGetHostFromUrl
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
-import org.mozilla.fenix.compose.button.PrimaryButton
 import org.mozilla.fenix.compose.list.TextListItem
 import org.mozilla.fenix.debugsettings.ui.DebugDrawer
 import org.mozilla.fenix.theme.FirefoxTheme
@@ -75,7 +75,7 @@ fun LoginsTools(
         onAddFakeLogin = {
             origin?.let {
                 scope.launch {
-                    val new = loginsStorage.add(
+                    existingLogins += loginsStorage.add(
                         LoginEntry(
                             username = "fake_username${existingLogins.size + 1}",
                             password = "fake_password${existingLogins.size + 1}",
@@ -83,7 +83,6 @@ fun LoginsTools(
                             formActionOrigin = "https://$origin",
                         ),
                     )
-                    existingLogins += loginsStorage.decryptLogin(new)
                 }
             }
         },
@@ -125,6 +124,7 @@ private fun LoginsContent(
 
         PrimaryButton(
             text = stringResource(R.string.debug_drawer_logins_add_login_button),
+            modifier = Modifier.fillMaxWidth(),
             onClick = onAddFakeLogin,
         )
 
@@ -145,7 +145,7 @@ private fun LoginsContent(
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun LoginsScreenPreview() {
     FirefoxTheme {
         Box(
@@ -173,15 +173,13 @@ internal class FakeLoginsStorage : LoginsStorage {
     override suspend fun touch(guid: String) = Unit
     override suspend fun list(): List<Login> = listOf()
     override suspend fun findLoginToUpdate(entry: LoginEntry): Login? = null
-    override suspend fun add(entry: LoginEntry): EncryptedLogin {
+    override suspend fun add(entry: LoginEntry): Login {
         val guid = UUID.randomUUID().toString()
         loginsByGuid[guid] = entry
-        return EncryptedLogin(guid, "", secFields = "")
+        return entry.toLogin(guid)
     }
-    override suspend fun update(guid: String, entry: LoginEntry) =
-        EncryptedLogin("", "", secFields = "")
-    override suspend fun addOrUpdate(entry: LoginEntry) =
-        EncryptedLogin("", "", secFields = "")
+    override suspend fun update(guid: String, entry: LoginEntry) = entry.toLogin(guid)
+    override suspend fun addOrUpdate(entry: LoginEntry) = entry.toLogin("guid")
     override suspend fun getByBaseDomain(origin: String) = loginsByGuid.map { (guid, login) ->
         Login(
             guid = guid,
@@ -190,14 +188,16 @@ internal class FakeLoginsStorage : LoginsStorage {
             password = login.password,
         )
     }
-    override suspend fun decryptLogin(login: EncryptedLogin): Login =
-        with(loginsByGuid[login.guid]!!) {
-            Login(
-                guid = login.guid,
-                origin = origin,
-                username = username,
-                password = password,
-            )
-        }
     override fun close() = Unit
+
+    private fun LoginEntry.toLogin(guid: String) = Login(
+        guid = guid,
+        username = username,
+        password = password,
+        origin = origin,
+        formActionOrigin = formActionOrigin,
+        httpRealm = httpRealm,
+        usernameField = usernameField,
+        passwordField = passwordField,
+    )
 }

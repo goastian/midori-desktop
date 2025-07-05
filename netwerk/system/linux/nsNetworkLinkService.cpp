@@ -50,15 +50,11 @@ nsNetworkLinkService::GetLinkType(uint32_t* aLinkType) {
 
 NS_IMETHODIMP
 nsNetworkLinkService::GetNetworkID(nsACString& aNetworkID) {
-#ifdef BASE_BROWSER_VERSION
-  aNetworkID.Truncate();
-#else
   if (!mNetlinkSvc) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
   mNetlinkSvc->GetNetworkID(aNetworkID);
-#endif
   return NS_OK;
 }
 
@@ -213,4 +209,9 @@ void nsNetworkLinkService::NotifyObservers(const char* aTopic,
         static_cast<nsINetworkLinkService*>(this), aTopic,
         aData ? NS_ConvertASCIItoUTF16(aData).get() : nullptr);
   }
+}
+
+// static
+bool nsINetworkLinkService::HasNonLocalIPv6Address() {
+  return mozilla::net::NetlinkService::HasNonLocalIPv6Address();
 }

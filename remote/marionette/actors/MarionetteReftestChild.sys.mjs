@@ -98,7 +98,11 @@ export class MarionetteReftestChild extends JSWindowActorChild {
     lazy.logger.debug("Waiting for event loop to spin");
     await new Promise(resolve => lazy.setTimeout(resolve, 0));
 
-    await this.paintComplete({ useRemote, ignoreThrottledAnimations: true });
+    await this.paintComplete({
+      useRemote,
+      ignoreThrottledAnimations: true,
+      hasReftestWait,
+    });
 
     if (hasReftestWait) {
       const event = new this.document.defaultView.Event("TestRendered", {
@@ -107,7 +111,11 @@ export class MarionetteReftestChild extends JSWindowActorChild {
       documentElement.dispatchEvent(event);
       lazy.logger.info("Emitted TestRendered event");
       await this.reftestWaitRemoved();
-      await this.paintComplete({ useRemote, ignoreThrottledAnimations: false });
+      await this.paintComplete({
+        useRemote,
+        ignoreThrottledAnimations: false,
+        hasReftestWait,
+      });
     }
     if (
       options.warnOnOverflow &&
@@ -121,9 +129,12 @@ export class MarionetteReftestChild extends JSWindowActorChild {
     return true;
   }
 
-  paintComplete({ useRemote, ignoreThrottledAnimations }) {
+  paintComplete({ useRemote, ignoreThrottledAnimations, hasReftestWait }) {
     lazy.logger.debug("Waiting for rendering");
-    let windowUtils = this.document.defaultView.windowUtils;
+    let win = this.document.defaultView;
+    let windowUtils = win.windowUtils;
+    let painted = false;
+    const documentElement = this.document.documentElement;
     return new Promise(resolve => {
       let maybeResolve = () => {
         this.flushRendering({ ignoreThrottledAnimations });
@@ -133,20 +144,24 @@ export class MarionetteReftestChild extends JSWindowActorChild {
           windowUtils.updateLayerTree();
         }
 
-        if (windowUtils.isMozAfterPaintPending) {
+        const once =
+          hasReftestWait && !documentElement.classList.contains("reftest-wait");
+        if (windowUtils.isMozAfterPaintPending && (!once || !painted)) {
           lazy.logger.debug("isMozAfterPaintPending: true");
-          this.document.defaultView.addEventListener(
+          win.windowRoot.addEventListener(
             "MozAfterPaint",
-            maybeResolve,
-            {
-              once: true,
-            }
+            () => {
+              lazy.logger.debug("MozAfterPaint fired");
+              painted = true;
+              maybeResolve();
+            },
+            { once: true }
           );
         } else {
           // resolve at the start of the next frame in case of leftover paints
           lazy.logger.debug("isMozAfterPaintPending: false");
-          this.document.defaultView.requestAnimationFrame(() => {
-            this.document.defaultView.requestAnimationFrame(resolve);
+          win.requestAnimationFrame(() => {
+            win.requestAnimationFrame(resolve);
           });
         }
       };
@@ -192,8 +207,6 @@ export class MarionetteReftestChild extends JSWindowActorChild {
     );
     let anyPendingPaintsGeneratedInDescendants = false;
 
-    let windowUtils = this.document.defaultView.windowUtils;
-
     function flushWindow(win) {
       let utils = win.windowUtils;
       let afterPaintWasPending = utils.isMozAfterPaintPending;
@@ -224,11 +237,13 @@ export class MarionetteReftestChild extends JSWindowActorChild {
         }
       }
     }
-    flushWindow(this.document.defaultView);
+
+    let thisWin = this.document.defaultView;
+    flushWindow(thisWin);
 
     if (
       anyPendingPaintsGeneratedInDescendants &&
-      !windowUtils.isMozAfterPaintPending
+      !thisWin.windowUtils.isMozAfterPaintPending
     ) {
       lazy.logger.error(
         "Descendant frame generated a MozAfterPaint event, " +

@@ -20,20 +20,17 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Text
-import androidx.compose.material.TextField
-import androidx.compose.material.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.tooling.preview.PreviewParameterProvider
 import androidx.compose.ui.unit.dp
@@ -41,12 +38,12 @@ import androidx.core.text.isDigitsOnly
 import mozilla.components.browser.state.action.TabListAction
 import mozilla.components.browser.state.state.createTab
 import mozilla.components.browser.state.store.BrowserStore
+import mozilla.components.compose.base.Divider
+import mozilla.components.compose.base.button.PrimaryButton
+import mozilla.components.compose.base.textfield.TextField
+import mozilla.components.compose.base.utils.toLocaleString
 import mozilla.components.lib.state.ext.observeAsState
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.Divider
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
-import org.mozilla.fenix.compose.button.PrimaryButton
-import org.mozilla.fenix.compose.ext.toLocaleString
 import org.mozilla.fenix.debugsettings.ui.DebugDrawer
 import org.mozilla.fenix.ext.maxActiveTime
 import org.mozilla.fenix.tabstray.ext.isNormalTabInactive
@@ -122,8 +119,8 @@ private fun TabToolsContent(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(all = 16.dp)
-            .verticalScroll(rememberScrollState()),
+            .verticalScroll(rememberScrollState())
+            .padding(all = 16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         TabCounter(
@@ -215,7 +212,6 @@ private fun TabCountRow(
 
 private const val DEFAULT_TABS_TO_ADD = 1
 
-@OptIn(ExperimentalComposeUiApi::class)
 @Suppress("LongMethod")
 @Composable
 private fun TabCreationTool(
@@ -234,6 +230,8 @@ private fun TabCreationTool(
             style = FirefoxTheme.typography.headline5,
         )
 
+        Spacer(modifier = Modifier.height(8.dp))
+
         TextField(
             value = tabQuantityToCreate,
             onValueChange = {
@@ -241,15 +239,20 @@ private fun TabCreationTool(
                 textErrorID = validateTextField(it)
                 hasError = textErrorID != null
             },
-            modifier = Modifier.fillMaxWidth(),
-            textStyle = FirefoxTheme.typography.subtitle1,
-            label = {
-                Text(
-                    text = stringResource(R.string.debug_drawer_tab_tools_tab_creation_tool_text_field_label),
-                    color = FirefoxTheme.colors.textPrimary,
-                    style = FirefoxTheme.typography.caption,
-                )
+            placeholder = "",
+            errorText = when (textErrorID) {
+                null -> {
+                    ""
+                }
+                R.string.debug_drawer_tab_tools_tab_quantity_exceed_max_error -> {
+                    stringResource(id = textErrorID!!, MAX_TABS_GENERATED)
+                }
+                else -> {
+                    stringResource(id = textErrorID!!)
+                }
             },
+            modifier = Modifier.fillMaxWidth(),
+            label = stringResource(R.string.debug_drawer_tab_tools_tab_creation_tool_text_field_label),
             isError = hasError,
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Number,
@@ -259,36 +262,13 @@ private fun TabCreationTool(
                     keyboardController?.hide()
                 },
             ),
-            singleLine = true,
-            colors = TextFieldDefaults.textFieldColors(
-                textColor = FirefoxTheme.colors.textPrimary,
-                backgroundColor = Color.Transparent,
-                cursorColor = FirefoxTheme.colors.borderFormDefault,
-                errorCursorColor = FirefoxTheme.colors.borderCritical,
-                focusedIndicatorColor = FirefoxTheme.colors.borderPrimary,
-                unfocusedIndicatorColor = FirefoxTheme.colors.borderPrimary,
-                errorIndicatorColor = FirefoxTheme.colors.borderCritical,
-            ),
         )
-
-        textErrorID?.let {
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Text(
-                text = if (textErrorID == R.string.debug_drawer_tab_tools_tab_quantity_exceed_max_error) {
-                    stringResource(id = it, MAX_TABS_GENERATED)
-                } else {
-                    stringResource(id = it)
-                },
-                color = FirefoxTheme.colors.textCritical,
-                style = FirefoxTheme.typography.caption,
-            )
-        }
 
         Spacer(modifier = Modifier.height(8.dp))
 
         PrimaryButton(
             text = stringResource(id = R.string.debug_drawer_tab_tools_tab_creation_tool_button_text_active),
+            modifier = Modifier.fillMaxWidth(),
             enabled = !hasError,
             onClick = {
                 onCreateTabsClick(tabQuantityToCreate.toInt(), false, false)
@@ -300,6 +280,7 @@ private fun TabCreationTool(
         if (inactiveTabsEnabled) {
             PrimaryButton(
                 text = stringResource(id = R.string.debug_drawer_tab_tools_tab_creation_tool_button_text_inactive),
+                modifier = Modifier.fillMaxWidth(),
                 enabled = !hasError,
                 onClick = {
                     onCreateTabsClick(tabQuantityToCreate.toInt(), true, false)
@@ -311,6 +292,7 @@ private fun TabCreationTool(
 
         PrimaryButton(
             text = stringResource(id = R.string.debug_drawer_tab_tools_tab_creation_tool_button_text_private),
+            modifier = Modifier.fillMaxWidth(),
             enabled = !hasError,
             onClick = {
                 onCreateTabsClick(tabQuantityToCreate.toInt(), false, true)
@@ -347,7 +329,7 @@ private class TabToolsPreviewParameterProvider : PreviewParameterProvider<TabToo
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun TabToolsPreview(
     @PreviewParameter(TabToolsPreviewParameterProvider::class) model: TabToolsPreviewModel,
 ) {

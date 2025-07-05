@@ -47,6 +47,13 @@ var tests = [
     consume: [0],
     dataChunks: ["E", "E"],
   },
+  {
+    data: "123456789",
+    chunks: [2, 3, 4],
+    status: Cr.NS_OK,
+    consume: [1, 2, 6],
+    dataChunks: ["12", "2345", "456789", ""],
+  },
 ];
 
 /**
@@ -65,16 +72,30 @@ function execute_test(test) {
   let stream = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(
     Ci.nsIStringInputStream
   );
-  stream.data = test.data;
+  stream.setByteStringData(test.data);
+
+  let contentTypeCalled = 0;
 
   let channel = {
     contentLength: -1,
     QueryInterface: ChromeUtils.generateQI(["nsIChannel"]),
+    get contentType() {
+      contentTypeCalled++;
+      return "application/test";
+    },
   };
 
   let chunkIndex = 0;
 
   let observer = {
+    onStartRequest(request) {
+      const chan = request.QueryInterface(Ci.nsIChannel);
+      const before = contentTypeCalled;
+      const type = chan.contentType;
+      const after = contentTypeCalled;
+      equal(type, "application/test");
+      equal(after, before + 1);
+    },
     onStreamComplete(loader, context, status, length, data) {
       equal(chunkIndex, test.dataChunks.length - 1);
       var expectedChunk = test.dataChunks[chunkIndex];

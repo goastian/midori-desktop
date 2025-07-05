@@ -106,9 +106,10 @@ nsHttpActivityDistributor::ObserveActivityWithArgs(
         portStr.AppendInt(port);
       }
 
-      nsresult rv = NS_NewURI(getter_AddRefs(uri),
-                              (endToEndSSL ? "https://"_ns : "http://"_ns) +
-                                  args.get_HttpActivity().host() + portStr);
+      nsresult rv =
+          NS_NewURI(getter_AddRefs(uri),
+                    (endToEndSSL ? "https://"_ns : "http://"_ns) +
+                        args.get_HttpActivity().host() + ":"_ns + portStr);
       if (NS_FAILED(rv)) {
         return;
       }
@@ -193,7 +194,8 @@ nsHttpActivityDistributor::AddObserver(nsIHttpActivityObserver* aObserver) {
     mActivated = true;
     if (nsIOService::UseSocketProcess()) {
       auto task = []() {
-        SocketProcessParent* parent = SocketProcessParent::GetSingleton();
+        RefPtr<SocketProcessParent> parent =
+            SocketProcessParent::GetSingleton();
         if (parent && parent->CanSend()) {
           Unused << parent->SendOnHttpActivityDistributorActivated(true);
         }
@@ -225,7 +227,7 @@ nsHttpActivityDistributor::RemoveObserver(nsIHttpActivityObserver* aObserver) {
 
   if (nsIOService::UseSocketProcess() && !mActivated) {
     auto task = []() {
-      SocketProcessParent* parent = SocketProcessParent::GetSingleton();
+      RefPtr<SocketProcessParent> parent = SocketProcessParent::GetSingleton();
       if (parent && parent->CanSend()) {
         Unused << parent->SendOnHttpActivityDistributorActivated(false);
       }
@@ -254,7 +256,7 @@ nsHttpActivityDistributor::SetObserveProxyResponse(bool aObserveProxyResponse) {
   mObserveProxyResponse = aObserveProxyResponse;
   if (nsIOService::UseSocketProcess()) {
     auto task = [aObserveProxyResponse]() {
-      SocketProcessParent* parent = SocketProcessParent::GetSingleton();
+      RefPtr<SocketProcessParent> parent = SocketProcessParent::GetSingleton();
       if (parent && parent->CanSend()) {
         Unused << parent->SendOnHttpActivityDistributorObserveProxyResponse(
             aObserveProxyResponse);
@@ -283,7 +285,7 @@ nsHttpActivityDistributor::SetObserveConnection(bool aObserveConnection) {
   mObserveConnection = aObserveConnection;
   if (nsIOService::UseSocketProcess()) {
     auto task = [aObserveConnection]() {
-      SocketProcessParent* parent = SocketProcessParent::GetSingleton();
+      RefPtr<SocketProcessParent> parent = SocketProcessParent::GetSingleton();
       if (parent && parent->CanSend()) {
         Unused << parent->SendOnHttpActivityDistributorObserveConnection(
             aObserveConnection);

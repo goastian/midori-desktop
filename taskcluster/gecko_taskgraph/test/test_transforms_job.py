@@ -14,14 +14,12 @@ import pytest
 from mozunit import main
 from taskgraph.config import load_graph_config
 from taskgraph.transforms.base import TransformConfig
-from taskgraph.util.schema import Schema, validate_schema
 
 from gecko_taskgraph import GECKO
 from gecko_taskgraph.test.conftest import FakeParameters
 from gecko_taskgraph.transforms import job
 from gecko_taskgraph.transforms.job import run_task  # noqa: F401
-from gecko_taskgraph.transforms.job.common import add_cache
-from gecko_taskgraph.transforms.task import payload_builders
+from gecko_taskgraph.transforms.task import group_name_variant
 
 here = os.path.abspath(os.path.dirname(__file__))
 
@@ -83,28 +81,27 @@ def transform(monkeypatch, config):
 
 
 @pytest.mark.parametrize(
-    "task",
+    "groupSymbol,description",
     [
-        {"worker-type": "b-linux"},
-        {"worker-type": "t-win10-64-hw"},
+        pytest.param("M", "Mochitests", id="no_variants"),
+        pytest.param(
+            "M-spi-nw",
+            "Mochitests with networking on socket process enabled",
+            id="spi-nw variant",
+        ),
+        pytest.param(
+            "M-spi-nw-http3",
+            "Mochitests with networking on socket process enabled with http3 server",
+            id="spi-nw and http3 variants",
+        ),
+        pytest.param("M-fake", "", id="invalid group name"),
     ],
     ids=lambda t: t["worker-type"],
 )
-def test_worker_caches(task, transform):
-    config, job, taskdesc, impl = transform(task)
-    add_cache(job, taskdesc, "cache1", "/cache1")
-    add_cache(job, taskdesc, "cache2", "/cache2", skip_untrusted=True)
-
-    if impl not in ("docker-worker", "generic-worker"):
-        pytest.xfail(f"caches not implemented for '{impl}'")
-
-    key = "caches" if impl == "docker-worker" else "mounts"
-    assert key in taskdesc["worker"]
-    assert len(taskdesc["worker"][key]) == 2
-
-    # Create a new schema object with just the part relevant to caches.
-    partial_schema = Schema(payload_builders[impl].schema.schema[key])
-    validate_schema(partial_schema, taskdesc["worker"][key], "validation error")
+def test_group_name(config, groupSymbol, description):
+    group_names = config.graph_config["treeherder"]["group-names"]
+    generated_description = group_name_variant(group_names, groupSymbol)
+    assert description == generated_description
 
 
 if __name__ == "__main__":

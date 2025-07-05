@@ -13,6 +13,7 @@ from abc import ABCMeta, abstractmethod
 from manifestparser import TestManifest
 from manifestparser.filters import chunk_by_runtime, tags
 from mozbuild.util import memoize
+from mozinfo.platforminfo import PlatformInfo
 from moztest.resolve import TEST_SUITES, TestManifestLoader, TestResolver
 from taskgraph.util.yaml import load_yaml
 
@@ -28,14 +29,22 @@ if os.path.exists(os.path.join(GECKO, "taskcluster", "kinds", "test", "variants.
     TEST_VARIANTS = load_yaml(GECKO, "taskcluster", "kinds", "test", "variants.yml")
 
 WPT_SUBSUITES = {
-    "canvas": "html/canvas",
-    "webgpu": "_mozilla/webgpu",
-    "privatebrowsing": "/service-workers/cache-storage",
-    "webcodecs": "webcodecs",
+    "canvas": ["html/canvas"],
+    "webgpu": ["_mozilla/webgpu"],
+    "webcodecs": ["webcodecs"],
+    "eme": ["encrypted-media"],
 }
 
 
-def guess_mozinfo_from_task(task, repo=""):
+def get_test_tags(config, env):
+    tags = json.loads(
+        config.params["try_task_config"].get("env", {}).get("MOZHARNESS_TEST_TAG", "[]")
+    )
+    tags.extend(env.get("MOZHARNESS_TEST_TAG", []))
+    return list(set(tags))
+
+
+def guess_mozinfo_from_task(task, repo="", app_version="", test_tags=[]):
     """Attempt to build a mozinfo dict from a task definition.
 
     This won't be perfect and many values used in the manifests will be missing. But
@@ -50,24 +59,27 @@ def guess_mozinfo_from_task(task, repo=""):
     """
     setting = task["test-setting"]
     runtime_keys = setting["runtime"].keys()
-    arch = setting["platform"]["arch"]
-    p_os = setting["platform"]["os"]
+
+    platform_info = PlatformInfo(setting)
 
     info = {
+        "debug": platform_info.debug,
+        "bits": platform_info.bits,
         "asan": setting["build"].get("asan", False),
-        "bits": 32 if "32" in arch else 64,
-        "ccov": setting["build"].get("ccov", False),
-        "debug": setting["build"]["type"] in ("debug", "debug-isolated-process"),
         "tsan": setting["build"].get("tsan", False),
-        "nightly_build": repo in ["mozilla-central", "autoland", "try", ""],  # trunk
+        "ccov": setting["build"].get("ccov", False),
+        "mingwclang": setting["build"].get("mingwclang", False),
+        "nightly_build": "a1"
+        in app_version,  # https://searchfox.org/mozilla-central/source/build/moz.configure/init.configure#1101
+        "release_or_beta": "a" not in app_version,
+        "repo": repo,
     }
-
-    for platform in ("android", "linux", "mac", "win"):
-        if p_os["name"].startswith(platform):
-            info["os"] = platform
-            break
-    else:
-        raise ValueError("{} is not a known platform!".format(p_os["name"]))
+    # the following are used to evaluate reftest skip-if
+    info["webrtc"] = not info["mingwclang"]
+    info["opt"] = (
+        not info["debug"] and not info["asan"] and not info["tsan"] and not info["ccov"]
+    )
+    info["os"] = platform_info.os
 
     # crashreporter is disabled for asan / tsan builds
     if info["asan"] or info["tsan"]:
@@ -76,16 +88,9 @@ def guess_mozinfo_from_task(task, repo=""):
         info["crashreporter"] = True
 
     info["appname"] = "fennec" if info["os"] == "android" else "firefox"
+    info["buildapp"] = "browser"
 
-    # guess processor
-    if arch == "aarch64":
-        info["processor"] = "aarch64"
-    elif info["os"] == "android" and "arm" in arch:
-        info["processor"] = "arm"
-    elif info["bits"] == 32:
-        info["processor"] = "x86"
-    else:
-        info["processor"] = "x86_64"
+    info["processor"] = platform_info.arch
 
     # guess toolkit
     if info["os"] == "android":
@@ -96,19 +101,9 @@ def guess_mozinfo_from_task(task, repo=""):
         info["toolkit"] = "cocoa"
     else:
         info["toolkit"] = "gtk"
+        info["display"] = platform_info.display or "x11"
 
-    # guess os_version
-    os_versions = {
-        ("linux", "1804"): "18.04",
-        ("macosx", "1015"): "10.15",
-        ("macosx", "1100"): "11.00",
-        ("windows", "10"): "10.0",
-        ("windows", "11"): "11.0",
-    }
-    for (name, old_ver), new_ver in os_versions.items():
-        if p_os["name"] == name and p_os["version"] == old_ver:
-            info["os_version"] = new_ver
-            break
+    info["os_version"] = platform_info.os_version
 
     for variant in TEST_VARIANTS:
         tag = TEST_VARIANTS[variant].get("mozinfo", "")
@@ -136,6 +131,10 @@ def guess_mozinfo_from_task(task, repo=""):
             info[tag] = True
         else:
             info[tag] = False
+
+    # NOTE: as we are using an array here, frozenset() cannot work with a 'list'
+    # this is cast to a string
+    info["tag"] = json.dumps(test_tags)
 
     info["automation"] = True
     return info
@@ -175,7 +174,7 @@ def chunk_manifests(suite, platform, chunks, manifests):
     """
     ini_manifests = set([x.replace(".toml", ".ini") for x in manifests])
 
-    if "web-platform-tests" not in suite:
+    if "web-platform-tests" not in suite and "marionette" not in suite:
         runtimes = {
             k: v for k, v in get_runtimes(platform, suite).items() if k in ini_manifests
         }
@@ -244,23 +243,33 @@ class DefaultLoader(BaseManifestLoader):
         )
 
     @memoize
-    def get_manifests(self, suite, mozinfo):
-        mozinfo = dict(mozinfo)
+    def get_manifests(self, suite, frozen_mozinfo):
+        mozinfo = dict(frozen_mozinfo)
         # Compute all tests for the given suite/subsuite.
         tests = self.get_tests(suite)
 
-        # TODO: the only exception here is we schedule webgpu as that is a --tag
         if "web-platform-tests" in suite:
             manifests = set()
             subsuite = [x for x in WPT_SUBSUITES.keys() if mozinfo[x]]
             for t in tests:
+                if json.loads(mozinfo["tag"]) and not any(
+                    x in t.get("tags", []) for x in json.loads(mozinfo["tag"])
+                ):
+                    continue
                 if subsuite:
                     # add specific directories
-                    if WPT_SUBSUITES[subsuite[0]] in t["manifest"]:
+                    if any(x in t["manifest"] for x in WPT_SUBSUITES[subsuite[0]]):
                         manifests.add(t["manifest"])
                 else:
-                    if any(x in t["manifest"] for x in WPT_SUBSUITES.values()):
+                    containsSubsuite = False
+                    for subsuites in WPT_SUBSUITES.values():
+                        if any(subsuite in t["manifest"] for subsuite in subsuites):
+                            containsSubsuite = True
+                            break
+
+                    if containsSubsuite:
                         continue
+
                     manifests.add(t["manifest"])
             return {
                 "active": list(manifests),
@@ -270,9 +279,24 @@ class DefaultLoader(BaseManifestLoader):
 
         manifests = {chunk_by_runtime.get_manifest(t) for t in tests}
 
-        filters = None
-        if mozinfo["condprof"]:
-            filters = [tags(["condprof"])]
+        filters = []
+        # Exclude suites that don't support --tag to prevent manifests from
+        # being optimized out, which would result in no jobs being triggered.
+        # No need to check suites like gtest, as all suites in compiled.yml
+        # have test-manifest-loader set to null, meaning this function is never
+        # called.
+        # Note there's a similar list in desktop_unittest.py in
+        # DesktopUnittest's _query_abs_base_cmd method. The lists should be
+        # kept in sync.
+        assert suite not in ["gtest", "cppunittest", "jittest"]
+        if suite not in [
+            "crashtest",
+            "crashtest-qr",
+            "jsreftest",
+            "reftest",
+            "reftest-qr",
+        ] and (mozinfo_tags := json.loads(mozinfo["tag"])):
+            filters.extend([tags([x]) for x in mozinfo_tags])
 
         # Compute  the active tests.
         m = TestManifest()

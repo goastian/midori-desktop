@@ -12,17 +12,21 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.mozilla.fenix.helpers.Constants.TAG
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdAndDescription
+import org.mozilla.fenix.helpers.TestHelper.appName
 import org.mozilla.fenix.helpers.TestHelper.mDevice
+import org.mozilla.fenix.helpers.TestHelper.waitForAppWindowToBeUpdated
 
 class SystemSettingsRobot {
 
     fun verifyNotifications() {
+        waitForAppWindowToBeUpdated()
         Log.i(TAG, "verifyNotifications: Trying to verify the intent to the notifications settings")
         Intents.intended(hasAction("android.settings.APP_NOTIFICATION_SETTINGS"))
         Log.i(TAG, "verifyNotifications: Verified the intent to the notifications settings")
     }
 
     fun verifyMakeDefaultBrowser() {
+        waitForAppWindowToBeUpdated()
         Log.i(TAG, "verifyMakeDefaultBrowser: Trying to verify the intent to the default apps settings")
         Intents.intended(hasAction(SettingsRobot.DEFAULT_APPS_SETTINGS_ACTION))
         Log.i(TAG, "verifyMakeDefaultBrowser: Verified the intent to the default apps settings")
@@ -30,12 +34,12 @@ class SystemSettingsRobot {
 
     fun verifyAllSystemNotificationsToggleState(enabled: Boolean) {
         if (enabled) {
-            Log.i(TAG, "verifyAllSystemNotificationsToggleState: Trying to verify that the system settings \"Show notifications\" toggle is checked")
-            assertTrue("$TAG: The system settings \"Show notifications\" toggle is not checked", allSystemSettingsNotificationsToggle().isChecked)
+            Log.i(TAG, "verifyAllSystemNotificationsToggleState: Trying to verify that the system settings \"All Fenix notifications\" toggle is checked")
+            assertTrue("$TAG: The system settings \"Show notifications\" toggle is not checked", systemSettingsAllFenixNotificationsToggle().isChecked)
             Log.i(TAG, "verifyAllSystemNotificationsToggleState: Verified that the system settings \"Show notifications\" toggle is checked")
         } else {
-            Log.i(TAG, "verifyAllSystemNotificationsToggleState: Trying to verify that the system settings \"Show notifications\" toggle is not checked")
-            assertFalse("$TAG: The system settings \"Show notifications\" toggle is checked", allSystemSettingsNotificationsToggle().isChecked)
+            Log.i(TAG, "verifyAllSystemNotificationsToggleState: Trying to verify that the system settings \"All Fenix notifications\" toggle is not checked")
+            assertFalse("$TAG: The system settings \"Show notifications\" toggle is checked", systemSettingsAllFenixNotificationsToggle().isChecked)
             Log.i(TAG, "verifyAllSystemNotificationsToggleState: Verified that the system settings \"Show notifications\" toggle is not checked")
         }
     }
@@ -60,7 +64,7 @@ class SystemSettingsRobot {
 
     fun clickAllSystemNotificationsToggle() {
         Log.i(TAG, "clickAllSystemNotificationsToggle: Trying to click the system settings \"Show notifications\" toggle")
-        allSystemSettingsNotificationsToggle().click()
+        systemSettingsAllFenixNotificationsToggle().click()
         Log.i(TAG, "clickAllSystemNotificationsToggle: Clicked the system settings \"Show notifications\" toggle")
     }
 
@@ -82,14 +86,10 @@ fun systemSettings(interact: SystemSettingsRobot.() -> Unit): SystemSettingsRobo
     return SystemSettingsRobot.Transition()
 }
 
-private fun allSystemSettingsNotificationsToggle() =
+private fun systemSettingsAllFenixNotificationsToggle() =
     mDevice.findObject(
-        UiSelector().resourceId("com.android.settings:id/switch_bar")
-            .childSelector(
-                UiSelector()
-                    .resourceId("com.android.settings:id/switch_widget")
-                    .index(1),
-            ),
-    )
+        UiSelector().text("All $appName notifications"),
+    ).getFromParent(UiSelector().resourceId("android:id/switch_widget"))
+
 private fun privateBrowsingSystemSettingsNotificationsToggle() =
     itemWithResIdAndDescription("com.android.settings:id/switchWidget", "Private browsing session")

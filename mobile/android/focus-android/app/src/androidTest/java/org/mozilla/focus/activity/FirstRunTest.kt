@@ -15,19 +15,21 @@ import org.mozilla.focus.helpers.FeatureSettingsHelper
 import org.mozilla.focus.helpers.MainActivityFirstrunTestRule
 import org.mozilla.focus.helpers.MockWebServerHelper
 import org.mozilla.focus.helpers.TestHelper.restartApp
+import org.mozilla.focus.helpers.TestSetup
 import org.mozilla.focus.testAnnotations.SmokeTest
 
 // Tests the First run onboarding screens
 @RunWith(AndroidJUnit4ClassRunner::class)
-class FirstRunTest {
+class FirstRunTest : TestSetup() {
     private lateinit var webServer: MockWebServer
     private val featureSettingsHelper = FeatureSettingsHelper()
 
-    @get: Rule
+    @get:Rule
     val mActivityTestRule = MainActivityFirstrunTestRule(showFirstRun = true)
 
     @Before
-    fun startWebServer() {
+    override fun setUp() {
+        super.setUp()
         webServer = MockWebServer().apply {
             dispatcher = MockWebServerHelper.AndroidAssetDispatcher()
             start()
@@ -48,7 +50,7 @@ class FirstRunTest {
             verifyFirstOnboardingScreenItems()
             restartApp(mActivityTestRule)
             verifyFirstOnboardingScreenItems()
-            clickGetStartedButton()
+            clickAgreeAndContinueButton()
             verifySecondOnboardingScreenItems()
             restartApp(mActivityTestRule)
             verifySecondOnboardingScreenItems()

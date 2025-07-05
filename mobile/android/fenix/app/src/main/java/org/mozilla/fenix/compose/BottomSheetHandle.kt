@@ -15,12 +15,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.dimensionResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
 import org.mozilla.fenix.theme.FirefoxTheme
 
 /**
@@ -42,6 +44,7 @@ fun BottomSheetHandle(
         modifier = modifier
             .height(dimensionResource(id = R.dimen.bottom_sheet_handle_height))
             .semantics(mergeDescendants = true) {
+                role = Role.Button
                 this.contentDescription = contentDescription
                 onClick {
                     onRequestDismiss()
@@ -54,7 +57,7 @@ fun BottomSheetHandle(
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun BottomSheetHandlePreview() {
     FirefoxTheme {
         Column(

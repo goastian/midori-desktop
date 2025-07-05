@@ -15,12 +15,15 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.accessibility.AccessibilityManager
 import androidx.annotation.StringRes
+import mozilla.components.compose.base.theme.layout.AcornWindowSize
 import mozilla.components.support.locale.LocaleManager
 import org.mozilla.fenix.FenixApplication
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.Components
 import org.mozilla.fenix.components.metrics.MetricController
+import org.mozilla.fenix.components.toolbar.ToolbarPosition
 import org.mozilla.fenix.settings.advanced.getSelectedLocale
+import org.mozilla.fenix.utils.isLargeScreenSize
 import java.lang.String.format
 import java.util.Locale
 
@@ -75,7 +78,7 @@ fun Context.getStringWithArgSafe(@StringRes resId: Int, formatArg: String): Stri
                 " not properly formatted in: " + LocaleManager.getSelectedLocale(this).language,
         )
         val config = resources.configuration
-        config.setLocale(Locale("en"))
+        config.setLocale(Locale.Builder().setLanguage("en").build())
         val localizedContext: Context = this.createConfigurationContext(config)
         return format(localizedContext.getString(resId), formatArg)
     }
@@ -147,7 +150,21 @@ fun Context.tabClosedUndoMessage(private: Boolean): String =
     }
 
 /**
- * Returns true if the device is a tablet
+ * Helper function used to determine whether the app's total *window* size is at least that of a tablet.
+ * This relies on the window size check from [AcornWindowSize]. To determine whether the device's
+ * *physical* size is at least the size of a tablet, use [Context.isLargeScreenSize] instead.
+ *
+ * @return true if the app has a large window size akin to a tablet.
  */
-fun Context.isTablet(): Boolean =
-    resources.getBoolean(R.bool.tablet)
+fun Context.isLargeWindow(): Boolean = AcornWindowSize.isLargeWindow(this)
+
+/**
+ *  This will record an event in the Nimbus internal event store. Used for behavioral targeting.
+ */
+fun Context.recordEventInNimbus(eventId: String) = components.nimbus.events.recordEvent(eventId)
+
+/**
+ * Returns true if the toolbar is position at the bottom.
+ */
+fun Context.isToolbarAtBottom() =
+    components.settings.toolbarPosition == ToolbarPosition.BOTTOM

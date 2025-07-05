@@ -11,6 +11,11 @@ import androidx.core.view.isVisible
 import androidx.paging.LoadState
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.SimpleItemAnimator
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
+import mozilla.components.service.fxa.SyncEngine
+import mozilla.components.service.fxa.manager.FxaAccountManager
+import mozilla.components.service.fxa.sync.SyncReason
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.appstate.AppState
 import org.mozilla.fenix.databinding.ComponentHistoryBinding
@@ -21,11 +26,17 @@ import org.mozilla.fenix.theme.ThemeManager
 /**
  * View that contains and configures the History List
  */
+@Suppress("LongParameterList")
 class HistoryView(
     container: ViewGroup,
     val store: HistoryFragmentStore,
     val onZeroItemsLoaded: () -> Unit,
+    val onRecentlyClosedClicked: () -> Unit,
+    val onHistoryItemClicked: (History) -> Unit,
+    val onDeleteInitiated: (Set<History>) -> Unit,
     val onEmptyStateChanged: (Boolean) -> Unit,
+    private val accountManager: FxaAccountManager,
+    private val scope: CoroutineScope,
 ) : LibraryPageView(container) {
 
     val binding = ComponentHistoryBinding.inflate(
@@ -37,7 +48,12 @@ class HistoryView(
     var mode: HistoryFragmentState.Mode = HistoryFragmentState.Mode.Normal
         private set
 
-    val historyAdapter = HistoryAdapter(store) { isEmpty ->
+    val historyAdapter = HistoryAdapter(
+        store = store,
+        onHistoryItemClicked = onHistoryItemClicked,
+        onRecentlyClosedClicked = onRecentlyClosedClicked,
+        onDeleteInitiated = onDeleteInitiated,
+    ) { isEmpty ->
         onEmptyStateChanged(isEmpty)
     }.apply {
         addLoadStateListener {
@@ -66,9 +82,22 @@ class HistoryView(
         }
 
         val primaryTextColor = ThemeManager.resolveAttribute(R.attr.textPrimary, context)
-        binding.swipeRefresh.setColorSchemeColors(primaryTextColor)
+        val primaryBackgroundColor = ThemeManager.resolveAttribute(R.attr.layer2, context)
+        binding.swipeRefresh.apply {
+            setColorSchemeResources(primaryTextColor)
+            setProgressBackgroundColorSchemeResource(primaryBackgroundColor)
+        }
         binding.swipeRefresh.setOnRefreshListener {
             store.dispatch(HistoryFragmentAction.StartSync)
+            scope.launch {
+                accountManager.syncNow(
+                    reason = SyncReason.User,
+                    debounce = true,
+                    customEngineSubset = listOf(SyncEngine.History),
+                )
+            }
+            historyAdapter.refresh()
+            store.dispatch(HistoryFragmentAction.FinishSync)
         }
     }
 
@@ -122,7 +151,7 @@ class HistoryView(
 
         with(binding.recentlyClosedNavEmpty) {
             recentlyClosedNav.setOnClickListener {
-                store.dispatch(HistoryFragmentAction.EnterRecentlyClosed)
+                onRecentlyClosedClicked()
             }
             val numRecentTabs = recentlyClosedNav.context.components.core.store.state.closedTabs.size
             recentlyClosedTabsDescription.text = String.format(
@@ -136,9 +165,6 @@ class HistoryView(
                 numRecentTabs,
             )
             recentlyClosedNav.isVisible = !userHasHistory
-        }
-        if (!userHasHistory) {
-            binding.historyEmptyView.announceForAccessibility(context.getString(R.string.history_empty_message))
         }
     }
 }

@@ -148,6 +148,10 @@ function _EU_getPlatform() {
   return "unknown";
 }
 
+function _EU_roundDevicePixels(aMaybeFractionalPixels) {
+  return Math.floor(aMaybeFractionalPixels + 0.5);
+}
+
 /**
  * promiseElementReadyForUserInput() dispatches mousemove events to aElement
  * and waits one of them for a while.  Then, returns "resolved" state when it's
@@ -266,50 +270,37 @@ function sendMouseEvent(aEvent, aTarget, aWindow) {
     aTarget = aWindow.document.getElementById(aTarget);
   }
 
-  var event = aWindow.document.createEvent("MouseEvent");
+  let dict = {
+    bubbles: true,
+    cancelable: true,
+    view: aWindow,
+    detail:
+      aEvent.detail ||
+      // eslint-disable-next-line no-nested-ternary
+      (aEvent.type == "click" ||
+      aEvent.type == "mousedown" ||
+      aEvent.type == "mouseup"
+        ? 1
+        : aEvent.type == "dblclick"
+          ? 2
+          : 0),
+    screenX: aEvent.screenX || 0,
+    screenY: aEvent.screenY || 0,
+    clientX: aEvent.clientX || 0,
+    clientY: aEvent.clientY || 0,
+    ctrlKey: aEvent.ctrlKey || false,
+    altKey: aEvent.altKey || false,
+    shiftKey: aEvent.shiftKey || false,
+    metaKey: aEvent.metaKey || false,
+    button: computeButton(aEvent),
+    // FIXME: Set buttons
+    relatedTarget: aEvent.relatedTarget || null,
+  };
 
-  var typeArg = aEvent.type;
-  var canBubbleArg = true;
-  var cancelableArg = true;
-  var viewArg = aWindow;
-  var detailArg =
-    aEvent.detail ||
-    // eslint-disable-next-line no-nested-ternary
-    (aEvent.type == "click" ||
-    aEvent.type == "mousedown" ||
-    aEvent.type == "mouseup"
-      ? 1
-      : aEvent.type == "dblclick"
-      ? 2
-      : 0);
-  var screenXArg = aEvent.screenX || 0;
-  var screenYArg = aEvent.screenY || 0;
-  var clientXArg = aEvent.clientX || 0;
-  var clientYArg = aEvent.clientY || 0;
-  var ctrlKeyArg = aEvent.ctrlKey || false;
-  var altKeyArg = aEvent.altKey || false;
-  var shiftKeyArg = aEvent.shiftKey || false;
-  var metaKeyArg = aEvent.metaKey || false;
-  var buttonArg = computeButton(aEvent);
-  var relatedTargetArg = aEvent.relatedTarget || null;
-
-  event.initMouseEvent(
-    typeArg,
-    canBubbleArg,
-    cancelableArg,
-    viewArg,
-    detailArg,
-    screenXArg,
-    screenYArg,
-    clientXArg,
-    clientYArg,
-    ctrlKeyArg,
-    altKeyArg,
-    shiftKeyArg,
-    metaKeyArg,
-    buttonArg,
-    relatedTargetArg
-  );
+  let event =
+    aEvent.type == "click" || aEvent.type == "contextmenu"
+      ? new aWindow.PointerEvent(aEvent.type, dict)
+      : new aWindow.MouseEvent(aEvent.type, dict);
 
   // If documentURIObject exists or `window` is a stub object, we're in
   // a chrome scope, so don't bother trying to go through SpecialPowers.
@@ -791,6 +782,8 @@ function synthesizeMouseAtPoint(left, top, aEvent, aWindow = window) {
         : utils.DEFAULT_MOUSE_POINTER_ID;
     }
 
+    // FYI: nsIDOMWindowUtils.sendMouseEvent takes floats for the coordinates.
+    // Therefore, don't round/truncate the fractional values.
     var isDOMEventSynthesized =
       "isSynthesized" in aEvent ? aEvent.isSynthesized : true;
     var isWidgetEventSynthesized =
@@ -901,8 +894,8 @@ function synthesizeTouchAtPoint(aLeft, aTop, aEvent = {}, aWindow = window) {
   const arrayLength = Array.isArray(aLeft)
     ? aLeft.length
     : Array.isArray(aTop)
-    ? aTop.length
-    : 1;
+      ? aTop.length
+      : 1;
 
   function throwExceptionIfDifferentLengthArray(aArray, aName) {
     if (Array.isArray(aArray) && arrayLength !== aArray.length) {
@@ -911,16 +904,22 @@ function synthesizeTouchAtPoint(aLeft, aTop, aEvent = {}, aWindow = window) {
   }
   const leftArray = (() => {
     if (Array.isArray(aLeft)) {
+      for (let i = 0; i < aLeft.length; i++) {
+        aLeft[i] = _EU_roundDevicePixels(aLeft[i]);
+      }
       return aLeft;
     }
-    return new Array(arrayLength).fill(aLeft);
+    return new Array(arrayLength).fill(_EU_roundDevicePixels(aLeft));
   })();
   const topArray = (() => {
     if (Array.isArray(aTop)) {
       throwExceptionIfDifferentLengthArray(aTop, "aTop");
+      for (let i = 0; i < aTop.length; i++) {
+        aTop[i] = _EU_roundDevicePixels(aTop[i]);
+      }
       return aTop;
     }
-    return new Array(arrayLength).fill(aTop);
+    return new Array(arrayLength).fill(_EU_roundDevicePixels(aTop));
   })();
   const idArray = (() => {
     if ("id" in aEvent && Array.isArray(aEvent.id)) {
@@ -1006,21 +1005,62 @@ function synthesizeTouchAtCenter(aTarget, aEvent = {}, aWindow = window) {
 }
 
 /**
- * Synthesize a wheel event without flush layout at a particular point in
- * aWindow.
+ * @typedef {Object} WheelEventData
+ * @property {string} [aEvent.accessKey] - The character or key associated with
+ *     the access key event. Typically a single character used to activate a UI
+ *     element via keyboard shortcuts (e.g., Alt + accessKey).
+ * @property {boolean} [aEvent.altKey] - If set to `true`, the Alt key will be
+ *     considered pressed.
+ * @property {boolean} [aEvent.asyncEnabled] - If `true`, the event is
+ *     dispatched to the parent process through APZ, without being injected
+ *     into the OS event queue.
+ * @property {boolean} [aEvent.ctrlKey] - If set to `true`, the Ctrl key will
+ *     be considered pressed.
+ * @property {number} [aEvent.deltaMode=WheelEvent.DOM_DELTA_PIXEL] - Delta Mode
+ *     for scrolling (pixel, line, or page), which must be one of the
+ *     `WheelEvent.DOM_DELTA_*` constants.
+ * @property {number} [aEvent.deltaX=0] - Floating-point value in CSS pixels to
+ *     scroll in the x direction.
+ * @property {number} [aEvent.deltaY=0] - Floating-point value in CSS pixels to
+ *     scroll in the y direction.
+ * @property {number} [aEvent.deltaZ=0] - Floating-point value in CSS pixels to
+ *     scroll in the z direction.
+ * @property {number} [aEvent.expectedOverflowDeltaX] - Decimal value
+ *     indicating horizontal scroll overflow. Only the sign is checked: `0`,
+ *     positive, or negative.
+ * @property {number} [aEvent.expectedOverflowDeltaY] - Decimal value
+ *     indicating vertical scroll overflow. Only the sign is checked: `0`,
+ *     positive, or negative.
+ * @property {boolean} [aEvent.isCustomizedByPrefs] - If set to `true` the
+ *     delta values are computed from preferences.
+ * @property {boolean} [aEvent.isMomentum] - If set to `true` the event will be
+ *     caused by momentum.
+ * @property {boolean} [aEvent.isNoLineOrPageDelta] - If `true`, the creator
+ *     does not set `lineOrPageDeltaX/Y`. When a widget wheel event is
+ *     generated from this object, those fields will be automatically
+ *     calculated during dispatch by the `EventStateManager`.
+ * @property {number} [aEvent.lineOrPageDeltaX] - If set to a non-zero value
+ *      for a `DOM_DELTA_PIXEL` event, the EventStateManager will dispatch a
+ *     `NS_MOUSE_SCROLL` event for a horizontal scroll.
+ * @property {number} [aEvent.lineOrPageDeltaY] - If set to a non-zero value
+ *     for a `DOM_DELTA_PIXEL` event, the EventStateManager will dispatch a
+ *     `NS_MOUSE_SCROLL` event for a vertical scroll.
+ * @property {boolean} [aEvent.metaKey] - If set to `true`, the Meta key will
+ *     be considered pressed.
+ * @property {boolean} [aEvent.shiftKey] - If set to `true`, the Shift key will
+ *     be considered pressed.
+ */
+
+/**
+ * Synthesize a wheel event in `aWindow` at a point, without flushing layout.
  *
- * aEvent is an object which may contain the properties:
- *   shiftKey, ctrlKey, altKey, metaKey, accessKey, deltaX, deltaY, deltaZ,
- *   deltaMode, lineOrPageDeltaX, lineOrPageDeltaY, isMomentum,
- *   isNoLineOrPageDelta, isCustomizedByPrefs, expectedOverflowDeltaX,
- *   expectedOverflowDeltaY
+ * `nsIDOMWindowUtils.sendWheelEvent` takes floats for the coordinates.
+ * Therefore, don't round or truncate the values.
  *
- * deltaMode must be defined, others are ok even if undefined.
- *
- * expectedOverflowDeltaX and expectedOverflowDeltaY take integer value.  The
- * value is just checked as 0 or positive or negative.
- *
- * aWindow is optional, and defaults to the current window object.
+ * @param {number} aLeft - Floating-point value for the X offset in CSS pixels.
+ * @param {number} aTop - Floating-point value for the Y offset in CSS pixels.
+ * @param {WheelEventData} aEvent - Details of the wheel event to dispatch.
+ * @param {DOMWindow} [aWindow=window] - DOM window used to dispatch the event.
  */
 function synthesizeWheelAtPoint(aLeft, aTop, aEvent, aWindow = window) {
   var utils = _getDOMWindowUtils(aWindow);
@@ -1030,6 +1070,7 @@ function synthesizeWheelAtPoint(aLeft, aTop, aEvent, aWindow = window) {
 
   var modifiers = _parseModifiers(aEvent, aWindow);
   var options = 0;
+
   if (aEvent.isNoLineOrPageDelta) {
     options |= utils.WHEEL_EVENT_CAUSED_BY_NO_LINE_OR_PAGE_DELTA_DEVICE;
   }
@@ -1057,8 +1098,14 @@ function synthesizeWheelAtPoint(aLeft, aTop, aEvent, aWindow = window) {
       options |= utils.WHEEL_EVENT_EXPECTED_OVERFLOW_DELTA_Y_NEGATIVE;
     }
   }
+  if (aEvent.asyncEnabled) {
+    options |= utils.WHEEL_EVENT_ASYNC_ENABLED;
+  }
 
   // Avoid the JS warnings "reference to undefined property"
+  if (!aEvent.deltaMode) {
+    aEvent.deltaMode = WheelEvent.DOM_DELTA_PIXEL;
+  }
   if (!aEvent.deltaX) {
     aEvent.deltaX = 0;
   }
@@ -1074,15 +1121,16 @@ function synthesizeWheelAtPoint(aLeft, aTop, aEvent, aWindow = window) {
     aEvent.lineOrPageDeltaX != null
       ? aEvent.lineOrPageDeltaX
       : aEvent.deltaX > 0
-      ? Math.floor(aEvent.deltaX)
-      : Math.ceil(aEvent.deltaX);
+        ? Math.floor(aEvent.deltaX)
+        : Math.ceil(aEvent.deltaX);
   var lineOrPageDeltaY =
     // eslint-disable-next-line no-nested-ternary
     aEvent.lineOrPageDeltaY != null
       ? aEvent.lineOrPageDeltaY
       : aEvent.deltaY > 0
-      ? Math.floor(aEvent.deltaY)
-      : Math.ceil(aEvent.deltaY);
+        ? Math.floor(aEvent.deltaY)
+        : Math.ceil(aEvent.deltaY);
+
   utils.sendWheelEvent(
     aLeft,
     aTop,
@@ -1098,24 +1146,24 @@ function synthesizeWheelAtPoint(aLeft, aTop, aEvent, aWindow = window) {
 }
 
 /**
- * Synthesize a wheel event on a target. The actual client point is determined
- * by taking the aTarget's client box and offseting it by aOffsetX and
- * aOffsetY.
+ * Synthesize a wheel event on a target.
  *
- * aEvent is an object which may contain the properties:
- *   shiftKey, ctrlKey, altKey, metaKey, accessKey, deltaX, deltaY, deltaZ,
- *   deltaMode, lineOrPageDeltaX, lineOrPageDeltaY, isMomentum,
- *   isNoLineOrPageDelta, isCustomizedByPrefs, expectedOverflowDeltaX,
- *   expectedOverflowDeltaY
+ * The actual client point is determined by taking the aTarget's client box
+ * and offsetting it by aOffsetX and aOffsetY.
  *
- * deltaMode must be defined, others are ok even if undefined.
- *
- * expectedOverflowDeltaX and expectedOverflowDeltaY take integer value.  The
- * value is just checked as 0 or positive or negative.
- *
- * aWindow is optional, and defaults to the current window object.
+ * @param {Element} aTarget - DOM element to dispatch the event on.
+ * @param {number} aOffsetX - X offset in CSS pixels from the element’s left edge.
+ * @param {number} aOffsetY - Y offset in CSS pixels from the element’s top edge.
+ * @param {WheelEventData} aEvent - Details of the wheel event to dispatch.
+ * @param {DOMWindow} [aWindow=window] - DOM window used to dispatch the event.
  */
-function synthesizeWheel(aTarget, aOffsetX, aOffsetY, aEvent, aWindow) {
+function synthesizeWheel(
+  aTarget,
+  aOffsetX,
+  aOffsetY,
+  aEvent,
+  aWindow = window
+) {
   var rect = aTarget.getBoundingClientRect();
   synthesizeWheelAtPoint(
     rect.left + aOffsetX,
@@ -1193,7 +1241,7 @@ function _sendWheelAndPaint(
         waitForPaints,
         "apz-repaints-flushed"
       );
-      if (!utils.flushApzRepaints(aWindow)) {
+      if (!utils.flushApzRepaints()) {
         waitForPaints();
       }
     }, 0);
@@ -1212,16 +1260,20 @@ function _sendWheelAndPaint(
 }
 
 /**
- * This is a wrapper around synthesizeWheel that waits for the wheel event
- * to be dispatched and for the subsequent layout/paints to be flushed.
+ * Wrapper around synthesizeWheel that waits for the wheel event to be
+ * dispatched and for any resulting layout and paint operations to flush.
  *
- * This requires including paint_listener.js. Tests must call
- * DOMWindowUtils.restoreNormalRefresh() before finishing, if they use this
- * function.
+ * Requires including `paint_listener.js`. Tests using this function must call
+ * `DOMWindowUtils.restoreNormalRefresh()` before finishing.
  *
- * If no callback is provided, the caller is assumed to have its own method of
- * determining scroll completion and the refresh driver is not automatically
- * restored.
+ * @param {Element} aTarget - DOM element to dispatch the event on.
+ * @param {number} aOffsetX - X offset in CSS pixels from the element’s left edge.
+ * @param {number} aOffsetY - Y offset in CSS pixels from the element’s top edge.
+ * @param {WheelEventData} aEvent - Details of the wheel event to dispatch.
+ * @param {Function} [aCallback] - Called after paint flush, if provided. If not,
+ *     the caller is expected to handle scroll completion manually. In this case,
+ *     the refresh driver will not be restored automatically.
+ * @param {DOMWindow} [aWindow=window] - DOM window used to dispatch the event.
  */
 function sendWheelAndPaint(
   aTarget,
@@ -1243,9 +1295,17 @@ function sendWheelAndPaint(
 }
 
 /**
- * Similar to sendWheelAndPaint but without flushing layout for obtaining
- * ``aTarget`` position in ``aWindow`` before sending the wheel event.
- * ``aOffsetX`` and ``aOffsetY`` should be offsets against aWindow.
+ * Similar to `sendWheelAndPaint()`, but skips layout flush when resolving
+ * `aTarget`'s position in `aWindow` before dispatching the wheel event.
+ *
+ * @param {Element} aTarget - DOM element to dispatch the event on.
+ * @param {number} aOffsetX - X offset in CSS pixels from the `aWindow`’s left edge.
+ * @param {number} aOffsetY - Y offset in CSS pixels from the `aWindow`’s top edge.
+ * @param {WheelEventData} aEvent - Details of the wheel event to dispatch.
+ * @param {Function} [aCallback] - Called after paint, if provided. If not,
+ *     the caller is expected to handle scroll completion manually. In this case,
+ *     the refresh driver will not be restored automatically.
+ * @param {DOMWindow} [aWindow=window] - DOM window used to dispatch the event.
  */
 function sendWheelAndPaintNoFlush(
   aTarget,
@@ -1298,8 +1358,12 @@ function synthesizeNativeTap(
 
   let scale = aWindow.devicePixelRatio;
   let rect = aTarget.getBoundingClientRect();
-  let x = (aWindow.mozInnerScreenX + rect.left + aOffsetX) * scale;
-  let y = (aWindow.mozInnerScreenY + rect.top + aOffsetY) * scale;
+  let x = _EU_roundDevicePixels(
+    (aWindow.mozInnerScreenX + rect.left + aOffsetX) * scale
+  );
+  let y = _EU_roundDevicePixels(
+    (aWindow.mozInnerScreenY + rect.top + aOffsetY) * scale
+  );
 
   let observer = {
     observe: (subject, topic, data) => {
@@ -1401,13 +1465,7 @@ function synthesizeNativeMouseEvent(aParams, aCallback = null) {
   }
 
   const rect = target?.getBoundingClientRect();
-  let resolution = 1.0;
-  try {
-    resolution = _getDOMWindowUtils(win.top).getResolution();
-  } catch (e) {
-    // XXX How to get mobile viewport scale on Fission+xorigin since
-    //     window.top access isn't allowed due to cross-origin?
-  }
+  const resolution = _getTopWindowResolution(win);
   const scaleValue = (() => {
     if (scale === "inScreenPixels") {
       return 1.0;
@@ -1421,44 +1479,32 @@ function synthesizeNativeMouseEvent(aParams, aCallback = null) {
   //     so use window.top's mozInnerScreen. But this won't work fission+xorigin
   //     with mobile viewport until mozInnerScreen returns valid value with
   //     scale.
-  const x = (() => {
-    if (screenX != undefined) {
-      return screenX * scaleValue;
-    }
-    let winInnerOffsetX = win.mozInnerScreenX;
-    try {
-      winInnerOffsetX =
-        win.top.mozInnerScreenX +
-        (win.mozInnerScreenX - win.top.mozInnerScreenX) * resolution;
-    } catch (e) {
-      // XXX fission+xorigin test throws permission denied since win.top is
-      //     cross-origin.
-    }
-    return (
-      (((atCenter ? rect.width / 2 : offsetX) + rect.left) * resolution +
-        winInnerOffsetX) *
-      scaleValue
-    );
-  })();
-  const y = (() => {
-    if (screenY != undefined) {
-      return screenY * scaleValue;
-    }
-    let winInnerOffsetY = win.mozInnerScreenY;
-    try {
-      winInnerOffsetY =
-        win.top.mozInnerScreenY +
-        (win.mozInnerScreenY - win.top.mozInnerScreenY) * resolution;
-    } catch (e) {
-      // XXX fission+xorigin test throws permission denied since win.top is
-      //     cross-origin.
-    }
-    return (
-      (((atCenter ? rect.height / 2 : offsetY) + rect.top) * resolution +
-        winInnerOffsetY) *
-      scaleValue
-    );
-  })();
+  const x = _EU_roundDevicePixels(
+    (() => {
+      if (screenX != undefined) {
+        return screenX * scaleValue;
+      }
+      const winInnerOffsetX = _getScreenXInUnscaledCSSPixels(win);
+      return (
+        (((atCenter ? rect.width / 2 : offsetX) + rect.left) * resolution +
+          winInnerOffsetX) *
+        scaleValue
+      );
+    })()
+  );
+  const y = _EU_roundDevicePixels(
+    (() => {
+      if (screenY != undefined) {
+        return screenY * scaleValue;
+      }
+      const winInnerOffsetY = _getScreenYInUnscaledCSSPixels(win);
+      return (
+        (((atCenter ? rect.height / 2 : offsetY) + rect.top) * resolution +
+          winInnerOffsetY) *
+        scaleValue
+      );
+    })()
+  );
   const modifierFlags = _parseNativeModifiers(modifiers);
 
   const observer = {
@@ -2181,6 +2227,67 @@ function _getDOMWindowUtils(aWindow = window) {
   return aWindow.windowUtils;
 }
 
+/**
+ * @param {Window} aWindow The window.
+ * @returns The scaling value applied to the top window.
+ */
+function _getTopWindowResolution(aWindow) {
+  let resolution = 1.0;
+  try {
+    resolution = _getDOMWindowUtils(aWindow.top).getResolution();
+  } catch (e) {
+    // XXX How to get mobile viewport scale on Fission+xorigin since
+    //     window.top access isn't allowed due to cross-origin?
+  }
+  return resolution;
+}
+
+/**
+ * @param {Window} aWindow The window which you want to get its x-offset in the
+ * screen.
+ * @returns The screenX of aWindow in the unscaled CSS pixels.
+ */
+function _getScreenXInUnscaledCSSPixels(aWindow) {
+  // XXX mozInnerScreen might be invalid value on mobile viewport (Bug 1701546),
+  //     so use window.top's mozInnerScreen. But this won't work fission+xorigin
+  //     with mobile viewport until mozInnerScreen returns valid value with
+  //     scale.
+  let winInnerOffsetX = aWindow.mozInnerScreenX;
+  try {
+    winInnerOffsetX =
+      aWindow.top.mozInnerScreenX +
+      (aWindow.mozInnerScreenX - aWindow.top.mozInnerScreenX) *
+        _getTopWindowResolution(aWindow);
+  } catch (e) {
+    // XXX fission+xorigin test throws permission denied since win.top is
+    //     cross-origin.
+  }
+  return winInnerOffsetX;
+}
+
+/**
+ * @param {Window} aWindow The window which you want to get its y-offset in the
+ * screen.
+ * @returns The screenY of aWindow in the unscaled CSS pixels.
+ */
+function _getScreenYInUnscaledCSSPixels(aWindow) {
+  // XXX mozInnerScreen might be invalid value on mobile viewport (Bug 1701546),
+  //     so use window.top's mozInnerScreen. But this won't work fission+xorigin
+  //     with mobile viewport until mozInnerScreen returns valid value with
+  //     scale.
+  let winInnerOffsetY = aWindow.mozInnerScreenY;
+  try {
+    winInnerOffsetY =
+      aWindow.top.mozInnerScreenY +
+      (aWindow.mozInnerScreenY - aWindow.top.mozInnerScreenY) *
+        _getTopWindowResolution(aWindow);
+  } catch (e) {
+    // XXX fission+xorigin test throws permission denied since win.top is
+    //     cross-origin.
+  }
+  return winInnerOffsetY;
+}
+
 function _defineConstant(name, value) {
   Object.defineProperty(this, name, {
     value,
@@ -2638,8 +2745,8 @@ function synthesizeComposition(aEvent, aWindow = window, aCallback) {
       aEvent.key.type === "keydown"
         ? "keydown"
         : aEvent.key.type === "keyup"
-        ? "keyup"
-        : "",
+          ? "keyup"
+          : "",
       keyEventDict.dictionary
     );
   } else if (aEvent.key === undefined) {
@@ -2788,8 +2895,8 @@ function synthesizeCompositionChange(aEvent, aWindow = window, aCallback) {
         aEvent.key.type === "keydown"
           ? "keydown"
           : aEvent.key.type === "keyup"
-          ? "keyup"
-          : "",
+            ? "keyup"
+            : "",
         keyEventDict.dictionary
       );
     } else if (aEvent.key === undefined) {
@@ -3059,17 +3166,28 @@ function createDragEventObject(
   aDataTransfer,
   aDragEvent
 ) {
-  var destRect = aDestElement.getBoundingClientRect();
-  var destClientX = destRect.left + destRect.width / 2;
-  var destClientY = destRect.top + destRect.height / 2;
-  var destScreenX = aDestWindow.mozInnerScreenX + destClientX;
-  var destScreenY = aDestWindow.mozInnerScreenY + destClientY;
-  if ("clientX" in aDragEvent && !("screenX" in aDragEvent)) {
-    destScreenX = aDestWindow.mozInnerScreenX + aDragEvent.clientX;
-  }
-  if ("clientY" in aDragEvent && !("screenY" in aDragEvent)) {
-    destScreenY = aDestWindow.mozInnerScreenY + aDragEvent.clientY;
-  }
+  const resolution = _getTopWindowResolution(aDestWindow.top);
+  const destRect = aDestElement.getBoundingClientRect();
+  // If clientX and/or clientY are specified, we should use them.  Otherwise,
+  // use the center of the dest element.
+  const destClientXInCSSPixels =
+    "clientX" in aDragEvent && !("screenX" in aDragEvent)
+      ? aDragEvent.clientX
+      : destRect.left + destRect.width / 2;
+  const destClientYInCSSPixels =
+    "clientY" in aDragEvent && !("screenY" in aDragEvent)
+      ? aDragEvent.clientY
+      : destRect.top + destRect.height / 2;
+
+  const devicePixelRatio = aDestWindow.devicePixelRatio;
+  const destScreenXInDevicePixels =
+    (_getScreenXInUnscaledCSSPixels(aDestWindow) +
+      destClientXInCSSPixels * resolution) *
+    devicePixelRatio;
+  const destScreenYInDevicePixels =
+    (_getScreenYInUnscaledCSSPixels(aDestWindow) +
+      destClientYInCSSPixels * resolution) *
+    devicePixelRatio;
 
   // Wrap only in plain mochitests
   let dataTransfer;
@@ -3083,14 +3201,13 @@ function createDragEventObject(
     // nsContentUtils::SetDataTransferInEvent for actual impl).
     dataTransfer.dropEffect = aDataTransfer.dropEffect;
   }
-
   return Object.assign(
     {
       type: aType,
-      screenX: destScreenX,
-      screenY: destScreenY,
-      clientX: destClientX,
-      clientY: destClientY,
+      screenX: _EU_roundDevicePixels(destScreenXInDevicePixels),
+      screenY: _EU_roundDevicePixels(destScreenYInDevicePixels),
+      clientX: _EU_roundDevicePixels(destClientXInCSSPixels),
+      clientY: _EU_roundDevicePixels(destClientYInCSSPixels),
       dataTransfer,
       _domDispatchOnly: aDragEvent._domDispatchOnly,
     },
@@ -3399,7 +3516,9 @@ function _nodeIsFlattenedTreeDescendantOf(
 }
 
 function _computeSrcElementFromSrcSelection(aSrcSelection) {
-  let srcElement = aSrcSelection.focusNode;
+  let srcElement = _EU_maybeUnwrap(
+    _EU_maybeWrap(aSrcSelection).mayCrossShadowBoundaryFocusNode
+  );
   while (_EU_maybeWrap(srcElement).isNativeAnonymous) {
     srcElement = _getFlattenedTreeParentNode(srcElement);
   }
@@ -3501,7 +3620,9 @@ async function synthesizePlainDragAndDrop(aParams) {
     }
     // Use last selection client rect because nsIDragSession.sourceNode is
     // initialized from focus node which is usually in last rect.
-    let selectionRectList = srcSelection.getRangeAt(0).getClientRects();
+    let selectionRectList = SpecialPowers.wrap(
+      srcSelection.getRangeAt(0)
+    ).getAllowCrossShadowBoundaryClientRects();
     let lastSelectionRect = selectionRectList[selectionRectList.length - 1];
     if (logFunc) {
       logFunc(
@@ -3849,6 +3970,14 @@ async function synthesizePlainDragAndDrop(aParams) {
       dragEvent
     );
     srcSession.setDragEndPointForTests(event.screenX, event.screenY);
+    if (logFunc) {
+      logFunc(
+        `dragend event client (X,Y) = (${event.clientX}, ${event.clientY})`
+      );
+      logFunc(
+        `dragend event screen (X,Y) = (${event.screenX}, ${event.screenY})`
+      );
+    }
   } finally {
     await new Promise(r => setTimeout(r, 0));
 

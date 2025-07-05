@@ -3,6 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import configparser
+import importlib.util
 import json
 import os
 import subprocess
@@ -50,20 +51,16 @@ def create_telemetry_from_environment(settings):
 
     is_enabled = is_telemetry_enabled(settings)
 
-    try:
-        from glean import Glean
-    except ImportError:
+    if importlib.util.find_spec("glean") is None:
         return NoopTelemetry(is_enabled)
 
-    from pathlib import Path
-
-    Glean.initialize(
-        "mozilla.mach",
-        "Unknown",
-        is_enabled,
-        data_dir=Path(get_state_dir()) / "glean",
+    # We must initialize Glean even if telemetry is disabled to ensure a deletion ping is sent.
+    # This deletes any previously collected data if the user opts out of telemetry.
+    telemetry_interface = GleanTelemetry(
+        upload_enabled=is_enabled, data_dir=Path(get_state_dir()) / "glean"
     )
-    return GleanTelemetry()
+
+    return telemetry_interface
 
 
 def report_invocation_metrics(telemetry, command):
@@ -89,9 +86,6 @@ def is_applicable_telemetry_environment():
     if os.environ.get("MACH_MAIN_PID") != str(os.getpid()):
         # This is a child mach process. Since we're collecting telemetry for the parent,
         # we don't want to collect telemetry again down here.
-        return False
-
-    if any(e in os.environ for e in ("MOZ_AUTOMATION", "TASK_ID")):
         return False
 
     return True
@@ -127,7 +121,7 @@ def resolve_setting_from_arcconfig(topsrcdir: Path, setting):
         topsrcdir / ".arcconfig",
     ]:
         try:
-            with open(arcconfig_path, "r") as arcconfig_file:
+            with open(arcconfig_path) as arcconfig_file:
                 arcconfig = json.load(arcconfig_file)
         except (json.JSONDecodeError, FileNotFoundError):
             continue
@@ -144,7 +138,7 @@ def resolve_is_employee_by_credentials(topsrcdir: Path):
         return None
 
     try:
-        with open(arcrc_path(), "r") as arcrc_file:
+        with open(arcrc_path()) as arcrc_file:
             arcrc = json.load(arcrc_file)
     except (json.JSONDecodeError, FileNotFoundError):
         return None

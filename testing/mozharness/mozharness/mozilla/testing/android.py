@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 
 import datetime
 import functools
@@ -33,7 +31,7 @@ def ensure_dir(dir):
                 raise
 
 
-class AndroidMixin(object):
+class AndroidMixin:
     """
     Mixin class used by Android test scripts.
     """
@@ -43,7 +41,9 @@ class AndroidMixin(object):
         self._device = None
         self.app_name = None
         self.device_name = os.environ.get("DEVICE_NAME", None)
-        self.device_serial = os.environ.get("DEVICE_SERIAL", None)
+        self.device_serial = os.environ.get("ANDROID_SERIAL") or os.environ.get(
+            "DEVICE_SERIAL"
+        )
         self.device_ip = os.environ.get("DEVICE_IP", None)
         self.logcat_proc = None
         self.logcat_file = None
@@ -164,7 +164,7 @@ class AndroidMixin(object):
             # The ini file points to the absolute path to the emulator folder,
             # which might be different, so we need to update it.
             old_config = ""
-            with open(avd_config_path, "r") as config_file:
+            with open(avd_config_path) as config_file:
                 old_config = config_file.readlines()
                 self.info("Old Config: %s" % old_config)
             with open(avd_config_path, "w") as config_file:
@@ -300,18 +300,18 @@ class AndroidMixin(object):
 
             f.write("\n\nDevice /proc/cpuinfo:\n")
             cmd = "cat /proc/cpuinfo"
-            out = self.shell_output(cmd)
+            out = self.shell_output(cmd, attempts=3)
             f.write(out)
             cpuinfo = out
 
             f.write("\n\nDevice /proc/meminfo:\n")
             cmd = "cat /proc/meminfo"
-            out = self.shell_output(cmd)
+            out = self.shell_output(cmd, attempts=3)
             f.write(out)
 
             f.write("\n\nDevice process list:\n")
             cmd = "ps"
-            out = self.shell_output(cmd)
+            out = self.shell_output(cmd, attempts=3)
             f.write(out)
 
         # Search android cpuinfo for "BogoMIPS"; if found and < (minimum), retry
@@ -450,12 +450,12 @@ class AndroidMixin(object):
             pass
         return False
 
-    def shell_output(self, cmd, enable_run_as=False):
+    def shell_output(self, cmd, enable_run_as=False, attempts=1):
         import mozdevice
 
         try:
             return self.device.shell_output(
-                cmd, timeout=30, enable_run_as=enable_run_as
+                cmd, timeout=30, enable_run_as=enable_run_as, attempts=attempts
             )
         except mozdevice.ADBTimeoutError as e:
             self.info(
@@ -630,7 +630,9 @@ class AndroidMixin(object):
             return
 
         if self.is_emulator:
-            max_restarts = 5
+            # Emulator hangs can take up to 10 min for all the inner retry loops
+            # and timeouts to fire.
+            max_restarts = 2
             emulator_ok = self._retry(
                 max_restarts,
                 10,

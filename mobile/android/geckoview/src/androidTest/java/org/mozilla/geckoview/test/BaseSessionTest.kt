@@ -40,6 +40,7 @@ open class BaseSessionTest(
         const val CLIPBOARD_READ_HTML_PATH = "/assets/www/clipboard_read.html"
         const val CONTENT_CRASH_URL = "about:crashcontent"
         const val DND_HTML_PATH = "/assets/www/dnd.html"
+        const val DND_XORIGIN_HTML_PATH = "/assets/www/dnd_xorigin.html"
         const val DOWNLOAD_HTML_PATH = "/assets/www/download.html"
         const val FORM_BLANK_HTML_PATH = "/assets/www/form_blank.html"
         const val FORMS_HTML_PATH = "/assets/www/forms.html"
@@ -74,6 +75,7 @@ open class BaseSessionTest(
         const val PROMPT_HTML_PATH = "/assets/www/prompts.html"
         const val SAVE_STATE_PATH = "/assets/www/saveState.html"
         const val TEST_GIF_PATH = "/assets/www/images/test.gif"
+        const val TEXT_CONTROL_PATH = "/assets/www/textcontrol.html"
         const val TITLE_CHANGE_HTML_PATH = "/assets/www/titleChange.html"
         const val TRACKERS_PATH = "/assets/www/trackers.html"
         const val VIDEO_MP4_PATH = "/assets/www/mp4.html"
@@ -86,6 +88,7 @@ open class BaseSessionTest(
         const val IFRAME_REDIRECT_LOCAL = "/assets/www/iframe_redirect_local.html"
         const val IFRAME_REDIRECT_AUTOMATION = "/assets/www/iframe_redirect_automation.html"
         const val AUTOPLAY_PATH = "/assets/www/autoplay.html"
+        const val SIMPLE_SCROLL_TEST_PATH = "/assets/www/simple-scroll.html"
         const val SCROLL_TEST_PATH = "/assets/www/scroll.html"
         const val COLORS_HTML_PATH = "/assets/www/colors.html"
         const val FIXED_BOTTOM = "/assets/www/fixedbottom.html"
@@ -114,16 +117,21 @@ open class BaseSessionTest(
         const val TOUCHSTART_HTML_PATH = "/assets/www/touchstart.html"
         const val TOUCH_ACTION_HTML_PATH = "/assets/www/touch-action.html"
         const val TOUCH_ACTION_WHEEL_LISTENER_HTML_PATH = "/assets/www/touch-action-wheel-listener.html"
+        const val OVERFLOW_HTML_PATH = "/assets/www/overflow.html"
+        const val OVERFLOW_CLIP_HTML_PATH = "/assets/www/overflow-clip.html"
         const val OVERSCROLL_BEHAVIOR_AUTO_HTML_PATH = "/assets/www/overscroll-behavior-auto.html"
         const val OVERSCROLL_BEHAVIOR_AUTO_NONE_HTML_PATH = "/assets/www/overscroll-behavior-auto-none.html"
         const val OVERSCROLL_BEHAVIOR_NONE_AUTO_HTML_PATH = "/assets/www/overscroll-behavior-none-auto.html"
         const val OVERSCROLL_BEHAVIOR_NONE_NON_ROOT_HTML_PATH = "/assets/www/overscroll-behavior-none-on-non-root.html"
         const val SCROLL_HANDOFF_HTML_PATH = "/assets/www/scroll-handoff.html"
         const val SHOW_DYNAMIC_TOOLBAR_HTML_PATH = "/assets/www/showDynamicToolbar.html"
+        const val HIDE_DYNAMIC_TOOLBAR_HTML_PATH = "/assets/www/hideDynamicToolbar.html"
+        const val HIDE_DYNAMIC_TOOLBAR_ON_RESIZES_VISUAL_HTML_PATH = "/assets/www/hideDynamicToolbarOnResizesVisual.html"
         const val CONTEXT_MENU_AUDIO_HTML_PATH = "/assets/www/context_menu_audio.html"
         const val CONTEXT_MENU_IMAGE_NESTED_HTML_PATH = "/assets/www/context_menu_image_nested.html"
         const val CONTEXT_MENU_IMAGE_HTML_PATH = "/assets/www/context_menu_image.html"
         const val CONTEXT_MENU_LINK_HTML_PATH = "/assets/www/context_menu_link.html"
+        const val CONTEXT_MENU_LINK_TEXT_HTML_PATH = "/assets/www/context_menu_link_text.html"
         const val CONTEXT_MENU_VIDEO_HTML_PATH = "/assets/www/context_menu_video.html"
         const val CONTEXT_MENU_BLOB_FULL_HTML_PATH = "/assets/www/context_menu_blob_full.html"
         const val CONTEXT_MENU_BLOB_BUFFERED_HTML_PATH = "/assets/www/context_menu_blob_buffered.html"
@@ -138,6 +146,14 @@ open class BaseSessionTest(
         const val NO_META_VIEWPORT_HTML_PATH = "/assets/www/no-meta-viewport.html"
         const val TRANSLATIONS_EN = "/assets/www/translations-tester-en.html"
         const val TRANSLATIONS_ES = "/assets/www/translations-tester-es.html"
+        const val INTERSECTION_OBSERVER_HTML_PATH = "/assets/www/intersection-observer.html"
+        const val INTERSECTION_OBSERVER_DESKTOP_HTML_PATH = "/assets/www/intersection-observer-desktop.html"
+        const val BUG1909181_HTML_PATH = "/assets/www/bug1909181.html"
+        const val BUG1912358_HTML_PATH = "/assets/www/bug1912358.html"
+        const val POSITION_STICKY_HTML_PATH = "/assets/www/position-sticky.html"
+        const val POSITION_STICKY_ON_MAIN_THREAD_HTML_PATH = "/assets/www/position-sticky-on-main-thread.html"
+        const val INTERACTIVE_WIDGET_HTML_PATH = "/assets/www/interactive-widget.html"
+        const val INTERACTIVE_WIDGET_OVERLAYS_CONTENT_HTML_PATH = "/assets/www/interactive-widget-overlays-content.html"
 
         const val TEST_ENDPOINT = GeckoSessionTestRule.TEST_ENDPOINT
         const val TEST_HOST = GeckoSessionTestRule.TEST_HOST
@@ -269,12 +285,17 @@ open class BaseSessionTest(
 
     fun GeckoSession.flushApzRepaints() = sessionRule.flushApzRepaints(this)
 
+    fun GeckoSession.zoomToFocusedInput() = sessionRule.zoomToFocusedInput(this)
+
     fun GeckoSession.promiseAllPaintsDone() = sessionRule.promiseAllPaintsDone(this)
 
     fun GeckoSession.getLinkColor(selector: String) = sessionRule.getLinkColor(this, selector)
 
     fun GeckoSession.setResolutionAndScaleTo(resolution: Float) =
         sessionRule.setResolutionAndScaleTo(this, resolution)
+
+    fun GeckoSession.setHandlingUserInput(handlingUserInput: Boolean) =
+        sessionRule.setHandlingUserInput(this, handlingUserInput)
 
     fun GeckoSession.triggerCookieBannerDetected() =
         sessionRule.triggerCookieBannerDetected(this)
@@ -295,7 +316,7 @@ open class BaseSessionTest(
     fun Any?.asJsonArray(): JSONArray = this as JSONArray
 
     @Suppress("UNCHECKED_CAST")
-    fun<V> JSONObject.asMap(): Map<String?, V?> {
+    fun <V> JSONObject.asMap(): Map<String?, V?> {
         val result = HashMap<String?, V?>()
         for (key in this.keys()) {
             result[key] = this[key] as V
@@ -304,7 +325,7 @@ open class BaseSessionTest(
     }
 
     @Suppress("UNCHECKED_CAST")
-    fun<T> Any?.asJSList(): List<T> {
+    fun <T> Any?.asJSList(): List<T> {
         val array = this.asJsonArray()
         val result = ArrayList<T>()
 

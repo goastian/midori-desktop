@@ -8,7 +8,7 @@ task-defaults:
 geckoview-junit:
     description: "Geckoview junit run"
     suite: geckoview-junit
-    variants: ["geckoview-fission", "no-fission", "geckoview-no-fission-ship"]
+    variants: ["geckoview-fission", "no-fission", "geckoview-no-fission-no-ship"]
     treeherder-symbol: gv-junit
     loopback-video: true
     target: geckoview-androidTest.apk
@@ -17,7 +17,7 @@ geckoview-junit:
         by-variant:
             geckoview-fission: ['trunk']
             no-fission: built-projects
-            geckoview-no-fission-ship: built-projects
+            geckoview-no-fission-no-ship: built-projects
             default: []
     tier: default
     mozharness:
@@ -60,18 +60,20 @@ test-verify:
             no-fission:
                 by-test-platform:
                     # do not run on ccov or asan or shippable or wayland
-                    .*(-ccov|-asan|-shippable|-wayland).*: []
-                    # we prefer -qr platforms with fis, no need to run on both
-                    (?!.*(-ccov|-asan|-shippable))(?!.*-qr).*: []
+                    .*-ccov.*: []
+                    .*-asan.*: []
+                    .*-shippable.*: []
+                    .*-wayland.*: []
                     # do not run on mozilla-central, beta or release: usually just confirms earlier results
                     android.*: ['integration']
                     default: []
             default:
                 by-test-platform:
                     # do not run on ccov or asan or shippable or wayland
-                    .*(-ccov|-asan|-shippable|-wayland).*: []
-                    # we prefer -qr platforms with fis, no need to run on both
-                    (?!.*(-ccov|-asan|-shippable))(?!.*-qr).*: []
+                    .*-ccov.*: []
+                    .*-asan.*: []
+                    .*-shippable.*: []
+                    .*-wayland.*: []
                     # do not run on mozilla-central, beta or release: usually just confirms earlier results
                     android.*: []
                     default: ['integration']
@@ -95,6 +97,7 @@ test-verify:
                     - android/android-x86_64.py
                 linux.*:
                     - unittests/linux_unittest.py
+                    - unittests/linux_dbus-python.py
                     - remove_executables.py
                 macosx.*:
                     - unittests/mac_unittest.py
@@ -105,14 +108,32 @@ test-verify:
     fetches:
         toolchain:
             by-test-platform:
-                linux.*:
+                linux1804.*:
                     - linux64-node
                     - linux64-minidump-stackwalk
                     - linux64-fix-stacks
-                macosx.*:
+                    - linux-python-dbusmock
+                    - linux64-1804-dbus-python
+                linux2204.*:
+                    - linux64-node
+                    - linux64-minidump-stackwalk
+                    - linux64-fix-stacks
+                    - linux-python-dbusmock
+                    - linux64-2204-dbus-python
+                linux2404.*:
+                    - linux64-node
+                    - linux64-minidump-stackwalk
+                    - linux64-fix-stacks
+                    - linux-python-dbusmock
+                    - linux64-2404-dbus-python
+                macosx.*-64.*:
                     - macosx64-node
                     - macosx64-minidump-stackwalk
                     - macosx64-fix-stacks
+                macosx.*-aarch64.*:
+                    - macosx64-aarch64-node
+                    - macosx64-aarch64-minidump-stackwalk
+                    - macosx64-aarch64-fix-stacks
                 win.*-64.*:
                     - win64-node
                     - win32-minidump-stackwalk
@@ -129,9 +150,16 @@ test-verify:
                     - linux64-minidump-stackwalk
                     - linux64-fix-stacks
                     - linux64-hostutils
+        fetch:
+            - ort.jsep.wasm
+            - translations.inference
+            - translations.esen.lex
+            - translations.esen.model
+            - translations.esen.vocab
+
     worker-type:
         by-test-platform:
-            .*wayland.*: t-linux-wayland-vm
+            .*-wayland.*: t-linux-wayland-vm
             default: default
 
 test-verify-gpu:
@@ -147,7 +175,10 @@ test-verify-gpu:
     run-on-projects:
         by-test-platform:
             # do not run on ccov or asan or shippable or wayland
-            .*(-ccov|-asan|-shippable|-wayland).*: []
+            .*-ccov.*: []
+            .*-asan.*: []
+            .*-shippable.*: []
+            .*-wayland.*: []
             # do not run on mozilla-central, beta or release: usually just confirms earlier results
             linux.*: ['integration']
             default: []
@@ -177,7 +208,7 @@ test-verify-gpu:
             - --gpu-required
     worker-type:
         by-test-platform:
-            .*wayland.*: t-linux-wayland-vm
+            .*-wayland.*: t-linux-wayland-vm
             default: default
 
 test-coverage:
@@ -190,7 +221,7 @@ test-coverage:
     allow-software-gl-layers: false
     run-on-projects:
         by-test-platform:
-            .*-ccov.*/.*: built-projects
+            .*-ccov.*: built-projects
             default: []
     tier: 2
     mozharness:
@@ -219,10 +250,14 @@ test-coverage:
                     - linux64-node
                     - linux64-minidump-stackwalk
                     - linux64-fix-stacks
-                macosx.*:
+                macosx.*-64.*:
                     - macosx64-node
                     - macosx64-minidump-stackwalk
                     - macosx64-fix-stacks
+                macosx.*-aarch64.*:
+                    - macosx64-aarch64-node
+                    - macosx64-aarch64-minidump-stackwalk
+                    - macosx64-aarch64-fix-stacks
                 win.*-64.*:
                     - win64-node
                     - win32-minidump-stackwalk
@@ -252,11 +287,11 @@ test-coverage-gpu:
     run-on-projects:
         by-test-platform:
             # only run on mozilla-central and try.
-            .*-ccov.*/.*: ['mozilla-central']
+            .*-ccov.*: ['mozilla-central']
             default: []
     tier:
         by-test-platform:
-            windows.*asan.*: 3
+            windows.*-asan.*: 3
             default: 2
     mozharness:
         script:

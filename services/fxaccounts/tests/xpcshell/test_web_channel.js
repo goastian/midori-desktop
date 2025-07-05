@@ -27,6 +27,11 @@ const mockSendingContext = {
   eventTarget: {},
 };
 
+add_setup(function setup() {
+  // The profile service requires the directory service to have been initialized.
+  Cc["@mozilla.org/xre/directory-provider;1"].getService(Ci.nsIXREDirProvider);
+});
+
 add_test(function () {
   validationHelper(undefined, "Error: Missing configuration options");
 
@@ -344,6 +349,10 @@ add_test(function test_can_link_account_message() {
         Assert.equal(email, "testuser@testuser.com");
         run_next_test();
       },
+      promptProfileSyncWarningIfNeeded(acctName) {
+        Assert.equal(acctName, "testuser@testuser.com");
+        run_next_test();
+      },
     },
   });
 
@@ -430,6 +439,72 @@ add_test(function test_fxa_status_message() {
   };
 
   channel._channelCallback(WEBCHANNEL_ID, mockMessage, mockSendingContext);
+});
+
+add_test(function test_respond_to_device_commands() {
+  let mockMessageLoggedOut = {
+    command: "fxaccounts:logout",
+    messageId: 123,
+    data: {},
+  };
+  let mockMessageLoggedIn = {
+    command: "fxaccounts:login",
+    messageId: 123,
+    data: {},
+  };
+
+  let channel = new FxAccountsWebChannel({
+    channel_id: WEBCHANNEL_ID,
+    content_uri: URL_STRING,
+  });
+  channel._channel = {
+    send(response) {
+      Assert.ok(!!response.data);
+      Assert.equal(response.data.ok, true);
+
+      run_next_test();
+    },
+  };
+
+  channel._channelCallback(
+    WEBCHANNEL_ID,
+    mockMessageLoggedOut,
+    mockSendingContext
+  );
+
+  channel._channelCallback(
+    WEBCHANNEL_ID,
+    mockMessageLoggedIn,
+    mockSendingContext
+  );
+});
+
+add_test(function test_respond_to_incorrect_device_commands() {
+  let mockMessageLogout = {
+    command: "fxaccounts:lagaut", // intentional typo.
+    messageId: 123,
+    data: {},
+  };
+
+  let channel = new FxAccountsWebChannel({
+    channel_id: WEBCHANNEL_ID,
+    content_uri: URL_STRING,
+  });
+  channel._channel = {
+    send(response) {
+      Assert.equal("fxaccounts:lagaut", response.command);
+      Assert.ok(!!response.data);
+      Assert.ok(!!response.data.error);
+
+      run_next_test();
+    },
+  };
+
+  channel._channelCallback(
+    WEBCHANNEL_ID,
+    mockMessageLogout,
+    mockSendingContext
+  );
 });
 
 add_test(function test_unrecognized_message() {
@@ -692,6 +767,7 @@ add_task(async function test_helpers_login_with_customize_sync() {
 add_task(
   { skip_if: () => CLIENT_IS_THUNDERBIRD },
   async function test_helpers_login_with_customize_sync_and_declined_engines() {
+    ensureOauthNotConfigured();
     let configured = false;
     let helpers = new FxAccountsWebChannelHelpers({
       fxAccounts: {
@@ -919,6 +995,68 @@ add_task(async function test_helpers_login_nothing_offered() {
   Assert.ok(configured);
 });
 
+add_task(async function test_helpers_persist_requested_services() {
+  ensureOauthConfigured();
+  let accountData = null;
+  const helpers = new FxAccountsWebChannelHelpers({
+    fxAccounts: {
+      _internal: {
+        async setSignedInUser(newAccountData) {
+          accountData = newAccountData;
+          return accountData;
+        },
+      },
+      async getSignedInUser() {
+        return accountData;
+      },
+      telemetry: {
+        recordConnection() {},
+      },
+    },
+    weaveXPCOM: {
+      whenLoaded() {},
+      Weave: {
+        Service: {},
+      },
+    },
+  });
+
+  await helpers.login({
+    uid: "auid",
+    email: "testuser@testuser.com",
+    verifiedCanLinkAccount: true,
+    services: {
+      first_only: { x: 10 }, // this data is not in the update below.
+      sync: { important: true },
+    },
+  });
+
+  Assert.deepEqual(JSON.parse(accountData.requestedServices), {
+    first_only: { x: 10 },
+    sync: { important: true },
+  });
+  // A second "login" message without the services.
+  await helpers.login({
+    uid: "auid",
+    email: "testuser@testuser.com",
+    verifiedCanLinkAccount: true,
+    services: {
+      // the service is mentioned, but data is empty, so it's the old version of the data we want.
+      sync: {},
+      // a new service we never saw before, but we still want it.
+      new: { name: "opted in" }, // not in original, but we want in the final.
+    },
+  });
+  // the version with the data should remain.
+  Assert.deepEqual(JSON.parse(accountData.requestedServices), {
+    first_only: { x: 10 },
+    sync: { important: true },
+    new: { name: "opted in" },
+  });
+
+  resetOauthConfig();
+});
+
 add_test(function test_helpers_open_sync_preferences() {
   let helpers = new FxAccountsWebChannelHelpers({
     fxAccounts: {},
@@ -956,6 +1094,7 @@ add_task(async function test_helpers_getFxAStatus_extra_engines() {
     },
   });
 
+  ensureOauthNotConfigured();
   Services.prefs.setBoolPref(
     "services.sync.engine.creditcards.available",
     true
@@ -965,7 +1104,62 @@ add_task(async function test_helpers_getFxAStatus_extra_engines() {
   let fxaStatus = await helpers.getFxaStatus("sync", mockSendingContext);
   ok(!!fxaStatus);
   ok(!!fxaStatus.signedInUser);
+  // in the non-oauth flows we only expect "extra" engines.
   deepEqual(fxaStatus.capabilities.engines, ["creditcards"]);
+  resetOauthConfig();
+});
+
+add_task(async function test_helpers_getFxAStatus_engines_oauth() {
+  let helpers = new FxAccountsWebChannelHelpers({
+    fxAccounts: {
+      _internal: {
+        getUserAccountData() {
+          return Promise.resolve({
+            email: "testuser@testuser.com",
+            sessionToken: "sessionToken",
+            uid: "uid",
+            verified: true,
+          });
+        },
+      },
+    },
+    privateBrowsingUtils: {
+      isBrowserPrivate: () => true,
+    },
+  });
+
+  // disable the "addresses" engine.
+  Services.prefs.setBoolPref("services.sync.engine.addresses.available", false);
+  ensureOauthConfigured();
+  let fxaStatus = await helpers.getFxaStatus("sync", mockSendingContext);
+  ok(!!fxaStatus);
+  ok(!!fxaStatus.signedInUser);
+  // in the oauth flows we expect all engines.
+  deepEqual(fxaStatus.capabilities.engines.toSorted(), [
+    "addons",
+    "bookmarks",
+    "creditcards",
+    "history",
+    "passwords",
+    "prefs",
+    "tabs",
+  ]);
+
+  // try again with addresses enabled.
+  Services.prefs.setBoolPref("services.sync.engine.addresses.available", true);
+  fxaStatus = await helpers.getFxaStatus("sync", mockSendingContext);
+  deepEqual(fxaStatus.capabilities.engines.toSorted(), [
+    "addons",
+    "addresses",
+    "bookmarks",
+    "creditcards",
+    "history",
+    "passwords",
+    "prefs",
+    "tabs",
+  ]);
+
+  resetOauthConfig();
 });
 
 add_task(async function test_helpers_getFxaStatus_allowed_signedInUser() {
@@ -1204,30 +1398,6 @@ add_task(
       "sync",
       mockSendingContext,
       false
-    );
-    Assert.ok(shouldAllowFxaStatus);
-    Assert.ok(wasCalled.isPrivateBrowsingMode);
-  }
-);
-
-add_task(
-  async function test_helpers_shouldAllowFxaStatus_desktop_context_private_browsing() {
-    let wasCalled = {
-      isPrivateBrowsingMode: false,
-    };
-    let helpers = new FxAccountsWebChannelHelpers({});
-
-    helpers.isPrivateBrowsingMode = sendingContext => {
-      wasCalled.isPrivateBrowsingMode = true;
-      Assert.equal(sendingContext, mockSendingContext);
-      return true;
-    };
-
-    let shouldAllowFxaStatus = helpers.shouldAllowFxaStatus(
-      "",
-      mockSendingContext,
-      false,
-      "fx_desktop_v3"
     );
     Assert.ok(shouldAllowFxaStatus);
     Assert.ok(wasCalled.isPrivateBrowsingMode);

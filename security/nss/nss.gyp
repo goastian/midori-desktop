@@ -129,6 +129,7 @@
                 'cmd/crlutil/crlutil.gyp:crlutil',
                 'cmd/dbtool/dbtool.gyp:dbtool',
                 'cmd/modutil/modutil.gyp:modutil',
+                'cmd/nssdefaults/nssdefaults.gyp:nssdefaults',
                 'cmd/pwdecrypt/pwdecrypt.gyp:pwdecrypt',
                 'cmd/shlibsign/shlibsign.gyp:shlibsign',
                 'cmd/signtool/signtool.gyp:signtool',
@@ -315,7 +316,7 @@
           'target_name': 'fuzz',
           'type': 'none',
           'dependencies': [
-            'fuzz/fuzz.gyp:nssfuzz',
+            'fuzz/fuzz.gyp:fuzz',
           ],
         },
       ],

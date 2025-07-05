@@ -6,6 +6,7 @@ package org.mozilla.fenix.syncintegration
 
 import android.os.SystemClock.sleep
 import android.widget.EditText
+import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
 import androidx.test.espresso.matcher.ViewMatchers.withId
@@ -24,7 +25,7 @@ import org.junit.Test
 import org.mozilla.fenix.R
 import org.mozilla.fenix.customannotations.SmokeTest
 import org.mozilla.fenix.helpers.AndroidAssetDispatcher
-import org.mozilla.fenix.helpers.HomeActivityTestRule
+import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.TestAssetHelper
 import org.mozilla.fenix.helpers.ext.waitNotNull
 import org.mozilla.fenix.ui.robots.accountSettings
@@ -37,7 +38,7 @@ class SyncIntegrationTest {
     private lateinit var mockWebServer: MockWebServer
 
     @get:Rule
-    val activityTestRule = HomeActivityTestRule()
+    val activityTestRule = AndroidComposeTestRule(HomeActivityIntentTestRule()) { it.activity }
 
     @Before
     fun setUp() {
@@ -77,7 +78,7 @@ class SyncIntegrationTest {
         tapReturnToPreviousApp()
         homeScreen {
         }.openThreeDotMenu {
-        }.openBookmarks { }
+        }.openBookmarksMenu(activityTestRule) {}
         bookmarkAfterSyncIsShown()
     }
 
@@ -187,7 +188,7 @@ class SyncIntegrationTest {
         mDevice.waitNotNull(Until.findObjects(By.text("Save")), TestAssetHelper.waitingTime)
         mDevice.waitNotNull(Until.findObjects(By.text("Settings")), TestAssetHelper.waitingTime)
 
-        /* Wait until the Settings shows the account synced */
+        // Wait until the Settings shows the account synced
         mDevice.waitNotNull(Until.findObjects(By.text("Account")), TestAssetHelper.waitingTime)
         mDevice.waitNotNull(Until.findObjects(By.res("org.mozilla.fenix.debug:id/email")), TestAssetHelper.waitingTime)
         TestAssetHelper.waitingTime

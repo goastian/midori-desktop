@@ -22,9 +22,8 @@ import org.mozilla.fenix.home.bookmarks.view.BookmarksHeaderViewHolder
 import org.mozilla.fenix.home.bookmarks.view.BookmarksViewHolder
 import org.mozilla.fenix.home.collections.CollectionViewHolder
 import org.mozilla.fenix.home.collections.TabInCollectionViewHolder
-import org.mozilla.fenix.home.pocket.PocketCategoriesViewHolder
-import org.mozilla.fenix.home.pocket.PocketRecommendationsHeaderViewHolder
-import org.mozilla.fenix.home.pocket.PocketStoriesViewHolder
+import org.mozilla.fenix.home.pocket.view.PocketCategoriesViewHolder
+import org.mozilla.fenix.home.pocket.view.PocketStoriesViewHolder
 import org.mozilla.fenix.home.recentsyncedtabs.view.RecentSyncedTabViewHolder
 import org.mozilla.fenix.home.recenttabs.view.RecentTabViewHolder
 import org.mozilla.fenix.home.recenttabs.view.RecentTabsHeaderViewHolder
@@ -35,17 +34,12 @@ import org.mozilla.fenix.home.sessioncontrol.viewholders.CustomizeHomeButtonView
 import org.mozilla.fenix.home.sessioncontrol.viewholders.NoCollectionsMessageViewHolder
 import org.mozilla.fenix.home.sessioncontrol.viewholders.PrivateBrowsingDescriptionViewHolder
 import org.mozilla.fenix.home.sessioncontrol.viewholders.onboarding.MessageCardViewHolder
+import org.mozilla.fenix.home.setup.ui.SetupChecklistViewHolder
 import org.mozilla.fenix.home.topsites.TopSitePagerViewHolder
-import org.mozilla.fenix.home.topsites.TopSitesViewHolder
 import mozilla.components.feature.tab.collections.Tab as ComponentTab
 
 sealed class AdapterItem(@LayoutRes val viewType: Int) {
     object TopPlaceholderItem : AdapterItem(TopPlaceholderViewHolder.LAYOUT_ID)
-
-    /**
-     * Top sites.
-     */
-    object TopSites : AdapterItem(TopSitesViewHolder.LAYOUT_ID)
 
     /**
      * Contains a set of [Pair]s where [Pair.first] is the index of the changed [TopSite] and
@@ -167,7 +161,11 @@ sealed class AdapterItem(@LayoutRes val viewType: Int) {
 
     object PocketStoriesItem : AdapterItem(PocketStoriesViewHolder.LAYOUT_ID)
     object PocketCategoriesItem : AdapterItem(PocketCategoriesViewHolder.LAYOUT_ID)
-    object PocketRecommendationsFooterItem : AdapterItem(PocketRecommendationsHeaderViewHolder.LAYOUT_ID)
+
+    /**
+     * Adapter item to hold the setup checklist feature view.
+     */
+    data object SetupChecklist : AdapterItem(SetupChecklistViewHolder.LAYOUT_ID)
 
     object BottomSpacer : AdapterItem(BottomSpacerViewHolder.LAYOUT_ID)
 
@@ -232,11 +230,6 @@ class SessionControlAdapter(
                 viewLifecycleOwner = viewLifecycleOwner,
                 interactor = interactor,
             )
-            PocketRecommendationsHeaderViewHolder.LAYOUT_ID -> return PocketRecommendationsHeaderViewHolder(
-                composeView = ComposeView(parent.context),
-                viewLifecycleOwner = viewLifecycleOwner,
-                interactor = interactor,
-            )
             BookmarksViewHolder.LAYOUT_ID -> return BookmarksViewHolder(
                 composeView = ComposeView(parent.context),
                 viewLifecycleOwner = viewLifecycleOwner,
@@ -286,7 +279,7 @@ class SessionControlAdapter(
                 viewLifecycleOwner = viewLifecycleOwner,
                 interactor = interactor,
             )
-            TopSitesViewHolder.LAYOUT_ID -> return TopSitesViewHolder(
+            SetupChecklistViewHolder.LAYOUT_ID -> return SetupChecklistViewHolder(
                 composeView = ComposeView(parent.context),
                 viewLifecycleOwner = viewLifecycleOwner,
                 interactor = interactor,
@@ -328,9 +321,8 @@ class SessionControlAdapter(
             is RecentTabsHeaderViewHolder,
             is PrivateBrowsingDescriptionViewHolder,
             is PocketCategoriesViewHolder,
-            is PocketRecommendationsHeaderViewHolder,
             is PocketStoriesViewHolder,
-            is TopSitesViewHolder,
+            is SetupChecklistViewHolder,
             -> {
                 // no op
                 // This previously called "composeView.disposeComposition" which would have the
@@ -399,7 +391,6 @@ class SessionControlAdapter(
                 val (collection, tab, isLastTab) = item as AdapterItem.TabInCollectionItem
                 holder.bindSession(collection, tab, isLastTab)
             }
-            is TopSitesViewHolder,
             is RecentlyVisitedViewHolder,
             is BookmarksViewHolder,
             is RecentTabViewHolder,

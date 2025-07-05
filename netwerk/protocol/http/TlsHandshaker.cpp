@@ -13,6 +13,7 @@
 #include "nsHttpConnectionInfo.h"
 #include "nsHttpHandler.h"
 #include "nsITLSSocketControl.h"
+#include "mozilla/glean/NetwerkProtocolHttpMetrics.h"
 
 #define TLS_EARLY_DATA_NOT_AVAILABLE 0
 #define TLS_EARLY_DATA_AVAILABLE_BUT_NOT_USED 1
@@ -102,7 +103,6 @@ void TlsHandshaker::SetupSSL(bool aInSpdyTunnel, bool aForcePlainText) {
     bool usingHttpsProxy = mConnInfo->UsingHttpsProxy();
     rv = InitSSLParams(usingHttpsProxy, usingHttpsProxy);
   }
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
 }
 
 nsresult TlsHandshaker::InitSSLParams(bool connectingToProxy,
@@ -118,6 +118,7 @@ nsresult TlsHandshaker::InitSSLParams(bool connectingToProxy,
   nsCOMPtr<nsITLSSocketControl> ssl;
   mOwner->GetTLSSocketControl(getter_AddRefs(ssl));
   if (!ssl) {
+    LOG(("Can't find tls socket control"));
     return NS_ERROR_FAILURE;
   }
 
@@ -138,6 +139,7 @@ nsresult TlsHandshaker::InitSSLParams(bool connectingToProxy,
       NS_SUCCEEDED(ssl->SetHandshakeCallbackListener(this))) {
     LOG(("InitSSLParams Setting up SPDY Negotiation OK mOwner=%p",
          mOwner.get()));
+    ReportSecureConnectionStart();
     mNPNComplete = false;
   }
 
@@ -209,18 +211,9 @@ bool TlsHandshaker::EnsureNPNComplete() {
     return true;
   }
 
-  if (!m0RTTChecked) {
-    // We reuse m0RTTChecked. We want to send this status only once.
-    RefPtr<nsAHttpTransaction> transaction = mOwner->Transaction();
-    nsCOMPtr<nsISocketTransport> transport = mOwner->Transport();
-    if (transaction && transport) {
-      transaction->OnTransportStatus(transport,
-                                     NS_NET_STATUS_TLS_HANDSHAKE_STARTING, 0);
-    }
-  }
-
   LOG(("TlsHandshaker::EnsureNPNComplete [mOwner=%p] drive TLS handshake",
        mOwner.get()));
+  ReportSecureConnectionStart();
   nsresult rv = ssl->DriveHandshake();
   if (NS_FAILED(rv) && rv != NS_BASE_STREAM_WOULD_BLOCK) {
     FinishNPNSetup(false, true);
@@ -311,26 +304,73 @@ void TlsHandshaker::Check0RttEnabled(nsITLSSocketControl* ssl) {
   }
 }
 
+void TlsHandshaker::ReportSecureConnectionStart() {
+  if (mSecureConnectionStartReported) {
+    return;
+  }
+
+  RefPtr<nsAHttpTransaction> transaction = mOwner->Transaction();
+  LOG(("ReportSecureConnectionStart transaction=%p", transaction.get()));
+  if (!transaction || transaction->QueryNullTransaction()) {
+    // When we don't have a transaction or have a NullTransaction, we need to
+    // store `secureConnectionStart` in nsHttpConnection::mBootstrappedTimings.
+    mOwner->SetEvent(NS_NET_STATUS_TLS_HANDSHAKE_STARTING);
+    mSecureConnectionStartReported = true;
+    return;
+  }
+
+  nsCOMPtr<nsISocketTransport> transport = mOwner->Transport();
+  if (transport) {
+    transaction->OnTransportStatus(transport,
+                                   NS_NET_STATUS_TLS_HANDSHAKE_STARTING, 0);
+    mSecureConnectionStartReported = true;
+  }
+}
+
+#ifndef ANDROID
 void TlsHandshaker::EarlyDataTelemetry(int16_t tlsVersion,
                                        bool earlyDataAccepted,
                                        int64_t aContentBytesWritten0RTT) {
   // Send the 0RTT telemetry only for tls1.3
   if (tlsVersion > nsITLSSocketControl::TLS_VERSION_1_2) {
-    Telemetry::Accumulate(Telemetry::TLS_EARLY_DATA_NEGOTIATED,
-                          (mEarlyDataState == EarlyData::NOT_AVAILABLE)
-                              ? TLS_EARLY_DATA_NOT_AVAILABLE
-                              : ((mEarlyDataState == EarlyData::USED)
-                                     ? TLS_EARLY_DATA_AVAILABLE_AND_USED
-                                     : TLS_EARLY_DATA_AVAILABLE_BUT_NOT_USED));
-    if (EarlyDataUsed()) {
-      Telemetry::Accumulate(Telemetry::TLS_EARLY_DATA_ACCEPTED,
-                            earlyDataAccepted);
+    if (mEarlyDataState == EarlyData::NOT_AVAILABLE) {  // not possible
+      glean::http::tls_early_data_negotiated.AccumulateSingleSample(
+          TLS_EARLY_DATA_NOT_AVAILABLE);
+      mozilla::glean::network::tls_early_data_negotiated.Get("not_available"_ns)
+          .Add(1);
+    } else if (mEarlyDataState == EarlyData::USED) {  // possible and used
+      glean::http::tls_early_data_negotiated.AccumulateSingleSample(
+          TLS_EARLY_DATA_AVAILABLE_AND_USED);
+      mozilla::glean::network::tls_early_data_negotiated
+          .Get("available_and_used"_ns)
+          .Add(1);
+    } else {  // possible but not used
+      glean::http::tls_early_data_negotiated.AccumulateSingleSample(
+          TLS_EARLY_DATA_AVAILABLE_BUT_NOT_USED);
+      mozilla::glean::network::tls_early_data_negotiated
+          .Get("available_but_not_used"_ns)
+          .Add(1);
     }
+
+    // TLS early data was used and it was accepted/rejected by the remote host.
+    if (EarlyDataUsed()) {
+      glean::http::tls_early_data_accepted
+          .EnumGet(static_cast<glean::http::TlsEarlyDataAcceptedLabel>(
+              earlyDataAccepted))
+          .Add();
+      mozilla::glean::network::tls_early_data_accepted
+          .Get(earlyDataAccepted ? "accepted"_ns : "not_accepted"_ns)
+          .Add(1);
+    }
+
+    // Amount of bytes sent using TLS early data at the start of a TLS
+    // connection for a given channel.
     if (earlyDataAccepted) {
-      Telemetry::Accumulate(Telemetry::TLS_EARLY_DATA_BYTES_WRITTEN,
-                            aContentBytesWritten0RTT);
+      mozilla::glean::network::tls_early_data_bytes_written
+          .AccumulateSingleSample(aContentBytesWritten0RTT);
     }
   }
 }
+#endif
 
 }  // namespace mozilla::net

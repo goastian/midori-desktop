@@ -10,7 +10,8 @@ import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.GleanMetrics.AppMenu
 import org.mozilla.fenix.GleanMetrics.Events
 import org.mozilla.fenix.GleanMetrics.HomeMenu
-import org.mozilla.fenix.GleanMetrics.HomeScreen
+import org.mozilla.fenix.GleanMetrics.Menu
+import org.mozilla.fenix.GleanMetrics.ReaderMode
 import org.mozilla.fenix.GleanMetrics.Translations
 import org.mozilla.fenix.components.menu.MenuAccessPoint
 import org.mozilla.fenix.components.menu.store.MenuAction
@@ -33,14 +34,50 @@ class MenuTelemetryMiddleware(
         next: (MenuAction) -> Unit,
         action: MenuAction,
     ) {
+        val currentState = context.state
+
         next(action)
 
         when (action) {
-            MenuAction.AddBookmark,
-            MenuAction.Navigate.EditBookmark,
-            -> Events.browserMenuAction.record(
+            MenuAction.AddBookmark -> Events.browserMenuAction.record(
                 Events.BrowserMenuActionExtra(
-                    item = "bookmark",
+                    item = "add_bookmark",
+                ),
+            )
+
+            MenuAction.Navigate.EditBookmark -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "edit_bookmark",
+                ),
+            )
+
+            MenuAction.AddShortcut -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "add_to_top_sites",
+                ),
+            )
+
+            MenuAction.RemoveShortcut -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "remove_from_top_sites",
+                ),
+            )
+
+            MenuAction.SaveMenuClicked -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "save_submenu",
+                ),
+            )
+
+            MenuAction.ToolsMenuClicked -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "tools_submenu",
+                ),
+            )
+
+            MenuAction.Navigate.AddToHomeScreen -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "add_to_homescreen",
                 ),
             )
 
@@ -50,18 +87,13 @@ class MenuTelemetryMiddleware(
                 ),
             )
 
-            MenuAction.Navigate.CustomizeHomepage -> {
-                AppMenu.customizeHomepage.record(NoExtras())
-                HomeScreen.customizeHomeClicked.record(NoExtras())
-            }
+            MenuAction.Navigate.CustomizeHomepage -> AppMenu.customizeHomepage.record(NoExtras())
 
             MenuAction.Navigate.Downloads -> Events.browserMenuAction.record(
                 Events.BrowserMenuActionExtra(
                     item = "downloads",
                 ),
             )
-
-            MenuAction.Navigate.Help -> HomeMenu.helpTapped.record(NoExtras())
 
             MenuAction.Navigate.History -> Events.browserMenuAction.record(
                 Events.BrowserMenuActionExtra(
@@ -86,13 +118,29 @@ class MenuTelemetryMiddleware(
                 ),
             )
 
+            MenuAction.Navigate.NewPrivateTab -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "new_private_tab",
+                ),
+            )
+
+            MenuAction.OpenInApp -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "open_in_app",
+                ),
+            )
+
             MenuAction.Navigate.Passwords -> Events.browserMenuAction.record(
                 Events.BrowserMenuActionExtra(
                     item = "passwords",
                 ),
             )
 
-            MenuAction.Navigate.ReleaseNotes -> Events.whatsNewTapped.record(NoExtras())
+            MenuAction.Navigate.ReleaseNotes -> Events.whatsNewTapped.record(
+                Events.WhatsNewTappedExtra(
+                    source = "MENU",
+                ),
+            )
 
             MenuAction.Navigate.Settings -> {
                 when (accessPoint) {
@@ -136,14 +184,110 @@ class MenuTelemetryMiddleware(
                 ),
             )
 
+            MenuAction.FindInPage -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "find_in_page",
+                ),
+            )
+
+            MenuAction.CustomizeReaderView -> ReaderMode.appearance.record(NoExtras())
+
+            MenuAction.ToggleReaderView -> {
+                val readerState = currentState.browserMenuState?.selectedTab?.readerState ?: return
+
+                if (readerState.active) {
+                    ReaderMode.closed.record(NoExtras())
+                } else {
+                    ReaderMode.opened.record(NoExtras())
+                }
+            }
+
+            is MenuAction.RequestDesktopSite -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "desktop_view_on",
+                ),
+            )
+
+            is MenuAction.RequestMobileSite -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "desktop_view_off",
+                ),
+            )
+
+            MenuAction.OpenInFirefox -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "open_in_fenix",
+                ),
+            )
+
+            MenuAction.Navigate.DiscoverMoreExtensions -> {
+                Events.browserMenuAction.record(
+                    Events.BrowserMenuActionExtra(
+                        item = "discover_more_extensions",
+                    ),
+                )
+            }
+
+            MenuAction.Navigate.ExtensionsLearnMore -> {
+                Events.browserMenuAction.record(
+                    Events.BrowserMenuActionExtra(
+                        item = "extensions_learn_more",
+                    ),
+                )
+            }
+
+            is MenuAction.Navigate.AddonDetails -> {
+                Events.browserMenuAction.record(
+                    Events.BrowserMenuActionExtra(
+                        item = "addon_details",
+                    ),
+                )
+            }
+
+            is MenuAction.InstallAddon -> {
+                Events.browserMenuAction.record(
+                    Events.BrowserMenuActionExtra(
+                        item = "install_addon",
+                    ),
+                )
+            }
+
+            is MenuAction.Navigate.WebCompatReporter -> {
+                Events.browserMenuAction.record(
+                    Events.BrowserMenuActionExtra(
+                        item = "report_broken_site",
+                    ),
+                )
+            }
+
+            MenuAction.OpenInRegularTab -> {
+                Events.browserMenuAction.record(
+                    Events.BrowserMenuActionExtra(
+                        item = "open_in_regular_tab",
+                    ),
+                )
+            }
+
+            MenuAction.OnCFRShown -> Menu.showCfr.record(NoExtras())
+
+            MenuAction.OnCFRDismiss -> Menu.dismissCfr.record(NoExtras())
+
             MenuAction.InitAction,
-            MenuAction.Navigate.Back,
-            MenuAction.Navigate.DiscoverMoreExtensions,
-            MenuAction.Navigate.Extensions,
-            MenuAction.Navigate.NewPrivateTab,
-            MenuAction.Navigate.Save,
-            MenuAction.Navigate.Tools,
+            is MenuAction.CustomMenuItemAction,
             is MenuAction.UpdateBookmarkState,
+            is MenuAction.UpdateExtensionState,
+            is MenuAction.UpdatePinnedState,
+            is MenuAction.UpdateWebExtensionBrowserMenuItems,
+            is MenuAction.InstallAddonFailed,
+            is MenuAction.InstallAddonSuccess,
+            is MenuAction.UpdateInstallAddonInProgress,
+            is MenuAction.UpdateShowExtensionsOnboarding,
+            is MenuAction.UpdateShowDisabledExtensionsOnboarding,
+            is MenuAction.UpdateManageExtensionsMenuItemVisibility,
+            is MenuAction.UpdateAvailableAddons,
+            is MenuAction.Navigate.Back,
+            is MenuAction.Navigate.Forward,
+            is MenuAction.Navigate.Reload,
             -> Unit
         }
     }

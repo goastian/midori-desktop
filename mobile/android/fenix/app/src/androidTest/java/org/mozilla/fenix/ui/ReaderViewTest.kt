@@ -16,6 +16,7 @@ import org.mozilla.fenix.helpers.TestAssetHelper
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestSetup
 import org.mozilla.fenix.helpers.ViewVisibilityIdlingResource
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.browserScreen
 import org.mozilla.fenix.ui.robots.navigationToolbar
 
@@ -34,6 +35,9 @@ class ReaderViewTest : TestSetup() {
     @get:Rule
     val activityIntentTestRule = HomeActivityIntentTestRule.withDefaultSettingsOverrides()
 
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
+
     @Rule
     @JvmField
     val retryTestRule = RetryTestRule(3)
@@ -44,7 +48,7 @@ class ReaderViewTest : TestSetup() {
      *   - Show the toggle button in the navigation bar
      *
      */
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/250592
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/250592
     @Test
     fun verifyReaderModePageDetectionTest() {
         val readerViewPage =
@@ -73,7 +77,7 @@ class ReaderViewTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/250585
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/250585
     @SmokeTest
     @Test
     fun verifyReaderModeControlsTest() {

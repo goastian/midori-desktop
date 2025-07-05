@@ -4,7 +4,7 @@
 
 use crate::parse::ParseVariantAttrs;
 use crate::to_css::{CssFieldAttrs, CssInputAttrs, CssVariantAttrs};
-use derive_common::cg;
+use crate::cg;
 use proc_macro2::TokenStream;
 use quote::TokenStreamExt;
 use syn::{Data, DeriveInput, Fields, Ident, Type};
@@ -126,7 +126,7 @@ pub fn derive(mut input: DeriveInput) -> TokenStream {
         {
             const SUPPORTED_TYPES: u8 = #types_value;
 
-            fn collect_completion_keywords(_f: &mut FnMut(&[&'static str])) {
+            fn collect_completion_keywords(_f: &mut dyn FnMut(&[&'static str])) {
                 #nested_collects
                 #append_values
             }

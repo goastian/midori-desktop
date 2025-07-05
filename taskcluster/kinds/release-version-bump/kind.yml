@@ -6,7 +6,7 @@ loader: taskgraph.loader.transform:loader
 
 transforms:
     - gecko_taskgraph.transforms.release_deps:transforms
-    - gecko_taskgraph.transforms.release_version_bump:transforms
+    - gecko_taskgraph.transforms.resolve_landoscript_keyed_by:transforms
     - gecko_taskgraph.transforms.task:transforms
 
 kind-dependencies:
@@ -18,12 +18,37 @@ task-defaults:
     description: Release Promotion version bump/tag
     run-on-projects: []
     shipping-phase: ship
-    worker-type: tree
+    worker-type: lando
     worker:
-        implementation: treescript
-        dontbuild: true
+        implementation: landoscript
         tags: ['release']
-        bump: true
+        lando-repo:
+            by-project:
+                mozilla-beta: firefox-beta
+                mozilla-release: firefox-release
+                mozilla-esr115: firefox-esr115
+                mozilla-esr128: firefox-esr128
+                mozilla-esr140: firefox-esr140
+                try:
+                    by-release-type:
+                        beta: staging-firefox-beta
+                        release: staging-firefox-release
+                        release-rc: staging-firefox-release
+                        esr115: staging-firefox-esr115
+                        esr128: staging-firefox-esr128
+                        esr140: staging-firefox-esr140
+                        default: ""
+                default: ""
+        # used to map hg revisions to the git revisions that landoscript needs
+        hg-repo-url:
+            by-project:
+                mozilla-beta: https://hg.mozilla.org/releases/mozilla-beta
+                mozilla-release: https://hg.mozilla.org/releases/mozilla-release
+                mozilla-esr115: https://hg.mozilla.org/releases/mozilla-esr115
+                mozilla-esr128: https://hg.mozilla.org/releases/mozilla-esr128
+                mozilla-esr140: https://hg.mozilla.org/releases/mozilla-esr140
+                try: https://hg.mozilla.org/try
+                default: ""
         # We're bumping both desktop and mobile version regardless of which product is getting
         # released, to avoid confusion from them getting out of sync.
         bump-files:
@@ -40,11 +65,6 @@ task-defaults:
                     - "browser/config/version.txt"
                     - "browser/config/version_display.txt"
                     - "config/milestone.txt"
-        push:
-            by-project:
-                mozilla-(beta|release|esr.*): true
-                maple: true
-                default: false
 
 tasks:
     firefox:

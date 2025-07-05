@@ -16,6 +16,7 @@ import logging
 import mozpack.path as mozpath
 from packaging.version import Version
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.transforms.run import rewrite_when_to_optimization
 from taskgraph.util.copy import deepcopy
 from taskgraph.util.python_path import import_sibling_modules
 from taskgraph.util.schema import Schema, validate_schema
@@ -109,26 +110,7 @@ job_description_schema = Schema(
 
 transforms = TransformSequence()
 transforms.add_validate(job_description_schema)
-
-
-@transforms.add
-def rewrite_when_to_optimization(config, jobs):
-    for job in jobs:
-        when = job.pop("when", {})
-        if not when:
-            yield job
-            continue
-
-        files_changed = when.get("files-changed")
-
-        # implicitly add task config directory.
-        files_changed.append(f"{config.path}/**")
-
-        # "only when files changed" implies "skip if files have not changed"
-        job["optimization"] = {"skip-unless-changed": files_changed}
-
-        assert "when" not in job
-        yield job
+transforms.add(rewrite_when_to_optimization)
 
 
 @transforms.add
@@ -158,47 +140,6 @@ def set_label(config, jobs):
             job["label"] = "{}-{}".format(config.kind, job["name"])
         if job.get("name"):
             del job["name"]
-        yield job
-
-
-@transforms.add
-def add_resource_monitor(config, jobs):
-    for job in jobs:
-        if job.get("attributes", {}).get("resource-monitor"):
-            worker_implementation, worker_os = worker_type_implementation(
-                config.graph_config, config.params, job["worker-type"]
-            )
-            # Normalise worker os so that linux-bitbar and similar use linux tools.
-            worker_os = worker_os.split("-")[0]
-            # We don't currently support an Arm worker, due to gopsutil's indirect
-            # dependencies (go-ole)
-            if "aarch64" in job["worker-type"]:
-                yield job
-                continue
-            elif "win7" in job["worker-type"]:
-                arch = "32"
-            else:
-                arch = "64"
-            job.setdefault("fetches", {})
-            job["fetches"].setdefault("toolchain", [])
-            job["fetches"]["toolchain"].append(f"{worker_os}{arch}-resource-monitor")
-
-            if worker_implementation == "docker-worker":
-                artifact_source = "/builds/worker/monitoring/resource-monitor.json"
-            else:
-                artifact_source = "monitoring/resource-monitor.json"
-            job["worker"].setdefault("artifacts", [])
-            job["worker"]["artifacts"].append(
-                {
-                    "name": "public/monitoring/resource-monitor.json",
-                    "type": "file",
-                    "path": artifact_source,
-                }
-            )
-            # Set env for output file
-            job["worker"].setdefault("env", {})
-            job["worker"]["env"]["RESOURCE_MONITOR_OUTPUT"] = artifact_source
-
         yield job
 
 
@@ -261,10 +202,14 @@ def use_system_python(config, jobs):
                 platform = "win64"
             elif "linux" in job["worker"]["os"]:
                 platform = "linux64"
+                if "aarch64" in job["worker-type"] or "arm64" in job["worker-type"]:
+                    platform = f"{platform}-aarch64"
             elif "macosx" in job["worker"]["os"]:
                 platform = "macosx64"
             else:
-                raise ValueError("unexpected worker.os value {}".format(platform))
+                raise ValueError(
+                    "unexpected worker.os value {}".format(job["worker"]["os"])
+                )
 
             toolchain.append(f"{platform}-{python_version}")
 
@@ -338,9 +283,7 @@ def use_fetches(config, jobs):
                     label = aliases.get(label, label)
                     if label not in artifact_names:
                         raise Exception(
-                            "Missing fetch job for {kind}-{name}: {fetch}".format(
-                                kind=config.kind, name=name, fetch=fetch_name
-                            )
+                            f"Missing fetch job for {config.kind}-{name}: {fetch_name}"
                         )
                     if label in extra_env:
                         env.update(extra_env[label])
@@ -361,8 +304,8 @@ def use_fetches(config, jobs):
             else:
                 if kind not in dependencies:
                     raise Exception(
-                        "{name} can't fetch {kind} artifacts because "
-                        "it has no {kind} dependencies!".format(name=name, kind=kind)
+                        f"{name} can't fetch {kind} artifacts because "
+                        f"it has no {kind} dependencies!"
                     )
                 dep_label = dependencies[kind]
                 if dep_label in artifact_prefixes:
@@ -370,12 +313,8 @@ def use_fetches(config, jobs):
                 else:
                     if dep_label not in config.kind_dependencies_tasks:
                         raise Exception(
-                            "{name} can't fetch {kind} artifacts because "
-                            "there are no tasks with label {label} in kind dependencies!".format(
-                                name=name,
-                                kind=kind,
-                                label=dependencies[kind],
-                            )
+                            f"{name} can't fetch {kind} artifacts because "
+                            f"there are no tasks with label {dependencies[kind]} in kind dependencies!"
                         )
 
                     prefix = get_artifact_prefix(
@@ -395,9 +334,9 @@ def use_fetches(config, jobs):
                         verify_hash = artifact.get("verify-hash", False)
 
                     fetch = {
-                        "artifact": f"{prefix}/{path}"
-                        if not path.startswith("/")
-                        else path[1:],
+                        "artifact": (
+                            f"{prefix}/{path}" if not path.startswith("/") else path[1:]
+                        ),
                         "task": f"<{kind}>",
                         "extract": extract,
                     }
@@ -442,6 +381,7 @@ def use_fetches(config, jobs):
                 sorted(job_fetches, key=lambda x: sorted(x.items())), sort_keys=True
             )
         }
+
         # The path is normalized to an absolute path in run-task
         env.setdefault("MOZ_FETCHES_DIR", "fetches")
 
@@ -465,11 +405,7 @@ def run_job_using(worker_implementation, run_using, schema=None, defaults={}):
         for_run_using = registry.setdefault(run_using, {})
         if worker_implementation in for_run_using:
             raise Exception(
-                "run_job_using({!r}, {!r}) already exists: {!r}".format(
-                    run_using,
-                    worker_implementation,
-                    for_run_using[worker_implementation],
-                )
+                f"run_job_using({run_using!r}, {worker_implementation!r}) already exists: {for_run_using[worker_implementation]!r}"
             )
         for_run_using[worker_implementation] = (func, schema, defaults)
         return func
@@ -498,9 +434,7 @@ def configure_taskdesc_for_run(config, job, taskdesc, worker_implementation):
 
     if worker_implementation not in registry[run_using]:
         raise Exception(
-            "no functions for run.using {!r} on {!r}".format(
-                run_using, worker_implementation
-            )
+            f"no functions for run.using {run_using!r} on {worker_implementation!r}"
         )
 
     func, schema, defaults = registry[run_using][worker_implementation]

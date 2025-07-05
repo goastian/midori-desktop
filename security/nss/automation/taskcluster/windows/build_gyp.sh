@@ -14,12 +14,14 @@ done
 [[ "$m" == "ia32" ]] && m=x86
 source "$(dirname "$0")/setup.sh"
 
+git clone https://chromium.googlesource.com/external/gyp
+
 # Install GYP.
 pushd gyp
-python -m virtualenv test-env
+python -m venv ./test-env
 test-env/Scripts/python setup.py install
 test-env/Scripts/python -m pip install --upgrade pip
-test-env/Scripts/pip install --upgrade 'setuptools<45.0.0'
+test-env/Scripts/pip install --upgrade 'setuptools<45.0.0' six
 # Fool GYP.
 touch "${VSPATH}/VC/vcvarsall.bat"
 export GYP_MSVS_OVERRIDE_PATH="${VSPATH}"
@@ -28,14 +30,23 @@ popd
 
 export PATH="${PATH}:${PWD}/ninja/bin:${PWD}/gyp/test-env/Scripts"
 
-# Clone NSPR.
-hg_clone https://hg.mozilla.org/projects/nspr nspr default
+test -v VCS_PATH
 
-if [[ -f nss/nspr.patch && "$ALLOW_NSPR_PATCH" == "1" ]]; then
-  pushd nspr
+# builds write to the source dir (and its parent), so move the source trees to
+# our workspace from the (cached) checkout dir
+cp -a "${VCS_PATH}/nspr" "${VCS_PATH}/nss" .
+
+pushd nspr
+hg revert --all
+if [[ -f ../nss/nspr.patch && "$ALLOW_NSPR_PATCH" == "1" ]]; then
   cat ../nss/nspr.patch | patch -p1
-  popd
 fi
+popd
+
+make () {
+	mozmake "$@"
+}
+export -f make
 
 # Build with gyp.
 ./nss/build.sh -g -v --enable-libpkix -Denable_draft_hpke=1 "$@"

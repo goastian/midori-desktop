@@ -9,6 +9,7 @@ kind-dependencies:
     - post-beetmover-dummy
     - release-balrog-submit-toplevel
     - release-update-verify-config
+    - toolchain
 
 transforms:
     - gecko_taskgraph.transforms.release_deps:transforms
@@ -38,6 +39,12 @@ task-defaults:
         chunks: 16
 
 tasks:
+    firefox-linux64-aarch64:
+        description: linux64-aarch64 update verify
+        shipping-product: firefox
+        attributes:
+            build_platform: linux64-aarch64-shippable
+
     firefox-linux64:
         description: linux64 update verify
         shipping-product: firefox
@@ -75,6 +82,15 @@ tasks:
             build_platform: macosx64-shippable
         extra:
             chunks: 30
+        fetches:
+            toolchain:
+                - linux64-libdmg
+
+    devedition-linux64-aarch64:
+        description: linux64-aarch64 update verify
+        shipping-product: devedition
+        attributes:
+            build_platform: linux64-aarch64-devedition
 
     devedition-linux64:
         description: linux64 update verify
@@ -113,3 +129,6 @@ tasks:
             build_platform: macosx64-devedition
         extra:
             chunks: 30
+        fetches:
+            toolchain:
+                - linux64-libdmg

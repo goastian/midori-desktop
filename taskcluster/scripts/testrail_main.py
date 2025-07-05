@@ -26,14 +26,15 @@ from lib.testrail_utils import (
     load_testrail_credentials,
 )
 from slack_notifier import (
+    get_product_icon,
     get_taskcluster_options,
     send_error_notification,
     send_success_notification,
 )
 
 # Constants
-SUCCESS_CHANNEL_ID = "C02KDDS9QM9"  # mobile-testeng
-ERROR_CHANNEL_ID = "G016BC5FUHJ"  # mobile-alerts-sandbox
+SUCCESS_CHANNEL_ID = "C07HUFVU2UD"  # mobile-testeng-releases
+ERROR_CHANNEL_ID = "C0134KJ4JHL"  # mobile-alerts-android
 
 
 def main():
@@ -82,6 +83,9 @@ def main():
                 testrail_project_id, milestone["id"], device, testrail_test_suite_id
             )
             testrail.update_test_run_tests(test_run["id"], 1)  # 1 = Passed
+
+        product_icon = get_product_icon(shipping_product)
+
         # Send success notification
         success_values = {
             "RELEASE_TYPE": release_type,
@@ -89,6 +93,7 @@ def main():
             "SHIPPING_PRODUCT": shipping_product,
             "TESTRAIL_PROJECT_ID": testrail_project_id,
             "TESTRAIL_PRODUCT_TYPE": testrail_product_type,
+            "PRODUCT_ICON": product_icon,
         }
         send_success_notification(success_values, SUCCESS_CHANNEL_ID, options)
 

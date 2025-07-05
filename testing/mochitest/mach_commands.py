@@ -10,7 +10,6 @@ import warnings
 from argparse import Namespace
 from collections import defaultdict
 
-import six
 from mach.decorators import Command, CommandArgument
 from mozbuild.base import MachCommandConditions as conditions
 from mozbuild.base import MozbuildObject
@@ -58,7 +57,6 @@ parser = None
 
 
 class MochitestRunner(MozbuildObject):
-
     """Easily run mochitests.
 
     This currently contains just the basics for running mochitests. We may want
@@ -292,18 +290,20 @@ def run_mochitest_general(
             buildapp = app
             break
 
+    # Force the buildapp to be android if requested
+    if kwargs.get("android"):
+        buildapp = "android"
+
     flavors = None
     if flavor:
-        for fname, fobj in six.iteritems(ALL_FLAVORS):
+        for fname, fobj in ALL_FLAVORS.items():
             if flavor in fobj["aliases"]:
                 if buildapp not in fobj["enabled_apps"]:
                     continue
                 flavors = [fname]
                 break
     else:
-        flavors = [
-            f for f, v in six.iteritems(ALL_FLAVORS) if buildapp in v["enabled_apps"]
-        ]
+        flavors = [f for f, v in ALL_FLAVORS.items() if buildapp in v["enabled_apps"]]
 
     from mozbuild.controller.building import BuildDriver
 
@@ -431,13 +431,13 @@ def run_mochitest_general(
             apps = fobj["enabled_apps"]
             name = fobj["aliases"][0]
             if s:
-                name = "{} --subsuite {}".format(name, s)
+                name = f"{name} --subsuite {s}"
 
             if buildapp not in apps:
                 reason = "requires {}".format(" or ".join(apps))
             else:
                 reason = "excluded by the command line"
-            msg.append("    mochitest -f {} ({})".format(name, reason))
+            msg.append(f"    mochitest -f {name} ({reason})")
         print(SUPPORTED_TESTS_NOT_FOUND.format(buildapp, "\n".join(sorted(msg))))
         return 1
 
@@ -550,5 +550,31 @@ def run_junit(command_context, no_install, **kwargs):
             "mach-mochitest", kwargs, {default_format: sys.stdout}, format_args
         )
 
+    if kwargs.get("mach_test") and kwargs.get("test_objects"):
+        test_classes = []
+        test_objects = kwargs.get("test_objects")
+        for test_object in test_objects:
+            test_classes.append(classname_for_test(test_object["name"]))
+        kwargs["test_filters"] = test_classes
+
     mochitest = command_context._spawn(MochitestRunner)
     return mochitest.run_geckoview_junit_test(command_context._mach_context, **kwargs)
+
+
+def classname_for_test(test):
+    """Convert path of test file to gradle recognized test suite name"""
+    test_path = os.path.join(
+        "mobile",
+        "android",
+        "geckoview",
+        "src",
+        "androidTest",
+        "java",
+    )
+    return (
+        os.path.normpath(test)
+        .split(os.path.normpath(test_path))[-1]
+        .removeprefix(os.path.sep)
+        .replace(os.path.sep, ".")
+        .removesuffix(".kt")
+    )

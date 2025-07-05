@@ -143,6 +143,11 @@ def mock_mozinfo():
         fission=False,
         headless=False,
         tsan=False,
+        tag="[]",
+        mingwclang=False,
+        nightly_build=False,
+        repo="try",
+        crashreporter=False,
     ):
         return {
             "os": os,
@@ -161,7 +166,9 @@ def mock_mozinfo():
             "canvas": False,
             "webgpu": False,
             "webcodecs": False,
+            "eme": False,
             "privatebrowsing": False,
+            "tag": tag,
         }
 
     return inner
@@ -175,14 +182,14 @@ def mock_mozinfo():
         [("linux", "1804", 64, "debug"), None],
         [("macosx", "1015", 64, "debug"), None],
         [("macosx", "1100", 64, "opt"), None],
-        [("android", "", 64, "debug"), None],
+        [("android", "13.0", 64, "debug"), None],
         [("and", "", 64, "debug"), ValueError],
         [("", "", 64, "opt"), ValueError],
         [("linux", "1804", 64, "opt", ["ccov"]), None],
         [("linux", "1804", 64, "opt", ["asan"]), None],
         [("win", "10", 64, "opt", ["tsan"]), None],
         [("mac", "1100", 64, "opt", ["ccov"]), None],
-        [("android", "", 64, "opt", None, ["fission"]), None],
+        [("android", "13.0", 64, "opt", None, ["fission"]), None],
         [("win", "10", "aarch64", "opt"), None],
     ],
 )

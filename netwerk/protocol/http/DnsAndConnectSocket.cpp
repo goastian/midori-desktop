@@ -20,6 +20,7 @@
 #include "mozilla/Components.h"
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/SyncRunnable.h"
+#include "mozilla/glean/NetwerkProtocolHttpMetrics.h"
 #include "nsHttpHandler.h"
 #include "ConnectionEntry.h"
 #include "HttpConnectionUDP.h"
@@ -74,17 +75,6 @@ DnsAndConnectSocket::DnsAndConnectSocket(nsHttpConnectionInfo* ci,
        trans, mConnInfo->Origin(), mConnInfo->HashKey().get()));
 
   mIsHttp3 = mConnInfo->IsHttp3();
-  if (speculative) {
-    Telemetry::AutoCounter<Telemetry::HTTPCONNMGR_TOTAL_SPECULATIVE_CONN>
-        totalSpeculativeConn;
-    ++totalSpeculativeConn;
-
-    if (isFromPredictor) {
-      Telemetry::AutoCounter<Telemetry::PREDICTOR_TOTAL_PRECONNECTS_CREATED>
-          totalPreconnectsCreated;
-      ++totalPreconnectsCreated;
-    }
-  }
 
   MOZ_ASSERT(mConnInfo);
   NotifyActivity(mConnInfo,
@@ -110,18 +100,6 @@ DnsAndConnectSocket::~DnsAndConnectSocket() {
   // the nsHttpConnectionMgr active connection number.
   mPrimaryTransport.MaybeSetConnectingDone();
   mBackupTransport.MaybeSetConnectingDone();
-
-  if (mSpeculative) {
-    Telemetry::AutoCounter<Telemetry::HTTPCONNMGR_UNUSED_SPECULATIVE_CONN>
-        unusedSpeculativeConn;
-    ++unusedSpeculativeConn;
-
-    if (mIsFromPredictor) {
-      Telemetry::AutoCounter<Telemetry::PREDICTOR_TOTAL_PRECONNECTS_UNUSED>
-          totalPreconnectsUnused;
-      ++totalPreconnectsUnused;
-    }
-  }
 }
 
 nsresult DnsAndConnectSocket::Init(ConnectionEntry* ent) {
@@ -545,6 +523,24 @@ DnsAndConnectSocket::OnOutputStreamReady(nsIAsyncOutputStream* out) {
     return NS_ERROR_UNEXPECTED;
   }
 
+  nsresult socketStatus = out->StreamStatus();
+  if (StaticPrefs::network_http_retry_with_another_half_open() &&
+      NS_FAILED(socketStatus) && socketStatus != NS_BASE_STREAM_WOULD_BLOCK) {
+    if (isPrimary) {
+      if (mBackupTransport.mState ==
+          TransportSetup::TransportSetupState::CONNECTING) {
+        mPrimaryTransport.Abandon();
+        return NS_OK;
+      }
+    } else if (IsBackup(out)) {
+      if (mPrimaryTransport.mState ==
+          TransportSetup::TransportSetupState::CONNECTING) {
+        mBackupTransport.Abandon();
+        return NS_OK;
+      }
+    }
+  }
+
   // Before calling SetupConn we need to hold a reference to this, i.e. a
   // delete protector, because the corresponding ConnectionEntry may be
   // abandoned and that will abandon this DnsAndConnectSocket.
@@ -843,16 +839,6 @@ bool DnsAndConnectSocket::Claim() {
     resetFlag(mPrimaryTransport);
     resetFlag(mBackupTransport);
 
-    Telemetry::AutoCounter<Telemetry::HTTPCONNMGR_USED_SPECULATIVE_CONN>
-        usedSpeculativeConn;
-    ++usedSpeculativeConn;
-
-    if (mIsFromPredictor) {
-      Telemetry::AutoCounter<Telemetry::PREDICTOR_TOTAL_PRECONNECTS_USED>
-          totalPreconnectsUsed;
-      ++totalPreconnectsUsed;
-    }
-
     // Http3 has its own syn-retransmission, therefore it does not need a
     // backup connection.
     if (mPrimaryTransport.ConnectingOrRetry() &&
@@ -975,6 +961,40 @@ void DnsAndConnectSocket::TransportSetup::CloseAll() {
   mConnectedOK = false;
 }
 
+bool DnsAndConnectSocket::TransportSetup::ToggleIpFamilyFlagsIfRetryEnabled() {
+  if (!mRetryWithDifferentIPFamily) {
+    return false;
+  }
+
+  LOG(
+      ("DnsAndConnectSocket::TransportSetup::ToggleIpFamilyFlagsIfRetryEnabled"
+       "[this=%p dnsFlags=%u]",
+       this, mDnsFlags));
+  mRetryWithDifferentIPFamily = false;
+
+  // Toggle the RESOLVE_DISABLE_IPV6 and RESOLVE_DISABLE_IPV4 flags in mDnsFlags
+  // This ensures we switch the IP family for the DNS resolution
+  mDnsFlags ^= (nsIDNSService::RESOLVE_DISABLE_IPV6 |
+                nsIDNSService::RESOLVE_DISABLE_IPV4);
+
+  if ((mDnsFlags & nsIDNSService::RESOLVE_DISABLE_IPV6) &&
+      (mDnsFlags & nsIDNSService::RESOLVE_DISABLE_IPV4)) {
+    // Clear both flags to prevent an invalid state
+    mDnsFlags &= ~(nsIDNSService::RESOLVE_DISABLE_IPV6 |
+                   nsIDNSService::RESOLVE_DISABLE_IPV4);
+    LOG(
+        ("DnsAndConnectSocket::TransportSetup::"
+         "ToggleIpFamilyFlagsIfRetryEnabled "
+         "[this=%p] both v6 and v4 are disabled",
+         this));
+    MOZ_DIAGNOSTIC_CRASH("both v6 and v4 addresses are disabled");
+  }
+
+  // Indicate that the IP family preference should be reset
+  mResetFamilyPreference = true;
+  return true;
+}
+
 nsresult DnsAndConnectSocket::TransportSetup::CheckConnectedResult(
     DnsAndConnectSocket* dnsAndSock) {
   mState = TransportSetup::TransportSetupState::CONNECTING_DONE;
@@ -990,11 +1010,7 @@ nsresult DnsAndConnectSocket::TransportSetup::CheckConnectedResult(
   }
 
   bool retry = false;
-  if (mRetryWithDifferentIPFamily) {
-    mRetryWithDifferentIPFamily = false;
-    mDnsFlags ^= (nsIDNSService::RESOLVE_DISABLE_IPV6 |
-                  nsIDNSService::RESOLVE_DISABLE_IPV4);
-    mResetFamilyPreference = true;
+  if (ToggleIpFamilyFlagsIfRetryEnabled()) {
     retry = true;
   } else if (!(mDnsFlags & nsIDNSService::RESOLVE_DISABLE_TRR)) {
     bool trrEnabled;
@@ -1017,6 +1033,7 @@ nsresult DnsAndConnectSocket::TransportSetup::CheckConnectedResult(
   }
 
   if (retry) {
+    LOG(("  retry DNS, mDnsFlags=%u", mDnsFlags));
     CloseAll();
     mState = TransportSetup::TransportSetupState::RETRY_RESOLVING;
     nsresult rv = ResolveHost(dnsAndSock);
@@ -1259,7 +1276,7 @@ nsresult DnsAndConnectSocket::TransportSetup::SetupStreams(
   rv = socketTransport->SetSecurityCallbacks(dnsAndSock);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  if (gHttpHandler->EchConfigEnabled() && !ci->GetEchConfig().IsEmpty()) {
+  if (nsHttpHandler::EchConfigEnabled() && !ci->GetEchConfig().IsEmpty()) {
     MOZ_ASSERT(!ci->IsHttp3());
     LOG(("Setting ECH"));
     rv = socketTransport->SetEchConfig(ci->GetEchConfig());
@@ -1272,8 +1289,10 @@ nsresult DnsAndConnectSocket::TransportSetup::SetupStreams(
       gHttpHandler->ConnMgr()->FindConnectionEntry(ci);
   MOZ_DIAGNOSTIC_ASSERT(ent);
   if (ent) {
-    Telemetry::Accumulate(Telemetry::HTTP_CONNECTION_ENTRY_CACHE_HIT_1,
-                          ent->mUsedForConnection);
+    glean::http::connection_entry_cache_hit
+        .EnumGet(static_cast<glean::http::ConnectionEntryCacheHitLabel>(
+            ent->mUsedForConnection))
+        .Add();
     ent->mUsedForConnection = true;
   }
 
@@ -1340,11 +1359,7 @@ bool DnsAndConnectSocket::TransportSetup::ShouldRetryDNS() {
     return true;
   }
 
-  if (mRetryWithDifferentIPFamily) {
-    mRetryWithDifferentIPFamily = false;
-    mDnsFlags ^= (nsIDNSService::RESOLVE_DISABLE_IPV6 |
-                  nsIDNSService::RESOLVE_DISABLE_IPV4);
-    mResetFamilyPreference = true;
+  if (ToggleIpFamilyFlagsIfRetryEnabled()) {
     return true;
   }
   return false;

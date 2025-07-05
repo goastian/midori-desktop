@@ -4,13 +4,17 @@
 
 package org.mozilla.focus.ext
 
+import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Activity
 import android.content.Context
+import android.content.Intent
+import android.content.Intent.FLAG_ACTIVITY_NEW_TASK
 import android.view.ContextThemeWrapper
 import android.view.accessibility.AccessibilityManager
 import mozilla.components.support.utils.ext.getPackageInfoCompat
 import org.mozilla.focus.Components
 import org.mozilla.focus.FocusApplication
+import org.mozilla.focus.activity.CrashListActivity
 import org.mozilla.focus.utils.Settings
 import org.mozilla.gecko.util.HardwareUtils
 import java.text.DateFormat
@@ -58,3 +62,25 @@ fun Context.isTablet(): Boolean = HardwareUtils.isTablet(this)
  */
 fun Context.tryAsActivity() =
     (this as? ContextThemeWrapper)?.baseContext as? Activity ?: this as? Activity
+
+/**
+ * Launches the CrashListActivity to display crash reports.
+ */
+fun Context.showCrashReports() {
+    val intent = Intent(this, CrashListActivity::class.java)
+    intent.addFlags(FLAG_ACTIVITY_NEW_TASK)
+    startActivity(intent)
+}
+
+/**
+ * Checks if accessibility features are enabled on the device.
+ *
+ * This function determines if either touch exploration (TalkBack/VoiceOver) is enabled
+ * or if any accessibility service is running that has the capability to perform gestures.
+ */
+fun Context.isAccessibilityEnabled(): Boolean {
+    return accessibilityManager.isTouchExplorationEnabled ||
+        accessibilityManager.getEnabledAccessibilityServiceList(0).any {
+            it.capabilities.and(AccessibilityServiceInfo.CAPABILITY_CAN_PERFORM_GESTURES) == 1
+        }
+}

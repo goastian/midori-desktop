@@ -26,7 +26,7 @@ class PagedHistoryProviderTest {
     @Before
     fun setup() {
         storage = mockk()
-        Settings.SEARCH_GROUP_MINIMUM_SITES = 1
+        Settings.searchGroupMinimumSites = 1
     }
 
     @Test
@@ -383,7 +383,7 @@ class PagedHistoryProviderTest {
                 any(),
                 any(),
                 eq(
-                    VisitType.values().filterNot {
+                    VisitType.entries.filterNot {
                         it == VisitType.REDIRECT_PERMANENT || it == VisitType.REDIRECT_TEMPORARY
                     },
                 ),

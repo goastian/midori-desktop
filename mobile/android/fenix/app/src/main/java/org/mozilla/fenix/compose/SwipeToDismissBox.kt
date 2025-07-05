@@ -4,7 +4,9 @@
 
 package org.mozilla.fenix.compose
 
+import androidx.compose.animation.core.DecayAnimationSpec
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.rememberSplineBasedDecay
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.AnchoredDraggableState
@@ -21,9 +23,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.material.Snackbar
-import androidx.compose.material.SnackbarHost
-import androidx.compose.material.SnackbarHostState
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +40,9 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
+import org.mozilla.fenix.compose.snackbar.AcornSnackbarHostState
+import org.mozilla.fenix.compose.snackbar.SnackbarHost
+import org.mozilla.fenix.compose.snackbar.SnackbarState
 import org.mozilla.fenix.theme.FirefoxTheme
 import kotlin.math.roundToInt
 
@@ -84,9 +86,15 @@ private const val DISMISS_THRESHOLD = 0.5f
 private val VELOCITY_THRESHOLD_DP = 150.dp
 
 /**
+ * The length of time the swipe gesture will animate for after being initiated by the user.
+ */
+private const val SWIPE_ANIMATION_DURATION_MS = 230
+
+/**
  * The UI state for [SwipeToDismissBox].
  *
  * @param density [Density] used to derive the underlying [AnchoredDraggableState.velocityThreshold].
+ * @param decayAnimationSpec [DecayAnimationSpec] used to specify the animation parameters.
  * @property anchoredDraggableState [AnchoredDraggableState] for the underlying [Modifier.anchoredDraggable].
  * @property anchors A list of [SwipeToDismissAnchor] which establish the swipe directions of [SwipeToDismissBox].
  * @property enabled Whether the swipe gesture is active.
@@ -94,11 +102,15 @@ private val VELOCITY_THRESHOLD_DP = 150.dp
 @OptIn(ExperimentalFoundationApi::class)
 class SwipeToDismissState(
     density: Density,
+    decayAnimationSpec: DecayAnimationSpec<Float>,
     val anchoredDraggableState: AnchoredDraggableState<SwipeToDismissAnchor> = AnchoredDraggableState(
         initialValue = SwipeToDismissAnchor.Default,
         positionalThreshold = { distance: Float -> distance * DISMISS_THRESHOLD },
         velocityThreshold = { with(density) { VELOCITY_THRESHOLD_DP.toPx() } },
-        animationSpec = tween(),
+        snapAnimationSpec = tween(
+            durationMillis = SWIPE_ANIMATION_DURATION_MS,
+        ),
+        decayAnimationSpec = decayAnimationSpec,
     ),
     val anchors: List<SwipeToDismissAnchor> = SwipeToDismissAnchor.swipeBothDirectionsAnchors(),
     val enabled: Boolean = true,
@@ -154,7 +166,10 @@ class SwipeToDismissState(
 @Composable
 fun SwipeToDismissBox(
     modifier: Modifier = Modifier,
-    state: SwipeToDismissState = SwipeToDismissState(density = LocalDensity.current),
+    state: SwipeToDismissState = SwipeToDismissState(
+        density = LocalDensity.current,
+        decayAnimationSpec = rememberSplineBasedDecay(),
+    ),
     onItemDismiss: () -> Unit,
     backgroundContent: @Composable BoxScope.() -> Unit,
     dismissContent: @Composable BoxScope.() -> Unit,
@@ -210,7 +225,7 @@ fun SwipeToDismissBox(
 @Preview
 @Preview(locale = "ar", name = "RTL")
 private fun SwipeToDismissBoxPreview() {
-    val snackbarState = remember { SnackbarHostState() }
+    val snackbarState = remember { AcornSnackbarHostState() }
     val coroutineScope = rememberCoroutineScope()
 
     FirefoxTheme {
@@ -223,7 +238,7 @@ private fun SwipeToDismissBoxPreview() {
                     text = "Swipe to right ->",
                     onSwipeToEnd = {
                         coroutineScope.launch {
-                            snackbarState.showSnackbar("Dismiss")
+                            snackbarState.showSnackbar(SnackbarState(message = "Dismiss"))
                         }
                     },
                 )
@@ -235,7 +250,7 @@ private fun SwipeToDismissBoxPreview() {
                     text = "<- Swipe to left",
                     onSwipeToStart = {
                         coroutineScope.launch {
-                            snackbarState.showSnackbar("Dismiss")
+                            snackbarState.showSnackbar(SnackbarState(message = "Dismiss"))
                         }
                     },
                 )
@@ -247,25 +262,21 @@ private fun SwipeToDismissBoxPreview() {
                     text = "<- Swipe both ways ->",
                     onSwipeToStart = {
                         coroutineScope.launch {
-                            snackbarState.showSnackbar("Dismiss start")
+                            snackbarState.showSnackbar(SnackbarState(message = "Dismiss"))
                         }
                     },
                     onSwipeToEnd = {
                         coroutineScope.launch {
-                            snackbarState.showSnackbar("Dismiss end")
+                            snackbarState.showSnackbar(SnackbarState(message = "Dismiss"))
                         }
                     },
                 )
             }
 
             SnackbarHost(
-                hostState = snackbarState,
+                snackbarHostState = snackbarState,
                 modifier = Modifier.align(Alignment.BottomCenter),
-            ) { snackbarData ->
-                Snackbar(
-                    snackbarData = snackbarData,
-                )
-            }
+            )
         }
     }
 }
@@ -279,10 +290,13 @@ private fun SwipeableItem(
     onSwipeToEnd: () -> Unit = {},
 ) {
     val density = LocalDensity.current
+    val decayAnimationSpec: DecayAnimationSpec<Float> = rememberSplineBasedDecay()
+
     val swipeState = remember {
         SwipeToDismissState(
             density = density,
             anchors = anchors,
+            decayAnimationSpec = decayAnimationSpec,
         )
     }
 

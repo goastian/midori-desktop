@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.Fragment
@@ -19,9 +20,9 @@ import mozilla.components.concept.engine.translate.ModelManagementOptions
 import mozilla.components.concept.engine.translate.ModelOperation
 import mozilla.components.concept.engine.translate.ModelState
 import mozilla.components.concept.engine.translate.OperationLevel
+import mozilla.components.concept.engine.translate.TranslationError
 import mozilla.components.lib.state.ext.observeAsComposableState
 import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
-import mozilla.components.support.locale.LocaleManager
 import org.mozilla.fenix.BrowserDirection
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.R
@@ -31,6 +32,7 @@ import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.ext.showToolbar
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.theme.FirefoxTheme
+import org.mozilla.fenix.utils.AccessibilityUtils.moveFocusToBackNavButton
 import java.util.Locale
 
 /**
@@ -44,7 +46,7 @@ class DownloadLanguagesPreferenceFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        showToolbar(getString(R.string.download_languages_toolbar_title_preference))
+        showToolbar(getString(R.string.download_languages_translations_toolbar_title_preference))
     }
 
     override fun onCreateView(
@@ -60,9 +62,15 @@ class DownloadLanguagesPreferenceFragment : Fragment() {
                 )
                 val downloadLanguageItemsPreference = getDownloadLanguageItemsPreference()
 
+                val engineError = browserStore.observeAsComposableState { state ->
+                    state.translationEngine.engineError
+                }.value
+
                 DownloadLanguagesPreference(
                     downloadLanguageItemPreferences = downloadLanguageItemsPreference,
                     learnMoreUrl = learnMoreUrl,
+                    fileSizeFormatter = requireComponents.core.fileSizeFormatter,
+                    downloadLanguagesError = engineError as? TranslationError.ModelCouldNotRetrieveError,
                     onLearnMoreClicked = { openBrowserAndLoad(learnMoreUrl) },
                     onItemClick = { downloadLanguageItemPreference ->
                         if (downloadLanguageItemPreference.languageModel.status ==
@@ -90,12 +98,29 @@ class DownloadLanguagesPreferenceFragment : Fragment() {
                                 downloadLanguageItemPreference.type ==
                                 DownloadLanguageItemTypePreference.AllLanguages
                             ) {
-                                deleteOrDownloadAllLanguagesModel(
-                                    allLanguagesItemPreference = downloadLanguageItemPreference,
-                                    allLanguages = downloadLanguageItemsPreference,
+                                val options = ModelManagementOptions(
+                                    operation = if (
+                                        downloadLanguageItemPreference.languageModel.status ==
+                                        ModelState.NOT_DOWNLOADED
+                                    ) {
+                                        ModelOperation.DOWNLOAD
+                                    } else {
+                                        ModelOperation.DELETE
+                                    },
+                                    operationLevel = OperationLevel.ALL,
+                                )
+                                browserStore.dispatch(
+                                    TranslationsAction.ManageLanguageModelsAction(
+                                        options = options,
+                                    ),
                                 )
                             } else {
                                 deleteOrDownloadModel(downloadLanguageItemPreference)
+                            }
+
+                            val activity = activity as? AppCompatActivity
+                            if (activity != null) {
+                                moveFocusToBackNavButton(activity)
                             }
                         }
                     },
@@ -139,34 +164,6 @@ class DownloadLanguagesPreferenceFragment : Fragment() {
         )
     }
 
-    private fun deleteOrDownloadAllLanguagesModel(
-        allLanguagesItemPreference: DownloadLanguageItemPreference,
-        allLanguages: List<DownloadLanguageItemPreference>,
-    ) {
-        if (allLanguagesItemPreference.languageModel.status == ModelState.DOWNLOADED) {
-            val downloadedItems = allLanguages.filter {
-                it.languageModel.status == ModelState.DOWNLOADED &&
-                    it.type == DownloadLanguageItemTypePreference.GeneralLanguage
-            }
-
-            for (downloadedItem in downloadedItems) {
-                if (!downloadedItem.languageModel.language?.code.equals(Locale.ENGLISH.language)) {
-                    deleteOrDownloadModel(downloadedItem)
-                }
-            }
-        } else {
-            if (allLanguagesItemPreference.languageModel.status == ModelState.NOT_DOWNLOADED) {
-                val notDownloadedItems = allLanguages.filter {
-                    it.languageModel.status == ModelState.NOT_DOWNLOADED &&
-                        it.type == DownloadLanguageItemTypePreference.GeneralLanguage
-                }
-                for (notDownloadedItem in notDownloadedItems) {
-                    deleteOrDownloadModel(notDownloadedItem)
-                }
-            }
-        }
-    }
-
     private fun openBrowserAndLoad(learnMoreUrl: String) {
         (requireActivity() as HomeActivity).openToBrowserAndLoad(
             searchTermOrURL = learnMoreUrl,
@@ -181,34 +178,20 @@ class DownloadLanguagesPreferenceFragment : Fragment() {
             state.translationEngine.languageModels
         }.value?.toMutableList()
         val languageItemPreferenceList = mutableListOf<DownloadLanguageItemPreference>()
-        val appLocale = browserStore.state.locale ?: LocaleManager.getSystemDefault()
 
         languageModels?.let {
-            var allLanguagesSizeNotDownloaded = 0L
             var allLanguagesSizeDownloaded = 0L
 
             for (languageModel in languageModels) {
                 var size = 0L
                 languageModel.size?.let { size = it }
 
-                if (languageModel.status == ModelState.NOT_DOWNLOADED) {
-                    allLanguagesSizeNotDownloaded += size
-                }
-
                 if (
-                    languageModel.status == ModelState.DOWNLOADED &&
-                    !languageModel.language?.code.equals(
-                        Locale.ENGLISH.language,
-                    )
+                    languageModel.status == ModelState.DOWNLOADED
                 ) {
                     allLanguagesSizeDownloaded += size
                 }
             }
-
-            addAllLanguagesNotDownloaded(
-                allLanguagesSizeNotDownloaded,
-                languageItemPreferenceList,
-            )
 
             addAllLanguagesDownloaded(
                 allLanguagesSizeDownloaded,
@@ -218,7 +201,7 @@ class DownloadLanguagesPreferenceFragment : Fragment() {
             val iterator = languageModels.iterator()
             while (iterator.hasNext()) {
                 val languageModel = iterator.next()
-                if (!appLocale.language.equals(Locale.ENGLISH.language) && languageModel.language?.code.equals(
+                if (languageModel.language?.code.equals(
                         Locale.ENGLISH.language,
                     )
                 ) {
@@ -237,31 +220,13 @@ class DownloadLanguagesPreferenceFragment : Fragment() {
                         DownloadLanguageItemPreference(
                             languageModel = languageModel,
                             type = DownloadLanguageItemTypePreference.GeneralLanguage,
-                            enabled = languageModel.status == ModelState.DOWNLOADED ||
-                                languageModel.status == ModelState.NOT_DOWNLOADED,
+                            enabled = languageModel.status != ModelState.DELETION_IN_PROGRESS,
                         ),
                     )
                 }
             }
         }
         return languageItemPreferenceList
-    }
-
-    private fun addAllLanguagesNotDownloaded(
-        allLanguageSizeNotDownloaded: Long,
-        languageItemPreferenceList: MutableList<DownloadLanguageItemPreference>,
-    ) {
-        if (allLanguageSizeNotDownloaded != 0L) {
-            languageItemPreferenceList.add(
-                DownloadLanguageItemPreference(
-                    languageModel = LanguageModel(
-                        status = ModelState.NOT_DOWNLOADED,
-                        size = allLanguageSizeNotDownloaded,
-                    ),
-                    type = DownloadLanguageItemTypePreference.AllLanguages,
-                ),
-            )
-        }
     }
 
     private fun addAllLanguagesDownloaded(

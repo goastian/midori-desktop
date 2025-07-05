@@ -12,14 +12,14 @@ import mozpack.path as mozpath
 from mach.decorators import Command, CommandArgument
 from mozfile import which
 
-from mozbuild import build_commands
+from mozbuild.util import cpu_count
 
 
 @Command(
     "ide",
     category="devenv",
     description="Generate a project and launch an IDE.",
-    virtualenv_name="build",
+    virtualenv_name="ide",
 )
 @CommandArgument("ide", choices=["eclipse", "visualstudio", "vscode"])
 @CommandArgument(
@@ -31,13 +31,6 @@ from mozbuild import build_commands
 @CommandArgument("args", nargs=argparse.REMAINDER)
 def run(command_context, ide, no_interactive, args):
     interactive = not no_interactive
-
-    if ide == "eclipse":
-        backend = "CppEclipse"
-    elif ide == "visualstudio":
-        backend = "VisualStudio"
-    elif ide == "vscode":
-        backend = "Clangd"
 
     if ide == "eclipse" and not which("eclipse"):
         command_context.log(
@@ -55,49 +48,42 @@ def run(command_context, ide, no_interactive, args):
         return 1
 
     if ide == "vscode":
-        rc = build_commands.configure(command_context)
-
-        if rc != 0:
-            return rc
+        result = subprocess.run([sys.executable, "mach", "configure"])
+        if result.returncode:
+            return result.returncode
 
         # First install what we can through install manifests.
-        rc = command_context._run_make(
-            directory=command_context.topobjdir,
-            target="pre-export",
-            line_handler=None,
-        )
-        if rc != 0:
-            return rc
-
         # Then build the rest of the build dependencies by running the full
         # export target, because we can't do anything better.
-        for target in ("export", "pre-compile"):
-            rc = command_context._run_make(
-                directory=command_context.topobjdir,
-                target=target,
-                line_handler=None,
-            )
-            if rc != 0:
-                return rc
+        result = subprocess.run(
+            [sys.executable, "mach", "build", "pre-export", "export", "pre-compile"]
+        )
+        if result.returncode:
+            return result.returncode
     else:
         # Here we refresh the whole build. 'build export' is sufficient here and is
         # probably more correct but it's also nice having a single target to get a fully
         # built and indexed project (gives a easy target to use before go out to lunch).
-        res = command_context._mach_context.commands.dispatch(
-            "build", command_context._mach_context
-        )
-        if res != 0:
-            return 1
+        result = subprocess.run([sys.executable, "mach", "build"])
+        if result.returncode:
+            return result.returncode
 
-    # Generate or refresh the IDE backend.
-    python = command_context.virtualenv_manager.python_path
-    config_status = os.path.join(command_context.topobjdir, "config.status")
-    args = [python, config_status, "--backend=%s" % backend]
-    res = command_context._run_command_in_objdir(
-        args=args, pass_thru=True, ensure_exit_code=False
-    )
-    if res != 0:
-        return 1
+    backend = None
+    if ide == "eclipse":
+        backend = "CppEclipse"
+    elif ide == "visualstudio":
+        backend = "VisualStudio"
+    elif ide == "vscode":
+        if not command_context.config_environment.is_artifact_build:
+            backend = "Clangd"
+
+    if backend:
+        # Generate or refresh the IDE backend.
+        result = subprocess.run(
+            [sys.executable, "mach", "build-backend", "-b", backend]
+        )
+        if result.returncode:
+            return result.returncode
 
     if ide == "eclipse":
         eclipse_workspace_dir = get_eclipse_workspace_path(command_context)
@@ -159,18 +145,36 @@ def setup_vscode(command_context, interactive):
             "*.jsm": "javascript",
             "*.sjs": "javascript",
         },
-        # Note, the top-level editor settings are left as default to allow the
-        # user's defaults (if any) to take effect.
-        "[javascript][javascriptreact][typescript][typescriptreact][json][jsonc][html]": {
-            "editor.defaultFormatter": "esbenp.prettier-vscode",
-            "editor.formatOnSave": True,
-        },
         "files.exclude": {"obj-*": True, relobjdir: True},
         "files.watcherExclude": {"obj-*": True, relobjdir: True},
     }
+    # These are added separately because vscode doesn't override user settings
+    # otherwise which leads to the wrong auto-formatting.
+    prettier_languages = [
+        "javascript",
+        "javascriptreact",
+        "typescript",
+        "typescriptreact",
+        "json",
+        "jsonc",
+        "html",
+    ]
+    for lang in prettier_languages:
+        new_settings[f"[{lang}]"] = {
+            "editor.defaultFormatter": "esbenp.prettier-vscode",
+            "editor.formatOnSave": True,
+        }
 
     import difflib
-    import json
+
+    try:
+        import json5 as json
+
+        dump_extra = {"quote_keys": True, "trailing_commas": False}
+    except ImportError:
+        import json
+
+        dump_extra = {}
 
     # Load the existing .vscode/settings.json file, to check if if needs to
     # be created or updated.
@@ -178,17 +182,13 @@ def setup_vscode(command_context, interactive):
         with open(vscode_settings) as fh:
             old_settings_str = fh.read()
     except FileNotFoundError:
-        print(
-            "Configuration for {} will be created.{}".format(
-                vscode_settings, artifact_prefix
-            )
-        )
+        print(f"Configuration for {vscode_settings} will be created.{artifact_prefix}")
         old_settings_str = None
 
     if old_settings_str is None:
         # No old settings exist
         with open(vscode_settings, "w") as fh:
-            json.dump(new_settings, fh, indent=4)
+            json.dump(new_settings, fh, indent=4, **dump_extra)
     else:
         # Merge our new settings with the existing settings, and check if we
         # need to make changes. Only prompt & write out the updated config
@@ -210,6 +210,7 @@ def setup_vscode(command_context, interactive):
             "[javascript][javascriptreact][typescript][typescriptreact]",
             "[javascript][javascriptreact][typescript][typescriptreact][json]",
             "[javascript][javascriptreact][typescript][typescriptreact][json][html]",
+            "[javascript][javascriptreact][typescript][typescriptreact][json][jsonc][html]",
         ]
         for entry in deprecated:
             if entry in old_settings:
@@ -219,7 +220,7 @@ def setup_vscode(command_context, interactive):
 
         if old_settings != settings:
             # Prompt the user with a diff of the changes we're going to make
-            new_settings_str = json.dumps(settings, indent=4)
+            new_settings_str = json.dumps(settings, indent=4, **dump_extra)
             if interactive:
                 print(
                     "\nThe following modifications to {settings} will occur:\n{diff}".format(
@@ -236,9 +237,7 @@ def setup_vscode(command_context, interactive):
                     )
                 )
                 choice = prompt_bool(
-                    "{}{}\nProceed with modifications to {}?".format(
-                        artifact_prefix, prompt_prefix, vscode_settings
-                    )
+                    f"{artifact_prefix}{prompt_prefix}\nProceed with modifications to {vscode_settings}?"
                 )
                 if not choice:
                     return 1
@@ -253,9 +252,7 @@ def setup_vscode(command_context, interactive):
     # binary was not found.
     if vscode_cmd is None:
         print(
-            "Please open VS Code manually and load directory: {}".format(
-                command_context.topsrcdir
-            )
+            f"Please open VS Code manually and load directory: {command_context.topsrcdir}"
         )
         return 0
 
@@ -267,7 +264,7 @@ def setup_vscode(command_context, interactive):
             "ide",
             {},
             "Unable to open VS Code. Please open VS Code manually and load "
-            "directory: {}".format(command_context.topsrcdir),
+            f"directory: {command_context.topsrcdir}",
         )
         return rc
 
@@ -293,30 +290,41 @@ def setup_clangd_rust_in_vscode(command_context):
             logging.ERROR,
             "ide",
             {},
-            "Unable to locate clangd in {}.".format(clang_tidy_bin),
+            f"Unable to locate clangd in {clang_tidy_bin}.",
         )
         rc = get_clang_tools(command_context, clang_tools_path)
 
         if rc != 0:
             return rc
 
-    import multiprocessing
-
     from mozbuild.code_analysis.utils import ClangTidyConfig
 
     clang_tidy_cfg = ClangTidyConfig(command_context.topsrcdir)
 
-    if sys.platform == "win32":
-        cargo_check_command = [sys.executable, "mach"]
+    # The location of the comm/ directory if we're building Thunderbird. `None`
+    # if we're building Firefox.
+    commtopsrcdir = command_context.substs.get("commtopsrcdir")
+
+    if commtopsrcdir:
+        # Thunderbird uses its own Rust workspace, located in comm/rust/ - we
+        # set it as the main workspace to build a little further below. The
+        # working directory for cargo check commands is the workspace's root.
+        if sys.platform == "win32":
+            cargo_check_command = [sys.executable, "../../mach"]
+        else:
+            cargo_check_command = ["../../mach"]
     else:
-        cargo_check_command = ["./mach"]
+        if sys.platform == "win32":
+            cargo_check_command = [sys.executable, "mach"]
+        else:
+            cargo_check_command = ["./mach"]
 
     cargo_check_command += [
         "--log-no-times",
         "cargo",
         "check",
         "-j",
-        str(multiprocessing.cpu_count() // 2),
+        str(cpu_count() // 2),
         "--all-crates",
         "--message-format-json",
     ]
@@ -340,11 +348,18 @@ def setup_clangd_rust_in_vscode(command_context):
     with open(".clangd", "w") as file:
         yaml.dump(clangd_cfg, file)
 
-    return {
+    rust_analyzer_extra_includes = [command_context.topobjdir]
+
+    if windows_rs_dir := command_context.config_environment.substs.get(
+        "MOZ_WINDOWS_RS_DIR"
+    ):
+        rust_analyzer_extra_includes.append(windows_rs_dir)
+
+    config = {
         "clangd.path": clangd_path,
         "clangd.arguments": [
             "-j",
-            str(multiprocessing.cpu_count() // 2),
+            str(cpu_count() // 2),
             "--limit-results",
             "0",
             "--completion-style",
@@ -364,9 +379,21 @@ def setup_clangd_rust_in_vscode(command_context):
             # cargo check`.
             "CARGO_TARGET_DIR": command_context.topobjdir,
         },
+        "rust-analyzer.vfs.extraIncludes": rust_analyzer_extra_includes,
         "rust-analyzer.cargo.buildScripts.overrideCommand": cargo_check_command,
         "rust-analyzer.check.overrideCommand": cargo_check_command,
     }
+
+    # If we're building Thunderbird, configure rust-analyzer to use its Cargo
+    # workspace rather than Firefox's. `linkedProjects` disables rust-analyzer's
+    # project auto-discovery, therefore setting it ensures we use the correct
+    # workspace.
+    if commtopsrcdir:
+        config["rust-analyzer.linkedProjects"] = [
+            os.path.join(commtopsrcdir, "rust", "Cargo.toml")
+        ]
+
+    return config
 
 
 def get_clang_tools(command_context, clang_tools_path):

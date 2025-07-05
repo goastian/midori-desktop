@@ -41,7 +41,6 @@ TEST_MANIFESTS = dict(
     FIREFOX_UI_FUNCTIONAL=("firefox-ui-functional", "firefox-ui", ".", False),
     FIREFOX_UI_UPDATE=("firefox-ui-update", "firefox-ui", ".", False),
     PYTHON_UNITTEST=("python", "python", ".", False),
-    CRAMTEST=("cram", "cram", ".", False),
     TELEMETRY_TESTS_CLIENT=(
         "telemetry-tests-client",
         "toolkit/components/telemetry/tests/marionette/",
@@ -72,7 +71,7 @@ def all_test_flavors():
     )
 
 
-class TestInstallInfo(object):
+class TestInstallInfo:
     def __init__(self):
         self.seen = set()
         self.pattern_installs = []
@@ -88,7 +87,7 @@ class TestInstallInfo(object):
         return self
 
 
-class SupportFilesConverter(object):
+class SupportFilesConverter:
     """Processes a "support-files" entry from a test object, either from
     a parsed object from a test manifests or its representation in
     moz.build and returns the installs to perform for this test object.

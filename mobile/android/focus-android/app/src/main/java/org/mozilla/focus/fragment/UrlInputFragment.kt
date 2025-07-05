@@ -13,6 +13,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import androidx.appcompat.content.res.AppCompatResources
+import androidx.core.view.OneShotPreDrawListener
 import androidx.core.view.isVisible
 import androidx.fragment.app.activityViewModels
 import kotlinx.coroutines.CoroutineScope
@@ -25,17 +26,16 @@ import mozilla.components.browser.state.state.SessionState
 import mozilla.components.browser.state.state.TabSessionState
 import mozilla.components.feature.top.sites.TopSitesConfig
 import mozilla.components.feature.top.sites.TopSitesFeature
-import mozilla.components.service.glean.private.NoExtras
 import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
 import mozilla.components.support.ktx.android.view.hideKeyboard
 import mozilla.components.support.ktx.util.URLStringUtils
 import mozilla.components.support.utils.StatusBarUtils
 import mozilla.components.support.utils.ThreadUtils
+import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.focus.GleanMetrics.BrowserSearch
 import org.mozilla.focus.GleanMetrics.SearchBar
 import org.mozilla.focus.GleanMetrics.SearchWidget
 import org.mozilla.focus.R
-import org.mozilla.focus.activity.MainActivity
 import org.mozilla.focus.databinding.FragmentUrlinputBinding
 import org.mozilla.focus.ext.components
 import org.mozilla.focus.ext.defaultSearchEngineName
@@ -53,7 +53,6 @@ import org.mozilla.focus.topsites.DefaultTopSitesStorage.Companion.TOP_SITES_MAX
 import org.mozilla.focus.topsites.DefaultTopSitesView
 import org.mozilla.focus.topsites.TopSitesOverlay
 import org.mozilla.focus.ui.theme.FocusTheme
-import org.mozilla.focus.utils.OneShotOnPreDrawListener
 import org.mozilla.focus.utils.SupportUtils
 import org.mozilla.focus.utils.ViewUtils
 import kotlin.coroutines.CoroutineContext
@@ -151,8 +150,6 @@ class UrlInputFragment :
             customDomainsProvider.initialize(it.applicationContext)
         }
 
-        // Hide status bar background if the parent activity can be casted to MainActivity
-        (requireActivity() as? MainActivity)?.hideStatusBarBackground()
         StatusBarUtils.getStatusBarHeight(binding.landingLayout) {
             adjustViewToStatusBarHeight(it)
         }
@@ -169,7 +166,7 @@ class UrlInputFragment :
             requireComponents.appStore.state.showSearchWidgetSnackbar
         ) {
             ViewUtils.showBrandedSnackbar(view, R.string.promote_search_widget_snackbar_message, 0)
-            SearchWidget.widgetWasAdded.record(mozilla.telemetry.glean.private.NoExtras())
+            SearchWidget.widgetWasAdded.record(NoExtras())
             requireComponents.appStore.dispatch(AppAction.ShowSearchWidgetSnackBar(false))
         }
     }
@@ -210,17 +207,17 @@ class UrlInputFragment :
         savedInstanceState: Bundle?,
     ): View {
         _binding = FragmentUrlinputBinding.inflate(inflater, container, false)
-
-        binding.topSites.setContent {
-            FocusTheme {
-                TopSitesOverlay()
-            }
-        }
         return binding.root
     }
 
     @Suppress("LongMethod")
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        binding.topSites.setContent {
+            FocusTheme {
+                TopSitesOverlay()
+            }
+        }
+
         childFragmentManager.beginTransaction()
             .replace(binding.searchViewContainer.id, SearchSuggestionsFragment.create())
             .commit()
@@ -277,9 +274,8 @@ class UrlInputFragment :
 
         binding.dismissView.setOnClickListener(this)
 
-        OneShotOnPreDrawListener(binding.urlInputContainerView) {
+        OneShotPreDrawListener.add(binding.urlInputContainerView) {
             animateFirstDraw()
-            true
         }
 
         if (isOverlay) {
@@ -473,10 +469,8 @@ class UrlInputFragment :
             .setListener(
                 object : AnimatorListenerAdapter() {
                     override fun onAnimationEnd(animation: Animator) {
-                        if (reverse) {
-                            if (isOverlay) {
-                                dismiss()
-                            }
+                        if (reverse && isOverlay) {
+                            dismiss()
                         }
 
                         isAnimating = false
@@ -507,14 +501,14 @@ class UrlInputFragment :
     }
 
     internal fun onCommit(input: String) {
-        if (input.trim { it <= ' ' }.isNotEmpty()) {
+        if (input.trim().isNotEmpty()) {
             handleCrashTrigger(input)
 
-            ViewUtils.hideKeyboard(binding.browserToolbar)
+            binding.browserToolbar.hideKeyboard()
 
             val isUrl = URLStringUtils.isURLLike(input)
             if (isUrl) {
-                openUrl(URLStringUtils.toNormalizedURL(input))
+                openUrl(input)
             } else {
                 search(input)
             }
@@ -547,7 +541,7 @@ class UrlInputFragment :
             search(query)
         } else {
             if (URLStringUtils.isURLLike(query)) {
-                openUrl(URLStringUtils.toNormalizedURL(query))
+                openUrl(query)
             } else {
                 search(query)
             }
@@ -573,7 +567,8 @@ class UrlInputFragment :
     }
 
     private fun openUrl(url: String) {
-        when (url) {
+        val normalizedUrl = URLStringUtils.toNormalizedURL(url)
+        when (normalizedUrl) {
             "focus:about" -> {
                 requireComponents.appStore.dispatch(
                     AppAction.OpenSettings(Screen.Settings.Page.About),
@@ -584,15 +579,20 @@ class UrlInputFragment :
 
         val tab = tab
         if (tab != null) {
-            requireComponents.sessionUseCases.loadUrl(url, tab.id)
+            requireComponents.sessionUseCases.loadUrl(
+                normalizedUrl,
+                tab.id,
+                originalInput = url,
+            )
 
             requireComponents.appStore.dispatch(AppAction.FinishEdit(tab.id))
         } else {
             requireComponents.tabsUseCases.addTab(
-                url,
+                normalizedUrl,
                 source = SessionState.Source.Internal.UserEntered,
                 selectTab = true,
                 private = true,
+                originalInput = url,
             )
         }
 
@@ -612,7 +612,7 @@ class UrlInputFragment :
     internal fun onTextChange(text: String) {
         searchSuggestionsViewModel.setSearchQuery(text)
 
-        if (text.trim { it <= ' ' }.isEmpty()) {
+        if (text.trim().isEmpty()) {
             binding.searchViewContainer.isVisible = false
 
             if (!isOverlay) {

@@ -9,8 +9,6 @@ import re
 import sys
 from multiprocessing.pool import ThreadPool
 
-import six
-
 sys.path.insert(1, os.path.dirname(os.path.dirname(sys.path[0])))
 
 from mozharness.base.python import VirtualenvMixin, virtualenv_config_options
@@ -63,13 +61,6 @@ class ChecksumsGenerator(BaseScript, VirtualenvMixin):
             ["--branch"],
             {
                 "dest": "branch",
-                "help": "dummy option",
-            },
-        ],
-        [
-            ["--build-pool"],
-            {
-                "dest": "build_pool",
                 "help": "dummy option",
             },
         ],
@@ -136,16 +127,16 @@ class ChecksumsGenerator(BaseScript, VirtualenvMixin):
         )
 
     def _get_sums_filename(self, format_):
-        return "{}SUMS".format(format_.upper())
+        return f"{format_.upper()}SUMS"
 
     def _get_summary_filename(self, format_):
-        return "{}SUMMARY".format(format_.upper())
+        return f"{format_.upper()}SUMMARY"
 
     def _get_hash_function(self, format_):
         if format_ in ("sha256", "sha384", "sha512"):
             return getattr(hashlib, format_)
         else:
-            self.fatal("Unsupported format {}".format(format_))
+            self.fatal(f"Unsupported format {format_}")
 
     def _get_bucket(self):
         self.activate_virtualenv()
@@ -162,13 +153,13 @@ class ChecksumsGenerator(BaseScript, VirtualenvMixin):
         filters out any unwanted files from within them, and adds the remainder
         to self.checksums for subsequent steps to use."""
         bucket = self._get_bucket()
-        self.info("File prefix is: {}".format(self.file_prefix))
+        self.info(f"File prefix is: {self.file_prefix}")
 
         # temporary holding place for checksums
         raw_checksums = []
 
         def worker(item):
-            self.debug("Downloading {}".format(item))
+            self.debug(f"Downloading {item}")
             sums = bucket.get_key(item).get_contents_as_string()
             raw_checksums.append(sums)
 
@@ -177,13 +168,13 @@ class ChecksumsGenerator(BaseScript, VirtualenvMixin):
             checksum_files = {"beets": [], "checksums": []}
             for key in bucket.list(prefix=self.file_prefix):
                 if key.key.endswith(".checksums"):
-                    self.debug("Found checksums file: {}".format(key.key))
+                    self.debug(f"Found checksums file: {key.key}")
                     checksum_files["checksums"].append(key.key)
                 elif key.key.endswith(".beet"):
-                    self.debug("Found beet file: {}".format(key.key))
+                    self.debug(f"Found beet file: {key.key}")
                     checksum_files["beets"].append(key.key)
                 else:
-                    self.debug("Ignoring non-checksums file: {}".format(key.key))
+                    self.debug(f"Ignoring non-checksums file: {key.key}")
             if checksum_files["beets"]:
                 self.log("Using beet format")
                 return checksum_files["beets"]
@@ -195,28 +186,28 @@ class ChecksumsGenerator(BaseScript, VirtualenvMixin):
         pool.map(worker, find_checksums_files())
 
         for c in raw_checksums:
-            for f, info in six.iteritems(parse_checksums_file(c)):
+            for f, info in parse_checksums_file(c).items():
                 for pattern in self.config["includes"]:
                     if re.search(pattern, f):
                         if f in self.checksums:
                             if info == self.checksums[f]:
                                 self.debug(
-                                    "Duplicate checksum for file {}"
+                                    f"Duplicate checksum for file {f}"
                                     " but the data matches;"
-                                    " continuing...".format(f)
+                                    " continuing..."
                                 )
                                 continue
                             self.fatal(
-                                "Found duplicate checksum entry for {}, "
-                                "don't know which one to pick.".format(f)
+                                f"Found duplicate checksum entry for {f}, "
+                                "don't know which one to pick."
                             )
                         if not set(self.config["formats"]) <= set(info["hashes"]):
-                            self.fatal("Missing necessary format for file {}".format(f))
-                        self.debug("Adding checksums for file: {}".format(f))
+                            self.fatal(f"Missing necessary format for file {f}")
+                        self.debug(f"Adding checksums for file: {f}")
                         self.checksums[f] = info
                         break
                 else:
-                    self.debug("Ignoring checksums for file: {}".format(f))
+                    self.debug(f"Ignoring checksums for file: {f}")
 
     def create_summary(self):
         """
@@ -237,7 +228,7 @@ class ChecksumsGenerator(BaseScript, VirtualenvMixin):
             ]
 
             summary = self._get_summary_filename(fmt)
-            self.info("Creating summary file: {}".format(summary))
+            self.info(f"Creating summary file: {summary}")
 
             content = "{} TREE_HEAD\n".format(head.decode("ascii"))
             for i in range(len(files)):
@@ -248,7 +239,7 @@ class ChecksumsGenerator(BaseScript, VirtualenvMixin):
     def create_big_checksums(self):
         for fmt in self.config["formats"]:
             sums = self._get_sums_filename(fmt)
-            self.info("Creating big checksums file: {}".format(sums))
+            self.info(f"Creating big checksums file: {sums}")
             with open(sums, "w+") as output_file:
                 for fn in sorted(self.checksums):
                     output_file.write(

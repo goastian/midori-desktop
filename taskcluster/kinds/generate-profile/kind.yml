@@ -95,11 +95,11 @@ tasks:
             product: mobile
             job-name: android-x86-profile
         treeherder:
-            platform: android-5-0-x86/pgo
-        worker-type: t-linux-xlarge-pgo
+            platform: android-5-0-x86-shippable/opt
+        worker-type: b-linux-kvm-gcp
         worker:
             chain-of-trust: true
-            max-run-time: 3600
+            max-run-time: 2700
             docker-image: {in-tree: ubuntu1804-test}
             env:
                 WORKING_DIR: "/builds/worker"
@@ -137,11 +137,11 @@ tasks:
             product: mobile
             job-name: android-x86_64-profile
         treeherder:
-            platform: android-5-0-x86_64/pgo
-        worker-type: t-linux-xlarge-pgo
+            platform: android-5-0-x86_64-shippable/opt
+        worker-type: b-linux-kvm-gcp
         worker:
             chain-of-trust: true
-            max-run-time: 3600
+            max-run-time: 2700
             docker-image: {in-tree: ubuntu1804-test}
             env:
                 WORKING_DIR: "/builds/worker"
@@ -179,7 +179,7 @@ tasks:
             product: mobile
             job-name: android-aarch64-profile
         treeherder:
-            platform: android-5-0-aarch64/pgo
+            platform: android-5-0-aarch64-shippable/opt
         worker-type: b-linux-kvm-gcp
         worker:
             chain-of-trust: true
@@ -213,6 +213,49 @@ tasks:
                 - android-sdk-linux
                 - android31-system-image-x86_64-linux
                 - android31-avd-x86_64-linux
+
+    android-arm-shippable/opt:
+        description: "Android 5.0 ARM Profile Generation"
+        shipping-phase: build
+        shipping-product: fennec
+        index:
+            product: mobile
+            job-name: android-arm-profile
+        treeherder:
+            platform: android-5-0-armv7-shippable/opt
+        worker-type: b-linux-kvm-gcp
+        worker:
+            chain-of-trust: true
+            max-run-time: 2700
+            kvm: true  # for access to /dev/kvm for hw accel in the emulator
+            docker-image: {in-tree: ubuntu1804-test}
+            env:
+                WORKING_DIR: "/builds/worker"
+                MOZHARNESS_PATH: "/builds/worker/checkouts/gecko/testing/mozharness"
+                PYTHON: "/builds/worker/checkouts/gecko/mach python"
+            artifacts:
+                - type: directory
+                  name: public/build
+                  path: /builds/worker/artifacts/
+        run:
+            using: mozharness
+            job-script: taskcluster/scripts/tester/test-linux.sh
+            script: android_emulator_pgo.py
+            tooltool-downloads: internal
+            options: [installer-path=/builds/worker/fetches/geckoview-test_runner.apk]
+            config:
+                - android/android_common.py
+                - android/android-arm-profile-generation.py
+                - android/android_pgo.py
+        run-on-projects: ['release']
+        fetches:
+            toolchain:
+                - linux64-clang
+                - linux64-minidump-stackwalk
+                - linux64-hostutils
+                - android-sdk-linux
+                - android30-system-image-x86-linux
+                - android30-avd-x86-linux
 
     win32-shippable/opt:
         description: "Win32 Profile Generation"
@@ -254,6 +297,36 @@ tasks:
         treeherder:
             platform: windows2012-64-shippable/opt
         worker-type: b-win2022
+        worker:
+            chain-of-trust: true
+            max-run-time: 2400
+            env:
+                UPLOAD_PATH: "artifacts"
+            artifacts:
+                - type: directory
+                  name: public/build
+                  path: build/src/artifacts/
+        run:
+            using: run-task
+            sparse-profile: profile-generate
+            cwd: '{checkout}'
+            command: ./taskcluster/scripts/misc/run-profileserver.sh
+        run-on-projects: ['release']
+        fetches:
+            toolchain:
+                - win64-clang-toolchain
+                - win32-minidump-stackwalk
+
+    win64-aarch64-shippable/opt:
+        description: "Win64 AArch64 Profile Generation"
+        shipping-phase: build
+        shipping-product: firefox
+        index:
+            product: firefox
+            job-name: win64-aarch64-profile
+        treeherder:
+            platform: windows2012-aarch64-shippable/opt
+        worker-type: b-win-aarch64
         worker:
             chain-of-trust: true
             max-run-time: 2400
@@ -342,7 +415,7 @@ tasks:
             product: firefox
             job-name: macosx64-aarch64-profile
         treeherder:
-            platform: macosx1100-64-shippable/opt
+            platform: osx-aarch64-shippable/opt
         worker-type: b-osx-arm64
         worker:
             chain-of-trust: true
@@ -361,5 +434,5 @@ tasks:
         run-on-projects: ['release']
         fetches:
             toolchain:
-                - macosx64-clang
-                - macosx64-minidump-stackwalk
+                - macosx64-aarch64-clang
+                - macosx64-aarch64-minidump-stackwalk

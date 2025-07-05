@@ -7,17 +7,16 @@ import json
 import os
 import tempfile
 import unittest
+from io import StringIO
 
 import mozunit
-import six
 from mozfile.mozfile import NamedTemporaryFile
-from six import StringIO
 
 from mozbuild.backend.configenvironment import ConfigEnvironment
 from mozbuild.mozinfo import build_dict, write_mozinfo
 
 
-class Base(object):
+class Base:
     def _config(self, substs={}):
         d = os.path.dirname(__file__)
         return ConfigEnvironment(d, d, substs=substs)
@@ -251,6 +250,33 @@ class TestBuildDict(unittest.TestCase, Base):
         )
         self.assertEqual(True, d["crashreporter"])
 
+    def test_gecko_profiler(self):
+        """
+        Test that gecko profiler values are properly detected.
+        """
+        d = build_dict(
+            self._config(
+                dict(
+                    OS_TARGET="Linux",
+                    TARGET_CPU="i386",
+                    MOZ_WIDGET_TOOLKIT="gtk",
+                )
+            )
+        )
+        self.assertEqual(False, d["gecko_profiler"])
+
+        d = build_dict(
+            self._config(
+                dict(
+                    OS_TARGET="Linux",
+                    TARGET_CPU="i386",
+                    MOZ_WIDGET_TOOLKIT="gtk",
+                    MOZ_GECKO_PROFILER="1",
+                )
+            )
+        )
+        self.assertEqual(True, d["gecko_profiler"])
+
 
 class TestWriteMozinfo(unittest.TestCase, Base):
     """
@@ -259,7 +285,7 @@ class TestWriteMozinfo(unittest.TestCase, Base):
 
     def setUp(self):
         fd, f = tempfile.mkstemp()
-        self.f = six.ensure_text(f)
+        self.f = f
         os.close(fd)
 
     def tearDown(self):

@@ -41,7 +41,7 @@ export function moveable<
   }
   if (hasDispose) {
     Class.prototype.move = function (
-      this: InstanceType<Class>
+      this: InstanceType<Class>,
     ): InstanceType<Class> {
       instances.add(this);
       return this;
@@ -53,7 +53,7 @@ export function moveable<
 export function throwIfDisposed<This extends Disposed>(
   message: (value: This) => string = value => {
     return `Attempted to use disposed ${value.constructor.name}.`;
-  }
+  },
 ) {
   return (target: (this: This, ...args: any[]) => any, _: unknown) => {
     return function (this: This, ...args: any[]): any {
@@ -67,7 +67,7 @@ export function throwIfDisposed<This extends Disposed>(
 
 export function inertIfDisposed<This extends Disposed>(
   target: (this: This, ...args: any[]) => any,
-  _: unknown
+  _: unknown,
 ) {
   return function (this: This, ...args: any[]): any {
     if (this.disposed) {
@@ -87,7 +87,7 @@ export function inertIfDisposed<This extends Disposed>(
  */
 export function invokeAtMostOnceForArguments(
   target: (this: unknown, ...args: any[]) => any,
-  _: unknown
+  _: unknown,
 ): typeof target {
   const cache = new WeakMap();
   let cacheDepth = -1;
@@ -97,7 +97,7 @@ export function invokeAtMostOnceForArguments(
     }
     if (cacheDepth !== args.length) {
       throw new Error(
-        'Memoized method was called with the wrong number of arguments'
+        'Memoized method was called with the wrong number of arguments',
       );
     }
     let freshArguments = false;
@@ -121,11 +121,11 @@ export function invokeAtMostOnceForArguments(
 export function guarded<T extends object>(
   getKey = function (this: T): object {
     return this;
-  }
+  },
 ) {
   return (
     target: (this: T, ...args: any[]) => Promise<any>,
-    _: ClassMethodDecoratorContext<T>
+    _: ClassMethodDecoratorContext<T>,
   ): typeof target => {
     const mutexes = new WeakMap<object, Mutex>();
     return async function (...args) {
@@ -142,37 +142,41 @@ export function guarded<T extends object>(
 }
 
 const bubbleHandlers = new WeakMap<object, Map<any, any>>();
+const bubbleInitializer = function <
+  T extends EventType[],
+  This extends EventEmitter<any>,
+>(this: This, events?: T) {
+  const handlers = bubbleHandlers.get(this) ?? new Map();
+  if (handlers.has(events)) {
+    return;
+  }
 
+  const handler =
+    events !== undefined
+      ? (type: EventType, event: unknown) => {
+          if (events.includes(type)) {
+            this.emit(type, event);
+          }
+        }
+      : (type: EventType, event: unknown) => {
+          this.emit(type, event);
+        };
+
+  handlers.set(events, handler);
+  bubbleHandlers.set(this, handlers);
+};
 /**
  * Event emitter fields marked with `bubble` will have their events bubble up
  * the field owner.
  */
 // The type is too complicated to type.
-// eslint-disable-next-line @typescript-eslint/explicit-module-boundary-types
 export function bubble<T extends EventType[]>(events?: T) {
   return <This extends EventEmitter<any>, Value extends EventEmitter<any>>(
     {set, get}: ClassAccessorDecoratorTarget<This, Value>,
-    context: ClassAccessorDecoratorContext<This, Value>
+    context: ClassAccessorDecoratorContext<This, Value>,
   ): ClassAccessorDecoratorResult<This, Value> => {
     context.addInitializer(function () {
-      const handlers = bubbleHandlers.get(this) ?? new Map();
-      if (handlers.has(events)) {
-        return;
-      }
-
-      const handler =
-        events !== undefined
-          ? (type: EventType, event: unknown) => {
-              if (events.includes(type)) {
-                this.emit(type, event);
-              }
-            }
-          : (type: EventType, event: unknown) => {
-              this.emit(type, event);
-            };
-
-      handlers.set(events, handler);
-      bubbleHandlers.set(this, handlers);
+      return bubbleInitializer.apply(this, [events]);
     });
     return {
       set(emitter) {
@@ -190,15 +194,15 @@ export function bubble<T extends EventType[]>(events?: T) {
         emitter.on('*', handler);
         set.call(this, emitter);
       },
-      // @ts-expect-error -- TypeScript incorrectly types init to require a
-      // return.
       init(emitter) {
         if (emitter === undefined) {
-          return;
+          return emitter;
         }
-        const handler = bubbleHandlers.get(this)!.get(events)!;
 
-        emitter.on('*', handler);
+        bubbleInitializer.apply(this, [events]);
+
+        const handler = bubbleHandlers.get(this)!.get(events)!;
+        emitter.on('*', handler as any);
         return emitter;
       },
     };

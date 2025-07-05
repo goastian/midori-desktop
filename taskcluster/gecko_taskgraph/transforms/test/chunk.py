@@ -17,6 +17,7 @@ from gecko_taskgraph.util.chunking import (
     chunk_manifests,
     get_manifest_loader,
     get_runtimes,
+    get_test_tags,
     guess_mozinfo_from_task,
 )
 from gecko_taskgraph.util.perfile import perfile_number_of_chunks
@@ -92,7 +93,10 @@ def set_test_manifests(config, tasks):
             continue
 
         mozinfo = guess_mozinfo_from_task(
-            task, config.params.get("head_repository", "")
+            task,
+            config.params.get("head_repository", ""),
+            config.params.get("app_version", ""),
+            get_test_tags(config, task.get("worker", {}).get("env", {})),
         )
 
         loader_name = task.pop(
@@ -116,7 +120,10 @@ def set_test_manifests(config, tasks):
                 config.params["try_task_config"]["env"]["MOZHARNESS_TEST_PATHS"]
             )
 
-        if task["attributes"]["unittest_suite"] in mh_test_paths.keys():
+        if (
+            mh_test_paths
+            and task["attributes"]["unittest_suite"] in mh_test_paths.keys()
+        ):
             input_paths = mh_test_paths[task["attributes"]["unittest_suite"]]
             remaining_manifests = []
 
@@ -127,7 +134,10 @@ def set_test_manifests(config, tasks):
                         key for key in WPT_SUBSUITES if key in task["test-name"]
                     ]
                     if found_subsuite:
-                        if WPT_SUBSUITES[found_subsuite[0]] in m:
+                        if any(
+                            test_subsuite in m
+                            for test_subsuite in WPT_SUBSUITES[found_subsuite[0]]
+                        ):
                             yield task
                     else:
                         if not isinstance(loader, DefaultLoader):
@@ -158,6 +168,18 @@ def set_test_manifests(config, tasks):
 
             if remaining_manifests == []:
                 continue
+
+        elif mh_test_paths:
+            # we have test paths and they are not related to the test suite
+            # this could be the test suite doesn't support test paths
+            continue
+        elif (
+            get_test_tags(config, task.get("worker", {}).get("env", {}))
+            and not task["test-manifests"]["active"]
+            and not task["test-manifests"]["other_dirs"]
+        ):
+            # no MH_TEST_PATHS, but MH_TEST_TAG or other filters
+            continue
 
         # The default loader loads all manifests. If we use a non-default
         # loader, we'll only run some subset of manifests and the hardcoded
@@ -208,8 +230,8 @@ def resolve_dynamic_chunks(config, tasks):
         matches = keymatch(DYNAMIC_CHUNK_MULTIPLIER, key)
         if len(matches) > 1:
             raise Exception(
-                "Multiple matching values for {} found while "
-                "determining dynamic chunk multiplier!".format(key)
+                f"Multiple matching values for {key} found while "
+                "determining dynamic chunk multiplier!"
             )
         elif matches:
             total = total * matches[0]
@@ -259,7 +281,9 @@ def split_chunks(config, tasks):
                 and manifests["active"]
                 and "skipped" in manifests
             ):
-                chunked_manifests[0].extend(manifests["skipped"])
+                chunked_manifests[0].extend(
+                    [m for m in manifests["skipped"] if not m.endswith(".list")]
+                )
 
         for i in range(task["chunks"]):
             this_chunk = i + 1

@@ -7,7 +7,7 @@ task-defaults:
     treeherder:
         kind: other
         tier: 1
-    worker-type: t-linux-xlarge-source
+    worker-type: t-linux-docker
     worker:
         artifacts:
             - type: directory
@@ -34,6 +34,7 @@ bugzilla-components:
 
 test-info-xorigin:
     description: Generate test manifest metadata for tests disabled on cross-origin
+    use-python: "3.11"
     treeherder:
         symbol: test-info(xorigin)
         tier: 2
@@ -63,6 +64,7 @@ test-info-xorigin:
 
 test-info-disabled-by-os:
     description: Generate test manifest metadata for tests disabled on each operating system
+    use-python: "3.11"
     treeherder:
         symbol: test-info(disabled-by-os)
         tier: 2
@@ -116,11 +118,12 @@ test-info-all:
             - linux64-pkgconf
             - sysroot-x86_64-linux-gnu
             - sysroot-wasm32-wasi
+    use-python: "3.11"
     run:
         using: run-task
         cwd: '{checkout}'
         command: >-
             source taskcluster/scripts/misc/source-test-common.sh &&
             ./mach test-info testrun-report --output-file /builds/worker/artifacts/test-run-info.json &&
-            ./mach test-info report --show-tests --show-summary --show-testruns --verbose --output-file /builds/worker/artifacts/test-info-all-tests.json --runcounts-input-file /builds/worker/artifacts/test-run-info.json &&
+            ./mach test-info report --show-tests --show-summary --show-testruns --verbose --output-file /builds/worker/artifacts/test-info-all-tests.json --config-matrix-output-file /builds/worker/artifacts/test-info-testrun-matrix.json --runcounts-input-file /builds/worker/artifacts/test-run-info.json &&
             ./mach test-info report --show-annotations --output-file /builds/worker/artifacts/test-info-manifest-conditions.json

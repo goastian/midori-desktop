@@ -159,20 +159,18 @@ class VendorRust(MozbuildObject):
         if not out.startswith("cargo"):
             return False
         version = LooseVersion(out.split()[1])
-        # Cargo 1.71.0 changed vendoring in a way that creates a lot of noise
+        # Cargo 1.85.0 changed vendoring in a way that creates a lot of noise
         # if we go back and forth between vendoring with an older version and
         # a newer version. Only allow the newer versions.
         minimum_rust_version = MINIMUM_RUST_VERSION
-        if LooseVersion("1.71.0") >= MINIMUM_RUST_VERSION:
-            minimum_rust_version = "1.71.0"
+        if LooseVersion("1.85.0") >= MINIMUM_RUST_VERSION:
+            minimum_rust_version = "1.85.0"
         if version < minimum_rust_version:
             self.log(
                 logging.ERROR,
                 "cargo_version",
                 {},
-                "Cargo >= {0} required (install Rust {0} or newer)".format(
-                    minimum_rust_version
-                ),
+                f"Cargo >= {minimum_rust_version} required (install Rust {minimum_rust_version} or newer)",
             )
             return False
         self.log(logging.DEBUG, "cargo_version", {}, "cargo is new enough")
@@ -329,6 +327,8 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
         # product but has a license-file that needs ignoring
         "fuchsia-cprng": "03b114f53e6587a398931762ee11e2395bfdba252a329940e2c8c9e81813845b",
         # ICU4X uses Unicode v3 license
+        "icu_calendar": ICU4X_LICENSE_SHA256,
+        "icu_calendar_data": ICU4X_LICENSE_SHA256,
         "icu_collections": ICU4X_LICENSE_SHA256,
         "icu_locid": ICU4X_LICENSE_SHA256,
         "icu_locid_transform": ICU4X_LICENSE_SHA256,
@@ -396,9 +396,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
 
     def _check_licenses(self, vendor_dir: str) -> bool:
         def verify_acceptable_license(package: str, license: str) -> bool:
-            self.log(
-                logging.DEBUG, "package_license", {}, "has license {}".format(license)
-            )
+            self.log(logging.DEBUG, "package_license", {}, f"has license {license}")
 
             if not self.runtime_license(package, license):
                 if license not in self.BUILDTIME_LICENSE_WHITELIST:
@@ -406,13 +404,11 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
                         logging.ERROR,
                         "package_license_error",
                         {},
-                        """Package {} has a non-approved license: {}.
+                        f"""Package {package} has a non-approved license: {license}.
 
     Please request license review on the package's license.  If the package's license
     is approved, please add it to the whitelist of suitable licenses.
-    """.format(
-                            package, license
-                        ),
+    """,
                     )
                     return False
                 elif package not in self.BUILDTIME_LICENSE_WHITELIST[license]:
@@ -420,16 +416,14 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
                         logging.ERROR,
                         "package_license_error",
                         {},
-                        """Package {} has a license that is approved for build-time dependencies:
-    {}
+                        f"""Package {package} has a license that is approved for build-time dependencies:
+    {license}
     but the package itself is not whitelisted as being a build-time only package.
 
     If your package is build-time only, please add it to the whitelist of build-time
     only packages. Otherwise, you need to request license review on the package's license.
     If the package's license is approved, please add it to the whitelist of suitable licenses.
-    """.format(
-                            package, license
-                        ),
+    """,
                     )
                     return False
             return True
@@ -439,7 +433,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
                 logging.DEBUG,
                 "package_check",
                 {},
-                "Checking license for {}".format(package_name),
+                f"Checking license for {package_name}",
             )
 
             toml_file = os.path.join(vendor_dir, package_name, "Cargo.toml")
@@ -455,9 +449,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
                     logging.ERROR,
                     "package_invalid_license_format",
                     {},
-                    "package {} has an invalid `license` field (expected a string)".format(
-                        package_name
-                    ),
+                    f"package {package_name} has an invalid `license` field (expected a string)",
                 )
                 return False
 
@@ -466,9 +458,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
                     logging.ERROR,
                     "package_invalid_license_format",
                     {},
-                    "package {} has an invalid `license-file` field (expected a string)".format(
-                        package_name
-                    ),
+                    f"package {package_name} has an invalid `license-file` field (expected a string)",
                 )
                 return False
 
@@ -479,7 +469,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
                     logging.ERROR,
                     "package_no_license",
                     {},
-                    "package {} does not provide a license".format(package_name),
+                    f"package {package_name} does not provide a license",
                 )
                 return False
 
@@ -491,7 +481,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
                     logging.ERROR,
                     "package_many_licenses",
                     {},
-                    "package {} provides too many licenses".format(package_name),
+                    f"package {package_name} provides too many licenses",
                 )
                 return False
 
@@ -504,7 +494,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
                 logging.DEBUG,
                 "package_license_file",
                 {},
-                "package has license-file {}".format(license_file),
+                f"package has license-file {license_file}",
             )
 
             if package_name not in self.RUNTIME_LICENSE_FILE_PACKAGE_WHITELIST:
@@ -512,13 +502,11 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
                     logging.ERROR,
                     "package_license_file_unknown",
                     {},
-                    """Package {} has an unreviewed license file: {}.
+                    f"""Package {package_name} has an unreviewed license file: {license_file}.
 
 Please request review on the provided license; if approved, the package can be added
 to the whitelist of packages whose licenses are suitable.
-""".format(
-                        package_name, license_file
-                    ),
+""",
                 )
                 return False
 
@@ -534,13 +522,11 @@ to the whitelist of packages whose licenses are suitable.
                     logging.ERROR,
                     "package_license_file_mismatch",
                     {},
-                    """Package {} has changed its license file: {} (hash {}).
+                    f"""Package {package_name} has changed its license file: {license_file} (hash {current_hash}).
 
 Please request review on the provided license; if approved, please update the
 license file's hash.
-""".format(
-                        package_name, license_file, current_hash
-                    ),
+""",
                 )
                 return False
             return True
@@ -764,7 +750,13 @@ license file's hash.
             env=env,
         )
         if res.returncode:
-            vet = json.loads(res.stdout)
+            try:
+                vet = json.loads(res.stdout)
+            except Exception:
+                # Most likely, if we're in a situation where stdout is not JSON,
+                # stderr will have had some error message printed out, so falling
+                # back to a failure case with no additional error message is fine.
+                vet = {}
             logged_error = False
             for failure in vet.get("failures", []):
                 failure["crate"] = failure.pop("name")
@@ -895,11 +887,9 @@ license file's hash.
                 logging.ERROR,
                 "license_check_failed",
                 {},
-                """The changes from `mach vendor rust` will NOT be added to version control.
+                f"""The changes from `mach vendor rust` will NOT be added to version control.
 
-{notice}""".format(
-                    notice=CARGO_LOCK_NOTICE
-                ),
+{CARGO_LOCK_NOTICE}""",
             )
             self.repository.clean_directory(vendor_dir)
             return False
@@ -953,14 +943,12 @@ The changes from `mach vendor rust` will NOT be added to version control.
                 logging.WARN,
                 "filesize_check",
                 {},
-                """Your changes add {size} bytes of added files.
+                f"""Your changes add {cumulative_added_size} bytes of added files.
 
 Please consider finding ways to reduce the size of the vendored packages.
 For instance, check the vendored packages for unusually large test or
 benchmark files that don't need to be published to crates.io and submit
-a pull request upstream to ignore those files when publishing.""".format(
-                    size=cumulative_added_size
-                ),
+a pull request upstream to ignore those files when publishing.""",
             )
         if "MOZ_AUTOMATION" in os.environ:
             changed = self.repository.get_changed_files(mode="staged")

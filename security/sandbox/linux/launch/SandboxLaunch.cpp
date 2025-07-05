@@ -43,6 +43,9 @@
 #include "nsThreadUtils.h"
 #include "prenv.h"
 #include "sandbox/linux/system_headers/linux_syscalls.h"
+#include "sandbox/linux/services/syscall_wrappers.h"
+
+#include "mozilla/pthread_atfork.h"
 
 #ifdef MOZ_X11
 #  ifndef MOZ_WIDGET_GTK
@@ -53,6 +56,11 @@
 #  include <gdk/gdkx.h>
 #  include "X11UndefineNone.h"
 #  include "gfxPlatform.h"
+#endif
+
+#if defined(__GLIBC__) && !defined(__UCLIBC__)
+// We really are using glibc, not uClibc pretending to be glibc.
+#  define LIBC_GLIBC 1
 #endif
 
 namespace mozilla {
@@ -180,7 +188,7 @@ static bool ContentNeedsSysVIPC() {
   }
 #endif
 
-  if (!StaticPrefs::security_sandbox_content_headless_AtStartup()) {
+  if (GetEffectiveContentSandboxLevel() < 5) {
     // Bug 1438391: VirtualGL uses SysV shm for images and configuration.
     if (PR_GetEnv("VGL_ISACTIVE") != nullptr) {
       return true;
@@ -214,10 +222,30 @@ static void PreloadSandboxLib(base::environment_map* aEnv) {
   (*aEnv)["LD_PRELOAD"] = preload.get();
 }
 
-static void AttachSandboxReporter(base::file_handle_mapping_vector* aFdMap) {
-  int srcFd, dstFd;
-  SandboxReporter::Singleton()->GetClientFileDescriptorMapping(&srcFd, &dstFd);
-  aFdMap->push_back({srcFd, dstFd});
+static bool AttachSandboxReporter(geckoargs::ChildProcessArgs& aExtraOpts) {
+  UniqueFileHandle clientFileDescriptor(
+      dup(SandboxReporter::Singleton()->GetClientFileDescriptor()));
+  if (!clientFileDescriptor) {
+    SANDBOX_LOG_ERRNO("dup");
+    return false;
+  }
+
+  geckoargs::sSandboxReporter.Put(std::move(clientFileDescriptor), aExtraOpts);
+  return true;
+}
+
+static bool AttachSandboxChroot(geckoargs::ChildProcessArgs& aExtraOpts,
+                                base::LaunchOptions* aOptions) {
+  int fds[2];
+  int rv = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds);
+  if (rv != 0) {
+    SANDBOX_LOG_ERRNO("socketpair");
+    return false;
+  }
+
+  geckoargs::sChrootClient.Put(UniqueFileHandle{fds[0]}, aExtraOpts);
+  aOptions->sandbox_chroot_server.reset(fds[1]);
+  return true;
 }
 
 static int GetEffectiveSandboxLevel(GeckoProcessType aType,
@@ -225,9 +253,9 @@ static int GetEffectiveSandboxLevel(GeckoProcessType aType,
   auto info = SandboxInfo::Get();
   switch (aType) {
 #ifdef MOZ_ENABLE_FORKSERVER
-      // With this env MOZ_SANDBOXED will be set, and mozsandbox will
-      // be preloaded for the fork server.  Sandboxed child processes
-      // rely on wrappers defined by mozsandbox to work properly.
+      // With this mozsandbox will be preloaded for the fork server.  Sandboxed
+      // child processes rely on wrappers defined by mozsandbox to work
+      // properly.
     case GeckoProcessType_ForkServer:
       return 1;
       break;
@@ -258,28 +286,30 @@ static int GetEffectiveSandboxLevel(GeckoProcessType aType,
 }
 
 // static
-void SandboxLaunch::Configure(GeckoProcessType aType, SandboxingKind aKind,
+bool SandboxLaunch::Configure(GeckoProcessType aType, SandboxingKind aKind,
+                              geckoargs::ChildProcessArgs& aExtraOpts,
                               LaunchOptions* aOptions) {
-  MOZ_ASSERT(aOptions->fork_flags == 0 && !aOptions->sandbox_chroot);
+  MOZ_ASSERT(aOptions->fork_flags == 0 && !aOptions->sandbox_chroot_server);
   auto info = SandboxInfo::Get();
 
   // We won't try any kind of sandboxing without seccomp-bpf.
   if (!info.Test(SandboxInfo::kHasSeccompBPF)) {
-    return;
+    return true;
   }
 
   // Check prefs (and env vars) controlling sandbox use.
   int level = GetEffectiveSandboxLevel(aType, aKind);
   if (level == 0) {
-    return;
+    return true;
   }
 
   // At this point, we know we'll be using sandboxing; generic
-  // sandboxing support goes here.  The MOZ_SANDBOXED env var tells
-  // the child process whether this is the case.
-  aOptions->env_map["MOZ_SANDBOXED"] = "1";
+  // sandboxing support goes here.
   PreloadSandboxLib(&aOptions->env_map);
-  AttachSandboxReporter(&aOptions->fds_to_remap);
+  if (aType != GeckoProcessType_ForkServer &&
+      !AttachSandboxReporter(aExtraOpts)) {
+    return false;
+  }
 
   bool canChroot = false;
   int flags = 0;
@@ -294,14 +324,16 @@ void SandboxLaunch::Configure(GeckoProcessType aType, SandboxingKind aKind,
       flags |= CLONE_NEWIPC;
     }
 
-    if (StaticPrefs::security_sandbox_content_headless_AtStartup()) {
+    // The intent of level 5 is to block display server access, so
+    // tell the content process not to attempt to connect.
+    if (GetEffectiveContentSandboxLevel() >= 5) {
       aOptions->env_map["MOZ_HEADLESS"] = "1";
     }
   }
 
   // Anything below this requires unprivileged user namespaces.
   if (!info.Test(SandboxInfo::kHasUserNamespaces)) {
-    return;
+    return true;
   }
 
   switch (aType) {
@@ -334,9 +366,8 @@ void SandboxLaunch::Configure(GeckoProcessType aType, SandboxingKind aKind,
         // function definition above for details.  (The display
         // local-ness is cached because it won't change.)
         static const bool canCloneNet =
-            StaticPrefs::security_sandbox_content_headless_AtStartup() ||
-            (IsGraphicsOkWithoutNetwork() &&
-             !PR_GetEnv("RENDERDOC_CAPTUREOPTS"));
+            level >= 5 || (IsGraphicsOkWithoutNetwork() &&
+                           !PR_GetEnv("RENDERDOC_CAPTUREOPTS"));
 
         if (canCloneNet) {
           flags |= CLONE_NEWNET;
@@ -354,49 +385,33 @@ void SandboxLaunch::Configure(GeckoProcessType aType, SandboxingKind aKind,
       break;
   }
 
+  if (canChroot && !AttachSandboxChroot(aExtraOpts, aOptions)) {
+    return false;
+  }
+
   if (canChroot || flags != 0) {
     flags |= CLONE_NEWUSER;
   }
 
   aOptions->env_map[kSandboxChrootEnvFlag] = std::to_string(canChroot ? 1 : 0);
 
-  aOptions->sandbox_chroot = canChroot;
   aOptions->fork_flags = flags;
+  return true;
 }
 
-SandboxLaunch::SandboxLaunch()
-    : mFlags(0), mChrootServer(-1), mChrootClient(-1) {}
+SandboxLaunch::SandboxLaunch() : mFlags(0), mChrootServer(-1) {}
 
 SandboxLaunch::~SandboxLaunch() {
-  if (mChrootClient >= 0) {
-    close(mChrootClient);
-  }
   if (mChrootServer >= 0) {
     close(mChrootServer);
   }
 }
 
 bool SandboxLaunch::Prepare(LaunchOptions* aOptions) {
-  MOZ_ASSERT(mChrootClient < 0 && mChrootServer < 0);
+  MOZ_ASSERT(mChrootServer < 0);
 
   mFlags = aOptions->fork_flags;
-
-  // Create the socket for communication between the child process and
-  // the chroot helper process.  The client end is passed to the child
-  // via `fds_to_remap` and the server end is inherited and used in
-  // `StartChrootServer`.
-  if (aOptions->sandbox_chroot) {
-    int fds[2];
-    int rv = socketpair(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0, fds);
-    if (rv != 0) {
-      SANDBOX_LOG_ERRNO("socketpair");
-      return false;
-    }
-    mChrootClient = fds[0];
-    mChrootServer = fds[1];
-
-    aOptions->fds_to_remap.push_back({mChrootClient, kSandboxChrootClientFd});
-  }
+  mChrootServer = aOptions->sandbox_chroot_server.release();
 
   return true;
 }
@@ -424,7 +439,7 @@ static void RestoreSignals(const sigset_t* aOldSigs) {
 }
 
 static bool IsSignalIgnored(int aSig) {
-  struct sigaction sa {};
+  struct sigaction sa{};
 
   if (sigaction(aSig, nullptr, &sa) != 0) {
     if (errno != EINVAL) {
@@ -447,6 +462,22 @@ static void ResetSignalHandlers() {
 }
 
 namespace {
+
+#if defined(LIBC_GLIBC)
+/*
+ * The following is using imported code from Chromium's
+ * sandbox/linux/services/namespace_sandbox.cc
+ */
+
+#  if !defined(CHECK_EQ)
+#    define CHECK_EQ(a, b) MOZ_RELEASE_ASSERT((a) == (b))
+#  endif
+
+// for sys_gettid()
+using namespace sandbox;
+
+#  include "glibc_hack/namespace_sandbox.inc"
+#endif  // defined(LIBC_GLIBC)
 
 // The libc clone() routine insists on calling a provided function on
 // a new stack, even if the address space isn't shared and it would be
@@ -486,7 +517,7 @@ MOZ_NEVER_INLINE MOZ_ASAN_IGNORE static pid_t DoClone(int aFlags,
 #ifdef __hppa__
   void* stackPtr = miniStack;
 #else
-  void* stackPtr = ArrayEnd(miniStack);
+  void* stackPtr = std::end(miniStack);
 #endif
   return clone(CloneCallee, stackPtr, aFlags, aCtx);
 }
@@ -512,9 +543,16 @@ static pid_t ForkWithFlags(int aFlags) {
   if (setjmp(ctx) == 0) {
     // In the parent and just called setjmp:
     ret = DoClone(aFlags | SIGCHLD, &ctx);
+    // ret is >0 on success (a valid tid) or -1 on error
+    MOZ_DIAGNOSTIC_ASSERT(ret != 0);
   }
+  // The child longjmps to here, with ret = 0.
   RestoreSignals(&oldSigs);
-  // In the child and have longjmp'ed:
+#if defined(LIBC_GLIBC)
+  if (ret == 0) {
+    MaybeUpdateGlibcTidCache();
+  }
+#endif
   return ret;
 }
 
@@ -591,11 +629,24 @@ pid_t SandboxLaunch::Fork() {
   // can't run atfork hooks.)
   sigset_t oldSigs;
   BlockAllSignals(&oldSigs);
+
+#if defined(MOZ_ENABLE_FORKSERVER)
+  run_moz_pthread_atfork_handlers_prefork();
+#endif
+
   pid_t pid = ForkWithFlags(mFlags);
   if (pid != 0) {
+#if defined(MOZ_ENABLE_FORKSERVER)
+    run_moz_pthread_atfork_handlers_postfork_parent();
+#endif
+
     RestoreSignals(&oldSigs);
     return pid;
   }
+
+#if defined(MOZ_ENABLE_FORKSERVER)
+  run_moz_pthread_atfork_handlers_postfork_child();
+#endif
 
   // WARNING: all code from this point on (and in StartChrootServer)
   // must be async signal safe.  In particular, it cannot do anything
@@ -611,11 +662,6 @@ pid_t SandboxLaunch::Fork() {
 
   if (mChrootServer >= 0) {
     StartChrootServer();
-    // Don't close the client fd when this object is destroyed.  At
-    // this point we're in the child process proper, so it's "owned"
-    // by the FileDescriptorShuffle / CloseSuperfluous code (i.e.,
-    // that's what will consume it and close it).
-    mChrootClient = -1;
   }
 
   // execve() will drop capabilities, but the fork server case doesn't
@@ -648,7 +694,7 @@ void SandboxLaunch::StartChrootServer() {
   caps.Effective(CAP_SYS_CHROOT) = true;
   if (!caps.SetCurrent()) {
     SANDBOX_LOG_ERRNO("capset (chroot helper)");
-    MOZ_DIAGNOSTIC_ASSERT(false);
+    MOZ_DIAGNOSTIC_CRASH("caps.SetCurrent() failed");
   }
 
   base::CloseSuperfluousFds(this, [](void* aCtx, int aFd) {

@@ -11,7 +11,7 @@ from threading import RLock
 import six
 
 
-class SocketTimeout(object):
+class SocketTimeout:
     def __init__(self, socket_ctx, timeout):
         self.socket_ctx = socket_ctx
         self.timeout = timeout
@@ -25,7 +25,7 @@ class SocketTimeout(object):
         self.socket_ctx.socket_timeout = self.old_timeout
 
 
-class Message(object):
+class Message:
     def __init__(self, msgid):
         self.id = msgid
 
@@ -49,9 +49,7 @@ class Command(Message):
         self.params = params
 
     def __str__(self):
-        return "<Command id={0}, name={1}, params={2}>".format(
-            self.id, self.name, self.params
-        )
+        return f"<Command id={self.id}, name={self.name}, params={self.params}>"
 
     def to_msg(self):
         msg = [Command.TYPE, self.id, self.name, self.params]
@@ -73,9 +71,7 @@ class Response(Message):
         self.result = result
 
     def __str__(self):
-        return "<Response id={0}, error={1}, result={2}>".format(
-            self.id, self.error, self.result
-        )
+        return f"<Response id={self.id}, error={self.error}, result={self.result}>"
 
     def to_msg(self):
         msg = [Response.TYPE, self.id, self.error, self.result]
@@ -87,7 +83,7 @@ class Response(Message):
         return Response(data[1], data[2], data[3])
 
 
-class SocketContext(object):
+class SocketContext:
     """Object that guards access to a socket via a lock.
 
     The socket must be accessed using this object as a context manager;
@@ -116,7 +112,7 @@ class SocketContext(object):
         self.lock.release()
 
 
-class TcpTransport(object):
+class TcpTransport:
     """Socket client that communciates with Marionette via TCP.
 
     It speaks the protocol of the remote debugger in Gecko, in which
@@ -177,7 +173,7 @@ class TcpTransport(object):
         elif msg_type == Response.TYPE:
             msg = Response.from_msg(data)
         else:
-            raise ValueError("Invalid message body {!r}".format(packet))
+            raise ValueError(f"Invalid message body {packet!r}")
 
         return msg
 
@@ -216,7 +212,7 @@ class TcpTransport(object):
             while recv_bytes > 0:
                 if timeout_time is not None and time.time() > timeout_time:
                     raise socket.timeout(
-                        "Connection timed out after {}s".format(self.socket_timeout)
+                        f"Connection timed out after {self.socket_timeout}s"
                     )
 
                 try:
@@ -226,7 +222,7 @@ class TcpTransport(object):
                     continue
 
                 if not chunk:
-                    raise socket.error("No data received over socket")
+                    raise OSError("No data received over socket")
 
                 body_part = None
                 if body_length > 0:
@@ -237,9 +233,7 @@ class TcpTransport(object):
 
                     # With > 10 decimal digits we aren't going to have a 32 bit number
                     if len(length_prefix) > 10:
-                        raise ValueError(
-                            "Invalid message length: {!r}".format(length_prefix)
-                        )
+                        raise ValueError(f"Invalid message length: {length_prefix!r}")
 
                     if len(parts) == 2:
                         # We found a : so we know the full length
@@ -255,9 +249,7 @@ class TcpTransport(object):
                                 err = "expected a 32 bit integer"
                         if err is not None:
                             raise ValueError(
-                                "Invalid message length: {} got {!r}".format(
-                                    err, length_prefix
-                                )
+                                f"Invalid message length: {err} got {length_prefix!r}"
                             )
                         body_part = parts[1]
 
@@ -310,16 +302,14 @@ class TcpTransport(object):
         except socket.timeout:
             exc_cls, exc, tb = sys.exc_info()
             msg = "Connection attempt failed because no data has been received over the socket: {}"
-            six.reraise(exc_cls, exc_cls(msg.format(exc)), tb)
+            raise exc_cls(msg.format(exc)).with_traceback(tb)
 
         hello = json.loads(raw)
         application_type = hello.get("applicationType")
         protocol = hello.get("marionetteProtocol")
 
         if application_type != "gecko":
-            raise ValueError(
-                "Application type '{}' is not supported".format(application_type)
-            )
+            raise ValueError(f"Application type '{application_type}' is not supported")
 
         if not isinstance(protocol, int) or protocol < self.min_protocol_level:
             msg = "Earliest supported protocol level is '{}' but got '{}'"
@@ -351,10 +341,8 @@ class TcpTransport(object):
             while totalsent < len(payload):
                 sent = sock.send(payload[totalsent:])
                 if sent == 0:
-                    raise IOError(
-                        "Socket error after sending {0} of {1} bytes".format(
-                            totalsent, len(payload)
-                        )
+                    raise OSError(
+                        f"Socket error after sending {totalsent} of {len(payload)} bytes"
                     )
                 else:
                     totalsent += sent
@@ -393,7 +381,7 @@ class TcpTransport(object):
             with self._socket_context as sock:
                 try:
                     sock.shutdown(socket.SHUT_RDWR)
-                except IOError as exc:
+                except OSError as exc:
                     # If the socket is already closed, don't care about:
                     #   Errno  57: Socket not connected
                     #   Errno 107: Transport endpoint is not connected

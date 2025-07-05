@@ -23,7 +23,7 @@ SCRIPT_DIR = os.path.abspath(os.path.realpath(os.path.dirname(__file__)))
 env["CPP_UNIT_TESTS_DIR_JS_SRC"] = os.path.abspath(os.path.join(SCRIPT_DIR, "..", ".."))
 
 
-class CPPUnitTests(object):
+class CPPUnitTests:
     # Time (seconds) to wait for test process to complete
     TEST_PROC_TIMEOUT = 900
     # Time (seconds) in which process will be killed if it produces no output.
@@ -280,7 +280,7 @@ def extract_unittests_from_args(args, environ, manifest_path):
             if os.path.isdir(p):
                 try:
                     mp.read(os.path.join(p, "cppunittest.toml"))
-                except IOError:
+                except OSError:
                     files = [os.path.abspath(os.path.join(p, x)) for x in os.listdir(p)]
                     tests.extend(
                         (f, 1) for f in files if os.access(f, os.R_OK | os.X_OK)

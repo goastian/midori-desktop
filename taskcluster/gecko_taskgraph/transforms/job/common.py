@@ -7,50 +7,11 @@ worker implementation they operate on, and take the same three parameters, for
 consistency.
 """
 
-
+from taskgraph.transforms.run.common import CACHES, add_cache
 from taskgraph.util.keyed_by import evaluate_keyed_by
 from taskgraph.util.taskcluster import get_artifact_prefix
 
 SECRET_SCOPE = "secrets:get:project/releng/{trust_domain}/{kind}/level-{level}/{secret}"
-
-
-def add_cache(job, taskdesc, name, mount_point, skip_untrusted=False):
-    """Adds a cache based on the worker's implementation.
-
-    Args:
-        job (dict): Task's job description.
-        taskdesc (dict): Target task description to modify.
-        name (str): Name of the cache.
-        mount_point (path): Path on the host to mount the cache.
-        skip_untrusted (bool): Whether cache is used in untrusted environments
-            (default: False). Only applies to docker-worker.
-    """
-    if not job["run"].get("use-caches", True):
-        return
-
-    worker = job["worker"]
-
-    if worker["implementation"] == "docker-worker":
-        taskdesc["worker"].setdefault("caches", []).append(
-            {
-                "type": "persistent",
-                "name": name,
-                "mount-point": mount_point,
-                "skip-untrusted": skip_untrusted,
-            }
-        )
-
-    elif worker["implementation"] == "generic-worker":
-        taskdesc["worker"].setdefault("mounts", []).append(
-            {
-                "cache-name": name,
-                "directory": mount_point,
-            }
-        )
-
-    else:
-        # Caches not implemented
-        pass
 
 
 def add_artifacts(config, job, taskdesc, path):
@@ -80,7 +41,24 @@ def generic_worker_add_artifacts(config, job, taskdesc):
     add_artifacts(config, job, taskdesc, path=path)
 
 
-def support_vcs_checkout(config, job, taskdesc, sparse=False):
+def get_cache_name(config, job):
+    cache_name = "checkouts"
+
+    # Sparse checkouts need their own cache because they can interfere
+    # with clients that aren't sparse aware.
+    if job["run"]["sparse-profile"]:
+        cache_name += "-sparse"
+
+    # Workers using Mercurial >= 5.8 will enable revlog-compression-zstd, which
+    # workers using older versions can't understand, so they can't share cache.
+    # At the moment, only docker workers use the newer version.
+    if job["worker"]["implementation"] == "docker-worker":
+        cache_name += "-hg58"
+
+    return cache_name
+
+
+def support_vcs_checkout(config, job, taskdesc):
     """Update a job/task with parameters to enable a VCS checkout.
 
     This can only be used with ``run-task`` tasks, as the cache name is
@@ -89,39 +67,32 @@ def support_vcs_checkout(config, job, taskdesc, sparse=False):
     worker = job["worker"]
     is_mac = worker["os"] == "macosx"
     is_win = worker["os"] == "windows"
-    is_linux = worker["os"] == "linux" or "linux-bitbar"
+    is_linux = worker["os"] == "linux" or "linux-bitbar" or "linux-lambda"
     is_docker = worker["implementation"] == "docker-worker"
     assert is_mac or is_win or is_linux
 
     if is_win:
-        checkoutdir = "./build"
+        checkoutdir = "build"
         geckodir = f"{checkoutdir}/src"
-        hgstore = "y:/hg-shared"
+        if "aarch64" in job["worker-type"] or "a64" in job["worker-type"]:
+            # arm64 instances on azure don't support local ssds
+            hgstore = f"{checkoutdir}/hg-store"
+        else:
+            hgstore = "y:/hg-shared"
     elif is_docker:
         checkoutdir = "{workdir}/checkouts".format(**job["run"])
         geckodir = f"{checkoutdir}/gecko"
         hgstore = f"{checkoutdir}/hg-store"
     else:
-        checkoutdir = "./checkouts"
+        checkoutdir = "checkouts"
         geckodir = f"{checkoutdir}/gecko"
         hgstore = f"{checkoutdir}/hg-shared"
 
-    cache_name = "checkouts"
+    # Use some Gecko specific logic to determine cache name.
+    CACHES["checkout"]["cache_name"] = get_cache_name
 
-    # Sparse checkouts need their own cache because they can interfere
-    # with clients that aren't sparse aware.
-    if sparse:
-        cache_name += "-sparse"
-
-    # Workers using Mercurial >= 5.8 will enable revlog-compression-zstd, which
-    # workers using older versions can't understand, so they can't share cache.
-    # At the moment, only docker workers use the newer version.
-    if is_docker:
-        cache_name += "-hg58"
-
-    add_cache(job, taskdesc, cache_name, checkoutdir)
-
-    taskdesc["worker"].setdefault("env", {}).update(
+    env = taskdesc["worker"].setdefault("env", {})
+    env.update(
         {
             "GECKO_BASE_REPOSITORY": config.params["base_repository"],
             "GECKO_HEAD_REPOSITORY": config.params["head_repository"],
@@ -129,7 +100,8 @@ def support_vcs_checkout(config, job, taskdesc, sparse=False):
             "HG_STORE_PATH": hgstore,
         }
     )
-    taskdesc["worker"]["env"].setdefault("GECKO_PATH", geckodir)
+
+    gecko_path = env.setdefault("GECKO_PATH", geckodir)
 
     if "comm_base_repository" in config.params:
         taskdesc["worker"]["env"].update(
@@ -153,46 +125,7 @@ def support_vcs_checkout(config, job, taskdesc, sparse=False):
     if job["worker"]["implementation"] in ("docker-worker",):
         taskdesc["worker"]["taskcluster-proxy"] = True
 
-
-def generic_worker_hg_commands(
-    base_repo, head_repo, head_rev, path, sparse_profile=None
-):
-    """Obtain commands needed to obtain a Mercurial checkout on generic-worker.
-
-    Returns two command strings. One performs the checkout. Another logs.
-    """
-    args = [
-        r'"c:\Program Files\Mercurial\hg.exe"',
-        "robustcheckout",
-        "--sharebase",
-        r"y:\hg-shared",
-        "--purge",
-        "--upstream",
-        base_repo,
-        "--revision",
-        head_rev,
-    ]
-
-    if sparse_profile:
-        args.extend(["--config", "extensions.sparse="])
-        args.extend(["--sparseprofile", sparse_profile])
-
-    args.extend(
-        [
-            head_repo,
-            path,
-        ]
-    )
-
-    logging_args = [
-        b":: TinderboxPrint:<a href={source_repo}/rev/{revision} "
-        b"title='Built from {repo_name} revision {revision}'>{revision}</a>"
-        b"\n".format(
-            revision=head_rev, source_repo=head_repo, repo_name=head_repo.split("/")[-1]
-        ),
-    ]
-
-    return [" ".join(args), " ".join(logging_args)]
+    return gecko_path
 
 
 def setup_secrets(config, job, taskdesc):

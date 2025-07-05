@@ -131,6 +131,12 @@ impl<'a> ParserContext<'a> {
         self.nesting_context.rule_types.contains(CssRuleType::Page)
     }
 
+    /// Returns whether !important declarations are forbidden.
+    #[inline]
+    pub fn allows_important_declarations(&self) -> bool {
+        !self.nesting_context.rule_types.intersects(CssRuleTypes::IMPORTANT_FORBIDDEN)
+    }
+
     /// Get the rule type, which assumes that one is available.
     pub fn rule_types(&self) -> CssRuleTypes {
         self.nesting_context.rule_types
@@ -162,6 +168,12 @@ impl<'a> ParserContext<'a> {
     #[inline]
     pub fn chrome_rules_enabled(&self) -> bool {
         self.url_data.chrome_rules_enabled() || self.stylesheet_origin != Origin::Author
+    }
+
+    /// Whether the parsing mode allows units or functions that are not computationally independent.
+    #[inline]
+    pub fn allows_computational_dependence(&self) -> bool {
+        self.parsing_mode.allows_computational_dependence()
     }
 }
 

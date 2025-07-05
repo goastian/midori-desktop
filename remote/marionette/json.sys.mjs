@@ -41,9 +41,9 @@ export const json = {};
  *     The cloned object.
  */
 function cloneObject(value, seen, cloneAlgorithm) {
-  // Only proceed with cloning an object if it hasn't been seen yet.
   if (seen.has(value)) {
-    throw new lazy.error.JavaScriptError("Cyclic object value");
+    // Only proceed with cloning an object if it hasn't been seen yet.
+    throw new lazy.error.JavaScriptError(`Cyclic object value: ${value}`);
   }
   seen.add(value);
 
@@ -98,7 +98,11 @@ function cloneObject(value, seen, cloneAlgorithm) {
  * @param {NodeCache} nodeCache
  *     Node cache that holds already seen WebElement and ShadowRoot references.
  *
- * @returns {Object<Map<BrowsingContext, Array<string>, object>>}
+ * @returns {{
+ *   seenNodeIds: Map<BrowsingContext, string[]>,
+ *   serializedValue: any,
+ *   hasSerializedWindows: boolean
+ * }}
  *     Object that contains a list of browsing contexts each with a list of
  *     shared ids for collected elements and shadow root nodes, and second the
  *     same object as provided by `value` with the WebDriver classic supported

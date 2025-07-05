@@ -79,9 +79,6 @@ endif
 ifdef USE_64
 NSPR_CONFIGURE_OPTS += --enable-64bit
 endif
-ifeq ($(OS_TARGET),WIN95)
-NSPR_CONFIGURE_OPTS += --enable-win32-target=WIN95
-endif
 ifdef USE_DEBUG_RTL
 NSPR_CONFIGURE_OPTS += --enable-debug-rtl
 endif
@@ -138,9 +135,14 @@ $(NSPR_CONFIG_STATUS): $(NSPR_CONFIGURE)
 	--prefix='$(NSS_GYP_PREFIX)'
 endif
 
+ifndef NSS_DISABLE_NSPR_TESTS
 build_nspr: $(NSPR_CONFIG_STATUS)
 	$(MAKE) -C $(CORE_DEPTH)/../nspr/$(OBJDIR_NAME)
 	$(MAKE) -C $(CORE_DEPTH)/../nspr/$(OBJDIR_NAME)/pr/tests
+else
+build_nspr: $(NSPR_CONFIG_STATUS)
+	$(MAKE) -C $(CORE_DEPTH)/../nspr/$(OBJDIR_NAME)
+endif
 
 install_nspr: build_nspr
 	$(MAKE) -C $(CORE_DEPTH)/../nspr/$(OBJDIR_NAME) install

@@ -28,12 +28,76 @@ private fun reducer(state: MenuState, action: MenuAction): MenuState {
     return when (action) {
         is MenuAction.InitAction,
         is MenuAction.AddBookmark,
+        is MenuAction.AddShortcut,
+        is MenuAction.RemoveShortcut,
         is MenuAction.DeleteBrowsingDataAndQuit,
+        is MenuAction.FindInPage,
+        is MenuAction.OpenInApp,
+        is MenuAction.OpenInFirefox,
+        is MenuAction.InstallAddon,
+        is MenuAction.CustomMenuItemAction,
+        is MenuAction.ToggleReaderView,
+        is MenuAction.CustomizeReaderView,
         is MenuAction.Navigate,
+        is MenuAction.SaveMenuClicked,
+        is MenuAction.ToolsMenuClicked,
+        is MenuAction.OnCFRShown,
+        is MenuAction.OpenInRegularTab,
+        is MenuAction.OnCFRDismiss,
         -> state
+
+        is MenuAction.RequestDesktopSite -> state.copy(isDesktopMode = true)
+
+        is MenuAction.RequestMobileSite -> state.copy(isDesktopMode = false)
+
+        is MenuAction.UpdateExtensionState -> state.copyWithExtensionMenuState {
+            it.copy(
+                recommendedAddons = action.recommendedAddons,
+            )
+        }
+
+        is MenuAction.UpdateWebExtensionBrowserMenuItems -> state.copyWithExtensionMenuState {
+            it.copy(browserWebExtensionMenuItem = action.webExtensionBrowserMenuItem)
+        }
 
         is MenuAction.UpdateBookmarkState -> state.copyWithBrowserMenuState {
             it.copy(bookmarkState = action.bookmarkState)
+        }
+
+        is MenuAction.UpdatePinnedState -> state.copyWithBrowserMenuState {
+            it.copy(isPinned = action.isPinned)
+        }
+
+        is MenuAction.UpdateInstallAddonInProgress -> state.copyWithExtensionMenuState {
+            it.copy(addonInstallationInProgress = action.addon)
+        }
+
+        is MenuAction.InstallAddonFailed -> state.copyWithExtensionMenuState {
+            it.copy(addonInstallationInProgress = null)
+        }
+
+        is MenuAction.InstallAddonSuccess -> state.copyWithExtensionMenuState { extensionState ->
+            extensionState.copy(
+                recommendedAddons = state.extensionMenuState.recommendedAddons.filter { it != action.addon },
+                availableAddons = state.extensionMenuState.availableAddons.plus(action.addon),
+                addonInstallationInProgress = null,
+            )
+        }
+
+        is MenuAction.UpdateShowExtensionsOnboarding -> state.copyWithExtensionMenuState { extensionState ->
+            extensionState.copy(showExtensionsOnboarding = action.showExtensionsOnboarding)
+        }
+
+        is MenuAction.UpdateShowDisabledExtensionsOnboarding -> state.copyWithExtensionMenuState { extensionState ->
+            extensionState.copy(showDisabledExtensionsOnboarding = action.showDisabledExtensionsOnboarding)
+        }
+
+        is MenuAction.UpdateManageExtensionsMenuItemVisibility -> state.copyWithExtensionMenuState {
+            it.copy(shouldShowManageExtensionsMenuItem = action.isVisible)
+        }
+
+        is MenuAction.UpdateAvailableAddons -> state.copyWithExtensionMenuState {
+            it.copy(availableAddons = action.availableAddons)
         }
     }
 }
@@ -43,4 +107,11 @@ internal inline fun MenuState.copyWithBrowserMenuState(
     crossinline update: (BrowserMenuState) -> BrowserMenuState,
 ): MenuState {
     return this.copy(browserMenuState = this.browserMenuState?.let { update(it) })
+}
+
+@VisibleForTesting
+internal inline fun MenuState.copyWithExtensionMenuState(
+    crossinline update: (ExtensionMenuState) -> ExtensionMenuState,
+): MenuState {
+    return this.copy(extensionMenuState = update(this.extensionMenuState))
 }

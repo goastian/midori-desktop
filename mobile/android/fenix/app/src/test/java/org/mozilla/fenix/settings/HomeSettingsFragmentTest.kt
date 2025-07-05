@@ -22,14 +22,14 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mozilla.fenix.FeatureFlags
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.AppStore
-import org.mozilla.fenix.components.appstate.AppAction
+import org.mozilla.fenix.components.appstate.AppAction.ContentRecommendationsAction
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getPreferenceKey
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
+import org.mozilla.fenix.home.pocket.ContentRecommendationsFeatureHelper
 import org.mozilla.fenix.utils.Settings
 import org.robolectric.Robolectric
 
@@ -72,8 +72,8 @@ internal class HomeSettingsFragmentTest {
 
     @Test
     fun `GIVEN the Pocket sponsored stories feature is disabled for the app WHEN accessing settings THEN the settings for it are not visible`() {
-        mockkObject(FeatureFlags) {
-            every { FeatureFlags.isPocketSponsoredStoriesFeatureEnabled(any()) } returns false
+        mockkObject(ContentRecommendationsFeatureHelper) {
+            every { ContentRecommendationsFeatureHelper.isPocketSponsoredStoriesFeatureEnabled(any()) } returns false
 
             activateFragment()
 
@@ -83,8 +83,8 @@ internal class HomeSettingsFragmentTest {
 
     @Test
     fun `GIVEN the Pocket sponsored stories feature is enabled for the app WHEN accessing settings THEN the settings for it are visible`() {
-        mockkObject(FeatureFlags) {
-            every { FeatureFlags.isPocketSponsoredStoriesFeatureEnabled(any()) } returns true
+        mockkObject(ContentRecommendationsFeatureHelper) {
+            every { ContentRecommendationsFeatureHelper.isPocketSponsoredStoriesFeatureEnabled(any()) } returns true
 
             activateFragment()
 
@@ -122,7 +122,24 @@ internal class HomeSettingsFragmentTest {
     }
 
     @Test
+    fun `GIVEN the setting for Pocket sponsored stories is unchecked and MARS API is enabled WHEN tapping it THEN toggle it and start downloading stories`() {
+        every { appSettings.marsAPIEnabled } returns true
+
+        activateFragment()
+
+        val result = getSponsoredStoriesPreference().callChangeListener(true)
+
+        assertTrue(result)
+        verify {
+            appPrefsEditor.putBoolean(testContext.getString(R.string.pref_key_pocket_sponsored_stories), true)
+            pocketService.startPeriodicSponsoredContentsRefresh()
+        }
+    }
+
+    @Test
     fun `GIVEN the setting for Pocket sponsored stories is checked WHEN tapping it THEN toggle it, delete Pocket profile and remove sponsored stories from showing`() {
+        every { appSettings.showContentRecommendations } returns false
+
         activateFragment()
 
         val result = getSponsoredStoriesPreference().callChangeListener(false)
@@ -130,7 +147,36 @@ internal class HomeSettingsFragmentTest {
         assertTrue(result)
         verify { appPrefsEditor.putBoolean(testContext.getString(R.string.pref_key_pocket_sponsored_stories), false) }
         verify { pocketService.deleteProfile() }
-        verify { appStore.dispatch(AppAction.PocketSponsoredStoriesChange(emptyList())) }
+        verify {
+            appStore.dispatch(
+                ContentRecommendationsAction.PocketSponsoredStoriesChange(
+                    sponsoredStories = emptyList(),
+                    showContentRecommendations = false,
+                ),
+            )
+        }
+    }
+
+    @Test
+    fun `GIVEN the setting for Pocket sponsored stories is checked WHEN tapping it THEN toggle it, delete Pocket profile and remove sponsored contents from showing`() {
+        every { appSettings.marsAPIEnabled } returns true
+        every { appSettings.showContentRecommendations } returns false
+
+        activateFragment()
+
+        val result = getSponsoredStoriesPreference().callChangeListener(false)
+
+        assertTrue(result)
+        verify {
+            appPrefsEditor.putBoolean(testContext.getString(R.string.pref_key_pocket_sponsored_stories), false)
+            pocketService.deleteUser()
+            appStore.dispatch(
+                ContentRecommendationsAction.SponsoredContentsChange(
+                    sponsoredContents = emptyList(),
+                    showContentRecommendations = false,
+                ),
+            )
+        }
     }
 
     private fun activateFragment() {

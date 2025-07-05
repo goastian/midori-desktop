@@ -160,17 +160,13 @@ class ProfileSymbolicator:
     def integrate_symbol_zip_from_url(self, symbol_zip_url):
         if self.have_integrated(symbol_zip_url):
             return
-        LOG.info(
-            "Retrieving symbol zip from {symbol_zip_url}...".format(
-                symbol_zip_url=symbol_zip_url
-            )
-        )
+        LOG.info(f"Retrieving symbol zip from {symbol_zip_url}...")
         try:
             io = urlopen(symbol_zip_url, None, 30)
             with zipfile.ZipFile(sio(io.read())) as zf:
                 self.integrate_symbol_zip(zf)
             self._create_file_if_not_exists(self._marker_file(symbol_zip_url))
-        except (IOError, http.client.IncompleteRead):
+        except (OSError, http.client.IncompleteRead):
             LOG.info("Symbol zip request failed.")
 
     def integrate_symbol_zip_from_file(self, filename):
@@ -188,7 +184,7 @@ class ProfileSymbolicator:
             pass
         try:
             open(filename, "a").close()
-        except IOError:
+        except OSError:
             pass
 
     def integrate_symbol_zip(self, symbol_zip_file):

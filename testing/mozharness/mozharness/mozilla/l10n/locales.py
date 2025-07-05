@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 """Localization."""
 
 import os
@@ -13,7 +11,7 @@ from mozharness.base.config import parse_config_file
 
 
 # LocalesMixin {{{1
-class LocalesMixin(object):
+class LocalesMixin:
     def __init__(self, **kwargs):
         """Mixins generally don't have an __init__.
         This breaks super().__init__() for children.
@@ -85,7 +83,7 @@ class LocalesMixin(object):
         return self.locales
 
     def list_locales(self):
-        """Stub action method."""
+        """Stub action method, called from taskcluster as 'list-locales'."""
         self.info("Locale list: %s" % str(self.query_locales()))
 
     def parse_locales_file(self, locales_file):
@@ -136,53 +134,35 @@ class LocalesMixin(object):
         return self.abs_dirs
 
     # This requires self to inherit a VCSMixin.
-    def pull_locale_source(self, hg_l10n_base=None, parent_dir=None):
+    def pull_locale_source(self, parent_dir=None):
         c = self.config
         git_repository = c.get("git_repository")
-        if not hg_l10n_base:
-            hg_l10n_base = c["hg_l10n_base"]
         if parent_dir is None:
             parent_dir = self.query_abs_dirs()["abs_l10n_dir"]
         self.mkdir_p(parent_dir)
-        locales = self.query_locales()
-        locale_repos = []
-        if git_repository:
-            # At the time this code was written we decided we have no use case
-            # for separate revisions for different locales, and in fact, would
-            # like to remove support for this from l10n-changesets.json
-            # altogether. Because of this, we simply ensure that all revisions
-            # given are the same, and clone the repository once at that
-            # revision. This avoids unnecessary network operations and copies
-            # on disk.
-            revisions = set(self.l10n_revisions.values())
-            if len(revisions) != 1:
-                raise Exception(
-                    "All l10n revisions must be the same when pulling from a git repository!"
-                )
 
-            self.vcs_checkout(
-                vcs="gittool",
-                repo=git_repository,
-                dest=parent_dir,
-                revision=revisions.pop(),
+        # Populates self.l10n_revisions as a necessary side effect.
+        self.query_locales()
+
+        # At the time this code was written we decided we have no use case
+        # for separate revisions for different locales, and in fact, would
+        # like to remove support for this from l10n-changesets.json
+        # altogether. Because of this, we simply ensure that all revisions
+        # given are the same, and clone the repository once at that
+        # revision. This avoids unnecessary network operations and copies
+        # on disk.
+        revisions = set(self.l10n_revisions.values())
+        if len(revisions) != 1:
+            raise Exception(
+                f"All l10n revisions must be the same when pulling from a git repository! (n={len(revisions)})"
             )
-        else:
-            locale_repos = []
-            for locale in locales:
-                tag = c.get("hg_l10n_tag", "default")
-                if self.l10n_revisions.get(locale):
-                    tag = self.l10n_revisions[locale]
-                locale_repos.append(
-                    {
-                        "repo": "%s/%s" % (hg_l10n_base, locale),
-                        "branch": tag,
-                        "vcs": "hg",
-                    }
-                )
-            self.vcs_checkout_repos(
-                repo_list=locale_repos,
-                parent_dir=parent_dir,
-            )
+
+        self.vcs_checkout(
+            vcs="gittool",
+            repo=git_repository,
+            dest=parent_dir,
+            revision=revisions.pop(),
+        )
 
 
 # __main__ {{{1

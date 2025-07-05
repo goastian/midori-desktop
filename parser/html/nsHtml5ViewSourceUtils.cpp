@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsHtml5ViewSourceUtils.h"
-#include "mozilla/Preferences.h"
 #include "nsHtml5AttributeName.h"
 #include "nsHtml5String.h"
 #include "mozilla/StaticPrefs_view_source.h"
@@ -13,18 +12,6 @@ nsHtml5HtmlAttributes* nsHtml5ViewSourceUtils::NewBodyAttributes() {
   nsHtml5HtmlAttributes* bodyAttrs = new nsHtml5HtmlAttributes(0);
   nsHtml5String id = nsHtml5Portability::newStringFromLiteral("viewsource");
   bodyAttrs->addAttribute(nsHtml5AttributeName::ATTR_ID, id, -1);
-
-  nsString klass;
-  if (mozilla::StaticPrefs::view_source_wrap_long_lines()) {
-    klass.AppendLiteral(u"wrap ");
-  }
-  if (mozilla::StaticPrefs::view_source_syntax_highlight()) {
-    klass.AppendLiteral(u"highlight");
-  }
-  if (!klass.IsEmpty()) {
-    bodyAttrs->addAttribute(nsHtml5AttributeName::ATTR_CLASS,
-                            nsHtml5String::FromString(klass), -1);
-  }
 
   int32_t tabSize = mozilla::StaticPrefs::view_source_tab_size();
   if (tabSize > 0) {

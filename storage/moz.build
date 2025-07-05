@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Toolkit", "Storage")
+    BUG_COMPONENT = ("Core", "SQLite and Embedded Database Bindings")
 
 DIRS += ["build"]
 
@@ -101,8 +101,14 @@ if CONFIG["MOZ_THUNDERBIRD"] or CONFIG["MOZ_SUITE"]:
 if not CONFIG["MOZ_AVOID_DISK_REMNANT_ON_CLOSE"]:
     DEFINES["MOZ_SQLITE_PERSIST_AUXILIARY_FILES"] = 1
 
+# The vector extension is enabled only for Firefox, it could be opened up
+# to other products in the future.
+if CONFIG["MOZ_BUILD_APP"] == "browser":
+    DEFINES["MOZ_SQLITE_VEC0_EXT"] = 1
+
 LOCAL_INCLUDES += [
     "/dom/base",
+    "/third_party/sqlite3/ext",
     "/third_party/sqlite3/src",
 ]
 
@@ -110,3 +116,5 @@ if CONFIG["MOZ_FOLD_LIBS"]:
     DEFINES["MOZ_FOLD_LIBS"] = True
 
 CXXFLAGS += CONFIG["SQLITE_CFLAGS"]
+
+SPHINX_TREES["/storage"] = "docs"

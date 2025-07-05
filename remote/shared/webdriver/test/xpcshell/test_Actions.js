@@ -4,7 +4,7 @@
 
 "use strict";
 
-const { action, CLICK_INTERVAL, ClickTracker } = ChromeUtils.importESModule(
+const { actions, CLICK_INTERVAL, ClickTracker } = ChromeUtils.importESModule(
   "chrome://remote/content/shared/webdriver/Actions.sys.mjs"
 );
 
@@ -22,25 +22,28 @@ const domEl = {
 
 add_task(function test_createInputState() {
   for (let type of ["none", "key", "pointer" /*"wheel"*/]) {
-    const state = new action.State();
+    const state = new actions.State();
     const id = "device";
     const actionSequence = {
       type,
       id,
       actions: [],
     };
-    action.Chain.fromJSON(state, [actionSequence]);
+    actions.Chain.fromJSON(state, [actionSequence]);
     equal(state.inputStateMap.size, 1);
     equal(state.inputStateMap.get(id).constructor.type, type);
   }
 });
 
-add_task(function test_defaultPointerParameters() {
-  let state = new action.State();
+add_task(async function test_defaultPointerParameters() {
+  let state = new actions.State();
   const inputTickActions = [
     { type: "pointer", subtype: "pointerDown", button: 0 },
   ];
-  const chain = action.Chain.fromJSON(state, chainForTick(inputTickActions));
+  const chain = await actions.Chain.fromJSON(
+    state,
+    chainForTick(inputTickActions)
+  );
   const pointerAction = chain[0][0];
   equal(
     state.getInputSource(pointerAction.id).pointer.constructor.type,
@@ -48,7 +51,7 @@ add_task(function test_defaultPointerParameters() {
   );
 });
 
-add_task(function test_processPointerParameters() {
+add_task(async function test_processPointerParameters() {
   for (let subtype of ["pointerDown", "pointerUp"]) {
     for (let pointerType of [2, true, {}, []]) {
       const inputTickActions = [
@@ -60,7 +63,7 @@ add_task(function test_processPointerParameters() {
         },
       ];
       let message = `Action sequence with parameters: {pointerType: ${pointerType} subtype: ${subtype}}`;
-      checkFromJSONErrors(
+      await checkFromJSONErrors(
         inputTickActions,
         /Expected "pointerType" to be a string/,
         message
@@ -77,7 +80,7 @@ add_task(function test_processPointerParameters() {
         },
       ];
       let message = `Action sequence with parameters: {pointerType: ${pointerType} subtype: ${subtype}}`;
-      checkFromJSONErrors(
+      await checkFromJSONErrors(
         inputTickActions,
         /Expected "pointerType" to be one of/,
         message
@@ -86,7 +89,7 @@ add_task(function test_processPointerParameters() {
   }
 
   for (let pointerType of ["mouse" /*"touch"*/]) {
-    let state = new action.State();
+    let state = new actions.State();
     const inputTickActions = [
       {
         type: "pointer",
@@ -95,7 +98,10 @@ add_task(function test_processPointerParameters() {
         button: 0,
       },
     ];
-    const chain = action.Chain.fromJSON(state, chainForTick(inputTickActions));
+    const chain = await actions.Chain.fromJSON(
+      state,
+      chainForTick(inputTickActions)
+    );
     const pointerAction = chain[0][0];
     equal(
       state.getInputSource(pointerAction.id).pointer.constructor.type,
@@ -104,33 +110,36 @@ add_task(function test_processPointerParameters() {
   }
 });
 
-add_task(function test_processPointerDownAction() {
+add_task(async function test_processPointerDownAction() {
   for (let button of [-1, "a"]) {
     const inputTickActions = [
       { type: "pointer", subtype: "pointerDown", button },
     ];
-    checkFromJSONErrors(
+    await checkFromJSONErrors(
       inputTickActions,
       /Expected "button" to be a positive integer/,
       `pointerDown with {button: ${button}}`
     );
   }
-  let state = new action.State();
+  let state = new actions.State();
   const inputTickActions = [
     { type: "pointer", subtype: "pointerDown", button: 5 },
   ];
-  const chain = action.Chain.fromJSON(state, chainForTick(inputTickActions));
+  const chain = await actions.Chain.fromJSON(
+    state,
+    chainForTick(inputTickActions)
+  );
   equal(chain[0][0].button, 5);
 });
 
-add_task(function test_validateActionDurationAndCoordinates() {
+add_task(async function test_validateActionDurationAndCoordinates() {
   for (let [type, subtype] of [
     ["none", "pause"],
     ["pointer", "pointerMove"],
   ]) {
     for (let duration of [-1, "a"]) {
       const inputTickActions = [{ type, subtype, duration }];
-      checkFromJSONErrors(
+      await checkFromJSONErrors(
         inputTickActions,
         /Expected "duration" to be a positive integer/,
         `{subtype} with {duration: ${duration}}`
@@ -144,62 +153,81 @@ add_task(function test_validateActionDurationAndCoordinates() {
       duration: 5000,
     };
     actionItem[name] = "a";
-    checkFromJSONErrors(
+    await checkFromJSONErrors(
       [actionItem],
-      /Expected ".*" to be an integer/,
+      /Expected "." to be a finite number/,
       `${name}: "a", subtype: pointerMove`
     );
   }
 });
 
-add_task(function test_processPointerMoveActionOriginValidation() {
-  for (let origin of [-1, { a: "blah" }, []]) {
-    const inputTickActions = [
-      { type: "pointer", duration: 5000, subtype: "pointerMove", origin },
-    ];
-    checkFromJSONErrors(
-      inputTickActions,
-      /Expected "origin" to be undefined, "viewport", "pointer", or an element/,
-      `actionItem.origin: (${getTypeString(origin)})`
-    );
-  }
-});
-
-add_task(function test_processPointerMoveActionOriginStringValidation() {
+add_task(async function test_processPointerMoveActionOriginStringValidation() {
   for (let origin of ["", "viewports", "pointers"]) {
     const inputTickActions = [
-      { type: "pointer", duration: 5000, subtype: "pointerMove", origin },
+      {
+        type: "pointer",
+        x: 0,
+        y: 0,
+        duration: 5000,
+        subtype: "pointerMove",
+        origin,
+      },
     ];
-    checkFromJSONErrors(
+    await checkFromJSONErrors(
       inputTickActions,
       /Expected "origin" to be undefined, "viewport", "pointer", or an element/,
-      `actionItem.origin: ${origin}`
+      `actionItem.origin: ${origin}`,
+      { isElementOrigin: () => false }
     );
   }
 });
 
-add_task(function test_processPointerMoveActionElementOrigin() {
-  let state = new action.State();
+add_task(async function test_processPointerMoveActionOriginElementValidation() {
+  const element = { foo: "bar" };
   const inputTickActions = [
     {
       type: "pointer",
-      duration: 5000,
-      subtype: "pointerMove",
-      origin: domEl,
       x: 0,
       y: 0,
+      duration: 5000,
+      subtype: "pointerMove",
+      origin: element,
     },
   ];
-  const chain = action.Chain.fromJSON(state, chainForTick(inputTickActions));
-  deepEqual(chain[0][0].origin.element, domEl);
+
+  // invalid element origin
+  await checkFromJSONErrors(
+    inputTickActions,
+    /Expected "origin" to be undefined, "viewport", "pointer", or an element/,
+    `actionItem.origin: (${getTypeString(element)})`,
+    { isElementOrigin: elem => "foo1" in elem }
+  );
+
+  let state = new actions.State();
+  const actionsOptions = {
+    isElementOrigin: elem => "foo" in elem,
+    getElementOrigin: elem => elem,
+  };
+
+  // valid element origin
+  const chain = await actions.Chain.fromJSON(
+    state,
+    chainForTick(inputTickActions),
+    actionsOptions
+  );
+  deepEqual(chain[0][0].origin, { element });
 });
 
-add_task(function test_processPointerMoveActionDefaultOrigin() {
-  let state = new action.State();
+add_task(async function test_processPointerMoveActionDefaultOrigin() {
+  let state = new actions.State();
   const inputTickActions = [
-    { type: "pointer", duration: 5000, subtype: "pointerMove", x: 0, y: 0 },
+    { type: "pointer", x: 0, y: 0, duration: 5000, subtype: "pointerMove" },
   ];
-  const chain = action.Chain.fromJSON(state, chainForTick(inputTickActions));
+  const chain = await actions.Chain.fromJSON(
+    state,
+    chainForTick(inputTickActions),
+    {}
+  );
   // The default is viewport coordinates which have an origin at [0,0] and don't depend on inputSource
   deepEqual(chain[0][0].origin.getOriginCoordinates(null, null), {
     x: 0,
@@ -207,8 +235,8 @@ add_task(function test_processPointerMoveActionDefaultOrigin() {
   });
 });
 
-add_task(function test_processPointerMoveAction() {
-  let state = new action.State();
+add_task(async function test_processPointerMoveAction() {
+  let state = new actions.State();
   const actionItems = [
     {
       duration: 5000,
@@ -237,7 +265,16 @@ add_task(function test_processPointerMoveAction() {
     type: "pointer",
     actions: actionItems,
   };
-  let chain = action.Chain.fromJSON(state, [actionSequence]);
+  let actionsOptions = {
+    isElementOrigin: elem => elem == domEl,
+    getElementOrigin: elem => elem,
+  };
+
+  let chain = await actions.Chain.fromJSON(
+    state,
+    [actionSequence],
+    actionsOptions
+  );
   equal(chain.length, actionItems.length);
   for (let i = 0; i < actionItems.length; i++) {
     let actual = chain[i][0];
@@ -258,8 +295,8 @@ add_task(function test_processPointerMoveAction() {
   }
 });
 
-add_task(function test_computePointerDestinationViewport() {
-  const state = new action.State();
+add_task(async function test_computePointerDestinationViewport() {
+  const state = new actions.State();
   const inputTickActions = [
     {
       type: "pointer",
@@ -269,13 +306,17 @@ add_task(function test_computePointerDestinationViewport() {
       origin: "viewport",
     },
   ];
-  const chain = action.Chain.fromJSON(state, chainForTick(inputTickActions));
+  const chain = await actions.Chain.fromJSON(
+    state,
+    chainForTick(inputTickActions),
+    {}
+  );
   const actionItem = chain[0][0];
   const inputSource = state.getInputSource(actionItem.id);
   // these values should not affect the outcome
   inputSource.x = "99";
   inputSource.y = "10";
-  const target = actionItem.origin.getTargetCoordinates(
+  const target = await actionItem.origin.getTargetCoordinates(
     inputSource,
     [actionItem.x, actionItem.y],
     null
@@ -284,8 +325,8 @@ add_task(function test_computePointerDestinationViewport() {
   equal(actionItem.y, target[1]);
 });
 
-add_task(function test_computePointerDestinationPointer() {
-  const state = new action.State();
+add_task(async function test_computePointerDestinationPointer() {
+  const state = new actions.State();
   const inputTickActions = [
     {
       type: "pointer",
@@ -295,12 +336,16 @@ add_task(function test_computePointerDestinationPointer() {
       origin: "pointer",
     },
   ];
-  const chain = action.Chain.fromJSON(state, chainForTick(inputTickActions));
+  const chain = await actions.Chain.fromJSON(
+    state,
+    chainForTick(inputTickActions),
+    {}
+  );
   const actionItem = chain[0][0];
   const inputSource = state.getInputSource(actionItem.id);
   inputSource.x = 10;
   inputSource.y = 99;
-  const target = actionItem.origin.getTargetCoordinates(
+  const target = await actionItem.origin.getTargetCoordinates(
     inputSource,
     [actionItem.x, actionItem.y],
     null
@@ -309,7 +354,7 @@ add_task(function test_computePointerDestinationPointer() {
   equal(actionItem.y + inputSource.y, target[1]);
 });
 
-add_task(function test_processPointerAction() {
+add_task(async function test_processPointerAction() {
   for (let pointerType of ["mouse", "touch"]) {
     const actionItems = [
       {
@@ -335,8 +380,8 @@ add_task(function test_processPointerAction() {
       },
       actions: actionItems,
     };
-    const state = new action.State();
-    const chain = action.Chain.fromJSON(state, [actionSequence]);
+    const state = new actions.State();
+    const chain = await actions.Chain.fromJSON(state, [actionSequence], {});
     equal(chain.length, actionItems.length);
     for (let i = 0; i < actionItems.length; i++) {
       const actual = chain[i][0];
@@ -359,35 +404,37 @@ add_task(function test_processPointerAction() {
   }
 });
 
-add_task(function test_processPauseAction() {
+add_task(async function test_processPauseAction() {
   for (let type of ["none", "key", "pointer"]) {
-    const state = new action.State();
+    const state = new actions.State();
     const actionSequence = {
       type,
       id: "some_id",
       actions: [{ type: "pause", duration: 5000 }],
     };
-    const actionItem = action.Chain.fromJSON(state, [actionSequence])[0][0];
+    const chain = await actions.Chain.fromJSON(state, [actionSequence], {});
+    const actionItem = chain[0][0];
     equal(actionItem.type, "none");
     equal(actionItem.subtype, "pause");
     equal(actionItem.id, "some_id");
     equal(actionItem.duration, 5000);
   }
-  const state = new action.State();
+  const state = new actions.State();
   const actionSequence = {
     type: "none",
     id: "some_id",
     actions: [{ type: "pause" }],
   };
-  const actionItem = action.Chain.fromJSON(state, [actionSequence])[0][0];
+  const chain = await actions.Chain.fromJSON(state, [actionSequence], {});
+  const actionItem = chain[0][0];
   equal(actionItem.duration, undefined);
 });
 
-add_task(function test_processActionSubtypeValidation() {
+add_task(async function test_processActionSubtypeValidation() {
   for (let type of ["none", "key", "pointer"]) {
     const message = `type: ${type}, subtype: dancing`;
     const inputTickActions = [{ type, subtype: "dancing" }];
-    checkFromJSONErrors(
+    await checkFromJSONErrors(
       inputTickActions,
       new RegExp(`Expected known subtype for type`),
       message
@@ -395,24 +442,25 @@ add_task(function test_processActionSubtypeValidation() {
   }
 });
 
-add_task(function test_processKeyActionDown() {
+add_task(async function test_processKeyActionDown() {
   for (let value of [-1, undefined, [], ["a"], { length: 1 }, null]) {
     const inputTickActions = [{ type: "key", subtype: "keyDown", value }];
     const message = `actionItem.value: (${getTypeString(value)})`;
-    checkFromJSONErrors(
+    await checkFromJSONErrors(
       inputTickActions,
       /Expected "value" to be a string that represents single code point/,
       message
     );
   }
 
-  const state = new action.State();
+  const state = new actions.State();
   const actionSequence = {
     type: "key",
     id: "keyboard",
     actions: [{ type: "keyDown", value: "\uE004" }],
   };
-  const actionItem = action.Chain.fromJSON(state, [actionSequence])[0][0];
+  const chain = await actions.Chain.fromJSON(state, [actionSequence], {});
+  const actionItem = chain[0][0];
 
   equal(actionItem.type, "key");
   equal(actionItem.id, "keyboard");
@@ -420,53 +468,53 @@ add_task(function test_processKeyActionDown() {
   equal(actionItem.value, "\ue004");
 });
 
-add_task(function test_processInputSourceActionSequenceValidation() {
-  checkFromJSONErrors(
+add_task(async function test_processInputSourceActionSequenceValidation() {
+  await checkFromJSONErrors(
     [{ type: "swim", subtype: "pause", id: "some id" }],
     /Expected known action type/,
     "actionSequence type: swim"
   );
 
-  checkFromJSONErrors(
+  await checkFromJSONErrors(
     [{ type: "none", subtype: "pause", id: -1 }],
     /Expected "id" to be a string/,
     "actionSequence id: -1"
   );
 
-  checkFromJSONErrors(
+  await checkFromJSONErrors(
     [{ type: "none", subtype: "pause", id: undefined }],
     /Expected "id" to be a string/,
     "actionSequence id: undefined"
   );
 
-  const state = new action.State();
+  const state = new actions.State();
   const actionSequence = [
     { type: "none", subtype: "pause", id: "some_id", actions: -1 },
   ];
   const errorRegex = /Expected "actionSequence.actions" to be an array/;
   const message = "actionSequence actions: -1";
 
-  Assert.throws(
-    () => action.Chain.fromJSON(state, actionSequence),
+  await Assert.rejects(
+    actions.Chain.fromJSON(state, actionSequence, {}),
     /InvalidArgumentError/,
     message
   );
-  Assert.throws(
-    () => action.Chain.fromJSON(state, actionSequence),
+  await Assert.rejects(
+    actions.Chain.fromJSON(state, actionSequence, {}),
     errorRegex,
     message
   );
 });
 
-add_task(function test_processInputSourceActionSequence() {
-  const state = new action.State();
+add_task(async function test_processInputSourceActionSequence() {
+  const state = new actions.State();
   const actionItem = { type: "pause", duration: 5 };
   const actionSequence = {
     type: "none",
     id: "some id",
     actions: [actionItem],
   };
-  const chain = action.Chain.fromJSON(state, [actionSequence]);
+  const chain = await actions.Chain.fromJSON(state, [actionSequence], {});
   equal(chain.length, 1);
   const tickActions = chain[0];
   equal(tickActions.length, 1);
@@ -476,8 +524,8 @@ add_task(function test_processInputSourceActionSequence() {
   equal(tickActions[0].id, "some id");
 });
 
-add_task(function test_processInputSourceActionSequencePointer() {
-  const state = new action.State();
+add_task(async function test_processInputSourceActionSequencePointer() {
+  const state = new actions.State();
   const actionItem = { type: "pointerDown", button: 1 };
   const actionSequence = {
     type: "pointer",
@@ -487,7 +535,7 @@ add_task(function test_processInputSourceActionSequencePointer() {
       pointerType: "mouse", // TODO "pen"
     },
   };
-  const chain = action.Chain.fromJSON(state, [actionSequence]);
+  const chain = await actions.Chain.fromJSON(state, [actionSequence], {});
   equal(chain.length, 1);
   const tickActions = chain[0];
   equal(tickActions.length, 1);
@@ -500,15 +548,15 @@ add_task(function test_processInputSourceActionSequencePointer() {
   equal(inputSource.pointer.constructor.type, "mouse");
 });
 
-add_task(function test_processInputSourceActionSequenceKey() {
-  const state = new action.State();
+add_task(async function test_processInputSourceActionSequenceKey() {
+  const state = new actions.State();
   const actionItem = { type: "keyUp", value: "a" };
   const actionSequence = {
     type: "key",
     id: "9",
     actions: [actionItem],
   };
-  const chain = action.Chain.fromJSON(state, [actionSequence]);
+  const chain = await actions.Chain.fromJSON(state, [actionSequence], {});
   equal(chain.length, 1);
   const tickActions = chain[0];
   equal(tickActions.length, 1);
@@ -518,8 +566,8 @@ add_task(function test_processInputSourceActionSequenceKey() {
   equal(tickActions[0].id, "9");
 });
 
-add_task(function test_processInputSourceActionSequenceInputStateMap() {
-  const state = new action.State();
+add_task(async function test_processInputSourceActionSequenceInputStateMap() {
+  const state = new actions.State();
   const id = "1";
   const actionItem = { type: "pause", duration: 5000 };
   const actionSequence = {
@@ -527,19 +575,19 @@ add_task(function test_processInputSourceActionSequenceInputStateMap() {
     id,
     actions: [actionItem],
   };
-  action.Chain.fromJSON(state, [actionSequence]);
+  await actions.Chain.fromJSON(state, [actionSequence], {});
   equal(state.inputStateMap.size, 1);
   equal(state.inputStateMap.get(id).constructor.type, "key");
 
   // Construct a different state with the same input id
-  const state1 = new action.State();
+  const state1 = new actions.State();
   const actionItem1 = { type: "pointerDown", button: 0 };
   const actionSequence1 = {
     type: "pointer",
     id,
     actions: [actionItem1],
   };
-  action.Chain.fromJSON(state1, [actionSequence1]);
+  await actions.Chain.fromJSON(state1, [actionSequence1], {});
   equal(state1.inputStateMap.size, 1);
 
   // Overwrite the state in the initial map with one of a different type
@@ -547,49 +595,53 @@ add_task(function test_processInputSourceActionSequenceInputStateMap() {
   equal(state.inputStateMap.get(id).constructor.type, "pointer");
 
   const message = "Wrong state for input id type";
-  Assert.throws(
-    () => action.Chain.fromJSON(state, [actionSequence]),
+  await Assert.rejects(
+    actions.Chain.fromJSON(state, [actionSequence]),
     /InvalidArgumentError/,
     message
   );
-  Assert.throws(
-    () => action.Chain.fromJSON(state, [actionSequence]),
+  await Assert.rejects(
+    actions.Chain.fromJSON(state, [actionSequence]),
     /Expected input source \[object String\] "1" to be type pointer/,
     message
   );
 });
 
-add_task(function test_extractActionChainValidation() {
-  for (let actions of [-1, "a", undefined, null]) {
-    const state = new action.State();
-    let message = `actions: ${getTypeString(actions)}`;
-    Assert.throws(
-      () => action.Chain.fromJSON(state, actions),
+add_task(async function test_extractActionChainValidation() {
+  for (let action of [-1, "a", undefined, null]) {
+    const state = new actions.State();
+    let message = `actions: ${getTypeString(action)}`;
+    await Assert.rejects(
+      actions.Chain.fromJSON(state, action),
       /InvalidArgumentError/,
       message
     );
-    Assert.throws(
-      () => action.Chain.fromJSON(state, actions),
+    await Assert.rejects(
+      actions.Chain.fromJSON(state, action),
       /Expected "actions" to be an array/,
       message
     );
   }
 });
 
-add_task(function test_extractActionChainEmpty() {
-  const state = new action.State();
-  deepEqual(action.Chain.fromJSON(state, []), []);
+add_task(async function test_extractActionChainEmpty() {
+  const state = new actions.State();
+  deepEqual(await actions.Chain.fromJSON(state, [], {}), []);
 });
 
-add_task(function test_extractActionChain_oneTickOneInput() {
-  const state = new action.State();
+add_task(async function test_extractActionChain_oneTickOneInput() {
+  const state = new actions.State();
   const actionItem = { type: "pause", duration: 5000 };
   const actionSequence = {
     type: "none",
     id: "some id",
     actions: [actionItem],
   };
-  const actionsByTick = action.Chain.fromJSON(state, [actionSequence]);
+  const actionsByTick = await actions.Chain.fromJSON(
+    state,
+    [actionSequence],
+    {}
+  );
   equal(1, actionsByTick.length);
   equal(1, actionsByTick[0].length);
   equal(actionsByTick[0][0].id, actionSequence.id);
@@ -598,8 +650,8 @@ add_task(function test_extractActionChain_oneTickOneInput() {
   equal(actionsByTick[0][0].duration, actionItem.duration);
 });
 
-add_task(function test_extractActionChain_twoAndThreeTicks() {
-  const state = new action.State();
+add_task(async function test_extractActionChain_twoAndThreeTicks() {
+  const state = new actions.State();
   const mouseActionItems = [
     {
       type: "pointerDown",
@@ -637,10 +689,11 @@ add_task(function test_extractActionChain_twoAndThreeTicks() {
     id: "1",
     actions: keyActionItems,
   };
-  let actionsByTick = action.Chain.fromJSON(state, [
-    keyActionSequence,
-    mouseActionSequence,
-  ]);
+  let actionsByTick = await actions.Chain.fromJSON(
+    state,
+    [keyActionSequence, mouseActionSequence],
+    {}
+  );
   // number of ticks is same as longest action sequence
   equal(keyActionItems.length, actionsByTick.length);
   equal(2, actionsByTick[0].length);
@@ -652,8 +705,8 @@ add_task(function test_extractActionChain_twoAndThreeTicks() {
   equal(actionsByTick[2][0].subtype, "keyUp");
 });
 
-add_task(function test_computeTickDuration() {
-  const state = new action.State();
+add_task(async function test_computeTickDuration() {
+  const state = new actions.State();
   const expected = 8000;
   const inputTickActions = [
     { type: "none", subtype: "pause", duration: 5000 },
@@ -664,14 +717,18 @@ add_task(function test_computeTickDuration() {
     { type: "pointer", subtype: "pause", duration: expected },
     { type: "pointer", subtype: "pointerUp", button: 0 },
   ];
-  const chain = action.Chain.fromJSON(state, chainForTick(inputTickActions));
+  const chain = await actions.Chain.fromJSON(
+    state,
+    chainForTick(inputTickActions),
+    {}
+  );
   equal(1, chain.length);
   const tickActions = chain[0];
   equal(expected, tickActions.getDuration());
 });
 
-add_task(function test_computeTickDuration_noDurations() {
-  const state = new action.State();
+add_task(async function test_computeTickDuration_noDurations() {
+  const state = new actions.State();
   const inputTickActions = [
     // invalid because keyDown should not have duration, so duration should be ignored.
     { type: "key", subtype: "keyDown", duration: 100000, value: "a" },
@@ -681,7 +738,11 @@ add_task(function test_computeTickDuration_noDurations() {
     { type: "pointer", subtype: "pointerDown", button: 0 },
     { type: "key", subtype: "keyUp", value: "a" },
   ];
-  const chain = action.Chain.fromJSON(state, chainForTick(inputTickActions));
+  const chain = await actions.Chain.fromJSON(
+    state,
+    chainForTick(inputTickActions),
+    {}
+  );
   equal(0, chain[0].getDuration());
 });
 
@@ -719,19 +780,37 @@ function getTypeString(obj) {
   return Object.prototype.toString.call(obj);
 }
 
-function checkFromJSONErrors(inputTickActions, regex, message) {
-  const state = new action.State();
+async function checkFromJSONErrors(
+  inputTickActions,
+  regex,
+  message,
+  options = {}
+) {
+  const { isElementOrigin = () => true, getElementOrigin = elem => elem } =
+    options;
+
+  const state = new actions.State();
+  const actionsOptions = { isElementOrigin, getElementOrigin };
 
   if (typeof message == "undefined") {
     message = `fromJSON`;
   }
-  Assert.throws(
-    () => action.Chain.fromJSON(state, chainForTick(inputTickActions)),
+
+  await Assert.rejects(
+    actions.Chain.fromJSON(
+      state,
+      chainForTick(inputTickActions),
+      actionsOptions
+    ),
     /InvalidArgumentError/,
     message
   );
-  Assert.throws(
-    () => action.Chain.fromJSON(state, chainForTick(inputTickActions)),
+  await Assert.rejects(
+    actions.Chain.fromJSON(
+      state,
+      chainForTick(inputTickActions),
+      actionsOptions
+    ),
     regex,
     message
   );

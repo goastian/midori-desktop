@@ -276,16 +276,16 @@ def release_promotion_action(parameters, graph_config, input, task_group_id, tas
         # We force str() the input, hence the 'None'
         if next_version in ["", "None"]:
             raise Exception(
-                "`next_version` property needs to be provided for `{}` "
-                "target.".format(release_promotion_flavor)
+                f"`next_version` property needs to be provided for `{release_promotion_flavor}` "
+                "target."
             )
 
     if promotion_config.get("partial-updates", False):
         partial_updates = input.get("partial_updates", {})
         if not partial_updates and release_level(parameters["project"]) == "production":
             raise Exception(
-                "`partial_updates` property needs to be provided for `{}`"
-                "target.".format(release_promotion_flavor)
+                f"`partial_updates` property needs to be provided for `{release_promotion_flavor}`"
+                "target."
             )
         balrog_prefix = product.title()
         os.environ["PARTIAL_UPDATES"] = json.dumps(partial_updates, sort_keys=True)
@@ -310,9 +310,7 @@ def release_promotion_action(parameters, graph_config, input, task_group_id, tas
             if t == own_task_id:
                 continue
             raise Exception(
-                "task group has unexpected pre-existing incomplete tasks (e.g. {})".format(
-                    t
-                )
+                f"task group has unexpected pre-existing incomplete tasks (e.g. {t})"
             )
     except requests.exceptions.HTTPError as e:
         # 404 means the task group doesn't exist yet, and we're fine
@@ -392,9 +390,9 @@ def release_promotion_action(parameters, graph_config, input, task_group_id, tas
     if release_enable_emefree and not partner_url_config["release-eme-free-repack"]:
         raise Exception("Can't enable EMEfree repacks when no config url found")
     parameters["release_enable_partner_repack"] = release_enable_partner_repack
-    parameters[
-        "release_enable_partner_attribution"
-    ] = release_enable_partner_attribution
+    parameters["release_enable_partner_attribution"] = (
+        release_enable_partner_attribution
+    )
     parameters["release_enable_emefree"] = release_enable_emefree
 
     partner_config = input.get("release_partner_config")

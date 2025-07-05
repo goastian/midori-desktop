@@ -6,8 +6,6 @@ import functools
 from collections import deque
 from functools import reduce
 
-import six
-
 from ..handlers import SummaryHandler
 from .base import BaseFormatter
 from .process import strstatus
@@ -159,7 +157,7 @@ class TbplFormatter(BaseFormatter):
 
     def suite_start(self, data):
         self.suite_start_time = data["time"]
-        num_tests = reduce(lambda x, y: x + len(y), six.itervalues(data["tests"]), 0)
+        num_tests = reduce(lambda x, y: x + len(y), data["tests"].values(), 0)
         return "SUITE-START | Running %i tests\n" % num_tests
 
     def test_start(self, data):
@@ -325,7 +323,7 @@ class TbplFormatter(BaseFormatter):
         return "SUITE-END | took %is\n" % time
 
     def test_id(self, test_id):
-        if isinstance(test_id, (str, six.text_type)):
+        if isinstance(test_id, str):
             return test_id
         else:
             return tuple(test_id)
@@ -402,7 +400,7 @@ class TbplFormatter(BaseFormatter):
             "Document",
             "nsDocShell",
             "BrowsingContext",
-            "BackstagePass",
+            "SystemGlobal",
         ]
         for bigLeakName in bigLeakers:
             if bigLeakName in data["objects"]:
@@ -441,24 +439,20 @@ class TbplFormatter(BaseFormatter):
         intermittents = sum(
             self.summary.aggregate("known_intermittent", counts).values()
         )
-        known = (
-            " ({} known intermittent tests)".format(intermittents)
-            if intermittents
-            else ""
-        )
-        status_str = "{}/{}{}".format(expected, total, known)
-        rv = ["{}: {}".format(suite, status_str)]
+        known = f" ({intermittents} known intermittent tests)" if intermittents else ""
+        status_str = f"{expected}/{total}{known}"
+        rv = [f"{suite}: {status_str}"]
 
         for results in logs.values():
             for data in results:
-                rv.append("  {}".format(self._format_status(data)))
+                rv.append(f"  {self._format_status(data)}")
 
         if intermittent_logs:
             rv.append("Known Intermittent tests:")
             for results in intermittent_logs.values():
                 for data in results:
                     data["subtest"] = data.get("subtest", "")
-                    rv.append("  {}".format(self._format_status(data)))
+                    rv.append(f"  {self._format_status(data)}")
 
         return "\n".join(rv)
 

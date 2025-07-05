@@ -7,7 +7,6 @@
 import type * as Bidi from 'chromium-bidi/lib/cjs/protocol/protocol.js';
 
 import {EventEmitter} from '../../common/EventEmitter.js';
-import {debugError} from '../../common/util.js';
 import {
   bubble,
   inertIfDisposed,
@@ -18,9 +17,6 @@ import {DisposableStack, disposeSymbol} from '../../util/disposable.js';
 import {Browser} from './Browser.js';
 import type {BidiEvents, Commands, Connection} from './Connection.js';
 
-// TODO: Once Chrome supports session.status properly, uncomment this block.
-// const MAX_RETRIES = 5;
-
 /**
  * @internal
  */
@@ -30,51 +26,11 @@ export class Session
 {
   static async from(
     connection: Connection,
-    capabilities: Bidi.Session.CapabilitiesRequest
+    capabilities: Bidi.Session.CapabilitiesRequest,
   ): Promise<Session> {
-    // Wait until the session is ready.
-    //
-    // TODO: Once Chrome supports session.status properly, uncomment this block
-    // and remove `getBiDiConnection` in BrowserConnector.
-
-    // let status = {message: '', ready: false};
-    // for (let i = 0; i < MAX_RETRIES; ++i) {
-    //   status = (await connection.send('session.status', {})).result;
-    //   if (status.ready) {
-    //     break;
-    //   }
-    //   // Backoff a little bit each time.
-    //   await new Promise(resolve => {
-    //     return setTimeout(resolve, (1 << i) * 100);
-    //   });
-    // }
-    // if (!status.ready) {
-    //   throw new Error(status.message);
-    // }
-
-    let result;
-    try {
-      result = (
-        await connection.send('session.new', {
-          capabilities,
-        })
-      ).result;
-    } catch (err) {
-      // Chrome does not support session.new.
-      debugError(err);
-      result = {
-        sessionId: '',
-        capabilities: {
-          acceptInsecureCerts: false,
-          browserName: '',
-          browserVersion: '',
-          platformName: '',
-          setWindowRect: false,
-          webSocketUrl: '',
-          userAgent: '',
-        },
-      } satisfies Bidi.Session.NewResult;
-    }
+    const {result} = await connection.send('session.new', {
+      capabilities,
+    });
 
     const session = new Session(connection, result);
     await session.#initialize();
@@ -150,7 +106,7 @@ export class Session
   })
   async send<T extends keyof Commands>(
     method: T,
-    params: Commands[T]['params']
+    params: Commands[T]['params'],
   ): Promise<{result: Commands[T]['returnType']}> {
     return await this.connection.send(method, params);
   }
@@ -161,7 +117,7 @@ export class Session
   })
   async subscribe(
     events: [string, ...string[]],
-    contexts?: [string, ...string[]]
+    contexts?: [string, ...string[]],
   ): Promise<void> {
     await this.send('session.subscribe', {
       events,
@@ -175,7 +131,7 @@ export class Session
   })
   async addIntercepts(
     events: [string, ...string[]],
-    contexts?: [string, ...string[]]
+    contexts?: [string, ...string[]],
   ): Promise<void> {
     await this.send('session.subscribe', {
       events,
@@ -195,7 +151,7 @@ export class Session
     }
   }
 
-  [disposeSymbol](): void {
+  override [disposeSymbol](): void {
     this.#reason ??=
       'Session already destroyed, probably because the connection broke.';
     this.emit('ended', {reason: this.#reason});

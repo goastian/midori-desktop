@@ -19,7 +19,7 @@
             android:layout_width="match_parent"
             android:layout_height="0dp"
             app:layout_constraintHeight_min="1dp"
-            app:layout_constraintBottom_toTopOf="@+id/addressSelectBar"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintTop_toTopOf="parent"
             tools:context="browser.BrowserFragment">
 
@@ -36,18 +36,13 @@
                     android:visibility="gone" />
             </mozilla.components.ui.widgets.VerticalSwipeRefreshLayout>
 
-            <mozilla.components.feature.findinpage.view.FindInPageBar
-                android:id="@+id/findInPageView"
+            <ViewStub
+                android:id="@+id/findInPageViewStub"
                 android:layout_width="match_parent"
-                android:layout_height="56dp"
+                android:layout_height="wrap_content"
                 android:layout_gravity="bottom"
-                android:background="?attr/layer1"
-                android:clickable="true"
-                android:focusable="true"
-                android:visibility="gone"
-                app:findInPageNoMatchesTextColor="?attr/textCritical"
-                app:findInPageButtonsTint="?attr/textPrimary"
-                app:findInPageResultCountTextColor="?attr/textPrimary" />
+                android:inflatedId="@+id/findInPageView"
+                android:layout="@layout/component_find_in_page_bar" />
 
             <include
                 android:id="@+id/viewDynamicDownloadDialog"
@@ -66,11 +61,12 @@
                 android:elevation="24dp"
                 android:visibility="gone" />
 
-            <org.mozilla.fenix.crashes.CrashContentView
-                android:id="@+id/crash_reporter_view"
+            <ViewStub
+                android:id="@+id/crashReporterViewStub"
+                android:inflatedId="@+id/crash_reporter_view"
+                android:layout="@layout/browser_layout_crash_reporter"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:visibility="gone" />
+                android:layout_height="match_parent" />
 
             <FrameLayout
                 android:id="@+id/startDownloadDialogContainer"
@@ -82,45 +78,44 @@
                 android:focusable="true"
                 android:elevation="@dimen/browser_fragment_toolbar_elevation"/>
 
-            <FrameLayout
+            <androidx.constraintlayout.widget.ConstraintLayout
                 android:id="@+id/dynamicSnackbarContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:elevation="@dimen/browser_fragment_toolbar_elevation"/>
+                android:layout_gravity="bottom"
+                android:elevation="@dimen/browser_fragment_toolbar_elevation"
+                tools:ignore="MozMultipleConstraintLayouts" />
+
+            <ViewStub
+                android:id="@+id/loginSelectBarStub"
+                android:inflatedId="@+id/loginSelectBar"
+                android:layout="@layout/login_select_bar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <ViewStub
+                android:id="@+id/suggestStrongPasswordBarStub"
+                android:inflatedId="@+id/suggestStrongPasswordBar"
+                android:layout="@layout/suggest_strong_password_bar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <ViewStub
+                android:id="@+id/addressSelectBarStub"
+                android:inflatedId="@+id/addressSelectBar"
+                android:layout="@layout/address_select_bar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
+
+            <ViewStub
+                android:id="@+id/creditCardSelectBarStub"
+                android:inflatedId="@+id/creditCardSelectBar"
+                android:layout="@layout/creditcard_select_bar"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content" />
 
         </androidx.coordinatorlayout.widget.CoordinatorLayout>
 
-        <mozilla.components.feature.prompts.address.AddressSelectBar
-            android:visibility="gone"
-            android:id="@+id/addressSelectBar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:layout_constraintBottom_toTopOf="@id/creditCardSelectBar"
-            app:layout_constraintTop_toBottomOf="@id/browserLayout" />
-
-        <mozilla.components.feature.prompts.creditcard.CreditCardSelectBar
-            android:visibility="gone"
-            android:id="@+id/creditCardSelectBar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:layout_constraintBottom_toTopOf="@id/loginSelectBar"
-            app:layout_constraintTop_toBottomOf="@id/addressSelectBar" />
-
-        <mozilla.components.feature.prompts.login.LoginSelectBar
-            android:visibility="gone"
-            android:id="@+id/loginSelectBar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/creditCardSelectBar" />
-
-        <mozilla.components.feature.prompts.login.SuggestStrongPasswordBar
-            android:visibility="gone"
-            android:id="@+id/suggestStrongPasswordBar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:layout_constraintBottom_toBottomOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/loginSelectBar" />
     </androidx.constraintlayout.widget.ConstraintLayout>
 
     <org.mozilla.fenix.browser.TabPreview

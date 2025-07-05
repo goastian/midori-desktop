@@ -15,6 +15,7 @@ import org.mozilla.focus.helpers.FeatureSettingsHelper
 import org.mozilla.focus.helpers.MainActivityFirstrunTestRule
 import org.mozilla.focus.helpers.MockWebServerHelper
 import org.mozilla.focus.helpers.TestAssetHelper.getStorageTestAsset
+import org.mozilla.focus.helpers.TestSetup
 import org.mozilla.focus.testAnnotations.SmokeTest
 import java.io.IOException
 
@@ -22,7 +23,7 @@ import java.io.IOException
  * Make sure that session storage values are kept and written but removed at the end of a session.
  */
 @RunWith(AndroidJUnit4ClassRunner::class)
-class LocalSessionStorageTest {
+class LocalSessionStorageTest : TestSetup() {
     private lateinit var webServer: MockWebServer
 
     private val featureSettingsHelper = FeatureSettingsHelper()
@@ -32,11 +33,12 @@ class LocalSessionStorageTest {
         const val LOCAL_STORAGE_MISS = "Local storage empty"
     }
 
-    @get: Rule
-    var mActivityTestRule = MainActivityFirstrunTestRule(showFirstRun = false)
+    @get:Rule
+    val mActivityTestRule = MainActivityFirstrunTestRule(showFirstRun = false)
 
     @Before
-    fun setUp() {
+    override fun setUp() {
+        super.setUp()
         webServer = MockWebServer().apply {
             dispatcher = MockWebServerHelper.AndroidAssetDispatcher()
             start()

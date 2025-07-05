@@ -4,7 +4,12 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use byteorder::{BigEndian, NativeEndian, ReadBytesExt, WriteBytesExt};
+use digest::{Digest, DynDigest};
+use pkcs11_bindings::*;
+use rand::rngs::OsRng;
+use rand::RngCore;
 use std::convert::TryInto;
+use std::iter::zip;
 
 use crate::error::{Error, ErrorType};
 use crate::error_here;
@@ -26,12 +31,12 @@ macro_rules! unsafe_packed_field_access {
 // The following ENCODED_OID_BYTES_* consist of the encoded bytes of an ASN.1
 // OBJECT IDENTIFIER specifying the indicated OID (in other words, the full
 // tag, length, and value).
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 pub const ENCODED_OID_BYTES_SECP256R1: &[u8] =
     &[0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07];
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 pub const ENCODED_OID_BYTES_SECP384R1: &[u8] = &[0x06, 0x05, 0x2b, 0x81, 0x04, 0x00, 0x22];
-#[cfg(any(target_os = "macos", target_os = "ios"))]
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
 pub const ENCODED_OID_BYTES_SECP521R1: &[u8] = &[0x06, 0x05, 0x2b, 0x81, 0x04, 0x00, 0x23];
 
 // The following OID_BYTES_* consist of the contents of the bytes of an ASN.1
@@ -78,6 +83,26 @@ pub fn read_rsa_modulus(public_key: &[u8]) -> Result<Vec<u8>, Error> {
     Ok(modulus_value.to_vec())
 }
 
+/// Given a slice of DER bytes representing a SubjectPublicKeyInfo, extracts
+/// the bytes of the parameters of the algorithm. Does not verify that all
+/// input is consumed.
+/// PublicKeyInfo ::= SEQUENCE {
+///   algorithm   AlgorithmIdentifier,
+///   PublicKey   BIT STRING
+/// }
+///
+/// AlgorithmIdentifier ::= SEQUENCE {
+///   algorithm   OBJECT IDENTIFIER,
+///   parameters  ANY DEFINED BY algorithm OPTIONAL
+///  }
+#[cfg(target_os = "android")]
+pub fn read_spki_algorithm_parameters(spki: &[u8]) -> Result<Vec<u8>, Error> {
+    let mut public_key_info = Sequence::new(spki)?;
+    let mut algorithm_identifier = public_key_info.read_sequence()?;
+    let _algorithm = algorithm_identifier.read_oid()?;
+    Ok(algorithm_identifier.read_rest().to_vec())
+}
+
 /// Given a slice of DER bytes representing a DigestInfo, extracts the bytes of
 /// the OID of the hash algorithm and the digest.
 /// DigestInfo ::= SEQUENCE {
@@ -106,13 +131,33 @@ pub fn read_digest_info(digest_info: &[u8]) -> Result<(&[u8], &[u8]), Error> {
     Ok((oid, digest))
 }
 
+/// Converts a slice of DER bytes representing an ECDSA signature to the concatenation of the bytes
+/// of `r` and `s`, each 0-padded to `coordinate_width`. Also verifies that this consumes the
+/// entirety of the slice.
+///   Ecdsa-Sig-Value  ::=  SEQUENCE  {
+///        r     INTEGER,
+///        s     INTEGER  }
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+pub fn der_ec_sig_to_raw(encoded: &[u8], coordinate_width: usize) -> Result<Vec<u8>, Error> {
+    let (r, s) = read_ec_sig_point(encoded)?;
+    if r.len() > coordinate_width || s.len() > coordinate_width {
+        return Err(error_here!(ErrorType::InvalidInput));
+    }
+    let mut raw_signature = Vec::with_capacity(2 * coordinate_width);
+    raw_signature.resize(coordinate_width - r.len(), 0);
+    raw_signature.extend_from_slice(r);
+    raw_signature.resize((2 * coordinate_width) - s.len(), 0);
+    raw_signature.extend_from_slice(s);
+    Ok(raw_signature)
+}
+
 /// Given a slice of DER bytes representing an ECDSA signature, extracts the bytes of `r` and `s`
 /// as unsigned integers. Also verifies that this consumes the entirety of the slice.
 ///   Ecdsa-Sig-Value  ::=  SEQUENCE  {
 ///        r     INTEGER,
 ///        s     INTEGER  }
-#[cfg(any(target_os = "macos", target_os = "ios"))]
-pub fn read_ec_sig_point(signature: &[u8]) -> Result<(&[u8], &[u8]), Error> {
+#[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+fn read_ec_sig_point(signature: &[u8]) -> Result<(&[u8], &[u8]), Error> {
     let mut sequence = Sequence::new(signature)?;
     let r = sequence.read_unsigned_integer()?;
     let s = sequence.read_unsigned_integer()?;
@@ -155,7 +200,7 @@ pub fn read_encoded_certificate_identifiers(
 ) -> Result<(Vec<u8>, Vec<u8>, Vec<u8>), Error> {
     let mut certificate_sequence = Sequence::new(certificate)?;
     let mut tbs_certificate_sequence = certificate_sequence.read_sequence()?;
-    let _version = tbs_certificate_sequence.read_tagged_value(0)?;
+    let _version = tbs_certificate_sequence.read_optional_tagged_value(0)?;
     let serial_number = tbs_certificate_sequence.read_encoded_sequence_component(INTEGER)?;
     let _signature = tbs_certificate_sequence.read_sequence()?;
     let issuer =
@@ -255,11 +300,14 @@ impl<'a> Sequence<'a> {
         })
     }
 
-    fn read_tagged_value(&mut self, tag: u8) -> Result<&'a [u8], Error> {
-        let (_, _, tagged_value_bytes) = self
-            .contents
-            .read_tlv(CONTEXT_SPECIFIC | CONSTRUCTED | tag)?;
-        Ok(tagged_value_bytes)
+    fn read_optional_tagged_value(&mut self, tag: u8) -> Result<Option<&'a [u8]>, Error> {
+        let expected = CONTEXT_SPECIFIC | CONSTRUCTED | tag;
+        if self.contents.peek(expected) {
+            let (_, _, tagged_value_bytes) = self.contents.read_tlv(expected)?;
+            Ok(Some(tagged_value_bytes))
+        } else {
+            Ok(None)
+        }
     }
 
     fn read_encoded_sequence_component(&mut self, tag: u8) -> Result<Vec<u8>, Error> {
@@ -272,6 +320,11 @@ impl<'a> Sequence<'a> {
 
     fn at_end(&self) -> bool {
         self.contents.at_end()
+    }
+
+    #[cfg(target_os = "android")]
+    fn read_rest(&mut self) -> &[u8] {
+        self.contents.read_rest()
     }
 }
 
@@ -332,6 +385,156 @@ impl<'a> Der<'a> {
     fn at_end(&self) -> bool {
         self.contents.is_empty()
     }
+
+    fn peek(&self, expected: u8) -> bool {
+        Some(&expected) == self.contents.first()
+    }
+
+    #[cfg(target_os = "android")]
+    fn read_rest(&mut self) -> &'a [u8] {
+        let contents = self.contents;
+        self.contents = &[];
+        contents
+    }
+}
+
+fn make_hasher(params: &CK_RSA_PKCS_PSS_PARAMS) -> Result<Box<dyn DynDigest>, Error> {
+    match params.hashAlg {
+        CKM_SHA256 => Ok(Box::new(sha2::Sha256::new())),
+        CKM_SHA384 => Ok(Box::new(sha2::Sha384::new())),
+        CKM_SHA512 => Ok(Box::new(sha2::Sha512::new())),
+        _ => Err(error_here!(ErrorType::LibraryFailure)),
+    }
+}
+
+// Implements MGF1 as per RFC 8017 appendix B.2.1.
+fn mgf(
+    mgf_seed: &[u8],
+    mask_len: usize,
+    h_len: usize,
+    params: &CK_RSA_PKCS_PSS_PARAMS,
+) -> Result<Vec<u8>, Error> {
+    // 1.  If maskLen > 2^32 hLen, output "mask too long" and stop.
+    // (in practice, `mask_len` is going to be much smaller than this, so use a
+    // smaller, fixed limit to avoid problems on systems where usize is 32
+    // bits)
+    if mask_len > 1 << 30 {
+        return Err(error_here!(ErrorType::LibraryFailure));
+    }
+    // 2.  Let T be the empty octet string.
+    let mut t = Vec::with_capacity(mask_len);
+    // 3.  For counter from 0 to \ceil (maskLen / hLen) - 1, do the
+    //     following:
+    for counter in 0..mask_len.div_ceil(h_len) {
+        // A.  Convert counter to an octet string C of length 4 octets:
+        //     C = I2OSP (counter, 4)
+        // (counter fits in u32 due to the length check earlier)
+        let c = u32::to_be_bytes(counter.try_into().unwrap());
+        // B.  Concatenate the hash of the seed mgfSeed and C to the octet
+        //     string T: T = T || Hash(mgfSeed || C)
+        let mut hasher = make_hasher(params)?;
+        hasher.update(mgf_seed);
+        hasher.update(&c);
+        t.extend_from_slice(&mut hasher.finalize());
+    }
+    // 4.  Output the leading maskLen octets of T as the octet string mask.
+    t.truncate(mask_len);
+    Ok(t)
+}
+
+pub fn modulus_bit_length(modulus: &[u8]) -> usize {
+    let mut bit_length = modulus.len() * 8;
+    for byte in modulus {
+        if *byte != 0 {
+            // `byte` is a u8, so `leading_zeros()` will be at most 7.
+            let leading_zeros: usize = byte.leading_zeros().try_into().unwrap();
+            bit_length -= leading_zeros;
+            return bit_length;
+        }
+        bit_length -= 8;
+    }
+    bit_length
+}
+
+// Implements EMSA-PSS-ENCODE as per RFC 8017 section 9.1.1.
+// This is necessary because while Android does support RSA-PSS, it expects to
+// be given the entire message to be signed, not just the hash of the message,
+// which is what NSS gives us.
+// Additionally, this is useful for tokens that do not support RSA-PSS.
+pub fn emsa_pss_encode(
+    m_hash: &[u8],
+    em_bits: usize,
+    params: &CK_RSA_PKCS_PSS_PARAMS,
+) -> Result<Vec<u8>, Error> {
+    let em_len = em_bits.div_ceil(8);
+    let s_len: usize = params
+        .sLen
+        .try_into()
+        .map_err(|_| error_here!(ErrorType::LibraryFailure))?;
+
+    //  1.   If the length of M is greater than the input limitation for
+    //       the hash function (2^61 - 1 octets for SHA-1), output
+    //       "message too long" and stop.
+    // 2.   Let mHash = Hash(M), an octet string of length hLen.
+
+    // 1 and 2 can be skipped because the message is already hashed as m_hash.
+
+    // 3.   If emLen < hLen + sLen + 2, output "encoding error" and stop.
+    if em_len < m_hash.len() + s_len + 2 {
+        return Err(error_here!(ErrorType::LibraryFailure));
+    }
+
+    // 4.   Generate a random octet string salt of length sLen; if sLen =
+    //      0, then salt is the empty string.
+    let salt = {
+        let mut salt = vec![0u8; s_len];
+        OsRng.fill_bytes(&mut salt);
+        salt
+    };
+
+    // 5.   Let M' = (0x)00 00 00 00 00 00 00 00 || mHash || salt;
+    //      M' is an octet string of length 8 + hLen + sLen with eight
+    //      initial zero octets.
+    // 6.   Let H = Hash(M'), an octet string of length hLen.
+    let mut hasher = make_hasher(params)?;
+    let h_len = hasher.output_size();
+    hasher.update(&[0, 0, 0, 0, 0, 0, 0, 0]);
+    hasher.update(m_hash);
+    hasher.update(&salt);
+    let h = hasher.finalize().to_vec();
+
+    // 7.   Generate an octet string PS consisting of emLen - sLen - hLen
+    //      - 2 zero octets.  The length of PS may be 0.
+    // 8.   Let DB = PS || 0x01 || salt; DB is an octet string of length
+    //      emLen - hLen - 1.
+    // (7 and 8 are unnecessary as separate steps - see step 10)
+
+    // 9.   Let dbMask = MGF(H, emLen - hLen - 1).
+    let mut db_mask = mgf(&h, em_len - h_len - 1, h_len, params)?;
+
+    // 10.  Let maskedDB = DB \xor dbMask.
+    // (in practice, this means xoring `0x01 || salt` with the last `s_len + 1`
+    // bytes of `db_mask`)
+    let salt_index = db_mask.len() - s_len;
+    db_mask[salt_index - 1] ^= 1;
+    for (db_mask_byte, salt_byte) in zip(&mut db_mask[salt_index..], &salt) {
+        *db_mask_byte ^= salt_byte;
+    }
+    let mut masked_db = db_mask;
+
+    // 11.  Set the leftmost 8emLen - emBits bits of the leftmost octet
+    //      in maskedDB to zero.
+    // (bit_diff can only be 0 through 7, so it fits in u32)
+    let bit_diff: u32 = ((8 * em_len) - em_bits).try_into().unwrap();
+    // (again, bit_diff can only b 0 through 7, so the shift is sound)
+    masked_db[0] &= 0xffu8.checked_shr(bit_diff).unwrap();
+
+    // 12.  Let EM = maskedDB || H || 0xbc.
+    let mut em = masked_db;
+    em.extend_from_slice(&h);
+    em.push(0xbc);
+
+    Ok(em)
 }
 
 #[cfg(test)]
@@ -474,6 +677,69 @@ mod tests {
     }
 
     #[test]
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+    fn test_der_ec_sig_to_raw() {
+        let ec_sig_point = vec![
+            0x30, 0x45, 0x02, 0x20, 0x5c, 0x75, 0x51, 0x9f, 0x13, 0x11, 0x50, 0xcd, 0x5d, 0x8a,
+            0xde, 0x20, 0xa3, 0xbc, 0x06, 0x30, 0x91, 0xff, 0xb2, 0x73, 0x75, 0x5f, 0x31, 0x64,
+            0xec, 0xfd, 0xcb, 0x42, 0x80, 0x0a, 0x70, 0xe6, 0x02, 0x21, 0x00, 0x85, 0xfb, 0xb4,
+            0x75, 0x5d, 0xb5, 0x1c, 0x5f, 0x97, 0x52, 0x27, 0xd9, 0x71, 0x14, 0xc0, 0xbc, 0x67,
+            0x10, 0x4f, 0x72, 0x2e, 0x37, 0xb2, 0x78, 0x54, 0xfd, 0xd0, 0x9d, 0x51, 0xd4, 0x9f,
+            0xf2,
+        ];
+        let result = der_ec_sig_to_raw(&ec_sig_point, 32);
+        assert!(result.is_ok());
+        let expected = vec![
+            0x5c, 0x75, 0x51, 0x9f, 0x13, 0x11, 0x50, 0xcd, 0x5d, 0x8a, 0xde, 0x20, 0xa3, 0xbc,
+            0x06, 0x30, 0x91, 0xff, 0xb2, 0x73, 0x75, 0x5f, 0x31, 0x64, 0xec, 0xfd, 0xcb, 0x42,
+            0x80, 0x0a, 0x70, 0xe6, 0x85, 0xfb, 0xb4, 0x75, 0x5d, 0xb5, 0x1c, 0x5f, 0x97, 0x52,
+            0x27, 0xd9, 0x71, 0x14, 0xc0, 0xbc, 0x67, 0x10, 0x4f, 0x72, 0x2e, 0x37, 0xb2, 0x78,
+            0x54, 0xfd, 0xd0, 0x9d, 0x51, 0xd4, 0x9f, 0xf2,
+        ];
+        assert_eq!(result.unwrap(), expected);
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+    fn test_der_ec_sig_to_raw_long() {
+        let ec_sig = vec![
+            0x30, 0x45, 0x02, 0x20, 0x5c, 0x75, 0x51, 0x9f, 0x13, 0x11, 0x50, 0xcd, 0x5d, 0x8a,
+            0xde, 0x20, 0xa3, 0xbc, 0x06, 0x30, 0x91, 0xff, 0xb2, 0x73, 0x75, 0x5f, 0x31, 0x64,
+            0xec, 0xfd, 0xcb, 0x42, 0x80, 0x0a, 0x70, 0xe6, 0x02, 0x21, 0x00, 0x85, 0xfb, 0xb4,
+            0x75, 0x5d, 0xb5, 0x1c, 0x5f, 0x97, 0x52, 0x27, 0xd9, 0x71, 0x14, 0xc0, 0xbc, 0x67,
+            0x10, 0x4f, 0x72, 0x2e, 0x37, 0xb2, 0x78, 0x54, 0xfd, 0xd0, 0x9d, 0x51, 0xd4, 0x9f,
+            0xf2,
+        ];
+        let result = der_ec_sig_to_raw(&ec_sig, 16);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    #[cfg(any(target_os = "macos", target_os = "ios", target_os = "android"))]
+    fn test_der_ec_sig_to_raw_short() {
+        let ec_sig_point = vec![
+            0x30, 0x45, 0x02, 0x20, 0x5c, 0x75, 0x51, 0x9f, 0x13, 0x11, 0x50, 0xcd, 0x5d, 0x8a,
+            0xde, 0x20, 0xa3, 0xbc, 0x06, 0x30, 0x91, 0xff, 0xb2, 0x73, 0x75, 0x5f, 0x31, 0x64,
+            0xec, 0xfd, 0xcb, 0x42, 0x80, 0x0a, 0x70, 0xe6, 0x02, 0x21, 0x00, 0x85, 0xfb, 0xb4,
+            0x75, 0x5d, 0xb5, 0x1c, 0x5f, 0x97, 0x52, 0x27, 0xd9, 0x71, 0x14, 0xc0, 0xbc, 0x67,
+            0x10, 0x4f, 0x72, 0x2e, 0x37, 0xb2, 0x78, 0x54, 0xfd, 0xd0, 0x9d, 0x51, 0xd4, 0x9f,
+            0xf2,
+        ];
+        let result = der_ec_sig_to_raw(&ec_sig_point, 48);
+        assert!(result.is_ok());
+        let expected = vec![
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x5c, 0x75, 0x51, 0x9f, 0x13, 0x11, 0x50, 0xcd, 0x5d, 0x8a, 0xde, 0x20,
+            0xa3, 0xbc, 0x06, 0x30, 0x91, 0xff, 0xb2, 0x73, 0x75, 0x5f, 0x31, 0x64, 0xec, 0xfd,
+            0xcb, 0x42, 0x80, 0x0a, 0x70, 0xe6, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x85, 0xfb, 0xb4, 0x75, 0x5d, 0xb5,
+            0x1c, 0x5f, 0x97, 0x52, 0x27, 0xd9, 0x71, 0x14, 0xc0, 0xbc, 0x67, 0x10, 0x4f, 0x72,
+            0x2e, 0x37, 0xb2, 0x78, 0x54, 0xfd, 0xd0, 0x9d, 0x51, 0xd4, 0x9f, 0xf2,
+        ];
+        assert_eq!(result.unwrap(), expected);
+    }
+
+    #[test]
     fn test_read_rsa_modulus() {
         let rsa_key = include_bytes!("../test/rsa.bin");
         let result = read_rsa_modulus(rsa_key);
@@ -512,6 +778,35 @@ mod tests {
     }
 
     #[test]
+    fn test_read_v1_certificate_identifiers() {
+        let certificate = include_bytes!("../test/v1certificate.bin");
+        let result = read_encoded_certificate_identifiers(certificate);
+        assert!(result.is_ok());
+        let (serial_number, issuer, subject) = result.unwrap();
+        assert_eq!(
+            serial_number,
+            &[
+                0x02, 0x14, 0x51, 0x6b, 0x24, 0xaa, 0xf2, 0x7f, 0x56, 0x13, 0x5f, 0xc3, 0x8b, 0x5c,
+                0xa7, 0x00, 0x83, 0xa8, 0xee, 0xca, 0xad, 0xa0
+            ]
+        );
+        assert_eq!(
+            issuer,
+            &[
+                0x30, 0x12, 0x31, 0x10, 0x30, 0x0E, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0C, 0x07, 0x54,
+                0x65, 0x73, 0x74, 0x20, 0x43, 0x41
+            ]
+        );
+        assert_eq!(
+            subject,
+            &[
+                0x30, 0x12, 0x31, 0x10, 0x30, 0x0E, 0x06, 0x03, 0x55, 0x04, 0x03, 0x0C, 0x07, 0x56,
+                0x31, 0x20, 0x43, 0x65, 0x72, 0x74
+            ]
+        );
+    }
+
+    #[test]
     #[cfg(target_os = "windows")]
     fn test_read_digest() {
         // SEQUENCE
@@ -525,9 +820,10 @@ mod tests {
             0x88, 0x5c, 0xfe, 0x14, 0x5f, 0x3e, 0x93, 0xf0, 0xd1, 0xfa, 0x72, 0xbe, 0x98, 0x0c,
             0xc6, 0xec, 0x82, 0xc7, 0x0e, 0x14, 0x07, 0xc7, 0xd2,
         ];
-        let result = read_digest(&digest_info);
+        let result = read_digest_info(&digest_info);
         assert!(result.is_ok());
-        let digest = result.unwrap();
+        let (oid, digest) = result.unwrap();
+        assert_eq!(oid, &[0x60, 0x86, 0x48, 0x1, 0x65, 0x03, 0x04, 0x02, 0x01]);
         assert_eq!(
             digest,
             &[
@@ -536,5 +832,23 @@ mod tests {
                 0x14, 0x07, 0xc7, 0xd2
             ]
         );
+    }
+
+    #[test]
+    #[cfg(target_os = "android")]
+    fn test_read_spki_algorithm_parameters() {
+        let spki = [
+            0x30, 0x59, 0x30, 0x13, 0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, 0x06,
+            0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, 0x03, 0x42, 0x00, 0x04, 0x4f,
+            0xbf, 0xbb, 0xbb, 0x61, 0xe0, 0xf8, 0xf9, 0xb1, 0xa6, 0x0a, 0x59, 0xac, 0x87, 0x04,
+            0xe2, 0xec, 0x05, 0x0b, 0x42, 0x3e, 0x3c, 0xf7, 0x2e, 0x92, 0x3f, 0x2c, 0x4f, 0x79,
+            0x4b, 0x45, 0x5c, 0x2a, 0x69, 0xd2, 0x33, 0x45, 0x6c, 0x36, 0xc4, 0x11, 0x9d, 0x07,
+            0x06, 0xe0, 0x0e, 0xed, 0xc8, 0xd1, 0x93, 0x90, 0xd7, 0x99, 0x1b, 0x7b, 0x2d, 0x07,
+            0xa3, 0x04, 0xea, 0xa0, 0x4a, 0xa6, 0xc0,
+        ];
+        let result = read_spki_algorithm_parameters(&spki);
+        assert!(result.is_ok());
+        let parameters = result.unwrap();
+        assert_eq!(&parameters, ENCODED_OID_BYTES_SECP256R1);
     }
 }

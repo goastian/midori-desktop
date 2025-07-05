@@ -18,7 +18,7 @@ import androidx.annotation.VisibleForTesting.Companion.PRIVATE
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentManager
 import mozilla.components.support.ktx.android.os.resetAfter
-import mozilla.components.support.utils.ManufacturerCodes
+import mozilla.components.support.utils.ManufacturerChecker
 import org.mozilla.fenix.Config
 import org.mozilla.fenix.components.Components
 import java.util.concurrent.Executors
@@ -39,6 +39,7 @@ open class StrictModeManager(
     // is passed into Core but we'd need to pass in Core here. Instead, we take components and later
     // fetch the value we need from it.
     private val components: Components,
+    private val buildManufacturerChecker: ManufacturerChecker,
 ) {
 
     private val isEnabledByBuildConfig = config.channel.isDebug
@@ -66,7 +67,7 @@ open class StrictModeManager(
                 .detectAll()
                 .penaltyLog()
             if (setPenaltyDeath) {
-                threadPolicy.penaltyDeathWithIgnores()
+                threadPolicy.penaltyDeathWithIgnores(buildManufacturerChecker)
             }
             StrictMode.setThreadPolicy(threadPolicy.build())
 
@@ -82,6 +83,9 @@ open class StrictModeManager(
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 builder.detectNonSdkApiUsage()
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                builder.detectUnsafeIntentLaunch()
             }
             StrictMode.setVmPolicy(builder.build())
         }
@@ -112,22 +116,12 @@ open class StrictModeManager(
      */
     open fun <R> resetAfter(policy: StrictMode.ThreadPolicy, functionBlock: () -> R): R {
         fun instrumentedFunctionBlock(): R {
-            // For Mozilla Online builds, we decided not to add a profile marker because we need to
-            // prevent early initialization of the engine. These markers also have no distinct
-            // meaning to the Mozilla Online build variant.
-            // See: https://bugzilla.mozilla.org/show_bug.cgi?id=1825028
-            if (config.channel.isMozillaOnline) {
-                return functionBlock()
-            }
-
             val startProfilerTime = components.core.engine.profiler?.getProfilerTime()
-
             val returnValue = functionBlock()
 
             if (mainLooper.thread === Thread.currentThread()) { // markers only supported on main thread.
                 components.core.engine.profiler?.addMarker("StrictMode.resetAfter", startProfilerTime)
             }
-
             return returnValue
         }
 
@@ -176,14 +170,16 @@ open class StrictModeManager(
  * To add a new manufacturer to the list, log "Build.MANUFACTURER" from the device to get the
  * exact name of the manufacturer.
  */
-private fun isInStrictModeExceptionList() =
-    ManufacturerCodes.isHuawei || ManufacturerCodes.isOnePlus || ManufacturerCodes.isOppo
+private fun isInStrictModeExceptionList(buildManufacturerChecker: ManufacturerChecker) =
+    buildManufacturerChecker.isHuawei() || buildManufacturerChecker.isOnePlus() || buildManufacturerChecker.isOppo()
 
-private fun StrictMode.ThreadPolicy.Builder.penaltyDeathWithIgnores(): StrictMode.ThreadPolicy.Builder {
+private fun StrictMode.ThreadPolicy.Builder.penaltyDeathWithIgnores(
+    buildManufacturerChecker: ManufacturerChecker,
+): StrictMode.ThreadPolicy.Builder {
     // This workaround was added before we realized we can ignored based on violation contents
     // (see code below). This solution - blanket disabling StrictMode on some manufacturers - isn't
     // great so, if we have time, we should consider reimplementing these fixes using the methods below.
-    if (isInStrictModeExceptionList()) {
+    if (isInStrictModeExceptionList(buildManufacturerChecker)) {
         return this
     }
 

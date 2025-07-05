@@ -23,6 +23,8 @@ OS_LIBS += CONFIG["DL_LIBS"]
 EXPORTS.mozilla += [
     "Sandbox.h",
     "SandboxInfo.h",
+    "SandboxProfiler.h",
+    "SandboxProfilerObserver.h",
 ]
 
 UNIFIED_SOURCES += [
@@ -76,6 +78,7 @@ UNIFIED_SOURCES += [
     "SandboxInfo.cpp",
     "SandboxLogging.cpp",
     "SandboxOpenedFiles.cpp",
+    "SandboxProfiler.cpp",
     "SandboxReporterClient.cpp",
 ]
 
@@ -120,7 +123,7 @@ LOCAL_INCLUDES += ["/security/sandbox/linux"]
 LOCAL_INCLUDES += ["/security/sandbox/chromium-shim"]
 LOCAL_INCLUDES += ["/security/sandbox/chromium"]
 LOCAL_INCLUDES += ["/nsprpub"]
-
+LOCAL_INCLUDES += ["/mozglue/baseprofiler/core/"]
 
 if CONFIG["OS_TARGET"] != "Android":
     # Needed for clock_gettime with glibc < 2.17:

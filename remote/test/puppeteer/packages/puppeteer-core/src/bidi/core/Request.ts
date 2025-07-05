@@ -27,7 +27,7 @@ export class Request extends EventEmitter<{
 }> {
   static from(
     browsingContext: BrowsingContext,
-    event: Bidi.Network.BeforeRequestSentParameters
+    event: Bidi.Network.BeforeRequestSentParameters,
   ): Request {
     const request = new Request(browsingContext, event);
     request.#initialize();
@@ -43,7 +43,7 @@ export class Request extends EventEmitter<{
 
   private constructor(
     browsingContext: BrowsingContext,
-    event: Bidi.Network.BeforeRequestSentParameters
+    event: Bidi.Network.BeforeRequestSentParameters,
   ) {
     super();
 
@@ -53,7 +53,7 @@ export class Request extends EventEmitter<{
 
   #initialize() {
     const browsingContextEmitter = this.#disposables.use(
-      new EventEmitter(this.#browsingContext)
+      new EventEmitter(this.#browsingContext),
     );
     browsingContextEmitter.once('closed', ({reason}) => {
       this.#error = reason;
@@ -62,7 +62,7 @@ export class Request extends EventEmitter<{
     });
 
     const sessionEmitter = this.#disposables.use(
-      new EventEmitter(this.#session)
+      new EventEmitter(this.#session),
     );
     sessionEmitter.on('network.beforeRequestSent', event => {
       if (
@@ -108,6 +108,7 @@ export class Request extends EventEmitter<{
         return;
       }
       this.#response = event.response;
+      this.#event.request.timings = event.request.timings;
       this.emit('success', this.#response);
       // In case this is a redirect.
       if (this.#response.status >= 300 && this.#response.status < 400) {
@@ -132,7 +133,7 @@ export class Request extends EventEmitter<{
   get id(): string {
     return this.#event.request.request;
   }
-  get initiator(): Bidi.Network.Initiator {
+  get initiator(): Bidi.Network.Initiator | undefined {
     return this.#event.initiator;
   }
   get method(): string {
@@ -162,6 +163,21 @@ export class Request extends EventEmitter<{
   }
   get isBlocked(): boolean {
     return this.#event.isBlocked;
+  }
+
+  get resourceType(): string | undefined {
+    // @ts-expect-error non-standard attribute.
+    return this.#event.request['goog:resourceType'] ?? undefined;
+  }
+
+  get postData(): string | undefined {
+    // @ts-expect-error non-standard attribute.
+    return this.#event.request['goog:postData'] ?? undefined;
+  }
+
+  get hasPostData(): boolean {
+    // @ts-expect-error non-standard attribute.
+    return this.#event.request['goog:hasPostData'] ?? false;
   }
 
   async continueRequest({
@@ -205,7 +221,7 @@ export class Request extends EventEmitter<{
   async continueWithAuth(
     parameters:
       | Bidi.Network.ContinueWithAuthCredentials
-      | Bidi.Network.ContinueWithAuthNoCredentials
+      | Bidi.Network.ContinueWithAuthNoCredentials,
   ): Promise<void> {
     if (parameters.action === 'provideCredentials') {
       await this.#session.send('network.continueWithAuth', {
@@ -226,8 +242,12 @@ export class Request extends EventEmitter<{
     this[disposeSymbol]();
   }
 
-  [disposeSymbol](): void {
+  override [disposeSymbol](): void {
     this.#disposables.dispose();
     super[disposeSymbol]();
+  }
+
+  timing(): Bidi.Network.FetchTimingInfo {
+    return this.#event.request.timings;
   }
 }

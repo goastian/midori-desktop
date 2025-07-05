@@ -34,8 +34,8 @@
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/IntegerTypeTraits.h"
 #include "mozilla/NullPrincipal.h"
-#include "mozilla/Telemetry.h"
-#include "mozilla/TelemetryComms.h"
+#include "mozilla/RandomNum.h"
+#include "mozilla/glean/ParserHtmlparserMetrics.h"
 
 #include "nsThreadUtils.h"
 #include "mozilla/ClearOnShutdown.h"
@@ -521,9 +521,11 @@ void nsExpatDriver::HandleStartElementForSystemPrincipal(
     error.AppendLiteral("> created from entity value.");
 
     nsContentUtils::ReportToConsoleNonLocalized(
-        error, nsIScriptError::warningFlag, "XML Document"_ns, doc, nullptr,
-        u""_ns, lineNumber.unverified_safe_because(RLBOX_SAFE_PRINT),
-        colNumber.unverified_safe_because(RLBOX_SAFE_PRINT));
+        error, nsIScriptError::warningFlag, "XML Document"_ns, doc,
+        mozilla::SourceLocation(
+            doc->GetDocumentURI(),
+            lineNumber.unverified_safe_because(RLBOX_SAFE_PRINT),
+            colNumber.unverified_safe_because(RLBOX_SAFE_PRINT)));
   }
 }
 
@@ -734,7 +736,7 @@ class RLBoxExpatClosure {
  public:
   RLBoxExpatClosure(RLBoxExpatSandboxData* aSbxData,
                     tainted_expat<XML_Parser> aExpatParser)
-      : mSbxData(aSbxData), mExpatParser(aExpatParser){};
+      : mSbxData(aSbxData), mExpatParser(aExpatParser) {};
   inline rlbox_sandbox_expat* Sandbox() const { return mSbxData->Sandbox(); };
   inline tainted_expat<XML_Parser> Parser() const { return mExpatParser; };
 
@@ -825,8 +827,8 @@ int nsExpatDriver::HandleExternalEntityRef(const char16_t* openEntityNames,
         RLBOX_EXPAT_MCALL(MOZ_XML_ExternalEntityParserCreate, nullptr, *utf16);
     if (entParser) {
       auto baseURI = GetExpatBaseURI(absURI);
-      auto url = TransferBuffer<XML_Char>(Sandbox(), &baseURI[0],
-                                          ArrayLength(baseURI));
+      auto url =
+          TransferBuffer<XML_Char>(Sandbox(), &baseURI[0], std::size(baseURI));
       NS_ENSURE_TRUE(*url, 1);
       Sandbox()->invoke_sandbox_function(MOZ_XML_SetBase, entParser, *url);
 
@@ -1012,8 +1014,8 @@ nsresult nsExpatDriver::HandleError() {
     doc = do_QueryInterface(mOriginalSink->GetTarget());
   }
 
-  bool spoofEnglish =
-      nsContentUtils::SpoofLocaleEnglish() && (!doc || !doc->AllowsL10n());
+  bool spoofEnglish = nsContentUtils::ShouldResistFingerprinting(
+      doc, mozilla::RFPTarget::JSLocale);
   nsParserMsgUtils::GetLocalizedStringByID(
       spoofEnglish ? XMLPARSER_PROPERTIES_en_US : XMLPARSER_PROPERTIES, code,
       description);
@@ -1106,30 +1108,18 @@ nsresult nsExpatDriver::HandleError() {
       docShellDestroyed.Assign(destroyed ? "true"_ns : "false"_ns);
     }
 
-    mozilla::Maybe<nsTArray<mozilla::Telemetry::EventExtraEntry>> extra =
-        mozilla::Some<nsTArray<mozilla::Telemetry::EventExtraEntry>>({
-            mozilla::Telemetry::EventExtraEntry{"error_code"_ns,
-                                                nsPrintfCString("%u", code)},
-            mozilla::Telemetry::EventExtraEntry{
-                "location"_ns,
-                nsPrintfCString(
-                    "%lu:%lu",
-                    lineNumber.unverified_safe_because(RLBOX_SAFE_PRINT),
-                    colNumber.unverified_safe_because(RLBOX_SAFE_PRINT))},
-            mozilla::Telemetry::EventExtraEntry{
-                "last_line"_ns, NS_ConvertUTF16toUTF8(mLastLine)},
-            mozilla::Telemetry::EventExtraEntry{
-                "last_line_len"_ns, nsPrintfCString("%zu", mLastLine.Length())},
-            mozilla::Telemetry::EventExtraEntry{
-                "hidden"_ns, doc->Hidden() ? "true"_ns : "false"_ns},
-            mozilla::Telemetry::EventExtraEntry{"destroyed"_ns,
-                                                docShellDestroyed},
-        });
-
-    mozilla::Telemetry::SetEventRecordingEnabled("ysod"_ns, true);
-    mozilla::Telemetry::RecordEvent(
-        mozilla::Telemetry::EventID::Ysod_Shown_Ysod, mozilla::Some(path),
-        extra);
+    mozilla::glean::ysod::ShownYsodExtra extra = {
+        .destroyed = mozilla::Some(docShellDestroyed),
+        .errorCode = mozilla::Some(code),
+        .hidden = mozilla::Some(doc->Hidden()),
+        .lastLine = mozilla::Some(NS_ConvertUTF16toUTF8(mLastLine)),
+        .lastLineLen = mozilla::Some(mLastLine.Length()),
+        .location = mozilla::Some(nsPrintfCString(
+            "%lu:%lu", lineNumber.unverified_safe_because(RLBOX_SAFE_PRINT),
+            colNumber.unverified_safe_because(RLBOX_SAFE_PRINT))),
+        .value = mozilla::Some(path),
+    };
+    mozilla::glean::ysod::shown_ysod.Record(mozilla::Some(extra));
   }
 
   // Try to create and initialize the script error.
@@ -1137,7 +1127,7 @@ nsresult nsExpatDriver::HandleError() {
   nsresult rv = NS_ERROR_FAILURE;
   if (serr) {
     rv = serr->InitWithSourceURI(
-        errorText, mURIs.SafeElementAt(0), mLastLine,
+        errorText, mURIs.SafeElementAt(0),
         lineNumber.unverified_safe_because(RLBOX_SAFE_PRINT),
         colNumber.unverified_safe_because(RLBOX_SAFE_PRINT),
         nsIScriptError::errorFlag, "malformed-xml", mInnerWindowID);
@@ -1227,7 +1217,7 @@ void nsExpatDriver::ParseChunk(const char16_t* aBuffer, uint32_t aLength,
     return parserBytesBefore;
   };
   int32_t parserBytesBefore = RLBOX_EXPAT_SAFE_MCALL(
-      XML_GetCurrentByteIndex, parserBytesBefore_verifier);
+      MOZ_XML_GetCurrentByteIndex, parserBytesBefore_verifier);
 
   if (mInternalState != NS_OK && !BlockedOrInterrupted()) {
     return;
@@ -1262,7 +1252,7 @@ void nsExpatDriver::ParseChunk(const char16_t* aBuffer, uint32_t aLength,
     return parserBytesConsumed;
   };
   int32_t parserBytesConsumed = RLBOX_EXPAT_SAFE_MCALL(
-      XML_GetCurrentByteIndex, parserBytesConsumed_verifier);
+      MOZ_XML_GetCurrentByteIndex, parserBytesConsumed_verifier);
 
   // Consumed something.
   *aConsumed += (parserBytesConsumed - parserBytesBefore) / sizeof(char16_t);
@@ -1460,7 +1450,8 @@ RLBoxExpatSandboxPool::CreateSandboxData(uint64_t aSize) {
 #ifdef MOZ_WASM_SANDBOXING_EXPAT
   const w2c_mem_capacity capacity =
       get_valid_wasm2c_memory_capacity(aSize, true /* 32-bit wasm memory*/);
-  bool create_ok = sandbox->create_sandbox(/* infallible = */ false, &capacity);
+  bool create_ok = sandbox->create_sandbox(/* shouldAbortOnFailure = */ false,
+                                           &capacity, "rlbox_wasm2c_expat");
 #else
   bool create_ok = sandbox->create_sandbox();
 #endif
@@ -1626,9 +1617,17 @@ nsresult nsExpatDriver::Initialize(nsIURI* aURI, nsIContentSink* aSink) {
                     XML_PARAM_ENTITY_PARSING_ALWAYS);
 #endif
 
+  rlbox_sandbox_expat::convert_to_sandbox_equivalent_nonclass_t<unsigned long>
+      salt;
+  MOZ_RELEASE_ASSERT(mozilla::GenerateRandomBytesFromOS(&salt, sizeof(salt)));
+  MOZ_RELEASE_ASSERT(
+      RLBOX_EXPAT_SAFE_MCALL(MOZ_XML_SetHashSalt, safe_unverified<int>, salt));
+  MOZ_RELEASE_ASSERT(RLBOX_EXPAT_SAFE_MCALL(
+      MOZ_XML_SetReparseDeferralEnabled, safe_unverified<XML_Bool>, XML_FALSE));
+
   auto baseURI = GetExpatBaseURI(aURI);
   auto uri =
-      TransferBuffer<XML_Char>(Sandbox(), &baseURI[0], ArrayLength(baseURI));
+      TransferBuffer<XML_Char>(Sandbox(), &baseURI[0], std::size(baseURI));
   RLBOX_EXPAT_MCALL(MOZ_XML_SetBase, *uri);
 
   // Set up the callbacks

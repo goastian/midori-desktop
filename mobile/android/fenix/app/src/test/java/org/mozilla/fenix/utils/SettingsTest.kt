@@ -23,6 +23,7 @@ import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
+import org.mozilla.fenix.components.toolbar.ToolbarPosition
 import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.settings.PhoneFeature
 import org.mozilla.fenix.settings.deletebrowsingdata.DeleteBrowsingDataOnQuitType
@@ -828,22 +829,11 @@ class SettingsTest {
     }
 
     @Test
-    fun `GIVEN hasUserBeenOnboarded is false and isLauncherIntent is false THEN shouldShowOnboarding returns false`() {
+    fun `GIVEN feature is disabled, hasUserBeenOnboarded is true and isLauncherIntent is true THEN shouldShowOnboarding returns false`() {
         val settings = spyk(settings)
 
         val actual = settings.shouldShowOnboarding(
-            hasUserBeenOnboarded = false,
-            isLauncherIntent = false,
-        )
-
-        assertFalse(actual)
-    }
-
-    @Test
-    fun `GIVEN hasUserBeenOnboarded is true THEN shouldShowOnboarding returns false`() {
-        val settings = spyk(settings)
-
-        val actual = settings.shouldShowOnboarding(
+            featureEnabled = false,
             hasUserBeenOnboarded = true,
             isLauncherIntent = true,
         )
@@ -852,24 +842,42 @@ class SettingsTest {
     }
 
     @Test
-    fun `GIVEN hasUserBeenOnboarded is false and isLauncherIntent is true THEN shouldShowOnboarding returns true`() {
+    fun `GIVEN feature is enabled, hasUserBeenOnboarded is false and isLauncherIntent is false THEN shouldShowOnboarding returns false`() {
         val settings = spyk(settings)
 
         val actual = settings.shouldShowOnboarding(
+            featureEnabled = true,
+            hasUserBeenOnboarded = false,
+            isLauncherIntent = false,
+        )
+
+        assertFalse(actual)
+    }
+
+    @Test
+    fun `GIVEN feature is enabled, hasUserBeenOnboarded is true THEN shouldShowOnboarding returns false`() {
+        val settings = spyk(settings)
+
+        val actual = settings.shouldShowOnboarding(
+            featureEnabled = true,
+            hasUserBeenOnboarded = true,
+            isLauncherIntent = true,
+        )
+
+        assertFalse(actual)
+    }
+
+    @Test
+    fun `GIVEN feature is enabled, hasUserBeenOnboarded is false and isLauncherIntent is true THEN shouldShowOnboarding returns true`() {
+        val settings = spyk(settings)
+
+        val actual = settings.shouldShowOnboarding(
+            featureEnabled = true,
             hasUserBeenOnboarded = false,
             isLauncherIntent = true,
         )
 
         assertTrue(actual)
-    }
-
-    @Test
-    fun `GIVEN toolbarPositionTop is false, touchExplorationIsEnabled is true THEN shouldDefaultToBottomToolbar returns false`() {
-        val settings = spyk(settings)
-        every { settings.toolbarPositionTop } returns true
-        every { settings.touchExplorationIsEnabled } returns true
-
-        assertEquals(false, settings.shouldDefaultToBottomToolbar())
     }
 
     @Test
@@ -1003,5 +1011,126 @@ class SettingsTest {
 
         settings.migrateSearchWidgetInstalledPrefIfNeeded()
         assertFalse(settings.searchWidgetInstalled)
+    }
+
+    @Test
+    fun `GIVEN only microsurvey is enabled WHEN getBottomToolbarContainerHeight THEN returns microsurvey height`() {
+        val settings = spyk(settings)
+        every { settings.shouldShowMicrosurveyPrompt } returns true
+
+        val bottomToolbarContainerHeight = settings.getBottomToolbarContainerHeight()
+
+        assertEquals(131, bottomToolbarContainerHeight)
+    }
+
+    @Test
+    fun `GIVEN the address bar and the microsurvey are shown at bottom WHEN getBottomToolbarHeight THEN returns the combined height`() {
+        val settings = spyk(settings)
+        every { settings.shouldShowMicrosurveyPrompt } returns true
+        every { settings.toolbarPosition } returns ToolbarPosition.BOTTOM
+
+        val bottomToolbarHeight = settings.getBottomToolbarHeight()
+
+        assertEquals(187, bottomToolbarHeight)
+    }
+
+    @Test
+    fun `GIVEN just the microsurvey is shown at bottom WHEN getBottomToolbarHeight THEN returns it's height`() {
+        val settings = spyk(settings)
+        every { settings.shouldShowMicrosurveyPrompt } returns true
+        every { settings.toolbarPosition } returns ToolbarPosition.TOP
+
+        val bottomToolbarHeight = settings.getBottomToolbarHeight()
+
+        assertEquals(131, bottomToolbarHeight)
+    }
+
+    @Test
+    fun `GIVEN just the addressbar is shown at bottom WHEN getBottomToolbarHeight THEN returns it's height`() {
+        val settings = spyk(settings)
+        every { settings.shouldShowMicrosurveyPrompt } returns false
+        every { settings.toolbarPosition } returns ToolbarPosition.BOTTOM
+
+        val bottomToolbarHeight = settings.getBottomToolbarHeight()
+
+        assertEquals(56, bottomToolbarHeight)
+    }
+
+    @Test
+    fun `GIVEN recent search is enable THEN should show recent searches only if recent search is visible`() {
+        val settings = spyk(settings)
+        every { settings.recentSearchSuggestionsEnabled } returns true
+        every { settings.isRecentSearchesVisible } returns true
+
+        assertTrue(settings.shouldShowRecentSearchSuggestions)
+
+        every { settings.isRecentSearchesVisible } returns false
+        every { settings.recentSearchSuggestionsEnabled } returns true
+        assertFalse(settings.shouldShowRecentSearchSuggestions)
+
+        every { settings.isRecentSearchesVisible } returns true
+        every { settings.recentSearchSuggestionsEnabled } returns false
+        assertFalse(settings.shouldShowRecentSearchSuggestions)
+    }
+
+    @Test
+    fun `GIVEN shortcut suggestions is enable THEN should show shortcut suggestions only if shortcut suggestions is visible`() {
+        val settings = spyk(settings)
+        every { settings.shortcutSuggestionsEnabled } returns true
+        every { settings.isShortcutSuggestionsVisible } returns true
+        assertTrue(settings.shouldShowShortcutSuggestions)
+
+        every { settings.shortcutSuggestionsEnabled } returns true
+        every { settings.isShortcutSuggestionsVisible } returns false
+        assertFalse(settings.shouldShowShortcutSuggestions)
+
+        every { settings.shortcutSuggestionsEnabled } returns false
+        every { settings.isShortcutSuggestionsVisible } returns true
+        assertFalse(settings.shouldShowShortcutSuggestions)
+    }
+
+    @Test
+    fun `GIVEN the conditions to show a prompt are not met WHEN checking prompt eligibility THEN shouldShowSetAsDefaultPrompt is false`() {
+        settings.numberOfSetAsDefaultPromptShownTimes = 0
+        settings.lastSetAsDefaultPromptShownTimeInMillis = System.currentTimeMillis()
+        settings.coldStartsBetweenSetAsDefaultPrompts = 5
+
+        assertFalse(settings.shouldShowSetAsDefaultPrompt)
+    }
+
+    @Test
+    fun `GIVEN the prompt has been shown maximum times WHEN checking prompt eligibility THEN shouldShowSetAsDefaultPrompt is false`() {
+        settings.numberOfSetAsDefaultPromptShownTimes = 3 // Maximum number of times the prompt can be shown based on the design criteria
+        settings.lastSetAsDefaultPromptShownTimeInMillis = 0L
+        settings.coldStartsBetweenSetAsDefaultPrompts = 5
+
+        assertFalse(settings.shouldShowSetAsDefaultPrompt)
+    }
+
+    @Test
+    fun `GIVEN the time since last prompt is too short WHEN checking prompt eligibility THEN shouldShowSetAsDefaultPrompt is false`() {
+        settings.numberOfSetAsDefaultPromptShownTimes = 1
+        settings.lastSetAsDefaultPromptShownTimeInMillis = System.currentTimeMillis() - 1000
+        settings.coldStartsBetweenSetAsDefaultPrompts = 5
+
+        assertFalse(settings.shouldShowSetAsDefaultPrompt)
+    }
+
+    @Test
+    fun `GIVEN not enough cold starts WHEN checking prompt eligibility THEN shouldShowSetAsDefaultPrompt is false`() {
+        settings.numberOfSetAsDefaultPromptShownTimes = 1
+        settings.lastSetAsDefaultPromptShownTimeInMillis = 0L
+        settings.coldStartsBetweenSetAsDefaultPrompts = 1
+
+        assertFalse(settings.shouldShowSetAsDefaultPrompt)
+    }
+
+    @Test
+    fun `GIVEN enough cold starts and conditions met WHEN checking prompt eligibility THEN shouldShowSetAsDefaultPrompt is true`() {
+        settings.numberOfSetAsDefaultPromptShownTimes = 1
+        settings.lastSetAsDefaultPromptShownTimeInMillis = 0L
+        settings.coldStartsBetweenSetAsDefaultPrompts = 5 // More than required cold starts
+
+        assertTrue(settings.shouldShowSetAsDefaultPrompt)
     }
 }

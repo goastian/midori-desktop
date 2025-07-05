@@ -1,10 +1,11 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
   </head>
   <body>
-    <input aria-label="Name" aria-describedby="desc" value="Tobias" />
+    <!-- (Bug 1905040) The typo for "Name" is intentional because currently there is an issue when the field is recognized by formautofill. -->
+    <input aria-label="Naame" aria-describedby="desc" value="Tobias" />
     <div id="desc">description</div>
     <input aria-label="Last" value="Funke" required />
   </body>

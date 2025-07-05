@@ -2,9 +2,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
-import io
 import os
 import re
+from typing import Optional
+
+from tomlkit.items import Array, Table
+from tomlkit.toml_document import TOMLDocument
 
 from .ini import combine_fields
 
@@ -46,13 +49,18 @@ def parse_toml_str(contents):
     """
     Parse TOML contents using toml
     """
-    import toml
+    try:
+        from tomllib import TOMLDecodeError
+        from tomllib import loads as TOMLloads
+    except ImportError:
+        from toml import TomlDecodeError as TOMLDecodeError
+        from toml import loads as TOMLloads
 
     error = None
     manifest = None
     try:
-        manifest = toml.loads(contents)
-    except toml.TomlDecodeError as pe:
+        manifest = TOMLloads(contents)
+    except TOMLDecodeError as pe:
         error = str(pe)
     return error, manifest
 
@@ -103,7 +111,7 @@ def read_toml(
     sections = []
     if isinstance(fp, str):
         filename = fp
-        fp = io.open(fp, encoding="utf-8")
+        fp = open(fp, encoding="utf-8")
     elif hasattr(fp, "name"):
         filename = fp.name
     else:
@@ -116,7 +124,7 @@ def read_toml(
     else:
         error, manifest = parse_toml_str(contents)
     if error:
-        raise IOError(f"Error parsing TOML manifest file {filename}: {error}")
+        raise OSError(f"Error parsing TOML manifest file {filename}: {error}")
 
     # handle each section of the manifest
     for section in manifest.keys():
@@ -232,6 +240,8 @@ def alphabetize_toml_str(manifest):
 
 def _simplify_comment(comment):
     """Remove any leading #, but preserve leading whitespace in comment"""
+    if comment is None:
+        return None
 
     length = len(comment)
     i = 0
@@ -244,6 +254,22 @@ def _simplify_comment(comment):
     if j > 0:
         comment = " " * j + comment
     return comment.rstrip()
+
+
+def _should_keep_existing_condition(existing_condition: str, new_condition: str):
+    """
+    Checks the new condition is equal or not simpler than the existing one
+    """
+    return (
+        existing_condition == new_condition or not new_condition in existing_condition
+    )
+
+
+def _should_ignore_new_condition(existing_condition: str, new_condition: str):
+    """
+    Checks if the new condition is equal or more complex than an existing one
+    """
+    return existing_condition == new_condition or existing_condition in new_condition
 
 
 def add_skip_if(manifest, filename, condition, bug=None):
@@ -262,7 +288,7 @@ def add_skip_if(manifest, filename, condition, bug=None):
     first = None
     first_comment = ""
     skip_if = None
-    existing = False  # this condition is already present
+    ignore_condition = False  # this condition should not be added
     if "skip-if" in keyvals:
         skip_if = keyvals["skip-if"]
         if len(skip_if) == 1:
@@ -284,46 +310,128 @@ def add_skip_if(manifest, filename, condition, bug=None):
         skip_if = {"skip-if": mp_array}
         keyvals.update(skip_if)
     else:
+        # We store the conditions in a regular python array so we can sort them before
+        # dumping them in the TOML
+        conditions_array = []
         if first is not None:
-            if first == condition:
-                existing = True
-            if first_comment is not None:
-                mp_array.add_line(
-                    first, indent="  ", comment=_simplify_comment(first_comment)
-                )
-            else:
-                mp_array.add_line(first, indent="  ")
+            if _should_ignore_new_condition(first, condition):
+                ignore_condition = True
+            if first_comment is not None and _should_keep_existing_condition(
+                first, condition
+            ):
+                conditions_array.append([first, _simplify_comment(first_comment)])
         if len(skip_if) > 1:
             e_condition = None
             e_comment = None
             for e in skip_if._iter_items():
                 if isinstance(e, String):
                     if e_condition is not None:
-                        if e_comment is not None:
-                            mp_array.add_line(
-                                e_condition, indent="  ", comment=e_comment
-                            )
-                            e_comment = None
-                        else:
-                            mp_array.add_line(e_condition, indent="  ")
+                        if _should_keep_existing_condition(e_condition, condition):
+                            conditions_array.append([e_condition, e_comment])
+                        e_comment = None
                         e_condition = None
                     if len(e) > 0:
                         e_condition = e.as_string().strip('"')
-                        if e_condition == condition:
-                            existing = True
+                        if _should_ignore_new_condition(e_condition, condition):
+                            ignore_condition = True
                 elif isinstance(e, Comment):
                     e_comment = _simplify_comment(e.as_string())
-            if e_condition is not None:
-                if e_comment is not None:
-                    mp_array.add_line(e_condition, indent="  ", comment=e_comment)
-                else:
-                    mp_array.add_line(e_condition, indent="  ")
-        if not existing:
-            if bug is not None:
-                mp_array.add_line(condition, indent="  ", comment=bug)
-            else:
-                mp_array.add_line(condition, indent="  ")
+            if e_condition is not None and _should_keep_existing_condition(
+                e_condition, condition
+            ):
+                conditions_array.append([e_condition, e_comment])
+        if not ignore_condition:
+            conditions_array.append([condition, bug])
+        conditions_array.sort()
+        for c in conditions_array:
+            mp_array.add_line(c[0], indent="  ", comment=c[1])
         mp_array.add_line("", indent="")  # fixed in write_toml_str
         skip_if = {"skip-if": mp_array}
         del keyvals["skip-if"]
         keyvals.update(skip_if)
+
+
+def _should_remove_condition(
+    condition: str,
+    os_name: Optional[str] = None,
+    os_version: Optional[str] = None,
+    processor: Optional[str] = None,
+):
+    to_ignore = [os_name, os_version, processor]
+    for part in to_ignore:
+        if part is not None and part not in condition:
+            return False
+    return True
+
+
+def remove_skip_if(
+    manifest: TOMLDocument,
+    os_name: Optional[str] = None,
+    os_version: Optional[str] = None,
+    processor: Optional[str] = None,
+):
+    from tomlkit import array
+    from tomlkit.items import Comment, String
+
+    if os_name is None and os_version is None and processor is None:
+        raise ValueError("Needs at least os name, version or processor to be set.")
+
+    has_removed_items = False
+
+    for filename in manifest:
+        key_values = manifest[filename]
+        if isinstance(key_values, Table) and "skip-if" in key_values:
+            condition_array = key_values["skip-if"]
+            if isinstance(condition_array, Array):
+                new_conditions = array()
+                condition = None
+                comment = None
+                conditions_to_add: list[tuple[str, Optional[str]]] = []
+                for item in condition_array._iter_items():
+                    if isinstance(item, String):
+                        if condition is not None:
+                            if not _should_remove_condition(
+                                condition, os_name, os_version, processor
+                            ):
+                                conditions_to_add.append((condition, comment))
+                            else:
+                                has_removed_items = True
+                            condition = None
+                            comment = None
+                        if len(item) > 0:
+                            condition = item.as_string().strip('"')
+                    elif isinstance(item, Comment):
+                        comment = _simplify_comment(item.as_string())
+                if condition is not None:
+                    if not _should_remove_condition(
+                        condition, os_name, os_version, processor
+                    ):
+                        conditions_to_add.append((condition, comment))
+                    else:
+                        has_removed_items = True
+
+                if len(conditions_to_add) > 0:
+                    # If there is only one condition, make the skip-if a one-liner
+                    if len(conditions_to_add) > 1:
+                        for condition, comment in conditions_to_add:
+                            new_conditions.add_line(
+                                condition, comment=comment, indent="  "
+                            )
+                    else:
+                        condition, comment = conditions_to_add[0]
+                        new_conditions.add_line(
+                            condition, indent="", add_comma=False, newline=False
+                        )
+                        # Make sure the comment is added outside the array on one-liners
+                        if comment is not None:
+                            new_conditions.comment(comment)
+
+                # Do not keep an empty skip-if array if there are no conditions
+                if len(new_conditions) > 0:
+                    if len(new_conditions) > 1:
+                        new_conditions.add_line("", indent="")
+                    key_values.update({"skip-if": new_conditions})
+                else:
+                    del key_values["skip-if"]
+
+    return has_removed_items

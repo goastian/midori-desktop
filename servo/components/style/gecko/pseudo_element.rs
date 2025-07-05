@@ -39,13 +39,37 @@ impl ::selectors::parser::PseudoElement for PseudoElement {
                 Self::After |
                 Self::Marker |
                 Self::Placeholder |
-                Self::FileSelectorButton
+                Self::FileSelectorButton |
+                Self::DetailsContent
         )
     }
 
     #[inline]
     fn accepts_state_pseudo_classes(&self) -> bool {
-        self.supports_user_action_state()
+        // Note: if the pseudo element is a descendants of a pseudo element, `only-child` should be
+        // allowed after it.
+        self.supports_user_action_state() || self.is_in_pseudo_element_tree()
+    }
+
+    #[inline]
+    fn specificity_count(&self) -> u32 {
+        self.specificity_count()
+    }
+
+    #[inline]
+    fn is_in_pseudo_element_tree(&self) -> bool {
+        // All the named view transition pseudo-elements are the descendants of a pseudo-element
+        // root.
+        self.is_named_view_transition()
+    }
+
+    /// Whether this pseudo-element is "element-backed", which means that it inherits from its regular
+    /// flat tree parent, which might not be the originating element.
+    #[inline]
+    fn is_element_backed(&self) -> bool {
+        // Note: We doen't include ::view-transition here because it inherits from the originating
+        // element, instead of the snapshot containing block.
+        self.is_named_view_transition() || *self == PseudoElement::DetailsContent
     }
 }
 
@@ -164,6 +188,35 @@ impl PseudoElement {
     pub fn is_target_text(&self) -> bool {
         *self == PseudoElement::TargetText
     }
+
+    /// Whether this pseudo-element is a named view transition pseudo-element.
+    pub fn is_named_view_transition(&self) -> bool {
+        matches!(
+            *self,
+            Self::ViewTransitionGroup(..) |
+                Self::ViewTransitionImagePair(..) |
+                Self::ViewTransitionOld(..) |
+                Self::ViewTransitionNew(..)
+        )
+    }
+
+    /// The count we contribute to the specificity from this pseudo-element.
+    pub fn specificity_count(&self) -> u32 {
+        match *self {
+            Self::ViewTransitionGroup(ref name) |
+            Self::ViewTransitionImagePair(ref name) |
+            Self::ViewTransitionOld(ref name) |
+            Self::ViewTransitionNew(ref name) => {
+                // The specificity of a named view transition pseudo-element selector with a
+                // `<custom-ident>` argument is equivalent to a type selector.
+                // The specificity of a named view transition pseudo-element selector with a `*`
+                // argument is zero.
+                (name.0 != atom!("*")) as u32
+            },
+            _ => 1,
+        }
+    }
+
     /// Whether this pseudo-element supports user action selectors.
     pub fn supports_user_action_state(&self) -> bool {
         (self.flags() & structs::CSS_PSEUDO_ELEMENT_SUPPORTS_USER_ACTION_STATE) != 0
@@ -177,6 +230,14 @@ impl PseudoElement {
             Self::SliderFill | Self::SliderTrack | Self::SliderThumb => {
                 pref!("layout.css.modern-range-pseudos.enabled")
             },
+            Self::DetailsContent => {
+                pref!("layout.css.details-content.enabled")
+            },
+            Self::ViewTransition |
+            Self::ViewTransitionGroup(..) |
+            Self::ViewTransitionImagePair(..) |
+            Self::ViewTransitionOld(..) |
+            Self::ViewTransitionNew(..) => pref!("dom.viewTransitions.enabled"),
             // If it's not explicitly enabled in UA sheets or chrome, then we're enabled for
             // content.
             _ => (self.flags() & structs::CSS_PSEUDO_ELEMENT_ENABLED_IN_UA_SHEETS_AND_CHROME) == 0,

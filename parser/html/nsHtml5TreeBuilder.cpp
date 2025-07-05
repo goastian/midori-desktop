@@ -99,7 +99,7 @@ static const char* const QUIRKY_PUBLIC_IDS_DATA[] = {
     "-//webtechs//dtd mozilla html 2.0//",
     "-//webtechs//dtd mozilla html//"};
 staticJArray<const char*, int32_t> nsHtml5TreeBuilder::QUIRKY_PUBLIC_IDS = {
-    QUIRKY_PUBLIC_IDS_DATA, MOZ_ARRAY_LENGTH(QUIRKY_PUBLIC_IDS_DATA)};
+    QUIRKY_PUBLIC_IDS_DATA, std::size(QUIRKY_PUBLIC_IDS_DATA)};
 void nsHtml5TreeBuilder::setKeepBuffer(bool keepBuffer) {
   this->keepBuffer = keepBuffer;
 }
@@ -155,11 +155,11 @@ void nsHtml5TreeBuilder::startTokenization(nsHtml5Tokenizer* self) {
       mode = FRAMESET_OK;
     } else if (contextNamespace == kNameSpaceID_MathML) {
       nsHtml5ElementName* elementName = nsHtml5ElementName::ELT_MATH;
-      if (nsGkAtoms::mi_ == contextName || nsGkAtoms::mo_ == contextName ||
-          nsGkAtoms::mn_ == contextName || nsGkAtoms::ms_ == contextName ||
-          nsGkAtoms::mtext_ == contextName) {
+      if (nsGkAtoms::mi == contextName || nsGkAtoms::mo == contextName ||
+          nsGkAtoms::mn == contextName || nsGkAtoms::ms == contextName ||
+          nsGkAtoms::mtext == contextName) {
         elementName = nsHtml5ElementName::ELT_MTEXT;
-      } else if (nsGkAtoms::annotation_xml_ == contextName) {
+      } else if (nsGkAtoms::annotation_xml == contextName) {
         elementName = nsHtml5ElementName::ELT_ANNOTATION_XML;
       }
       nsHtml5StackNode* node =

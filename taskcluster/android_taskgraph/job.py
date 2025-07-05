@@ -8,7 +8,7 @@ from shlex import quote as shell_quote
 from gecko_taskgraph.transforms.job import configure_taskdesc_for_run, run_job_using
 from taskgraph.util import path
 from taskgraph.util.schema import Schema, taskref_or_string
-from voluptuous import Optional, Required
+from voluptuous import Any, Optional, Required
 
 secret_schema = {
     Required("name"): str,
@@ -32,7 +32,7 @@ gradlew_schema = Schema(
         Optional("post-gradlew"): [[str]],
         # Base work directory used to set up the task.
         Required("workdir"): str,
-        Optional("use-caches"): bool,
+        Optional("use-caches"): Any(bool, [str]),
         Optional("secrets"): [secret_schema],
         Optional("dummy-secrets"): [dummy_secret_schema],
     }
@@ -44,7 +44,7 @@ run_commands_schema = Schema(
         Optional("pre-commands"): [[str]],
         Required("commands"): [[taskref_or_string]],
         Required("workdir"): str,
-        Optional("use-caches"): bool,
+        Optional("use-caches"): Any(bool, [str]),
         Optional("secrets"): [secret_schema],
         Optional("dummy-secrets"): [dummy_secret_schema],
     }
@@ -82,7 +82,7 @@ def configure_gradlew(config, job, taskdesc):
         {
             "ANDROID_SDK_ROOT": path.join(fetches_dir, "android-sdk-linux"),
             "GRADLE_USER_HOME": path.join(
-                topsrc_dir, "mobile/android/gradle/dotgradle-online"
+                topsrc_dir, "mobile/android/gradle/dotgradle-offline"
             ),
             "MOZ_BUILD_DATE": config.params["moz_build_date"],
         }
@@ -111,9 +111,9 @@ def configure_gradlew(config, job, taskdesc):
             "POST_GRADLEW": _convert_commands_to_string(run.pop("post-gradlew", [])),
         }
     )
-    run[
-        "command"
-    ] = "/builds/worker/checkouts/gecko/taskcluster/scripts/builder/build-android.sh"
+    run["command"] = (
+        "/builds/worker/checkouts/gecko/taskcluster/scripts/builder/build-android.sh"
+    )
     _inject_secrets_scopes(run, taskdesc)
     _set_run_task_attributes(job)
     configure_taskdesc_for_run(config, job, taskdesc, job["worker"]["implementation"])

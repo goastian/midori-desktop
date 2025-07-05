@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 
 import copy
 import json
@@ -78,6 +76,15 @@ class MarionetteTest(TestingMixin, MercurialScript, TransferMixin, CodeCoverageM
                     "default": "unit-tests.toml",
                     "help": "Path to test manifest to run relative to the Marionette "
                     "tests directory",
+                },
+            ],
+            [
+                ["--tag"],
+                {
+                    "action": "store",
+                    "dest": "test_tag",
+                    "default": "",
+                    "help": "Tag that identifies how to filter which tests to run.",
                 },
             ],
             [
@@ -201,7 +208,7 @@ class MarionetteTest(TestingMixin, MercurialScript, TransferMixin, CodeCoverageM
 
         self.test_suite = self._get_test_suite(c.get("emulator"))
         if self.test_suite not in self.config["suite_definitions"]:
-            self.fatal("{} is not defined in the config!".format(self.test_suite))
+            self.fatal(f"{self.test_suite} is not defined in the config!")
 
         if c.get("structured_output"):
             self.parser_class = StructuredOutputParser
@@ -263,9 +270,7 @@ class MarionetteTest(TestingMixin, MercurialScript, TransferMixin, CodeCoverageM
             dirs["abs_test_install_dir"], "config", "marionette_requirements.txt"
         )
         if not os.path.isfile(requirements):
-            self.fatal(
-                "Could not find marionette requirements file: {}".format(requirements)
-            )
+            self.fatal(f"Could not find marionette requirements file: {requirements}")
 
         self.register_virtualenv_module(requirements=[requirements])
 
@@ -278,7 +283,7 @@ class MarionetteTest(TestingMixin, MercurialScript, TransferMixin, CodeCoverageM
         # Currently running marionette on an emulator means webapi
         # tests. This method will need to change if this does.
         testsuite = "webapi" if is_emulator else "marionette"
-        return "{}_{}".format(testsuite, platform)
+        return f"{testsuite}_{platform}"
 
     def download_and_extract(self):
         super(MarionetteTest, self).download_and_extract()
@@ -339,6 +344,9 @@ class MarionetteTest(TestingMixin, MercurialScript, TransferMixin, CodeCoverageM
 
         cmd = [python, "-u", os.path.join(dirs["abs_marionette_dir"], "runtests.py")]
 
+        if self.config.get("test_tag", ""):
+            cmd.extend(["--tag", self.config["test_tag"]])
+
         manifest = os.path.join(
             dirs["abs_marionette_tests_dir"], self.config["test_manifest"]
         )
@@ -346,7 +354,7 @@ class MarionetteTest(TestingMixin, MercurialScript, TransferMixin, CodeCoverageM
         if self.config.get("app_arg"):
             config_fmt_args["app_arg"] = self.config["app_arg"]
 
-        cmd.extend(["--setpref={}".format(p) for p in self.config["extra_prefs"]])
+        cmd.extend([f"--setpref={p}" for p in self.config["extra_prefs"]])
 
         cmd.append("--gecko-log=-")
 
@@ -405,16 +413,17 @@ class MarionetteTest(TestingMixin, MercurialScript, TransferMixin, CodeCoverageM
         # Causes Firefox to crash when using non-local connections.
         env["MOZ_DISABLE_NONLOCAL_CONNECTIONS"] = "1"
 
+        # Avoid issues when printing messages containing unicode characters on
+        # windows (Bug 1800035).
+        if self._is_windows():
+            env["PYTHONIOENCODING"] = "utf-8"
+
         env = self.query_env(partial_env=env)
 
         try:
             cwd = self._query_tests_dir()
         except Exception as e:
-            self.fatal(
-                "Don't know how to run --test-suite '{0}': {1}!".format(
-                    self.test_suite, e
-                )
-            )
+            self.fatal(f"Don't know how to run --test-suite '{self.test_suite}': {e}!")
 
         marionette_parser = self.parser_class(
             config=self.config,

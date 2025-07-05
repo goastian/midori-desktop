@@ -24,7 +24,7 @@ use cssparser::{
 };
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
-use thin_vec::ThinVec;
+#[cfg(feature = "gecko")] use thin_vec::ThinVec;
 
 /// A @font-feature-values block declaration.
 /// It is `<ident>: <integer>+`.
@@ -205,6 +205,7 @@ where
         &mut self,
         name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
+        _declaration_start: &ParserState,
     ) -> Result<(), ParseError<'i>> {
         let value = input.parse_entirely(|i| T::parse(self.context, i))?;
         let new = FFVDeclaration {
@@ -422,9 +423,9 @@ macro_rules! font_feature_values_blocks {
                             while let Some(declaration) = iter.next() {
                                 if let Err((error, slice)) = declaration {
                                     let location = error.location;
-                                    let error = ContextualParseError::UnsupportedKeyframePropertyDeclaration(
-                                        slice, error
-                                    );
+                                    // TODO(emilio): Maybe add a more specific error kind for
+                                    // font-feature-values descriptors.
+                                    let error = ContextualParseError::UnsupportedPropertyDeclaration(slice, error, &[]);
                                     self.context.log_css_error(location, error);
                                 }
                             }

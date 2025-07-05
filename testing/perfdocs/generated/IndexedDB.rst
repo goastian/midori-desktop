@@ -4,13 +4,13 @@ IndexedDB Performance Testing
 
 How to run tests on CI:
 -----------------------
-* Windows: ``mach try perf --show-all -q "test-windows10-64-shippable-qr/opt-browsertime-indexeddb"``
-* Linux: ``mach try perf --show-all -q "test-linux1804-64-shippable-qr/opt-browsertime-indexeddb"``
-* Mac: ``mach try perf --show-all -q "test-macosx1015-64-shippable-qr/opt-browsertime-indexeddb"``
-* All but 32-bit jobs: ``mach try perf --chrome --safari --show-all -q 'shippable-browsertime-indexeddb !32'``
+* Windows: ``mach try perf --full -q "test-windows10-64-shippable-qr/opt-browsertime-indexeddb"``
+* Linux: ``mach try perf --full -q "test-linux1804-64-shippable-qr/opt-browsertime-indexeddb"``
+* Mac: ``mach try perf --full -q "test-macosx1015-64-shippable-qr/opt-browsertime-indexeddb"``
+* All but 32-bit jobs: ``mach try perf --chrome --safari --full -q 'shippable-browsertime-indexeddb !32'``
 * In general:
 
-  * Open test selection interface with ``mach try perf --show-all``
+  * Open test selection interface with ``mach try perf --full``
   * Filter out the preferred tests by typing letters which are expected to be part of the test job name string (as in the -q argument above)
   * Note down the string used as a filter for rerunning the job (or rerun it with ``mach try again --list-tasks`` and ``mach try again --index``)
 
@@ -47,8 +47,8 @@ How to add more tests?
 
 * Add ``[test_name]`` section to file ``testing/raptor/raptor/tests/custom/browsertime-indexeddb.ini`` where ``test_name`` **must be 10 characters or less** in order to be a valid ``Treeherder`` test name
 
-  * Under the ``[test_name]`` section, specify the test script name as a value of ``test_script =``
-  * Under the ``[test_name]`` section, specity the test parameters as a sequence of ``--browsertime.key=value`` arguments as a value of ``browsertime_args =``
+  * Under the ``[test_name]`` section, specify the test script name as a value of ``test_script=``
+  * Under the ``[test_name]`` section, specify the test parameters as a sequence of ``--browsertime.key=value`` arguments as a value of ``browsertime_args =``
   * Under the ``[test_name]`` section, override any other values as needed
 
 * Add test as a subtest to run for Desktop ``taskcluster/kinds/test/browsertime-desktop.yml`` (maybe also for mobile)

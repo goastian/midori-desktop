@@ -13,7 +13,11 @@ class nsIArray;
 class nsICookie;
 namespace mozilla {
 class OriginAttributes;
-}
+
+namespace dom {
+class ContentParent;
+}  // namespace dom
+}  // namespace mozilla
 
 class nsIEffectiveTLDService;
 
@@ -27,7 +31,7 @@ class CookieServiceParent : public PCookieServiceParent {
   friend class PCookieServiceParent;
 
  public:
-  CookieServiceParent();
+  explicit CookieServiceParent(dom::ContentParent* aContentParent);
   virtual ~CookieServiceParent() = default;
 
   void TrackCookieLoad(nsIChannel* aChannel);
@@ -36,9 +40,9 @@ class CookieServiceParent : public PCookieServiceParent {
 
   void RemoveAll();
 
-  void RemoveCookie(const Cookie& aCookie);
+  void RemoveCookie(const Cookie& aCookie, const nsID* aOperationID);
 
-  void AddCookie(const Cookie& aCookie);
+  void AddCookie(const Cookie& aCookie, const nsID* aOperationID);
 
   // This will return true if the CookieServiceParent is currently processing
   // an update from the content process. This is used in ContentParent to make
@@ -47,13 +51,16 @@ class CookieServiceParent : public PCookieServiceParent {
   bool ProcessingCookie() { return mProcessingCookie; }
 
   bool ContentProcessHasCookie(const Cookie& cookie);
+  bool ContentProcessHasCookie(const nsACString& aHost,
+                               const OriginAttributes& aOriginAttributes);
   bool InsecureCookieOrSecureOrigin(const Cookie& cookie);
   void UpdateCookieInContentList(nsIURI* aHostURI,
                                  const OriginAttributes& aOriginAttrs);
 
   mozilla::ipc::IPCResult SetCookies(
       const nsCString& aBaseDomain, const OriginAttributes& aOriginAttributes,
-      nsIURI* aHost, bool aFromHttp, const nsTArray<CookieStruct>& aCookies,
+      nsIURI* aHost, bool aFromHttp, bool aIsThirdParty,
+      const nsTArray<CookieStruct>& aCookies,
       dom::BrowsingContext* aBrowsingContext = nullptr);
 
  protected:
@@ -61,7 +68,8 @@ class CookieServiceParent : public PCookieServiceParent {
 
   mozilla::ipc::IPCResult RecvSetCookies(
       const nsCString& aBaseDomain, const OriginAttributes& aOriginAttributes,
-      nsIURI* aHost, bool aFromHttp, const nsTArray<CookieStruct>& aCookies);
+      nsIURI* aHost, bool aFromHttp, bool aIsThirdParty,
+      const nsTArray<CookieStruct>& aCookies);
 
   mozilla::ipc::IPCResult RecvGetCookieList(
       nsIURI* aHost, const bool& aIsForeign,

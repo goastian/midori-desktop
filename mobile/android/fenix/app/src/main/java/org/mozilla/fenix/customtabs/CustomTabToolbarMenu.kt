@@ -22,7 +22,6 @@ import mozilla.components.browser.state.selector.findCustomTab
 import mozilla.components.browser.state.state.CustomTabSessionState
 import mozilla.components.browser.state.store.BrowserStore
 import org.mozilla.fenix.R
-import org.mozilla.fenix.components.toolbar.IncompleteRedesignToolbarFeature
 import org.mozilla.fenix.components.toolbar.ToolbarMenu
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getStringWithArgSafe
@@ -56,8 +55,6 @@ class CustomTabToolbarMenu(
     internal val session: CustomTabSessionState? get() = sessionId?.let { store.state.findCustomTab(it) }
 
     private val appName = context.getString(R.string.app_name)
-    private val isNavBarEnabled = IncompleteRedesignToolbarFeature(context.settings()).isEnabled
-    private val shouldShowMenuToolbar = !isNavBarEnabled
 
     override val menuToolbar by lazy {
         val back = BrowserMenuItemToolbar.TwoStateButton(
@@ -126,12 +123,12 @@ class CustomTabToolbarMenu(
         val menuItems = listOfNotNull(
             poweredBy.apply { visible = { !isSandboxCustomTab } },
             BrowserMenuDivider().apply { visible = { !isSandboxCustomTab } },
-            desktopMode,
+            desktopMode.apply { visible = { session?.content?.isPdf == false } },
             findInPage,
             openInApp.apply { visible = ::shouldShowOpenInApp },
-            openInFenix.apply { visible = { !isSandboxCustomTab && !isNavBarEnabled } },
+            openInFenix.apply { visible = { !isSandboxCustomTab } },
             BrowserMenuDivider(),
-            if (shouldShowMenuToolbar) menuToolbar else null,
+            menuToolbar,
         )
         if (shouldReverseItems) {
             menuItems.reversed()
@@ -173,7 +170,7 @@ class CustomTabToolbarMenu(
         label = context.getString(R.string.browser_menu_open_in_fenix, appName),
         textColorResource = primaryTextColor(),
     ) {
-        onItemTapped.invoke(ToolbarMenu.Item.OpenInFenix)
+        onItemTapped.invoke(ToolbarMenu.Item.OpenInFenix())
     }
 
     private val poweredBy = BrowserMenuCategory(

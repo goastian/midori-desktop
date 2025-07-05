@@ -4,30 +4,31 @@
 
 package org.mozilla.fenix.browser
 
-import android.app.Activity
-import androidx.appcompat.content.res.AppCompatResources
-import androidx.core.content.ContextCompat
-import com.google.android.material.snackbar.Snackbar
-import kotlinx.coroutines.ExperimentalCoroutinesApi
+import android.content.Context
+import android.view.ViewGroup
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import mozilla.components.lib.state.helpers.AbstractBinding
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.AppStore
-import org.mozilla.fenix.components.FenixSnackbar
 import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.components.appstate.AppState
-import org.mozilla.fenix.ext.components
-import org.mozilla.fenix.ext.getRootView
+import org.mozilla.fenix.compose.core.Action
+import org.mozilla.fenix.compose.snackbar.Snackbar
+import org.mozilla.fenix.compose.snackbar.SnackbarState
 
 /**
- * A binding that shows standard snackbar error.
+ * A binding that shows standard snackbar errors.
+ *
+ * @param context [Context] used for system interactions and accessing resources.
+ * @param snackbarParent [ViewGroup] in which to find a suitable parent for displaying the snackbar.
+ * @param appStore The [AppStore] containing information about when to show a snackbar styled for errors.
  */
-@OptIn(ExperimentalCoroutinesApi::class)
 class StandardSnackbarErrorBinding(
-    private val activity: Activity,
-    appStore: AppStore,
+    private val context: Context,
+    private val snackbarParent: ViewGroup,
+    private val appStore: AppStore,
 ) : AbstractBinding<AppState>(appStore) {
 
     override suspend fun onState(flow: Flow<AppState>) {
@@ -35,44 +36,26 @@ class StandardSnackbarErrorBinding(
             .distinctUntilChanged()
             .collect {
                 it?.let { standardSnackbarError ->
-                    activity.getRootView()?.let { view ->
-                        val snackBar = FenixSnackbar.make(
-                            view = view,
-                            duration = Snackbar.LENGTH_INDEFINITE,
-                            isDisplayedWithBrowserToolbar = true,
-                        )
-                        snackBar.setText(
-                            standardSnackbarError.message,
-                        )
-                        snackBar.setButtonTextColor(
-                            ContextCompat.getColor(
-                                activity,
-                                R.color.fx_mobile_text_color_primary,
+                    snackbarParent.let { view ->
+                        val snackbar = Snackbar.make(
+                            snackBarParentView = view,
+                            snackbarState = SnackbarState(
+                                message = standardSnackbarError.message,
+                                duration = SnackbarState.Duration.Preset.Indefinite,
+                                type = SnackbarState.Type.Warning,
+                                action = Action(
+                                    label = context.getString(R.string.standard_snackbar_error_dismiss),
+                                    onClick = {
+                                        appStore.dispatch(
+                                            AppAction.UpdateStandardSnackbarErrorAction(
+                                                standardSnackbarError = null,
+                                            ),
+                                        )
+                                    },
+                                ),
                             ),
                         )
-                        snackBar.setBackground(
-                            AppCompatResources.getDrawable(
-                                activity,
-                                R.drawable.standard_snackbar_error_background,
-                            ),
-                        )
-                        snackBar.setSnackBarTextColor(
-                            ContextCompat.getColor(
-                                activity,
-                                R.color.fx_mobile_text_color_critical,
-                            ),
-                        )
-                        snackBar.setAction(
-                            text = activity.getString(R.string.standard_snackbar_error_dismiss),
-                            action = {
-                                view.context.components.appStore.dispatch(
-                                    AppAction.UpdateStandardSnackbarErrorAction(
-                                        null,
-                                    ),
-                                )
-                            },
-                        )
-                        snackBar.show()
+                        snackbar.show()
                     }
                 }
             }

@@ -16,11 +16,10 @@
 
 [@AB_CD@]
 @BINPATH@/@PREF_DIR@/mobile-l10n.js
-@BINPATH@/update.locale
+@BINPATH@/default.locale
 #ifdef MOZ_UPDATER
 @BINPATH@/updater.ini
 #endif
-@BINPATH@/dictionaries/*
 @BINPATH@/hyphenation/*
 @BINPATH@/localization/*
 
@@ -51,7 +50,6 @@
 #endif
 @BINPATH@/@DLL_PREFIX@xul@DLL_SUFFIX@
 
-@BINPATH@/@DLL_PREFIX@nssckbi@DLL_SUFFIX@
 @BINPATH@/@DLL_PREFIX@nss3@DLL_SUFFIX@
 #ifndef MOZ_FOLD_LIBS
 @BINPATH@/@DLL_PREFIX@nssutil3@DLL_SUFFIX@
@@ -65,8 +63,6 @@
 @BINPATH@/@DLL_PREFIX@softokn3.chk
 #endif
 
-@BINPATH@/@DLL_PREFIX@ipcclientcerts@DLL_SUFFIX@
-
 #ifndef MOZ_FOLD_LIBS
 @BINPATH@/@DLL_PREFIX@mozsqlite3@DLL_SUFFIX@
 #endif
@@ -79,8 +75,10 @@
 @BINPATH@/@DLL_PREFIX@gvr@DLL_SUFFIX@
 #endif
 
-[xpcom]
-@BINPATH@/package-name.txt
+#ifdef MOZ_CRASHREPORTER
+@BINPATH@/@DLL_PREFIX@crashhelper@DLL_SUFFIX@
+@BINPATH@/@DLL_PREFIX@minidump_analyzer@DLL_SUFFIX@
+#endif
 
 [browser]
 ; [Base Browser Files]
@@ -88,12 +86,7 @@
 @BINPATH@/platform.ini
 @BINPATH@/defaults/settings
 
-; [Components]
-@BINPATH@/components/components.manifest
-
 ; JavaScript components
-@BINPATH@/components/toolkitsearch.manifest
-
 @BINPATH@/components/extensions.manifest
 
 @BINPATH@/components/antitracking.manifest
@@ -105,20 +98,19 @@
 
 ; Modules
 @BINPATH@/modules/*
+@BINPATH@/moz-src/*
 @BINPATH@/actors/*
 
 ; [Browser Chrome Files]
 @BINPATH@/chrome/pdfjs.manifest
 @BINPATH@/chrome/pdfjs/*
+@BINPATH@/defaults/pref/PdfJsDefaultPrefs.js
 @BINPATH@/chrome/toolkit@JAREXT@
 @BINPATH@/chrome/toolkit.manifest
 
 ; [Extensions]
 @BINPATH@/components/extensions-toolkit.manifest
 @BINPATH@/components/extensions-mobile.manifest
-
-; Features
-@BINPATH@/features/*
 
 ; DevTools
 @BINPATH@/chrome/devtools@JAREXT@
@@ -133,14 +125,12 @@
 @BINPATH@/*/greprefs.js
 @BINPATH@/@PREF_DIR@/*/geckoview-prefs.js
 #endif # !MOZ_ANDROID_FAT_AAR_ARCHITECTURES
-@BINPATH@/@PREF_DIR@/channel-prefs.js
 @BINPATH@/defaults/autoconfig/prefcalls.js
 
 ; [Layout Engine Resources]
 ; Style Sheets, Graphics and other Resources used by the layout engine.
 @BINPATH@/res/EditorOverride.css
 @BINPATH@/res/contenteditable.css
-@BINPATH@/res/designmode.css
 @BINPATH@/res/table-add-column-after-active.gif
 @BINPATH@/res/table-add-column-after-hover.gif
 @BINPATH@/res/table-add-column-after.gif

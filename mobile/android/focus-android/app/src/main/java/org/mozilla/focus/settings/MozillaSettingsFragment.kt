@@ -8,13 +8,12 @@ import android.os.Bundle
 import androidx.preference.Preference
 import mozilla.components.browser.state.state.SessionState
 import org.mozilla.focus.R
-import org.mozilla.focus.browser.LocalizedContent
 import org.mozilla.focus.ext.components
 import org.mozilla.focus.ext.requireComponents
+import org.mozilla.focus.ext.showCrashReports
 import org.mozilla.focus.ext.showToolbar
 import org.mozilla.focus.state.AppAction
 import org.mozilla.focus.state.Screen
-import org.mozilla.focus.utils.AppConstants
 import org.mozilla.focus.utils.SupportUtils
 
 class MozillaSettingsFragment :
@@ -49,9 +48,9 @@ class MozillaSettingsFragment :
                 )
                 requireComponents.appStore.dispatch(AppAction.OpenTab(tabId))
             }
-            resources.getString(R.string.pref_key_rights) -> run {
+            resources.getString(R.string.pref_key_terms_of_use) -> run {
                 val tabId = activity.components.tabsUseCases.addTab(
-                    LocalizedContent.URL_RIGHTS,
+                    SupportUtils.TERMS_OF_USE_URL,
                     source = SessionState.Source.Internal.Menu,
                     selectTab = true,
                     private = true,
@@ -59,14 +58,8 @@ class MozillaSettingsFragment :
                 requireComponents.appStore.dispatch(AppAction.OpenTab(tabId))
             }
             resources.getString(R.string.pref_key_privacy_notice) -> {
-                val url = if (AppConstants.isKlarBuild) {
-                    SupportUtils.PRIVACY_NOTICE_KLAR_URL
-                } else {
-                    SupportUtils.PRIVACY_NOTICE_URL
-                }
-
                 val tabId = activity.components.tabsUseCases.addTab(
-                    url,
+                    SupportUtils.PRIVACY_NOTICE_URL,
                     source = SessionState.Source.Internal.Menu,
                     selectTab = true,
                     private = true,
@@ -87,11 +80,11 @@ class MozillaSettingsFragment :
                     AppAction.OpenSettings(Screen.Settings.Page.Licenses),
                 )
             }
+
+            resources.getString(R.string.pref_key_crash_reports) -> {
+                context?.showCrashReports()
+            }
         }
         return super.onPreferenceTreeClick(preference)
-    }
-
-    companion object {
-        fun newInstance(): MozillaSettingsFragment = MozillaSettingsFragment()
     }
 }

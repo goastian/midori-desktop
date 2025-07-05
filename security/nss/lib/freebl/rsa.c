@@ -100,7 +100,7 @@ static struct RSABlindingParamsListStr blindingParamsList = { 0 };
 
 /* Global, allows optional use of blinding.  On by default. */
 /* Cannot be changed at the moment, due to thread-safety issues. */
-static PRBool nssRSAUseBlinding = PR_TRUE;
+static const PRBool nssRSAUseBlinding = PR_TRUE;
 
 static SECStatus
 rsa_build_from_primes(const mp_int *p, const mp_int *q,
@@ -140,11 +140,11 @@ rsa_build_from_primes(const mp_int *p, const mp_int *q,
     /* at least one exponent must be given */
     PORT_Assert(!(needPublicExponent && needPrivateExponent));
 
-    /* 2.  Compute phi = (p-1)*(q-1) */
+    /* 2.  Compute phi = lcm((p-1),(q-1)) */
     CHECK_MPI_OK(mp_sub_d(p, 1, &psub1));
     CHECK_MPI_OK(mp_sub_d(q, 1, &qsub1));
+    CHECK_MPI_OK(mp_lcm(&psub1, &qsub1, &phi));
     if (needPublicExponent || needPrivateExponent) {
-        CHECK_MPI_OK(mp_lcm(&psub1, &qsub1, &phi));
         /* 3.  Compute d = e**-1 mod(phi) */
         /*     or      e = d**-1 mod(phi) as necessary */
         if (needPublicExponent) {
@@ -162,6 +162,15 @@ rsa_build_from_primes(const mp_int *p, const mp_int *q,
             err = MP_OKAY; /* to keep PORT_SetError from being called again */
             rv = SECFailure;
         }
+        goto cleanup;
+    }
+
+    /* make sure we weren't passed in a d or e = 1 mod phi */
+    /* just need to check d, because if one is = 1 mod phi, they both are */
+    CHECK_MPI_OK(mp_mod(d, &phi, &tmp));
+    if (mp_cmp_d(&tmp, 1) == MP_EQ) {
+        PORT_SetError(SEC_ERROR_INVALID_ARGS);
+        rv = SECFailure;
         goto cleanup;
     }
 
@@ -873,14 +882,14 @@ RSA_PopulatePrivateKey(RSAPrivateKey *key)
 
     /* Assure p > q */
     /* NOTE: PKCS #1 does not require p > q, and NSS doesn't use any
-      * implementation optimization that requires p > q. We can remove
-      * this code in the future.
-      */
+     * implementation optimization that requires p > q. We can remove
+     * this code in the future.
+     */
     if (mp_cmp(&p, &q) < 0)
         mp_exch(&p, &q);
 
     /* we now have our 2 primes and at least one exponent, we can fill
-      * in the key */
+     * in the key */
     rv = rsa_build_from_primes(&p, &q,
                                &e, needPublicExponent,
                                &d, needPrivateExponent,
@@ -1027,9 +1036,9 @@ rsa_PrivateKeyOpCRTNoCheck(RSAPrivateKey *key, mp_int *m, mp_int *c)
 {
     mp_int p, q, d_p, d_q, qInv;
     /*
-            The length of the randomness comes from the papers: 
+            The length of the randomness comes from the papers:
             https://link.springer.com/chapter/10.1007/978-3-642-29912-4_7
-            https://link.springer.com/chapter/10.1007/978-3-642-21554-4_5. 
+            https://link.springer.com/chapter/10.1007/978-3-642-21554-4_5.
         */
     mp_int blinding_dp, blinding_dq, r1, r2;
     unsigned char random_block[EXP_BLINDING_RANDOMNESS_LEN_BYTES];
@@ -1081,7 +1090,7 @@ rsa_PrivateKeyOpCRTNoCheck(RSAPrivateKey *key, mp_int *m, mp_int *c)
     memcpy(MP_DIGITS(&r1), random_block, sizeof(random_block));
     // blinding_dp = random * (p - 1)
     CHECK_MPI_OK(mp_mul(&blinding_dp, &r1, &blinding_dp));
-    //d_p = d_p + random * (p - 1)
+    // d_p = d_p + random * (p - 1)
     CHECK_MPI_OK(mp_add(&d_p, &blinding_dp, &d_p));
 
     // blinding_dq = 1
@@ -1094,7 +1103,7 @@ rsa_PrivateKeyOpCRTNoCheck(RSAPrivateKey *key, mp_int *m, mp_int *c)
     MP_USED(&r2) = EXP_BLINDING_RANDOMNESS_LEN;
     // blinding_dq = random * (q - 1)
     CHECK_MPI_OK(mp_mul(&blinding_dq, &r2, &blinding_dq));
-    //d_q = d_q + random * (q-1)
+    // d_q = d_q + random * (q-1)
     CHECK_MPI_OK(mp_add(&d_q, &blinding_dq, &d_q));
 
     /* 1. m1 = c**d_p mod p */
@@ -1157,6 +1166,8 @@ rsa_PrivateKeyOpCRTCheckedPubKey(RSAPrivateKey *key, mp_int *m, mp_int *c)
     /* Perform a public key operation v = m ** e mod n */
     CHECK_MPI_OK(mp_exptmod(m, &e, &n, &v));
     if (mp_cmp(&v, c) != 0) {
+        /* this error triggers a fips fatal error lock */
+        PORT_SetError(SEC_ERROR_LIBRARY_FAILURE);
         rv = SECFailure;
     }
 cleanup:

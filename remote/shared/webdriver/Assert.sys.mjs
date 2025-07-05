@@ -148,6 +148,29 @@ assert.open = function (browsingContext, msg = "") {
 };
 
 /**
+ * Asserts that the browsing context is top-level.
+ *
+ * @param {BrowsingContext} browsingContext
+ *     Browsing context to check.
+ * @param {string=} msg
+ *     Custom error message.
+ *
+ * @returns {BrowsingContext}
+ *     <var>browsingContext</var> is returned unaltered.
+ *
+ * @throws {InvalidArgumentError}
+ *     If <var>browsingContext</var> is not top-level.
+ */
+assert.topLevel = function (browsingContext, msg = "") {
+  msg = msg || `Browsing context is not top-level`;
+  return assert.that(
+    () => !browsingContext.parent,
+    msg,
+    lazy.error.InvalidArgumentError
+  )(browsingContext);
+};
+
+/**
  * Asserts that there is no current user prompt.
  *
  * @param {modal.Dialog} dialog
@@ -486,6 +509,27 @@ assert.in = function (prop, obj, msg = "") {
 assert.array = function (obj, msg = "") {
   msg = msg || lazy.pprint`Expected ${obj} to be an Array`;
   return assert.that(Array.isArray, msg)(obj);
+};
+
+/**
+ * Asserts that <var>obj</var> is a non-empty Array.
+ *
+ * @param {?} obj
+ *     Value to test.
+ * @param {string=} msg
+ *     Custom error message.
+ *
+ * @returns {object}
+ *     <var>obj</var> is returned unaltered.
+ *
+ * @throws {InvalidArgumentError}
+ *     If <var>obj</var> is not a non-empty Array.
+ */
+assert.isNonEmptyArray = function (obj, msg = "") {
+  msg = msg || lazy.pprint`Expected ${obj} to be a non-empty Array`;
+  assert.array(obj, msg);
+  assert.that(assertObj => !!assertObj.length, msg)(obj);
+  return obj;
 };
 
 /**

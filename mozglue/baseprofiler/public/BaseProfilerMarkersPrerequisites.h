@@ -40,6 +40,13 @@ enum class StackCaptureOptions {
 #include <utility>
 #include <vector>
 
+// The header <X11/X.h> defines "None" as a macro that expands to "0L".
+// This is terrible because we have an enum variant named "None" too in this
+// file. To work around this, we undefine the macro "None".
+#ifdef None
+#  undef None
+#endif
+
 namespace mozilla {
 
 // Return a NotNull<const CHAR*> pointing at the literal empty string `""`.
@@ -775,7 +782,16 @@ class MarkerSchema {
     // The decimal should be used for generic representations of numbers.
     // Do not use it for time information.
     // "Label: 52.23, 0.0054, 123,456.78"
-    Decimal
+    Decimal,
+
+    // A flow is a u64 identifier that's unique across processes. All of
+    // the markers with same flow id before a terminating flow id will be
+    // considered part of the same "flow" and linked together.
+    Flow,
+    // A terminating flow ends a flow of a particular id and allows that id
+    // to be reused again. It often makes sense for destructors to create
+    // a marker with a field of this type.
+    TerminatingFlow
   };
 
   // This represents groups of markers which MarkerTypes can expose to indicate
@@ -870,6 +886,11 @@ class MarkerSchema {
     return *this;
   }
 
+  MarkerSchema& SetIsStackBased() {
+    mIsStackBased = true;
+    return *this;
+  }
+
   // Each data element that is streamed by `StreamJSONMarkerData()` can be
   // displayed as indicated by using one of the `Add...` function below.
   // Each `Add...` will add a line in the full marker description. Parameters:
@@ -950,6 +971,7 @@ class MarkerSchema {
   std::string mChartLabel;
   std::string mTooltipLabel;
   std::string mTableLabel;
+  bool mIsStackBased = false;
   // Main display, made of zero or more rows of key+label+format or label+value.
  private:
   struct DynamicData {
@@ -1008,6 +1030,14 @@ inline void StreamPayload<ProfilerString8View>(
     const ProfilerString8View& aPayload) {
   aWriter.StringProperty(aKey, aPayload);
 }
+
+template <>
+inline void StreamPayload<Flow>(baseprofiler::SpliceableJSONWriter& aWriter,
+                                const Span<const char> aKey,
+                                const Flow& aPayload) {
+  aWriter.FlowProperty(aKey, aPayload);
+}
+
 }  // namespace detail
 
 // This helper class is used by MarkerTypes that want to support the general
@@ -1017,10 +1047,17 @@ inline void StreamPayload<ProfilerString8View>(
 // class itself.
 template <typename T>
 struct BaseMarkerType {
+  static constexpr const char* Description = nullptr;
+
   static constexpr const char* AllLabels = nullptr;
   static constexpr const char* ChartLabel = nullptr;
   static constexpr const char* TableLabel = nullptr;
   static constexpr const char* TooltipLabel = nullptr;
+
+  // Setting this property to true is a promise that the the marker will nest
+  // properly.  i.e. it can't have a partially overlapping time range with any
+  // other stack based markers on the same thread.
+  static constexpr bool IsStackBased = false;
 
   // This indicates whether this marker type wants the names passed to the
   // individual marker calls stores along with the marker.
@@ -1043,6 +1080,9 @@ struct BaseMarkerType {
     }
     if (T::TooltipLabel) {
       schema.SetTooltipLabel(T::TooltipLabel);
+    }
+    if (T::IsStackBased) {
+      schema.SetIsStackBased();
     }
     for (const MS::PayloadField field : T::PayloadFields) {
       if (field.Label) {

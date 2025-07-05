@@ -41,6 +41,7 @@ class nsHttpResponseHead {
   nsHttpResponseHead() = default;
 
   nsHttpResponseHead(const nsHttpResponseHead& aOther);
+  nsHttpResponseHead(nsHttpResponseHead&& aOther);
   nsHttpResponseHead& operator=(const nsHttpResponseHead& aOther);
 
   void Enter() const MOZ_CAPABILITY_ACQUIRE(mRecursiveMutex) {
@@ -51,7 +52,7 @@ class nsHttpResponseHead {
   }
   void AssertMutexOwned() const { mRecursiveMutex.AssertCurrentThreadIn(); }
 
-  HttpVersion Version();
+  HttpVersion Version() const;
   uint16_t Status() const;
   void StatusText(nsACString& aStatusText);
   int64_t ContentLength();

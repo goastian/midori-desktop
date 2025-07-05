@@ -152,6 +152,12 @@
     "minbytes": 0,
     "maxbytes": 24576
   },
+  "c:\\windows\\system32\\windows.system.launcher.dll": {
+    "mincount": 0,
+    "maxcount": 2,
+    "minbytes": 0,
+    "maxbytes": 32768
+  },
   "c:\\windows\\system32\\ole32.dll": {
     "mincount": 4,
     "maxcount": 4,
@@ -292,18 +298,6 @@
     "maxcount": 2,
     "minbytes": 0,
     "maxbytes": 8192
-  },
-  "{firefox}\\browser\\features\\formautofill@mozilla.org.xpi": {
-    "mincount": 0,
-    "maxcount": 6,
-    "minbytes": 0,
-    "maxbytes": 393216
-  },
-  "{firefox}\\browser\\features\\flyweb@mozilla.org.xpi": {
-    "mincount": 0,
-    "maxcount": 2,
-    "minbytes": 0,
-    "maxbytes": 32768
   },
   "{firefox}\\browser\\omni.ja": {
     "mincount": 0,

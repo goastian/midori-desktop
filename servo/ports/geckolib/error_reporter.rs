@@ -196,7 +196,6 @@ impl<'a> ErrorHelpers<'a> for ContextualParseError<'a> {
             ContextualParseError::UnsupportedFontPaletteValuesDescriptor(s, err) |
             ContextualParseError::InvalidKeyframeRule(s, err) |
             ContextualParseError::InvalidFontFeatureValuesRule(s, err) |
-            ContextualParseError::UnsupportedKeyframePropertyDeclaration(s, err) |
             ContextualParseError::InvalidRule(s, err) |
             ContextualParseError::UnsupportedRule(s, err) |
             ContextualParseError::UnsupportedViewportDescriptorDeclaration(s, err) |
@@ -276,6 +275,9 @@ impl<'a> ErrorHelpers<'a> for ContextualParseError<'a> {
                 StyleParseErrorKind::OtherInvalidValue(_) => {
                     (cstr!("PEValueParsingError"), Action::Drop)
                 },
+                StyleParseErrorKind::UnexpectedImportantDeclaration => {
+                    (cstr!("PEImportantDeclError"), Action::Drop)
+                },
                 _ => (cstr!("PEUnknownProperty"), Action::Drop),
             },
             ContextualParseError::UnsupportedPropertyDeclaration(..) => {
@@ -286,9 +288,6 @@ impl<'a> ErrorHelpers<'a> for ContextualParseError<'a> {
             },
             ContextualParseError::InvalidKeyframeRule(..) => {
                 (cstr!("PEKeyframeBadName"), Action::Nothing)
-            },
-            ContextualParseError::UnsupportedKeyframePropertyDeclaration(..) => {
-                (cstr!("PEBadSelectorKeyframeRuleIgnored"), Action::Nothing)
             },
             ContextualParseError::InvalidRule(
                 _,
@@ -361,6 +360,14 @@ impl<'a> ErrorHelpers<'a> for ContextualParseError<'a> {
                             _ => None,
                         }
                     },
+                    ParseErrorKind::Custom(
+                        StyleParseErrorKind::PropertySyntaxField(_) |
+                        StyleParseErrorKind::PropertyInheritsField(_),
+                    ) => {
+                        // Keeps PEBadSelectorRSIgnored from being reported when a syntax descriptor
+                        // error or inherits descriptor error was already reported.
+                        return (None, cstr!(""), Action::Nothing);
+                    },
                     _ => None,
                 };
                 return (prefix, cstr!("PEBadSelectorRSIgnored"), Action::Nothing);
@@ -407,6 +414,9 @@ impl<'a> ErrorHelpers<'a> for ContextualParseError<'a> {
                     )) => (cstr!("PEColorNotColor"), Action::Nothing),
                     ParseErrorKind::Custom(StyleParseErrorKind::PropertySyntaxField(ref kind)) => {
                         let name = match kind {
+                            PropertySyntaxParseError::NoSyntax => {
+                                cstr!("PEPRSyntaxFieldMissing")
+                            },
                             PropertySyntaxParseError::EmptyInput => {
                                 cstr!("PEPRSyntaxFieldEmptyInput")
                             },
@@ -427,6 +437,19 @@ impl<'a> ErrorHelpers<'a> for ContextualParseError<'a> {
                             },
                             PropertySyntaxParseError::UnknownDataTypeName => {
                                 cstr!("PEPRSyntaxFieldUnknownDataTypeName")
+                            },
+                        };
+                        (name, Action::Nothing)
+                    },
+                    ParseErrorKind::Custom(StyleParseErrorKind::PropertyInheritsField(
+                        ref kind,
+                    )) => {
+                        let name = match kind {
+                            style_traits::PropertyInheritsParseError::NoInherits => {
+                                cstr!("PEPRInheritsFieldMissing")
+                            },
+                            style_traits::PropertyInheritsParseError::InvalidInherits => {
+                                cstr!("PEPRInheritsFieldInvalid")
                             },
                         };
                         (name, Action::Nothing)
@@ -476,8 +499,6 @@ impl ErrorReporter {
         let pre_param = pre_param.map(|p| p.into_str());
         let param_ptr = param.as_ref().map_or(ptr::null(), |p| p.as_ptr());
         let pre_param_ptr = pre_param.as_ref().map_or(ptr::null(), |p| p.as_ptr());
-        // The CSS source text is unused and will be removed in bug 1381188.
-        let source = "";
         unsafe {
             bindings::Gecko_ReportUnexpectedCSSError(
                 self.window_id,
@@ -489,8 +510,6 @@ impl ErrorReporter {
                 pre_param_ptr as *const _,
                 pre_param.as_ref().map_or(0, |p| p.len()) as u32,
                 suffix as *const _,
-                source.as_ptr() as *const _,
-                source.len() as u32,
                 selector_list_ptr,
                 desugared_selector_list
                     .as_ref()

@@ -51,7 +51,7 @@ class MetaCharacterException(Exception):
         self.char = char
 
 
-class _ClineSplitter(object):
+class _ClineSplitter:
     """
     Parses a given command line string and creates a list of command
     and arguments, with wildcard expansion.
@@ -181,7 +181,7 @@ def _quote(s):
     As a special case, if given an int, returns a string containing the int,
     not enclosed in quotes.
     """
-    if type(s) == int:
+    if type(s) is int:
         return f"{s}"
 
     # Empty strings need to be quoted to have any significance

@@ -14,6 +14,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.mozilla.fenix.components.usecases.FenixBrowserUseCases.Companion.ABOUT_HOME
 import org.mozilla.fenix.home.recenttabs.RecentTab
 import org.mozilla.fenix.utils.Settings
 
@@ -54,6 +55,19 @@ class BrowserStateTest {
 
         assertEquals(1, result.size)
         assertEquals(selectedTab, (result[0] as RecentTab.Tab).state)
+    }
+
+    @Test
+    fun `GIVEN the selected tab is a homepage tab WHEN asRecentTabs is called THEN return an empty list`() {
+        val selectedTab = createTab(url = ABOUT_HOME, id = "3")
+        val browserState = BrowserState(
+            tabs = listOf(createTab("tab1"), selectedTab, createTab("tab3")),
+            selectedTabId = selectedTab.id,
+        )
+
+        val result = browserState.asRecentTabs()
+
+        assertEquals(0, result.size)
     }
 
     @Test
@@ -334,7 +348,7 @@ class BrowserStateTest {
                 privateTab4,
             ),
         )
-        val settings: Settings = mockk() {
+        val settings: Settings = mockk {
             every { inactiveTabsAreEnabled } returns false
         }
 
@@ -371,7 +385,7 @@ class BrowserStateTest {
                 privateTab4,
             ),
         )
-        val settings: Settings = mockk() {
+        val settings: Settings = mockk {
             every { inactiveTabsAreEnabled } returns true
         }
 

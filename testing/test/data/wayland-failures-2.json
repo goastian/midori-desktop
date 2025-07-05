@@ -1,5 +1,6 @@
 {
   "browser/components/sessionstore/test/browser.toml": {
+    "kind": "toml",
     "label": {
       "test-linux1804-64-qr/opt-mochitest-browser-chrome-spi-nw-5": {
         "duration_median": 1778154,
@@ -28,33 +29,27 @@
             "runs_total": 3
           },
           "browser/components/sessionstore/test/browser_firefoxView_selected_restore.js": {
-            "classification": "secondary",
+            "classification": "intermittent",
             "runs": {
               "X7r1q2xWSu-2bRAofEfeBw": {
-                "result": false
+                "result": true
               },
               "Y7r1q2xWSu-2bRAofEfeBw": {
                 "result": false
               },
               "Z7r1q2xWSu-2bRAofEfeBw": {
-                "result": false
+                "result": true
               }
             },
-            "runs_failed": 3,
+            "runs_failed": 1,
             "runs_total": 3
           }
         },
         "sum_by_label": {
-          "disable_manifest": 0,
           "disable_recommended": 1,
-          "disable_too_long": 0,
-          "intermittent": 0,
-          "secondary": 1,
-          "success": 0,
-          "unknown": 0
+          "intermittent": 1
         }
       }
-    },
-    "wpt": false
+    }
   }
 }

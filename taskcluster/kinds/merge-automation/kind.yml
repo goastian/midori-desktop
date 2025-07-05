@@ -19,21 +19,38 @@ tasks:
             kind: build
             platform: firefox-release/opt
         description: Merge repositories for release management.
-        worker-type: tree
-        scopes: []
+        scopes:
+            - "queue:route:notify.matrix-room.*"
+        worker-type: lando
         worker:
-            implementation: treescript
-            tags: []
-            bump: false
+            implementation: landoscript
+            # lando-repo is the _destination_ repository; not the one
+            # the task runs on. For this reason it is keyed on behavior
+            # instead of project.
+            lando-repo:
+                by-project:
+                    try:
+                        by-behavior:
+                            main-to-beta: staging-firefox-beta
+                            early-to-late-beta: staging-firefox-beta
+                            beta-to-release: staging-firefox-release
+                            release-to-esr: staging-firefox-esr140
+                            bump-main: staging-firefox-main
+                            bump-esr140: staging-firefox-esr140
+                    default:
+                        by-behavior:
+                            main-to-beta: firefox-beta
+                            early-to-late-beta: firefox-beta
+                            beta-to-release: firefox-release
+                            release-to-esr: firefox-esr140
+                            bump-main: firefox-main
+                            bump-esr140: firefox-esr140
             dontbuild: false
-            ignore-closed-tree: true
-            push: false
             l10n-bump-info:
                 by-behavior:
-                    central-to-beta:
+                    main-to-beta:
                         - name: Firefox l10n changesets
                           path: browser/locales/l10n-changesets.json
-                          version-path: browser/config/version.txt
                           l10n-repo-url: https://github.com/mozilla-l10n/firefox-l10n
                           l10n-repo-target-branch: main
                           ignore-config:
@@ -44,7 +61,9 @@ tasks:
                                   - linux
                                   - linux-devedition
                                   - linux64
+                                  - linux64-aarch64
                                   - linux64-devedition
+                                  - linux64-aarch64-devedition
                                   - win32
                                   - win32-devedition
                                   - win64
@@ -56,7 +75,9 @@ tasks:
                                   "linux",
                                   "linux-devedition",
                                   "linux64",
+                                  "linux64-aarch64",
                                   "linux64-devedition",
+                                  "linux64-aarch64-devedition",
                                   "macosx64",
                                   "macosx64-devedition",
                                   "win32",
@@ -70,7 +91,6 @@ tasks:
                           }]
                         - name: mobile l10n changesets
                           path: mobile/locales/l10n-changesets.json
-                          version-path: mobile/android/version.txt
                           l10n-repo-url: https://github.com/mozilla-l10n/firefox-l10n
                           l10n-repo-target-branch: main
                           platform-configs: [
@@ -87,3 +107,22 @@ tasks:
                     default: null
         run-on-projects: []
         expiration-policy: long
+        routes:
+            by-level:
+                '3':
+                    # #releaseduty
+                    - "notify.matrix-room.!tBWwNyfeKqGvkNpdDL:mozilla.org.on-pending"
+                    - "notify.matrix-room.!tBWwNyfeKqGvkNpdDL:mozilla.org.on-resolved"
+                default:
+                    # #releaseduty-dev
+                    - "notify.matrix-room.!wGgsWXnVncJLSBYmuf:mozilla.org.on-pending"
+                    - "notify.matrix-room.!wGgsWXnVncJLSBYmuf:mozilla.org.on-resolved"
+        extra:
+            notify:
+                matrixBody:
+                    $let:
+                        dry_run:
+                            $if: "'dry_run' in task.payload && task.payload.dry_run"
+                            then: " (dry run)"
+                            else: ""
+                    in: "merge-automation task ${task.metadata.name}${dry_run} is now ${status.state}: https://firefox-ci-tc.services.mozilla.com/tasks/${taskId}"

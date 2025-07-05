@@ -11,10 +11,15 @@ import {getJSON} from '../httpUtil.js';
 
 import {BrowserPlatform, type ProfileOptions} from './types.js';
 
+function getFormat(buildId: string): string {
+  const majorVersion = Number(buildId.split('.').shift()!);
+  return majorVersion >= 135 ? 'xz' : 'bz2';
+}
+
 function archiveNightly(platform: BrowserPlatform, buildId: string): string {
   switch (platform) {
     case BrowserPlatform.LINUX:
-      return `firefox-${buildId}.en-US.${platform}-x86_64.tar.bz2`;
+      return `firefox-${buildId}.en-US.${platform}-x86_64.tar.${getFormat(buildId)}`;
     case BrowserPlatform.MAC_ARM:
     case BrowserPlatform.MAC:
       return `firefox-${buildId}.en-US.mac.dmg`;
@@ -27,7 +32,7 @@ function archiveNightly(platform: BrowserPlatform, buildId: string): string {
 function archive(platform: BrowserPlatform, buildId: string): string {
   switch (platform) {
     case BrowserPlatform.LINUX:
-      return `firefox-${buildId}.tar.bz2`;
+      return `firefox-${buildId}.tar.${getFormat(buildId)}`;
     case BrowserPlatform.MAC_ARM:
     case BrowserPlatform.MAC:
       return `Firefox ${buildId}.dmg`;
@@ -64,9 +69,9 @@ function parseBuildId(buildId: string): [FirefoxChannel, string] {
 export function resolveDownloadUrl(
   platform: BrowserPlatform,
   buildId: string,
-  baseUrl?: string
+  baseUrl?: string,
 ): string {
-  const [channel, resolvedBuildId] = parseBuildId(buildId);
+  const [channel] = parseBuildId(buildId);
   switch (channel) {
     case FirefoxChannel.NIGHTLY:
       baseUrl ??=
@@ -81,27 +86,33 @@ export function resolveDownloadUrl(
       baseUrl ??= 'https://archive.mozilla.org/pub/firefox/releases';
       break;
   }
-  switch (channel) {
-    case FirefoxChannel.NIGHTLY:
-      return `${baseUrl}/${resolveDownloadPath(platform, resolvedBuildId).join('/')}`;
-    case FirefoxChannel.DEVEDITION:
-    case FirefoxChannel.BETA:
-    case FirefoxChannel.STABLE:
-    case FirefoxChannel.ESR:
-      return `${baseUrl}/${resolvedBuildId}/${platformName(platform)}/en-US/${archive(platform, resolvedBuildId)}`;
-  }
+  return `${baseUrl}/${resolveDownloadPath(platform, buildId).join('/')}`;
 }
 
 export function resolveDownloadPath(
   platform: BrowserPlatform,
-  buildId: string
+  buildId: string,
 ): string[] {
-  return [archiveNightly(platform, buildId)];
+  const [channel, resolvedBuildId] = parseBuildId(buildId);
+  switch (channel) {
+    case FirefoxChannel.NIGHTLY:
+      return [archiveNightly(platform, resolvedBuildId)];
+    case FirefoxChannel.DEVEDITION:
+    case FirefoxChannel.BETA:
+    case FirefoxChannel.STABLE:
+    case FirefoxChannel.ESR:
+      return [
+        resolvedBuildId,
+        platformName(platform),
+        'en-US',
+        archive(platform, resolvedBuildId),
+      ];
+  }
 }
 
 export function relativeExecutablePath(
   platform: BrowserPlatform,
-  buildId: string
+  buildId: string,
 ): string {
   const [channel] = parseBuildId(buildId);
   switch (channel) {
@@ -113,7 +124,7 @@ export function relativeExecutablePath(
             'Firefox Nightly.app',
             'Contents',
             'MacOS',
-            'firefox'
+            'firefox',
           );
         case BrowserPlatform.LINUX:
           return path.join('firefox', 'firefox');
@@ -147,7 +158,7 @@ export enum FirefoxChannel {
 }
 
 export async function resolveBuildId(
-  channel: FirefoxChannel = FirefoxChannel.NIGHTLY
+  channel: FirefoxChannel = FirefoxChannel.NIGHTLY,
 ): Promise<string> {
   const channelToVersionKey = {
     [FirefoxChannel.ESR]: 'FIREFOX_ESR',
@@ -157,7 +168,7 @@ export async function resolveBuildId(
     [FirefoxChannel.NIGHTLY]: 'FIREFOX_NIGHTLY',
   };
   const versions = (await getJSON(
-    new URL('https://product-details.mozilla.org/1.0/firefox_versions.json')
+    new URL('https://product-details.mozilla.org/1.0/firefox_versions.json'),
   )) as Record<string, string>;
   const version = versions[channelToVersionKey[channel]];
   if (!version) {
@@ -172,7 +183,7 @@ export async function createProfile(options: ProfileOptions): Promise<void> {
       recursive: true,
     });
   }
-  await writePreferences({
+  await syncPreferences({
     preferences: {
       ...defaultProfilePreferences(options.preferences),
       ...options.preferences,
@@ -182,7 +193,7 @@ export async function createProfile(options: ProfileOptions): Promise<void> {
 }
 
 function defaultProfilePreferences(
-  extraPrefs: Record<string, unknown>
+  extraPrefs: Record<string, unknown>,
 ): Record<string, unknown> {
   const server = 'dummy.test';
 
@@ -296,9 +307,6 @@ function defaultProfilePreferences(
     // Disable installing any distribution extensions or add-ons.
     'extensions.installDistroAddons': false,
 
-    // Disabled screenshots extension
-    'extensions.screenshots.disabled': true,
-
     // Turn off extension updates so they do not bother tests
     'extensions.update.enabled': false,
 
@@ -358,6 +366,9 @@ function defaultProfilePreferences(
     // https://bugzilla.mozilla.org/show_bug.cgi?id=1710839
     'remote.enabled': true,
 
+    // Disabled screenshots component
+    'screenshots.browser.component.enabled': false,
+
     // Don't do network connections for mitm priming
     'security.certerrors.mitm.priming.enabled': false,
 
@@ -395,36 +406,34 @@ function defaultProfilePreferences(
   return Object.assign(defaultPrefs, extraPrefs);
 }
 
+async function backupFile(input: string): Promise<void> {
+  if (!fs.existsSync(input)) {
+    return;
+  }
+  await fs.promises.copyFile(input, input + '.puppeteer');
+}
+
 /**
  * Populates the user.js file with custom preferences as needed to allow
- * Firefox's CDP support to properly function. These preferences will be
+ * Firefox's support to properly function. These preferences will be
  * automatically copied over to prefs.js during startup of Firefox. To be
  * able to restore the original values of preferences a backup of prefs.js
  * will be created.
- *
- * @param prefs - List of preferences to add.
- * @param profilePath - Firefox profile to write the preferences to.
  */
-async function writePreferences(options: ProfileOptions): Promise<void> {
+async function syncPreferences(options: ProfileOptions): Promise<void> {
   const prefsPath = path.join(options.path, 'prefs.js');
+  const userPath = path.join(options.path, 'user.js');
+
   const lines = Object.entries(options.preferences).map(([key, value]) => {
     return `user_pref(${JSON.stringify(key)}, ${JSON.stringify(value)});`;
   });
 
-  // Use allSettled to prevent corruption
+  // Use allSettled to prevent corruption.
   const result = await Promise.allSettled([
-    fs.promises.writeFile(path.join(options.path, 'user.js'), lines.join('\n')),
-    // Create a backup of the preferences file if it already exitsts.
-    fs.promises.access(prefsPath, fs.constants.F_OK).then(
-      async () => {
-        await fs.promises.copyFile(
-          prefsPath,
-          path.join(options.path, 'prefs.js.puppeteer')
-        );
-      },
-      // Swallow only if file does not exist
-      () => {}
-    ),
+    backupFile(userPath).then(async () => {
+      await fs.promises.writeFile(userPath, lines.join('\n'));
+    }),
+    backupFile(prefsPath),
   ]);
   for (const command of result) {
     if (command.status === 'rejected') {

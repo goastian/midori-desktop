@@ -14,16 +14,16 @@
     <color name="fx_mobile_layer_color_3">@color/photonLightGrey20</color>
     <color name="fx_mobile_layer_color_search">@color/photonLightGrey30</color>
     <!-- App Bar Top (edit), Text Cursor, Selected Tab Check -->
-    <color name="fx_mobile_layer_color_accent">@color/photonInk20</color>
+    <color name="fx_mobile_layer_color_accent" tools:ignore="UnusedResources">@color/photonInk20</color>
     <!-- Selected tab -->
     <color name="fx_mobile_layer_color_accent_nonopaque">@color/photonViolet70A12</color>
     <!-- Selected tab -->
-    <color name="fx_mobile_layer_color_accent_opaque">#EAE4F9</color>
+    <color name="fx_mobile_layer_color_accent_opaque" tools:ignore="UnusedResources">#EAE4F9</color>
     <color name="fx_mobile_layer_color_scrim">@color/photonDarkGrey30A95</color>
     <!-- Tooltip -->
     <color name="fx_mobile_layer_color_gradient_start">@color/photonViolet70</color>
     <!-- Tooltip -->
-    <color name="fx_mobile_layer_color_gradient_end">@color/photonViolet40</color>
+    <color name="fx_mobile_layer_color_gradient_end">@color/photonViolet60</color>
     <!-- Warning background -->
     <color name="fx_mobile_layer_color_warning" tools:ignore="UnusedResources">@color/photonYellow20</color>
     <!-- Confirmation background -->
@@ -37,7 +37,7 @@
     <!-- Primary button, Snackbar, Floating action button, Chip selected -->
     <color name="fx_mobile_action_color_primary">@color/photonInk20</color>
     <!-- Primary button in a disabled state-->
-    <color name="fx_mobile_action_color_primary_disabled" tools:ignore="UnusedResources">@color/photonInk20A50</color>
+    <color name="fx_mobile_action_color_primary_disabled">@color/photonInk20A20</color>
     <!-- Secondary button -->
     <color name="fx_mobile_action_color_secondary">@color/photonLightGrey30</color>
     <!-- Filter -->
@@ -84,6 +84,8 @@
     <color name="fx_mobile_text_color_accent">@color/photonViolet70</color>
     <!-- Small heading, Text link -->
     <color name="fx_mobile_text_color_accent_disabled" tools:ignore="UnusedResources">@color/photonViolet70A80</color>
+    <!-- Text Inverted -->
+    <color name="fx_mobile_text_color_inverted" tools:ignore="UnusedResources">@color/photonLightGrey05</color>
     <!-- Text Inverted/On Color -->
     <color name="fx_mobile_text_color_oncolor_primary">@color/photonLightGrey05</color>
     <!-- Text Inverted/On Color -->
@@ -91,7 +93,7 @@
     <!-- Action Primary text -->
     <color name="fx_mobile_text_color_action_primary">@color/photonLightGrey05</color>
     <!-- Action Primary disabled text -->
-    <color name="fx_mobile_text_color_action_primary_disabled" tools:ignore="UnusedResources">@color/photonLightGrey05A60</color>
+    <color name="fx_mobile_text_color_action_primary_disabled">@color/photonDarkGrey90A50</color>
     <!-- Action Secondary text -->
     <color name="fx_mobile_text_color_action_secondary">@color/photonDarkGrey90</color>
     <!-- Action Tertiary text -->
@@ -103,7 +105,7 @@
     <!-- Primary icon -->
     <color name="fx_mobile_icon_color_primary">@color/photonDarkGrey90</color>
     <!-- Inactive tab -->
-    <color name="fx_mobile_icon_color_primary_inactive">@color/photonDarkGrey90A60</color>
+    <color name="fx_mobile_icon_color_primary_inactive" tools:ignore="UnusedResources">@color/photonDarkGrey90A60</color>
     <!-- Secondary icon -->
     <color name="fx_mobile_icon_color_secondary">@color/photonDarkGrey05</color>
     <!-- Active tab -->
@@ -146,7 +148,7 @@
     <!-- Form parts -->
     <color name="fx_mobile_border_color_form_default" tools:ignore="UnusedResources">@color/photonDarkGrey90</color>
     <!-- Active tab (Nav), Selected tab, Active form -->
-    <color name="fx_mobile_border_color_accent">@color/photonInk20</color>
+    <color name="fx_mobile_border_color_accent" tools:ignore="UnusedResources">@color/photonInk20</color>
     <!-- Form parts -->
     <color name="fx_mobile_border_color_disabled" tools:ignore="UnusedResources">@color/photonDarkGrey90A40</color>
     <!-- Form parts -->
@@ -183,6 +185,8 @@
     <!-- Action -->
     <!-- Primary button, Snackbar, Floating action button, Chip selected -->
     <color name="fx_mobile_private_action_color_primary">@color/photonViolet60</color>
+    <!-- Primary button in a disabled state -->
+    <color name="fx_mobile_private_action_color_primary_disabled">@color/photonInk20A20</color>
     <!-- Secondary button -->
     <color name="fx_mobile_private_action_color_secondary" tools:ignore="UnusedResources">@color/photonDarkGrey05</color>
     <!-- Filter -->
@@ -227,6 +231,8 @@
     <color name="fx_mobile_private_text_color_oncolor_secondary" tools:ignore="UnusedResources">@color/photonLightGrey40</color>
     <!-- Action Primary text -->
     <color name="fx_mobile_private_text_color_action_primary">@color/photonLightGrey05</color>
+    <!-- Action Primary disabled text -->
+    <color name="fx_mobile_private_text_color_action_primary_disabled">@color/photonLightGrey05A40</color>
     <!-- Action Secondary text -->
     <color name="fx_mobile_private_text_color_action_secondary" tools:ignore="UnusedResources">@color/photonLightGrey05</color>
     <!-- Action Tertiary text -->
@@ -236,7 +242,7 @@
 
     <!-- Icon -->
     <!-- Primary icon -->
-    <color name="fx_mobile_private_icon_color_primary" tools:ignore="UnusedResources">@color/photonLightGrey05</color>
+    <color name="fx_mobile_private_icon_color_primary">@color/photonLightGrey05</color>
     <!-- Inactive tab -->
     <color name="fx_mobile_private_icon_color_primary_inactive" tools:ignore="UnusedResources">@color/photonLightGrey05A60</color>
     <!-- Secondary icon -->
@@ -332,7 +338,9 @@
     <color name="sync_error_background_color">#FFF36E</color>
     <color name="sync_error_text_color">@color/photonYellow90</color>
     <color name="bottom_bar_shadow">#1A000000</color>
-    <color name="snackbar_error_color">#B52645</color>
+
+    <!-- Prompt colors -->
+    <color name="mozac_feat_prompt_cancel_save_dialog_text_color" tools:ignore="UnusedResources">@color/photonViolet70A80</color>
 
     <!-- Reader View colors -->
     <color name="mozac_feature_readerview_text_color" tools:ignore="UnusedResources">@color/fx_mobile_icon_color_primary</color>
@@ -367,11 +375,8 @@
     <color name="material_scrim_color">#52000000</color>
 
     <!-- Add-ons colors -->
-    <color name="mozac_feature_addons_error_text_color" tools:ignore="UnusedResources">@color/photonRed70</color>
-
-    <!-- Star icon fill colors -->
-    <color name="mozac_ic_star_filled">@color/photonBlack</color>
-    <color name="mozac_ic_star_unfilled">#D9D9D9</color>
+    <color name="mozac_feature_addons_messagebar_error_background_color" tools:ignore="UnusedResources">@color/fx_mobile_layer_color_critical</color>
+    <color name="mozac_feature_addons_messagebar_warning_background_color" tools:ignore="UnusedResources">@color/fx_mobile_layer_color_warning</color>
 
     <!-- Private Mode mask icon circle fill colors -->
     <color name="mozac_ui_private_mode_circle_fill" tools:ignore="UnusedResources">@color/photonPurple60</color>

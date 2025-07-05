@@ -30,22 +30,20 @@ namespace CacheFileUtils {
 class CacheFileLock;
 };
 
-#define CACHEFILELISTENER_IID                        \
-  { /* 95e7f284-84ba-48f9-b1fc-3a7336b4c33c */       \
-    0x95e7f284, 0x84ba, 0x48f9, {                    \
-      0xb1, 0xfc, 0x3a, 0x73, 0x36, 0xb4, 0xc3, 0x3c \
-    }                                                \
-  }
+#define CACHEFILELISTENER_IID                 \
+  {/* 95e7f284-84ba-48f9-b1fc-3a7336b4c33c */ \
+   0x95e7f284,                                \
+   0x84ba,                                    \
+   0x48f9,                                    \
+   {0xb1, 0xfc, 0x3a, 0x73, 0x36, 0xb4, 0xc3, 0x3c}}
 
 class CacheFileListener : public nsISupports {
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(CACHEFILELISTENER_IID)
+  NS_INLINE_DECL_STATIC_IID(CACHEFILELISTENER_IID)
 
   NS_IMETHOD OnFileReady(nsresult aResult, bool aIsNew) = 0;
   NS_IMETHOD OnFileDoomed(nsresult aResult) = 0;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(CacheFileListener, CACHEFILELISTENER_IID)
 
 class MOZ_CAPABILITY("mutex") CacheFile final
     : public CacheFileChunkListener,

@@ -17,16 +17,20 @@ RELEASE_PROJECTS = {
     "mozilla-release",
     "mozilla-esr115",
     "mozilla-esr128",
+    "mozilla-esr140",
     "comm-central",
     "comm-beta",
     "comm-release",
     "comm-esr115",
     "comm-esr128",
+    "comm-esr140",
     # bug 1845368: pine is a permanent project branch used for testing
     # nightly updates
     "pine",
     # bug 1877483: larch has similar needs for nightlies
     "larch",
+    # maple is also an L3 branch: https://phabricator.services.mozilla.com/D184833
+    "maple",
 }
 
 RELEASE_PROMOTION_PROJECTS = {

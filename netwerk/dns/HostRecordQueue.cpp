@@ -4,7 +4,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "HostRecordQueue.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/NetwerkDnsMetrics.h"
 #include "nsQueryObject.h"
 
 namespace mozilla {
@@ -19,7 +19,7 @@ void HostRecordQueue::InsertRecord(nsHostRecord* aRec,
     MOZ_DIAGNOSTIC_ASSERT(!mHighQ.contains(aRec), "Already in high queue");
     MOZ_DIAGNOSTIC_ASSERT(!mMediumQ.contains(aRec), "Already in med queue");
     MOZ_DIAGNOSTIC_ASSERT(!mLowQ.contains(aRec), "Already in low queue");
-    MOZ_DIAGNOSTIC_ASSERT(false, "Already on some other queue?");
+    MOZ_DIAGNOSTIC_CRASH("Already on some other queue?");
   }
 
   switch (AddrHostRecord::GetPriority(aFlags)) {
@@ -51,7 +51,7 @@ void HostRecordQueue::AddToEvictionQ(
     MOZ_DIAGNOSTIC_ASSERT(!inMediumQ, "Already in med queue");
     bool inLowQ = mLowQ.contains(aRec);
     MOZ_DIAGNOSTIC_ASSERT(!inLowQ, "Already in low queue");
-    MOZ_DIAGNOSTIC_ASSERT(false, "Already on some other queue?");
+    MOZ_DIAGNOSTIC_CRASH("Already on some other queue?");
 
     // Bug 1678117 - it's not clear why this can happen, but let's fix it
     // for release users.
@@ -76,20 +76,16 @@ void HostRecordQueue::AddToEvictionQ(
       // record the age of the entry upon eviction.
       TimeDuration age = TimeStamp::NowLoRes() - head->mValidStart;
       if (aRec->IsAddrRecord()) {
-        Telemetry::Accumulate(Telemetry::DNS_CLEANUP_AGE,
-                              static_cast<uint32_t>(age.ToSeconds() / 60));
+        glean::dns::cleanup_age.AccumulateRawDuration(age);
       } else {
-        Telemetry::Accumulate(Telemetry::DNS_BY_TYPE_CLEANUP_AGE,
-                              static_cast<uint32_t>(age.ToSeconds() / 60));
+        glean::dns::by_type_cleanup_age.AccumulateRawDuration(age);
       }
       if (head->CheckExpiration(TimeStamp::Now()) !=
           nsHostRecord::EXP_EXPIRED) {
         if (aRec->IsAddrRecord()) {
-          Telemetry::Accumulate(Telemetry::DNS_PREMATURE_EVICTION,
-                                static_cast<uint32_t>(age.ToSeconds() / 60));
+          glean::dns::premature_eviction.AccumulateRawDuration(age);
         } else {
-          Telemetry::Accumulate(Telemetry::DNS_BY_TYPE_PREMATURE_EVICTION,
-                                static_cast<uint32_t>(age.ToSeconds() / 60));
+          glean::dns::by_type_premature_eviction.AccumulateRawDuration(age);
         }
       }
     }

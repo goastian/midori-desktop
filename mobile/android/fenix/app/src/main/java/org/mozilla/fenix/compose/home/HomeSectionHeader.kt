@@ -16,16 +16,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import mozilla.components.compose.base.utils.inComposePreview
 import mozilla.components.lib.state.ext.observeAsComposableState
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.components
-import org.mozilla.fenix.compose.inComposePreview
 import org.mozilla.fenix.theme.FirefoxTheme
 import org.mozilla.fenix.wallpapers.Wallpaper
 
@@ -33,18 +34,21 @@ import org.mozilla.fenix.wallpapers.Wallpaper
  * Homepage header.
  *
  * @param headerText The header string.
+ * @param modifier Modifier to apply.
  * @param description The content description for the "Show all" button.
  * @param onShowAllClick Invoked when "Show all" button is clicked.
  */
 @Composable
 fun HomeSectionHeader(
     headerText: String,
+    modifier: Modifier = Modifier,
     description: String = "",
     onShowAllClick: (() -> Unit)? = null,
 ) {
     if (inComposePreview) {
         HomeSectionHeaderContent(
             headerText = headerText,
+            modifier = modifier,
             description = description,
             onShowAllClick = onShowAllClick,
         )
@@ -59,6 +63,7 @@ fun HomeSectionHeader(
 
         HomeSectionHeaderContent(
             headerText = headerText,
+            modifier = modifier,
             textColor = wallpaperAdaptedTextColor ?: FirefoxTheme.colors.textPrimary,
             description = description,
             showAllTextColor = if (isWallpaperDefault) {
@@ -75,6 +80,7 @@ fun HomeSectionHeader(
  * Homepage header content.
  *
  * @param headerText The header string.
+ * @param modifier Modifier to apply.
  * @param textColor [Color] to apply to the text.
  * @param description The content description for the "Show all" button.
  * @param showAllTextColor [Color] for the "Show all" button.
@@ -83,20 +89,22 @@ fun HomeSectionHeader(
 @Composable
 private fun HomeSectionHeaderContent(
     headerText: String,
+    modifier: Modifier = Modifier,
     textColor: Color = FirefoxTheme.colors.textPrimary,
     description: String = "",
     showAllTextColor: Color = FirefoxTheme.colors.textAccent,
     onShowAllClick: (() -> Unit)? = null,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier.fillMaxWidth().then(modifier),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
             text = headerText,
             modifier = Modifier
                 .weight(1f)
-                .wrapContentHeight(align = Alignment.Top),
+                .wrapContentHeight(align = Alignment.Top)
+                .semantics { heading() },
             color = textColor,
             overflow = TextOverflow.Ellipsis,
             maxLines = 2,
@@ -127,8 +135,8 @@ private fun HomeSectionHeaderContent(
 private fun HomeSectionsHeaderPreview() {
     FirefoxTheme {
         HomeSectionHeader(
-            headerText = stringResource(R.string.recently_saved_title),
-            description = stringResource(R.string.recently_saved_show_all_content_description_2),
+            headerText = stringResource(R.string.home_bookmarks_title),
+            description = stringResource(R.string.home_bookmarks_show_all_content_description),
             onShowAllClick = {},
         )
     }

@@ -294,7 +294,7 @@ static PRBool
 blapi_SHVerify(const char *name, PRFuncPtr addr, PRBool self, PRBool rerun)
 {
     PRBool result = PR_FALSE; /* if anything goes wrong,
-                   * the signature does not verify */
+                               * the signature does not verify */
     /* find our shared library name */
     char *shName = PR_GetLibraryFilePathname(name, addr);
     if (!shName) {
@@ -365,7 +365,7 @@ blapi_SHVerifyDSACheck(PRFileDesc *shFD, const SECHashObject *hashObj,
 
     /* verify the hash against the check file */
     rv = DSA_VerifyDigest(key, signature, &hash);
-    PORT_Memset(hashBuf, 0, sizeof hashBuf);
+    PORT_SafeZero(hashBuf, sizeof hashBuf);
     return (rv == SECSuccess) ? PR_TRUE : PR_FALSE;
 }
 #endif
@@ -427,7 +427,7 @@ blapi_SHVerifyHMACCheck(PRFileDesc *shFD, const SECHashObject *hashObj,
     if (rv == SECSuccess) {
         result = SECITEM_ItemsAreEqual(signature, &hash);
     }
-    PORT_Memset(hashBuf, 0, sizeof hashBuf);
+    PORT_SafeZero(hashBuf, sizeof hashBuf);
     return result;
 }
 
@@ -446,12 +446,12 @@ blapi_SHVerifyFile(const char *shName, PRBool self, PRBool rerun)
     int pid = 0;
 #endif
     PRBool result = PR_FALSE; /* if anything goes wrong,
-               * the signature does not verify */
+                               * the signature does not verify */
     NSSSignChkHeader header;
 #ifndef NSS_STRICT_INTEGRITY
     DSAPublicKey key;
 
-    PORT_Memset(&key, 0, sizeof(key));
+    PORT_SafeZero(&key, sizeof(key));
 #endif
 
     /* If our integrity check was never ran or failed, fail any other
@@ -597,7 +597,7 @@ blapi_SHVerifyFile(const char *shName, PRBool self, PRBool rerun)
     shFD = NULL;
 
 loser:
-    PORT_Memset(&header, 0, sizeof header);
+    PORT_SafeZero(&header, sizeof header);
     if (checkName != NULL) {
         PORT_Free(checkName);
     }
@@ -635,9 +635,9 @@ BLAPI_VerifySelf(const char *name)
 {
     if (name == NULL) {
         /*
-     * If name is NULL, freebl is statically linked into softoken.
-     * softoken will call BLAPI_SHVerify next to verify itself.
-     */
+         * If name is NULL, freebl is statically linked into softoken.
+         * softoken will call BLAPI_SHVerify next to verify itself.
+         */
         return PR_TRUE;
     }
     return blapi_SHVerify(name, (PRFuncPtr)decodeInt, PR_TRUE, PR_FALSE);

@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 """Python usage, esp. virtualenv.
 """
 
@@ -107,7 +105,7 @@ virtualenv_config_options = [
 ]
 
 
-class VirtualenvMixin(object):
+class VirtualenvMixin:
     """BaseScript mixin, designed to create and use virtualenvs.
 
     Config items:
@@ -188,8 +186,7 @@ class VirtualenvMixin(object):
             [
                 python,
                 "-c",
-                "from distutils.sysconfig import get_python_lib; "
-                + "print(get_python_lib())",
+                "from sysconfig; print(sysconfig.get_paths()['purelib'])",
             ]
         )
         return self.site_packages_path
@@ -319,46 +316,55 @@ class VirtualenvMixin(object):
         fl_retry_loops = (fl_max_retry_minutes * 60) / fl_retry_sleep_seconds
         for link in c.get("find_links", []):
             parsed = urlparse.urlparse(link)
-            dns_result = None
-            get_result = None
-            retry_counter = 0
-            while retry_counter < fl_retry_loops and (
-                dns_result is None or get_result is None
-            ):
-                try:
-                    dns_result = socket.gethostbyname(parsed.hostname)
-                    get_result = urllib.request.urlopen(link, timeout=10).read()
-                    break
-                except socket.gaierror:
-                    retry_counter += 1
-                    self.warning(
-                        "find_links: dns check failed for %s, sleeping %ss and retrying..."
-                        % (parsed.hostname, fl_retry_sleep_seconds)
+            if parsed.scheme in ["http", "https"]:
+                dns_result = None
+                get_result = None
+                retry_counter = 0
+                while retry_counter < fl_retry_loops and (
+                    dns_result is None or get_result is None
+                ):
+                    try:
+                        dns_result = socket.gethostbyname(parsed.hostname)
+                        get_result = urllib.request.urlopen(link, timeout=10).read()
+                        break
+                    except socket.gaierror:
+                        retry_counter += 1
+                        self.warning(
+                            "find_links: dns check failed for %s, sleeping %ss and retrying..."
+                            % (parsed.hostname, fl_retry_sleep_seconds)
+                        )
+                        time.sleep(fl_retry_sleep_seconds)
+                    except (
+                        urllib.error.HTTPError,
+                        urllib.error.URLError,
+                        socket.timeout,
+                        http.client.RemoteDisconnected,
+                    ) as e:
+                        retry_counter += 1
+                        self.warning(
+                            "find_links: connection check failed for %s, sleeping %ss and retrying..."
+                            % (link, fl_retry_sleep_seconds)
+                        )
+                        self.warning("find_links: exception: %s" % e)
+                        time.sleep(fl_retry_sleep_seconds)
+                # now that the connectivity check is good, add the link
+                if dns_result and get_result:
+                    self.info(
+                        "find_links: connection checks passed for %s, adding." % link
                     )
-                    time.sleep(fl_retry_sleep_seconds)
-                except (
-                    urllib.error.HTTPError,
-                    urllib.error.URLError,
-                    socket.timeout,
-                    http.client.RemoteDisconnected,
-                ) as e:
-                    retry_counter += 1
+                    find_links_added += 1
+                    command.extend(["--find-links", link])
+                else:
                     self.warning(
-                        "find_links: connection check failed for %s, sleeping %ss and retrying..."
-                        % (link, fl_retry_sleep_seconds)
+                        "find_links: connection checks failed for %s"
+                        ", but max retries reached. continuing..." % link
                     )
-                    self.warning("find_links: exception: %s" % e)
-                    time.sleep(fl_retry_sleep_seconds)
-            # now that the connectivity check is good, add the link
-            if dns_result and get_result:
-                self.info("find_links: connection checks passed for %s, adding." % link)
+            elif len(parsed.path) > 0 and os.path.isdir(link):
+                self.info("find_links: dir exists %s, adding." % link)
                 find_links_added += 1
                 command.extend(["--find-links", link])
             else:
-                self.warning(
-                    "find_links: connection checks failed for %s"
-                    ", but max retries reached. continuing..." % link
-                )
+                self.warning("find_links: not a valid path nor URL %s" % link)
 
         # TODO: make this fatal if we always see failures after this
         if find_links_added == 0:
@@ -533,12 +539,12 @@ class VirtualenvMixin(object):
                     )
 
                     if debug_exe_dir.exists():
-                        for executable in {
+                        for executable in (
                             "python.exe",
                             "python_d.exe",
                             "pythonw.exe",
                             "pythonw_d.exe",
-                        }:
+                        ):
                             expected_python_debug_exe = debug_exe_dir / executable
                             if not expected_python_debug_exe.exists():
                                 shutil.copy(
@@ -591,27 +597,21 @@ class VirtualenvMixin(object):
 
         self.info(self.platform_name())
         if self.platform_name().startswith("macos"):
-            tmp_path = "{}/bin/bak".format(venv_path)
+            tmp_path = f"{venv_path}/bin/bak"
             self.info(
-                "Copying venv python binaries to {} to clear for re-sign".format(
-                    tmp_path
-                )
+                f"Copying venv python binaries to {tmp_path} to clear for re-sign"
             )
-            subprocess.call("mkdir -p {}".format(tmp_path), shell=True)
-            subprocess.call(
-                "cp {}/bin/python* {}/".format(venv_path, tmp_path), shell=True
-            )
+            subprocess.call(f"mkdir -p {tmp_path}", shell=True)
+            subprocess.call(f"cp {venv_path}/bin/python* {tmp_path}/", shell=True)
             self.info("Replacing venv python binaries with reset copies")
-            subprocess.call(
-                "mv -f {}/* {}/bin/".format(tmp_path, venv_path), shell=True
-            )
+            subprocess.call(f"mv -f {tmp_path}/* {venv_path}/bin/", shell=True)
             self.info(
                 "codesign -s - --preserve-metadata=identifier,entitlements,flags,runtime "
-                "-f {}/bin/*".format(venv_path)
+                f"-f {venv_path}/bin/*"
             )
             subprocess.call(
                 "codesign -s - --preserve-metadata=identifier,entitlements,flags,runtime -f "
-                "{}/bin/python*".format(venv_path),
+                f"{venv_path}/bin/python*",
                 shell=True,
             )
 
@@ -750,7 +750,7 @@ class PerfherderResourceOptionsMixin(ScriptMixin):
                 with open("/etc/instance_metadata.json", "rb") as fh:
                     im = json.load(fh)
                     instance = im.get("aws_instance_type", "unknown").encode("ascii")
-            except IOError as e:
+            except OSError as e:
                 if e.errno != errno.ENOENT:
                     raise
                 self.info(
@@ -797,14 +797,6 @@ class ResourceMonitoringMixin(PerfherderResourceOptionsMixin):
     @PostScriptAction("create-virtualenv")
     def _start_resource_monitoring(self, action, success=None):
         self.activate_virtualenv()
-
-        # Resource Monitor requires Python 2.7, however it's currently optional.
-        # Remove when all machines have had their Python version updated (bug 711299).
-        if sys.version_info[:2] < (2, 7):
-            self.warning(
-                "Resource monitoring will not be enabled! Python 2.7+ required."
-            )
-            return
 
         try:
             from mozsystemmonitor.resourcemonitor import SystemResourceMonitor
@@ -1018,15 +1010,13 @@ class ResourceMonitoringMixin(PerfherderResourceOptionsMixin):
 
         # Print special messages so usage shows up in Treeherder.
         if cpu_percent:
-            self._tinderbox_print("CPU usage<br/>{:,.1f}%".format(cpu_percent))
+            self._tinderbox_print(f"CPU usage<br/>{cpu_percent:,.1f}%")
 
         self._tinderbox_print(
-            "I/O read bytes / time<br/>{:,} / {:,}".format(io.read_bytes, io.read_time)
+            f"I/O read bytes / time<br/>{io.read_bytes:,} / {io.read_time:,}"
         )
         self._tinderbox_print(
-            "I/O write bytes / time<br/>{:,} / {:,}".format(
-                io.write_bytes, io.write_time
-            )
+            f"I/O write bytes / time<br/>{io.write_bytes:,} / {io.write_time:,}"
         )
 
         # Print CPU components having >1%. "cpu_times" is a data structure
@@ -1049,15 +1039,11 @@ class ResourceMonitoringMixin(PerfherderResourceOptionsMixin):
             percent = value / cpu_total * 100.0 if cpu_total else 0.0
 
             if percent > 1.00:
-                self._tinderbox_print(
-                    "CPU {}<br/>{:,.1f} ({:,.1f}%)".format(attr, value, percent)
-                )
+                self._tinderbox_print(f"CPU {attr}<br/>{value:,.1f} ({percent:,.1f}%)")
 
         # Swap on Windows isn't reported by psutil.
         if not self._is_windows():
-            self._tinderbox_print(
-                "Swap in / out<br/>{:,} / {:,}".format(swap_in, swap_out)
-            )
+            self._tinderbox_print(f"Swap in / out<br/>{swap_in:,} / {swap_out:,}")
 
         for phase in rm.phases.keys():
             start_time, end_time = rm.phases[phase]
@@ -1069,7 +1055,7 @@ class ResourceMonitoringMixin(PerfherderResourceOptionsMixin):
 
 
 # This needs to be inherited only if you have already inherited ScriptMixin
-class Python3Virtualenv(object):
+class Python3Virtualenv:
     """Support Python3.5+ virtualenv creation."""
 
     py3_initialized_venv = False

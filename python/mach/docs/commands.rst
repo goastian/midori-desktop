@@ -35,18 +35,36 @@ The important decorators are as follows:
 
 Here is a complete example:
 
+.. rstcheck: ignore-languages=python
 .. code-block:: python
 
-   from mach.decorators import (
-       CommandArgument,
-       Command,
-   )
+   from mach.decorators import Command, CommandArgument
 
-    @Command('doit', help='Do ALL OF THE THINGS.')
+    @Command('doit', category='testing', description='Do ALL OF THE THINGS.')
     @CommandArgument('--force', '-f', action='store_true',
         help='Force doing it.')
     def doit(command_context, force=False):
         # Do stuff here.
+        print("hello world")
+
+All paths are relative to the root source folder.
+
+Save your file somewhere e.g. ``testing/doit.py``.
+
+Add an entry for your command in ``python/mach/mach/command_util.py`` in
+the `MACH_COMMANDS` dictionary. Maintain the alphabetical order.
+
+e.g
+
+.. code-block:: python
+
+    MACH_COMMANDS = {
+        # ... previous entries here
+        "doctor": MachCommandReference("python/mozbuild/mozbuild/mach_commands.py"),
+        "doit": MachCommandReference("testing/doit.py"),
+        "environment": MachCommandReference("python/mozbuild/mozbuild/mach_commands.py"),
+        # ... rest of entries here
+    }
 
 When the module is loaded, the decorators tell mach about all handlers.
 When mach runs, it takes the assembled metadata from these handlers and
@@ -77,17 +95,18 @@ why the command cannot currently be run.
 
 Here is an example:
 
+.. rstcheck: ignore-languages=python
 .. code-block:: python
 
-   from mach.decorators import (
-       Command,
-   )
+  from mach.decorators import (
+      Command,
+  )
 
-   def build_available(cls):
-       """The build needs to be available."""
-       return cls.build_path is not None
+  def build_available(cls):
+      """The build needs to be available."""
+      return cls.build_path is not None
 
-   @Command('run_tests', conditions=[build_available])
+   @Command('run_tests', category='testing', description='A description.' conditions=[build_available])
    def run_tests(command_context):
        # Do stuff here.
 

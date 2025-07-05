@@ -6,25 +6,44 @@ loader: taskgraph.loader.transform:loader
 
 transforms:
     - gecko_taskgraph.transforms.release_deps:transforms
-    - gecko_taskgraph.transforms.release_version_bump:transforms
+    - gecko_taskgraph.transforms.resolve_landoscript_keyed_by:transforms
     - gecko_taskgraph.transforms.task:transforms
 
 task-defaults:
     description: Release Promotion version tag for buildN
     run-on-projects: []
     shipping-phase: promote
-    worker-type: tree
+    worker-type: lando
     worker:
-        implementation: treescript
+        implementation: landoscript
         tags: ['buildN']
-        bump: false
-        dontbuild: true
-        push:
+        lando-repo:
             by-project:
-                mozilla-(beta|release|esr.*): true
-                maple: true
-                default: false
-
+                mozilla-beta: firefox-beta
+                mozilla-release: firefox-release
+                mozilla-esr115: firefox-esr115
+                mozilla-esr128: firefox-esr128
+                mozilla-esr140: firefox-esr140
+                try:
+                    by-release-type:
+                        beta: staging-firefox-beta
+                        release: staging-firefox-release
+                        release-rc: staging-firefox-release
+                        esr115: staging-firefox-esr115
+                        esr128: staging-firefox-esr128
+                        esr140: staging-firefox-esr140
+                        default: ""
+                default: ""
+        # used to map hg revisions to the git revisions that landoscript needs
+        hg-repo-url:
+            by-project:
+                mozilla-beta: https://hg.mozilla.org/releases/mozilla-beta
+                mozilla-release: https://hg.mozilla.org/releases/mozilla-release
+                mozilla-esr115: https://hg.mozilla.org/releases/mozilla-esr115
+                mozilla-esr128: https://hg.mozilla.org/releases/mozilla-esr128
+                mozilla-esr140: https://hg.mozilla.org/releases/mozilla-esr140
+                try: https://hg.mozilla.org/try
+                default: ""
 
 tasks:
     firefox:

@@ -16,10 +16,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import mozilla.components.ui.colors.PhotonColors
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
 import org.mozilla.fenix.theme.FirefoxTheme
 
 /**
@@ -48,15 +48,15 @@ fun BetaLabel(modifier: Modifier = Modifier) {
         elevation = 0.dp,
     ) {
         Text(
-            text = stringResource(R.string.review_quality_check_beta_flag).uppercase(),
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+            text = stringResource(R.string.beta_feature),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
             color = textColor,
             style = FirefoxTheme.typography.body2,
         )
     }
 }
 
-@LightDarkPreview
+@PreviewLightDark
 @Composable
 private fun HeaderPreview() {
     FirefoxTheme {

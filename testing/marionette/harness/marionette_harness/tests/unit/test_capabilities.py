@@ -120,23 +120,11 @@ class TestCapabilities(MarionetteTestCase):
         self.assertIn("moz:windowless", self.caps)
         self.assertFalse(self.caps["moz:windowless"])
 
-        # No longer supported capabilities
-        self.assertNotIn("moz:useNonSpecCompliantPointerOrigin", self.caps)
-
     def test_disable_webdriver_click(self):
         self.marionette.delete_session()
         self.marionette.start_session({"moz:webdriverClick": False})
         caps = self.marionette.session_capabilities
         self.assertFalse(caps["moz:webdriverClick"])
-
-    def test_no_longer_supported_capabilities(self):
-        self.marionette.delete_session()
-        with self.assertRaisesRegexp(
-            errors.SessionNotCreatedException, "InvalidArgumentError"
-        ):
-            self.marionette.start_session(
-                {"moz:useNonSpecCompliantPointerOrigin": True}
-            )
 
     def test_valid_uuid4_when_creating_a_session(self):
         self.assertNotIn(
@@ -192,13 +180,13 @@ class TestCapabilityMatching(MarionetteTestCase):
 
         for value in ["", "EAGER", True, 42, {}, []]:
             print(f"invalid strategy {value}")
-            with self.assertRaisesRegexp(
+            with self.assertRaisesRegex(
                 errors.SessionNotCreatedException, "InvalidArgumentError"
             ):
                 self.marionette.start_session({"pageLoadStrategy": value})
 
     def test_set_window_rect(self):
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             errors.SessionNotCreatedException, "InvalidArgumentError"
         ):
             self.marionette.start_session({"setWindowRect": False})
@@ -248,7 +236,7 @@ class TestCapabilityMatching(MarionetteTestCase):
         self.delete_session()
         for handler in ["", "ACCEPT", True, 42, []]:
             print(f"invalid unhandled prompt behavior {handler}")
-            with self.assertRaisesRegexp(
+            with self.assertRaisesRegex(
                 errors.SessionNotCreatedException, "InvalidArgumentError"
             ):
                 self.marionette.start_session({"unhandledPromptBehavior": handler})
@@ -277,7 +265,7 @@ class TestCapabilityMatching(MarionetteTestCase):
         self.delete_session()
         for handler in [{"foo": "accept"}, {"alert": "bar"}]:
             print(f"invalid unhandled prompt behavior {handler}")
-            with self.assertRaisesRegexp(
+            with self.assertRaisesRegex(
                 errors.SessionNotCreatedException, "InvalidArgumentError"
             ):
                 self.marionette.start_session({"unhandledPromptBehavior": handler})
@@ -287,7 +275,7 @@ class TestCapabilityMatching(MarionetteTestCase):
         self.marionette.start_session({"unhandledPromptBehavior": {}})
         self.assertEqual(
             self.marionette.session_capabilities["unhandledPromptBehavior"],
-            "dismiss and notify",
+            {},
         )
 
         for prompt_type in PROMPT_TYPES:

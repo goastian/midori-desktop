@@ -13,6 +13,7 @@ support-files = [
   "early_hint_asset_html.sjs",
   "early_hint_csp_options_html.sjs",
   "early_hint_preconnect_html.sjs",
+  "file_channel.html",
   "post.html",
   "res.css",
   "res.css^headers^",
@@ -44,9 +45,6 @@ support-files = [
   "res_http_index_format",
   "res_http_index_format^headers^",
   "square.png",
-  "103_preload.html",
-  "103_preload.html^informationalResponse^",
-  "103_preload.html^headers^",
   "no_103_preload.html",
   "no_103_preload.html^headers^",
   "103_preload_anchor.html^informationalResponse^",
@@ -67,6 +65,7 @@ support-files = [
   "cookie_filtering_secure_resource_org.html^headers^",
   "cookie_filtering_square.png",
   "cookie_filtering_square.png^headers^",
+  "simple_unknown_uri_helpers.sys.mjs",
   "x_frame_options.html",
   "x_frame_options.html^headers^",
   "test_1629307.html",
@@ -87,6 +86,17 @@ prefs = [
 ["browser_103_assets_extension.js"]
 
 ["browser_103_cleanup.js"]
+support-files = [
+  "103_preload_no_img.html",
+  "103_preload_no_img.html^headers^",
+  "103_preload_no_img.html^informationalResponse^",
+]
+skip-if = [
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && debug", # Bug 1829935
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && opt", # Bug 1829935
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt", # Bug 1829935
+  "os == 'win' && os_version == '11.26100' && opt", # Bug 1829935
+]
 
 ["browser_103_csp.js"]
 support-files = ["early_hint_preload_test_helper.sys.mjs",]
@@ -99,6 +109,13 @@ support-files = ["early_hint_preload_test_helper.sys.mjs",]
 
 ["browser_103_error.js"]
 support-files = ["early_hint_preload_test_helper.sys.mjs",]
+
+["browser_103_http_v1_1_preload.js"]
+support-files = ["early_hint_preload_test_helper.sys.mjs",]
+skip-if = [
+  "http3",
+  "http2",
+]
 
 ["browser_103_no_cancel_on_error.js"]
 support-files = ["early_hint_preload_test_helper.sys.mjs",]
@@ -124,8 +141,6 @@ support-files = [
   "early_hint_preload_test_helper.sys.mjs",
 ]
 
-["browser_103_telemetry.js"]
-
 ["browser_103_user_load.js"]
 support-files = ["early_hint_preload_test_helper.sys.mjs",]
 
@@ -134,10 +149,8 @@ support-files = ["early_hint_preload_test_helper.sys.mjs",]
 ["browser_about_cache.js"]
 
 ["browser_backgroundtask_purgeHTTPCache.js"]
-skip-if = [
-  "os == 'android'", # MultiInstanceLock doesn't work on Android
-  "os == 'mac'", # intermittent TV timeouts on Mac
-]
+
+["browser_bug968273.js"]
 
 ["browser_bug1535877.js"]
 
@@ -146,7 +159,6 @@ fail-if = ["a11y_checks"] # Bug 1854523 clicked button may not be focusable
 
 ["browser_child_resource.js"]
 run-if = ["crashreporter"]
-skip-if = ["os == 'win'"] # Bug 1775761
 
 ["browser_cookie_filtering_basic.js"]
 
@@ -165,11 +177,22 @@ support-files = ["res_hello_h1.sjs"]
 
 ["browser_dns_prefetch_link_header.js"]
 
+["browser_essential_domain_fallbacks.js"]
+
 ["browser_fetch_lnk.js"]
 run-if = ["os == 'win'"]
 support-files = ["file_lnk.lnk",]
 
 ["browser_http_index_format.js"]
+
+["browser_mock_https_rr.js"]
+skip-if = [
+  "http3",
+  "http2",
+  "socketprocess_networking",
+]
+
+["browser_necko_l10n.js"]
 
 ["browser_nsIFormPOSTActionChannel.js"]
 skip-if = ["true"] # protocol handler and channel does not work in content process
@@ -183,6 +206,12 @@ skip-if = ["socketprocess_networking"] # Bug 1772209
 
 ["browser_resource_navigation.js"]
 
+["browser_set_response_override.js"]
+
+["browser_simple_unknown_uris.js"]
+
+["browser_simple_unknown_uris_sync.js"]
+
 ["browser_speculative_connection_link_header.js"]
 
 ["browser_test_data_channel_observer.js"]
@@ -195,6 +224,6 @@ support-files = [
   "file_favicon.html",
 ]
 
-["browser_test_offline_tab.js"]
+["browser_test_file_channel_observer.js"]
 
-["browser_bug968273.js"]
+["browser_test_offline_tab.js"]

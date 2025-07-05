@@ -407,6 +407,7 @@ nsHtml5AttributeName* nsHtml5AttributeName::ATTR_XLINK_TYPE = nullptr;
 nsHtml5AttributeName* nsHtml5AttributeName::ATTR_XLINK_SHOW = nullptr;
 nsHtml5AttributeName* nsHtml5AttributeName::ATTR_XLINK_ACTUATE = nullptr;
 nsHtml5AttributeName* nsHtml5AttributeName::ATTR_AUTOPLAY = nullptr;
+nsHtml5AttributeName* nsHtml5AttributeName::ATTR_AUTOCORRECT = nullptr;
 nsHtml5AttributeName* nsHtml5AttributeName::ATTR_AUTOCOMPLETE = nullptr;
 nsHtml5AttributeName* nsHtml5AttributeName::ATTR_AUTOFOCUS = nullptr;
 nsHtml5AttributeName* nsHtml5AttributeName::ATTR_AUTOCAPITALIZE = nullptr;
@@ -599,27 +600,27 @@ nsHtml5AttributeName* nsHtml5AttributeName::ATTR_RY = nullptr;
 nsHtml5AttributeName* nsHtml5AttributeName::ATTR_REFY = nullptr;
 nsHtml5AttributeName** nsHtml5AttributeName::ATTRIBUTE_NAMES = 0;
 static int32_t const ATTRIBUTE_HASHES_DATA[] = {
-    1854497008, 1748021284, 1943317364, 1681174213, 1780879045, 1915341049,
-    2001732764, 1680165421, 1721347639, 1754794646, 1814517574, 1900544002,
-    1924443742, 1983432389, 2017010843, 71827457,   1680282148, 1689324870,
+    1854497008, 1748021284, 1941550652, 1681174213, 1780879045, 1915048235,
+    2001710298, 1680165421, 1721347639, 1754794646, 1814517574, 1900544002,
+    1923088386, 1983398182, 2016810187, 71827457,   1680282148, 1689324870,
     1740045862, 1753049109, 1756704824, 1788842244, 1823829083, 1874788501,
-    1907701479, 1922400908, 1934917290, 1972908839, 1993343287, 2007064819,
-    2065694722, 57205395,   911736834,  1680181996, 1680368221, 1685882101,
+    1907660596, 1921977416, 1933369607, 1972904518, 1991625270, 2007021895,
+    2060474743, 57205395,   911736834,  1680181996, 1680368221, 1685882101,
     1704526375, 1734182982, 1747309881, 1749350104, 1754612424, 1754927689,
     1757421892, 1786622296, 1804054854, 1816178925, 1854285018, 1871251689,
-    1889569526, 1905754853, 1910441773, 1917295176, 1922665179, 1924773438,
-    1941286708, 1972151670, 1982254612, 1989522022, 2001527900, 2005342360,
-    2009231684, 2024794274, 2082471938, 53006051,   60345635,   885522434,
+    1889569526, 1905672729, 1910441770, 1916286197, 1922607670, 1924629705,
+    1939976792, 1966442279, 1975062341, 1988784439, 2000752725, 2004846654,
+    2009079867, 2024647008, 2082471938, 53006051,   60345635,   885522434,
     1680095865, 1680165533, 1680229115, 1680343801, 1680437801, 1682440540,
     1687620127, 1692408896, 1716623661, 1731048742, 1739583824, 1740222216,
     1747800157, 1748566068, 1751507685, 1754434872, 1754647074, 1754860061,
     1756219733, 1756836998, 1771569964, 1784574102, 1786851500, 1797886599,
     1804405895, 1814656840, 1821958888, 1825437894, 1854466380, 1866496199,
-    1873656984, 1884246821, 1891937366, 1903759600, 1906419001, 1909819252,
-    1910527802, 1916247343, 1921061206, 1922566877, 1922679610, 1924583073,
-    1933123337, 1937336473, 1941440197, 1966384692, 1972744954, 1972996699,
-    1983290011, 1987422362, 1991220282, 2000160071, 2001669449, 2001898809,
-    2006824246, 2009041198, 2016711994, 2023342821, 2034765641, 2081423362,
+    1873656984, 1884246821, 1891937366, 1903659239, 1906408598, 1909438149,
+    1910507338, 1915757815, 1917857531, 1922413307, 1922677495, 1924517489,
+    1932959284, 1934970504, 1941435445, 1965512429, 1972656710, 1972922984,
+    1983157559, 1984430082, 1990107683, 2000096287, 2001634458, 2001826027,
+    2006459190, 2008401563, 2010716309, 2019887833, 2026893641, 2073034754,
     2089811970, 52488851,   55077603,   59825747,   68157441,   878182402,
     901775362,  1037879561, 1680159327, 1680165437, 1680165692, 1680198203,
     1680231247, 1680315086, 1680345965, 1680413393, 1680452349, 1681879063,
@@ -632,16 +633,16 @@ static int32_t const ATTRIBUTE_HASHES_DATA[] = {
     1803561214, 1804081401, 1805715690, 1814560070, 1816104145, 1820727381,
     1823574314, 1824159037, 1848600826, 1854366938, 1854497001, 1865910331,
     1867462756, 1872343590, 1874270021, 1884079398, 1884295780, 1890996553,
-    1898415413, 1903612236, 1905628916, 1906408542, 1906423097, 1908462185,
-    1910441627, 1910503637, 1915025672, 1915757815, 1916286197, 1917857531,
-    1921977416, 1922413307, 1922607670, 1922677495, 1923088386, 1924517489,
-    1924629705, 1932959284, 1933369607, 1934970504, 1939976792, 1941435445,
-    1941550652, 1965512429, 1966442279, 1972656710, 1972904518, 1972922984,
-    1975062341, 1983157559, 1983398182, 1984430082, 1988784439, 1990107683,
-    1991625270, 2000096287, 2000752725, 2001634458, 2001710298, 2001826027,
-    2004846654, 2006459190, 2007021895, 2008401563, 2009079867, 2010716309,
-    2016810187, 2019887833, 2024647008, 2026893641, 2060474743, 2073034754,
-    2081947650, 2083520514, 2091784484, 50917059,   52489043,   53537523,
+    1898415413, 1902640276, 1905541832, 1905902311, 1906421049, 1908316832,
+    1910328970, 1910487243, 1910572893, 1915341049, 1916247343, 1917295176,
+    1921061206, 1922400908, 1922566877, 1922665179, 1922679610, 1924443742,
+    1924583073, 1924773438, 1933123337, 1934917290, 1937336473, 1941286708,
+    1941440197, 1943317364, 1966384692, 1972151670, 1972744954, 1972908839,
+    1972996699, 1982254612, 1983290011, 1983432389, 1987422362, 1989522022,
+    1991220282, 1993343287, 2000160071, 2001527900, 2001669449, 2001732764,
+    2001898809, 2005342360, 2006824246, 2007064819, 2009041198, 2009231684,
+    2016711994, 2017010843, 2023342821, 2024794274, 2034765641, 2065694722,
+    2081423362, 2083520514, 2091784484, 50917059,   52489043,   53537523,
     56685811,   57210387,   59830867,   60817409,   71303169,   72351745,
     884998146,  894959618,  902299650,  928514050,  1038063816, 1680140893,
     1680159328, 1680165436, 1680165487, 1680165613, 1680181850, 1680185931,
@@ -665,27 +666,27 @@ static int32_t const ATTRIBUTE_HASHES_DATA[] = {
     1853862084, 1854302364, 1854464212, 1854474395, 1854497003, 1864698185,
     1865910347, 1867448617, 1867620412, 1872034503, 1873590471, 1874261045,
     1874698443, 1881750231, 1884142379, 1884267068, 1884343396, 1889633006,
-    1891186903, 1894552650, 1898428101, 1902640276, 1903659239, 1905541832,
-    1905672729, 1905902311, 1906408598, 1906421049, 1907660596, 1908316832,
-    1909438149, 1910328970, 1910441770, 1910487243, 1910507338, 1910572893,
-    1915295948, 1915394254, 1916210285, 1916278099, 1916337499, 1917327080,
-    1917953597, 1921894426, 1922319046, 1922413292, 1922470745, 1922567078,
-    1922665052, 1922671417, 1922679386, 1922699851, 1924206934, 1924462384,
-    1924570799, 1924585254, 1924738716, 1932870919, 1932986153, 1933145837,
-    1933508940, 1934917372, 1935597338, 1937777860, 1941253366, 1941409583,
-    1941438085, 1941454586, 1942026440, 1965349396, 1965561677, 1966439670,
-    1966454567, 1972196486, 1972744939, 1972863609, 1972904522, 1972909592,
-    1972962123, 1974849131, 1980235778, 1982640164, 1983266615, 1983347764,
-    1983416119, 1983461061, 1987410233, 1988132214, 1988788535, 1990062797,
-    1991021879, 1991392548, 1991643278, 1999273799, 2000125224, 2000162011,
-    2001210183, 2001578182, 2001634459, 2001669450, 2001710299, 2001814704,
-    2001898808, 2004199576, 2004957380, 2005925890, 2006516551, 2007019632,
-    2007064812, 2008084807, 2008408414, 2009071951, 2009141482, 2010452700,
-    2015950026, 2016787611, 2016910397, 2018908874, 2023146024, 2024616088,
-    2024763702, 2026741958, 2026975253, 2060302634, 2065170434, 2066743298,
-    2075005220};
+    1891186903, 1894552650, 1898428101, 1900548965, 1903612236, 1903759600,
+    1905628916, 1905754853, 1906408542, 1906419001, 1906423097, 1907701479,
+    1908462185, 1909819252, 1910441627, 1910441773, 1910503637, 1910527802,
+    1915025672, 1915295948, 1915394254, 1916210285, 1916278099, 1916337499,
+    1917327080, 1917953597, 1921894426, 1922319046, 1922413292, 1922470745,
+    1922567078, 1922665052, 1922671417, 1922679386, 1922699851, 1924206934,
+    1924462384, 1924570799, 1924585254, 1924738716, 1932870919, 1932986153,
+    1933145837, 1933508940, 1934917372, 1935597338, 1937777860, 1941253366,
+    1941409583, 1941438085, 1941454586, 1942026440, 1965349396, 1965561677,
+    1966439670, 1966454567, 1972196486, 1972744939, 1972863609, 1972904522,
+    1972909592, 1972962123, 1974849131, 1980235778, 1982640164, 1983266615,
+    1983347764, 1983416119, 1983461061, 1987410233, 1988132214, 1988788535,
+    1990062797, 1991021879, 1991392548, 1991643278, 1999273799, 2000125224,
+    2000162011, 2001210183, 2001578182, 2001634459, 2001669450, 2001710299,
+    2001814704, 2001898808, 2004199576, 2004957380, 2005925890, 2006516551,
+    2007019632, 2007064812, 2008084807, 2008408414, 2009071951, 2009141482,
+    2010452700, 2015950026, 2016787611, 2016910397, 2018908874, 2023146024,
+    2024616088, 2024763702, 2026741958, 2026975253, 2060302634, 2065170434,
+    2066743298, 2075005220, 2081947650};
 staticJArray<int32_t, int32_t> nsHtml5AttributeName::ATTRIBUTE_HASHES = {
-    ATTRIBUTE_HASHES_DATA, MOZ_ARRAY_LENGTH(ATTRIBUTE_HASHES_DATA)};
+    ATTRIBUTE_HASHES_DATA, std::size(ATTRIBUTE_HASHES_DATA)};
 void nsHtml5AttributeName::initializeStatics() {
   ALL_NO_NS = new int32_t[3];
   ALL_NO_NS[0] = kNameSpaceID_None;
@@ -899,11 +900,11 @@ void nsHtml5AttributeName::initializeStatics() {
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::data, nsGkAtoms::data,
                                nsGkAtoms::data, ALL_NO_PREFIX);
   ATTR_EQUALCOLUMNS = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::equalcolumns_, nsGkAtoms::equalcolumns_,
-      nsGkAtoms::equalcolumns_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::equalcolumns, nsGkAtoms::equalcolumns,
+      nsGkAtoms::equalcolumns, ALL_NO_PREFIX);
   ATTR_EQUALROWS = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::equalrows_, nsGkAtoms::equalrows_,
-      nsGkAtoms::equalrows_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::equalrows, nsGkAtoms::equalrows,
+      nsGkAtoms::equalrows, ALL_NO_PREFIX);
   ATTR_HSPACE =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::hspace, nsGkAtoms::hspace,
                                nsGkAtoms::hspace, ALL_NO_PREFIX);
@@ -913,36 +914,36 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTR_LOCAL =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::local, nsGkAtoms::local,
                                nsGkAtoms::local, ALL_NO_PREFIX);
-  ATTR_LSPACE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::lspace_,
-                                         nsGkAtoms::lspace_, nsGkAtoms::lspace_,
-                                         ALL_NO_PREFIX);
+  ATTR_LSPACE =
+      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::lspace, nsGkAtoms::lspace,
+                               nsGkAtoms::lspace, ALL_NO_PREFIX);
   ATTR_MOVABLELIMITS = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::movablelimits_, nsGkAtoms::movablelimits_,
-      nsGkAtoms::movablelimits_, ALL_NO_PREFIX);
-  ATTR_NOTATION = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::notation_,
-                                           nsGkAtoms::notation_,
-                                           nsGkAtoms::notation_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::movablelimits, nsGkAtoms::movablelimits,
+      nsGkAtoms::movablelimits, ALL_NO_PREFIX);
+  ATTR_NOTATION = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::notation,
+                                           nsGkAtoms::notation,
+                                           nsGkAtoms::notation, ALL_NO_PREFIX);
   ATTR_ONDATAAVAILABLE = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::ondataavailable, nsGkAtoms::ondataavailable,
       nsGkAtoms::ondataavailable, ALL_NO_PREFIX);
   ATTR_ONPASTE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::onpaste,
                                           nsGkAtoms::onpaste,
                                           nsGkAtoms::onpaste, ALL_NO_PREFIX);
-  ATTR_RSPACE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::rspace_,
-                                         nsGkAtoms::rspace_, nsGkAtoms::rspace_,
-                                         ALL_NO_PREFIX);
-  ATTR_ROWALIGN = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::rowalign_,
-                                           nsGkAtoms::rowalign_,
-                                           nsGkAtoms::rowalign_, ALL_NO_PREFIX);
+  ATTR_RSPACE =
+      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::rspace, nsGkAtoms::rspace,
+                               nsGkAtoms::rspace, ALL_NO_PREFIX);
+  ATTR_ROWALIGN = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::rowalign,
+                                           nsGkAtoms::rowalign,
+                                           nsGkAtoms::rowalign, ALL_NO_PREFIX);
   ATTR_ROTATE =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::rotate, nsGkAtoms::rotate,
                                nsGkAtoms::rotate, ALL_NO_PREFIX);
   ATTR_SEPARATOR = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::separator_, nsGkAtoms::separator_,
-      nsGkAtoms::separator_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::separator, nsGkAtoms::separator,
+      nsGkAtoms::separator, ALL_NO_PREFIX);
   ATTR_SEPARATORS = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::separators_, nsGkAtoms::separators_,
-      nsGkAtoms::separators_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::separators, nsGkAtoms::separators,
+      nsGkAtoms::separators, ALL_NO_PREFIX);
   ATTR_VSPACE =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::vspace, nsGkAtoms::vspace,
                                nsGkAtoms::vspace, ALL_NO_PREFIX);
@@ -968,8 +969,8 @@ void nsHtml5AttributeName::initializeStatics() {
                                           nsGkAtoms::checked,
                                           nsGkAtoms::checked, ALL_NO_PREFIX);
   ATTR_FENCE =
-      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::fence_, nsGkAtoms::fence_,
-                               nsGkAtoms::fence_, ALL_NO_PREFIX);
+      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::fence, nsGkAtoms::fence,
+                               nsGkAtoms::fence, ALL_NO_PREFIX);
   ATTR_FETCHPRIORITY = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::fetchpriority, nsGkAtoms::fetchpriority,
       nsGkAtoms::fetchpriority, ALL_NO_PREFIX);
@@ -1050,23 +1051,23 @@ void nsHtml5AttributeName::initializeStatics() {
       ALL_NO_NS, nsGkAtoms::word_spacing, nsGkAtoms::word_spacing,
       nsGkAtoms::word_spacing, ALL_NO_PREFIX);
   ATTR_ACCENTUNDER = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::accentunder_, nsGkAtoms::accentunder_,
-      nsGkAtoms::accentunder_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::accentunder, nsGkAtoms::accentunder,
+      nsGkAtoms::accentunder, ALL_NO_PREFIX);
   ATTR_ACCEPT_CHARSET = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::acceptcharset, nsGkAtoms::acceptcharset,
       nsGkAtoms::acceptcharset, ALL_NO_PREFIX);
   ATTR_ACCESSKEY = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::accesskey, nsGkAtoms::accesskey,
       nsGkAtoms::accesskey, ALL_NO_PREFIX);
-  ATTR_ACCENT = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::accent_,
-                                         nsGkAtoms::accent_, nsGkAtoms::accent_,
-                                         ALL_NO_PREFIX);
+  ATTR_ACCENT =
+      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::accent, nsGkAtoms::accent,
+                               nsGkAtoms::accent, ALL_NO_PREFIX);
   ATTR_ACCEPT =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::accept, nsGkAtoms::accept,
                                nsGkAtoms::accept, ALL_NO_PREFIX);
-  ATTR_BEVELLED = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::bevelled_,
-                                           nsGkAtoms::bevelled_,
-                                           nsGkAtoms::bevelled_, ALL_NO_PREFIX);
+  ATTR_BEVELLED = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::bevelled,
+                                           nsGkAtoms::bevelled,
+                                           nsGkAtoms::bevelled, ALL_NO_PREFIX);
   ATTR_BASEFREQUENCY = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::basefrequency, nsGkAtoms::basefrequency,
       nsGkAtoms::baseFrequency, ALL_NO_PREFIX);
@@ -1107,8 +1108,8 @@ void nsHtml5AttributeName::initializeStatics() {
                                            nsGkAtoms::edgemode,
                                            nsGkAtoms::edgeMode, ALL_NO_PREFIX);
   ATTR_EDGE =
-      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::edge_, nsGkAtoms::edge_,
-                               nsGkAtoms::edge_, ALL_NO_PREFIX);
+      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::edge, nsGkAtoms::edge,
+                               nsGkAtoms::edge, ALL_NO_PREFIX);
   ATTR_ENTERKEYHINT = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::enterkeyhint, nsGkAtoms::enterkeyhint,
       nsGkAtoms::enterkeyhint, ALL_NO_PREFIX);
@@ -1125,14 +1126,14 @@ void nsHtml5AttributeName::initializeStatics() {
       ALL_NO_NS, nsGkAtoms::integrity, nsGkAtoms::integrity,
       nsGkAtoms::integrity, ALL_NO_PREFIX);
   ATTR_LINEBREAK = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::linebreak_, nsGkAtoms::linebreak_,
-      nsGkAtoms::linebreak_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::linebreak, nsGkAtoms::linebreak,
+      nsGkAtoms::linebreak, ALL_NO_PREFIX);
   ATTR_LABEL =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::label, nsGkAtoms::label,
                                nsGkAtoms::label, ALL_NO_PREFIX);
   ATTR_LINETHICKNESS = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::linethickness_, nsGkAtoms::linethickness_,
-      nsGkAtoms::linethickness_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::linethickness, nsGkAtoms::linethickness,
+      nsGkAtoms::linethickness, ALL_NO_PREFIX);
   ATTR_MODE =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::mode, nsGkAtoms::mode,
                                nsGkAtoms::mode, ALL_NO_PREFIX);
@@ -1230,11 +1231,11 @@ void nsHtml5AttributeName::initializeStatics() {
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::sizes, nsGkAtoms::sizes,
                                nsGkAtoms::sizes, ALL_NO_PREFIX);
   ATTR_SUPERSCRIPTSHIFT = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::superscriptshift_, nsGkAtoms::superscriptshift_,
-      nsGkAtoms::superscriptshift_, ALL_NO_PREFIX);
-  ATTR_STRETCHY = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::stretchy_,
-                                           nsGkAtoms::stretchy_,
-                                           nsGkAtoms::stretchy_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::superscriptshift, nsGkAtoms::superscriptshift,
+      nsGkAtoms::superscriptshift, ALL_NO_PREFIX);
+  ATTR_STRETCHY = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::stretchy,
+                                           nsGkAtoms::stretchy,
+                                           nsGkAtoms::stretchy, ALL_NO_PREFIX);
   ATTR_SCHEME =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::scheme, nsGkAtoms::scheme,
                                nsGkAtoms::scheme, ALL_NO_PREFIX);
@@ -1242,8 +1243,8 @@ void nsHtml5AttributeName::initializeStatics() {
       ALL_NO_NS, nsGkAtoms::spreadmethod, nsGkAtoms::spreadmethod,
       nsGkAtoms::spreadMethod, ALL_NO_PREFIX);
   ATTR_SELECTION = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::selection_, nsGkAtoms::selection_,
-      nsGkAtoms::selection_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::selection, nsGkAtoms::selection,
+      nsGkAtoms::selection, ALL_NO_PREFIX);
   ATTR_SIZE =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::size, nsGkAtoms::size,
                                nsGkAtoms::size, ALL_NO_PREFIX);
@@ -1269,8 +1270,8 @@ void nsHtml5AttributeName::initializeStatics() {
       ALL_NO_NS, nsGkAtoms::surfacescale, nsGkAtoms::surfacescale,
       nsGkAtoms::surfaceScale, ALL_NO_PREFIX);
   ATTR_XREF =
-      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::xref_, nsGkAtoms::xref_,
-                               nsGkAtoms::xref_, ALL_NO_PREFIX);
+      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::xref, nsGkAtoms::xref,
+                               nsGkAtoms::xref, ALL_NO_PREFIX);
   ATTR_ALIGN =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::align, nsGkAtoms::align,
                                nsGkAtoms::align, ALL_NO_PREFIX);
@@ -1278,8 +1279,8 @@ void nsHtml5AttributeName::initializeStatics() {
       ALL_NO_NS, nsGkAtoms::alignment_baseline, nsGkAtoms::alignment_baseline,
       nsGkAtoms::alignment_baseline, ALL_NO_PREFIX);
   ATTR_ALIGNMENTSCOPE = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::alignmentscope_, nsGkAtoms::alignmentscope_,
-      nsGkAtoms::alignmentscope_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::alignmentscope, nsGkAtoms::alignmentscope,
+      nsGkAtoms::alignmentscope, ALL_NO_PREFIX);
   ATTR_DRAGGABLE = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::draggable, nsGkAtoms::draggable,
       nsGkAtoms::draggable, ALL_NO_PREFIX);
@@ -1301,9 +1302,9 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTR_LANG =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::lang, nsGkAtoms::lang,
                                nsGkAtoms::lang, ALL_NO_PREFIX);
-  ATTR_LARGEOP = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::largeop_,
-                                          nsGkAtoms::largeop_,
-                                          nsGkAtoms::largeop_, ALL_NO_PREFIX);
+  ATTR_LARGEOP = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::largeop,
+                                          nsGkAtoms::largeop,
+                                          nsGkAtoms::largeop, ALL_NO_PREFIX);
   ATTR_LONGDESC = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::longdesc,
                                            nsGkAtoms::longdesc,
                                            nsGkAtoms::longdesc, ALL_NO_PREFIX);
@@ -1341,20 +1342,20 @@ void nsHtml5AttributeName::initializeStatics() {
       ALL_NO_NS, nsGkAtoms::lighting_color, nsGkAtoms::lighting_color,
       nsGkAtoms::lighting_color, ALL_NO_PREFIX);
   ATTR_MATHBACKGROUND = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::mathbackground_, nsGkAtoms::mathbackground_,
-      nsGkAtoms::mathbackground_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::mathbackground, nsGkAtoms::mathbackground,
+      nsGkAtoms::mathbackground, ALL_NO_PREFIX);
   ATTR_METHOD =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::method, nsGkAtoms::method,
                                nsGkAtoms::method, ALL_NO_PREFIX);
   ATTR_MATHVARIANT = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::mathvariant_, nsGkAtoms::mathvariant_,
-      nsGkAtoms::mathvariant_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::mathvariant, nsGkAtoms::mathvariant,
+      nsGkAtoms::mathvariant, ALL_NO_PREFIX);
   ATTR_MATHCOLOR = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::mathcolor_, nsGkAtoms::mathcolor_,
-      nsGkAtoms::mathcolor_, ALL_NO_PREFIX);
-  ATTR_MATHSIZE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::mathsize_,
-                                           nsGkAtoms::mathsize_,
-                                           nsGkAtoms::mathsize_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::mathcolor, nsGkAtoms::mathcolor,
+      nsGkAtoms::mathcolor, ALL_NO_PREFIX);
+  ATTR_MATHSIZE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::mathsize,
+                                           nsGkAtoms::mathsize,
+                                           nsGkAtoms::mathsize, ALL_NO_PREFIX);
   ATTR_NOSHADE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::noshade,
                                           nsGkAtoms::noshade,
                                           nsGkAtoms::noshade, ALL_NO_PREFIX);
@@ -1367,12 +1368,12 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTR_PATH =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::path, nsGkAtoms::path,
                                nsGkAtoms::path, ALL_NO_PREFIX);
-  ATTR_ALTIMG = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::altimg_,
-                                         nsGkAtoms::altimg_, nsGkAtoms::altimg_,
-                                         ALL_NO_PREFIX);
+  ATTR_ALTIMG =
+      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::altimg, nsGkAtoms::altimg,
+                               nsGkAtoms::altimg, ALL_NO_PREFIX);
   ATTR_ACTIONTYPE = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::actiontype_, nsGkAtoms::actiontype_,
-      nsGkAtoms::actiontype_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::actiontype, nsGkAtoms::actiontype,
+      nsGkAtoms::actiontype, ALL_NO_PREFIX);
   ATTR_ACTION =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::action, nsGkAtoms::action,
                                nsGkAtoms::action, ALL_NO_PREFIX);
@@ -1392,7 +1393,7 @@ void nsHtml5AttributeName::initializeStatics() {
                                           nsGkAtoms::divisor,
                                           nsGkAtoms::divisor, ALL_NO_PREFIX);
   ATTR_DEFINITIONURL = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::definitionurl, nsGkAtoms::definitionURL_,
+      ALL_NO_NS, nsGkAtoms::definitionurl, nsGkAtoms::definitionURL,
       nsGkAtoms::definitionurl, ALL_NO_PREFIX);
   ATTR_LIMITINGCONEANGLE = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::limitingconeangle, nsGkAtoms::limitingconeangle,
@@ -1416,15 +1417,15 @@ void nsHtml5AttributeName::initializeStatics() {
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::radius, nsGkAtoms::radius,
                                nsGkAtoms::radius, ALL_NO_PREFIX);
   ATTR_SCRIPTLEVEL = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::scriptlevel_, nsGkAtoms::scriptlevel_,
-      nsGkAtoms::scriptlevel_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::scriptlevel, nsGkAtoms::scriptlevel,
+      nsGkAtoms::scriptlevel, ALL_NO_PREFIX);
   ATTR_SCRIPTSIZEMULTIPLIER =
-      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::scriptsizemultiplier_,
-                               nsGkAtoms::scriptsizemultiplier_,
-                               nsGkAtoms::scriptsizemultiplier_, ALL_NO_PREFIX);
+      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::scriptsizemultiplier,
+                               nsGkAtoms::scriptsizemultiplier,
+                               nsGkAtoms::scriptsizemultiplier, ALL_NO_PREFIX);
   ATTR_SCRIPTMINSIZE = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::scriptminsize_, nsGkAtoms::scriptminsize_,
-      nsGkAtoms::scriptminsize_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::scriptminsize, nsGkAtoms::scriptminsize,
+      nsGkAtoms::scriptminsize, ALL_NO_PREFIX);
   ATTR_TABINDEX = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::tabindex,
                                            nsGkAtoms::tabindex,
                                            nsGkAtoms::tabindex, ALL_NO_PREFIX);
@@ -1500,9 +1501,9 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTR_REPLACE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::replace,
                                           nsGkAtoms::replace,
                                           nsGkAtoms::replace, ALL_NO_PREFIX);
-  ATTR_ROWLINES = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::rowlines_,
-                                           nsGkAtoms::rowlines_,
-                                           nsGkAtoms::rowlines_, ALL_NO_PREFIX);
+  ATTR_ROWLINES = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::rowlines,
+                                           nsGkAtoms::rowlines,
+                                           nsGkAtoms::rowlines, ALL_NO_PREFIX);
   ATTR_SCALE =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::scale, nsGkAtoms::scale,
                                nsGkAtoms::scale, ALL_NO_PREFIX);
@@ -1528,8 +1529,8 @@ void nsHtml5AttributeName::initializeStatics() {
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::frame, nsGkAtoms::frame,
                                nsGkAtoms::frame, ALL_NO_PREFIX);
   ATTR_FRAMESPACING = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::framespacing_, nsGkAtoms::framespacing_,
-      nsGkAtoms::framespacing_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::framespacing, nsGkAtoms::framespacing,
+      nsGkAtoms::framespacing, ALL_NO_PREFIX);
   ATTR_FROM =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::from, nsGkAtoms::from,
                                nsGkAtoms::from, ALL_NO_PREFIX);
@@ -1543,8 +1544,8 @@ void nsHtml5AttributeName::initializeStatics() {
       ALL_NO_NS, nsGkAtoms::primitiveunits, nsGkAtoms::primitiveunits,
       nsGkAtoms::primitiveUnits, ALL_NO_PREFIX);
   ATTR_SYMMETRIC = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::symmetric_, nsGkAtoms::symmetric_,
-      nsGkAtoms::symmetric_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::symmetric, nsGkAtoms::symmetric,
+      nsGkAtoms::symmetric, ALL_NO_PREFIX);
   ATTR_SUMMARY = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::summary,
                                           nsGkAtoms::summary,
                                           nsGkAtoms::summary, ALL_NO_PREFIX);
@@ -1655,6 +1656,9 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTR_AUTOPLAY = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::autoplay,
                                            nsGkAtoms::autoplay,
                                            nsGkAtoms::autoplay, ALL_NO_PREFIX);
+  ATTR_AUTOCORRECT = new nsHtml5AttributeName(
+      ALL_NO_NS, nsGkAtoms::autocorrect, nsGkAtoms::autocorrect,
+      nsGkAtoms::autocorrect, ALL_NO_PREFIX);
   ATTR_AUTOCOMPLETE = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::autocomplete, nsGkAtoms::autocomplete,
       nsGkAtoms::autocomplete, ALL_NO_PREFIX);
@@ -1695,9 +1699,9 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTR_FLOOD_OPACITY = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::flood_opacity, nsGkAtoms::flood_opacity,
       nsGkAtoms::flood_opacity, ALL_NO_PREFIX);
-  ATTR_LQUOTE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::lquote_,
-                                         nsGkAtoms::lquote_, nsGkAtoms::lquote_,
-                                         ALL_NO_PREFIX);
+  ATTR_LQUOTE =
+      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::lquote, nsGkAtoms::lquote,
+                               nsGkAtoms::lquote, ALL_NO_PREFIX);
   ATTR_NUMOCTAVES = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::numoctaves, nsGkAtoms::numoctaves,
       nsGkAtoms::numOctaves, ALL_NO_PREFIX);
@@ -1751,9 +1755,9 @@ void nsHtml5AttributeName::initializeStatics() {
       nsGkAtoms::onmousedown, ALL_NO_PREFIX);
   ATTR_TO = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::to, nsGkAtoms::to,
                                      nsGkAtoms::to, ALL_NO_PREFIX);
-  ATTR_RQUOTE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::rquote_,
-                                         nsGkAtoms::rquote_, nsGkAtoms::rquote_,
-                                         ALL_NO_PREFIX);
+  ATTR_RQUOTE =
+      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::rquote, nsGkAtoms::rquote,
+                               nsGkAtoms::rquote, ALL_NO_PREFIX);
   ATTR_STROKE_LINECAP = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::stroke_linecap, nsGkAtoms::stroke_linecap,
       nsGkAtoms::stroke_linecap, ALL_NO_PREFIX);
@@ -1800,8 +1804,8 @@ void nsHtml5AttributeName::initializeStatics() {
                                           nsGkAtoms::display,
                                           nsGkAtoms::display, ALL_NO_PREFIX);
   ATTR_DISPLAYSTYLE = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::displaystyle_, nsGkAtoms::displaystyle_,
-      nsGkAtoms::displaystyle_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::displaystyle, nsGkAtoms::displaystyle,
+      nsGkAtoms::displaystyle, ALL_NO_PREFIX);
   ATTR_GLYPH_ORIENTATION_VERTICAL = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::glyph_orientation_vertical,
       nsGkAtoms::glyph_orientation_vertical,
@@ -1944,9 +1948,9 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTR_CURSOR =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::cursor, nsGkAtoms::cursor,
                                nsGkAtoms::cursor, ALL_NO_PREFIX);
-  ATTR_CLOSURE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::closure_,
-                                          nsGkAtoms::closure_,
-                                          nsGkAtoms::closure_, ALL_NO_PREFIX);
+  ATTR_CLOSURE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::closure,
+                                          nsGkAtoms::closure,
+                                          nsGkAtoms::closure, ALL_NO_PREFIX);
   ATTR_CLOSE =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::close, nsGkAtoms::close,
                                nsGkAtoms::close, ALL_NO_PREFIX);
@@ -1964,12 +1968,12 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTR_LOWSRC =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::lowsrc, nsGkAtoms::lowsrc,
                                nsGkAtoms::lowsrc, ALL_NO_PREFIX);
-  ATTR_MAXSIZE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::maxsize_,
-                                          nsGkAtoms::maxsize_,
-                                          nsGkAtoms::maxsize_, ALL_NO_PREFIX);
-  ATTR_MINSIZE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::minsize_,
-                                          nsGkAtoms::minsize_,
-                                          nsGkAtoms::minsize_, ALL_NO_PREFIX);
+  ATTR_MAXSIZE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::maxsize,
+                                          nsGkAtoms::maxsize,
+                                          nsGkAtoms::maxsize, ALL_NO_PREFIX);
+  ATTR_MINSIZE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::minsize,
+                                          nsGkAtoms::minsize,
+                                          nsGkAtoms::minsize, ALL_NO_PREFIX);
   ATTR_OFFSET =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::offset, nsGkAtoms::offset,
                                nsGkAtoms::offset, ALL_NO_PREFIX);
@@ -1983,8 +1987,8 @@ void nsHtml5AttributeName::initializeStatics() {
                                           nsGkAtoms::rowspan,
                                           nsGkAtoms::rowspan, ALL_NO_PREFIX);
   ATTR_ROWSPACING = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::rowspacing_, nsGkAtoms::rowspacing_,
-      nsGkAtoms::rowspacing_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::rowspacing, nsGkAtoms::rowspacing,
+      nsGkAtoms::rowspacing, ALL_NO_PREFIX);
   ATTR_ROWS =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::rows, nsGkAtoms::rows,
                                nsGkAtoms::rows, ALL_NO_PREFIX);
@@ -1992,8 +1996,8 @@ void nsHtml5AttributeName::initializeStatics() {
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::srcset, nsGkAtoms::srcset,
                                nsGkAtoms::srcset, ALL_NO_PREFIX);
   ATTR_SUBSCRIPTSHIFT = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::subscriptshift_, nsGkAtoms::subscriptshift_,
-      nsGkAtoms::subscriptshift_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::subscriptshift, nsGkAtoms::subscriptshift,
+      nsGkAtoms::subscriptshift, ALL_NO_PREFIX);
   ATTR_VERSION = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::version,
                                           nsGkAtoms::version,
                                           nsGkAtoms::version, ALL_NO_PREFIX);
@@ -2013,8 +2017,8 @@ void nsHtml5AttributeName::initializeStatics() {
       ALL_NO_NS, nsGkAtoms::contextmenu, nsGkAtoms::contextmenu,
       nsGkAtoms::contextmenu, ALL_NO_PREFIX);
   ATTR_DEPTH =
-      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::depth_, nsGkAtoms::depth_,
-                               nsGkAtoms::depth_, ALL_NO_PREFIX);
+      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::depth, nsGkAtoms::depth,
+                               nsGkAtoms::depth, ALL_NO_PREFIX);
   ATTR_ENCTYPE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::enctype,
                                           nsGkAtoms::enctype,
                                           nsGkAtoms::enctype, ALL_NO_PREFIX);
@@ -2025,20 +2029,20 @@ void nsHtml5AttributeName::initializeStatics() {
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::filter, nsGkAtoms::filter,
                                nsGkAtoms::filter, ALL_NO_PREFIX);
   ATTR_FONTWEIGHT = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::fontweight_, nsGkAtoms::fontweight_,
-      nsGkAtoms::fontweight_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::fontweight, nsGkAtoms::fontweight,
+      nsGkAtoms::fontweight, ALL_NO_PREFIX);
   ATTR_FONT_WEIGHT = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::fontWeight, nsGkAtoms::fontWeight,
       nsGkAtoms::fontWeight, ALL_NO_PREFIX);
   ATTR_FONTSTYLE = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::fontstyle_, nsGkAtoms::fontstyle_,
-      nsGkAtoms::fontstyle_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::fontstyle, nsGkAtoms::fontstyle,
+      nsGkAtoms::fontstyle, ALL_NO_PREFIX);
   ATTR_FONT_STYLE = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::font_style, nsGkAtoms::font_style,
       nsGkAtoms::font_style, ALL_NO_PREFIX);
   ATTR_FONTFAMILY = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::fontfamily_, nsGkAtoms::fontfamily_,
-      nsGkAtoms::fontfamily_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::fontfamily, nsGkAtoms::fontfamily,
+      nsGkAtoms::fontfamily, ALL_NO_PREFIX);
   ATTR_FONT_FAMILY = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::font_family, nsGkAtoms::font_family,
       nsGkAtoms::font_family, ALL_NO_PREFIX);
@@ -2051,9 +2055,9 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTR_FILTERUNITS = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::filterunits, nsGkAtoms::filterunits,
       nsGkAtoms::filterUnits, ALL_NO_PREFIX);
-  ATTR_FONTSIZE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::fontsize_,
-                                           nsGkAtoms::fontsize_,
-                                           nsGkAtoms::fontsize_, ALL_NO_PREFIX);
+  ATTR_FONTSIZE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::fontsize,
+                                           nsGkAtoms::fontsize,
+                                           nsGkAtoms::fontsize, ALL_NO_PREFIX);
   ATTR_FONT_SIZE = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::font_size, nsGkAtoms::font_size,
       nsGkAtoms::font_size, ALL_NO_PREFIX);
@@ -2064,8 +2068,8 @@ void nsHtml5AttributeName::initializeStatics() {
       ALL_NO_NS, nsGkAtoms::letter_spacing, nsGkAtoms::letter_spacing,
       nsGkAtoms::letter_spacing, ALL_NO_PREFIX);
   ATTR_LIST =
-      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::list_, nsGkAtoms::list_,
-                               nsGkAtoms::list_, ALL_NO_PREFIX);
+      new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::list, nsGkAtoms::list,
+                               nsGkAtoms::list, ALL_NO_PREFIX);
   ATTR_MULTIPLE = new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::multiple,
                                            nsGkAtoms::multiple,
                                            nsGkAtoms::multiple, ALL_NO_PREFIX);
@@ -2126,23 +2130,23 @@ void nsHtml5AttributeName::initializeStatics() {
       ALL_NO_NS, nsGkAtoms::accumulate, nsGkAtoms::accumulate,
       nsGkAtoms::accumulate, ALL_NO_PREFIX);
   ATTR_COLUMNSPAN = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::columnspan_, nsGkAtoms::columnspan_,
-      nsGkAtoms::columnspan_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::columnspan, nsGkAtoms::columnspan,
+      nsGkAtoms::columnspan, ALL_NO_PREFIX);
   ATTR_COLUMNLINES = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::columnlines_, nsGkAtoms::columnlines_,
-      nsGkAtoms::columnlines_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::columnlines, nsGkAtoms::columnlines,
+      nsGkAtoms::columnlines, ALL_NO_PREFIX);
   ATTR_COLUMNALIGN = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::columnalign_, nsGkAtoms::columnalign_,
-      nsGkAtoms::columnalign_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::columnalign, nsGkAtoms::columnalign,
+      nsGkAtoms::columnalign, ALL_NO_PREFIX);
   ATTR_COLUMNSPACING = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::columnspacing_, nsGkAtoms::columnspacing_,
-      nsGkAtoms::columnspacing_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::columnspacing, nsGkAtoms::columnspacing,
+      nsGkAtoms::columnspacing, ALL_NO_PREFIX);
   ATTR_COLUMNWIDTH = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::columnwidth_, nsGkAtoms::columnwidth_,
-      nsGkAtoms::columnwidth_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::columnwidth, nsGkAtoms::columnwidth,
+      nsGkAtoms::columnwidth, ALL_NO_PREFIX);
   ATTR_GROUPALIGN = new nsHtml5AttributeName(
-      ALL_NO_NS, nsGkAtoms::groupalign_, nsGkAtoms::groupalign_,
-      nsGkAtoms::groupalign_, ALL_NO_PREFIX);
+      ALL_NO_NS, nsGkAtoms::groupalign, nsGkAtoms::groupalign,
+      nsGkAtoms::groupalign, ALL_NO_PREFIX);
   ATTR_INPUTMODE = new nsHtml5AttributeName(
       ALL_NO_NS, nsGkAtoms::inputmode, nsGkAtoms::inputmode,
       nsGkAtoms::inputmode, ALL_NO_PREFIX);
@@ -2206,22 +2210,22 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTR_REFY =
       new nsHtml5AttributeName(ALL_NO_NS, nsGkAtoms::refy, nsGkAtoms::refy,
                                nsGkAtoms::refY, ALL_NO_PREFIX);
-  ATTRIBUTE_NAMES = new nsHtml5AttributeName*[505];
+  ATTRIBUTE_NAMES = new nsHtml5AttributeName*[507];
   ATTRIBUTE_NAMES[0] = ATTR_MASKCONTENTUNITS;
   ATTRIBUTE_NAMES[1] = ATTR_BASE;
-  ATTRIBUTE_NAMES[2] = ATTR_WRAP;
+  ATTRIBUTE_NAMES[2] = ATTR_STOP_OPACITY;
   ATTRIBUTE_NAMES[3] = ATTR_CLEAR;
   ATTRIBUTE_NAMES[4] = ATTR_ALIGN;
-  ATTRIBUTE_NAMES[5] = ATTR_AUTOFOCUS;
-  ATTRIBUTE_NAMES[6] = ATTR_FONT_VARIANT;
+  ATTRIBUTE_NAMES[5] = ATTR_AUTOCORRECT;
+  ATTRIBUTE_NAMES[6] = ATTR_FONTFAMILY;
   ATTRIBUTE_NAMES[7] = ATTR_ARIA_DISABLED;
   ATTRIBUTE_NAMES[8] = ATTR_OPACITY;
   ATTRIBUTE_NAMES[9] = ATTR_ORIENT;
   ATTRIBUTE_NAMES[10] = ATTR_ALTIMG;
   ATTRIBUTE_NAMES[11] = ATTR_IN;
-  ATTRIBUTE_NAMES[12] = ATTR_STROKE_LINECAP;
-  ATTRIBUTE_NAMES[13] = ATTR_CLOSE;
-  ATTRIBUTE_NAMES[14] = ATTR_COLUMNWIDTH;
+  ATTRIBUTE_NAMES[12] = ATTR_TO;
+  ATTRIBUTE_NAMES[13] = ATTR_CURSOR;
+  ATTRIBUTE_NAMES[14] = ATTR_COLUMNALIGN;
   ATTRIBUTE_NAMES[15] = ATTR_Y;
   ATTRIBUTE_NAMES[16] = ATTR_ARIA_MULTISELECTABLE;
   ATTRIBUTE_NAMES[17] = ATTR_ROTATE;
@@ -2231,13 +2235,13 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTRIBUTE_NAMES[21] = ATTR_PING;
   ATTRIBUTE_NAMES[22] = ATTR_SCRIPTLEVEL;
   ATTRIBUTE_NAMES[23] = ATTR_TITLE;
-  ATTRIBUTE_NAMES[24] = ATTR_STANDBY;
-  ATTRIBUTE_NAMES[25] = ATTR_ONMOUSEWHEEL;
-  ATTRIBUTE_NAMES[26] = ATTR_GLYPH_ORIENTATION_VERTICAL;
-  ATTRIBUTE_NAMES[27] = ATTR_ONERROR;
-  ATTRIBUTE_NAMES[28] = ATTR_VERSION;
-  ATTRIBUTE_NAMES[29] = ATTR_PATTERNCONTENTUNITS;
-  ATTRIBUTE_NAMES[30] = ATTR_DX;
+  ATTRIBUTE_NAMES[24] = ATTR_SPAN;
+  ATTRIBUTE_NAMES[25] = ATTR_NOMODULE;
+  ATTRIBUTE_NAMES[26] = ATTR_DISPLAY;
+  ATTRIBUTE_NAMES[27] = ATTR_ONDROP;
+  ATTRIBUTE_NAMES[28] = ATTR_SRCSET;
+  ATTRIBUTE_NAMES[29] = ATTR_PATTERN;
+  ATTRIBUTE_NAMES[30] = ATTR_VIEWBOX;
   ATTRIBUTE_NAMES[31] = ATTR_MIN;
   ATTRIBUTE_NAMES[32] = ATTR_K3;
   ATTRIBUTE_NAMES[33] = ATTR_ARIA_CHANNEL;
@@ -2256,19 +2260,19 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTRIBUTE_NAMES[46] = ATTR_MARKER_MID;
   ATTRIBUTE_NAMES[47] = ATTR_MAXLENGTH;
   ATTRIBUTE_NAMES[48] = ATTR_PROMPT;
-  ATTRIBUTE_NAMES[49] = ATTR_ONEND;
-  ATTRIBUTE_NAMES[50] = ATTR_XLINK_ARCROLE;
-  ATTRIBUTE_NAMES[51] = ATTR_ENCODING;
-  ATTRIBUTE_NAMES[52] = ATTR_ONMOUSEMOVE;
-  ATTRIBUTE_NAMES[53] = ATTR_STROKE_OPACITY;
-  ATTRIBUTE_NAMES[54] = ATTR_STEP;
-  ATTRIBUTE_NAMES[55] = ATTR_NOWRAP;
-  ATTRIBUTE_NAMES[56] = ATTR_AXIS;
-  ATTRIBUTE_NAMES[57] = ATTR_OFFSET;
-  ATTRIBUTE_NAMES[58] = ATTR_FONT_STRETCH;
-  ATTRIBUTE_NAMES[59] = ATTR_MULTIPLE;
-  ATTRIBUTE_NAMES[60] = ATTR_TEXT;
-  ATTRIBUTE_NAMES[61] = ATTR_REQUIREDEXTENSIONS;
+  ATTRIBUTE_NAMES[49] = ATTR_ONINVALID;
+  ATTRIBUTE_NAMES[50] = ATTR_XLINK_ROLE;
+  ATTRIBUTE_NAMES[51] = ATTR_COLOR;
+  ATTRIBUTE_NAMES[52] = ATTR_ONCOPY;
+  ATTRIBUTE_NAMES[53] = ATTR_SCROLLING;
+  ATTRIBUTE_NAMES[54] = ATTR_PROPERTY;
+  ATTRIBUTE_NAMES[55] = ATTR_CHAROFF;
+  ATTRIBUTE_NAMES[56] = ATTR_START;
+  ATTRIBUTE_NAMES[57] = ATTR_MAXSIZE;
+  ATTRIBUTE_NAMES[58] = ATTR_DEPTH;
+  ATTRIBUTE_NAMES[59] = ATTR_LETTER_SPACING;
+  ATTRIBUTE_NAMES[60] = ATTR_TEXT_ANCHOR;
+  ATTRIBUTE_NAMES[61] = ATTR_REQUIREDFEATURES;
   ATTRIBUTE_NAMES[62] = ATTR_DY;
   ATTRIBUTE_NAMES[63] = ATTR_END;
   ATTRIBUTE_NAMES[64] = ATTR_SRC;
@@ -2306,33 +2310,33 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTRIBUTE_NAMES[96] = ATTR_ROWLINES;
   ATTRIBUTE_NAMES[97] = ATTR_FRAME;
   ATTRIBUTE_NAMES[98] = ATTR_USEMAP;
-  ATTRIBUTE_NAMES[99] = ATTR_KERNELUNITLENGTH;
-  ATTRIBUTE_NAMES[100] = ATTR_POINTSATX;
-  ATTRIBUTE_NAMES[101] = ATTR_WHEN;
-  ATTRIBUTE_NAMES[102] = ATTR_XLINK_SHOW;
-  ATTRIBUTE_NAMES[103] = ATTR_COLOR_RENDERING;
-  ATTRIBUTE_NAMES[104] = ATTR_LQUOTE;
-  ATTRIBUTE_NAMES[105] = ATTR_ONCONTEXTMENU;
-  ATTRIBUTE_NAMES[106] = ATTR_ONFOCUSOUT;
-  ATTRIBUTE_NAMES[107] = ATTR_STROKE_MITERLIMIT;
-  ATTRIBUTE_NAMES[108] = ATTR_CLIP_PATH;
-  ATTRIBUTE_NAMES[109] = ATTR_KEYPOINTS;
-  ATTRIBUTE_NAMES[110] = ATTR_SLOPE;
-  ATTRIBUTE_NAMES[111] = ATTR_CHAR;
-  ATTRIBUTE_NAMES[112] = ATTR_ONDRAGOVER;
-  ATTRIBUTE_NAMES[113] = ATTR_ONDRAGLEAVE;
-  ATTRIBUTE_NAMES[114] = ATTR_CROSSORIGIN;
-  ATTRIBUTE_NAMES[115] = ATTR_KEYSPLINES;
-  ATTRIBUTE_NAMES[116] = ATTR_ROWSPACING;
-  ATTRIBUTE_NAMES[117] = ATTR_CONTENT;
-  ATTRIBUTE_NAMES[118] = ATTR_FONTSTYLE;
-  ATTRIBUTE_NAMES[119] = ATTR_FONT_SIZE;
-  ATTRIBUTE_NAMES[120] = ATTR_POSTER;
-  ATTRIBUTE_NAMES[121] = ATTR_TEXT_RENDERING;
-  ATTRIBUTE_NAMES[122] = ATTR_COLUMNSPAN;
-  ATTRIBUTE_NAMES[123] = ATTR_ONCUT;
-  ATTRIBUTE_NAMES[124] = ATTR_ELEVATION;
-  ATTRIBUTE_NAMES[125] = ATTR_BY;
+  ATTRIBUTE_NAMES[99] = ATTR_KERNING;
+  ATTRIBUTE_NAMES[100] = ATTR_POINTS;
+  ATTRIBUTE_NAMES[101] = ATTR_VLINK;
+  ATTRIBUTE_NAMES[102] = ATTR_XLINK_TYPE;
+  ATTRIBUTE_NAMES[103] = ATTR_BGCOLOR;
+  ATTRIBUTE_NAMES[104] = ATTR_FLOOD_COLOR;
+  ATTRIBUTE_NAMES[105] = ATTR_ONMOUSEOVER;
+  ATTRIBUTE_NAMES[106] = ATTR_ONFOCUS;
+  ATTRIBUTE_NAMES[107] = ATTR_STROKE_DASHOFFSET;
+  ATTRIBUTE_NAMES[108] = ATTR_CLIP;
+  ATTRIBUTE_NAMES[109] = ATTR_GLYPHREF;
+  ATTRIBUTE_NAMES[110] = ATTR_SCOPE;
+  ATTRIBUTE_NAMES[111] = ATTR_ATTRIBUTENAME;
+  ATTRIBUTE_NAMES[112] = ATTR_ONDRAG;
+  ATTRIBUTE_NAMES[113] = ATTR_OVERFLOW;
+  ATTRIBUTE_NAMES[114] = ATTR_COLSPAN;
+  ATTRIBUTE_NAMES[115] = ATTR_IS;
+  ATTRIBUTE_NAMES[116] = ATTR_PRESERVEASPECTRATIO;
+  ATTRIBUTE_NAMES[117] = ATTR_CONTENTEDITABLE;
+  ATTRIBUTE_NAMES[118] = ATTR_FONTWEIGHT;
+  ATTRIBUTE_NAMES[119] = ATTR_FILTERUNITS;
+  ATTRIBUTE_NAMES[120] = ATTR_ONSTOP;
+  ATTRIBUTE_NAMES[121] = ATTR_STITCHTILES;
+  ATTRIBUTE_NAMES[122] = ATTR_WIDTH;
+  ATTRIBUTE_NAMES[123] = ATTR_INPUTMODE;
+  ATTRIBUTE_NAMES[124] = ATTR_VALUETYPE;
+  ATTRIBUTE_NAMES[125] = ATTR_RX;
   ATTRIBUTE_NAMES[126] = ATTR_RY;
   ATTRIBUTE_NAMES[127] = ATTR_DIR;
   ATTRIBUTE_NAMES[128] = ATTR_IN2;
@@ -2406,60 +2410,60 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTRIBUTE_NAMES[196] = ATTR_FROM;
   ATTRIBUTE_NAMES[197] = ATTR_SYMMETRIC;
   ATTRIBUTE_NAMES[198] = ATTR_ASYNC;
-  ATTRIBUTE_NAMES[199] = ATTR_KERNELMATRIX;
-  ATTRIBUTE_NAMES[200] = ATTR_OPEN;
-  ATTRIBUTE_NAMES[201] = ATTR_POINTER_EVENTS;
-  ATTRIBUTE_NAMES[202] = ATTR_POINTSATZ;
-  ATTRIBUTE_NAMES[203] = ATTR_TRANSFORM;
-  ATTRIBUTE_NAMES[204] = ATTR_XLINK_TITLE;
-  ATTRIBUTE_NAMES[205] = ATTR_XMLNS;
-  ATTRIBUTE_NAMES[206] = ATTR_AUTOPLAY;
-  ATTRIBUTE_NAMES[207] = ATTR_BGCOLOR;
-  ATTRIBUTE_NAMES[208] = ATTR_COLOR;
-  ATTRIBUTE_NAMES[209] = ATTR_FLOOD_COLOR;
-  ATTRIBUTE_NAMES[210] = ATTR_NOMODULE;
-  ATTRIBUTE_NAMES[211] = ATTR_ONMOUSEOVER;
-  ATTRIBUTE_NAMES[212] = ATTR_ONCOPY;
-  ATTRIBUTE_NAMES[213] = ATTR_ONFOCUS;
-  ATTRIBUTE_NAMES[214] = ATTR_TO;
-  ATTRIBUTE_NAMES[215] = ATTR_STROKE_DASHOFFSET;
-  ATTRIBUTE_NAMES[216] = ATTR_SCROLLING;
-  ATTRIBUTE_NAMES[217] = ATTR_CLIP;
-  ATTRIBUTE_NAMES[218] = ATTR_DISPLAY;
-  ATTRIBUTE_NAMES[219] = ATTR_GLYPHREF;
-  ATTRIBUTE_NAMES[220] = ATTR_PROPERTY;
-  ATTRIBUTE_NAMES[221] = ATTR_SCOPE;
-  ATTRIBUTE_NAMES[222] = ATTR_STOP_OPACITY;
-  ATTRIBUTE_NAMES[223] = ATTR_ATTRIBUTENAME;
-  ATTRIBUTE_NAMES[224] = ATTR_CHAROFF;
-  ATTRIBUTE_NAMES[225] = ATTR_ONDRAG;
-  ATTRIBUTE_NAMES[226] = ATTR_ONDROP;
-  ATTRIBUTE_NAMES[227] = ATTR_OVERFLOW;
-  ATTRIBUTE_NAMES[228] = ATTR_START;
-  ATTRIBUTE_NAMES[229] = ATTR_COLSPAN;
-  ATTRIBUTE_NAMES[230] = ATTR_CURSOR;
-  ATTRIBUTE_NAMES[231] = ATTR_IS;
-  ATTRIBUTE_NAMES[232] = ATTR_MAXSIZE;
-  ATTRIBUTE_NAMES[233] = ATTR_PRESERVEASPECTRATIO;
-  ATTRIBUTE_NAMES[234] = ATTR_SRCSET;
-  ATTRIBUTE_NAMES[235] = ATTR_CONTENTEDITABLE;
-  ATTRIBUTE_NAMES[236] = ATTR_DEPTH;
-  ATTRIBUTE_NAMES[237] = ATTR_FONTWEIGHT;
-  ATTRIBUTE_NAMES[238] = ATTR_FONTFAMILY;
-  ATTRIBUTE_NAMES[239] = ATTR_FILTERUNITS;
-  ATTRIBUTE_NAMES[240] = ATTR_LETTER_SPACING;
-  ATTRIBUTE_NAMES[241] = ATTR_ONSTOP;
-  ATTRIBUTE_NAMES[242] = ATTR_PATTERN;
-  ATTRIBUTE_NAMES[243] = ATTR_STITCHTILES;
-  ATTRIBUTE_NAMES[244] = ATTR_TEXT_ANCHOR;
-  ATTRIBUTE_NAMES[245] = ATTR_WIDTH;
-  ATTRIBUTE_NAMES[246] = ATTR_COLUMNALIGN;
-  ATTRIBUTE_NAMES[247] = ATTR_INPUTMODE;
-  ATTRIBUTE_NAMES[248] = ATTR_REQUIREDFEATURES;
-  ATTRIBUTE_NAMES[249] = ATTR_VALUETYPE;
-  ATTRIBUTE_NAMES[250] = ATTR_VIEWBOX;
-  ATTRIBUTE_NAMES[251] = ATTR_RX;
-  ATTRIBUTE_NAMES[252] = ATTR_CY;
+  ATTRIBUTE_NAMES[199] = ATTR_ICON;
+  ATTRIBUTE_NAMES[200] = ATTR_ONUNLOAD;
+  ATTRIBUTE_NAMES[201] = ATTR_ONINPUT;
+  ATTRIBUTE_NAMES[202] = ATTR_POINTSATY;
+  ATTRIBUTE_NAMES[203] = ATTR_TRANSFORM_ORIGIN;
+  ATTRIBUTE_NAMES[204] = ATTR_XLINK_HREF;
+  ATTRIBUTE_NAMES[205] = ATTR_XMLNS_XLINK;
+  ATTRIBUTE_NAMES[206] = ATTR_XLINK_ACTUATE;
+  ATTRIBUTE_NAMES[207] = ATTR_AUTOFOCUS;
+  ATTRIBUTE_NAMES[208] = ATTR_COLOR_RENDERING;
+  ATTRIBUTE_NAMES[209] = ATTR_ENCODING;
+  ATTRIBUTE_NAMES[210] = ATTR_LQUOTE;
+  ATTRIBUTE_NAMES[211] = ATTR_ONMOUSEWHEEL;
+  ATTRIBUTE_NAMES[212] = ATTR_ONCONTEXTMENU;
+  ATTRIBUTE_NAMES[213] = ATTR_ONMOUSEMOVE;
+  ATTRIBUTE_NAMES[214] = ATTR_ONFOCUSOUT;
+  ATTRIBUTE_NAMES[215] = ATTR_STROKE_LINECAP;
+  ATTRIBUTE_NAMES[216] = ATTR_STROKE_MITERLIMIT;
+  ATTRIBUTE_NAMES[217] = ATTR_STROKE_OPACITY;
+  ATTRIBUTE_NAMES[218] = ATTR_CLIP_PATH;
+  ATTRIBUTE_NAMES[219] = ATTR_GLYPH_ORIENTATION_VERTICAL;
+  ATTRIBUTE_NAMES[220] = ATTR_KEYPOINTS;
+  ATTRIBUTE_NAMES[221] = ATTR_STEP;
+  ATTRIBUTE_NAMES[222] = ATTR_SLOPE;
+  ATTRIBUTE_NAMES[223] = ATTR_WRAP;
+  ATTRIBUTE_NAMES[224] = ATTR_CHAR;
+  ATTRIBUTE_NAMES[225] = ATTR_NOWRAP;
+  ATTRIBUTE_NAMES[226] = ATTR_ONDRAGOVER;
+  ATTRIBUTE_NAMES[227] = ATTR_ONERROR;
+  ATTRIBUTE_NAMES[228] = ATTR_ONDRAGLEAVE;
+  ATTRIBUTE_NAMES[229] = ATTR_AXIS;
+  ATTRIBUTE_NAMES[230] = ATTR_CROSSORIGIN;
+  ATTRIBUTE_NAMES[231] = ATTR_CLOSE;
+  ATTRIBUTE_NAMES[232] = ATTR_KEYSPLINES;
+  ATTRIBUTE_NAMES[233] = ATTR_OFFSET;
+  ATTRIBUTE_NAMES[234] = ATTR_ROWSPACING;
+  ATTRIBUTE_NAMES[235] = ATTR_VERSION;
+  ATTRIBUTE_NAMES[236] = ATTR_CONTENT;
+  ATTRIBUTE_NAMES[237] = ATTR_FONT_STRETCH;
+  ATTRIBUTE_NAMES[238] = ATTR_FONTSTYLE;
+  ATTRIBUTE_NAMES[239] = ATTR_FONT_VARIANT;
+  ATTRIBUTE_NAMES[240] = ATTR_FONT_SIZE;
+  ATTRIBUTE_NAMES[241] = ATTR_MULTIPLE;
+  ATTRIBUTE_NAMES[242] = ATTR_POSTER;
+  ATTRIBUTE_NAMES[243] = ATTR_PATTERNCONTENTUNITS;
+  ATTRIBUTE_NAMES[244] = ATTR_TEXT_RENDERING;
+  ATTRIBUTE_NAMES[245] = ATTR_TEXT;
+  ATTRIBUTE_NAMES[246] = ATTR_COLUMNSPAN;
+  ATTRIBUTE_NAMES[247] = ATTR_COLUMNWIDTH;
+  ATTRIBUTE_NAMES[248] = ATTR_ONCUT;
+  ATTRIBUTE_NAMES[249] = ATTR_REQUIREDEXTENSIONS;
+  ATTRIBUTE_NAMES[250] = ATTR_ELEVATION;
+  ATTRIBUTE_NAMES[251] = ATTR_DX;
+  ATTRIBUTE_NAMES[252] = ATTR_BY;
   ATTRIBUTE_NAMES[253] = ATTR_FY;
   ATTRIBUTE_NAMES[254] = ATTR_REFY;
   ATTRIBUTE_NAMES[255] = ATTR_ALT;
@@ -2606,112 +2610,114 @@ void nsHtml5AttributeName::initializeStatics() {
   ATTRIBUTE_NAMES[396] = ATTR_SUMMARY;
   ATTRIBUTE_NAMES[397] = ATTR_ZOOMANDPAN;
   ATTRIBUTE_NAMES[398] = ATTR_ALINK;
-  ATTRIBUTE_NAMES[399] = ATTR_ICON;
-  ATTRIBUTE_NAMES[400] = ATTR_KERNING;
-  ATTRIBUTE_NAMES[401] = ATTR_ONUNLOAD;
-  ATTRIBUTE_NAMES[402] = ATTR_ONINVALID;
-  ATTRIBUTE_NAMES[403] = ATTR_ONINPUT;
-  ATTRIBUTE_NAMES[404] = ATTR_POINTS;
-  ATTRIBUTE_NAMES[405] = ATTR_POINTSATY;
-  ATTRIBUTE_NAMES[406] = ATTR_SPAN;
-  ATTRIBUTE_NAMES[407] = ATTR_TRANSFORM_ORIGIN;
-  ATTRIBUTE_NAMES[408] = ATTR_VLINK;
-  ATTRIBUTE_NAMES[409] = ATTR_XLINK_HREF;
-  ATTRIBUTE_NAMES[410] = ATTR_XLINK_ROLE;
-  ATTRIBUTE_NAMES[411] = ATTR_XMLNS_XLINK;
-  ATTRIBUTE_NAMES[412] = ATTR_XLINK_TYPE;
-  ATTRIBUTE_NAMES[413] = ATTR_XLINK_ACTUATE;
-  ATTRIBUTE_NAMES[414] = ATTR_AUTOCOMPLETE;
-  ATTRIBUTE_NAMES[415] = ATTR_AUTOCAPITALIZE;
-  ATTRIBUTE_NAMES[416] = ATTR_COLOR_PROFILE;
-  ATTRIBUTE_NAMES[417] = ATTR_COLOR_INTERPOLATION;
-  ATTRIBUTE_NAMES[418] = ATTR_COLOR_INTERPOLATION_FILTERS;
-  ATTRIBUTE_NAMES[419] = ATTR_EXPONENT;
-  ATTRIBUTE_NAMES[420] = ATTR_FLOOD_OPACITY;
-  ATTRIBUTE_NAMES[421] = ATTR_NUMOCTAVES;
-  ATTRIBUTE_NAMES[422] = ATTR_ONLOAD;
-  ATTRIBUTE_NAMES[423] = ATTR_ONMOUSEENTER;
-  ATTRIBUTE_NAMES[424] = ATTR_ONFOCUSIN;
-  ATTRIBUTE_NAMES[425] = ATTR_ONZOOM;
-  ATTRIBUTE_NAMES[426] = ATTR_ONMOUSELEAVE;
-  ATTRIBUTE_NAMES[427] = ATTR_ONMOUSEUP;
-  ATTRIBUTE_NAMES[428] = ATTR_ONMOUSEOUT;
-  ATTRIBUTE_NAMES[429] = ATTR_ONMOUSEDOWN;
-  ATTRIBUTE_NAMES[430] = ATTR_RQUOTE;
-  ATTRIBUTE_NAMES[431] = ATTR_STROKE_DASHARRAY;
-  ATTRIBUTE_NAMES[432] = ATTR_STROKE_LINEJOIN;
-  ATTRIBUTE_NAMES[433] = ATTR_STROKE;
-  ATTRIBUTE_NAMES[434] = ATTR_STROKE_WIDTH;
-  ATTRIBUTE_NAMES[435] = ATTR_COMPACT;
-  ATTRIBUTE_NAMES[436] = ATTR_CLIP_RULE;
-  ATTRIBUTE_NAMES[437] = ATTR_CLIPPATHUNITS;
-  ATTRIBUTE_NAMES[438] = ATTR_DISPLAYSTYLE;
-  ATTRIBUTE_NAMES[439] = ATTR_GLYPH_ORIENTATION_HORIZONTAL;
-  ATTRIBUTE_NAMES[440] = ATTR_HTTP_EQUIV;
-  ATTRIBUTE_NAMES[441] = ATTR_LOOP;
-  ATTRIBUTE_NAMES[442] = ATTR_SCOPED;
-  ATTRIBUTE_NAMES[443] = ATTR_SHAPE_RENDERING;
-  ATTRIBUTE_NAMES[444] = ATTR_SHAPE;
-  ATTRIBUTE_NAMES[445] = ATTR_STOP_COLOR;
-  ATTRIBUTE_NAMES[446] = ATTR_TEMPLATE;
-  ATTRIBUTE_NAMES[447] = ATTR_ABBR;
-  ATTRIBUTE_NAMES[448] = ATTR_ATTRIBUTETYPE;
-  ATTRIBUTE_NAMES[449] = ATTR_COORDS;
-  ATTRIBUTE_NAMES[450] = ATTR_CHARSET;
-  ATTRIBUTE_NAMES[451] = ATTR_NOHREF;
-  ATTRIBUTE_NAMES[452] = ATTR_ONDRAGENTER;
-  ATTRIBUTE_NAMES[453] = ATTR_ONDRAGEND;
-  ATTRIBUTE_NAMES[454] = ATTR_ONDRAGDROP;
-  ATTRIBUTE_NAMES[455] = ATTR_OPERATOR;
-  ATTRIBUTE_NAMES[456] = ATTR_ONDRAGSTART;
-  ATTRIBUTE_NAMES[457] = ATTR_STARTOFFSET;
-  ATTRIBUTE_NAMES[458] = ATTR_AS;
-  ATTRIBUTE_NAMES[459] = ATTR_BIAS;
-  ATTRIBUTE_NAMES[460] = ATTR_CLASSID;
-  ATTRIBUTE_NAMES[461] = ATTR_COLS;
-  ATTRIBUTE_NAMES[462] = ATTR_CLOSURE;
-  ATTRIBUTE_NAMES[463] = ATTR_CLASS;
-  ATTRIBUTE_NAMES[464] = ATTR_KEYSYSTEM;
-  ATTRIBUTE_NAMES[465] = ATTR_LOWSRC;
-  ATTRIBUTE_NAMES[466] = ATTR_MINSIZE;
-  ATTRIBUTE_NAMES[467] = ATTR_PRESERVEALPHA;
-  ATTRIBUTE_NAMES[468] = ATTR_ROWSPAN;
-  ATTRIBUTE_NAMES[469] = ATTR_ROWS;
-  ATTRIBUTE_NAMES[470] = ATTR_SUBSCRIPTSHIFT;
-  ATTRIBUTE_NAMES[471] = ATTR_ALTTEXT;
-  ATTRIBUTE_NAMES[472] = ATTR_CONTROLS;
-  ATTRIBUTE_NAMES[473] = ATTR_CONTEXTMENU;
-  ATTRIBUTE_NAMES[474] = ATTR_ENCTYPE;
-  ATTRIBUTE_NAMES[475] = ATTR_FILTER;
-  ATTRIBUTE_NAMES[476] = ATTR_FONT_WEIGHT;
-  ATTRIBUTE_NAMES[477] = ATTR_FONT_STYLE;
-  ATTRIBUTE_NAMES[478] = ATTR_FONT_FAMILY;
-  ATTRIBUTE_NAMES[479] = ATTR_FONT_SIZE_ADJUST;
-  ATTRIBUTE_NAMES[480] = ATTR_FONTSIZE;
-  ATTRIBUTE_NAMES[481] = ATTR_KEYTIMES;
-  ATTRIBUTE_NAMES[482] = ATTR_LIST;
-  ATTRIBUTE_NAMES[483] = ATTR_RT;
-  ATTRIBUTE_NAMES[484] = ATTR_ONSTART;
-  ATTRIBUTE_NAMES[485] = ATTR_PATTERNTRANSFORM;
-  ATTRIBUTE_NAMES[486] = ATTR_PATTERNUNITS;
-  ATTRIBUTE_NAMES[487] = ATTR_RESTART;
-  ATTRIBUTE_NAMES[488] = ATTR_SYSTEMLANGUAGE;
-  ATTRIBUTE_NAMES[489] = ATTR_TEXT_DECORATION;
-  ATTRIBUTE_NAMES[490] = ATTR_TEXTLENGTH;
-  ATTRIBUTE_NAMES[491] = ATTR_WRITING_MODE;
-  ATTRIBUTE_NAMES[492] = ATTR_ACCUMULATE;
-  ATTRIBUTE_NAMES[493] = ATTR_COLUMNLINES;
-  ATTRIBUTE_NAMES[494] = ATTR_COLUMNSPACING;
-  ATTRIBUTE_NAMES[495] = ATTR_GROUPALIGN;
-  ATTRIBUTE_NAMES[496] = ATTR_ONSUBMIT;
-  ATTRIBUTE_NAMES[497] = ATTR_REQUIRED;
-  ATTRIBUTE_NAMES[498] = ATTR_RESULT;
-  ATTRIBUTE_NAMES[499] = ATTR_VALUES;
-  ATTRIBUTE_NAMES[500] = ATTR_VALUE;
-  ATTRIBUTE_NAMES[501] = ATTR_VIEWTARGET;
-  ATTRIBUTE_NAMES[502] = ATTR_CX;
-  ATTRIBUTE_NAMES[503] = ATTR_FX;
-  ATTRIBUTE_NAMES[504] = ATTR_REFX;
+  ATTRIBUTE_NAMES[399] = ATTR_EVENT;
+  ATTRIBUTE_NAMES[400] = ATTR_KERNELMATRIX;
+  ATTRIBUTE_NAMES[401] = ATTR_KERNELUNITLENGTH;
+  ATTRIBUTE_NAMES[402] = ATTR_OPEN;
+  ATTRIBUTE_NAMES[403] = ATTR_ONEND;
+  ATTRIBUTE_NAMES[404] = ATTR_POINTER_EVENTS;
+  ATTRIBUTE_NAMES[405] = ATTR_POINTSATX;
+  ATTRIBUTE_NAMES[406] = ATTR_POINTSATZ;
+  ATTRIBUTE_NAMES[407] = ATTR_STANDBY;
+  ATTRIBUTE_NAMES[408] = ATTR_TRANSFORM;
+  ATTRIBUTE_NAMES[409] = ATTR_WHEN;
+  ATTRIBUTE_NAMES[410] = ATTR_XLINK_TITLE;
+  ATTRIBUTE_NAMES[411] = ATTR_XLINK_ARCROLE;
+  ATTRIBUTE_NAMES[412] = ATTR_XMLNS;
+  ATTRIBUTE_NAMES[413] = ATTR_XLINK_SHOW;
+  ATTRIBUTE_NAMES[414] = ATTR_AUTOPLAY;
+  ATTRIBUTE_NAMES[415] = ATTR_AUTOCOMPLETE;
+  ATTRIBUTE_NAMES[416] = ATTR_AUTOCAPITALIZE;
+  ATTRIBUTE_NAMES[417] = ATTR_COLOR_PROFILE;
+  ATTRIBUTE_NAMES[418] = ATTR_COLOR_INTERPOLATION;
+  ATTRIBUTE_NAMES[419] = ATTR_COLOR_INTERPOLATION_FILTERS;
+  ATTRIBUTE_NAMES[420] = ATTR_EXPONENT;
+  ATTRIBUTE_NAMES[421] = ATTR_FLOOD_OPACITY;
+  ATTRIBUTE_NAMES[422] = ATTR_NUMOCTAVES;
+  ATTRIBUTE_NAMES[423] = ATTR_ONLOAD;
+  ATTRIBUTE_NAMES[424] = ATTR_ONMOUSEENTER;
+  ATTRIBUTE_NAMES[425] = ATTR_ONFOCUSIN;
+  ATTRIBUTE_NAMES[426] = ATTR_ONZOOM;
+  ATTRIBUTE_NAMES[427] = ATTR_ONMOUSELEAVE;
+  ATTRIBUTE_NAMES[428] = ATTR_ONMOUSEUP;
+  ATTRIBUTE_NAMES[429] = ATTR_ONMOUSEOUT;
+  ATTRIBUTE_NAMES[430] = ATTR_ONMOUSEDOWN;
+  ATTRIBUTE_NAMES[431] = ATTR_RQUOTE;
+  ATTRIBUTE_NAMES[432] = ATTR_STROKE_DASHARRAY;
+  ATTRIBUTE_NAMES[433] = ATTR_STROKE_LINEJOIN;
+  ATTRIBUTE_NAMES[434] = ATTR_STROKE;
+  ATTRIBUTE_NAMES[435] = ATTR_STROKE_WIDTH;
+  ATTRIBUTE_NAMES[436] = ATTR_COMPACT;
+  ATTRIBUTE_NAMES[437] = ATTR_CLIP_RULE;
+  ATTRIBUTE_NAMES[438] = ATTR_CLIPPATHUNITS;
+  ATTRIBUTE_NAMES[439] = ATTR_DISPLAYSTYLE;
+  ATTRIBUTE_NAMES[440] = ATTR_GLYPH_ORIENTATION_HORIZONTAL;
+  ATTRIBUTE_NAMES[441] = ATTR_HTTP_EQUIV;
+  ATTRIBUTE_NAMES[442] = ATTR_LOOP;
+  ATTRIBUTE_NAMES[443] = ATTR_SCOPED;
+  ATTRIBUTE_NAMES[444] = ATTR_SHAPE_RENDERING;
+  ATTRIBUTE_NAMES[445] = ATTR_SHAPE;
+  ATTRIBUTE_NAMES[446] = ATTR_STOP_COLOR;
+  ATTRIBUTE_NAMES[447] = ATTR_TEMPLATE;
+  ATTRIBUTE_NAMES[448] = ATTR_ABBR;
+  ATTRIBUTE_NAMES[449] = ATTR_ATTRIBUTETYPE;
+  ATTRIBUTE_NAMES[450] = ATTR_COORDS;
+  ATTRIBUTE_NAMES[451] = ATTR_CHARSET;
+  ATTRIBUTE_NAMES[452] = ATTR_NOHREF;
+  ATTRIBUTE_NAMES[453] = ATTR_ONDRAGENTER;
+  ATTRIBUTE_NAMES[454] = ATTR_ONDRAGEND;
+  ATTRIBUTE_NAMES[455] = ATTR_ONDRAGDROP;
+  ATTRIBUTE_NAMES[456] = ATTR_OPERATOR;
+  ATTRIBUTE_NAMES[457] = ATTR_ONDRAGSTART;
+  ATTRIBUTE_NAMES[458] = ATTR_STARTOFFSET;
+  ATTRIBUTE_NAMES[459] = ATTR_AS;
+  ATTRIBUTE_NAMES[460] = ATTR_BIAS;
+  ATTRIBUTE_NAMES[461] = ATTR_CLASSID;
+  ATTRIBUTE_NAMES[462] = ATTR_COLS;
+  ATTRIBUTE_NAMES[463] = ATTR_CLOSURE;
+  ATTRIBUTE_NAMES[464] = ATTR_CLASS;
+  ATTRIBUTE_NAMES[465] = ATTR_KEYSYSTEM;
+  ATTRIBUTE_NAMES[466] = ATTR_LOWSRC;
+  ATTRIBUTE_NAMES[467] = ATTR_MINSIZE;
+  ATTRIBUTE_NAMES[468] = ATTR_PRESERVEALPHA;
+  ATTRIBUTE_NAMES[469] = ATTR_ROWSPAN;
+  ATTRIBUTE_NAMES[470] = ATTR_ROWS;
+  ATTRIBUTE_NAMES[471] = ATTR_SUBSCRIPTSHIFT;
+  ATTRIBUTE_NAMES[472] = ATTR_ALTTEXT;
+  ATTRIBUTE_NAMES[473] = ATTR_CONTROLS;
+  ATTRIBUTE_NAMES[474] = ATTR_CONTEXTMENU;
+  ATTRIBUTE_NAMES[475] = ATTR_ENCTYPE;
+  ATTRIBUTE_NAMES[476] = ATTR_FILTER;
+  ATTRIBUTE_NAMES[477] = ATTR_FONT_WEIGHT;
+  ATTRIBUTE_NAMES[478] = ATTR_FONT_STYLE;
+  ATTRIBUTE_NAMES[479] = ATTR_FONT_FAMILY;
+  ATTRIBUTE_NAMES[480] = ATTR_FONT_SIZE_ADJUST;
+  ATTRIBUTE_NAMES[481] = ATTR_FONTSIZE;
+  ATTRIBUTE_NAMES[482] = ATTR_KEYTIMES;
+  ATTRIBUTE_NAMES[483] = ATTR_LIST;
+  ATTRIBUTE_NAMES[484] = ATTR_RT;
+  ATTRIBUTE_NAMES[485] = ATTR_ONSTART;
+  ATTRIBUTE_NAMES[486] = ATTR_PATTERNTRANSFORM;
+  ATTRIBUTE_NAMES[487] = ATTR_PATTERNUNITS;
+  ATTRIBUTE_NAMES[488] = ATTR_RESTART;
+  ATTRIBUTE_NAMES[489] = ATTR_SYSTEMLANGUAGE;
+  ATTRIBUTE_NAMES[490] = ATTR_TEXT_DECORATION;
+  ATTRIBUTE_NAMES[491] = ATTR_TEXTLENGTH;
+  ATTRIBUTE_NAMES[492] = ATTR_WRITING_MODE;
+  ATTRIBUTE_NAMES[493] = ATTR_ACCUMULATE;
+  ATTRIBUTE_NAMES[494] = ATTR_COLUMNLINES;
+  ATTRIBUTE_NAMES[495] = ATTR_COLUMNSPACING;
+  ATTRIBUTE_NAMES[496] = ATTR_GROUPALIGN;
+  ATTRIBUTE_NAMES[497] = ATTR_ONSUBMIT;
+  ATTRIBUTE_NAMES[498] = ATTR_REQUIRED;
+  ATTRIBUTE_NAMES[499] = ATTR_RESULT;
+  ATTRIBUTE_NAMES[500] = ATTR_VALUES;
+  ATTRIBUTE_NAMES[501] = ATTR_VALUE;
+  ATTRIBUTE_NAMES[502] = ATTR_VIEWTARGET;
+  ATTRIBUTE_NAMES[503] = ATTR_CX;
+  ATTRIBUTE_NAMES[504] = ATTR_FX;
+  ATTRIBUTE_NAMES[505] = ATTR_REFX;
+  ATTRIBUTE_NAMES[506] = ATTR_CY;
 }
 
 void nsHtml5AttributeName::releaseStatics() {
@@ -3042,6 +3048,7 @@ void nsHtml5AttributeName::releaseStatics() {
   delete ATTR_XLINK_SHOW;
   delete ATTR_XLINK_ACTUATE;
   delete ATTR_AUTOPLAY;
+  delete ATTR_AUTOCORRECT;
   delete ATTR_AUTOCOMPLETE;
   delete ATTR_AUTOFOCUS;
   delete ATTR_AUTOCAPITALIZE;

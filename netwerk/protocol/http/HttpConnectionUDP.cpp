@@ -19,7 +19,7 @@
 
 #include "ASpdySession.h"
 #include "mozilla/StaticPrefs_network.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/NetwerkMetrics.h"
 #include "HttpConnectionUDP.h"
 #include "nsHttpHandler.h"
 #include "Http3Session.h"
@@ -88,6 +88,22 @@ nsresult HttpConnectionUDP::Init(nsHttpConnectionInfo* info,
     return rv;
   }
 
+  // We are disabling 0.0.0.0 for non-test purposes.
+  // See https://github.com/whatwg/fetch/pull/1763 for context.
+  if (peerAddr.IsIPAddrAny()) {
+    if (StaticPrefs::network_socket_ip_addr_any_disabled()) {
+      mozilla::glean::networking::http_ip_addr_any_count
+          .Get("blocked_requests"_ns)
+          .Add(1);
+      LOG(("Connection refused because of 0.0.0.0 IP address\n"));
+      return NS_ERROR_CONNECTION_REFUSED;
+    }
+
+    mozilla::glean::networking::http_ip_addr_any_count
+        .Get("not_blocked_requests"_ns)
+        .Add(1);
+  }
+
   mSocket = do_CreateInstance("@mozilla.org/network/udp-socket;1", &rv);
   if (NS_FAILED(rv)) {
     return rv;
@@ -96,7 +112,6 @@ nsresult HttpConnectionUDP::Init(nsHttpConnectionInfo* info,
   // We need an address here so that we can convey the IP version of the
   // socket.
   NetAddr local;
-  memset(&local, 0, sizeof(local));
   local.raw.family = peerAddr.raw.family;
   rv = mSocket->InitWithAddress(&local, nullptr, false, 1);
   if (NS_FAILED(rv)) {
@@ -155,7 +170,7 @@ nsresult HttpConnectionUDP::Init(nsHttpConnectionInfo* info,
   mPeerAddr = new nsNetAddr(&peerAddr);
   mHttp3Session = new Http3Session();
   rv = mHttp3Session->Init(mConnInfo, mSelfAddr, mPeerAddr, this, providerFlags,
-                           callbacks);
+                           callbacks, mSocket);
   if (NS_FAILED(rv)) {
     LOG(
         ("HttpConnectionUDP::Init mHttp3Session->Init failed "
@@ -707,6 +722,13 @@ nsIRequest::TRRMode HttpConnectionUDP::EffectiveTRRMode() {
 }
 
 TRRSkippedReason HttpConnectionUDP::TRRSkipReason() { return mTRRSkipReason; }
+
+Http3Stats HttpConnectionUDP::GetStats() {
+  if (!mHttp3Session) {
+    return Http3Stats();
+  }
+  return mHttp3Session->GetStats();
+}
 
 }  // namespace net
 }  // namespace mozilla

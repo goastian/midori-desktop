@@ -10,8 +10,6 @@
 #include "EarlyHintPreloader.h"
 #include "mozilla/dom/LinkStyle.h"
 #include "mozilla/PreloadHashKey.h"
-#include "mozilla/Telemetry.h"
-#include "mozilla/glean/GleanMetrics.h"
 #include "mozilla/StoragePrincipalHelper.h"
 #include "nsContentUtils.h"
 #include "nsIChannel.h"
@@ -88,7 +86,6 @@ void EarlyHintsService::EarlyHint(
   auto linkHeaders = ParseLinkHeader(NS_ConvertUTF8toUTF16(aLinkHeader));
 
   for (auto& linkHeader : linkHeaders) {
-    CollectLinkTypeTelemetry(linkHeader.mRel);
     if (linkHeader.mRel.LowerCaseEqualsLiteral("preconnect")) {
       mLinkType |= dom::LinkStyle::ePRECONNECT;
       OriginAttributes originAttributes;
@@ -112,14 +109,8 @@ void EarlyHintsService::EarlyHint(
   }
 }
 
-void EarlyHintsService::FinalResponse(uint32_t aResponseStatus) {
-  // We will collect telemetry mosly once for a document.
-  // In case of a reddirect this will be called multiple times.
-  CollectTelemetry(Some(aResponseStatus));
-}
-
 void EarlyHintsService::Cancel(const nsACString& aReason) {
-  CollectTelemetry(Nothing());
+  Reset();
   mOngoingEarlyHints->CancelAll(aReason);
 }
 
@@ -128,64 +119,13 @@ void EarlyHintsService::RegisterLinksAndGetConnectArgs(
   mOngoingEarlyHints->RegisterLinksAndGetConnectArgs(aCpId, aOutLinks);
 }
 
-void EarlyHintsService::CollectTelemetry(Maybe<uint32_t> aResponseStatus) {
-  // EH_NUM_OF_HINTS_PER_PAGE is only collected for the 2xx responses,
-  // regardless of the number of received mEarlyHintsCount.
-  // Other telemetry probes are only collected if there was at least one
-  // EarlyHins response.
-  if (aResponseStatus && (*aResponseStatus <= 299)) {
-    Telemetry::Accumulate(Telemetry::EH_NUM_OF_HINTS_PER_PAGE,
-                          mEarlyHintsCount);
-  }
+void EarlyHintsService::Reset() {
   if (mEarlyHintsCount == 0) {
     return;
   }
-
-  Telemetry::LABELS_EH_FINAL_RESPONSE label =
-      Telemetry::LABELS_EH_FINAL_RESPONSE::Cancel;
-  if (aResponseStatus) {
-    if (*aResponseStatus <= 299) {
-      label = Telemetry::LABELS_EH_FINAL_RESPONSE::R2xx;
-
-      MOZ_ASSERT(mFirstEarlyHint);
-      Telemetry::AccumulateTimeDelta(Telemetry::EH_TIME_TO_FINAL_RESPONSE,
-                                     *mFirstEarlyHint, TimeStamp::NowLoRes());
-    } else if (*aResponseStatus <= 399) {
-      label = Telemetry::LABELS_EH_FINAL_RESPONSE::R3xx;
-    } else if (*aResponseStatus <= 499) {
-      label = Telemetry::LABELS_EH_FINAL_RESPONSE::R4xx;
-    } else {
-      label = Telemetry::LABELS_EH_FINAL_RESPONSE::Other;
-    }
-  }
-
-  Telemetry::AccumulateCategorical(label);
-
   // Reset telemetry counters and timestamps.
   mEarlyHintsCount = 0;
   mFirstEarlyHint = Nothing();
-}
-
-void EarlyHintsService::CollectLinkTypeTelemetry(const nsAString& aRel) {
-  if (aRel.LowerCaseEqualsLiteral("dns-prefetch")) {
-    glean::netwerk::eh_link_type.Get("dns-prefetch"_ns).Add(1);
-  } else if (aRel.LowerCaseEqualsLiteral("icon")) {
-    glean::netwerk::eh_link_type.Get("icon"_ns).Add(1);
-  } else if (aRel.LowerCaseEqualsLiteral("modulepreload")) {
-    glean::netwerk::eh_link_type.Get("modulepreload"_ns).Add(1);
-  } else if (aRel.LowerCaseEqualsLiteral("preconnect")) {
-    glean::netwerk::eh_link_type.Get("preconnect"_ns).Add(1);
-  } else if (aRel.LowerCaseEqualsLiteral("prefetch")) {
-    glean::netwerk::eh_link_type.Get("prefetch"_ns).Add(1);
-  } else if (aRel.LowerCaseEqualsLiteral("preload")) {
-    glean::netwerk::eh_link_type.Get("preload"_ns).Add(1);
-  } else if (aRel.LowerCaseEqualsLiteral("prerender")) {
-    glean::netwerk::eh_link_type.Get("prerender"_ns).Add(1);
-  } else if (aRel.LowerCaseEqualsLiteral("stylesheet")) {
-    glean::netwerk::eh_link_type.Get("stylesheet"_ns).Add(1);
-  } else {
-    glean::netwerk::eh_link_type.Get("other"_ns).Add(1);
-  }
 }
 
 }  // namespace mozilla::net

@@ -21,24 +21,26 @@ import org.mozilla.focus.helpers.StringsHelper.PHONE_APP
 import org.mozilla.focus.helpers.TestAssetHelper
 import org.mozilla.focus.helpers.TestHelper.assertNativeAppOpens
 import org.mozilla.focus.helpers.TestHelper.waitingTime
+import org.mozilla.focus.helpers.TestSetup
 import org.mozilla.focus.testAnnotations.SmokeTest
 
 // These tests check that various web controls work properly
 @RunWith(AndroidJUnit4ClassRunner::class)
-class WebControlsTest {
+class WebControlsTest : TestSetup() {
     private lateinit var webServer: MockWebServer
 
     private val featureSettingsHelper = FeatureSettingsHelper()
 
-    @get: Rule
-    var mActivityTestRule = MainActivityIntentsTestRule(showFirstRun = false)
+    @get:Rule
+    val mActivityTestRule = MainActivityIntentsTestRule(showFirstRun = false)
 
     @Rule
     @JvmField
     val retryTestRule = RetryTestRule(3)
 
     @Before
-    fun setup() {
+    override fun setUp() {
+        super.setUp()
         webServer = MockWebServer().apply {
             dispatcher = MockWebServerHelper.AndroidAssetDispatcher()
             start()

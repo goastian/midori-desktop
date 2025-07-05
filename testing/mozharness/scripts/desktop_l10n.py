@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 """desktop_l10n.py
 
 This script manages Desktop repacks for nightly builds.
@@ -60,17 +58,6 @@ class DesktopSingleLocale(LocalesMixin, AutomationMixin, VCSMixin, BaseScript):
                 " revision separated by colon, en-GB:default.",
             },
         ],
-        [
-            [
-                "--en-us-installer-url",
-            ],
-            {
-                "action": "store",
-                "dest": "en_us_installer_url",
-                "type": "string",
-                "help": "Specify the url of the en-us binary",
-            },
-        ],
     ]
 
     def __init__(self, require_config_file=True):
@@ -87,8 +74,6 @@ class DesktopSingleLocale(LocalesMixin, AutomationMixin, VCSMixin, BaseScript):
                 "ignore_locales": ["en-US"],
                 "locales_dir": "browser/locales",
                 "log_name": "single_locale",
-                "hg_l10n_base": "https://hg.mozilla.org/l10n-central",
-                # If set, takes precedence over `hg_l10n_base`
                 "git_repository": "https://github.com/mozilla-l10n/firefox-l10n",
             },
         }
@@ -204,16 +189,17 @@ class DesktopSingleLocale(LocalesMixin, AutomationMixin, VCSMixin, BaseScript):
         self._run_tooltool()
         self._copy_mozconfig()
         self._mach_configure()
-        self._run_make_in_config_dir()
-        self.make_wget_en_US()
-        self.make_unpack_en_US()
+        self._make_export()
 
-    def _run_make_in_config_dir(self):
-        """this step creates nsinstall, needed my make_wget_en_US()"""
+    def _make_export(self):
+        """this step creates nsinstall, needed on Windows hosts
+        and creates buildid.h, used by NSIS installer for Windows UBR telemetry
+        """
         dirs = self.query_abs_dirs()
         config_dir = os.path.join(dirs["abs_obj_dir"], "config")
         env = self.query_bootstrap_env()
-        return self._make(target=["export"], cwd=config_dir, env=env)
+        self._make(target=["export"], cwd=config_dir, env=env)
+        return self._make(target=["buildid.h"], cwd=dirs["abs_obj_dir"], env=env)
 
     def _copy_mozconfig(self):
         """copies the mozconfig file into abs_src_dir/.mozconfig
@@ -281,21 +267,6 @@ class DesktopSingleLocale(LocalesMixin, AutomationMixin, VCSMixin, BaseScript):
             ignore_errors=ignore_errors,
         )
 
-    def make_unpack_en_US(self):
-        """wrapper for make unpack"""
-        config = self.config
-        dirs = self.query_abs_dirs()
-        env = self.query_bootstrap_env()
-        cwd = os.path.join(dirs["abs_obj_dir"], config["locales_dir"])
-        return self._make(target=["unpack"], cwd=cwd, env=env)
-
-    def make_wget_en_US(self):
-        """wrapper for make wget-en-US"""
-        env = self.query_bootstrap_env()
-        dirs = self.query_abs_dirs()
-        cwd = dirs["abs_locales_dir"]
-        return self._make(target=["wget-en-US"], cwd=cwd, env=env)
-
     def make_upload(self, locale):
         """wrapper for make upload command"""
         env = self.query_l10n_env()
@@ -336,6 +307,7 @@ class DesktopSingleLocale(LocalesMixin, AutomationMixin, VCSMixin, BaseScript):
             )
             targets_exts = [
                 "tar.bz2",
+                "tar.xz",
                 "dmg",
                 "langpack.xpi",
                 "checksums",

@@ -10,6 +10,7 @@
 #include "CTTestUtils.h"
 #include "gtest/gtest.h"
 #include "nss.h"
+#include "signature_cache_ffi.h"
 
 namespace mozilla {
 namespace ct {
@@ -30,9 +31,7 @@ class CTObjectsExtractorTest : public ::testing::Test {
     mCaCertSPKI = ExtractCertSPKI(mCaCert);
 
     Buffer logPublicKey = GetTestPublicKey();
-    ASSERT_EQ(Success,
-              mLog.Init(InputForBuffer(logPublicKey), -1 /*operator id*/,
-                        CTLogStatus::Included, 0 /*disqualification time*/));
+    ASSERT_EQ(Success, mLog.Init(InputForBuffer(logPublicKey)));
   }
 
  protected:
@@ -40,7 +39,7 @@ class CTObjectsExtractorTest : public ::testing::Test {
   Buffer mEmbeddedCert;
   Buffer mCaCert;
   Buffer mCaCertSPKI;
-  CTLogVerifier mLog;
+  CTLogVerifier mLog = CTLogVerifier(-1, CTLogState::Admissible, 0);
 };
 
 TEST_F(CTObjectsExtractorTest, ExtractPrecert) {
@@ -75,7 +74,9 @@ TEST_F(CTObjectsExtractorTest, ComplementarySCTVerifies) {
 
   LogEntry entry;
   GetX509LogEntry(InputForBuffer(mTestCert), entry);
-  EXPECT_EQ(Success, mLog.Verify(entry, sct));
+  SignatureCache* signatureCache(signature_cache_new(1));
+  EXPECT_EQ(Success, mLog.Verify(entry, sct, signatureCache));
+  signature_cache_free(signatureCache);
 }
 
 }  // namespace ct

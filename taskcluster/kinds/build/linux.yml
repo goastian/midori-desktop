@@ -135,7 +135,7 @@ linux64-non-unified/plain:
         symbol: Bp-nu
         tier: 1
     worker:
-        max-run-time: 5400
+        max-run-time: 7200
         env:
             PERFHERDER_EXTRA_OPTIONS: non-unified
     run:
@@ -381,6 +381,48 @@ linux64/debug:
             - sysroot-x86_64-linux-gnu
             - sysroot-wasm32-wasi
 
+linux64-non-unified/debug:
+    description: "Linux64 Debug Hybrid"
+    index:
+        product: firefox
+        job-name: linux64-non-unified-debug
+    treeherder:
+        platform: linux64/debug
+        symbol: B-nu
+        tier: 1
+    worker:
+        max-run-time: 7200
+        env:
+            PERFHERDER_EXTRA_OPTIONS: non-unified
+    run:
+        using: mozharness
+        actions: [get-secrets, build]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_64_builds.py
+        script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
+        tooltool-downloads: public
+        extra-config:
+            disable_package_metrics: true
+            extra_mozconfig_content:
+                - ac_add_options --enable-debug
+        mozconfig-variant: non-unified
+    run-on-projects: ['integration']
+    use-sccache: true
+    fetches:
+        toolchain:
+            - linux64-clang
+            - linux64-rust
+            - linux64-nasm
+            - linux64-node
+            - linux64-cbindgen
+            - linux64-sccache
+            - linux64-dump_syms
+            - linux64-pkgconf
+            - sysroot-x86_64-linux-gnu
+            - sysroot-wasm32-wasi
+
 linux64-plain/debug:
     description: "Linux64 Debug Plain"
     index:
@@ -499,7 +541,7 @@ linux/opt:
     run-on-projects:
         - 'mozilla-beta'
         - 'mozilla-release'
-        - 'mozilla-esr128'
+        - 'mozilla-esr140'
     use-sccache: true
     fetches:
         toolchain:
@@ -1099,10 +1141,6 @@ linux64-asan-fuzzing-afl/opt:
         env:
             PERFHERDER_EXTRA_OPTIONS: asan-fuzzing-afl
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
-            AFL_CC: /builds/worker/fetches/clang/bin/clang
-            AFL_CXX: /builds/worker/fetches/clang/bin/clang++
-            AFL_LLVM_INSTRUMENT: llvmnative
-            AFL_LLVM_NO_RPATH: "1"
         max-run-time: 7200
     run:
         using: mozharness
@@ -1114,6 +1152,98 @@ linux64-asan-fuzzing-afl/opt:
         secrets: true
         custom-build-variant-cfg: fuzzing-asan-tc
         mozconfig-variant: nightly-fuzzing-asan-afl
+        tooltool-downloads: public
+    use-sccache: true
+    fetches:
+        toolchain:
+            - linux64-afl-instrumentation
+            - linux64-clang
+            - linux64-rust-dev
+            - linux64-rust-size
+            - linux64-cbindgen
+            - linux64-dump_syms
+            - linux64-llvm-symbolizer
+            - linux64-sccache
+            - linux64-nasm
+            - linux64-node
+            - linux64-pkgconf
+            - sysroot-x86_64-linux-gnu
+            - sysroot-wasm32-wasi
+    optimization:
+        skip-unless-expanded: null
+
+linux64-fuzzing-afl/debug:
+    description: "Linux64 Fuzzing Debug AFL"
+    index:
+        product: firefox
+        job-name: linux64-fuzzing-afl-debug
+    attributes:
+        # The gtest libxul contains libFuzzer targets
+        skip-verify-test-packaging: true
+    treeherder:
+        platform: linux64/debug
+        symbol: Baf
+    worker:
+        env:
+            PERFHERDER_EXTRA_OPTIONS: fuzzing-afl
+            MOZ_AUTOMATION_PACKAGE_TESTS: "1"
+        max-run-time: 7200
+    run:
+        using: mozharness
+        actions: [get-secrets, build]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_64_builds.py
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        custom-build-variant-cfg: fuzzing-debug
+        mozconfig-variant: debug-fuzzing-afl
+        tooltool-downloads: public
+    use-sccache: true
+    fetches:
+        toolchain:
+            - linux64-afl-instrumentation
+            - linux64-clang
+            - linux64-rust-dev
+            - linux64-rust-size
+            - linux64-cbindgen
+            - linux64-dump_syms
+            - linux64-llvm-symbolizer
+            - linux64-sccache
+            - linux64-nasm
+            - linux64-node
+            - linux64-pkgconf
+            - sysroot-x86_64-linux-gnu
+            - sysroot-wasm32-wasi
+    optimization:
+        skip-unless-expanded: null
+
+linux64-fuzzing-afl-ccov/opt:
+    description: "Linux64 Fuzzing Opt AFL w/ Coverage"
+    index:
+        product: firefox
+        job-name: linux64-ccov-fuzzing-afl-opt
+    attributes:
+        # The gtest libxul contains libFuzzer targets
+        skip-verify-test-packaging: true
+    treeherder:
+        platform: linux64/opt
+        symbol: Bacf
+    worker:
+        env:
+            PERFHERDER_EXTRA_OPTIONS: fuzzing-ccov-afl
+            MOZ_AUTOMATION_PACKAGE_TESTS: "1"
+        max-run-time: 7200
+    run-on-projects: ['mozilla-central']
+    run:
+        using: mozharness
+        actions: [get-secrets, build]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_64_builds.py
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        mozconfig-variant: fuzzing-ccov-afl
         tooltool-downloads: public
     use-sccache: true
     fetches:
@@ -1149,10 +1279,6 @@ linux64-asan-fuzzing-nyx/opt:
         env:
             PERFHERDER_EXTRA_OPTIONS: asan-fuzzing-nyx
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
-            AFL_CC: /builds/worker/fetches/clang/bin/clang
-            AFL_CXX: /builds/worker/fetches/clang/bin/clang++
-            AFL_LLVM_INSTRUMENT: llvmnative
-            AFL_LLVM_NO_RPATH: "1"
         max-run-time: 7200
     run:
         using: mozharness
@@ -1199,10 +1325,6 @@ linux64-asan-fuzzing-nyx-ccov/opt:
         env:
             PERFHERDER_EXTRA_OPTIONS: asan-fuzzing-ccov-nyx
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
-            AFL_CC: /builds/worker/fetches/clang/bin/clang
-            AFL_CXX: /builds/worker/fetches/clang/bin/clang++
-            AFL_LLVM_INSTRUMENT: llvmcodecov
-            AFL_LLVM_NO_RPATH: "1"
         max-run-time: 7200
     run:
         using: mozharness
@@ -1213,7 +1335,7 @@ linux64-asan-fuzzing-nyx-ccov/opt:
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         custom-build-variant-cfg: fuzzing-asan-tc
-        mozconfig-variant: nightly-fuzzing-asan-nyx
+        mozconfig-variant: nightly-fuzzing-asan-ccov-nyx
         tooltool-downloads: public
     run-on-projects: ['mozilla-central']
     use-sccache: true
@@ -1355,7 +1477,7 @@ linux64-fuzzing-ccov/opt:
             - linux64-cbindgen
             - linux64-dump_syms
             - linux64-llvm-symbolizer
-            - linux64-rust
+            - linux64-rust-1.83
             - linux64-rust-size
             - linux64-sccache
             - linux64-nasm
@@ -1716,7 +1838,7 @@ linux64-ccov/opt:
     fetches:
         toolchain:
             - linux64-clang
-            - linux64-rust
+            - linux64-rust-1.83
             - linux64-cbindgen
             - linux64-dump_syms
             - linux64-sccache
@@ -1756,7 +1878,7 @@ linux64-ccov/debug:
     fetches:
         toolchain:
             - linux64-clang
-            - linux64-rust
+            - linux64-rust-1.83
             - linux64-cbindgen
             - linux64-dump_syms
             - linux64-sccache
@@ -1811,6 +1933,7 @@ linux64-aarch64/opt:
         product: firefox
         job-name: linux64-aarch64-opt
     attributes:
+        enable-build-signing: true
         enable-full-crashsymbols: true
     treeherder:
         platform: linux64-aarch64/opt
@@ -1828,6 +1951,52 @@ linux64-aarch64/opt:
                 - ac_add_options --target=aarch64
                 - unset MOZ_STDCXX_COMPAT
         script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        tooltool-downloads: public
+    run-on-projects: ['integration']
+    use-sccache: true
+    fetches:
+        toolchain:
+            - linux64-clang
+            - linux64-rust
+            - linux64-rust-size
+            - linux64-cbindgen
+            - linux64-dump_syms
+            - linux64-sccache
+            - linux64-node
+            - linux64-pkgconf
+            - sysroot-aarch64-linux-gnu
+            - sysroot-x86_64-linux-gnu
+            - sysroot-wasm32-wasi
+
+linux64-aarch64/debug:
+    description: "Linux AArch64 (a.k.a. ARM64) Debug"
+    index:
+        product: firefox
+        job-name: linux64-aarch64-debug
+    attributes:
+        enable-full-crashsymbols: true
+        skip-verify-test-packaging: true
+    treeherder:
+        platform: linux64-aarch64/debug
+        symbol: B
+    worker:
+        max-run-time: 7200
+        env:
+            MOZ_AUTOMATION_PACKAGE_TESTS: "1"
+    run:
+        using: mozharness
+        actions: [get-secrets, build]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_64_builds.py
+        extra-config:
+            extra_mozconfig_content:
+                - ac_add_options --target=aarch64
+                - unset MOZ_STDCXX_COMPAT
+        script: "mozharness/scripts/fx_desktop_build.py"
+        custom-build-variant-cfg: debug
+        mozconfig-variant: debug
         secrets: true
         tooltool-downloads: public
     run-on-projects: ['integration']
@@ -1866,6 +2035,7 @@ linux64-aarch64-shippable/opt:
     worker:
         max-run-time: 9000
         env:
+            MOZ_AUTOMATION_PACKAGE_TESTS: "1"
             # bug 1690154 - enable full symbols on all branches, but only
             # upload them on the official set. In conjunction with
             # `enable-full-crashsymbols`.
@@ -1884,8 +2054,63 @@ linux64-aarch64-shippable/opt:
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
         tooltool-downloads: public
-    run-on-projects: ['mozilla-central']
-    run-on-releases: ['nightly']
+    run-on-projects: ['release']
+    fetches:
+        toolchain:
+            - linux64-clang
+            - linux64-rust
+            - linux64-rust-size
+            - linux64-cbindgen
+            - linux64-dump_syms
+            - linux64-node
+            - linux64-pkgconf
+            - sysroot-aarch64-linux-gnu
+            - sysroot-x86_64-linux-gnu
+            - sysroot-wasm32-wasi
+
+linux64-aarch64-devedition/opt:
+    description: "Linux AArch64 (a.k.a. ARM64) DevEdition (shippable)"
+    use-pgo: linux64-shippable/opt
+    attributes:
+        shippable: true
+        enable-full-crashsymbols: true
+        skip-verify-test-packaging: true
+    shipping-phase: build
+    shipping-product: devedition
+    index:
+        product: devedition
+        job-name: linux64-aarch64-opt
+        type: shippable
+    treeherder:
+        platform: linux64-aarch64-devedition/opt
+        symbol: Bpgo(B)
+    worker-type: b-linux-xlarge-gcp
+    worker:
+        max-run-time: 9000
+        env:
+            MOZ_AUTOMATION_PACKAGE_TESTS: "1"
+            # bug 1690154 - enable full symbols on all branches, but only
+            # upload them on the official set. In conjunction with
+            # `enable-full-crashsymbols`.
+            MOZ_ENABLE_FULL_SYMBOLS: "1"
+    run:
+        using: mozharness
+        actions: [get-secrets, build]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_64_builds.py
+            - taskcluster_nightly.py
+        extra-config:
+            stage_platform: 'linux64-aarch64-devedition'
+            max_build_output_timeout: 3600
+            extra_mozconfig_content:
+                - ac_add_options --target=aarch64
+                - unset MOZ_STDCXX_COMPAT
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        tooltool-downloads: public
+        mozconfig-variant: devedition
+    run-on-projects: ['mozilla-beta']
     fetches:
         toolchain:
             - linux64-clang

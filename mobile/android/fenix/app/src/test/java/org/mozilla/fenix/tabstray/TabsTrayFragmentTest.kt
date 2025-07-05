@@ -7,19 +7,8 @@ package org.mozilla.fenix.tabstray
 import android.content.Context
 import android.content.res.Configuration
 import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
-import androidx.coordinatorlayout.widget.CoordinatorLayout
-import androidx.core.view.isVisible
-import androidx.lifecycle.LifecycleCoroutineScope
-import androidx.lifecycle.LifecycleOwner
-import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavController
 import androidx.navigation.fragment.findNavController
-import androidx.viewbinding.ViewBindings
-import androidx.viewpager2.widget.ViewPager2
-import com.google.android.material.bottomsheet.BottomSheetBehavior
-import com.google.android.material.tabs.TabLayout
 import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
@@ -28,278 +17,59 @@ import io.mockk.mockkStatic
 import io.mockk.spyk
 import io.mockk.unmockkStatic
 import io.mockk.verify
-import kotlinx.coroutines.CoroutineScope
-import mozilla.components.browser.menu.BrowserMenu
-import mozilla.components.browser.state.store.BrowserStore
-import mozilla.components.service.glean.testing.GleanTestRule
+import mozilla.components.browser.state.selector.privateTabs
+import mozilla.components.browser.state.state.ContentState
+import mozilla.components.browser.state.state.TabSessionState
 import mozilla.components.support.test.robolectric.testContext
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mozilla.fenix.GleanMetrics.TabsTray
 import org.mozilla.fenix.NavGraphDirections
-import org.mozilla.fenix.R
-import org.mozilla.fenix.databinding.ComponentTabstray2Binding
-import org.mozilla.fenix.databinding.ComponentTabstrayFabBinding
+import org.mozilla.fenix.biometricauthentication.AuthenticationStatus
+import org.mozilla.fenix.biometricauthentication.BiometricAuthenticationNeededInfo
 import org.mozilla.fenix.databinding.FragmentTabTrayDialogBinding
 import org.mozilla.fenix.ext.components
+import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.helpers.FenixGleanTestRule
 import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.helpers.MockkRetryTestRule
 import org.mozilla.fenix.home.HomeScreenViewModel
-import org.mozilla.fenix.tabstray.ext.showWithTheme
-import org.mozilla.fenix.utils.allowUndo
+import org.mozilla.fenix.settings.biometric.BiometricUtils
 
 @RunWith(FenixRobolectricTestRunner::class)
 class TabsTrayFragmentTest {
     private lateinit var context: Context
-    private lateinit var view: ViewGroup
     private lateinit var fragment: TabsTrayFragment
-    private lateinit var tabsTrayBinding: ComponentTabstray2Binding
     private lateinit var tabsTrayDialogBinding: FragmentTabTrayDialogBinding
-    private lateinit var fabButtonBinding: ComponentTabstrayFabBinding
 
     @get:Rule
     val mockkRule = MockkRetryTestRule()
 
     @get:Rule
-    val gleanTestRule = GleanTestRule(testContext)
+    val gleanTestRule = FenixGleanTestRule(testContext)
 
     @Before
     fun setup() {
+        mockkStatic("mozilla.components.browser.state.selector.SelectorsKt")
         context = mockk(relaxed = true)
-        view = mockk(relaxed = true)
         val inflater = LayoutInflater.from(testContext)
         tabsTrayDialogBinding = FragmentTabTrayDialogBinding.inflate(inflater)
-        tabsTrayBinding = ComponentTabstray2Binding.inflate(inflater)
-        fabButtonBinding = ComponentTabstrayFabBinding.inflate(inflater)
 
         fragment = spyk(TabsTrayFragment())
-        fragment._tabsTrayBinding = tabsTrayBinding
         fragment._tabsTrayDialogBinding = tabsTrayDialogBinding
-        fragment._fabButtonBinding = fabButtonBinding
-        every { fragment.context } returns context
         every { fragment.context } returns context
         every { fragment.viewLifecycleOwner } returns mockk(relaxed = true)
     }
 
-    @Test
-    fun `WHEN showUndoSnackbarForTab is called for a private tab with new tab button visible THEN an appropriate snackbar is shown`() {
-        try {
-            mockkStatic("org.mozilla.fenix.utils.UndoKt")
-            mockkStatic("androidx.lifecycle.LifecycleOwnerKt")
-            val lifecycleScope: LifecycleCoroutineScope = mockk(relaxed = true)
-            every { any<LifecycleOwner>().lifecycleScope } returns lifecycleScope
-            fabButtonBinding.newTabButton.isVisible = true
-            every { fragment.context } returns testContext // needed for getString()
-            every { any<CoroutineScope>().allowUndo(any(), any(), any(), any(), any(), any(), any(), any()) } just Runs
-            every { fragment.requireView() } returns view
-            every { testContext.settings().enableTabsTrayToCompose } returns false
-
-            fragment.showUndoSnackbarForTab(true)
-
-            verify {
-                lifecycleScope.allowUndo(
-                    view,
-                    testContext.getString(R.string.snackbar_private_tab_closed),
-                    testContext.getString(R.string.snackbar_deleted_undo),
-                    any(),
-                    any(),
-                    fabButtonBinding.newTabButton,
-                    TabsTrayFragment.ELEVATION,
-                    false,
-                )
-            }
-        } finally {
-            unmockkStatic("org.mozilla.fenix.utils.UndoKt")
-            unmockkStatic("androidx.lifecycle.LifecycleOwnerKt")
-        }
-    }
-
-    @Test
-    fun `WHEN showUndoSnackbarForTab is called for a private tab with new tab button not visible THEN an appropriate snackbar is shown`() {
-        try {
-            mockkStatic("org.mozilla.fenix.utils.UndoKt")
-            mockkStatic("androidx.lifecycle.LifecycleOwnerKt")
-            val lifecycleScope: LifecycleCoroutineScope = mockk(relaxed = true)
-            every { any<LifecycleOwner>().lifecycleScope } returns lifecycleScope
-            every { fragment.context } returns testContext // needed for getString()
-            every { any<CoroutineScope>().allowUndo(any(), any(), any(), any(), any(), any(), any(), any()) } just Runs
-            every { fragment.requireView() } returns view
-            every { testContext.settings().enableTabsTrayToCompose } returns false
-
-            fragment.showUndoSnackbarForTab(true)
-
-            verify {
-                lifecycleScope.allowUndo(
-                    view,
-                    testContext.getString(R.string.snackbar_private_tab_closed),
-                    testContext.getString(R.string.snackbar_deleted_undo),
-                    any(),
-                    any(),
-                    null,
-                    TabsTrayFragment.ELEVATION,
-                    false,
-                )
-            }
-        } finally {
-            unmockkStatic("org.mozilla.fenix.utils.UndoKt")
-            unmockkStatic("androidx.lifecycle.LifecycleOwnerKt")
-        }
-    }
-
-    @Test
-    fun `WHEN showUndoSnackbarForTab is called for a normal tab with new tab button visible THEN an appropriate snackbar is shown`() {
-        try {
-            mockkStatic("org.mozilla.fenix.utils.UndoKt")
-            mockkStatic("androidx.lifecycle.LifecycleOwnerKt")
-            val lifecycleScope: LifecycleCoroutineScope = mockk(relaxed = true)
-            every { any<LifecycleOwner>().lifecycleScope } returns lifecycleScope
-            fabButtonBinding.newTabButton.isVisible = true
-            every { fragment.context } returns testContext // needed for getString()
-            every { any<CoroutineScope>().allowUndo(any(), any(), any(), any(), any(), any(), any(), any()) } just Runs
-            every { fragment.requireView() } returns view
-            every { testContext.settings().enableTabsTrayToCompose } returns false
-
-            fragment.showUndoSnackbarForTab(false)
-
-            verify {
-                lifecycleScope.allowUndo(
-                    view,
-                    testContext.getString(R.string.snackbar_tab_closed),
-                    testContext.getString(R.string.snackbar_deleted_undo),
-                    any(),
-                    any(),
-                    fabButtonBinding.newTabButton,
-                    TabsTrayFragment.ELEVATION,
-                    false,
-                )
-            }
-        } finally {
-            unmockkStatic("org.mozilla.fenix.utils.UndoKt")
-            unmockkStatic("androidx.lifecycle.LifecycleOwnerKt")
-        }
-    }
-
-    @Test
-    fun `WHEN showUndoSnackbarForTab is called for a normal tab with new tab button not visible THEN an appropriate snackbar is shown`() {
-        try {
-            mockkStatic("org.mozilla.fenix.utils.UndoKt")
-            mockkStatic("androidx.lifecycle.LifecycleOwnerKt")
-            val lifecycleScope: LifecycleCoroutineScope = mockk(relaxed = true)
-            every { any<LifecycleOwner>().lifecycleScope } returns lifecycleScope
-            every { fragment.context } returns testContext // needed for getString()
-            every { any<CoroutineScope>().allowUndo(any(), any(), any(), any(), any(), any(), any(), any()) } just Runs
-            every { fragment.requireView() } returns view
-            every { testContext.settings().enableTabsTrayToCompose } returns false
-
-            fragment.showUndoSnackbarForTab(false)
-
-            verify {
-                lifecycleScope.allowUndo(
-                    view,
-                    testContext.getString(R.string.snackbar_tab_closed),
-                    testContext.getString(R.string.snackbar_deleted_undo),
-                    any(),
-                    any(),
-                    null,
-                    TabsTrayFragment.ELEVATION,
-                    false,
-                )
-            }
-        } finally {
-            unmockkStatic("org.mozilla.fenix.utils.UndoKt")
-            unmockkStatic("androidx.lifecycle.LifecycleOwnerKt")
-        }
-    }
-
-    @Test
-    fun `WHEN setupPager is called THEN it sets the tray adapter and disables user initiated scrolling`() {
-        val store: TabsTrayStore = mockk()
-        val lifecycleOwner = mockk<LifecycleOwner>(relaxed = true)
-        val trayInteractor: TabsTrayInteractor = mockk()
-        val browserStore: BrowserStore = mockk()
-        every { context.components.core.store } returns browserStore
-
-        fragment.setupPager(
-            context = context,
-            lifecycleOwner = lifecycleOwner,
-            store = store,
-            trayInteractor = trayInteractor,
-        )
-
-        val adapter = (tabsTrayBinding.tabsTray.adapter as TrayPagerAdapter)
-        assertSame(context, adapter.context)
-        assertSame(lifecycleOwner, adapter.lifecycleOwner)
-        assertSame(store, adapter.tabsTrayStore)
-        assertSame(trayInteractor, adapter.interactor)
-        assertSame(browserStore, adapter.browserStore)
-        assertFalse(tabsTrayBinding.tabsTray.isUserInputEnabled)
-    }
-
-    @Test
-    fun `WHEN setupMenu is called THEN it sets a 3 dot menu click listener to open the tray menu`() {
-        try {
-            mockkStatic("org.mozilla.fenix.tabstray.ext.BrowserMenuKt")
-            val navigationInteractor: NavigationInteractor = mockk()
-            every { context.components.core.store } returns mockk()
-            every { fragment.tabsTrayStore } returns mockk()
-            val menu: BrowserMenu = mockk {
-                every { showWithTheme(any()) } just Runs
-            }
-            val menuBuilder: MenuIntegration = mockk(relaxed = true) {
-                every { build() } returns menu
-            }
-            every { fragment.getTrayMenu(any(), any(), any(), any(), any()) } returns menuBuilder
-
-            assertNull(TabsTray.menuOpened.testGetValue())
-
-            fragment.setupMenu(navigationInteractor)
-            tabsTrayBinding.tabTrayOverflow.performClick()
-
-            assertNotNull(TabsTray.menuOpened.testGetValue())
-            verify { menuBuilder.build() }
-            verify { menu.showWithTheme(tabsTrayBinding.tabTrayOverflow) }
-        } finally {
-            unmockkStatic("org.mozilla.fenix.tabstray.ext.BrowserMenuKt")
-        }
-    }
-
-    @Test
-    fun `WHEN getTrayMenu is called THEN it returns a MenuIntegration initialized with the passed in parameters`() {
-        val browserStore: BrowserStore = mockk()
-        val tabsTrayStore: TabsTrayStore = mockk()
-        val tabLayout: TabLayout = mockk()
-        val navigationInteractor: NavigationInteractor = mockk()
-
-        val result = fragment.getTrayMenu(context, browserStore, tabsTrayStore, tabLayout, navigationInteractor)
-
-        assertSame(context, result.context)
-        assertSame(browserStore, result.browserStore)
-        assertSame(tabsTrayStore, result.tabsTrayStore)
-        assertSame(tabLayout, result.tabLayout)
-        assertSame(navigationInteractor, result.navigationInteractor)
-    }
-
-    @Test
-    fun `WHEN setupBackgroundDismissalListener is called THEN it sets a click listener for tray's tabLayout and handle`() {
-        var clickCount = 0
-        val callback: (View) -> Unit = { clickCount++ }
-        every { fragment.context } returns testContext
-        every { testContext.settings().enableTabsTrayToCompose } returns false
-
-        fragment.setupBackgroundDismissalListener(callback)
-
-        tabsTrayDialogBinding.tabLayout.performClick()
-        assertEquals(1, clickCount)
-        tabsTrayBinding.handle.performClick()
-        assertEquals(2, clickCount)
+    @After
+    fun teardown() {
+        unmockkStatic("mozilla.components.browser.state.selector.SelectorsKt")
     }
 
     @Test
@@ -336,31 +106,6 @@ class TabsTrayFragmentTest {
     }
 
     @Test
-    fun `WHEN selectTabPosition is called with a position and smooth scroll indication THEN it scrolls to that tab and selects it`() {
-        val tabsTray: ViewPager2 = mockk(relaxed = true)
-        val tab: TabLayout.Tab = mockk(relaxed = true)
-        val tabLayout: TabLayout = mockk {
-            every { getTabAt(any()) } returns tab
-        }
-
-        every { fragment.context } returns testContext
-        every { testContext.settings().enableTabsTrayToCompose } returns false
-
-        mockkStatic(ViewBindings::class) {
-            every { ViewBindings.findChildViewById<View>(tabsTrayBinding.root, tabsTrayBinding.tabsTray.id) } returns tabsTray
-            every { ViewBindings.findChildViewById<View>(tabsTrayBinding.root, tabsTrayBinding.tabLayout.id) } returns tabLayout
-
-            tabsTrayBinding = ComponentTabstray2Binding.bind(tabsTrayBinding.root)
-            fragment._tabsTrayBinding = tabsTrayBinding
-
-            fragment.selectTabPosition(2, true)
-
-            verify { tabsTray.setCurrentItem(2, true) }
-            verify { tab.select() }
-        }
-    }
-
-    @Test
     fun `WHEN dismissTabsTray is called THEN it dismisses the tray`() {
         every { fragment.dismissAllowingStateLoss() } just Runs
         mockkStatic("org.mozilla.fenix.ext.ContextKt") {
@@ -384,46 +129,206 @@ class TabsTrayFragmentTest {
     }
 
     @Test
-    fun `WHEN the tabs tray is declared in XML THEN certain options are set for the behavior`() {
-        tabsTrayBinding = ComponentTabstray2Binding.inflate(
-            LayoutInflater.from(testContext),
-            CoordinatorLayout(testContext),
-            true,
+    fun `GIVEN a list of tabs WHEN a tab is present with an ID THEN the index is returned`() {
+        val tab1 = TabSessionState(
+            id = "tab1",
+            content = ContentState(
+                url = "https://mozilla.org",
+                private = false,
+                isProductUrl = false,
+            ),
         )
-        val behavior = BottomSheetBehavior.from(tabsTrayBinding.tabWrapper)
+        val tab2 = TabSessionState(
+            id = "tab2",
+            content = ContentState(
+                url = "https://mozilla.org",
+                private = false,
+                isProductUrl = false,
+            ),
+        )
+        val tab3 = TabSessionState(
+            id = "tab3",
+            content = ContentState(
+                url = "https://mozilla.org",
+                private = false,
+                isProductUrl = false,
+            ),
+        )
+        val tabsList = listOf(
+            tab1,
+            tab2,
+            tab3,
+        )
+        val position = fragment.getTabPositionFromId(tabsList, "tab2")
+        assertEquals(1, position)
+    }
 
-        assertFalse(behavior.isFitToContents)
-        assertFalse(behavior.skipCollapsed)
-        assert(behavior.halfExpandedRatio <= 0.001f)
+    // tests for onTabPageClick
+    @Test
+    fun `WHEN shouldShowPrompt is true THEN onTabPageClick sets the authentication status to authentication in progress and calls show prompt`() {
+        every { fragment.view } returns mockk()
+        every { fragment.requireComponents.core.store.state.privateTabs } returns listOf(
+            mockk(),
+            mockk(),
+        )
+        every { fragment.requireContext().settings().privateBrowsingLockedEnabled } returns true
+        every { fragment.tabsTrayStore.state.selectedPage } returns Page.NormalTabs
+        every { fragment.verificationResultLauncher } returns mockk()
+
+        val biometricAuthenticationNeededInfo = BiometricAuthenticationNeededInfo()
+        val biometricUtils = mockk<BiometricUtils>(relaxed = true)
+        val tabsTrayInteractor = mockk<TabsTrayInteractor>(relaxed = true)
+        val page = Page.PrivateTabs
+        fragment.onTabPageClick(
+            biometricAuthenticationNeededInfo = biometricAuthenticationNeededInfo,
+            biometricUtils = biometricUtils,
+            tabsTrayInteractor = tabsTrayInteractor,
+            page = page,
+            isPrivateScreenLocked = true,
+        )
+
+        assertEquals(
+            AuthenticationStatus.AUTHENTICATION_IN_PROGRESS,
+            biometricAuthenticationNeededInfo.authenticationStatus,
+        )
+        verify {
+            biometricUtils.bindBiometricsCredentialsPromptOrShowWarning(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        }
     }
 
     @Test
-    fun `GIVEN a grid TabView WHEN onConfigurationChanged is called THEN the adapter structure is updated`() {
-        every { context.settings().gridTabView } returns true
-        val adapter = mockk<TrayPagerAdapter>(relaxed = true)
-        tabsTrayBinding.tabsTray.adapter = adapter
-        fragment._tabsTrayBinding = tabsTrayBinding
-        val trayBehaviorManager: TabSheetBehaviorManager = mockk(relaxed = true)
-        fragment.trayBehaviorManager = trayBehaviorManager
-        val newConfiguration = Configuration()
+    fun `WHEN shouldShowPrompt is false and tab page is private THEN onTabPageClick calls tabs tray interactor only`() {
+        every { fragment.view } returns mockk()
+        every { fragment.requireComponents.core.store.state.privateTabs } returns listOf(
+            mockk(),
+            mockk(),
+        )
+        every { fragment.requireContext().settings().privateBrowsingLockedEnabled } returns false
+        every { fragment.tabsTrayStore.state.selectedPage } returns Page.PrivateTabs
 
-        fragment.onConfigurationChanged(newConfiguration)
+        val biometricAuthenticationNeededInfo =
+            BiometricAuthenticationNeededInfo(authenticationStatus = AuthenticationStatus.AUTHENTICATED)
+        val biometricUtils = mockk<BiometricUtils>(relaxed = true)
+        val tabsTrayInteractor = mockk<TabsTrayInteractor>(relaxed = true)
+        val page = Page.PrivateTabs
+        fragment.onTabPageClick(
+            biometricAuthenticationNeededInfo = biometricAuthenticationNeededInfo,
+            biometricUtils = biometricUtils,
+            tabsTrayInteractor = tabsTrayInteractor,
+            page = page,
+            isPrivateScreenLocked = false,
+        )
 
-        verify { adapter.notifyDataSetChanged() }
+        assertEquals(
+            AuthenticationStatus.AUTHENTICATED, // unchanged
+            biometricAuthenticationNeededInfo.authenticationStatus,
+        )
+        verify { tabsTrayInteractor.onTrayPositionSelected(page.ordinal, false) }
+        verify(inverse = true) {
+            biometricUtils.bindBiometricsCredentialsPromptOrShowWarning(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        }
     }
 
     @Test
-    fun `GIVEN a list TabView WHEN onConfigurationChanged is called THEN the adapter structure is NOT updated`() {
-        every { context.settings().gridTabView } returns false
-        val adapter = mockk<TrayPagerAdapter>(relaxed = true)
-        tabsTrayBinding.tabsTray.adapter = adapter
-        fragment._tabsTrayBinding = tabsTrayBinding
-        val trayBehaviorManager: TabSheetBehaviorManager = mockk(relaxed = true)
-        fragment.trayBehaviorManager = trayBehaviorManager
-        val newConfiguration = Configuration()
+    fun `WHEN shouldShowPrompt is false and not a private tab page THEN onTabPageClick sets the authentication status to not authenticated and calls tabs tray interactor`() {
+        every { fragment.view } returns mockk()
+        every { fragment.requireComponents.core.store.state.privateTabs } returns listOf(
+            mockk(),
+            mockk(),
+        )
+        every { fragment.requireContext().settings().privateBrowsingLockedEnabled } returns false
+        every { fragment.tabsTrayStore.state.selectedPage } returns Page.NormalTabs
 
-        fragment.onConfigurationChanged(newConfiguration)
+        val biometricAuthenticationNeededInfo =
+            BiometricAuthenticationNeededInfo(authenticationStatus = AuthenticationStatus.AUTHENTICATED)
+        val biometricUtils = mockk<BiometricUtils>(relaxed = true)
+        val tabsTrayInteractor = mockk<TabsTrayInteractor>(relaxed = true)
+        val page = Page.NormalTabs
+        fragment.onTabPageClick(
+            biometricAuthenticationNeededInfo = biometricAuthenticationNeededInfo,
+            biometricUtils = biometricUtils,
+            tabsTrayInteractor = tabsTrayInteractor,
+            page = page,
+            isPrivateScreenLocked = false,
+        )
 
-        verify(exactly = 0) { adapter.notifyDataSetChanged() }
+        assertEquals(
+            AuthenticationStatus.NOT_AUTHENTICATED,
+            biometricAuthenticationNeededInfo.authenticationStatus,
+        )
+        verify { tabsTrayInteractor.onTrayPositionSelected(0, false) }
+        verify(inverse = true) {
+            biometricUtils.bindBiometricsCredentialsPromptOrShowWarning(
+                any(),
+                any(),
+                any(),
+                any(),
+                any(),
+            )
+        }
+    }
+
+    @Test
+    fun `WHEN all conditions are met THEN shouldShowLockPbmBanner returns true`() {
+        val result = testShouldShowLockPbmBanner()
+        assertTrue(result)
+    }
+
+    @Test
+    fun `WHEN isPrivateMode is false THEN shouldShowLockPbmBanner returns false`() {
+        val result = testShouldShowLockPbmBanner(isPrivateMode = false)
+        assertFalse(result)
+    }
+
+    @Test
+    fun `WHEN hasPrivateTabs is false THEN shouldShowLockPbmBanner returns false`() {
+        val result = testShouldShowLockPbmBanner(hasPrivateTabs = false)
+        assertFalse(result)
+    }
+
+    @Test
+    fun `WHEN biometricAvailable is false THEN shouldShowLockPbmBanner returns false`() {
+        val result = testShouldShowLockPbmBanner(biometricAvailable = false)
+        assertFalse(result)
+    }
+
+    @Test
+    fun `WHEN privateLockEnabled is true THEN shouldShowLockPbmBanner returns false`() {
+        val result = testShouldShowLockPbmBanner(privateLockEnabled = true)
+        assertFalse(result)
+    }
+
+    @Test
+    fun `WHEN shouldShowBanner is false THEN shouldShowLockPbmBanner returns false`() {
+        val result = testShouldShowLockPbmBanner(shouldShowBanner = false)
+        assertFalse(result)
+    }
+
+    private fun testShouldShowLockPbmBanner(
+        isPrivateMode: Boolean = true,
+        hasPrivateTabs: Boolean = true,
+        biometricAvailable: Boolean = true,
+        privateLockEnabled: Boolean = false,
+        shouldShowBanner: Boolean = true,
+    ): Boolean {
+        return fragment.shouldShowLockPbmBanner(
+            isPrivateMode = isPrivateMode,
+            hasPrivateTabs = hasPrivateTabs,
+            biometricAvailable = biometricAvailable,
+            privateLockEnabled = privateLockEnabled,
+            shouldShowBanner = shouldShowBanner,
+        )
     }
 }

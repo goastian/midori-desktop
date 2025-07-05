@@ -4,25 +4,27 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import {exec as execChildProcess, spawnSync} from 'child_process';
+import {spawnSync, spawn} from 'child_process';
 import {createReadStream} from 'fs';
 import {mkdir, readdir} from 'fs/promises';
 import * as path from 'path';
-import {promisify} from 'util';
+import {Stream} from 'stream';
 
 import extractZip from 'extract-zip';
 import tar from 'tar-fs';
 import bzip from 'unbzip2-stream';
-
-const exec = promisify(execChildProcess);
 
 /**
  * @internal
  */
 export async function unpackArchive(
   archivePath: string,
-  folderPath: string
+  folderPath: string,
 ): Promise<void> {
+  if (!path.isAbsolute(folderPath)) {
+    folderPath = path.resolve(process.cwd(), folderPath);
+  }
+
   if (archivePath.endsWith('.zip')) {
     await extractZip(archivePath, {dir: folderPath});
   } else if (archivePath.endsWith('.tar.bz2')) {
@@ -39,9 +41,11 @@ export async function unpackArchive(
     });
     if (result.status !== 0) {
       throw new Error(
-        `Failed to extract ${archivePath} to ${folderPath}: ${result.output}`
+        `Failed to extract ${archivePath} to ${folderPath}: ${result.output}`,
       );
     }
+  } else if (archivePath.endsWith('.tar.xz')) {
+    await extractTarXz(archivePath, folderPath);
   } else {
     throw new Error(`Unsupported archive format: ${archivePath}`);
   }
@@ -63,12 +67,72 @@ function extractTar(tarPath: string, folderPath: string): Promise<void> {
 /**
  * @internal
  */
-async function installDMG(dmgPath: string, folderPath: string): Promise<void> {
-  const {stdout} = await exec(
-    `hdiutil attach -nobrowse -noautoopen "${dmgPath}"`
-  );
+function createXzStream() {
+  const child = spawn('xz', ['-d']);
+  const stream = new Stream.Transform({
+    transform(chunk, encoding, callback) {
+      if (!child.stdin.write(chunk, encoding)) {
+        child.stdin.once('drain', callback);
+      } else {
+        callback();
+      }
+    },
 
-  const volumes = stdout.match(/\/Volumes\/(.*)/m);
+    flush(callback) {
+      if (child.stdout.destroyed) {
+        callback();
+      } else {
+        child.stdin.end();
+        child.stdout.on('close', callback);
+      }
+    },
+  });
+
+  child.stdin.on('error', e => {
+    if ('code' in e && e.code === 'EPIPE') {
+      // finished before reading the file finished (i.e. head)
+      stream.emit('end');
+    } else {
+      stream.destroy(e);
+    }
+  });
+
+  child.stdout
+    .on('data', data => {
+      return stream.push(data);
+    })
+    .on('error', e => {
+      return stream.destroy(e);
+    });
+
+  return stream;
+}
+
+/**
+ * @internal
+ */
+function extractTarXz(tarPath: string, folderPath: string): Promise<void> {
+  return new Promise((fulfill, reject) => {
+    const tarStream = tar.extract(folderPath);
+    tarStream.on('error', reject);
+    tarStream.on('finish', fulfill);
+    const readStream = createReadStream(tarPath);
+    readStream.pipe(createXzStream()).pipe(tarStream);
+  });
+}
+
+/**
+ * @internal
+ */
+async function installDMG(dmgPath: string, folderPath: string): Promise<void> {
+  const {stdout} = spawnSync(`hdiutil`, [
+    'attach',
+    '-nobrowse',
+    '-noautoopen',
+    dmgPath,
+  ]);
+
+  const volumes = stdout.toString('utf8').match(/\/Volumes\/(.*)/m);
   if (!volumes) {
     throw new Error(`Could not find volume path in ${stdout}`);
   }
@@ -84,8 +148,8 @@ async function installDMG(dmgPath: string, folderPath: string): Promise<void> {
     }
     const mountedPath = path.join(mountPath!, appName);
 
-    await exec(`cp -R "${mountedPath}" "${folderPath}"`);
+    spawnSync('cp', ['-R', mountedPath, folderPath]);
   } finally {
-    await exec(`hdiutil detach "${mountPath}" -quiet`);
+    spawnSync('hdiutil', ['detach', mountPath, '-quiet']);
   }
 }

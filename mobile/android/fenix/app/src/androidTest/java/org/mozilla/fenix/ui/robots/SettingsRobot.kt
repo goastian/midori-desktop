@@ -7,8 +7,8 @@
 package org.mozilla.fenix.ui.robots
 
 import android.content.Intent
-import android.net.Uri
 import android.util.Log
+import androidx.core.net.toUri
 import androidx.recyclerview.widget.RecyclerView
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions
@@ -40,6 +40,7 @@ import org.hamcrest.CoreMatchers
 import org.hamcrest.CoreMatchers.endsWith
 import org.hamcrest.Matchers.allOf
 import org.mozilla.fenix.R
+import org.mozilla.fenix.helpers.AppAndSystemHelper.forceCloseApp
 import org.mozilla.fenix.helpers.AppAndSystemHelper.isPackageInstalled
 import org.mozilla.fenix.helpers.Constants.LISTS_MAXSWIPES
 import org.mozilla.fenix.helpers.Constants.PackageName.GOOGLE_PLAY_SERVICES
@@ -59,7 +60,6 @@ import org.mozilla.fenix.helpers.TestHelper.scrollToElementByText
 import org.mozilla.fenix.helpers.click
 import org.mozilla.fenix.helpers.ext.waitNotNull
 import org.mozilla.fenix.settings.SupportUtils
-import org.mozilla.fenix.ui.robots.SettingsRobot.Companion.DEFAULT_APPS_SETTINGS_ACTION
 
 /**
  * Implementation of Robot Pattern for the settings menu.
@@ -217,12 +217,12 @@ class SettingsRobot {
             .check(matches(withEffectiveVisibility(Visibility.VISIBLE)))
         Log.i(TAG, "verifyPrivateBrowsingButton: Verified that the \"Private browsing\" button is visible")
     }
-    fun verifySitePermissionsButton() {
-        scrollToElementByText("Site permissions")
-        Log.i(TAG, "verifySitePermissionsButton: Trying to verify that the \"Site permissions\" button is visible")
-        onView(withText("Site permissions"))
+    fun verifySiteSettingsButton() {
+        scrollToElementByText("Site settings")
+        Log.i(TAG, "verifySiteSettingsButton: Trying to verify that the \"Site permissions\" button is visible")
+        onView(withText("Site settings"))
             .check(matches(withEffectiveVisibility(Visibility.VISIBLE)))
-        Log.i(TAG, "verifySitePermissionsButton: Verified that the \"Site permissions\" button is visible")
+        Log.i(TAG, "verifySiteSettingsButton: Verified that the \"Site permissions\" button is visible")
     }
     fun verifyDeleteBrowsingDataButton() {
         scrollToElementByText("Delete browsing data")
@@ -253,7 +253,13 @@ class SettingsRobot {
         Log.i(TAG, "verifyDataCollectionButton: Verified that the \"Data collection\" button is visible")
     }
     fun verifyOpenLinksInAppsButton() {
-        scrollToElementByText("Open links in apps")
+        Log.i(TAG, "verifyOpenLinksInAppsButton: Trying to perform scroll to the \"Open links in apps\" button")
+        onView(withId(R.id.recycler_view)).perform(
+            RecyclerViewActions.scrollTo<RecyclerView.ViewHolder>(
+                hasDescendant(withText(R.string.preferences_open_links_in_apps)),
+            ),
+        )
+        Log.i(TAG, "verifyOpenLinksInAppsButton: Performed scroll to the \"Open links in apps\" button")
         Log.i(TAG, "verifyOpenLinksInAppsButton: Trying to verify that the \"Open links in apps\" button is visible")
         openLinksInAppsButton()
             .check(matches(withEffectiveVisibility(Visibility.VISIBLE)))
@@ -343,6 +349,11 @@ class SettingsRobot {
 
     fun verifyExternalDownloadManagerButton() {
         Log.i(TAG, "verifyExternalDownloadManagerButton: Trying to verify that the \"External download manager\" button is visible")
+        onView(withId(R.id.recycler_view)).perform(
+            RecyclerViewActions.scrollTo<RecyclerView.ViewHolder>(
+                hasDescendant(withText(R.string.preferences_external_download_manager)),
+            ),
+        )
         onView(
             withText(R.string.preferences_external_download_manager),
         ).check(matches(withEffectiveVisibility(Visibility.VISIBLE)))
@@ -350,6 +361,11 @@ class SettingsRobot {
     }
 
     fun verifyExternalDownloadManagerToggle(enabled: Boolean) {
+        onView(withId(R.id.recycler_view)).perform(
+            RecyclerViewActions.scrollTo<RecyclerView.ViewHolder>(
+                hasDescendant(withText(R.string.preferences_external_download_manager)),
+            ),
+        )
         Log.i(TAG, "verifyExternalDownloadManagerToggle: Trying to verify that the \"External download manager\" toggle is enabled: $enabled")
         onView(withText(R.string.preferences_external_download_manager))
             .check(
@@ -370,6 +386,11 @@ class SettingsRobot {
     }
 
     fun verifyLeakCanaryToggle(enabled: Boolean) {
+        onView(withId(R.id.recycler_view)).perform(
+            RecyclerViewActions.scrollTo<RecyclerView.ViewHolder>(
+                hasDescendant(withText(R.string.preference_leakcanary)),
+            ),
+        )
         Log.i(TAG, "verifyLeakCanaryToggle: Trying to verify that the \"LeakCanary\" toggle is enabled: $enabled")
         onView(withText(R.string.preference_leakcanary))
             .check(
@@ -390,6 +411,11 @@ class SettingsRobot {
     }
 
     fun verifyRemoteDebuggingToggle(enabled: Boolean) {
+        onView(withId(R.id.recycler_view)).perform(
+            RecyclerViewActions.scrollTo<RecyclerView.ViewHolder>(
+                hasDescendant(withText(R.string.preferences_remote_debugging)),
+            ),
+        )
         Log.i(TAG, "verifyRemoteDebuggingToggle: Trying to verify that the \"Remote debugging via USB\" toggle is enabled: $enabled")
         onView(withText(R.string.preferences_remote_debugging))
             .check(
@@ -436,8 +462,16 @@ class SettingsRobot {
         Log.i(TAG, "verifyAboutHeading: Verified that the \"About\" heading is visible")
     }
 
-    fun verifyRateOnGooglePlay() = assertUIObjectExists(rateOnGooglePlayHeading())
-    fun verifyAboutFirefoxPreview() = assertUIObjectExists(aboutFirefoxHeading())
+    fun verifyRateOnGooglePlay() {
+        settingsList().scrollToEnd(LISTS_MAXSWIPES)
+        assertUIObjectExists(rateOnGooglePlayHeading())
+    }
+
+    fun verifyAboutFirefoxPreview() {
+        settingsList().scrollToEnd(LISTS_MAXSWIPES)
+        assertUIObjectExists(aboutFirefoxHeading())
+    }
+
     fun verifyGooglePlayRedirect() {
         if (isPackageInstalled(GOOGLE_PLAY_SERVICES)) {
             Log.i(TAG, "verifyGooglePlayRedirect: $GOOGLE_PLAY_SERVICES is installed")
@@ -446,13 +480,15 @@ class SettingsRobot {
                 intended(
                     allOf(
                         hasAction(Intent.ACTION_VIEW),
-                        hasData(Uri.parse(SupportUtils.RATE_APP_URL)),
+                        hasData(SupportUtils.RATE_APP_URL.toUri()),
                     ),
                 )
                 Log.i(TAG, "verifyGooglePlayRedirect: Verified intent to: $GOOGLE_PLAY_SERVICES")
             } catch (e: AssertionFailedError) {
                 Log.i(TAG, "verifyGooglePlayRedirect: AssertionFailedError caught, executing fallback methods")
                 BrowserRobot().verifyRateOnGooglePlayURL()
+            } finally {
+                forceCloseApp(GOOGLE_PLAY_SERVICES)
             }
         } else {
             BrowserRobot().verifyRateOnGooglePlayURL()
@@ -659,11 +695,11 @@ class SettingsRobot {
             return SettingsSubMenuPrivateBrowsingRobot.Transition()
         }
 
-        fun openSettingsSubMenuSitePermissions(interact: SettingsSubMenuSitePermissionsRobot.() -> Unit): SettingsSubMenuSitePermissionsRobot.Transition {
-            scrollToElementByText("Site permissions")
-            Log.i(TAG, "openSettingsSubMenuSitePermissions: Trying to click the \"Site permissions\" button")
-            mDevice.findObject(textContains("Site permissions")).click()
-            Log.i(TAG, "openSettingsSubMenuSitePermissions: Clicked the \"Site permissions\" button")
+        fun openSettingsSubMenuSiteSettings(interact: SettingsSubMenuSitePermissionsRobot.() -> Unit): SettingsSubMenuSitePermissionsRobot.Transition {
+            scrollToElementByText("Site settings")
+            Log.i(TAG, "openSettingsSubMenuSiteSettings: Trying to click the \"Site settings\" button")
+            mDevice.findObject(textContains("Site settings")).click()
+            Log.i(TAG, "openSettingsSubMenuSiteSettings: Clicked the \"Site settings\" button")
 
             SettingsSubMenuSitePermissionsRobot().interact()
             return SettingsSubMenuSitePermissionsRobot.Transition()

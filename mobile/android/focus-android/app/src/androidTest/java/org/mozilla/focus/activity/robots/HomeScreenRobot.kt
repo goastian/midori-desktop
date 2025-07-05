@@ -27,10 +27,6 @@ class HomeScreenRobot {
         assertTrue(editURLBar.text.equals(getStringResource(R.string.urlbar_hint)))
     }
 
-    fun skipFirstRun() = onView(withId(R.id.skip)).perform(click())
-
-    fun closeOnboarding() = onboardingCloseButton.clickAndWaitForNewWindow(waitingTime)
-
     fun verifyOnboardingFirstSlide() = assertTrue(firstSlideTitle.waitForExists(waitingTime))
 
     fun verifyOnboardingSecondSlide() = assertTrue(secondSlideTitle.waitForExists(waitingTime))
@@ -77,15 +73,15 @@ class HomeScreenRobot {
     }
 
     fun verifyFirstOnboardingScreenItems() {
-        assertTrue(onboardingCloseButton.waitForExists(waitingTime))
         assertTrue(onboardingLogo.waitForExists(waitingTime))
         assertTrue(onboardingFirstScreenTitle.waitForExists(waitingTime))
         assertTrue(onboardingFirstScreenSubtitle.waitForExists(waitingTime))
-        assertTrue(onboardingGetStartedButton.waitForExists(waitingTime))
+        assertTrue(onboardingFirstScreenTermsOfUse.waitForExists(waitingTime))
+        assertTrue(onboardingFirstScreenPrivacyNotice.waitForExists(waitingTime))
+        assertTrue(onboardingAgreeAndContinueButton.waitForExists(waitingTime))
     }
 
     fun verifySecondOnboardingScreenItems() {
-        assertTrue(onboardingCloseButton.waitForExists(waitingTime))
         assertTrue(onboardingLogo.waitForExists(waitingTime))
         assertTrue(onboardingSecondScreenTitle.waitForExists(waitingTime))
         assertTrue(onboardingSecondScreenFirstSubtitle.waitForExists(waitingTime))
@@ -94,8 +90,8 @@ class HomeScreenRobot {
         assertTrue(onboardingSkipButton.waitForExists(waitingTime))
     }
 
-    fun clickGetStartedButton() {
-        onboardingGetStartedButton
+    fun clickAgreeAndContinueButton() {
+        onboardingAgreeAndContinueButton
             .also { it.waitForExists(waitingTime) }
             .also { it.clickAndWaitForNewWindow(waitingTime) }
     }
@@ -170,12 +166,6 @@ private val topSitesList = mDevice.findObject(UiSelector().resourceId("$packageN
 
 /** New onboarding elements **/
 
-private val onboardingCloseButton =
-    mDevice.findObject(
-        UiSelector()
-            .descriptionContains(getStringResource(R.string.onboarding_close_button_content_description)),
-    )
-
 private val onboardingLogo =
     mDevice.findObject(
         UiSelector()
@@ -216,11 +206,20 @@ private val onboardingSecondScreenSecondSubtitle =
             ),
     )
 
-private val onboardingGetStartedButton =
+private val onboardingFirstScreenTermsOfUse =
     mDevice.findObject(
         UiSelector()
-            .textContains(getStringResource(R.string.onboarding_first_screen_button_text)),
+            .descriptionContains("By continuing, you agree to the Firefox Terms of Use."),
     )
+
+private val onboardingFirstScreenPrivacyNotice =
+    mDevice.findObject(
+        UiSelector()
+            .descriptionContains("Firefox cares about your privacy. Learn more in our Privacy Notice."),
+    )
+
+private val onboardingAgreeAndContinueButton =
+    mDevice.findObject(UiSelector().textContains("Continue"))
 
 private val onboardingSetAsDefaultBrowserButton =
     mDevice.findObject(

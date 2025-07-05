@@ -15,6 +15,8 @@
 #include "nsISupports.h"
 #include "nsITransportSecurityInfo.h"
 #include "nsInputStreamPump.h"
+#include "nsHttpRequestHead.h"
+#include "nsITRRSkipReason.h"
 
 class nsIEventTraget;
 class nsIInputStream;
@@ -26,7 +28,6 @@ class nsITransportEventSink;
 namespace mozilla::net {
 
 enum HttpTrafficCategory : uint8_t;
-class Http2PushedStreamWrapper;
 class HttpTransactionParent;
 class nsHttpConnectionInfo;
 class nsHttpHeaderArray;
@@ -40,21 +41,15 @@ union NetAddr;
 //----------------------------------------------------------------------------
 
 // 95e5a5b7-6aa2-4011-920a-0908b52f95d4
-#define HTTPTRANSACTIONSHELL_IID                     \
-  {                                                  \
-    0x95e5a5b7, 0x6aa2, 0x4011, {                    \
-      0x92, 0x0a, 0x09, 0x08, 0xb5, 0x2f, 0x95, 0xd4 \
-    }                                                \
-  }
+#define HTTPTRANSACTIONSHELL_IID \
+  {0x95e5a5b7, 0x6aa2, 0x4011, {0x92, 0x0a, 0x09, 0x08, 0xb5, 0x2f, 0x95, 0xd4}}
 
 class HttpTransactionShell : public nsISupports {
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(HTTPTRANSACTIONSHELL_IID)
+  NS_INLINE_DECL_STATIC_IID(HTTPTRANSACTIONSHELL_IID)
 
   using TransactionObserverFunc =
       std::function<void(TransactionObserverResult&&)>;
-  using OnPushCallback = std::function<nsresult(
-      uint32_t, const nsACString&, const nsACString&, HttpTransactionShell*)>;
 
   //
   // called to initialize the transaction
@@ -85,10 +80,7 @@ class HttpTransactionShell : public nsISupports {
       HttpTrafficCategory trafficCategory, nsIRequestContext* requestContext,
       ClassOfService classOfService, uint32_t initialRwin,
       bool responseTimeoutEnabled, uint64_t channelId,
-      TransactionObserverFunc&& transactionObserver,
-      OnPushCallback&& aOnPushCallback,
-      HttpTransactionShell* aTransWithPushedStream,
-      uint32_t aPushedStreamId) = 0;
+      TransactionObserverFunc&& transactionObserver) = 0;
 
   // @param aListener
   //        receives notifications.
@@ -101,7 +93,8 @@ class HttpTransactionShell : public nsISupports {
 
   // Called to take ownership of the response headers; the transaction
   // will drop any reference to the response headers after this call.
-  virtual UniquePtr<nsHttpResponseHead> TakeResponseHead() = 0;
+  virtual UniquePtr<nsHttpResponseHead> TakeResponseHeadAndConnInfo(
+      nsHttpConnectionInfo** aOut) = 0;
 
   // Called to take ownership of the trailer headers.
   // Returning null if there is no trailer.
@@ -175,8 +168,6 @@ class HttpTransactionShell : public nsISupports {
   virtual TimeStamp GetOnStopRequestStartTime() const { return TimeStamp(); }
 };
 
-NS_DEFINE_STATIC_IID_ACCESSOR(HttpTransactionShell, HTTPTRANSACTIONSHELL_IID)
-
 #define NS_DECL_HTTPTRANSACTIONSHELL                                           \
   virtual nsresult Init(                                                       \
       uint32_t caps, nsHttpConnectionInfo* connInfo,                           \
@@ -187,13 +178,11 @@ NS_DEFINE_STATIC_IID_ACCESSOR(HttpTransactionShell, HTTPTRANSACTIONSHELL_IID)
       HttpTrafficCategory trafficCategory, nsIRequestContext* requestContext,  \
       ClassOfService classOfService, uint32_t initialRwin,                     \
       bool responseTimeoutEnabled, uint64_t channelId,                         \
-      TransactionObserverFunc&& transactionObserver,                           \
-      OnPushCallback&& aOnPushCallback,                                        \
-      HttpTransactionShell* aTransWithPushedStream, uint32_t aPushedStreamId)  \
-      override;                                                                \
+      TransactionObserverFunc&& transactionObserver) override;                 \
   virtual nsresult AsyncRead(nsIStreamListener* listener, nsIRequest** pump)   \
       override;                                                                \
-  virtual UniquePtr<nsHttpResponseHead> TakeResponseHead() override;           \
+  virtual UniquePtr<nsHttpResponseHead> TakeResponseHeadAndConnInfo(           \
+      nsHttpConnectionInfo** aOut) override;                                   \
   virtual UniquePtr<nsHttpHeaderArray> TakeResponseTrailers() override;        \
   virtual already_AddRefed<nsITransportSecurityInfo> SecurityInfo() override;  \
   virtual void SetSecurityCallbacks(nsIInterfaceRequestor* aCallbacks)         \

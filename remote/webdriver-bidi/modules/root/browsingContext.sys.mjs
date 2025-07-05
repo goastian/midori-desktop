@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { Module } from "chrome://remote/content/shared/messagehandler/Module.sys.mjs";
+import { RootBiDiModule } from "chrome://remote/content/webdriver-bidi/modules/RootBiDiModule.sys.mjs";
 
 const lazy = {};
 
@@ -17,6 +17,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
   EventPromise: "chrome://remote/content/shared/Sync.sys.mjs",
   getTimeoutMultiplier: "chrome://remote/content/shared/AppInfo.sys.mjs",
+  getWebDriverSessionById:
+    "chrome://remote/content/shared/webdriver/Session.sys.mjs",
+  Log: "chrome://remote/content/shared/Log.sys.mjs",
   modal: "chrome://remote/content/shared/Prompt.sys.mjs",
   registerNavigationId:
     "chrome://remote/content/shared/NavigationManager.sys.mjs",
@@ -28,6 +31,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ProgressListener: "chrome://remote/content/shared/Navigate.sys.mjs",
   PromptListener:
     "chrome://remote/content/shared/listeners/PromptListener.sys.mjs",
+  SessionDataMethod:
+    "chrome://remote/content/shared/messagehandler/sessiondata/SessionData.sys.mjs",
   setDefaultAndAssertSerializationOptions:
     "chrome://remote/content/webdriver-bidi/RemoteValue.sys.mjs",
   TabManager: "chrome://remote/content/shared/TabManager.sys.mjs",
@@ -39,6 +44,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "chrome://remote/content/shared/messagehandler/WindowGlobalMessageHandler.sys.mjs",
   windowManager: "chrome://remote/content/shared/WindowManager.sys.mjs",
 });
+
+ChromeUtils.defineLazyGetter(lazy, "logger", () =>
+  lazy.Log.get(lazy.Log.TYPES.WEBDRIVER_BIDI)
+);
 
 // Maximal window dimension allowed when emulating a viewport.
 const MAX_WINDOW_SIZE = 10000000;
@@ -149,7 +158,21 @@ const WaitCondition = {
   Complete: "complete",
 };
 
-class BrowsingContextModule extends Module {
+/**
+ * Used as an argument for browsingContext._updateNavigableViewport command
+ * to represent an object which holds viewport settings which should be applied.
+ *
+ * @typedef ViewportOverride
+ *
+ * @property {number|null} devicePixelRatio
+ *     A value to override device pixel ratio, or `null` to reset it to
+ *     the original value.
+ * @property {Viewport|null} viewport
+ *     Dimensions to set the viewport to, or `null` to reset it
+ *     to the original dimensions.
+ */
+
+class BrowsingContextModule extends RootBiDiModule {
   #contextListener;
   #navigationListener;
   #promptListener;
@@ -168,12 +191,18 @@ class BrowsingContextModule extends Module {
     this.#contextListener.on("attached", this.#onContextAttached);
     this.#contextListener.on("discarded", this.#onContextDiscarded);
 
-    // Create the navigation listener and listen to "navigation-started" and
-    // "location-changed" events.
     this.#navigationListener = new lazy.NavigationListener(
       this.messageHandler.navigationManager
     );
-    this.#navigationListener.on("location-changed", this.#onLocationChanged);
+    this.#navigationListener.on(
+      "fragment-navigated",
+      this.#onFragmentNavigated
+    );
+    this.#navigationListener.on(
+      "navigation-committed",
+      this.#onNavigationCommitted
+    );
+    this.#navigationListener.on("navigation-failed", this.#onNavigationFailed);
     this.#navigationListener.on(
       "navigation-started",
       this.#onNavigationStarted
@@ -195,6 +224,21 @@ class BrowsingContextModule extends Module {
     this.#contextListener.off("attached", this.#onContextAttached);
     this.#contextListener.off("discarded", this.#onContextDiscarded);
     this.#contextListener.destroy();
+
+    this.#navigationListener.off(
+      "fragment-navigated",
+      this.#onFragmentNavigated
+    );
+    this.#navigationListener.off(
+      "navigation-committed",
+      this.#onNavigationCommitted
+    );
+    this.#navigationListener.off("navigation-failed", this.#onNavigationFailed);
+    this.#navigationListener.off(
+      "navigation-started",
+      this.#onNavigationStarted
+    );
+    this.#navigationListener.destroy();
 
     this.#promptListener.off("closed", this.#onPromptClosed);
     this.#promptListener.off("opened", this.#onPromptOpened);
@@ -222,15 +266,14 @@ class BrowsingContextModule extends Module {
 
     lazy.assert.string(
       contextId,
-      `Expected "context" to be a string, got ${contextId}`
+      lazy.pprint`Expected "context" to be a string, got ${contextId}`
     );
     const context = this.#getBrowsingContext(contextId);
 
-    if (context.parent) {
-      throw new lazy.error.InvalidArgumentError(
-        `Browsing Context with id ${contextId} is not top-level`
-      );
-    }
+    lazy.assert.topLevel(
+      context,
+      lazy.pprint`Browsing context with id ${contextId} is not top-level`
+    );
 
     const targetTab = lazy.TabManager.getTabForBrowsingContext(context);
     const targetWindow = lazy.TabManager.getWindowForTab(targetTab);
@@ -276,6 +319,18 @@ class BrowsingContextModule extends Module {
    */
 
   /**
+   * Used as an argument for the browsingContext.captureScreenshot command to
+   * represent the output image format.
+   *
+   * @typedef ImageFormat
+   *
+   * @property {string} type
+   *     The output screenshot format such as `image/png`.
+   * @property {number=} quality
+   *     A number between 0 and 1 representing the screenshot quality.
+   */
+
+  /**
    * Used as an argument for browsingContext.captureScreenshot command
    * to represent an element which is going to be a target of the command.
    *
@@ -295,6 +350,8 @@ class BrowsingContextModule extends Module {
    *     A box or an element of which a screenshot should be taken.
    *     If not present, take a screenshot of the whole viewport.
    * @param {OriginType=} options.origin
+   * @param {ImageFormat=} options.format
+   *    Configuration options for the output image.
    *
    * @throws {NoSuchFrameError}
    *     If the browsing context cannot be found.
@@ -304,37 +361,72 @@ class BrowsingContextModule extends Module {
       clip = null,
       context: contextId,
       origin = OriginType.viewport,
+      format = { type: "image/png", quality: undefined },
     } = options;
 
     lazy.assert.string(
       contextId,
-      `Expected "context" to be a string, got ${contextId}`
+      lazy.pprint`Expected "context" to be a string, got ${contextId}`
     );
     const context = this.#getBrowsingContext(contextId);
 
     const originTypeValues = Object.values(OriginType);
     lazy.assert.that(
       value => originTypeValues.includes(value),
-      `Expected "origin" to be one of ${originTypeValues}, got ${origin}`
+      `Expected "origin" to be one of ${originTypeValues}, ` +
+        lazy.pprint`got ${origin}`
     )(origin);
 
-    if (clip !== null) {
-      lazy.assert.object(clip, `Expected "clip" to be a object, got ${clip}`);
+    lazy.assert.object(
+      format,
+      lazy.pprint`Expected "format" to be an object, got ${format}`
+    );
 
-      const { type } = clip;
-      switch (type) {
+    const { quality, type: formatType } = format;
+
+    lazy.assert.string(
+      formatType,
+      lazy.pprint`Expected "type" to be a string, got ${formatType}`
+    );
+
+    if (quality !== undefined) {
+      lazy.assert.number(
+        quality,
+        lazy.pprint`Expected "quality" to be a number, got ${quality}`
+      );
+
+      lazy.assert.that(
+        imageQuality => imageQuality >= 0 && imageQuality <= 1,
+        lazy.pprint`Expected "quality" to be in the range of 0 to 1, got ${quality}`
+      )(quality);
+    }
+
+    if (clip !== null) {
+      lazy.assert.object(
+        clip,
+        lazy.pprint`Expected "clip" to be an object, got ${clip}`
+      );
+
+      const { type: clipType } = clip;
+      switch (clipType) {
         case ClipRectangleType.Box: {
           const { x, y, width, height } = clip;
 
-          lazy.assert.number(x, `Expected "x" to be a number, got ${x}`);
-          lazy.assert.number(y, `Expected "y" to be a number, got ${y}`);
+          lazy.assert.number(
+            x,
+            lazy.pprint`Expected "x" to be a number, got ${x}`
+          );
+          lazy.assert.number(
+            y,
+            lazy.pprint`Expected "y" to be a number, got ${y}`
+          );
           lazy.assert.number(
             width,
-            `Expected "width" to be a number, got ${width}`
+            lazy.pprint`Expected "width" to be a number, got ${width}`
           );
           lazy.assert.number(
             height,
-            `Expected "height" to be a number, got ${height}`
+            lazy.pprint`Expected "height" to be a number, got ${height}`
           );
 
           break;
@@ -345,7 +437,7 @@ class BrowsingContextModule extends Module {
 
           lazy.assert.object(
             element,
-            `Expected "element" to be an object, got ${element}`
+            lazy.pprint`Expected "element" to be an object, got ${element}`
           );
 
           break;
@@ -355,7 +447,7 @@ class BrowsingContextModule extends Module {
           throw new lazy.error.InvalidArgumentError(
             `Expected "type" to be one of ${Object.values(
               ClipRectangleType
-            )}, got ${type}`
+            )}, ` + lazy.pprint`got ${clipType}`
           );
       }
     }
@@ -390,7 +482,7 @@ class BrowsingContextModule extends Module {
     );
 
     return {
-      data: lazy.capture.toBase64(canvas),
+      data: lazy.capture.toBase64(canvas, formatType, quality),
     };
   }
 
@@ -400,6 +492,9 @@ class BrowsingContextModule extends Module {
    * @param {object=} options
    * @param {string} options.context
    *     Id of the browsing context to close.
+   * @param {boolean=} options.promptUnload
+   *     Flag to indicate if a potential beforeunload prompt should be shown
+   *     when closing the browsing context. Defaults to false.
    *
    * @throws {NoSuchFrameError}
    *     If the browsing context cannot be found.
@@ -407,11 +502,16 @@ class BrowsingContextModule extends Module {
    *     If the browsing context is not a top-level one.
    */
   async close(options = {}) {
-    const { context: contextId } = options;
+    const { context: contextId, promptUnload = false } = options;
 
     lazy.assert.string(
       contextId,
-      `Expected "context" to be a string, got ${contextId}`
+      lazy.pprint`Expected "context" to be a string, got ${contextId}`
+    );
+
+    lazy.assert.boolean(
+      promptUnload,
+      lazy.pprint`Expected "promptUnload" to be a boolean, got ${promptUnload}`
     );
 
     const context = lazy.TabManager.getBrowsingContextById(contextId);
@@ -421,11 +521,10 @@ class BrowsingContextModule extends Module {
       );
     }
 
-    if (context.parent) {
-      throw new lazy.error.InvalidArgumentError(
-        `Browsing Context with id ${contextId} is not top-level`
-      );
-    }
+    lazy.assert.topLevel(
+      context,
+      lazy.pprint`Browsing context with id ${contextId} is not top-level`
+    );
 
     if (lazy.TabManager.getTabCount() === 1) {
       // The behavior when closing the very last tab is currently unspecified.
@@ -435,7 +534,7 @@ class BrowsingContextModule extends Module {
     }
 
     const tab = lazy.TabManager.getTabForBrowsingContext(context);
-    await lazy.TabManager.removeTab(tab);
+    await lazy.TabManager.removeTab(tab, { skipPermitUnload: !promptUnload });
   }
 
   /**
@@ -471,9 +570,8 @@ class BrowsingContextModule extends Module {
 
     if (![CreateType.tab, CreateType.window].includes(typeHint)) {
       throw new lazy.error.InvalidArgumentError(
-        `Expected "type" to be one of ${Object.values(
-          CreateType
-        )}, got ${typeHint}`
+        `Expected "type" to be one of ${Object.values(CreateType)}, ` +
+          lazy.pprint`got ${typeHint}`
       );
     }
 
@@ -642,6 +740,8 @@ class BrowsingContextModule extends Module {
    * @property {Array<BrowsingContextInfo>=} children
    *     List of child browsing contexts. Only set if maxDepth hasn't been
    *     reached yet.
+   * @property {string} clientWindow
+   *     The id of the window the browsing context belongs to.
    */
 
   /**
@@ -675,7 +775,7 @@ class BrowsingContextModule extends Module {
     if (maxDepth !== null) {
       lazy.assert.positiveInteger(
         maxDepth,
-        `Expected "maxDepth" to be a positive integer, got ${maxDepth}`
+        lazy.pprint`Expected "maxDepth" to be a positive integer, got ${maxDepth}`
       );
     }
 
@@ -685,7 +785,7 @@ class BrowsingContextModule extends Module {
       // and the full tree.
       lazy.assert.string(
         rootId,
-        `Expected "root" to be a string, got ${rootId}`
+        lazy.pprint`Expected "root" to be a string, got ${rootId}`
       );
       contexts = [this.#getBrowsingContext(rootId)];
     } else {
@@ -729,19 +829,19 @@ class BrowsingContextModule extends Module {
 
     lazy.assert.string(
       contextId,
-      `Expected "context" to be a string, got ${contextId}`
+      lazy.pprint`Expected "context" to be a string, got ${contextId}`
     );
 
     const context = this.#getBrowsingContext(contextId);
 
     lazy.assert.boolean(
       accept,
-      `Expected "accept" to be a boolean, got ${accept}`
+      lazy.pprint`Expected "accept" to be a boolean, got ${accept}`
     );
 
     lazy.assert.string(
       userText,
-      `Expected "userText" to be a string, got ${userText}`
+      lazy.pprint`Expected "userText" to be a string, got ${userText}`
     );
 
     const tab = lazy.TabManager.getTabForBrowsingContext(context);
@@ -763,11 +863,12 @@ class BrowsingContextModule extends Module {
 
     if (dialog && dialog.isOpen) {
       switch (dialog.promptType) {
-        case UserPromptType.alert: {
+        case UserPromptType.alert:
           await closePrompt(() => dialog.accept());
           return;
-        }
-        case UserPromptType.confirm: {
+
+        case UserPromptType.beforeunload:
+        case UserPromptType.confirm:
           await closePrompt(() => {
             if (accept) {
               dialog.accept();
@@ -777,8 +878,8 @@ class BrowsingContextModule extends Module {
           });
 
           return;
-        }
-        case UserPromptType.prompt: {
+
+        case UserPromptType.prompt:
           await closePrompt(() => {
             if (accept) {
               dialog.text = userText;
@@ -789,13 +890,11 @@ class BrowsingContextModule extends Module {
           });
 
           return;
-        }
-        case UserPromptType.beforeunload: {
-          // TODO: Bug 1824220. Implement support for "beforeunload" prompts.
+
+        default:
           throw new lazy.error.UnsupportedOperationError(
-            '"beforeunload" prompts are not supported yet.'
+            `Prompts of type "${dialog.promptType}" are not supported`
           );
-        }
       }
     }
 
@@ -902,21 +1001,22 @@ class BrowsingContextModule extends Module {
 
     lazy.assert.string(
       contextId,
-      `Expected "context" to be a string, got ${contextId}`
+      lazy.pprint`Expected "context" to be a string, got ${contextId}`
     );
 
     const context = this.#getBrowsingContext(contextId);
 
     lazy.assert.object(
       locator,
-      `Expected "locator" to be an object, got ${locator}`
+      lazy.pprint`Expected "locator" to be an object, got ${locator}`
     );
 
     const locatorTypes = Object.values(LocatorType);
 
     lazy.assert.that(
       locatorType => locatorTypes.includes(locatorType),
-      `Expected "locator.type" to be one of ${locatorTypes}, got ${locator.type}`
+      `Expected "locator.type" to be one of ${locatorTypes}, ` +
+        lazy.pprint`got ${locator.type}`
     )(locator.type);
 
     if (
@@ -926,26 +1026,30 @@ class BrowsingContextModule extends Module {
     ) {
       lazy.assert.string(
         locator.value,
-        `Expected "locator.value" of "locator.type" "${locator.type}" to be a string, got ${locator.value}`
+        `Expected "locator.value" of "locator.type" "${locator.type}" to be a string, ` +
+          lazy.pprint`got ${locator.value}`
       );
     }
     if (locator.type == LocatorType.accessibility) {
       lazy.assert.object(
         locator.value,
-        `Expected "locator.value" of "locator.type" "${locator.type}" to be an object, got ${locator.value}`
+        `Expected "locator.value" of "locator.type" "${locator.type}" to be an object, ` +
+          lazy.pprint`got ${locator.value}`
       );
 
       const { name = null, role = null } = locator.value;
       if (name !== null) {
         lazy.assert.string(
           locator.value.name,
-          `Expected "locator.value.name" of "locator.type" "${locator.type}" to be a string, got ${name}`
+          `Expected "locator.value.name" of "locator.type" "${locator.type}" to be a string, ` +
+            lazy.pprint`got ${name}`
         );
       }
       if (role !== null) {
         lazy.assert.string(
           locator.value.role,
-          `Expected "locator.value.role" of "locator.type" "${locator.type}" to be a string, got ${role}`
+          `Expected "locator.value.role" of "locator.type" "${locator.type}" to be a string, ` +
+            lazy.pprint`got ${role}`
         );
       }
     }
@@ -961,7 +1065,7 @@ class BrowsingContextModule extends Module {
     }
 
     if (maxNodeCount != null) {
-      const maxNodeCountErrorMsg = `Expected "maxNodeCount" to be an integer and greater than 0, got ${maxNodeCount}`;
+      const maxNodeCountErrorMsg = lazy.pprint`Expected "maxNodeCount" to be an integer and greater than 0, got ${maxNodeCount}`;
       lazy.assert.that(maxNodeCount => {
         lazy.assert.integer(maxNodeCount, maxNodeCountErrorMsg);
         return maxNodeCount > 0;
@@ -972,31 +1076,23 @@ class BrowsingContextModule extends Module {
       lazy.setDefaultAndAssertSerializationOptions(serializationOptions);
 
     if (startNodes != null) {
-      lazy.assert.that(startNodes => {
-        lazy.assert.array(
-          startNodes,
-          `Expected "startNodes" to be an array, got ${startNodes}`
-        );
-        return !!startNodes.length;
-      }, `Expected "startNodes" to have at least one element, got ${startNodes}`)(
-        startNodes
+      lazy.assert.isNonEmptyArray(
+        startNodes,
+        lazy.pprint`Expected "startNodes" to be a non-empty array, got ${startNodes}`
       );
     }
 
-    const result = await this.messageHandler.forwardCommand({
-      moduleName: "browsingContext",
-      commandName: "_locateNodes",
-      destination: {
-        type: lazy.WindowGlobalMessageHandler.type,
-        id: context.id,
-      },
-      params: {
+    const result = await this._forwardToWindowGlobal(
+      "_locateNodes",
+      context.id,
+      {
         locator,
         maxNodeCount,
         serializationOptions: serializationOptionsWithDefaults,
         startNodes,
       },
-    });
+      { retryOnAbort: true }
+    );
 
     return {
       nodes: result.serializedNodes,
@@ -1024,6 +1120,7 @@ class BrowsingContextModule extends Module {
    *     Url for the navigation.
    * @param {WaitCondition=} options.wait
    *     Wait condition for the navigation, one of "none", "interactive", "complete".
+   *     Defaults to "none".
    *
    * @returns {BrowsingContextNavigateResult}
    *     Navigation result.
@@ -1038,15 +1135,19 @@ class BrowsingContextModule extends Module {
 
     lazy.assert.string(
       contextId,
-      `Expected "context" to be a string, got ${contextId}`
+      lazy.pprint`Expected "context" to be a string, got ${contextId}`
     );
 
-    lazy.assert.string(url, `Expected "url" to be string, got ${url}`);
+    lazy.assert.string(
+      url,
+      lazy.pprint`Expected "url" to be string, got ${url}`
+    );
 
     const waitConditions = Object.values(WaitCondition);
     if (!waitConditions.includes(wait)) {
       throw new lazy.error.InvalidArgumentError(
-        `Expected "wait" to be one of ${waitConditions}, got ${wait}`
+        `Expected "wait" to be one of ${waitConditions}, ` +
+          lazy.pprint`got ${wait}`
       );
     }
 
@@ -1081,12 +1182,16 @@ class BrowsingContextModule extends Module {
       () => {
         context.loadURI(targetURI, {
           loadFlags: Ci.nsIWebNavigation.LOAD_FLAGS_IS_LINK,
+          // Fake user activation.
+          hasValidUserGestureActivation: true,
+          // Prevent HTTPS-First upgrades.
+          schemelessInput: Ci.nsILoadInfo.SchemelessInputTypeSchemeful,
           triggeringPrincipal:
             Services.scriptSecurityManager.getSystemPrincipal(),
-          hasValidUserGestureActivation: true,
         });
       },
       {
+        targetURI,
         wait,
       }
     );
@@ -1177,7 +1282,7 @@ class BrowsingContextModule extends Module {
 
     lazy.assert.string(
       contextId,
-      `Expected "context" to be a string, got ${contextId}`
+      lazy.pprint`Expected "context" to be a string, got ${contextId}`
     );
     const context = this.#getBrowsingContext(contextId);
 
@@ -1194,38 +1299,44 @@ class BrowsingContextModule extends Module {
     for (const prop of ["top", "bottom", "left", "right"]) {
       lazy.assert.positiveNumber(
         settings.margin[prop],
-        lazy.pprint`margin.${prop} is not a positive number`
+        `Expected "margin.${prop}" to be a positive number, ` +
+          lazy.pprint`got ${settings.margin[prop]}`
       );
     }
     for (const prop of ["width", "height"]) {
       lazy.assert.positiveNumber(
         settings.page[prop],
-        lazy.pprint`page.${prop} is not a positive number`
+        `Expected "page.${prop}" to be a positive number, ` +
+          lazy.pprint`got ${settings.page[prop]}`
       );
     }
     lazy.assert.positiveNumber(
       settings.scale,
-      `scale ${settings.scale} is not a positive number`
+      `Expected "scale" to be a positive number, ` +
+        lazy.pprint`got ${settings.scale}`
     );
     lazy.assert.that(
       scale =>
         scale >= lazy.print.minScaleValue && scale <= lazy.print.maxScaleValue,
       `scale ${settings.scale} is outside the range ${lazy.print.minScaleValue}-${lazy.print.maxScaleValue}`
     )(settings.scale);
-    lazy.assert.boolean(settings.shrinkToFit);
+    lazy.assert.boolean(
+      settings.shrinkToFit,
+      lazy.pprint`Expected "shrinkToFit" to be a boolean, got ${settings.shrinkToFit}`
+    );
     lazy.assert.that(
       orientation => lazy.print.defaults.orientationValue.includes(orientation),
-      `orientation ${
-        settings.orientation
-      } doesn't match allowed values "${lazy.print.defaults.orientationValue.join(
-        "/"
-      )}"`
+      `Expected "orientation" to be one of ${lazy.print.defaults.orientationValue}", ` +
+        lazy.pprint`got {settings.orientation}`
     )(settings.orientation);
     lazy.assert.boolean(
       settings.background,
-      `background ${settings.background} is not boolean`
+      lazy.pprint`Expected "background" to be a boolean, got ${settings.background}`
     );
-    lazy.assert.array(settings.pageRanges);
+    lazy.assert.array(
+      settings.pageRanges,
+      lazy.pprint`Expected "pageRanges" to be an array, got ${settings.pageRanges}`
+    );
 
     const printSettings = await lazy.print.getPrintSettings(settings);
     const binaryString = await lazy.print.printToBinaryString(
@@ -1248,6 +1359,7 @@ class BrowsingContextModule extends Module {
    *     If true ignore the browser cache. [Not yet supported]
    * @param {WaitCondition=} options.wait
    *     Wait condition for the navigation, one of "none", "interactive", "complete".
+   *     Defaults to "none".
    *
    * @returns {BrowsingContextNavigateResult}
    *     Navigation result.
@@ -1266,7 +1378,7 @@ class BrowsingContextModule extends Module {
 
     lazy.assert.string(
       contextId,
-      `Expected "context" to be a string, got ${contextId}`
+      lazy.pprint`Expected "context" to be a string, got ${contextId}`
     );
 
     if (typeof ignoreCache != "undefined") {
@@ -1278,7 +1390,8 @@ class BrowsingContextModule extends Module {
     const waitConditions = Object.values(WaitCondition);
     if (!waitConditions.includes(wait)) {
       throw new lazy.error.InvalidArgumentError(
-        `Expected "wait" to be one of ${waitConditions}, got ${wait}`
+        `Expected "wait" to be one of ${waitConditions}, ` +
+          lazy.pprint`got ${wait}`
       );
     }
 
@@ -1301,7 +1414,7 @@ class BrowsingContextModule extends Module {
    * Set the top-level browsing context's viewport to a given dimension.
    *
    * @param {object=} options
-   * @param {string} options.context
+   * @param {string=} options.context
    *     Id of the browsing context.
    * @param {(number|null)=} options.devicePixelRatio
    *     A value to override device pixel ratio, or `null` to reset it to
@@ -1310,6 +1423,8 @@ class BrowsingContextModule extends Module {
    * @param {(Viewport|null)=} options.viewport
    *     Dimensions to set the viewport to, or `null` to reset it
    *     to the original dimensions.
+   * @param {Array<string>=} options.userContexts
+   *     Optional list of user context ids.
    *
    * @throws {InvalidArgumentError}
    *     Raised if an argument is of an invalid type or value.
@@ -1317,7 +1432,99 @@ class BrowsingContextModule extends Module {
    *     Raised when the command is called on Android.
    */
   async setViewport(options = {}) {
-    const { context: contextId, devicePixelRatio, viewport } = options;
+    const {
+      context: contextId = null,
+      devicePixelRatio,
+      viewport,
+      userContexts: userContextIds = null,
+    } = options;
+
+    const userContexts = new Set();
+
+    if (contextId !== null) {
+      lazy.assert.string(
+        contextId,
+        lazy.pprint`Expected "context" to be a string, got ${contextId}`
+      );
+    } else if (userContextIds !== null) {
+      lazy.assert.isNonEmptyArray(
+        userContextIds,
+        lazy.pprint`Expected "userContexts" to be a non-empty array, got ${userContextIds}`
+      );
+
+      for (const userContextId of userContextIds) {
+        lazy.assert.string(
+          userContextId,
+          lazy.pprint`Expected elements of "userContexts" to be a string, got ${userContextId}`
+        );
+
+        const internalId =
+          lazy.UserContextManager.getInternalIdById(userContextId);
+
+        if (internalId === null) {
+          throw new lazy.error.NoSuchUserContextError(
+            `User context with id: ${userContextId} doesn't exist`
+          );
+        }
+
+        userContexts.add(internalId);
+      }
+    } else {
+      throw new lazy.error.InvalidArgumentError(
+        `At least one of "context" or "userContexts" arguments should be provided`
+      );
+    }
+
+    if (contextId !== null && userContextIds !== null) {
+      throw new lazy.error.InvalidArgumentError(
+        `Providing both "context" and "userContexts" arguments is not supported`
+      );
+    }
+
+    if (viewport !== undefined && viewport !== null) {
+      lazy.assert.object(
+        viewport,
+        lazy.pprint`Expected "viewport" to be an object, got ${viewport}`
+      );
+
+      const { height, width } = viewport;
+      lazy.assert.positiveInteger(
+        height,
+        lazy.pprint`Expected viewport's "height" to be a positive integer, got ${height}`
+      );
+      lazy.assert.positiveInteger(
+        width,
+        lazy.pprint`Expected viewport's "width" to be a positive integer, got ${width}`
+      );
+
+      if (height > MAX_WINDOW_SIZE || width > MAX_WINDOW_SIZE) {
+        throw new lazy.error.UnsupportedOperationError(
+          `"width" or "height" cannot be larger than ${MAX_WINDOW_SIZE} px`
+        );
+      }
+    }
+
+    if (devicePixelRatio !== undefined && devicePixelRatio !== null) {
+      lazy.assert.number(
+        devicePixelRatio,
+        lazy.pprint`Expected "devicePixelRatio" to be a number or null, got ${devicePixelRatio}`
+      );
+      lazy.assert.that(
+        value => value > 0,
+        lazy.pprint`Expected "devicePixelRatio" to be greater than 0, got ${devicePixelRatio}`
+      )(devicePixelRatio);
+    }
+
+    const navigables = new Set();
+    if (contextId !== null) {
+      const navigable = this.#getBrowsingContext(contextId);
+      lazy.assert.topLevel(
+        navigable,
+        `Browsing context with id ${contextId} is not top-level`
+      );
+
+      navigables.add(navigable);
+    }
 
     if (lazy.AppInfo.isAndroid) {
       // Bug 1840084: Add Android support for modifying the viewport.
@@ -1326,93 +1533,66 @@ class BrowsingContextModule extends Module {
       );
     }
 
-    lazy.assert.string(
-      contextId,
-      `Expected "context" to be a string, got ${contextId}`
-    );
+    const viewportOverride = {
+      devicePixelRatio,
+      viewport,
+    };
 
-    const context = this.#getBrowsingContext(contextId);
-    if (context.parent) {
-      throw new lazy.error.InvalidArgumentError(
-        `Browsing Context with id ${contextId} is not top-level`
-      );
-    }
-
-    const browser = context.embedderElement;
-    const currentHeight = browser.clientHeight;
-    const currentWidth = browser.clientWidth;
-
-    let targetHeight, targetWidth;
-    if (viewport === undefined) {
-      // Don't modify the viewport's size.
-      targetHeight = currentHeight;
-      targetWidth = currentWidth;
-    } else if (viewport === null) {
-      // Reset viewport to the original dimensions.
-      targetHeight = browser.parentElement.clientHeight;
-      targetWidth = browser.parentElement.clientWidth;
-
-      browser.style.removeProperty("height");
-      browser.style.removeProperty("width");
+    const sessionDataItems = [];
+    if (userContextIds !== null) {
+      for (const userContext of userContexts) {
+        // Prepare the list of navigables to update.
+        lazy.UserContextManager.getTabsForUserContext(userContext).forEach(
+          tab => {
+            const contentBrowser = lazy.TabManager.getBrowserForTab(tab);
+            navigables.add(contentBrowser.browsingContext);
+          }
+        );
+        sessionDataItems.push({
+          category: "viewport-overrides",
+          moduleName: "_configuration",
+          values: [viewportOverride],
+          contextDescriptor: {
+            type: lazy.ContextDescriptorType.UserContext,
+            id: userContext,
+          },
+          method: lazy.SessionDataMethod.Add,
+        });
+      }
     } else {
-      lazy.assert.object(
-        viewport,
-        `Expected "viewport" to be an object, got ${viewport}`
-      );
-
-      const { height, width } = viewport;
-      targetHeight = lazy.assert.positiveInteger(
-        height,
-        `Expected viewport's "height" to be a positive integer, got ${height}`
-      );
-      targetWidth = lazy.assert.positiveInteger(
-        width,
-        `Expected viewport's "width" to be a positive integer, got ${width}`
-      );
-
-      if (targetHeight > MAX_WINDOW_SIZE || targetWidth > MAX_WINDOW_SIZE) {
-        throw new lazy.error.UnsupportedOperationError(
-          `"width" or "height" cannot be larger than ${MAX_WINDOW_SIZE} px`
-        );
-      }
-
-      browser.style.setProperty("height", targetHeight + "px");
-      browser.style.setProperty("width", targetWidth + "px");
-    }
-
-    if (devicePixelRatio !== undefined) {
-      if (devicePixelRatio !== null) {
-        lazy.assert.number(
-          devicePixelRatio,
-          `Expected "devicePixelRatio" to be a number or null, got ${devicePixelRatio}`
-        );
-        lazy.assert.that(
-          devicePixelRatio => devicePixelRatio > 0,
-          `Expected "devicePixelRatio" to be greater than 0, got ${devicePixelRatio}`
-        )(devicePixelRatio);
-
-        context.overrideDPPX = devicePixelRatio;
-      } else {
-        // Will reset to use the global default scaling factor.
-        context.overrideDPPX = 0;
+      for (const navigable of navigables) {
+        sessionDataItems.push({
+          category: "viewport-overrides",
+          moduleName: "_configuration",
+          values: [viewportOverride],
+          contextDescriptor: {
+            type: lazy.ContextDescriptorType.TopBrowsingContext,
+            id: navigable.browserId,
+          },
+          method: lazy.SessionDataMethod.Add,
+        });
       }
     }
 
-    if (targetHeight !== currentHeight || targetWidth !== currentWidth) {
-      // Wait until the viewport has been resized
-      await this.messageHandler.forwardCommand({
-        moduleName: "browsingContext",
-        commandName: "_awaitViewportDimensions",
-        destination: {
-          type: lazy.WindowGlobalMessageHandler.type,
-          id: context.id,
-        },
-        params: {
-          height: targetHeight,
-          width: targetWidth,
-        },
-      });
+    if (sessionDataItems.length) {
+      // TODO: Bug 1953079. Saving the viewport overrides in the session data works fine
+      // with one session, but when we start supporting multiple BiDi session, we will
+      // have to rethink this approach.
+      await this.messageHandler.updateSessionData(sessionDataItems);
     }
+
+    const commands = [];
+
+    for (const navigable of navigables) {
+      commands.push(
+        this._updateNavigableViewport({
+          navigable,
+          viewportOverride,
+        })
+      );
+    }
+
+    await Promise.all(commands);
   }
 
   /**
@@ -1436,14 +1616,19 @@ class BrowsingContextModule extends Module {
 
     lazy.assert.string(
       contextId,
-      `Expected "context" to be a string, got ${contextId}`
+      lazy.pprint`Expected "context" to be a string, got ${contextId}`
     );
 
     const context = this.#getBrowsingContext(contextId);
 
+    lazy.assert.topLevel(
+      context,
+      lazy.pprint`Browsing context with id ${contextId} is not top-level`
+    );
+
     lazy.assert.integer(
       delta,
-      `Expected "delta" to be an integer, got ${delta}`
+      lazy.pprint`Expected "delta" to be an integer, got ${delta}`
     );
 
     const sessionHistory = context.sessionHistory;
@@ -1486,6 +1671,8 @@ class BrowsingContextModule extends Module {
    * @param {Function} startNavigationFn
    *     A callback that starts a navigation.
    * @param {object} options
+   * @param {string=} options.targetURI
+   *     The target URI for the navigation.
    * @param {WaitCondition} options.wait
    *     The WaitCondition to use to wait for the navigation.
    *
@@ -1493,7 +1680,7 @@ class BrowsingContextModule extends Module {
    *     A Promise that resolves to navigate results when the navigation is done.
    */
   async #awaitNavigation(webProgress, startNavigationFn, options) {
-    const { wait } = options;
+    const { targetURI, wait } = options;
 
     const context = webProgress.browsingContext;
     const browserId = context.browserId;
@@ -1501,7 +1688,9 @@ class BrowsingContextModule extends Module {
     const resolveWhenStarted = wait === WaitCondition.None;
     const listener = new lazy.ProgressListener(webProgress, {
       expectNavigation: true,
+      navigationManager: this.messageHandler.navigationManager,
       resolveWhenStarted,
+      targetURI,
       // In case the webprogress is already navigating, always wait for an
       // explicit start flag.
       waitForExplicitStart: true,
@@ -1533,86 +1722,14 @@ class BrowsingContextModule extends Module {
       );
     }
 
-    // If WaitCondition is Complete, we should try to wait for the corresponding
-    // responseCompleted event to be received.
-    let onNavigationRequestCompleted;
-
-    // However, a navigation will not necessarily have network events.
-    // For instance: same document navigation, or when using file or data
-    // protocols (for which we don't have network events yet).
-    // Therefore we will not unconditionally wait for a navigation request and
-    // this flag should only be set when a responseCompleted event should be
-    // expected.
-    let shouldWaitForNavigationRequest = false;
-
-    // Cleaning up the listeners will be done at the end of this method.
-    let unsubscribeNavigationListeners;
-
-    if (wait === WaitCondition.Complete) {
-      let resolveOnNetworkEvent;
-      onNavigationRequestCompleted = new Promise(
-        r => (resolveOnNetworkEvent = r)
-      );
-      const onBeforeRequestSent = (name, data) => {
-        if (data.navigation) {
-          shouldWaitForNavigationRequest = true;
-        }
-      };
-      const onNetworkRequestCompleted = (name, data) => {
-        if (data.navigation) {
-          resolveOnNetworkEvent();
-        }
-      };
-
-      // The network request can either end with _responseCompleted or _fetchError
-      await this.messageHandler.eventsDispatcher.on(
-        "network._beforeRequestSent",
-        contextDescriptor,
-        onBeforeRequestSent
-      );
-      await this.messageHandler.eventsDispatcher.on(
-        "network._responseCompleted",
-        contextDescriptor,
-        onNetworkRequestCompleted
-      );
-      await this.messageHandler.eventsDispatcher.on(
-        "network._fetchError",
-        contextDescriptor,
-        onNetworkRequestCompleted
-      );
-
-      unsubscribeNavigationListeners = async () => {
-        await this.messageHandler.eventsDispatcher.off(
-          "network._beforeRequestSent",
-          contextDescriptor,
-          onBeforeRequestSent
-        );
-        await this.messageHandler.eventsDispatcher.off(
-          "network._responseCompleted",
-          contextDescriptor,
-          onNetworkRequestCompleted
-        );
-        await this.messageHandler.eventsDispatcher.off(
-          "network._fetchError",
-          contextDescriptor,
-          onNetworkRequestCompleted
-        );
-      };
-    }
-
-    const navigated = listener.start();
+    const navigationId = lazy.registerNavigationId({
+      contextDetails: { context: webProgress.browsingContext },
+    });
+    const navigated = listener.start(navigationId);
 
     try {
-      const navigationId = lazy.registerNavigationId({
-        contextDetails: { context: webProgress.browsingContext },
-      });
-
       await startNavigationFn();
       await navigated;
-
-      if (shouldWaitForNavigationRequest) {
-        await onNavigationRequestCompleted;
-      }
 
       let url;
       if (wait === WaitCondition.None) {
@@ -1631,6 +1748,7 @@ class BrowsingContextModule extends Module {
       if (listener.isStarted) {
         listener.stop();
       }
+      listener.destroy();
 
       if (wait === WaitCondition.Interactive) {
         await this.messageHandler.eventsDispatcher.off(
@@ -1638,13 +1756,50 @@ class BrowsingContextModule extends Module {
           contextDescriptor,
           onDocumentInteractive
         );
-      } else if (
-        wait === WaitCondition.Complete &&
-        shouldWaitForNavigationRequest
-      ) {
-        await unsubscribeNavigationListeners();
       }
     }
+  }
+
+  /**
+   * Wrapper around RootBiDiModule._emitEventForBrowsingContext to additionally
+   * check that the payload of the event contains a valid `context` id.
+   *
+   * All browsingContext module events should have such a property set, and a
+   * missing id usually indicates that the browsing context which triggered the
+   * event is out of scope for the current WebDriver BiDi session (eg. chrome or
+   * webextension).
+   *
+   * @param {string} browsingContextId
+   *     The ID of the browsing context to which the event should be emitted.
+   * @param {string} eventName
+   *     The name of the event to be emitted.
+   * @param {object} eventPayload
+   *     The payload to be sent with the event.
+   * @param {number|string} eventPayload.context
+   *     A unique context id computed by the TabManager.
+   */
+  #emitContextEventForBrowsingContext(
+    browsingContextId,
+    eventName,
+    eventPayload
+  ) {
+    // All browsingContext events should include a context id in the payload.
+    const { context = null } = eventPayload;
+    if (context === null) {
+      // If the context could not be found by the TabManager, the event is most
+      // likely related to an unsupported context: eg chrome (bug 1722679) or
+      // webextension (bug 1755014).
+      lazy.logger.trace(
+        `[${browsingContextId}] Skipping event ${eventName} because of a missing unique context id`
+      );
+      return;
+    }
+
+    this._emitEventForBrowsingContext(
+      browsingContextId,
+      eventName,
+      eventPayload
+    );
   }
 
   /**
@@ -1680,9 +1835,9 @@ class BrowsingContextModule extends Module {
    * @param {BrowsingContext} context
    *     The browsing context to get the information from.
    * @param {object=} options
-   * @param {boolean=} options.isRoot
-   *     Flag that indicates if this browsing context is the root of all the
-   *     browsing contexts to be returned. Defaults to true.
+   * @param {boolean=} options.includeParentId
+   *     Flag that indicates if the parent ID should be included.
+   *     Defaults to true.
    * @param {number=} options.maxDepth
    *     Depth of the browsing context tree to traverse. If not specified
    *     the whole tree is returned.
@@ -1690,27 +1845,37 @@ class BrowsingContextModule extends Module {
    *     The information about the browsing context.
    */
   #getBrowsingContextInfo(context, options = {}) {
-    const { isRoot = true, maxDepth = null } = options;
+    const { includeParentId = true, maxDepth = null } = options;
 
     let children = null;
     if (maxDepth === null || maxDepth > 0) {
       children = context.children.map(context =>
         this.#getBrowsingContextInfo(context, {
           maxDepth: maxDepth === null ? maxDepth : maxDepth - 1,
-          isRoot: false,
+          includeParentId: false,
         })
       );
     }
 
     const userContext = lazy.UserContextManager.getIdByBrowsingContext(context);
+    const originalOpener =
+      context.crossGroupOpener !== null
+        ? lazy.TabManager.getIdForBrowsingContext(context.crossGroupOpener)
+        : null;
     const contextInfo = {
       children,
       context: lazy.TabManager.getIdForBrowsingContext(context),
+      // TODO: Bug 1904641. If a browsing context was not tracked in TabManager,
+      // because it was created and discarded before the WebDriver BiDi session was
+      // started, we get undefined as id for this browsing context.
+      // We should remove this condition, when we can provide a correct id here.
+      originalOpener: originalOpener === undefined ? null : originalOpener,
       url: context.currentURI.spec,
       userContext,
+      clientWindow: lazy.windowManager.getIdForBrowsingContext(context),
     };
 
-    if (isRoot) {
+    if (includeParentId) {
       // Only emit the parent id for the top-most browsing context.
       const parentId = lazy.TabManager.getIdForBrowsingContext(context.parent);
       contextInfo.parent = parentId;
@@ -1738,6 +1903,12 @@ class BrowsingContextModule extends Module {
         return;
       }
 
+      // Filter out notifications for webextension contexts until support gets
+      // added (bug 1755014).
+      if (browsingContext.currentRemoteType === "extension") {
+        return;
+      }
+
       const browsingContextInfo = this.#getBrowsingContextInfo(
         browsingContext,
         {
@@ -1745,17 +1916,10 @@ class BrowsingContextModule extends Module {
         }
       );
 
-      // This event is emitted from the parent process but for a given browsing
-      // context. Set the event's contextInfo to the message handler corresponding
-      // to this browsing context.
-      const contextInfo = {
-        contextId: browsingContext.id,
-        type: lazy.WindowGlobalMessageHandler.type,
-      };
-      this.emitEvent(
+      this.#emitContextEventForBrowsingContext(
+        browsingContext.id,
         "browsingContext.contextCreated",
-        browsingContextInfo,
-        contextInfo
+        browsingContextInfo
       );
     }
   };
@@ -1779,6 +1943,12 @@ class BrowsingContextModule extends Module {
         return;
       }
 
+      // Filter out notifications for webextension contexts until support gets
+      // added (bug 1755014).
+      if (browsingContext.currentRemoteType === "extension") {
+        return;
+      }
+
       // If this event is for a child context whose top or parent context is also destroyed,
       // we don't need to send it, in this case the event for the top/parent context is enough.
       if (
@@ -1788,46 +1958,31 @@ class BrowsingContextModule extends Module {
         return;
       }
 
-      const browsingContextInfo = this.#getBrowsingContextInfo(
-        browsingContext,
-        {
-          maxDepth: 0,
-        }
-      );
+      const browsingContextInfo = this.#getBrowsingContextInfo(browsingContext);
 
-      // This event is emitted from the parent process but for a given browsing
-      // context. Set the event's contextInfo to the message handler corresponding
-      // to this browsing context.
-      const contextInfo = {
-        contextId: browsingContext.id,
-        type: lazy.WindowGlobalMessageHandler.type,
-      };
-      this.emitEvent(
+      this.#emitContextEventForBrowsingContext(
+        browsingContext.id,
         "browsingContext.contextDestroyed",
-        browsingContextInfo,
-        contextInfo
+        browsingContextInfo
       );
     }
   };
 
-  #onLocationChanged = async (eventName, data) => {
+  #onFragmentNavigated = async (eventName, data) => {
     const { navigationId, navigableId, url } = data;
     const context = this.#getBrowsingContext(navigableId);
 
     if (this.#subscribedEvents.has("browsingContext.fragmentNavigated")) {
-      const contextInfo = {
-        contextId: context.id,
-        type: lazy.WindowGlobalMessageHandler.type,
+      const browsingContextInfo = {
+        context: navigableId,
+        navigation: navigationId,
+        timestamp: Date.now(),
+        url,
       };
-      this.emitEvent(
+      this.#emitContextEventForBrowsingContext(
+        context.id,
         "browsingContext.fragmentNavigated",
-        {
-          context: navigableId,
-          navigation: navigationId,
-          timestamp: Date.now(),
-          url,
-        },
-        contextInfo
+        browsingContextInfo
       );
     }
   };
@@ -1835,62 +1990,95 @@ class BrowsingContextModule extends Module {
   #onPromptClosed = async (eventName, data) => {
     if (this.#subscribedEvents.has("browsingContext.userPromptClosed")) {
       const { contentBrowser, detail } = data;
-      const contextId = lazy.TabManager.getIdForBrowser(contentBrowser);
+      const navigableId = lazy.TabManager.getIdForBrowser(contentBrowser);
 
-      if (contextId === null) {
+      if (navigableId === null) {
         return;
       }
 
-      // This event is emitted from the parent process but for a given browsing
-      // context. Set the event's contextInfo to the message handler corresponding
-      // to this browsing context.
-      const contextInfo = {
-        contextId,
-        type: lazy.WindowGlobalMessageHandler.type,
-      };
-
       const params = {
-        context: contextId,
-        ...detail,
+        context: navigableId,
+        accepted: detail.accepted,
+        type: detail.promptType,
+        userText: detail.userText,
       };
-
-      this.emitEvent("browsingContext.userPromptClosed", params, contextInfo);
+      this.#emitContextEventForBrowsingContext(
+        contentBrowser.browsingContext.id,
+        "browsingContext.userPromptClosed",
+        params
+      );
     }
   };
 
   #onPromptOpened = async (eventName, data) => {
     if (this.#subscribedEvents.has("browsingContext.userPromptOpened")) {
       const { contentBrowser, prompt } = data;
+      const type = prompt.promptType;
 
       // Do not send opened event for unsupported prompt types.
-      if (!(prompt.promptType in UserPromptType)) {
+      if (!(type in UserPromptType)) {
+        lazy.logger.trace(`Prompt type "${type}" not supported`);
         return;
       }
 
-      const contextId = lazy.TabManager.getIdForBrowser(contentBrowser);
-      // This event is emitted from the parent process but for a given browsing
-      // context. Set the event's contextInfo to the message handler corresponding
-      // to this browsing context.
-      const contextInfo = {
-        contextId,
-        type: lazy.WindowGlobalMessageHandler.type,
-      };
+      const navigableId = lazy.TabManager.getIdForBrowser(contentBrowser);
 
-      const type = prompt.promptType;
+      const session = lazy.getWebDriverSessionById(
+        this.messageHandler.sessionId
+      );
+      const handlerConfig = session.userPromptHandler.getPromptHandler(type);
+
       const eventPayload = {
-        context: contextId,
-        type,
+        context: navigableId,
+        handler: handlerConfig.handler,
         message: await prompt.getText(),
+        type,
       };
 
       if (type === "prompt") {
         eventPayload.defaultValue = await prompt.getInputText();
       }
 
-      this.emitEvent(
+      this.#emitContextEventForBrowsingContext(
+        contentBrowser.browsingContext.id,
         "browsingContext.userPromptOpened",
-        eventPayload,
-        contextInfo
+        eventPayload
+      );
+    }
+  };
+
+  #onNavigationCommitted = async (eventName, data) => {
+    const { navigableId, navigationId, url, contextId } = data;
+
+    if (this.#subscribedEvents.has("browsingContext.navigationCommitted")) {
+      const eventPayload = {
+        context: navigableId,
+        navigation: navigationId,
+        timestamp: Date.now(),
+        url,
+      };
+      this.#emitContextEventForBrowsingContext(
+        contextId,
+        "browsingContext.navigationCommitted",
+        eventPayload
+      );
+    }
+  };
+
+  #onNavigationFailed = async (eventName, data) => {
+    const { navigableId, navigationId, url, contextId } = data;
+
+    if (this.#subscribedEvents.has("browsingContext.navigationFailed")) {
+      const eventPayload = {
+        context: navigableId,
+        navigation: navigationId,
+        timestamp: Date.now(),
+        url,
+      };
+      this.#emitContextEventForBrowsingContext(
+        contextId,
+        "browsingContext.navigationFailed",
+        eventPayload
       );
     }
   };
@@ -1900,20 +2088,16 @@ class BrowsingContextModule extends Module {
     const context = this.#getBrowsingContext(navigableId);
 
     if (this.#subscribedEvents.has("browsingContext.navigationStarted")) {
-      const contextInfo = {
-        contextId: context.id,
-        type: lazy.WindowGlobalMessageHandler.type,
+      const eventPayload = {
+        context: navigableId,
+        navigation: navigationId,
+        timestamp: Date.now(),
+        url,
       };
-
-      this.emitEvent(
+      this.#emitContextEventForBrowsingContext(
+        context.id,
         "browsingContext.navigationStarted",
-        {
-          context: navigableId,
-          navigation: navigationId,
-          timestamp: Date.now(),
-          url,
-        },
-        contextInfo
+        eventPayload
       );
     }
   };
@@ -1944,6 +2128,7 @@ class BrowsingContextModule extends Module {
 
     const hasNavigationEvent =
       this.#subscribedEvents.has("browsingContext.fragmentNavigated") ||
+      this.#subscribedEvents.has("browsingContext.navigationFailed") ||
       this.#subscribedEvents.has("browsingContext.navigationStarted");
 
     if (!hasNavigationEvent) {
@@ -1972,6 +2157,8 @@ class BrowsingContextModule extends Module {
         break;
       }
       case "browsingContext.fragmentNavigated":
+      case "browsingContext.navigationCommitted":
+      case "browsingContext.navigationFailed":
       case "browsingContext.navigationStarted": {
         this.#navigationListener.startListening();
         this.#subscribedEvents.add(event);
@@ -1994,6 +2181,8 @@ class BrowsingContextModule extends Module {
         break;
       }
       case "browsingContext.fragmentNavigated":
+      case "browsingContext.navigationCommitted":
+      case "browsingContext.navigationFailed":
       case "browsingContext.navigationStarted": {
         this.#stopListeningToNavigationEvent(event);
         break;
@@ -2007,18 +2196,12 @@ class BrowsingContextModule extends Module {
   }
 
   #waitForVisibilityChange(browsingContext) {
-    return this.messageHandler.forwardCommand({
-      moduleName: "browsingContext",
-      commandName: "_awaitVisibilityState",
-      destination: {
-        type: lazy.WindowGlobalMessageHandler.type,
-        id: browsingContext.id,
-      },
-      params: {
-        value: "hidden",
-      },
-      retryOnAbort: true,
-    });
+    return this._forwardToWindowGlobal(
+      "_awaitVisibilityState",
+      browsingContext.id,
+      { value: "hidden" },
+      { retryOnAbort: true }
+    );
   }
 
   /**
@@ -2050,6 +2233,76 @@ class BrowsingContextModule extends Module {
     }
   }
 
+  /**
+   * Update the viewport of the navigable.
+   *
+   * @param {object} options
+   * @param {BrowsingContext} options.navigable
+   *     Navigable whose viewport should be updated.
+   * @param {ViewportOverride} options.viewportOverride
+   *     Object which holds viewport settings
+   *     which should be applied.
+   */
+  async _updateNavigableViewport(options) {
+    const { navigable, viewportOverride } = options;
+    const { devicePixelRatio, viewport } = viewportOverride;
+
+    const browser = navigable.embedderElement;
+    const currentHeight = browser.clientHeight;
+    const currentWidth = browser.clientWidth;
+
+    let targetHeight, targetWidth;
+    if (viewport === undefined) {
+      // Don't modify the viewport's size.
+      targetHeight = currentHeight;
+      targetWidth = currentWidth;
+    } else if (viewport === null) {
+      // Reset viewport to the original dimensions.
+      targetHeight = browser.parentElement.clientHeight;
+      targetWidth = browser.parentElement.clientWidth;
+
+      browser.style.removeProperty("height");
+      browser.style.removeProperty("width");
+    } else {
+      const { height, width } = viewport;
+
+      targetHeight = height;
+      targetWidth = width;
+
+      browser.style.setProperty("height", targetHeight + "px");
+      browser.style.setProperty("width", targetWidth + "px");
+    }
+
+    if (devicePixelRatio !== undefined) {
+      if (devicePixelRatio !== null) {
+        navigable.overrideDPPX = devicePixelRatio;
+      } else {
+        // Will reset to use the global default scaling factor.
+        navigable.overrideDPPX = 0;
+      }
+    }
+
+    if (targetHeight !== currentHeight || targetWidth !== currentWidth) {
+      if (!navigable.isActive) {
+        // Force a synchronous update of the remote browser dimensions so that
+        // background tabs get resized.
+        browser.ownerDocument.synchronouslyUpdateRemoteBrowserDimensions(
+          /* aIncludeInactive = */ true
+        );
+      }
+      // Wait until the viewport has been resized
+      await this._forwardToWindowGlobal(
+        "_awaitViewportDimensions",
+        navigable.id,
+        {
+          height: targetHeight,
+          width: targetWidth,
+        },
+        { retryOnAbort: true }
+      );
+    }
+  }
+
   static get supportedEvents() {
     return [
       "browsingContext.contextCreated",
@@ -2057,6 +2310,8 @@ class BrowsingContextModule extends Module {
       "browsingContext.domContentLoaded",
       "browsingContext.fragmentNavigated",
       "browsingContext.load",
+      "browsingContext.navigationCommitted",
+      "browsingContext.navigationFailed",
       "browsingContext.navigationStarted",
       "browsingContext.userPromptClosed",
       "browsingContext.userPromptOpened",

@@ -84,6 +84,7 @@ class QuickSettingsSheetDialogFragment : FenixDialogFragment() {
             context = context,
             websiteUrl = args.url,
             websiteTitle = args.title,
+            isLocalPdf = args.isLocalPdf,
             isSecured = args.isSecured,
             permissions = args.sitePermissions,
             settings = components.settings,
@@ -152,6 +153,7 @@ class QuickSettingsSheetDialogFragment : FenixDialogFragment() {
         _binding = null
     }
 
+    @Suppress("OVERRIDE_DEPRECATION")
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<out String>,

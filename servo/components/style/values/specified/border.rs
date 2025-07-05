@@ -305,6 +305,7 @@ impl Parse for BorderSpacing {
     ToResolvedValue,
     ToShmem,
 )]
+#[repr(u8)]
 pub enum BorderImageRepeatKeyword {
     Stretch,
     Repeat,
@@ -326,6 +327,7 @@ pub enum BorderImageRepeatKeyword {
     ToResolvedValue,
     ToShmem,
 )]
+#[repr(C)]
 pub struct BorderImageRepeat(pub BorderImageRepeatKeyword, pub BorderImageRepeatKeyword);
 
 impl ToCss for BorderImageRepeat {

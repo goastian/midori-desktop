@@ -12,7 +12,7 @@ from talos import filter, utils
 LOG = get_proxy_logger()
 
 
-class Output(object):
+class Output:
     """abstract base class for Talos output"""
 
     @classmethod
@@ -160,16 +160,6 @@ class Output(object):
                     if "mainthreadio" in name:
                         continue
 
-                    # responsiveness has it's own metric, not the mean
-                    # TODO: consider doing this for all counters
-                    if "responsiveness" == name:
-                        subtest = {
-                            "name": name,
-                            "value": filter.responsiveness_Metric(vals),
-                        }
-                        counter_subtests.append(subtest)
-                        continue
-
                     subtest = {
                         "name": name,
                         "value": 0.0,
@@ -274,56 +264,6 @@ class Output(object):
         return filter.mean(results)
 
     @classmethod
-    def stylebench_score(cls, val_list):
-        """
-        stylebench_score: https://bug-172968-attachments.webkit.org/attachment.cgi?id=319888
-        """
-        correctionFactor = 3
-        results = [i for i, j in val_list]
-
-        # stylebench has 5 tests, each of these are made of up 5 subtests
-        #
-        #   * Adding classes.
-        #   * Removing classes.
-        #   * Mutating attributes.
-        #   * Adding leaf elements.
-        #   * Removing leaf elements.
-        #
-        # which are made of two subtests each (sync/async) and repeated 5 times
-        # each, thus, the list here looks like:
-        #
-        #   [Test name/Adding classes - 0/ Sync; <x>]
-        #   [Test name/Adding classes - 0/ Async; <y>]
-        #   [Test name/Adding classes - 0; <x> + <y>]
-        #   [Test name/Removing classes - 0/ Sync; <x>]
-        #   [Test name/Removing classes - 0/ Async; <y>]
-        #   [Test name/Removing classes - 0; <x> + <y>]
-        #   ...
-        #   [Test name/Adding classes - 1 / Sync; <x>]
-        #   [Test name/Adding classes - 1 / Async; <y>]
-        #   [Test name/Adding classes - 1 ; <x> + <y>]
-        #   ...
-        #   [Test name/Removing leaf elements - 4; <x> + <y>]
-        #   [Test name; <sum>] <- This is what we want.
-        #
-        # So, 5 (subtests) *
-        #     5 (repetitions) *
-        #     3 (entries per repetition (sync/async/sum)) =
-        #     75 entries for test before the sum.
-        #
-        # We receive 76 entries per test, which ads up to 380. We want to use
-        # the 5 test entries, not the rest.
-        if len(results) != 380:
-            raise Exception(
-                "StyleBench requires 380 entries, found: %s instead" % len(results)
-            )
-
-        results = results[75::76]
-        # pylint --py3k W1619
-        score = 60 * 1000 / filter.geometric_mean(results) / correctionFactor
-        return score
-
-    @classmethod
     def damp_score(cls, val_list):
         """
         damp_score: damp is only interested in the value of subtests and will
@@ -333,9 +273,7 @@ class Output(object):
         return 100
 
     def construct_results(self, vals, testname):
-        if "responsiveness" in testname:
-            return filter.responsiveness_Metric([val for (val, page) in vals])
-        elif testname.startswith("v8_7"):
+        if testname.startswith("v8_7"):
             return self.v8_Metric(vals)
         elif testname.startswith("kraken"):
             return self.JS_Metric(vals)
@@ -345,8 +283,6 @@ class Output(object):
             return self.benchmark_score(vals)
         elif testname.startswith("speedometer"):
             return self.speedometer_score(vals)
-        elif testname.startswith("stylebench"):
-            return self.stylebench_score(vals)
         elif testname.startswith("damp"):
             return self.damp_score(vals)
         elif len(vals) > 1:

@@ -484,6 +484,7 @@ PORT_NewArena
 PORT_NewArena_Util
 PORT_Realloc_Util
 PORT_RegExpSearch
+PORT_SafeZero
 PORT_SetError
 PORT_SetError_Util
 PORT_SetUCS2_ASCIIConversionFunction
@@ -531,6 +532,7 @@ SECITEM_CopyItem_Util
 SECITEM_DupArray
 SECITEM_DupItem
 SECITEM_DupItem_Util
+SECITEM_FreeArray
 SECITEM_FreeItem
 SECITEM_FreeItem_Util
 SECITEM_HashCompare
@@ -580,6 +582,7 @@ SECMOD_GetReadLock
 SECMOD_InternaltoPubMechFlags
 SECMOD_LoadModule
 SECMOD_LoadUserModule
+SECMOD_LoadUserModuleWithFunction
 SECMOD_LockedModuleHasRemovableSlots
 SECMOD_OpenUserDB
 SECMOD_PubCipherFlagstoInternal

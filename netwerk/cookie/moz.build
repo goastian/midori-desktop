@@ -15,6 +15,7 @@ XPIDL_SOURCES += [
     "nsICookieNotification.idl",
     "nsICookiePermission.idl",
     "nsICookieService.idl",
+    "nsIThirdPartyCookieBlockingExceptionListService.idl",
 ]
 
 XPIDL_MODULE = "necko_cookie"
@@ -22,15 +23,18 @@ XPIDL_MODULE = "necko_cookie"
 
 EXPORTS.mozilla.net = [
     "Cookie.h",
+    "CookieCommons.h",
     "CookieJarSettings.h",
     "CookieKey.h",
     "CookieNotification.h",
+    "CookieParser.h",
     "CookiePersistentStorage.h",
     "CookiePrivateStorage.h",
     "CookieService.h",
     "CookieServiceChild.h",
     "CookieServiceParent.h",
     "CookieStorage.h",
+    "ThirdPartyCookieBlockingExceptions.h",
 ]
 UNIFIED_SOURCES += [
     "Cookie.cpp",
@@ -38,12 +42,14 @@ UNIFIED_SOURCES += [
     "CookieJarSettings.cpp",
     "CookieLogging.cpp",
     "CookieNotification.cpp",
+    "CookieParser.cpp",
     "CookiePersistentStorage.cpp",
     "CookiePrivateStorage.cpp",
     "CookieService.cpp",
     "CookieServiceChild.cpp",
     "CookieServiceParent.cpp",
     "CookieStorage.cpp",
+    "ThirdPartyCookieBlockingExceptions.cpp",
 ]
 XPCSHELL_TESTS_MANIFESTS += [
     "test/unit/xpcshell.toml",
@@ -68,8 +74,16 @@ LOCAL_INCLUDES += [
     "/netwerk/protocol/http",
 ]
 
+EXTRA_JS_MODULES += [
+    "ThirdPartyCookieBlockingExceptionListService.sys.mjs",
+]
+
 TESTING_JS_MODULES += [
     "CookieXPCShellUtils.sys.mjs",
+]
+
+XPCOM_MANIFESTS += [
+    "components.conf",
 ]
 
 include("/ipc/chromium/chromium-config.mozbuild")

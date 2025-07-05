@@ -6,21 +6,21 @@
 //!
 //! [attr]: https://dom.spec.whatwg.org/#interface-attr
 
+use crate::color::{AbsoluteColor, parsing::parse_color_keyword};
 use crate::properties::PropertyDeclarationBlock;
 use crate::shared_lock::Locked;
 use crate::str::str_join;
 use crate::str::{read_exponent, read_fraction, HTML_SPACE_CHARACTERS};
 use crate::str::{read_numbers, split_commas, split_html_space_chars};
 use crate::values::specified::Length;
+use crate::values::specified::color::Color;
 use crate::values::AtomString;
 use crate::{Atom, LocalName, Namespace, Prefix};
 use app_units::Au;
-use cssparser::{self, Color, RGBA};
 use euclid::num::Zero;
 use num_traits::ToPrimitive;
 use selectors::attr::AttrSelectorOperation;
 use servo_arc::Arc;
-use servo_url::ServoUrl;
 use std::str::FromStr;
 
 // Duplicated from script::dom::values.
@@ -44,14 +44,17 @@ pub enum AttrValue {
     Double(String, f64),
     Atom(Atom),
     Length(String, Option<Length>),
-    Color(String, Option<RGBA>),
+    Color(String, Option<AbsoluteColor>),
     Dimension(String, LengthOrPercentageOrAuto),
 
     /// Stores a URL, computed from the input string and a document's base URL.
     ///
     /// The URL is resolved at setting-time, so this kind of attribute value is
     /// not actually suitable for most URL-reflecting IDL attributes.
-    ResolvedUrl(String, Option<ServoUrl>),
+    ResolvedUrl(
+        String,
+        #[ignore_malloc_size_of = "Arc"] Option<Arc<url::Url>>
+    ),
 
     /// Note that this variant is only used transitively as a fast path to set
     /// the property declaration block relevant to the style of an element when
@@ -243,8 +246,8 @@ impl AttrValue {
         AttrValue::Atom(value)
     }
 
-    pub fn from_resolved_url(base: &ServoUrl, url: String) -> AttrValue {
-        let joined = base.join(&url).ok();
+    pub fn from_resolved_url(base: &Arc<::url::Url>, url: String) -> AttrValue {
+        let joined = base.join(&url).ok().map(Arc::new);
         AttrValue::ResolvedUrl(url, joined)
     }
 
@@ -292,7 +295,7 @@ impl AttrValue {
     /// ## Panics
     ///
     /// Panics if the `AttrValue` is not a `Color`
-    pub fn as_color(&self) -> Option<&RGBA> {
+    pub fn as_color(&self) -> Option<&AbsoluteColor> {
         match *self {
             AttrValue::Color(_, ref color) => color.as_ref(),
             _ => panic!("Color not found"),
@@ -316,7 +319,7 @@ impl AttrValue {
     /// ## Panics
     ///
     /// Panics if the `AttrValue` is not a `ResolvedUrl`
-    pub fn as_resolved_url(&self) -> Option<&ServoUrl> {
+    pub fn as_resolved_url(&self) -> Option<&Arc<::url::Url>> {
         match *self {
             AttrValue::ResolvedUrl(_, ref url) => url.as_ref(),
             _ => panic!("Url not found"),
@@ -404,7 +407,7 @@ pub fn parse_nonzero_length(value: &str) -> LengthOrPercentageOrAuto {
 /// Parses a [legacy color][color]. If unparseable, `Err` is returned.
 ///
 /// [color]: https://html.spec.whatwg.org/multipage/#rules-for-parsing-a-legacy-colour-value
-pub fn parse_legacy_color(mut input: &str) -> Result<RGBA, ()> {
+pub fn parse_legacy_color(mut input: &str) -> Result<AbsoluteColor, ()> {
     // Steps 1 and 2.
     if input.is_empty() {
         return Err(());
@@ -419,8 +422,8 @@ pub fn parse_legacy_color(mut input: &str) -> Result<RGBA, ()> {
     }
 
     // Step 5.
-    if let Ok(Color::RGBA(rgba)) = cssparser::parse_color_keyword(input) {
-        return Ok(rgba);
+    if let Ok(Color::Absolute(ref absolute)) = parse_color_keyword(input) {
+        return Ok(absolute.color);
     }
 
     // Step 6.
@@ -431,7 +434,7 @@ pub fn parse_legacy_color(mut input: &str) -> Result<RGBA, ()> {
             hex(input.as_bytes()[2] as char),
             hex(input.as_bytes()[3] as char),
         ) {
-            return Ok(RGBA::new(r * 17, g * 17, b * 17, 255));
+            return Ok(AbsoluteColor::srgb_legacy(r * 17, g * 17, b * 17, 1.0));
         }
     }
 
@@ -500,11 +503,11 @@ pub fn parse_legacy_color(mut input: &str) -> Result<RGBA, ()> {
     }
 
     // Steps 15-20.
-    return Ok(RGBA::new(
+    return Ok(AbsoluteColor::srgb_legacy(
         hex_string(red).unwrap(),
         hex_string(green).unwrap(),
         hex_string(blue).unwrap(),
-        255,
+        1.0,
     ));
 
     fn hex(ch: char) -> Result<u8, ()> {

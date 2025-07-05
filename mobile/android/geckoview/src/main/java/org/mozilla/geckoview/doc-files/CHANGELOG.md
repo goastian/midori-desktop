@@ -13,6 +13,179 @@ exclude: true
 
 ⚠️  breaking change and deprecation notices
 
+## v140
+- Added a [`GeckoPreferenceController`][140.1] class to manage Gecko preferences.
+- Introduced a new [`preference observer delegate`][140.2] and a way to [`register`][140.3] preferences on the delegate.
+- Added options on [`GeckoPreferenceController`][140.1] to [`Get`][140.4] and [`Set`][140.5] Gecko preferences.
+- Added option on [`GeckoPreferenceController`][140.1] to [`Clear`][140.6] a Gecko preference.
+- Added [`setSameDocumentNavigationOverridesLoadType`][140.7] and  [`setSameDocumentNavigationOverridesLoadTypeForceDisable`][140.8] to set values on the `GeckoRuntimeSettings` builder to determine whether the same document navigation should override the load type or not.
+- Added [`getSameDocumentNavigationOverridesLoadType`][140.9], [`setSameDocumentNavigationOverridesLoadType`][140.10], [`getSameDocumentNavigationOverridesLoadTypeForceDisable`][140.11], [`setSameDocumentNavigationOverridesLoadTypeForceDisable`][140.12] to get the runtime settings for same document navigation overriding the load type.
+- ⚠️ Deprecated a [`GeckoSession.PromptDelegate.CertificateRequest`][140.13] constructor in favor of one that takes an array of acceptable issuers.
+- Added support for controlling `network.android_doh.autoselect_enabled` via [`GeckoRuntimeSettings.setDohAutoselectEnabled`][140.14]
+- Added support for controlling `network.security.ports.banned` via [`GeckoRuntimeSettings.setBannedPorts`][140.15]
+
+[140.1]: {{javadoc_uri}}/GeckoPreferenceController.html
+[140.2]: {{javadoc_uri}}/GeckoPreferenceController.Observer.Delegate.html
+[140.3]: {{javadoc_uri}}/GeckoPreferenceController.Observer.html
+[140.4]: {{javadoc_URI}}/GeckoPreferenceController.html#getGeckoPref(java.lang.String,int)
+[140.5]: {{javadoc_URI}}/GeckoPreferenceController.html#setGeckoPref(java.lang.String,java.lang.String,int)
+[140.6]: {{javadoc_URI}}/GeckoPreferenceController.html#clearGeckoUserPref(java.lang.String)
+[140.7]: {{javadoc_uri}}/GeckoRuntimeSettings.Builder.html#setSameDocumentNavigationOverridesLoadType(boolean)
+[140.8]: {{javadoc_uri}}/GeckoRuntimeSettings.Builder.html#setSameDocumentNavigationOverridesLoadTypeForceDisable(java.lang.String)
+[140.9]: {{javadoc_uri}}/GeckoRuntimeSettings.html#getSameDocumentNavigationOverridesLoadType()
+[140.10]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setSameDocumentNavigationOverridesLoadType(boolean)
+[140.11]: {{javadoc_uri}}/GeckoRuntimeSettings.html#getSameDocumentNavigationOverridesLoadTypeForceDisable()
+[140.12]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setSameDocumentNavigationOverridesLoadTypeForceDisable(java.lang.String)
+[140.13]: {{javadoc_uri}}/GeckoSession.PromptDelegate.CertificateRequest.html#<init>(java.lang.String,org.mozilla.geckoview.GeckoSession.PromptDelegate.BasePrompt.Observer,java.lang.String)
+[140.14]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setDohAutoselectEnabled
+[140.15]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setBannedPorts
+
+## v139
+- ⚠️ Removed deprecated [`GeckoSession.requestAnalysis`][118.4], [`GeckoSession.requestCreateAnalysis`][122.2], [`GeckoSession.requestAnalysisStatus`][137.1], [`GeckoSession.sendPlacementAttributionEvent`][123.3], [`GeckoSession.pollForAnalysisCompleted`][137.2], [`GeckoSession.sendClickAttributionEvent`][121.4], [`GeckoSession.sendImpressionAttributionEvent`][121.5], [`GeckoSession.sendPlacementAttributionEvent`][123.3], [`GeckoSession.requestRecommendations`][118.5], [`GeckoSession.reportBackInStock`][122.1], `AnalysisStatusResponse`, [`ReviewAnalysis`][120.2] and [`Recommendation`][120.3].
+- Added [`CompositorController.onPipModeChanged`][139.1] to [`CompositorController`][65.1] to inform GeckoSession of changes to and from picture-in-picture mode.
+- ⚠️Increased `compileSdkVersion` to 36 (Android 16)
+- Added [`getLowMemoryDetection()`][139.2] on `GeckoRuntimeSettings` and [`lowMemoryDetection(boolean)`][139.3] on `GeckoRuntimeSettings.Builder` to control the low-memory detection machinery.
+- ⚠️ Changed the meaning of `EXTRA_CRASH_PROCESS_TYPE`: it now refers to the actual process type
+  reported by gecko. The previous meaning has moved to `EXTRA_CRASH_PROCESS_VISIBILITY` in
+  `ACTION_CRASHED` intents to avoid confusion with "process type" terminology in crash handling
+  code. The `CRASHED_PROCESS_TYPE_*` constants are deprecated (to be removed in v142) and equivalent
+  `CRASHED_PROCESS_VISIBILITY_*` constants have been added. ([bug 1959799]({{bugzilla}}1959799)
+- Added `setEnhancedTrackingProtectionCategory` to [`ContentBlocking.Settings`][139.4].
+  ([bug 1956620]({{bugzilla}}1956620))
+
+[139.1]: {{javadoc_uri}}/CompositorController.html#onPipModeChanged
+[139.2]: {{javadoc_uri}}/GeckoRuntimeSettings.html#getLowMemoryDetection
+[139.3]: {{javadoc_uri}}/GeckoRuntimeSettings.Builder.html#lowMemoryDetection
+[139.4]: {{javadoc_uri}}/ContentBlocking.html
+
+## v138
+- Added [`GeckoSession.Loader.originalInput`][138.1] option, which allows passing through the original user address bar input
+- Added [`PromptDelegate.FilePrompt.Type.FOLDER`][138.2] to show directory picker.
+  ([bug 1674428]({{bugzilla}}1674428))
+- Added [`onFolderUploadPrompt`][138.3] and [`PromptDelegate.FolderUploadPrompt`][138.4] to confirm folder upload.
+  ([bug 1674428]({{bugzilla}}1674428))
+- Added [`GeckoSession.PromptDelegate.onRequestCertificate`][138.5] to support client authentication certificates.
+  ([bug 1813930]({{bugzilla}}1813930))
+- Added [`Loader#textDirectiveUserActivation`][138.6] to set text directive user activation.
+  ([bug 1912095]({{bugzilla}}1912095))
+- Added [`GeckoSession.sendMoreWebCompatInfo`][138.7] that sends a `GeckoResult<JSONObject>` of web compatibility information. ([bug 1952931]({{bugzilla}}1952931)).
+- Added [`GeckoWebExecutor#FETCH_FLAG_OHTTP`][138.8]. This new flag allows for making Oblivious HTTP requests.
+
+[138.1]: {{javadoc_uri}}/GeckoSession.Loader.html#originalInput(java.lang.String)
+[138.2]: {{javadoc_uri}}/GeckoSession.PromptDelegate.FilePrompt.Type.html#FOLDER
+[138.3]: {{javadoc_uri}}/GeckoSession.PromptDelegate.html#onFolderUploadPrompt(org.mozilla.geckoview.GeckoSession,org.mozilla.geckoview.GeckoSession.PromptDelegate.FolderUploadPrompt)
+[138.4]: {{javadoc_uri}}/GeckoSession.PromptDelegate.FolderUploadPrompt.html
+[138.5]: {{javadoc_uri}}/GeckoSession.PromptDelegate.html#onRequestCertificate(org.mozilla.geckoview.GeckoSession,org.mozilla.geckoview.GeckoSession.PromptDelegate.CertificateRequest)
+[138.6]: {{javadoc_uri}}/GeckoSession.Loader.html#textDirectiveUserActivation(boolean)
+[138.7]: {{javadoc_uri}}/GeckoSession.html#sendMoreWebCompatInfo()
+[138.8]: {{javadoc_uri}}/GeckoWebExecutor.html#FETCH_FLAG_OHTTP
+
+## v137
+- ⚠️ [`GeckoSession.requestAnalysis`][118.4], [`GeckoSession.requestCreateAnalysis`][122.2], [`GeckoSession.requestAnalysisStatus`][137.1], [`GeckoSession.sendPlacementAttributionEvent`][123.3], [`GeckoSession.pollForAnalysisCompleted`][137.2], [`GeckoSession.sendClickAttributionEvent`][121.4], [`GeckoSession.sendImpressionAttributionEvent`][121.5], [`GeckoSession.sendPlacementAttributionEvent`][123.3], [`GeckoSession.requestRecommendations`][118.5], [`GeckoSession.reportBackInStock`][122.1], `AnalysisStatusResponse`, [`ReviewAnalysis`][120.2] and [`Recommendation`][120.3] are deprecated, and it will be deleted in version 139 see https://bugzilla.mozilla.org/show_bug.cgi?id=1941470.
+- Added support for controlling `network.trr.default_provider_uri` via [`GeckoRuntimeSettings.setDefaultRecursiveResolverUri`][137.3] and [`GeckoRuntimeSettings.getDefaultRecursiveResolverUri`][137.4]
+- [`GeckoRuntimeSettings.getFingerprintingProtection`][137.6] and [`GeckoRuntimeSettings.getFingerprintingProtectionPrivateBrowsing`][137.7] are now `@Nullable` to indicates that their values are controlled by the engine.
+- Added support for controlling `security.tls.enable_kyber` and `network.http.http3.enable_kyber` via [`GeckoRuntimeSettings.setPostQuantumKeyExchangeEnabled`][137.8]
+
+[137.1]: {{javadoc_uri}}/GeckoSession.html#requestAnalysisStatus(String)
+[137.2]: {{javadoc_uri}}/GeckoSession.html#pollForAnalysisCompleted(String)
+[137.3]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setDefaultRecursiveResolverUri
+[137.4]: {{javadoc_uri}}/GeckoRuntimeSettings.html#getDefaultRecursiveResolverUri
+[137.6]: {{javadoc_uri}}/GeckoRuntimeSettings.html#getFingerprintingProtection
+[137.7]: {{javadoc_uri}}/GeckoRuntimeSettings.html#getFingerprintingProtectionPrivateBrowsing
+[137.8]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setPostQuantumKeyExchangeEnabled
+
+## v136
+- Added support for controlling `security.pki.certificate_transparency.mode` via [`GeckoRuntimeSettings.setCertificateTransparencyMode`][136.1]
+- Added [`GeckoSession.CompositorScrollDelegate`][136.2] interface, which allows reacting to scroll position changes as soon as they are composited
+- Added support for controlling `network.trr.excluded-domains` via [`GeckoRuntimeSettings.setTrustedRecursiveResolverExcludedDomains`][136.3] and [`GeckoRuntimeSettings.getTrustedRecursiveResolverExcludedDomains`][136.4]
+- Added [`GeckoSession.Loader.originalInput`][136.5] option, which allows passing through the original user address bar input
+
+[136.1]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setCertificateTransparencyMode
+[136.2]: {{javadoc_uri}}/GeckoSession.html#CompositorScrollDelegate
+[136.3]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setTrustedRecursiveResolverExcludedDomains
+[136.4]: {{javadoc_uri}}/GeckoRuntimeSettings.html#getTrustedRecursiveResolverExcludedDomains
+[136.5]: {{javadoc_uri}}/GeckoSession.Loader.html#originalInput(java.lang.String)
+
+## v134
+- ⚠️ [`WebExtensionController.PromptDelegate.onInstallPrompt`][133.5] is removed see https://bugzilla.mozilla.org/show_bug.cgi?id=1919374 for more details.
+- Added support for controlling `javascript.options.mem.gc_parallel_marking` via [`GeckoRuntimeSettings.setParallelMarkingEnabled`][134.1]
+
+[134.1]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setParallelMarkingEnabled
+
+## v133
+- Added [`GeckoSession.getWebCompatInfo`][133.1] that returns a `GeckoResult<JSONObject>` for web compatability information. ([bug 1917273]({{bugzilla}}1917273)).
+- Added [`isInteractiveWidgetDefaultResizesVisual`][133.2] to tell the preference value of "dom.interactive_widget_default_resizes_visual".
+- Added [`WebExtension.PermissionPromptResponse`][133.3] Represents a response from `WebExtension` prompt request.
+- Added [`WebExtension.onInstallPromptRequest`][133.4] Delegate notified when install prompt needs to be shown.
+- ⚠️ [`WebExtensionController.PromptDelegate.onInstallPrompt`][133.5] is deprecated, and it will be deleted in version 134 see https://bugzilla.mozilla.org/show_bug.cgi?id=1919374.
+- Added [`ERROR_SOFT_BLOCKED`][133.6] to `WebExtension.InstallException.ErrorCodes`, and [`SOFT_BLOCKLIST`][133.7] to`WebExtension.DisabledFlags`. ([bug 1917852]({{bugzilla}}1917852))
+- Added [`InstallException.extensionId`][133.8], which indicates the ID of the extension that caused the exception.
+- Added [`getFissionEnabled()`][133.9] on `GeckoRuntimeSettings` and [`fissionEnabled(boolean)`][133.10] on `GeckoRuntimeSettings.Builder` to control Fission on Android.
+- Added [`InstallException.extensionVersion`][133.11], which indicates the version of the extension that caused the exception.
+- Added [`WebExtensionController.INSTALLATION_METHOD_ONBOARDING`][133.12], which should be used when a `WebExtension` is installed from the embedder's onboarding feature.
+- Added support for controlling `network.fetchpriority.enabled` via [`GeckoRuntimeSettings.setFetchPriorityEnabled`][133.13]
+- Added [`GeckoRuntimeSettings.setCookieBehaviorOptInPartitioning`][133.14] and [`GeckoRuntimeSettings.setCookieBehaviorOptInPartitioningPBM`][133.15] to control the cookie behavior opt-in partitioning.
+
+[133.1]: {{javadoc_uri}}/GeckoSession.html#getWebCompatInfo()
+[133.2]: {{javadoc_uri}}/GeckoRuntime.html#isInteractiveWidgetDefaultResizesVisual()
+[133.3]: {{javadoc_uri}}/WebExtension.PermissionPromptResponse.html
+[133.4]: {{javadoc_uri}}/WebExtensionController.PromptDelegate.html#onInstallPromptRequest
+[133.5]: {{javadoc_uri}}/WebExtensionController.PromptDelegate.html#onInstallPrompt
+[133.6]: {{javadoc_uri}}/WebExtension.InstallException.ErrorCodes.html#ERROR_BLOCKLISTED
+[133.7]: {{javadoc_uri}}/WebExtension.DisabledFlags.html#SOFT_BLOCKLIST
+[133.8]: {{javadoc_uri}}/WebExtension.InstallException.html#extensionId
+[133.9]: {{javadoc_uri}}/GeckoRuntimeSettings.html#getFissionEnabled()
+[133.10]: {{javadoc_uri}}/GeckoRuntimeSettings.Builder.html#fissionEnabled(boolean)
+[133.11]: {{javadoc_uri}}/WebExtension.InstallException.html#extensionVersion
+[133.12]: {{javadoc_uri}}/WebExtensionController.html#INSTALLATION_METHOD_ONBOARDING
+[133.13]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setFetchPriorityEnabled
+[133.14]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setCookieBehaviorOptInPartitioning
+[133.15]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setCookieBehaviorOptInPartitioningPBM
+
+## v132
+-Added [`getDisableShip`][132.1] to get the setting for Session History in Parent (SHIP)) and [`disableShip`][132.2] to set the status of SHIP on the `GeckoRuntimeSettings` builder.
+- Added [`setWebContentIsolationStrategy`][132.3] and [`getWebContentIsolationStrategy`][132.4]
+and defined the strategies.
+
+[132.1]: {{javadoc_uri}}/GeckoRuntimeSettings.html#getDisableShip()
+[132.2]: {{javadoc_uri}}/GeckoRuntimeSettings.Builder.html#disableShip(boolean)
+[132.3]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setWebContentIsolationStrategy(int)
+[132.4]: {{javadoc_uri}}/GeckoRuntimeSettings.html#getWebContentIsolationStrategy()
+
+## v131
+- Added [`GeckoDisplay.windowInsetsChanged`][131.1].
+- Added [`GeckoView.addWindowInsetsListener`][131.2] and [`GeckoView.removeWindowInsetsListener`][131.3] to allow listening WindowInsets changes of Activity's root window with multiple listeners.
+- ⚠️Increased `compileSdkVersion` to 35 (Android 15)
+- ️️⚠️ Removed deprecated [`GeckoSession.ContentDelegate.onProductUrl`][128.5].
+- Added support for controlling `toolkit.telemetry.user_characteristics_ping.current_version` via [`GeckoRuntimeSettings.setUserCharacteristicPingCurrentVersion`][131.4]
+
+[131.1]: {{javadoc_uri}}/GeckoDisplay.html#windowInsetsChanged
+[131.2]: {{javadoc_uri}}/GeckoView.html#addWindowInsetsListener
+[131.3]: {{javadoc_uri}}/GeckoView.html#removeWindowInsetsListener
+[131.4]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setUserCharacteristicPingCurrentVersion
+
+## v130
+- ⚠️ Removed [`TranslationState`][127.4] constructor, please use the new [`TranslationState`][127.3] constructor with `hasVisibleChange`. ([bug 1895275]({{bugzilla}}1895275))
+- Added support for controlling `privacy.fingerprintingProtection` and `privacy.fingerprintingProtection.pbmode` via [`GeckoRuntimeSettings.setFingerprintingProtection`][130.1]
+- Added support for controlling `privacy.fingerprintingProtection.overrides` via [`GeckoRuntimeSettings.setFingerprintingProtectionOverrides`][130.2]
+- Added support for controlling `javascript.options.use_fdlibm_for_sin_cos_tan` via [`GeckoRuntimeSettings.setFdlibmMathEnabled`][130.3]
+
+[130.1]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setFingerprintingProtection
+[130.2]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setFingerprintingProtectionOverrides
+[130.3]: {{javadoc_uri}}/GeckoRuntimeSettings.html#setFdlibmMathEnabled
+
+## v129
+- Added [`ERROR_ADMIN_INSTALL_ONLY`][129.1] to `WebExtension.InstallException.ErrorCodes`. ([bug 1902222]({{bugzilla}}1902222))
+- Added [`ContentDelegate.onHideDynamicToolbar`][129.2] to notify
+  the app that it must fully-collapse its dynamic toolbar ([bug 1855990]({{bugzilla}}1855990))
+- Added [`PURGED_BOUNCETRACKER`][129.3] and [`BLOCKED_SUSPICIOUS_FINGERPRINTING`][129.4]
+  to `ContentBlockingController.Event`. ([bug 1901808]({{bugzilla}}1901808))
+
+[129.1]: {{javadoc_uri}}/WebExtension.InstallException.ErrorCodes.html#ERROR_ADMIN_INSTALL_ONLY
+[129.2]: {{javadoc_uri}}/GeckoSession.ContentDelegate.html#onHideDynamicToolbar(org.mozilla.geckoview.GeckoSession)
+[129.3]: {{javadoc_uri}}/ContentBlockingController.Event.html#PURGED_BOUNCETRACKER
+[129.4]: {{javadoc_uri}}/ContentBlockingController.Event.html#BLOCKED_SUSPICIOUS_FINGERPRINTING
+
 ## v128
 - ⚠️ Removed deprecated [`GeckoSession.NavigationDelegate.onLocationChange`][128.1]
 - Reverted the change to the `WebExtension.MetaData` related to "prompt" permissions ([bug 1879543]({{bugzilla}}1879543)) and explicitly passed the permissions/origins into the `PromptDelegate` methods. Required permissions and origins are now available via [`WebExtension.MetaData.requiredPermissions`][128.2] and [`WebExtension.MetaData.requiredOrigins`][128.3].
@@ -1571,4 +1744,4 @@ to allow adding gecko profiler markers.
 [65.24]: {{javadoc_uri}}/CrashReporter.html#sendCrashReport(android.content.Context,android.os.Bundle,java.lang.String)
 [65.25]: {{javadoc_uri}}/GeckoResult.html
 
-[api-version]: 24697aa7b11e3d09335606e1951de2dd4c9f15df
+[api-version]: 6d93b98aed14f546f7db741f766e52adef92dc07

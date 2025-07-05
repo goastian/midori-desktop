@@ -123,6 +123,12 @@ def assert_paths(a, b):
             "exclude": [],
             "expected": [],
         },
+        {
+            "paths": ["a.py"],
+            "include": ["a.js"],
+            "exclude": [],
+            "expected": [],
+        },
     ),
 )
 def test_filterpaths(test):
@@ -218,7 +224,7 @@ def test_collapse(paths, expected):
         else:
             inputs.append(path)
 
-    print("inputs: {}".format(inputs))
+    print(f"inputs: {inputs}")
     assert_paths(pathutils.collapse(inputs), expected)
 
 

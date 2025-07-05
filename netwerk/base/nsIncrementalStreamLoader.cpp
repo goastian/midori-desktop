@@ -44,6 +44,11 @@ nsIncrementalStreamLoader::GetRequest(nsIRequest** aRequest) {
 
 NS_IMETHODIMP
 nsIncrementalStreamLoader::OnStartRequest(nsIRequest* request) {
+  nsresult rv = mObserver->OnStartRequest(request);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
   nsCOMPtr<nsIChannel> chan(do_QueryInterface(request));
   if (chan) {
     int64_t contentLength = -1;
@@ -152,7 +157,8 @@ nsresult nsIncrementalStreamLoader::WriteSegmentFun(
       // Adopting elems back (at least its portion).
       self->mData.replaceRawBuffer(elems, length);
       if (consumedCount > 0) {
-        self->mData.erase(self->mData.begin() + consumedCount);
+        self->mData.erase(self->mData.begin(),
+                          self->mData.begin() + consumedCount);
       }
     }
   }

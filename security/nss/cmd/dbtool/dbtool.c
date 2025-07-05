@@ -256,7 +256,7 @@ static const SEC_ASN1Template pkcs12V2PBEParameterTemplate[] = {
 static const SEC_ASN1Template pkcs5V2PBEParameterTemplate[] = {
     { SEC_ASN1_SEQUENCE, 0, NULL, sizeof(PBEParameter) },
     /* this is really a choice, but since we don't understand any other
-       * choice, just inline it. */
+     * choice, just inline it. */
     { SEC_ASN1_OCTET_STRING, offsetof(PBEParameter, salt) },
     { SEC_ASN1_INTEGER, offsetof(PBEParameter, iteration) },
     { SEC_ASN1_INTEGER, offsetof(PBEParameter, keyLength) },
@@ -309,7 +309,7 @@ makeNSSVendorName(CK_ATTRIBUTE_TYPE attribute, const char *nameType)
     static char nss_name[256];
     const char *name = NULL;
     if ((attribute >= CKA_NSS) && (attribute < 0xffffffffUL)) {
-        sprintf(nss_name, "%s+%d", nameType, (int)(attribute - CKA_NSS));
+        snprintf(nss_name, sizeof(nss_name), "%s+%d", nameType, (int)(attribute - CKA_NSS));
         name = nss_name;
     }
     return name;
@@ -546,18 +546,18 @@ dumpSignature(CK_ATTRIBUTE_TYPE attribute, SDB *keydb, PRBool isKey,
     if (!force && !isAuthenticatedAttribute(attribute)) {
         return;
     }
-    sprintf(id, META_SIG_TEMPLATE,
-            isKey ? "key" : "cert",
-            (unsigned int)objectID, (unsigned int)attribute);
+    snprintf(id, sizeof(id), META_SIG_TEMPLATE,
+             isKey ? "key" : "cert",
+             (unsigned int)objectID, (unsigned int)attribute);
     printf("        Signature %s:", id);
     signText.data = signData;
     signText.len = sizeof(signData);
 
     crv = (*keydb->sdb_GetMetaData)(keydb, id, &signText, NULL);
     if ((crv != CKR_OK) && isKey) {
-        sprintf(id, META_SIG_TEMPLATE,
-                isKey ? "key" : "cert", (unsigned int)(objectID | SFTK_KEYDB_TYPE | SFTK_TOKEN_TYPE),
-                (unsigned int)attribute);
+        snprintf(id, sizeof(id), META_SIG_TEMPLATE,
+                 isKey ? "key" : "cert", (unsigned int)(objectID | SFTK_KEYDB_TYPE | SFTK_TOKEN_TYPE),
+                 (unsigned int)attribute);
         crv = (*keydb->sdb_GetMetaData)(keydb, id, &signText, NULL);
     }
     if (crv != CKR_OK) {
@@ -730,11 +730,11 @@ secu_ConfigDirectory(const char *base)
             home = "";
 
         if (*home && home[strlen(home) - 1] == '/')
-            sprintf(buf, "%.900s%s", home, dir);
+            snprintf(buf, sizeof(buf), "%.900s%s", home, dir);
         else
-            sprintf(buf, "%.900s/%s", home, dir);
+            snprintf(buf, sizeof(buf), "%.900s/%s", home, dir);
     } else {
-        sprintf(buf, "%.900s", base);
+        snprintf(buf, sizeof(buf), "%.900s", base);
         if (buf[strlen(buf) - 1] == '/')
             buf[strlen(buf) - 1] = 0;
     }

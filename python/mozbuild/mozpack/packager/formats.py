@@ -2,7 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from six.moves.urllib.parse import urlparse
+from urllib.parse import urlparse
 
 import mozpack.path as mozpath
 from mozpack.chrome.manifest import (
@@ -58,7 +58,7 @@ data.
 """
 
 
-class PiecemealFormatter(object):
+class PiecemealFormatter:
     """
     Generic formatter that dispatches across different sub-formatters
     according to paths.
@@ -121,7 +121,7 @@ class FlatFormatter(PiecemealFormatter):
         )
 
 
-class FlatSubFormatter(object):
+class FlatSubFormatter:
     """
     Sub-formatter for the flat package format.
     """
@@ -345,10 +345,11 @@ class OmniJarSubFormatter(PiecemealFormatter):
             return True
         return path[0] in [
             "modules",
+            "moz-src",
             "actors",
             "dictionaries",
             "hyphenation",
             "localization",
-            "update.locale",
+            "default.locale",
             "contentaccessible",
         ]

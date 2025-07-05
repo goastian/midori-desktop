@@ -61,12 +61,12 @@ ALLOWLIST_FILENAME = os.path.join(SCRIPT_DIR, "mtio-allowlist.json")
 
 def parse(logfilename, data):
     try:
-        with open(logfilename, "r") as logfile:
+        with open(logfilename) as logfile:
             if not logfile:
                 return False
             stage = STAGE_STARTUP
             for line in logfile:
-                prev_filename = str()
+                prev_filename = ""
                 entries = line.strip().split(",")
                 if len(entries) == LENGTH_IO_ENTRY:
                     if stage == STAGE_STARTUP:
@@ -107,7 +107,7 @@ def parse(logfilename, data):
                     # Format 2: next stage
                     stage = stage + 1
             return True
-    except IOError as e:
+    except OSError as e:
         print("%s: %s" % (e.filename, e.strerror))
         return False
 
@@ -134,7 +134,7 @@ def write_output(outfilename, data):
                     outfile.write("\n")
             outfile.write("]\n")
             return True
-    except IOError as e:
+    except OSError as e:
         print("%s: %s" % (e.filename, e.strerror))
         return False
 

@@ -1,10 +1,9 @@
-import io
 import os
 
 import manifestparser
 
 
-class Creator(object):
+class Creator:
     def __init__(self, topsrcdir, test, suite, doc, **kwargs):
         self.topsrcdir = topsrcdir
         self.test = test
@@ -63,11 +62,7 @@ class MochitestCreator(Creator):
         template_file_name = self.templates.get(self.suite)
 
         if template_file_name is None:
-            print(
-                "Sorry, `addtest` doesn't currently know how to add {}".format(
-                    self.suite
-                )
-            )
+            print(f"Sorry, `addtest` doesn't currently know how to add {self.suite}")
             return None
 
         template_file_name = template_file_name % {"doc": self.doc}
@@ -75,9 +70,7 @@ class MochitestCreator(Creator):
         template_file = os.path.join(mochitest_templates, template_file_name)
         if not os.path.isfile(template_file):
             print(
-                "Sorry, `addtest` doesn't currently know how to add {} with document type {}".format(  # NOQA: E501
-                    self.suite, self.doc
-                )
+                f"Sorry, `addtest` doesn't currently know how to add {self.suite} with document type {self.doc}"
             )
             return None
 
@@ -184,9 +177,9 @@ testing/web-platform/mozilla/tests for Gecko-only tests"""
 
     def _get_template_contents(self, reference=False):
         args = {
-            "documentElement": "<html class=reftest-wait>\n"
-            if self.kwargs["wait"]
-            else ""
+            "documentElement": (
+                "<html class=reftest-wait>\n" if self.kwargs["wait"] else ""
+            )
         }
 
         if self.test.rsplit(".", 1)[1] == "js":
@@ -303,7 +296,7 @@ def update_toml_or_ini(manifest_prefix, testpath):
     if not os.path.isfile(manifest_file):
         manifest_file = os.path.join(basedir, manifest_prefix + ".ini")
         if not os.path.isfile(manifest_file):
-            print("Could not open manifest file {}".format(manifest_file))
+            print(f"Could not open manifest file {manifest_file}")
             return
     filename = os.path.basename(testpath)
     write_to_manifest_file(manifest_file, filename)
@@ -316,7 +309,7 @@ def write_to_manifest_file(manifest_file, filename):
     insert_before = None
 
     if any(t["name"] == filename for t in manifest.tests):
-        print("{} is already in the manifest.".format(filename))
+        print(f"{filename} is already in the manifest.")
         return
 
     for test in manifest.tests:
@@ -324,7 +317,7 @@ def write_to_manifest_file(manifest_file, filename):
             insert_before = test.get("name")
             break
 
-    with open(manifest_file, "r") as f:
+    with open(manifest_file) as f:
         contents = f.readlines()
 
     entry_line = '["{}"]\n' if use_toml else "[{}]"
@@ -339,7 +332,7 @@ def write_to_manifest_file(manifest_file, filename):
                 contents.insert(i, filename)
                 break
 
-    with io.open(manifest_file, "w", newline="\n") as f:
+    with open(manifest_file, "w", newline="\n") as f:
         f.write("".join(contents))
 
 
@@ -351,8 +344,7 @@ TEST_CREATORS = {
 
 
 def creator_for_suite(suite):
-    if suite.split("-")[0] == "mochitest":
-        base_suite = "mochitest"
-    else:
-        base_suite = suite.rsplit("-", 1)[0]
-    return TEST_CREATORS.get(base_suite)
+    for key, creator in TEST_CREATORS.items():
+        if suite.startswith(key):
+            return creator
+    return None

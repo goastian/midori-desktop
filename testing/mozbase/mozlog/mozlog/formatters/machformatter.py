@@ -6,7 +6,6 @@
 import time
 from functools import reduce
 
-import six
 from mozterm import Terminal
 
 from ..handlers import SummaryHandler
@@ -42,7 +41,7 @@ def format_seconds(total):
     return "%2d:%05.2f" % (minutes, seconds)
 
 
-class TerminalColors(object):
+class TerminalColors:
     def __init__(self, term, color_dict):
         for key, value in color_dict.items():
             attribute = getattr(term, value)
@@ -76,7 +75,7 @@ class MachFormatter(base.BaseFormatter):
         summary_on_shutdown=False,
         verbose=False,
         enable_screenshot=False,
-        **kwargs
+        **kwargs,
     ):
         super(MachFormatter, self).__init__(**kwargs)
 
@@ -142,7 +141,7 @@ class MachFormatter(base.BaseFormatter):
         return test_id
 
     def _get_file_name(self, test_id):
-        if isinstance(test_id, (str, six.text_type)):
+        if isinstance(test_id, str):
             return test_id
 
         if isinstance(test_id, tuple):
@@ -151,7 +150,7 @@ class MachFormatter(base.BaseFormatter):
         assert False, "unexpected test_id"
 
     def suite_start(self, data):
-        num_tests = reduce(lambda x, y: x + len(y), six.itervalues(data["tests"]), 0)
+        num_tests = reduce(lambda x, y: x + len(y), data["tests"].values(), 0)
         action = self.color_formatter.action(data["action"].upper())
         name = ""
         if "name" in data:
@@ -221,9 +220,7 @@ class MachFormatter(base.BaseFormatter):
         rv.append(
             "Ran {} checks ({})".format(
                 sum(checks.values()),
-                ", ".join(
-                    ["{} {}s".format(v, k) for k, v in sorted(checks.items()) if v]
-                ),
+                ", ".join([f"{v} {k}s" for k, v in sorted(checks.items()) if v]),
             )
         )
 
@@ -233,33 +230,28 @@ class MachFormatter(base.BaseFormatter):
             "known_intermittent", count, include_skip=False
         )
         intermittents = sum(intermittent_checks.values())
-        known = (
-            " ({} known intermittents)".format(intermittents) if intermittents else ""
-        )
-        rv.append("Expected results: {}{}".format(sum(checks.values()), known))
+        known = f" ({intermittents} known intermittents)" if intermittents else ""
+        rv.append(f"Expected results: {sum(checks.values())}{known}")
 
         # Format skip counts
         skip_tests = count["test"]["expected"]["skip"]
         skip_subtests = count["subtest"]["expected"]["skip"]
         if skip_tests:
-            skipped = "Skipped: {} tests".format(skip_tests)
+            skipped = f"Skipped: {skip_tests} tests"
             if skip_subtests:
-                skipped = "{}, {} subtests".format(skipped, skip_subtests)
+                skipped = f"{skipped}, {skip_subtests} subtests"
             rv.append(skipped)
 
         # Format unexpected counts
         checks = self.summary.aggregate("unexpected", count)
         unexpected_count = sum(checks.values())
-        rv.append("Unexpected results: {}".format(unexpected_count))
+        rv.append(f"Unexpected results: {unexpected_count}")
         if unexpected_count:
             for key in ("test", "subtest", "assert"):
                 if not count[key]["unexpected"]:
                     continue
                 status_str = ", ".join(
-                    [
-                        "{} {}".format(n, s)
-                        for s, n in sorted(count[key]["unexpected"].items())
-                    ]
+                    [f"{n} {s}" for s, n in sorted(count[key]["unexpected"].items())]
                 )
                 rv.append(
                     "  {}: {} ({})".format(
@@ -615,9 +607,11 @@ class MachFormatter(base.BaseFormatter):
             path=data["path"],
             normal=self.color_formatter.normal,
             c1=self.color_formatter.grey,
-            c2=self.color_formatter.error
-            if data["level"] == "error"
-            else (self.color_formatter.log_test_status_fail),
+            c2=(
+                self.color_formatter.error
+                if data["level"] == "error"
+                else (self.color_formatter.log_test_status_fail)
+            ),
             lineno=str(data["lineno"]),
             column=(":" + str(data["column"])) if data.get("column") else "",
             level=data["level"],

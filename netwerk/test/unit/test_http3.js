@@ -23,6 +23,7 @@ let h3Route;
 let httpsOrigin;
 let httpOrigin;
 let h3AltSvc;
+let h3Port;
 
 let prefs;
 
@@ -61,7 +62,7 @@ function run_test() {
   let h2Port = Services.env.get("MOZHTTP2_PORT");
   Assert.notEqual(h2Port, null);
   Assert.notEqual(h2Port, "");
-  let h3Port = Services.env.get("MOZHTTP3_PORT");
+  h3Port = Services.env.get("MOZHTTP3_PORT");
   Assert.notEqual(h3Port, null);
   Assert.notEqual(h3Port, "");
   h3AltSvc = ":" + h3Port;
@@ -111,7 +112,7 @@ function h1Response(metadata, response) {
   response.setHeader("Access-Control-Allow-Headers", "x-altsvc", false);
 
   try {
-    let hval = "h3-29=" + metadata.getHeader("x-altsvc");
+    let hval = "h3=" + metadata.getHeader("x-altsvc");
     response.setHeader("Alt-Svc", hval, false);
   } catch (e) {}
 
@@ -177,9 +178,9 @@ Http3CheckListener.prototype = {
       try {
         httpVersion = request.protocolVersion;
       } catch (e) {}
-      Assert.equal(httpVersion, "h3-29");
+      Assert.equal(httpVersion, "h3");
       Assert.equal(this.onDataAvailableFired, true);
-      Assert.equal(request.getResponseHeader("X-Firefox-Http3"), "h3-29");
+      Assert.equal(request.getResponseHeader("X-Firefox-Http3"), "h3");
     }
     run_next_test();
     do_test_finished();
@@ -212,7 +213,7 @@ WaitForHttp3Listener.prototype.onStopRequest = function testOnStopRequest(
 
   if (routed == this.expectedRoute) {
     Assert.equal(routed, this.expectedRoute); // always true, but a useful log
-    Assert.equal(httpVersion, "h3-29");
+    Assert.equal(httpVersion, "h3");
     run_next_test();
   } else {
     dump("poll later for alt svc mapping\n");
@@ -240,10 +241,23 @@ function doTest(uri, expectedRoute, altSvc) {
 }
 
 // Test Alt-Svc for http3.
-// H2 server returns alt-svc=h3-29=:h3port
+// H2 server returns alt-svc=h3=:h3port
 function test_https_alt_svc() {
   dump("test_https_alt_svc()\n");
   do_test_pending();
+  if (mozinfo.os == "android") {
+    // Set necessary prefs to make Firefox connect to the http3Server on the
+    // host machine.
+    prefs.setCharPref("network.dns.localDomains", "");
+    const overrideService = Cc[
+      "@mozilla.org/network/native-dns-override;1"
+    ].getService(Ci.nsINativeDNSResolverOverride);
+    overrideService.addIPOverride("foo.example.com", "10.0.2.2");
+    prefs.setCharPref(
+      "network.http.http3.alt-svc-mapping-for-testing",
+      `foo.example.com;h3=:${h3Port}`
+    );
+  }
   doTest(httpsOrigin + "http3-test", h3Route, h3AltSvc);
 }
 
@@ -295,7 +309,7 @@ MultipleListener.prototype = {
       try {
         httpVersion = request.protocolVersion;
       } catch (e) {}
-      Assert.equal(httpVersion, "h3-29");
+      Assert.equal(httpVersion, "h3");
     }
 
     if (!Components.isSuccessCode(request.status)) {
@@ -428,7 +442,7 @@ function do_post(content, chan, listener, method) {
   let stream = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(
     Ci.nsIStringInputStream
   );
-  stream.data = content;
+  stream.setByteStringData(content);
 
   let uchan = chan.QueryInterface(Ci.nsIUploadChannel);
   uchan.setUploadStream(stream, "text/plain", stream.available());
@@ -461,7 +475,14 @@ function test_patch() {
 // Test alt-svc for http (without s)
 function test_http_alt_svc() {
   dump("test_http_alt_svc()\n");
-
+  // Skip this test on Android because the httpOrigin (http://foo.example.com)
+  // is on 127.0.0.1, while the http3Server (https://foo.example.com) is
+  // on 10.0.2.2. Currently, we can't change the IP mapping dynamically.
+  if (mozinfo.os == "android") {
+    current_test++;
+    run_next_test();
+    return;
+  }
   do_test_pending();
   doTest(httpOrigin + "http3-test", h3Route, h3AltSvc);
 }
@@ -498,7 +519,7 @@ SlowReceiverListener.prototype.onStopRequest = function (request, status) {
     try {
       httpVersion = request.protocolVersion;
     } catch (e) {}
-    Assert.equal(httpVersion, "h3-29");
+    Assert.equal(httpVersion, "h3");
     Assert.equal(this.onDataAvailableFired, true);
   }
   run_next_test();

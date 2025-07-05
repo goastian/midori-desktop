@@ -2,18 +2,17 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-import io
 import logging
 import os
 import re
 from collections import defaultdict, namedtuple
+from functools import reduce
+from io import StringIO
 from itertools import chain
 from operator import itemgetter
 
 import mozpack.path as mozpath
-import six
 from mozpack.manifests import InstallManifest
-from six import StringIO
 
 from mozbuild import frontend
 from mozbuild.frontend.context import (
@@ -123,7 +122,7 @@ def make_quote(s):
     return s.replace("#", r"\#").replace("$", "$$")
 
 
-class BackendMakeFile(object):
+class BackendMakeFile:
     """Represents a generated backend.mk file.
 
     This is both a wrapper around a file handle as well as a container that
@@ -167,8 +166,7 @@ class BackendMakeFile(object):
         self.fh.write(buf)
 
     def write_once(self, buf):
-        buf = six.ensure_text(buf)
-        if "\n" + buf not in six.ensure_text(self.fh.getvalue()):
+        if "\n" + buf not in self.fh.getvalue().decode():
             self.write(buf)
 
     # For compatibility with makeutil.Makefile
@@ -194,7 +192,7 @@ class BackendMakeFile(object):
         return self.fh.diff
 
 
-class RecursiveMakeTraversal(object):
+class RecursiveMakeTraversal:
     """
     Helper class to keep track of how the "traditional" recursive make backend
     recurses subdirectories. This is useful until all adhoc rules are removed
@@ -478,7 +476,6 @@ class RecursiveMakeBackend(MakeBackend):
         elif isinstance(obj, HostSources):
             suffix_map = {
                 ".c": "HOST_CSRCS",
-                ".mm": "HOST_CMMSRCS",
                 ".cpp": "HOST_CPPSRCS",
             }
             variables = [suffix_map[obj.canonical_suffix]]
@@ -764,7 +761,7 @@ class RecursiveMakeBackend(MakeBackend):
             rule.add_dependencies(["%s/pre-compile" % relobjdir])
 
         all_compile_deps = (
-            six.moves.reduce(lambda x, y: x | y, self._compile_graph.values())
+            reduce(lambda x, y: x | y, self._compile_graph.values())
             if self._compile_graph
             else set()
         )
@@ -776,7 +773,7 @@ class RecursiveMakeBackend(MakeBackend):
         # - nodes that are rust targets.
         compile_roots = [
             t
-            for t, deps in six.iteritems(self._compile_graph)
+            for t, deps in self._compile_graph.items()
             if t in self._rust_targets or t not in all_compile_deps
         ]
 
@@ -834,7 +831,7 @@ class RecursiveMakeBackend(MakeBackend):
                 self._no_skip["syms"].remove(dirname)
 
         add_category_rules("compile", compile_roots, self._compile_graph)
-        for category, graph in sorted(six.iteritems(non_default_graphs)):
+        for category, graph in sorted(non_default_graphs.items()):
             add_category_rules(category, non_default_roots[category], graph)
 
         for relobjdir, tier, input in self._post_process_dependencies:
@@ -872,7 +869,7 @@ class RecursiveMakeBackend(MakeBackend):
             "non_default_tiers := %s" % " ".join(sorted(non_default_roots.keys()))
         )
 
-        for category, graphs in sorted(six.iteritems(non_default_graphs)):
+        for category, graphs in sorted(non_default_graphs.items()):
             category_dirs = [mozpath.dirname(target) for target in graphs.keys()]
             root_mk.add_statement("%s_dirs := %s" % (category, " ".join(category_dirs)))
 
@@ -993,7 +990,7 @@ class RecursiveMakeBackend(MakeBackend):
                 obj.topobjdir = bf.environment.topobjdir
                 obj.config = bf.environment
                 self._create_makefile(obj, stub=stub)
-                with io.open(obj.output_path, encoding="utf-8") as fh:
+                with open(obj.output_path, encoding="utf-8") as fh:
                     content = fh.read()
                     # Directories with a Makefile containing a tools target, or
                     # XPI_PKGNAME can't be skipped and must run during the
@@ -1753,7 +1750,7 @@ class RecursiveMakeBackend(MakeBackend):
             for manifest in sorted(manifests):
                 master.write('["include:%s"]\n' % manifest)
 
-    class Substitution(object):
+    class Substitution:
         """BaseConfigSubstitution-like class for use with _create_makefile."""
 
         __slots__ = ("input_path", "output_path", "topsrcdir", "topobjdir", "config")
@@ -1769,8 +1766,6 @@ class RecursiveMakeBackend(MakeBackend):
         with self._get_preprocessor(obj) as pp:
             if extra:
                 pp.context.update(extra)
-            if not pp.context.get("autoconfmk", ""):
-                pp.context["autoconfmk"] = "autoconf.mk"
             pp.handleLine(
                 "# THIS FILE WAS AUTOMATICALLY GENERATED. DO NOT MODIFY BY HAND.\n"
             )
@@ -1780,7 +1775,7 @@ class RecursiveMakeBackend(MakeBackend):
             pp.handleLine("srcdir := @srcdir@\n")
             pp.handleLine("srcdir_rel := @srcdir_rel@\n")
             pp.handleLine("relativesrcdir := @relativesrcdir@\n")
-            pp.handleLine("include $(DEPTH)/config/@autoconfmk@\n")
+            pp.handleLine("include $(DEPTH)/config/autoconf.mk\n")
             if not stub:
                 pp.do_include(obj.input_path)
             # Empty line to avoid failures when last line in Makefile.in ends
@@ -1835,7 +1830,7 @@ class RecursiveMakeBackend(MakeBackend):
         )
 
         ipdl_srcs_path = mozpath.join(ipdl_dir, "ipdlsrcs.txt")
-        mk.add_statement("ALL_IPDLSRCS_FILE := {}".format(ipdl_srcs_path))
+        mk.add_statement(f"ALL_IPDLSRCS_FILE := {ipdl_srcs_path}")
 
         # Preprocessed ipdl files are generated in ipdl_dir.
         mk.add_statement(
@@ -1853,10 +1848,10 @@ class RecursiveMakeBackend(MakeBackend):
         # Windows (32768 bytes) if the checkout path is sufficiently long.
         with self._write_file(ipdl_srcs_path) as srcs:
             for filename in sorted_nonstatic_ipdl_basenames:
-                srcs.write("{}\n".format(filename))
+                srcs.write(f"{filename}\n")
 
             for filename in sorted_static_ipdl_sources:
-                srcs.write("{}\n".format(filename))
+                srcs.write(f"{filename}\n")
 
         with self._write_file(mozpath.join(ipdl_dir, "ipdlsrcs.mk")) as ipdls:
             mk.dump(ipdls, removal_guard=False)

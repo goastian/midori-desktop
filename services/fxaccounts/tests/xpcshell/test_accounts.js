@@ -26,7 +26,7 @@ const {
   "resource://gre/modules/FxAccountsCommon.sys.mjs"
 );
 
-// We grab some additional stuff via backstage passes.
+// We grab some additional stuff via the system global.
 var { AccountState } = ChromeUtils.importESModule(
   "resource://gre/modules/FxAccounts.sys.mjs"
 );
@@ -392,6 +392,7 @@ add_test(function test_client_mock() {
 // Polling should detect that the email is verified, and eventually
 // 'onverified' should be observed
 add_test(function test_verification_poll() {
+  ensureOauthNotConfigured();
   let fxa = new MockFxAccounts();
   let test_user = getTestUser("francine");
   let login_notification_received = false;
@@ -436,6 +437,7 @@ add_test(function test_verification_poll() {
 // poll should time out.  No verifiedlogin event should be observed, and the
 // internal whenVerified promise should be rejected
 add_test(function test_polling_timeout() {
+  ensureOauthNotConfigured();
   // This test could be better - the onverified observer might fire on
   // somebody else's stack, and we're not making sure that we're not receiving
   // such a message. In other words, this tests either failure, or success, but
@@ -682,7 +684,6 @@ add_test(function test_getKeyForScope() {
       fxa.keys.getKeyForScope(SCOPE_APP_SYNC).then(() => {
         fxa._internal.getUserAccountData().then(user3 => {
           // Now we should have keys
-          Assert.equal(fxa._internal.isUserEmailVerified(user3), true);
           Assert.equal(!!user3.verified, true);
           Assert.notEqual(null, user3.scopedKeys);
           Assert.equal(user3.keyFetchToken, undefined);
@@ -692,6 +693,26 @@ add_test(function test_getKeyForScope() {
       });
     });
   });
+});
+
+add_task(async function test_oauth_verification() {
+  ensureOauthConfigured();
+  let fxa = new MockFxAccounts();
+  let user = getTestUser("eusebius");
+  user.verified = true;
+
+  await fxa.setSignedInUser(user);
+  let fetched = await fxa.getSignedInUser();
+  Assert.ok(!fetched.verified);
+
+  fxa._withCurrentAccountState(state => {
+    state.updateUserAccountData({ scopedKeys: { test: { foo: "bar" } } });
+  });
+
+  fetched = await fxa.getSignedInUser();
+  Assert.ok(fetched.verified);
+
+  resetOauthConfig();
 });
 
 add_task(
@@ -991,6 +1012,7 @@ add_test(function test_fetchAndUnwrapAndDeriveKeys_no_token() {
 // signs in with a verified email.  Ensure that no sign-in events are triggered
 // on Alice's behalf.  In the end, Bob should be the signed-in user.
 add_test(function test_overlapping_signins() {
+  ensureOauthNotConfigured();
   let fxa = new MockFxAccounts();
   let alice = getTestUser("alice");
   let bob = getTestUser("bob");
@@ -1513,6 +1535,87 @@ add_task(async function test_listAttachedOAuthClients() {
       lastAccessedDaysAgo: null,
     },
   ]);
+});
+
+add_task(async function test_listAttachedOAuthClients_withCaching() {
+  const ONE_HOUR = 60 * 60 * 1000;
+  const ONE_DAY = 24 * ONE_HOUR;
+
+  const timestamp = Date.now();
+
+  let fxa = new MockFxAccounts();
+  let alice = getTestUser("alice");
+  alice.verified = true;
+
+  let client = fxa._internal.fxAccountsClient;
+  let originalResponse = {
+    body: [
+      {
+        clientId: "a2270f727f45f648",
+        deviceId: "deadbeef",
+        sessionTokenId: null,
+        name: "Firefox Preview (no session token)",
+        scope: ["profile", SCOPE_APP_SYNC],
+        lastAccessTime: Date.now(),
+      },
+      {
+        clientId: "802d56ef2a9af9fa",
+        deviceId: null,
+        sessionTokenId: null,
+        name: "Firefox Monitor",
+        scope: ["profile"],
+        lastAccessTime: Date.now() - ONE_DAY - ONE_HOUR,
+      },
+    ],
+    headers: { "x-timestamp": timestamp.toString() },
+  };
+
+  // Mock the client method.
+  client.attachedClients = async () => {
+    return originalResponse;
+  };
+
+  await fxa.setSignedInUser(alice);
+
+  // First call: should fetch from server
+  const clientsFirstCall = await fxa.listAttachedOAuthClients();
+  Assert.deepEqual(clientsFirstCall, [
+    { id: "a2270f727f45f648", lastAccessedDaysAgo: 0 },
+    { id: "802d56ef2a9af9fa", lastAccessedDaysAgo: 1 },
+  ]);
+
+  // Now modify the client so if it calls again, we would get different clients.
+  const updatedResponse = {
+    body: [
+      {
+        clientId: "updated-client",
+        lastAccessTime: Date.now() - ONE_DAY * 3,
+      },
+    ],
+    headers: { "x-timestamp": (timestamp + 1000).toString() },
+  };
+  client.attachedClients = async () => {
+    return updatedResponse;
+  };
+
+  // Second call without forceRefresh: should return cached data, not the updated one.
+  const clientsSecondCall = await fxa.listAttachedOAuthClients();
+  Assert.deepEqual(
+    clientsSecondCall,
+    [
+      { id: "a2270f727f45f648", lastAccessedDaysAgo: 0 },
+      { id: "802d56ef2a9af9fa", lastAccessedDaysAgo: 1 },
+    ],
+    "Should return cached clients from the first call, ignoring the updated mock"
+  );
+
+  // Now force refresh
+  const clientsForceRefresh = await fxa.listAttachedOAuthClients(true);
+  Assert.deepEqual(
+    clientsForceRefresh,
+    [{ id: "updated-client", lastAccessedDaysAgo: 3 }],
+    "Forcing a refresh should return the updated data"
+  );
 });
 
 add_task(async function test_getSignedInUserProfile() {

@@ -8,12 +8,12 @@ Metrics Gathered
 
 **WARNING: This page is still being actively developed.**
 
-This document contains information about the metrics gathered in Browsertime tests, as well as detailed information of how they are gathered.
+This document contains information about the metrics gathered in Browsertime tests, as well as detailed information about how they are gathered.
 
 Pageload Tests
 --------------
 
-For browsertime pageload tests, there is a limited set of metrics that we collect (which can easily be expanded). Currently we divide these into two sets of metrics: (i) visual metrics, and (ii) technical metrics. These are gathered through two types of tests called warm and cold pageload tests. We have combined these two into a single "chimera" mode which you'll find in the Treeherder tasks.
+For browsertime pageload tests, there is a limited set of metrics that we collect (which can easily be expanded). Currently we divide these into two sets of metrics: (i) visual metrics, and (ii) technical metrics. These are gathered through two types of tests called warm and cold pageload tests. We have combined these two into a single "Chimera" mode which you'll find in the Treeherder tasks.
 
 Below, you can find the process of how we run Warm, Cold, and Chimera pageload tests.
 
@@ -30,7 +30,7 @@ In this pageload test type, we open the browser, then repeatedly navigate to the
 * The tab is reloaded ``X`` more times (for ``X`` replicates); measurements taken each time
 
 NOTES:
-- The measurements from the first page-load are not included in overall results metrics b/c of first load noise; however they are listed in the JSON artifacts
+- The measurements from the first page-load are not included in overall results metrics because of first load noise; however they are listed in the JSON artifacts
 - The bytecode cache gets populated on the first test cycle, and subsequent iterations will already have the cache built to reduce noise.
 
 Cold Pageload
@@ -46,12 +46,12 @@ In this pageload test type, we open the browser, navigate to the page, then rest
 * The browser is shut down
 * Entire process is repeated for the remaining browser cycles
 
-NOTE: The measurements from all browser cycles are used to calculate overall results
+NOTE: The measurements from all browser cycles are used to calculate overall results.
 
 Chimera Pageload
 ================
 
-A new mode for pageload testing is called chimera mode. It combines the warm and cold variants into a single test. This test mode is used in our Taskcluster tasks.
+A new mode for pageload testing is called Chimera mode. It combines the warm and cold variants into a single test. This test mode is used in our Taskcluster tasks.
 
 * A new, or conditioned, browser profile is created
 * The browser is started up
@@ -68,18 +68,18 @@ NOTE: The bytecode cache mentioned in Warm pageloads still applies here.
 Technical Metrics
 =================
 
-These are metrics that are obtained from the browser. This includes metrics like First Paint, DOM Content Flushed, etc..
+Technical metrics are values obtained directly from the browser. This includes metrics like First Paint, DOM Content Flushed, etc..
 
 Visual Metrics
 ==============
 
-When you run Raptor Browsertime with ``--browsertime-visualmetrics``, it will record a video of the page being loaded and then process this video to build the metrics. The video is either produced using FFMPEG (with ``--browsertime-no-ffwindowrecorder``) or the Firefox Window Recorder (default).
+Visual metrics can be obtained by running Raptor Browsertime with ``--browsertime-visualmetrics``, it will record a video of the page being loaded and then process this video to build the metrics. The video is either produced using FFMPEG (with ``--browsertime-no-ffwindowrecorder``) or the Firefox Window Recorder (default).
 
 
 Benchmarks
 ----------
 
-Benchmarks gather their own custom metrics unlike the pageload tests above. Please ping the owners of those benchmarks to determine what they mean and how they are produced, or reach out to the Performance Test and Tooling team in #perftest on Element.
+Benchmarks gather their own custom metrics, unlike the pageload tests above. Please ping the owners of those benchmarks to determine what they mean and how they are produced, or reach out to the Performance Test and Tooling team in #perftest on Element.
 
 Metric Definitions
 ------------------
@@ -88,7 +88,7 @@ The following documents all available metrics that current alert in Raptor Brows
 
 Contentful Speed Index
 ======================
-Similar to SpeedIndex, except that it uses the contentfulness of a frame to determine visual completeness instead of the histogram differences. The contentfulness is determined by calculating the number of edges found in the frame. A lower number of edges detected gives a smaller contentfulness value (and a smaller visually complete value).
+Similar to SpeedIndex, except that it uses the contentfulness of a frame to determine visual completeness, rather than relying on histogram differences. The contentfulness is determined by calculating the number of edges found in the frame. A lower number of edges detected gives a smaller contentfulness value (and a smaller visually complete value).
 
 
   * **Aliases**: ContentfulSpeedIndex
@@ -98,6 +98,26 @@ Similar to SpeedIndex, except that it uses the contentfulness of a frame to dete
      * **Interactive**: `cnn-nav <raptor.html#cnn-nav-i>`__, `facebook-nav <raptor.html#facebook-nav-i>`__, `reddit-billgates-ama <raptor.html#reddit-billgates-ama-i>`__, `reddit-billgates-post-1 <raptor.html#reddit-billgates-post-1-i>`__, `reddit-billgates-post-2 <raptor.html#reddit-billgates-post-2-i>`__
      * **Live**: `booking-sf <raptor.html#booking-sf-l>`__, `discord <raptor.html#discord-l>`__, `fashionbeans <raptor.html#fashionbeans-l>`__, `google-accounts <raptor.html#google-accounts-l>`__, `imdb-firefox <raptor.html#imdb-firefox-l>`__, `medium-article <raptor.html#medium-article-l>`__, `people-article <raptor.html#people-article-l>`__, `reddit-thread <raptor.html#reddit-thread-l>`__, `rumble-fox <raptor.html#rumble-fox-l>`__, `stackoverflow-question <raptor.html#stackoverflow-question-l>`__, `urbandictionary-define <raptor.html#urbandictionary-define-l>`__, `wikia-marvel <raptor.html#wikia-marvel-l>`__
      * **Mobile**: `allrecipes <raptor.html#allrecipes-m>`__, `amazon <raptor.html#amazon-m>`__, `amazon-search <raptor.html#amazon-search-m>`__, `bild-de <raptor.html#bild-de-m>`__, `bing <raptor.html#bing-m>`__, `bing-search-restaurants <raptor.html#bing-search-restaurants-m>`__, `booking <raptor.html#booking-m>`__, `cnn <raptor.html#cnn-m>`__, `cnn-ampstories <raptor.html#cnn-ampstories-m>`__, `dailymail <raptor.html#dailymail-m>`__, `ebay-kleinanzeigen <raptor.html#ebay-kleinanzeigen-m>`__, `ebay-kleinanzeigen-search <raptor.html#ebay-kleinanzeigen-search-m>`__, `espn <raptor.html#espn-m>`__, `facebook <raptor.html#facebook-m>`__, `facebook-cristiano <raptor.html#facebook-cristiano-m>`__, `google <raptor.html#google-m>`__, `google-maps <raptor.html#google-maps-m>`__, `google-search-restaurants <raptor.html#google-search-restaurants-m>`__, `imdb <raptor.html#imdb-m>`__, `instagram <raptor.html#instagram-m>`__, `microsoft-support <raptor.html#microsoft-support-m>`__, `reddit <raptor.html#reddit-m>`__, `sina <raptor.html#sina-m>`__, `stackoverflow <raptor.html#stackoverflow-m>`__, `wikipedia <raptor.html#wikipedia-m>`__, `youtube <raptor.html#youtube-m>`__, `youtube-watch <raptor.html#youtube-watch-m>`__
+
+
+Estimated Frame Latency (Any)
+=============================
+Similar to estimatedFirstFrameLatency, except that it uses all identified frames during video playback, normalized to be an estimate of when the first frame was displayed by using the expected time offset from the video itself.
+
+
+  * **Aliases**: estimatedAnyFrameLatency
+  * **Tests using it**:
+     * **Custom**: `vpl-av1 <raptor.html#vpl-av1-c>`__, `vpl-h264 <raptor.html#vpl-h264-c>`__, `vpl-vp9 <raptor.html#vpl-vp9-c>`__
+
+
+Estimated Frame Latency (First)
+===============================
+A metric used to denote the latency on displaying the first frame of a video. Calculated by using videos of the pageload from which key frames are identified by matching a given solid RGB color with fuzz.
+
+
+  * **Aliases**: estimatedFirstFrameLatency
+  * **Tests using it**:
+     * **Custom**: `vpl-av1 <raptor.html#vpl-av1-c>`__, `vpl-h264 <raptor.html#vpl-h264-c>`__, `vpl-vp9 <raptor.html#vpl-vp9-c>`__
 
 
 First Paint
@@ -202,5 +222,19 @@ Metrics starting with VP9/H264 give the number of frames dropped, and painted.
   * **Aliases**: H264, VP9
   * **Tests using it**:
      * **Benchmarks**: `youtube-playback-hfr <raptor.html#youtube-playback-hfr-b>`__
+
+
+cpu Time
+========
+Specifies cumulative CPU usage in milliseconds across all threads of the process since the process start.
+
+
+  * **Aliases**: cpuTime
+  * **Tests using it**:
+     * **Benchmarks**: `speedometer <raptor.html#speedometer-b>`__, `speedometer3 <raptor.html#speedometer3-b>`__, `youtube-playback-h264-1080p30 <raptor.html#youtube-playback-h264-1080p30-b>`__, `youtube-playback-h264-1080p60 <raptor.html#youtube-playback-h264-1080p60-b>`__, `youtube-playback-h264-full-1080p30 <raptor.html#youtube-playback-h264-full-1080p30-b>`__, `youtube-playback-h264-full-1080p60 <raptor.html#youtube-playback-h264-full-1080p60-b>`__, `youtube-playback-v9-1080p30 <raptor.html#youtube-playback-v9-1080p30-b>`__, `youtube-playback-v9-1080p60 <raptor.html#youtube-playback-v9-1080p60-b>`__, `youtube-playback-v9-full-1080p30 <raptor.html#youtube-playback-v9-full-1080p30-b>`__, `youtube-playback-v9-full-1080p60 <raptor.html#youtube-playback-v9-full-1080p60-b>`__
+     * **Custom**: `addMab1 <raptor.html#addMab1-c>`__, `addMabN <raptor.html#addMabN-c>`__, `addMar1 <raptor.html#addMar1-c>`__, `addMarN <raptor.html#addMarN-c>`__, `addMbl1 <raptor.html#addMbl1-c>`__, `addMblN <raptor.html#addMblN-c>`__, `addkAB1 <raptor.html#addkAB1-c>`__, `addkABN <raptor.html#addkABN-c>`__, `addkAR1 <raptor.html#addkAR1-c>`__, `addkARN <raptor.html#addkARN-c>`__, `addkBL1 <raptor.html#addkBL1-c>`__, `addkBLN <raptor.html#addkBLN-c>`__, `getkeyrng <raptor.html#getkeyrng-c>`__, `idb-open-few-par <raptor.html#idb-open-few-par-c>`__, `idb-open-few-seq <raptor.html#idb-open-few-seq-c>`__, `idb-open-many-par <raptor.html#idb-open-many-par-c>`__, `idb-open-many-seq <raptor.html#idb-open-many-seq-c>`__
+     * **Desktop**: `amazon <raptor.html#amazon-d>`__, `bing-search <raptor.html#bing-search-d>`__, `buzzfeed <raptor.html#buzzfeed-d>`__, `cnn <raptor.html#cnn-d>`__, `docomo <raptor.html#docomo-d>`__, `ebay <raptor.html#ebay-d>`__, `espn <raptor.html#espn-d>`__, `expedia <raptor.html#expedia-d>`__, `facebook <raptor.html#facebook-d>`__, `fandom <raptor.html#fandom-d>`__, `google-docs <raptor.html#google-docs-d>`__, `google-mail <raptor.html#google-mail-d>`__, `google-search <raptor.html#google-search-d>`__, `google-slides <raptor.html#google-slides-d>`__, `imdb <raptor.html#imdb-d>`__, `imgur <raptor.html#imgur-d>`__, `instagram <raptor.html#instagram-d>`__, `linkedin <raptor.html#linkedin-d>`__, `microsoft <raptor.html#microsoft-d>`__, `netflix <raptor.html#netflix-d>`__, `nytimes <raptor.html#nytimes-d>`__, `office <raptor.html#office-d>`__, `openai <raptor.html#openai-d>`__, `outlook <raptor.html#outlook-d>`__, `paypal <raptor.html#paypal-d>`__, `pinterest <raptor.html#pinterest-d>`__, `reddit <raptor.html#reddit-d>`__, `samsung <raptor.html#samsung-d>`__, `tiktok <raptor.html#tiktok-d>`__, `tumblr <raptor.html#tumblr-d>`__, `twitch <raptor.html#twitch-d>`__, `twitter <raptor.html#twitter-d>`__, `weather <raptor.html#weather-d>`__, `wikia <raptor.html#wikia-d>`__, `wikipedia <raptor.html#wikipedia-d>`__, `yahoo-mail <raptor.html#yahoo-mail-d>`__, `youtube <raptor.html#youtube-d>`__
+     * **Interactive**: `cnn-nav <raptor.html#cnn-nav-i>`__, `facebook-nav <raptor.html#facebook-nav-i>`__, `reddit-billgates-ama <raptor.html#reddit-billgates-ama-i>`__, `reddit-billgates-post-1 <raptor.html#reddit-billgates-post-1-i>`__, `reddit-billgates-post-2 <raptor.html#reddit-billgates-post-2-i>`__
+     * **Mobile**: `allrecipes <raptor.html#allrecipes-m>`__, `amazon <raptor.html#amazon-m>`__, `amazon-search <raptor.html#amazon-search-m>`__, `bild-de <raptor.html#bild-de-m>`__, `bing <raptor.html#bing-m>`__, `bing-search-restaurants <raptor.html#bing-search-restaurants-m>`__, `booking <raptor.html#booking-m>`__, `cnn <raptor.html#cnn-m>`__, `cnn-ampstories <raptor.html#cnn-ampstories-m>`__, `dailymail <raptor.html#dailymail-m>`__, `ebay-kleinanzeigen <raptor.html#ebay-kleinanzeigen-m>`__, `ebay-kleinanzeigen-search <raptor.html#ebay-kleinanzeigen-search-m>`__, `espn <raptor.html#espn-m>`__, `facebook <raptor.html#facebook-m>`__, `facebook-cristiano <raptor.html#facebook-cristiano-m>`__, `google <raptor.html#google-m>`__, `google-maps <raptor.html#google-maps-m>`__, `google-search-restaurants <raptor.html#google-search-restaurants-m>`__, `imdb <raptor.html#imdb-m>`__, `instagram <raptor.html#instagram-m>`__, `microsoft-support <raptor.html#microsoft-support-m>`__, `reddit <raptor.html#reddit-m>`__, `sina <raptor.html#sina-m>`__, `stackoverflow <raptor.html#stackoverflow-m>`__, `wikipedia <raptor.html#wikipedia-m>`__, `youtube <raptor.html#youtube-m>`__, `youtube-watch <raptor.html#youtube-watch-m>`__
 
 

@@ -5,7 +5,12 @@
 package org.mozilla.fenix.debugsettings.store
 
 import mozilla.components.lib.state.Action
+import org.mozilla.fenix.debugsettings.gleandebugtools.ui.GleanDebugToolsScreen
 import org.mozilla.fenix.debugsettings.ui.DebugDrawerHome
+import org.mozilla.fenix.debugsettings.addresses.AddressesTools as AddressesScreen
+import org.mozilla.fenix.debugsettings.cfrs.CfrTools as CfrToolsScreen
+import org.mozilla.fenix.debugsettings.logins.LoginsTools as LoginsScreen
+import org.mozilla.fenix.debugsettings.region.RegionTools as RegionScreen
 import org.mozilla.fenix.debugsettings.tabs.TabTools as TabToolsScreen
 
 /**
@@ -42,6 +47,26 @@ sealed class DebugDrawerAction : Action {
          * [NavigateTo] action fired when the debug drawer needs to navigate to [LoginsScreen].
          */
         object Logins : NavigateTo()
+
+        /**
+         * [NavigateTo] action fired when the debug drawer needs to navigate to [AddressesScreen].
+         */
+        data object Addresses : NavigateTo()
+
+        /**
+         * [NavigateTo] action fired when the debug drawer needs to navigate to [CfrToolsScreen].
+         */
+        object CfrTools : NavigateTo()
+
+        /**
+         * [NavigateTo] action fired when the debug drawer needs to navigate to [GleanDebugToolsScreen].
+         */
+        object GleanDebugTools : NavigateTo()
+
+        /**
+         * [NavigateTo] action fired when the debug drawer needs to navigate to [RegionScreen].
+         */
+        object RegionDebugTools : NavigateTo()
     }
 
     /**

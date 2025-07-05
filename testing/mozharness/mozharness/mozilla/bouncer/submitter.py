@@ -24,7 +24,7 @@ except ImportError:
     from urllib.request import HTTPError, Request, URLError, urlopen
 
 
-class BouncerSubmitterMixin(object):
+class BouncerSubmitterMixin:
     def query_credentials(self):
         if self.credentials:
             return self.credentials
@@ -92,7 +92,7 @@ class BouncerSubmitterMixin(object):
         except socket.timeout as e:
             self.warning("Timed out accessing %s: %s" % (api_url, e))
             raise
-        except socket.error as e:
+        except OSError as e:
             self.warning("Socket error when accessing %s: %s" % (api_url, e))
             raise
         except httplib.BadStatusLine as e:

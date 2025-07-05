@@ -7,53 +7,174 @@ import { WindowGlobalBiDiModule } from "chrome://remote/content/webdriver-bidi/m
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  action: "chrome://remote/content/shared/webdriver/Actions.sys.mjs",
+  LayoutUtils: "resource://gre/modules/LayoutUtils.sys.mjs",
+
+  AnimationFramePromise: "chrome://remote/content/shared/Sync.sys.mjs",
+  assertTargetInViewPort:
+    "chrome://remote/content/shared/webdriver/Actions.sys.mjs",
   dom: "chrome://remote/content/shared/DOM.sys.mjs",
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
   event: "chrome://remote/content/shared/webdriver/Event.sys.mjs",
 });
 
 class InputModule extends WindowGlobalBiDiModule {
-  #actionState;
-
   constructor(messageHandler) {
     super(messageHandler);
-
-    this.#actionState = null;
   }
 
   destroy() {}
 
-  async performActions(options) {
-    const { actions } = options;
-    if (this.#actionState === null) {
-      this.#actionState = new lazy.action.State();
+  async #deserializeElementSharedReference(sharedReference) {
+    if (typeof sharedReference?.sharedId !== "string") {
+      throw new lazy.error.InvalidArgumentError(
+        `Expected "element" to be a SharedReference, got: ${sharedReference}`
+      );
     }
 
-    await this.#deserializeActionOrigins(actions);
-    const actionChain = lazy.action.Chain.fromJSON(this.#actionState, actions);
+    const realm = this.messageHandler.getRealm();
 
-    await actionChain.dispatch(this.#actionState, this.messageHandler.window);
+    const element = this.deserialize(sharedReference, realm);
+    if (!lazy.dom.isElement(element)) {
+      throw new lazy.error.NoSuchElementError(
+        `No element found for shared id: ${sharedReference.sharedId}`
+      );
+    }
 
+    return element;
+  }
+
+  _assertInViewPort(options) {
+    const { target } = options;
+
+    return lazy.assertTargetInViewPort(target, this.messageHandler.window);
+  }
+
+  async _dispatchEvent(options) {
+    const { eventName, details } = options;
+
+    const windowUtils = this.messageHandler.window.windowUtils;
+    const microTaskLevel = windowUtils.microTaskLevel;
+    // Since we're being called as a webidl callback,
+    // CallbackObjectBase::CallSetup::CallSetup has increased the microtask
+    // level. Undo that temporarily so that microtask handling works closer
+    // the way it would work when dispatching events natively.
+    windowUtils.microTaskLevel = 0;
+
+    try {
+      switch (eventName) {
+        case "synthesizeKeyDown":
+          lazy.event.sendKeyDown(details.eventData, this.messageHandler.window);
+          break;
+        case "synthesizeKeyUp":
+          lazy.event.sendKeyUp(details.eventData, this.messageHandler.window);
+          break;
+        case "synthesizeMouseAtPoint":
+          lazy.event.synthesizeMouseAtPoint(
+            details.x,
+            details.y,
+            details.eventData,
+            this.messageHandler.window
+          );
+          break;
+        case "synthesizeMultiTouch":
+          lazy.event.synthesizeMultiTouch(
+            details.eventData,
+            this.messageHandler.window
+          );
+          break;
+        case "synthesizeWheelAtPoint":
+          lazy.event.synthesizeWheelAtPoint(
+            details.x,
+            details.y,
+            details.eventData,
+            this.messageHandler.window
+          );
+          break;
+        default:
+          throw new Error(
+            `${eventName} is not a supported type for dispatching`
+          );
+      }
+    } catch (e) {
+      if (e.message.includes("NS_ERROR_FAILURE")) {
+        // Dispatching the event failed. Inform the RootTransport
+        // to retry dispatching the event.
+        throw new DOMException(
+          `Failed to dispatch event "${eventName}": ${e.message}`,
+          "AbortError"
+        );
+      }
+
+      throw e;
+    } finally {
+      windowUtils.microTaskLevel = microTaskLevel;
+    }
+  }
+
+  async _finalizeAction() {
     // Terminate the current wheel transaction if there is one. Wheel
     // transactions should not live longer than a single action chain.
     ChromeUtils.endWheelTransaction();
+
+    // Wait for the next animation frame to make sure the page's content
+    // was updated.
+    await lazy.AnimationFramePromise(this.messageHandler.window);
   }
 
-  async releaseActions() {
-    if (this.#actionState === null) {
-      return;
-    }
-    await this.#actionState.release(this.messageHandler.window);
-    this.#actionState = null;
+  async _getClientRects(options) {
+    const { element: reference } = options;
+
+    const element = await this.#deserializeElementSharedReference(reference);
+    const rects = element.getClientRects();
+
+    // To avoid serialization and deserialization of DOMRect and DOMRectList
+    // convert to plain object and Array.
+    return [...rects].map(rect => {
+      const { x, y, width, height, top, right, bottom, left } = rect;
+      return { x, y, width, height, top, right, bottom, left };
+    });
+  }
+
+  async _getElementOrigin(options) {
+    const { origin } = options;
+
+    const reference = origin.element;
+    this.#deserializeElementSharedReference(reference);
+
+    return reference;
+  }
+
+  _getInViewCentrePoint(options) {
+    const { rect } = options;
+
+    return lazy.dom.getInViewCentrePoint(rect, this.messageHandler.window);
+  }
+
+  /**
+   * Convert a position or rect in browser coordinates of CSS units.
+   */
+  _toBrowserWindowCoordinates(options) {
+    const { position } = options;
+
+    const [x, y] = position;
+    const window = this.messageHandler.window;
+    const dpr = window.devicePixelRatio;
+
+    const val = lazy.LayoutUtils.rectToTopLevelWidgetRect(window, {
+      left: x,
+      top: y,
+      height: 0,
+      width: 0,
+    });
+
+    return [val.x / dpr, val.y / dpr];
   }
 
   async setFiles(options) {
     const { element: sharedReference, files } = options;
 
-    const element = await this.#deserializeElementSharedReference(
-      sharedReference
-    );
+    const element =
+      await this.#deserializeElementSharedReference(sharedReference);
 
     if (
       !HTMLInputElement.isInstance(element) ||
@@ -107,69 +228,6 @@ class InputModule extends WindowGlobalBiDiModule {
       lazy.event.input(element);
       lazy.event.change(element);
     }
-  }
-
-  /**
-   * In the provided array of input.SourceActions, replace all origins matching
-   * the input.ElementOrigin production with the Element corresponding to this
-   * origin.
-   *
-   * Note that this method replaces the content of the `actions` in place, and
-   * does not return a new array.
-   *
-   * @param {Array<input.SourceActions>} actions
-   *     The array of SourceActions to deserialize.
-   * @returns {Promise}
-   *     A promise which resolves when all ElementOrigin origins have been
-   *     deserialized.
-   */
-  async #deserializeActionOrigins(actions) {
-    const promises = [];
-
-    if (!Array.isArray(actions)) {
-      // Silently ignore invalid action chains because they are fully parsed later.
-      return Promise.resolve();
-    }
-
-    for (const actionsByTick of actions) {
-      if (!Array.isArray(actionsByTick?.actions)) {
-        // Silently ignore invalid actions because they are fully parsed later.
-        return Promise.resolve();
-      }
-
-      for (const action of actionsByTick.actions) {
-        if (action?.origin?.type === "element") {
-          promises.push(
-            (async () => {
-              action.origin = await this.#deserializeElementSharedReference(
-                action.origin.element
-              );
-            })()
-          );
-        }
-      }
-    }
-
-    return Promise.all(promises);
-  }
-
-  async #deserializeElementSharedReference(sharedReference) {
-    if (typeof sharedReference?.sharedId !== "string") {
-      throw new lazy.error.InvalidArgumentError(
-        `Expected "element" to be a SharedReference, got: ${sharedReference}`
-      );
-    }
-
-    const realm = this.messageHandler.getRealm();
-
-    const element = this.deserialize(sharedReference, realm);
-    if (!lazy.dom.isElement(element)) {
-      throw new lazy.error.NoSuchElementError(
-        `No element found for shared id: ${sharedReference.sharedId}`
-      );
-    }
-
-    return element;
   }
 }
 

@@ -9,9 +9,9 @@
 #include "CookiePersistentStorage.h"
 
 #include "mozilla/FileUtils.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/StaticPrefs_network.h"
+#include "mozilla/glean/NetwerkMetrics.h"
 #include "mozilla/ScopeExit.h"
-#include "mozilla/Telemetry.h"
 #include "mozIStorageAsyncStatement.h"
 #include "mozIStorageError.h"
 #include "mozIStorageFunction.h"
@@ -31,7 +31,7 @@
 // This is a hack to hide HttpOnly cookies from older browsers
 #define HTTP_ONLY_PREFIX "#HttpOnly_"
 
-constexpr auto COOKIES_SCHEMA_VERSION = 13;
+constexpr auto COOKIES_SCHEMA_VERSION = 15;
 
 // parameter indexes; see |Read|
 constexpr auto IDX_NAME = 0;
@@ -45,9 +45,8 @@ constexpr auto IDX_SECURE = 7;
 constexpr auto IDX_HTTPONLY = 8;
 constexpr auto IDX_ORIGIN_ATTRIBUTES = 9;
 constexpr auto IDX_SAME_SITE = 10;
-constexpr auto IDX_RAW_SAME_SITE = 11;
-constexpr auto IDX_SCHEME_MAP = 12;
-constexpr auto IDX_PARTITIONED_ATTRIBUTE_SET = 13;
+constexpr auto IDX_SCHEME_MAP = 11;
+constexpr auto IDX_PARTITIONED_ATTRIBUTE_SET = 12;
 
 #define COOKIES_FILE "cookies.sqlite"
 
@@ -102,9 +101,6 @@ void BindCookieParameters(mozIStorageBindingParamsArray* aParamsArray,
   MOZ_ASSERT(NS_SUCCEEDED(rv));
 
   rv = params->BindInt32ByName("sameSite"_ns, aCookie->SameSite());
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
-
-  rv = params->BindInt32ByName("rawSameSite"_ns, aCookie->RawSameSite());
   MOZ_ASSERT(NS_SUCCEEDED(rv));
 
   rv = params->BindInt32ByName("schemeMap"_ns, aCookie->SchemeMap());
@@ -201,6 +197,102 @@ SetInBrowserFromOriginAttributesSQLFunction::OnFunctionCall(
   rv = outVar->SetAsInt32(false);
   NS_ENSURE_SUCCESS(rv, rv);
 
+  outVar.forget(aResult);
+  return NS_OK;
+}
+
+class FetchPartitionKeyFromOAsSQLFunction final : public mozIStorageFunction {
+  ~FetchPartitionKeyFromOAsSQLFunction() = default;
+
+  NS_DECL_ISUPPORTS
+  NS_DECL_MOZISTORAGEFUNCTION
+};
+
+NS_IMPL_ISUPPORTS(FetchPartitionKeyFromOAsSQLFunction, mozIStorageFunction);
+
+NS_IMETHODIMP
+FetchPartitionKeyFromOAsSQLFunction::OnFunctionCall(
+    mozIStorageValueArray* aFunctionArguments, nsIVariant** aResult) {
+  nsresult rv;
+
+  nsAutoCString suffix;
+  rv = aFunctionArguments->GetUTF8String(0, suffix);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  OriginAttributes attrsFromSuffix;
+  bool success = attrsFromSuffix.PopulateFromSuffix(suffix);
+  NS_ENSURE_TRUE(success, NS_ERROR_FAILURE);
+
+  RefPtr<nsVariant> outVar(new nsVariant());
+  rv = outVar->SetAsAString(attrsFromSuffix.mPartitionKey);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  outVar.forget(aResult);
+
+  return NS_OK;
+}
+
+class UpdateOAsWithPartitionHostSQLFunction final : public mozIStorageFunction {
+  ~UpdateOAsWithPartitionHostSQLFunction() = default;
+
+  NS_DECL_ISUPPORTS
+  NS_DECL_MOZISTORAGEFUNCTION
+};
+
+NS_IMPL_ISUPPORTS(UpdateOAsWithPartitionHostSQLFunction, mozIStorageFunction);
+
+NS_IMETHODIMP
+UpdateOAsWithPartitionHostSQLFunction::OnFunctionCall(
+    mozIStorageValueArray* aFunctionArguments, nsIVariant** aResult) {
+  nsresult rv;
+
+  nsAutoCString formattedOriginAttributes;
+  rv = aFunctionArguments->GetUTF8String(0, formattedOriginAttributes);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsAutoCString partitionKeyHost;
+  rv = aFunctionArguments->GetUTF8String(1, partitionKeyHost);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  OriginAttributes attrsFromSuffix;
+  bool success = attrsFromSuffix.PopulateFromSuffix(formattedOriginAttributes);
+  // On failure, do not alter the OA.
+  if (!success) {
+    RefPtr<nsVariant> outVar(new nsVariant());
+    rv = outVar->SetAsACString(formattedOriginAttributes);
+    NS_ENSURE_SUCCESS(rv, rv);
+    outVar.forget(aResult);
+    return NS_OK;
+  }
+
+  // This is a bit hacky. However, CHIPS cookies can only be set in secure
+  // contexts. So, the scheme has to be https.
+  nsAutoCString schemeHost;
+  schemeHost.AssignLiteral("https://");
+
+  if (*partitionKeyHost.get() == '.') {
+    schemeHost.Append(nsDependentCSubstring(partitionKeyHost, 1));
+  } else {
+    schemeHost.Append(partitionKeyHost);
+  }
+
+  nsCOMPtr<nsIURI> uri;
+  rv = NS_NewURI(getter_AddRefs(uri), schemeHost);
+  // On failure, do not alter the OA.
+  if (NS_FAILED(rv)) {
+    RefPtr<nsVariant> outVar(new nsVariant());
+    rv = outVar->SetAsACString(formattedOriginAttributes);
+    NS_ENSURE_SUCCESS(rv, rv);
+    outVar.forget(aResult);
+    return NS_OK;
+  }
+
+  attrsFromSuffix.SetPartitionKey(uri, false);
+  attrsFromSuffix.CreateSuffix(formattedOriginAttributes);
+
+  RefPtr<nsVariant> outVar(new nsVariant());
+  rv = outVar->SetAsACString(formattedOriginAttributes);
+  NS_ENSURE_SUCCESS(rv, rv);
   outVar.forget(aResult);
   return NS_OK;
 }
@@ -816,8 +908,7 @@ CookiePersistentStorage::OpenDBResult CookiePersistentStorage::TryInitDB(
 
   // This block provides scope for the Telemetry AutoTimer
   {
-    Telemetry::AutoTimer<Telemetry::MOZ_SQLITE_COOKIES_OPEN_READAHEAD_MS>
-        telemetry;
+    auto timer = glean::network_cookies::sqlite_open_readahead.Measure();
     ReadAheadFile(mCookieFile);
 
     // open a connection to the cookie database, and only cache our connection
@@ -1388,10 +1479,6 @@ CookiePersistentStorage::OpenDBResult CookiePersistentStorage::TryInitDB(
 
         COOKIE_LOGSTRING(LogLevel::Debug,
                          ("Upgraded database to schema version 12"));
-
-        // No more upgrades. Update the schema version.
-        rv = mSyncConn->SetSchemaVersion(COOKIES_SCHEMA_VERSION);
-        NS_ENSURE_SUCCESS(rv, RESULT_RETRY);
       }
         [[fallthrough]];
 
@@ -1404,6 +1491,47 @@ CookiePersistentStorage::OpenDBResult CookiePersistentStorage::TryInitDB(
 
         COOKIE_LOGSTRING(LogLevel::Debug,
                          ("Upgraded database to schema version 13"));
+
+        [[fallthrough]];
+      }
+
+      case 13: {
+        rv = mSyncConn->ExecuteSimpleSQL(
+            nsLiteralCString("UPDATE moz_cookies SET expiry = unixepoch() + "
+                             "34560000 WHERE expiry > unixepoch() + 34560000"));
+        NS_ENSURE_SUCCESS(rv, RESULT_RETRY);
+
+        [[fallthrough]];
+      }
+
+      case 14: {
+        nsCOMPtr<mozIStorageStatement> update;
+        rv = mSyncConn->CreateStatement(
+            nsLiteralCString("UPDATE moz_cookies SET sameSite = "
+                             ":unsetValue WHERE sameSite = :laxValue AND "
+                             "rawSameSite = :noneValue"),
+            getter_AddRefs(update));
+        NS_ENSURE_SUCCESS(rv, RESULT_RETRY);
+
+        mozStorageStatementScoper scoper(update);
+
+        rv =
+            update->BindInt32ByName("unsetValue"_ns, nsICookie::SAMESITE_UNSET);
+        MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+        rv = update->BindInt32ByName("laxValue"_ns, nsICookie::SAMESITE_LAX);
+        MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+        rv = update->BindInt32ByName("noneValue"_ns, nsICookie::SAMESITE_NONE);
+        MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+        bool hasResult;
+        rv = update->ExecuteStep(&hasResult);
+        NS_ENSURE_SUCCESS(rv, RESULT_RETRY);
+
+        rv = mSyncConn->ExecuteSimpleSQL(nsLiteralCString(
+            "ALTER TABLE moz_cookies DROP COLUMN rawSameSite;"));
+        NS_ENSURE_SUCCESS(rv, RESULT_RETRY);
 
         // No more upgrades. Update the schema version.
         rv = mSyncConn->SetSchemaVersion(COOKIES_SCHEMA_VERSION);
@@ -1452,7 +1580,6 @@ CookiePersistentStorage::OpenDBResult CookiePersistentStorage::TryInitDB(
                              "isSecure, "
                              "isHttpOnly, "
                              "sameSite, "
-                             "rawSameSite, "
                              "schemeMap, "
                              "isPartitionedAttributeSet "
                              "FROM moz_cookies"),
@@ -1476,12 +1603,59 @@ CookiePersistentStorage::OpenDBResult CookiePersistentStorage::TryInitDB(
     return RESULT_OK;
   }
 
+  if (StaticPrefs::network_cookie_CHIPS_enabled() &&
+      StaticPrefs::network_cookie_CHIPS_lastMigrateDatabase() <
+          StaticPrefs::network_cookie_CHIPS_migrateDatabaseTarget()) {
+    CookiePersistentStorage::MoveUnpartitionedChipsCookies();
+  }
+
   // check whether to import or just read in the db
   if (tableExists) {
     return Read();
   }
 
   return RESULT_OK;
+}
+
+void CookiePersistentStorage::MoveUnpartitionedChipsCookies() {
+  nsCOMPtr<mozIStorageFunction> fetchPartitionKeyFromOAs(
+      new FetchPartitionKeyFromOAsSQLFunction());
+  NS_ENSURE_TRUE_VOID(fetchPartitionKeyFromOAs);
+
+  constexpr auto fetchPartitionKeyFromOAsName =
+      "FETCH_PARTITIONKEY_FROM_OAS"_ns;
+
+  nsresult rv = mSyncConn->CreateFunction(fetchPartitionKeyFromOAsName, 1,
+                                          fetchPartitionKeyFromOAs);
+  NS_ENSURE_SUCCESS_VOID(rv);
+
+  nsCOMPtr<mozIStorageFunction> updateOAsWithPartitionHost(
+      new UpdateOAsWithPartitionHostSQLFunction());
+  NS_ENSURE_TRUE_VOID(updateOAsWithPartitionHost);
+
+  constexpr auto updateOAsWithPartitionHostName =
+      "UPDATE_OAS_WITH_PARTITION_HOST"_ns;
+
+  rv = mSyncConn->CreateFunction(updateOAsWithPartitionHostName, 2,
+                                 updateOAsWithPartitionHost);
+  NS_ENSURE_SUCCESS_VOID(rv);
+
+  // Move all cookies with the Partitioned attribute set into their first-party
+  // partitioned storage by updating the origin attributes. Overwrite any
+  // existing cookies that may already be there.
+  rv = mSyncConn->ExecuteSimpleSQL(nsLiteralCString(
+      "UPDATE OR REPLACE moz_cookies  "
+      "SET originAttributes = UPDATE_OAS_WITH_PARTITION_HOST(originAttributes, "
+      "host) "
+      "WHERE FETCH_PARTITIONKEY_FROM_OAS(originAttributes) = '' "
+      "AND isPartitionedAttributeSet = 1;"));
+  NS_ENSURE_SUCCESS_VOID(rv);
+
+  rv = mSyncConn->RemoveFunction(fetchPartitionKeyFromOAsName);
+  NS_ENSURE_SUCCESS_VOID(rv);
+
+  rv = mSyncConn->RemoveFunction(updateOAsWithPartitionHostName);
+  NS_ENSURE_SUCCESS_VOID(rv);
 }
 
 void CookiePersistentStorage::RebuildCorruptDB() {
@@ -1627,7 +1801,6 @@ CookiePersistentStorage::OpenDBResult CookiePersistentStorage::Read() {
                                                   "isHttpOnly, "
                                                   "originAttributes, "
                                                   "sameSite, "
-                                                  "rawSameSite, "
                                                   "schemeMap, "
                                                   "isPartitionedAttributeSet "
                                                   "FROM moz_cookies"),
@@ -1708,7 +1881,6 @@ UniquePtr<CookieStruct> CookiePersistentStorage::GetCookieFromRow(
   bool isSecure = 0 != aRow->AsInt32(IDX_SECURE);
   bool isHttpOnly = 0 != aRow->AsInt32(IDX_HTTPONLY);
   int32_t sameSite = aRow->AsInt32(IDX_SAME_SITE);
-  int32_t rawSameSite = aRow->AsInt32(IDX_RAW_SAME_SITE);
   int32_t schemeMap = aRow->AsInt32(IDX_SCHEME_MAP);
   bool isPartitionedAttributeSet =
       0 != aRow->AsInt32(IDX_PARTITIONED_ATTRIBUTE_SET);
@@ -1716,7 +1888,7 @@ UniquePtr<CookieStruct> CookiePersistentStorage::GetCookieFromRow(
   // Create a new constCookie and assign the data.
   return MakeUnique<CookieStruct>(
       name, value, host, path, expiry, lastAccessed, creationTime, isHttpOnly,
-      false, isSecure, isPartitionedAttributeSet, sameSite, rawSameSite,
+      false, isSecure, isPartitionedAttributeSet, sameSite,
       static_cast<nsICookie::schemeType>(schemeMap));
 }
 
@@ -1726,24 +1898,30 @@ void CookiePersistentStorage::EnsureInitialized() {
   bool isAccumulated = false;
 
   if (!mInitialized) {
+#ifndef ANDROID
     TimeStamp startBlockTime = TimeStamp::Now();
+#endif
     MonitorAutoLock lock(mMonitor);
 
     while (!mInitialized) {
       mMonitor.Wait();
     }
-
-    Telemetry::AccumulateTimeDelta(
-        Telemetry::MOZ_SQLITE_COOKIES_BLOCK_MAIN_THREAD_MS_V2, startBlockTime);
-    Telemetry::Accumulate(
-        Telemetry::MOZ_SQLITE_COOKIES_TIME_TO_BLOCK_MAIN_THREAD_MS, 0);
+#ifndef ANDROID
+    TimeStamp endBlockTime = TimeStamp::Now();
+    mozilla::glean::networking::sqlite_cookies_block_main_thread
+        .AccumulateRawDuration(endBlockTime - startBlockTime);
+    mozilla::glean::networking::sqlite_cookies_time_to_block_main_thread
+        .AccumulateRawDuration(TimeDuration::Zero());
+#endif
     isAccumulated = true;
   } else if (!mEndInitDBConn.IsNull()) {
     // We didn't block main thread, and here comes the first cookie request.
     // Collect how close we're going to block main thread.
-    Telemetry::Accumulate(
-        Telemetry::MOZ_SQLITE_COOKIES_TIME_TO_BLOCK_MAIN_THREAD_MS,
-        (TimeStamp::Now() - mEndInitDBConn).ToMilliseconds());
+#ifndef ANDROID
+    TimeStamp now = TimeStamp::Now();
+    mozilla::glean::networking::sqlite_cookies_time_to_block_main_thread
+        .AccumulateRawDuration(now - mEndInitDBConn);
+#endif
     // Nullify the timestamp so wo don't accumulate this telemetry probe again.
     mEndInitDBConn = TimeStamp();
     isAccumulated = true;
@@ -1751,8 +1929,10 @@ void CookiePersistentStorage::EnsureInitialized() {
     // A request comes while we finished cookie thread task and InitDBConn is
     // on the way from cookie thread to main thread. We're very close to block
     // main thread.
-    Telemetry::Accumulate(
-        Telemetry::MOZ_SQLITE_COOKIES_TIME_TO_BLOCK_MAIN_THREAD_MS, 0);
+#ifndef ANDROID
+    mozilla::glean::networking::sqlite_cookies_time_to_block_main_thread
+        .AccumulateRawDuration(TimeDuration::Zero());
+#endif
     isAccumulated = true;
   }
 
@@ -1813,6 +1993,23 @@ void CookiePersistentStorage::InitDBConn() {
     // evicted.
     RefPtr<Cookie> cookie =
         Cookie::CreateValidated(*tuple.cookie, tuple.originAttributes);
+
+    // Clean up the invalid first-party partitioned cookies that don't have
+    // the 'partitioned' cookie attribution. This will also ensure that we don't
+    // read the cookie into memory.
+    if (CookieCommons::IsFirstPartyPartitionedCookieWithoutCHIPS(
+            cookie, tuple.key.mBaseDomain, tuple.key.mOriginAttributes)) {
+      // We cannot directly use the cookie after validation because the
+      // timestamps could be different from the cookies in DB. So, we need to
+      // create one from the cookie struct.
+      RefPtr<Cookie> invalidCookie =
+          Cookie::Create(*tuple.cookie, tuple.originAttributes);
+      cleanupCookies.AppendElement(invalidCookie);
+      mozilla::glean::networking::
+          cookie_count_invalid_first_party_partitioned_in_db.Add(1);
+      continue;
+    }
+
     AddCookieToList(tuple.key.mBaseDomain, tuple.key.mOriginAttributes, cookie);
   }
 
@@ -1839,6 +2036,15 @@ void CookiePersistentStorage::InitDBConn() {
 
   for (const auto& cookie : cleanupCookies) {
     RemoveCookieFromDB(*cookie);
+  }
+
+  // We will have migrated CHIPS cookies if the pref is set, and .unset it
+  // to prevent dupliacted work. This has to happen in the main thread though,
+  // so we waited to this point.
+  if (StaticPrefs::network_cookie_CHIPS_enabled()) {
+    Preferences::SetUint(
+        "network.cookie.CHIPS.lastMigrateDatabase",
+        StaticPrefs::network_cookie_CHIPS_migrateDatabaseTarget());
   }
 
   nsCOMPtr<nsIObserverService> os = services::GetObserverService();
@@ -1888,7 +2094,6 @@ nsresult CookiePersistentStorage::InitDBConnInternal() {
                        "isSecure, "
                        "isHttpOnly, "
                        "sameSite, "
-                       "rawSameSite, "
                        "schemeMap, "
                        "isPartitionedAttributeSet "
                        ") VALUES ("
@@ -1903,7 +2108,6 @@ nsresult CookiePersistentStorage::InitDBConnInternal() {
                        ":isSecure, "
                        ":isHttpOnly, "
                        ":sameSite, "
-                       ":rawSameSite, "
                        ":schemeMap, "
                        ":isPartitionedAttributeSet "
                        ")"),
@@ -1948,7 +2152,6 @@ nsresult CookiePersistentStorage::CreateTableWorker(const char* aName) {
       "isHttpOnly INTEGER, "
       "inBrowserElement INTEGER DEFAULT 0, "
       "sameSite INTEGER DEFAULT 0, "
-      "rawSameSite INTEGER DEFAULT 0, "
       "schemeMap INTEGER DEFAULT 0, "
       "isPartitionedAttributeSet INTEGER DEFAULT 0, "
       "CONSTRAINT moz_uniqueid UNIQUE (name, host, path, originAttributes)"

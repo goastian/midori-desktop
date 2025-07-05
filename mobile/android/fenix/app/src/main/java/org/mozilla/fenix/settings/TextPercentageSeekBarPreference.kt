@@ -31,10 +31,11 @@ import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.View
 import android.view.accessibility.AccessibilityNodeInfo
+import android.view.accessibility.AccessibilityNodeInfo.RangeInfo
 import android.widget.SeekBar
 import android.widget.SeekBar.OnSeekBarChangeListener
 import android.widget.TextView
-import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.RangeInfoCompat.RANGE_TYPE_PERCENT
+import androidx.core.content.withStyledAttributes
 import androidx.preference.Preference
 import androidx.preference.PreferenceViewHolder
 import org.mozilla.fenix.R
@@ -67,18 +68,18 @@ class TextPercentageSeekBarPreference @JvmOverloads constructor(
     defStyleAttr: Int = R.attr.seekBarPreferenceStyle,
     defStyleRes: Int = 0,
 ) : Preference(context, attrs, defStyleAttr, defStyleRes) {
-    /* synthetic access */
+    // synthetic access
     internal var mSeekBarValue: Int = 0
 
-    /* synthetic access */
+    // synthetic access
     internal var mMin: Int = 0
     private var mMax: Int = 0
     private var mSeekBarIncrement: Int = 0
 
-    /* synthetic access */
+    // synthetic access
     internal var mTrackingTouch: Boolean = false
 
-    /* synthetic access */
+    // synthetic access
     internal var mSeekBar: SeekBar? = null
     private var mSeekBarValueTextView: TextView? = null
     private var mExampleTextTextView: TextView? = null
@@ -86,7 +87,7 @@ class TextPercentageSeekBarPreference @JvmOverloads constructor(
     /**
      * Whether the SeekBar should respond to the left/right keys
      */
-    /* synthetic access */
+    // synthetic access
     var isAdjustable: Boolean = false
 
     /**
@@ -97,7 +98,7 @@ class TextPercentageSeekBarPreference @JvmOverloads constructor(
     /**
      * Whether the SeekBarPreference should continuously save the Seekbar value while it is being dragged.
      */
-    /* synthetic access */
+    // synthetic access
     var updatesContinuously: Boolean = false
 
     /**
@@ -232,27 +233,22 @@ class TextPercentageSeekBarPreference @JvmOverloads constructor(
         set(seekBarValue) = setValueInternal(seekBarValue, true)
 
     init {
-        val a = context.obtainStyledAttributes(
+        context.withStyledAttributes(
             attrs,
             R.styleable.TextPercentageSeekBarPreference,
             defStyleAttr,
             defStyleRes,
-        )
-
-        // The ordering of these two statements are important. If we want to set max first, we need
-        // to perform the same steps by changing min/max to max/min as following:
-        // mMax = a.getInt(...) and setMin(...).
-        mMin = a.getInt(R.styleable.TextPercentageSeekBarPreference_min, 0)
-        max = a.getInt(R.styleable.TextPercentageSeekBarPreference_android_max, SEEK_BAR_MAX)
-        seekBarIncrement = a.getInt(R.styleable.TextPercentageSeekBarPreference_seekBarIncrement, 0)
-        isAdjustable = a.getBoolean(R.styleable.TextPercentageSeekBarPreference_adjustable, true)
-        mShowSeekBarValue =
-            a.getBoolean(R.styleable.TextPercentageSeekBarPreference_showSeekBarValue, false)
-        updatesContinuously = a.getBoolean(
-            R.styleable.TextPercentageSeekBarPreference_updatesContinuously,
-            false,
-        )
-        a.recycle()
+        ) {
+            // The ordering of these two statements are important. If we want to set max first, we need
+            // to perform the same steps by changing min/max to max/min as following:
+            // mMax = a.getInt(...) and setMin(...).
+            mMin = getInt(R.styleable.TextPercentageSeekBarPreference_min, 0)
+            max = getInt(R.styleable.TextPercentageSeekBarPreference_android_max, SEEK_BAR_MAX)
+            seekBarIncrement = getInt(R.styleable.TextPercentageSeekBarPreference_seekBarIncrement, 0)
+            isAdjustable = getBoolean(R.styleable.TextPercentageSeekBarPreference_adjustable, true)
+            mShowSeekBarValue = getBoolean(R.styleable.TextPercentageSeekBarPreference_showSeekBarValue, false)
+            updatesContinuously = getBoolean(R.styleable.TextPercentageSeekBarPreference_updatesContinuously, false)
+        }
     }
 
     override fun onBindViewHolder(view: PreferenceViewHolder) {
@@ -331,7 +327,7 @@ class TextPercentageSeekBarPreference @JvmOverloads constructor(
      * Persist the [SeekBar]'s SeekBar value if callChangeListener returns true, otherwise
      * set the [SeekBar]'s value to the stored value.
      */
-    /* synthetic access */
+    // synthetic access
     internal fun syncValueInternal(seekBar: SeekBar) {
         val seekBarValue = mMin + seekBar.progress
         if (seekBarValue != mSeekBarValue) {
@@ -350,7 +346,7 @@ class TextPercentageSeekBarPreference @JvmOverloads constructor(
      *
      * @param labelValue the value to display next to the [SeekBar]
      */
-    /* synthetic access */
+    // synthetic access
     internal fun updateLabelValue(labelValue: Int) {
         var value = labelValue
         if (mSeekBarValueTextView != null) {
@@ -371,16 +367,16 @@ class TextPercentageSeekBarPreference @JvmOverloads constructor(
                     val initialInfo = info.rangeInfo
                     info.rangeInfo = initialInfo?.let {
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                            AccessibilityNodeInfo.RangeInfo(
-                                RANGE_TYPE_PERCENT,
+                            RangeInfo(
+                                RangeInfo.RANGE_TYPE_PERCENT,
                                 MIN_VALUE.toFloat(),
                                 SEEK_BAR_MAX.toFloat(),
                                 convertCurrentValue(it.current),
                             )
                         } else {
                             @Suppress("DEPRECATION")
-                            AccessibilityNodeInfo.RangeInfo.obtain(
-                                RANGE_TYPE_PERCENT,
+                            RangeInfo.obtain(
+                                RangeInfo.RANGE_TYPE_PERCENT,
                                 MIN_VALUE.toFloat(),
                                 SEEK_BAR_MAX.toFloat(),
                                 convertCurrentValue(it.current),

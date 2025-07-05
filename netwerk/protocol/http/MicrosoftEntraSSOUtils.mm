@@ -17,8 +17,7 @@
 #include "nsHashKeys.h"
 #include "nsThreadUtils.h"
 #include "mozilla/Logging.h"
-#include "mozilla/SyncRunnable.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/NetwerkMetrics.h"
 
 namespace {
 static mozilla::LazyLogModule gMacOSWebAuthnServiceLog("macOSSingleSignOn");
@@ -197,7 +196,7 @@ class API_AVAILABLE(macos(13.3)) MicrosoftEntraSSOUtils final {
 }
 - (void)invokeCallbackOnMainThread {
   NS_DispatchToMainThread(NS_NewRunnableFunction(
-      "SSORequestDelegate::didCompleteWithAuthorization failure",
+      "SSORequestDelegate::didCompleteWithAuthorization",
       [callback(mCallback)]() { callback->InvokeCallback(); }));
 }
 

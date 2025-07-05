@@ -11,38 +11,37 @@ import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import org.junit.Assert.assertTrue
 import org.mozilla.focus.R
-import org.mozilla.focus.helpers.TestHelper.appName
 import org.mozilla.focus.helpers.TestHelper.getStringResource
 import org.mozilla.focus.helpers.TestHelper.mDevice
 import org.mozilla.focus.helpers.TestHelper.waitingTime
 
 class NotificationRobot {
 
-    private val NOTIFICATION_SHADE = "com.android.systemui:id/notification_stack_scroller"
-    private val QS_PANEL = "com.android.systemui:id/quick_qs_panel"
+    private val systemNotificationPanelId = "com.android.systemui:id/notification_stack_scroller"
+    private val quickSettingsPanelId = "com.android.systemui:id/quick_qs_panel"
 
     fun clearNotifications() {
-        if (clearButton.exists()) {
-            clearButton.click()
+        if (clearButton().exists()) {
+            clearButton().click()
         } else {
-            notificationTray.flingToEnd(3)
-            if (clearButton.exists()) {
-                clearButton.click()
-            } else if (notificationTray.exists()) {
+            scrollToEnd()
+            if (clearButton().exists()) {
+                clearButton().click()
+            } else if (notificationTray().exists()) {
                 mDevice.pressBack()
             }
         }
     }
 
     fun expandEraseBrowsingNotification() {
-        notificationHeader.click()
+        eraseBrowsingNotification.swipeDown(10)
     }
 
     fun verifySystemNotificationExists(notificationMessage: String) {
         val notification = mDevice.findObject(UiSelector().text(notificationMessage))
         while (!notification.waitForExists(waitingTime)) {
             UiScrollable(
-                UiSelector().resourceId(NOTIFICATION_SHADE),
+                UiSelector().resourceId(systemNotificationPanelId),
             ).flingToEnd(1)
         }
 
@@ -53,7 +52,7 @@ class NotificationRobot {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             val notificationInTray = mDevice.wait(
                 Until.hasObject(
-                    By.res(QS_PANEL).hasDescendant(
+                    By.res(quickSettingsPanelId).hasDescendant(
                         By.text(notificationMessage),
                     ),
                 ),
@@ -87,7 +86,7 @@ class NotificationRobot {
         val downloadFilename = mDevice.findObject(UiSelector().text(fileName))
 
         while (!notificationFound) {
-            notificationTray.swipeUp(2)
+            notificationTray().swipeUp(2)
             notificationFound = mDevice.findObject(notification).waitForExists(waitingTime)
         }
 
@@ -129,7 +128,7 @@ fun notificationTray(interact: NotificationRobot.() -> Unit): NotificationRobot.
 
 private val eraseBrowsingNotification =
     mDevice.findObject(
-        UiSelector().text(getStringResource(R.string.notification_erase_text)),
+        UiSelector().text(getStringResource(R.string.notification_erase_title_android_14)),
     )
 
 private val notificationEraseAndOpenButton =
@@ -141,19 +140,16 @@ private val notificationOpenButton = mDevice.findObject(
     UiSelector().description(getStringResource(R.string.notification_action_open)),
 )
 
-private val notificationTray = UiScrollable(
+private fun notificationTray() = UiScrollable(
     UiSelector().resourceId("com.android.systemui:id/notification_stack_scroller"),
-)
-    .setAsVerticalList()
+).setAsVerticalList()
 
-private val notificationHeader = mDevice.findObject(
-    UiSelector()
-        .resourceId("android:id/app_name_text")
-        .textContains(appName),
-)
+private fun clearButton() =
+    mDevice.findObject(UiSelector().resourceId("com.android.systemui:id/dismiss_text"))
 
-private val clearButton =
-    mDevice.findObject(UiSelector().resourceId("com.android.systemui:id/btn_clear_all"))
+private fun scrollToEnd() {
+    notificationTray().scrollToEnd(1)
+}
 
 private fun mediaNotificationControlButton(action: String) =
     mDevice.findObject(UiSelector().description(action))

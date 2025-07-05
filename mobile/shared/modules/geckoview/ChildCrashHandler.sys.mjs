@@ -65,9 +65,6 @@ export var ChildCrashHandler = {
         // "expected" extensions process crashes on Android.
         const dumpID = aSubject.get("dumpID");
         if (!dumpID) {
-          Services.telemetry
-            .getHistogramById("FX_CONTENT_CRASH_DUMP_UNAVAILABLE")
-            .add(1);
           return;
         }
 
@@ -85,10 +82,12 @@ export var ChildCrashHandler = {
 
         // Report GPU and extension process crashes as occuring in a background
         // process, and others as foreground.
-        const processType =
+        const processVisibility =
           aTopic === "compositor:process-aborted" || remoteType === "extension"
             ? "BACKGROUND_CHILD"
             : "FOREGROUND_CHILD";
+
+        const processType = aSubject.get("processType");
 
         lazy.EventDispatcher.instance.sendRequest({
           type: "GeckoView:ChildCrashReport",
@@ -96,6 +95,7 @@ export var ChildCrashHandler = {
           extrasPath,
           success: true,
           fatal: false,
+          processVisibility,
           processType,
           remoteType,
         });

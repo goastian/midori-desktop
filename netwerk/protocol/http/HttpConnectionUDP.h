@@ -36,12 +36,8 @@ class nsHttpHandler;
 class ASpdySession;
 
 // 1dcc863e-db90-4652-a1fe-13fea0b54e46
-#define HTTPCONNECTIONUDP_IID                        \
-  {                                                  \
-    0xb97d2036, 0xb441, 0x48be, {                    \
-      0xb3, 0x1e, 0x25, 0x3e, 0xe8, 0x32, 0xdd, 0x67 \
-    }                                                \
-  }
+#define HTTPCONNECTIONUDP_IID \
+  {0xb97d2036, 0xb441, 0x48be, {0xb3, 0x1e, 0x25, 0x3e, 0xe8, 0x32, 0xdd, 0x67}}
 
 //-----------------------------------------------------------------------------
 // HttpConnectionUDP - represents a connection to a HTTP3 server
@@ -57,7 +53,7 @@ class HttpConnectionUDP final : public HttpConnectionBase,
   virtual ~HttpConnectionUDP();
 
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(HTTPCONNECTIONUDP_IID)
+  NS_INLINE_DECL_STATIC_IID(HTTPCONNECTIONUDP_IID)
   NS_DECL_HTTPCONNECTIONBASE
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIUDPSOCKETSYNCLISTENER
@@ -90,6 +86,8 @@ class HttpConnectionUDP final : public HttpConnectionBase,
 
   void NotifyDataRead();
   void NotifyDataWrite();
+
+  Http3Stats GetStats();
 
  private:
   [[nodiscard]] nsresult OnTransactionDone(nsresult reason);
@@ -129,8 +127,6 @@ class HttpConnectionUDP final : public HttpConnectionBase,
   RefPtr<Http3Session> mHttp3Session;
   nsCString mAlpnToken;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(HttpConnectionUDP, HTTPCONNECTIONUDP_IID)
 
 }  // namespace net
 }  // namespace mozilla

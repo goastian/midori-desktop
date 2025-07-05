@@ -3,12 +3,24 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import json
 import os
+import pathlib
 import platform
+import shutil
 import signal
+import sys
+import time
 
 import mozprocess
 
 from mozperftest.layers import Layer
+from mozperftest.utils import ON_TRY, archive_folder, install_package, temp_dir
+
+"""
+Python dependencies needed for mozperftest have to be installed when running
+via shellscript there is an issue with the way the shellscript runner does
+not have all of the environment variables and system settings
+"""
+DEPENDENCIES = ["opencv-python==4.10.0.84"]
 
 
 class UnknownScriptError(Exception):
@@ -63,6 +75,11 @@ class ShellScriptRunner(Layer):
         self.timed_out = False
         self.output_timed_out = False
 
+    def setup(self):
+        # Install dependencies
+        for dep in DEPENDENCIES:
+            install_package(self.mach_cmd.virtualenv_manager, dep)
+
     def kill(self, proc):
         if "win" in platform.system().lower():
             proc.send_signal(signal.CTRL_BREAK_EVENT)
@@ -99,7 +116,10 @@ class ShellScriptRunner(Layer):
             line = line.decode("utf-8")
             if "perfMetrics" in line:
                 self.metrics.append(line)
-            self.info(line.strip())
+
+            # Bug 1900056 - Use a different logger in mozperftest because the current
+            # one can't handle messages with curly braces or JSONs in them
+            print(line.strip())
 
         return _line_handler
 
@@ -124,17 +144,60 @@ class ShellScriptRunner(Layer):
             self.error("Process output timed out")
             self.kill(proc)
 
-        os.environ["BROWSER_BINARY"] = metadata.binary
-        mozprocess.run_and_wait(
-            cmd,
-            output_line_handler=self.line_handler_wrapper(),
-            env=os.environ,
-            timeout=self.get_arg("process-timeout"),
-            timeout_handler=timeout_handler,
-            output_timeout=self.get_arg("output-timeout"),
-            output_timeout_handler=output_timeout_handler,
-            text=False,
-        )
+        with temp_dir() as testing_dir:
+            os.environ["APP"] = self.get_arg("app")
+            os.environ["TESTING_DIR"] = testing_dir
+            os.environ["BROWSER_BINARY"] = metadata.binary
+            os.environ["PYTHON_PATH_SHELL_SCRIPT"] = sys.executable
+
+            # Setup a python packages path for python scripts. This is required since
+            # the sys.path modifications made by mozperftest don't get propagated
+            # to the scripts. Furthermore, PYTHONPATH can't be used here since it
+            # gets overrided by something like a ._pth file somewhere along the way.
+            venv_site_lib = str(
+                pathlib.Path(
+                    self.mach_cmd.virtualenv_manager.bin_path, "..", "lib"
+                ).resolve()
+            )
+            venv_site_packages = pathlib.Path(
+                venv_site_lib,
+                f"python{sys.version_info.major}.{sys.version_info.minor}",
+                "site-packages",
+            )
+            if not venv_site_packages.exists():
+                venv_site_packages = pathlib.Path(
+                    venv_site_lib,
+                    "site-packages",
+                )
+            os.environ["PYTHON_PACKAGES"] = str(venv_site_packages)
+
+            mozprocess.run_and_wait(
+                cmd,
+                output_line_handler=self.line_handler_wrapper(),
+                env=os.environ,
+                timeout=self.get_arg("process-timeout"),
+                timeout_handler=timeout_handler,
+                output_timeout=self.get_arg("output-timeout"),
+                output_timeout_handler=output_timeout_handler,
+                text=False,
+            )
+
+            if self.get_arg("output"):
+                if ON_TRY:
+                    # In CI, make an archive of the files and upload those
+                    archive_folder(
+                        pathlib.Path(testing_dir),
+                        pathlib.Path(self.get_arg("output")),
+                        archive_name=test["name"],
+                    )
+                else:
+                    output_dir = pathlib.Path(
+                        self.get_arg("output"),
+                        test["name"],
+                        f"run-{str(time.time()).split('.')[0]}",
+                    )
+                    self.info(f"Copying testing directory to {output_dir}")
+                    shutil.copytree(testing_dir, output_dir)
 
         metadata.add_result(
             {

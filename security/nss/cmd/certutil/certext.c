@@ -280,6 +280,7 @@ parseNextCmdInput(const char *const *valueArray, int *value, char **nextPos,
         PORT_SetError(SEC_ERROR_INVALID_ARGS);
         return SECFailure;
     }
+    *critical = PR_FALSE;
     thisPos = *nextPos;
     while (1) {
         if ((*nextPos = strchr(thisPos, ',')) == NULL) {
@@ -288,16 +289,10 @@ parseNextCmdInput(const char *const *valueArray, int *value, char **nextPos,
             keyLen = *nextPos - thisPos;
             *nextPos += 1;
         }
-        /* if critical keyword is found, go for another loop,
-         * but check, if it is the last keyword of
-         * the string.*/
+        /* if critical keyword is found, return without setting value */
         if (!strncmp("critical", thisPos, keyLen)) {
             *critical = PR_TRUE;
-            if (*nextPos == NULL) {
-                return SECSuccess;
-            }
-            thisPos = *nextPos;
-            continue;
+            return SECSuccess;
         }
         break;
     }
@@ -322,13 +317,35 @@ static const char *const
                                NULL };
 
 static SECStatus
+parseKeyUsage(const char *const *wordArray, const char *userSuppliedValue,
+              unsigned char *keyUsage, PRBool *isCriticalExt)
+{
+    int value = 0;
+    char *nextPos = (char *)userSuppliedValue;
+    PRBool readCriticalToken;
+    while (1) {
+        if (parseNextCmdInput(wordArray, &value, &nextPos,
+                              &readCriticalToken) == SECFailure) {
+            return SECFailure;
+        }
+        if (readCriticalToken == PR_TRUE) {
+            *isCriticalExt = PR_TRUE;
+        } else {
+            *keyUsage |= (0x80 >> value);
+        }
+        if (!nextPos)
+            break;
+    }
+    return SECSuccess;
+}
+
+static SECStatus
 AddKeyUsage(void *extHandle, const char *userSuppliedValue)
 {
     SECItem bitStringValue;
     unsigned char keyUsage = 0x0;
     char buffer[5];
     int value;
-    char *nextPos = (char *)userSuppliedValue;
     PRBool isCriticalExt = PR_FALSE;
 
     if (!userSuppliedValue) {
@@ -360,14 +377,10 @@ AddKeyUsage(void *extHandle, const char *userSuppliedValue)
         }
         isCriticalExt = GetYesNo("Is this a critical extension [y/N]?");
     } else {
-        while (1) {
-            if (parseNextCmdInput(keyUsageKeyWordArray, &value, &nextPos,
-                                  &isCriticalExt) == SECFailure) {
-                return SECFailure;
-            }
-            keyUsage |= (0x80 >> value);
-            if (!nextPos)
-                break;
+        SECStatus rv = parseKeyUsage(keyUsageKeyWordArray, userSuppliedValue,
+                                     &keyUsage, &isCriticalExt);
+        if (rv != SECSuccess) {
+            return rv;
         }
     }
 
@@ -552,9 +565,17 @@ AddExtKeyUsage(void *extHandle, const char *userSuppliedValue)
                 }
             }
         } else {
+            PRBool readCriticalToken = PR_FALSE;
             if (parseNextCmdInput(extKeyUsageKeyWordArray, &value, &nextPos,
-                                  &isCriticalExt) == SECFailure) {
+                                  &readCriticalToken) == SECFailure) {
                 return SECFailure;
+            }
+            if (readCriticalToken == PR_TRUE) {
+                isCriticalExt = PR_TRUE;
+                if (!nextPos) {
+                    goto endloop;
+                }
+                continue;
             }
         }
 
@@ -665,7 +686,6 @@ AddNscpCertType(void *extHandle, const char *userSuppliedValue)
     unsigned char keyUsage = 0x0;
     char buffer[5];
     int value;
-    char *nextPos = (char *)userSuppliedValue;
     PRBool isCriticalExt = PR_FALSE;
 
     if (!userSuppliedValue) {
@@ -698,14 +718,10 @@ AddNscpCertType(void *extHandle, const char *userSuppliedValue)
         }
         isCriticalExt = GetYesNo("Is this a critical extension [y/N]?");
     } else {
-        while (1) {
-            if (parseNextCmdInput(nsCertTypeKeyWordArray, &value, &nextPos,
-                                  &isCriticalExt) == SECFailure) {
-                return SECFailure;
-            }
-            keyUsage |= (0x80 >> value);
-            if (!nextPos)
-                break;
+        SECStatus rv = parseKeyUsage(nsCertTypeKeyWordArray, userSuppliedValue,
+                                     &keyUsage, &isCriticalExt);
+        if (rv != SECSuccess) {
+            return rv;
         }
     }
 
@@ -991,7 +1007,7 @@ AddBasicConstraint(PLArenaPool *arena, void *extHandle)
 
         rv = SECU_EncodeAndAddExtensionValue(arena, extHandle,
                                              &basicConstraint, yesNoAns, SEC_OID_X509_BASIC_CONSTRAINTS,
-                                             (EXTEN_EXT_VALUE_ENCODER)CERT_EncodeBasicConstraintValue);
+                                             EXTEN_EXT_VALUE_ENCODER_CERT_EncodeBasicConstraintValue);
     } while (0);
 
     return (rv);
@@ -1087,7 +1103,7 @@ AddNameConstraints(void *extHandle)
 
         rv = SECU_EncodeAndAddExtensionValue(arena, extHandle, constraints,
                                              yesNoAns, oidIdent,
-                                             (EXTEN_EXT_VALUE_ENCODER)CERT_EncodeNameConstraintsExtension);
+                                             EXTEN_EXT_VALUE_ENCODER_CERT_EncodeNameConstraintsExtension);
     }
     if (arena)
         PORT_FreeArena(arena, PR_FALSE);
@@ -1138,7 +1154,7 @@ AddAuthKeyID(void *extHandle)
 
         rv = SECU_EncodeAndAddExtensionValue(arena, extHandle,
                                              authKeyID, yesNoAns, SEC_OID_X509_AUTH_KEY_ID,
-                                             (EXTEN_EXT_VALUE_ENCODER)CERT_EncodeAuthKeyID);
+                                             EXTEN_EXT_VALUE_ENCODER_CERT_EncodeAuthKeyID);
         if (rv)
             break;
 
@@ -1176,7 +1192,7 @@ AddSubjKeyID(void *extHandle)
 
         rv = SECU_EncodeAndAddExtensionValue(arena, extHandle,
                                              &keyID, yesNoAns, SEC_OID_X509_SUBJECT_KEY_ID,
-                                             (EXTEN_EXT_VALUE_ENCODER)CERT_EncodeSubjectKeyID);
+                                             EXTEN_EXT_VALUE_ENCODER_CERT_EncodeSubjectKeyID);
         if (rv)
             break;
 
@@ -1322,7 +1338,7 @@ AddCrlDistPoint(void *extHandle)
 
         rv = SECU_EncodeAndAddExtensionValue(arena, extHandle,
                                              crlDistPoints, yesNoAns, SEC_OID_X509_CRL_DIST_POINTS,
-                                             (EXTEN_EXT_VALUE_ENCODER)CERT_EncodeCRLDistributionPoints);
+                                             EXTEN_EXT_VALUE_ENCODER_CERT_EncodeCRLDistributionPoints);
     }
     if (arena)
         PORT_FreeArena(arena, PR_FALSE);
@@ -1399,7 +1415,7 @@ AddPolicyConstraints(void *extHandle)
 
         rv = SECU_EncodeAndAddExtensionValue(arena, extHandle, policyConstr,
                                              yesNoAns, SEC_OID_X509_POLICY_CONSTRAINTS,
-                                             (EXTEN_EXT_VALUE_ENCODER)CERT_EncodePolicyConstraintsExtension);
+                                             EXTEN_EXT_VALUE_ENCODER_CERT_EncodePolicyConstraintsExtension);
     } else {
         fprintf(stdout, "Policy Constraint extensions must contain "
                         "at least one policy field\n");
@@ -1451,7 +1467,7 @@ AddInhibitAnyPolicy(void *extHandle)
 
     rv = SECU_EncodeAndAddExtensionValue(arena, extHandle, &certInhibitAny,
                                          yesNoAns, SEC_OID_X509_INHIBIT_ANY_POLICY,
-                                         (EXTEN_EXT_VALUE_ENCODER)CERT_EncodeInhibitAnyExtension);
+                                         EXTEN_EXT_VALUE_ENCODER_CERT_EncodeInhibitAnyExtension);
 loser:
     if (arena) {
         PORT_FreeArena(arena, PR_FALSE);
@@ -1542,7 +1558,7 @@ AddPolicyMappings(void *extHandle)
         mappings.policyMaps = policyMapArr;
         rv = SECU_EncodeAndAddExtensionValue(arena, extHandle, &mappings,
                                              yesNoAns, SEC_OID_X509_POLICY_MAPPINGS,
-                                             (EXTEN_EXT_VALUE_ENCODER)CERT_EncodePolicyMappingExtension);
+                                             EXTEN_EXT_VALUE_ENCODER_CERT_EncodePolicyMappingExtension);
     }
     if (arena)
         PORT_FreeArena(arena, PR_FALSE);
@@ -1827,7 +1843,7 @@ AddCertPolicies(void *extHandle)
 
         rv = SECU_EncodeAndAddExtensionValue(arena, extHandle, &policies,
                                              yesNoAns, SEC_OID_X509_CERTIFICATE_POLICIES,
-                                             (EXTEN_EXT_VALUE_ENCODER)CERT_EncodeCertPoliciesExtension);
+                                             EXTEN_EXT_VALUE_ENCODER_CERT_EncodeCertPoliciesExtension);
     }
     if (arena)
         PORT_FreeArena(arena, PR_FALSE);
@@ -1966,7 +1982,7 @@ AddInfoAccess(void *extHandle, PRBool addSIAExt, PRBool isCACert)
         }
         rv = SECU_EncodeAndAddExtensionValue(arena, extHandle, infoAccArr,
                                              yesNoAns, oidIdent,
-                                             (EXTEN_EXT_VALUE_ENCODER)CERT_EncodeInfoAccessExtension);
+                                             EXTEN_EXT_VALUE_ENCODER_CERT_EncodeInfoAccessExtension);
     }
     if (arena)
         PORT_FreeArena(arena, PR_FALSE);

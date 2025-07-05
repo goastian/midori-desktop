@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 """Support for fetching secrets from the secrets API
 """
 
@@ -14,9 +12,9 @@ import six
 from six.moves import urllib
 
 
-class SecretsMixin(object):
+class SecretsMixin:
     def _fetch_secret(self, secret_name):
-        self.info("fetching secret {} from API".format(secret_name))
+        self.info(f"fetching secret {secret_name} from API")
         # fetch from TASKCLUSTER_PROXY_URL, which points to the taskcluster proxy
         # within a taskcluster task.  Outside of that environment, do not
         # use this action.
@@ -68,7 +66,7 @@ class SecretsMixin(object):
                     secret = sf["default"]
                 elif "default-file" in sf:
                     default_path = sf["default-file"].format(**dirs)
-                    with open(default_path, "r") as f:
+                    with open(default_path) as f:
                         secret = f.read()
                 else:
                     self.info("No default for secret; not writing " + filename)

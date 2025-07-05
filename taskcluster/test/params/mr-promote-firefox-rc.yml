@@ -1892,6 +1892,15 @@ release_partner_config:
         upload_to_candidates: 'true'
   release-partner-attribution:
     configs:
+      - campaign: smi
+        content: smi-001
+        locales:
+          - en-GB
+        platforms:
+          - macosx64-shippable
+          - win32-shippable # Stub installers only
+        upload_to_candidates: true
+        publish_to_releases: true
       - campaign: softonic
         content: softonic-003
         locales:

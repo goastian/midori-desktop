@@ -31,8 +31,9 @@ import mozilla.components.concept.fetch.Client
 import mozilla.components.concept.fetch.Request
 import mozilla.components.concept.fetch.Request.Redirect.FOLLOW
 import mozilla.components.feature.search.ext.createSearchEngine
-import mozilla.components.service.glean.private.NoExtras
+import mozilla.components.support.ktx.android.view.hideKeyboard
 import mozilla.components.support.ktx.util.URLStringUtils
+import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.focus.GleanMetrics.SearchEngines
 import org.mozilla.focus.R
 import org.mozilla.focus.ext.components
@@ -93,12 +94,12 @@ class ManualAddSearchEngineSettingsFragment : BaseSettingsFragment() {
             val pref = findManualAddSearchEnginePreference(R.string.pref_key_manual_add_search_engine)
 
             val existingEngines = requireContext().components.store.state.search.searchEngines
-            val engineValid = pref?.validateEngineNameAndShowError(engineName, existingEngines) ?: false
-            val searchValid = pref?.validateSearchQueryAndShowError(searchQuery) ?: false
+            val engineValid = pref?.validateEngineNameAndShowError(engineName, existingEngines) == true
+            val searchValid = pref?.validateSearchQueryAndShowError(searchQuery) == true
             val isPartialSuccess = engineValid && searchValid
 
             if (isPartialSuccess) {
-                ViewUtils.hideKeyboard(view)
+                view?.hideKeyboard()
                 setUiIsValidatingAsync(true, menuItem)
 
                 menuItemForActiveAsyncTask = menuItem
@@ -131,7 +132,7 @@ class ManualAddSearchEngineSettingsFragment : BaseSettingsFragment() {
     override fun onDestroyView() {
         scope?.cancel()
         super.onDestroyView()
-        if (view != null) ViewUtils.hideKeyboard(view)
+        view?.hideKeyboard()
     }
 
     private fun setUiIsValidatingAsync(isValidating: Boolean, saveMenuItem: MenuItem?) {
@@ -190,7 +191,9 @@ class ManualAddSearchEngineSettingsFragment : BaseSettingsFragment() {
             val normalizedHttpsSearchURLStr = URLStringUtils.toNormalizedURL(query)
             val searchURLStr = normalizedHttpsSearchURLStr.replace("%s".toRegex(), encodedTestQuery)
 
-            try { URL(searchURLStr) } catch (e: MalformedURLException) {
+            try {
+                URL(searchURLStr)
+            } catch (e: MalformedURLException) {
                 // Don't log exception to avoid leaking URL.
                 Log.d(LOGTAG, "Failure to get response code from server: returning invalid search query")
                 return false
@@ -221,7 +224,9 @@ class ManualAddSearchEngineSettingsFragment : BaseSettingsFragment() {
         val isValidSearchQuery = isValidSearchQueryURL(client, query)
 
         withContext(Dispatchers.Main) {
-            if (!isActive) {
+            if (isActive) {
+                // continue validation
+            } else {
                 return@withContext
             }
 

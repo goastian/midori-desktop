@@ -878,7 +878,7 @@ RemoteProxyAutoConfig::~RemoteProxyAutoConfig() = default;
 nsresult RemoteProxyAutoConfig::Init(nsIThread* aPACThread) {
   MOZ_ASSERT(NS_IsMainThread());
 
-  SocketProcessParent* socketProcessParent =
+  RefPtr<SocketProcessParent> socketProcessParent =
       SocketProcessParent::GetSingleton();
   if (!socketProcessParent) {
     return NS_ERROR_NOT_AVAILABLE;
@@ -887,8 +887,8 @@ nsresult RemoteProxyAutoConfig::Init(nsIThread* aPACThread) {
   ipc::Endpoint<PProxyAutoConfigParent> parent;
   ipc::Endpoint<PProxyAutoConfigChild> child;
   nsresult rv = PProxyAutoConfig::CreateEndpoints(
-      base::GetCurrentProcId(), socketProcessParent->OtherPid(), &parent,
-      &child);
+      ipc::EndpointProcInfo::Current(),
+      socketProcessParent->OtherEndpointProcInfo(), &parent, &child);
   if (NS_FAILED(rv)) {
     return rv;
   }

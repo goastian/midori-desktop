@@ -988,7 +988,7 @@ win64-ccov/opt:
     fetches:
         toolchain:
             - win64-clang
-            - win64-rust
+            - win64-rust-1.83
             - win64-rust-size
             - win64-cbindgen
             - win64-grcov
@@ -1038,7 +1038,7 @@ win64-fuzzing-ccov/opt:
     fetches:
         toolchain:
             - win64-clang
-            - win64-rust
+            - win64-rust-1.83
             - win64-rust-size
             - win64-cbindgen
             - win64-grcov
@@ -1477,7 +1477,7 @@ win64-aarch64/opt:
 
 win64-aarch64-shippable/opt:
     description: "AArch64 Win64 Shippable"
-    use-pgo: win64-shippable/opt
+    use-pgo: true
     index:
         product: firefox
         job-name: win64-aarch64-opt
@@ -1530,7 +1530,7 @@ win64-aarch64-shippable/opt:
 
 win64-aarch64-devedition/opt:
     description: "AArch64 Win64 Dev Edition (shippable)"
-    use-pgo: win64-shippable/opt
+    use-pgo: win64-aarch64-shippable/opt
     index:
         product: devedition
         job-name: win64-aarch64-opt

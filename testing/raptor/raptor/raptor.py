@@ -62,7 +62,7 @@ def main(args=sys.argv[1:]):
 
     # ensure we have at least one valid test to run
     if len(raptor_test_list) == 0:
-        LOG.critical("test '{}' could not be found for {}".format(args.test, args.app))
+        LOG.critical(f"test '{args.test}' could not be found for {args.app}")
         sys.exit(1)
 
     LOG.info("raptor tests scheduled to run:")
@@ -88,7 +88,7 @@ def main(args=sys.argv[1:]):
             args.app,
             args.binary,
             run_local=args.run_local,
-            noinstall=args.noinstall,
+            no_install=args.no_install,
             installerpath=args.installerpath,
             obj_path=args.obj_path,
             gecko_profile=args.gecko_profile,
@@ -125,6 +125,7 @@ def main(args=sys.argv[1:]):
             page_timeout=args.page_timeout,
             clean=args.clean,
             screenshot_on_failure=args.screenshot_on_failure,
+            power_test=args.power_test,
         )
     except Exception:
         traceback.print_exc()

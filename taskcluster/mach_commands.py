@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -222,26 +220,13 @@ def taskgraph_decision(command_context, **options):
                 ],
             }
             print(
-                "PERFHERDER_DATA: {}".format(json.dumps(perfherder_data)),
+                f"PERFHERDER_DATA: {json.dumps(perfherder_data)}",
                 file=sys.stderr,
             )
         return ret
     except Exception:
         traceback.print_exc()
         sys.exit(1)
-
-
-@SubCommand(
-    "taskgraph",
-    "cron",
-    description="Provide a pointer to the new `.cron.yml` handler.",
-)
-def taskgraph_cron(command_context, **options):
-    print(
-        'Handling of ".cron.yml" files has move to '
-        "https://hg.mozilla.org/ci/ci-admin/file/default/build-decision."
-    )
-    sys.exit(1)
 
 
 @SubCommand(

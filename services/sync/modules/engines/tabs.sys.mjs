@@ -28,9 +28,10 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
-  ReaderMode: "resource://gre/modules/ReaderMode.sys.mjs",
-  TabsStore: "resource://gre/modules/RustTabs.sys.mjs",
-  RemoteTabRecord: "resource://gre/modules/RustTabs.sys.mjs",
+  ReaderMode: "moz-src:///toolkit/components/reader/ReaderMode.sys.mjs",
+  getTabsStore: "resource://services-sync/TabsStore.sys.mjs",
+  RemoteTabRecord:
+    "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustTabs.sys.mjs",
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(
@@ -126,8 +127,7 @@ TabEngine.prototype = {
   async initialize() {
     await SyncEngine.prototype.initialize.call(this);
 
-    let path = PathUtils.join(PathUtils.profileDir, "synced-tabs.db");
-    this._rustStore = await lazy.TabsStore.init(path);
+    this._rustStore = await lazy.getTabsStore();
     this._bridge = await this._rustStore.bridgedEngine();
 
     // Uniffi doesn't currently only support async methods, so we'll need to hardcode
@@ -377,7 +377,7 @@ export const TabProvider = {
       if (runningByteLength >= bytesMax) {
         log.warn(
           `Can't fit all tabs in sync payload: have ${winTabs.length},
-             but can only fit ${tabRecords.length}.`
+              but can only fit ${tabRecords.length}.`
         );
         break;
       }
@@ -426,9 +426,10 @@ export const TabProvider = {
         encoder.encode(thisTab.title + thisTab.lastUsed + url).byteLength + 100;
 
       // Use the favicon service for the icon url - we can wait for the promises at the end.
-      let iconPromise = lazy.PlacesUtils.promiseFaviconData(url)
-        .then(iconData => {
-          thisTab.icon = iconData.uri.spec;
+      let iconPromise = lazy.PlacesUtils.favicons
+        .getFaviconForPage(lazy.PlacesUtils.toURI(url))
+        .then(favicon => {
+          thisTab.icon = favicon.uri.spec;
         })
         .catch(() => {
           log.trace(

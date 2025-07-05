@@ -5,19 +5,31 @@
 package org.mozilla.fenix.components.menu
 
 import androidx.navigation.NavController
-import androidx.navigation.NavHostController
+import androidx.navigation.NavOptions
+import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
+import io.mockk.verifyOrder
 import kotlinx.coroutines.test.runTest
 import mozilla.appservices.places.BookmarkRoot
+import mozilla.components.browser.state.state.ContentState
+import mozilla.components.browser.state.state.CustomTabConfig
+import mozilla.components.browser.state.state.CustomTabSessionState
 import mozilla.components.browser.state.state.ReaderState
+import mozilla.components.browser.state.state.createCustomTab
 import mozilla.components.browser.state.state.createTab
+import mozilla.components.concept.engine.EngineSession.LoadUrlFlags
 import mozilla.components.concept.engine.prompt.ShareData
+import mozilla.components.feature.addons.Addon
+import mozilla.components.feature.pwa.WebAppUseCases
+import mozilla.components.feature.session.SessionUseCases
 import mozilla.components.service.fxa.manager.AccountState.Authenticated
 import mozilla.components.service.fxa.manager.AccountState.AuthenticationProblem
 import mozilla.components.service.fxa.manager.AccountState.NotAuthenticated
 import mozilla.components.support.test.rule.MainCoroutineRule
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.mozilla.fenix.R
@@ -26,19 +38,19 @@ import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.browser.browsingmode.SimpleBrowsingModeManager
 import org.mozilla.fenix.collections.SaveCollectionStep
 import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
-import org.mozilla.fenix.components.menu.compose.EXTENSIONS_MENU_ROUTE
-import org.mozilla.fenix.components.menu.compose.SAVE_MENU_ROUTE
-import org.mozilla.fenix.components.menu.compose.TOOLS_MENU_ROUTE
 import org.mozilla.fenix.components.menu.middleware.MenuNavigationMiddleware
 import org.mozilla.fenix.components.menu.store.BookmarkState
 import org.mozilla.fenix.components.menu.store.BrowserMenuState
 import org.mozilla.fenix.components.menu.store.MenuAction
 import org.mozilla.fenix.components.menu.store.MenuState
 import org.mozilla.fenix.components.menu.store.MenuStore
+import org.mozilla.fenix.components.usecases.FenixBrowserUseCases
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.settings.SupportUtils.AMO_HOMEPAGE_FOR_ANDROID
 import org.mozilla.fenix.settings.SupportUtils.SumoTopic
+import org.mozilla.fenix.utils.Settings
+import org.mozilla.fenix.webcompat.WEB_COMPAT_REPORTER_URL
 
 class MenuNavigationMiddlewareTest {
 
@@ -47,7 +59,10 @@ class MenuNavigationMiddlewareTest {
     private val scope = coroutinesTestRule.scope
 
     private val navController: NavController = mockk(relaxed = true)
-    private val navHostController: NavHostController = mockk(relaxed = true)
+    private val sessionUseCases: SessionUseCases = mockk(relaxed = true)
+    private val fenixBrowserUseCases: FenixBrowserUseCases = mockk(relaxed = true)
+    private val webAppUseCases: WebAppUseCases = mockk(relaxed = true)
+    private val settings: Settings = mockk(relaxed = true)
 
     @Test
     fun `GIVEN account state is authenticated WHEN navigate to Mozilla account action is dispatched THEN dispatch navigate action to Mozilla account settings`() = runTest {
@@ -130,20 +145,6 @@ class MenuNavigationMiddlewareTest {
     }
 
     @Test
-    fun `WHEN navigate to help action is dispatched THEN navigate to SUMO Help topic`() = runTest {
-        var params: BrowserNavigationParams? = null
-        val store = createStore(
-            openToBrowser = {
-                params = it
-            },
-        )
-
-        store.dispatch(MenuAction.Navigate.Help).join()
-
-        assertEquals(SumoTopic.HELP, params?.sumoTopic)
-    }
-
-    @Test
     fun `WHEN navigate to bookmarks action is dispatched THEN navigate to bookmarks`() = runTest {
         val store = createStore()
         store.dispatch(MenuAction.Navigate.Settings).join()
@@ -185,12 +186,12 @@ class MenuNavigationMiddlewareTest {
     @Test
     fun `WHEN navigate to passwords action is dispatched THEN navigate to passwords`() = runTest {
         val store = createStore()
-        store.dispatch(MenuAction.Navigate.Settings).join()
+        store.dispatch(MenuAction.Navigate.Passwords).join()
 
         verify {
             navController.nav(
                 R.id.menuDialogFragment,
-                MenuDialogFragmentDirections.actionGlobalSavedLoginsAuthFragment(),
+                MenuDialogFragmentDirections.actionMenuDialogFragmentToLoginsListFragment(),
             )
         }
     }
@@ -223,41 +224,50 @@ class MenuNavigationMiddlewareTest {
     }
 
     @Test
-    fun `WHEN navigate to tools action is dispatched THEN navigate to tools submenu route`() = runTest {
-        val store = createStore()
-        store.dispatch(MenuAction.Navigate.Tools).join()
+    fun `GIVEN current site is installable WHEN navigate to add to home screen is dispatched THEN invoke add to home screen use case`() = runTest {
+        val tab = createTab(url = "https://www.mozilla.org")
+        var dismissWasCalled = false
+        val store = createStore(
+            menuState = MenuState(
+                browserMenuState = BrowserMenuState(
+                    selectedTab = tab,
+                ),
+            ),
+            onDismiss = { dismissWasCalled = true },
+        )
 
-        verify {
-            navHostController.navigate(route = TOOLS_MENU_ROUTE)
-        }
+        every { webAppUseCases.isInstallable() } returns true
+
+        store.dispatch(MenuAction.Navigate.AddToHomeScreen).join()
+
+        coVerify(exactly = 1) { webAppUseCases.addToHomescreen() }
+        assertTrue(dismissWasCalled)
     }
 
     @Test
-    fun `WHEN navigate to save action is dispatched THEN navigate to save submenu route`() = runTest {
-        val store = createStore()
-        store.dispatch(MenuAction.Navigate.Save).join()
+    fun `GIVEN current site is not installable WHEN navigate to add to home screen is dispatched THEN navigate to create home screen shortcut fragment`() = runTest {
+        val tab = createTab(url = "https://www.mozilla.org")
+        val store = createStore(
+            menuState = MenuState(
+                browserMenuState = BrowserMenuState(
+                    selectedTab = tab,
+                ),
+            ),
+        )
+
+        every { webAppUseCases.isInstallable() } returns false
+
+        store.dispatch(MenuAction.Navigate.AddToHomeScreen).join()
 
         verify {
-            navHostController.navigate(route = SAVE_MENU_ROUTE)
+            navController.nav(
+                R.id.menuDialogFragment,
+                MenuDialogFragmentDirections.actionMenuDialogFragmentToCreateShortcutFragment(),
+                navOptions = NavOptions.Builder()
+                    .setPopUpTo(R.id.browserFragment, false)
+                    .build(),
+            )
         }
-    }
-
-    @Test
-    fun `WHEN navigate to extensions action is dispatched THEN navigate to extensions submenu route`() = runTest {
-        val store = createStore()
-        store.dispatch(MenuAction.Navigate.Extensions).join()
-
-        verify {
-            navHostController.navigate(route = EXTENSIONS_MENU_ROUTE)
-        }
-    }
-
-    @Test
-    fun `WHEN navigate back action is dispatched THEN pop back stack`() = runTest {
-        val store = createStore()
-        store.dispatch(MenuAction.Navigate.Back).join()
-
-        verify { navHostController.popBackStack() }
     }
 
     @Test
@@ -281,6 +291,9 @@ class MenuNavigationMiddlewareTest {
                     selectedTabIds = arrayOf(tab.id),
                     saveCollectionStep = SaveCollectionStep.SelectCollection,
                 ),
+                navOptions = NavOptions.Builder()
+                    .setPopUpTo(R.id.browserFragment, false)
+                    .build(),
             )
         }
     }
@@ -355,6 +368,9 @@ class MenuNavigationMiddlewareTest {
             navController.nav(
                 R.id.menuDialogFragment,
                 MenuDialogFragmentDirections.actionMenuDialogFragmentToTranslationsDialogFragment(),
+                navOptions = NavOptions.Builder()
+                    .setPopUpTo(R.id.browserFragment, false)
+                    .build(),
             )
         }
     }
@@ -392,6 +408,9 @@ class MenuNavigationMiddlewareTest {
                     ),
                     showPage = true,
                 ),
+                navOptions = NavOptions.Builder()
+                    .setPopUpTo(R.id.browserFragment, false)
+                    .build(),
             )
         }
     }
@@ -427,6 +446,47 @@ class MenuNavigationMiddlewareTest {
                     ),
                     showPage = true,
                 ),
+                navOptions = NavOptions.Builder()
+                    .setPopUpTo(R.id.browserFragment, false)
+                    .build(),
+            )
+        }
+    }
+
+    @Test
+    fun `GIVEN the current tab is a custom tab WHEN navigate to share action is dispatched THEN navigate to share sheet`() = runTest {
+        val url = "https://www.mozilla.org"
+        val title = "Mozilla"
+        val customTab = CustomTabSessionState(
+            content = ContentState(
+                url = url,
+                title = title,
+            ),
+            config = CustomTabConfig(),
+        )
+        val store = createStore(
+            customTab = customTab,
+            menuState = MenuState(),
+        )
+
+        store.dispatch(MenuAction.Navigate.Share).join()
+
+        verify {
+            navController.nav(
+                R.id.menuDialogFragment,
+                MenuDialogFragmentDirections.actionGlobalShareFragment(
+                    sessionId = customTab.id,
+                    data = arrayOf(
+                        ShareData(
+                            url = url,
+                            title = title,
+                        ),
+                    ),
+                    showPage = true,
+                ),
+                navOptions = NavOptions.Builder()
+                    .setPopUpTo(R.id.externalAppBrowserFragment, false)
+                    .build(),
             )
         }
     }
@@ -456,6 +516,20 @@ class MenuNavigationMiddlewareTest {
         store.dispatch(MenuAction.Navigate.DiscoverMoreExtensions).join()
 
         assertEquals(AMO_HOMEPAGE_FOR_ANDROID, params?.url)
+    }
+
+    @Test
+    fun `WHEN navigate to extensions learn more action is dispatched THEN navigate to the SUMO page for installing add-ons`() = runTest {
+        var params: BrowserNavigationParams? = null
+        val store = createStore(
+            openToBrowser = {
+                params = it
+            },
+        )
+
+        store.dispatch(MenuAction.Navigate.ExtensionsLearnMore).join()
+
+        assertEquals(SumoTopic.FIND_INSTALL_ADDONS, params?.sumoTopic)
     }
 
     @Test
@@ -494,19 +568,341 @@ class MenuNavigationMiddlewareTest {
         }
     }
 
+    @Test
+    fun `GIVEN homepage as a new tab is enabled WHEN navigate to new tab action is dispatched THEN navigate to a new homepage tab`() = runTest {
+        every { settings.enableHomepageAsNewTab } returns true
+
+        val browsingModeManager = SimpleBrowsingModeManager(BrowsingMode.Private)
+        val store = createStore(
+            browsingModeManager = browsingModeManager,
+        )
+        store.dispatch(MenuAction.Navigate.NewTab).join()
+
+        assertEquals(BrowsingMode.Normal, browsingModeManager.mode)
+
+        verifyOrder {
+            fenixBrowserUseCases.addNewHomepageTab(
+                private = false,
+            )
+
+            navController.nav(
+                R.id.menuDialogFragment,
+                MenuDialogFragmentDirections.actionGlobalHome(focusOnAddressBar = true),
+            )
+        }
+    }
+
+    @Test
+    fun `GIVEN homepage as a new tab is enabled WHEN navigate to new private tab action is dispatched THEN navigate to a private homepage tab`() = runTest {
+        every { settings.enableHomepageAsNewTab } returns true
+
+        val browsingModeManager = SimpleBrowsingModeManager(BrowsingMode.Normal)
+        val store = createStore(
+            browsingModeManager = browsingModeManager,
+        )
+        store.dispatch(MenuAction.Navigate.NewPrivateTab).join()
+
+        assertEquals(BrowsingMode.Private, browsingModeManager.mode)
+
+        verifyOrder {
+            fenixBrowserUseCases.addNewHomepageTab(
+                private = true,
+            )
+
+            navController.nav(
+                R.id.menuDialogFragment,
+                MenuDialogFragmentDirections.actionGlobalHome(focusOnAddressBar = true),
+            )
+        }
+    }
+
+    @Test
+    fun `WHEN navigate to addon details is dispatched THEN navigate to the addon details`() = runTest {
+        val addon = Addon(id = "ext1")
+        val store = createStore()
+        store.dispatch(MenuAction.Navigate.AddonDetails(addon = addon)).join()
+
+        verify {
+            navController.nav(
+                R.id.menuDialogFragment,
+                MenuDialogFragmentDirections.actionMenuDialogFragmenToAddonDetailsFragment(addon = addon),
+            )
+        }
+    }
+
+    @Test
+    fun `GIVEN the user is on a tab WHEN the user clicks on the web compat button THEN navigate to the web compat reporter feature`() = runTest {
+        every { settings.isTelemetryEnabled } returns true
+        val expectedTabUrl = "www.mozilla.org"
+        createStore(
+            menuState = MenuState(
+                browserMenuState = BrowserMenuState(
+                    selectedTab = createTab(
+                        url = expectedTabUrl,
+                    ),
+                ),
+            ),
+        ).dispatch(MenuAction.Navigate.WebCompatReporter)
+
+        verify {
+            navController.nav(
+                R.id.menuDialogFragment,
+                MenuDialogFragmentDirections.actionMenuDialogFragmentToWebCompatReporterFragment(tabUrl = expectedTabUrl),
+            )
+        }
+    }
+
+    @Test
+    fun `GIVEN the user is on a tab WHEN the user clicks on the web compat button and telemetry is disabled THEN open browser`() = runTest {
+        every { settings.isTelemetryEnabled } returns false
+        var params: BrowserNavigationParams? = null
+        val expectedTabUrl = "www.mozilla.org"
+        val store = createStore(
+            customTab = createCustomTab(
+                url = expectedTabUrl,
+            ),
+            openToBrowser = {
+                params = it
+            },
+        )
+
+        store.dispatch(MenuAction.Navigate.WebCompatReporter).join()
+
+        assertEquals("$WEB_COMPAT_REPORTER_URL$expectedTabUrl", params?.url)
+    }
+
+    @Test
+    fun `GIVEN the user is on a custom tab WHEN the user clicks on the web compat button THEN navigate to the web compat reporter feature`() = runTest {
+        every { settings.isTelemetryEnabled } returns true
+        val expectedTabUrl = "www.mozilla.org"
+        createStore(
+            customTab = createCustomTab(
+                url = expectedTabUrl,
+            ),
+        ).dispatch(MenuAction.Navigate.WebCompatReporter)
+
+        verify {
+            navController.nav(
+                R.id.menuDialogFragment,
+                MenuDialogFragmentDirections.actionMenuDialogFragmentToWebCompatReporterFragment(tabUrl = expectedTabUrl),
+            )
+        }
+    }
+
+    @Test
+    fun `GIVEN view history is true WHEN navigate back action is dispatched THEN navigate to tab history dialog fragment`() = runTest {
+        val store = createStore(
+            menuState = MenuState(
+                customTabSessionId = "0",
+            ),
+        )
+
+        store.dispatch(MenuAction.Navigate.Back(viewHistory = true)).join()
+
+        verify {
+            navController.nav(
+                id = R.id.menuDialogFragment,
+                directions = MenuDialogFragmentDirections.actionGlobalTabHistoryDialogFragment(
+                    activeSessionId = store.state.customTabSessionId,
+                ),
+                navOptions = NavOptions.Builder()
+                    .setPopUpTo(R.id.browserFragment, false)
+                    .build(),
+            )
+        }
+    }
+
+    @Test
+    fun `GIVEN user is on a tab and view history is false WHEN navigate back action is dispatched THEN navigate back`() = runTest {
+        val tab = createTab(url = "https://www.mozilla.org")
+        var dismissWasCalled = false
+        val store = createStore(
+            customTab = null,
+            menuState = MenuState(
+                browserMenuState = BrowserMenuState(
+                    selectedTab = tab,
+                ),
+            ),
+            onDismiss = { dismissWasCalled = true },
+        )
+
+        store.dispatch(MenuAction.Navigate.Back(viewHistory = false)).join()
+
+        verify {
+            sessionUseCases.goBack.invoke(tab.id)
+        }
+        assertTrue(dismissWasCalled)
+    }
+
+    @Test
+    fun `GIVEN user is on a custom tab and view history is false WHEN navigate back action is dispatched THEN navigate back`() = runTest {
+        val customTab = createCustomTab(url = "https://www.mozilla.org")
+        var dismissWasCalled = false
+        val store = createStore(
+            customTab = customTab,
+            onDismiss = { dismissWasCalled = true },
+        )
+
+        store.dispatch(MenuAction.Navigate.Back(viewHistory = false)).join()
+
+        verify {
+            sessionUseCases.goBack.invoke(customTab.id)
+        }
+        assertTrue(dismissWasCalled)
+    }
+
+    @Test
+    fun `GIVEN view history is true WHEN navigate forward action is dispatched THEN navigate to tab history dialog fragment`() = runTest {
+        val store = createStore(
+            menuState = MenuState(
+                customTabSessionId = "0",
+            ),
+        )
+
+        store.dispatch(MenuAction.Navigate.Forward(viewHistory = true)).join()
+
+        verify {
+            navController.nav(
+                id = R.id.menuDialogFragment,
+                directions = MenuDialogFragmentDirections.actionGlobalTabHistoryDialogFragment(
+                    activeSessionId = store.state.customTabSessionId,
+                ),
+                navOptions = NavOptions.Builder()
+                    .setPopUpTo(R.id.browserFragment, false)
+                    .build(),
+            )
+        }
+    }
+
+    @Test
+    fun `GIVEN user is on a tab and view history is false WHEN navigate forward action is dispatched THEN navigate forward`() = runTest {
+        val tab = createTab(url = "https://www.mozilla.org")
+        var dismissWasCalled = false
+        val store = createStore(
+            customTab = null,
+            menuState = MenuState(
+                browserMenuState = BrowserMenuState(
+                    selectedTab = tab,
+                ),
+            ),
+            onDismiss = { dismissWasCalled = true },
+        )
+
+        store.dispatch(MenuAction.Navigate.Forward(viewHistory = false)).join()
+
+        verify {
+            sessionUseCases.goForward.invoke(tab.id)
+        }
+        assertTrue(dismissWasCalled)
+    }
+
+    @Test
+    fun `GIVEN user is on a custom tab and view history is false WHEN navigate forward action is dispatched THEN navigate forward`() = runTest {
+        val customTab = createCustomTab(url = "https://www.mozilla.org")
+        var dismissWasCalled = false
+        val store = createStore(
+            customTab = customTab,
+            onDismiss = { dismissWasCalled = true },
+        )
+
+        store.dispatch(MenuAction.Navigate.Forward(viewHistory = false)).join()
+
+        verify {
+            sessionUseCases.goForward.invoke(customTab.id)
+        }
+        assertTrue(dismissWasCalled)
+    }
+
+    @Test
+    fun `GIVEN bypass cache is true WHEN navigate reload action is dispatched THEN reload with bypass cache flag`() = runTest {
+        val tab = createTab(url = "https://www.mozilla.org")
+        var dismissWasCalled = false
+        val store = createStore(
+            customTab = null,
+            menuState = MenuState(
+                browserMenuState = BrowserMenuState(
+                    selectedTab = tab,
+                ),
+            ),
+            onDismiss = { dismissWasCalled = true },
+        )
+
+        store.dispatch(MenuAction.Navigate.Reload(bypassCache = true)).join()
+
+        verify {
+            sessionUseCases.reload.invoke(
+                tabId = tab.id,
+                flags = LoadUrlFlags.select(LoadUrlFlags.BYPASS_CACHE),
+            )
+        }
+        assertTrue(dismissWasCalled)
+    }
+
+    @Test
+    fun `GIVEN user is on a tab and bypass cache is false WHEN navigate reload action is dispatched THEN reload with no flags`() = runTest {
+        val tab = createTab(url = "https://www.mozilla.org")
+        var dismissWasCalled = false
+        val store = createStore(
+            customTab = null,
+            menuState = MenuState(
+                browserMenuState = BrowserMenuState(
+                    selectedTab = tab,
+                ),
+            ),
+            onDismiss = { dismissWasCalled = true },
+        )
+
+        store.dispatch(MenuAction.Navigate.Reload(bypassCache = false)).join()
+
+        verify {
+            sessionUseCases.reload.invoke(
+                tabId = tab.id,
+                flags = LoadUrlFlags.none(),
+            )
+        }
+        assertTrue(dismissWasCalled)
+    }
+
+    @Test
+    fun `GIVEN user is on a custom tab and bypass cache is false WHEN navigate reload action is dispatched THEN reload with no flags`() = runTest {
+        val customTab = createCustomTab(url = "https://www.mozilla.org")
+        var dismissWasCalled = false
+        val store = createStore(
+            customTab = customTab,
+            onDismiss = { dismissWasCalled = true },
+        )
+
+        store.dispatch(MenuAction.Navigate.Reload(bypassCache = false)).join()
+
+        verify {
+            sessionUseCases.reload.invoke(
+                tabId = customTab.id,
+                flags = LoadUrlFlags.none(),
+            )
+        }
+        assertTrue(dismissWasCalled)
+    }
+
     private fun createStore(
+        customTab: CustomTabSessionState? = mockk(relaxed = true),
         menuState: MenuState = MenuState(),
         browsingModeManager: BrowsingModeManager = mockk(relaxed = true),
         openToBrowser: (params: BrowserNavigationParams) -> Unit = {},
+        onDismiss: suspend () -> Unit = {},
     ) = MenuStore(
         initialState = menuState,
         middleware = listOf(
             MenuNavigationMiddleware(
                 navController = navController,
-                navHostController = navHostController,
                 browsingModeManager = browsingModeManager,
                 openToBrowser = openToBrowser,
+                sessionUseCases = sessionUseCases,
+                fenixBrowserUseCases = fenixBrowserUseCases,
+                webAppUseCases = webAppUseCases,
+                settings = settings,
+                onDismiss = onDismiss,
                 scope = scope,
+                customTab = customTab,
             ),
         ),
     )

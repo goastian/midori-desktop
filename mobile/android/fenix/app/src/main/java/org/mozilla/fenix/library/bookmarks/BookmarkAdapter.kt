@@ -11,7 +11,6 @@ import androidx.annotation.VisibleForTesting
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.RecyclerView
-import mozilla.appservices.places.BookmarkRoot
 import mozilla.components.concept.storage.BookmarkNode
 import mozilla.components.concept.storage.BookmarkNodeType
 import org.mozilla.fenix.library.LibrarySiteItemView
@@ -131,6 +130,10 @@ class BookmarkAdapter(private val emptyView: View, private val interactor: Bookm
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         (holder as? BookmarkNodeViewHolder)?.bind(tree[position], mode, BookmarkPayload())
     }
+
+    override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+        (holder as? BookmarkNodeViewHolder)?.unbind()
+    }
 }
 
 /**
@@ -157,5 +160,3 @@ data class BookmarkPayload(
         iconChanged = true,
     )
 }
-
-fun BookmarkNode.inRoots() = enumValues<BookmarkRoot>().any { it.id == guid }

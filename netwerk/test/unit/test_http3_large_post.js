@@ -7,7 +7,7 @@ registerCleanupFunction(async () => {
 });
 
 add_task(async function setup() {
-  await http3_setup_tests("h3-29");
+  await http3_setup_tests("h3");
 });
 
 let Http3Listener = function (amount) {
@@ -60,7 +60,7 @@ Http3Listener.prototype = {
     try {
       httpVersion = request.protocolVersion;
     } catch (e) {}
-    Assert.equal(httpVersion, "h3-29");
+    Assert.equal(httpVersion, "h3");
     // We should get 2 correctOnProgress, i.e. one for request and one for the response.
     Assert.equal(this.onProgressMaxNotificationCount, 2);
     if (this.amount > 500000) {
@@ -92,7 +92,7 @@ function makeChan(uri, amount) {
   let stream = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(
     Ci.nsIStringInputStream
   );
-  stream.data = generateContent(amount);
+  stream.setByteStringData(generateContent(amount));
   let uchan = chan.QueryInterface(Ci.nsIUploadChannel);
   uchan.setUploadStream(stream, "text/plain", stream.available());
   chan.requestMethod = "POST";
@@ -149,7 +149,7 @@ add_task(async function test_bug1749957_bug1750056() {
     let stream = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(
       Ci.nsIStringInputStream
     );
-    stream.data = generateContent(amount);
+    stream.setByteStringData(generateContent(amount));
     let uchan = chan.QueryInterface(Ci.nsIUploadChannel2);
     uchan.explicitSetUploadStream(
       stream,

@@ -22,10 +22,10 @@
  * The format of the version string should be
  *     "<major version>.<minor version>[.<patch level>[.<build number>]][ <ECC>][ <Beta>]"
  */
-#define NSS_VERSION "3.101.3" _NSS_CUSTOMIZED
+#define NSS_VERSION "3.112" _NSS_CUSTOMIZED
 #define NSS_VMAJOR 3
-#define NSS_VMINOR 101
-#define NSS_VPATCH 3
+#define NSS_VMINOR 112
+#define NSS_VPATCH 0
 #define NSS_VBUILD 0
 #define NSS_BETA PR_FALSE
 
@@ -93,7 +93,7 @@ typedef struct NSSInitParametersStr NSSInitParameters;
  */
 struct NSSInitParametersStr {
     unsigned int length; /* allow this structure to grow in the future,
-                                * must be set */
+                          * must be set */
     PRBool passwordRequired;
     int minPWLen;
     char *manufactureID;      /* variable names for strings match the */

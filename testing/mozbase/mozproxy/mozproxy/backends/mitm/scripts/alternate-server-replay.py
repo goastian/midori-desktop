@@ -15,13 +15,13 @@ import signal
 import time
 import typing
 from collections import defaultdict
+from urllib.parse import parse_qsl, unquote, urlparse
 
 from mitmproxy import ctx, exceptions, http, io
 
 # PATCHING AREA  - ALLOWS HTTP/2 WITH NO CERT SNIFFING
 from mitmproxy.proxy.protocol import tls
 from mitmproxy.proxy.protocol.http2 import Http2Layer, SafeH2Connection
-from six.moves import urllib
 
 _PROTO = {}
 
@@ -175,7 +175,7 @@ class AlternateServerPlayback:
                         _PROTO.update(recording_info["http_protocol"])
                     else:
                         ctx.log.warn(
-                            "Replaying file {} has no http_protocol info.".format(proto)
+                            f"Replaying file {proto} has no http_protocol info."
                         )
         except Exception as e:
             ctx.log.error("Could not load recording file! Stopping playback process!")
@@ -190,8 +190,8 @@ class AlternateServerPlayback:
 
         # unquote url
         # See Bug 1509835
-        _, _, path, _, query, _ = urllib.parse.urlparse(urllib.parse.unquote(r.url))
-        queriesArray = urllib.parse.parse_qsl(query, keep_blank_values=True)
+        _, _, path, _, query, _ = urlparse(unquote(r.url))
+        queriesArray = parse_qsl(query, keep_blank_values=True)
 
         key = [str(r.port), str(r.scheme), str(r.method), str(path)]
         key.append(str(r.raw_content))
@@ -268,9 +268,7 @@ class AlternateServerPlayback:
                 else:
                     # returns 404 rather than dropping the whole HTTP/2 connection
                     ctx.log.warn(
-                        "server_playback: killed non-replay request {}".format(
-                            f.request.url
-                        )
+                        f"server_playback: killed non-replay request {f.request.url}"
                     )
                     f.response = http.HTTPResponse.make(
                         404, b"", {"content-type": "text/plain"}
@@ -279,9 +277,7 @@ class AlternateServerPlayback:
 
                 # collecting stats only if we can dump them (see .done())
                 if ctx.options.upload_dir:
-                    parsed_url = urllib.parse.urlparse(
-                        urllib.parse.unquote(f.request.url)
-                    )
+                    parsed_url = urlparse(unquote(f.request.url))
                     self.netlocs[parsed_url.netloc][f.response.status_code] += 1
                     self.calls.append(
                         {

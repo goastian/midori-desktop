@@ -12,16 +12,18 @@ import mozilla.appservices.places.BookmarkRoot
 import mozilla.components.browser.icons.IconRequest
 import mozilla.components.browser.icons.generator.DefaultIconGenerator
 import mozilla.components.browser.state.search.SearchEngine
+import mozilla.components.browser.state.state.createTab
 import mozilla.components.browser.storage.sync.PlacesBookmarksStorage
 import mozilla.components.browser.storage.sync.PlacesHistoryStorage
 import mozilla.components.concept.storage.PageVisit
 import mozilla.components.concept.storage.VisitType
 import mozilla.components.feature.search.ext.createSearchEngine
+import mozilla.components.feature.tab.collections.TabCollectionStorage
 import okhttp3.mockwebserver.MockWebServer
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.helpers.Constants.TAG
 import org.mozilla.fenix.helpers.TestHelper.appContext
-import org.mozilla.fenix.search.SearchEngineSource.None.searchEngine
+import org.mozilla.fenix.helpers.TestHelper.restartApp
 
 object MockBrowserDataHelper {
     val context: Context = InstrumentationRegistry.getInstrumentation().targetContext
@@ -32,19 +34,56 @@ object MockBrowserDataHelper {
      * @param url The URL of the bookmark item to add. URLs should use the "https://example.com" format.
      * @param title The title of the bookmark item to add.
      * @param position Example for the position param: 1u, 2u, etc.
+     * @param parentGuid The parent guid of the bookmark item to add.
+     * BookmarkRoot.Mobile.id is the root id for mobile bookmarks.
      */
-    fun createBookmarkItem(url: String, title: String, position: UInt?) {
-        Log.i(TAG, "createBookmarkItem: Trying to add bookmark item at position: $position, with url: $url, and with title: $title")
+    fun createBookmarkItem(
+        url: String,
+        title: String,
+        position: UInt?,
+        parentGuid: String = BookmarkRoot.Mobile.id,
+    ) {
+        Log.i(
+            TAG,
+            "createBookmarkItem: Trying to add bookmark item at position: $position, with url: $url, and with title: $title",
+        )
         runBlocking {
             PlacesBookmarksStorage(context)
                 .addItem(
-                    BookmarkRoot.Mobile.id,
+                    parentGuid,
                     url,
                     title,
                     position,
                 )
         }
-        Log.i(TAG, "createBookmarkItem: Added bookmark item at position: $position, with url: $url, and with title: $title")
+        Log.i(
+            TAG,
+            "createBookmarkItem: Added bookmark item at position: $position, with url: $url, and with title: $title",
+        )
+    }
+
+    /**
+     * Adds a new bookmark folder, visible in the Bookmarks folder.
+     *
+     * @param parentGuid The parent guid of the bookmark folder to add.
+     * BookmarkRoot.Mobile.id is the root id for mobile bookmarks.
+     * @param title The title of the bookmark folder to add.
+     * @param position Example for the position param: null, 1u, 2u, etc.
+     * @return The guid of the newly created bookmark folder.
+     */
+    fun generateBookmarkFolder(
+        parentGuid: String = BookmarkRoot.Mobile.id,
+        title: String,
+        position: UInt?,
+    ): String {
+        return runBlocking {
+            PlacesBookmarksStorage(context)
+                .addFolder(
+                    parentGuid = parentGuid,
+                    title = title,
+                    position = position,
+                )
+        }
     }
 
     /**
@@ -107,7 +146,7 @@ object MockBrowserDataHelper {
     /**
      * Adds a new custom search engine to the apps Search Engines list.
      *
-     * @param searchEngine Use createCustomSearchEngine method to create one.
+     * @param searchEngineName Use createCustomSearchEngine method to create one.
      */
     fun addCustomSearchEngine(mockWebServer: MockWebServer, searchEngineName: String) {
         val searchEngine = createCustomSearchEngine(mockWebServer, searchEngineName)
@@ -119,7 +158,7 @@ object MockBrowserDataHelper {
     /**
      * Adds and selects as default a new custom search engine to the apps Search Engines list.
      *
-     * @param searchEngine Use createCustomSearchEngine method to create one.
+     * @param searchEngineName Use createCustomSearchEngine method to create one.
      */
     fun setCustomSearchEngine(mockWebServer: MockWebServer, searchEngineName: String) {
         val searchEngine = createCustomSearchEngine(mockWebServer, searchEngineName)
@@ -129,5 +168,42 @@ object MockBrowserDataHelper {
             selectSearchEngine(searchEngine)
         }
         Log.i(TAG, "setCustomSearchEngine: A custom search engine named: $searchEngineName was set")
+    }
+
+    /**
+     * Adds a new pinned site to the app home screen.
+     *
+     * @param webPageMetadata A pair of website title and URL.
+     */
+    fun addPinnedSite(vararg webPageMetadata: Pair<String, String>, activityTestRule: HomeActivityIntentTestRule) {
+        runBlocking {
+            for (metadata in webPageMetadata) {
+                Log.i(TAG, "addTopSite: Trying to add a pinned site to the home screen.")
+                appContext.components.useCases.topSitesUseCase.addPinnedSites(
+                    metadata.first,
+                    metadata.second,
+                )
+                Log.i(TAG, "addTopSite: Added a pinned site to the home screen.")
+            }
+            // Sometimes a restart is needed to ensure the pinned site is displayed on the home screen.
+            restartApp(activityTestRule)
+        }
+    }
+
+    /**
+     * Creates a new collection with the provided tabs.
+     *
+     * @param tabInfo Pairs of URLs and titles of the tabs to add to the collection.
+     * @param title The title of the collection to create.
+     */
+    fun createCollection(vararg tabInfo: Pair<String, String>, title: String) {
+        runBlocking {
+            val tabs =
+                tabInfo.map { (tabUrl, tabTitle) ->
+                    createTab(url = tabUrl, title = tabTitle)
+                }
+
+            TabCollectionStorage(context).createCollection(title, tabs)
+        }
     }
 }

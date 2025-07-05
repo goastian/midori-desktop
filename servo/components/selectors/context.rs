@@ -129,40 +129,6 @@ impl QuirksMode {
     }
 }
 
-/// Whether or not this matching considered relative selector.
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub enum RelativeSelectorMatchingState {
-    /// Was not considered for any relative selector.
-    None,
-    /// Relative selector was considered for a match, but the element to be
-    /// under matching would not anchor the relative selector. i.e. The
-    /// relative selector was not part of the first compound selector (in match
-    /// order).
-    Considered,
-    /// Same as above, but the relative selector was part of the first compound
-    /// selector (in match order).
-    ConsideredAnchor,
-}
-
-impl RelativeSelectorMatchingState {
-    /// Update the matching state to indicate that the relative selector matching
-    /// happened in the subject position.
-    pub fn considered_anchor(&mut self) {
-        *self = Self::ConsideredAnchor;
-    }
-
-    /// Update the matching state to indicate that the relative selector matching
-    /// happened in a non-subject position.
-    pub fn considered(&mut self) {
-        // Being considered an anchor is stronger (e.g. `:has(.a):is(:has(.b) .c)`).
-        if *self == Self::ConsideredAnchor {
-            *self = Self::ConsideredAnchor;
-        } else {
-            *self = Self::Considered;
-        }
-    }
-}
-
 /// Set of caches (And cache-likes) that speed up expensive selector matches.
 #[derive(Default)]
 pub struct SelectorCaches {
@@ -210,6 +176,9 @@ where
     /// Whether there are any rules inside @starting-style.
     pub has_starting_style: bool,
 
+    /// Whether we're currently matching a featureless element.
+    pub featureless: bool,
+
     /// The current nesting level of selectors that we're matching.
     nesting_level: usize,
 
@@ -225,7 +194,6 @@ where
 
     /// The current element we're anchoring on for evaluating the relative selector.
     current_relative_selector_anchor: Option<OpaqueElement>,
-    pub considered_relative_selector: RelativeSelectorMatchingState,
 
     quirks_mode: QuirksMode,
     needs_selector_flags: NeedsSelectorFlags,
@@ -288,12 +256,12 @@ where
             matching_for_invalidation,
             scope_element: None,
             current_host: None,
+            featureless: false,
             nesting_level: 0,
             in_negation: false,
             pseudo_element_matching_fn: None,
             extra_data: Default::default(),
             current_relative_selector_anchor: None,
-            considered_relative_selector: RelativeSelectorMatchingState::None,
             selector_caches,
             _impl: ::std::marker::PhantomData,
         }
@@ -398,7 +366,7 @@ where
         F: FnOnce(&mut Self) -> R,
     {
         let old_in_negation = self.in_negation;
-        self.in_negation = true;
+        self.in_negation = !self.in_negation;
         let result = self.nest(f);
         self.in_negation = old_in_negation;
         result
@@ -407,6 +375,31 @@ where
     #[inline]
     pub fn visited_handling(&self) -> VisitedHandlingMode {
         self.visited_handling
+    }
+
+    /// Runs F with a different featureless element flag.
+    #[inline]
+    pub fn with_featureless<F, R>(
+        &mut self,
+        featureless: bool,
+        f: F,
+    ) -> R
+    where
+        F: FnOnce(&mut Self) -> R,
+    {
+        let orig = self.featureless;
+        self.featureless = featureless;
+        let result = f(self);
+        self.featureless = orig;
+        result
+    }
+
+    /// Returns whether the currently matching element is acting as a featureless element (e.g.,
+    /// because we've crossed a shadow boundary). This is used to implement the :host selector
+    /// rules properly.
+    #[inline]
+    pub fn featureless(&self) -> bool {
+        self.featureless
     }
 
     /// Runs F with a different VisitedHandlingMode.

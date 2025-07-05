@@ -3,7 +3,7 @@
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-/* import-globals-from pippki.js */
+
 "use strict";
 
 const { parse, pemToDER } = ChromeUtils.importESModule(
@@ -29,9 +29,12 @@ const { parse, pemToDER } = ChromeUtils.importESModule(
  * @type {object}
  * @property {nsIX509Cert} cert
  *           The certificate, if chosen. null otherwise.
- * @property {boolean} rememberDecision
- *           Set to true if the user wanted their cert selection to be
- *           remembered, false otherwise.
+ * @property {number} rememberDuration
+ *           Set to Ci.nsIClientAuthRememberService.Once if the decision should
+ *           be remembered once, Ci.nsIClientAuthRememberService.Session if the
+ *           decision should be remembered for this session, or
+ *           Ci.nsIClientAuthRememberService.Permanent if the decision should
+ *           be remembered permanently.
  */
 
 /**
@@ -46,14 +49,14 @@ var certArray;
  *
  * @type {HTMLInputElement} Element checkbox, has to have |checked| property.
  */
-var rememberBox, args;
+var args;
 
 async function onLoad() {
-  let rememberSetting = Services.prefs.getBoolPref(
-    "security.remember_cert_checkbox_default_setting"
+  let rememberSetting = Services.prefs.getIntPref(
+    "security.client_auth_certificate_default_remember_setting"
   );
-  rememberBox = document.getElementById("rememberBox");
-  rememberBox.checked = rememberSetting;
+  document.getElementById("rememberSetting").value =
+    rememberSetting >= 0 && rememberSetting <= 2 ? rememberSetting : 2;
 
   let propBag = window.arguments[0]
     .QueryInterface(Ci.nsIWritablePropertyBag2)
@@ -87,6 +90,9 @@ async function onLoad() {
   await setDetails();
   document.addEventListener("dialogaccept", doOK);
   document.addEventListener("dialogcancel", doCancel);
+  document
+    .getElementById("nicknames")
+    .addEventListener("command", () => onCertSelected());
 
   Services.obs.notifyObservers(
     document.getElementById("certAuthAsk"),
@@ -124,21 +130,22 @@ async function setDetails() {
   );
   let parsedCert = await parse(pemToDER(cert.getBase64DERString()));
   let keyUsages = parsedCert.ext.keyUsages;
-  if (keyUsages && keyUsages.purposes.length) {
-    document.l10n.setAttributes(
-      document.getElementById("clientAuthCertDetailsKeyUsages"),
-      "client-auth-cert-details-key-usages",
-      { keyUsages: keyUsages.purposes.join(", ") }
-    );
-  }
+  let keyUsagesJoined =
+    keyUsages && keyUsages.purposes.length ? keyUsages.purposes.join(", ") : "";
+  document.l10n.setAttributes(
+    document.getElementById("clientAuthCertDetailsKeyUsages"),
+    "client-auth-cert-details-key-usages",
+    { keyUsages: keyUsagesJoined }
+  );
   let emailAddresses = cert.getEmailAddresses();
-  if (emailAddresses.length) {
-    document.l10n.setAttributes(
-      document.getElementById("clientAuthCertDetailsEmailAddresses"),
-      "client-auth-cert-details-email-addresses",
-      { emailAddresses: emailAddresses.join(", ") }
-    );
-  }
+  let emailAddressesJoined = emailAddresses.length
+    ? emailAddresses.join(", ")
+    : "";
+  document.l10n.setAttributes(
+    document.getElementById("clientAuthCertDetailsEmailAddresses"),
+    "client-auth-cert-details-email-addresses",
+    { emailAddresses: emailAddressesJoined }
+  );
   document.l10n.setAttributes(
     document.getElementById("clientAuthCertDetailsIssuedBy"),
     "client-auth-cert-details-issued-by",
@@ -155,16 +162,22 @@ async function onCertSelected() {
   await setDetails();
 }
 
+function getRememberSetting() {
+  return parseInt(document.getElementById("rememberSetting").value);
+}
+
 function doOK() {
   let { retVals } = args;
   let index = parseInt(document.getElementById("nicknames").value);
   let cert = certArray[index];
   retVals.cert = cert;
-  retVals.rememberDecision = rememberBox.checked;
+  retVals.rememberDuration = getRememberSetting();
 }
 
 function doCancel() {
   let { retVals } = args;
   retVals.cert = null;
-  retVals.rememberDecision = rememberBox.checked;
+  retVals.rememberDuration = getRememberSetting();
 }
+
+window.addEventListener("load", () => onLoad());

@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 
 import copy
 import datetime
@@ -127,6 +125,16 @@ class AndroidHardwareTest(
                 "help": "Flags to run with jittest (all, debug, etc.).",
             },
         ],
+        [
+            ["--tag"],
+            {
+                "action": "append",
+                "default": [],
+                "dest": "test_tags",
+                "help": "Filter out tests that don't have the given tag. Can be used multiple "
+                "times in which case the test must contain at least one of the given tags.",
+            },
+        ],
     ] + copy.deepcopy(testing_config_options)
 
     def __init__(self, require_config_file=False):
@@ -168,6 +176,7 @@ class AndroidHardwareTest(
         self.disable_fission = c.get("disable_fission")
         self.extra_prefs = c.get("extra_prefs")
         self.jittest_flags = c.get("jittest_flags")
+        self.test_tags = c.get("test_tags")
 
     def query_abs_dirs(self):
         if self.abs_dirs:
@@ -226,13 +235,31 @@ class AndroidHardwareTest(
             dirs["abs_blob_upload_dir"], self.test_suite
         )
 
+        # LambdaTest provides a list of recommended ports via env var:
+        #     UserPorts=port/27045,port/27046,port/27047,port/27048,port/27049
+        # These are only for android, so no need to put in mozprofile
+        # NOTE: mozprofile.DEFAULT_PORTS has http:8888.
+        DEFAULT_PORTS = {"http": 8854, "https": 4454, "ws": 9988, "wss": 4454}
+        ports = [p.split("/")[-1] for p in os.environ.get("UserPorts", "").split(",")]
+        if len(ports) > 3:
+            DEFAULT_PORTS = {
+                "http": ports[0],
+                "https": ports[1],
+                "ws": ports[2],
+                "wss": ports[3],
+            }
+
         str_format_values = {
             "device_serial": self.device_serial,
             "remote_webserver": c["remote_webserver"],
             "xre_path": self.xre_path,
             "utility_path": self.xre_path,
-            "http_port": "8854",  # starting http port  to use for the mochitest server
-            "ssl_port": "4454",  # starting ssl port to use for the server
+            "http_port": DEFAULT_PORTS[
+                "http"
+            ],  # starting http port  to use for the mochitest server
+            "ssl_port": DEFAULT_PORTS[
+                "https"
+            ],  # starting ssl port to use for the server
             "certs_path": os.path.join(dirs["abs_work_dir"], "tests/certs"),
             # TestingMixin._download_and_extract_symbols() will set
             # self.symbols_path when downloading/extracting.
@@ -245,6 +272,7 @@ class AndroidHardwareTest(
             "error_summary_file": error_summary_file,
             "xpcshell_extra": c.get("xpcshell_extra", ""),
             "jittest_flags": self.jittest_flags,
+            "test_tags": self.test_tags,
         }
 
         user_paths = json.loads(os.environ.get("MOZHARNESS_TEST_PATHS", '""'))
@@ -284,7 +312,7 @@ class AndroidHardwareTest(
             if category in SUITE_REPEATABLE:
                 cmd.extend(["--repeat=%s" % c.get("repeat")])
             else:
-                self.log("--repeat not supported in {}".format(category), level=WARNING)
+                self.log(f"--repeat not supported in {category}", level=WARNING)
 
         if category not in SUITE_NO_E10S:
             if category in SUITE_DEFAULT_E10S and not c["e10s"]:
@@ -295,7 +323,9 @@ class AndroidHardwareTest(
         if self.disable_fission and category not in SUITE_NO_E10S:
             cmd.append("--disable-fission")
 
-        cmd.extend(["--setpref={}".format(p) for p in self.extra_prefs])
+        cmd.extend([f"--setpref={p}" for p in self.extra_prefs])
+
+        cmd.extend([f"--tag={t}" for t in self.test_tags])
 
         try_options, try_tests = self.try_args(self.test_suite)
         if try_options:

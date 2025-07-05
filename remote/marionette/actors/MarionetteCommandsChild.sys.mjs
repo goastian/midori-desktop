@@ -2,18 +2,22 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* eslint-disable no-restricted-globals */
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  LayoutUtils: "resource://gre/modules/LayoutUtils.sys.mjs",
+
   accessibility:
     "chrome://remote/content/shared/webdriver/Accessibility.sys.mjs",
-  action: "chrome://remote/content/shared/webdriver/Actions.sys.mjs",
+  AnimationFramePromise: "chrome://remote/content/shared/Sync.sys.mjs",
+  assertTargetInViewPort:
+    "chrome://remote/content/shared/webdriver/Actions.sys.mjs",
   atom: "chrome://remote/content/marionette/atom.sys.mjs",
   dom: "chrome://remote/content/shared/DOM.sys.mjs",
   error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
   evaluate: "chrome://remote/content/marionette/evaluate.sys.mjs",
+  event: "chrome://remote/content/shared/webdriver/Event.sys.mjs",
+  executeSoon: "chrome://remote/content/shared/Sync.sys.mjs",
   interaction: "chrome://remote/content/marionette/interaction.sys.mjs",
   json: "chrome://remote/content/marionette/json.sys.mjs",
   Log: "chrome://remote/content/shared/Log.sys.mjs",
@@ -37,8 +41,6 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
 
     // sandbox storage and name of the current sandbox
     this.sandboxes = new lazy.Sandboxes(() => this.document.defaultView);
-    // State of the input actions. This is specific to contexts and sessions
-    this.actionState = null;
   }
 
   get innerWindowId() {
@@ -59,6 +61,110 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
     );
   }
 
+  #assertInViewPort(options) {
+    const { target } = options;
+
+    return lazy.assertTargetInViewPort(target, this.contentWindow);
+  }
+
+  #dispatchEvent(options) {
+    const { eventName, details } = options;
+    const win = this.contentWindow;
+
+    const windowUtils = win.windowUtils;
+    const microTaskLevel = windowUtils.microTaskLevel;
+    // Since we're being called as a webidl callback,
+    // CallbackObjectBase::CallSetup::CallSetup has increased the microtask
+    // level. Undo that temporarily so that microtask handling works closer
+    // the way it would work when dispatching events natively.
+    windowUtils.microTaskLevel = 0;
+    try {
+      switch (eventName) {
+        case "synthesizeKeyDown":
+          lazy.event.sendKeyDown(details.eventData, win);
+          break;
+        case "synthesizeKeyUp":
+          lazy.event.sendKeyUp(details.eventData, win);
+          break;
+        case "synthesizeMouseAtPoint":
+          lazy.event.synthesizeMouseAtPoint(
+            details.x,
+            details.y,
+            details.eventData,
+            win
+          );
+          break;
+        case "synthesizeMultiTouch":
+          lazy.event.synthesizeMultiTouch(details.eventData, win);
+          break;
+        case "synthesizeWheelAtPoint":
+          lazy.event.synthesizeWheelAtPoint(
+            details.x,
+            details.y,
+            details.eventData,
+            win
+          );
+          break;
+        default:
+          throw new Error(
+            `${eventName} is not a supported event dispatch method`
+          );
+      }
+    } catch (e) {
+      if (e.message.includes("NS_ERROR_FAILURE")) {
+        // Event dispatch failed. Re-throwing as AbortError to allow retrying
+        // to dispatch the event.
+        throw new DOMException(
+          `Failed to dispatch event "${eventName}": ${e.message}`,
+          "AbortError"
+        );
+      }
+
+      throw e;
+    } finally {
+      windowUtils.microTaskLevel = microTaskLevel;
+    }
+  }
+
+  async #finalizeAction() {
+    // Terminate the current wheel transaction if there is one. Wheel
+    // transactions should not live longer than a single action chain.
+    ChromeUtils.endWheelTransaction();
+
+    // Wait for the next animation frame to make sure the page's content
+    // was updated.
+    await lazy.AnimationFramePromise(this.contentWindow);
+  }
+
+  #getClientRects(options, _context) {
+    const { elem } = options;
+
+    return elem.getClientRects();
+  }
+
+  #getInViewCentrePoint(options) {
+    const { rect } = options;
+
+    return lazy.dom.getInViewCentrePoint(rect, this.contentWindow);
+  }
+
+  #toBrowserWindowCoordinates(options, _context) {
+    const { position } = options;
+
+    const [x, y] = position;
+    const dpr = this.contentWindow.devicePixelRatio;
+
+    const val = lazy.LayoutUtils.rectToTopLevelWidgetRect(this.contentWindow, {
+      left: x,
+      top: y,
+      height: 0,
+      width: 0,
+    });
+
+    return [val.x / dpr, val.y / dpr];
+  }
+
+  // eslint-disable-next-line complexity
   async receiveMessage(msg) {
     if (!this.contentWindow) {
       throw new DOMException("Actor is no longer active", "InactiveActor");
@@ -77,6 +183,25 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
       );
 
       switch (name) {
+        case "MarionetteCommandsParent:_assertInViewPort":
+          result = this.#assertInViewPort(data);
+          break;
+        case "MarionetteCommandsParent:_dispatchEvent":
+          this.#dispatchEvent(data);
+          waitForNextTick = true;
+          break;
+        case "MarionetteCommandsParent:_getClientRects":
+          result = this.#getClientRects(data);
+          break;
+        case "MarionetteCommandsParent:_getInViewCentrePoint":
+          result = this.#getInViewCentrePoint(data);
+          break;
+        case "MarionetteCommandsParent:_finalizeAction":
+          this.#finalizeAction();
+          break;
+        case "MarionetteCommandsParent:_toBrowserWindowCoordinates":
+          result = this.#toBrowserWindowCoordinates(data);
+          break;
         case "MarionetteCommandsParent:clearElement":
           this.clearElement(data);
           waitForNextTick = true;
@@ -140,13 +265,6 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
         case "MarionetteCommandsParent:isElementSelected":
           result = await this.isElementSelected(data);
           break;
-        case "MarionetteCommandsParent:performActions":
-          result = await this.performActions(data);
-          waitForNextTick = true;
-          break;
-        case "MarionetteCommandsParent:releaseActions":
-          result = await this.releaseActions();
-          break;
         case "MarionetteCommandsParent:sendKeysToElement":
           result = await this.sendKeysToElement(data);
           waitForNextTick = true;
@@ -164,7 +282,7 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
       // Inform the content process that the command has completed. It allows
       // it to process async follow-up tasks before the reply is sent.
       if (waitForNextTick) {
-        await new Promise(resolve => Services.tm.dispatchToMainThread(resolve));
+        await new Promise(resolve => lazy.executeSoon(resolve));
       }
 
       const { seenNodeIds, serializedValue, hasSerializedWindows } =
@@ -178,8 +296,12 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
         hasSerializedWindows,
       };
     } catch (e) {
-      // Always wrap errors as WebDriverError
-      return { error: lazy.error.wrap(e).toJSON() };
+      if (lazy.error.isWebDriverError(e)) {
+        // If it's a WebDriver error always serialize it because it could
+        // contain objects that are not serializable by default.
+        return { error: e.toJSON(), isWebDriverError: true };
+      }
+      return { error: e, isWebDriverError: false };
     }
   }
 
@@ -234,7 +356,6 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
    * @param {string} options.selector
    * @param {object} options.opts
    * @param {Element} options.opts.startNode
-   *
    */
   async findElement(options = {}) {
     const { strategy, selector, opts } = options;
@@ -254,7 +375,6 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
    * @param {string} options.selector
    * @param {object} options.opts
    * @param {Element} options.opts.startNode
-   *
    */
   async findElements(options = {}) {
     const { strategy, selector, opts } = options;
@@ -474,42 +594,6 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
     );
   }
 
-  /**
-   * Perform a series of grouped actions at the specified points in time.
-   *
-   * @param {object} options
-   * @param {object} options.actions
-   *     Array of objects with each representing an action sequence.
-   * @param {object} options.capabilities
-   *     Object with a list of WebDriver session capabilities.
-   */
-  async performActions(options = {}) {
-    const { actions } = options;
-    if (this.actionState === null) {
-      this.actionState = new lazy.action.State();
-    }
-    let actionChain = lazy.action.Chain.fromJSON(this.actionState, actions);
-
-    await actionChain.dispatch(this.actionState, this.document.defaultView);
-    // Terminate the current wheel transaction if there is one. Wheel
-    // transactions should not live longer than a single action chain.
-    ChromeUtils.endWheelTransaction();
-  }
-
-  /**
-   * The release actions command is used to release all the keys and pointer
-   * buttons that are currently depressed. This causes events to be fired
-   * as if the state was released by an explicit series of actions. It also
-   * clears all the internal state of the virtual devices.
-   */
-  async releaseActions() {
-    if (this.actionState === null) {
-      return;
-    }
-    await this.actionState.release(this.document.defaultView);
-    this.actionState = null;
-  }
-
   /*
    * Send key presses to element after focusing on it.
    */
@@ -550,8 +634,8 @@ export class MarionetteCommandsChild extends JSWindowActorChild {
       }
       browsingContext = childContexts[id];
     } else {
-      const context = childContexts.find(context => {
-        return context.embedderElement === id;
+      const context = childContexts.find(childContext => {
+        return childContext.embedderElement === id;
       });
       if (!context) {
         throw new lazy.error.NoSuchFrameError(

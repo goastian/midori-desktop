@@ -26,7 +26,10 @@ export class WebReference {
    *     for the contract to be upheld.
    */
   constructor(uuid) {
-    this.uuid = lazy.assert.string(uuid);
+    this.uuid = lazy.assert.string(
+      uuid,
+      lazy.pprint`Expected "uuid" to be a string, got ${uuid}`
+    );
   }
 
   /**
@@ -93,7 +96,7 @@ export class WebReference {
    * Unmarshals a JSON Object to one of {@link ShadowRoot}, {@link WebElement},
    * {@link WebFrame}, or {@link WebWindow}.
    *
-   * @param {Object<string, string>} json
+   * @param {Record<string, string>} json
    *     Web reference, which is supposed to be a JSON Object
    *     where the key is one of the {@link WebReference} concrete
    *     classes' UUID identifiers.
@@ -105,7 +108,10 @@ export class WebReference {
    *     If <var>json</var> is not a web reference.
    */
   static fromJSON(json) {
-    lazy.assert.object(json);
+    lazy.assert.object(
+      json,
+      lazy.pprint`Expected web reference to be an object, got ${json}`
+    );
     if (json instanceof WebReference) {
       return json;
     }
@@ -135,7 +141,7 @@ export class WebReference {
   /**
    * Checks if <var>obj<var> is a {@link WebReference} reference.
    *
-   * @param {Object<string, string>} obj
+   * @param {Record<string, string>} obj
    *     Object that represents a {@link WebReference}.
    *
    * @returns {boolean}
@@ -197,7 +203,10 @@ export class ShadowRoot extends WebReference {
    *     If <var>uuid</var> is not a string.
    */
   static fromUUID(uuid) {
-    lazy.assert.string(uuid);
+    lazy.assert.string(
+      uuid,
+      lazy.pprint`Expected "uuid" to be a string, got: ${uuid}`
+    );
 
     return new ShadowRoot(uuid);
   }

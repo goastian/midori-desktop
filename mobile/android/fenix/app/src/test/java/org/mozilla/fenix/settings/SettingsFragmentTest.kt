@@ -4,7 +4,6 @@
 
 package org.mozilla.fenix.settings
 
-import android.os.Build
 import androidx.core.app.NotificationManagerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.preference.Preference
@@ -59,6 +58,7 @@ class SettingsFragmentTest {
         every { testContext.components.core.engine.profiler } returns mockk(relaxed = true)
         every { testContext.components.core.client } returns client
         every { testContext.components.settings } returns mockk(relaxed = true)
+        every { testContext.components.core.store.state.translationEngine } returns mockk(relaxed = true)
         every { testContext.components.addonManager } returns mockk(relaxed = true)
         every { testContext.components.analytics } returns mockk(relaxed = true)
         every { testContext.components.backgroundServices } returns mockk(relaxed = true)
@@ -99,7 +99,6 @@ class SettingsFragmentTest {
     }
 
     @Test
-    @org.robolectric.annotation.Config(sdk = [Build.VERSION_CODES.Q])
     fun `Install add-on from file pref is visible if debug menu active and feature is enabled`() = runTestOnMain {
         val settingsFragment = SettingsFragment()
         val activity = Robolectric.buildActivity(FragmentActivity::class.java).create().get()
@@ -124,29 +123,6 @@ class SettingsFragmentTest {
         settingsFragment.setupInstallAddonFromFilePreference(settings)
         assertTrue(preference.isVisible)
         unmockkObject(Config)
-    }
-
-    @Test
-    @org.robolectric.annotation.Config(sdk = [Build.VERSION_CODES.P])
-    fun `Install add-on from file pref is invisible below Android 10`() = runTestOnMain {
-        val settingsFragment = SettingsFragment()
-        val activity = Robolectric.buildActivity(FragmentActivity::class.java).create().get()
-
-        activity.supportFragmentManager.beginTransaction()
-            .add(settingsFragment, "test")
-            .commitNow()
-
-        advanceUntilIdle()
-
-        val preference = settingsFragment.findPreference<Preference>(
-            settingsFragment.getPreferenceKey(R.string.pref_key_install_local_addon),
-        )
-
-        val settings: Settings = mockk(relaxed = true)
-
-        every { settings.showSecretDebugMenuThisSession } returns true
-        settingsFragment.setupInstallAddonFromFilePreference(settings)
-        assertFalse(preference!!.isVisible)
     }
 
     @Test

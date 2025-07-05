@@ -42,13 +42,16 @@ class AngularProject {
       schematics: 'schematics ../../:ng-add --dry-run=false',
       'schematics:e2e': 'schematics ../../:e2e --dry-run=false',
       'schematics:config': 'schematics ../../:config --dry-run=false',
-      'schematics:smoke': `schematics ../../:ng-add --dry-run=false --test-runner="${testRunner}" && ng e2e`,
+      'schematics:add': `schematics ../../:ng-add --dry-run=false --test-runner="${testRunner}"`,
+      'schematics:smoke': 'ng e2e',
     };
   };
   /** Folder name */
   #name;
   /** E2E test runner to use */
   #runner;
+
+  type = '';
 
   constructor(runner, name) {
     this.#runner = runner ?? 'node';
@@ -71,13 +74,19 @@ class AngularProject {
         ...options,
       });
 
-      createProcess.stdout.on('data', data => {
+      const onData = data => {
         data = data
           .toString()
           // Replace new lines with a prefix including the test runner
-          .replace(/(?:\r\n?|\n)(?=.*[\r\n])/g, `\n${this.#runner} - `);
-        console.log(`${this.#runner} - ${data}`);
-      });
+          .replace(
+            /(?:\r\n?|\n)(?=.*[\r\n])/g,
+            `\n${this.#runner}:${this.type} - `,
+          );
+        console.log(`${this.#runner}:${this.type} - ${data}`);
+      };
+
+      createProcess.stdout.on('data', onData);
+      createProcess.stderr.on('data', onData);
 
       createProcess.on('error', message => {
         console.error(`Running ${command} exited with error:`, message);
@@ -116,8 +125,11 @@ class AngularProject {
     };
   }
 
-  async runNpmScripts(command) {
-    await this.executeCommand(`npm run ${command}`, this.commandOptions);
+  async runNpmScripts(command, options) {
+    await this.executeCommand(`npm run ${command}`, {
+      ...this.commandOptions,
+      options,
+    });
   }
 
   async runSchematics() {
@@ -132,34 +144,62 @@ class AngularProject {
     await this.runNpmScripts('schematics:config');
   }
 
+  async runNgAdd() {
+    await this.runNpmScripts(
+      `schematics:add -- --port=${AngularProject.port()}`,
+    );
+  }
+
   async runSmoke() {
     await this.runNpmScripts(
-      `schematics:smoke -- --port=${AngularProject.port()}`
+      `schematics:smoke -- --port=${AngularProject.port()}`,
     );
   }
 }
 
 export class AngularProjectSingle extends AngularProject {
+  type = 'single';
+
   async createProject() {
     await this.executeCommand(
-      `ng new ${this.name} --directory=sandbox/${this.name} --defaults --skip-git`
+      `ng new ${this.name} --directory=sandbox/${this.name} --defaults --skip-git`,
+      {
+        env: {
+          PUPPETEER_SKIP_DOWNLOAD: 'true',
+          ...process.env,
+        },
+      },
     );
   }
 }
 
 export class AngularProjectMulti extends AngularProject {
+  type = 'multi';
+
   async createProject() {
     await this.executeCommand(
-      `ng new ${this.name} --create-application=false --directory=sandbox/${this.name} --defaults --skip-git`
+      `ng new ${this.name} --create-application=false --directory=sandbox/${this.name} --defaults --skip-git`,
+      {
+        env: {
+          PUPPETEER_SKIP_DOWNLOAD: 'true',
+          ...process.env,
+        },
+      },
     );
 
     await this.executeCommand(
       `ng generate application core --style=css --routing=true`,
-      this.commandOptions
+      {
+        PUPPETEER_SKIP_DOWNLOAD: 'true',
+        ...this.commandOptions,
+      },
     );
     await this.executeCommand(
       `ng generate application admin --style=css --routing=false`,
-      this.commandOptions
+      {
+        PUPPETEER_SKIP_DOWNLOAD: 'true',
+        ...this.commandOptions,
+      },
     );
   }
 }

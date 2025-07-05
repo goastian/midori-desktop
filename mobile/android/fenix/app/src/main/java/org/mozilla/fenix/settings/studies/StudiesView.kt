@@ -12,8 +12,8 @@ import android.text.style.URLSpan
 import android.view.View
 import android.widget.TextView
 import androidx.annotation.VisibleForTesting
-import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.widget.SwitchCompat
+import androidx.core.content.edit
 import androidx.core.text.HtmlCompat
 import androidx.core.text.getSpans
 import androidx.recyclerview.widget.RecyclerView
@@ -22,8 +22,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import mozilla.components.service.nimbus.NimbusApi
 import mozilla.components.support.base.log.logger.Logger
-import mozilla.components.ui.widgets.withCenterAlignedButtons
-import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.experiments.nimbus.internal.EnrolledExperiment
 import org.mozilla.fenix.GleanMetrics.Preferences
 import org.mozilla.fenix.R
@@ -33,7 +31,6 @@ import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.settings.SupportUtils.SumoTopic.OPT_OUT_STUDIES
 import org.mozilla.fenix.utils.Settings
-import kotlin.system.exitProcess
 
 @Suppress("LongParameterList")
 class StudiesView(
@@ -56,35 +53,16 @@ class StudiesView(
         provideStudiesSwitch().isChecked = settings.isExperimentationEnabled
         provideStudiesSwitch().setOnClickListener {
             val isChecked = provideStudiesSwitch().isChecked
-            Preferences.studiesPreferenceEnabled.record(NoExtras())
+            Preferences.studiesPreferenceEnabled.record(
+                Preferences.StudiesPreferenceEnabledExtra(isChecked),
+            )
             provideStudiesTitle().text = getSwitchCheckedTitle()
-            val builder = AlertDialog.Builder(context)
-                .setPositiveButton(
-                    R.string.studies_restart_dialog_ok,
-                ) { dialog, _ ->
-                    settings.isExperimentationEnabled = isChecked
-                    val experimentsKey = context.getPreferenceKey(R.string.pref_key_experimentation)
-                    // In this case, we are using commit() on purpose as we want to warranty
-                    // that we are changing the setting before quitting the app.
-                    context.settings().preferences.edit().putBoolean(experimentsKey, isChecked)
-                        .commit()
 
-                    experiments.globalUserParticipation = isChecked
-                    dialog.dismiss()
-                    quitTheApp()
-                }
-                .setNegativeButton(
-                    R.string.studies_restart_dialog_cancel,
-                ) { dialog, _ ->
-                    provideStudiesSwitch().isChecked = !isChecked
-                    provideStudiesTitle().text = getSwitchTitle()
-                    dialog.dismiss()
-                }
-                .setTitle(R.string.preference_experiments_2)
-                .setMessage(R.string.studies_restart_app)
-                .setCancelable(false)
-            val alertDialog: AlertDialog = builder.create().withCenterAlignedButtons()
-            alertDialog.show()
+            settings.isExperimentationEnabled = isChecked
+            val experimentsKey = context.getPreferenceKey(R.string.pref_key_experimentation_v2)
+            context.settings().preferences.edit(commit = true) { putBoolean(experimentsKey, isChecked) }
+
+            experiments.globalUserParticipation = isChecked
         }
         bindDescription()
 
@@ -114,8 +92,7 @@ class StudiesView(
     @VisibleForTesting
     internal fun bindDescription() {
         val sumoUrl = SupportUtils.getGenericSumoURLForTopic(OPT_OUT_STUDIES)
-        val appName = context.getString(R.string.app_name)
-        val description = context.getString(R.string.studies_description_2, appName)
+        val description = context.getString(R.string.studies_description_3)
         val learnMore = context.getString(R.string.studies_learn_more)
         val rawText = "$description <a href=\"$sumoUrl\">$learnMore</a>"
         val text = HtmlCompat.fromHtml(rawText, HtmlCompat.FROM_HTML_MODE_COMPACT)
@@ -175,9 +152,4 @@ class StudiesView(
 
     @VisibleForTesting
     internal fun provideStudiesList(): RecyclerView = binding.studiesList
-
-    @VisibleForTesting
-    internal fun quitTheApp() {
-        exitProcess(0)
-    }
 }

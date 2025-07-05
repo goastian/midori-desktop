@@ -200,7 +200,7 @@
       }],
       [ 'fuzz==1', {
         'variables': {
-          'debug_optimization_level%': '1',
+          'debug_optimization_level%': '3',
         },
       }],
       [ 'target_arch=="ia32" or target_arch=="x64"', {
@@ -540,7 +540,6 @@
           [ 'OS=="win"', {
             'defines': [
               '_WINDOWS',
-              'WIN95',
               '_CRT_SECURE_NO_WARNINGS',
               '_CRT_NONSTDC_NO_WARNINGS',
             ],

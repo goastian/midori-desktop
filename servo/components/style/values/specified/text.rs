@@ -6,13 +6,16 @@
 
 use crate::parser::{Parse, ParserContext};
 use crate::properties::longhands::writing_mode::computed_value::T as SpecifiedWritingMode;
+use crate::values::computed;
 use crate::values::computed::text::TextEmphasisStyle as ComputedTextEmphasisStyle;
 use crate::values::computed::{Context, ToComputedValue};
+use crate::values::generics::NumberOrAuto;
 use crate::values::generics::text::{
-    GenericInitialLetter, GenericTextDecorationLength, GenericTextIndent, Spacing,
+    GenericHyphenateLimitChars, GenericInitialLetter, GenericTextDecorationLength, GenericTextIndent,
 };
-use crate::values::specified::length::{Length, LengthPercentage};
+use crate::values::specified::length::LengthPercentage;
 use crate::values::specified::{AllowQuirks, Integer, Number};
+use crate::Zero;
 use cssparser::Parser;
 use icu_segmenter::GraphemeClusterSegmenter;
 use std::fmt::{self, Write};
@@ -23,11 +26,72 @@ use style_traits::{KeywordsCollectFn, SpecifiedValueInfo};
 /// A specified type for the `initial-letter` property.
 pub type InitialLetter = GenericInitialLetter<Number, Integer>;
 
+/// A spacing value used by either the `letter-spacing` or `word-spacing` properties.
+#[derive(Clone, Debug, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToCss, ToShmem)]
+pub enum Spacing {
+    /// `normal`
+    Normal,
+    /// `<value>`
+    Value(LengthPercentage),
+}
+
+impl Parse for Spacing {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        if input
+            .try_parse(|i| i.expect_ident_matching("normal"))
+            .is_ok()
+        {
+            return Ok(Spacing::Normal);
+        }
+        LengthPercentage::parse_quirky(context, input, AllowQuirks::Yes).map(Spacing::Value)
+    }
+}
+
 /// A specified value for the `letter-spacing` property.
-pub type LetterSpacing = Spacing<Length>;
+#[derive(Clone, Debug, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo, ToCss, ToShmem)]
+pub struct LetterSpacing(pub Spacing);
+
+impl ToComputedValue for LetterSpacing {
+    type ComputedValue = computed::LetterSpacing;
+
+    fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
+        use computed::text::GenericLetterSpacing;
+        match self.0 {
+            Spacing::Normal => GenericLetterSpacing(computed::LengthPercentage::zero()),
+            Spacing::Value(ref v) => GenericLetterSpacing(v.to_computed_value(context)),
+        }
+    }
+
+    fn from_computed_value(computed: &Self::ComputedValue) -> Self {
+        if computed.0.is_zero() {
+            return LetterSpacing(Spacing::Normal);
+        }
+        LetterSpacing(Spacing::Value(ToComputedValue::from_computed_value(&computed.0)))
+    }
+}
+
 
 /// A specified value for the `word-spacing` property.
-pub type WordSpacing = Spacing<LengthPercentage>;
+#[derive(Clone, Debug, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo, ToCss, ToShmem)]
+pub struct WordSpacing(pub Spacing);
+
+impl ToComputedValue for WordSpacing {
+    type ComputedValue = computed::WordSpacing;
+
+    fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
+        match self.0 {
+            Spacing::Normal => computed::LengthPercentage::zero(),
+            Spacing::Value(ref v) => v.to_computed_value(context),
+        }
+    }
+
+    fn from_computed_value(computed: &Self::ComputedValue) -> Self {
+        WordSpacing(Spacing::Value(ToComputedValue::from_computed_value(computed)))
+    }
+}
 
 /// A value for the `hyphenate-character` property.
 #[derive(
@@ -50,6 +114,27 @@ pub enum HyphenateCharacter {
     String(crate::OwnedStr),
 }
 
+/// A value for the `hyphenate-limit-chars` property.
+pub type HyphenateLimitChars = GenericHyphenateLimitChars<Integer>;
+
+impl Parse for HyphenateLimitChars {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        type IntegerOrAuto = NumberOrAuto<Integer>;
+
+        let total_word_length = IntegerOrAuto::parse(context, input)?;
+        let pre_hyphen_length = input.try_parse(|i| IntegerOrAuto::parse(context, i)).unwrap_or(IntegerOrAuto::Auto);
+        let post_hyphen_length = input.try_parse(|i| IntegerOrAuto::parse(context, i)).unwrap_or(pre_hyphen_length);
+        Ok(Self {
+            total_word_length,
+            pre_hyphen_length,
+            post_hyphen_length,
+        })
+    }
+}
+
 impl Parse for InitialLetter {
     fn parse<'i, 't>(
         context: &ParserContext,
@@ -66,28 +151,6 @@ impl Parse for InitialLetter {
             .try_parse(|i| Integer::parse_positive(context, i))
             .unwrap_or_else(|_| crate::Zero::zero());
         Ok(Self { size, sink })
-    }
-}
-
-impl Parse for LetterSpacing {
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
-        Spacing::parse_with(context, input, |c, i| {
-            Length::parse_quirky(c, i, AllowQuirks::Yes)
-        })
-    }
-}
-
-impl Parse for WordSpacing {
-    fn parse<'i, 't>(
-        context: &ParserContext,
-        input: &mut Parser<'i, 't>,
-    ) -> Result<Self, ParseError<'i>> {
-        Spacing::parse_with(context, input, |c, i| {
-            LengthPercentage::parse_quirky(c, i, AllowQuirks::Yes)
-        })
     }
 }
 
@@ -211,7 +274,14 @@ impl ToCss for TextOverflow {
     ToResolvedValue,
     ToShmem,
 )]
-#[css(bitflags(single = "none", mixed = "underline,overline,line-through,blink"))]
+#[cfg_attr(feature = "gecko", css(bitflags(
+    single = "none,spelling-error,grammar-error",
+    mixed = "underline,overline,line-through,blink",
+)))]
+#[cfg_attr(not(feature = "gecko"), css(bitflags(
+    single = "none",
+    mixed = "underline,overline,line-through,blink",
+)))]
 #[repr(C)]
 /// Specified keyword values for the text-decoration-line property.
 pub struct TextDecorationLine(u8);
@@ -227,6 +297,10 @@ bitflags! {
         const LINE_THROUGH = 1 << 2;
         /// blink
         const BLINK = 1 << 3;
+        /// spelling-error
+        const SPELLING_ERROR = 1 << 4;
+        /// grammar-error
+        const GRAMMAR_ERROR = 1 << 5;
         /// Only set by presentation attributes
         ///
         /// Setting this will mean that text-decorations use the color
@@ -235,7 +309,7 @@ bitflags! {
         /// For example, this gives <a href=foo><font color="red">text</font></a>
         /// a red text decoration
         #[cfg(feature = "gecko")]
-        const COLOR_OVERRIDE = 0x10;
+        const COLOR_OVERRIDE = 1 << 7;
     }
 }
 
@@ -278,6 +352,7 @@ pub enum TextTransformCase {
     /// Capitalize each word.
     Capitalize,
     /// Automatic italicization of math variables.
+    #[cfg(feature = "gecko")]
     MathAuto,
 }
 
@@ -296,11 +371,16 @@ pub enum TextTransformCase {
     ToResolvedValue,
     ToShmem,
 )]
-#[css(bitflags(
+#[cfg_attr(feature = "gecko", css(bitflags(
     single = "none,math-auto",
     mixed = "uppercase,lowercase,capitalize,full-width,full-size-kana",
     validate_mixed = "Self::validate_mixed_flags",
-))]
+)))]
+#[cfg_attr(not(feature = "gecko"), css(bitflags(
+    single = "none",
+    mixed = "uppercase,lowercase,capitalize,full-width,full-size-kana",
+    validate_mixed = "Self::validate_mixed_flags",
+)))]
 #[repr(C)]
 /// Specified value for the text-transform property.
 /// (The spec grammar gives
@@ -436,7 +516,6 @@ pub enum TextAlign {
     /// Since selectors can't depend on the ancestor styles, we implement it with a
     /// magic value that computes to the right thing. Since this is an
     /// implementation detail, it shouldn't be exposed to web content.
-    #[cfg(feature = "gecko")]
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     MozCenterOrInherit,
 }
@@ -472,7 +551,6 @@ impl ToComputedValue for TextAlign {
                     _ => parent,
                 }
             },
-            #[cfg(feature = "gecko")]
             TextAlign::MozCenterOrInherit => {
                 let parent = _context
                     .builder
@@ -686,6 +764,7 @@ impl Parse for TextEmphasisStyle {
 )]
 #[repr(C)]
 #[css(bitflags(
+    single = "auto",
     mixed = "over,under,left,right",
     validate_mixed = "Self::validate_and_simplify"
 ))]
@@ -694,23 +773,27 @@ impl Parse for TextEmphasisStyle {
 pub struct TextEmphasisPosition(u8);
 bitflags! {
     impl TextEmphasisPosition: u8 {
-        /// Draws marks to the right of the text in vertical writing mode.
-        const OVER = 1 << 0;
+        /// Automatically choose mark position based on language.
+        const AUTO = 1 << 0;
+        /// Draw marks over the text in horizontal writing mode.
+        const OVER = 1 << 1;
         /// Draw marks under the text in horizontal writing mode.
-        const UNDER = 1 << 1;
+        const UNDER = 1 << 2;
         /// Draw marks to the left of the text in vertical writing mode.
-        const LEFT = 1 << 2;
-        /// Draws marks to the right of the text in vertical writing mode.
-        const RIGHT = 1 << 3;
+        const LEFT = 1 << 3;
+        /// Draw marks to the right of the text in vertical writing mode.
+        const RIGHT = 1 << 4;
     }
 }
 
 impl TextEmphasisPosition {
     fn validate_and_simplify(&mut self) -> bool {
+        // Require one but not both of 'over' and 'under'.
         if self.intersects(Self::OVER) == self.intersects(Self::UNDER) {
             return false;
         }
 
+        // If 'left' is present, 'right' must be absent.
         if self.intersects(Self::LEFT) {
             return !self.intersects(Self::RIGHT);
         }
@@ -798,6 +881,7 @@ pub enum MozControlCharacterVisibility {
     Visible,
 }
 
+#[cfg(feature = "gecko")]
 impl Default for MozControlCharacterVisibility {
     fn default() -> Self {
         if static_prefs::pref!("layout.css.control-characters.visible") {

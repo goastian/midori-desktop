@@ -5,7 +5,6 @@
 package org.mozilla.geckoview.test
 
 import android.content.ClipDescription
-import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -17,10 +16,13 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.ExtractedTextRequest
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputContentInfo
+import androidx.core.net.toUri
 import androidx.test.filters.MediumTest
 import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
-import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
+import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.not
+import org.hamcrest.Matchers.notNullValue
 import org.junit.Assume.assumeThat
 import org.junit.Ignore
 import org.junit.Test
@@ -191,6 +193,12 @@ class TextInputDelegateTest : BaseSessionTest() {
         )
         ic.commitText(text, newCursorPosition)
         promise.value
+
+        // In Gecko, commit text always set caret position to the end of committed text.
+        // So if the newCursorPosition isn't 1, Gecko may notify new position after committing text.
+        if (newCursorPosition != 1) {
+            mainSession.waitForJS("new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
+        }
     }
 
     private fun deleteSurroundingText(ic: InputConnection, before: Int, after: Int) {
@@ -221,6 +229,13 @@ class TextInputDelegateTest : BaseSessionTest() {
         promise.value
     }
 
+    private fun pressKeyNoWait(ic: InputConnection, keyCode: Int) {
+        val time = SystemClock.uptimeMillis()
+        val keyEvent = KeyEvent(time, time, KeyEvent.ACTION_DOWN, keyCode, 0)
+        ic.sendKeyEvent(keyEvent)
+        ic.sendKeyEvent(KeyEvent.changeAction(keyEvent, KeyEvent.ACTION_UP))
+    }
+
     private fun pressKey(ic: InputConnection, keyCode: Int) {
         val promise = mainSession.evaluatePromiseJS(
             when (id) {
@@ -228,10 +243,7 @@ class TextInputDelegateTest : BaseSessionTest() {
                 else -> "new Promise(r => document.querySelector('$id').addEventListener('keyup', r, { once: true }))"
             },
         )
-        val time = SystemClock.uptimeMillis()
-        val keyEvent = KeyEvent(time, time, KeyEvent.ACTION_DOWN, keyCode, 0)
-        ic.sendKeyEvent(keyEvent)
-        ic.sendKeyEvent(KeyEvent.changeAction(keyEvent, KeyEvent.ACTION_UP))
+        pressKeyNoWait(ic, keyCode)
         promise.value
     }
 
@@ -401,6 +413,49 @@ class TextInputDelegateTest : BaseSessionTest() {
             override fun hideSoftInput(session: GeckoSession) {
             }
         })
+    }
+
+    @Test fun restartInput_disableEnable() {
+        assumeThat("input only", id, equalTo("#input"))
+
+        mainSession.textInput.view = View(InstrumentationRegistry.getInstrumentation().targetContext)
+        mainSession.loadTestPath(FORMS_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        mainSession.evaluateJS(
+            """
+            document.querySelector('#tel1').value = "123-45"
+            document.querySelector('#tel1').focus()
+            """.trimIndent(),
+        )
+        mainSession.waitUntilCalled(GeckoSession.TextInputDelegate::class, "restartInput")
+
+        val ic = mainSession.textInput.onCreateInputConnection(EditorInfo())!!
+
+        mainSession.delegateDuringNextWait(object : TextInputDelegate {
+            @AssertCalled(count = 0)
+            override fun hideSoftInput(session: GeckoSession) {
+            }
+        })
+
+        var promise = mainSession.evaluatePromiseJS(
+            """
+            new Promise(r =>
+                document.querySelector('#tel1').addEventListener('input', e => {
+                    const element = document.querySelector('#tel1');
+                    element.setAttribute('disabled', 'disabled');
+                    element.value = "123-456";
+                    element.removeAttribute('disabled');
+                    element.focus();
+                    window.setTimeout(r, 100);
+                }, { once: true }));
+            """.trimIndent(),
+        )
+
+        pressKeyNoWait(ic, KeyEvent.KEYCODE_0)
+        promise.value
+
+        assertThat("hideSoftInput isn't called", true, equalTo(true))
     }
 
     private fun getText(ic: InputConnection) =
@@ -708,6 +763,7 @@ class TextInputDelegateTest : BaseSessionTest() {
 
     @WithDisplay(width = 512, height = 512)
     // Child process updates require having a display.
+    @Ignore("Failing frequently, see: https://bugzilla.mozilla.org/show_bug.cgi?id=1741790")
     @Test
     fun inputConnection_selectionByArrowKey() {
         setupContent("")
@@ -908,7 +964,7 @@ class TextInputDelegateTest : BaseSessionTest() {
 
         // InputContentInfo requires content:// uri, so we have to set test data to custom content provider.
         TestContentProvider.setTestData(this.getTestBytes("/assets/www/images/test.gif"), "image/gif")
-        val info = InputContentInfo(Uri.parse("content://org.mozilla.geckoview.test.provider/gif"), ClipDescription("test", arrayOf("image/gif")))
+        val info = InputContentInfo("content://org.mozilla.geckoview.test.provider/gif".toUri(), ClipDescription("test", arrayOf("image/gif")))
         ic.commitContent(info, 0, null)
         promise.value
         assertThat("Input event is fired by inserting image", true, equalTo(true))
@@ -1293,6 +1349,83 @@ class TextInputDelegateTest : BaseSessionTest() {
     @WithDisplay(width = 512, height = 512)
     // Child process updates require having a display.
     @Test
+    fun editorInfo_autocorrect() {
+        // design mode is always on.
+        assumeThat("Not in designmode", id, not(equalTo("#designmode")))
+
+        sessionRule.setPrefsUntilTestEnd(mapOf("dom.forms.autocorrect" to true))
+
+        mainSession.textInput.view = View(InstrumentationRegistry.getInstrumentation().targetContext)
+
+        mainSession.loadTestPath(INPUTS_PATH)
+        mainSession.waitForPageStop()
+
+        textContent = ""
+        val values = listOf("on", "off")
+        for (autocorrect in values) {
+            mainSession.evaluateJS(
+                """
+                document.querySelector('$id').setAttribute('autocorrect', '$autocorrect');
+                document.querySelector('$id').focus()""",
+            )
+            mainSession.waitUntilCalled(GeckoSession.TextInputDelegate::class, "restartInput")
+
+            val editorInfo = EditorInfo()
+            mainSession.textInput.onCreateInputConnection(editorInfo)
+            assertThat(
+                "EditorInfo.inputType by $autocorrect",
+                editorInfo.inputType and InputType.TYPE_TEXT_FLAG_AUTO_CORRECT,
+                equalTo(
+                    when (autocorrect) {
+                        "on" -> InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
+                        else -> 0
+                    },
+                ),
+            )
+
+            mainSession.evaluateJS("document.querySelector('$id').blur()")
+            mainSession.waitUntilCalled(GeckoSession.TextInputDelegate::class, "restartInput")
+        }
+    }
+
+    @WithDisplay(width = 512, height = 512)
+    // Child process updates require having a display.
+    @Test
+    fun editorInfo_dynamic() {
+        // no way on designmode
+        assumeThat("Not in designmode", id, not(equalTo("#designmode")))
+
+        mainSession.textInput.view = View(InstrumentationRegistry.getInstrumentation().targetContext)
+
+        mainSession.loadTestPath(INPUTS_PATH)
+        mainSession.waitForPageStop()
+        textContent = ""
+
+        mainSession.evaluateJS(
+            """
+            document.querySelector('$id').setAttribute('inputmode', 'text');
+            document.querySelector('$id').focus()""",
+        )
+        mainSession.waitUntilCalled(GeckoSession.TextInputDelegate::class, "restartInput")
+
+        mainSession.setHandlingUserInput(true)
+        mainSession.evaluateJS("document.querySelector('$id').setAttribute('inputmode', 'numeric')")
+        mainSession.setHandlingUserInput(false)
+        mainSession.waitUntilCalled(GeckoSession.TextInputDelegate::class, "restartInput")
+
+        val editorInfo = EditorInfo()
+        mainSession.textInput.onCreateInputConnection(editorInfo)
+
+        assertThat(
+            "EditorInfo.inputType by dynamic change",
+            editorInfo.inputType and InputType.TYPE_NUMBER_VARIATION_NORMAL,
+            equalTo(InputType.TYPE_NUMBER_VARIATION_NORMAL),
+        )
+    }
+
+    @WithDisplay(width = 512, height = 512)
+    // Child process updates require having a display.
+    @Test
     fun bug1613804_finishComposingText() {
         mainSession.textInput.view = View(InstrumentationRegistry.getInstrumentation().targetContext)
 
@@ -1490,5 +1623,27 @@ class TextInputDelegateTest : BaseSessionTest() {
 
         finishComposingText(ic)
         assertText("commit foobaz1", ic, "foobaz1")
+    }
+
+    @Test
+    fun noHandleVolumeKeys() {
+        setupContent("")
+        mainSession.textInput.onCreateInputConnection(EditorInfo())
+
+        val keys = listOf(KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN, KeyEvent.KEYCODE_VOLUME_MUTE)
+        for (keyCode in keys) {
+            val time = SystemClock.uptimeMillis()
+            val keyEvent = KeyEvent(time, time, KeyEvent.ACTION_DOWN, keyCode, 0)
+            assertThat(
+                "We don't handle volume key on onKeyDown",
+                mainSession.textInput.onKeyDown(keyCode, keyEvent),
+                equalTo(false),
+            )
+            assertThat(
+                "We don't handle volume key on onKeyUp",
+                mainSession.textInput.onKeyUp(keyCode, KeyEvent.changeAction(keyEvent, KeyEvent.ACTION_UP)),
+                equalTo(false),
+            )
+        }
     }
 }

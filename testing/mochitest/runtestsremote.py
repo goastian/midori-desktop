@@ -95,6 +95,7 @@ class MochiRemote(MochitestDesktop):
         self.device.mkdir(self.remoteChromeTestDir, parents=True)
 
         self.appName = options.remoteappname
+        self.appActivity = options.appActivity
         self.device.stop_application(self.appName)
         if self.device.process_exist(self.appName):
             self.log.warning("unable to kill %s before running tests!" % self.appName)
@@ -309,7 +310,7 @@ class MochiRemote(MochitestDesktop):
             del browserEnv["XPCOM_MEM_BLOAT_LOG"]
         if self.mozLogs:
             browserEnv["MOZ_LOG_FILE"] = os.path.join(
-                self.remoteMozLog, "moz-pid=%PID-uid={}.log".format(str(uuid.uuid4()))
+                self.remoteMozLog, f"moz-pid=%PID-uid={str(uuid.uuid4())}.log"
             )
         if options.dmd:
             browserEnv["DMD"] = "1"
@@ -365,7 +366,7 @@ class MochiRemote(MochitestDesktop):
         profileDirectory = self.remoteProfile + "/"
         args = []
         args.extend(extraArgs)
-        args.extend(("-no-remote", "-profile", profileDirectory))
+        args.extend(("-profile", profileDirectory))
 
         pid = rpm.launch(
             app,
@@ -374,6 +375,7 @@ class MochiRemote(MochitestDesktop):
             args,
             env=self.environment(env=env, crashreporter=not debuggerInfo),
             e10s=e10s,
+            activity=self.appActivity,
         )
 
         # TODO: not using runFailures or crashAsPass, if we choose to use them

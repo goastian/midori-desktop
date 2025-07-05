@@ -4,8 +4,14 @@
 
 package org.mozilla.focus.utils
 
+import android.content.Context
+import android.content.pm.PackageInfo
+import android.content.pm.PackageManager
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertThrows
 import org.junit.Test
+import org.mockito.Mockito.mock
+import org.mockito.Mockito.`when`
 import java.util.Locale
 
 class SupportUtilsTest {
@@ -60,5 +66,78 @@ class SupportUtilsTest {
             "https://www.mozilla.org/ko-KR/about/manifesto/",
             SupportUtils.manifestoURL,
         )
+    }
+
+    @Test
+    fun `getMozillaPageUrl returns the correct URL for the terms of service`() {
+        Locale.setDefault(Locale.UK)
+        assertEquals(
+            "https://www.mozilla.org/en-GB/about/legal/terms/firefox-focus/",
+            SupportUtils.getMozillaPageUrl(SupportUtils.MozillaPage.TERMS_OF_SERVICE),
+        )
+
+        Locale.setDefault(Locale.GERMAN)
+        assertEquals(
+            "https://www.mozilla.org/de/about/legal/terms/firefox-focus/",
+            SupportUtils.getMozillaPageUrl(SupportUtils.MozillaPage.TERMS_OF_SERVICE),
+        )
+    }
+
+    @Test
+    fun `getMozillaPageUrl returns the correct URL for the privacy notice`() {
+        Locale.setDefault(Locale.UK)
+        assertEquals(
+            "https://www.mozilla.org/en-GB/privacy/firefox-focus/",
+            SupportUtils.getMozillaPageUrl(SupportUtils.MozillaPage.PRIVATE_NOTICE),
+        )
+
+        Locale.setDefault(Locale.GERMAN)
+        assertEquals(
+            "https://www.mozilla.org/de/privacy/firefox-focus/",
+            SupportUtils.getMozillaPageUrl(SupportUtils.MozillaPage.PRIVATE_NOTICE),
+        )
+    }
+
+    @Test
+    fun `appVersionName returns proper value`() {
+        val context: Context = mock()
+        val packageManager: PackageManager = mock()
+        val packageInfo = PackageInfo().apply { versionName = "1.0.0" }
+
+        `when`(context.packageManager).thenReturn(packageManager)
+        `when`(context.packageName).thenReturn("org.mozilla.focus")
+        `when`(packageManager.getPackageInfo("org.mozilla.focus", 0)).thenReturn(packageInfo)
+
+        val version = SupportUtils.getAppVersion(context)
+        assertEquals("1.0.0", version)
+    }
+
+    @Test
+    fun `appVersionName returns empty string when versionName is null`() {
+        val context: Context = mock()
+        val packageManager: PackageManager = mock()
+        val packageInfo = PackageInfo().apply { versionName = null }
+
+        `when`(context.packageManager).thenReturn(packageManager)
+        `when`(context.packageName).thenReturn("org.mozilla.focus")
+        `when`(packageManager.getPackageInfo("org.mozilla.focus", 0)).thenReturn(packageInfo)
+
+        val version = SupportUtils.getAppVersion(context)
+        assertEquals("", version)
+    }
+
+    @Test
+    fun `appVersionName throws IllegalStateException when package not found`() {
+        val context: Context = mock()
+        val packageManager: PackageManager = mock()
+
+        `when`(context.packageManager).thenReturn(packageManager)
+        `when`(context.packageName).thenReturn("org.mozilla.focus")
+        `when`(packageManager.getPackageInfo("org.mozilla.focus", 0))
+            .thenThrow(PackageManager.NameNotFoundException::class.java)
+
+        assertThrows(IllegalStateException::class.java) {
+            SupportUtils.getAppVersion(context)
+        }
     }
 }

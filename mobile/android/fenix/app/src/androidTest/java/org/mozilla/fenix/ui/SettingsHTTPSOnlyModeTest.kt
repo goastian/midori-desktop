@@ -8,18 +8,23 @@ import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.core.net.toUri
 import org.junit.Rule
 import org.junit.Test
+import org.mozilla.fenix.customannotations.SkipLeaks
 import org.mozilla.fenix.customannotations.SmokeTest
 import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.MatcherHelper.itemContainingText
+import org.mozilla.fenix.helpers.TestAssetHelper.waitingTimeShort
 import org.mozilla.fenix.helpers.TestHelper.exitMenu
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.clickPageObject
 import org.mozilla.fenix.ui.robots.homeScreen
 import org.mozilla.fenix.ui.robots.navigationToolbar
 
 class SettingsHTTPSOnlyModeTest : TestSetup() {
     private val httpPageUrl = "http://example.com/"
+    private val secondHttpPageUrl = "http://permission.site/"
     private val httpsPageUrl = "https://example.com/"
+    private val secondHttpsPageUrl = "https://permission.site/"
     private val insecureHttpPage = "http.badssl.com"
 
     // "HTTPs not supported" error page contents:
@@ -35,7 +40,10 @@ class SettingsHTTPSOnlyModeTest : TestSetup() {
             HomeActivityIntentTestRule.withDefaultSettingsOverrides(),
         ) { it.activity }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1724825
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1724825
     @Test
     fun httpsOnlyModeMenuItemsTest() {
         homeScreen {
@@ -62,7 +70,7 @@ class SettingsHTTPSOnlyModeTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1724827
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1724827
     @SmokeTest
     @Test
     fun httpsOnlyModeEnabledInNormalBrowsingTest() {
@@ -81,7 +89,7 @@ class SettingsHTTPSOnlyModeTest : TestSetup() {
         }
         navigationToolbar {
         }.enterURLAndEnterToBrowser(httpPageUrl.toUri()) {
-            waitForPageToLoad()
+            verifyPageContent("Example Domain")
         }.openNavigationToolbar {
             verifyUrl(httpsPageUrl)
         }.enterURLAndEnterToBrowser(insecureHttpPage.toUri()) {
@@ -90,6 +98,11 @@ class SettingsHTTPSOnlyModeTest : TestSetup() {
             verifyPageContent(httpsOnlyErrorMessage2)
             verifyPageContent(httpsOnlyBackButton)
             clickPageObject(itemContainingText(httpsOnlyBackButton))
+            // Workaround required with Fission ON:
+            // Click back twice to avoid https://bugzilla.mozilla.org/show_bug.cgi?id=1932498
+            if (itemContainingText(httpsOnlyBackButton).waitForExists(waitingTimeShort)) {
+                clickPageObject(itemContainingText(httpsOnlyBackButton))
+            }
             verifyPageContent("Example Domain")
         }.openNavigationToolbar {
         }.enterURLAndEnterToBrowser(insecureHttpPage.toUri()) {
@@ -98,8 +111,9 @@ class SettingsHTTPSOnlyModeTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2091057
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2091057
     @Test
+    @SkipLeaks
     fun httpsOnlyModeExceptionPersistsForCurrentSessionTest() {
         homeScreen {
         }.openThreeDotMenu {
@@ -126,7 +140,7 @@ class SettingsHTTPSOnlyModeTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1724828
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1724828
     @Test
     fun httpsOnlyModeEnabledOnlyInPrivateBrowsingTest() {
         homeScreen {
@@ -145,29 +159,31 @@ class SettingsHTTPSOnlyModeTest : TestSetup() {
         navigationToolbar {
         }.enterURLAndEnterToBrowser(insecureHttpPage.toUri()) {
             verifyPageContent("http.badssl.com")
-        }.goToHomescreen {
+        }.goToHomescreen(activityTestRule) {
         }.togglePrivateBrowsingMode()
         navigationToolbar {
-        }.enterURLAndEnterToBrowser(httpPageUrl.toUri()) {
-            waitForPageToLoad()
+        }.enterURLAndEnterToBrowser(secondHttpPageUrl.toUri()) {
+            verifyPageContent("Notifications")
         }.openNavigationToolbar {
-            verifyUrl(httpsPageUrl)
+            verifyUrl(secondHttpsPageUrl)
         }.enterURLAndEnterToBrowser(insecureHttpPage.toUri()) {
             verifyPageContent(httpsOnlyErrorTitle)
             verifyPageContent(httpsOnlyErrorMessage)
             verifyPageContent(httpsOnlyErrorMessage2)
             verifyPageContent(httpsOnlyBackButton)
             clickPageObject(itemContainingText(httpsOnlyBackButton))
-            verifyPageContent("Example Domain")
-        }.openNavigationToolbar {
-        }.enterURLAndEnterToBrowser(insecureHttpPage.toUri()) {
-            clickPageObject(itemContainingText(httpsOnlyContinueButton))
-            verifyPageContent("http.badssl.com")
+            // Workaround required with Fission ON:
+            // Click back twice to avoid https://bugzilla.mozilla.org/show_bug.cgi?id=1932498
+            if (itemContainingText(httpsOnlyBackButton).waitForExists(waitingTimeShort)) {
+                clickPageObject(itemContainingText(httpsOnlyBackButton))
+            }
+            verifyPageContent("Notifications")
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2091058
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2091058
     @Test
+    @SkipLeaks
     fun turnOffHttpsOnlyModeTest() {
         homeScreen {
         }.openThreeDotMenu {
@@ -182,9 +198,22 @@ class SettingsHTTPSOnlyModeTest : TestSetup() {
         }
         navigationToolbar {
         }.enterURLAndEnterToBrowser(httpPageUrl.toUri()) {
-            waitForPageToLoad()
+            verifyPageContent("Example Domain")
         }.openNavigationToolbar {
             verifyUrl(httpsPageUrl)
+        }.enterURLAndEnterToBrowser(insecureHttpPage.toUri()) {
+            verifyPageContent(httpsOnlyErrorTitle)
+            verifyPageContent(httpsOnlyErrorMessage)
+            verifyPageContent(httpsOnlyErrorMessage2)
+            verifyPageContent(httpsOnlyBackButton)
+            clickPageObject(itemContainingText(httpsOnlyBackButton))
+            // Workaround required with Fission ON:
+            // Click back twice to avoid https://bugzilla.mozilla.org/show_bug.cgi?id=1932498
+            if (itemContainingText(httpsOnlyBackButton).waitForExists(waitingTimeShort)) {
+                clickPageObject(itemContainingText(httpsOnlyBackButton))
+            }
+            verifyPageContent("Example Domain")
+        }.openNavigationToolbar {
         }.goBackToBrowserScreen {
         }.openThreeDotMenu {
         }.openSettings {
@@ -196,10 +225,8 @@ class SettingsHTTPSOnlyModeTest : TestSetup() {
             exitMenu()
         }
         navigationToolbar {
-        }.enterURLAndEnterToBrowser(httpPageUrl.toUri()) {
-            waitForPageToLoad()
-        }.openNavigationToolbar {
-            verifyUrl(httpPageUrl)
+        }.enterURLAndEnterToBrowser(insecureHttpPage.toUri()) {
+            verifyPageContent("http.badssl.com")
         }
     }
 }

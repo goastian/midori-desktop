@@ -12,13 +12,13 @@ task-defaults:
                 linux1804-64/opt: build-linux64-shippable/opt
     fetches:
         build:
-            - target.tar.bz2
+            - target.tar.xz
         toolchain:
             - linux64-node
     treeherder:
         kind: test
         tier: 1
-    worker-type: t-linux-xlarge-source
+    worker-type: t-linux-docker
     worker:
         docker-image: {in-tree: ubuntu1804-test}
         max-run-time: 3600
@@ -29,24 +29,19 @@ task-defaults:
     optimization:
         skip-unless-expanded: null
 
-puppeteer:
-    description: Puppeteer tests against Firefox CDP-based remote protocol
+puppeteer-{this_chunk}:
+    description: Puppeteer tests against Firefox with Webdriver BiDi remote protocol
+    chunk:
+        total-chunks: 2
+        substitution-fields:
+            - name
+            - treeherder
+            - run
     treeherder:
-        symbol: Pup(cdp)
+        symbol: Pup({this_chunk})
     run:  # Bug 1651542: Use screenshot feature to warm-up the font cache before the actual test
         using: run-task
         command: >
             cd $GECKO_PATH/ &&
             $MOZ_FETCHES_DIR/firefox/firefox --screenshot http://example.org &&
-            ./mach puppeteer-test --ci -vv --binary $MOZ_FETCHES_DIR/firefox/firefox --cdp --headless --log-tbpl - --log-errorsummary /builds/worker/pup_errorsummary.json
-
-puppeteer-with-bidi:
-    description: Puppeteer tests against Firefox Webdriver BiDi remote protocol
-    treeherder:
-        symbol: Pup(wd)
-    run:  # Bug 1651542: Use screenshot feature to warm-up the font cache before the actual test
-        using: run-task
-        command: >
-            cd $GECKO_PATH/ &&
-            $MOZ_FETCHES_DIR/firefox/firefox --screenshot http://example.org &&
-            ./mach puppeteer-test --ci -vv --binary $MOZ_FETCHES_DIR/firefox/firefox --headless --log-tbpl - --log-errorsummary /builds/worker/pup_errorsummary.json
+            ./mach puppeteer-test --ci -vv --binary $MOZ_FETCHES_DIR/firefox/firefox --headless --log-tbpl - --log-errorsummary /builds/worker/pup_errorsummary.json --this-chunk={this_chunk} --total-chunks={total_chunks}

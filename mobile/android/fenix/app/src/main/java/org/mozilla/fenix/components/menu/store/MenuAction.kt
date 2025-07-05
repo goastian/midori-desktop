@@ -4,6 +4,8 @@
 
 package org.mozilla.fenix.components.menu.store
 
+import android.app.PendingIntent
+import mozilla.components.feature.addons.Addon
 import mozilla.components.lib.state.Action
 import mozilla.components.service.fxa.manager.AccountState
 import org.mozilla.fenix.components.menu.MenuAccessPoint
@@ -27,6 +29,16 @@ sealed class MenuAction : Action {
     data object AddBookmark : MenuAction()
 
     /**
+     * [MenuAction] dispatched when reader view should be toggled active or dismiss.
+     */
+    data object ToggleReaderView : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when reader view customization controls should be displayed.
+     */
+    data object CustomizeReaderView : MenuAction()
+
+    /**
      * [MenuAction] dispatched when a bookmark state is updated.
      *
      * @property bookmarkState The new [BookmarkState] to be updated.
@@ -34,9 +46,179 @@ sealed class MenuAction : Action {
     data class UpdateBookmarkState(val bookmarkState: BookmarkState) : MenuAction()
 
     /**
+     * [MenuAction] dispatched when a site is to be added to shortcuts.
+     */
+    data object AddShortcut : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when a site is to be removed from shortcuts.
+     */
+    data object RemoveShortcut : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when a pinned shortcut state is updated.
+     *
+     * @property isPinned The new [isPinned] state to be updated.
+     */
+    data class UpdatePinnedState(val isPinned: Boolean) : MenuAction()
+
+    /**
      * [MenuAction] dispatched to delete browsing data and quit the browser.
      */
     data object DeleteBrowsingDataAndQuit : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when a site is to be opened in an external app.
+     */
+    data object OpenInApp : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when a custom tab is to be opened in the browser.
+     */
+    data object OpenInFirefox : MenuAction()
+
+    /**
+     * [MenuAction] dispatched to launch find in page feature for the current site.
+     */
+    data object FindInPage : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when a private tab is open in normal tab.
+     */
+    data object OpenInRegularTab : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when the extension state is updated.
+     *
+     * @property recommendedAddons The recommended [Addon]s to suggest.
+     */
+    data class UpdateExtensionState(
+        val recommendedAddons: List<Addon>,
+    ) : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when browser web extension items list is updated.
+     *
+     * @property webExtensionBrowserMenuItem browserMenuItem The list of [WebExtensionMenuItem]
+     * to be shown in the menu.
+     */
+    data class UpdateWebExtensionBrowserMenuItems(
+        val webExtensionBrowserMenuItem: List<WebExtensionMenuItem>,
+    ) : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when installed addons list is updated.
+     *
+     * @property availableAddons The list of installed and enabled [Addon]s
+     * to be shown in the menu.
+     */
+    data class UpdateAvailableAddons(
+        val availableAddons: List<Addon>,
+    ) : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when an addon is to be installed.
+     *
+     * @property addon The [Addon] to install.
+     */
+    data class InstallAddon(val addon: Addon) : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when an addon installation is in progress.
+     *
+     * @property addon The [Addon] to install.
+     */
+    data class UpdateInstallAddonInProgress(
+        val addon: Addon,
+    ) : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when we what to show manage extensions menu item.
+     *
+     * @property isVisible Indicates if manage extensions menu item
+     * should be displayed to the user.
+     */
+    data class UpdateManageExtensionsMenuItemVisibility(
+        val isVisible: Boolean,
+    ) : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when an addon installation was completed with success.
+     *
+     * @property addon The [Addon] that was installed.
+     */
+    data class InstallAddonSuccess(
+        val addon: Addon,
+    ) : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when an addon installation failed.
+     *
+     * @property addon The [Addon] whose installation failed.
+     */
+    data class InstallAddonFailed(
+        val addon: Addon,
+    ) : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when extensions promotion banner onboarding should be visible or not.
+     *
+     * @property showExtensionsOnboarding Show extensions promotion banner onboarding.
+     */
+    data class UpdateShowExtensionsOnboarding(
+        val showExtensionsOnboarding: Boolean,
+    ) : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when disabled extensions promotion banner onboarding should be visible or not.
+     *
+     * @property showDisabledExtensionsOnboarding Show extensions promotion banner onboarding when
+     * all installed extensions have been disabled.
+     */
+    data class UpdateShowDisabledExtensionsOnboarding(
+        val showDisabledExtensionsOnboarding: Boolean,
+    ) : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when a custom item is tapped in the custom tab menu.
+     *
+     * @property intent The [PendingIntent] from the custom menu item.
+     * @property url The [String] URL of the current custom tab.
+     */
+    data class CustomMenuItemAction(
+        val intent: PendingIntent,
+        val url: String?,
+    ) : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when requesting to switch to the desktop version of the current page.
+     */
+    data object RequestDesktopSite : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when requesting to switch to the mobile version of the current page.
+     */
+    data object RequestMobileSite : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when the save menu item is clicked.
+     */
+    data object SaveMenuClicked : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when the tools menu item is clicked.
+     */
+    data object ToolsMenuClicked : MenuAction()
+
+    /**
+     * [MenuAction] dispatched to show the menu CFR.
+     */
+    data object OnCFRShown : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when the menu CFR is dismissed.
+     */
+    data object OnCFRDismiss : MenuAction()
 
     /**
      * [MenuAction] dispatched when a navigation event occurs for a specific destination.
@@ -53,11 +235,6 @@ sealed class MenuAction : Action {
             val accountState: AccountState,
             val accesspoint: MenuAccessPoint,
         ) : Navigate()
-
-        /**
-         * [Navigate] action dispatched when navigating to the help SUMO article.
-         */
-        data object Help : Navigate()
 
         /**
          * [Navigate] action dispatched when navigating to the settings.
@@ -95,29 +272,14 @@ sealed class MenuAction : Action {
         data object ReleaseNotes : Navigate()
 
         /**
-         * [Navigate] action dispatched when navigating to the tools submenu.
-         */
-        data object Tools : Navigate()
-
-        /**
-         * [Navigate] action dispatched when navigating to the save submenu.
-         */
-        data object Save : Navigate()
-
-        /**
-         * [Navigate] action dispatched when navigating to the extensions submenu.
-         */
-        data object Extensions : Navigate()
-
-        /**
-         * [Navigate] action dispatched when a back navigation event occurs.
-         */
-        data object Back : Navigate()
-
-        /**
          * [Navigate] action dispatched when navigating to edit the existing bookmark.
          */
         data object EditBookmark : Navigate()
+
+        /**
+         * [Navigate] action dispatched when navigating to add site to home screen.
+         */
+        data object AddToHomeScreen : Navigate()
 
         /**
          * [Navigate] action dispatched when navigating to save a site to a collection.
@@ -149,6 +311,11 @@ sealed class MenuAction : Action {
         data object DiscoverMoreExtensions : Navigate()
 
         /**
+         * [Navigate] action dispatched when navigating to the SUMO page for installing add-ons.
+         */
+        data object ExtensionsLearnMore : Navigate()
+
+        /**
          * [Navigate] action dispatched when navigating to the new tab.
          */
         data object NewTab : Navigate()
@@ -157,5 +324,46 @@ sealed class MenuAction : Action {
          * [Navigate] action dispatched when navigating to the new private tab.
          */
         data object NewPrivateTab : Navigate()
+
+        /**
+         * [Navigate] action dispatched when navigating to the given [addon] details.
+         *
+         * @property addon The [Addon] details to display.
+         */
+        data class AddonDetails(
+            val addon: Addon,
+        ) : Navigate()
+
+        /**
+         * [Navigate] action dispatched when the user clicks to report a broken site.
+         */
+        data object WebCompatReporter : Navigate()
+
+        /**
+         * [Navigate] action dispatched when navigating back from the current page.
+         *
+         * @property viewHistory Whether the tab history menu should be displayed.
+         */
+        data class Back(
+            val viewHistory: Boolean,
+        ) : Navigate()
+
+        /**
+         * [Navigate] action dispatched when navigating forward from the current page.
+         *
+         * @property viewHistory Whether the tab history menu should be displayed.
+         */
+        data class Forward(
+            val viewHistory: Boolean,
+        ) : Navigate()
+
+        /**
+         * [Navigate] action dispatched when reloading the current page.
+         *
+         * @property bypassCache Whether or not the cache should be bypassed when reloading.
+         */
+        data class Reload(
+            val bypassCache: Boolean,
+        ) : Navigate()
     }
 }

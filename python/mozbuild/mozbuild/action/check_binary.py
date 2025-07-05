@@ -36,7 +36,7 @@ get_type = memoize(get_type)
 @memoize
 def get_output(*cmd):
     env = dict(os.environ)
-    env[b"LC_ALL"] = b"C"
+    env["LC_ALL"] = "C"
     return subprocess.check_output(cmd, env=env, universal_newlines=True).splitlines()
 
 
@@ -135,9 +135,7 @@ def check_binary_compat(binary):
         error = []
         for lib, prefix, _ in checks:
             if prefix in unwanted:
-                error.append(
-                    "We do not want these {} symbol versions to be used:".format(lib)
-                )
+                error.append(f"We do not want these {lib} symbol versions to be used:")
                 error.extend(
                     " {} ({})".format(s["name"], s["version"]) for s in unwanted[prefix]
                 )
@@ -210,11 +208,6 @@ def check_networking(binary):
     networking_functions = set(
         [
             # socketpair is not concerning; it is restricted to AF_UNIX
-            "connect",
-            "accept",
-            "listen",
-            "getsockname",
-            "getsockopt",
             "recv",
             "send",
             # We would be concerned by recvmsg and sendmsg; but we believe
@@ -240,6 +233,19 @@ def check_networking(binary):
             "endprotoent",
         ]
     )
+    # These are used by the crash monitor & crash monitor client to talk with
+    # the main process on Linux and macOS.
+    socket_functions = set(
+        [
+            "connect",
+            "accept",
+            "listen",
+        ]
+    )
+
+    if PLATFORM == "WINNT":
+        networking_functions |= socket_functions
+
     bad_occurences_names = set()
 
     try:
@@ -265,7 +271,7 @@ def check_networking(binary):
         )
         retcode = 1
     elif buildconfig.substs.get("MOZ_AUTOMATION"):
-        print("TEST-PASS | check_networking | {}".format(basename))
+        print(f"TEST-PASS | check_networking | {basename}")
     return retcode
 
 
@@ -291,12 +297,12 @@ def checks(binary):
             name = c.__name__
             c(binary)
             if buildconfig.substs.get("MOZ_AUTOMATION"):
-                print("TEST-PASS | {} | {}".format(name, basename))
+                print(f"TEST-PASS | {name} | {basename}")
         except Skip:
             pass
         except RuntimeError as e:
             print(
-                "TEST-UNEXPECTED-FAIL | {} | {} | {}".format(name, basename, str(e)),
+                f"TEST-UNEXPECTED-FAIL | {name} | {basename} | {str(e)}",
                 file=sys.stderr,
             )
             retcode = 1

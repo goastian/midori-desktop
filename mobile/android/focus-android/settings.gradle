@@ -3,12 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 pluginManagement {
-    apply from: file('../gradle/mozconfig.gradle')
+    if (!gradle.root.hasProperty("mozconfig")){
+        apply from: file('../gradle/mozconfig.gradle')
+    } else {
+        gradle.ext.mozconfig = gradle.root.mozconfig
+    }
 
     repositories {
         gradle.mozconfig.substs.GRADLE_MAVEN_REPOSITORIES.each { repository ->
             maven {
-                url repository
+                url = repository
                 if (gradle.mozconfig.substs.ALLOW_INSECURE_GRADLE_REPOSITORIES) {
                     allowInsecureProtocol = true
                 }
@@ -19,13 +23,18 @@ pluginManagement {
     includeBuild("../android-components/plugins/publicsuffixlist")
     includeBuild("../android-components/plugins/dependencies")
     includeBuild("../android-components/plugins/config")
-    includeBuild("./plugins/focusdependencies")
 }
 
 plugins {
-    id "mozac.ConfigPlugin"
     id 'mozac.DependenciesPlugin'
-    id 'FocusDependenciesPlugin'
+}
+
+dependencyResolutionManagement {
+    versionCatalogs {
+        libs {
+            from(files("../../../gradle/libs.versions.toml"))
+        }
+    }
 }
 
 ext.topsrcdir = rootProject.projectDir.absolutePath.minus("mobile/android/focus-android")

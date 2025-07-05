@@ -90,14 +90,6 @@ extern const float s_logv_2[];
 
 /* }}} */
 
-/* {{{ Comparison constants */
-
-#define MP_LT -1
-#define MP_EQ 0
-#define MP_GT 1
-
-/* }}} */
-
 /* {{{ private function declarations */
 
 void s_mp_setz(mp_digit *dp, mp_size count);                     /* zero digits           */
@@ -173,7 +165,7 @@ void s_mp_sqr_comba_32(const mp_int *A, mp_int *B);
 #endif /* end NSS_USE_COMBA */
 
 /* ------ mpv functions, operate on arrays of digits, not on mp_int's ------ */
-#if defined(__OS2__) && defined(__IBMC__)
+#if defined(__IBMC__)
 #define MPI_ASM_DECL __cdecl
 #else
 #define MPI_ASM_DECL

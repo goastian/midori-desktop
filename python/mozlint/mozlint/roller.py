@@ -9,17 +9,17 @@ import os
 import signal
 import sys
 import time
-import traceback
 from concurrent.futures import ProcessPoolExecutor
 from concurrent.futures.process import _python_exit as futures_atexit
 from itertools import chain
 from math import ceil
-from multiprocessing import cpu_count, get_context
+from multiprocessing import get_context
 from multiprocessing.queues import Queue
 from subprocess import CalledProcessError
 from typing import Dict, Set
 
 import mozpack.path as mozpath
+from mozbuild.util import cpu_count
 from mozversioncontrol import (
     InvalidRepoPath,
     MissingUpstreamRepo,
@@ -35,13 +35,15 @@ from .types import supported_types
 SHUTDOWN = False
 orig_sigint = signal.getsignal(signal.SIGINT)
 
-logger = logging.getLogger("mozlint")
+# Logger passed down into subprocesses
+logger = logging.getLogger("lint")
 handler = logging.StreamHandler()
-formatter = logging.Formatter(
-    "%(asctime)s.%(msecs)d %(lintname)s (%(pid)s) | %(message)s", "%H:%M:%S"
-)
+formatter = logging.Formatter("%(levelname)s: %(message)s")
 handler.setFormatter(formatter)
 logger.addHandler(handler)
+
+# Adapter for parent process.
+log = logging.LoggerAdapter(logger, {"lintname": "mozlint", "pid": os.getpid()})
 
 
 def _run_worker(config, paths, **lintargs):
@@ -78,16 +80,16 @@ def _run_worker(config, paths, **lintargs):
         elif isinstance(res, list):
             res = res or []
         else:
-            print("Unexpected type received")
+            log.error(f"Unexpected result type received: {type(res)}")
             assert False
     except Exception:
-        traceback.print_exc()
+        log.exception(f"{config['name']} failed")
         res = 1
     except (KeyboardInterrupt, SystemExit):
         return result
     finally:
         end_time = time.monotonic()
-        log.debug("Finished in {:.2f} seconds".format(end_time - start_time))
+        log.debug(f"Finished in {end_time - start_time:.2f} seconds")
         sys.stdout.flush()
 
     if not isinstance(res, (list, tuple)):
@@ -114,7 +116,7 @@ class InterruptableQueue(Queue):
 
     def __init__(self, *args, **kwargs):
         kwargs["ctx"] = get_context()
-        super(InterruptableQueue, self).__init__(*args, **kwargs)
+        super().__init__(*args, **kwargs)
 
     def get(self, *args, **kwargs):
         try:
@@ -129,7 +131,7 @@ def _worker_sigint_handler(signum, frame):
     Tells workers not to process the extra jobs on the call queue that couldn't
     be canceled by the parent process.
     """
-    global SHUTDOWN
+    global SHUTDOWN  # noqa PLW0603
     SHUTDOWN = True
     orig_sigint(signum, frame)
 
@@ -152,7 +154,7 @@ atexit.unregister(futures_atexit)
 atexit.register(wrap_futures_atexit)
 
 
-class LintRoller(object):
+class LintRoller:
     """Registers and runs linters.
 
     :param root: Path to which relative paths will be joined. If
@@ -188,13 +190,13 @@ class LintRoller(object):
         self.exclude = exclude or []
 
         if lintargs.get("show_verbose"):
+            formatter = logging.Formatter(
+                "%(asctime)s.%(msecs)d %(lintname)s (%(pid)s) | %(message)s", "%H:%M:%S"
+            )
+            logger.handlers[0].setFormatter(formatter)
             logger.setLevel(logging.DEBUG)
         else:
             logger.setLevel(logging.WARNING)
-
-        self.log = logging.LoggerAdapter(
-            logger, {"lintname": "mozlint", "pid": os.getpid()}
-        )
 
     def read(self, paths):
         """Parse one or more linters and add them to the registry.
@@ -225,34 +227,41 @@ class LintRoller(object):
                 setupargs.update(self._setupargs)
                 setupargs["name"] = linter["name"]
                 setupargs["log"] = logging.LoggerAdapter(
-                    self.log, {"lintname": linter["name"]}
+                    logger, {"lintname": linter["name"]}
                 )
                 if virtualenv_manager is not None:
                     setupargs["virtualenv_manager"] = virtualenv_manager
                 start_time = time.monotonic()
-                res = findobject(linter["setup"])(
-                    **setupargs,
+                res = (
+                    findobject(linter["setup"])(
+                        **setupargs,
+                    )
+                    or 0
                 )
-                self.log.debug(
+                log.debug(
                     f"setup for {linter['name']} finished in "
                     f"{round(time.monotonic() - start_time, 2)} seconds"
                 )
             except Exception:
-                traceback.print_exc()
+                log.exception(f"{linter['name']} setup failed")
                 res = 1
 
-            if res:
+            if res > 0:
                 self.result.failed_setup.add(linter["name"])
+                self.result.skipped.add(linter["name"])
+            elif res < 0:
+                # Negative return code means the linter should be skipped for
+                # reasons other than a failure.
+                self.result.skipped.add(linter["name"])
+
+        self.linters = [l for l in self.linters if l["name"] not in self.result.skipped]
 
         if self.result.failed_setup:
-            print(
-                "error: problem with lint setup, skipping {}".format(
+            log.error(
+                "problem with lint setup, skipping {}".format(
                     ", ".join(sorted(self.result.failed_setup))
                 )
             )
-            self.linters = [
-                l for l in self.linters if l["name"] not in self.result.failed_setup
-            ]
             return 1
         return 0
 
@@ -260,6 +269,9 @@ class LintRoller(object):
         """Return `True` if the linter should be run on the entire tree."""
         # Don't lint the entire tree when `--fix` is passed to linters.
         if "fix" in self.lintargs and self.lintargs["fix"]:
+            return False
+
+        if self.lintargs.get("stdin_filename"):
             return False
 
         # Lint the whole tree when a `support-file` is modified.
@@ -332,9 +344,10 @@ class LintRoller(object):
             paths = set(paths)
 
         if not self.vcs and (workdir or outgoing):
-            print(
-                "error: '{}' is not a known repository, can't use "
-                "--workdir or --outgoing".format(self.lintargs["root"])
+            log.error(
+                "'{}' is not a known repository, can't use --workdir or --outgoing".format(
+                    self.lintargs["root"]
+                )
             )
 
         # Calculate files from VCS
@@ -351,13 +364,14 @@ class LintRoller(object):
                         self.vcs.get_outgoing_files("AM", upstream=upstream)
                     )
                 except MissingUpstreamRepo:
-                    print(
-                        "warning: could not find default push, specify a remote for --outgoing"
+                    log.warning(
+                        "could not find default push, specify a remote for --outgoing"
                     )
         except CalledProcessError as e:
-            print("error running: {}".format(" ".join(e.cmd)))
+            msg = f"command failed: {' '.join(e.cmd)}"
             if e.output:
-                print(e.output)
+                msg = f"{msg}\n{e.output}"
+            log.exception(msg)
 
         if not (paths or vcs_paths) and (workdir or outgoing):
             if os.environ.get("MOZ_AUTOMATION") and not os.environ.get(
@@ -368,7 +382,7 @@ class LintRoller(object):
                     "missing explicit paths?"
                 )
 
-            print("warning: no files linted")
+            log.warning("no files linted")
             return self.result
 
         # Make sure all paths are absolute. Join `paths` to cwd and `vcs_paths` to root.
@@ -412,7 +426,7 @@ class LintRoller(object):
             """
             [f.cancel() for f in futures]
             executor.shutdown(wait=True)
-            print("\nwarning: not all files were linted")
+            log.warning("\nnot all files were linted")
             signal.signal(signal.SIGINT, signal.SIG_IGN)
 
         signal.signal(signal.SIGINT, _parent_sigint_handler)

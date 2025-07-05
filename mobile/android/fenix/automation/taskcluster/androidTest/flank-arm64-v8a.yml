@@ -15,17 +15,19 @@ gcloud:
   environment-variables:
     clearPackageData: true
   directories-to-pull:
-    - /sdcard/screenshots
+    - /sdcard/Android/data/org.mozilla.fenix.debug/minidumps
+  other-files:
+    /data/local/tmp/org.mozilla.fenix.debug-geckoview-config.yaml: ./automation/taskcluster/androidTest/geckoview-configs/org.mozilla.fenix.debug-geckoview-config.yaml
   performance-metrics: true
 
   test-targets:
-    - notPackage org.mozilla.fenix.screenshots
     - notPackage org.mozilla.fenix.syncintegration
     - notPackage org.mozilla.fenix.experimentintegration
+    - notPackage org.mozilla.fenix.ui.efficiency.tests
 
   device:
-    - model: Pixel2.arm
-      version: 30
+    - model: MediumPhone.arm
+      version: 34
       locale: en_US
 
 flank:

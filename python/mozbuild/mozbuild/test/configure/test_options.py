@@ -322,7 +322,7 @@ class TestOption(unittest.TestCase):
 
         # For usability reasons, we raise TypeError when attempting to compare
         # against a non-tuple.
-        with self.assertRaisesRegexp(TypeError, "cannot compare a"):
+        with self.assertRaisesRegex(TypeError, "cannot compare a"):
             val == "foo"
 
         # But we allow empty option values to compare otherwise we can't
@@ -443,21 +443,22 @@ class TestOption(unittest.TestCase):
                     str(e.exception), "--%s takes %d values" % (name, nargs)
                 )
 
-        if nargs in (2, "*", "+") and not disabled:
+        if nargs in (1, "?", 2, "*", "+") and not disabled:
             value = option.get_value("--%s=foo,bar" % name, "option")
-            self.assertEqual(value, PositiveOptionValue(("foo", "bar")))
+            if nargs in (1, "?"):
+                self.assertEqual(value, PositiveOptionValue(("foo,bar",)))
+            else:
+                self.assertEqual(value, PositiveOptionValue(("foo", "bar")))
             self.assertEqual(value.origin, "option")
         else:
             with self.assertRaises(InvalidOptionError) as e:
                 option.get_value("--%s=foo,bar" % name, "option")
             if disabled:
                 self.assertEqual(str(e.exception), "Cannot pass a value to --%s" % name)
-            elif nargs == "?":
-                self.assertEqual(str(e.exception), "--%s takes 0 or 1 values" % name)
             else:
                 self.assertEqual(
                     str(e.exception),
-                    "--%s takes %d value%s" % (name, nargs, "s" if nargs != 1 else ""),
+                    "--%s takes %d values" % (name, nargs),
                 )
 
         option = Option("--%s" % name, env="MOZ_OPTION", nargs=nargs, default=default)
@@ -529,20 +530,20 @@ class TestOption(unittest.TestCase):
                 option.get_value("MOZ_OPTION=foo", "environment")
             self.assertEqual(str(e.exception), "MOZ_OPTION takes %d values" % nargs)
 
-        if nargs in (2, "*", "+"):
+        if nargs in (1, "?", 2, "*", "+"):
             value = option.get_value("MOZ_OPTION=foo,bar", "environment")
-            self.assertEqual(value, PositiveOptionValue(("foo", "bar")))
+            if nargs in (1, "?"):
+                self.assertEqual(value, PositiveOptionValue(("foo,bar",)))
+            else:
+                self.assertEqual(value, PositiveOptionValue(("foo", "bar")))
             self.assertEqual(value.origin, "environment")
         else:
             with self.assertRaises(InvalidOptionError) as e:
                 option.get_value("MOZ_OPTION=foo,bar", "environment")
-            if nargs == "?":
-                self.assertEqual(str(e.exception), "MOZ_OPTION takes 0 or 1 values")
-            else:
-                self.assertEqual(
-                    str(e.exception),
-                    "MOZ_OPTION takes %d value%s" % (nargs, "s" if nargs != 1 else ""),
-                )
+            self.assertEqual(
+                str(e.exception),
+                "MOZ_OPTION takes %d values" % nargs,
+            )
 
         if disabled:
             return option
@@ -588,20 +589,20 @@ class TestOption(unittest.TestCase):
                 env_option.get_value("MOZ_OPTION=foo", "environment")
             self.assertEqual(str(e.exception), "MOZ_OPTION takes %d values" % nargs)
 
-        if nargs in (2, "*", "+"):
+        if nargs in (1, "?", 2, "*", "+"):
             value = env_option.get_value("MOZ_OPTION=foo,bar", "environment")
-            self.assertEqual(value, PositiveOptionValue(("foo", "bar")))
+            if nargs in (1, "?"):
+                self.assertEqual(value, PositiveOptionValue(("foo,bar",)))
+            else:
+                self.assertEqual(value, PositiveOptionValue(("foo", "bar")))
             self.assertEqual(value.origin, "environment")
         else:
             with self.assertRaises(InvalidOptionError) as e:
                 env_option.get_value("MOZ_OPTION=foo,bar", "environment")
-            if nargs == "?":
-                self.assertEqual(str(e.exception), "MOZ_OPTION takes 0 or 1 values")
-            else:
-                self.assertEqual(
-                    str(e.exception),
-                    "MOZ_OPTION takes %d value%s" % (nargs, "s" if nargs != 1 else ""),
-                )
+            self.assertEqual(
+                str(e.exception),
+                "MOZ_OPTION takes %d values" % nargs,
+            )
 
         return option
 
@@ -898,14 +899,14 @@ class TestCommandLineHelper(unittest.TestCase):
         self.assertEqual("--foo", option)
 
         bar = Option("--bar", possible_origins=("mozconfig",))
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             InvalidOptionError,
             "--bar can not be set by command-line. Values are accepted from: mozconfig",
         ):
             helper.handle(bar)
 
         baz = Option(env="BAZ", possible_origins=("implied",))
-        with self.assertRaisesRegexp(
+        with self.assertRaisesRegex(
             InvalidOptionError,
             "BAZ=1 can not be set by environment. Values are accepted from: implied",
         ):

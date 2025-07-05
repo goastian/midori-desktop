@@ -10,17 +10,17 @@ import io.mockk.Runs
 import io.mockk.every
 import io.mockk.just
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.spyk
+import io.mockk.unmockkStatic
 import io.mockk.verify
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.cancel
 import mozilla.components.browser.state.action.ContentAction
 import mozilla.components.browser.state.action.CookieBannerAction
-import mozilla.components.browser.state.action.TabListAction
 import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.state.CustomTabSessionState
 import mozilla.components.browser.state.state.TabSessionState
-import mozilla.components.browser.state.state.createCustomTab
 import mozilla.components.browser.state.state.createTab
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.browser.toolbar.BrowserToolbar
@@ -28,16 +28,17 @@ import mozilla.components.concept.engine.EngineSession
 import mozilla.components.support.test.ext.joinBlocking
 import mozilla.components.support.test.robolectric.testContext
 import mozilla.components.support.test.rule.MainCoroutineRule
-import mozilla.telemetry.glean.testing.GleanTestRule
+import org.junit.After
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mozilla.fenix.GleanMetrics.TrackingProtection
 import org.mozilla.fenix.R
+import org.mozilla.fenix.browser.tabstrip.isTabStripEnabled
+import org.mozilla.fenix.ext.isLargeWindow
+import org.mozilla.fenix.helpers.FenixGleanTestRule
 import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
-import org.mozilla.fenix.shopping.ShoppingExperienceFeature
 import org.mozilla.fenix.utils.Settings
 
 @RunWith(FenixRobolectricTestRunner::class)
@@ -46,29 +47,18 @@ class BrowserToolbarCFRPresenterTest {
     val coroutinesTestRule = MainCoroutineRule()
 
     @get:Rule
-    val gleanTestRule = GleanTestRule(testContext)
+    val gleanTestRule = FenixGleanTestRule(testContext)
 
-    @Test
-    fun `GIVEN the TCP CFR should be shown for a custom tab WHEN the custom tab is fully loaded THEN the TCP CFR is shown`() {
-        val customTab = createCustomTab(url = "")
-        val browserStore = createBrowserStore(customTab = customTab)
-        val presenter = createPresenterThatShowsCFRs(
-            browserStore = browserStore,
-            sessionId = customTab.id,
-        )
+    @Before
+    fun setup() {
+        mockkStatic("org.mozilla.fenix.ext.ContextKt")
+        mockkStatic(Context::isTabStripEnabled)
+    }
 
-        presenter.start()
-
-        assertNotNull(presenter.scope)
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(customTab.id, 0)).joinBlocking()
-        verify(exactly = 0) { presenter.showTcpCfr() }
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(customTab.id, 33)).joinBlocking()
-        verify(exactly = 0) { presenter.showTcpCfr() }
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(customTab.id, 100)).joinBlocking()
-        verify { presenter.showTcpCfr() }
+    @After
+    fun teardown() {
+        unmockkStatic("org.mozilla.fenix.ext.ContextKt")
+        unmockkStatic(Context::isTabStripEnabled)
     }
 
     @Test
@@ -76,13 +66,9 @@ class BrowserToolbarCFRPresenterTest {
         val privateTab = createTab(url = "", private = true)
         val browserStore = createBrowserStore(tab = privateTab, selectedTabId = privateTab.id)
         val settings: Settings = mockk(relaxed = true) {
-            every { shouldShowTotalCookieProtectionCFR } returns false
-            every { shouldShowReviewQualityCheckCFR } returns false
-            every { reviewQualityCheckOptInTimeInMillis } returns System.currentTimeMillis()
             every { shouldShowEraseActionCFR } returns false
             every { shouldShowCookieBannersCFR } returns true
             every { shouldUseCookieBannerPrivateMode } returns true
-            every { reviewQualityCheckCfrDisplayTimeInMillis } returns 0L
         }
         val presenter = createPresenter(
             isPrivate = true,
@@ -106,72 +92,6 @@ class BrowserToolbarCFRPresenterTest {
     }
 
     @Test
-    fun `GIVEN the TCP CFR should be shown WHEN the current normal tab is fully loaded THEN the TCP CFR is shown`() {
-        val normalTab = createTab(url = "", private = false)
-        val browserStore = createBrowserStore(
-            tab = normalTab,
-            selectedTabId = normalTab.id,
-        )
-        val presenter = createPresenterThatShowsCFRs(browserStore = browserStore)
-
-        presenter.start()
-
-        assertNotNull(presenter.scope)
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(normalTab.id, 1)).joinBlocking()
-        verify(exactly = 0) { presenter.showTcpCfr() }
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(normalTab.id, 98)).joinBlocking()
-        verify(exactly = 0) { presenter.showTcpCfr() }
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(normalTab.id, 100)).joinBlocking()
-        verify { presenter.showTcpCfr() }
-    }
-
-    @Test
-    fun `GIVEN the TCP CFR should be shown WHEN the current private tab is fully loaded THEN the TCP CFR is shown`() {
-        val privateTab = createTab(url = "", private = true)
-        val browserStore = createBrowserStore(
-            tab = privateTab,
-            selectedTabId = privateTab.id,
-        )
-        val presenter = createPresenterThatShowsCFRs(browserStore = browserStore)
-
-        presenter.start()
-
-        assertNotNull(presenter.scope)
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(privateTab.id, 14)).joinBlocking()
-        verify(exactly = 0) { presenter.showTcpCfr() }
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(privateTab.id, 99)).joinBlocking()
-        verify(exactly = 0) { presenter.showTcpCfr() }
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(privateTab.id, 100)).joinBlocking()
-        verify { presenter.showTcpCfr() }
-    }
-
-    @Test
-    fun `GIVEN the TCP CFR should be shown WHEN the current tab is fully loaded THEN the TCP CFR is only shown once`() {
-        val tab = createTab(url = "")
-        val browserStore = createBrowserStore(
-            tab = tab,
-            selectedTabId = tab.id,
-        )
-        val presenter = createPresenterThatShowsCFRs(browserStore = browserStore)
-
-        presenter.start()
-
-        assertNotNull(presenter.scope)
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(tab.id, 99)).joinBlocking()
-        browserStore.dispatch(ContentAction.UpdateProgressAction(tab.id, 100)).joinBlocking()
-        browserStore.dispatch(ContentAction.UpdateProgressAction(tab.id, 100)).joinBlocking()
-        browserStore.dispatch(ContentAction.UpdateProgressAction(tab.id, 100)).joinBlocking()
-        verify(exactly = 1) { presenter.showTcpCfr() }
-    }
-
-    @Test
     fun `GIVEN the Erase CFR should be shown WHEN in private mode and the current tab is fully loaded THEN the Erase CFR is only shown once`() {
         val tab = createTab(url = "", private = true)
 
@@ -183,6 +103,8 @@ class BrowserToolbarCFRPresenterTest {
         val presenter = createPresenterThatShowsCFRs(
             browserStore = browserStore,
             settings = mockk {
+                every { shouldShowTabSwipeCFR } returns false
+                every { hasShownTabSwipeCFR } returns false
                 every { shouldShowEraseActionCFR } returns true
             },
             isPrivate = true,
@@ -200,21 +122,6 @@ class BrowserToolbarCFRPresenterTest {
     }
 
     @Test
-    fun `GIVEN no CFR shown WHEN the feature starts THEN don't observe the store for updates`() {
-        val presenter = createPresenter(
-            settings = mockk {
-                every { shouldShowTotalCookieProtectionCFR } returns false
-                every { shouldShowReviewQualityCheckCFR } returns false
-                every { shouldShowEraseActionCFR } returns false
-            },
-        )
-
-        presenter.start()
-
-        assertNull(presenter.scope)
-    }
-
-    @Test
     fun `GIVEN the store is observed for updates WHEN the presenter is stopped THEN stop observing the store`() {
         val scope: CoroutineScope = mockk {
             every { cancel() } just Runs
@@ -228,252 +135,112 @@ class BrowserToolbarCFRPresenterTest {
     }
 
     @Test
-    fun `WHEN the TCP CFR is to be shown THEN instantiate a new one and remember show it again unless explicitly dismissed`() {
-        val settings: Settings = mockk(relaxed = true)
-        val presenter = createPresenter(
-            anchor = mockk(relaxed = true),
+    fun `GIVEN the Tab Swipe CFR should be shown WHEN in Normal mode THEN the Tab Swipe CFR is shown once`() {
+        val normalTab = createTab(url = "", private = false)
+        val browserStore = createBrowserStore(tab = normalTab, selectedTabId = normalTab.id)
+        val context: Context = mockk {
+            every { isTabStripEnabled() } returns false
+        }
+        val settings: Settings = mockk(relaxed = true) {
+            every { shouldShowEraseActionCFR } returns false
+            every { shouldShowCookieBannersCFR } returns false
+            every { shouldUseCookieBannerPrivateMode } returns false
+            every { shouldShowTabSwipeCFR } returns true
+            every { isSwipeToolbarToSwitchTabsEnabled } returns true
+            every { hasShownTabSwipeCFR } returns false
+        }
+
+        val presenter = createPresenterThatShowsCFRs(
+            context = context,
+            browserStore = browserStore,
             settings = settings,
+            isPrivate = false,
         )
-
-        presenter.showTcpCfr()
-
-        verify(exactly = 0) { settings.shouldShowTotalCookieProtectionCFR = false }
-        assertNotNull(presenter.popup)
-    }
-
-    @Test
-    fun `WHEN the TCP CFR is shown THEN log telemetry`() {
-        val presenter = createPresenter(
-            anchor = mockk(relaxed = true),
-        )
-
-        assertNull(TrackingProtection.tcpCfrShown.testGetValue())
-
-        presenter.showTcpCfr()
-
-        assertNotNull(TrackingProtection.tcpCfrShown.testGetValue())
-    }
-
-    @Test
-    fun `GIVEN the current tab is showing a product page WHEN the tab is not loading THEN the CFR is shown`() {
-        val tab = createTab(url = "")
-        val browserStore = createBrowserStore(
-            tab = tab,
-            selectedTabId = tab.id,
-        )
-        val presenter = createPresenter(
-            browserStore = browserStore,
-            settings = mockk {
-                every { shouldShowTotalCookieProtectionCFR } returns false
-                every { shouldShowReviewQualityCheckCFR } returns true
-                every { reviewQualityCheckOptInTimeInMillis } returns System.currentTimeMillis()
-                every { shouldShowEraseActionCFR } returns false
-                every { reviewQualityCheckCfrDisplayTimeInMillis } returns 0L
-            },
-        )
-        every { presenter.showShoppingCFR(any()) } just Runs
 
         presenter.start()
 
-        assertNotNull(presenter.scope)
-
-        browserStore.dispatch(ContentAction.UpdateLoadingStateAction(tab.id, true)).joinBlocking()
-        verify(exactly = 0) { presenter.showShoppingCFR(eq(false)) }
-
-        browserStore.dispatch(ContentAction.UpdateProductUrlStateAction(tab.id, true)).joinBlocking()
-        verify(exactly = 0) { presenter.showShoppingCFR(eq(false)) }
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(tab.id, 100)).joinBlocking()
-        verify(exactly = 0) { presenter.showShoppingCFR(eq(false)) }
-
-        browserStore.dispatch(ContentAction.UpdateLoadingStateAction(tab.id, false)).joinBlocking()
-        verify { presenter.showShoppingCFR(eq(false)) }
+        verify { presenter.showTabSwipeCFR() }
+        verify { settings.hasShownTabSwipeCFR = true }
+        verify { settings.shouldShowTabSwipeCFR = false }
     }
 
     @Test
-    fun `GIVEN the current tab is showing a product page WHEN the tab is not loading AND another CFR is shown THEN the shopping CFR is not shown`() {
-        val tab = createTab(url = "")
-        val browserStore = createBrowserStore(
-            tab = tab,
-            selectedTabId = tab.id,
-        )
-        val presenter = createPresenter(
+    fun `GIVEN tab strip is enabled WHEN in Normal mode THEN the Tab Swipe CFR is not shown`() {
+        val normalTab = createTab(url = "", private = false)
+        val browserStore = createBrowserStore(tab = normalTab, selectedTabId = normalTab.id)
+        val context: Context = mockk {
+            every { isTabStripEnabled() } returns true
+        }
+        val settings: Settings = mockk(relaxed = true) {
+            every { shouldShowEraseActionCFR } returns false
+            every { shouldShowCookieBannersCFR } returns false
+            every { shouldUseCookieBannerPrivateMode } returns false
+            every { shouldShowTabSwipeCFR } returns true
+            every { isSwipeToolbarToSwitchTabsEnabled } returns true
+            every { hasShownTabSwipeCFR } returns false
+        }
+
+        val presenter = createPresenterThatShowsCFRs(
+            context = context,
             browserStore = browserStore,
-            settings = mockk {
-                every { shouldShowTotalCookieProtectionCFR } returns false
-                every { shouldShowReviewQualityCheckCFR } returns true
-                every { reviewQualityCheckOptInTimeInMillis } returns System.currentTimeMillis()
-                every { shouldShowEraseActionCFR } returns false
-                every { reviewQualityCheckCfrDisplayTimeInMillis } returns 0L
-            },
+            settings = settings,
+            isPrivate = false,
         )
-        every { presenter.popup } returns mockk()
-        every { presenter.showShoppingCFR(any()) } just Runs
 
         presenter.start()
 
-        assertNotNull(presenter.scope)
-
-        browserStore.dispatch(ContentAction.UpdateProductUrlStateAction(tab.id, true)).joinBlocking()
-        verify(exactly = 0) { presenter.showShoppingCFR(eq(false)) }
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(tab.id, 100)).joinBlocking()
-        verify(exactly = 0) { presenter.showShoppingCFR(eq(false)) }
+        verify(exactly = 0) { presenter.showTabSwipeCFR() }
+        verify(exactly = 0) { settings.hasShownTabSwipeCFR = any() }
+        verify(exactly = 0) { settings.shouldShowTabSwipeCFR = any() }
     }
 
     @Test
-    fun `GIVEN the user opted in the shopping feature AND the opted in shopping CFR should be shown WHEN the tab finishes loading THEN the CFR is shown`() {
-        val tab = createTab(url = "")
-        val browserStore = createBrowserStore(
-            tab = tab,
-            selectedTabId = tab.id,
-        )
+    fun `GIVEN swipe toolbar to change tabs is disabled WHEN in Normal mode THEN the Tab Swipe CFR is not shown`() {
+        val normalTab = createTab(url = "", private = false)
+        val browserStore = createBrowserStore(tab = normalTab, selectedTabId = normalTab.id)
+        val context: Context = mockk {
+            every { isTabStripEnabled() } returns false
+        }
+        val settings: Settings = mockk(relaxed = true) {
+            every { shouldShowEraseActionCFR } returns false
+            every { shouldShowCookieBannersCFR } returns false
+            every { shouldUseCookieBannerPrivateMode } returns false
+            every { shouldShowTabSwipeCFR } returns true
+            every { isSwipeToolbarToSwitchTabsEnabled } returns false
+            every { hasShownTabSwipeCFR } returns false
+        }
 
-        val presenter = createPresenter(
-            settings = mockk {
-                every { shouldShowTotalCookieProtectionCFR } returns false
-                every { shouldShowReviewQualityCheckCFR } returns true
-                every { shouldShowEraseActionCFR } returns false
-                every { reviewQualityCheckOptInTimeInMillis } returns System.currentTimeMillis() - Settings.TWO_DAYS_MS
-                every { reviewQualityCheckCfrDisplayTimeInMillis } returns System.currentTimeMillis() - Settings.TWO_DAYS_MS
-            },
+        val presenter = createPresenterThatShowsCFRs(
+            context = context,
             browserStore = browserStore,
+            settings = settings,
+            isPrivate = false,
         )
-        every { presenter.showShoppingCFR(any()) } just Runs
 
         presenter.start()
 
-        assertNotNull(presenter.scope)
-
-        browserStore.dispatch(ContentAction.UpdateLoadingStateAction(tab.id, true)).joinBlocking()
-        verify(exactly = 0) { presenter.showShoppingCFR(eq(true)) }
-
-        browserStore.dispatch(ContentAction.UpdateProductUrlStateAction(tab.id, true)).joinBlocking()
-        verify(exactly = 0) { presenter.showShoppingCFR(eq(true)) }
-
-        browserStore.dispatch(ContentAction.UpdateProgressAction(tab.id, 100)).joinBlocking()
-        verify(exactly = 0) { presenter.showShoppingCFR(eq(true)) }
-
-        browserStore.dispatch(ContentAction.UpdateLoadingStateAction(tab.id, false)).joinBlocking()
-        verify { presenter.showShoppingCFR(eq(true)) }
-    }
-
-    @Test
-    fun `GIVEN the user opted in the shopping feature AND the opted in shopping CFR should be shown WHEN opening a loaded product page THEN the CFR is shown`() {
-        val tab1 = createTab(url = "", id = "tab1")
-        val tab2 = createTab(url = "", id = "tab2")
-        val browserStore = BrowserStore(
-            initialState = BrowserState(
-                tabs = listOf(tab1, tab2),
-                selectedTabId = tab2.id,
-            ),
-        )
-
-        val presenter = createPresenter(
-            settings = mockk {
-                every { shouldShowTotalCookieProtectionCFR } returns false
-                every { shouldShowReviewQualityCheckCFR } returns true
-                every { shouldShowEraseActionCFR } returns false
-                every { reviewQualityCheckOptInTimeInMillis } returns System.currentTimeMillis() - Settings.TWO_DAYS_MS
-                every { reviewQualityCheckCfrDisplayTimeInMillis } returns System.currentTimeMillis() - Settings.TWO_DAYS_MS
-            },
-            browserStore = browserStore,
-        )
-        every { presenter.showShoppingCFR(any()) } just Runs
-
-        presenter.start()
-
-        assertNotNull(presenter.scope)
-
-        browserStore.dispatch(ContentAction.UpdateProductUrlStateAction(tab1.id, true)).joinBlocking()
-        browserStore.dispatch(ContentAction.UpdateProgressAction(tab1.id, 100)).joinBlocking()
-        verify(exactly = 0) { presenter.showShoppingCFR(any()) }
-
-        browserStore.dispatch(TabListAction.SelectTabAction(tab1.id)).joinBlocking()
-        verify(exactly = 1) { presenter.showShoppingCFR(true) }
-    }
-
-    @Test
-    fun `GIVEN the first CFR was displayed less than 12h ago AND the user did not opt in to the shopping feature WHEN opening a loaded product page THEN no shopping CFR is shown`() {
-        val tab1 = createTab(url = "", id = "tab1")
-        val browserStore = BrowserStore(
-            initialState = BrowserState(
-                tabs = listOf(tab1),
-                selectedTabId = tab1.id,
-            ),
-        )
-
-        val presenter = createPresenter(
-            settings = mockk {
-                every { shouldShowTotalCookieProtectionCFR } returns false
-                every { shouldShowReviewQualityCheckCFR } returns true
-                every { shouldShowEraseActionCFR } returns false
-                every { reviewQualityCheckOptInTimeInMillis } returns 0L
-                every { reviewQualityCheckCfrDisplayTimeInMillis } returns System.currentTimeMillis() - (11 * 60 * 60 * 1000L)
-            },
-            browserStore = browserStore,
-        )
-        every { presenter.showShoppingCFR(any()) } just Runs
-
-        presenter.start()
-
-        assertNull(presenter.scope)
-    }
-
-    @Test
-    fun `GIVEN the first CFR was displayed 12h ago AND the user did not opt in to the shopping feature WHEN opening a loaded product page THEN the first shopping CFR is shown`() {
-        val tab1 = createTab(url = "", id = "tab1")
-        val tab2 = createTab(url = "", id = "tab2")
-        val browserStore = BrowserStore(
-            initialState = BrowserState(
-                tabs = listOf(tab1, tab2),
-                selectedTabId = tab2.id,
-            ),
-        )
-
-        val presenter = createPresenter(
-            settings = mockk {
-                every { shouldShowTotalCookieProtectionCFR } returns false
-                every { shouldShowReviewQualityCheckCFR } returns true
-                every { shouldShowEraseActionCFR } returns false
-                every { reviewQualityCheckOptInTimeInMillis } returns 0L
-                every { reviewQualityCheckCfrDisplayTimeInMillis } returns System.currentTimeMillis() - Settings.TWELVE_HOURS_MS
-            },
-            browserStore = browserStore,
-        )
-        every { presenter.showShoppingCFR(any()) } just Runs
-
-        presenter.start()
-
-        assertNotNull(presenter.scope)
-
-        browserStore.dispatch(ContentAction.UpdateProductUrlStateAction(tab1.id, true)).joinBlocking()
-        browserStore.dispatch(ContentAction.UpdateProgressAction(tab1.id, 100)).joinBlocking()
-        verify(exactly = 0) { presenter.showShoppingCFR(any()) }
-
-        browserStore.dispatch(TabListAction.SelectTabAction(tab1.id)).joinBlocking()
-        verify(exactly = 1) { presenter.showShoppingCFR(false) }
+        verify(exactly = 0) { presenter.showTabSwipeCFR() }
+        verify(exactly = 0) { settings.hasShownTabSwipeCFR = any() }
+        verify(exactly = 0) { settings.shouldShowTabSwipeCFR = any() }
     }
 
     /**
      * Creates and return a [spyk] of a [BrowserToolbarCFRPresenter] that can handle actually showing CFRs.
      */
     private fun createPresenterThatShowsCFRs(
-        context: Context = mockk(),
+        context: Context = mockk {
+            every { isLargeWindow() } returns false
+        },
         anchor: View = mockk(),
         browserStore: BrowserStore = mockk(),
         settings: Settings = mockk {
-            every { shouldShowTotalCookieProtectionCFR } returns true
             every { openTabsCount } returns 5
-            every { shouldShowReviewQualityCheckCFR } returns false
             every { shouldShowEraseActionCFR } returns false
         },
         toolbar: BrowserToolbar = mockk(),
         isPrivate: Boolean = false,
         sessionId: String? = null,
     ) = spyk(createPresenter(context, anchor, browserStore, settings, toolbar, sessionId, isPrivate)) {
-        every { showTcpCfr() } just Runs
-        every { showShoppingCFR(any()) } just Runs
         every { showEraseCfr() } just Runs
     }
 
@@ -483,40 +250,32 @@ class BrowserToolbarCFRPresenterTest {
      */
     private fun createPresenter(
         context: Context = mockk {
-            every { getString(R.string.tcp_cfr_message) } returns "Test"
             every { getColor(any()) } returns 0
-            every { getString(R.string.pref_key_should_show_review_quality_cfr) } returns "test"
         },
         anchor: View = mockk(relaxed = true),
         browserStore: BrowserStore = mockk(),
         settings: Settings = mockk(relaxed = true) {
-            every { shouldShowTotalCookieProtectionCFR } returns true
             every { shouldShowEraseActionCFR } returns true
             every { openTabsCount } returns 5
             every { shouldShowCookieBannersCFR } returns true
-            every { shouldShowReviewQualityCheckCFR } returns true
+            every { shouldShowTabSwipeCFR } returns false
+            every { hasShownTabSwipeCFR } returns false
         },
         toolbar: BrowserToolbar = mockk {
-            every { findViewById<View>(R.id.mozac_browser_toolbar_security_indicator) } returns anchor
+            every { findViewById<View>(R.id.mozac_browser_toolbar_site_info_indicator) } returns anchor
             every { findViewById<View>(R.id.mozac_browser_toolbar_page_actions) } returns anchor
             every { findViewById<View>(R.id.mozac_browser_toolbar_navigation_actions) } returns anchor
         },
         sessionId: String? = null,
         isPrivate: Boolean = false,
-        shoppingExperienceFeature: ShoppingExperienceFeature = mockk {
-            every { isEnabled } returns true
-        },
     ) = spyk(
         BrowserToolbarCFRPresenter(
             context = context,
             browserStore = browserStore,
             settings = settings,
             toolbar = toolbar,
-            sessionId = sessionId,
+            customTabId = sessionId,
             isPrivate = isPrivate,
-            onShoppingCfrActionClicked = {},
-            onShoppingCfrDisplayed = {},
-            shoppingExperienceFeature = shoppingExperienceFeature,
         ),
     )
 

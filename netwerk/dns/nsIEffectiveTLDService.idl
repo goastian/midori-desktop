@@ -41,6 +41,10 @@ interface nsIEffectiveTLDService : nsISupports
      * the Public Suffix List. If the suffix is unknown this will return
      * an empty string.
      *
+     * If you only need to know if the host ends in a valid suffix, and not the
+     * actual public suffix, consider the more performant hasKnownPublicSuffix()
+     * instead.
+     *
      * @param   aURI   The URI to be analyzed
      * @returns the public suffix if known, an empty string otherwise
      * @see     getPublicSuffixFromHost()
@@ -114,6 +118,28 @@ interface nsIEffectiveTLDService : nsISupports
      * use getSite() or the Origin if you are not absolutely certain.
      */
     ACString getSchemelessSite(in nsIURI aURI);
+
+    /**
+     * Same as getSchemelessSite but takes a host string. Prefer the URI variant
+     * if possible.
+     *
+     * @param aHost
+     *        The host to analyze.
+     *
+     * @return the Site.
+     *
+     * @throws NS_ERROR_UNEXPECTED
+     *         or other error returned by nsIIDNService::normalize when
+     *         the hostname contains characters disallowed in URIs
+     *
+     * @see    getSchemelessSite()
+     * @see    getBaseDomain()
+     * @see    getSite()
+     *
+     * @warning This function should not be used without good reason. Please
+     * use getSite() or the Origin if you are not absolutely certain.
+     */
+    ACString getSchemelessSiteFromHost(in AUTF8String aHost);
 
     /**
      * Get the Site for the origin of aURI; e.g. for
@@ -202,4 +228,21 @@ interface nsIEffectiveTLDService : nsISupports
      * @param aHost  The host to compare to.
      */
     boolean hasRootDomain(in AUTF8String aInput, in AUTF8String aHost);
+
+    /**
+     * Returns true if the host of |aURI| ends with, or is, a suffix that is on
+     * the public suffix list.
+     *
+     * @param aURI The URI to be checked
+     */
+    boolean hasKnownPublicSuffix(in nsIURI aURI);
+
+    /**
+     * Returns true if |aHost| ends with, or is, a suffix that is on the public
+     * suffix list.
+     *
+     * @param aHost The hostname to be checked
+     * @see         hasKnownPublicSuffix()
+     */
+    boolean hasKnownPublicSuffixFromHost(in AUTF8String aHost);
 };

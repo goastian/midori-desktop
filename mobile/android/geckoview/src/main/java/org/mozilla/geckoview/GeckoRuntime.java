@@ -9,6 +9,7 @@ package org.mozilla.geckoview;
 import android.annotation.SuppressLint;
 import android.app.ActivityManager;
 import android.app.PendingIntent;
+import android.app.Service;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -40,6 +41,7 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.List;
 import java.util.Map;
+import org.mozilla.gecko.Clipboard;
 import org.mozilla.gecko.EventDispatcher;
 import org.mozilla.gecko.GeckoAppShell;
 import org.mozilla.gecko.GeckoNetworkManager;
@@ -49,6 +51,7 @@ import org.mozilla.gecko.GeckoScreenOrientation.ScreenOrientation;
 import org.mozilla.gecko.GeckoSystemStateListener;
 import org.mozilla.gecko.GeckoThread;
 import org.mozilla.gecko.annotation.WrapForJNI;
+import org.mozilla.gecko.crashhelper.CrashHelper;
 import org.mozilla.gecko.process.MemoryController;
 import org.mozilla.gecko.util.BundleEventListener;
 import org.mozilla.gecko.util.DebugConfig;
@@ -98,8 +101,16 @@ public final class GeckoRuntime implements Parcelable {
 
   /**
    * This is a key for extra data sent with {@link #ACTION_CRASHED}. The value is a String matching
-   * one of the `CRASHED_PROCESS_TYPE_*` constants, describing what type of process the crash
+   * one of the `CRASHED_PROCESS_VISIBILITY_*` constants, describing what type of process the crash
    * occurred in.
+   *
+   * @see GeckoSession.ContentDelegate#onCrash(GeckoSession)
+   */
+  public static final String EXTRA_CRASH_PROCESS_VISIBILITY = "processVisibility";
+
+  /**
+   * This is a key for extra data sent with {@link #ACTION_CRASHED}. The value is a String
+   * identifier for the process type where the crash occurred.
    *
    * @see GeckoSession.ContentDelegate#onCrash(GeckoSession)
    */
@@ -114,27 +125,43 @@ public final class GeckoRuntime implements Parcelable {
   public static final String EXTRA_CRASH_REMOTE_TYPE = "remoteType";
 
   /**
-   * Value for {@link #EXTRA_CRASH_PROCESS_TYPE} indicating the main application process was
+   * Value for {@link #EXTRA_CRASH_PROCESS_VISIBILITY} indicating the main application process was
    * affected by the crash, which is therefore fatal.
    */
-  public static final String CRASHED_PROCESS_TYPE_MAIN = "MAIN";
+  public static final String CRASHED_PROCESS_VISIBILITY_MAIN = "MAIN";
+
+  @Deprecated
+  @DeprecationSchedule(id = "GeckoRuntime-CRASHED_PROCESS_TYPE_MAIN", version = 142)
+  public static final String CRASHED_PROCESS_TYPE_MAIN = CRASHED_PROCESS_VISIBILITY_MAIN;
 
   /**
-   * Value for {@link #EXTRA_CRASH_PROCESS_TYPE} indicating a foreground child process, such as a
-   * content process, crashed. The application may be able to recover from this crash, but it was
-   * likely noticable to the user.
+   * Value for {@link #EXTRA_CRASH_PROCESS_VISIBILITY} indicating a foreground child process, such
+   * as a content process, crashed. The application may be able to recover from this crash, but it
+   * was likely noticable to the user.
    */
-  public static final String CRASHED_PROCESS_TYPE_FOREGROUND_CHILD = "FOREGROUND_CHILD";
+  public static final String CRASHED_PROCESS_VISIBILITY_FOREGROUND_CHILD = "FOREGROUND_CHILD";
+
+  @Deprecated
+  @DeprecationSchedule(id = "GeckoRuntime-CRASHED_PROCESS_TYPE_FOREGROUND_CHILD", version = 142)
+  public static final String CRASHED_PROCESS_TYPE_FOREGROUND_CHILD =
+      CRASHED_PROCESS_VISIBILITY_FOREGROUND_CHILD;
 
   /**
-   * Value for {@link #EXTRA_CRASH_PROCESS_TYPE} indicating a background child process crashed. This
-   * should have been recovered from automatically, and will have had minimal impact to the user, if
-   * any.
+   * Value for {@link #EXTRA_CRASH_PROCESS_VISIBILITY} indicating a background child process
+   * crashed. This should have been recovered from automatically, and will have had minimal impact
+   * to the user, if any.
    */
-  public static final String CRASHED_PROCESS_TYPE_BACKGROUND_CHILD = "BACKGROUND_CHILD";
+  public static final String CRASHED_PROCESS_VISIBILITY_BACKGROUND_CHILD = "BACKGROUND_CHILD";
+
+  @Deprecated
+  @DeprecationSchedule(id = "GeckoRuntime-CRASHED_PROCESS_TYPE_BACKGROUND_CHILD", version = 142)
+  public static final String CRASHED_PROCESS_TYPE_BACKGROUND_CHILD =
+      CRASHED_PROCESS_VISIBILITY_BACKGROUND_CHILD;
 
   private final MemoryController mMemoryController = new MemoryController();
 
+  @Deprecated
+  @DeprecationSchedule(id = "GeckoRuntime-CrashedProcessType", version = 142)
   @Retention(RetentionPolicy.SOURCE)
   @StringDef(
       value = {
@@ -143,6 +170,15 @@ public final class GeckoRuntime implements Parcelable {
         CRASHED_PROCESS_TYPE_BACKGROUND_CHILD
       })
   public @interface CrashedProcessType {}
+
+  @Retention(RetentionPolicy.SOURCE)
+  @StringDef(
+      value = {
+        CRASHED_PROCESS_VISIBILITY_MAIN,
+        CRASHED_PROCESS_VISIBILITY_FOREGROUND_CHILD,
+        CRASHED_PROCESS_VISIBILITY_BACKGROUND_CHILD
+      })
+  public @interface CrashedProcessVisibility {}
 
   private final class LifecycleListener implements LifecycleObserver {
     private boolean mPaused = false;
@@ -183,6 +219,14 @@ public final class GeckoRuntime implements Parcelable {
       // Set settings that may have changed between last app opening
       GeckoAppShell.setIs24HourFormat(
           DateFormat.is24HourFormat(GeckoAppShell.getApplicationContext()));
+
+      // OnPrimaryClipChangedListener() won’t be triggered for a background
+      // application, so update the clipboard sequence number once the
+      // application returns to the foreground.
+      ThreadUtils.sGeckoHandler.post(
+          () -> {
+            Clipboard.updateSequenceNumber(GeckoAppShell.getApplicationContext());
+          });
     }
 
     @OnLifecycleEvent(Lifecycle.Event.ON_PAUSE)
@@ -194,6 +238,7 @@ public final class GeckoRuntime implements Parcelable {
       // Stop monitoring network status while inactive.
       GeckoNetworkManager.getInstance().stop();
       GeckoThread.onPause();
+      Clipboard.onPause();
     }
   }
 
@@ -227,6 +272,7 @@ public final class GeckoRuntime implements Parcelable {
   private GeckoRuntimeSettings mSettings;
   private Delegate mDelegate;
   private ServiceWorkerDelegate mServiceWorkerDelegate;
+  private GeckoPreferenceController.Observer.Delegate mPreferencesObserverDelegate;
   private WebNotificationDelegate mNotificationDelegate;
   private ActivityDelegate mActivityDelegate;
   private OrientationController mOrientationController;
@@ -266,33 +312,15 @@ public final class GeckoRuntime implements Parcelable {
    * @return SessionID to use for the request.
    */
   @SuppressLint("WrongThread") // for .isOpen() which is called on the UI thread
-  @WrapForJNI(calledFrom = "gecko")
-  private static @NonNull GeckoResult<String> serviceWorkerOpenWindow(final @NonNull String url) {
+  @UiThread
+  private static @NonNull GeckoResult<GeckoSession> serviceWorkerOpenWindow(
+      final @NonNull String url) {
     if (sRuntime != null && sRuntime.mServiceWorkerDelegate != null) {
-      final GeckoResult<String> result = new GeckoResult<>();
-      // perform the onOpenWindow call in the UI thread
-      ThreadUtils.runOnUiThread(
-          () -> {
-            sRuntime
-                .mServiceWorkerDelegate
-                .onOpenWindow(url)
-                .accept(
-                    session -> {
-                      if (session != null) {
-                        if (!session.isOpen()) {
-                          session.open(sRuntime);
-                        }
-                        result.complete(session.getId());
-                      } else {
-                        result.complete(null);
-                      }
-                    });
-          });
-      return result;
-    } else {
-      return GeckoResult.fromException(
-          new java.lang.RuntimeException("No available Service Worker delegate."));
+      ThreadUtils.assertOnUiThread();
+      return sRuntime.mServiceWorkerDelegate.onOpenWindow(url);
     }
+    return GeckoResult.fromException(
+        new java.lang.RuntimeException("No available Service Worker delegate."));
   }
 
   /**
@@ -327,9 +355,16 @@ public final class GeckoRuntime implements Parcelable {
             final String url = message.getString("url", "about:blank");
             serviceWorkerOpenWindow(url)
                 .then(
-                    (GeckoResult.OnValueListener<String, Void>)
-                        value -> {
-                          callback.sendSuccess(value);
+                    (GeckoResult.OnValueListener<GeckoSession, Void>)
+                        session -> {
+                          if (session == null) {
+                            callback.sendSuccess(null);
+                            return null;
+                          }
+                          if (!session.isOpen()) {
+                            session.open(sRuntime);
+                          }
+                          callback.sendSuccess(session.getId());
                           return null;
                         })
                 .exceptionally(
@@ -343,6 +378,8 @@ public final class GeckoRuntime implements Parcelable {
             final Intent i = new Intent(ACTION_CRASHED, null, context, crashHandler);
             i.putExtra(EXTRA_MINIDUMP_PATH, message.getString(EXTRA_MINIDUMP_PATH));
             i.putExtra(EXTRA_EXTRAS_PATH, message.getString(EXTRA_EXTRAS_PATH));
+            i.putExtra(
+                EXTRA_CRASH_PROCESS_VISIBILITY, message.getString(EXTRA_CRASH_PROCESS_VISIBILITY));
             i.putExtra(EXTRA_CRASH_PROCESS_TYPE, message.getString(EXTRA_CRASH_PROCESS_TYPE));
             i.putExtra(EXTRA_CRASH_REMOTE_TYPE, message.getString(EXTRA_CRASH_REMOTE_TYPE));
 
@@ -350,6 +387,40 @@ public final class GeckoRuntime implements Parcelable {
               context.startForegroundService(i);
             } else {
               context.startService(i);
+            }
+          } else if ("GeckoView:ServiceWorkerOpenWindow".equals(event)) {
+            final String url = message.getString("url", "about:blank");
+            serviceWorkerOpenWindow(url)
+                .then(
+                    (GeckoResult.OnValueListener<GeckoSession, Void>)
+                        session -> {
+                          if (session == null) {
+                            callback.sendSuccess(null);
+                            return null;
+                          }
+                          final boolean isOpen = session.isOpen();
+                          if (!isOpen) {
+                            session.open(sRuntime);
+                          }
+                          final GeckoBundle bundle = new GeckoBundle();
+                          bundle.putBoolean("isOpen", isOpen);
+                          bundle.putString("sessionId", session.getId());
+                          callback.sendSuccess(bundle);
+                          return null;
+                        })
+                .exceptionally(
+                    (GeckoResult.OnExceptionListener<Void>)
+                        error -> {
+                          callback.sendError(error + " Could not open tab.");
+                          return null;
+                        });
+          } else if ("GeckoView:GeckoPreferences:Change".equals(event)) {
+            final GeckoPreferenceController.GeckoPreference<?> observedPreference =
+                GeckoPreferenceController.GeckoPreference.fromBundle(message.getBundle("data"));
+            if (observedPreference != null) {
+              mPreferencesObserverDelegate.onGeckoPreferenceChange(observedPreference);
+            } else {
+              Log.w(LOGTAG, "Could not deserialize a message for onGeckoPreferenceChange!");
             }
           }
         }
@@ -371,6 +442,33 @@ public final class GeckoRuntime implements Parcelable {
     return null;
   }
 
+  private int[] startCrashHelper() {
+    final Context context = GeckoAppShell.getApplicationContext();
+    final CrashHelper.Pipes pipes = CrashHelper.createCrashHelperPipes(context);
+
+    if (pipes == null) {
+      Log.e(LOGTAG, "Could not create the crash reporter IPC pipes");
+      return new int[] {-1, -1};
+    }
+
+    try {
+      @SuppressWarnings("unchecked")
+      final Class<? extends Service> cls =
+          (Class<? extends Service>) Class.forName("org.mozilla.gecko.crashhelper.CrashHelper");
+      final Intent i = new Intent(context, cls);
+      final File minidumps = new File(context.getFilesDir(), "minidumps");
+      context.bindService(
+          i,
+          CrashHelper.createConnection(
+              pipes.mBreakpadServer, minidumps.getPath(), pipes.mListener, pipes.mServer),
+          Context.BIND_AUTO_CREATE);
+    } catch (final ClassNotFoundException e) {
+      Log.w(LOGTAG, "Couldn't find the crash helper class");
+    }
+
+    return new int[] {pipes.mBreakpadClient.detachFd(), pipes.mClient.detachFd()};
+  }
+
   /* package */ boolean init(
       final @NonNull Context context, final @NonNull GeckoRuntimeSettings settings) {
     if (DEBUG) {
@@ -380,6 +478,10 @@ public final class GeckoRuntime implements Parcelable {
 
     if (settings.getPauseForDebuggerEnabled()) {
       flags |= GeckoThread.FLAG_DEBUGGING;
+    }
+
+    if (!settings.getLowMemoryDetection()) {
+      flags |= GeckoThread.FLAG_DISABLE_LOW_MEMORY_DETECTION;
     }
 
     final Class<?> crashHandler = settings.getCrashHandler();
@@ -437,6 +539,8 @@ public final class GeckoRuntime implements Parcelable {
       }
     }
 
+    final int[] fds = startCrashHelper();
+
     final GeckoThread.InitInfo info =
         GeckoThread.InitInfo.builder()
             .args(args)
@@ -444,6 +548,7 @@ public final class GeckoRuntime implements Parcelable {
             .flags(flags)
             .prefs(prefs)
             .outFilePath(extras != null ? extras.getString("out_file") : null)
+            .fds(fds)
             .build();
 
     if (info.xpcshell
@@ -471,7 +576,12 @@ public final class GeckoRuntime implements Parcelable {
 
     // Bug 1453062 -- the EventDispatcher should really live here (or in GeckoThread)
     EventDispatcher.getInstance()
-        .registerUiThreadListener(mEventListener, "Gecko:Exited", "GeckoView:Test:NewTab");
+        .registerUiThreadListener(
+            mEventListener,
+            "Gecko:Exited",
+            "GeckoView:Test:NewTab",
+            "GeckoView:ServiceWorkerOpenWindow",
+            "GeckoView:GeckoPreferences:Change");
 
     // Attach and commit settings.
     mSettings.attachTo(this);
@@ -672,6 +782,28 @@ public final class GeckoRuntime implements Parcelable {
     @UiThread
     @NonNull
     GeckoResult<GeckoSession> onOpenWindow(@NonNull String url);
+  }
+
+  /**
+   * Set the {@link GeckoPreferenceController.Observer.Delegate} instance set on this runtime.
+   *
+   * @param delegate The delegate to set on the runtime.
+   */
+  @AnyThread
+  public void setPreferencesObserverDelegate(
+      @Nullable final GeckoPreferenceController.Observer.Delegate delegate) {
+    mPreferencesObserverDelegate = delegate;
+  }
+
+  /**
+   * Get the {@link GeckoPreferenceController.Observer.Delegate} instance set on this runtime, if
+   * any.
+   *
+   * @return The {@link GeckoPreferenceController.Observer.Delegate} set on this runtime.
+   */
+  @AnyThread
+  public @Nullable GeckoPreferenceController.Observer.Delegate getPreferencesObserverDelegate() {
+    return mPreferencesObserverDelegate;
   }
 
   /**
@@ -1054,4 +1186,17 @@ public final class GeckoRuntime implements Parcelable {
           return new GeckoRuntime[size];
         }
       };
+
+  /**
+   * Whether the default `interactive-widget` is `resizes-visual`.
+   *
+   * @return True the default `interactive-widget` is `resizes-visual`, false otherwise.
+   */
+  @AnyThread
+  public boolean isInteractiveWidgetDefaultResizesVisual() {
+    if (!GeckoThread.isStateAtLeast(GeckoThread.State.JNI_READY)) {
+      return false;
+    }
+    return GeckoAppShell.isInteractiveWidgetDefaultResizesVisual();
+  }
 }

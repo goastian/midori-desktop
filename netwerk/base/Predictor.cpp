@@ -38,7 +38,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/SchedulerGroup.h"
 #include "mozilla/StaticPrefs_network.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/NetwerkMetrics.h"
 
 #include "mozilla/net/NeckoCommon.h"
 #include "mozilla/net/NeckoParent.h"
@@ -109,7 +109,7 @@ static bool IsNullOrHttp(nsIURI* uri) {
     return true;
   }
 
-  return uri->SchemeIs("http") || uri->SchemeIs("https");
+  return SchemeIsHttpOrHttps(uri);
 }
 
 // Listener for the speculative DNS requests we'll fire off, which just ignores
@@ -181,6 +181,9 @@ Predictor::Action::OnCacheEntryAvailable(nsICacheEntry* entry, bool isNew,
   MOZ_ASSERT(NS_IsMainThread(), "Got cache entry off main thread!");
 
   nsAutoCString targetURI, sourceURI;
+  if (!mTargetURI) {
+    return NS_ERROR_UNEXPECTED;
+  }
   mTargetURI->GetAsciiSpec(targetURI);
   if (mSourceURI) {
     mSourceURI->GetAsciiSpec(sourceURI);
@@ -199,25 +202,26 @@ Predictor::Action::OnCacheEntryAvailable(nsICacheEntry* entry, bool isNew,
          this, static_cast<uint32_t>(result)));
     return NS_OK;
   }
-  Telemetry::AccumulateTimeDelta(Telemetry::PREDICTOR_WAIT_TIME, mStartTime);
+  glean::predictor::wait_time.AccumulateRawDuration(TimeStamp::Now() -
+                                                    mStartTime);
   if (mPredict) {
     bool predicted =
         mPredictor->PredictInternal(mPredictReason, entry, isNew, mFullUri,
                                     mTargetURI, mVerifier, mStackCount);
-    Telemetry::AccumulateTimeDelta(Telemetry::PREDICTOR_PREDICT_WORK_TIME,
-                                   mStartTime);
+    glean::predictor::predict_work_time.AccumulateRawDuration(TimeStamp::Now() -
+                                                              mStartTime);
     if (predicted) {
-      Telemetry::AccumulateTimeDelta(
-          Telemetry::PREDICTOR_PREDICT_TIME_TO_ACTION, mStartTime);
+      glean::predictor::predict_time_to_action.AccumulateRawDuration(
+          TimeStamp::Now() - mStartTime);
     } else {
-      Telemetry::AccumulateTimeDelta(
-          Telemetry::PREDICTOR_PREDICT_TIME_TO_INACTION, mStartTime);
+      glean::predictor::predict_time_to_inaction.AccumulateRawDuration(
+          TimeStamp::Now() - mStartTime);
     }
   } else {
     mPredictor->LearnInternal(mLearnReason, entry, isNew, mFullUri, mTargetURI,
                               mSourceURI);
-    Telemetry::AccumulateTimeDelta(Telemetry::PREDICTOR_LEARN_WORK_TIME,
-                                   mStartTime);
+    glean::predictor::learn_work_time.AccumulateRawDuration(TimeStamp::Now() -
+                                                            mStartTime);
   }
 
   return NS_OK;
@@ -519,7 +523,7 @@ Predictor::PredictNative(nsIURI* targetURI, nsIURI* sourceURI,
     return NS_OK;
   }
 
-  if (originAttributes.mPrivateBrowsingId > 0) {
+  if (originAttributes.IsPrivateBrowsing()) {
     // Don't want to do anything in PB mode
     PREDICTOR_LOG(("    in PB mode"));
     return NS_OK;
@@ -571,7 +575,7 @@ Predictor::PredictNative(nsIURI* targetURI, nsIURI* sourceURI,
   // waiting on the less-important predictor-only cache entry
   RefPtr<Predictor::Action> uriAction = new Predictor::Action(
       Predictor::Action::IS_FULL_URI, Predictor::Action::DO_PREDICT, argReason,
-      targetURI, nullptr, verifier, this);
+      uriKey, nullptr, verifier, this);
   nsAutoCString uriKeyStr;
   uriKey->GetAsciiSpec(uriKeyStr);
   PREDICTOR_LOG(("    Predict uri=%s reason=%d action=%p", uriKeyStr.get(),
@@ -791,8 +795,8 @@ int32_t Predictor::CalculateGlobalDegradation(uint32_t lastLoad) {
     globalDegradation = StaticPrefs::network_predictor_page_degradation_max();
   }
 
-  Telemetry::Accumulate(Telemetry::PREDICTOR_GLOBAL_DEGRADATION,
-                        globalDegradation);
+  glean::predictor::global_degradation.AccumulateSingleSample(
+      globalDegradation);
   return globalDegradation;
 }
 
@@ -813,11 +817,11 @@ int32_t Predictor::CalculateConfidence(uint32_t hitCount, uint32_t hitsPossible,
                                        int32_t globalDegradation) {
   MOZ_ASSERT(NS_IsMainThread());
 
-  Telemetry::AutoCounter<Telemetry::PREDICTOR_PREDICTIONS_CALCULATED>
-      predictionsCalculated;
-  ++predictionsCalculated;
+  uint32_t predictionsCalculated = 1;
 
   if (!hitsPossible) {
+    glean::predictor::predictions_calculated.AccumulateSingleSample(
+        predictionsCalculated);
     return 0;
   }
 
@@ -863,10 +867,12 @@ int32_t Predictor::CalculateConfidence(uint32_t hitCount, uint32_t hitsPossible,
   confidence = std::max(confidence, 0);
   confidence = std::min(confidence, maxConfidence);
 
-  Telemetry::Accumulate(Telemetry::PREDICTOR_BASE_CONFIDENCE, baseConfidence);
-  Telemetry::Accumulate(Telemetry::PREDICTOR_SUBRESOURCE_DEGRADATION,
-                        confidenceDegradation);
-  Telemetry::Accumulate(Telemetry::PREDICTOR_CONFIDENCE, confidence);
+  glean::predictor::base_confidence.AccumulateSingleSample(baseConfidence);
+  glean::predictor::subresource_degradation.AccumulateSingleSample(
+      confidenceDegradation);
+  glean::predictor::confidence.AccumulateSingleSample(confidence);
+  glean::predictor::predictions_calculated.AccumulateSingleSample(
+      predictionsCalculated);
   return confidence;
 }
 
@@ -1028,7 +1034,7 @@ void Predictor::SetupPrediction(int32_t confidence, uint32_t flags,
   // aren't going to accumulate more here. Right now we only care about why
   // something we had marked prefetchable isn't being prefetched.
   if (!prefetchOk && reason != PREFETCH_OK) {
-    Telemetry::Accumulate(Telemetry::PREDICTOR_PREFETCH_IGNORE_REASON, reason);
+    glean::predictor::prefetch_ignore_reason.AccumulateSingleSample(reason);
   }
 
   if (prefetchOk) {
@@ -1133,13 +1139,10 @@ bool Predictor::RunPredictions(nsIURI* referrer,
                              preconnects = std::move(mPreconnects),
                              preresolves = std::move(mPreresolves);
 
-  Telemetry::AutoCounter<Telemetry::PREDICTOR_TOTAL_PREDICTIONS>
-      totalPredictions;
-  Telemetry::AutoCounter<Telemetry::PREDICTOR_TOTAL_PREFETCHES> totalPrefetches;
-  Telemetry::AutoCounter<Telemetry::PREDICTOR_TOTAL_PRECONNECTS>
-      totalPreconnects;
-  Telemetry::AutoCounter<Telemetry::PREDICTOR_TOTAL_PRERESOLVES>
-      totalPreresolves;
+  uint32_t totalPredictions = 0;
+  uint32_t totalPrefetches = 0;
+  uint32_t totalPreconnects = 0;
+  uint32_t totalPreresolves = 0;
 
   len = prefetches.Length();
   for (i = 0; i < len; ++i) {
@@ -1202,6 +1205,11 @@ bool Predictor::RunPredictions(nsIURI* referrer,
     }
   }
 
+  glean::predictor::total_predictions.AccumulateSingleSample(totalPredictions);
+  glean::predictor::total_prefetches.AccumulateSingleSample(totalPrefetches);
+  glean::predictor::total_preconnects.AccumulateSingleSample(totalPreconnects);
+  glean::predictor::total_preresolves.AccumulateSingleSample(totalPreresolves);
+
   return predicted;
 }
 
@@ -1263,7 +1271,7 @@ Predictor::LearnNative(nsIURI* targetURI, nsIURI* sourceURI,
     return NS_OK;
   }
 
-  if (originAttributes.mPrivateBrowsingId > 0) {
+  if (originAttributes.IsPrivateBrowsing()) {
     // Don't want to do anything in PB mode
     PREDICTOR_LOG(("    in PB mode"));
     return NS_OK;
@@ -1319,9 +1327,7 @@ Predictor::LearnNative(nsIURI* targetURI, nsIURI* sourceURI,
       return NS_ERROR_INVALID_ARG;
   }
 
-  Telemetry::AutoCounter<Telemetry::PREDICTOR_LEARN_ATTEMPTS> learnAttempts;
-  ++learnAttempts;
-
+  uint32_t learnAttempts = 1;
   Predictor::Reason argReason{};
   argReason.mLearn = reason;
 
@@ -1394,6 +1400,7 @@ Predictor::LearnNative(nsIURI* targetURI, nsIURI* sourceURI,
                                  nsLiteralCString(PREDICTOR_ORIGIN_EXTENSION),
                                  originOpenFlags, originAction);
 
+  glean::predictor::learn_attempts.AccumulateSingleSample(learnAttempts);
   PREDICTOR_LOG(("Predictor::Learn returning"));
   return NS_OK;
 }
@@ -2160,8 +2167,8 @@ Predictor::PrefetchListener::OnStopRequest(nsIRequest* aRequest,
   if (NS_FAILED(aStatusCode)) {
     return aStatusCode;
   }
-  Telemetry::AccumulateTimeDelta(Telemetry::PREDICTOR_PREFETCH_TIME,
-                                 mStartTime);
+  glean::predictor::prefetch_time.AccumulateRawDuration(TimeStamp::Now() -
+                                                        mStartTime);
 
   nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aRequest);
   if (!httpChannel) {
@@ -2185,8 +2192,9 @@ Predictor::PrefetchListener::OnStopRequest(nsIRequest* aRequest,
                    static_cast<uint32_t>(rv)));
   } else {
     rv = cachingChannel->ForceCacheEntryValidFor(0);
-    Telemetry::AccumulateCategorical(
-        Telemetry::LABELS_PREDICTOR_PREFETCH_USE_STATUS::Not200);
+    glean::predictor::prefetch_use_status
+        .EnumGet(glean::predictor::PrefetchUseStatusLabel::eNot200)
+        .Add();
     PREDICTOR_LOG(("    removing any forced validity rv=%" PRIX32,
                    static_cast<uint32_t>(rv)));
   }
@@ -2402,8 +2410,7 @@ Predictor::CacheabilityAction::OnCacheEntryAvailable(nsICacheEntry* entry,
         reason = RESOURCE_IS_NO_STORE;
       }
 
-      Telemetry::Accumulate(Telemetry::PREDICTOR_PREFETCH_DECISION_REASON,
-                            reason);
+      glean::predictor::prefetch_decision_reason.AccumulateSingleSample(reason);
 
       if (prefetchable) {
         PREDICTOR_LOG(("    marking %s cacheable", key));

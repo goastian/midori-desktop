@@ -7,8 +7,6 @@ import os
 import sys
 from collections import OrderedDict
 
-import six
-
 HELP_OPTIONS_CATEGORY = "Help options"
 # List of whitelisted option categories. If you want to add a new category,
 # simply add it to this list; however, exercise discretion as
@@ -32,11 +30,7 @@ def _infer_option_category(define_depth):
 
 
 def istupleofstrings(obj):
-    return (
-        isinstance(obj, tuple)
-        and len(obj)
-        and all(isinstance(o, six.string_types) for o in obj)
-    )
+    return isinstance(obj, tuple) and len(obj) and all(isinstance(o, str) for o in obj)
 
 
 class OptionValue(tuple):
@@ -94,12 +88,12 @@ class OptionValue(tuple):
             )
 
         # Allow explicit tuples to be compared.
-        if type(other) == tuple:
+        if type(other) is tuple:
             return tuple.__eq__(self, other)
         elif isinstance(other, bool):
             return bool(self) == other
         # Else we're likely an OptionValue class.
-        elif type(other) != type(self):
+        elif type(other) is not type(self):
             return False
         else:
             return super(OptionValue, self).__eq__(other)
@@ -118,7 +112,7 @@ class OptionValue(tuple):
             return PositiveOptionValue()
         elif value is False or value == ():
             return NegativeOptionValue()
-        elif isinstance(value, six.string_types):
+        elif isinstance(value, str):
             return PositiveOptionValue((value,))
         elif isinstance(value, tuple):
             return PositiveOptionValue(value)
@@ -161,11 +155,11 @@ class ConflictingOptionError(InvalidOptionError):
         if format_data:
             message = message.format(**format_data)
         super(ConflictingOptionError, self).__init__(message)
-        for k, v in six.iteritems(format_data):
+        for k, v in format_data.items():
             setattr(self, k, v)
 
 
-class Option(object):
+class Option:
     """Represents a configure option
 
     A configure option can be a command line flag or an environment variable
@@ -206,6 +200,7 @@ class Option(object):
         "choices",
         "help",
         "possible_origins",
+        "metavar",
         "category",
         "define_depth",
     )
@@ -220,6 +215,7 @@ class Option(object):
         choices=None,
         category=None,
         help=None,
+        metavar=None,
         define_depth=0,
     ):
         if not name and not env:
@@ -228,7 +224,7 @@ class Option(object):
                 "be given"
             )
         if name:
-            if not isinstance(name, six.string_types):
+            if not isinstance(name, str):
                 raise InvalidOptionError("Option must be a string")
             if not name.startswith("--"):
                 raise InvalidOptionError("Option must start with `--`")
@@ -237,7 +233,7 @@ class Option(object):
             if not name.islower():
                 raise InvalidOptionError("Option must be all lowercase")
         if env:
-            if not isinstance(env, six.string_types):
+            if not isinstance(env, str):
                 raise InvalidOptionError("Environment variable name must be a string")
             if not env.isupper():
                 raise InvalidOptionError(
@@ -250,7 +246,7 @@ class Option(object):
                 "nargs must be a positive integer, '?', '*' or '+'"
             )
         if (
-            not isinstance(default, six.string_types)
+            not isinstance(default, str)
             and not isinstance(default, (bool, type(None)))
             and not istupleofstrings(default)
         ):
@@ -259,7 +255,7 @@ class Option(object):
             )
         if choices and not istupleofstrings(choices):
             raise InvalidOptionError("choices must be a tuple of strings")
-        if category and not isinstance(category, six.string_types):
+        if category and not isinstance(category, str):
             raise InvalidOptionError("Category must be a string")
         if category and category not in _ALL_CATEGORIES:
             raise InvalidOptionError(
@@ -270,6 +266,12 @@ class Option(object):
             raise InvalidOptionError("DefineDepth must be an integer")
         if not help:
             raise InvalidOptionError("A help string must be provided")
+        if metavar and not nargs:
+            raise InvalidOptionError("A metavar can only be given when nargs is set")
+        if metavar and not name:
+            raise InvalidOptionError(
+                "metavar must not be set on environment-only option"
+            )
         if possible_origins and not istupleofstrings(possible_origins):
             raise InvalidOptionError("possible_origins must be a tuple of strings")
         self.possible_origins = possible_origins
@@ -337,23 +339,31 @@ class Option(object):
                 raise InvalidOptionError("Not enough `choices` for `nargs`")
         self.choices = choices
         self.help = help
+        self.metavar = metavar
         self.category = category or _infer_option_category(define_depth)
 
     @staticmethod
-    def split_option(option):
+    def split_option(option, values_separator=","):
         """Split a flag or variable into a prefix, a name and values
 
         Variables come in the form NAME=values (no prefix).
         Flags come in the form --name=values or --prefix-name=values
         where prefix is one of 'with', 'without', 'enable' or 'disable'.
-        The '=values' part is optional. Values are separated with commas.
+        The '=values' part is optional. Values are separated with
+        `values_separator`. If `values_separator` is None, there is at
+        most one value.
         """
-        if not isinstance(option, six.string_types):
+        if not isinstance(option, str):
             raise InvalidOptionError("Option must be a string")
 
-        elements = option.split("=", 1)
-        name = elements[0]
-        values = tuple(elements[1].split(",")) if len(elements) == 2 else ()
+        name, eq, values = option.partition("=")
+        if eq:
+            if values_separator is None:
+                values = (values,)
+            else:
+                values = tuple(values.split(values_separator))
+        else:
+            values = ()
         if name.startswith("--"):
             name = name[2:]
             if not name.islower():
@@ -429,7 +439,10 @@ class Option(object):
                 % (option, origin, ", ".join(self.possible_origins))
             )
 
-        prefix, name, values = self.split_option(option)
+        kwargs = {}
+        if self.maxargs <= 1:
+            kwargs["values_separator"] = None
+        prefix, name, values = self.split_option(option, **kwargs)
         option = self._join_option(prefix, name)
 
         assert name in (self.name, self.env)
@@ -494,7 +507,7 @@ class Option(object):
         return "<%s [%s]>" % (self.__class__.__name__, self.option)
 
 
-class CommandLineHelper(object):
+class CommandLineHelper:
     """Helper class to handle the various ways options can be given either
     on the command line of through the environment.
 
@@ -613,5 +626,5 @@ class CommandLineHelper(object):
 
     def __iter__(self):
         for d in (self._args, self._extra_args):
-            for arg, pos in six.itervalues(d):
+            for arg, pos in d.values():
                 yield arg

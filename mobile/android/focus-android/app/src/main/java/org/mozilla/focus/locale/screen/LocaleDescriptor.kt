@@ -4,7 +4,7 @@
 
 package org.mozilla.focus.locale.screen
 
-import android.text.TextUtils
+import androidx.annotation.VisibleForTesting
 import mozilla.components.support.base.log.logger.Logger
 import org.mozilla.focus.locale.Locales
 import java.text.Collator
@@ -38,7 +38,7 @@ class LocaleDescriptor(private val localeTag: String) : Comparable<LocaleDescrip
         languageCodeAndNameMap["ia"] = "Interlingua"
         languageCodeAndNameMap["ixl"] = "Ixil"
         languageCodeAndNameMap["jv"] = "Basa Jawa"
-        languageCodeAndNameMap["meh"] = "Tu´un savi ñuu Yasi'í Yuku Iti"
+        languageCodeAndNameMap["meh"] = "Tu'un Savi Yucuhiti"
         languageCodeAndNameMap["mix"] = "Tu'un savi"
         languageCodeAndNameMap["nv"] = "Navajo"
         languageCodeAndNameMap["oc"] = "occitan"
@@ -53,38 +53,34 @@ class LocaleDescriptor(private val localeTag: String) : Comparable<LocaleDescrip
         languageCodeAndNameMap["tsz"] = "P'urhepecha"
         languageCodeAndNameMap["tt"] = "татарча"
         languageCodeAndNameMap["wo"] = "Wolof"
+        languageCodeAndNameMap["yua"] = "Maayat’aan"
         languageCodeAndNameMap["zam"] = "DíɁztè"
         languageCodeAndNameMap["zh-CN"] = "中文 (中国大陆)"
     }
 
     private fun setupLocaleDescriptor() {
-        val locale = Locales.parseLocaleCode(localeTag)
+        val locale = parseLocaleTag(localeTag)
         val displayName: String? = getDisplayName(locale)
 
-        if (TextUtils.isEmpty(displayName)) {
-            // There's nothing sane we can do.
-            Logger.error("Display name is empty. Using $locale")
-            nativeName = locale.toString()
-            return
-        }
-
-        val directionality = Character.getDirectionality(displayName!![0])
-        if (directionality == Character.DIRECTIONALITY_LEFT_TO_RIGHT) {
-            var firstLetter = displayName.substring(0, 1)
-
-            // Android OS creates an instance of Transliterator to convert the first letter
-            // of the Greek locale. See CaseMapper.toUpperCase(Locale locale, String s, int count)
-            // Since it's already in upper case, we don't need it
-            if (!Character.isUpperCase(firstLetter[0])) {
-                firstLetter = firstLetter.uppercase(locale)
+        nativeName = when {
+            displayName.isNullOrEmpty() -> {
+                Logger.error("Display name is empty. Using $locale")
+                locale.toString()
             }
-            nativeName = firstLetter + displayName.substring(1)
-            return
+            Character.getDirectionality(displayName.first()) == Character.DIRECTIONALITY_LEFT_TO_RIGHT -> {
+                // Android OS creates an instance of Transliterator to convert the first letter
+                // of the Greek locale. See CaseMapper.toUpperCase(Locale locale, String s, int count)
+                // Since it's already in upper case, we don't need it
+                displayName.replaceFirstChar {
+                    if (it.isLowerCase()) it.titlecase(locale) else it.toString()
+                }
+            }
+            else -> displayName
         }
-        nativeName = displayName
     }
 
-    private fun getDisplayName(locale: Locale): String? {
+    @VisibleForTesting
+    internal fun getDisplayName(locale: Locale): String? {
         return when {
             languageCodeAndNameMap.containsKey(locale.language) -> {
                 languageCodeAndNameMap[locale.language]
@@ -96,6 +92,10 @@ class LocaleDescriptor(private val localeTag: String) : Comparable<LocaleDescrip
                 locale.getDisplayName(locale)
             }
         }
+    }
+
+    private fun parseLocaleTag(localeTag: String): Locale {
+        return Locales.parseLocaleCode(localeTag)
     }
 
     fun getTag(): String {

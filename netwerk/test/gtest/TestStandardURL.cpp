@@ -15,16 +15,14 @@
 #include "mozilla/Base64.h"
 #include "nsEscape.h"
 #include "nsURLHelper.h"
+#include "IPv4Parser.h"
 
 using namespace mozilla;
 
-// In nsStandardURL.cpp
-extern nsresult Test_NormalizeIPv4(const nsACString& host, nsCString& result);
-extern nsresult Test_ParseIPv4Number(const nsACString& input, int32_t base,
-                                     uint32_t& number, uint32_t maxNumber);
-extern int32_t Test_ValidateIPv4Number(const nsACString& host, int32_t bases[4],
-                                       int32_t dotIndex[3], bool& onlyBase10,
-                                       int32_t length);
+nsresult Test_NormalizeIPv4(const nsACString& host, nsCString& result) {
+  return net::IPv4Parser::NormalizeIPv4(host, result);
+}
+
 TEST(TestStandardURL, Simple)
 {
   nsCOMPtr<nsIURI> url;
@@ -430,40 +428,162 @@ TEST(TestStandardURL, ParseIPv4Num)
   int32_t dotIndex[3];     // The positions of the dots in the string
   int32_t length = static_cast<int32_t>(host.Length());
 
-  ASSERT_EQ(2,
-            Test_ValidateIPv4Number(host, bases, dotIndex, onlyBase10, length));
+  ASSERT_EQ(2, mozilla::net::IPv4Parser::ValidateIPv4Number(
+                   host, bases, dotIndex, onlyBase10, length, false));
 
   nsCString result;
   ASSERT_EQ(NS_OK, Test_NormalizeIPv4("0x.0x.0"_ns, result));
 
   uint32_t number;
-  Test_ParseIPv4Number("0x10"_ns, 16, number, 255);
+  mozilla::net::IPv4Parser::ParseIPv4Number("0x10"_ns, 16, number, 255);
   ASSERT_EQ(number, (uint32_t)16);
 }
 
 TEST(TestStandardURL, CoalescePath)
 {
-  auto testCoalescing = [](const char* input, const char* expected) {
+  auto testCoalescing = [](const char* input, const char* expected,
+                           uint32_t lastSlash, uint32_t endOfBasename) {
     nsAutoCString buf(input);
-    net_CoalesceDirs(NET_COALESCE_NORMAL, buf.BeginWriting());
+    auto resultCoalesceDirs = net_CoalesceDirs(buf.BeginWriting());
+
     ASSERT_EQ(nsCString(buf.get()), nsCString(expected));
+
+    // If the path does not begin with '/', it should return Nothing().
+    if (input[0] == '/') {
+      ASSERT_EQ(resultCoalesceDirs->first(), lastSlash);
+      ASSERT_EQ(resultCoalesceDirs->second(), endOfBasename);
+    } else {
+      ASSERT_TRUE(resultCoalesceDirs == Nothing());
+    }
   };
 
-  testCoalescing("/.", "/");
-  testCoalescing("/..", "/");
-  testCoalescing("/foo/foo1/.", "/foo/foo1/");
-  testCoalescing("/foo/../foo1", "/foo1");
-  testCoalescing("/foo/./foo1", "/foo/foo1");
-  testCoalescing("/foo/foo1/..", "/foo/");
+#ifndef DEBUG
+  // invalid input
+  testCoalescing("", "", -1, -1);
+#endif
+  // end of basename is the null character's index
+  testCoalescing("/", "/", 0, 1);
+  testCoalescing("/.", "/", 0, 1);
+  testCoalescing("/..", "/", 0, 1);
+  testCoalescing("/foo/foo1/.", "/foo/foo1/", 9, 10);
+  testCoalescing("/foo/../foo1", "/foo1", 0, 5);
+  testCoalescing("/foo/./foo1", "/foo/foo1", 4, 9);
+  testCoalescing("/foo/foo1/..", "/foo/", 4, 5);
 
   // Bug 1890346
-  testCoalescing("/..?/..", "/?/..");
+  testCoalescing("/..?/..", "/?/..", 0, 1);
 
-  testCoalescing("/.?/..", "/?/..");
-  testCoalescing("/./../?", "/?");
-  testCoalescing("/.abc", "/.abc");
-  testCoalescing("//", "//");
-  testCoalescing("/../", "/");
-  testCoalescing("/./", "/");
-  testCoalescing("/.../", "/.../");
+  testCoalescing("/.?/..", "/?/..", 0, 1);
+  testCoalescing("/./../?", "/?", 0, 1);
+  testCoalescing("/.abc", "/.abc", 0, 5);
+  testCoalescing("//", "//", 1, 2);
+  testCoalescing("/../", "/", 0, 1);
+  testCoalescing("/./", "/", 0, 1);
+  testCoalescing("/.../", "/.../", 4, 5);
+
+  // Bug 1873915
+  testCoalescing("/hello/%2e%2e/foo", "/foo", 0, 4);
+  testCoalescing("/hello/%2e%2E/foo", "/foo", 0, 4);
+  testCoalescing("/hello/%2E%2e/foo", "/foo", 0, 4);
+  testCoalescing("/hello/%2E%2E/foo", "/foo", 0, 4);
+  testCoalescing("/hello/%2e./foo", "/foo", 0, 4);
+  testCoalescing("/hello/.%2e/foo", "/foo", 0, 4);
+  testCoalescing("/hello/%2E./foo", "/foo", 0, 4);
+  testCoalescing("/hello/.%2E/foo", "/foo", 0, 4);
+  testCoalescing("/hello/%2e%2E/%2e", "/", 0, 1);
+  testCoalescing("/hello/%2e/%2e%2e", "/", 0, 1);
+  testCoalescing("/hello/%2e%2E/%#", "/%#", 0, 2);
+  testCoalescing("/hello/%2e%2E/%?", "/%?", 0, 2);
+  testCoalescing("/hello/%2e", "/hello/", 6, 7);
+  testCoalescing("/hello/%2E", "/hello/", 6, 7);
+  testCoalescing("/hello/%2e/", "/hello/", 6, 7);
+  testCoalescing("/hello/%2E/", "/hello/", 6, 7);
+  testCoalescing("/hello/%2e.", "/", 0, 1);
+  testCoalescing("/hello/.%2e", "/", 0, 1);
+  testCoalescing("/hello/%2E.", "/", 0, 1);
+  testCoalescing("/hello/.%2E", "/", 0, 1);
+  testCoalescing("/hello/%2E%2e/%2e/./../.", "/", 0, 1);
+  testCoalescing("/test/%2e%2e/dir/%2E%2e/file", "/file", 0, 5);
+
+  // should not convert as a character is present
+  testCoalescing("/hello/%2E%2ea", "/hello/%2E%2ea", 6, 14);
+  testCoalescing("/hello/a%2E%2e", "/hello/a%2E%2e", 6, 14);
+  testCoalescing("/hello/a%2E%2ea", "/hello/a%2E%2ea", 6, 15);
+
+  // Encoded sequences followed by special characters
+  testCoalescing("/foo/%2e%2e/%2e%23/file.txt", "/%2e%23/file.txt", 7, 16);
+  testCoalescing("/foo/%2e%2e/%2e%3f/file.txt", "/%2e%3f/file.txt", 7, 16);
+
+  // Query strings and fragments with encoded sequences
+  testCoalescing("/query/%2e%2e/path?p=%2e", "/path?p=%2e", 0, 5);
+  testCoalescing("/frag/%2e%2e/path#q=%2e", "/path#q=%2e", 0, 5);
+
+  // 3 or more "%2e" repeating should not convert to "."
+  testCoalescing("/hello/%2E%2e%2E", "/hello/%2E%2e%2E", 6, 16);
+  testCoalescing("/hello/%2E%2e%2E%2e", "/hello/%2E%2e%2E%2e", 6, 19);
+  testCoalescing("/hello/%2E%2e%2E%2e.", "/hello/%2E%2e%2E%2e.", 6, 20);
+
+  // Relatively long inputs
+  testCoalescing("/foo/bar/foo/bar/foo/bar/foo/bar/foo?query#frag",
+                 "/foo/bar/foo/bar/foo/bar/foo/bar/foo?query#frag", 32, 36);
+
+  testCoalescing("/coder/coder/edit/main/docs/./enterprise.md",
+                 "/coder/coder/edit/main/docs/enterprise.md", 27, 41);
+
+  // bug 1942820
+  testCoalescing("/foo/bar/.%2e", "/foo/", 4, 5);
+  testCoalescing("/foo/bar/..", "/foo/", 4, 5);
+  testCoalescing("/foo/bar/%2e%2e", "/foo/", 4, 5);
+  testCoalescing("/foo/bar/%2e%2e#frag", "/foo/#frag", 4, 5);
+  testCoalescing("/foo/bar/%2e%2e?query", "/foo/?query", 4, 5);
+}
+
+TEST(TestStandardURL, bug1904582)
+{
+  auto spec = "x:///%2e%2e"_ns;
+
+  nsCOMPtr<nsIURI> uri;
+  nsresult rv = NS_MutateURI(NS_STANDARDURLMUTATOR_CONTRACTID)
+                    .SetSpec(spec)
+                    .Finalize(uri);
+  ASSERT_TRUE(NS_SUCCEEDED(rv));
+}
+
+TEST(TestStandardURL, bug1911529)
+{
+  nsCOMPtr<nsIURI> uri;
+  nsresult rv =
+      NS_MutateURI(NS_STANDARDURLMUTATOR_CONTRACTID)
+          .SetSpec(
+              "https://github.com/coder/coder/edit/main/docs/./enterprise.md"_ns)
+          .Finalize(uri);
+  ASSERT_TRUE(NS_SUCCEEDED(rv));
+
+  nsAutoCString out;
+  ASSERT_EQ(uri->GetSpec(out), NS_OK);
+  ASSERT_TRUE(out ==
+              "https://github.com/coder/coder/edit/main/docs/enterprise.md"_ns);
+
+  nsCOMPtr<nsIURI> uri2;
+  rv = NS_MutateURI(NS_STANDARDURLMUTATOR_CONTRACTID)
+           .SetSpec(
+               "https://github.com/coder/coder/edit/main/docs/enterprise.md"_ns)
+           .Finalize(uri2);
+  ASSERT_TRUE(NS_SUCCEEDED(rv));
+
+  bool equals = false;
+  ASSERT_EQ(uri->Equals(uri2, &equals), NS_OK);
+  ASSERT_TRUE(equals);
+
+  rv = NS_MutateURI(NS_STANDARDURLMUTATOR_CONTRACTID)
+           .SetSpec("https://domain.com/."_ns)
+           .Finalize(uri);
+  ASSERT_TRUE(NS_SUCCEEDED(rv));
+  rv = NS_MutateURI(NS_STANDARDURLMUTATOR_CONTRACTID)
+           .SetSpec("https://domain.com/"_ns)
+           .Finalize(uri2);
+  ASSERT_TRUE(NS_SUCCEEDED(rv));
+
+  ASSERT_EQ(uri->Equals(uri2, &equals), NS_OK);
+  ASSERT_TRUE(equals);
 }

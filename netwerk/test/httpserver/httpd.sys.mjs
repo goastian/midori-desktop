@@ -10,6 +10,8 @@
  * httpd.js.
  */
 
+/* eslint-disable no-shadow */
+
 const CC = Components.Constructor;
 
 const PR_UINT32_MAX = Math.pow(2, 32) - 1;
@@ -1927,6 +1929,7 @@ RequestReader.prototype = {
     var lastVal = this._lastHeaderValue;
 
     var line = {};
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       dumpn("*** Last name: '" + lastName + "'");
       dumpn("*** Last val: '" + lastVal + "'");
@@ -3225,6 +3228,7 @@ ServerHandler.prototype = {
     // An example progression of tmp for a path "/foo/bar/baz/" might be:
     // "foo/bar/baz/", "foo/bar/baz", "foo/bar", "foo", ""
     var tmp = path.substring(1);
+    // eslint-disable-next-line no-constant-condition
     while (true) {
       // do we have a match for current head of the path?
       var file = pathMap.get(tmp);
@@ -3986,7 +3990,7 @@ Response.prototype = {
   //
   // see nsIHttpResponse.setHeader
   //
-  setHeader(name, value, merge) {
+  setHeader(name, value, merge = false) {
     if (!this._headers || this._finished || this._powerSeized) {
       throw Components.Exception("", Cr.NS_ERROR_NOT_AVAILABLE);
     }
@@ -5274,7 +5278,11 @@ nsHttpHeaders.prototype = {
    */
   setHeader(fieldName, fieldValue, merge) {
     var name = headerUtils.normalizeFieldName(fieldName);
-    var value = headerUtils.normalizeFieldValue(fieldValue);
+    // Bug 1937905 - For testing a neterror page due to invalid header values
+    var value =
+      name === "x-invalid-header-value"
+        ? fieldValue
+        : headerUtils.normalizeFieldValue(fieldValue);
 
     // The following three headers are stored as arrays because their real-world
     // syntax prevents joining individual headers into a single header using

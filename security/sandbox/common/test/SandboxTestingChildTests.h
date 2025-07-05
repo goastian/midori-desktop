@@ -6,7 +6,6 @@
 
 #include "SandboxTestingChild.h"
 
-#include "mozilla/StaticPrefs_security.h"
 #include "mozilla/ipc/UtilityProcessSandboxing.h"
 #include "nsXULAppAPI.h"
 
@@ -14,6 +13,7 @@
 #  include <fcntl.h>
 #  include <netdb.h>
 #  ifdef XP_LINUX
+#    include <arpa/inet.h>
 #    include <linux/mempolicy.h>
 #    include <sched.h>
 #    include <sys/ioctl.h>
@@ -413,14 +413,14 @@ void RunTestsContent(SandboxTestingChild* child) {
   });
 
   // An abstract socket that does starts with /, so we do want it to work.
-  // Checking ECONNREFUSED because this is what the broker should get
-  // when trying to establish the connect call for us if it's allowed;
-  // otherwise we get EACCES, meaning that it was passed to the broker
-  // (unlike the previous test) but rejected.
-  const int errorForX =
-      StaticPrefs::security_sandbox_content_headless_AtStartup() ? EACCES
-                                                                 : ECONNREFUSED;
-  child->ErrnoValueTest("connect_abstract_permit"_ns, errorForX, [&] {
+  //
+  // Normally, this will be passed to the broker (unlike the previous
+  // test) and rejected, failing with EACCES.
+  //
+  // With content sandbox level <5, the expected error is ECONNREFUSED
+  // (the broker tries to connect but it fails at the OS level);
+  // however, these tests don't handle non-default pref settings.
+  child->ErrnoValueTest("connect_abstract_permit"_ns, EACCES, [&] {
     int sockfd;
     struct sockaddr_un addr;
     // we re-use actual X path, because this is what is allowed within
@@ -556,6 +556,12 @@ void RunTestsContent(SandboxTestingChild* child) {
     munmap(mapping, kMapSize);
   }
 
+  child->ErrnoValueTest("ioctl_dma_buf"_ns, ENOSYS, [] {
+    // Attempt an arbitrary non-tty ioctl, on the wrong type of fd; if
+    // allowed it would fail with ENOTTY (see the RDD tests) but in
+    // this sandbox it should be blocked (ENOSYS).
+    return ioctl(0, _IOW('b', 0, uint64_t), nullptr);
+  });
 #  endif  // XP_LINUX
 
 #  ifdef XP_MACOSX
@@ -640,6 +646,88 @@ void RunTestsSocket(SandboxTestingChild* child) {
   int c;
   child->ErrnoTest("getcpu"_ns, true,
                    [&] { return syscall(SYS_getcpu, &c, NULL, NULL); });
+
+  child->ErrnoTest("sendmsg"_ns, true, [&] {
+    int fd = socket(AF_INET6, SOCK_DGRAM, 0);
+    if (fd < 0) {
+      return fd;
+    }
+
+    struct sockaddr_in6 addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin6_family = AF_INET6;
+    // Address within 100::/64, i.e. IPv6 discard prefix.
+    inet_pton(AF_INET6, "100::1", &addr.sin6_addr);
+    addr.sin6_port = htons(12345);
+
+    struct msghdr msg = {0};
+    struct iovec iov[1];
+    char buf[] = "test";
+    iov[0].iov_base = buf;
+    iov[0].iov_len = sizeof(buf);
+    msg.msg_iov = iov;
+    msg.msg_iovlen = 1;
+    msg.msg_name = &addr;
+    msg.msg_namelen = sizeof(addr);
+
+    int rv = sendmsg(fd, &msg, 0);
+    close(fd);
+    MOZ_ASSERT(rv == sizeof(buf),
+               "Expected sendmsg to return the number of bytes sent");
+    return rv;
+  });
+
+  child->ErrnoTest("recvmmsg"_ns, true, [&] {
+    int fd = socket(AF_INET6, SOCK_DGRAM, 0);
+    if (fd < 0) {
+      return fd;
+    }
+
+    // Set the socket to non-blocking mode
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags < 0) {
+      close(fd);
+      return -1;
+    }
+    if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) < 0) {
+      close(fd);
+      return -1;
+    }
+
+    struct sockaddr_in6 addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin6_family = AF_INET6;
+    addr.sin6_addr = in6addr_any;
+    addr.sin6_port = htons(0);
+
+    if (bind(fd, (struct sockaddr*)&addr, sizeof(addr)) < 0) {
+      close(fd);
+      return -1;
+    }
+
+    struct mmsghdr msgs[1];
+    memset(msgs, 0, sizeof(msgs));
+    struct iovec iov[1];
+    char buf[64];
+    iov[0].iov_base = buf;
+    iov[0].iov_len = sizeof(buf);
+    msgs[0].msg_hdr.msg_iov = iov;
+    msgs[0].msg_hdr.msg_iovlen = 1;
+
+    int rv = recvmmsg(fd, msgs, 1, 0, nullptr);
+    close(fd);
+    MOZ_ASSERT(rv == -1 && errno == EAGAIN,
+               "recvmmsg should return -1 with EAGAIN given that no datagrams "
+               "are available");
+    return 0;
+  });
+
+  child->ErrnoValueTest("ioctl_dma_buf"_ns, ENOSYS, [] {
+    // Attempt an arbitrary non-tty ioctl, on the wrong type of fd; if
+    // allowed it would fail with ENOTTY (see the RDD tests) but in
+    // this sandbox it should be blocked (ENOSYS).
+    return ioctl(0, _IOW('b', 0, uint64_t), nullptr);
+  });
 #  endif  // XP_LINUX
 #elif XP_MACOSX
   RunMacTestLaunchProcess(child);
@@ -926,6 +1014,12 @@ void RunTestsUtilityAudioDecoder(SandboxTestingChild* child,
     long rv = syscall(SYS_set_mempolicy, 0, NULL, 0);
     return rv;
   });
+
+  child->ErrnoValueTest("prctl_capbtest_read_blocked"_ns, EINVAL, [] {
+    int rv = prctl(PR_CAPBSET_READ, 0, 0, 0, 0);
+    return rv;
+  });
+
 #  elif XP_MACOSX  // XP_LINUX
   RunMacTestLaunchProcess(child);
   RunMacTestWindowServer(child);

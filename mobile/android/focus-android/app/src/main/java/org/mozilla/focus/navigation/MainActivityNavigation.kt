@@ -19,7 +19,6 @@ import org.mozilla.focus.exceptions.ExceptionsRemoveFragment
 import org.mozilla.focus.ext.components
 import org.mozilla.focus.ext.settings
 import org.mozilla.focus.fragment.BrowserFragment
-import org.mozilla.focus.fragment.FirstrunFragment
 import org.mozilla.focus.fragment.UrlInputFragment
 import org.mozilla.focus.fragment.about.AboutFragment
 import org.mozilla.focus.fragment.onboarding.OnboardingFirstFragment
@@ -44,7 +43,6 @@ import org.mozilla.focus.settings.permissions.SitePermissionsFragment
 import org.mozilla.focus.settings.permissions.permissionoptions.SitePermission
 import org.mozilla.focus.settings.permissions.permissionoptions.SitePermissionOptionsFragment
 import org.mozilla.focus.settings.privacy.PrivacySecuritySettingsFragment
-import org.mozilla.focus.settings.privacy.studies.StudiesFragment
 import org.mozilla.focus.state.AppAction
 import org.mozilla.focus.state.Screen
 import org.mozilla.focus.utils.ViewUtils
@@ -66,7 +64,7 @@ class MainActivityNavigation(
         val browserFragment = fragmentManager.findFragmentByTag(BrowserFragment.FRAGMENT_TAG) as BrowserFragment?
 
         val isShowingBrowser = browserFragment != null
-        val crashReporterIsVisible = browserFragment?.crashReporterIsVisible() ?: false
+        val crashReporterIsVisible = browserFragment?.crashReporterIsVisible() == true
 
         if (isShowingBrowser && !crashReporterIsVisible) {
             showPromoteSearchWidgetDialogOrBrandedSnackbar()
@@ -195,22 +193,19 @@ class MainActivityNavigation(
     }
 
     /**
-     * Show first run onBoarding.
+     * Show onBoarding.
      */
     fun firstRun() {
-        val onboardingFragment = if (activity.settings.isNewOnboardingEnable) {
-            FocusNimbus.features.onboarding.recordExposure()
-            val onBoardingStorage = OnboardingStorage(activity)
-            when (onBoardingStorage.getCurrentOnboardingStep()) {
-                OnboardingStep.ON_BOARDING_FIRST_SCREEN -> {
-                    OnboardingFirstFragment()
-                }
-                OnboardingStep.ON_BOARDING_SECOND_SCREEN -> {
-                    OnboardingSecondFragment()
-                }
+        FocusNimbus.features.onboarding.recordExposure()
+        val onBoardingStorage = OnboardingStorage(activity)
+        val onboardingFragment = when (onBoardingStorage.getCurrentOnboardingStep()) {
+            OnboardingStep.ON_BOARDING_FIRST_SCREEN -> {
+                OnboardingFirstFragment()
             }
-        } else {
-            FirstrunFragment.create()
+
+            OnboardingStep.ON_BOARDING_SECOND_SCREEN -> {
+                OnboardingSecondFragment()
+            }
         }
 
         activity.supportFragmentManager
@@ -238,7 +233,11 @@ class MainActivityNavigation(
         }
 
         val fragmentManager = activity.supportFragmentManager
-        if (fragmentManager.findFragmentByTag(BiometricAuthenticationFragment.FRAGMENT_TAG) != null) {
+
+        val biometricAuthenticationFragment =
+            fragmentManager.findFragmentByTag(BiometricAuthenticationFragment.FRAGMENT_TAG)
+        if (biometricAuthenticationFragment != null) {
+            bundle?.let { biometricAuthenticationFragment.arguments = it }
             return
         }
 
@@ -275,7 +274,6 @@ class MainActivityNavigation(
             Screen.Settings.Page.PrivacyExceptions -> ExceptionsListFragment()
             Screen.Settings.Page.PrivacyExceptionsRemove -> ExceptionsRemoveFragment()
             Screen.Settings.Page.SitePermissions -> SitePermissionsFragment()
-            Screen.Settings.Page.Studies -> StudiesFragment()
             Screen.Settings.Page.SecretSettings -> SecretSettingsFragment()
             Screen.Settings.Page.SearchList -> InstalledSearchEnginesSettingsFragment()
             Screen.Settings.Page.SearchRemove -> RemoveSearchEnginesSettingsFragment()

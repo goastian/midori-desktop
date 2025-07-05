@@ -62,10 +62,18 @@ export class Log {
     return StdLog.Level[lazy.logLevel] <= StdLog.Level.Trace;
   }
 
+  /**
+   * WARNING: This helper is incorrectly implemented and probably doesn't do
+   * what you would expect.
+   *
+   * At the moment `verbose` will be true for the least verbose log levels:
+   * INFO, WARN, ERROR and FATAL. Fixing the issue would lead to too much
+   * additional log spam on CI so we will need to use another approach, and
+   * probably to decouple it from the log level.
+   *
+   * See https://bugzilla.mozilla.org/show_bug.cgi?id=1828395
+   */
   static get verbose() {
-    // we can't use Preferences.sys.mjs before first paint,
-    // see ../browser/base/content/test/performance/browser_startup.js
-    const level = Services.prefs.getStringPref(PREF_REMOTE_LOG_LEVEL, "Info");
-    return StdLog.Level[level] >= StdLog.Level.Info;
+    return StdLog.Level[lazy.logLevel] >= StdLog.Level.Info;
   }
 }

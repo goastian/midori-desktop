@@ -27,7 +27,6 @@ use crate::media_queries::Device;
 use crate::parser::ParserContext;
 use crate::selector_parser::PseudoElement;
 use crate::stylist::Stylist;
-#[cfg(feature = "servo")] use servo_config::prefs;
 use style_traits::{CssWriter, KeywordsCollectFn, ParseError, SpecifiedValueInfo, StyleParseErrorKind, ToCss};
 use crate::stylesheets::{CssRuleType, CssRuleTypes, Origin};
 use crate::logical_geometry::{LogicalAxis, LogicalCorner, LogicalSide};
@@ -37,7 +36,7 @@ use crate::str::CssStringWriter;
 use crate::values::{
     computed,
     resolved,
-    specified::{font::SystemFont, length::LineHeightBase},
+    specified::{font::SystemFont, length::LineHeightBase, color::ColorSchemeFlags},
 };
 use std::cell::Cell;
 use super::{
@@ -93,11 +92,12 @@ pub mod longhands {
 }
 
 
-#[cfg(feature = "gecko")]
+% if engine == "gecko":
 #[allow(unsafe_code, missing_docs)]
 pub mod gecko {
     <%include file="/gecko.mako.rs" />
 }
+% endif
 
 
 macro_rules! unwrap_or_initial {
@@ -454,7 +454,9 @@ pub mod property_counts {
     /// The number of non-custom properties.
     pub const NON_CUSTOM: usize = LONGHANDS_AND_SHORTHANDS + ALIASES;
     /// The number of prioritary properties that we have.
-    pub const PRIORITARY: usize = ${len(PRIORITARY_PROPERTIES)};
+    <% longhand_property_names = set(list(map(lambda p: p.name, data.longhands))) %>
+    <% enabled_prioritary_properties = PRIORITARY_PROPERTIES.intersection(longhand_property_names) %>
+    pub const PRIORITARY: usize = ${len(enabled_prioritary_properties)};
     /// The max number of longhands that a shorthand other than "all" expands to.
     pub const MAX_SHORTHAND_EXPANDED: usize =
         ${max(len(s.sub_properties) for s in data.shorthands_except_all())};
@@ -528,7 +530,7 @@ impl NonCustomPropertyId {
                     Some(pref) => pref,
                 };
 
-                prefs::pref_map().get(pref).as_bool().unwrap_or(false)
+                style_config::get_bool(pref)
             % endif
         };
 
@@ -549,7 +551,8 @@ impl NonCustomPropertyId {
         debug_assert!(
             rule_types.contains(CssRuleType::Keyframe) ||
             rule_types.contains(CssRuleType::Page) ||
-            rule_types.contains(CssRuleType::Style),
+            rule_types.contains(CssRuleType::Style) ||
+            rule_types.contains(CssRuleType::PositionTry),
             "Declarations are only expected inside a keyframe, page, or style rule."
         );
 
@@ -819,7 +822,7 @@ impl LonghandIdSet {
 
     #[inline]
     pub(super) fn discrete_animatable() -> &'static Self {
-        ${static_longhand_id_set("DISCRETE_ANIMATABLE", lambda p: p.animation_value_type == "discrete")}
+        ${static_longhand_id_set("DISCRETE_ANIMATABLE", lambda p: p.animation_type == "discrete")}
         &DISCRETE_ANIMATABLE
     }
 
@@ -883,6 +886,16 @@ impl LonghandIdSet {
         &HAS_NO_EFFECT_ON_SCROLLBARS
     }
 
+    /// Returns the set of margin properties, for the purposes of <h1> use counters / warnings.
+    #[inline]
+    pub fn margin_properties() -> &'static Self {
+        ${static_longhand_id_set(
+            "MARGIN_PROPERTIES",
+            lambda p: p.logical_group == "margin"
+        )}
+        &MARGIN_PROPERTIES
+    }
+
     /// Returns the set of border properties for the purpose of disabling native
     /// appearance.
     #[inline]
@@ -890,7 +903,9 @@ impl LonghandIdSet {
         ${static_longhand_id_set(
             "BORDER_BACKGROUND_PROPERTIES",
             lambda p: (p.logical_group and p.logical_group.startswith("border")) or \
-                       p.name in ["background-color", "background-image"]
+                        p in data.shorthands_by_name["border"].sub_properties or \
+                        p in data.shorthands_by_name["background"].sub_properties and \
+                        p.name not in ["background-blend-mode", "background-repeat"]
         )}
         &BORDER_BACKGROUND_PROPERTIES
     }
@@ -1373,9 +1388,7 @@ pub mod style_structs {
     use fxhash::FxHasher;
     use super::longhands;
     use std::hash::{Hash, Hasher};
-    use crate::logical_geometry::WritingMode;
-    use crate::media_queries::Device;
-    use crate::values::computed::NonNegativeLength;
+    use crate::values::specified::color::ColorSchemeFlags;
 
     % for style_struct in data.active_style_structs():
         % if style_struct.name == "Font":
@@ -1392,13 +1405,6 @@ pub mod style_structs {
                     pub ${longhand.ident}: longhands::${longhand.ident}::computed_value::T,
                 % endif
             % endfor
-            % if style_struct.name == "InheritedText":
-                /// The "used" text-decorations that apply to this box.
-                ///
-                /// FIXME(emilio): This is technically a box-tree concept, and
-                /// would be nice to move away from style.
-                pub text_decorations_in_effect: crate::values::computed::text::TextDecorationsInEffect,
-            % endif
             % if style_struct.name == "Font":
                 /// The font hash, used for font caching.
                 pub hash: u64,
@@ -1504,8 +1510,6 @@ pub mod style_structs {
                 /// Computes a font hash in order to be able to cache fonts
                 /// effectively in GFX and layout.
                 pub fn compute_font_hash(&mut self) {
-                    // Corresponds to the fields in
-                    // `gfx::font_template::FontTemplateDescriptor`.
                     let mut hasher: FxHasher = Default::default();
                     self.font_weight.hash(&mut hasher);
                     self.font_stretch.hash(&mut hasher);
@@ -1513,25 +1517,23 @@ pub mod style_structs {
                     self.font_family.hash(&mut hasher);
                     self.hash = hasher.finish()
                 }
-
-                /// (Servo does not handle MathML, so this just calls copy_font_size_from)
-                pub fn inherit_font_size_from(&mut self, parent: &Self,
-                                              _: Option<NonNegativeLength>,
-                                              _: &Device) {
-                    self.copy_font_size_from(parent);
+                /// Create a new Font with the initial values of all members.
+                pub fn initial_values() -> Self {
+                    Self {
+                        % for longhand in style_struct.longhands:
+                            % if not longhand.logical:
+                                ${longhand.ident}: longhands::${longhand.ident}::get_initial_value(),
+                            % endif
+                        % endfor
+                        hash: 0,
+                    }
+                 }
+            % elif style_struct.name == "InheritedUI":
+                /// Returns the ColorSchemeFlags corresponding to the value of `color-scheme`.
+                #[inline]
+                pub fn color_scheme_bits(&self) -> ColorSchemeFlags {
+                    self.color_scheme.bits
                 }
-                /// (Servo does not handle MathML, so this just calls set_font_size)
-                pub fn apply_font_size(&mut self,
-                                       v: longhands::font_size::computed_value::T,
-                                       _: &Self,
-                                       _: &Device) -> Option<NonNegativeLength> {
-                    self.set_font_size(v);
-                    None
-                }
-                /// (Servo does not handle MathML, so this does nothing)
-                pub fn apply_unconstrained_font_size(&mut self, _: NonNegativeLength) {
-                }
-
             % elif style_struct.name == "Outline":
                 /// Whether the outline-width property is non-zero.
                 #[inline]
@@ -1613,14 +1615,23 @@ pub mod style_structs {
                 })
             }
 
+            /// Returns whether animation-timeline is initial value. We need this information to
+            /// resolve animation-duration.
+            #[cfg(feature = "servo")]
+            pub fn has_initial_animation_timeline(&self) -> bool {
+                self.animation_timeline_count() == 1 && self.animation_timeline_at(0).is_auto()
+            }
+
             /// Returns whether there is any named progress timeline specified with
             /// scroll-timeline-name other than `none`.
+            #[cfg(feature = "gecko")]
             pub fn specifies_scroll_timelines(&self) -> bool {
                 self.scroll_timeline_name_iter().any(|name| !name.is_none())
             }
 
             /// Returns whether there is any named progress timeline specified with
             /// view-timeline-name other than `none`.
+            #[cfg(feature = "gecko")]
             pub fn specifies_view_timelines(&self) -> bool {
                 self.view_timeline_name_iter().any(|name| !name.is_none())
             }
@@ -1690,7 +1701,7 @@ pub struct ComputedValuesInner {
     pub writing_mode: WritingMode,
 
     /// The effective zoom value.
-    pub effective_zoom: Zoom,
+    pub effective_zoom: computed::Zoom,
 
     /// A set of flags we use to store misc information regarding this style.
     pub flags: ComputedValueFlags,
@@ -1870,9 +1881,9 @@ impl ComputedValues {
     ///
     /// Usage example:
     /// let top_color =
-    ///   style.resolve_color(style.get_border().clone_border_top_color());
+    ///   style.resolve_color(&style.get_border().clone_border_top_color());
     #[inline]
-    pub fn resolve_color(&self, color: computed::Color) -> crate::color::AbsoluteColor {
+    pub fn resolve_color(&self, color: &computed::Color) -> crate::color::AbsoluteColor {
         let current_color = self.get_inherited_text().clone_color();
         color.resolve_to_absolute(&current_color)
     }
@@ -1932,16 +1943,62 @@ impl ComputedValues {
     }
 
     /// Get the initial computed values.
-    pub fn initial_values() -> &'static Self { &*INITIAL_SERVO_VALUES }
+    pub fn initial_values_with_font_override(default_font: super::style_structs::Font) -> Arc<Self> {
+        use crate::computed_value_flags::ComputedValueFlags;
+        use servo_arc::Arc;
+        use super::{ComputedValues, ComputedValuesInner, longhands, style_structs};
+
+        Arc::new(ComputedValues {
+            inner: ComputedValuesInner {
+                % for style_struct in data.active_style_structs():
+                    % if style_struct.name == "Font":
+                        font: Arc::new(default_font),
+                    <% continue %>
+                    % endif %
+
+                    ${style_struct.ident}: Arc::new(style_structs::${style_struct.name} {
+                        % for longhand in style_struct.longhands:
+                            % if not longhand.logical:
+                                ${longhand.ident}: longhands::${longhand.ident}::get_initial_value(),
+                            % endif
+                        % endfor
+                        % if style_struct.name == "Box":
+                            original_display: longhands::display::get_initial_value(),
+                        % endif
+                    }),
+                % endfor
+                custom_properties: crate::custom_properties::ComputedCustomProperties::default(),
+                writing_mode: WritingMode::empty(),
+                rules: None,
+                visited_style: None,
+                effective_zoom: crate::values::computed::Zoom::ONE,
+                flags: ComputedValueFlags::empty(),
+            },
+            pseudo: None,
+        })
+    }
+
+    /// Converts the computed values to an Arc<> from a reference.
+    pub fn to_arc(&self) -> Arc<Self> {
+        // SAFETY: We're guaranteed to be allocated as an Arc<> since the
+        // functions above are the only ones that create ComputedValues
+        // instances in Servo (and that must be the case since ComputedValues'
+        // member is private).
+        unsafe { Arc::from_raw_addrefed(self) }
+    }
 
     /// Serializes the computed value of this property as a string.
     pub fn computed_value_to_string(&self, property: PropertyDeclarationId) -> String {
         match property {
             PropertyDeclarationId::Longhand(id) => {
+                let context = resolved::Context {
+                    style: self,
+                };
                 let mut s = String::new();
-                self.get_longhand_property_value(
+                self.computed_or_resolved_value(
                     id,
-                    &mut CssWriter::new(&mut s)
+                    Some(&context),
+                    &mut s
                 ).unwrap();
                 s
             }
@@ -1952,9 +2009,8 @@ impl ComputedValues {
                 let p = &self.custom_properties;
                 let value = p
                     .inherited
-                    .as_ref()
-                    .and_then(|map| map.get(name))
-                    .or_else(|| p.non_inherited.as_ref().and_then(|map| map.get(name)));
+                    .get(name)
+                    .or_else(|| p.non_inherited.get(name));
                 value.map_or(String::new(), |value| value.to_css_string())
             }
         }
@@ -2016,7 +2072,7 @@ impl ComputedValuesInner {
         use crate::values::generics::counters::Content;
         match self.get_counters().content {
             Content::Normal | Content::None => true,
-            Content::Items(ref items) => items.is_empty(),
+            Content::Items(ref items) => items.items.is_empty()
         }
     }
 
@@ -2110,7 +2166,7 @@ impl ComputedValuesInner {
 
     /// Gets the logical computed margin from this style.
     #[inline]
-    pub fn logical_margin(&self) -> LogicalMargin<<&computed::LengthPercentageOrAuto> {
+    pub fn logical_margin(&self) -> LogicalMargin<<&computed::Margin> {
         let margin_style = self.get_margin();
         LogicalMargin::from_physical(self.writing_mode, SideOffsets2D::new(
             &margin_style.margin_top,
@@ -2122,7 +2178,7 @@ impl ComputedValuesInner {
 
     /// Gets the logical position from this style.
     #[inline]
-    pub fn logical_position(&self) -> LogicalMargin<<&computed::LengthPercentageOrAuto> {
+    pub fn logical_position(&self) -> LogicalMargin<<&computed::Inset> {
         // FIXME(SimonSapin): should be the writing mode of the containing block, maybe?
         let position_style = self.get_position();
         LogicalMargin::from_physical(self.writing_mode, SideOffsets2D::new(
@@ -2346,6 +2402,10 @@ pub struct StyleBuilder<'a> {
     /// TODO(emilio): Make private.
     pub writing_mode: WritingMode,
 
+    /// The color-scheme bits. Needed because they may otherwise be different between visited and
+    /// unvisited colors.
+    pub color_scheme: ColorSchemeFlags,
+
     /// The effective zoom.
     pub effective_zoom: computed::Zoom,
 
@@ -2375,7 +2435,7 @@ impl<'a> StyleBuilder<'a> {
         let inherited_style = parent_style.unwrap_or(reset_style);
 
         let flags = inherited_style.flags.inherited();
-        StyleBuilder {
+        Self {
             device,
             stylist,
             inherited_style,
@@ -2388,6 +2448,7 @@ impl<'a> StyleBuilder<'a> {
             invalid_non_custom_properties: LonghandIdSet::default(),
             writing_mode: inherited_style.writing_mode,
             effective_zoom: inherited_style.effective_zoom,
+            color_scheme: inherited_style.get_inherited_ui().color_scheme_bits(),
             flags: Cell::new(flags),
             visited_style: None,
             % for style_struct in data.active_style_structs():
@@ -2414,7 +2475,7 @@ impl<'a> StyleBuilder<'a> {
     ) -> Self {
         let reset_style = device.default_computed_values();
         let inherited_style = parent_style.unwrap_or(reset_style);
-        StyleBuilder {
+        Self {
             device,
             stylist,
             inherited_style,
@@ -2427,6 +2488,7 @@ impl<'a> StyleBuilder<'a> {
             invalid_non_custom_properties: LonghandIdSet::default(),
             writing_mode: style_to_derive_from.writing_mode,
             effective_zoom: style_to_derive_from.effective_zoom,
+            color_scheme: style_to_derive_from.get_inherited_ui().color_scheme_bits(),
             flags: Cell::new(style_to_derive_from.flags),
             visited_style: None,
             % for style_struct in data.active_style_structs():
@@ -2630,7 +2692,7 @@ impl<'a> StyleBuilder<'a> {
     #[cfg(feature = "gecko")]
     pub fn in_top_layer(&self) -> bool {
         matches!(self.get_box().clone__moz_top_layer(),
-                 longhands::_moz_top_layer::computed_value::T::Top)
+                 longhands::_moz_top_layer::computed_value::T::Auto)
     }
 
     /// Clears the "have any reset structs been modified" flag.
@@ -2711,6 +2773,19 @@ impl<'a> StyleBuilder<'a> {
         self.get_box().clone_zoom()
     }
 
+    /// The zoom we need to apply for this element, without including ancestor effective zooms.
+    pub fn resolved_specified_zoom(&self) -> computed::Zoom {
+        let zoom = self.specified_zoom();
+        if zoom.is_document() {
+            // If our inherited effective zoom has derived to zero, there's not much we can do.
+            // This value is not exposed to content anyways (it's used for scrollbars and to avoid
+            // zoom affecting canvas).
+            self.inherited_effective_zoom().inverted().unwrap_or(computed::Zoom::ONE)
+        } else {
+            zoom
+        }
+    }
+
     /// Inherited zoom.
     pub fn inherited_effective_zoom(&self) -> computed::Zoom {
         self.inherited_style.effective_zoom
@@ -2747,7 +2822,7 @@ impl<'a> StyleBuilder<'a> {
         let lh = device.calc_line_height(&font, writing_mode, None);
         if line_height_base == LineHeightBase::InheritedStyle {
             // Apply our own zoom if our style source is the parent style.
-            computed::NonNegativeLength::new(self.get_box().clone_zoom().zoom(lh.px()))
+            computed::NonNegativeLength::new(self.resolved_specified_zoom().zoom(lh.px()))
         } else {
             lh
         }
@@ -2764,52 +2839,6 @@ impl<'a> StyleBuilder<'a> {
             self.inherited_style.get_${style_struct.name_lower}()
         }
     % endfor
-}
-
-#[cfg(feature = "servo")]
-pub use self::lazy_static_module::INITIAL_SERVO_VALUES;
-
-// Use a module to work around #[cfg] on lazy_static! not being applied to every generated item.
-#[cfg(feature = "servo")]
-#[allow(missing_docs)]
-mod lazy_static_module {
-    use crate::logical_geometry::WritingMode;
-    use crate::computed_value_flags::ComputedValueFlags;
-    use servo_arc::Arc;
-    use super::{ComputedValues, ComputedValuesInner, longhands, style_structs};
-
-    lazy_static! {
-        /// The initial values for all style structs as defined by the specification.
-        pub static ref INITIAL_SERVO_VALUES: ComputedValues = ComputedValues {
-            inner: ComputedValuesInner {
-                % for style_struct in data.active_style_structs():
-                    ${style_struct.ident}: Arc::new(style_structs::${style_struct.name} {
-                        % for longhand in style_struct.longhands:
-                            % if not longhand.logical:
-                                ${longhand.ident}: longhands::${longhand.ident}::get_initial_value(),
-                            % endif
-                        % endfor
-                        % if style_struct.name == "InheritedText":
-                            text_decorations_in_effect:
-                                crate::values::computed::text::TextDecorationsInEffect::default(),
-                        % endif
-                        % if style_struct.name == "Font":
-                            hash: 0,
-                        % endif
-                        % if style_struct.name == "Box":
-                            original_display: longhands::display::get_initial_value(),
-                        % endif
-                    }),
-                % endfor
-                custom_properties,
-                writing_mode: WritingMode::empty(),
-                rules: None,
-                visited_style: None,
-                flags: ComputedValueFlags::empty(),
-            },
-            pseudo: None,
-        };
-    }
 }
 
 /// A per-longhand function that performs the CSS cascade for that longhand.
@@ -2891,10 +2920,10 @@ macro_rules! css_properties_accessors {
                         % for prop in [property] + property.aliases:
                             % if '-' in prop.name:
                                 [${prop.ident.capitalize()}, Set${prop.ident.capitalize()},
-                                 PropertyId::${kind}(${kind}Id::${property.camel_case})],
+                                 PropertyId::NonCustom(${kind}Id::${property.camel_case}.into())],
                             % endif
                             [${prop.camel_case}, Set${prop.camel_case},
-                             PropertyId::${kind}(${kind}Id::${property.camel_case})],
+                             PropertyId::NonCustom(${kind}Id::${property.camel_case}.into())],
                         % endfor
                     % endif
                 % endfor
@@ -2920,7 +2949,11 @@ macro_rules! longhand_properties_idents {
 }
 
 // Large pages generate tens of thousands of ComputedValues.
+#[cfg(feature = "gecko")]
 size_of_test!(ComputedValues, 240);
+#[cfg(feature = "servo")]
+size_of_test!(ComputedValues, 208);
+
 // FFI relies on this.
 size_of_test!(Option<Arc<ComputedValues>>, 8);
 
@@ -2950,6 +2983,9 @@ const_assert!(std::mem::size_of::<longhands::${longhand.ident}::SpecifiedValue>(
 % for effect_name in ["repaint", "reflow_out_of_flow", "reflow", "rebuild_and_reflow_inline", "rebuild_and_reflow"]:
     macro_rules! restyle_damage_${effect_name} {
         ($old: ident, $new: ident, $damage: ident, [ $($effect:expr),* ]) => ({
+            restyle_damage_${effect_name}!($old, $new, $damage, [$($effect),*], false)
+        });
+        ($old: ident, $new: ident, $damage: ident, [ $($effect:expr),* ], $extra:expr) => ({
             if
                 % for style_struct in data.active_style_structs():
                     % for longhand in style_struct.longhands:
@@ -2960,13 +2996,13 @@ const_assert!(std::mem::size_of::<longhands::${longhand.ident}::SpecifiedValue>(
                     % endfor
                 % endfor
 
-                false {
+                $extra || false {
                     $damage.insert($($effect)|*);
                     true
             } else {
                 false
             }
-        })
+        });
     }
 % endfor
 % endif

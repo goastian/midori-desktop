@@ -14,20 +14,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import mozilla.components.concept.storage.EncryptedLogin
 import mozilla.components.concept.storage.Login
 import mozilla.components.concept.storage.LoginEntry
 import mozilla.components.service.sync.logins.InvalidRecordException
 import mozilla.components.service.sync.logins.LoginsApiException
 import mozilla.components.service.sync.logins.NoSuchRecordException
 import mozilla.components.service.sync.logins.SyncableLoginsStorage
+import mozilla.components.support.utils.ClipboardHandler
 import org.mozilla.fenix.R
 import org.mozilla.fenix.settings.logins.LoginsAction
 import org.mozilla.fenix.settings.logins.LoginsFragmentStore
 import org.mozilla.fenix.settings.logins.fragment.AddLoginFragmentDirections
 import org.mozilla.fenix.settings.logins.fragment.EditLoginFragmentDirections
 import org.mozilla.fenix.settings.logins.mapToSavedLogin
-import org.mozilla.fenix.utils.ClipboardHandler
 
 /**
  * Controller for all saved logins interactions with the password storage component
@@ -96,10 +95,10 @@ open class SavedLoginsStorageController(
     }
 
     private suspend fun add(loginEntryToSave: LoginEntry): String? {
-        var encryptedLogin: EncryptedLogin? = null
+        var login: Login? = null
         try {
-            encryptedLogin = passwordsStorage.add(loginEntryToSave)
-            addLoginToState(passwordsStorage.decryptLogin(encryptedLogin))
+            login = passwordsStorage.add(loginEntryToSave)
+            addLoginToState(login)
         } catch (loginException: LoginsApiException) {
             Log.e(
                 "Add new login",
@@ -107,7 +106,7 @@ open class SavedLoginsStorageController(
                 loginException,
             )
         }
-        return encryptedLogin?.guid
+        return login?.guid
     }
 
     // Create a [LoginEntry] for the edit login dialog
@@ -149,8 +148,8 @@ open class SavedLoginsStorageController(
 
     private suspend fun save(guid: String, loginEntryToSave: LoginEntry) {
         try {
-            val encryptedLogin = passwordsStorage.update(guid, loginEntryToSave)
-            updateLoginInState(guid, passwordsStorage.decryptLogin(encryptedLogin))
+            val login = passwordsStorage.update(guid, loginEntryToSave)
+            updateLoginInState(guid, login)
         } catch (loginException: LoginsApiException) {
             when (loginException) {
                 is NoSuchRecordException,

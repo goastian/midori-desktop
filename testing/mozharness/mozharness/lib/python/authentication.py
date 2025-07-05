@@ -1,8 +1,6 @@
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 
 """module for http authentication operations"""
 import getpass
@@ -24,7 +22,7 @@ def get_credentials():
         os.makedirs(DIRNAME)
 
     if os.path.isfile(CREDENTIALS_PATH):
-        with open(CREDENTIALS_PATH, "r") as file_handler:
+        with open(CREDENTIALS_PATH) as file_handler:
             content = file_handler.read().splitlines()
 
         https_username = content[0].strip()

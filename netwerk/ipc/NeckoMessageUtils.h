@@ -11,6 +11,7 @@
 #include "ipc/EnumSerializer.h"
 #include "ipc/IPCMessageUtils.h"
 #include "ipc/IPCMessageUtilsSpecializations.h"
+#include "mozilla/net/ClassOfService.h"
 #include "mozilla/net/DNS.h"
 #include "nsExceptionHandler.h"
 #include "nsIDNSService.h"
@@ -129,37 +130,16 @@ struct ParamTraits<mozilla::net::NetAddr> {
 };
 
 template <>
-struct ParamTraits<nsIRequest::TRRMode> {
-  static void Write(MessageWriter* aWriter, const nsIRequest::TRRMode& aParam) {
-    WriteParam(aWriter, (uint8_t)aParam);
-  }
-  static bool Read(MessageReader* aReader, nsIRequest::TRRMode* aResult) {
-    uint8_t mode;
-    if (!ReadParam(aReader, &mode)) {
-      return false;
-    }
-    // TODO: sanity check
-    *aResult = static_cast<nsIRequest::TRRMode>(mode);
-    return true;
-  }
-};
+struct ParamTraits<nsIRequest::TRRMode>
+    : public ContiguousEnumSerializerInclusive<nsIRequest::TRRMode,
+                                               nsIRequest::TRR_DEFAULT_MODE,
+                                               nsIRequest::TRR_ONLY_MODE> {};
 
 template <>
-struct ParamTraits<nsITRRSkipReason::value> {
-  static void Write(MessageWriter* aWriter,
-                    const nsITRRSkipReason::value& aParam) {
-    WriteParam(aWriter, (uint8_t)aParam);
-  }
-  static bool Read(MessageReader* aReader, nsITRRSkipReason::value* aResult) {
-    uint8_t reason;
-    if (!ReadParam(aReader, &reason)) {
-      return false;
-    }
-    // TODO: sanity check
-    *aResult = static_cast<nsITRRSkipReason::value>(reason);
-    return true;
-  }
-};
+struct ParamTraits<nsITRRSkipReason::value>
+    : public ContiguousEnumSerializerInclusive<
+          nsITRRSkipReason::value, nsITRRSkipReason::value::TRR_UNSET,
+          nsITRRSkipReason::value::eLAST_VALUE> {};
 
 template <>
 struct ParamTraits<nsIDNSService::DNSFlags>
@@ -168,19 +148,35 @@ struct ParamTraits<nsIDNSService::DNSFlags>
 };
 
 template <>
-struct ParamTraits<nsIDNSService::ResolverMode> {
-  static void Write(MessageWriter* aWriter,
-                    const nsIDNSService::ResolverMode& aParam) {
-    WriteParam(aWriter, (uint8_t)aParam);
+struct ParamTraits<nsIDNSService::ResolverMode>
+    : public ContiguousEnumSerializerInclusive<
+          nsIDNSService::ResolverMode,
+          nsIDNSService::ResolverMode::MODE_NATIVEONLY,
+          nsIDNSService::ResolverMode::MODE_TRROFF> {};
+
+template <>
+struct ParamTraits<nsIClassOfService::FetchPriority>
+    : public ContiguousEnumSerializerInclusive<
+          nsIClassOfService::FetchPriority,
+          nsIClassOfService::FETCHPRIORITY_UNSET,
+          nsIClassOfService::FETCHPRIORITY_HIGH> {};
+
+template <>
+struct ParamTraits<mozilla::net::ClassOfService> {
+  typedef mozilla::net::ClassOfService paramType;
+
+  static void Write(MessageWriter* aWriter, const paramType& aParam) {
+    WriteParam(aWriter, aParam.mClassFlags);
+    WriteParam(aWriter, aParam.mIncremental);
+    WriteParam(aWriter, aParam.mFetchPriority);
   }
-  static bool Read(MessageReader* aReader,
-                   nsIDNSService::ResolverMode* aResult) {
-    uint8_t mode;
-    if (!ReadParam(aReader, &mode)) {
+
+  static bool Read(MessageReader* aReader, paramType* aResult) {
+    if (!ReadParam(aReader, &aResult->mClassFlags) ||
+        !ReadParam(aReader, &aResult->mIncremental) ||
+        !ReadParam(aReader, &aResult->mFetchPriority))
       return false;
-    }
-    // TODO: sanity check
-    *aResult = static_cast<nsIDNSService::ResolverMode>(mode);
+
     return true;
   }
 };

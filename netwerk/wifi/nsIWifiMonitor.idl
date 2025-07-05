@@ -29,5 +29,5 @@ interface nsIWifiMonitor : nsISupports
    * True if there is a wifi adapter present that can perform a scan.
    * Only valid on Windows.
    */
-[notxpcom, nostdcall] readonly attribute boolean hasWifiAdapter;
+  [notxpcom, nostdcall] readonly attribute boolean hasWifiAdapter;
 };

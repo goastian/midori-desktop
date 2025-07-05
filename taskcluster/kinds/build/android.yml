@@ -22,28 +22,31 @@ task-defaults:
               path: /builds/worker/workspace/obj-build/gradle/target.maven.tar.xz
               type: file
             - name: public/build/geckoview-androidTest.apk
-              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/withGeckoBinaries/debug/geckoview-withGeckoBinaries-debug-androidTest.apk
+              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/debug/geckoview-debug-androidTest.apk
               type: file
             - name: public/build/geckoview-test_runner.apk
-              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/apk/withGeckoBinaries/debug/test_runner-withGeckoBinaries-debug.apk
+              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/apk/debug/test_runner-debug.apk
               type: file
             - name: public/build/geckoview-test_runner.aab
-              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/bundle/withGeckoBinariesDebug/test_runner-withGeckoBinaries-debug.aab
+              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/bundle/debug/test_runner-debug.aab
               type: file
             - name: public/build/geckoview_example.apk
-              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/apk/withGeckoBinaries/debug/geckoview_example-withGeckoBinaries-debug.apk
+              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/apk/debug/geckoview_example-debug.apk
               type: file
             - name: public/build/geckoview_example.aab
-              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/bundle/withGeckoBinariesDebug/geckoview_example-withGeckoBinaries-debug.aab
+              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/bundle/debug/geckoview_example-debug.aab
               type: file
             - name: public/build
               path: /builds/worker/artifacts/
               type: directory
+            - name: public/reports
+              path: /builds/worker/workspace/obj-build/gradle/build/reports
+              type: directory
     run:
         using: mozharness
         script: "mozharness/scripts/fx_desktop_build.py"
+        config: ["builds/releng_base_android_64_builds.py"]
         secrets: true
-        mozconfig-variant: null
         tooltool-downloads: internal
     fetches:
         toolchain:
@@ -60,7 +63,7 @@ task-defaults:
             - sysroot-wasm32-wasi
 
 android-arm/debug:
-    description: "Android 5.0 Arm Debug"
+    description: "Android Arm Debug"
     index:
         job-name: android-arm-debug
     attributes:
@@ -75,8 +78,8 @@ android-arm/debug:
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: arm-debug
+        mozconfig-variant: debug
     use-sccache: true
     fetches:
         toolchain:
@@ -85,7 +88,7 @@ android-arm/debug:
             - android-gradle-dependencies
 
 android-x86/opt:
-    description: "Android 5.0 x86 Opt"
+    description: "Android x86 Opt"
     index:
         job-name: android-x86-opt
     attributes:
@@ -101,7 +104,6 @@ android-x86/opt:
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: x86
     use-sccache: true
     fetches:
@@ -111,13 +113,13 @@ android-x86/opt:
             - android-gradle-dependencies
 
 android-x86-lite/opt:
-    description: "Android 4.1 x86 Opt"
+    description: "Android x86 Opt Lite"
     index:
         job-name: android-x86-lite-opt
     attributes:
         enable-full-crashsymbols: true
     treeherder:
-        platform: android-4-1-x86/opt
+        platform: android-5-0-x86/opt
         symbol: Bl
     run-on-projects: ['integration']
     worker-type: b-linux-gcp
@@ -127,7 +129,6 @@ android-x86-lite/opt:
             PERFHERDER_EXTRA_OPTIONS: lite
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: x86-lite
     use-sccache: true
     fetches:
@@ -137,7 +138,7 @@ android-x86-lite/opt:
             - android-gradle-dependencies-lite
 
 android-x86-shippable/opt:
-    description: "Android 5.0 x86 Shippable"
+    description: "Android x86 Shippable"
     use-pgo: true
     attributes:
         enable-full-crashsymbols: true
@@ -149,18 +150,16 @@ android-x86-shippable/opt:
         type: android-shippable
     treeherder:
         platform: android-5-0-x86-shippable/opt
-        symbol: B
+        symbol: Bpgo(B)
     run-on-projects: ['release']
-    worker-type: b-linux-gcp
+    worker-type: b-linux-xlarge-gcp
     worker:
         env:
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android-x86/releng.manifest"
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
     run:
         actions: [get-secrets, build, multi-l10n]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - taskcluster_nightly.py
+        config: [taskcluster_nightly.py]
         custom-build-variant-cfg: x86
     fetches:
         toolchain:
@@ -168,7 +167,7 @@ android-x86-shippable/opt:
             - android-gradle-dependencies
 
 android-x86-shippable-lite/opt:
-    description: "Android 4.1 x86 Shippable Lite"
+    description: "Android x86 Shippable Lite"
     use-pgo: android-x86-shippable/opt
     attributes:
         enable-full-crashsymbols: true
@@ -179,19 +178,18 @@ android-x86-shippable-lite/opt:
         job-name: android-x86-lite-opt
         type: android-shippable
     treeherder:
-        platform: android-4-1-x86-shippable-lite/opt
-        symbol: Bl
+        platform: android-5-0-x86-shippable/opt
+        symbol: Bpgo(Bl)
     run-on-projects: ['release']
-    worker-type: b-linux-gcp
+    worker-type: b-linux-xlarge-gcp
     worker:
         env:
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android-x86/releng.manifest"
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
+            PERFHERDER_EXTRA_OPTIONS: lite
     run:
         actions: [get-secrets, build, multi-l10n]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - taskcluster_nightly.py
+        config: [taskcluster_nightly.py]
         custom-build-variant-cfg: x86-lite
     fetches:
         toolchain:
@@ -199,7 +197,7 @@ android-x86-shippable-lite/opt:
             - android-gradle-dependencies-lite
 
 android-arm/opt:
-    description: "Android 5.0 Arm Opt"
+    description: "Android Arm Opt"
     index:
         job-name: android-arm-opt
     attributes:
@@ -215,7 +213,6 @@ android-arm/opt:
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: arm
     use-sccache: true
     fetches:
@@ -225,22 +222,22 @@ android-arm/opt:
             - linux64-sccache
 
 android-arm-lite/opt:
-    description: "Android 4.1 Arm Opt Lite"
+    description: "Android Arm Opt Lite"
     index:
         job-name: android-arm-lite-opt
     attributes:
         enable-full-crashsymbols: true
     treeherder:
-        platform: android-4-1-armv7/opt
+        platform: android-5-0-armv7/opt
         symbol: Bl
     run-on-projects: ['integration']
     worker-type: b-linux-gcp
     worker:
         env:
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: lite
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: arm-lite
     use-sccache: true
     fetches:
@@ -250,8 +247,8 @@ android-arm-lite/opt:
             - android-gradle-dependencies-lite
 
 android-arm-shippable/opt:
-    description: "Android 5.0 Arm Shippable"
-    use-pgo: android-x86-shippable/opt
+    description: "Android Arm Shippable"
+    use-pgo: android-arm-shippable/opt
     attributes:
         enable-full-crashsymbols: true
         shippable: true
@@ -264,16 +261,14 @@ android-arm-shippable/opt:
         platform: android-5-0-armv7-shippable/opt
         symbol: Bpgo(B)
     run-on-projects: ['release']
-    worker-type: b-linux-gcp
+    worker-type: b-linux-xlarge-gcp
     worker:
         env:
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
     run:
         actions: [get-secrets, build, multi-l10n]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - taskcluster_nightly.py
+        config: [taskcluster_nightly.py]
         custom-build-variant-cfg: arm
     fetches:
         toolchain:
@@ -281,8 +276,8 @@ android-arm-shippable/opt:
             - android-gradle-dependencies
 
 android-arm-shippable-lite/opt:
-    description: "Android 4.1 Arm Shippable Lite"
-    use-pgo: android-x86-shippable/opt
+    description: "Android Arm Shippable Lite"
+    use-pgo: android-arm-shippable/opt
     attributes:
         enable-full-crashsymbols: true
         shippable: true
@@ -292,19 +287,18 @@ android-arm-shippable-lite/opt:
         job-name: android-arm-lite-opt
         type: android-shippable-with-multi-l10n
     treeherder:
-        platform: android-4-1-armv7-shippable-lite/opt
+        platform: android-5-0-armv7-shippable/opt
         symbol: Bpgo(Bl)
     run-on-projects: ['release']
-    worker-type: b-linux-gcp
+    worker-type: b-linux-xlarge-gcp
     worker:
         env:
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
+            PERFHERDER_EXTRA_OPTIONS: lite
     run:
         actions: [get-secrets, build, multi-l10n]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - taskcluster_nightly.py
+        config: [taskcluster_nightly.py]
         custom-build-variant-cfg: arm-lite
     fetches:
         toolchain:
@@ -312,7 +306,7 @@ android-arm-shippable-lite/opt:
             - android-gradle-dependencies-lite
 
 android-aarch64/opt:
-    description: "Android 5.0 AArch64 Opt"
+    description: "Android AArch64 Opt"
     index:
         job-name: android-aarch64-opt
     attributes:
@@ -328,7 +322,6 @@ android-aarch64/opt:
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: aarch64
     use-sccache: true
     fetches:
@@ -338,7 +331,7 @@ android-aarch64/opt:
             - android-gradle-dependencies
 
 android-aarch64-lite/opt:
-    description: "Android 5.0 AArch64 Opt Lite"
+    description: "Android AArch64 Opt Lite"
     index:
         job-name: android-aarch64-lite-opt
     attributes:
@@ -354,7 +347,6 @@ android-aarch64-lite/opt:
             PERFHERDER_EXTRA_OPTIONS: lite
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: aarch64-lite
     use-sccache: true
     fetches:
@@ -364,7 +356,7 @@ android-aarch64-lite/opt:
             - android-gradle-dependencies-lite
 
 android-aarch64/debug:
-    description: "Android 5.0 AArch64 Debug"
+    description: "Android AArch64 Debug"
     index:
         job-name: android-aarch64-debug
     attributes:
@@ -379,8 +371,8 @@ android-aarch64/debug:
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: aarch64-debug
+        mozconfig-variant: debug
     use-sccache: true
     fetches:
         toolchain:
@@ -389,7 +381,7 @@ android-aarch64/debug:
             - android-gradle-dependencies
 
 android-aarch64-shippable/opt:
-    description: "Android 5.0 AArch64 Shippable"
+    description: "Android AArch64 Shippable"
     use-pgo: android-aarch64-shippable/opt
     attributes:
         enable-full-crashsymbols: true
@@ -403,16 +395,14 @@ android-aarch64-shippable/opt:
         platform: android-5-0-aarch64-shippable/opt
         symbol: Bpgo(B)
     run-on-projects: ['release']
-    worker-type: b-linux-gcp
+    worker-type: b-linux-xlarge-gcp
     worker:
         env:
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
     run:
         actions: [get-secrets, build, multi-l10n]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - taskcluster_nightly.py
+        config: [taskcluster_nightly.py]
         custom-build-variant-cfg: aarch64
     fetches:
         toolchain:
@@ -420,7 +410,7 @@ android-aarch64-shippable/opt:
             - android-gradle-dependencies
 
 android-aarch64-shippable-lite/opt:
-    description: "Android 5.0 AArch64 Shippable Lite"
+    description: "Android AArch64 Shippable Lite"
     use-pgo: android-aarch64-shippable/opt
     attributes:
         enable-full-crashsymbols: true
@@ -431,10 +421,10 @@ android-aarch64-shippable-lite/opt:
         job-name: android-aarch64-lite-opt
         type: android-shippable
     treeherder:
-        platform: android-5-0-aarch64-shippable-lite/opt
+        platform: android-5-0-aarch64-shippable/opt
         symbol: Bpgo(Bl)
     run-on-projects: ['release']
-    worker-type: b-linux-gcp
+    worker-type: b-linux-xlarge-gcp
     worker:
         env:
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
@@ -442,9 +432,7 @@ android-aarch64-shippable-lite/opt:
             PERFHERDER_EXTRA_OPTIONS: lite
     run:
         actions: [get-secrets, build, multi-l10n]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - taskcluster_nightly.py
+        config: [taskcluster_nightly.py]
         custom-build-variant-cfg: aarch64-lite
     fetches:
         toolchain:
@@ -452,7 +440,7 @@ android-aarch64-shippable-lite/opt:
             - android-gradle-dependencies-lite
 
 android-x86_64/opt:
-    description: "Android 5.0 x86-64 Opt"
+    description: "Android x86-64 Opt"
     index:
         job-name: android-x86_64-opt
     attributes:
@@ -468,7 +456,6 @@ android-x86_64/opt:
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: x86_64
     use-sccache: true
     fetches:
@@ -478,7 +465,7 @@ android-x86_64/opt:
             - android-gradle-dependencies
 
 android-x86_64-lite/opt:
-    description: "Android 5.0 x86-64 Opt Lite"
+    description: "Android x86-64 Opt Lite"
     index:
         job-name: android-x86_64-lite-opt
     attributes:
@@ -495,7 +482,6 @@ android-x86_64-lite/opt:
             PERFHERDER_EXTRA_OPTIONS: lite
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: x86_64-lite
     use-sccache: true
     fetches:
@@ -518,8 +504,8 @@ android-x86_64-fuzzing/debug:
             PERFHERDER_EXTRA_OPTIONS: fuzzing
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: fuzzing-debug
+        mozconfig-variant: debug-fuzzing
     use-sccache: true
     fetches:
         toolchain:
@@ -530,7 +516,7 @@ android-x86_64-fuzzing/debug:
         skip-unless-expanded: null
 
 android-x86_64-shippable/opt:
-    description: "Android 5.0 x86-64 Shippable"
+    description: "Android x86-64 Shippable"
     use-pgo: true
     attributes:
         enable-full-crashsymbols: true
@@ -542,18 +528,16 @@ android-x86_64-shippable/opt:
         type: android-shippable
     treeherder:
         platform: android-5-0-x86_64-shippable/opt
-        symbol: B
+        symbol: Bpgo(B)
     run-on-projects: ['release']
-    worker-type: b-linux-gcp
+    worker-type: b-linux-xlarge-gcp
     worker:
         env:
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android-x86/releng.manifest"
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
     run:
         actions: [get-secrets, build, multi-l10n]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - taskcluster_nightly.py
+        config: [taskcluster_nightly.py]
         custom-build-variant-cfg: x86_64
     fetches:
         toolchain:
@@ -561,7 +545,7 @@ android-x86_64-shippable/opt:
             - android-gradle-dependencies
 
 android-x86_64-shippable-lite/opt:
-    description: "Android 5.0 x86-64 Shippable Lite"
+    description: "Android x86-64 Shippable Lite"
     use-pgo: android-x86_64-shippable/opt
     attributes:
         enable-full-crashsymbols: true
@@ -572,10 +556,10 @@ android-x86_64-shippable-lite/opt:
         job-name: android-x86_64-lite-opt
         type: android-shippable
     treeherder:
-        platform: android-5-0-x86_64-shippable-lite/opt
-        symbol: Bl
+        platform: android-5-0-x86_64-shippable/opt
+        symbol: Bpgo(Bl)
     run-on-projects: ['release']
-    worker-type: b-linux-gcp
+    worker-type: b-linux-xlarge-gcp
     worker:
         env:
             TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android-x86/releng.manifest"
@@ -583,9 +567,7 @@ android-x86_64-shippable-lite/opt:
             PERFHERDER_EXTRA_OPTIONS: lite
     run:
         actions: [get-secrets, build, multi-l10n]
-        config:
-            - builds/releng_base_android_64_builds.py
-            - taskcluster_nightly.py
+        config: [taskcluster_nightly.py]
         custom-build-variant-cfg: x86_64-lite
     fetches:
         toolchain:
@@ -593,7 +575,7 @@ android-x86_64-shippable-lite/opt:
             - android-gradle-dependencies-lite
 
 android-x86_64/debug:
-    description: "Android 5.0 x86-64 Debug"
+    description: "Android x86-64 Debug"
     index:
         job-name: android-x86_64-debug
     attributes:
@@ -608,8 +590,8 @@ android-x86_64/debug:
             MOZ_AUTOMATION_PACKAGE_TESTS: "1"
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: x86_64-debug
+        mozconfig-variant: debug
     use-sccache: true
     fetches:
         toolchain:
@@ -618,13 +600,13 @@ android-x86_64/debug:
             - android-gradle-dependencies
 
 android-x86_64/debug-isolated-process:
-    description: "Android 5.0 x86-64 Debug with Isolated Process"
+    description: "Android x86-64 Debug with Isolated Process"
     index:
         job-name: android-x86_64-debug-isolated-process
     attributes:
         enable-full-crashsymbols: true
     treeherder:
-        platform: android-5-0-x86_64/debug-isolated-process
+        platform: android-5-0-x86_64/debug
         symbol: Bip
     worker-type: b-linux-gcp
     worker:
@@ -634,8 +616,8 @@ android-x86_64/debug-isolated-process:
             PERFHERDER_EXTRA_OPTIONS: isolated-process
     run:
         actions: [get-secrets, build]
-        config: ["builds/releng_base_android_64_builds.py"]
         custom-build-variant-cfg: x86_64-debug-isolated-process
+        mozconfig-variant: debug-isolated-process
     use-sccache: true
     fetches:
         toolchain:

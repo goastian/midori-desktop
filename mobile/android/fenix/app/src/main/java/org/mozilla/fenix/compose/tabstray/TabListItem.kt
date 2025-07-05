@@ -4,6 +4,8 @@
 
 package org.mozilla.fenix.compose.tabstray
 
+import androidx.compose.animation.core.DecayAnimationSpec
+import androidx.compose.animation.rememberSplineBasedDecay
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,31 +25,35 @@ import androidx.compose.material.Card
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.material.Text
-import androidx.compose.material.ripple.rememberRipple
+import androidx.compose.material.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import mozilla.components.browser.state.state.TabSessionState
 import mozilla.components.browser.state.state.createTab
-import mozilla.components.support.ktx.kotlin.MAX_URI_LENGTH
+import mozilla.components.support.base.utils.MAX_URI_LENGTH
 import mozilla.components.ui.colors.PhotonColors
+import org.mozilla.fenix.FeatureFlags
 import org.mozilla.fenix.R
 import org.mozilla.fenix.compose.DismissibleItemBackground
 import org.mozilla.fenix.compose.SwipeToDismissBox
+import org.mozilla.fenix.compose.SwipeToDismissBox2
 import org.mozilla.fenix.compose.SwipeToDismissState
+import org.mozilla.fenix.compose.SwipeToDismissState2
 import org.mozilla.fenix.compose.TabThumbnail
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
 import org.mozilla.fenix.ext.toShortUrl
 import org.mozilla.fenix.tabstray.TabsTrayTestTag
 import org.mozilla.fenix.tabstray.ext.toDisplayTitle
@@ -73,7 +79,6 @@ import org.mozilla.fenix.theme.FirefoxTheme
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-@Suppress("MagicNumber", "LongMethod")
 fun TabListItem(
     tab: TabSessionState,
     thumbnailSize: Int,
@@ -82,6 +87,97 @@ fun TabListItem(
     multiSelectionSelected: Boolean = false,
     shouldClickListen: Boolean = true,
     swipingEnabled: Boolean = true,
+    onCloseClick: (tab: TabSessionState) -> Unit,
+    onMediaClick: (tab: TabSessionState) -> Unit,
+    onClick: (tab: TabSessionState) -> Unit,
+    onLongClick: ((tab: TabSessionState) -> Unit)? = null,
+) {
+    val decayAnimationSpec: DecayAnimationSpec<Float> = rememberSplineBasedDecay()
+    val density = LocalDensity.current
+    val isRtl = LocalLayoutDirection.current == LayoutDirection.Rtl
+
+    if (FeatureFlags.SWIPE_TO_DISMISS_2) {
+        val swipeState = remember(multiSelectionEnabled, swipingEnabled) {
+            SwipeToDismissState2(
+                density = density,
+                enabled = !multiSelectionEnabled && swipingEnabled,
+                decayAnimationSpec = decayAnimationSpec,
+                isRtl = isRtl,
+            )
+        }
+
+        SwipeToDismissBox2(
+            state = swipeState,
+            onItemDismiss = {
+                onCloseClick(tab)
+            },
+            backgroundContent = {
+                DismissibleItemBackground(
+                    isSwipeActive = swipeState.swipingActive,
+                    isSwipingToStart = swipeState.isSwipingToStart,
+                )
+            },
+        ) {
+            TabContent(
+                tab = tab,
+                thumbnailSize = thumbnailSize,
+                isSelected = isSelected,
+                multiSelectionEnabled = multiSelectionEnabled,
+                multiSelectionSelected = multiSelectionSelected,
+                shouldClickListen = shouldClickListen,
+                onCloseClick = onCloseClick,
+                onMediaClick = onMediaClick,
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+        }
+    } else {
+        val swipeState = remember(multiSelectionEnabled, swipingEnabled) {
+            SwipeToDismissState(
+                density = density,
+                enabled = !multiSelectionEnabled && swipingEnabled,
+                decayAnimationSpec = decayAnimationSpec,
+            )
+        }
+
+        SwipeToDismissBox(
+            state = swipeState,
+            onItemDismiss = {
+                onCloseClick(tab)
+            },
+            backgroundContent = {
+                DismissibleItemBackground(
+                    isSwipeActive = swipeState.swipingActive,
+                    isSwipingToStart = swipeState.isSwipingToStart,
+                )
+            },
+        ) {
+            TabContent(
+                tab = tab,
+                thumbnailSize = thumbnailSize,
+                isSelected = isSelected,
+                multiSelectionEnabled = multiSelectionEnabled,
+                multiSelectionSelected = multiSelectionSelected,
+                shouldClickListen = shouldClickListen,
+                onCloseClick = onCloseClick,
+                onMediaClick = onMediaClick,
+                onClick = onClick,
+                onLongClick = onLongClick,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Suppress("LongMethod", "LongParameterList")
+@Composable
+private fun TabContent(
+    tab: TabSessionState,
+    thumbnailSize: Int,
+    isSelected: Boolean,
+    multiSelectionEnabled: Boolean,
+    multiSelectionSelected: Boolean,
+    shouldClickListen: Boolean,
     onCloseClick: (tab: TabSessionState) -> Unit,
     onMediaClick: (tab: TabSessionState) -> Unit,
     onClick: (tab: TabSessionState) -> Unit,
@@ -100,7 +196,7 @@ fun TabListItem(
         Modifier.clickable(
             enabled = shouldClickListen,
             interactionSource = interactionSource,
-            indication = rememberRipple(
+            indication = ripple(
                 color = clickableColor(),
             ),
             onClick = { onClick(tab) },
@@ -109,7 +205,7 @@ fun TabListItem(
         Modifier.combinedClickable(
             enabled = shouldClickListen,
             interactionSource = interactionSource,
-            indication = rememberRipple(
+            indication = ripple(
                 color = clickableColor(),
             ),
             onLongClick = { onLongClick(tab) },
@@ -117,86 +213,68 @@ fun TabListItem(
         )
     }
 
-    val density = LocalDensity.current
-    val swipeState = remember(multiSelectionEnabled, swipingEnabled) {
-        SwipeToDismissState(
-            density = density,
-            enabled = !multiSelectionEnabled && swipingEnabled,
-        )
-    }
-
-    SwipeToDismissBox(
-        state = swipeState,
-        onItemDismiss = {
-            onCloseClick(tab)
-        },
-        backgroundContent = {
-            DismissibleItemBackground(
-                isSwipeActive = swipeState.swipingActive,
-                isSwipingToStart = swipeState.isSwipingToStart,
-            )
-        },
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(FirefoxTheme.colors.layer3)
+            .background(contentBackgroundColor)
+            .then(clickableModifier)
+            .padding(start = 16.dp, top = 8.dp, bottom = 8.dp)
+            .testTag(TabsTrayTestTag.TAB_ITEM_ROOT)
+            .semantics {
+                selected = isSelected
+            },
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
+        Thumbnail(
+            tab = tab,
+            size = thumbnailSize,
+            multiSelectionEnabled = multiSelectionEnabled,
+            isSelected = multiSelectionSelected,
+            onMediaIconClicked = { onMediaClick(it) },
+            interactionSource = interactionSource,
+        )
+
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .background(FirefoxTheme.colors.layer3)
-                .background(contentBackgroundColor)
-                .then(clickableModifier)
-                .padding(start = 16.dp, top = 8.dp, bottom = 8.dp)
-                .testTag(TabsTrayTestTag.tabItemRoot),
-            verticalAlignment = Alignment.CenterVertically,
+                .padding(start = 12.dp)
+                .weight(weight = 1f),
         ) {
-            Thumbnail(
-                tab = tab,
-                size = thumbnailSize,
-                multiSelectionEnabled = multiSelectionEnabled,
-                isSelected = multiSelectionSelected,
-                onMediaIconClicked = { onMediaClick(it) },
-                interactionSource = interactionSource,
+            Text(
+                text = tab.toDisplayTitle().take(MAX_URI_LENGTH),
+                color = FirefoxTheme.colors.textPrimary,
+                style = FirefoxTheme.typography.body1,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 2,
             )
 
-            Column(
+            Text(
+                text = tab.content.url.toShortUrl(),
+                color = FirefoxTheme.colors.textSecondary,
+                style = FirefoxTheme.typography.body2,
+                overflow = TextOverflow.Ellipsis,
+                maxLines = 1,
+            )
+        }
+
+        if (!multiSelectionEnabled) {
+            IconButton(
+                onClick = { onCloseClick(tab) },
                 modifier = Modifier
-                    .padding(start = 12.dp)
-                    .weight(weight = 1f),
+                    .size(size = 48.dp)
+                    .testTag(TabsTrayTestTag.TAB_ITEM_CLOSE),
             ) {
-                Text(
-                    text = tab.toDisplayTitle().take(MAX_URI_LENGTH),
-                    color = FirefoxTheme.colors.textPrimary,
-                    style = FirefoxTheme.typography.body1,
-                    overflow = TextOverflow.Ellipsis,
-                    maxLines = 2,
-                )
-
-                Text(
-                    text = tab.content.url.toShortUrl(),
-                    color = FirefoxTheme.colors.textSecondary,
-                    style = FirefoxTheme.typography.body2,
-                    overflow = TextOverflow.Ellipsis,
-                    maxLines = 1,
+                Icon(
+                    painter = painterResource(id = R.drawable.mozac_ic_cross_24),
+                    contentDescription = stringResource(
+                        id = R.string.close_tab_title,
+                        tab.toDisplayTitle(),
+                    ),
+                    tint = FirefoxTheme.colors.iconPrimary,
                 )
             }
-
-            if (!multiSelectionEnabled) {
-                IconButton(
-                    onClick = { onCloseClick(tab) },
-                    modifier = Modifier
-                        .size(size = 48.dp)
-                        .testTag(TabsTrayTestTag.tabItemClose),
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.mozac_ic_cross_24),
-                        contentDescription = stringResource(
-                            id = R.string.close_tab_title,
-                            tab.content.title,
-                        ),
-                        tint = FirefoxTheme.colors.iconPrimary,
-                    )
-                }
-            } else {
-                Spacer(modifier = Modifier.size(48.dp))
-            }
+        } else {
+            Spacer(modifier = Modifier.size(48.dp))
         }
     }
 }
@@ -222,9 +300,7 @@ private fun Thumbnail(
             size = size,
             modifier = Modifier
                 .size(width = 92.dp, height = 72.dp)
-                .semantics(mergeDescendants = true) {
-                    testTag = TabsTrayTestTag.tabItemThumbnail
-                },
+                .testTag(TabsTrayTestTag.TAB_ITEM_THUMBNAIL),
             contentDescription = stringResource(id = R.string.mozac_browser_tabstray_open_tab),
         )
 
@@ -249,7 +325,7 @@ private fun Thumbnail(
                         .matchParentSize()
                         .padding(all = 8.dp),
                     contentDescription = null,
-                    tint = colorResource(id = R.color.mozac_ui_icons_fill),
+                    tint = FirefoxTheme.colors.iconActionPrimary,
                 )
             }
         }
@@ -266,7 +342,7 @@ private fun Thumbnail(
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun TabListItemPreview() {
     FirefoxTheme {
         TabListItem(
@@ -280,7 +356,7 @@ private fun TabListItemPreview() {
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun SelectedTabListItemPreview() {
     FirefoxTheme {
         TabListItem(

@@ -4,14 +4,15 @@
 
 package org.mozilla.geckoview.test
 
-import android.graphics.* // ktlint-disable no-wildcard-imports
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
 import android.os.SystemClock
-import android.util.Base64
 import android.view.MotionEvent
+import androidx.core.graphics.createBitmap
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
-import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
 import org.hamcrest.Matchers.closeTo
 import org.hamcrest.Matchers.equalTo
 import org.junit.Assume.assumeThat
@@ -21,9 +22,11 @@ import org.mozilla.geckoview.GeckoResult
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSession.ContentDelegate
 import org.mozilla.geckoview.GeckoSession.ScrollDelegate
+import org.mozilla.geckoview.PanZoomController
+import org.mozilla.geckoview.ScreenLength
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.AssertCalled
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.WithDisplay
-import java.io.ByteArrayOutputStream
+import org.mozilla.geckoview.test.util.AssertUtils
 
 private const val SCREEN_WIDTH = 100
 private const val SCREEN_HEIGHT = 200
@@ -47,29 +50,7 @@ class DynamicToolbarTest : BaseSessionTest() {
 
     private fun assertScreenshotResult(result: GeckoResult<Bitmap>, comparisonImage: Bitmap) {
         sessionRule.waitForResult(result).let {
-            assertThat(
-                "Screenshot is not null",
-                it,
-                notNullValue(),
-            )
-            assertThat("Widths are the same", comparisonImage.width, equalTo(it.width))
-            assertThat("Heights are the same", comparisonImage.height, equalTo(it.height))
-            assertThat("Byte counts are the same", comparisonImage.byteCount, equalTo(it.byteCount))
-            assertThat("Configs are the same", comparisonImage.config, equalTo(it.config))
-
-            if (!comparisonImage.sameAs(it)) {
-                val outputForComparison = ByteArrayOutputStream()
-                comparisonImage.compress(Bitmap.CompressFormat.PNG, 100, outputForComparison)
-
-                val outputForActual = ByteArrayOutputStream()
-                it.compress(Bitmap.CompressFormat.PNG, 100, outputForActual)
-                val actualString: String = Base64.encodeToString(outputForActual.toByteArray(), Base64.DEFAULT)
-                val comparisonString: String = Base64.encodeToString(outputForComparison.toByteArray(), Base64.DEFAULT)
-
-                assertThat("Encoded strings are the same", comparisonString, equalTo(actualString))
-            }
-
-            assertThat("Bytes are the same", comparisonImage.sameAs(it), equalTo(true))
+            AssertUtils.assertScreenshotResult(it, comparisonImage)
         }
     }
 
@@ -78,7 +59,7 @@ class DynamicToolbarTest : BaseSessionTest() {
      * This Bitmap would be a reference image of tests in this file.
      */
     private fun getComparisonScreenshot(width: Int, height: Int): Bitmap {
-        val screenshotFile = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val screenshotFile = createBitmap(width, height, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(screenshotFile)
         val paint = Paint()
         paint.color = Color.rgb(0, 128, 0)
@@ -365,6 +346,9 @@ class DynamicToolbarTest : BaseSessionTest() {
         val dynamicToolbarMaxHeight = SCREEN_HEIGHT / 2
         sessionRule.display?.run { setDynamicToolbarMaxHeight(dynamicToolbarMaxHeight) }
 
+        // disabled for frequent failures - on Bug 1855082
+        assumeThat(sessionRule.env.isX86, equalTo(false))
+
         // Set active since setVerticalClipping call affects only for forground tab.
         mainSession.setActive(true)
 
@@ -385,6 +369,31 @@ class DynamicToolbarTest : BaseSessionTest() {
         mainSession.waitUntilCalled(object : ContentDelegate {
             @AssertCalled(count = 1)
             override fun onShowDynamicToolbar(session: GeckoSession) {
+            }
+        })
+    }
+
+    @WithDisplay(height = 600, width = 600)
+    @Test
+    fun hideDynamicToolbarToRevealFocusedInput() {
+        // The <input> element on the test page is 80 CSS pixels tall.
+        // Its height in screen pixels is that amount multiplied by the device
+        // scale, which can be as high as 3 on some devices.
+        // Ensure the dynamic toolbar is taller than that.
+        val dynamicToolbarMaxHeight = 300
+        sessionRule.display?.run { setDynamicToolbarMaxHeight(dynamicToolbarMaxHeight) }
+
+        // Set active since setVerticalClipping call affects only for forground tab.
+        mainSession.setActive(true)
+
+        mainSession.loadTestPath(HIDE_DYNAMIC_TOOLBAR_HTML_PATH)
+        mainSession.waitForPageStop()
+        mainSession.evaluateJS("document.getElementById('input1').focus();")
+        mainSession.zoomToFocusedInput()
+
+        mainSession.waitUntilCalled(object : ContentDelegate {
+            @AssertCalled(count = 1)
+            override fun onHideDynamicToolbar(session: GeckoSession) {
             }
         })
     }
@@ -723,5 +732,456 @@ class DynamicToolbarTest : BaseSessionTest() {
         sessionRule.display?.let {
             assertScreenshotResult(it.capturePixels(), reference)
         }
+    }
+
+    @WithDisplay(height = SCREEN_HEIGHT, width = SCREEN_WIDTH)
+    @Test
+    fun withIntersectionObserver1() {
+        val dynamicToolbarMaxHeight = 20
+        sessionRule.display?.run { setDynamicToolbarMaxHeight(dynamicToolbarMaxHeight) }
+
+        // Set active since setVerticalClipping call affects only for forground tab.
+        mainSession.setActive(true)
+
+        mainSession.loadTestPath(BaseSessionTest.INTERSECTION_OBSERVER_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        // Position the target element underneath the dynamic toolbar.
+        mainSession.evaluateJS(
+            """
+            document.querySelector('#target').style.top = 'calc(100svh + 1px)';
+            document.querySelector('#target').getBoundingClientRect();
+            """.trimIndent(),
+        )
+
+        // Setup an IntersectionObserver to change the target element background color
+        // if the target element is considered as "intersecting" by the observer.
+        mainSession.evaluatePromiseJS(
+            """
+            new Promise(resolve => {
+              const observer = new IntersectionObserver(entries => {
+                const intersected = entries.find(entry => entry.isIntersecting);
+                if (intersected) {
+                  intersected.target.style.backgroundColor = 'green';
+                  resolve(true);
+                }
+              });
+
+              observer.observe(document.getElementById('target'));
+            });
+            """.trimIndent(),
+        )
+
+        // Make sure the target background is "red".
+        var backgroundColor = mainSession.evaluateJS(
+            """
+            getComputedStyle(document.querySelector('#target')).backgroundColor;
+            """.trimIndent(),
+        ) as String
+        assertThat(
+            "The background color of the IntersectionObserver's target element should be red",
+            backgroundColor,
+            equalTo("rgb(255, 0, 0)"),
+        )
+
+        // Half collapse the dynamic toolbar, now the target element should be visible.
+        sessionRule.display?.run { setVerticalClipping(-dynamicToolbarMaxHeight / 2) }
+
+        // But the background color should be still "red".
+        backgroundColor = mainSession.evaluateJS(
+            """
+            getComputedStyle(document.querySelector('#target')).backgroundColor;
+            """.trimIndent(),
+        ) as String
+        assertThat(
+            "The background color of the IntersectionObserver's target element should be still red",
+            backgroundColor,
+            equalTo("rgb(255, 0, 0)"),
+        )
+    }
+
+    @WithDisplay(height = SCREEN_HEIGHT, width = SCREEN_WIDTH)
+    @Test
+    fun withIntersectionObserver2() {
+        val dynamicToolbarMaxHeight = 20
+        sessionRule.display?.run { setDynamicToolbarMaxHeight(dynamicToolbarMaxHeight) }
+
+        // Set active since setVerticalClipping call affects only for forground tab.
+        mainSession.setActive(true)
+
+        mainSession.loadTestPath(BaseSessionTest.INTERSECTION_OBSERVER_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        // Position the target element out of the layout viewport.
+        mainSession.evaluateJS(
+            """
+            document.querySelector('#target').style.top = 'calc(100lvh + 1px)';
+            document.querySelector('#target').getBoundingClientRect();
+            """.trimIndent(),
+        )
+
+        // Setup an IntersectionObserver to change the target element background color
+        // if the target element is considered as "intersecting" by the observer.
+        val promise = mainSession.evaluatePromiseJS(
+            """
+            new Promise(resolve => {
+              const observer = new IntersectionObserver(entries => {
+                const intersected = entries.find(entry => entry.isIntersecting);
+                if (intersected) {
+                  intersected.target.style.backgroundColor = 'green';
+                  resolve(true);
+                }
+              });
+
+              observer.observe(document.getElementById('target'));
+            });
+            """.trimIndent(),
+        )
+
+        // Make sure the target background is "red".
+        var backgroundColor = mainSession.evaluateJS(
+            """
+            getComputedStyle(document.querySelector('#target')).backgroundColor;
+            """.trimIndent(),
+        ) as String
+        assertThat(
+            "The background color of the IntersectionObserver's target element should be red",
+            backgroundColor,
+            equalTo("rgb(255, 0, 0)"),
+        )
+
+        // Fully collapse the dynamic toolbar, now the target element should NOT be visible.
+        sessionRule.display?.run { setVerticalClipping(-dynamicToolbarMaxHeight) }
+
+        backgroundColor = mainSession.evaluateJS(
+            """
+            getComputedStyle(document.querySelector('#target')).backgroundColor;
+            """.trimIndent(),
+        ) as String
+        assertThat(
+            "The background color of the IntersectionObserver's target element should be still red",
+            backgroundColor,
+            equalTo("rgb(255, 0, 0)"),
+        )
+
+        // Scroll down a bit to move the target element is into the layout viewport.
+        mainSession.evaluateJS("window.scrollBy(0, 10)")
+        assertThat("resize", promise.value as Boolean, equalTo(true))
+
+        backgroundColor = mainSession.evaluateJS(
+            """
+            getComputedStyle(document.querySelector('#target')).backgroundColor;
+            """.trimIndent(),
+        ) as String
+        assertThat(
+            "The background color of the IntersectionObserver's target element should have changed to green",
+            backgroundColor,
+            equalTo("rgb(0, 128, 0)"),
+        )
+    }
+
+    @WithDisplay(height = SCREEN_HEIGHT, width = SCREEN_WIDTH)
+    @Test
+    fun withIntersectionObserverWithDesktopMode1() {
+        val dynamicToolbarMaxHeight = 20
+        sessionRule.display?.run { setDynamicToolbarMaxHeight(dynamicToolbarMaxHeight) }
+
+        // Set active since setVerticalClipping call affects only for forground tab.
+        mainSession.setActive(true)
+
+        mainSession.loadTestPath(BaseSessionTest.INTERSECTION_OBSERVER_DESKTOP_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        // Position the target element underneath the dynamic toolbar.
+        mainSession.evaluateJS(
+            // The document has 'miminum-scale=0.5' in the meta viewport tag and
+            // has 'width: 200%' body element so that it gets scaled by 0.5 initially.
+            // Thus the bottom dynamic toolbar is positioned at `200svh`.
+            """
+            document.querySelector('#target').style.top = 'calc(200svh + 1px)';
+            document.querySelector('#target').getBoundingClientRect();
+            """.trimIndent(),
+        )
+
+        // Setup an IntersectionObserver to change the target element background color
+        // if the target element is considered as "intersecting" by the observer.
+        mainSession.evaluatePromiseJS(
+            """
+            new Promise(resolve => {
+              const observer = new IntersectionObserver(entries => {
+                const intersected = entries.find(entry => entry.isIntersecting);
+                if (intersected) {
+                  intersected.target.style.backgroundColor = 'green';
+                  resolve(true);
+                }
+              });
+
+              observer.observe(document.getElementById('target'));
+            });
+            """.trimIndent(),
+        )
+
+        // Make sure the target background is "red".
+        var backgroundColor = mainSession.evaluateJS(
+            """
+            getComputedStyle(document.querySelector('#target')).backgroundColor;
+            """.trimIndent(),
+        ) as String
+        assertThat(
+            "The background color of the IntersectionObserver's target element should be red",
+            backgroundColor,
+            equalTo("rgb(255, 0, 0)"),
+        )
+
+        // Half collapse the dynamic toolbar, now the target element should be visible.
+        sessionRule.display?.run { setVerticalClipping(-dynamicToolbarMaxHeight / 2) }
+
+        // But the background color should be still "red".
+        backgroundColor = mainSession.evaluateJS(
+            """
+            getComputedStyle(document.querySelector('#target')).backgroundColor;
+            """.trimIndent(),
+        ) as String
+        assertThat(
+            "The background color of the IntersectionObserver's target element should be still red",
+            backgroundColor,
+            equalTo("rgb(255, 0, 0)"),
+        )
+    }
+
+    @WithDisplay(height = SCREEN_HEIGHT, width = SCREEN_WIDTH)
+    @Test
+    fun withIntersectionObserverWithDesktopMode2() {
+        val dynamicToolbarMaxHeight = 20
+        sessionRule.display?.run { setDynamicToolbarMaxHeight(dynamicToolbarMaxHeight) }
+
+        // Set active since setVerticalClipping call affects only for forground tab.
+        mainSession.setActive(true)
+
+        mainSession.loadTestPath(BaseSessionTest.INTERSECTION_OBSERVER_DESKTOP_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        // Position the target element out of the layout viewport.
+        mainSession.evaluateJS(
+            // Similar to the above test, `200lvh` is the bottom of the dynamic toolbar.
+            """
+            document.querySelector('#target').style.top = 'calc(200lvh + 1px)';
+            document.querySelector('#target').getBoundingClientRect();
+            """.trimIndent(),
+        )
+
+        // Setup an IntersectionObserver to change the target element background color
+        // if the target element is considered as "intersecting" by the observer.
+        val promise = mainSession.evaluatePromiseJS(
+            """
+            new Promise(resolve => {
+              const observer = new IntersectionObserver(entries => {
+                const intersected = entries.find(entry => entry.isIntersecting);
+                if (intersected) {
+                  intersected.target.style.backgroundColor = 'green';
+                  resolve(true);
+                }
+              });
+
+              observer.observe(document.getElementById('target'));
+            });
+            """.trimIndent(),
+        )
+
+        // Make sure the target background is "red".
+        var backgroundColor = mainSession.evaluateJS(
+            """
+            getComputedStyle(document.querySelector('#target')).backgroundColor;
+            """.trimIndent(),
+        ) as String
+        assertThat(
+            "The background color of the IntersectionObserver's target element should be red",
+            backgroundColor,
+            equalTo("rgb(255, 0, 0)"),
+        )
+
+        // Fully collapse the dynamic toolbar, now the target element should NOT be visible.
+        sessionRule.display?.run { setVerticalClipping(-dynamicToolbarMaxHeight) }
+
+        backgroundColor = mainSession.evaluateJS(
+            """
+            getComputedStyle(document.querySelector('#target')).backgroundColor;
+            """.trimIndent(),
+        ) as String
+        assertThat(
+            "The background color of the IntersectionObserver's target element should be still red",
+            backgroundColor,
+            equalTo("rgb(255, 0, 0)"),
+        )
+
+        // Scroll down a bit to move the target element is into the layout viewport.
+        mainSession.evaluateJS("window.scrollBy(0, 10)")
+        assertThat("resize", promise.value as Boolean, equalTo(true))
+
+        backgroundColor = mainSession.evaluateJS(
+            """
+            getComputedStyle(document.querySelector('#target')).backgroundColor;
+            """.trimIndent(),
+        ) as String
+        assertThat(
+            "The background color of the IntersectionObserver's target element should have changed to green",
+            backgroundColor,
+            equalTo("rgb(0, 128, 0)"),
+        )
+    }
+
+    @WithDisplay(height = SCREEN_HEIGHT, width = SCREEN_WIDTH)
+    @Test
+    fun bug1909181() {
+        val reference = getComparisonScreenshot(SCREEN_WIDTH, SCREEN_HEIGHT)
+
+        val dynamicToolbarMaxHeight = SCREEN_HEIGHT / 2
+        sessionRule.display?.run { setDynamicToolbarMaxHeight(dynamicToolbarMaxHeight) }
+
+        // Set active since setVerticalClipping call affects only for foreground tab.
+        mainSession.setActive(true)
+
+        mainSession.loadTestPath(BaseSessionTest.BUG1909181_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        // Zoom in the document.
+        mainSession.setResolutionAndScaleTo(5.0f)
+        mainSession.flushApzRepaints()
+
+        mainSession.panZoomController.scrollBy(
+            ScreenLength.zero(),
+            ScreenLength.fromPixels(500.0),
+            PanZoomController.SCROLL_BEHAVIOR_AUTO,
+        )
+
+        // Simulate the dynamic toolbar being hidden by the scroll
+        sessionRule.display?.run { setVerticalClipping(-dynamicToolbarMaxHeight) }
+
+        mainSession.flushApzRepaints()
+        mainSession.flushApzRepaints()
+
+        sessionRule.display?.let {
+            assertScreenshotResult(it.capturePixels(), reference)
+        }
+    }
+
+    @WithDisplay(height = SCREEN_HEIGHT, width = SCREEN_WIDTH)
+    @Test
+    fun hitTestOnPositionSticky() {
+        val dynamicToolbarMaxHeight = SCREEN_HEIGHT / 2
+        sessionRule.display?.run { setDynamicToolbarMaxHeight(dynamicToolbarMaxHeight) }
+
+        // Set active since setVerticalClipping call affects only for foreground tab.
+        mainSession.setActive(true)
+
+        mainSession.loadTestPath(BaseSessionTest.POSITION_STICKY_HTML_PATH)
+        mainSession.waitForPageStop()
+        mainSession.flushApzRepaints()
+
+        val clickEventPromise = mainSession.evaluatePromiseJS(
+            """
+            new Promise(resolve => {
+                document.querySelector('button').addEventListener('click', () => {
+                    resolve(true);
+                });
+            });
+            """.trimIndent(),
+        )
+
+        // Explicitly call `waitForRoundTrip()` to make sure the above event listener
+        // has set up in the content.
+        mainSession.waitForRoundTrip()
+
+        // Simulate the dynamic toolbar being hidden by the scroll
+        sessionRule.display?.run { setVerticalClipping(-dynamicToolbarMaxHeight) }
+
+        // To make sure the dynamic toolbar height has been reflected into APZ.
+        mainSession.flushApzRepaints()
+
+        mainSession.synthesizeTap(SCREEN_WIDTH / 2, SCREEN_HEIGHT - dynamicToolbarMaxHeight / 4)
+
+        assertThat("click event", clickEventPromise.value as Boolean, equalTo(true))
+    }
+
+    @WithDisplay(height = SCREEN_HEIGHT, width = SCREEN_WIDTH)
+    @Test
+    fun hitTestOnPositionStickyOnMainThread() {
+        val dynamicToolbarMaxHeight = SCREEN_HEIGHT / 2
+        sessionRule.display?.run { setDynamicToolbarMaxHeight(dynamicToolbarMaxHeight) }
+
+        // Set active since setVerticalClipping call affects only for foreground tab.
+        mainSession.setActive(true)
+
+        mainSession.loadTestPath(BaseSessionTest.POSITION_STICKY_ON_MAIN_THREAD_HTML_PATH)
+        mainSession.waitForPageStop()
+        mainSession.flushApzRepaints()
+
+        // Scroll to the bottom edge first.
+        val scrollPromise = mainSession.evaluatePromiseJS(
+            """
+            new Promise(resolve => {
+                window.addEventListener('scroll', () => {
+                    resolve(true);
+                }, { once: true });
+            });
+            """.trimIndent(),
+        )
+        mainSession.waitForRoundTrip()
+        mainSession.evaluateJS(
+            """
+            document.scrollingElement.scrollTo(0, document.scrollingElement.scrollHeight);
+            """.trimIndent(),
+        )
+
+        assertThat("scroll", scrollPromise.value as Boolean, equalTo(true))
+        mainSession.flushApzRepaints()
+
+        var clickEventPromise = mainSession.evaluatePromiseJS(
+            """
+            new Promise(resolve => {
+                document.querySelectorAll('button').forEach(element => {
+                    element.addEventListener('click', event => {
+                        resolve(event.target.id);
+                    }, { once: true });
+                });
+            });
+            """.trimIndent(),
+        )
+
+        // Explicitly call `waitForRoundTrip()` to make sure the above event listener
+        // has set up in the content.
+        mainSession.waitForRoundTrip()
+
+        // Simulate the dynamic toolbar being hidden by the scroll
+        sessionRule.display?.run { setVerticalClipping(-dynamicToolbarMaxHeight) }
+
+        // To make sure the dynamic toolbar height has been reflected into APZ.
+        mainSession.flushApzRepaints()
+        // Also to make sure the dynamic toolbar height has been reflected on the main-thread.
+        mainSession.promiseAllPaintsDone()
+
+        // Click a point where the dynamic toolbar was covering originally.
+        mainSession.synthesizeTap(SCREEN_WIDTH / 2, SCREEN_HEIGHT - dynamicToolbarMaxHeight / 4)
+        assertThat("click event on sticky", clickEventPromise.value as String, equalTo("sticky"))
+
+        clickEventPromise = mainSession.evaluatePromiseJS(
+            """
+            new Promise(resolve => {
+                document.querySelectorAll('button').forEach(element => {
+                    element.addEventListener('click', event => {
+                        resolve(event.target.id);
+                    }, { once: true });
+                });
+            });
+            """.trimIndent(),
+        )
+
+        mainSession.waitForRoundTrip()
+
+        mainSession.synthesizeTap(
+            SCREEN_WIDTH / 2,
+            SCREEN_HEIGHT - dynamicToolbarMaxHeight - dynamicToolbarMaxHeight / 4,
+        )
+        assertThat("click event on not-sticky", clickEventPromise.value as String, equalTo("not-sticky"))
     }
 }

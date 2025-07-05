@@ -4,13 +4,13 @@
 
 package org.mozilla.fenix.search.toolbar
 
-import android.graphics.Bitmap
 import android.graphics.Bitmap.Config.ARGB_8888
 import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import androidx.core.graphics.applyCanvas
+import androidx.core.graphics.createBitmap
 import com.google.android.material.card.MaterialCardView
 import io.mockk.MockKAnnotations
 import io.mockk.every
@@ -22,7 +22,6 @@ import io.mockk.verify
 import mozilla.components.browser.state.search.SearchEngine
 import mozilla.components.browser.state.search.SearchEngine.Type.BUNDLED
 import mozilla.components.concept.menu.Orientation
-import mozilla.components.service.glean.testing.GleanTestRule
 import mozilla.components.support.test.libstate.ext.waitUntilIdle
 import mozilla.components.support.test.robolectric.testContext
 import mozilla.components.support.test.rule.MainCoroutineRule
@@ -38,6 +37,7 @@ import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
 import org.mozilla.fenix.components.metrics.MetricsUtils
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.helpers.FenixGleanTestRule
 import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.search.SearchDialogFragmentStore
 import org.mozilla.fenix.search.SearchEngineSource
@@ -62,7 +62,7 @@ class SearchSelectorToolbarActionTest {
     val coroutinesTestRule = MainCoroutineRule()
 
     @get:Rule
-    val gleanTestRule = GleanTestRule(testContext)
+    val gleanTestRule = FenixGleanTestRule(testContext)
 
     @Before
     fun setup() {
@@ -124,7 +124,10 @@ class SearchSelectorToolbarActionTest {
             verify {
                 view.setIcon(
                     icon = searchEngineIcon,
-                    contentDescription = testSearchEngine.name,
+                    contentDescription = testContext.getString(
+                        R.string.search_engine_selector_content_description,
+                        testSearchEngine.name,
+                    ),
                 )
             }
         }
@@ -155,7 +158,10 @@ class SearchSelectorToolbarActionTest {
             verify(exactly = 1) {
                 view.setIcon(
                     icon = searchEngineIcon,
-                    contentDescription = testSearchEngine.name,
+                    contentDescription = testContext.getString(
+                        R.string.search_engine_selector_content_description,
+                        testSearchEngine.name,
+                    ),
                 )
             }
         }
@@ -183,7 +189,10 @@ class SearchSelectorToolbarActionTest {
             verify(exactly = 1) {
                 view.setIcon(
                     icon = searchEngineIcon,
-                    contentDescription = testSearchEngine.name,
+                    contentDescription = testContext.getString(
+                        R.string.search_engine_selector_content_description,
+                        testSearchEngine.name,
+                    ),
                 )
             }
 
@@ -200,7 +209,10 @@ class SearchSelectorToolbarActionTest {
             verify(exactly = 1) {
                 view.setIcon(
                     icon = searchEngineIcon,
-                    contentDescription = testSearchEngine.name,
+                    contentDescription = testContext.getString(
+                        R.string.search_engine_selector_content_description,
+                        testSearchEngine.name,
+                    ),
                 )
             }
 
@@ -219,13 +231,19 @@ class SearchSelectorToolbarActionTest {
             verify(exactly = 1) {
                 view.setIcon(
                     icon = searchEngineIcon,
-                    contentDescription = testSearchEngine.name,
+                    contentDescription = testContext.getString(
+                        R.string.search_engine_selector_content_description,
+                        testSearchEngine.name,
+                    ),
                 )
             }
             verify(exactly = 1) {
                 view.setIcon(
                     icon = searchEngineIcon,
-                    contentDescription = newSearchEngine.name,
+                    contentDescription = testContext.getString(
+                        R.string.search_engine_selector_content_description,
+                        newSearchEngine.name,
+                    ),
                 )
             }
         }
@@ -233,10 +251,10 @@ class SearchSelectorToolbarActionTest {
 
     @Test
     fun `GIVEN a search engine WHEN asking for a scaled icon THEN return a drawable with a fixed size`() {
-        val originalIcon = Bitmap.createBitmap(100, 100, ARGB_8888).applyCanvas {
+        val originalIcon = createBitmap(100, 100, ARGB_8888).applyCanvas {
             drawColor(Color.RED)
         }
-        val expectedScaledIcon = Bitmap.createBitmap(
+        val expectedScaledIcon = createBitmap(
             testContext.resources.getDimensionPixelSize(R.dimen.preference_icon_drawable_size),
             testContext.resources.getDimensionPixelSize(R.dimen.preference_icon_drawable_size),
             ARGB_8888,
@@ -277,6 +295,10 @@ private val testSearchFragmentState = SearchFragmentState(
     showAllSessionSuggestions = true,
     showSponsoredSuggestions = true,
     showNonSponsoredSuggestions = true,
+    showTrendingSearches = false,
+    showRecentSearches = false,
+    showShortcutsSuggestions = false,
+    showQrButton = true,
     tabId = "tabId",
     pastedText = "",
     searchAccessPoint = MetricsUtils.Source.SHORTCUT,

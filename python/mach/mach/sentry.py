@@ -15,7 +15,6 @@ from mozversioncontrol import (
     MissingVCSTool,
     get_repository_object,
 )
-from six import string_types
 
 from mach.telemetry import is_telemetry_enabled
 from mach.util import get_state_dir
@@ -26,7 +25,7 @@ _SENTRY_DSN = (
 )
 
 
-class ErrorReporter(object):
+class ErrorReporter:
     @abc.abstractmethod
     def report_exception(self, exception):
         """Report the exception to remote error-tracking software."""
@@ -78,7 +77,11 @@ def _process_event(sentry_event, topsrcdir: Path):
         # unmodified.
         return
 
-    base_ref = repo.base_ref_as_hg()
+    if repo.name in ("git", "jj") and not repo.is_cinnabar_repo():
+        base_ref = repo.base_ref_as_commit()
+    else:
+        base_ref = repo.base_ref_as_hg()
+
     if not base_ref:
         # If we don't know which revision this exception is attached to, then it's
         # not worth sending
@@ -91,7 +94,7 @@ def _process_event(sentry_event, topsrcdir: Path):
     for map_fn in (_settle_mach_module_id, _patch_absolute_paths, _delete_server_name):
         sentry_event = map_fn(sentry_event, topsrcdir)
 
-    sentry_event["release"] = "hg-rev-{}".format(base_ref)
+    sentry_event["release"] = f"hg-rev-{base_ref}"
     return sentry_event
 
 
@@ -133,7 +136,7 @@ def _patch_absolute_paths(sentry_event, topsrcdir: Path):
                 key = needle.sub(replacement, key)
                 value[key] = recursive_patch(next_value, needle, replacement)
             return value
-        elif isinstance(value, string_types):
+        elif isinstance(value, str):
             return needle.sub(replacement, value)
         else:
             return value

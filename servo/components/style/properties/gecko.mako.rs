@@ -528,7 +528,7 @@ impl Clone for ${style_struct.gecko_struct_name} {
                     tag: FontTag(gecko_font_setting.mTag),
                     value: gecko_font_setting.mValue as ${value_type},
                 }
-            }).collect::<Vec<_>>().into_boxed_slice()
+            }).collect()
         )
     }
 </%def>
@@ -579,7 +579,6 @@ class Side(object):
         self.index = index
 
 SIDES = [Side("Top", 0), Side("Right", 1), Side("Bottom", 2), Side("Left", 3)]
-CORNERS = ["top_left", "top_right", "bottom_right", "bottom_left"]
 %>
 
 #[allow(dead_code)]
@@ -593,12 +592,10 @@ fn static_assert() {
 
 <% skip_border_longhands = " ".join(["border-{0}-{1}".format(x.ident, y)
                                      for x in SIDES
-                                     for y in ["style", "width"]] +
-                                    ["border-{0}-radius".format(x.replace("_", "-"))
-                                     for x in CORNERS]) %>
+                                     for y in ["style", "width"]]) %>
 
 <%self:impl_trait style_struct_name="Border"
-                  skip_longhands="${skip_border_longhands} border-image-repeat">
+                  skip_longhands="${skip_border_longhands}">
     % for side in SIDES:
     pub fn set_border_${side.ident}_style(&mut self, v: BorderStyle) {
         self.mBorderStyle[${side.index}] = v;
@@ -654,84 +651,13 @@ fn static_assert() {
         self.mComputedBorder.${side.ident} != 0
     }
     % endfor
-
-    % for corner in CORNERS:
-    ${impl_simple("border_%s_radius" % corner, "mBorderRadius.%s" % corner)}
-    % endfor
-
-    <%
-    border_image_repeat_keywords = ["Stretch", "Repeat", "Round", "Space"]
-    %>
-
-    pub fn set_border_image_repeat(&mut self, v: longhands::border_image_repeat::computed_value::T) {
-        use crate::values::specified::border::BorderImageRepeatKeyword;
-        use crate::gecko_bindings::structs::StyleBorderImageRepeat;
-
-        % for i, side in enumerate(["H", "V"]):
-            self.mBorderImageRepeat${side} = match v.${i} {
-                % for keyword in border_image_repeat_keywords:
-                BorderImageRepeatKeyword::${keyword} => StyleBorderImageRepeat::${keyword},
-                % endfor
-            };
-        % endfor
-    }
-
-    pub fn copy_border_image_repeat_from(&mut self, other: &Self) {
-        self.mBorderImageRepeatH = other.mBorderImageRepeatH;
-        self.mBorderImageRepeatV = other.mBorderImageRepeatV;
-    }
-
-    pub fn reset_border_image_repeat(&mut self, other: &Self) {
-        self.copy_border_image_repeat_from(other)
-    }
-
-    pub fn clone_border_image_repeat(&self) -> longhands::border_image_repeat::computed_value::T {
-        use crate::values::specified::border::BorderImageRepeatKeyword;
-        use crate::gecko_bindings::structs::StyleBorderImageRepeat;
-
-        % for side in ["H", "V"]:
-        let servo_${side.lower()} = match self.mBorderImageRepeat${side} {
-            % for keyword in border_image_repeat_keywords:
-            StyleBorderImageRepeat::${keyword} => BorderImageRepeatKeyword::${keyword},
-            % endfor
-        };
-        % endfor
-        longhands::border_image_repeat::computed_value::T(servo_h, servo_v)
-    }
 </%self:impl_trait>
 
-<% skip_scroll_margin_longhands = " ".join(["scroll-margin-%s" % x.ident for x in SIDES]) %>
-<% skip_margin_longhands = " ".join(["margin-%s" % x.ident for x in SIDES]) %>
-<%self:impl_trait style_struct_name="Margin"
-                  skip_longhands="${skip_margin_longhands}
-                                  ${skip_scroll_margin_longhands}">
-    % for side in SIDES:
-    ${impl_simple("margin_%s" % side.ident, "mMargin.%s" % side.index)}
-    ${impl_simple("scroll_margin_%s" % side.ident, "mScrollMargin.%s" % side.index)}
-    % endfor
-</%self:impl_trait>
+<%self:impl_trait style_struct_name="Margin"></%self:impl_trait>
+<%self:impl_trait style_struct_name="Padding"></%self:impl_trait>
+<%self:impl_trait style_struct_name="Page"></%self:impl_trait>
 
-<% skip_scroll_padding_longhands = " ".join(["scroll-padding-%s" % x.ident for x in SIDES]) %>
-<% skip_padding_longhands = " ".join(["padding-%s" % x.ident for x in SIDES]) %>
-<%self:impl_trait style_struct_name="Padding"
-                  skip_longhands="${skip_padding_longhands}
-                                  ${skip_scroll_padding_longhands}">
-
-    % for side in SIDES:
-    ${impl_simple("padding_%s" % side.ident, "mPadding.%s" % side.index)}
-    ${impl_simple("scroll_padding_%s" % side.ident, "mScrollPadding.%s" % side.index)}
-    % endfor
-</%self:impl_trait>
-
-<%self:impl_trait style_struct_name="Page">
-</%self:impl_trait>
-
-<% skip_position_longhands = " ".join(x.ident for x in SIDES) %>
-<%self:impl_trait style_struct_name="Position"
-                  skip_longhands="${skip_position_longhands}">
-    % for side in SIDES:
-    ${impl_simple(side.ident, "mOffset.%s" % side.index)}
-    % endfor
+<%self:impl_trait style_struct_name="Position">
     pub fn set_computed_justify_items(&mut self, v: values::specified::JustifyItems) {
         debug_assert_ne!(v.0, crate::values::specified::align::AlignFlags::LEGACY);
         self.mJustifyItems.computed = v;
@@ -768,12 +694,7 @@ fn static_assert() {
     }
 </%self:impl_trait>
 
-<% skip_font_longhands = """font-family font-size font-size-adjust font-weight
-                            font-style font-stretch -x-lang
-                            font-variant-alternates font-variant-east-asian
-                            font-variant-ligatures font-variant-numeric
-                            font-language-override font-feature-settings
-                            font-variation-settings -moz-min-font-size-ratio""" %>
+<% skip_font_longhands = """font-size -x-lang font-feature-settings font-variation-settings""" %>
 <%self:impl_trait style_struct_name="Font"
     skip_longhands="${skip_font_longhands}">
 
@@ -836,16 +757,6 @@ fn static_assert() {
         }
     }
 
-    ${impl_simple('font_weight', 'mFont.weight')}
-    ${impl_simple('font_stretch', 'mFont.stretch')}
-    ${impl_simple('font_style', 'mFont.style')}
-
-    ${impl_simple("font_variant_alternates", "mFont.variantAlternates")}
-
-    ${impl_simple("font_size_adjust", "mFont.sizeAdjust")}
-
-    ${impl_simple("font_family", "mFont.family")}
-
     #[allow(non_snake_case)]
     pub fn set__x_lang(&mut self, v: longhands::_x_lang::computed_value::T) {
         let ptr = v.0.as_ptr();
@@ -873,13 +784,6 @@ fn static_assert() {
             Atom::from_raw(self.mLanguage.mRawPtr)
         })
     }
-
-
-    ${impl_simple("_moz_min_font_size_ratio", "mMinFontSizeRatio")}
-    ${impl_simple("font_language_override", "mFont.languageOverride")}
-    ${impl_simple("font_variant_ligatures", "mFont.variantLigatures")}
-    ${impl_simple("font_variant_east_asian", "mFont.variantEastAsian")}
-    ${impl_simple("font_variant_numeric", "mFont.variantNumeric")}
 </%self:impl_trait>
 
 <%def name="impl_coordinated_property_copy(type, ident, gecko_ffi_name)">
@@ -1382,6 +1286,10 @@ mask-mode mask-repeat mask-clip mask-origin mask-composite mask-position-x mask-
 </%self:impl_trait>
 
 <%self:impl_trait style_struct_name="InheritedUI">
+    #[inline]
+    pub fn color_scheme_bits(&self) -> values::specified::color::ColorSchemeFlags {
+        self.mColorScheme.bits
+    }
 </%self:impl_trait>
 
 <%self:impl_trait style_struct_name="Column"
@@ -1450,6 +1358,12 @@ mask-mode mask-repeat mask-clip mask-origin mask-composite mask-position-x mask-
             return false;
         }
         self.mTransitionPropertyCount > 0
+    }
+
+    /// Returns whether animation-timeline is initial value. We need this information to resolve
+    /// animation-duration.
+    pub fn has_initial_animation_timeline(&self) -> bool {
+        self.mAnimationTimelineCount == 1 && self.animation_timeline_at(0).is_auto()
     }
 
     pub fn animations_equals(&self, other: &Self) -> bool {

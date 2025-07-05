@@ -72,11 +72,11 @@ class SettingsSubMenuCustomizeRobot {
         Log.i(TAG, "clickBottomToolbarToggle: Clicked the \"Bottom\" toolbar option")
     }
 
-    fun verifyToolbarPositionPreference(selectedPosition: String) {
-        Log.i(TAG, "verifyToolbarPositionPreference: Trying to verify that the $selectedPosition toolbar option is checked")
+    fun verifyAddressBarPositionPreference(selectedPosition: String) {
+        Log.i(TAG, "verifyAddressBarPositionPreference: Trying to verify that the $selectedPosition toolbar option is checked")
         onView(withText(selectedPosition))
             .check(matches(hasSibling(allOf(withId(R.id.radio_button), isChecked()))))
-        Log.i(TAG, "verifyToolbarPositionPreference: Verified that the $selectedPosition toolbar option is checked")
+        Log.i(TAG, "verifyAddressBarPositionPreference: Verified that the $selectedPosition toolbar option is checked")
     }
 
     fun clickSwipeToolbarToSwitchTabToggle() {
@@ -161,7 +161,7 @@ private fun deviceModeToggle(): ViewInteraction {
 }
 
 private fun swipeToolbarToggle() =
-    onView(withText(getStringResource(R.string.preference_gestures_swipe_toolbar_switch_tabs)))
+    onView(withText(getStringResource(R.string.preference_gestures_swipe_toolbar_switch_tabs_2)))
 
 private fun pullToRefreshToggle() =
     onView(withText(getStringResource(R.string.preference_gestures_website_pull_to_refresh)))

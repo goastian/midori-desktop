@@ -72,6 +72,15 @@ nsHttpConnectionInfo::nsHttpConnectionInfo(
        true, aIsHttp3, aWebTransport);
 }
 
+// static
+uint64_t nsHttpConnectionInfo::GenerateNewWebTransportId() {
+  // Used for generating unique IDSs for dedicated connections, currently used
+  // by WebTransport
+  MOZ_ASSERT(XRE_IsParentProcess());
+  static Atomic<uint64_t> id(0);
+  return ++id;
+}
+
 void nsHttpConnectionInfo::Init(const nsACString& host, int32_t port,
                                 const nsACString& npnToken,
                                 const nsACString& username,
@@ -80,8 +89,6 @@ void nsHttpConnectionInfo::Init(const nsACString& host, int32_t port,
                                 bool e2eSSL, bool aIsHttp3,
                                 bool aWebTransport) {
   LOG(("Init nsHttpConnectionInfo @%p\n", this));
-
-  MOZ_RELEASE_ASSERT(!aWebTransport || aIsHttp3);
 
   mUsername = username;
   mProxyInfo = proxyInfo;
@@ -289,6 +296,7 @@ void nsHttpConnectionInfo::RebuildHashKey() {
   SetBeConservative(isBeConservative);
   SetAnonymousAllowClientCert(isAnonymousAllowClientCert);
   SetFallbackConnection(isFallback);
+  SetTlsFlags(mTlsFlags);
 }
 
 void nsHttpConnectionInfo::SetOriginServer(const nsACString& host,
@@ -581,6 +589,30 @@ bool nsHttpConnectionInfo::HostIsLocalIPLiteral() const {
     return false;
   }
   return netAddr.IsIPAddrLocal();
+}
+
+// static
+void nsHttpConnectionInfo::BuildOriginFrameHashKey(nsACString& newKey,
+                                                   nsHttpConnectionInfo* ci,
+                                                   const nsACString& host,
+                                                   int32_t port) {
+  newKey.Assign(host);
+  if (ci->GetAnonymous()) {
+    newKey.AppendLiteral("~A:");
+  } else {
+    newKey.AppendLiteral("~.:");
+  }
+  if (ci->GetFallbackConnection()) {
+    newKey.AppendLiteral("~F:");
+  } else {
+    newKey.AppendLiteral("~.:");
+  }
+  newKey.AppendInt(port);
+  newKey.AppendLiteral("/[");
+  nsAutoCString suffix;
+  ci->GetOriginAttributes().CreateSuffix(suffix);
+  newKey.Append(suffix);
+  newKey.AppendLiteral("]viaORIGIN.FRAME");
 }
 
 }  // namespace net

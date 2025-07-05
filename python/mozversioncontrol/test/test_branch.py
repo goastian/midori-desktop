@@ -3,8 +3,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import mozunit
-import pytest
-from looseversion import LooseVersion
 
 from mozversioncontrol import get_repository_object
 
@@ -27,13 +25,14 @@ STEPS = {
         git commit -a -m "second commit"
         """,
     ],
+    "jj": [],
 }
 
 
 def test_branch(repo):
     vcs = get_repository_object(repo.dir)
-    if vcs.name == "git" and LooseVersion(vcs.tool_version) < LooseVersion("2.22.0"):
-        pytest.xfail("`git branch --show-current` not implemented yet")
+    if vcs.name == "jj":
+        mozunit.pytest.skip("jj does not have an active branch")
 
     if vcs.name == "git":
         assert vcs.branch == "master"

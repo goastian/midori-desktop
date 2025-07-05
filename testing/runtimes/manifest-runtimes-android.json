@@ -186,7 +186,6 @@
     "security/manager/ssl/tests/mochitest/mixedcontent/mochitest.ini": 21.14,
     "security/manager/ssl/tests/mochitest/stricttransportsecurity/mochitest.ini": 1.37,
     "testing/mochitest/tests/Harness_sanity/mochitest.ini": 10.08,
-    "testing/mochitest/tests/MochiKit-1.4.2/tests/mochitest.ini": 4.26,
     "toolkit/components/contentprefs/tests/mochitest/mochitest.ini": 1.36,
     "toolkit/components/extensions/test/mochitest/mochitest-remote.ini": 51.48,
     "toolkit/components/extensions/test/mochitest/mochitest.ini": 54.26,
@@ -1574,5 +1573,10 @@
     "uriloader/exthandler/tests/unit/xpcshell.ini": 5.05,
     "widget/tests/unit/xpcshell.ini": 0.54,
     "xpcom/tests/unit/xpcshell.ini": 22.47
+  },
+  "marionette": {
+    "dom/cache/test/marionette/manifest.toml": 44.74,
+    "dom/indexedDB/test/marionette/manifest.toml": 1.83,
+    "dom/quota/test/marionette/manifest.toml": 36.12
   }
 }

@@ -2,6 +2,7 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 import os
+import re
 from pathlib import Path
 
 from packaging.requirements import Requirement
@@ -36,6 +37,9 @@ class MachEnvRequirements:
     specifies the action. The remaining fields are arguments to that
     action. The following actions are supported:
 
+    requires-python -- Specifies the minimum and/or maximum Python
+        versions supported by this site.
+
     pth -- Adds the path given as argument to "mach.pth" under
         the virtualenv's site packages directory.
 
@@ -54,16 +58,24 @@ class MachEnvRequirements:
     """
 
     def __init__(self):
+        self.requires_python = ""
         self.requirements_paths = []
         self.pth_requirements = []
         self.pypi_requirements = []
         self.pypi_optional_requirements = []
         self.vendored_requirements = []
+        self.vendored_fallback_requirements = []
 
     def pths_as_absolute(self, topsrcdir: str):
         return [
             os.path.normcase(Path(topsrcdir) / pth.path)
             for pth in (self.pth_requirements + self.vendored_requirements)
+        ]
+
+    def pths_fallback_as_absolute(self, topsrcdir: str):
+        return [
+            os.path.normcase(Path(topsrcdir) / pth.path)
+            for pth in self.vendored_fallback_requirements
         ]
 
     @classmethod
@@ -100,7 +112,18 @@ def _parse_mach_env_requirements(
             return
 
         action, params = line.rstrip().split(":", maxsplit=1)
-        if action == "pth":
+        if action == "requires-python":
+            if requirements_output.requires_python == "":
+                requirements_output.requires_python = params
+            else:
+                raise Exception(
+                    f"'requires-python' is already set to "
+                    f"'{requirements_output.requires_python}'. "
+                    f"Attempted to set it again to '{params}'. "
+                    f"Please ensure the file '{root_requirements_path}' "
+                    f"contains only one 'requires-python' entry."
+                )
+        elif action == "pth":
             path = topsrcdir / params
             if not path.exists():
                 # In sparse checkouts, not all paths will be populated.
@@ -109,6 +132,32 @@ def _parse_mach_env_requirements(
             requirements_output.pth_requirements.append(PthSpecifier(params))
         elif action == "vendored":
             requirements_output.vendored_requirements.append(PthSpecifier(params))
+        elif action == "vendored-fallback":
+            if is_thunderbird_packages_txt:
+                raise Exception(THUNDERBIRD_PYPI_ERROR)
+
+            pypi_pkg, vendored_path, repercussion = params.split(":")
+            requirements = topsrcdir / "third_party" / "python" / "requirements.txt"
+            with open(requirements) as req:
+                content = req.read()
+                pattern = re.compile(rf"^({pypi_pkg}==.*) \\$", re.MULTILINE)
+                version_matches = pattern.findall(content, re.MULTILINE)
+                if len(version_matches) != 1:
+                    raise Exception(
+                        f"vendored-fallback package {pypi_pkg} is not referenced in {requirements}"
+                    )
+                (raw_requirement,) = version_matches
+
+            requirements_output.pypi_optional_requirements.append(
+                PypiOptionalSpecifier(
+                    repercussion,
+                    _parse_package_specifier(raw_requirement, only_strict_requirements),
+                )
+            )
+
+            requirements_output.vendored_fallback_requirements.append(
+                PthSpecifier(vendored_path)
+            )
         elif action == "packages.txt":
             _parse_requirements_definition_file(
                 topsrcdir / params,
@@ -131,7 +180,7 @@ def _parse_mach_env_requirements(
                 raise Exception(
                     "Expected pypi-optional package to have a repercussion "
                     'description in the format "package:fallback explanation", '
-                    'found "{}"'.format(params)
+                    f'found "{params}"'
                 )
             raw_requirement, repercussion = params.split(":")
             requirements_output.pypi_optional_requirements.append(
@@ -157,8 +206,16 @@ def _parse_mach_env_requirements(
 
         requirements_output.requirements_paths.append(str(requirements_path))
 
-        with open(requirements_path, "r") as requirements_file:
+        with open(requirements_path) as requirements_file:
             lines = [line for line in requirements_file]
+
+        first_line = lines[0].strip()
+        if not first_line.startswith("requires-python:"):
+            raise ValueError(
+                f"{requirements_path}:1: Please ensure the first line specifies a Python requirement in the form "
+                f"'requires-python:<specifier>' (for example: 'requires-python:>=3.8').\n"
+                f"See https://packaging.python.org/en/latest/specifications/version-specifiers/#id5 for details."
+            )
 
         for number, line in enumerate(lines, start=1):
             _parse_requirements_line(

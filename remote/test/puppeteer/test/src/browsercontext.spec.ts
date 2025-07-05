@@ -20,19 +20,22 @@ describe('BrowserContext', function () {
     });
 
     expect(browser.browserContexts().length).toBeGreaterThanOrEqual(1);
-    const defaultContext = browser.browserContexts().find(context => {
-      return !context.isIncognito();
+  });
+  it('should not be able to close default context', async () => {
+    const {browser} = await getTestState({
+      skipContextCreation: true,
     });
+
+    const defaultContext = browser.defaultBrowserContext();
     expect(defaultContext).toBeDefined();
 
-    let error!: Error;
-    await defaultContext!.close().catch(error_ => {
-      return (error = error_);
+    const error = await defaultContext!.close().catch(error => {
+      return error;
     });
-    expect(browser.defaultBrowserContext()).toBe(defaultContext);
+    expect(error).toBeInstanceOf(Error);
     expect(error.message).toContain('cannot be closed');
   });
-  it('should create new incognito context', async () => {
+  it('should create new context', async () => {
     const {browser} = await getTestState({
       skipContextCreation: true,
     });
@@ -40,7 +43,6 @@ describe('BrowserContext', function () {
     const contextCount = browser.browserContexts().length;
     expect(contextCount).toBeGreaterThanOrEqual(1);
     const context = await browser.createBrowserContext();
-    expect(context.isIncognito()).toBe(true);
     expect(browser.browserContexts()).toHaveLength(contextCount + 1);
     expect(browser.browserContexts().indexOf(context) !== -1).toBe(true);
     await context.close();
@@ -141,7 +143,7 @@ describe('BrowserContext', function () {
         },
         {
           timeout: 1,
-        }
+        },
       )
       .catch(error_ => {
         return error_;
@@ -190,22 +192,22 @@ describe('BrowserContext', function () {
     expect(
       await page1.evaluate(() => {
         return localStorage.getItem('name');
-      })
+      }),
     ).toBe('page1');
     expect(
       await page1.evaluate(() => {
         return document.cookie;
-      })
+      }),
     ).toBe('name=page1');
     expect(
       await page2.evaluate(() => {
         return localStorage.getItem('name');
-      })
+      }),
     ).toBe('page2');
     expect(
       await page2.evaluate(() => {
         return document.cookie;
-      })
+      }),
     ).toBe('name=page2');
 
     // Cleanup contexts.
@@ -317,25 +319,25 @@ describe('BrowserContext', function () {
       expect(
         await page.evaluate(() => {
           return (globalThis as any).events;
-        })
+        }),
       ).toEqual(['prompt']);
       await context.overridePermissions(server.EMPTY_PAGE, []);
       expect(
         await page.evaluate(() => {
           return (globalThis as any).events;
-        })
+        }),
       ).toEqual(['prompt', 'denied']);
       await context.overridePermissions(server.EMPTY_PAGE, ['geolocation']);
       expect(
         await page.evaluate(() => {
           return (globalThis as any).events;
-        })
+        }),
       ).toEqual(['prompt', 'denied', 'granted']);
       await context.clearPermissionOverrides();
       expect(
         await page.evaluate(() => {
           return (globalThis as any).events;
-        })
+        }),
       ).toEqual(['prompt', 'denied', 'granted', 'prompt']);
     });
     it('should isolate permissions between browser contexts', async () => {
@@ -366,7 +368,7 @@ describe('BrowserContext', function () {
 
       await page.goto(server.EMPTY_PAGE);
       expect(await getPermission(page, 'persistent-storage')).not.toBe(
-        'granted'
+        'granted',
       );
       await context.overridePermissions(server.EMPTY_PAGE, [
         'persistent-storage',

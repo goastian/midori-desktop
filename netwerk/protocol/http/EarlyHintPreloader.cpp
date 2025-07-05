@@ -16,14 +16,13 @@
 #include "mozilla/dom/nsCSPContext.h"
 #include "mozilla/dom/nsMixedContentBlocker.h"
 #include "mozilla/dom/ReferrerInfo.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/NetwerkProtocolHttpMetrics.h"
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/LoadInfo.h"
 #include "mozilla/Logging.h"
 #include "mozilla/net/EarlyHintRegistrar.h"
 #include "mozilla/net/NeckoChannelParams.h"
 #include "mozilla/StaticPrefs_network.h"
-#include "mozilla/Telemetry.h"
 #include "nsAttrValue.h"
 #include "nsCOMPtr.h"
 #include "nsContentPolicyUtils.h"
@@ -124,7 +123,6 @@ EarlyHintPreloader::~EarlyHintPreloader() {
     mTimer->Cancel();
     mTimer = nullptr;
   }
-  Telemetry::Accumulate(Telemetry::EH_STATE_OF_PRELOAD_REQUEST, mState);
 }
 
 /* static */
@@ -207,7 +205,6 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
   ParseAsValue(aLinkHeader.mAs, as);
 
   ASDestination destination = static_cast<ASDestination>(as.GetEnumValue());
-  CollectResourcesTypeTelemetry(destination);
 
   if (!StaticPrefs::network_early_hints_enabled()) {
     return;
@@ -317,13 +314,16 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
   // processing we have not yet created a document where we would normally store
   // the CSP.
 
-  // First we will create a load info,
-  // nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK
-  nsCOMPtr<nsILoadInfo> secCheckLoadInfo = new LoadInfo(
+  // First we will create a load info.
+  Result<nsCOMPtr<nsILoadInfo>, nsresult> maybeLoadInfo = LoadInfo::Create(
       aPrincipal,  // loading principal
       aPrincipal,  // triggering principal
       nullptr /* aLoadingContext node */,
       nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK, contentPolicyType);
+  if (NS_WARN_IF(maybeLoadInfo.isErr())) {
+    return;
+  }
+  nsCOMPtr<nsILoadInfo> secCheckLoadInfo = maybeLoadInfo.unwrap();
 
   if (aCSPHeader.Length() != 0) {
     // If the CSP header is present then create a new CSP and apply the header
@@ -354,8 +354,9 @@ void EarlyHintPreloader::MaybeCreateAndInsertPreload(
     mozilla::ipc::PrincipalInfo principalInfo;
     rv = PrincipalToPrincipalInfo(aPrincipal, &principalInfo);
     NS_ENSURE_SUCCESS_VOID(rv);
-    dom::ClientInfo clientInfo(nsID::GenerateUUID(), dom::ClientType::Window,
-                               principalInfo, TimeStamp::Now());
+    dom::ClientInfo clientInfo(nsID::GenerateUUID(), Nothing(),
+                               dom::ClientType::Window, principalInfo,
+                               TimeStamp::Now(), ""_ns, dom::FrameType::None);
 
     // Our newly-created CSP is set on the ClientInfo via the indirect route of
     // first serializing to CSPInfo
@@ -428,6 +429,11 @@ nsresult EarlyHintPreloader::OpenChannel(
   mParentListener = new ParentChannelListener(this, nullptr);
 
   PriorizeAsPreload();
+
+  if (nsCOMPtr<nsIRaceCacheWithNetwork> rcwn = do_QueryInterface(httpChannel)) {
+    // Since this is an early hint, we should consult the cache first.
+    rcwn->SetAllowRacing(false);
+  }
 
   rv = mChannel->AsyncOpen(mParentListener);
   if (NS_FAILED(rv)) {
@@ -793,6 +799,9 @@ EarlyHintPreloader::Notify(nsITimer* timer) {
       mChannel->Resume();
     }
     mChannel->CancelWithReason(NS_ERROR_ABORT, "parent-connect-timeout"_ns);
+#ifndef ANDROID
+    glean::netwerk::parent_connect_timeout.Add(1);
+#endif
     mChannel = nullptr;
   }
   SetState(ePreloaderTimeout);
@@ -825,22 +834,5 @@ EarlyHintPreloader::GetInterface(const nsIID& aIID, void** aResult) {
   }
 
   return NS_ERROR_NO_INTERFACE;
-}
-
-void EarlyHintPreloader::CollectResourcesTypeTelemetry(
-    ASDestination aASDestination) {
-  if (aASDestination == ASDestination::DESTINATION_FONT) {
-    glean::netwerk::early_hints.Get("font"_ns).Add(1);
-  } else if (aASDestination == ASDestination::DESTINATION_SCRIPT) {
-    glean::netwerk::early_hints.Get("script"_ns).Add(1);
-  } else if (aASDestination == ASDestination::DESTINATION_STYLE) {
-    glean::netwerk::early_hints.Get("stylesheet"_ns).Add(1);
-  } else if (aASDestination == ASDestination::DESTINATION_IMAGE) {
-    glean::netwerk::early_hints.Get("image"_ns).Add(1);
-  } else if (aASDestination == ASDestination::DESTINATION_FETCH) {
-    glean::netwerk::early_hints.Get("fetch"_ns).Add(1);
-  } else {
-    glean::netwerk::early_hints.Get("other"_ns).Add(1);
-  }
 }
 }  // namespace mozilla::net

@@ -6,6 +6,7 @@ package org.mozilla.fenix.compose
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,17 +26,50 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import mozilla.components.compose.base.button.PrimaryButton
+import mozilla.components.service.nimbus.messaging.Message
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
-import org.mozilla.fenix.compose.button.PrimaryButton
+import org.mozilla.fenix.home.fake.FakeHomepagePreview
 import org.mozilla.fenix.theme.FirefoxTheme
+import org.mozilla.fenix.wallpapers.Wallpaper
+import org.mozilla.fenix.wallpapers.WallpaperState
+
+/**
+ * State-based Message Card.
+ *
+ * @param messageCardState State representing the card.
+ * @param modifier Modifier to be applied to the card.
+ * @param onClick Invoked when user clicks on the message card.
+ * @param onCloseButtonClick Invoked when user clicks on close button to remove message.
+ */
+@Composable
+fun MessageCard(
+    messageCardState: MessageCardState,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {},
+    onCloseButtonClick: () -> Unit = {},
+) {
+    with(messageCardState) {
+        MessageCard(
+            messageText = messageText,
+            modifier = modifier,
+            titleText = titleText,
+            buttonText = buttonText,
+            messageColors = messageColors,
+            onClick = onClick,
+            onCloseButtonClick = onCloseButtonClick,
+        )
+    }
+}
 
 /**
  * Message Card.
  *
  * @param messageText The message card's body text to be displayed.
+ * @param modifier Modifier to be applied to the card.
  * @param titleText An optional title of message card. If the provided title text is blank or null,
  * the title will not be shown.
  * @param buttonText An optional button text of the message card. If the provided button text is blank or null,
@@ -48,6 +82,7 @@ import org.mozilla.fenix.theme.FirefoxTheme
 @Composable
 fun MessageCard(
     messageText: String,
+    modifier: Modifier = Modifier,
     titleText: String? = null,
     buttonText: String? = null,
     messageColors: MessageCardColors = MessageCardColors.buildMessageCardColors(),
@@ -55,7 +90,7 @@ fun MessageCard(
     onCloseButtonClick: () -> Unit,
 ) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .padding(vertical = 16.dp)
             .then(
                 if (buttonText.isNullOrBlank()) {
@@ -120,6 +155,7 @@ fun MessageCard(
 
                 PrimaryButton(
                     text = buttonText,
+                    modifier = Modifier.fillMaxWidth(),
                     textColor = messageColors.buttonTextColor,
                     backgroundColor = messageColors.buttonColor,
                     onClick = onClick,
@@ -185,8 +221,8 @@ data class MessageCardColors(
             iconColor: Color = FirefoxTheme.colors.iconPrimary,
             buttonColor: Color = FirefoxTheme.colors.actionPrimary,
             buttonTextColor: Color = FirefoxTheme.colors.textActionPrimary,
-        ): MessageCardColors =
-            MessageCardColors(
+        ): MessageCardColors {
+            return MessageCardColors(
                 backgroundColor = backgroundColor,
                 titleTextColor = titleTextColor,
                 messageTextColor = messageTextColor,
@@ -194,11 +230,12 @@ data class MessageCardColors(
                 buttonColor = buttonColor,
                 buttonTextColor = buttonTextColor,
             )
+        }
     }
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun MessageCardPreview() {
     FirefoxTheme {
         Box(
@@ -207,8 +244,7 @@ private fun MessageCardPreview() {
                 .padding(all = 16.dp),
         ) {
             MessageCard(
-                messageText = stringResource(id = R.string.default_browser_experiment_card_text),
-                titleText = stringResource(id = R.string.default_browser_experiment_card_title),
+                messageCardState = FakeHomepagePreview.messageCardState(),
                 onClick = {},
                 onCloseButtonClick = {},
             )
@@ -217,7 +253,7 @@ private fun MessageCardPreview() {
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun MessageCardWithoutTitlePreview() {
     FirefoxTheme {
         Box(
@@ -235,7 +271,7 @@ private fun MessageCardWithoutTitlePreview() {
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun MessageCardWithButtonLabelPreview() {
     FirefoxTheme {
         Box(
@@ -249,6 +285,65 @@ private fun MessageCardWithButtonLabelPreview() {
                 buttonText = stringResource(id = R.string.preferences_set_as_default_browser),
                 onClick = {},
                 onCloseButtonClick = {},
+            )
+        }
+    }
+}
+
+/**
+ * State object that describes a message card.
+ *
+ * @property messageText The message card's body text to be displayed.
+ * @property titleText An optional title of message card. If the provided title text is blank or null,
+ * the title will not be shown.
+ * @property buttonText An optional button text of the message card. If the provided button text is blank or null,
+ * the button won't be shown.
+ * @property messageColors The color set defined by [MessageCardColors] used to style the message card.
+ */
+data class MessageCardState(
+    val messageText: String,
+    val titleText: String? = null,
+    val buttonText: String? = null,
+    val messageColors: MessageCardColors,
+) {
+
+    /**
+     * Companion object for building [MessageCardState].
+     */
+    companion object {
+
+        /**
+         * Builds a new [MessageCardState] from a [Message] and the current [WallpaperState].
+         *
+         * @param message [Message] to be displayed.
+         * @param wallpaperState [WallpaperState] specifying the colors to be used.
+         */
+        @Composable
+        fun build(message: Message, wallpaperState: WallpaperState): MessageCardState {
+            val isWallpaperNotDefault =
+                !Wallpaper.nameIsDefault(wallpaperState.currentWallpaper.name)
+
+            var (_, _, _, _, buttonColor, buttonTextColor) = MessageCardColors.buildMessageCardColors()
+
+            if (isWallpaperNotDefault) {
+                buttonColor = FirefoxTheme.colors.layer1
+
+                if (!isSystemInDarkTheme()) {
+                    buttonTextColor = FirefoxTheme.colors.textActionSecondary
+                }
+            }
+
+            val messageCardColors = MessageCardColors.buildMessageCardColors(
+                backgroundColor = wallpaperState.cardBackgroundColor,
+                buttonColor = buttonColor,
+                buttonTextColor = buttonTextColor,
+            )
+
+            return MessageCardState(
+                messageText = message.text,
+                titleText = message.title,
+                buttonText = message.buttonLabel,
+                messageColors = messageCardColors,
             )
         }
     }

@@ -9,13 +9,21 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   CLIENT_NOT_CONFIGURED: "resource://services-sync/constants.sys.mjs",
   Weave: "resource://services-sync/main.sys.mjs",
+  getRemoteCommandStore: "resource://services-sync/TabsStore.sys.mjs",
+  RemoteCommand: "resource://services-sync/TabsStore.sys.mjs",
+  FxAccounts: "resource://gre/modules/FxAccounts.sys.mjs",
 });
 
 // The Sync XPCOM service
 ChromeUtils.defineLazyGetter(lazy, "weaveXPCService", function () {
-  return Cc["@mozilla.org/weave/service;1"].getService(
-    Ci.nsISupports
-  ).wrappedJSObject;
+  return Cc["@mozilla.org/weave/service;1"].getService(Ci.nsISupports)
+    .wrappedJSObject;
+});
+
+ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
+  return ChromeUtils.importESModule(
+    "resource://gre/modules/FxAccounts.sys.mjs"
+  ).getFxAccountsSingleton();
 });
 
 // from MDN...
@@ -28,6 +36,9 @@ function escapeRegExp(string) {
 // of a regularly scheduled sync. The intent is that consumers just listen
 // for this notification and update their UI in response.
 const TOPIC_TABS_CHANGED = "services.sync.tabs.changed";
+
+// A topic we fire whenever we have queued a new remote tabs command.
+const TOPIC_TABS_COMMAND_QUEUED = "services.sync.tabs.command-queued";
 
 // The interval, in seconds, before which we consider the existing list
 // of tabs "fresh enough" and don't force a new sync.
@@ -99,6 +110,12 @@ let SyncedTabsInternal = {
     return reFilter.test(tab.url) || reFilter.test(tab.title);
   },
 
+  // A wrapper for grabbing the fxaDeviceId, to make it easier for stubbing
+  // for tests
+  _getClientFxaDeviceId(clientId) {
+    return lazy.Weave.Service.clientsEngine.getClientFxaDeviceId(clientId);
+  },
+
   _createRecentTabsList(
     clients,
     maxCount,
@@ -110,9 +127,21 @@ let SyncedTabsInternal = {
       if (extraParams.removeDeviceDupes) {
         client.tabs = this._filterRecentTabsDupes(client.tabs);
       }
+
+      // We have the client obj but we need the FxA device obj so we use the clients
+      // engine to get us the FxA device
+      let device =
+        lazy.fxAccounts.device.recentDeviceList &&
+        lazy.fxAccounts.device.recentDeviceList.find(
+          d => d.id === this._getClientFxaDeviceId(client.id)
+        );
+
       for (let tab of client.tabs) {
         tab.device = client.name;
         tab.deviceType = client.clientType;
+        // Surface broadcasted commmands for things like close remote tab
+        tab.fxaDeviceId = device.id;
+        tab.availableCommands = device.availableCommands;
       }
       tabs = [...tabs, ...client.tabs.reverse()];
     }
@@ -123,14 +152,17 @@ let SyncedTabsInternal = {
     return tabs;
   },
 
+  // Filter out any tabs with duplicate URLs preserving
+  // the duplicate with the most recent lastUsed value
   _filterRecentTabsDupes(tabs) {
-    // Filter out any tabs with duplicate URLs preserving
-    // the duplicate with the most recent lastUsed value
-    return tabs.filter(tab => {
-      return !tabs.some(t => {
-        return t.url === tab.url && tab.lastUsed < t.lastUsed;
-      });
-    });
+    const tabMap = new Map();
+    for (const tab of tabs) {
+      const existingTab = tabMap.get(tab.url);
+      if (!existingTab || tab.lastUsed > existingTab.lastUsed) {
+        tabMap.set(tab.url, tab);
+      }
+    }
+    return Array.from(tabMap.values());
   },
 
   async getTabClients(filter) {
@@ -193,6 +225,10 @@ let SyncedTabsInternal = {
         }
         clientRepr.tabs.push(tabRepr);
       }
+
+      // Filter out duplicate tabs based on URL
+      clientRepr.tabs = this._filterRecentTabsDupes(clientRepr.tabs);
+
       // We return all clients, even those without tabs - the consumer should
       // filter it if they care.
       ntabs += clientRepr.tabs.length;
@@ -365,14 +401,18 @@ export var SyncedTabs = {
   },
 
   recordSyncedTabsTelemetry(object, tabEvent, extraOptions) {
-    Services.telemetry.setEventRecordingEnabled("synced_tabs", true);
-    Services.telemetry.recordEvent(
-      "synced_tabs",
-      tabEvent,
-      object,
-      null,
-      extraOptions
-    );
+    if (
+      !["fxa_avatar_menu", "fxa_app_menu", "synced_tabs_sidebar"].includes(
+        object
+      )
+    ) {
+      return;
+    }
+    object = object
+      .split("_")
+      .map(word => word[0].toUpperCase() + word.slice(1))
+      .join("");
+    Glean.syncedTabs[tabEvent + object].record(extraOptions);
   },
 
   // Get list of synced tabs across all devices/clients
@@ -381,5 +421,41 @@ export var SyncedTabs = {
   async getRecentTabs(maxCount, extraParams) {
     let clients = await this.getTabClients();
     return this._internal._createRecentTabsList(clients, maxCount, extraParams);
+  },
+};
+
+// Remote tab management public interface.
+export var SyncedTabsManagement = {
+  // A mock-point for tests.
+  async _getStore() {
+    return await lazy.getRemoteCommandStore();
+  },
+
+  /// Enqueue a tab to close on a remote device.
+  async enqueueTabToClose(deviceId, url) {
+    let store = await this._getStore();
+    let command = new lazy.RemoteCommand.CloseTab(url);
+    if (!store.addRemoteCommand(deviceId, command)) {
+      lazy.log.warn(
+        "Could not queue a remote tab close - it was already queued"
+      );
+    } else {
+      lazy.log.info("Queued remote tab close command.");
+    }
+    // fxAccounts commands infrastructure is lazily initialized, at which point
+    // it registers observers etc - make sure it's initialized;
+    lazy.FxAccounts.commands;
+    Services.obs.notifyObservers(null, TOPIC_TABS_COMMAND_QUEUED);
+  },
+
+  /// Remove a tab from the queue of commands for a remote device.
+  async removePendingTabToClose(deviceId, url) {
+    let store = await this._getStore();
+    let command = new lazy.RemoteCommand.CloseTab(url);
+    if (!store.removeRemoteCommand(deviceId, command)) {
+      lazy.log.warn("Could not remove a remote tab close - it was not queued");
+    } else {
+      lazy.log.info("Removed queued remote tab close command.");
+    }
   },
 };

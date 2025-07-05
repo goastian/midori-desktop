@@ -3,16 +3,27 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 package org.mozilla.fenix.helpers
 
+import android.Manifest
+import android.os.Build
 import android.util.Log
+import androidx.test.rule.GrantPermissionRule
 import kotlinx.coroutines.runBlocking
 import mozilla.components.browser.state.store.BrowserStore
 import okhttp3.mockwebserver.MockWebServer
 import org.junit.After
 import org.junit.Before
+import org.junit.Rule
+import org.mozilla.fenix.BuildConfig
 import org.mozilla.fenix.ext.components
+import org.mozilla.fenix.helpers.AppAndSystemHelper.allowOrPreventSystemUIFromReadingTheClipboard
+import org.mozilla.fenix.helpers.AppAndSystemHelper.enableDataSaverSystemSetting
+import org.mozilla.fenix.helpers.AppAndSystemHelper.enableOrDisableBackGestureNavigationOnDevice
+import org.mozilla.fenix.helpers.AppAndSystemHelper.runWithCondition
 import org.mozilla.fenix.helpers.Constants.TAG
+import org.mozilla.fenix.helpers.NetworkConnectionStatusHelper.getNetworkDetails
+import org.mozilla.fenix.helpers.TestHelper.mDevice
+import org.mozilla.fenix.helpers.TestHelper.setPortraitDisplayOrientation
 import org.mozilla.fenix.ui.robots.notificationShade
-import java.util.Locale
 
 /**
  * Standard Test setup and tear down methods to run before each test.
@@ -23,26 +34,51 @@ open class TestSetup {
     lateinit var mockWebServer: MockWebServer
     lateinit var browserStore: BrowserStore
 
+    @get:Rule
+    val generalPermissionRule: GrantPermissionRule =
+        if (Build.VERSION.SDK_INT >= 33) {
+            GrantPermissionRule.grant(
+                Manifest.permission.POST_NOTIFICATIONS,
+            )
+        } else {
+            GrantPermissionRule.grant()
+        }
+
     @Before
     open fun setUp() {
         Log.i(TAG, "TestSetup: Starting the @Before setup")
+
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            allowOrPreventSystemUIFromReadingTheClipboard(allowToReadClipboard = false)
+        }
+
+        // Enable the back gesture from the edge of the screen on the device.
+        enableOrDisableBackGestureNavigationOnDevice(backGestureNavigationEnabled = true)
+
+        setPortraitDisplayOrientation()
+
         runBlocking {
-            // Reset locale to EN-US if needed.
-            // Because of https://bugzilla.mozilla.org/show_bug.cgi?id=1812183, some items might not be updated.
-            if (Locale.getDefault() != Locale.US) {
-                AppAndSystemHelper.setSystemLocale(Locale.US)
-            }
             // Check and clear the downloads folder, in case the tearDown method is not executed.
             // This will only work in case of a RetryTestRule execution.
             AppAndSystemHelper.clearDownloadsFolder()
             // Make sure the Wifi and Mobile Data connections are on.
-            AppAndSystemHelper.setNetworkEnabled(true)
+
+            // Disabled due to network connections problems encountered recently
+            // See https://bugzilla.mozilla.org/show_bug.cgi?id=1964989 for the disabled UI tests
+            // AppAndSystemHelper.setNetworkEnabled(true)
+
+            // Make sure that the data saver system setting is disabled.
+            enableDataSaverSystemSetting(enabled = false)
             // Clear bookmarks left after a failed test, before a retry.
             AppAndSystemHelper.deleteBookmarksStorage()
             // Clear history left after a failed test, before a retry.
             AppAndSystemHelper.deleteHistoryStorage()
             // Clear permissions left after a failed test, before a retry.
             AppAndSystemHelper.deletePermissionsStorage()
+            // Get the network connection details, before a retry.
+            runWithCondition(BuildConfig.DEBUG) {
+                getNetworkDetails()
+            }
         }
 
         // Initializing this as part of class construction, below the rule would throw a NPE.
@@ -53,6 +89,9 @@ open class TestSetup {
         // Clear pre-existing notifications.
         notificationShade {
             cancelAllShownNotifications()
+            // Closes the notification tray if it's open, otherwise it's a no-op.
+            Log.i(TAG, "TestSetup: Trying to close the notification tray, in case it's open.")
+            mDevice.executeShellCommand("cmd statusbar collapse")
         }
 
         mockWebServer = MockWebServer().apply {
@@ -72,14 +111,12 @@ open class TestSetup {
     open fun tearDown() {
         Log.i(TAG, "TestSetup: Starting the @After tearDown methods.")
         runBlocking {
-            // Reset locale to EN-US if needed.
-            // This method is only here temporarily, to set the language before a new activity is started.
-            // TODO: When https://bugzilla.mozilla.org/show_bug.cgi?id=1812183 is fixed, it should be removed.
-            if (Locale.getDefault() != Locale.US) {
-                AppAndSystemHelper.setSystemLocale(Locale.US)
-            }
             // Clear the downloads folder after each test even if the test fails.
             AppAndSystemHelper.clearDownloadsFolder()
+        }
+        // Get the network connection details
+        runWithCondition(BuildConfig.DEBUG) {
+            getNetworkDetails()
         }
     }
 }

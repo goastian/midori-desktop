@@ -7,12 +7,13 @@ if the entry does not already exist.
 
 Usage: buildlist.py <filename> <entry> [<entry> ...]
 """
-import io
-import os
+
+import os.path
 import sys
 
+from filelock import SoftFileLock
+
 from mozbuild.dirutils import ensureParentDir
-from mozbuild.lock import lock_file
 
 
 def addEntriesToListFile(listFile, entries):
@@ -20,21 +21,15 @@ def addEntriesToListFile(listFile, entries):
     add each entry in ``entries`` to the file, unless it is already
     present."""
     ensureParentDir(listFile)
-    lock = lock_file(listFile + ".lck")
-    try:
+    with SoftFileLock(listFile + ".lck", timeout=-1):
         if os.path.exists(listFile):
-            f = io.open(listFile)
-            existing = set(x.strip() for x in f.readlines())
-            f.close()
+            with open(listFile) as f:
+                existing = {x.strip() for x in f.readlines()}
         else:
             existing = set()
-        for e in entries:
-            if e not in existing:
-                existing.add(e)
-        with io.open(listFile, "w", newline="\n") as f:
+        existing.update(entries)
+        with open(listFile, "w", newline="\n") as f:
             f.write("\n".join(sorted(existing)) + "\n")
-    finally:
-        del lock  # Explicitly release the lock_file to free it
 
 
 def main(args):

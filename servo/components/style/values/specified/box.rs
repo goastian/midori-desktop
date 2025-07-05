@@ -13,6 +13,7 @@ use crate::values::generics::box_::{
 use crate::values::specified::length::{LengthPercentage, NonNegativeLength};
 use crate::values::specified::{AllowQuirks, Integer, NonNegativeNumberOrPercentage};
 use crate::values::CustomIdent;
+pub use crate::logical_geometry::WritingModeProperty;
 use cssparser::Parser;
 use num_traits::FromPrimitive;
 use std::fmt::{self, Write};
@@ -20,16 +21,13 @@ use style_traits::{CssWriter, KeywordsCollectFn, ParseError};
 use style_traits::{SpecifiedValueInfo, StyleParseErrorKind, ToCss};
 
 #[cfg(not(feature = "servo"))]
-fn flexbox_enabled() -> bool {
+fn grid_enabled() -> bool {
     true
 }
 
 #[cfg(feature = "servo")]
-fn flexbox_enabled() -> bool {
-    servo_config::prefs::pref_map()
-        .get("layout.flexbox.enabled")
-        .as_bool()
-        .unwrap_or(false)
+fn grid_enabled() -> bool {
+    style_config::get_bool("layout.grid.enabled")
 }
 
 /// Defines an element’s display type, which consists of
@@ -57,7 +55,6 @@ pub enum DisplayInside {
     Flow,
     FlowRoot,
     Flex,
-    #[cfg(feature = "gecko")]
     Grid,
     Table,
     TableRowGroup,
@@ -152,10 +149,8 @@ impl Display {
         Self(((DisplayOutside::Block as u16) << Self::OUTSIDE_SHIFT) | DisplayInside::Flex as u16);
     pub const InlineFlex: Self =
         Self(((DisplayOutside::Inline as u16) << Self::OUTSIDE_SHIFT) | DisplayInside::Flex as u16);
-    #[cfg(feature = "gecko")]
     pub const Grid: Self =
         Self(((DisplayOutside::Block as u16) << Self::OUTSIDE_SHIFT) | DisplayInside::Grid as u16);
-    #[cfg(feature = "gecko")]
     pub const InlineGrid: Self =
         Self(((DisplayOutside::Inline as u16) << Self::OUTSIDE_SHIFT) | DisplayInside::Grid as u16);
     pub const Table: Self =
@@ -308,17 +303,6 @@ impl Display {
         Display::Inline
     }
 
-    /// <https://drafts.csswg.org/css2/visuren.html#x13>
-    #[cfg(feature = "servo")]
-    #[inline]
-    pub fn is_atomic_inline_level(&self) -> bool {
-        match *self {
-            Display::InlineBlock | Display::InlineFlex => true,
-            Display::InlineTable => true,
-            _ => false,
-        }
-    }
-
     /// Returns whether this `display` value is the display of a flex or
     /// grid container.
     ///
@@ -326,7 +310,6 @@ impl Display {
     pub fn is_item_container(&self) -> bool {
         match self.inside() {
             DisplayInside::Flex => true,
-            #[cfg(feature = "gecko")]
             DisplayInside::Grid => true,
             _ => false,
         }
@@ -421,10 +404,9 @@ impl DisplayKeyword {
             "contents" => Full(Display::Contents),
             "inline-block" => Full(Display::InlineBlock),
             "inline-table" => Full(Display::InlineTable),
-            "-webkit-flex" if flexbox_enabled() => Full(Display::Flex),
-            "inline-flex" | "-webkit-inline-flex" if flexbox_enabled() => Full(Display::InlineFlex),
-            #[cfg(feature = "gecko")]
-            "inline-grid" => Full(Display::InlineGrid),
+            "-webkit-flex" => Full(Display::Flex),
+            "inline-flex" | "-webkit-inline-flex" => Full(Display::InlineFlex),
+            "inline-grid" if grid_enabled() => Full(Display::InlineGrid),
             "table-caption" => Full(Display::TableCaption),
             "table-row-group" => Full(Display::TableRowGroup),
             "table-header-group" => Full(Display::TableHeaderGroup),
@@ -456,11 +438,10 @@ impl DisplayKeyword {
             /// <display-inside> = flow | flow-root | table | flex | grid | ruby
             /// https://drafts.csswg.org/css-display/#typedef-display-inside
             "flow" => Inside(DisplayInside::Flow),
-            "flex" if flexbox_enabled() => Inside(DisplayInside::Flex),
+            "flex" => Inside(DisplayInside::Flex),
             "flow-root" => Inside(DisplayInside::FlowRoot),
             "table" => Inside(DisplayInside::Table),
-            #[cfg(feature = "gecko")]
-            "grid" => Inside(DisplayInside::Grid),
+            "grid" if grid_enabled() => Inside(DisplayInside::Grid),
             #[cfg(feature = "gecko")]
             "ruby" => Inside(DisplayInside::Ruby),
         })
@@ -481,7 +462,6 @@ impl ToCss for Display {
             Display::WebkitInlineBox => dest.write_str("-webkit-inline-box"),
             Display::TableCaption => dest.write_str("table-caption"),
             _ => match (outside, inside) {
-                #[cfg(feature = "gecko")]
                 (DisplayOutside::Inline, DisplayInside::Grid) => dest.write_str("inline-grid"),
                 (DisplayOutside::Inline, DisplayInside::Flex) => dest.write_str("inline-flex"),
                 (DisplayOutside::Inline, DisplayInside::Table) => dest.write_str("inline-table"),
@@ -970,7 +950,7 @@ pub struct WillChange {
     /// A bitfield with the kind of change that the value will create, based
     /// on the above field.
     #[css(skip)]
-    bits: WillChangeBits,
+    pub bits: WillChangeBits,
 }
 
 impl WillChange {
@@ -1019,6 +999,8 @@ bitflags! {
         const FIXPOS_CB_NON_SVG = 1 << 7;
         /// Whether the position property will change.
         const POSITION = 1 << 8;
+        /// Whether the view-transition-name property will change.
+        const VIEW_TRANSITION_NAME = 1 << 9;
     }
 }
 
@@ -1040,6 +1022,7 @@ fn change_bits_for_longhand(longhand: LonghandId) -> WillChangeBits {
         LonghandId::BackdropFilter | LonghandId::Filter => {
             WillChangeBits::STACKING_CONTEXT_UNCONDITIONAL | WillChangeBits::FIXPOS_CB_NON_SVG
         },
+        LonghandId::ViewTransitionName => WillChangeBits::VIEW_TRANSITION_NAME,
         LonghandId::MixBlendMode |
         LonghandId::Isolation |
         LonghandId::MaskImage |
@@ -1240,10 +1223,12 @@ impl Parse for LineClamp {
     Copy,
     Debug,
     Eq,
+    FromPrimitive,
     MallocSizeOf,
     Parse,
     PartialEq,
     SpecifiedValueInfo,
+    ToAnimatedValue,
     ToComputedValue,
     ToCss,
     ToResolvedValue,
@@ -1374,12 +1359,26 @@ impl Parse for ContainerName {
 /// A specified value for the `perspective` property.
 pub type Perspective = GenericPerspective<NonNegativeLength>;
 
+/// https://drafts.csswg.org/css-box/#propdef-float
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 #[derive(
-    Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo, ToCss, ToShmem,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    FromPrimitive,
+    Hash,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
 )]
-/// https://drafts.csswg.org/css-box/#propdef-float
+#[repr(u8)]
 pub enum Float {
     Left,
     Right,
@@ -1389,12 +1388,33 @@ pub enum Float {
     InlineEnd,
 }
 
+impl Float {
+    /// Returns true if `self` is not `None`.
+    pub fn is_floating(self) -> bool {
+        self != Self::None
+    }
+}
+
+/// https://drafts.csswg.org/css2/#propdef-clear
 #[allow(missing_docs)]
 #[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 #[derive(
-    Clone, Copy, Debug, Eq, Hash, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo, ToCss, ToShmem,
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    FromPrimitive,
+    Hash,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
 )]
-/// https://drafts.csswg.org/css2/#propdef-clear
+#[repr(u8)]
 pub enum Clear {
     None,
     Left,
@@ -1471,18 +1491,6 @@ pub enum Appearance {
     Textfield,
     /// The dropdown button(s) that open up a dropdown list.
     MenulistButton,
-    /// Various arrows that go in buttons
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    ButtonArrowDown,
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    ButtonArrowNext,
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    ButtonArrowPrevious,
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    ButtonArrowUp,
-    /// A dual toolbar button (e.g., a Back button with a dropdown)
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    Dualbutton,
     /// Menu Popup background.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Menupopup,
@@ -1527,58 +1535,31 @@ pub enum Appearance {
     ScrollbarthumbHorizontal,
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     ScrollbarthumbVertical,
-    /// The scrollbar track.
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    ScrollbartrackHorizontal,
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    ScrollbartrackVertical,
     /// The scroll corner
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Scrollcorner,
     /// A separator.  Can be horizontal or vertical.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Separator,
-    /// A spin control (up/down control for time/date pickers).
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    Spinner,
     /// The up button of a spin control.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     SpinnerUpbutton,
     /// The down button of a spin control.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     SpinnerDownbutton,
-    /// The textfield of a spin control
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    SpinnerTextfield,
-    /// A splitter.  Can be horizontal or vertical.
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    Splitter,
     /// A status bar in a main application window.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Statusbar,
-    /// A single tab in a tab widget.
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    Tab,
-    /// A single pane (inside the tabpanels container).
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    Tabpanel,
-    /// The tab panels container.
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    Tabpanels,
-    /// The tabs scroll arrows (left/right).
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    TabScrollArrowBack,
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    TabScrollArrowForward,
     /// A single toolbar button (with no associated dropdown).
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Toolbarbutton,
-    /// The dropdown portion of a toolbar button
-    #[parse(condition = "ParserContext::chrome_rules_enabled")]
-    ToolbarbuttonDropdown,
     /// A tooltip.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
     Tooltip,
+
+    /// Sidebar appearance.
+    #[parse(condition = "ParserContext::chrome_rules_enabled")]
+    MozSidebar,
 
     /// Mac help button.
     #[parse(condition = "ParserContext::chrome_rules_enabled")]
@@ -1657,6 +1638,7 @@ impl BreakBetween {
     /// Parse a legacy break-between value for `page-break-{before,after}`.
     ///
     /// See https://drafts.csswg.org/css-break/#page-break-properties.
+    #[cfg_attr(feature = "servo", allow(unused))]
     #[inline]
     pub(crate) fn parse_legacy<'i>(
         _: &ParserContext,
@@ -1677,6 +1659,7 @@ impl BreakBetween {
     /// Serialize a legacy break-between value for `page-break-*`.
     ///
     /// See https://drafts.csswg.org/css-break/#page-break-properties.
+    #[cfg_attr(feature = "servo", allow(unused))]
     pub(crate) fn to_css_legacy<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
     where
         W: Write,
@@ -1722,6 +1705,7 @@ impl BreakWithin {
     /// Parse a legacy break-between value for `page-break-inside`.
     ///
     /// See https://drafts.csswg.org/css-break/#page-break-properties.
+    #[cfg_attr(feature = "servo", allow(unused))]
     #[inline]
     pub(crate) fn parse_legacy<'i>(
         _: &ParserContext,
@@ -1739,6 +1723,7 @@ impl BreakWithin {
     /// Serialize a legacy break-between value for `page-break-inside`.
     ///
     /// See https://drafts.csswg.org/css-break/#page-break-properties.
+    #[cfg_attr(feature = "servo", allow(unused))]
     pub(crate) fn to_css_legacy<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
     where
         W: Write,
@@ -1772,7 +1757,6 @@ pub enum Overflow {
     Hidden,
     Scroll,
     Auto,
-    #[cfg(feature = "gecko")]
     Clip,
 }
 
@@ -1788,7 +1772,6 @@ impl Parse for Overflow {
             "hidden" => Self::Hidden,
             "scroll" => Self::Scroll,
             "auto" | "overlay" => Self::Auto,
-            #[cfg(feature = "gecko")]
             "clip" => Self::Clip,
             #[cfg(feature = "gecko")]
             "-moz-hidden-unscrollable" if static_prefs::pref!("layout.css.overflow-moz-hidden-unscrollable.enabled") => {
@@ -1811,7 +1794,6 @@ impl Overflow {
         match *self {
             Self::Hidden | Self::Scroll | Self::Auto => *self,
             Self::Visible => Self::Auto,
-            #[cfg(feature = "gecko")]
             Self::Clip => Self::Hidden,
         }
     }
@@ -1879,3 +1861,5 @@ impl Zoom {
         Self::Value(NonNegativeNumberOrPercentage::new_number(n))
     }
 }
+
+pub use crate::values::generics::box_::PositionProperty;

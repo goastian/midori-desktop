@@ -35,7 +35,7 @@ For a detailed list of changes included in each release, please refer to the [ch
 
 * [Cross browser testing](https://developer.mozilla.org/en-US/docs/Learn/Tools_and_testing/Cross_browser_testing)
 
-* [Selenium](https://seleniumhq.github.io/docs/) (work in progress)
+* [Selenium](https://www.selenium.dev/documentation/)
   * [C# API](https://seleniumhq.github.io/selenium/docs/api/dotnet/)
   * [JavaScript API](https://seleniumhq.github.io/selenium/docs/api/javascript/)
   * [Java API](https://seleniumhq.github.io/selenium/docs/api/java/)
@@ -46,7 +46,7 @@ For a detailed list of changes included in each release, please refer to the [ch
 * [geckodriver usage](https://firefox-source-docs.mozilla.org/testing/geckodriver/Usage.html)
   * [Supported platforms](https://firefox-source-docs.mozilla.org/testing/geckodriver/Support.html)
   * [Firefox capabilities](https://firefox-source-docs.mozilla.org/testing/geckodriver/Capabilities.html)
-  * [Capabilities example](https://firefox-source-docs.mozilla.org/testing/geckodriver/Capabilities.html#capabilities-example)
+  * [Capabilities example](https://developer.mozilla.org/en-US/docs/Web/WebDriver/Capabilities/firefoxOptions#example)
   * [Enabling trace logs](https://firefox-source-docs.mozilla.org/testing/geckodriver/TraceLogs.html)
   * [Analyzing crash data from Firefox](https://firefox-source-docs.mozilla.org/testing/geckodriver/CrashReports.html)
 

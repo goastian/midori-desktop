@@ -74,15 +74,15 @@ export class CustomQueryHandlerRegistry {
   register(name: string, handler: CustomQueryHandler): void {
     assert(
       !this.#handlers.has(name),
-      `Cannot register over existing handler: ${name}`
+      `Cannot register over existing handler: ${name}`,
     );
     assert(
       /^[a-zA-Z]+$/.test(name),
-      `Custom query handler names may only contain [a-zA-Z]`
+      `Custom query handler names may only contain [a-zA-Z]`,
     );
     assert(
       handler.queryAll || handler.queryOne,
-      `At least one query method must be implemented.`
+      `At least one query method must be implemented.`,
     );
 
     const Handler = class extends QueryHandler {
@@ -92,7 +92,7 @@ export class CustomQueryHandlerRegistry {
             .get(PLACEHOLDER('name'))!
             .querySelectorAll(node, selector);
         },
-        {name: JSON.stringify(name)}
+        {name: JSON.stringify(name)},
       );
       static override querySelector: QuerySelector = interpolateFunction(
         (node, selector, PuppeteerUtil) => {
@@ -100,7 +100,7 @@ export class CustomQueryHandlerRegistry {
             .get(PLACEHOLDER('name'))!
             .querySelector(node, selector);
         },
-        {name: JSON.stringify(name)}
+        {name: JSON.stringify(name)},
       );
     };
     const registerScript = interpolateFunction(
@@ -118,7 +118,7 @@ export class CustomQueryHandlerRegistry {
         queryOne: handler.queryOne
           ? stringifyFunction(handler.queryOne)
           : String(undefined),
-      }
+      },
     ).toString();
 
     this.#handlers.set(name, [registerScript, Handler]);
@@ -162,46 +162,3 @@ export class CustomQueryHandlerRegistry {
  * @internal
  */
 export const customQueryHandlers = new CustomQueryHandlerRegistry();
-
-/**
- * @deprecated Import {@link Puppeteer} and use the static method
- * {@link Puppeteer.registerCustomQueryHandler}
- *
- * @public
- */
-export function registerCustomQueryHandler(
-  name: string,
-  handler: CustomQueryHandler
-): void {
-  customQueryHandlers.register(name, handler);
-}
-
-/**
- * @deprecated Import {@link Puppeteer} and use the static method
- * {@link Puppeteer.unregisterCustomQueryHandler}
- *
- * @public
- */
-export function unregisterCustomQueryHandler(name: string): void {
-  customQueryHandlers.unregister(name);
-}
-
-/**
- * @deprecated Import {@link Puppeteer} and use the static method
- * {@link Puppeteer.customQueryHandlerNames}
- *
- * @public
- */
-export function customQueryHandlerNames(): string[] {
-  return customQueryHandlers.names();
-}
-
-/**
- * @deprecated Import {@link Puppeteer} and use the static method
- * {@link Puppeteer.clearCustomQueryHandlers}
- *
- * @public
- */
-export function clearCustomQueryHandlers(): void {
-  customQueryHandlers.clear();
-}

@@ -211,8 +211,8 @@ PRLibrary *lib;
 #endif
 
 /*
-* All api that belongs to pk11mode.c layer start with the prefix PKM_
-*/
+ * All api that belongs to pk11mode.c layer start with the prefix PKM_
+ */
 void PKM_LogIt(const char *fmt, ...);
 void PKM_Error(const char *fmt, ...);
 CK_SLOT_ID *PKM_GetSlotList(CK_FUNCTION_LIST_PTR pFunctionList,
@@ -779,10 +779,10 @@ cleanup:
 }
 
 /*
-*  PKM_KeyTests
-*
-*
-*/
+ *  PKM_KeyTests
+ *
+ *
+ */
 
 CK_RV
 PKM_KeyTests(CK_FUNCTION_LIST_PTR pFunctionList,
@@ -2335,19 +2335,19 @@ PKM_SessionLogin(CK_FUNCTION_LIST_PTR pFunctionList,
 }
 
 /*
-* PKM_LegacyFunctions
-*
-* Legacyfunctions exist only for backwards compatibility.
-* C_GetFunctionStatus and C_CancelFunction functions were
-* meant for managing parallel execution of cryptographic functions.
-*
-* C_GetFunctionStatus is a legacy function which should simply return
-* the value CKR_FUNCTION_NOT_PARALLEL.
-*
-* C_CancelFunction is a legacy function which should simply return the
-* value CKR_FUNCTION_NOT_PARALLEL.
-*
-*/
+ * PKM_LegacyFunctions
+ *
+ * Legacyfunctions exist only for backwards compatibility.
+ * C_GetFunctionStatus and C_CancelFunction functions were
+ * meant for managing parallel execution of cryptographic functions.
+ *
+ * C_GetFunctionStatus is a legacy function which should simply return
+ * the value CKR_FUNCTION_NOT_PARALLEL.
+ *
+ * C_CancelFunction is a legacy function which should simply return the
+ * value CKR_FUNCTION_NOT_PARALLEL.
+ *
+ */
 CK_RV
 PKM_LegacyFunctions(CK_FUNCTION_LIST_PTR pFunctionList,
                     CK_SLOT_ID *pSlotList, CK_ULONG slotID,
@@ -2417,14 +2417,14 @@ PKM_LegacyFunctions(CK_FUNCTION_LIST_PTR pFunctionList,
 }
 
 /*
-*  PKM_DualFuncDigest - demostrates the Dual-function
-*  cryptograpic functions:
-*
-*   C_DigestEncryptUpdate - multi-part Digest and Encrypt
-*   C_DecryptDigestUpdate - multi-part Decrypt and Digest
-*
-*
-*/
+ *  PKM_DualFuncDigest - demostrates the Dual-function
+ *  cryptograpic functions:
+ *
+ *   C_DigestEncryptUpdate - multi-part Digest and Encrypt
+ *   C_DecryptDigestUpdate - multi-part Decrypt and Digest
+ *
+ *
+ */
 
 CK_RV
 PKM_DualFuncDigest(CK_FUNCTION_LIST_PTR pFunctionList,
@@ -2588,9 +2588,9 @@ PKM_DualFuncDigest(CK_FUNCTION_LIST_PTR pFunctionList,
 }
 
 /*
-* PKM_SecKeyCrypt - Symmetric key encrypt/decyprt
-*
-*/
+ * PKM_SecKeyCrypt - Symmetric key encrypt/decyprt
+ *
+ */
 
 CK_RV
 PKM_SecKeyCrypt(CK_FUNCTION_LIST_PTR pFunctionList,
@@ -4351,8 +4351,8 @@ PKM_OperationalState(CK_FUNCTION_LIST_PTR pFunctionList,
 }
 
 /*
-* Recover Functions
-*/
+ * Recover Functions
+ */
 CK_RV
 PKM_RecoverFunctions(CK_FUNCTION_LIST_PTR pFunctionList,
                      CK_SESSION_HANDLE hSession,
@@ -4413,9 +4413,9 @@ PKM_RecoverFunctions(CK_FUNCTION_LIST_PTR pFunctionList,
     }
 
     /*
-    * verifies a signature on single-part data,
-    * where the data is recovered from the signature
-    */
+     * verifies a signature on single-part data,
+     * where the data is recovered from the signature
+     */
     crv = pFunctionList->C_VerifyRecover(hSession, (CK_BYTE *)sig,
                                          sigLen,
                                          (CK_BYTE *)recover, &recoverLen);
@@ -4438,10 +4438,10 @@ PKM_RecoverFunctions(CK_FUNCTION_LIST_PTR pFunctionList,
     return crv;
 }
 /*
-* wrapUnwrap
-* wrap the secretkey with the public key.
-* unwrap the secretkey with the private key.
-*/
+ * wrapUnwrap
+ * wrap the secretkey with the public key.
+ * unwrap the secretkey with the private key.
+ */
 CK_RV
 PKM_wrapUnwrap(CK_FUNCTION_LIST_PTR pFunctionList,
                CK_SESSION_HANDLE hSession,
@@ -4815,6 +4815,7 @@ PKM_TLSKeyAndMacDerive(CK_FUNCTION_LIST_PTR pFunctionList,
     CK_ATTRIBUTE attrs[9];
 
     CK_OBJECT_HANDLE mk_obj = CK_INVALID_HANDLE;
+    CK_OBJECT_HANDLE derive_obj = CK_INVALID_HANDLE;
     CK_SSL3_KEY_MAT_PARAMS km_params;
     CK_SSL3_KEY_MAT_OUT kmo;
     CK_BYTE IVClient[8];
@@ -4942,7 +4943,7 @@ PKM_TLSKeyAndMacDerive(CK_FUNCTION_LIST_PTR pFunctionList,
             break;
     }
     crv = pFunctionList->C_DeriveKey(hSession, &kmd_mech, mk_obj, NULL, 0,
-                                     NULL);
+                                     &derive_obj);
     if (crv != CKR_MECHANISM_PARAM_INVALID) {
         PKM_Error("key materials derivation returned unexpected "
                   "error 0x%08X, %-26s\n",
@@ -4958,7 +4959,7 @@ correct:
      * derive the key materials
      */
     crv = pFunctionList->C_DeriveKey(hSession, &kmd_mech, mk_obj, NULL, 0,
-                                     NULL);
+                                     &derive_obj);
     if (crv != CKR_OK) {
         PKM_Error("Cannot derive the key materials, crv 0x%08X, %-26s\n",
                   crv, PKM_CK_RVtoStr(crv));
@@ -5289,9 +5290,9 @@ PKM_CheckPath(char *string)
     char *dest;
 
     /*
-   * windows support convert any back slashes to
-   * forward slashes.
-   */
+     * windows support convert any back slashes to
+     * forward slashes.
+     */
     for (src = string, dest = string; *src; src++, dest++) {
         if (*src == '\\') {
             *dest = '/';
@@ -5327,21 +5328,21 @@ PKM_ForkCheck(int expected, CK_FUNCTION_LIST_PTR fList,
             if (fList) {
                 if (!initArgs) {
                     /* If softoken is loaded, make a PKCS#11 call to C_GetTokenInfo
-                 * in the child. This call should always fail.
-                 * If softoken is uninitialized,
-                 * it fails with CKR_CRYPTOKI_NOT_INITIALIZED.
-                 * If it was initialized in the parent, the fork check should
-                 * kick in, and make it return CKR_DEVICE_ERROR.
-                 */
+                     * in the child. This call should always fail.
+                     * If softoken is uninitialized,
+                     * it fails with CKR_CRYPTOKI_NOT_INITIALIZED.
+                     * If it was initialized in the parent, the fork check should
+                     * kick in, and make it return CKR_DEVICE_ERROR.
+                     */
                     CK_RV child_crv = fList->C_GetTokenInfo(0, NULL);
                     exit(child_crv & 255);
                 } else {
                     /* If softoken is loaded, make a PKCS#11 call to C_Initialize
-                 * in the child. This call should always fail.
-                 * If softoken is uninitialized, this should succeed.
-                 * If it was initialized in the parent, the fork check should
-                 * kick in, and make it return CKR_DEVICE_ERROR.
-                 */
+                     * in the child. This call should always fail.
+                     * If softoken is uninitialized, this should succeed.
+                     * If it was initialized in the parent, the fork check should
+                     * kick in, and make it return CKR_DEVICE_ERROR.
+                     */
                     CK_RV child_crv = fList->C_Initialize(initArgs);
                     if (CKR_OK == child_crv) {
                         child_crv = fList->C_Finalize(NULL);

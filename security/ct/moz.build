@@ -11,6 +11,7 @@ EXPORTS += [
     "BTTypes.h",
     "BTVerifier.h",
     "Buffer.h",
+    "CTKnownLogs.h",
     "CTLog.h",
     "CTPolicyEnforcer.h",
     "CTVerifyResult.h",
@@ -20,7 +21,6 @@ EXPORTS += [
 UNIFIED_SOURCES += [
     "BTVerifier.cpp",
     "Buffer.cpp",
-    "CTDiversityPolicy.cpp",
     "CTLogVerifier.cpp",
     "CTObjectsExtractor.cpp",
     "CTPolicyEnforcer.cpp",

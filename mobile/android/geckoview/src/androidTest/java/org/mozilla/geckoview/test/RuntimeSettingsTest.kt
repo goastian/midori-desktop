@@ -9,13 +9,18 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
 import androidx.test.platform.app.InstrumentationRegistry
 import junit.framework.TestCase.assertTrue
-import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
+import org.hamcrest.Matchers.closeTo
+import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.greaterThan
+import org.hamcrest.Matchers.`is`
+import org.hamcrest.Matchers.lessThan
 import org.junit.Assume.assumeThat
 import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.geckoview.BuildConfig
 import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSession.NavigationDelegate
 import org.mozilla.geckoview.GeckoSession.ProgressDelegate
@@ -219,6 +224,31 @@ class RuntimeSettingsTest : BaseSessionTest() {
     }
 
     @Test
+    fun webContentIsolationStrategy() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        // Set isolation strategy
+        geckoRuntimeSettings.setWebContentIsolationStrategy(GeckoRuntimeSettings.STRATEGY_ISOLATE_NOTHING)
+
+        // Check isolation strategy with GeckoView
+        assertThat(
+            "WebContentIsolationStrategy was set to isolate nothing.",
+            geckoRuntimeSettings.webContentIsolationStrategy,
+            equalTo(GeckoRuntimeSettings.STRATEGY_ISOLATE_NOTHING),
+        )
+
+        // Check isolation strategy with Gecko
+        val geckoPreference =
+            (sessionRule.getPrefs("fission.webContentIsolationStrategy").get(0)) as Int
+
+        assertThat(
+            "WebContentIsolationStrategy pref value should be isolate nothing.",
+            geckoPreference,
+            equalTo(GeckoRuntimeSettings.STRATEGY_ISOLATE_NOTHING),
+        )
+    }
+
+    @Test
     fun largeKeepaliveFactor() {
         val defaultLargeKeepaliveFactor = 10
         val settings = sessionRule.runtime.settings
@@ -409,6 +439,509 @@ class RuntimeSettingsTest : BaseSessionTest() {
             "Global Privacy Control Functionality flag should still be enabled",
             globalPrivacyControlFunctionality,
             equalTo(true),
+        )
+    }
+
+    @Test
+    fun suspectedFingerprintersEnabling() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setFingerprintingProtection(true)
+        geckoRuntimeSettings.setFingerprintingProtectionPrivateBrowsing(true)
+
+        assertThat(
+            "Suspected Fingerprint Protection runtime settings should now be enabled in normal tabs",
+            geckoRuntimeSettings.fingerprintingProtection,
+            equalTo(true),
+        )
+
+        assertThat(
+            "Suspected Fingerprint Protection runtime settings should still be enabled in private tabs",
+            geckoRuntimeSettings.fingerprintingProtectionPrivateBrowsing,
+            equalTo(true),
+        )
+
+        val fingerprintingProtection =
+            (sessionRule.getPrefs("privacy.fingerprintingProtection").get(0)) as Boolean
+        val fingerprintingProtectionPrivateBrowsing =
+            (sessionRule.getPrefs("privacy.fingerprintingProtection.pbmode").get(0)) as Boolean
+
+        assertThat(
+            "Suspected Fingerprint Protection should be enabled in normal tabs",
+            fingerprintingProtection,
+            equalTo(true),
+        )
+
+        assertThat(
+            "Suspected Fingerprint Protection should still be enabled in private tabs",
+            fingerprintingProtectionPrivateBrowsing,
+            equalTo(true),
+        )
+    }
+
+    @Test
+    fun suspectedFingerprintersDisabling() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setFingerprintingProtection(false)
+        geckoRuntimeSettings.setFingerprintingProtectionPrivateBrowsing(false)
+
+        assertThat(
+            "Suspected Fingerprint Protection runtime settings should still be disabled in normal tabs",
+            geckoRuntimeSettings.fingerprintingProtection,
+            equalTo(false),
+        )
+
+        assertThat(
+            "Suspected Fingerprint Protection runtime settings should now be disabled in private tabs",
+            geckoRuntimeSettings.fingerprintingProtectionPrivateBrowsing,
+            equalTo(false),
+        )
+
+        val fingerprintingProtection =
+            (sessionRule.getPrefs("privacy.fingerprintingProtection").get(0)) as Boolean
+        val fingerprintingProtectionPrivateBrowsing =
+            (sessionRule.getPrefs("privacy.fingerprintingProtection.pbmode").get(0)) as Boolean
+
+        assertThat(
+            "Suspected Fingerprint Protection should still be disabled in normal tabs",
+            fingerprintingProtection,
+            equalTo(false),
+        )
+
+        assertThat(
+            "Suspected Fingerprint Protection should be disabled in private tabs",
+            fingerprintingProtectionPrivateBrowsing,
+            equalTo(false),
+        )
+    }
+
+    @Test
+    fun fingerprintingProtectionOverrides() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setFingerprintingProtectionOverrides(
+            "+NavigatorHWConcurrency,+CanvasRandomization",
+        )
+
+        assertThat(
+            "Fingerprint Protection overrides settings should be set to the expected value",
+            geckoRuntimeSettings.fingerprintingProtectionOverrides,
+            equalTo("+NavigatorHWConcurrency,+CanvasRandomization"),
+        )
+
+        val overrides =
+            (sessionRule.getPrefs("privacy.fingerprintingProtection.overrides").get(0)) as String
+
+        assertThat(
+            "Fingerprint Protection overrides pref should be set to the expected value",
+            overrides,
+            equalTo("+NavigatorHWConcurrency,+CanvasRandomization"),
+        )
+    }
+
+    @Test
+    fun fdlibmMathEnabling() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setFdlibmMathEnabled(true)
+
+        assertThat(
+            "Fdlibm math settings should be set to the expected value",
+            geckoRuntimeSettings.fdlibmMathEnabled,
+            equalTo(true),
+        )
+
+        val enabled =
+            (sessionRule.getPrefs("javascript.options.use_fdlibm_for_sin_cos_tan").get(0)) as Boolean
+
+        assertThat(
+            "Fdlibm math pref should be set to the expected value",
+            enabled,
+            equalTo(true),
+        )
+    }
+
+    @Test
+    fun fdlibmMathDisabling() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setFdlibmMathEnabled(false)
+
+        assertThat(
+            "Fdlibm math settings should be set to the expected value",
+            geckoRuntimeSettings.fdlibmMathEnabled,
+            equalTo(false),
+        )
+
+        val enabled =
+            (sessionRule.getPrefs("javascript.options.use_fdlibm_for_sin_cos_tan").get(0)) as Boolean
+
+        assertThat(
+            "Fdlibm math pref should be set to the expected value",
+            enabled,
+            equalTo(false),
+        )
+    }
+
+    @Test
+    fun userCharacteristicPingCurrentVersion() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setUserCharacteristicPingCurrentVersion(5)
+
+        assertThat(
+            "UserCharacteristicPingCurrentVersion runtime settings should return expected value",
+            geckoRuntimeSettings.userCharacteristicPingCurrentVersion,
+            equalTo(5),
+        )
+
+        val currentVersion =
+            (sessionRule.getPrefs("toolkit.telemetry.user_characteristics_ping.current_version").get(0)) as Int
+
+        assertThat(
+            "UserCharacteristicPingCurrentVersion pref value should be expected value",
+            currentVersion,
+            equalTo(5),
+        )
+    }
+
+    @Test
+    fun fetchPriorityEnabling() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setFetchPriorityEnabled(true)
+
+        assertThat(
+            "Fetch Priority settings should be set to the expected value",
+            geckoRuntimeSettings.fetchPriorityEnabled,
+            equalTo(true),
+        )
+
+        val enabled =
+            (sessionRule.getPrefs("network.fetchpriority.enabled").get(0)) as Boolean
+
+        assertThat(
+            "Fetch Priority pref should be set to the expected value",
+            enabled,
+            equalTo(true),
+        )
+    }
+
+    @Test
+    fun fetchPriorityDisabling() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setFetchPriorityEnabled(false)
+
+        assertThat(
+            "Fetch Priority settings should be set to the expected value",
+            geckoRuntimeSettings.fetchPriorityEnabled,
+            equalTo(false),
+        )
+
+        val enabled =
+            (sessionRule.getPrefs("network.fetchpriority.enabled").get(0)) as Boolean
+
+        assertThat(
+            "Fetch Priority pref should be set to the expected value",
+            enabled,
+            equalTo(false),
+        )
+    }
+
+    @Test
+    fun certificateTransparencyMode() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        assertThat(
+            "Certificate Transparency mode should default to 0",
+            geckoRuntimeSettings.certificateTransparencyMode,
+            equalTo(0),
+        )
+
+        geckoRuntimeSettings.setCertificateTransparencyMode(2)
+
+        assertThat(
+            "Certificate Transparency mode should be set to 2",
+            geckoRuntimeSettings.certificateTransparencyMode,
+            equalTo(2),
+        )
+
+        val preference =
+            (sessionRule.getPrefs("security.pki.certificate_transparency.mode").get(0)) as Int
+
+        assertThat(
+            "Certificate Transparency mode pref should be set to 2",
+            preference,
+            equalTo(2),
+        )
+    }
+
+    @Test
+    fun parallelMarkingEnabling() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        assertThat(
+            "Parallel Marking settings should default to false",
+            geckoRuntimeSettings.parallelMarkingEnabled,
+            equalTo(false),
+        )
+
+        geckoRuntimeSettings.setParallelMarkingEnabled(true)
+
+        assertThat(
+            "Parallel Marking setting should be set to true.",
+            geckoRuntimeSettings.parallelMarkingEnabled,
+            equalTo(true),
+        )
+
+        assertThat(
+            "Parallel Marking getter should be set to true.",
+            geckoRuntimeSettings.getParallelMarkingEnabled(),
+            equalTo(true),
+        )
+
+        val enabled =
+            (sessionRule.getPrefs("javascript.options.mem.gc_parallel_marking").get(0)) as Boolean
+
+        assertThat(
+            "Parallel Marking pref should be set to the expected value",
+            enabled,
+            equalTo(true),
+        )
+    }
+
+    @Test
+    fun parallelMarkingDisabling() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setParallelMarkingEnabled(false)
+
+        assertThat(
+            "Parallel Marking settings should be set to false.",
+            geckoRuntimeSettings.parallelMarkingEnabled,
+            equalTo(false),
+        )
+
+        assertThat(
+            "Parallel Marking getter should be set to false.",
+            geckoRuntimeSettings.getParallelMarkingEnabled(),
+            equalTo(false),
+        )
+
+        val enabled =
+            (sessionRule.getPrefs("javascript.options.mem.gc_parallel_marking").get(0)) as Boolean
+
+        assertThat(
+            "Parallel Marking pref should be set to the expected value",
+            enabled,
+            equalTo(false),
+        )
+    }
+
+    @Test
+    fun cookieBehaviorOptInPartitioning() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setCookieBehaviorOptInPartitioning(true)
+        geckoRuntimeSettings.setCookieBehaviorOptInPartitioningPBM(true)
+
+        assertThat(
+            "CookieBehaviorOptInPartitioning runtime settings should return expected value",
+            geckoRuntimeSettings.cookieBehaviorOptInPartitioning,
+            equalTo(true),
+        )
+
+        assertThat(
+            "CookieBehaviorOptInPartitioningPBM runtime settings should return expected value",
+            geckoRuntimeSettings.cookieBehaviorOptInPartitioningPBM,
+            equalTo(true),
+        )
+
+        val cookieBehaviorOptInPartitioning =
+            (sessionRule.getPrefs("network.cookie.cookieBehavior.optInPartitioning").get(0)) as Boolean
+        val cookieBehaviorOptInPartitioningPBM =
+            (sessionRule.getPrefs("network.cookie.cookieBehavior.optInPartitioning.pbmode").get(0)) as Boolean
+
+        assertThat(
+            "CookieBehaviorOptInPartitioning pref should return expected value",
+            cookieBehaviorOptInPartitioning,
+            equalTo(true),
+        )
+
+        assertThat(
+            "CookieBehaviorOptInPartitioningPBM pref should return expected value",
+            cookieBehaviorOptInPartitioningPBM,
+            equalTo(true),
+        )
+    }
+
+    @Test
+    fun postQuantumKeyExchangeEnabled() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        assertThat(
+            "Post-quantum key exchange should be disabled",
+            geckoRuntimeSettings.postQuantumKeyExchangeEnabled,
+            equalTo(false),
+        )
+
+        geckoRuntimeSettings.setPostQuantumKeyExchangeEnabled(true)
+
+        assertThat(
+            "Post-quantum key exchange should be enabled",
+            geckoRuntimeSettings.postQuantumKeyExchangeEnabled,
+            equalTo(true),
+        )
+
+        val tlsPreference =
+            (sessionRule.getPrefs("security.tls.enable_kyber").get(0)) as Boolean
+        assertThat(
+            "The security.tls.enable_kyber preference should be set to true",
+            tlsPreference,
+            equalTo(true),
+        )
+
+        val http3Preference =
+            (sessionRule.getPrefs("network.http.http3.enable_kyber").get(0)) as Boolean
+        assertThat(
+            "The network.http.http3.enable_kyber preference should be set to true",
+            http3Preference,
+            equalTo(true),
+        )
+    }
+
+    @Test
+    fun sameDocumentNavigationOverridesLoadTypeEnabled() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setSameDocumentNavigationOverridesLoadType(false)
+
+        assertThat(
+            "sameDocumentNavigationOverridesLoadType pref set to false.",
+            geckoRuntimeSettings.sameDocumentNavigationOverridesLoadType,
+            equalTo(false),
+        )
+
+        var enabled =
+            (sessionRule.getPrefs("docshell.shistory.sameDocumentNavigationOverridesLoadType").get(0)) as Boolean
+
+        assertThat(
+            "sameDocumentNavigationOverridesLoadType pref should be set to the expected value",
+            enabled,
+            equalTo(false),
+        )
+
+        geckoRuntimeSettings.setSameDocumentNavigationOverridesLoadType(true)
+
+        assertThat(
+            "sameDocumentNavigationOverridesLoadType pref set to true.",
+            geckoRuntimeSettings.sameDocumentNavigationOverridesLoadType,
+            equalTo(true),
+        )
+
+        enabled =
+            (sessionRule.getPrefs("docshell.shistory.sameDocumentNavigationOverridesLoadType").get(0)) as Boolean
+
+        assertThat(
+            "sameDocumentNavigationOverridesLoadType pref should be set to the expected value",
+            enabled,
+            equalTo(true),
+        )
+    }
+
+    @Test
+    fun sameDocumentNavigationOverridesLoadTypeForceDisable() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        geckoRuntimeSettings.setSameDocumentNavigationOverridesLoadTypeForceDisable("https://www.mozilla.org")
+
+        assertThat(
+            "sameDocumentNavigationOverridesLoadTypeForceDisable pref set to the specified uri.",
+            geckoRuntimeSettings.sameDocumentNavigationOverridesLoadTypeForceDisable,
+            equalTo("https://www.mozilla.org"),
+        )
+
+        var sameDocumentNavigationOverridesLoadTypeForceDisable =
+            (sessionRule.getPrefs("docshell.shistory.sameDocumentNavigationOverridesLoadType.forceDisable").get(0)) as String
+
+        assertThat(
+            "sameDocumentNavigationOverridesLoadTypeForceDisable pref should be set to the expected value",
+            sameDocumentNavigationOverridesLoadTypeForceDisable,
+            equalTo("https://www.mozilla.org"),
+        )
+
+        geckoRuntimeSettings.setSameDocumentNavigationOverridesLoadTypeForceDisable("")
+
+        assertThat(
+            "sameDocumentNavigationOverridesLoadType pref set to the specified uri.",
+            geckoRuntimeSettings.sameDocumentNavigationOverridesLoadTypeForceDisable,
+            equalTo(""),
+        )
+
+        sameDocumentNavigationOverridesLoadTypeForceDisable =
+            (sessionRule.getPrefs("docshell.shistory.sameDocumentNavigationOverridesLoadType.forceDisable").get(0)) as String
+
+        assertThat(
+            "sameDocumentNavigationOverridesLoadTypeForceDisable pref should be set to the expected value",
+            sameDocumentNavigationOverridesLoadTypeForceDisable,
+            equalTo(""),
+        )
+    }
+
+    @Test
+    fun dohAutoselectEnabled() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        assertThat(
+            "doh rollout should be disabled",
+            geckoRuntimeSettings.dohAutoselectEnabled,
+            equalTo(false),
+        )
+
+        geckoRuntimeSettings.setDohAutoselectEnabled(true)
+
+        assertThat(
+            "doh rollout should be enabled",
+            geckoRuntimeSettings.dohAutoselectEnabled,
+            equalTo(true),
+        )
+
+        val prefEnabled =
+            (sessionRule.getPrefs("network.android_doh.autoselect_enabled").get(0)) as Boolean
+        assertThat(
+            "The network.android_doh.autoselect_enabled preference should be set to true",
+            prefEnabled,
+            equalTo(true),
+        )
+    }
+
+    @Test
+    fun bannedPorts() {
+        val geckoRuntimeSettings = sessionRule.runtime.settings
+
+        assertThat(
+            "Banned ports is empty",
+            geckoRuntimeSettings.bannedPorts,
+            equalTo(""),
+        )
+
+        geckoRuntimeSettings.setBannedPorts("12345,23456")
+
+        assertThat(
+            "Banned ports should match string",
+            geckoRuntimeSettings.bannedPorts,
+            equalTo("12345,23456"),
+        )
+
+        val ports =
+            (sessionRule.getPrefs("network.security.ports.banned").get(0)) as String
+
+        assertThat(
+            "Pref value should match setting",
+            ports,
+            equalTo("12345,23456"),
         )
     }
 }

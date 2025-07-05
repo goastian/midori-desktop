@@ -37,6 +37,7 @@
 #include "secmod.h"
 #include "blapi.h"
 
+#include <limits.h>
 #include <stdio.h>
 
 static PK11SymKey *ssl3_GenerateRSAPMS(sslSocket *ss, ssl3CipherSpec *spec,
@@ -1112,6 +1113,22 @@ Null_Cipher(void *ctx, unsigned char *output, unsigned int *outputLen, unsigned 
     return SECSuccess;
 }
 
+/* Wrapper around PK11_CipherOp to avoid undefined behavior due to incompatible
+ * function pointer type cast
+ */
+static SECStatus
+SSLCipher_PK11_CipherOp(void *ctx, unsigned char *output, unsigned int *outputLen, unsigned int maxOutputLen,
+                        const unsigned char *input, unsigned int inputLen)
+{
+    PK11Context *pctx = ctx;
+    PORT_Assert(maxOutputLen <= INT_MAX);
+    int signedOutputLen = maxOutputLen;
+    SECStatus rv = PK11_CipherOp(pctx, output, &signedOutputLen, maxOutputLen, input, inputLen);
+    PORT_Assert(signedOutputLen >= 0);
+    *outputLen = signedOutputLen;
+    return rv;
+}
+
 /*
  * SSL3 Utility functions
  */
@@ -1265,6 +1282,7 @@ ssl3_SignHashesWithPrivKey(SSL3Hashes *hash, SECKEYPrivateKey *key,
     if (useRsaPss || hash->hashAlg == ssl_hash_none) {
         CK_MECHANISM_TYPE mech = PK11_MapSignKeyType(key->keyType);
         int signatureLen = PK11_SignatureLen(key);
+        PRInt32 optval;
 
         SECItem *params = NULL;
         CK_RSA_PKCS_PSS_PARAMS pssParams;
@@ -1275,6 +1293,17 @@ ssl3_SignHashesWithPrivKey(SSL3Hashes *hash, SECKEYPrivateKey *key,
         if (signatureLen <= 0) {
             PORT_SetError(SEC_ERROR_INVALID_KEY);
             goto done;
+        }
+        /* since we are calling PK11_SignWithMechanism directly, we need to check the
+         * key policy ourselves (which is already checked in SGN_Digest */
+        rv = NSS_OptionGet(NSS_KEY_SIZE_POLICY_FLAGS, &optval);
+        if ((rv == SECSuccess) &&
+            ((optval & NSS_KEY_SIZE_POLICY_SIGN_FLAG) == NSS_KEY_SIZE_POLICY_SIGN_FLAG)) {
+            rv = SECKEY_EnforceKeySize(key->keyType, SECKEY_PrivateKeyStrengthInBits(key),
+                                       SEC_ERROR_SIGNATURE_ALGORITHM_DISABLED);
+            if (rv != SECSuccess) {
+                goto done; /* error code already set */
+            }
         }
 
         buf->len = (unsigned)signatureLen;
@@ -1833,7 +1862,7 @@ ssl3_InitPendingContexts(sslSocket *ss, ssl3CipherSpec *spec)
         iv.data = NULL;
         iv.len = 0;
     } else {
-        spec->cipher = (SSLCipher)PK11_CipherOp;
+        spec->cipher = SSLCipher_PK11_CipherOp;
         iv.data = spec->keyMaterial.iv;
         iv.len = spec->cipherDef->iv_size;
     }
@@ -3491,6 +3520,27 @@ ssl3_ComputeMasterSecretInt(sslSocket *ss, PK11SymKey *pms,
     CK_TLS12_MASTER_KEY_DERIVE_PARAMS master_params;
     unsigned int master_params_len;
 
+    /* if we are using TLS and we aren't using the extended master secret,
+     * and SEC_OID_TLS_REQUIRE_EMS policy is true, fail. The caller will
+     * send an alert (eventually). In the RSA Server case, the alert
+     * won't happen until Finish time because the upper level code
+     * can't tell a difference between this failure and an RSA decrypt
+     * failure, so it will proceed with a faux key */
+    if (isTLS) {
+        PRUint32 policy;
+        SECStatus rv;
+
+        /* first fetch the policy for this algorithm */
+        rv = NSS_GetAlgorithmPolicy(SEC_OID_TLS_REQUIRE_EMS, &policy);
+        /* we only look at the policy if we can fetch it. */
+        if ((rv == SECSuccess) && (policy & NSS_USE_ALG_IN_SSL_KX)) {
+            /* just set the error, we don't want to map any errors
+             * set by NSS_GetAlgorithmPolicy here */
+            PORT_SetError(SSL_ERROR_MISSING_EXTENDED_MASTER_SECRET);
+            return SECFailure;
+        }
+    }
+
     if (isTLS12) {
         if (isDH)
             master_derive = CKM_TLS12_MASTER_KEY_DERIVE_DH;
@@ -3551,6 +3601,7 @@ tls_ComputeExtendedMasterSecretInt(sslSocket *ss, PK11SymKey *pms,
     ssl3CipherSpec *pwSpec = ss->ssl3.pwSpec;
     CK_NSS_TLS_EXTENDED_MASTER_KEY_DERIVE_PARAMS extended_master_params;
     SSL3Hashes hashes;
+
     /*
      * Determine whether to use the DH/ECDH or RSA derivation modes.
      */
@@ -5648,7 +5699,8 @@ ssl3_SendClientHello(sslSocket *ss, sslClientHelloType type)
                 goto loser; /* code set */
             }
             if (!ss->firstHsDone) {
-                PORT_Assert(ss->ssl3.hs.dtls13ClientMessageBuffer.len == 0);
+                PORT_Assert(type == client_hello_retransmit ||
+                            ss->ssl3.hs.dtls13ClientMessageBuffer.len == 0);
                 sslBuffer_Clear(&ss->ssl3.hs.dtls13ClientMessageBuffer);
                 /* Here instead of computing the hash, we copy the data to a buffer.*/
                 rv = sslBuffer_Append(&ss->ssl3.hs.dtls13ClientMessageBuffer, chBuf.buf, chBuf.len);
@@ -7120,7 +7172,7 @@ ssl3_HandleServerHello(sslSocket *ss, PRUint8 *b, PRUint32 length)
         goto loser;
     }
 
-    /* RFC 9147. 5.2. 
+    /* RFC 9147. 5.2.
      * DTLS Handshake Message Format states the difference between the computation
      * of the transcript if the version is DTLS1.2 or DTLS1.3.
      *
@@ -8038,6 +8090,7 @@ ssl3_BeginHandleCertificateRequest(sslSocket *ss,
         PORT_Assert(ssl3_ExtensionAdvertised(ss, ssl_tls13_encrypted_client_hello_xtn));
         rv = SECFailure;
     } else if (ss->getClientAuthData != NULL) {
+        PORT_Assert(signatureSchemes || !signatureSchemeCount);
         PORT_Assert((ss->ssl3.hs.preliminaryInfo & ssl_preinfo_all) ==
                     ssl_preinfo_all);
         PORT_Assert(ss->ssl3.clientPrivateKey == NULL);
@@ -8055,7 +8108,9 @@ ssl3_BeginHandleCertificateRequest(sslSocket *ss,
          * callback will result in no filtering.*/
 
         ss->ssl3.hs.clientAuthSignatureSchemes = PORT_ZNewArray(SSLSignatureScheme, signatureSchemeCount);
-        PORT_Memcpy(ss->ssl3.hs.clientAuthSignatureSchemes, signatureSchemes, signatureSchemeCount * sizeof(SSLSignatureScheme));
+        if (signatureSchemes) {
+            PORT_Memcpy(ss->ssl3.hs.clientAuthSignatureSchemes, signatureSchemes, signatureSchemeCount * sizeof(SSLSignatureScheme));
+        }
         ss->ssl3.hs.clientAuthSignatureSchemesLen = signatureSchemeCount;
 
         rv = (SECStatus)(*ss->getClientAuthData)(ss->getClientAuthDataArg,
@@ -9463,7 +9518,7 @@ ssl3_HandleClientHelloPart2(sslSocket *ss,
                 if (suite->cipher_suite == sid->u.ssl3.cipherSuite)
                     break;
             }
-            PORT_Assert(j > 0);
+
             if (j == 0)
                 break;
 
@@ -11321,11 +11376,7 @@ void
 ssl3_CleanupPeerCerts(sslSocket *ss)
 {
     PLArenaPool *arena = ss->ssl3.peerCertArena;
-    ssl3CertNode *certs = (ssl3CertNode *)ss->ssl3.peerCertChain;
 
-    for (; certs; certs = certs->next) {
-        CERT_DestroyCertificate(certs->cert);
-    }
     if (arena)
         PORT_FreeArena(arena, PR_FALSE);
     ss->ssl3.peerCertArena = NULL;
@@ -11540,10 +11591,10 @@ ssl3_CompleteHandleCertificate(sslSocket *ss, PRUint8 *b, PRUint32 length)
             goto loser; /* don't send alerts on memory errors */
         }
 
-        c->cert = CERT_NewTempCertificate(ss->dbHandle, &certItem, NULL,
-                                          PR_FALSE, PR_TRUE);
-        if (c->cert == NULL) {
-            goto ambiguous_err;
+        c->derCert = SECITEM_ArenaDupItem(ss->ssl3.peerCertArena,
+                                          &certItem);
+        if (c->derCert == NULL) {
+            goto loser;
         }
 
         c->next = NULL;
@@ -11716,6 +11767,7 @@ ssl3_AuthCertificate(sslSocket *ss)
     SECStatus rv;
     PRBool isServer = ss->sec.isServer;
     int errCode;
+    CERTCertList *peerChain = NULL;
 
     ss->ssl3.hs.authCertificatePending = PR_FALSE;
 
@@ -11744,8 +11796,24 @@ ssl3_AuthCertificate(sslSocket *ss)
     /*
      * Ask caller-supplied callback function to validate cert chain.
      */
+    if (ss->opt.dbLoadCertChain) {
+        /* Imports the certificate chain into the db. Indirectly used by the
+         * authCertificate callback below. */
+        peerChain = SSL_PeerCertificateChain(ss->fd);
+        if (!peerChain) {
+            errCode = PORT_GetError();
+            goto loser;
+        }
+    }
+
     rv = (SECStatus)(*ss->authCertificate)(ss->authCertificateArg, ss->fd,
                                            PR_TRUE, isServer);
+
+    if (ss->opt.dbLoadCertChain && peerChain) {
+        CERT_DestroyCertList(peerChain);
+        peerChain = NULL;
+    }
+
     if (rv != SECSuccess) {
         errCode = PORT_GetError();
         if (errCode == 0) {
@@ -12441,6 +12509,9 @@ ssl3_FillInCachedSID(sslSocket *ss, sslSessionID *sid, PK11SymKey *secret)
     sid->sigScheme = ss->sec.signatureScheme;
     sid->lastAccessTime = sid->creationTime = ssl_Time(ss);
     sid->expirationTime = sid->creationTime + (ssl_ticket_lifetime * PR_USEC_PER_SEC);
+    if (sid->localCert) {
+        CERT_DestroyCertificate(sid->localCert);
+    }
     sid->localCert = CERT_DupCertificate(ss->sec.localCert);
     if (ss->sec.isServer) {
         sid->namedCurve = ss->sec.serverCert->namedCurve;

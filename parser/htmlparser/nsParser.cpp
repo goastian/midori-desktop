@@ -126,6 +126,7 @@ void nsParser::Initialize() {
   mFlags = NS_PARSER_FLAG_CAN_TOKENIZE;
 
   mProcessingNetworkData = false;
+  mOnStopPending = false;
   mIsAboutBlank = false;
 }
 
@@ -388,10 +389,22 @@ nsParser::ContinueInterruptedParsing() {
     return mInternalState;
   }
 
-  // If there are scripts executing, then the content sink is jumping the gun
-  // (probably due to a synchronous XMLHttpRequest) and will re-enable us
-  // later, see bug 460706.
-  if (!IsOkToProcessNetworkData()) {
+  if (mBlocked) {
+    // Whatever blocked the parser is responsible for ensuring
+    // that we don't stall.
+    return NS_OK;
+  }
+
+  // If there are scripts executing, this is probably due to a synchronous
+  // XMLHttpRequest, see bug 460706 and 1938290.
+  if (IsScriptExecuting()) {
+    ContinueParsingDocumentAfterCurrentScript();
+    return NS_OK;
+  }
+
+  if (mProcessingNetworkData) {
+    // The call already on stack is responsible for ensuring that we
+    // don't stall.
     return NS_OK;
   }
 
@@ -403,12 +416,6 @@ nsParser::ContinueInterruptedParsing() {
   nsCOMPtr<nsIParser> kungFuDeathGrip(this);
   nsCOMPtr<nsIContentSink> sinkDeathGrip(mSink);
 
-#ifdef DEBUG
-  if (mBlocked) {
-    NS_WARNING("Don't call ContinueInterruptedParsing on a blocked parser.");
-  }
-#endif
-
   bool isFinalChunk =
       mParserContext && mParserContext->mStreamListenerState == eOnStop;
 
@@ -417,6 +424,22 @@ nsParser::ContinueInterruptedParsing() {
     sinkDeathGrip->WillParse();
   }
   result = ResumeParse(true, isFinalChunk);  // Ref. bug 57999
+
+  // Bug 1899786 added a flag for deferring `eOnStop`, so `isFinalChunk`
+  // above may be false. Let's run the logic from bug 1899786:
+  // Check if someone spun the event loop while we were parsing (XML
+  // script...) If so, and OnStop was called during the spin, process it
+  // now.
+  if ((result == NS_OK) && mOnStopPending) {
+    mOnStopPending = false;
+    mParserContext->mStreamListenerState = eOnStop;
+    mParserContext->mScanner.SetIncremental(false);
+
+    if (sinkDeathGrip) {
+      sinkDeathGrip->WillParse();
+    }
+    result = ResumeParse(true, true);
+  }
   mProcessingNetworkData = false;
 
   if (result != NS_OK) {
@@ -478,8 +501,6 @@ void nsParser::HandleParserContinueEvent(nsParserContinueEvent* ev) {
   mFlags &= ~NS_PARSER_FLAG_PENDING_CONTINUE_EVENT;
   mContinueEvent = nullptr;
 
-  NS_ASSERTION(IsOkToProcessNetworkData(),
-               "Interrupted in the middle of a script?");
   ContinueInterruptedParsing();
 }
 
@@ -891,7 +912,7 @@ static bool ExtractCharsetFromXmlDeclaration(const unsigned char* aBytes,
           }
         }
       }  // if (!versionFound)
-    }    // for
+    }  // for
   }
   return !oCharset.IsEmpty();
 }
@@ -1017,7 +1038,14 @@ nsresult nsParser::OnDataAvailable(nsIRequest* request,
       return rv;
     }
 
-    if (IsOkToProcessNetworkData()) {
+    // If there are scripts executing, this is probably due to a synchronous
+    // XMLHttpRequest, see bug 460706 and 1938290.
+    if (IsScriptExecuting()) {
+      ContinueParsingDocumentAfterCurrentScript();
+      return rv;
+    }
+
+    if (!mProcessingNetworkData) {
       nsCOMPtr<nsIParser> kungFuDeathGrip(this);
       nsCOMPtr<nsIContentSink> sinkDeathGrip(mSink);
       mProcessingNetworkData = true;
@@ -1025,6 +1053,19 @@ nsresult nsParser::OnDataAvailable(nsIRequest* request,
         sinkDeathGrip->WillParse();
       }
       rv = ResumeParse();
+      // Check if someone spun the event loop while we were parsing (XML
+      // script...) If so, and OnStop was called during the spin, process it
+      // now.
+      if ((mParserContext->mRequest == request) && mOnStopPending) {
+        mOnStopPending = false;
+        mParserContext->mStreamListenerState = eOnStop;
+        mParserContext->mScanner.SetIncremental(false);
+
+        if (sinkDeathGrip) {
+          sinkDeathGrip->WillParse();
+        }
+        rv = ResumeParse(true, true);
+      }
       mProcessingNetworkData = false;
     }
   } else {
@@ -1047,20 +1088,31 @@ nsresult nsParser::OnStopRequest(nsIRequest* request, nsresult status) {
 
   nsresult rv = NS_OK;
 
-  if (mParserContext->mRequest == request) {
-    mParserContext->mStreamListenerState = eOnStop;
-    mParserContext->mScanner.SetIncremental(false);
-  }
-
   mStreamStatus = status;
 
-  if (IsOkToProcessNetworkData() && NS_SUCCEEDED(rv)) {
+  // If there are scripts executing, this is probably due to a synchronous
+  // XMLHttpRequest, see bug 460706 and 1938290.
+  if (IsScriptExecuting()) {
+    // We'll have to handle this later
+    mOnStopPending = true;
+    ContinueParsingDocumentAfterCurrentScript();
+    return rv;
+  }
+
+  if (!mProcessingNetworkData && NS_SUCCEEDED(rv)) {
+    if (mParserContext->mRequest == request) {
+      mParserContext->mStreamListenerState = eOnStop;
+      mParserContext->mScanner.SetIncremental(false);
+    }
     mProcessingNetworkData = true;
     if (mSink) {
       mSink->WillParse();
     }
     rv = ResumeParse(true, true);
     mProcessingNetworkData = false;
+  } else {
+    // We'll have to handle this later
+    mOnStopPending = true;
   }
 
   // If the parser isn't enabled, we don't finish parsing till

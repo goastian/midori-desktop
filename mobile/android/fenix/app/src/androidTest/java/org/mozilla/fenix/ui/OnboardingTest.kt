@@ -2,6 +2,7 @@ package org.mozilla.fenix.ui
 
 import android.os.Build
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
+import androidx.test.filters.SdkSuppress
 import org.junit.Rule
 import org.junit.Test
 import org.mozilla.fenix.customannotations.SmokeTest
@@ -10,6 +11,7 @@ import org.mozilla.fenix.helpers.AppAndSystemHelper.runWithCondition
 import org.mozilla.fenix.helpers.AppAndSystemHelper.runWithLauncherIntent
 import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.homeScreen
 
 class OnboardingTest : TestSetup() {
@@ -20,7 +22,10 @@ class OnboardingTest : TestSetup() {
             HomeActivityIntentTestRule.withDefaultSettingsOverrides(launchActivity = false),
         ) { it.activity }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2122321
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2122321
     @Test
     fun verifyFirstOnboardingCardItemsTest() {
         // Run UI test only on devices with Android version lower than 10
@@ -34,8 +39,7 @@ class OnboardingTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2122334
-    @SmokeTest
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2122334
     @Test
     fun verifyFirstOnboardingCardItemsFunctionalityTest() {
         // Run UI test only on devices with Android version lower than 10
@@ -55,7 +59,7 @@ class OnboardingTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2122343
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2122343
     @Test
     fun verifySecondOnboardingCardItemsTest() {
         runWithLauncherIntent(activityTestRule) {
@@ -71,7 +75,7 @@ class OnboardingTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2122344
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2122344
     @SmokeTest
     @Test
     fun verifyThirdOnboardingCardSignInFunctionalityTest() {
@@ -88,6 +92,18 @@ class OnboardingTest : TestSetup() {
                 verifyThirdOnboardingCard(activityTestRule)
             }.clickSignInOnboardingButton(activityTestRule) {
                 verifyTurnOnSyncMenu()
+            }
+        }
+    }
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2609732
+    @SdkSuppress(minSdkVersion = 29)
+    @SmokeTest
+    @Test
+    fun verifySetAsDefaultBrowserDialogWhileFirefoxIsNotSetAsDefaultBrowserTest() {
+        runWithLauncherIntent(activityTestRule) {
+            homeScreen {
+                verifySetAsDefaultBrowserDialogWhileFirefoxIsNotSetAsDefaultBrowser()
             }
         }
     }

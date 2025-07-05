@@ -8,21 +8,24 @@ import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.DialogInterface
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
+import android.view.View
 import android.widget.Toast
 import androidx.annotation.VisibleForTesting
 import androidx.appcompat.app.AlertDialog
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.edit
+import androidx.core.net.toUri
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Observer
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavDirections
 import androidx.navigation.findNavController
+import androidx.navigation.fragment.findNavController
 import androidx.navigation.fragment.navArgs
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
@@ -32,14 +35,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import mozilla.components.browser.state.state.selectedOrDefaultSearchEngine
+import mozilla.components.concept.engine.Engine
 import mozilla.components.concept.sync.AccountObserver
 import mozilla.components.concept.sync.AuthType
 import mozilla.components.concept.sync.OAuthAccount
 import mozilla.components.concept.sync.Profile
 import mozilla.components.feature.addons.ui.AddonFilePicker
-import mozilla.components.service.glean.private.NoExtras
+import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
 import mozilla.components.support.ktx.android.view.showKeyboard
 import mozilla.components.ui.widgets.withCenterAlignedButtons
+import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.BrowserDirection
 import org.mozilla.fenix.Config
 import org.mozilla.fenix.FeatureFlags
@@ -63,6 +68,8 @@ import org.mozilla.fenix.ext.showToolbar
 import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.perf.ProfilerViewModel
 import org.mozilla.fenix.settings.account.AccountUiView
+import org.mozilla.fenix.snackbar.FenixSnackbarDelegate
+import org.mozilla.fenix.snackbar.SnackbarBinding
 import org.mozilla.fenix.utils.Settings
 import kotlin.system.exitProcess
 import org.mozilla.fenix.GleanMetrics.Settings as SettingsMetrics
@@ -74,6 +81,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
     private lateinit var accountUiView: AccountUiView
     private lateinit var addonFilePicker: AddonFilePicker
     private val profilerViewModel: ProfilerViewModel by activityViewModels()
+    private val snackbarBinding = ViewBoundFeatureWrapper<SnackbarBinding>()
 
     @VisibleForTesting
     internal val accountObserver = object : AccountObserver {
@@ -107,7 +115,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
             scope = lifecycleScope,
             accountManager = requireComponents.backgroundServices.accountManager,
             httpClient = requireComponents.core.client,
-            updateFxAAllowDomesticChinaServerMenu = ::updateFxAAllowDomesticChinaServerMenu,
         )
 
         addonFilePicker = AddonFilePicker(requireContext(), requireComponents.addonManager)
@@ -124,22 +131,29 @@ class SettingsFragment : PreferenceFragmentCompat() {
             requireComponents.backgroundServices.accountManager.accountProfile(),
         )
 
-        val booleanPreferenceTelemetryAllowList = listOf(
-            requireContext().getString(R.string.pref_key_show_search_suggestions),
-            requireContext().getString(R.string.pref_key_remote_debugging),
-            requireContext().getString(R.string.pref_key_telemetry),
-            requireContext().getString(R.string.pref_key_tracking_protection),
-            requireContext().getString(R.string.pref_key_search_bookmarks),
-            requireContext().getString(R.string.pref_key_search_browsing_history),
-            requireContext().getString(R.string.pref_key_show_clipboard_suggestions),
-            requireContext().getString(R.string.pref_key_show_search_engine_shortcuts),
-            requireContext().getString(R.string.pref_key_open_links_in_a_private_tab),
-            requireContext().getString(R.string.pref_key_sync_logins),
-            requireContext().getString(R.string.pref_key_sync_bookmarks),
-            requireContext().getString(R.string.pref_key_sync_history),
-            requireContext().getString(R.string.pref_key_show_voice_search),
-            requireContext().getString(R.string.pref_key_show_search_suggestions_in_private),
-        )
+        val booleanPreferenceTelemetryAllowList = with(requireContext()) {
+            listOf(
+                getString(R.string.pref_key_show_search_suggestions),
+                getString(R.string.pref_key_remote_debugging),
+                getString(R.string.pref_key_telemetry),
+                getString(R.string.pref_key_marketing_telemetry),
+                getString(R.string.pref_key_learn_about_marketing_telemetry),
+                getString(R.string.pref_key_tracking_protection),
+                getString(R.string.pref_key_search_bookmarks),
+                getString(R.string.pref_key_search_browsing_history),
+                getString(R.string.pref_key_show_clipboard_suggestions),
+                getString(R.string.pref_key_show_search_engine_shortcuts),
+                getString(R.string.pref_key_open_links_in_a_private_tab),
+                getString(R.string.pref_key_sync_logins),
+                getString(R.string.pref_key_sync_bookmarks),
+                getString(R.string.pref_key_sync_history),
+                getString(R.string.pref_key_show_voice_search),
+                getString(R.string.pref_key_show_search_suggestions_in_private),
+                getString(R.string.pref_key_show_trending_search_suggestions),
+                getString(R.string.pref_key_show_recent_search_suggestions),
+                getString(R.string.pref_key_show_shortcuts_suggestions),
+            )
+        }
 
         preferenceManager?.sharedPreferences
             ?.registerOnSharedPreferenceChangeListener(this) { sharedPreferences, key ->
@@ -162,11 +176,30 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
         findPreference<Preference>(
             getPreferenceKey(R.string.pref_key_translation),
-        )?.isVisible = FxNimbus.features.translations.value().globalSettingsEnabled
+        )?.isVisible = FxNimbus.features.translations.value().globalSettingsEnabled &&
+            requireContext().components.core.store.state.translationEngine.isEngineSupported == true
     }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences, rootKey)
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        snackbarBinding.set(
+            feature = SnackbarBinding(
+                context = requireContext(),
+                browserStore = requireContext().components.core.store,
+                appStore = requireContext().components.appStore,
+                snackbarDelegate = FenixSnackbarDelegate(view),
+                navController = findNavController(),
+                tabsUseCases = requireContext().components.useCases.tabsUseCases,
+                sendTabUseCases = null,
+                customTabSessionId = null,
+            ),
+            owner = this,
+            view = view,
+        )
     }
 
     @SuppressLint("RestrictedApi")
@@ -285,7 +318,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 )
             }
 
-            /* General preferences */
+            // General preferences
             resources.getString(R.string.pref_key_search_settings) -> {
                 SettingsFragmentDirections.actionSettingsFragmentToSearchEngineFragment()
             }
@@ -325,7 +358,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 SettingsFragmentDirections.actionSettingsFragmentToTranslationsSettingsFragment()
             }
 
-            /* Privacy and security preferences */
+            // Privacy and security preferences
             resources.getString(R.string.pref_key_private_browsing) -> {
                 SettingsFragmentDirections.actionSettingsFragmentToPrivateBrowsingFragment()
             }
@@ -337,6 +370,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
             resources.getString(R.string.pref_key_tracking_protection_settings) -> {
                 TrackingProtection.etpSettings.record(NoExtras())
                 SettingsFragmentDirections.actionSettingsFragmentToTrackingProtectionFragment()
+            }
+
+            resources.getString(R.string.pref_key_doh_settings) -> {
+                SettingsFragmentDirections.actionSettingsFragmentToDohSettingsFragment()
             }
 
             resources.getString(R.string.pref_key_site_permissions) -> {
@@ -360,9 +397,9 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 SettingsFragmentDirections.actionSettingsFragmentToDataChoicesFragment()
             }
 
-            /* Advanced preferences */
+            // Advanced preferences
             resources.getString(R.string.pref_key_addons) -> {
-                Addons.openAddonsInSettings.record(mozilla.components.service.glean.private.NoExtras())
+                Addons.openAddonsInSettings.record(NoExtras())
                 SettingsFragmentDirections.actionSettingsFragmentToAddonsFragment()
             }
 
@@ -415,6 +452,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 null
             }
 
+            resources.getString(R.string.pref_key_link_sharing) -> {
+                SettingsFragmentDirections.actionSettingsFragmentToLinkSharingFragment()
+            }
+
             resources.getString(R.string.pref_key_open_links_in_apps) -> {
                 SettingsFragmentDirections.actionSettingsFragmentToOpenLinksInAppsFragment()
             }
@@ -423,10 +464,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 SettingsFragmentDirections.actionSettingsFragmentToSyncDebugFragment()
             }
 
-            /* About preferences */
+            // About preferences
             resources.getString(R.string.pref_key_rate) -> {
                 try {
-                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(SupportUtils.RATE_APP_URL)))
+                    startActivity(Intent(Intent.ACTION_VIEW, SupportUtils.RATE_APP_URL.toUri()))
                 } catch (e: ActivityNotFoundException) {
                     // Device without the play store installed.
                     // Opening the play store website.
@@ -491,8 +532,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
         preferenceRemoteDebugging?.isVisible = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
         preferenceRemoteDebugging?.setOnPreferenceChangeListener<Boolean> { preference, newValue ->
-            preference.context.settings().preferences.edit()
-                .putBoolean(preference.key, newValue).apply()
+            preference.context.settings().preferences.edit { putBoolean(preference.key, newValue) }
             requireComponents.core.engine.settings.remoteDebuggingEnabled = newValue
             true
         }
@@ -524,14 +564,15 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
         setupCookieBannerPreference()
         setupInstallAddonFromFilePreference(requireContext().settings())
+        setLinkSharingPreference()
         setupAmoCollectionOverridePreference(requireContext().settings())
         setupGeckoLogsPreference(requireContext().settings())
-        setupAllowDomesticChinaFxaServerPreference()
         setupHttpsOnlyPreferences()
         setupNotificationPreference()
         setupSearchPreference()
         setupHomepagePreference()
         setupTrackingProtectionPreference()
+        setupDnsOverHttpsPreference(requireContext().settings())
     }
 
     /**
@@ -563,22 +604,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
             scrollBarSize = 0
             delay(SCROLL_INDICATOR_DELAY)
             scrollBarSize = originalSize
-        }
-    }
-
-    private fun updateFxAAllowDomesticChinaServerMenu() {
-        val settings = requireContext().settings()
-        val preferenceAllowDomesticChinaServer =
-            findPreference<SwitchPreference>(getPreferenceKey(R.string.pref_key_allow_domestic_china_fxa_server))
-        // Only enable changes to these prefs when the user isn't connected to an account.
-        val enabled =
-            requireComponents.backgroundServices.accountManager.authenticatedAccount() == null
-        val checked = settings.allowDomesticChinaFxaServer
-        val visible = Config.channel.isMozillaOnline
-        preferenceAllowDomesticChinaServer?.apply {
-            isEnabled = enabled
-            isChecked = checked
-            isVisible = visible
         }
     }
 
@@ -622,36 +647,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 )
                 true
             }
-    }
-
-    private fun setupAllowDomesticChinaFxaServerPreference() {
-        val allowDomesticChinaFxAServer = getPreferenceKey(R.string.pref_key_allow_domestic_china_fxa_server)
-        val preferenceAllowDomesticChinaFxAServer = findPreference<SwitchPreference>(allowDomesticChinaFxAServer)
-        val visible = Config.channel.isMozillaOnline
-
-        preferenceAllowDomesticChinaFxAServer?.apply {
-            isVisible = visible
-        }
-
-        if (visible) {
-            preferenceAllowDomesticChinaFxAServer?.onPreferenceChangeListener =
-                Preference.OnPreferenceChangeListener { preference, newValue ->
-                    preference.context.settings().preferences.edit()
-                        .putBoolean(preference.key, newValue as Boolean).apply()
-                    updateFxAAllowDomesticChinaServerMenu()
-                    Toast.makeText(
-                        context,
-                        getString(R.string.toast_override_account_sync_server_done),
-                        Toast.LENGTH_LONG,
-                    ).show()
-                    Handler(Looper.getMainLooper()).postDelayed(
-                        {
-                            exitProcess(0)
-                        },
-                        FXA_SYNC_OVERRIDE_EXIT_DELAY,
-                    )
-                }
-        }
     }
 
     @VisibleForTesting
@@ -704,6 +699,18 @@ class SettingsFragment : PreferenceFragmentCompat() {
         }
     }
 
+    private fun setupDnsOverHttpsPreference(settings: Settings) {
+        with(requirePreference<Preference>(R.string.pref_key_doh_settings)) {
+            isVisible = settings.showDohEntryPoint
+            summary = when (context.settings().getDohSettingsMode()) {
+                Engine.DohSettingsMode.DEFAULT -> getString(R.string.preference_doh_default_protection)
+                Engine.DohSettingsMode.OFF -> getString(R.string.preference_doh_off)
+                Engine.DohSettingsMode.INCREASED -> getString(R.string.preference_doh_increased_protection)
+                Engine.DohSettingsMode.MAX -> getString(R.string.preference_doh_max_protection)
+            }
+        }
+    }
+
     @VisibleForTesting
     internal fun setupCookieBannerPreference() {
         FxNimbus.features.cookieBanners.recordExposure()
@@ -737,10 +744,14 @@ class SettingsFragment : PreferenceFragmentCompat() {
     @VisibleForTesting
     internal fun setupInstallAddonFromFilePreference(settings: Settings) {
         with(requirePreference<Preference>(R.string.pref_key_install_local_addon)) {
-            // Below Android 10, the OS doesn't seem to recognize
-            // the "application/x-xpinstall" mime type (for XPI files).
-            isVisible =
-                settings.showSecretDebugMenuThisSession && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+            isVisible = settings.showSecretDebugMenuThisSession
+        }
+    }
+
+    @VisibleForTesting
+    internal fun setLinkSharingPreference() {
+        with(requirePreference<Preference>(R.string.pref_key_link_sharing)) {
+            isVisible = FxNimbus.features.sentFromFirefox.value().enabled
         }
     }
 

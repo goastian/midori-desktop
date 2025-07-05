@@ -5,11 +5,12 @@
 //! `<length>` computed values, and related ones.
 
 use super::{Context, Number, ToComputedValue};
-use crate::values::animated::ToAnimatedValue;
+use crate::values::animated::{Context as AnimatedContext, ToAnimatedValue};
 use crate::values::computed::{NonNegativeNumber, Zoom};
 use crate::values::generics::length as generics;
 use crate::values::generics::length::{
-    GenericLengthOrNumber, GenericLengthPercentageOrNormal, GenericMaxSize, GenericSize,
+    GenericAnchorSizeFunction, GenericLengthOrNumber, GenericLengthPercentageOrNormal,
+    GenericMaxSize, GenericSize,
 };
 use crate::values::generics::NonNegative;
 use crate::values::resolved::{Context as ResolvedContext, ToResolvedValue};
@@ -18,7 +19,7 @@ use crate::values::{specified, CSSFloat};
 use crate::Zero;
 use app_units::Au;
 use std::fmt::{self, Write};
-use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub};
+use std::ops::{Add, AddAssign, Div, Mul, MulAssign, Neg, Sub, SubAssign};
 use style_traits::{CSSPixel, CssWriter, ToCss};
 
 pub use super::image::Image;
@@ -175,45 +176,6 @@ impl NonNegativeLengthPercentageOrAuto {
     computed_length_percentage_or_auto!(NonNegativeLengthPercentage);
 }
 
-#[cfg(feature = "servo")]
-impl MaxSize {
-    /// Convert the computed value into used value.
-    #[inline]
-    pub fn to_used_value(&self, percentage_basis: Au) -> Option<Au> {
-        match *self {
-            GenericMaxSize::None => None,
-            GenericMaxSize::LengthPercentage(ref lp) => Some(lp.to_used_value(percentage_basis)),
-        }
-    }
-}
-
-impl Size {
-    /// Convert the computed value into used value.
-    #[inline]
-    #[cfg(feature = "servo")]
-    pub fn to_used_value(&self, percentage_basis: Au) -> Option<Au> {
-        match *self {
-            GenericSize::Auto => None,
-            GenericSize::LengthPercentage(ref lp) => Some(lp.to_used_value(percentage_basis)),
-        }
-    }
-
-    /// Returns true if the computed value is absolute 0 or 0%.
-    #[inline]
-    pub fn is_definitely_zero(&self) -> bool {
-        match *self {
-            Self::Auto => false,
-            Self::LengthPercentage(ref lp) => lp.is_definitely_zero(),
-            #[cfg(feature = "gecko")]
-            Self::MinContent |
-            Self::MaxContent |
-            Self::FitContent |
-            Self::MozAvailable |
-            Self::FitContentFunction(_) => false,
-        }
-    }
-}
-
 /// The computed `<length>` value.
 #[derive(
     Animate,
@@ -225,7 +187,6 @@ impl Size {
     PartialEq,
     PartialOrd,
     Serialize,
-    ToAnimatedValue,
     ToAnimatedZero,
     ToComputedValue,
     ToShmem,
@@ -242,6 +203,19 @@ impl ToResolvedValue for CSSPixelLength {
 
     #[inline]
     fn from_resolved_value(value: Self::ResolvedValue) -> Self {
+        value
+    }
+}
+
+impl ToAnimatedValue for CSSPixelLength {
+    type AnimatedValue = Self;
+
+    fn to_animated_value(self, context: &AnimatedContext) -> Self::AnimatedValue {
+        Self(context.style.effective_zoom.unzoom(self.0))
+    }
+
+    #[inline]
+    fn from_animated_value(value: Self::AnimatedValue) -> Self {
         value
     }
 }
@@ -441,6 +415,13 @@ impl Sub for CSSPixelLength {
     }
 }
 
+impl SubAssign for CSSPixelLength {
+    #[inline]
+    fn sub_assign(&mut self, other: Self) {
+        self.0 -= other.0;
+    }
+}
+
 impl From<CSSPixelLength> for Au {
     #[inline]
     fn from(len: CSSPixelLength) -> Self {
@@ -481,8 +462,8 @@ impl ToAnimatedValue for NonNegativeLength {
     type AnimatedValue = Length;
 
     #[inline]
-    fn to_animated_value(self) -> Self::AnimatedValue {
-        self.0
+    fn to_animated_value(self, context: &AnimatedContext) -> Self::AnimatedValue {
+        self.0.to_animated_value(context)
     }
 
     #[inline]
@@ -546,5 +527,11 @@ pub type NonNegativeLengthOrNumber = GenericLengthOrNumber<NonNegativeLength, No
 /// A computed value for `min-width`, `min-height`, `width` or `height` property.
 pub type Size = GenericSize<NonNegativeLengthPercentage>;
 
-/// A computed value for `max-width` or `min-height` property.
+/// A computed value for `max-width` or `max-height` property.
 pub type MaxSize = GenericMaxSize<NonNegativeLengthPercentage>;
+
+/// A computed value for `anchor-size` runction.
+pub type AnchorSizeFunction = GenericAnchorSizeFunction<LengthPercentage>;
+
+/// A computed type for `margin` properties.
+pub type Margin = generics::GenericMargin<LengthPercentage>;

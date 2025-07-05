@@ -1,16 +1,26 @@
 [
   {
-    "testIdPattern": "[pdf.spec] Page.pdf can print to PDF with outline",
+    "testIdPattern": "[browsercontext-cookies.spec] BrowserContext cookies BrowserContext.setCookie should set cookie with a partition key",
     "platforms": ["darwin", "linux", "win32"],
-    "parameters": ["chrome", "headful", "cdp"],
-    "expectations": ["PASS"],
-    "comment": "fixed in canary"
+    "parameters": ["firefox", "webDriverBiDi"],
+    "expectations": ["PASS"]
   },
   {
-    "testIdPattern": "[pdf.spec] Page.pdf can print to PDF with outline",
+    "testIdPattern": "[launcher.spec] Launcher specs Puppeteer Puppeteer.launch userDataDir option should restore cookies",
+    "platforms": ["darwin"],
+    "parameters": ["cdp", "chrome-headless-shell"],
+    "expectations": ["PASS"]
+  },
+  {
+    "testIdPattern": "[requestinterception-experimental.spec] cooperative request interception Request.continue should redirect in a way non-observable to page",
     "platforms": ["darwin", "linux", "win32"],
-    "parameters": ["chrome", "headless", "cdp"],
-    "expectations": ["PASS"],
-    "comment": "fixed in canary"
+    "parameters": ["firefox", "webDriverBiDi"],
+    "expectations": ["PASS"]
+  },
+  {
+    "testIdPattern": "[requestinterception.spec] request interception Request.continue should redirect in a way non-observable to page",
+    "platforms": ["darwin", "linux", "win32"],
+    "parameters": ["firefox", "webDriverBiDi"],
+    "expectations": ["PASS"]
   }
 ]

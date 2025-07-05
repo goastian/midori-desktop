@@ -54,6 +54,16 @@ TRRLoadInfo::SetPrincipalToInherit(nsIPrincipal* aPrincipalToInherit) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
+NS_IMETHODIMP
+TRRLoadInfo::GetUserNavigationInvolvement(uint8_t* aUserNavigationInvolvement) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::SetUserNavigationInvolvement(uint8_t aUserNavigationInvolvement) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
 nsIPrincipal* TRRLoadInfo::PrincipalToInherit() { return nullptr; }
 
 nsIPrincipal* TRRLoadInfo::FindPrincipalToInherit(nsIChannel* aChannel) {
@@ -162,6 +172,16 @@ TRRLoadInfo::SetIsThirdPartyContextToTopWindow(
 }
 
 NS_IMETHODIMP
+TRRLoadInfo::GetIsOn3PCBExceptionList(bool* aIsOn3PCBExceptionList) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::SetIsOn3PCBExceptionList(bool aIsOn3PCBExceptionList) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
 TRRLoadInfo::GetCookiePolicy(uint32_t* aResult) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
@@ -188,11 +208,33 @@ TRRLoadInfo::SetStoragePermission(
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-const Maybe<RFPTarget>& TRRLoadInfo::GetOverriddenFingerprintingSettings() {
+NS_IMETHODIMP
+TRRLoadInfo::GetParentIpAddressSpace(
+    nsILoadInfo::IPAddressSpace* aIPAddressSpace) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::SetParentIpAddressSpace(
+    nsILoadInfo::IPAddressSpace aIPAddressSpace) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::GetIpAddressSpace(nsILoadInfo::IPAddressSpace* aIPAddressSpace) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::SetIpAddressSpace(nsILoadInfo::IPAddressSpace aIPAddressSpace) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+const Maybe<RFPTargetSet>& TRRLoadInfo::GetOverriddenFingerprintingSettings() {
   return mOverriddenFingerprintingSettings;
 }
 
-void TRRLoadInfo::SetOverriddenFingerprintingSettings(RFPTarget aTargets) {}
+void TRRLoadInfo::SetOverriddenFingerprintingSettings(RFPTargetSet aTargets) {}
 
 NS_IMETHODIMP
 TRRLoadInfo::GetIsMetaRefresh(bool* aResult) {
@@ -249,6 +291,12 @@ NS_IMETHODIMP
 TRRLoadInfo::SetIsFormSubmission(bool aValue) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
+
+NS_IMETHODIMP
+TRRLoadInfo::GetIsGETRequest(bool* aResult) { return NS_ERROR_NOT_IMPLEMENTED; }
+
+NS_IMETHODIMP
+TRRLoadInfo::SetIsGETRequest(bool aValue) { return NS_ERROR_NOT_IMPLEMENTED; }
 
 NS_IMETHODIMP
 TRRLoadInfo::GetSendCSPViolationEvents(bool* aResult) {
@@ -627,12 +675,6 @@ TRRLoadInfo::GetIsFromObjectOrEmbed(bool* aIsFromObjectOrEmbed) {
 }
 
 NS_IMETHODIMP
-TRRLoadInfo::GetShouldSkipCheckForBrokenURLOrZeroSized(
-    bool* aShouldSkipCheckForBrokenURLOrZeroSized) {
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-NS_IMETHODIMP
 TRRLoadInfo::GetResultPrincipalURI(nsIURI** aURI) {
   nsCOMPtr<nsIURI> uri = mResultPrincipalURI;
   uri.forget(aURI);
@@ -766,6 +808,27 @@ TRRLoadInfo::SetHasValidUserGestureActivation(
 }
 
 NS_IMETHODIMP
+TRRLoadInfo::GetTextDirectiveUserActivation(
+    bool* aTextDirectiveUserActivation) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::SetTextDirectiveUserActivation(bool aTextDirectiveUserActivation) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::GetIsSameDocumentNavigation(bool* aTextDirectiveUserActivation) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::SetIsSameDocumentNavigation(bool aTextDirectiveUserActivation) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
 TRRLoadInfo::GetInternalContentPolicyType(nsContentPolicyType* aResult) {
   *aResult = mInternalContentPolicyType;
   return NS_OK;
@@ -861,12 +924,27 @@ TRRLoadInfo::SetHasInjectedCookieForCookieBannerHandling(
 }
 
 NS_IMETHODIMP
-TRRLoadInfo::GetWasSchemelessInput(bool* aWasSchemelessInput) {
+TRRLoadInfo::GetSchemelessInput(
+    nsILoadInfo::SchemelessInputType* aSchemelessInput) {
+  *aSchemelessInput = nsILoadInfo::SchemelessInputTypeUnset;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::SetSchemelessInput(
+    nsILoadInfo::SchemelessInputType aSchemelessInput) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP
-TRRLoadInfo::SetWasSchemelessInput(bool aWasSchemelessInput) {
+TRRLoadInfo::GetHttpsUpgradeTelemetry(
+    nsILoadInfo::HTTPSUpgradeTelemetryType* aOutHttpsTelemetry) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::SetHttpsUpgradeTelemetry(
+    nsILoadInfo::HTTPSUpgradeTelemetryType aHttpsTelemetry) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
@@ -877,6 +955,21 @@ TRRLoadInfo::GetIsNewWindowTarget(bool* aIsNewWindowTarget) {
 
 NS_IMETHODIMP
 TRRLoadInfo::SetIsNewWindowTarget(bool aIsNewWindowTarget) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::GetSkipHTTPSUpgrade(bool* aSkipHTTPSUpgrade) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::SetSkipHTTPSUpgrade(bool aSkipHTTPSUpgrade) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+TRRLoadInfo::GetFetchDestination(nsACString& aDestination) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 

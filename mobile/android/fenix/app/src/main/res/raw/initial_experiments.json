@@ -2,30 +2,444 @@
   "data": [
     {
       "schemaVersion": "1.12.0",
-      "slug": "android-default-toolbar-placement-treatment-a-rollout",
-      "id": "android-default-toolbar-placement-treatment-a-rollout",
+      "slug": "long-term-holdback-2025-h1-growth-android",
+      "id": "long-term-holdback-2025-h1-growth-android",
       "arguments": {},
       "application": "org.mozilla.firefox",
       "appName": "fenix",
       "appId": "org.mozilla.firefox",
       "channel": "release",
-      "userFacingName": "Android default toolbar placement - Treatment A Rollout",
-      "userFacingDescription": "Testing default position of toolbar.",
+      "userFacingName": "Long term holdback 2025 H1 Growth Android",
+      "userFacingDescription": "Long-term holdback for growth experiments",
       "isEnrollmentPaused": false,
-      "isRollout": true,
+      "isRollout": false,
       "bucketConfig": {
         "randomizationUnit": "nimbus_id",
-        "namespace": "fenix-toolbar-release-mobile_first_run-rollout-1",
+        "namespace": "fenix-no-feature-fenix-release-4",
         "start": 0,
         "count": 10000,
         "total": 10000
       },
       "featureIds": [
-        "toolbar"
+        "no-feature-fenix"
       ],
       "probeSets": [],
       "outcomes": [],
       "branches": [
+        {
+          "slug": "delivery",
+          "ratio": 19,
+          "feature": {
+            "featureId": "this-is-included-for-mobile-pre-96-support",
+            "enabled": false,
+            "value": {}
+          },
+          "features": [
+            {
+              "featureId": "no-feature-fenix",
+              "enabled": true,
+              "value": {}
+            }
+          ]
+        },
+        {
+          "slug": "holdback",
+          "ratio": 1,
+          "feature": {
+            "featureId": "this-is-included-for-mobile-pre-96-support",
+            "enabled": false,
+            "value": {}
+          },
+          "features": [
+            {
+              "featureId": "no-feature-fenix",
+              "enabled": true,
+              "value": {}
+            }
+          ]
+        }
+      ],
+      "targeting": "((is_already_enrolled) || ((app_version|versionCompare('123.!') >= 0)))",
+      "startDate": "2024-12-12",
+      "enrollmentEndDate": null,
+      "endDate": null,
+      "proposedDuration": 100,
+      "proposedEnrollment": 100,
+      "referenceBranch": "holdback",
+      "featureValidationOptOut": false,
+      "localizations": null,
+      "locales": null,
+      "publishedDate": "2024-12-12T20:20:50.686475Z",
+      "isFirefoxLabsOptIn": false,
+      "firefoxLabsTitle": null,
+      "firefoxLabsDescription": null,
+      "firefoxLabsDescriptionLinks": null,
+      "firefoxLabsGroup": null,
+      "requiresRestart": false
+    },
+    {
+      "schemaVersion": "1.12.0",
+      "slug": "new-onboarding-experience-experiment-phase-3-android",
+      "id": "new-onboarding-experience-experiment-phase-3-android",
+      "arguments": {},
+      "application": "org.mozilla.firefox",
+      "appName": "fenix",
+      "appId": "org.mozilla.firefox",
+      "channel": "release",
+      "userFacingName": "New Onboarding Experience experiment phase 3 (Android)",
+      "userFacingDescription": "Rolling out new onboarding experience pointing to more information about data use.",
+      "isEnrollmentPaused": true,
+      "isRollout": false,
+      "bucketConfig": {
+        "randomizationUnit": "nimbus_id",
+        "namespace": "fenix-juno-onboarding-release-13",
+        "start": 0,
+        "count": 10000,
+        "total": 10000
+      },
+      "featureIds": [
+        "juno-onboarding"
+      ],
+      "probeSets": [],
+      "outcomes": [
+        {
+          "slug": "onboarding",
+          "priority": "primary"
+        },
+        {
+          "slug": "default-browser",
+          "priority": "secondary"
+        }
+      ],
+      "branches": [
+        {
+          "slug": "control",
+          "ratio": 75,
+          "feature": {
+            "featureId": "this-is-included-for-mobile-pre-96-support",
+            "enabled": false,
+            "value": {}
+          },
+          "features": [
+            {
+              "featureId": "juno-onboarding",
+              "enabled": true,
+              "value": {
+                "cards": {}
+              }
+            }
+          ]
+        },
+        {
+          "slug": "treatment-a",
+          "ratio": 25,
+          "feature": {
+            "featureId": "this-is-included-for-mobile-pre-96-support",
+            "enabled": false,
+            "value": {}
+          },
+          "features": [
+            {
+              "featureId": "juno-onboarding",
+              "enabled": true,
+              "value": {
+                "cards": {
+                  "terms-of-service": {
+                    "card-type": "terms-of-service",
+                    "title": "onboarding_welcome_to_firefox",
+                    "body": "onboarding_terms_of_service_sub_header_2",
+                    "ordering": 1,
+                    "image-res": "ic_firefox",
+                    "primary-button-label": "onboarding_term_of_service_agree_and_continue_button_label",
+                    "extra-data": {
+                      "term-of-service-data": {
+                        "line-one-text": "onboarding_term_of_service_line_one_2",
+                        "line-one-link-text": "onboarding_term_of_service_line_one_link_text_2",
+                        "line-two-text": "onboarding_term_of_service_line_two_2",
+                        "line-two-link-text": "onboarding_term_of_service_line_two_link_text",
+                        "line-three-text": "onboarding_term_of_service_line_three",
+                        "line-three-link-text": "onboarding_term_of_service_line_three_link_text"
+                      }
+                    }
+                  },
+                  "marketing": {
+                    "card-type": "marketing-data",
+                    "title": "onboarding_marketing_title",
+                    "body": "onboarding_marketing_body",
+                    "ordering": 40,
+                    "image-res": "ic_onboarding_welcome",
+                    "primary-button-label": "onboarding_marketing_positive_button",
+                    "extra-data": {
+                      "marketing-data": {
+                        "body-line-one-text": "onboarding_marketing_learn_more",
+                        "body-line-one-link-text": "onboarding_marketing_learn_more",
+                        "body-line-two-text": "onboarding_marketing_opt_in_checkbox"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "targeting": "((is_already_enrolled) || ((isFirstRun == 'true') && (app_version|versionCompare('137.!') >= 0)))",
+      "startDate": "2025-03-24",
+      "enrollmentEndDate": "2025-04-10",
+      "endDate": null,
+      "proposedDuration": 14,
+      "proposedEnrollment": 14,
+      "referenceBranch": "control",
+      "featureValidationOptOut": false,
+      "localizations": null,
+      "locales": null,
+      "publishedDate": "2025-03-24T23:57:36.071012Z",
+      "isFirefoxLabsOptIn": false,
+      "firefoxLabsTitle": null,
+      "firefoxLabsDescription": null,
+      "firefoxLabsDescriptionLinks": null,
+      "firefoxLabsGroup": null,
+      "requiresRestart": false
+    },
+    {
+      "schemaVersion": "1.12.0",
+      "slug": "new-onboarding-experience-experiment-phase-4-android",
+      "id": "new-onboarding-experience-experiment-phase-4-android",
+      "arguments": {},
+      "application": "org.mozilla.firefox",
+      "appName": "fenix",
+      "appId": "org.mozilla.firefox",
+      "channel": "release",
+      "userFacingName": "New Onboarding Experience experiment phase 4 (Android)",
+      "userFacingDescription": "Rolling out new onboarding experience pointing to more information about data use.",
+      "isEnrollmentPaused": true,
+      "isRollout": false,
+      "bucketConfig": {
+        "randomizationUnit": "nimbus_id",
+        "namespace": "fenix-juno-onboarding-release-14",
+        "start": 0,
+        "count": 10000,
+        "total": 10000
+      },
+      "featureIds": [
+        "juno-onboarding"
+      ],
+      "probeSets": [],
+      "outcomes": [
+        {
+          "slug": "onboarding",
+          "priority": "primary"
+        },
+        {
+          "slug": "default-browser",
+          "priority": "secondary"
+        }
+      ],
+      "branches": [
+        {
+          "slug": "control",
+          "ratio": 50,
+          "feature": {
+            "featureId": "this-is-included-for-mobile-pre-96-support",
+            "enabled": false,
+            "value": {}
+          },
+          "features": [
+            {
+              "featureId": "juno-onboarding",
+              "enabled": true,
+              "value": {
+                "cards": {}
+              }
+            }
+          ]
+        },
+        {
+          "slug": "treatment-a",
+          "ratio": 25,
+          "feature": {
+            "featureId": "this-is-included-for-mobile-pre-96-support",
+            "enabled": false,
+            "value": {}
+          },
+          "features": [
+            {
+              "featureId": "juno-onboarding",
+              "enabled": true,
+              "value": {
+                "cards": {
+                  "terms-of-service": {
+                    "card-type": "terms-of-service",
+                    "title": "onboarding_welcome_to_firefox",
+                    "body": "onboarding_terms_of_service_sub_header_2",
+                    "ordering": 1,
+                    "image-res": "ic_firefox",
+                    "primary-button-label": "onboarding_term_of_service_agree_and_continue_button_label",
+                    "extra-data": {
+                      "term-of-service-data": {
+                        "line-one-text": "onboarding_term_of_service_line_one_2",
+                        "line-one-link-text": "onboarding_term_of_service_line_one_link_text_2",
+                        "line-two-text": "onboarding_term_of_service_line_two_2",
+                        "line-two-link-text": "onboarding_term_of_service_line_two_link_text",
+                        "line-three-text": "onboarding_term_of_service_line_three",
+                        "line-three-link-text": "onboarding_term_of_service_line_three_link_text"
+                      }
+                    }
+                  },
+                  "marketing": {
+                    "card-type": "marketing-data",
+                    "title": "onboarding_marketing_title",
+                    "body": "onboarding_marketing_body",
+                    "ordering": 40,
+                    "image-res": "ic_onboarding_welcome",
+                    "primary-button-label": "onboarding_marketing_positive_button",
+                    "extra-data": {
+                      "marketing-data": {
+                        "body-line-one-text": "onboarding_marketing_learn_more",
+                        "body-line-one-link-text": "onboarding_marketing_learn_more",
+                        "body-line-two-text": "onboarding_marketing_opt_in_checkbox"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        {
+          "slug": "treatment-b",
+          "ratio": 25,
+          "feature": {
+            "featureId": "this-is-included-for-mobile-pre-96-support",
+            "enabled": false,
+            "value": {}
+          },
+          "features": [
+            {
+              "featureId": "juno-onboarding",
+              "enabled": true,
+              "value": {
+                "cards": {
+                  "terms-of-service": {
+                    "card-type": "terms-of-service",
+                    "title": "onboarding_welcome_to_firefox",
+                    "body": "onboarding_terms_of_service_sub_header_2",
+                    "ordering": 1,
+                    "image-res": "ic_firefox",
+                    "primary-button-label": "micro_survey_continue_button_label",
+                    "extra-data": {
+                      "term-of-service-data": {
+                        "line-one-text": "onboarding_term_of_service_line_one_2",
+                        "line-one-link-text": "onboarding_term_of_service_line_one_link_text_2",
+                        "line-two-text": "onboarding_term_of_service_line_two_2",
+                        "line-two-link-text": "onboarding_term_of_service_line_two_link_text",
+                        "line-three-text": "onboarding_term_of_service_line_three",
+                        "line-three-link-text": "onboarding_term_of_service_line_three_link_text"
+                      }
+                    }
+                  },
+                  "marketing": {
+                    "card-type": "marketing-data",
+                    "title": "onboarding_marketing_title",
+                    "body": "onboarding_marketing_body",
+                    "ordering": 40,
+                    "image-res": "ic_onboarding_welcome",
+                    "primary-button-label": "onboarding_marketing_positive_button",
+                    "extra-data": {
+                      "marketing-data": {
+                        "body-line-one-text": "onboarding_marketing_learn_more",
+                        "body-line-one-link-text": "onboarding_marketing_learn_more",
+                        "body-line-two-text": "onboarding_marketing_opt_in_checkbox"
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        }
+      ],
+      "targeting": "((is_already_enrolled) || ((isFirstRun == 'true') && (app_version|versionCompare('137.!') >= 0)))",
+      "startDate": "2025-04-11",
+      "enrollmentEndDate": "2025-04-24",
+      "endDate": null,
+      "proposedDuration": 14,
+      "proposedEnrollment": 14,
+      "referenceBranch": "control",
+      "featureValidationOptOut": false,
+      "localizations": null,
+      "locales": null,
+      "publishedDate": "2025-04-11T20:40:03.440508Z",
+      "isFirefoxLabsOptIn": false,
+      "firefoxLabsTitle": null,
+      "firefoxLabsDescription": null,
+      "firefoxLabsDescriptionLinks": null,
+      "firefoxLabsGroup": null,
+      "requiresRestart": false
+    },
+    {
+      "schemaVersion": "1.12.0",
+      "slug": "off-train-aa-test-release",
+      "id": "off-train-aa-test-release",
+      "arguments": {},
+      "application": "org.mozilla.firefox",
+      "appName": "fenix",
+      "appId": "org.mozilla.firefox",
+      "channel": "release",
+      "userFacingName": "Off Train A/A Test Release",
+      "userFacingDescription": "Show a splash screen for nimbus calls during first run app launch.",
+      "isEnrollmentPaused": false,
+      "isRollout": false,
+      "bucketConfig": {
+        "randomizationUnit": "nimbus_id",
+        "namespace": "fenix-splash-screen-release-4",
+        "start": 2000,
+        "count": 2000,
+        "total": 10000
+      },
+      "featureIds": [
+        "splash-screen"
+      ],
+      "probeSets": [],
+      "outcomes": [
+        {
+          "slug": "onboarding",
+          "priority": "primary"
+        },
+        {
+          "slug": "default-browser",
+          "priority": "secondary"
+        },
+        {
+          "slug": "sponsored_tiles",
+          "priority": "secondary"
+        },
+        {
+          "slug": "awesomebar",
+          "priority": "secondary"
+        }
+      ],
+      "branches": [
+        {
+          "slug": "control",
+          "ratio": 1,
+          "feature": {
+            "featureId": "this-is-included-for-mobile-pre-96-support",
+            "enabled": false,
+            "value": {}
+          },
+          "features": [
+            {
+              "featureId": "splash-screen",
+              "enabled": true,
+              "value": {
+                "enabled": true,
+                "maximum_duration_ms": 2500,
+                "off-train-onboarding": true
+              }
+            }
+          ]
+        },
         {
           "slug": "treatment-a",
           "ratio": 1,
@@ -36,26 +450,34 @@
           },
           "features": [
             {
-              "featureId": "toolbar",
+              "featureId": "splash-screen",
               "enabled": true,
               "value": {
-                "toolbar-position-top": true
+                "enabled": true,
+                "maximum_duration_ms": 2500,
+                "off-train-onboarding": true
               }
             }
           ]
         }
       ],
-      "targeting": "((is_already_enrolled) || ((isFirstRun == 'true') && (app_version|versionCompare('116.!') >= 0)))",
-      "startDate": "2023-08-09",
+      "targeting": "((is_already_enrolled) || ((isFirstRun == 'true') && (app_version|versionCompare('138.!') >= 0)))",
+      "startDate": "2025-05-27",
       "enrollmentEndDate": null,
       "endDate": null,
-      "proposedDuration": 28,
+      "proposedDuration": 21,
       "proposedEnrollment": 7,
-      "referenceBranch": "treatment-a",
+      "referenceBranch": "control",
       "featureValidationOptOut": false,
       "localizations": null,
       "locales": null,
-      "publishedDate": null
+      "publishedDate": "2025-05-27T15:16:03.138389Z",
+      "isFirefoxLabsOptIn": false,
+      "firefoxLabsTitle": null,
+      "firefoxLabsDescription": null,
+      "firefoxLabsDescriptionLinks": null,
+      "firefoxLabsGroup": null,
+      "requiresRestart": false
     }
   ]
 }

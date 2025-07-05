@@ -18,7 +18,6 @@ structures.
 from collections import OrderedDict, defaultdict
 
 import mozpack.path as mozpath
-import six
 from mozpack.chrome.manifest import ManifestEntry
 
 from mozbuild.frontend.context import ObjDirPath, SourcePath
@@ -28,7 +27,7 @@ from ..util import group_unified_files
 from .context import FinalTargetValue
 
 
-class TreeMetadata(object):
+class TreeMetadata:
     """Base class for all data being captured."""
 
     __slots__ = ()
@@ -93,7 +92,7 @@ class ContextDerived(TreeMetadata):
         return mozpath.relpath(self.objdir, self.topobjdir)
 
 
-class HostMixin(object):
+class HostMixin:
     @property
     def defines(self):
         defines = self._context["HOST_DEFINES"]
@@ -148,7 +147,7 @@ class VariablePassthru(ContextDerived):
     in our build backends since we will continue to be tied to our rules.mk.
     """
 
-    __slots__ = "variables"
+    __slots__ = ("variables",)
 
     def __init__(self, context):
         ContextDerived.__init__(self, context)
@@ -197,14 +196,14 @@ class BaseDefines(ContextDerived):
     which are OrderedDicts.
     """
 
-    __slots__ = "defines"
+    __slots__ = ("defines",)
 
     def __init__(self, context, defines):
         ContextDerived.__init__(self, context)
         self.defines = defines
 
     def get_defines(self):
-        for define, value in six.iteritems(self.defines):
+        for define, value in self.defines.items():
             if value is True:
                 yield ("-D%s" % define)
             elif value is False:
@@ -477,7 +476,7 @@ class BaseProgram(Linkable):
     Otherwise, the suffix is appended to the program name.
     """
 
-    __slots__ = "program"
+    __slots__ = ("program",)
 
     DICT_ATTRS = {"install_target", "KIND", "program", "relobjdir"}
 
@@ -691,7 +690,7 @@ class SandboxedWasmLibrary(Library):
         return self.config.substs.get("WASM_OBJ_SUFFIX", "")
 
 
-class BaseRustLibrary(object):
+class BaseRustLibrary:
     slots = (
         "cargo_file",
         "crate_type",
@@ -910,7 +909,7 @@ class HostSharedLibrary(HostMixin, Library):
         )
 
 
-class ExternalLibrary(object):
+class ExternalLibrary:
     """Empty mixin for libraries built by an external build system."""
 
 
@@ -1201,7 +1200,7 @@ class FinalTargetFiles(ContextDerived):
     HierarchicalStringList, which is created when parsing FINAL_TARGET_FILES.
     """
 
-    __slots__ = "files"
+    __slots__ = ("files",)
 
     def __init__(self, sandbox, files):
         ContextDerived.__init__(self, sandbox)
@@ -1218,11 +1217,19 @@ class FinalTargetPreprocessedFiles(ContextDerived):
     FINAL_TARGET_PP_FILES.
     """
 
-    __slots__ = "files"
+    __slots__ = ("files",)
 
     def __init__(self, sandbox, files):
         ContextDerived.__init__(self, sandbox)
         self.files = files
+
+    @staticmethod
+    def get_obj_basename(f):
+        # This matches what PP_TARGETS do in config/rules.
+        basename = f.target_basename
+        if basename.endswith(".in"):
+            basename = basename[:-3]
+        return basename
 
 
 class LocalizedFiles(FinalTargetFiles):
@@ -1239,6 +1246,24 @@ class LocalizedPreprocessedFiles(FinalTargetPreprocessedFiles):
     """
 
     pass
+
+
+class MozSrcFiles(FinalTargetFiles):
+    """Sandbox container object for MOZ_SRC_FILES, which is a
+    ContextDerivedTypedList.
+
+    This is similar to FinalTargetFiles, but always installs into
+    dist/bin/moz-src . Contents are derived from MOZ_SRC_FILES in the emitter.
+    """
+
+    __slots__ = ("files",)
+
+    @property
+    def install_target(self):
+        # We don't use FINAL_TARGET here because it can include DIST_SUBDIR
+        # and/or XPI_NAME, whereas we want all moz-src content packaged in
+        # the same place.
+        return mozpath.join("dist/bin/moz-src", self._context.relsrcdir)
 
 
 class ObjdirFiles(FinalTargetFiles):
@@ -1369,6 +1394,9 @@ class GeneratedFile(ContextDerived):
             ]
         else:
             self.required_during_compile = required_during_compile
+        if self.required_during_compile and self.required_before_compile:
+            self.required_before_compile += self.required_during_compile
+            self.required_during_compile = []
 
 
 class ChromeManifestEntry(ContextDerived):

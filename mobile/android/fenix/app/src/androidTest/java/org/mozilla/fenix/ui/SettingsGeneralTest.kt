@@ -4,7 +4,8 @@
 
 package org.mozilla.fenix.ui
 
-import org.junit.Ignore
+import androidx.core.net.toUri
+import androidx.core.os.LocaleListCompat
 import org.junit.Rule
 import org.junit.Test
 import org.mozilla.fenix.FenixApplication
@@ -16,16 +17,16 @@ import org.mozilla.fenix.helpers.DataGenerationHelper.getStringResource
 import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.RecyclerViewIdlingResource
 import org.mozilla.fenix.helpers.TestAssetHelper.getLoremIpsumAsset
-import org.mozilla.fenix.helpers.TestAssetHelper.waitingTimeLong
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.checkTextSizeOnWebsite
 import org.mozilla.fenix.ui.robots.homeScreen
+import org.mozilla.fenix.ui.robots.navigationToolbar
 import org.mozilla.fenix.ui.util.FRENCH_LANGUAGE_HEADER
 import org.mozilla.fenix.ui.util.FRENCH_SYSTEM_LOCALE_OPTION
 import org.mozilla.fenix.ui.util.FR_SETTINGS
 import org.mozilla.fenix.ui.util.ROMANIAN_LANGUAGE_HEADER
-import java.util.Locale
 
 /**
  *  Tests for verifying the General section of the Settings menu
@@ -35,7 +36,10 @@ class SettingsGeneralTest : TestSetup() {
     @get:Rule
     val activityIntentTestRule = HomeActivityIntentTestRule.withDefaultSettingsOverrides()
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2092697
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2092697
     @Test
     fun verifyGeneralSettingsItemsTest() {
         homeScreen {
@@ -59,7 +63,7 @@ class SettingsGeneralTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/344213
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/344213
     @SmokeTest
     @Test
     fun verifyFontSizingChangeTest() {
@@ -91,7 +95,7 @@ class SettingsGeneralTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/516079
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/516079
     @SmokeTest
     @Test
     fun setAppLanguageDifferentThanSystemLanguageTest() {
@@ -117,7 +121,7 @@ class SettingsGeneralTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/516080
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/516080
     @Test
     fun searchInLanguagesListTest() {
         val systemLocaleDefault = getStringResource(R.string.default_locale_text)
@@ -130,26 +134,20 @@ class SettingsGeneralTest : TestSetup() {
             openSearchBar()
             typeInSearchBar("French")
             verifySearchResultsContains(systemLocaleDefault)
-            clearSearchBar()
-            typeInSearchBar("French")
             selectLanguageSearchResult("Français")
             verifyLanguageHeaderIsTranslated(FRENCH_LANGUAGE_HEADER)
-            // Add this step when https://github.com/mozilla-mobile/fenix/issues/26733 is fixed
-            // verifyLanguageListIsDisplayed()
+            verifyLanguageListIsDisplayed()
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/516078
-    // Because it requires changing system prefs, this test will run only on Debug builds
-    @Ignore("Failing due to app translation bug, see: https://github.com/mozilla-mobile/fenix/issues/26729")
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/516078
     @Test
     fun verifyFollowDeviceLanguageTest() {
-        val frenchLocale = Locale("fr", "FR")
+        val frenchLocale = LocaleListCompat.forLanguageTags("fr")
 
-        runWithSystemLocaleChanged(frenchLocale, activityIntentTestRule) {
-            mDevice.waitForIdle(waitingTimeLong)
-
-            homeScreen {
+        runWithSystemLocaleChanged(frenchLocale) {
+            navigationToolbar {
+            }.enterURLAndEnterToBrowser("test".toUri()) {
             }.openThreeDotMenu {
             }.openSettings(localizedText = FR_SETTINGS) {
             }.openLanguageSubMenu(localizedText = FRENCH_LANGUAGE_HEADER) {
@@ -159,7 +157,7 @@ class SettingsGeneralTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1360557
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1360557
     @Test
     fun tabsSettingsMenuItemsTest() {
         homeScreen {
@@ -189,7 +187,7 @@ class SettingsGeneralTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/243583
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/243583
     // For API>23
     // Verifies the default browser switch opens the system default apps menu.
     @SmokeTest

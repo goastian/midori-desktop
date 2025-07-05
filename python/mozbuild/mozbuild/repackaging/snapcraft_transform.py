@@ -4,10 +4,9 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 # vim: set expandtab tabstop=4 shiftwidth=4:
 
-from configparser import ConfigParser
-from io import StringIO
-
 import yaml
+
+from mozbuild.repackaging.desktop_file import generate_browser_desktop_entry
 
 # We need to change string representation of YAML such that when dumping the
 # modified representation we end up with the same way to represent blocks
@@ -63,6 +62,7 @@ class SnapcraftTransform:
     def repack(self):
         removed = self.keep_non_build_parts()
         self.add_firefox_repack(removed)
+        self.fix_distribution()
         self.change_version(self._version, self._buildno)
         self.change_name(self._appname)
         return yaml.safe_dump(self.snap, sort_keys=False)
@@ -95,6 +95,11 @@ class SnapcraftTransform:
                 ]
 
         return removed
+
+    def fix_distribution(self):
+        self.snap["parts"]["distribution"].setdefault("build-packages", []).append(
+            "git"
+        )
 
     def add_firefox_repack(self, removed):
         repack_yaml = """
@@ -132,7 +137,7 @@ class SnapcraftTransform:
             del self.snap["apps"]["firefox"]
 
     def change_version(self, version, build):
-        self.snap["version"] = "{version}-{build}".format(version=version, build=build)
+        self.snap["version"] = f"{version}-{build}"
 
     def change_name(self, name):
         self.snap["name"] = str(name)
@@ -144,29 +149,28 @@ class SnapcraftTransform:
         return snap
 
 
-class DesktopFileTransform:
-    DESKTOP_ENTRY = "Desktop Entry"
+class SnapDesktopFile:
+    def __init__(self, log, appname, branchname, wmclass=None):
+        if wmclass is None:
+            wmclass = f"{appname}-{branchname}"
 
-    def __init__(self, source_file, icon):
-        self.desktop = ConfigParser()
-        # required to keep case on entries
-        self.desktop.optionxform = lambda option: option
-        self.desktop.read(source_file)
+        build_variables = {
+            "PKG_NAME": appname,
+            "DBusActivatable": "false",
+            "Icon": "/default256.png",
+            "StartupWMClass": wmclass,
+        }
 
-        self.icon = icon
+        from fluent.runtime.fallback import FluentLocalization, FluentResourceLoader
+
+        self.desktop = generate_browser_desktop_entry(
+            log,
+            build_variables,
+            appname,  # release_product,
+            branchname,  # release_type,
+            FluentLocalization,
+            FluentResourceLoader,
+        )
 
     def repack(self):
-        assert self.desktop.has_section(self.DESKTOP_ENTRY)
-        self.disable_dbus_activatable()
-        self.change_icon()
-
-        output = StringIO()
-        self.desktop.write(output)
-        return output.getvalue()
-
-    def disable_dbus_activatable(self):
-        if "DBusActivatable" in self.desktop[self.DESKTOP_ENTRY]:
-            self.desktop[self.DESKTOP_ENTRY]["DBusActivatable"] = "false"
-
-    def change_icon(self):
-        self.desktop[self.DESKTOP_ENTRY]["Icon"] = "/{}".format(self.icon)
+        return "\n".join(self.desktop)

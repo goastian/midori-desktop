@@ -6,6 +6,7 @@
 #include "seccomon.h"
 #include "secmodt.h"
 #include "prinrval.h"
+#include "pkcs11.h"
 
 /* These mechanisms flags are visible to all other libraries. */
 /* They must be converted to internal SECMOD_*_FLAG */
@@ -59,6 +60,9 @@ extern SECMODModule *SECMOD_LoadModule(char *moduleSpec, SECMODModule *parent,
 
 extern SECMODModule *SECMOD_LoadUserModule(char *moduleSpec, SECMODModule *parent,
                                            PRBool recurse);
+
+extern SECMODModule *SECMOD_LoadUserModuleWithFunction(const char *moduleName,
+                                                       CK_C_GetFunctionList fentry);
 
 SECStatus SECMOD_UnloadUserModule(SECMODModule *mod);
 
@@ -189,6 +193,31 @@ SECStatus SECMOD_CancelWait(SECMODModule *mod);
  * Caller must not hold a module list read lock.
  */
 SECStatus SECMOD_UpdateSlotList(SECMODModule *mod);
+
+/*
+ * Utilities to expose policy strings to applications:
+ *
+ * Policy strings are used by system configuration to specify what algorithms
+ * are included by policy. Each algorithm as a bitmask of operations allowed
+ * for that policy (Sign, SSL_KX, etc). Algorithm policies are tied to a oid,
+ * usually the primary oid used for that algorithm in X.509.
+ * In addition to policy oids, NSS has options, which are selected by a
+ * PRUint32. Options return an integer value, usually a limit (max key size,
+ * min key size, etc).
+ */
+/* Fetch the oid for a particular policy based on the string used to configure
+ * that policy. Policy are organized into logical list (ECC, HASH, MAC,
+ * CIPHER, SSL-KX, etc.). The search is restricted to a partular list unless
+ * ANY is specified). policy and list are case insensitive */
+SECOidTag SECMOD_PolicyStringToOid(const char *policy, const char *list);
+/* fetch the Option integer based on the option string */
+PRUint32 SECMOD_PolicyStringToOpt(const char *optionString);
+/* fetch a string descript of a particular bit value. The first match that has
+ * any of the requested bits is returns unless exact is specified, in which
+ * case the string must map to all existing bits. If no match is found, NULL
+ * is returned */
+const char *SECMOD_FlagsToPolicyString(PRUint32 val, PRBool exact);
+
 SEC_END_PROTOS
 
 #endif

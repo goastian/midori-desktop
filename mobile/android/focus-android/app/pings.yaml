@@ -4,28 +4,54 @@
 ---
 $schema: moz://mozilla.org/schemas/glean/pings/2-0-0
 
-activation:
+usage-reporting:
   description: |
-    This ping is intended to provide a measure of the activation of mobile
-    products. It's generated when Focus starts, right after Glean is
-    initialized.
+    Minimal ping to measure the usage frequency of Firefox.
+    Sent on the baseline schedule.
   include_client_id: false
+  send_if_empty: true
   bugs:
-    - https://github.com/mozilla-mobile/focus-android/issues/4545
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1921440
   data_reviews:
-    - https://github.com/mozilla-mobile/focus-android/issues/4901
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1921440
   notification_emails:
-    - jalmeida@mozilla.com
+    - glean-team@mozilla.com
+    - jrediger@mozilla.com
+    - loines@mozilla.com
+  metadata:
+    follows_collection_enabled: false
+    include_info_sections: false
+  reasons:
+    dirty_startup: |
+      Defined to avoid error logging.
+      *Note*: this ping will not actually send a ping reason.
+    inactive: |
+      Defined to avoid error logging.
+      *Note*: this ping will not actually send a ping reason.
+    active: |
+      Defined to avoid error logging.
+      *Note*: this ping will not actually send a ping reason.
 
-cookie-banner-report-site:
+usage-deletion-request:
   description: |
-    This ping is needed when the cookie banner reducer doesn't work on
-    a website, and the user wants to report the site.
-    This ping doesn't include a client id.
+    This ping is submitted when a user opts out of sending usage
+    frequency of Focus to Mozilla.
+    Sent in response to user action.
   include_client_id: false
+  send_if_empty: true
   bugs:
-    - https://bugzilla.mozilla.org/show_bug.cgi?id=1803589
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1923902
   data_reviews:
-    - https://github.com/mozilla-mobile/firefox-android/pull/389#pullrequestreview-1341440145
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1923902
   notification_emails:
-    - android-probes@mozilla.com
+    - glean-team@mozilla.com
+    - jrediger@mozilla.com
+    - loines@mozilla.com
+  metadata:
+    follows_collection_enabled: false
+    include_info_sections: false
+  reasons:
+    set_upload_enabled: |
+      The ping was submitted between Glean init and Glean shutdown.
+      After init but before shutdown the upload of usage reporting data changed
+      from enabled to disabled.

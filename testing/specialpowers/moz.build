@@ -25,9 +25,12 @@ modules = [
     "content/MockColorPicker.sys.mjs",
     "content/MockFilePicker.sys.mjs",
     "content/MockPermissionPrompt.sys.mjs",
+    "content/MockPromptCollection.sys.mjs",
+    "content/MockSound.sys.mjs",
     "content/SpecialPowersChild.sys.mjs",
     "content/SpecialPowersEventUtils.sys.mjs",
     "content/SpecialPowersParent.sys.mjs",
+    "content/SpecialPowersProcessActor.sys.mjs",
     "content/SpecialPowersSandbox.sys.mjs",
     "content/WrapPrivileged.sys.mjs",
 ]

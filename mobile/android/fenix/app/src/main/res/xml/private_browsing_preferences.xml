@@ -2,7 +2,8 @@
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
-<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android">
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
     <Preference
         android:key="@string/pref_key_add_private_browsing_shortcut"
         android:title="@string/preferences_add_private_browsing_shortcut" />
@@ -15,4 +16,16 @@
         android:key="@string/pref_key_allow_screenshots_in_private_mode"
         android:summary="@string/preferences_screenshots_in_private_mode_disclaimer"
         android:title="@string/preferences_allow_screenshots_in_private_mode" />
+    <PreferenceCategory
+        android:key="@string/pref_key_pbm_lock_category_divider"
+        android:layout="@xml/preference_category_divider"
+        android:selectable="false" />
+    <SwitchPreference
+        android:defaultValue="false"
+        android:key="pref_key_private_browsing_locked_enabled"
+        android:summary="@string/preferences_pbm_lock_screen_summary_2"
+        android:title="@string/preferences_pbm_lock_screen_title" />
+    <Preference
+        android:key="@string/pref_key_private_browsing_lock_device_feature_enabled"
+        android:title="@string/pbm_authentication_lock_device_feature_disabled" />
 </PreferenceScreen>

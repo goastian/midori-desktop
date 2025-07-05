@@ -20,6 +20,11 @@ transforms:
 tasks:
     image_builder:
         symbol: I(ib)
+    image_builder_arm64:
+        symbol: I(ib-a64)
+        definition: image_builder
+        args:
+            ARCH: arm64
     # Neither the ubuntu1804-*raw nor the ubuntu1804-*packages images can have
     # packages dependencies.
     ubuntu1804-raw:
@@ -54,6 +59,7 @@ tasks:
             - ub18-libc6
             - ub18-pygobject
             - ub18-pyatspi
+            - ub18-python-dbus
             - ub18-32-libc6
     ubuntu1804-test:
         symbol: I(ub18-test)
@@ -61,7 +67,25 @@ tasks:
     ubuntu1804-build-python:
         symbol: I(ub18-build-python)
         parent: ubuntu1804-base
-    # Neither the ubuntu1804-*raw nor the ubuntu1804-*packages images can have
+        definition: build-python
+    ubuntu2204-arm64-build-python:
+        symbol: I(ub22-a64-build-python)
+        parent: ubuntu2204-arm64-base
+        definition: build-python
+        arch: arm64
+    ubuntu1804-build-python-wheels:
+        symbol: I(ub18-build-python-wheels)
+        parent: ubuntu1804-base
+        definition: build-python-wheels
+    ubuntu2204-build-python-wheels:
+        symbol: I(ub22-build-python-wheels)
+        parent: ubuntu2204-base
+        definition: build-python-wheels
+    ubuntu2404-build-python-wheels:
+        symbol: I(ub24-build-python-wheels)
+        parent: ubuntu2404-base
+        definition: build-python-wheels
+    # Neither the ubuntu2004-*raw nor the ubuntu2004-*packages images can have
     # packages dependencies.
     ubuntu2004-raw:
         symbol: I(ub20-raw)
@@ -73,6 +97,28 @@ tasks:
         definition: debian-raw
         args:
             BASE_IMAGE: ubuntu:jammy
+    ubuntu2204-arm64-raw:
+        symbol: I(ub22-a64-raw)
+        definition: debian-raw
+        args:
+            BASE_IMAGE: ubuntu:jammy
+        arch: arm64
+    ubuntu2204-arm64-packages:
+        symbol: I(ub22-a64-pkg)
+        definition: debian-packages
+        parent: ubuntu2204-arm64-raw
+        arch: arm64
+    ubuntu2404-raw:
+        symbol: I(ub24-raw)
+        definition: debian-raw
+        args:
+            BASE_IMAGE: ubuntu:noble
+    ubuntu2404-arm64-raw:
+        symbol: I(ub24-a64-raw)
+        definition: debian-raw
+        args:
+            BASE_IMAGE: ubuntu:noble
+        arch: arm64
     ubuntu2004-packages:
         symbol: I(ub20-pkg)
         definition: debian-packages
@@ -81,6 +127,15 @@ tasks:
         symbol: I(ub22-pkg)
         definition: debian-packages
         parent: ubuntu2204-raw
+    ubuntu2404-packages:
+        symbol: I(ub24-pkg)
+        definition: debian-packages
+        parent: ubuntu2404-raw
+    ubuntu2404-arm64-packages:
+        symbol: I(ub24-a64-pkg)
+        definition: debian-packages
+        parent: ubuntu2404-arm64-raw
+        arch: arm64
     ubuntu2004-base:
         symbol: I(ub20-base)
         definition: debian-base
@@ -95,6 +150,47 @@ tasks:
         packages:
             - ub22-mercurial
             - ub22-python-zstandard
+    ubuntu2204-arm64-base:
+        symbol: I(ub22-a64-base)
+        definition: debian-base
+        parent: ubuntu2204-arm64-raw
+        packages:
+            - ub22-arm64-mercurial
+            - ub22-arm64-python-zstandard
+        arch: arm64
+    ubuntu2404-base:
+        symbol: I(ub24-base)
+        definition: debian-base
+        parent: ubuntu2404-raw
+        packages:
+            - ub24-mercurial
+            - ub24-python-zstandard
+    ubuntu2404-arm64-base:
+        symbol: I(ub24-a64-base)
+        definition: debian-base
+        parent: ubuntu2404-arm64-raw
+        packages:
+            - ub24-arm64-mercurial
+            - ub24-arm64-python-zstandard
+        arch: arm64
+    ubuntu2404-test-base:
+        symbol: I(ub24-test-base)
+        parent: ubuntu2404-base
+    ubuntu2404-arm64-test-base:
+        symbol: I(ub24-a64-test-base)
+        parent: ubuntu2404-arm64-base
+        definition: ubuntu2404-test-base
+        arch: arm64
+        args:
+            ARCH: arm64
+    ubuntu2404-test:
+        symbol: I(ub24-test)
+        parent: ubuntu2404-test-base
+    ubuntu2404-arm64-test:
+        symbol: I(ub24-a64-test)
+        parent: ubuntu2404-arm64-test-base
+        definition: ubuntu2404-test
+        arch: arm64
     # Neither the debian8-*raw nor the debian8-*packages images can have
     # packages dependencies.
     debian8-raw:
@@ -166,10 +262,22 @@ tasks:
         definition: debian-repackage
         packages:
             - deb12-mercurial
+    debian12-flatpak:
+        symbol: I(deb12-flatpak)
+        parent: debian12-base
+        definition: debian-flatpak
+        packages:
+            - deb12-mercurial
     deb12-toolchain-build:
         symbol: I(deb12-toolchain)
         parent: debian12-base
         definition: toolchain-build
+    debian12-rpm-repackage:
+        symbol: I(deb12-rpm-rpk)
+        parent: debian12-base
+        definition: rpm-repackage
+        packages:
+            - deb12-mercurial
     android-build:
         symbol: I(agb)
         parent: debian12-base
@@ -178,6 +286,9 @@ tasks:
         parent: debian12-raw
         packages:
             - deb12-python-zstandard
+    fetch-more:
+        symbol: I(fetch-more)
+        parent: fetch
     static-analysis-build:
         symbol: I(static-analysis-build)
         parent: debian12-base
@@ -190,7 +301,7 @@ tasks:
         symbol: I(pg)
     update-verify:
         symbol: I(uv)
-        parent: ubuntu2004-base
+        parent: debian12-base
     diffoscope:
         symbol: I(diff)
         parent: debian12-base
@@ -204,10 +315,6 @@ tasks:
     periodic-updates:
         symbol: I(file)
         parent: debian12-base
-    firefox-snap:
-        symbol: I(snap)
-    firefox-flatpak:
-        symbol: I(flatpak)
     webrender:
         symbol: I(webrender)
         parent: debian12-base
@@ -234,17 +341,25 @@ tasks:
         parent: debian12-base
     decision:
         symbol: I(decision)
-        parent: ubuntu2004-base
+        parent: debian12-base
     snap-build-core22:
         symbol: I(snap22-build)
         parent: ubuntu2204-base
         definition: snap-coreXX-build
         args:
             SNAP_BASE: core22
-            SNAP_LIST: "gnome-42-2204 gtk-common-themes gnome-42-2204-sdk"
+            SNAP_LIST: "core20 core24 gnome-42-2204 gtk-common-themes gnome-42-2204-sdk"
+            EXTRA_PACKAGES: "libavcodec58 libavutil56"
+    snap-build-core24:
+        symbol: I(snap24-build)
+        parent: ubuntu2404-base
+        definition: snap-coreXX-build
+        args:
+            SNAP_BASE: core24
+            SNAP_LIST: "core22 gnome-46-2404 gtk-common-themes gnome-46-2404-sdk mesa-2404"
     android-components:
         symbol: I(android-components)
         parent: debian12-base
     android-ui-tests:
         symbol: I(android-ui-tests)
-        parent: android-components
+        parent: ubuntu2204-base

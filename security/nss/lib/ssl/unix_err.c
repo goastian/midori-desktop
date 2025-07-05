@@ -333,16 +333,6 @@ nss_MD_unix_map_connect_error(int err)
         case EACCES:
             prError = PR_ADDRESS_NOT_SUPPORTED_ERROR;
             break;
-#if defined(UNIXWARE) || defined(SNI) || defined(NEC)
-        /*
-         * On some platforms, if we connect to a port on the local host
-         * (the loopback address) that no process is listening on, we get
-         * EIO instead of ECONNREFUSED.
-         */
-        case EIO:
-            prError = PR_CONNECT_REFUSED_ERROR;
-            break;
-#endif
         case ELOOP:
             prError = PR_ADDRESS_NOT_SUPPORTED_ERROR;
             break;
@@ -368,8 +358,8 @@ nss_MD_unix_map_bind_error(int err)
             prError = PR_SOCKET_ADDRESS_IS_BOUND_ERROR;
             break;
         /*
-             * UNIX domain sockets are not supported in NSPR
-             */
+         * UNIX domain sockets are not supported in NSPR
+         */
         case EIO:
             prError = PR_ADDRESS_NOT_SUPPORTED_ERROR;
             break;
@@ -648,8 +638,8 @@ nss_MD_unix_map_default_error(int err)
             prError = PR_WOULD_BLOCK_ERROR;
             break;
 /*
-     * On QNX and Neutrino, EALREADY is defined as EBUSY.
-     */
+ * On QNX and Neutrino, EALREADY is defined as EBUSY.
+ */
 #if EALREADY != EBUSY
         case EALREADY:
             prError = PR_ALREADY_INITIATED_ERROR;
@@ -738,11 +728,9 @@ nss_MD_unix_map_default_error(int err)
         case ENFILE:
             prError = PR_SYS_DESC_TABLE_FULL_ERROR;
             break;
-#if !defined(SCO)
         case ENOBUFS:
             prError = PR_INSUFFICIENT_RESOURCES_ERROR;
             break;
-#endif
         case ENODEV:
             prError = PR_FILE_NOT_FOUND_ERROR;
             break;

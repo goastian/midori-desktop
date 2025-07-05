@@ -5,7 +5,7 @@
 use proc_macro2::TokenStream;
 use syn::DeriveInput;
 use synstructure::BindStyle;
-use to_computed_value;
+use crate::to_computed_value;
 
 pub fn derive(input: DeriveInput) -> TokenStream {
     let trait_impl = |from_body, to_body| {
@@ -16,7 +16,7 @@ pub fn derive(input: DeriveInput) -> TokenStream {
              }
 
              #[inline]
-             fn to_animated_value(self) -> Self::AnimatedValue {
+             fn to_animated_value(self, context: &crate::values::animated::Context) -> Self::AnimatedValue {
                  #to_body
              }
         }
@@ -29,7 +29,7 @@ pub fn derive(input: DeriveInput) -> TokenStream {
         BindStyle::Move,
         |_| Default::default(),
         |binding| quote!(crate::values::animated::ToAnimatedValue::from_animated_value(#binding)),
-        |binding| quote!(crate::values::animated::ToAnimatedValue::to_animated_value(#binding)),
+        |binding| quote!(crate::values::animated::ToAnimatedValue::to_animated_value(#binding, context)),
         trait_impl,
     )
 }

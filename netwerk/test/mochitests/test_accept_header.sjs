@@ -3,13 +3,12 @@ function handleRequest(request, response) {
   dump(`test_accept_header ${request.path}?${request.queryString}\n`);
 
   if (request.queryString == "worker") {
-    response.setHeader("Content-Type", "text/javascript", false);
-    response.write("postMessage(42)");
-
     setState(
       "data",
       JSON.stringify({ type: "worker", accept: request.getHeader("Accept") })
     );
+    response.setHeader("Content-Type", "text/javascript", false);
+    response.write("postMessage(42)");
     return;
   }
 
@@ -49,6 +48,16 @@ function handleRequest(request, response) {
     setState(
       "data",
       JSON.stringify({ type: "iframe", accept: request.getHeader("Accept") })
+    );
+    return;
+  }
+
+  if (request.queryString == "json") {
+    response.setHeader("Content-Type", "application/json", false);
+    response.write('{"foo": true}');
+    setState(
+      "data",
+      JSON.stringify({ type: "json", accept: request.getHeader("Accept") })
     );
     return;
   }

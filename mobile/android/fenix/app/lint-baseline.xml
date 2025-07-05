@@ -1,41 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- This Source Code Form is subject to the terms of the Mozilla Public
-   - License, v. 2.0. If a copy of the MPL was not distributed with this
-   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
-<issues format="6" by="lint 8.4.0" type="baseline" client="gradle" dependencies="false" name="AGP (8.4.0)" variant="all" version="8.4.0">
-
-    <issue
-        id="UseGetLayoutInflater"
-        message="Use of LayoutInflater.from(Context) detected. Consider using layoutInflater instead"
-        errorLine1="                val layout = LayoutInflater.from(context)"
-        errorLine2="                             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/library/history/HistoryFragment.kt"
-            line="429"
-            column="30"/>
-    </issue>
-
-    <issue
-        id="ScopedStorage"
-        message="READ_EXTERNAL_STORAGE is deprecated (and is not granted) when targeting Android 13+. If you need to query or interact with MediaStore or media files on the shared storage, you should instead use one or more new storage permissions: `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO` or `READ_MEDIA_AUDIO`."
-        errorLine1="    &lt;uses-permission android:name=&quot;android.permission.READ_EXTERNAL_STORAGE&quot; />"
-        errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/AndroidManifest.xml"
-            line="11"
-            column="36"/>
-    </issue>
-
-    <issue
-        id="ScopedStorage"
-        message="READ_EXTERNAL_STORAGE is deprecated (and is not granted) when targeting Android 13+. If you need to query or interact with MediaStore or media files on the shared storage, you should instead use one or more new storage permissions: `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO` or `READ_MEDIA_AUDIO`."
-        errorLine1="    &lt;uses-permission android:name=&quot;android.permission.READ_EXTERNAL_STORAGE&quot; />"
-        errorLine2="                                   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/debug/AndroidManifest.xml"
-            line="20"
-            column="36"/>
-    </issue>
+<issues format="6" by="lint 8.9.0" type="baseline" client="gradle" dependencies="false" name="AGP (8.9.0)" variant="all" version="8.9.0">
 
     <issue
         id="ScrollViewSize"
@@ -45,39 +9,6 @@
         <location
             file="src/main/res/layout/fragment_save_search_engine.xml"
             line="17"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="KotlinNullnessAnnotation"
-        message="Do not use `@NonNull` in Kotlin; the nullability is already implied by the Kotlin type `RecyclerView.ViewHolder` **not** ending with `?`"
-        errorLine1="        @NonNull viewHolder: RecyclerView.ViewHolder,"
-        errorLine2="        ~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/tabstray/browser/DraggableItemAnimator.kt"
-            line="13"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="KotlinNullnessAnnotation"
-        message="Do not use `@NonNull` in Kotlin; the nullability is already implied by the Kotlin type `RecyclerView.ItemAnimator.ItemHolderInfo` **not** ending with `?`"
-        errorLine1="        @NonNull preLayoutInfo: RecyclerView.ItemAnimator.ItemHolderInfo,"
-        errorLine2="        ~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/tabstray/browser/DraggableItemAnimator.kt"
-            line="14"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="KotlinNullnessAnnotation"
-        message="Do not use `@NonNull` in Kotlin; the nullability is already implied by the Kotlin type `RecyclerView.ItemAnimator.ItemHolderInfo` **not** ending with `?`"
-        errorLine1="        @NonNull postLayoutInfo: RecyclerView.ItemAnimator.ItemHolderInfo,"
-        errorLine2="        ~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/tabstray/browser/DraggableItemAnimator.kt"
-            line="15"
             column="9"/>
     </issue>
 
@@ -236,24 +167,13 @@
     </issue>
 
     <issue
-        id="UnusedAttribute"
-        message="Attribute `android:foreground` has no effect on API levels lower than 23 (current min is 21)"
-        errorLine1="    android:foreground=&quot;?android:selectableItemBackground&quot;>"
-        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/layout/tab_tray_item.xml"
-            line="13"
-            column="5"/>
-    </issue>
-
-    <issue
         id="AppBundleLocaleChanges"
         message="Found dynamic locale changes, but did not find corresponding Play Core library calls for downloading languages and splitting by language is not disabled in the `bundle` configuration"
-        errorLine1="        config.setLocale(Locale(&quot;en&quot;))"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        errorLine1="        config.setLocale(Locale.Builder().setLanguage(&quot;en&quot;).build())"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/ext/Context.kt"
-            line="78"
+            line="81"
             column="9"/>
     </issue>
 
@@ -271,12 +191,12 @@
     <issue
         id="InflateParams"
         message="Avoid passing `null` as the view root (needed to resolve layout parameters on the inflated layout&apos;s root element)"
-        errorLine1="                    .inflate(R.layout.delete_history_time_range_dialog, null)"
-        errorLine2="                                                                        ~~~~">
+        errorLine1="                val layout = getLayoutInflater().inflate(R.layout.delete_history_time_range_dialog, null)"
+        errorLine2="                                                                                                    ~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/library/history/HistoryFragment.kt"
-            line="430"
-            column="73"/>
+            line="503"
+            column="101"/>
     </issue>
 
     <issue
@@ -286,7 +206,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="122"
+            line="143"
             column="17"/>
     </issue>
 
@@ -297,7 +217,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="124"
+            line="145"
             column="17"/>
     </issue>
 
@@ -308,7 +228,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="126"
+            line="147"
             column="17"/>
     </issue>
 
@@ -319,7 +239,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="128"
+            line="149"
             column="17"/>
     </issue>
 
@@ -330,7 +250,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="130"
+            line="151"
             column="17"/>
     </issue>
 
@@ -341,7 +261,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="132"
+            line="153"
             column="17"/>
     </issue>
 
@@ -352,7 +272,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="134"
+            line="155"
             column="17"/>
     </issue>
 
@@ -363,7 +283,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="136"
+            line="157"
             column="17"/>
     </issue>
 
@@ -374,7 +294,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="138"
+            line="159"
             column="17"/>
     </issue>
 
@@ -385,7 +305,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="140"
+            line="161"
             column="17"/>
     </issue>
 
@@ -396,7 +316,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="142"
+            line="163"
             column="17"/>
     </issue>
 
@@ -407,7 +327,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="144"
+            line="165"
             column="17"/>
     </issue>
 
@@ -418,7 +338,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="146"
+            line="167"
             column="17"/>
     </issue>
 
@@ -429,7 +349,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="148"
+            line="169"
             column="17"/>
     </issue>
 
@@ -440,7 +360,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="150"
+            line="171"
             column="17"/>
     </issue>
 
@@ -451,7 +371,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="152"
+            line="173"
             column="17"/>
     </issue>
 
@@ -462,7 +382,7 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="154"
+            line="175"
             column="17"/>
     </issue>
 
@@ -473,19 +393,19 @@
         errorLine2="                ^">
         <location
             file="src/main/AndroidManifest.xml"
-            line="156"
+            line="177"
             column="17"/>
     </issue>
 
     <issue
-        id="InvalidLicenseFormat"
-        message="The license comment must be followed by a newline character"
-        errorLine1=" * file, You can obtain one at http://mozilla.org/MPL/2.0/. */"
-        errorLine2="                                                             ~">
+        id="IntentFilterUniqueDataAttributes"
+        message="Consider splitting data tag into multiple tags with individual attributes to avoid confusion"
+        errorLine1="                &lt;data android:scheme=&quot;${deepLinkScheme}&quot;"
+        errorLine2="                ^">
         <location
-            file="src/main/java/org/mozilla/fenix/translations/TranslationsDialogStore.kt"
-            line="3"
-            column="62"/>
+            file="src/main/AndroidManifest.xml"
+            line="179"
+            column="17"/>
     </issue>
 
     <issue
@@ -528,7 +448,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/library/bookmarks/viewholders/BookmarkNodeViewHolder.kt"
-            line="119"
+            line="125"
             column="31"/>
     </issue>
 
@@ -541,28 +461,6 @@
             file="src/main/java/org/mozilla/fenix/library/bookmarks/viewholders/BookmarkSeparatorViewHolder.kt"
             line="16"
             column="31"/>
-    </issue>
-
-    <issue
-        id="NonConstantResourceId"
-        message="Resource IDs will be non-final by default in Android Gradle Plugin version 8.0, avoid using them in const fields"
-        errorLine1="            const val LAYOUT_ID = R.layout.tab_tray_grid_item"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/tabstray/browser/BrowserTabViewHolder.kt"
-            line="75"
-            column="35"/>
-    </issue>
-
-    <issue
-        id="NonConstantResourceId"
-        message="Resource IDs will be non-final by default in Android Gradle Plugin version 8.0, avoid using them in const fields"
-        errorLine1="            const val LAYOUT_ID = R.layout.tab_tray_item"
-        errorLine2="                                  ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/tabstray/browser/BrowserTabViewHolder.kt"
-            line="119"
-            column="35"/>
     </issue>
 
     <issue
@@ -601,17 +499,6 @@
     <issue
         id="NonConstantResourceId"
         message="Resource IDs will be non-final by default in Android Gradle Plugin version 8.0, avoid using them in const fields"
-        errorLine1="        const val LAYOUT_ID = R.layout.download_list_item"
-        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/library/downloads/viewholders/DownloadsListItemViewHolder.kt"
-            line="85"
-            column="31"/>
-    </issue>
-
-    <issue
-        id="NonConstantResourceId"
-        message="Resource IDs will be non-final by default in Android Gradle Plugin version 8.0, avoid using them in const fields"
         errorLine1="        const val LAYOUT_ID = R.layout.exceptions_description"
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
@@ -638,7 +525,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/library/history/viewholders/HistoryListItemViewHolder.kt"
-            line="158"
+            line="165"
             column="31"/>
     </issue>
 
@@ -667,43 +554,10 @@
     <issue
         id="NonConstantResourceId"
         message="Resource IDs will be non-final by default in Android Gradle Plugin version 8.0, avoid using them in const fields"
-        errorLine1="        const val LAYOUT_ID = R.layout.normal_browser_tray_list"
-        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/tabstray/viewholders/NormalBrowserPageViewHolder.kt"
-            line="160"
-            column="31"/>
-    </issue>
-
-    <issue
-        id="NonConstantResourceId"
-        message="Resource IDs will be non-final by default in Android Gradle Plugin version 8.0, avoid using them in const fields"
-        errorLine1="        const val LAYOUT_ID = R.layout.private_browser_tray_list"
-        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/tabstray/viewholders/PrivateBrowserPageViewHolder.kt"
-            line="59"
-            column="31"/>
-    </issue>
-
-    <issue
-        id="NonConstantResourceId"
-        message="Resource IDs will be non-final by default in Android Gradle Plugin version 8.0, avoid using them in const fields"
         errorLine1="        const val LAYOUT_ID = R.layout.history_list_item"
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/library/recentlyclosed/RecentlyClosedItemViewHolder.kt"
-            line="63"
-            column="31"/>
-    </issue>
-
-    <issue
-        id="NonConstantResourceId"
-        message="Resource IDs will be non-final by default in Android Gradle Plugin version 8.0, avoid using them in const fields"
-        errorLine1="        const val LAYOUT_ID = R.layout.collections_list_item"
-        errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/collections/SaveCollectionListAdapter.kt"
             line="63"
             column="31"/>
     </issue>
@@ -726,7 +580,7 @@
         errorLine2="                              ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/home/topsites/TopSiteItemViewHolder.kt"
-            line="216"
+            line="182"
             column="31"/>
     </issue>
 
@@ -759,8 +613,19 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/AndroidManifest.xml"
-            line="172"
+            line="195"
             column="13"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;259dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/ic_high_five.xml"
+            line="6"
+            column="20"/>
     </issue>
 
     <issue
@@ -770,6 +635,17 @@
         errorLine2="                   ~~~~~">
         <location
             file="src/main/res/drawable/ic_notification_permission.xml"
+            line="7"
+            column="20"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;324dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/ic_onboarding_customize_toolbar.xml"
             line="7"
             column="20"/>
     </issue>
@@ -827,6 +703,17 @@
             file="src/main/res/drawable/ic_onboarding_welcome.xml"
             line="5"
             column="128"/>
+    </issue>
+
+    <issue
+        id="VectorRaster"
+        message="Limit vector icons sizes to 200×200 to keep icon drawing fast; see https://developer.android.com/studio/write/vector-asset-studio#when for more"
+        errorLine1="    android:width=&quot;263dp&quot;"
+        errorLine2="                   ~~~~~">
+        <location
+            file="src/main/res/drawable/ic_pick_a_theme.xml"
+            line="6"
+            column="20"/>
     </issue>
 
     <issue
@@ -946,41 +833,8 @@
         errorLine2="                                              ~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/components/appstate/AppStoreReducer.kt"
-            line="76"
+            line="79"
             column="47"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                selected = getCurrentTab()?.let {"
-        errorLine2="                           ~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/browser/BrowserFragment.kt"
-            line="139"
-            column="28"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                if (it == getCurrentTab()?.id) {"
-        errorLine2="                          ~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/browser/BrowserFragment.kt"
-            line="222"
-            column="27"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="                    getCurrentTab()?.content?.loading == false"
-        errorLine2="                    ~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/browser/BrowserFragment.kt"
-            line="328"
-            column="21"/>
     </issue>
 
     <issue
@@ -990,7 +844,7 @@
         errorLine2="                        ~~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/browser/BrowserFragment.kt"
-            line="343"
+            line="258"
             column="25"/>
     </issue>
 
@@ -1001,7 +855,7 @@
         errorLine2="        ~~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/browser/BrowserFragment.kt"
-            line="719"
+            line="639"
             column="9"/>
     </issue>
 
@@ -1014,50 +868,6 @@
             file="src/main/java/org/mozilla/fenix/browser/infobanner/DynamicInfoBanner.kt"
             line="49"
             column="14"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="    view.elevation = ELEVATION"
-        errorLine2="                     ~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/tabstray/ext/FenixSnackbar.kt"
-            line="51"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="    view.elevation = ELEVATION"
-        errorLine2="                     ~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/tabstray/ext/FenixSnackbar.kt"
-            line="51"
-            column="22"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="        snackbar.view.elevation = TabsTrayFragment.ELEVATION"
-        errorLine2="                                                   ~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/tabstray/browser/InactiveTabViewHolder.kt"
-            line="95"
-            column="52"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
-        errorLine1="        snackbar.view.elevation = TabsTrayFragment.ELEVATION"
-        errorLine2="                                                   ~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/tabstray/browser/InactiveTabViewHolder.kt"
-            line="95"
-            column="52"/>
     </issue>
 
     <issue
@@ -1107,17 +917,6 @@
     <issue
         id="VisibleForTests"
         message="This method should only be accessed from tests or within private scope"
-        errorLine1="            tabsAction.updateCount(tabCount)"
-        errorLine2="                       ~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/components/toolbar/ToolbarIntegration.kt"
-            line="164"
-            column="24"/>
-    </issue>
-
-    <issue
-        id="VisibleForTests"
-        message="This method should only be accessed from tests or within private scope"
         errorLine1="        binding.exceptionsList.apply {"
         errorLine2="        ~~~~~~~">
         <location
@@ -1155,63 +954,8 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/wallpapers/WallpaperState.kt"
-            line="50"
+            line="72"
             column="9"/>
-    </issue>
-
-    <issue
-        id="ModifierParameter"
-        message="Optional Modifier parameter should have a default value of `Modifier`"
-        errorLine1="    modifier: Modifier = Modifier.fillMaxWidth(),"
-        errorLine2="    ~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/compose/button/Button.kt"
-            line="110"
-            column="5"/>
-    </issue>
-
-    <issue
-        id="ModifierParameter"
-        message="Optional Modifier parameter should have a default value of `Modifier`"
-        errorLine1="    modifier: Modifier = Modifier.fillMaxWidth(),"
-        errorLine2="    ~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/compose/button/Button.kt"
-            line="159"
-            column="5"/>
-    </issue>
-
-    <issue
-        id="ModifierParameter"
-        message="Optional Modifier parameter should have a default value of `Modifier`"
-        errorLine1="    modifier: Modifier = Modifier.fillMaxWidth(),"
-        errorLine2="    ~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/compose/button/Button.kt"
-            line="196"
-            column="5"/>
-    </issue>
-
-    <issue
-        id="ModifierParameter"
-        message="Optional Modifier parameter should have a default value of `Modifier`"
-        errorLine1="    modifier: Modifier = Modifier.fillMaxWidth(),"
-        errorLine2="    ~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/compose/button/Button.kt"
-            line="233"
-            column="5"/>
-    </issue>
-
-    <issue
-        id="ModifierParameter"
-        message="Modifier parameter should be the first optional parameter"
-        errorLine1="    modifier: Modifier = Modifier,"
-        errorLine2="    ~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/compose/SwitchWithLabel.kt"
-            line="51"
-            column="5"/>
     </issue>
 
     <issue
@@ -1226,58 +970,14 @@
     </issue>
 
     <issue
-        id="Typos"
-        message="&quot;internett&quot; is usually capitalized as &quot;Internett&quot;"
-        errorLine1="    &lt;string name=&quot;private_browsing_placeholder_description_2&quot;>%1$s fjerner søk- og nettleserhistorikken fra private nettlesingsfaner når du lukker dem eller avslutter appen. Selv om dette ikke gjør deg anonym for nettsteder eller internett-leverandøren din, vil det gjøre det lettere"
-        errorLine2="                                                                                                                                                                                                                                      ^">
+        id="NotifyUsage"
+        message="Using Android NOTIFY instead of base component"
+        errorLine1="        notificationManagerCompat.notify(TABS_CLOSED_TAG, notificationId, notification)"
+        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/res/values-nb-rNO/strings.xml"
-            line="64"
-            column="231"/>
-    </issue>
-
-    <issue
-        id="Typos"
-        message="&quot;internett&quot; is usually capitalized as &quot;Internett&quot;"
-        errorLine1="    &lt;string name=&quot;onboarding_home_welcome_title_2&quot;>Velkommen til et mer personlig internett&lt;/string>"
-        errorLine2="                                                                                  ^">
-        <location
-            file="src/main/res/values-nb-rNO/strings.xml"
-            line="326"
-            column="83"/>
-    </issue>
-
-    <issue
-        id="Typos"
-        message="Repeated word &quot;zaman&quot; in message: possible typo"
-        errorLine1="    &lt;string name=&quot;studies_description_2&quot;>%1$s zaman zaman araştırmalar yükleyip çalıştırabilir.&lt;/string>"
-        errorLine2="                                              ^">
-        <location
-            file="src/main/res/values-tr/strings.xml"
-            line="1009"
-            column="47"/>
-    </issue>
-
-    <issue
-        id="Typos"
-        message="&quot;A a&quot; is a common misspelling; did you mean &quot;A&quot;?"
-        errorLine1="    &lt;string name=&quot;review_quality_check_info_review_grade_header&quot;>&lt;![CDATA[Atribuímos às avaliações de cada produto uma &lt;b>classificação baseada em letras&lt;/b> de A a F.]]&gt;&lt;/string>"
-        errorLine2="                                                                                                                                                                 ^">
-        <location
-            file="src/main/res/values-pt-rPT/strings.xml"
-            line="2336"
-            column="162"/>
-    </issue>
-
-    <issue
-        id="Typos"
-        message="&quot;A a&quot; is a common misspelling; did you mean &quot;A&quot;?"
-        errorLine1="    &lt;string name=&quot;review_quality_check_info_review_grade_header&quot;>&lt;![CDATA[Atribuímos às avaliações de cada produto uma &lt;b>nota com letra&lt;/b> de A a F.]]&gt;&lt;/string>"
-        errorLine2="                                                                                                                                                ^">
-        <location
-            file="src/main/res/values-pt-rBR/strings.xml"
-            line="2339"
-            column="145"/>
+            file="src/main/java/org/mozilla/fenix/components/NotificationManager.kt"
+            line="125"
+            column="9"/>
     </issue>
 
     <issue
@@ -1287,7 +987,7 @@
         errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/components/NotificationManager.kt"
-            line="96"
+            line="170"
             column="17"/>
     </issue>
 
@@ -1298,7 +998,7 @@
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/home/mozonline/PrivacyContentDisplayActivity.kt"
-            line="32"
+            line="34"
             column="9"/>
     </issue>
 
@@ -1309,7 +1009,7 @@
         errorLine2="         ~~~~~~~~">
         <location
             file="src/main/AndroidManifest.xml"
-            line="357"
+            line="383"
             column="10"/>
     </issue>
 
@@ -1320,7 +1020,7 @@
         errorLine2="                             ~~~~~">
         <location
             file="src/main/AndroidManifest.xml"
-            line="55"
+            line="59"
             column="30"/>
     </issue>
 
@@ -1375,7 +1075,7 @@
         errorLine2="     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/layout/component_tracking_protection_panel.xml"
-            line="198"
+            line="216"
             column="6"/>
     </issue>
 
@@ -1404,45 +1104,12 @@
     <issue
         id="NotifyDataSetChanged"
         message="It will always be more efficient to use more specific change events if you can. Rely on `notifyDataSetChanged` as a last resort."
-        errorLine1="        notifyDataSetChanged()"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/library/downloads/DownloadAdapter.kt"
-            line="43"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="NotifyDataSetChanged"
-        message="It will always be more efficient to use more specific change events if you can. Rely on `notifyDataSetChanged` as a last resort."
         errorLine1="        historyAdapter.notifyDataSetChanged()"
         errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/library/history/HistoryView.kt"
-            line="115"
+            line="140"
             column="9"/>
-    </issue>
-
-    <issue
-        id="NotifyDataSetChanged"
-        message="It will always be more efficient to use more specific change events if you can. Rely on `notifyDataSetChanged` as a last resort."
-        errorLine1="        notifyDataSetChanged()"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/collections/SaveCollectionListAdapter.kt"
-            line="49"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="NotifyDataSetChanged"
-        message="It will always be more efficient to use more specific change events if you can. Rely on `notifyDataSetChanged` as a last resort."
-        errorLine1="            tabsTrayBinding.tabsTray.adapter?.notifyDataSetChanged()"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/java/org/mozilla/fenix/tabstray/TabsTrayFragment.kt"
-            line="588"
-            column="13"/>
     </issue>
 
     <issue
@@ -1459,34 +1126,12 @@
     <issue
         id="MozMultipleConstraintLayoutsAndCustomViews"
         message="Custom views extending `ConstraintLayout` are less efficient because they cannot share other `ConstraintLayout` defined in file."
-        errorLine1="            &lt;mozilla.components.feature.findinpage.view.FindInPageBar"
-        errorLine2="             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/layout/fragment_browser.xml"
-            line="39"
-            column="14"/>
-    </issue>
-
-    <issue
-        id="MozMultipleConstraintLayoutsAndCustomViews"
-        message="Custom views extending `ConstraintLayout` are less efficient because they cannot share other `ConstraintLayout` defined in file."
         errorLine1="            &lt;mozilla.components.feature.readerview.view.ReaderViewControlsBar"
         errorLine2="             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/layout/fragment_browser.xml"
-            line="60"
+            line="55"
             column="14"/>
-    </issue>
-
-    <issue
-        id="MozMultipleConstraintLayoutsAndCustomViews"
-        message="Custom views extending `ConstraintLayout` are less efficient because they cannot share other `ConstraintLayout` defined in file."
-        errorLine1="        &lt;mozilla.components.feature.prompts.login.LoginSelectBar"
-        errorLine2="         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/layout/fragment_browser.xml"
-            line="109"
-            column="10"/>
     </issue>
 
     <issue
@@ -1613,6 +1258,17 @@
     <issue
         id="MozMultipleConstraintLayoutsAndCustomViews"
         message="Custom views extending `ConstraintLayout` are less efficient because they cannot share other `ConstraintLayout` defined in file."
+        errorLine1="        &lt;org.mozilla.fenix.trackingprotection.TrackingProtectionCategoryItem"
+        errorLine2="         ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/layout/fragment_tracking_protection_blocking.xml"
+            line="86"
+            column="10"/>
+    </issue>
+
+    <issue
+        id="MozMultipleConstraintLayoutsAndCustomViews"
+        message="Custom views extending `ConstraintLayout` are less efficient because they cannot share other `ConstraintLayout` defined in file."
         errorLine1="    &lt;org.mozilla.fenix.trackingprotection.SwitchWithDescription"
         errorLine2="     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
@@ -1623,12 +1279,34 @@
 
     <issue
         id="AutoboxingStateCreation"
+        message="Prefer `mutableFloatStateOf` instead of `mutableStateOf`"
+        errorLine1="    var debugDrawerFabOffsetX by remember { mutableStateOf(INITIAL_FAB_OFFSET_X) }"
+        errorLine2="                                            ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/mozilla/fenix/debugsettings/ui/DebugOverlay.kt"
+            line="82"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
+        message="Prefer `mutableFloatStateOf` instead of `mutableStateOf`"
+        errorLine1="    var debugDrawerFabOffsetY by remember { mutableStateOf(INITIAL_FAB_OFFSET_Y) }"
+        errorLine2="                                            ~~~~~~~~~~~~~~">
+        <location
+            file="src/main/java/org/mozilla/fenix/debugsettings/ui/DebugOverlay.kt"
+            line="83"
+            column="45"/>
+    </issue>
+
+    <issue
+        id="AutoboxingStateCreation"
         message="Prefer `mutableLongStateOf` instead of `mutableStateOf`"
         errorLine1="    var lastClickTime: Long by remember { mutableStateOf(0) }"
         errorLine2="                                          ~~~~~~~~~~~~~~">
         <location
             file="src/main/java/org/mozilla/fenix/compose/ext/Modifier.kt"
-            line="82"
+            line="87"
             column="43"/>
     </issue>
 
@@ -1652,6 +1330,17 @@
             file="src/main/res/layout/account_auth_error_preference.xml"
             line="13"
             column="9"/>
+    </issue>
+
+    <issue
+        id="Overdraw"
+        message="Possible overdraw: Root element paints background `?attr/layer1` with a theme that also paints a background (inferred theme is `@style/NormalTheme`)"
+        errorLine1="    android:background=&quot;?attr/layer1&quot;"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/layout/address_select_bar.xml"
+            line="12"
+            column="5"/>
     </issue>
 
     <issue
@@ -1701,6 +1390,17 @@
     <issue
         id="Overdraw"
         message="Possible overdraw: Root element paints background `?attr/layer1` with a theme that also paints a background (inferred theme is `@style/NormalTheme`)"
+        errorLine1="    android:background=&quot;?attr/layer1&quot;"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/layout/component_find_in_page_bar.xml"
+            line="11"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="Overdraw"
+        message="Possible overdraw: Root element paints background `?attr/layer1` with a theme that also paints a background (inferred theme is `@style/NormalTheme`)"
         errorLine1="    android:background=&quot;?attr/layer1&quot;>"
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
@@ -1717,6 +1417,17 @@
         <location
             file="src/main/res/layout/connection_details_website_info.xml"
             line="13"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="Overdraw"
+        message="Possible overdraw: Root element paints background `?attr/layer1` with a theme that also paints a background (inferred theme is `@style/NormalTheme`)"
+        errorLine1="    android:background=&quot;?attr/layer1&quot;"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/layout/creditcard_select_bar.xml"
+            line="7"
             column="5"/>
     </issue>
 
@@ -1760,6 +1471,17 @@
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/layout/fragment_create_shortcut.xml"
+            line="11"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="Overdraw"
+        message="Possible overdraw: Root element paints background `?scrim` with a theme that also paints a background (inferred theme is `@style/NormalTheme`)"
+        errorLine1="    android:background=&quot;?scrim&quot;"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
+            file="src/main/res/layout/fragment_create_xiaomi_shortcut.xml"
             line="11"
             column="5"/>
     </issue>
@@ -1847,6 +1569,17 @@
         errorLine1="    android:background=&quot;?attr/layer1&quot;"
         errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
+            file="src/main/res/layout/login_select_bar.xml"
+            line="9"
+            column="5"/>
+    </issue>
+
+    <issue
+        id="Overdraw"
+        message="Possible overdraw: Root element paints background `?attr/layer1` with a theme that also paints a background (inferred theme is `@style/NormalTheme`)"
+        errorLine1="    android:background=&quot;?attr/layer1&quot;"
+        errorLine2="    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        <location
             file="src/main/res/layout/navigation_toolbar.xml"
             line="14"
             column="5"/>
@@ -1914,7 +1647,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/arrays.xml"
-            line="39"
+            line="44"
             column="13"/>
     </issue>
 
@@ -1925,7 +1658,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/arrays.xml"
-            line="40"
+            line="45"
             column="13"/>
     </issue>
 
@@ -1936,7 +1669,7 @@
         errorLine2="            ~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/arrays.xml"
-            line="41"
+            line="46"
             column="13"/>
     </issue>
 
@@ -1947,7 +1680,7 @@
         errorLine2="                  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
             file="src/main/res/values/arrays.xml"
-            line="42"
+            line="47"
             column="19"/>
     </issue>
 
@@ -2003,47 +1736,14 @@
     </issue>
 
     <issue
-        id="RedundantNamespace"
-        message="This namespace declaration is redundant"
-        errorLine1="        &lt;vector xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;"
-        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
+        id="UseOfNonLambdaOffsetOverload"
+        message="State backed values should use the lambda overload of Modifier.offset"
+        errorLine1="            .offset(y = offsetState),"
+        errorLine2="             ~~~~~~">
         <location
-            file="src/debug/res/drawable/animated_splash_screen.xml"
-            line="7"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="RedundantNamespace"
-        message="This namespace declaration is redundant"
-        errorLine1="        &lt;vector xmlns:android=&quot;http://schemas.android.com/apk/res/android&quot;"
-        errorLine2="                ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/drawable/animated_splash_screen.xml"
-            line="7"
-            column="17"/>
-    </issue>
-
-    <issue
-        id="RedundantNamespace"
-        message="This namespace declaration is redundant"
-        errorLine1="            xmlns:aapt=&quot;http://schemas.android.com/aapt&quot;"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/debug/res/drawable/animated_splash_screen.xml"
-            line="8"
-            column="13"/>
-    </issue>
-
-    <issue
-        id="RedundantNamespace"
-        message="This namespace declaration is redundant"
-        errorLine1="            xmlns:aapt=&quot;http://schemas.android.com/aapt&quot;"
-        errorLine2="            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/drawable/animated_splash_screen.xml"
-            line="8"
-            column="13"/>
+            file="src/main/java/org/mozilla/fenix/experiments/view/ResearchSurfaceSurvey.kt"
+            line="75"
+            column="14"/>
     </issue>
 
     <issue
@@ -2141,35 +1841,13 @@
     </issue>
 
     <issue
-        id="SmallSp"
-        message="Avoid using sizes smaller than `11sp`: `10sp`"
-        errorLine1="        android:textSize=&quot;10sp&quot;"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/layout/account_share_list_item.xml"
-            line="39"
-            column="9"/>
-    </issue>
-
-    <issue
-        id="SmallSp"
-        message="Avoid using sizes smaller than `11sp`: `10sp`"
-        errorLine1="        android:textSize=&quot;10sp&quot;"
-        errorLine2="        ~~~~~~~~~~~~~~~~~~~~~~~">
-        <location
-            file="src/main/res/layout/app_share_list_item.xml"
-            line="37"
-            column="9"/>
-    </issue>
-
-    <issue
         id="ClickableViewAccessibility"
         message="Custom view ``SearchDialogFragmentConstraintLayout`` has `setOnTouchListener` called on it but does not override `performClick`"
         errorLine1="                binding.searchWrapper.setOnTouchListener { _, _ ->"
         errorLine2="                ^">
         <location
             file="src/main/java/org/mozilla/fenix/search/SearchDialogFragment.kt"
-            line="373"
+            line="388"
             column="17"/>
     </issue>
 
@@ -2180,7 +1858,7 @@
         errorLine2="                                                         ^">
         <location
             file="src/main/java/org/mozilla/fenix/search/SearchDialogFragment.kt"
-            line="373"
+            line="388"
             column="58"/>
     </issue>
 
@@ -2191,7 +1869,7 @@
         errorLine2="                ^">
         <location
             file="src/main/java/org/mozilla/fenix/search/SearchDialogFragment.kt"
-            line="383"
+            line="398"
             column="17"/>
     </issue>
 
@@ -2202,7 +1880,7 @@
         errorLine2="                                                         ^">
         <location
             file="src/main/java/org/mozilla/fenix/search/SearchDialogFragment.kt"
-            line="383"
+            line="398"
             column="58"/>
     </issue>
 
@@ -2213,7 +1891,7 @@
         errorLine2="                ^">
         <location
             file="src/main/java/org/mozilla/fenix/search/SearchDialogFragment.kt"
-            line="389"
+            line="404"
             column="17"/>
     </issue>
 
@@ -2224,7 +1902,7 @@
         errorLine2="                                                         ^">
         <location
             file="src/main/java/org/mozilla/fenix/search/SearchDialogFragment.kt"
-            line="389"
+            line="404"
             column="58"/>
     </issue>
 
@@ -2240,25 +1918,14 @@
     </issue>
 
     <issue
-        id="ContentDescription"
-        message="Missing `contentDescription` attribute on image"
-        errorLine1="            &lt;ImageView"
-        errorLine2="             ~~~~~~~~~">
+        id="AccessibilityFocus"
+        message="Do not force accessibility focus, as this interferes with screen readers and gives an inconsistent user experience, especially across apps"
+        errorLine1="                            performAccessibilityAction(AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS, null)"
+        errorLine2="                            ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~">
         <location
-            file="src/main/res/layout/fragment_home.xml"
-            line="184"
-            column="14"/>
-    </issue>
-
-    <issue
-        id="ContentDescription"
-        message="Missing `contentDescription` attribute on image"
-        errorLine1="            &lt;ImageView"
-        errorLine2="             ~~~~~~~~~">
-        <location
-            file="src/main/res/layout/fragment_home.xml"
+            file="src/main/java/org/mozilla/fenix/downloads/dialog/StartDownloadDialog.kt"
             line="197"
-            column="14"/>
+            column="29"/>
     </issue>
 
     <issue

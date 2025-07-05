@@ -42,12 +42,7 @@ enum class SupportedAlpnRank : uint8_t {
   NOT_SUPPORTED = 0,
   HTTP_1_1 = 1,
   HTTP_2 = 2,
-  // Note that the order here MUST be the same as the order in kHttp3Versions.
-  HTTP_3_DRAFT_29 = 3,
-  HTTP_3_DRAFT_30 = 4,
-  HTTP_3_DRAFT_31 = 5,
-  HTTP_3_DRAFT_32 = 6,
-  HTTP_3_VER_1 = 7,
+  HTTP_3_VER_1 = 3,
 };
 
 // IMPORTANT: when adding new values, always add them to the end, otherwise
@@ -80,11 +75,8 @@ enum class ConnectionCloseReason : uint32_t {
 ConnectionCloseReason ToCloseReason(nsresult aErrorCode);
 
 inline bool IsHttp3(SupportedAlpnRank aRank) {
-  return aRank >= SupportedAlpnRank::HTTP_3_DRAFT_29;
+  return aRank == SupportedAlpnRank::HTTP_3_VER_1;
 }
-
-extern const uint32_t kHttp3VersionCount;
-extern const nsCString kHttp3Versions[];
 
 //-----------------------------------------------------------------------------
 // http connection capabilities
@@ -104,9 +96,6 @@ extern const nsCString kHttp3Versions[];
 // a transaction with this caps flag will not pass SSL client-certificates
 // to the server (see bug #466080), but is may also be used for other things
 #define NS_HTTP_LOAD_ANONYMOUS (1 << 4)
-
-// a transaction with this caps flag keeps timing information
-#define NS_HTTP_TIMING_ENABLED (1 << 5)
 
 // a transaction with this flag blocks the initiation of other transactons
 // in the same load group until it is complete
@@ -526,6 +515,18 @@ uint8_t Http3ErrorToWebTransportError(uint64_t aErrorCode);
 bool PossibleZeroRTTRetryError(nsresult aReason);
 
 void DisallowHTTPSRR(uint32_t& aCaps);
+
+nsLiteralCString HttpVersionToTelemetryLabel(HttpVersion version);
+
+enum class ProxyDNSStrategy : uint8_t {
+  // To resolve the origin of the end server we are connecting
+  // to.
+  ORIGIN = 1 << 0,
+  // To resolve the host name of the proxy.
+  PROXY = 1 << 1
+};
+
+ProxyDNSStrategy GetProxyDNSStrategyHelper(const char* aType, uint32_t aFlag);
 
 }  // namespace net
 }  // namespace mozilla

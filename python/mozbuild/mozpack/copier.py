@@ -9,14 +9,12 @@ import stat
 import sys
 from collections import Counter, OrderedDict, defaultdict
 
-import six
-
 import mozpack.path as mozpath
 from mozpack.errors import errors
 from mozpack.files import BaseFile, Dest
 
 
-class FileRegistry(object):
+class FileRegistry:
     """
     Generic container to keep track of a set of BaseFile instances. It
     preserves the order under which the files are added, but doesn't keep
@@ -135,7 +133,7 @@ class FileRegistry(object):
             for path, file in registry:
                 (...)
         """
-        return six.iteritems(self._files)
+        return iter(self._files.items())
 
     def required_directories(self):
         """
@@ -175,7 +173,7 @@ class FileRegistry(object):
         return dict(tree)
 
 
-class FileRegistrySubtree(object):
+class FileRegistrySubtree:
     """A proxy class to give access to a subtree of an existing FileRegistry.
 
     Note this doesn't implement the whole FileRegistry interface."""
@@ -224,7 +222,7 @@ class FileRegistrySubtree(object):
                 yield mozpath.relpath(p, self._base), f
 
 
-class FileCopyResult(object):
+class FileCopyResult:
     """Represents results of a FileCopier.copy operation."""
 
     def __init__(self):
@@ -292,7 +290,7 @@ class FileCopier(FileRegistry):
 
         Returns a FileCopyResult that details what changed.
         """
-        assert isinstance(destination, six.string_types)
+        assert isinstance(destination, str)
         assert not os.path.exists(destination) or os.path.isdir(destination)
 
         result = FileCopyResult()
@@ -304,11 +302,7 @@ class FileCopier(FileRegistry):
         # symlinks and permissions and parent directories of the destination
         # directory may have their own weird schema. The contract is we only
         # manage children of destination, not its parents.
-        try:
-            os.makedirs(destination)
-        except OSError as e:
-            if e.errno != errno.EEXIST:
-                raise
+        os.makedirs(destination, exist_ok=True)
 
         # Because we could be handling thousands of files, code in this
         # function is optimized to minimize system calls. We prefer CPU time
@@ -336,11 +330,7 @@ class FileCopier(FileRegistry):
         # to directory X and we attempt to install a symlink in this directory
         # to a file in directory X, we may create a recursive symlink!
         for d in sorted(required_dirs, key=len):
-            try:
-                os.mkdir(d)
-            except OSError as error:
-                if error.errno != errno.EEXIST:
-                    raise
+            os.makedirs(d, exist_ok=True)
 
             # We allow the destination to be a symlink because the caller
             # is responsible for managing the destination and we assume
@@ -569,7 +559,7 @@ class Jarrer(FileRegistry, BaseFile):
             def exists(self):
                 return self.deflater is not None
 
-        if isinstance(dest, six.string_types):
+        if isinstance(dest, str):
             dest = Dest(dest)
         assert isinstance(dest, Dest)
 

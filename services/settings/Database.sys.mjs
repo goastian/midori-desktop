@@ -233,25 +233,65 @@ export class Database {
   }
 
   async saveAttachment(attachmentId, attachment) {
+    return await this.saveAttachments([[attachmentId, attachment]]);
+  }
+
+  async saveAttachments(idsAndBlobs) {
     try {
       await executeIDB(
         "attachments",
         store => {
-          if (attachment) {
-            store.put({ cid: this.identifier, attachmentId, attachment });
-          } else {
-            store.delete([this.identifier, attachmentId]);
+          for (const [attachmentId, attachment] of idsAndBlobs) {
+            if (attachment) {
+              store.put({ cid: this.identifier, attachmentId, attachment });
+            } else {
+              store.delete([this.identifier, attachmentId]);
+            }
           }
         },
-        { desc: "saveAttachment(" + attachmentId + ") in " + this.identifier }
+        {
+          desc:
+            "saveAttachments(<" +
+            idsAndBlobs.length +
+            " items>) in " +
+            this.identifier,
+        }
       );
     } catch (e) {
       throw new lazy.IDBHelpers.IndexedDBError(
         e,
-        "saveAttachment()",
+        "saveAttachments()",
         this.identifier
       );
     }
+  }
+
+  async hasAttachments() {
+    let count = 0;
+    try {
+      const range = IDBKeyRange.bound(
+        [this.identifier],
+        [this.identifier, []],
+        false,
+        true
+      );
+      await executeIDB(
+        "attachments",
+        store => {
+          store.count(range).onsuccess = e => {
+            count = e.target.result;
+          };
+        },
+        { mode: "readonly" }
+      );
+    } catch (e) {
+      throw new lazy.IDBHelpers.IndexedDBError(
+        e,
+        "hasAttachments()",
+        this.identifier
+      );
+    }
+    return count > 0;
   }
 
   /**

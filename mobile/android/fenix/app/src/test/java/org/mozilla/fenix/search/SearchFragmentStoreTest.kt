@@ -53,6 +53,7 @@ class SearchFragmentStoreTest {
             override var mode: BrowsingMode = BrowsingMode.Normal
         }
         every { components.settings } returns settings
+        every { searchEngine.trendingUrl } returns null
     }
 
     @Test
@@ -92,6 +93,10 @@ class SearchFragmentStoreTest {
                 showAllSessionSuggestions = true,
                 showSponsoredSuggestions = true,
                 showNonSponsoredSuggestions = true,
+                showTrendingSearches = false,
+                showRecentSearches = false,
+                showShortcutsSuggestions = false,
+                showQrButton = true,
                 tabId = null,
                 pastedText = "pastedText",
                 searchAccessPoint = MetricsUtils.Source.ACTION,
@@ -105,6 +110,7 @@ class SearchFragmentStoreTest {
                     tabId = null,
                     pastedText = "pastedText",
                     searchAccessPoint = MetricsUtils.Source.ACTION,
+                    isAndroidAutomotiveAvailable = false,
                 ),
             )
             assertEquals(
@@ -115,10 +121,22 @@ class SearchFragmentStoreTest {
                     tabId = "tabId",
                     pastedText = "pastedText",
                     searchAccessPoint = MetricsUtils.Source.ACTION,
+                    isAndroidAutomotiveAvailable = false,
+                ),
+            )
+            assertEquals(
+                expected.copy(showQrButton = false),
+                createInitialSearchFragmentState(
+                    activity,
+                    components,
+                    tabId = null,
+                    pastedText = "pastedText",
+                    searchAccessPoint = MetricsUtils.Source.ACTION,
+                    isAndroidAutomotiveAvailable = true,
                 ),
             )
 
-            verify(exactly = 2) { shouldShowSearchSuggestions(BrowsingMode.Normal, settings) }
+            verify(exactly = 3) { shouldShowSearchSuggestions(BrowsingMode.Normal, settings) }
         }
     }
 
@@ -158,6 +176,10 @@ class SearchFragmentStoreTest {
             showAllSessionSuggestions = true,
             showSponsoredSuggestions = false,
             showNonSponsoredSuggestions = false,
+            showTrendingSearches = false,
+            showRecentSearches = false,
+            showShortcutsSuggestions = false,
+            showQrButton = true,
             tabId = null,
             pastedText = "pastedText",
             searchAccessPoint = MetricsUtils.Source.ACTION,
@@ -171,6 +193,7 @@ class SearchFragmentStoreTest {
                 tabId = null,
                 pastedText = "pastedText",
                 searchAccessPoint = MetricsUtils.Source.ACTION,
+                isAndroidAutomotiveAvailable = false,
             ),
         )
     }
@@ -214,6 +237,10 @@ class SearchFragmentStoreTest {
                 showAllSessionSuggestions = true,
                 showSponsoredSuggestions = false,
                 showNonSponsoredSuggestions = false,
+                showTrendingSearches = false,
+                showRecentSearches = false,
+                showShortcutsSuggestions = false,
+                showQrButton = true,
                 tabId = "tabId",
                 pastedText = "",
                 searchAccessPoint = MetricsUtils.Source.SHORTCUT,
@@ -224,6 +251,7 @@ class SearchFragmentStoreTest {
                 tabId = "tabId",
                 pastedText = "",
                 searchAccessPoint = MetricsUtils.Source.SHORTCUT,
+                isAndroidAutomotiveAvailable = false,
             ),
         )
     }
@@ -242,6 +270,7 @@ class SearchFragmentStoreTest {
             tabId = null,
             pastedText = "pastedText",
             searchAccessPoint = MetricsUtils.Source.ACTION,
+            isAndroidAutomotiveAvailable = false,
         )
         assertFalse(initialState.showSponsoredSuggestions)
         assertFalse(initialState.showNonSponsoredSuggestions)
@@ -346,6 +375,7 @@ class SearchFragmentStoreTest {
         val newEngine: SearchEngine = mockk {
             every { id } returns "DuckDuckGo"
             every { isGeneral } returns true
+            every { trendingUrl } returns null
         }
 
         store.dispatch(
@@ -370,6 +400,7 @@ class SearchFragmentStoreTest {
         val newEngine: SearchEngine = mockk {
             every { id } returns "DuckDuckGo"
             every { isGeneral } returns true
+            every { trendingUrl } returns null
         }
 
         store.dispatch(
@@ -394,6 +425,7 @@ class SearchFragmentStoreTest {
         val newEngine: SearchEngine = mockk {
             every { id } returns "DuckDuckGo"
             every { isGeneral } returns true
+            every { trendingUrl } returns null
         }
 
         store.dispatch(
@@ -418,6 +450,7 @@ class SearchFragmentStoreTest {
         val newEngine: SearchEngine = mockk {
             every { id } returns "DuckDuckGo"
             every { isGeneral } returns true
+            every { trendingUrl } returns null
         }
 
         store.dispatch(
@@ -696,6 +729,7 @@ class SearchFragmentStoreTest {
         val store = SearchFragmentStore(initialState)
         val topicSpecificEngine: SearchEngine = mockk {
             every { isGeneral } returns false
+            every { trendingUrl } returns null
         }
         every { settings.showUnifiedSearchFeature } returns true
         every { settings.shouldShowSearchShortcuts } returns true
@@ -736,6 +770,7 @@ class SearchFragmentStoreTest {
         every { settings.shouldShowSearchSuggestions } returns false
         val generalEngine: SearchEngine = mockk {
             every { isGeneral } returns true
+            every { trendingUrl } returns null
         }
         store.dispatch(
             SearchFragmentAction.SearchShortcutEngineSelected(
@@ -767,6 +802,7 @@ class SearchFragmentStoreTest {
         val initialState = emptyDefaultState(showHistorySuggestionsForCurrentEngine = false)
         val store = SearchFragmentStore(initialState)
         every { searchEngine.isGeneral } returns false
+        every { searchEngine.trendingUrl } returns "https://mozilla.org"
         every { settings.showUnifiedSearchFeature } returns true
         every { settings.shouldShowSearchSuggestions } returns false
         every { settings.shouldShowSearchShortcuts } returns false
@@ -777,6 +813,10 @@ class SearchFragmentStoreTest {
         every { settings.enableFxSuggest } returns true
         every { settings.showSponsoredSuggestions } returns true
         every { settings.showNonSponsoredSuggestions } returns true
+        every { settings.trendingSearchSuggestionsEnabled } returns true
+        every { settings.isTrendingSearchesVisible } returns true
+        every { settings.shouldShowRecentSearchSuggestions } returns true
+        every { settings.shouldShowShortcutSuggestions } returns true
 
         store.dispatch(
             SearchFragmentAction.SearchShortcutEngineSelected(
@@ -802,6 +842,9 @@ class SearchFragmentStoreTest {
         assertFalse(store.state.showAllSessionSuggestions)
         assertFalse(store.state.showSponsoredSuggestions)
         assertFalse(store.state.showNonSponsoredSuggestions)
+        assertFalse(store.state.showTrendingSearches)
+        assertTrue(store.state.showRecentSearches)
+        assertTrue(store.state.showShortcutsSuggestions)
     }
 
     @Test
@@ -1251,6 +1294,85 @@ class SearchFragmentStoreTest {
         assertTrue(shouldShowSearchSuggestions(BrowsingMode.Private, settings))
     }
 
+    @Test
+    fun `GIVEN trending searches is enabled, visible and search engine supports it THEN should show trending searches`() {
+        var settings: Settings = mockk {
+            every { trendingSearchSuggestionsEnabled } returns true
+            every { isTrendingSearchesVisible } returns true
+            every { shouldShowSearchSuggestions } returns true
+            every { shouldShowSearchSuggestionsInPrivate } returns true
+        }
+
+        assertTrue(shouldShowTrendingSearchSuggestions(BrowsingMode.Private, settings, true))
+        assertTrue(shouldShowTrendingSearchSuggestions(BrowsingMode.Normal, settings, true))
+
+        settings = mockk {
+            every { trendingSearchSuggestionsEnabled } returns false
+            every { isTrendingSearchesVisible } returns true
+            every { shouldShowSearchSuggestions } returns true
+            every { shouldShowSearchSuggestionsInPrivate } returns true
+        }
+
+        assertFalse(shouldShowTrendingSearchSuggestions(BrowsingMode.Private, settings, true))
+        assertFalse(shouldShowTrendingSearchSuggestions(BrowsingMode.Normal, settings, true))
+
+        settings = mockk {
+            every { trendingSearchSuggestionsEnabled } returns true
+            every { isTrendingSearchesVisible } returns false
+            every { shouldShowSearchSuggestions } returns true
+            every { shouldShowSearchSuggestionsInPrivate } returns true
+        }
+
+        assertFalse(shouldShowTrendingSearchSuggestions(BrowsingMode.Private, settings, true))
+        assertFalse(shouldShowTrendingSearchSuggestions(BrowsingMode.Normal, settings, true))
+
+        settings = mockk {
+            every { trendingSearchSuggestionsEnabled } returns true
+            every { isTrendingSearchesVisible } returns true
+            every { shouldShowSearchSuggestions } returns false
+            every { shouldShowSearchSuggestionsInPrivate } returns true
+        }
+
+        assertFalse(shouldShowTrendingSearchSuggestions(BrowsingMode.Private, settings, true))
+        assertFalse(shouldShowTrendingSearchSuggestions(BrowsingMode.Normal, settings, true))
+    }
+
+    @Test
+    fun `GIVEN search engine does not supports trending search THEN should not show trending searches`() {
+        val settings: Settings = mockk {
+            every { trendingSearchSuggestionsEnabled } returns true
+            every { isTrendingSearchesVisible } returns true
+            every { shouldShowSearchSuggestions } returns true
+            every { shouldShowSearchSuggestionsInPrivate } returns true
+        }
+
+        assertFalse(shouldShowTrendingSearchSuggestions(BrowsingMode.Private, settings, false))
+        assertFalse(shouldShowTrendingSearchSuggestions(BrowsingMode.Normal, settings, false))
+    }
+
+    @Test
+    fun `GIVEN is private tab THEN should show trending searches only if allowed`() {
+        var settings: Settings = mockk {
+            every { trendingSearchSuggestionsEnabled } returns true
+            every { isTrendingSearchesVisible } returns true
+            every { shouldShowSearchSuggestions } returns true
+            every { shouldShowSearchSuggestionsInPrivate } returns false
+        }
+
+        assertFalse(shouldShowTrendingSearchSuggestions(BrowsingMode.Private, settings, true))
+        assertTrue(shouldShowTrendingSearchSuggestions(BrowsingMode.Normal, settings, true))
+
+        settings = mockk {
+            every { trendingSearchSuggestionsEnabled } returns true
+            every { isTrendingSearchesVisible } returns true
+            every { shouldShowSearchSuggestions } returns true
+            every { shouldShowSearchSuggestionsInPrivate } returns true
+        }
+
+        assertTrue(shouldShowTrendingSearchSuggestions(BrowsingMode.Private, settings, true))
+        assertTrue(shouldShowTrendingSearchSuggestions(BrowsingMode.Normal, settings, true))
+    }
+
     private fun emptyDefaultState(
         searchEngineSource: SearchEngineSource = mockk(),
         defaultEngine: SearchEngine? = mockk(),
@@ -1283,6 +1405,10 @@ class SearchFragmentStoreTest {
         showAllSessionSuggestions = false,
         showSponsoredSuggestions = showSponsoredSuggestions,
         showNonSponsoredSuggestions = showNonSponsoredSuggestions,
+        showTrendingSearches = false,
+        showRecentSearches = false,
+        showShortcutsSuggestions = false,
+        showQrButton = true,
         searchAccessPoint = MetricsUtils.Source.NONE,
     )
 }

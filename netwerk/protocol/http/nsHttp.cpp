@@ -35,9 +35,7 @@
 namespace mozilla {
 namespace net {
 
-const uint32_t kHttp3VersionCount = 5;
-const nsCString kHttp3Versions[] = {"h3-29"_ns, "h3-30"_ns, "h3-31"_ns,
-                                    "h3-32"_ns, "h3"_ns};
+extern const char kProxyType_SOCKS[];
 
 // https://datatracker.ietf.org/doc/html/draft-ietf-webtrans-http3/#section-4.3
 constexpr uint64_t kWebTransportErrorCodeStart = 0x52e4a40fa8db;
@@ -51,7 +49,8 @@ enum {
 };
 #undef HTTP_ATOM
 
-static StaticDataMutex<nsTHashtable<nsCStringASCIICaseInsensitiveHashKey>>
+MOZ_RUNINIT static StaticDataMutex<
+    nsTHashtable<nsCStringASCIICaseInsensitiveHashKey>>
     sAtomTable("nsHttp::sAtomTable");
 
 // This is set to true in DestroyAtomTable so we don't try to repopulate the
@@ -803,14 +802,10 @@ Maybe<nsCString> CallingScriptLocationString() {
     return Nothing();
   }
 
-  nsAutoCString fileNameString;
-  uint32_t line = 0, col = 0;
-  if (!nsJSUtils::GetCallingLocation(cx, fileNameString, &line, &col)) {
-    return Nothing();
-  }
-
+  auto location = JSCallingLocation::Get(cx);
   nsCString logString = ""_ns;
-  logString.AppendPrintf("%s:%u:%u", fileNameString.get(), line, col);
+  logString.AppendPrintf("%s:%u:%u", location.FileName().get(), location.mLine,
+                         location.mColumn);
   return Some(logString);
 }
 
@@ -987,21 +982,10 @@ nsresult HttpProxyResponseToErrorCode(uint32_t aStatusCode) {
   return rv;
 }
 
-SupportedAlpnRank H3VersionToRank(const nsACString& aVersion) {
-  for (uint32_t i = 0; i < kHttp3VersionCount; i++) {
-    if (aVersion.Equals(kHttp3Versions[i])) {
-      return static_cast<SupportedAlpnRank>(
-          static_cast<uint32_t>(SupportedAlpnRank::HTTP_3_DRAFT_29) + i);
-    }
-  }
-
-  return SupportedAlpnRank::NOT_SUPPORTED;
-}
-
 SupportedAlpnRank IsAlpnSupported(const nsACString& aAlpn) {
   if (nsHttpHandler::IsHttp3Enabled() &&
       gHttpHandler->IsHttp3VersionSupported(aAlpn)) {
-    return H3VersionToRank(aAlpn);
+    return SupportedAlpnRank::HTTP_3_VER_1;
   }
 
   if (StaticPrefs::network_http_http2_enabled()) {
@@ -1163,6 +1147,37 @@ void DisallowHTTPSRR(uint32_t& aCaps) {
   // NS_HTTP_DISALLOW_HTTPS_RR should take precedence than
   // NS_HTTP_FORCE_WAIT_HTTP_RR.
   aCaps = (aCaps | NS_HTTP_DISALLOW_HTTPS_RR) & ~NS_HTTP_FORCE_WAIT_HTTP_RR;
+}
+
+// Convert HttpVersion enum to Telemetry label string
+nsLiteralCString HttpVersionToTelemetryLabel(HttpVersion version) {
+  switch (version) {
+    case HttpVersion::v0_9:
+    case HttpVersion::v1_0:
+    case HttpVersion::v1_1:
+      return "http_1"_ns;
+    case HttpVersion::v2_0:
+      return "http_2"_ns;
+    case HttpVersion::v3_0:
+      return "http_3"_ns;
+    default:
+      break;
+  }
+  return "unknown"_ns;
+}
+
+ProxyDNSStrategy GetProxyDNSStrategyHelper(const char* aType, uint32_t aFlag) {
+  if (!aType) {
+    return ProxyDNSStrategy::ORIGIN;
+  }
+
+  if (!(aFlag & nsIProxyInfo::TRANSPARENT_PROXY_RESOLVES_HOST)) {
+    if (aType == kProxyType_SOCKS) {
+      return ProxyDNSStrategy::ORIGIN;
+    }
+  }
+
+  return ProxyDNSStrategy::PROXY;
 }
 
 }  // namespace net

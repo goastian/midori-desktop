@@ -24,12 +24,6 @@ interface FeatureSettingsHelper {
     var isPocketEnabled: Boolean
 
     /**
-     * Whether the "Jump back in" CFR should be shown or not.
-     * It should appear on the first visit to homescreen given that there is a tab opened.
-     */
-    var isJumpBackInCFREnabled: Boolean
-
-    /**
      * Whether the onboarding dialog for choosing wallpapers should be shown or not.
      */
     var isWallpaperOnboardingEnabled: Boolean
@@ -58,11 +52,6 @@ interface FeatureSettingsHelper {
     var isDeleteSitePermissionsEnabled: Boolean
 
     /**
-     * Enable or disable showing the TCP CFR when accessing a webpage for the first time.
-     */
-    var isTCPCFREnabled: Boolean
-
-    /**
      * The current "Enhanced Tracking Protection" policy.
      * @see ETPPolicy
      */
@@ -74,14 +63,50 @@ interface FeatureSettingsHelper {
     var isOpenInAppBannerEnabled: Boolean
 
     /**
-     * Enable or disable the Top Sites to Compose rewrite.
-     */
-    var composeTopSitesEnabled: Boolean
-
-    /**
      * Enable or disable all location permission requests.
      */
     var isLocationPermissionEnabled: SitePermissionsRules.Action
+
+    /**
+     * Enable or disable the new main menu.
+     */
+    var isMenuRedesignEnabled: Boolean
+
+    /**
+     * Enable or disable the new main menu CFR.
+     */
+    var isMenuRedesignCFREnabled: Boolean
+
+    /**
+     * Enable or disable the new microsurvey feature.
+     */
+    var isMicrosurveyEnabled: Boolean
+
+    /**
+     * Enable or disable bottom toolbar position.
+     */
+    var shouldUseBottomToolbar: Boolean
+
+    /**
+     * Enable or disable the onboarding feature.
+     */
+    var onboardingFeatureEnabled: Boolean
+
+    /**
+     * Enable or disable the compose home screen feature.
+     */
+    var isComposeHomepageEnabled: Boolean
+
+    /**
+     * Enable or disable the translations prompt after a page that can be translated is loaded.
+     */
+    fun enableOrDisablePageLoadTranslationsPrompt(enableTranslationsPrompt: Boolean) {
+        if (enableTranslationsPrompt) {
+            FxNimbusHelper.enablePageLoadTranslationsPrompt()
+        } else {
+            FxNimbusHelper.disablePageLoadTranslationsPrompt()
+        }
+    }
 
     fun applyFlagUpdates()
 

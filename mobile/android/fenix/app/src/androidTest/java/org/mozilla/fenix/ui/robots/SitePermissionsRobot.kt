@@ -13,6 +13,7 @@ import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.uiautomator.UiSelector
 import org.mozilla.fenix.R
 import org.mozilla.fenix.helpers.Constants.TAG
+import org.mozilla.fenix.helpers.DataGenerationHelper.getStringResource
 import org.mozilla.fenix.helpers.MatcherHelper.assertItemTextEquals
 import org.mozilla.fenix.helpers.MatcherHelper.assertUIObjectExists
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithText
@@ -22,9 +23,9 @@ import org.mozilla.fenix.helpers.TestHelper.packageName
 import org.mozilla.fenix.helpers.click
 
 class SitePermissionsRobot {
-    fun verifyMicrophonePermissionPrompt(url: String) {
+    fun verifyMicrophonePermissionPrompt(host: String) {
         try {
-            assertUIObjectExists(itemWithText("Allow $url to use your microphone?"))
+            assertUIObjectExists(itemWithText("Allow $host to use your microphone?"))
             assertItemTextEquals(denyPagePermissionButton(), expectedText = "Don’t allow")
             assertItemTextEquals(allowPagePermissionButton(), expectedText = "Allow")
         } catch (e: AssertionError) {
@@ -33,16 +34,16 @@ class SitePermissionsRobot {
             }.openThreeDotMenu {
             }.refreshPage {
             }.clickStartMicrophoneButton {
-                assertUIObjectExists(itemWithText("Allow $url to use your microphone?"))
+                assertUIObjectExists(itemWithText("Allow $host to use your microphone?"))
                 assertItemTextEquals(denyPagePermissionButton(), expectedText = "Don’t allow")
                 assertItemTextEquals(allowPagePermissionButton(), expectedText = "Allow")
             }
         }
     }
 
-    fun verifyCameraPermissionPrompt(url: String) {
+    fun verifyCameraPermissionPrompt(host: String) {
         try {
-            assertUIObjectExists(itemWithText("Allow $url to use your camera?"))
+            assertUIObjectExists(itemWithText("Allow $host to use your camera?"))
             assertItemTextEquals(denyPagePermissionButton(), expectedText = "Don’t allow")
             assertItemTextEquals(allowPagePermissionButton(), expectedText = "Allow")
         } catch (e: AssertionError) {
@@ -51,22 +52,22 @@ class SitePermissionsRobot {
             }.openThreeDotMenu {
             }.refreshPage {
             }.clickStartCameraButton {
-                assertUIObjectExists(itemWithText("Allow $url to use your camera?"))
+                assertUIObjectExists(itemWithText("Allow $host to use your camera?"))
                 assertItemTextEquals(denyPagePermissionButton(), expectedText = "Don’t allow")
                 assertItemTextEquals(allowPagePermissionButton(), expectedText = "Allow")
             }
         }
     }
 
-    fun verifyAudioVideoPermissionPrompt(url: String) {
-        assertUIObjectExists(itemWithText("Allow $url to use your camera and microphone?"))
+    fun verifyAudioVideoPermissionPrompt(host: String) {
+        assertUIObjectExists(itemWithText("Allow $host to use your camera and microphone?"))
         assertItemTextEquals(denyPagePermissionButton(), expectedText = "Don’t allow")
         assertItemTextEquals(allowPagePermissionButton(), expectedText = "Allow")
     }
 
-    fun verifyLocationPermissionPrompt(url: String) {
+    fun verifyLocationPermissionPrompt(host: String) {
         try {
-            assertUIObjectExists(itemWithText("Allow $url to use your location?"))
+            assertUIObjectExists(itemWithText("Allow $host to use your location?"))
             assertItemTextEquals(denyPagePermissionButton(), expectedText = "Don’t allow")
             assertItemTextEquals(allowPagePermissionButton(), expectedText = "Allow")
         } catch (e: AssertionError) {
@@ -75,17 +76,17 @@ class SitePermissionsRobot {
             }.openThreeDotMenu {
             }.refreshPage {
             }.clickGetLocationButton {
-                assertUIObjectExists(itemWithText("Allow $url to use your location?"))
+                assertUIObjectExists(itemWithText("Allow $host to use your location?"))
                 assertItemTextEquals(denyPagePermissionButton(), expectedText = "Don’t allow")
                 assertItemTextEquals(allowPagePermissionButton(), expectedText = "Allow")
             }
         }
     }
 
-    fun verifyNotificationsPermissionPrompt(url: String, blocked: Boolean = false) {
+    fun verifyNotificationsPermissionPrompt(host: String, blocked: Boolean = false) {
         if (!blocked) {
             try {
-                assertUIObjectExists(itemWithText("Allow $url to send notifications?"))
+                assertUIObjectExists(itemWithText("Allow $host to send notifications?"))
                 assertItemTextEquals(denyPagePermissionButton(), expectedText = "Never")
                 assertItemTextEquals(allowPagePermissionButton(), expectedText = "Always")
             } catch (e: AssertionError) {
@@ -94,7 +95,7 @@ class SitePermissionsRobot {
                 }.openThreeDotMenu {
                 }.refreshPage {
                 }.clickOpenNotificationButton {
-                    assertUIObjectExists(itemWithText("Allow $url to send notifications?"))
+                    assertUIObjectExists(itemWithText("Allow $host to send notifications?"))
                     assertItemTextEquals(denyPagePermissionButton(), expectedText = "Never")
                     assertItemTextEquals(allowPagePermissionButton(), expectedText = "Always")
                 }
@@ -102,13 +103,13 @@ class SitePermissionsRobot {
         } else {
             /* if "Never" was selected in a previous step, or if the app is not allowed,
                the Notifications permission prompt won't be displayed anymore */
-            assertUIObjectExists(itemWithText("Allow $url to send notifications?"), exists = false)
+            assertUIObjectExists(itemWithText("Allow $host to send notifications?"), exists = false)
         }
     }
 
-    fun verifyPersistentStoragePermissionPrompt(url: String) {
+    fun verifyPersistentStoragePermissionPrompt(host: String) {
         try {
-            assertUIObjectExists(itemWithText("Allow $url to store data in persistent storage?"))
+            assertUIObjectExists(itemWithText("Allow $host to store data in persistent storage?"))
             assertItemTextEquals(denyPagePermissionButton(), expectedText = "Don’t allow")
             assertItemTextEquals(allowPagePermissionButton(), expectedText = "Allow")
         } catch (e: AssertionError) {
@@ -117,16 +118,16 @@ class SitePermissionsRobot {
             }.openThreeDotMenu {
             }.refreshPage {
             }.clickRequestPersistentStorageAccessButton {
-                assertUIObjectExists(itemWithText("Allow $url to store data in persistent storage?"))
+                assertUIObjectExists(itemWithText("Allow $host to store data in persistent storage?"))
                 assertItemTextEquals(denyPagePermissionButton(), expectedText = "Don’t allow")
                 assertItemTextEquals(allowPagePermissionButton(), expectedText = "Allow")
             }
         }
     }
 
-    fun verifyDRMContentPermissionPrompt(url: String) {
+    fun verifyDRMContentPermissionPrompt(host: String) {
         try {
-            assertUIObjectExists(itemWithText("Allow $url to play DRM-controlled content?"))
+            assertUIObjectExists(itemWithText("Allow $host to play DRM-controlled content?"))
             assertItemTextEquals(denyPagePermissionButton(), expectedText = "Don’t allow")
             assertItemTextEquals(allowPagePermissionButton(), expectedText = "Allow")
         } catch (e: AssertionError) {
@@ -135,23 +136,23 @@ class SitePermissionsRobot {
             }.openThreeDotMenu {
             }.refreshPage {
             }.clickRequestDRMControlledContentAccessButton {
-                assertUIObjectExists(itemWithText("Allow $url to play DRM-controlled content?"))
+                assertUIObjectExists(itemWithText("Allow $host to play DRM-controlled content?"))
                 assertItemTextEquals(denyPagePermissionButton(), expectedText = "Don’t allow")
                 assertItemTextEquals(allowPagePermissionButton(), expectedText = "Allow")
             }
         }
     }
 
-    fun verifyCrossOriginCookiesPermissionPrompt(originSite: String, currentSite: String) {
-        Log.i(TAG, "verifyCrossOriginCookiesPermissionPrompt: Waiting for $waitingTime ms for \"Allow $originSite to use its cookies on $currentSite?\" prompt to exist")
-        mDevice.findObject(UiSelector().text("Allow $originSite to use its cookies on $currentSite?"))
+    fun verifyCrossOriginCookiesPermissionPrompt(originHost: String, currentHost: String) {
+        Log.i(TAG, "verifyCrossOriginCookiesPermissionPrompt: Waiting for $waitingTime ms for \"Allow $originHost to use its cookies on $currentHost?\" prompt to exist")
+        mDevice.findObject(UiSelector().text("Allow $originHost to use its cookies on $currentHost?"))
             .waitForExists(waitingTime)
-        Log.i(TAG, "verifyCrossOriginCookiesPermissionPrompt: Waited for $waitingTime ms for \"Allow $originSite to use its cookies on $currentSite?\" prompt to exist")
+        Log.i(TAG, "verifyCrossOriginCookiesPermissionPrompt: Waited for $waitingTime ms for \"Allow $originHost to use its cookies on $currentHost?\" prompt to exist")
         Log.i(TAG, "verifyCrossOriginCookiesPermissionPrompt: Trying to verify that the the storage access permission prompt title is displayed")
-        onView(ViewMatchers.withText("Allow $originSite to use its cookies on $currentSite?")).check(matches(isDisplayed()))
+        onView(ViewMatchers.withText("Allow $originHost to use its cookies on $currentHost?")).check(matches(isDisplayed()))
         Log.i(TAG, "verifyCrossOriginCookiesPermissionPrompt: Verified that the the storage access permission prompt title is displayed")
         Log.i(TAG, "verifyCrossOriginCookiesPermissionPrompt: Trying to verify that the storage access permission prompt message is displayed")
-        onView(ViewMatchers.withText("You may want to block access if it's not clear why $originSite needs this data.")).check(matches(isDisplayed()))
+        onView(ViewMatchers.withText(getStringResource(R.string.mozac_feature_sitepermissions_storage_access_message, originHost))).check(matches(isDisplayed()))
         Log.i(TAG, "verifyCrossOriginCookiesPermissionPrompt: Verified that the storage access permission prompt message is displayed")
         Log.i(TAG, "verifyCrossOriginCookiesPermissionPrompt: Trying to verify that the storage access permission prompt learn more link is displayed")
         onView(ViewMatchers.withText("Learn more")).check(matches(isDisplayed()))

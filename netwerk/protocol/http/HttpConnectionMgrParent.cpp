@@ -21,7 +21,7 @@
 
 namespace mozilla::net {
 
-nsTHashMap<uint32_t, nsCOMPtr<nsIHttpUpgradeListener>>
+MOZ_RUNINIT nsTHashMap<uint32_t, nsCOMPtr<nsIHttpUpgradeListener>>
     HttpConnectionMgrParent::sHttpUpgradeListenerMap;
 uint32_t HttpConnectionMgrParent::sListenerId = 0;
 StaticMutex HttpConnectionMgrParent::sLock;
@@ -54,9 +54,8 @@ nsresult HttpConnectionMgrParent::Init(
     uint16_t maxUrgentExcessiveConns, uint16_t maxConnections,
     uint16_t maxPersistentConnectionsPerHost,
     uint16_t maxPersistentConnectionsPerProxy, uint16_t maxRequestDelay,
-    bool throttleEnabled, uint32_t throttleVersion, uint32_t throttleSuspendFor,
-    uint32_t throttleResumeFor, uint32_t throttleReadLimit,
-    uint32_t throttleReadInterval, uint32_t throttleHoldTime,
+    bool throttleEnabled, uint32_t throttleSuspendFor,
+    uint32_t throttleResumeFor, uint32_t throttleHoldTime,
     uint32_t throttleMaxTime, bool beConservativeForProxy) {
   // We don't have to do anything here. nsHttpConnectionMgr in socket process is
   // initialized by nsHttpHandler.

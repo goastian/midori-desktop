@@ -24,22 +24,24 @@ import org.mozilla.focus.helpers.TestHelper
 import org.mozilla.focus.helpers.TestHelper.assertNativeAppOpens
 import org.mozilla.focus.helpers.TestHelper.getTargetContext
 import org.mozilla.focus.helpers.TestHelper.permAllowBtn
+import org.mozilla.focus.helpers.TestSetup
 import org.mozilla.focus.testAnnotations.SmokeTest
 
 // These tests check the interaction with various context menu options
 @RunWith(AndroidJUnit4ClassRunner::class)
-class ContextMenusTest {
+class ContextMenusTest : TestSetup() {
     private lateinit var webServer: MockWebServer
     private val featureSettingsHelper = FeatureSettingsHelper()
 
-    @get: Rule
-    var mActivityTestRule = MainActivityIntentsTestRule(showFirstRun = false)
+    @get:Rule
+    val mActivityTestRule = MainActivityIntentsTestRule(showFirstRun = false)
 
-    @get: Rule
+    @get:Rule
     val retryTestRule = RetryTestRule(3)
 
     @Before
-    fun setup() {
+    override fun setUp() {
+        super.setUp()
         featureSettingsHelper.setCfrForTrackingProtectionEnabled(false)
 
         webServer = MockWebServer().apply {

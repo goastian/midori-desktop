@@ -13,12 +13,16 @@ import android.os.Build
 import android.os.Build.VERSION.SDK_INT
 import android.util.TypedValue
 import android.view.Window
+import androidx.annotation.AnyRes
 import androidx.annotation.StyleRes
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import mozilla.components.support.ktx.android.content.getColorFromAttr
+import mozilla.components.support.ktx.android.content.getStatusBarColor
 import mozilla.components.support.ktx.android.view.createWindowInsetsController
+import mozilla.components.support.ktx.android.view.setNavigationBarColorCompat
+import mozilla.components.support.ktx.android.view.setStatusBarColorCompat
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
@@ -42,25 +46,36 @@ abstract class ThemeManager(
 
     /**
      * Handles status bar theme change since the window does not dynamically recreate
+     *
+     * @param activity The activity to apply the status bar theme to.
+     * @param overrideThemeStatusBarColor Whether to override the theme's status bar color.
      */
-    fun applyStatusBarTheme(activity: Activity) = applyStatusBarTheme(activity.window, activity)
-    fun applyStatusBarTheme(window: Window, context: Context) {
+    fun applyStatusBarTheme(activity: Activity, overrideThemeStatusBarColor: Boolean = false) =
+        applyStatusBarTheme(activity.window, activity, overrideThemeStatusBarColor)
+
+    private fun applyStatusBarTheme(
+        window: Window,
+        context: Context,
+        overrideThemeStatusBarColor: Boolean,
+    ) {
         when (currentTheme) {
             BrowsingMode.Normal -> {
                 when (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) {
                     Configuration.UI_MODE_NIGHT_UNDEFINED, // We assume light here per Android doc's recommendation
                     Configuration.UI_MODE_NIGHT_NO,
                     -> {
-                        updateLightSystemBars(window, context)
+                        updateLightSystemBars(window, context, overrideThemeStatusBarColor)
                     }
                     Configuration.UI_MODE_NIGHT_YES -> {
                         clearLightSystemBars(window)
+                        setStatusBarColor(window, context, overrideThemeStatusBarColor)
                         updateNavigationBar(window, context)
                     }
                 }
             }
             BrowsingMode.Private -> {
                 clearLightSystemBars(window)
+                setStatusBarColor(window, context, overrideThemeStatusBarColor)
                 updateNavigationBar(window, context)
             }
         }
@@ -71,6 +86,14 @@ abstract class ThemeManager(
     }
 
     companion object {
+        /**
+         * Resolves the attribute to a resource ID.
+         *
+         * @param attribute The attribute to resolve.
+         * @param context Any context.
+         * @return The resource ID of the resolved attribute.
+         */
+        @AnyRes
         fun resolveAttribute(attribute: Int, context: Context): Int {
             val typedValue = TypedValue()
             val theme = context.theme
@@ -85,12 +108,12 @@ abstract class ThemeManager(
             return colorResource(resourceId)
         }
 
-        private fun updateLightSystemBars(window: Window, context: Context) {
+        private fun updateLightSystemBars(window: Window, context: Context, overrideThemeStatusBarColor: Boolean) {
             if (SDK_INT >= Build.VERSION_CODES.M) {
-                window.statusBarColor = context.getColorFromAttr(android.R.attr.statusBarColor)
+                setStatusBarColor(window, context, overrideThemeStatusBarColor)
                 window.createWindowInsetsController().isAppearanceLightStatusBars = true
             } else {
-                window.statusBarColor = Color.BLACK
+                window.setStatusBarColorCompat(Color.BLACK)
             }
 
             if (SDK_INT >= Build.VERSION_CODES.O) {
@@ -113,7 +136,19 @@ abstract class ThemeManager(
         }
 
         private fun updateNavigationBar(window: Window, context: Context) {
-            window.navigationBarColor = context.getColorFromAttr(R.attr.layer1)
+            window.setNavigationBarColorCompat(context.getColorFromAttr(R.attr.layer1))
+        }
+
+        private fun setStatusBarColor(
+            window: Window,
+            context: Context,
+            overrideThemeStatusBarColor: Boolean,
+        ) {
+            if (overrideThemeStatusBarColor) {
+                window.setStatusBarColorCompat(context.getColorFromAttr(R.attr.layer3))
+            } else {
+                context.getStatusBarColor()?.let { window.setStatusBarColorCompat(it) }
+            }
         }
     }
 }

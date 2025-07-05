@@ -9,20 +9,42 @@ import {AsyncIterableUtil} from '../util/AsyncIterableUtil.js';
 
 import {ariaQuerySelectorAll} from './ARIAQuerySelector.js';
 import {customQuerySelectors} from './CustomQuerySelector.js';
-import {
-  type ComplexPSelector,
-  type ComplexPSelectorList,
-  type CompoundPSelector,
-  type CSSSelector,
-  parsePSelectors,
-  PCombinator,
-  type PPseudoSelector,
-} from './PSelectorParser.js';
 import {textQuerySelectorAll} from './TextQuerySelector.js';
 import {pierce, pierceAll} from './util.js';
 import {xpathQuerySelectorAll} from './XPathQuerySelector.js';
 
-const IDENT_TOKEN_START = /[-\w\P{ASCII}*]/;
+const IDENT_TOKEN_START = /[-\w\P{ASCII}*]/u;
+
+/**
+ * @internal
+ */
+export type CSSSelector = string;
+/**
+ * @internal
+ */
+export interface PPseudoSelector {
+  name: string;
+  value: string;
+}
+/**
+ * @internal
+ */
+export const enum PCombinator {
+  Descendent = '>>>',
+  Child = '>>>>',
+}
+/**
+ * @internal
+ */
+export type CompoundPSelector = Array<CSSSelector | PPseudoSelector>;
+/**
+ * @internal
+ */
+export type ComplexPSelector = Array<CompoundPSelector | PCombinator>;
+/**
+ * @internal
+ */
+export type ComplexPSelectorList = ComplexPSelector[];
 
 interface QueryableNode extends Node {
   querySelectorAll: typeof Document.prototype.querySelectorAll;
@@ -32,24 +54,15 @@ const isQueryableNode = (node: Node): node is QueryableNode => {
   return 'querySelectorAll' in node;
 };
 
-class SelectorError extends Error {
-  constructor(selector: string, message: string) {
-    super(`${selector} is not a valid selector: ${message}`);
-  }
-}
-
 class PQueryEngine {
-  #input: string;
-
   #complexSelector: ComplexPSelector;
   #compoundSelector: CompoundPSelector = [];
   #selector: CSSSelector | PPseudoSelector | undefined = undefined;
 
   elements: AwaitableIterable<Node>;
 
-  constructor(element: Node, input: string, complexSelector: ComplexPSelector) {
+  constructor(element: Node, complexSelector: ComplexPSelector) {
     this.elements = [element];
-    this.#input = input;
     this.#complexSelector = complexSelector;
     this.#next();
   }
@@ -71,7 +84,6 @@ class PQueryEngine {
 
     for (; this.#selector !== undefined; this.#next()) {
       const selector = this.#selector;
-      const input = this.#input;
       if (typeof selector === 'string') {
         // The regular expression tests if the selector is a type/universal
         // selector. Any other case means we want to apply the selector onto
@@ -84,7 +96,7 @@ class PQueryEngine {
               if (isQueryableNode(element)) {
                 yield* element.querySelectorAll(selector);
               }
-            }
+            },
           );
         } else {
           this.elements = AsyncIterableUtil.flatMap(
@@ -106,9 +118,9 @@ class PQueryEngine {
                 }
               }
               yield* element.parentElement.querySelectorAll(
-                `:scope>:nth-child(${index})${selector}`
+                `:scope>:nth-child(${index})${selector}`,
               );
-            }
+            },
           );
         }
       } else {
@@ -128,14 +140,11 @@ class PQueryEngine {
               default:
                 const querySelector = customQuerySelectors.get(selector.name);
                 if (!querySelector) {
-                  throw new SelectorError(
-                    input,
-                    `Unknown selector type: ${selector.name}`
-                  );
+                  throw new Error(`Unknown selector type: ${selector.name}`);
                 }
                 yield* querySelector.querySelectorAll(element, selector.value);
             }
-          }
+          },
         );
       }
     }
@@ -238,19 +247,9 @@ const domSort = async function* (elements: AwaitableIterable<Node>) {
  */
 export const pQuerySelectorAll = function (
   root: Node,
-  selector: string
+  selector: string,
 ): AwaitableIterable<Node> {
-  let selectors: ComplexPSelectorList;
-  let isPureCSS: boolean;
-  try {
-    [selectors, isPureCSS] = parsePSelectors(selector);
-  } catch (error) {
-    return (root as unknown as QueryableNode).querySelectorAll(selector);
-  }
-
-  if (isPureCSS) {
-    return (root as unknown as QueryableNode).querySelectorAll(selector);
-  }
+  const selectors = JSON.parse(selector) as ComplexPSelectorList;
   // If there are any empty elements, then this implies the selector has
   // contiguous combinators (e.g. `>>> >>>>`) or starts/ends with one which we
   // treat as illegal, similar to existing behavior.
@@ -267,18 +266,15 @@ export const pQuerySelectorAll = function (
       });
     })
   ) {
-    throw new SelectorError(
-      selector,
-      'Multiple deep combinators found in sequence.'
-    );
+    throw new Error('Multiple deep combinators found in sequence.');
   }
 
   return domSort(
     AsyncIterableUtil.flatMap(selectors, selectorParts => {
-      const query = new PQueryEngine(root, selector, selectorParts);
+      const query = new PQueryEngine(root, selectorParts);
       void query.run();
       return query.elements;
-    })
+    }),
   );
 };
 
@@ -289,7 +285,7 @@ export const pQuerySelectorAll = function (
  */
 export const pQuerySelector = async function (
   root: Node,
-  selector: string
+  selector: string,
 ): Promise<Node | null> {
   for await (const element of pQuerySelectorAll(root, selector)) {
     return element;

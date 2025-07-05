@@ -24,8 +24,10 @@ task-defaults:
         using: toolchain-script
 
 tasks-from:
+    - 7zz.yml
     - android.yml
     - cargo-vet.yml
+    - cabextract.yml
     - cbindgen.yml
     - clang-tidy.yml
     - clang.yml
@@ -38,6 +40,7 @@ tasks-from:
     - grcov.yml
     - hostutils.yml
     - libunwind.yml
+    - libxml2.yml
     - llvm-symbolizer.yml
     - macos-sdk.yml
     - mingw.yml
@@ -47,9 +50,10 @@ tasks-from:
     - node.yml
     - pkgconf.yml
     - python.yml
-    - resourcemonitor.yml
+    - python-wheels.yml
     - rust.yml
     - rust-size.yml
     - sccache.yml
     - sysroot.yml
+    - uv.yml
     - dist-toolchains.yml

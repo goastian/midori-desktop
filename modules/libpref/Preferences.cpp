@@ -23,6 +23,7 @@
 #include "mozilla/dom/PContent.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/RemoteType.h"
+#include "mozilla/glean/LibprefMetrics.h"
 #include "mozilla/HashFunctions.h"
 #include "mozilla/HashTable.h"
 #include "mozilla/Logging.h"
@@ -41,8 +42,6 @@
 #include "mozilla/StaticPrefsAll.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/SyncRunnable.h"
-#include "mozilla/Telemetry.h"
-#include "mozilla/TelemetryEventEnums.h"
 #include "mozilla/Try.h"
 #include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/URLPreloader.h"
@@ -161,8 +160,6 @@ static void ShutdownAlwaysPrefs();
 // Low-level types and operations
 //===========================================================================
 
-Atomic<bool, mozilla::Relaxed> sPrefTelemetryEventEnabled(false);
-
 typedef nsTArray<nsCString> PrefSaveData;
 
 // 1 MB should be enough for everyone.
@@ -179,9 +176,9 @@ static void SerializeAndAppendString(const nsCString& aChars, nsCString& aStr) {
   aStr.Append(aChars);
 }
 
-static char* DeserializeString(char* aChars, nsCString& aStr) {
-  char* p = aChars;
-  uint32_t length = strtol(p, &p, 10);
+static const char* DeserializeString(const char* aChars, nsCString& aStr) {
+  const char* p = aChars;
+  uint32_t length = strtol(p, const_cast<char**>(&p), 10);
   MOZ_ASSERT(p[0] == '/');
   p++;  // move past the '/'
   aStr.Assign(p, length);
@@ -335,9 +332,9 @@ union PrefValue {
     }
   }
 
-  static char* Deserialize(PrefType aType, char* aStr,
-                           Maybe<dom::PrefValue>* aDomValue) {
-    char* p = aStr;
+  static const char* Deserialize(PrefType aType, const char* aStr,
+                                 Maybe<dom::PrefValue>* aDomValue) {
+    const char* p = aStr;
 
     switch (aType) {
       case PrefType::Bool:
@@ -353,7 +350,7 @@ union PrefValue {
         return p;
 
       case PrefType::Int: {
-        *aDomValue = Some(int32_t(strtol(p, &p, 10)));
+        *aDomValue = Some(int32_t(strtol(p, const_cast<char**>(&p), 10)));
         return p;
       }
 
@@ -663,13 +660,8 @@ class Pref {
 
 #define CHECK_SANITIZATION()                                                \
   if (IsPreferenceSanitized(this)) {                                        \
-    if (!sPrefTelemetryEventEnabled.exchange(true)) {                       \
-      sPrefTelemetryEventEnabled = true;                                    \
-      Telemetry::SetEventRecordingEnabled("security"_ns, true);             \
-    }                                                                       \
-    Telemetry::RecordEvent(                                                 \
-        Telemetry::EventID::Security_Prefusage_Contentprocess,              \
-        mozilla::Some(Name()), mozilla::Nothing());                         \
+    glean::security::pref_usage_content_process.Record(                     \
+        Some(glean::security::PrefUsageContentProcessExtra{Some(Name())})); \
     if (sCrashOnBlocklistedPref) {                                          \
       MOZ_CRASH_UNSAFE_PRINTF(                                              \
           "Should not access the preference '%s' in the Content Processes", \
@@ -769,8 +761,10 @@ class Pref {
         mHasDefaultValue = true;
         defaultValueChanged = true;
       }
+    } else if (mHasDefaultValue) {
+      ClearDefaultValue();
+      defaultValueChanged = true;
     }
-    // Note: we never clear a default value.
 
     const Maybe<dom::PrefValue>& userValue = aDomPref.userValue();
     bool userValueChanged = false;
@@ -828,6 +822,10 @@ class Pref {
   void ClearUserValue() {
     mUserValue.Clear(Type());
     mHasUserValue = false;
+  }
+  void ClearDefaultValue() {
+    mDefaultValue.Clear(Type());
+    mHasDefaultValue = false;
   }
 
   nsresult SetDefaultValue(PrefType aType, PrefValue aValue, bool aIsSticky,
@@ -989,8 +987,8 @@ class Pref {
     aStr.Append('\n');
   }
 
-  static char* Deserialize(char* aStr, dom::Pref* aDomPref) {
-    char* p = aStr;
+  static const char* Deserialize(const char* aStr, dom::Pref* aDomPref) {
+    const char* p = aStr;
 
     // The type.
     PrefType type;
@@ -1177,14 +1175,8 @@ class MOZ_STACK_CLASS PrefWrapper : public PrefWrapperBase {
         // This check will be performed in the above functions; but for NoneType
         // we need to do it explicitly, then fall-through.
         if (IsPreferenceSanitized(Name())) {
-          if (!sPrefTelemetryEventEnabled.exchange(true)) {
-            sPrefTelemetryEventEnabled = true;
-            Telemetry::SetEventRecordingEnabled("security"_ns, true);
-          }
-
-          Telemetry::RecordEvent(
-              Telemetry::EventID::Security_Prefusage_Contentprocess,
-              mozilla::Some(Name()), mozilla::Nothing());
+          glean::security::pref_usage_content_process.Record(Some(
+              glean::security::PrefUsageContentProcessExtra{Some(Name())}));
 
           if (sCrashOnBlocklistedPref) {
             MOZ_CRASH_UNSAFE_PRINTF(
@@ -1205,14 +1197,8 @@ class MOZ_STACK_CLASS PrefWrapper : public PrefWrapperBase {
     // WantValueKind may short-circuit GetValue functions and cause them to
     // return early, before this check occurs in GetFooValue()
     if (this->is<Pref*>() && IsPreferenceSanitized(this->as<Pref*>())) {
-      if (!sPrefTelemetryEventEnabled.exchange(true)) {
-        sPrefTelemetryEventEnabled = true;
-        Telemetry::SetEventRecordingEnabled("security"_ns, true);
-      }
-
-      Telemetry::RecordEvent(
-          Telemetry::EventID::Security_Prefusage_Contentprocess,
-          mozilla::Some(Name()), mozilla::Nothing());
+      glean::security::pref_usage_content_process.Record(
+          Some(glean::security::PrefUsageContentProcessExtra{Some(Name())}));
 
       if (sCrashOnBlocklistedPref) {
         MOZ_CRASH_UNSAFE_PRINTF(
@@ -1815,10 +1801,10 @@ Maybe<PrefWrapper> pref_Lookup(const char* aPrefName,
 }
 
 static Result<Pref*, nsresult> pref_LookupForModify(
-    const nsCString& aPrefName,
+    const char* aPrefName,
     const std::function<bool(const PrefWrapper&)>& aCheckFn) {
   Maybe<PrefWrapper> wrapper =
-      pref_Lookup(aPrefName.get(), /* includeTypeNone */ true);
+      pref_Lookup(aPrefName, /* includeTypeNone */ true);
   if (wrapper.isNothing()) {
     return Err(NS_ERROR_INVALID_ARG);
   }
@@ -1829,8 +1815,8 @@ static Result<Pref*, nsresult> pref_LookupForModify(
     return wrapper->as<Pref*>();
   }
 
-  Pref* pref = new Pref(aPrefName);
-  if (!HashTable()->putNew(aPrefName.get(), pref)) {
+  Pref* pref = new Pref(nsDependentCString{aPrefName});
+  if (!HashTable()->putNew(aPrefName, pref)) {
     delete pref;
     return Err(NS_ERROR_OUT_OF_MEMORY);
   }
@@ -1863,7 +1849,7 @@ static nsresult pref_SetPref(const nsCString& aPrefName, PrefType aType,
   Pref* pref = nullptr;
   if (gSharedMap) {
     auto result =
-        pref_LookupForModify(aPrefName, [&](const PrefWrapper& aWrapper) {
+        pref_LookupForModify(aPrefName.get(), [&](const PrefWrapper& aWrapper) {
           return !aWrapper.Matches(aType, aKind, aValue, aIsSticky, aIsLocked);
         });
     if (result.isOk() && !(pref = result.unwrap())) {
@@ -2065,7 +2051,7 @@ static void TestParseErrorHandlePref(const char* aPrefName, PrefType aType,
                                      PrefValueKind aKind, PrefValue aValue,
                                      bool aIsSticky, bool aIsLocked) {}
 
-static nsCString gTestParseErrorMsgs;
+MOZ_CONSTINIT static nsCString gTestParseErrorMsgs;
 
 static void TestParseErrorHandleError(const char* aMsg) {
   gTestParseErrorMsgs.Append(aMsg);
@@ -2542,17 +2528,9 @@ nsPrefBranch::GetComplexValue(const char* aPrefName, const nsIID& aType,
 
   if (aType.Equals(NS_GET_IID(nsIFile))) {
     ENSURE_PARENT_PROCESS("GetComplexValue(nsIFile)", aPrefName);
-
-    nsCOMPtr<nsIFile> file(do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv));
-
-    if (NS_SUCCEEDED(rv)) {
-      rv = file->SetPersistentDescriptor(utf8String);
-      if (NS_SUCCEEDED(rv)) {
-        file.forget(reinterpret_cast<nsIFile**>(aRetVal));
-        return NS_OK;
-      }
-    }
-    return rv;
+    MOZ_TRY(NS_NewLocalFileWithPersistentDescriptor(
+        utf8String, reinterpret_cast<nsIFile**>(aRetVal)));
+    return NS_OK;
   }
 
   if (aType.Equals(NS_GET_IID(nsIRelativeFilePref))) {
@@ -2588,15 +2566,8 @@ nsPrefBranch::GetComplexValue(const char* aPrefName, const nsIID& aType,
     }
 
     nsCOMPtr<nsIFile> theFile;
-    rv = NS_NewNativeLocalFile(""_ns, true, getter_AddRefs(theFile));
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-
-    rv = theFile->SetRelativeDescriptor(fromFile, Substring(++keyEnd, strEnd));
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
+    MOZ_TRY(NS_NewLocalFileWithRelativeDescriptor(
+        fromFile, Substring(++keyEnd, strEnd), getter_AddRefs(theFile)));
 
     nsCOMPtr<nsIRelativeFilePref> relativePref = new nsRelativeFilePref();
     Unused << relativePref->SetFile(theFile);
@@ -2823,16 +2794,44 @@ nsPrefBranch::DeleteBranch(const char* aStartingAt) {
   const nsACString& branchNameNoDot =
       Substring(branchName, 0, branchName.Length() - 1);
 
-  for (auto iter = HashTable()->modIter(); !iter.done(); iter.next()) {
+  // Collect the list of prefs to remove
+  AutoTArray<const char*, 32> prefNames;
+  for (auto& pref : PrefsIter(HashTable(), gSharedMap)) {
     // The first disjunct matches branches: e.g. a branch name "foo.bar."
     // matches a name "foo.bar.baz" (but it won't match "foo.barrel.baz").
     // The second disjunct matches leaf nodes: e.g. a branch name "foo.bar."
     // matches a name "foo.bar" (by ignoring the trailing '.').
-    nsDependentCString name(iter.get()->Name());
-    if (StringBeginsWith(name, branchName) || name.Equals(branchNameNoDot)) {
-      iter.remove();
-      // The saved callback pref may be invalid now.
-      gCallbackPref = nullptr;
+    if (StringBeginsWith(pref->NameString(), branchName) ||
+        pref->NameString() == branchNameNoDot) {
+      prefNames.AppendElement(pref->Name());
+    }
+  }
+
+  // Remove the listed preferences.
+  for (auto& prefName : prefNames) {
+    auto result = pref_LookupForModify(
+        prefName, [](const PrefWrapper& aPref) { return !aPref.IsTypeNone(); });
+    if (result.isErr()) {
+      // Pref was likely removed by a previously-notified callback
+      continue;
+    }
+
+    if (Pref* pref = result.unwrap()) {
+      pref->ClearUserValue();
+      pref->ClearDefaultValue();
+
+      MOZ_ASSERT(
+          !gSharedMap || !pref->IsSanitized() || !gSharedMap->Has(pref->Name()),
+          "A sanitized pref should never be in the shared pref map.");
+      if (!pref->IsSanitized() &&
+          (!gSharedMap || !gSharedMap->Has(pref->Name()))) {
+        HashTable()->remove(prefName);
+      } else {
+        // If there is a matching shared pref, it must be shadowed by an empty
+        // entry in the HashTable().
+        pref->SetType(PrefType::None);
+      }
+      NotifyCallbacks(nsDependentCString{prefName});
     }
   }
 
@@ -3831,13 +3830,13 @@ void Preferences::SerializePreferences(nsCString& aStr,
 }
 
 /* static */
-void Preferences::DeserializePreferences(char* aStr, size_t aPrefsLen) {
+void Preferences::DeserializePreferences(const char* aStr, size_t aPrefsLen) {
   MOZ_ASSERT(!XRE_IsParentProcess());
 
   MOZ_ASSERT(!gChangedDomPrefs);
   gChangedDomPrefs = new nsTArray<dom::Pref>();
 
-  char* p = aStr;
+  const char* p = aStr;
   while (*p != '\0') {
     dom::Pref pref;
     p = Pref::Deserialize(p, &pref);
@@ -3853,7 +3852,7 @@ void Preferences::DeserializePreferences(char* aStr, size_t aPrefsLen) {
 }
 
 /* static */
-FileDescriptor Preferences::EnsureSnapshot(size_t* aSize) {
+mozilla::ipc::ReadOnlySharedMemoryHandle Preferences::EnsureSnapshot() {
   MOZ_ASSERT(XRE_IsParentProcess());
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -3902,16 +3901,16 @@ FileDescriptor Preferences::EnsureSnapshot(size_t* aSize) {
     }
   }
 
-  *aSize = gSharedMap->MapSize();
-  return gSharedMap->CloneFileDescriptor();
+  return gSharedMap->CloneHandle();
 }
 
 /* static */
-void Preferences::InitSnapshot(const FileDescriptor& aHandle, size_t aSize) {
+void Preferences::InitSnapshot(
+    const mozilla::ipc::ReadOnlySharedMemoryHandle& aHandle) {
   MOZ_ASSERT(!XRE_IsParentProcess());
   MOZ_ASSERT(!gSharedMap);
 
-  gSharedMap = new SharedPrefMap(aHandle, aSize);
+  gSharedMap = new SharedPrefMap(aHandle);
 
   StaticPrefs::InitStaticPrefsFromShared();
 }
@@ -4037,7 +4036,7 @@ nsresult Preferences::ResetUserPrefs() {
   }
 
   for (const char* prefName : prefNames) {
-    NotifyCallbacks(nsDependentCString(prefName));
+    NotifyCallbacks(nsDependentCString{prefName});
   }
 
   Preferences::HandleDirty();
@@ -4167,8 +4166,9 @@ void Preferences::SetPreference(const dom::Pref& aDomPref) {
   bool valueChanged = false;
   pref->FromDomPref(aDomPref, &valueChanged);
 
-  // When the parent process clears a pref's user value we get a DomPref here
-  // with no default value and no user value. There are two possibilities.
+  // When the parent process clears a pref's user value or deletes a pref
+  // we get a DomPref here with no default value and no user value.
+  // There are two possibilities.
   //
   // - There was an existing pref with only a user value. FromDomPref() will
   //   have just cleared that user value, so the pref can be removed.
@@ -4395,8 +4395,7 @@ already_AddRefed<nsIFile> Preferences::ReadSavedPrefs() {
       // Save a backup copy of the current (invalid) prefs file, since all prefs
       // from the error line to the end of the file will be lost (bug 361102).
       // TODO we should notify the user about it (bug 523725).
-      Telemetry::ScalarSet(
-          Telemetry::ScalarID::PREFERENCES_PREFS_FILE_WAS_INVALID, true);
+      glean::preferences::prefs_file_was_invalid.Set(true);
       MakeBackupPrefFile(file);
     }
   }
@@ -5290,17 +5289,15 @@ nsresult Preferences::Lock(const char* aPrefName) {
   ENSURE_PARENT_PROCESS("Lock", aPrefName);
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
 
-  const auto& prefName = nsDependentCString(aPrefName);
-
   Pref* pref;
   MOZ_TRY_VAR(pref,
-              pref_LookupForModify(prefName, [](const PrefWrapper& aPref) {
+              pref_LookupForModify(aPrefName, [](const PrefWrapper& aPref) {
                 return !aPref.IsLocked();
               }));
 
   if (pref) {
     pref->SetIsLocked(true);
-    NotifyCallbacks(prefName, PrefWrapper(pref));
+    NotifyCallbacks(nsDependentCString{aPrefName}, PrefWrapper(pref));
   }
 
   return NS_OK;
@@ -5311,17 +5308,15 @@ nsresult Preferences::Unlock(const char* aPrefName) {
   ENSURE_PARENT_PROCESS("Unlock", aPrefName);
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
 
-  const auto& prefName = nsDependentCString(aPrefName);
-
   Pref* pref;
   MOZ_TRY_VAR(pref,
-              pref_LookupForModify(prefName, [](const PrefWrapper& aPref) {
+              pref_LookupForModify(aPrefName, [](const PrefWrapper& aPref) {
                 return aPref.IsLocked();
               }));
 
   if (pref) {
     pref->SetIsLocked(false);
-    NotifyCallbacks(prefName, PrefWrapper(pref));
+    NotifyCallbacks(nsDependentCString{aPrefName}, PrefWrapper(pref));
   }
 
   return NS_OK;
@@ -5348,9 +5343,8 @@ nsresult Preferences::ClearUser(const char* aPrefName) {
   ENSURE_PARENT_PROCESS("ClearUser", aPrefName);
   NS_ENSURE_TRUE(InitStaticMembers(), NS_ERROR_NOT_AVAILABLE);
 
-  const auto& prefName = nsDependentCString{aPrefName};
   auto result = pref_LookupForModify(
-      prefName, [](const PrefWrapper& aPref) { return aPref.HasUserValue(); });
+      aPrefName, [](const PrefWrapper& aPref) { return aPref.HasUserValue(); });
   if (result.isErr()) {
     return NS_OK;
   }
@@ -5369,9 +5363,9 @@ nsresult Preferences::ClearUser(const char* aPrefName) {
         pref->SetType(PrefType::None);
       }
 
-      NotifyCallbacks(prefName);
+      NotifyCallbacks(nsDependentCString{aPrefName});
     } else {
-      NotifyCallbacks(prefName, PrefWrapper(pref));
+      NotifyCallbacks(nsDependentCString{aPrefName}, PrefWrapper(pref));
     }
 
     Preferences::HandleDirty();
@@ -5420,14 +5414,8 @@ int32_t Preferences::GetType(const char* aPrefName) {
 
     case PrefType::None:
       if (IsPreferenceSanitized(aPrefName)) {
-        if (!sPrefTelemetryEventEnabled.exchange(true)) {
-          sPrefTelemetryEventEnabled = true;
-          Telemetry::SetEventRecordingEnabled("security"_ns, true);
-        }
-
-        Telemetry::RecordEvent(
-            Telemetry::EventID::Security_Prefusage_Contentprocess,
-            mozilla::Some(aPrefName), mozilla::Nothing());
+        glean::security::pref_usage_content_process.Record(Some(
+            glean::security::PrefUsageContentProcessExtra{Some(aPrefName)}));
 
         if (sCrashOnBlocklistedPref) {
           MOZ_CRASH_UNSAFE_PRINTF(
@@ -5798,7 +5786,7 @@ void MaybeInitOncePrefs() {
 #define ALWAYS_PREF(name, base_id, full_id, cpp_type, default_value) \
   cpp_type sMirror_##full_id(default_value);
 #define ALWAYS_DATAMUTEX_PREF(name, base_id, full_id, cpp_type, default_value) \
-  cpp_type sMirror_##full_id("DataMutexString");
+  MOZ_RUNINIT cpp_type sMirror_##full_id("DataMutexString");
 #define ONCE_PREF(name, base_id, full_id, cpp_type, default_value) \
   cpp_type sMirror_##full_id(default_value);
 #include "mozilla/StaticPrefListAll.h"
@@ -6138,6 +6126,7 @@ static const PrefListEntry sRestrictFromWebContentProcesses[] = {
     PREF_LIST_ENTRY("extensions.webextensions.uuids"),
     PREF_LIST_ENTRY("privacy.userContext.extension"),
     PREF_LIST_ENTRY("toolkit.telemetry.cachedClientID"),
+    PREF_LIST_ENTRY("toolkit.telemetry.cachedProfileGroupID"),
 
     // Remove IDs that could be used to correlate across origins
     PREF_LIST_ENTRY("app.update.lastUpdateTime."),
@@ -6183,7 +6172,6 @@ static const PrefListEntry sDynamicPrefOverrideList[]{
     PREF_LIST_ENTRY("accessibility.tabfocus"),
     PREF_LIST_ENTRY("app.update.channel"),
     PREF_LIST_ENTRY("apz.subtest"),
-    PREF_LIST_ENTRY("autoadmin.global_config_url"),  // Bug 1780575
     PREF_LIST_ENTRY("browser.contentblocking.category"),
     PREF_LIST_ENTRY("browser.dom.window.dump.file"),
     PREF_LIST_ENTRY("browser.search.region"),
@@ -6218,6 +6206,7 @@ static const PrefListEntry sDynamicPrefOverrideList[]{
     PREF_LIST_ENTRY("media.peerconnection.nat_simulator.mapping_type"),
     PREF_LIST_ENTRY("media.peerconnection.nat_simulator.redirect_address"),
     PREF_LIST_ENTRY("media.peerconnection.nat_simulator.redirect_targets"),
+    PREF_LIST_ENTRY("media.peerconnection.nat_simulator.network_delay_ms"),
     PREF_LIST_ENTRY("media.video_loopback_dev"),
     PREF_LIST_ENTRY("media.webspeech.service.endpoint"),
     PREF_LIST_ENTRY("network.gio.supported-protocols"),

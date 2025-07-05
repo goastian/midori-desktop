@@ -29,23 +29,25 @@ import org.mozilla.focus.helpers.TestHelper.mDevice
 import org.mozilla.focus.helpers.TestHelper.pressHomeKey
 import org.mozilla.focus.helpers.TestHelper.restartApp
 import org.mozilla.focus.helpers.TestHelper.verifySnackBarText
+import org.mozilla.focus.helpers.TestSetup
 import org.mozilla.focus.testAnnotations.SmokeTest
 
 // These tests verify interaction with the browsing notification and erasing browsing data
 @RunWith(AndroidJUnit4ClassRunner::class)
-class EraseBrowsingDataTest {
+class EraseBrowsingDataTest : TestSetup() {
     private lateinit var webServer: MockWebServer
     private val featureSettingsHelper = FeatureSettingsHelper()
 
-    @get: Rule
-    var mActivityTestRule = MainActivityFirstrunTestRule(showFirstRun = false)
+    @get:Rule
+    val mActivityTestRule = MainActivityFirstrunTestRule(showFirstRun = false)
 
     @Rule
     @JvmField
     val retryTestRule = RetryTestRule(3)
 
     @Before
-    fun setUp() {
+    override fun setUp() {
+        super.setUp()
         webServer = MockWebServer().apply {
             dispatcher = MockWebServerHelper.AndroidAssetDispatcher()
             start()
@@ -92,7 +94,8 @@ class EraseBrowsingDataTest {
         // Pull down system bar and select Erase and Open
         mDevice.openNotification()
         notificationTray {
-            verifySystemNotificationExists(getStringResource(R.string.notification_erase_text))
+            verifySystemNotificationExists("Erase browsing history?")
+            verifySystemNotificationExists(getStringResource(R.string.notification_erase_text_android_14_1))
             expandEraseBrowsingNotification()
         }.clickEraseAndOpenNotificationButton {
             verifySnackBarText(getStringResource(R.string.feedback_erase2))
@@ -117,7 +120,7 @@ class EraseBrowsingDataTest {
     @Test
     fun systemBarHomeViewTest() {
         val testPage = getGenericTabAsset(webServer, 1)
-        val LAUNCH_TIMEOUT = 5000
+        val launcherLoadTimeoutMillis = 5000
         val launcherPackage = mDevice.launcherPackageName
 
         notificationTray {
@@ -130,7 +133,7 @@ class EraseBrowsingDataTest {
         }.loadPage(testPage.url) { }
         mDevice.openNotification()
         notificationTray {
-            verifySystemNotificationExists(getStringResource(R.string.notification_erase_text))
+            verifySystemNotificationExists("Erase browsing history?")
             expandEraseBrowsingNotification()
         }.clickNotificationMessage {
             verifyEmptySearchBar()
@@ -142,14 +145,14 @@ class EraseBrowsingDataTest {
         pressHomeKey()
         mDevice.openNotification()
         notificationTray {
-            verifySystemNotificationExists(getStringResource(R.string.notification_erase_text))
+            verifySystemNotificationExists("Erase browsing history?")
             expandEraseBrowsingNotification()
         }.clickNotificationMessage {
             // Wait for launcher
             Assert.assertNotNull(launcherPackage)
             mDevice.wait(
                 Until.hasObject(By.pkg(launcherPackage).depth(0)),
-                LAUNCH_TIMEOUT.toLong(),
+                launcherLoadTimeoutMillis.toLong(),
             )
 
             // Re-launch the app, verify it's not showing the previous browsing session

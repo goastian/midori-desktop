@@ -23,6 +23,7 @@ import android.view.inputmethod.InputMethodManager
 import androidx.browser.customtabs.CustomTabColorSchemeParams
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.browser.customtabs.CustomTabsIntent.SHARE_STATE_ON
+import androidx.core.graphics.createBitmap
 import androidx.core.net.toUri
 import androidx.test.espresso.Espresso
 import androidx.test.espresso.Espresso.onView
@@ -38,6 +39,7 @@ import androidx.test.platform.app.InstrumentationRegistry.getInstrumentation
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiSelector
 import junit.framework.AssertionFailedError
+import mozilla.components.support.utils.PendingIntentUtils
 import mozilla.components.support.utils.ext.getApplicationInfoCompat
 import okio.Buffer
 import org.hamcrest.Matchers
@@ -47,7 +49,6 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.mozilla.focus.R
 import org.mozilla.focus.activity.IntentReceiverActivity
-import org.mozilla.focus.utils.IntentUtils
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -188,15 +189,17 @@ object TestHelper {
     // Method for granting app permission to access location/camera/mic
     fun grantAppPermission() {
         if (SDK_INT >= 23) {
-            mDevice.findObject(
-                UiSelector().textContains(
-                    when (SDK_INT) {
-                        Build.VERSION_CODES.R ->
-                            "While using the app"
-                        else -> "Allow"
-                    },
-                ),
-            ).click()
+            val permissionOption =
+                mDevice.findObject(
+                    UiSelector().textContains(
+                        when {
+                            SDK_INT >= 30 -> "While using the app"
+                            else -> "Allow"
+                        },
+                    ),
+                )
+            permissionOption.waitForExists(waitingTime)
+            permissionOption.click()
         }
     }
 
@@ -228,7 +231,7 @@ object TestHelper {
         val appContext = getInstrumentation()
             .targetContext
             .applicationContext
-        val pendingIntent = PendingIntent.getActivity(appContext, 0, Intent(), IntentUtils.defaultIntentPendingFlags())
+        val pendingIntent = PendingIntent.getActivity(appContext, 0, Intent(), PendingIntentUtils.defaultFlags)
 
         val customTabColorSchemeBuilder = CustomTabColorSchemeParams.Builder()
         customTabColorSchemeBuilder.setToolbarColor(Color.MAGENTA)
@@ -255,7 +258,7 @@ object TestHelper {
     }
 
     private fun createTestBitmap(): Bitmap {
-        val bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888)
+        val bitmap = createBitmap(100, 100, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
         canvas.drawColor(Color.GREEN)
         return bitmap
@@ -313,14 +316,14 @@ object TestHelper {
     )
 
     @JvmField
-    var AddtoHSmenuItem = mDevice.findObject(
+    var addtoHSmenuItem = mDevice.findObject(
         UiSelector()
             .resourceId(packageName + ":id/add_to_homescreen")
             .enabled(true),
     )
 
     @JvmField
-    var AddtoHSCancelBtn = mDevice.findObject(
+    var addtoHSCancelBtn = mDevice.findObject(
         UiSelector()
             .resourceId(packageName + ":id/addtohomescreen_dialog_cancel")
             .enabled(true),
@@ -374,6 +377,16 @@ object TestHelper {
             assertTrue(imm.isAcceptingText)
         } else {
             assertFalse(imm.isAcceptingText)
+        }
+    }
+
+    // Prevent or allow the System UI from reading the clipboard content
+    // By preventing, the quick share or nearby share dialog will not be displayed
+    fun allowOrPreventSystemUIFromReadingTheClipboard(allowToReadClipboard: Boolean) {
+        if (allowToReadClipboard) {
+            mDevice.executeShellCommand("appops set com.android.systemui READ_CLIPBOARD allow")
+        } else {
+            mDevice.executeShellCommand("appops set com.android.systemui READ_CLIPBOARD deny")
         }
     }
 }

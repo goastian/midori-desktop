@@ -3,20 +3,20 @@
 # You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import argparse
+import configparser
 import io
 import os
 import sys
 import zipfile
 
 import mozlog
-from six.moves import configparser
 
 from mozversion import errors
 
 INI_DATA_MAPPING = (("application", "App"), ("platform", "Build"))
 
 
-class Version(object):
+class Version:
     def __init__(self):
         self._info = {}
         self._logger = mozlog.get_default_logger(component="mozversion")
@@ -83,7 +83,7 @@ class LocalVersion(Version):
             # on Windows, the binary may be specified with or without the
             # .exe extension
             if not os.path.exists(binary) and not os.path.exists(binary + ".exe"):
-                raise IOError("Binary path does not exist: %s" % binary)
+                raise OSError("Binary path does not exist: %s" % binary)
             path = os.path.dirname(os.path.realpath(binary))
         else:
             path = os.getcwd()

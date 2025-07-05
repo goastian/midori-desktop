@@ -17,6 +17,13 @@ const certOverrideService = Cc[
   "@mozilla.org/security/certoverride;1"
 ].getService(Ci.nsICertOverrideService);
 
+// We don't normally allow localhost channels to be proxied, but this
+// is easier than updating all the certs and/or domains.
+Services.prefs.setBoolPref("network.proxy.allow_hijacking_localhost", true);
+registerCleanupFunction(() => {
+  Services.prefs.clearUserPref("network.proxy.allow_hijacking_localhost");
+});
+
 function makeChan(uri) {
   let chan = NetUtil.newChannel({
     uri,
@@ -108,7 +115,7 @@ function startServer(cert) {
 
 // Replace the UI dialog that prompts the user to pick a client certificate.
 const clientAuthDialogService = {
-  chooseCertificate(hostname, certArray, loadContext, callback) {
+  chooseCertificate(hostname, certArray, loadContext, caNames, callback) {
     callback.certificateChosen(certArray[0], false);
   },
   QueryInterface: ChromeUtils.generateQI(["nsIClientAuthDialogService"]),

@@ -17,16 +17,17 @@ import org.mozilla.focus.helpers.RetryTestRule
 import org.mozilla.focus.helpers.TestAssetHelper
 import org.mozilla.focus.helpers.TestHelper.mDevice
 import org.mozilla.focus.helpers.TestHelper.waitingTime
+import org.mozilla.focus.helpers.TestSetup
 import org.mozilla.focus.testAnnotations.SmokeTest
 
 /**
  * Verifies main menu items on the homescreen and on a browser page.
  */
-class ThreeDotMainMenuTest {
+class ThreeDotMainMenuTest : TestSetup() {
     private lateinit var webServer: MockWebServer
     private val featureSettingsHelper = FeatureSettingsHelper()
 
-    @get: Rule
+    @get:Rule
     val mActivityTestRule = MainActivityFirstrunTestRule(showFirstRun = false)
 
     @Rule
@@ -34,7 +35,8 @@ class ThreeDotMainMenuTest {
     val retryTestRule = RetryTestRule(3)
 
     @Before
-    fun startWebServer() {
+    override fun setUp() {
+        super.setUp()
         webServer = MockWebServer().apply {
             dispatcher = MockWebServerHelper.AndroidAssetDispatcher()
             start()
@@ -103,12 +105,15 @@ class ThreeDotMainMenuTest {
         }.openMainMenu {
         }.openFindInPage {
             enterFindInPageQuery("tab")
-            verifyFindNextInPageResult("1/3")
-            verifyFindNextInPageResult("2/3")
-            verifyFindNextInPageResult("3/3")
-            verifyFindPrevInPageResult("1/3")
-            verifyFindPrevInPageResult("3/3")
-            verifyFindPrevInPageResult("2/3")
+            verifyFindInPageResult("1/3")
+            clickFindInPageNextButton()
+            verifyFindInPageResult("2/3")
+            clickFindInPageNextButton()
+            verifyFindInPageResult("3/3")
+            clickFindInPagePrevButton()
+            verifyFindInPageResult("2/3")
+            clickFindInPagePrevButton()
+            verifyFindInPageResult("1/3")
             closeFindInPage()
         }
     }

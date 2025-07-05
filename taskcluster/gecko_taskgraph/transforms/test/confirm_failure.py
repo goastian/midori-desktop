@@ -12,6 +12,9 @@ transforms = TransformSequence()
 @transforms.add
 def test_confirm_failure_tasks(config, tasks):
     """Copy test-* tasks to have -cf copy."""
+    if config.params["target_tasks_method"] == "os-integration":
+        yield from tasks
+        return
 
     for task in tasks:
         if config.params["try_task_config"].get("new-test-config", False):

@@ -19,6 +19,7 @@ import org.mozilla.fenix.GleanMetrics.Events
 import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.tabstrip.isTabStripEnabled
 import org.mozilla.fenix.components.Components
+import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.search.SearchEngineSource
 import org.mozilla.fenix.search.SearchFragmentState
 import org.mozilla.fenix.utils.Settings
@@ -126,8 +127,7 @@ class ToolbarView(
                     }
                 },
             )
-
-            if (context.isTabStripEnabled()) {
+            if (context.isTabStripEnabled() && fromHomeFragment) {
                 (layoutParams as ViewGroup.MarginLayoutParams).updateMargins(
                     top = context.resources.getDimensionPixelSize(R.dimen.tab_strip_height),
                 )

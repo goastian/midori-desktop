@@ -5,11 +5,17 @@
 package org.mozilla.geckoview.test
 
 import android.view.KeyEvent
+import androidx.core.net.toUri
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
-import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
+import androidx.test.platform.app.InstrumentationRegistry
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.endsWith
+import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.isEmptyOrNullString
+import org.hamcrest.Matchers.notNullValue
+import org.hamcrest.Matchers.nullValue
 import org.junit.Assert
-import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.geckoview.AllowOrDeny
@@ -111,18 +117,23 @@ class PromptDelegateTest : BaseSessionTest(
         mainSession.waitForRoundTrip()
     }
 
-    @Ignore // TODO: Reenable when 1501574 is fixed.
     @Test
     fun alertTest() {
-        mainSession.evaluateJS("alert('Alert!');")
+        mainSession.loadTestPath(HELLO_HTML_PATH)
+        sessionRule.waitForPageStop()
 
-        sessionRule.waitUntilCalled(object : PromptDelegate {
+        val result = GeckoResult<Void>()
+        sessionRule.delegateDuringNextWait(object : PromptDelegate {
             @AssertCalled(count = 1)
             override fun onAlertPrompt(session: GeckoSession, prompt: PromptDelegate.AlertPrompt): GeckoResult<PromptDelegate.PromptResponse> {
                 assertThat("Message should match", "Alert!", equalTo(prompt.message))
+                result.complete(null)
                 return GeckoResult.fromValue(prompt.dismiss())
             }
         })
+
+        mainSession.evaluateJS("alert('Alert!');")
+        sessionRule.waitForResult(result)
     }
 
     // This test checks that saved logins are returned to the app when calling onAuthPrompt
@@ -361,7 +372,7 @@ class PromptDelegateTest : BaseSessionTest(
         })""",
         )
 
-        mainSession.synthesizeTap(10, 10)
+        mainSession.synthesizeTap(20, 20)
         sessionRule.waitForResult(result)
         assertThat(
             "Events should be as expected",
@@ -390,7 +401,7 @@ class PromptDelegateTest : BaseSessionTest(
             }
         })
 
-        mainSession.synthesizeTap(10, 10)
+        mainSession.synthesizeTap(20, 20)
         sessionRule.waitForResult(result)
     }
 
@@ -414,7 +425,7 @@ class PromptDelegateTest : BaseSessionTest(
             }
         })
 
-        mainSession.synthesizeTap(10, 10)
+        mainSession.synthesizeTap(20, 20)
         sessionRule.waitForResult(result)
     }
 
@@ -543,7 +554,7 @@ class PromptDelegateTest : BaseSessionTest(
             """.trimIndent(),
         )
 
-        mainSession.synthesizeTap(10, 10)
+        mainSession.synthesizeTap(20, 20)
         sessionRule.waitForResult(result)
         assertThat(
             "Selected item should be as expected",
@@ -575,7 +586,7 @@ class PromptDelegateTest : BaseSessionTest(
             }
         })
 
-        mainSession.synthesizeTap(10, 10)
+        mainSession.synthesizeTap(20, 20)
         sessionRule.waitForResult(result)
     }
 
@@ -662,82 +673,6 @@ class PromptDelegateTest : BaseSessionTest(
         )
     }
 
-    @Test
-    fun fedCMProviderPromptTest() {
-        sessionRule.setPrefsUntilTestEnd(
-            mapOf(
-                "dom.security.credentialmanagement.identity.enabled" to true,
-            ),
-        )
-        sessionRule.setPrefsUntilTestEnd(
-            mapOf(
-                "dom.security.credentialmanagement.identity.heavyweight.enabled" to true,
-            ),
-        )
-        sessionRule.setPrefsUntilTestEnd(
-            mapOf(
-                "dom.security.credentialmanagement.identity.test_ignore_well_known" to true,
-            ),
-        )
-        mainSession.loadTestPath(FEDCM_RP_HTML_PATH)
-
-        sessionRule.delegateDuringNextWait(object : PromptDelegate {
-            @AssertCalled(count = 1)
-            override fun onSelectIdentityCredentialProvider(
-                session: GeckoSession,
-                prompt: PromptDelegate.IdentityCredential.ProviderSelectorPrompt,
-            ): GeckoResult<PromptResponse> {
-                prompt.providers.mapIndexed { index, item ->
-                    assertThat("ID should match", index, equalTo(item.id))
-                    assertThat(
-                        "Name should be the name of the IDP taken from the manifest",
-                        item.name,
-                        containsString("Demo IDP"),
-                    )
-                    assertThat("Icon should contain a valid image", item.icon ?: "", containsString("data:image"))
-                }
-                return GeckoResult.fromValue(prompt.confirm(0))
-            }
-
-            @AssertCalled(count = 1)
-            override fun onSelectIdentityCredentialAccount(
-                session: GeckoSession,
-                prompt: PromptDelegate.IdentityCredential.AccountSelectorPrompt,
-            ): GeckoResult<PromptResponse> {
-                prompt.accounts.forEachIndexed { index, item ->
-                    assertThat("ID should match", index, equalTo(item.id))
-                }
-                return GeckoResult.fromValue(prompt.confirm(0))
-            }
-
-            @AssertCalled(count = 1)
-            override fun onShowPrivacyPolicyIdentityCredential(
-                session: GeckoSession,
-                prompt: PromptDelegate.IdentityCredential.PrivacyPolicyPrompt,
-            ): GeckoResult<PromptResponse> {
-                assertThat("Host should be localhost", prompt.host, equalTo("localhost"))
-                assertThat("Privacy policy url should be the same as specified in fedcm_idp_metadata.json ", prompt.privacyPolicyUrl, equalTo("privacy_policy"))
-                assertThat("Terms of service url should be the same as specified in fedcm_idp_metadata.json ", prompt.termsOfServiceUrl, equalTo("terms_of_service"))
-                assertThat("Icon should contain a valid image", prompt.icon ?: "", containsString("data:image"))
-                return GeckoResult.fromValue(prompt.confirm(true))
-            }
-        })
-
-        mainSession.waitForJS(
-            """
-        navigator.credentials.get({
-        identity: {
-          providers: [{
-            configURL: "${createTestUrl(FEDCM_IDP_MANIFEST_PATH)}",
-            clientId: "localhost",
-            nonce: "nonce",
-          }]
-        }
-      });
-            """.trimIndent(),
-        )
-    }
-
     @WithDisplay(width = 100, height = 100)
     @Test
     fun colorTest() {
@@ -757,6 +692,7 @@ class PromptDelegateTest : BaseSessionTest(
 
         mainSession.evaluateJS(
             """
+            document.documentElement.style.paddingTop = "50px";
             this.c = document.getElementById('colorexample');
             """.trimIndent(),
         )
@@ -784,7 +720,8 @@ class PromptDelegateTest : BaseSessionTest(
     }
 
     @WithDisplay(width = 100, height = 100)
-    @Test fun colorTestWithDatalist() {
+    @Test
+    fun colorTestWithDatalist() {
         sessionRule.setPrefsUntilTestEnd(mapOf("dom.disable_open_during_load" to false))
 
         mainSession.loadTestPath(PROMPT_HTML_PATH)
@@ -803,6 +740,7 @@ class PromptDelegateTest : BaseSessionTest(
 
         mainSession.evaluateJS(
             """
+            document.documentElement.style.paddingTop = "50px";
             this.c = document.getElementById('colorexample');
             this.c.setAttribute('list', 'colorlist');
             """.trimIndent(),
@@ -837,7 +775,8 @@ class PromptDelegateTest : BaseSessionTest(
 
         mainSession.evaluateJS(
             """
-            document.body.addEventListener("click", () => {
+            document.documentElement.style.paddingTop = "50px";
+            document.addEventListener("click", () => {
                 document.getElementById('dateexample').showPicker();
             });
             """.trimIndent(),
@@ -869,7 +808,7 @@ class PromptDelegateTest : BaseSessionTest(
             document.getElementById('dateexample').getBoundingClientRect();
             """.trimIndent(),
         )
-        mainSession.synthesizeTap(10, 10)
+        mainSession.synthesizeTap(20, 20)
 
         sessionRule.waitUntilCalled(object : PromptDelegate {
             @AssertCalled(count = 1)
@@ -897,7 +836,7 @@ class PromptDelegateTest : BaseSessionTest(
             document.getElementById('weekexample').getBoundingClientRect();
             """.trimIndent(),
         )
-        mainSession.synthesizeTap(10, 10)
+        mainSession.synthesizeTap(20, 20)
 
         sessionRule.waitUntilCalled(object : PromptDelegate {
             @AssertCalled(count = 1)
@@ -925,7 +864,7 @@ class PromptDelegateTest : BaseSessionTest(
             document.getElementById('dateexample').getBoundingClientRect();
             """.trimIndent(),
         )
-        mainSession.synthesizeTap(10, 10)
+        mainSession.synthesizeTap(20, 20)
 
         sessionRule.waitUntilCalled(object : PromptDelegate {
             @AssertCalled(count = 1)
@@ -964,8 +903,13 @@ class PromptDelegateTest : BaseSessionTest(
             }
         })
 
-        mainSession.evaluateJS("document.getElementById('selectexample').remove()")
-        mainSession.synthesizeTap(10, 10)
+        mainSession.evaluateJS(
+            """
+            document.getElementById('selectexample').remove();
+            document.getElementById('dateexample').getBoundingClientRect();
+            """.trimIndent(),
+        )
+        mainSession.synthesizeTap(20, 20)
         sessionRule.waitForResult(result)
     }
 
@@ -998,9 +942,10 @@ class PromptDelegateTest : BaseSessionTest(
             """
             document.getElementById('selectexample').remove();
             document.getElementById('dateexample').remove();
+            document.getElementById('monthexample').getBoundingClientRect();
             """.trimIndent(),
         )
-        mainSession.synthesizeTap(10, 10)
+        mainSession.synthesizeTap(20, 20)
         sessionRule.waitForResult(result)
     }
 
@@ -1071,7 +1016,8 @@ class PromptDelegateTest : BaseSessionTest(
     }
 
     @WithDisplay(width = 100, height = 100)
-    @Test fun fileTest() {
+    @Test
+    fun fileTest() {
         sessionRule.setPrefsUntilTestEnd(mapOf("dom.disable_open_during_load" to false))
 
         mainSession.loadTestPath(PROMPT_HTML_PATH)
@@ -1080,7 +1026,6 @@ class PromptDelegateTest : BaseSessionTest(
         mainSession.evaluateJS("document.addEventListener('click', () => document.getElementById('fileexample').click(), { once: true });")
         mainSession.synthesizeTap(1, 1)
 
-
         sessionRule.waitUntilCalled(object : PromptDelegate {
             @AssertCalled(count = 1)
             override fun onFilePrompt(session: GeckoSession, prompt: PromptDelegate.FilePrompt): GeckoResult<PromptDelegate.PromptResponse> {
@@ -1088,7 +1033,70 @@ class PromptDelegateTest : BaseSessionTest(
                 assertThat("First accept attribute should match", "image/*", equalTo(prompt.mimeTypes?.get(0)))
                 assertThat("Second accept attribute should match", ".pdf", equalTo(prompt.mimeTypes?.get(1)))
                 assertThat("Capture attribute should match", PromptDelegate.FilePrompt.Capture.USER, equalTo(prompt.capture))
+                assertThat("Type should match", prompt.type, equalTo(PromptDelegate.FilePrompt.Type.SINGLE))
                 return GeckoResult.fromValue(prompt.dismiss())
+            }
+        })
+    }
+
+    @WithDisplay(width = 100, height = 100)
+    @Test
+    fun fileMultipleTest() {
+        sessionRule.setPrefsUntilTestEnd(mapOf("dom.disable_open_during_load" to false))
+
+        mainSession.loadTestPath(PROMPT_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        mainSession.evaluateJS("document.addEventListener('click', () => document.getElementById('filemultipleexample').click(), { once: true });")
+        mainSession.synthesizeTap(1, 1)
+
+        sessionRule.waitUntilCalled(object : PromptDelegate {
+            @AssertCalled(count = 1)
+            override fun onFilePrompt(session: GeckoSession, prompt: PromptDelegate.FilePrompt): GeckoResult<PromptDelegate.PromptResponse> {
+                assertThat("Length of mimeTypes should match", 2, equalTo(prompt.mimeTypes!!.size))
+                assertThat("First accept attribute should match", "image/*", equalTo(prompt.mimeTypes?.get(0)))
+                assertThat("Second accept attribute should match", ".pdf", equalTo(prompt.mimeTypes?.get(1)))
+                assertThat("Capture attribute should match", PromptDelegate.FilePrompt.Capture.NONE, equalTo(prompt.capture))
+                assertThat("Type should match", prompt.type, equalTo(PromptDelegate.FilePrompt.Type.MULTIPLE))
+                return GeckoResult.fromValue(prompt.dismiss())
+            }
+        })
+    }
+
+    @WithDisplay(width = 100, height = 100)
+    @Test
+    fun directoryTest() {
+        sessionRule.setPrefsUntilTestEnd(
+            mapOf(
+                "dom.disable_open_during_load" to false,
+                "dom.webkitBlink.dirPicker.enabled" to true,
+            ),
+        )
+
+        mainSession.loadTestPath(PROMPT_HTML_PATH)
+        mainSession.waitForPageStop()
+
+        sessionRule.delegateUntilTestEnd(object : PromptDelegate {
+            @AssertCalled(count = 1)
+            override fun onFilePrompt(session: GeckoSession, prompt: PromptDelegate.FilePrompt): GeckoResult<PromptDelegate.PromptResponse> {
+                assertThat("Type should match", prompt.type, equalTo(PromptDelegate.FilePrompt.Type.FOLDER))
+                return GeckoResult.fromValue(
+                    prompt.confirm(
+                        InstrumentationRegistry.getInstrumentation().targetContext,
+                        "file:///storage/emulated/0/Download".toUri(),
+                    ),
+                )
+            }
+        })
+
+        mainSession.evaluateJS("document.addEventListener('click', () => document.getElementById('direxample').click(), { once: true });")
+        mainSession.synthesizeTap(1, 1)
+
+        sessionRule.waitUntilCalled(object : PromptDelegate {
+            @AssertCalled(count = 1)
+            override fun onFolderUploadPrompt(session: GeckoSession, prompt: PromptDelegate.FolderUploadPrompt): GeckoResult<PromptDelegate.PromptResponse>? {
+                assertThat("directoryName should match", prompt.directoryName, equalTo("Download"))
+                return GeckoResult.fromValue(prompt.confirm(AllowOrDeny.ALLOW))
             }
         })
     }

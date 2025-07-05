@@ -16,10 +16,8 @@ Contributing to GeckoView
 -  `GeckoView for Gecko Engineers <for-gecko-engineers.html>`_: A
    quick-start guide for those already familiar with contributing to
    Firefox development.
--  `Mozilla Central Quick Start Guide <mc-quick-start.html>`_: Get Mozilla
-   Central set up for development.
--  `Mozilla Central Contributor Guide <contributing-to-mc.html>`_: Get
-   started as a contributor to Mozilla Central.
+-  `Firefox Contributor Guide <contributing-to-firefox.html>`_: Get
+   started as a contributor to Firefox.
 -  `Guide to Native Debugging in Android Studio <native-debugging.html>`_:
    Set up Android Studio for debugging native code.
 -  `Architecture overview <geckoview-architecture.html>`_: An overview of
@@ -27,3 +25,5 @@ Contributing to GeckoView
 -  `Junit Test Framework <junit.html>`_: An overview of GeckoView's custom
    Junit code.
 -  `apilint <apilint.html>`_: GeckoView's linter for the API.
+-  `Translations: Toolkit to Fenix <translations-toolkit-to-fenix.html>`_: Creating
+   a new Android feature using existing JavaScript toolkit code

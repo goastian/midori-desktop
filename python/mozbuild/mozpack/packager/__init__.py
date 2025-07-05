@@ -8,8 +8,6 @@ import os
 import re
 from collections import deque
 
-import six
-
 import mozpack.path as mozpath
 from mozbuild.preprocessor import Preprocessor
 from mozpack.chrome.manifest import (
@@ -23,7 +21,7 @@ from mozpack.chrome.manifest import (
 from mozpack.errors import errors
 
 
-class Component(object):
+class Component:
     """
     Class that represents a component in a package manifest.
     """
@@ -129,7 +127,7 @@ class Component(object):
         return Component(name, destdir=destdir)
 
 
-class PackageManifestParser(object):
+class PackageManifestParser:
     """
     Class for parsing of a package manifest, after preprocessing.
 
@@ -174,7 +172,7 @@ class PackageManifestParser(object):
             self._sink.add(self._component, str)
 
 
-class PreprocessorOutputWrapper(object):
+class PreprocessorOutputWrapper:
     """
     File-like helper to handle the preprocessor output and send it to a parser.
     The parser's handle_line method is called in the relevant errors.context.
@@ -231,7 +229,7 @@ class CallDeque(deque):
                 function(*args)
 
 
-class SimplePackager(object):
+class SimplePackager:
     """
     Helper used to translate and buffer instructions from the
     SimpleManifestSink to a formatter. Formatters expect some information to be
@@ -279,12 +277,12 @@ class SimplePackager(object):
             self._file_queue.append(self.formatter.add, path, file)
             if mozpath.basename(path) == "install.rdf":
                 addon = True
-                install_rdf = six.ensure_text(file.open().read())
+                install_rdf = file.open().read().decode()
                 if self.UNPACK_ADDON_RE.search(install_rdf):
                     addon = "unpacked"
                 self._add_addon(mozpath.dirname(path), addon)
             elif mozpath.basename(path) == "manifest.json":
-                manifest = six.ensure_text(file.open().read())
+                manifest = file.open().read()
                 try:
                     parsed = json.loads(manifest)
                 except ValueError:
@@ -363,7 +361,7 @@ class SimplePackager(object):
         bases = self.get_bases()
         broken_bases = sorted(
             m
-            for m, includer in six.iteritems(self._included_manifests)
+            for m, includer in self._included_manifests.items()
             if mozpath.basedir(m, bases) != mozpath.basedir(includer, bases)
         )
         for m in broken_bases:
@@ -378,7 +376,7 @@ class SimplePackager(object):
         self._file_queue.execute()
 
 
-class SimpleManifestSink(object):
+class SimpleManifestSink:
     """
     Parser sink for "simple" package manifests. Simple package manifests use
     the format described in the PackageManifestParser documentation, but don't

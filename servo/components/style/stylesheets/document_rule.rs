@@ -8,7 +8,7 @@
 
 use crate::media_queries::Device;
 use crate::parser::{Parse, ParserContext};
-use crate::shared_lock::{DeepCloneParams, DeepCloneWithLock, Locked};
+use crate::shared_lock::{DeepCloneWithLock, Locked};
 use crate::shared_lock::{SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard};
 use crate::str::CssStringWriter;
 use crate::stylesheets::CssRules;
@@ -60,12 +60,11 @@ impl DeepCloneWithLock for DocumentRule {
         &self,
         lock: &SharedRwLock,
         guard: &SharedRwLockReadGuard,
-        params: &DeepCloneParams,
     ) -> Self {
         let rules = self.rules.read_with(guard);
         DocumentRule {
             condition: self.condition.clone(),
-            rules: Arc::new(lock.wrap(rules.deep_clone_with_lock(lock, guard, params))),
+            rules: Arc::new(lock.wrap(rules.deep_clone_with_lock(lock, guard))),
             source_location: self.source_location.clone(),
         }
     }
@@ -76,7 +75,6 @@ impl DeepCloneWithLock for DocumentRule {
 #[allow(missing_docs)]
 pub enum MediaDocumentKind {
     All,
-    Plugin,
     Image,
     Video,
 }
@@ -222,7 +220,6 @@ impl DocumentMatchingFunction {
             DocumentMatchingFunction::MediaDocument(kind) => match kind {
                 MediaDocumentKind::All => "all",
                 MediaDocumentKind::Image => "image",
-                MediaDocumentKind::Plugin => "plugin",
                 MediaDocumentKind::Video => "video",
             },
             DocumentMatchingFunction::PlainTextDocument(()) |

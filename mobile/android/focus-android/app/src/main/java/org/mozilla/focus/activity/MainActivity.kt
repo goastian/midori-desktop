@@ -7,33 +7,31 @@ package org.mozilla.focus.activity
 import android.Manifest.permission.POST_NOTIFICATIONS
 import android.content.Context
 import android.content.Intent
-import android.content.res.Configuration
-import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.util.AttributeSet
 import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
 import android.view.ViewTreeObserver
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.ActionBar
 import androidx.appcompat.widget.Toolbar
-import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
-import androidx.core.view.isVisible
+import androidx.core.view.updateLayoutParams
+import androidx.core.view.updatePadding
 import androidx.preference.PreferenceManager
 import mozilla.components.browser.state.selector.privateTabs
 import mozilla.components.concept.engine.EngineView
 import mozilla.components.feature.search.widget.BaseVoiceSearchActivity
 import mozilla.components.lib.auth.canUseBiometricFeature
 import mozilla.components.lib.crash.Crash
-import mozilla.components.service.glean.private.NoExtras
 import mozilla.components.support.base.feature.UserInteractionHandler
-import mozilla.components.support.ktx.android.content.getColorFromAttr
-import mozilla.components.support.ktx.android.view.createWindowInsetsController
-import mozilla.components.support.locale.LocaleAwareAppCompatActivity
 import mozilla.components.support.utils.SafeIntent
 import mozilla.components.support.utils.StatusBarUtils
+import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.experiments.nimbus.initializeTooling
 import org.mozilla.focus.GleanMetrics.AppOpened
 import org.mozilla.focus.GleanMetrics.Notifications
@@ -61,7 +59,10 @@ import org.mozilla.focus.utils.SupportUtils
 private const val REQUEST_TIME_OUT = 2000L
 
 @Suppress("TooManyFunctions", "LargeClass")
-open class MainActivity : LocaleAwareAppCompatActivity() {
+/**
+ * The main entry point for the app.
+ */
+open class MainActivity : EdgeToEdgeActivity() {
     private var isToolbarInflated = false
     private val intentProcessor by lazy {
         IntentProcessor(this, components.tabsUseCases, components.customTabsUseCases)
@@ -96,28 +97,11 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
         // Checks if Activity is currently in PiP mode if launched from external intents, then exits it
         checkAndExitPiP()
 
-        if (!isTaskRoot) {
-            if (intent.hasCategory(Intent.CATEGORY_LAUNCHER) && Intent.ACTION_MAIN == intent.action) {
-                finish()
-                return
-            }
+        if (!isTaskRoot && intent.hasCategory(Intent.CATEGORY_LAUNCHER) && Intent.ACTION_MAIN == intent.action) {
+            finish()
+            return
         }
 
-        @Suppress("DEPRECATION") // https://github.com/mozilla-mobile/focus-android/issues/5016
-        window.decorView.systemUiVisibility =
-            View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
-
-        window.statusBarColor = ContextCompat.getColor(this, android.R.color.transparent)
-        when (resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) {
-            Configuration.UI_MODE_NIGHT_UNDEFINED, // We assume light here per Android doc's recommendation
-            Configuration.UI_MODE_NIGHT_NO,
-            -> {
-                updateLightSystemBars()
-            }
-            Configuration.UI_MODE_NIGHT_YES -> {
-                clearLightSystemBars()
-            }
-        }
         setContentView(binding.root)
 
         startupPathProvider.attachOnActivityOnCreate(lifecycle, intent)
@@ -143,21 +127,31 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
 
         val launchCount = settings.getAppLaunchCount()
         PreferenceManager.getDefaultSharedPreferences(this)
-            .edit()
-            .putInt(getString(R.string.app_launch_count), launchCount + 1)
-            .apply()
+            .edit {
+                putInt(getString(R.string.app_launch_count), launchCount + 1)
+            }
 
         AppReviewUtils.showAppReview(this)
 
         privateNotificationFeature = PrivateNotificationFeature(
             context = applicationContext,
             browserStore = components.store,
+            crashReporter = components.crashReporter,
             permissionRequestHandler = { requestNotificationPermission() },
         ).also {
             it.start()
         }
 
         components.notificationsDelegate.bindToActivity(this)
+
+        onBackPressedDispatcher.addCallback(
+            this,
+            object : OnBackPressedCallback(true) {
+                override fun handleOnBackPressed() {
+                    this@MainActivity.handleBackPressed()
+                }
+            },
+        )
     }
 
     private fun requestNotificationPermission() {
@@ -197,9 +191,10 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
     }
 
     final override fun onUserLeaveHint() {
-        // The notification permission prompt will trigger onUserLeaveHint too.
-        // We shouldn't treat this situation as user leaving.
-        if (!components.notificationsDelegate.isRequestingPermission) {
+        if (components.notificationsDelegate.isRequestingPermission) {
+            // The notification permission prompt will trigger onUserLeaveHint too.
+            // We shouldn't treat this situation as user leaving.
+        } else {
             val browserFragment =
                 supportFragmentManager.findFragmentByTag(BrowserFragment.FRAGMENT_TAG) as BrowserFragment?
             if (browserFragment is UserInteractionHandler && browserFragment.onHomePressed()) {
@@ -227,10 +222,7 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
         super.onPause()
     }
 
-    override fun onStop() {
-        super.onStop()
-    }
-
+    @Suppress("PARAMETER_NAME_CHANGED_ON_OVERRIDE")
     override fun onNewIntent(unsafeIntent: Intent) {
         if (Crash.isCrashIntent(unsafeIntent)) {
             val browserFragment = supportFragmentManager
@@ -276,27 +268,22 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
     }
 
     private fun handleAppRestoreFromBackground(intent: SafeIntent) {
-        if (!intent.extras?.getString(BaseVoiceSearchActivity.SPEECH_PROCESSING).isNullOrEmpty()) {
-            handleAppNavigation(intent)
+        if (intent.extras?.getString(BaseVoiceSearchActivity.SPEECH_PROCESSING).isNullOrEmpty()) {
+            val currentScreen = components.appStore.state.screen
+            when (currentScreen) {
+                is Screen.Settings -> components.appStore.dispatch(
+                    AppAction.OpenSettings(page = currentScreen.page),
+                )
+                is Screen.SitePermissionOptionsScreen -> components.appStore.dispatch(
+                    AppAction.OpenSitePermissionOptionsScreen(sitePermission = currentScreen.sitePermission),
+                )
+                else -> {
+                    handleAppNavigation(intent)
+                }
+            }
             return
         }
-        when (components.appStore.state.screen) {
-            is Screen.Settings -> components.appStore.dispatch(
-                AppAction.OpenSettings(
-                    page =
-                    (components.appStore.state.screen as Screen.Settings).page,
-                ),
-            )
-            is Screen.SitePermissionOptionsScreen -> components.appStore.dispatch(
-                AppAction.OpenSitePermissionOptionsScreen(
-                    sitePermission =
-                    (components.appStore.state.screen as Screen.SitePermissionOptionsScreen).sitePermission,
-                ),
-            )
-            else -> {
-                handleAppNavigation(intent)
-            }
-        }
+        handleAppNavigation(intent)
     }
 
     private fun handleAppNavigation(intent: SafeIntent) {
@@ -330,7 +317,7 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
         }
     }
 
-    override fun onBackPressed() {
+    private fun handleBackPressed() {
         val fragmentManager = supportFragmentManager
 
         val urlInputFragment =
@@ -364,7 +351,8 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
             return
         }
 
-        onBackPressedDispatcher.onBackPressed()
+        // If no fragments are handling the back press, finish the activity.
+        finish()
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -381,71 +369,38 @@ open class MainActivity : LocaleAwareAppCompatActivity() {
 
     // Handles the edge case of a user removing all enrolled prints while auth was enabled
     private fun checkBiometricStillValid() {
-        // Disable biometrics if the user is no longer eligible due to un-enrolling fingerprints:
-        if (!canUseBiometricFeature()) {
-            PreferenceManager.getDefaultSharedPreferences(this)
-                .edit().putBoolean(
-                    getString(R.string.pref_key_biometric),
-                    false,
-                ).apply()
-        }
-    }
-
-    private fun updateLightSystemBars() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            window.statusBarColor = getColorFromAttr(android.R.attr.statusBarColor)
-            window.createWindowInsetsController().isAppearanceLightStatusBars = true
+        if (canUseBiometricFeature()) {
+            return
         } else {
-            window.statusBarColor = Color.BLACK
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // API level can display handle light navigation bar color
-            window.createWindowInsetsController().isAppearanceLightNavigationBars = true
-            window.navigationBarColor = ContextCompat.getColor(this, android.R.color.transparent)
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                window.navigationBarDividerColor =
-                    ContextCompat.getColor(this, android.R.color.transparent)
-            }
-        }
-    }
-
-    private fun clearLightSystemBars() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            window.createWindowInsetsController().isAppearanceLightStatusBars = false
-        }
-
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // API level can display handle light navigation bar color
-            window.createWindowInsetsController().isAppearanceLightNavigationBars = false
+            // Disable biometrics if the user is no longer eligible due to un-enrolling fingerprints:
+            PreferenceManager.getDefaultSharedPreferences(this)
+                .edit {
+                    putBoolean(
+                        getString(R.string.pref_key_biometric),
+                        false,
+                    )
+                }
         }
     }
 
     fun getToolbar(): ActionBar {
-        if (!isToolbarInflated) {
+        return if (isToolbarInflated) {
+            supportActionBar!!
+        } else {
             val toolbar = binding.toolbar.inflate() as Toolbar
+
+            StatusBarUtils.getStatusBarHeight(toolbar) { statusBarHeight ->
+                toolbar.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                    height = height + statusBarHeight
+                }
+                toolbar.updatePadding(top = statusBarHeight)
+            }
+
             setSupportActionBar(toolbar)
             setNavigationIcon(R.drawable.ic_back_button)
             isToolbarInflated = true
+            supportActionBar!!
         }
-        return supportActionBar!!
-    }
-
-    fun customizeStatusBar(backgroundColorId: Int? = null) {
-        with(binding.statusBarBackground) {
-            binding.statusBarBackground.isVisible = true
-            StatusBarUtils.getStatusBarHeight(this) { statusBarHeight ->
-                layoutParams.height = statusBarHeight
-                backgroundColorId?.let { color ->
-                    setBackgroundColor(ContextCompat.getColor(context, color))
-                }
-            }
-        }
-    }
-
-    fun hideStatusBarBackground() {
-        binding.statusBarBackground.isVisible = false
     }
 
     override fun onDestroy() {

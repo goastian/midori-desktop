@@ -126,4 +126,28 @@ class RuntimeSettingsDefaultsTest : BaseSessionTest() {
             equalTo(true),
         )
     }
+
+    @Test
+    fun fingerprintProtectionsDefaults() {
+        val fingerprintingProtection =
+            (sessionRule.getPrefs("privacy.fingerprintingProtection").get(0)) as Boolean
+        val fingerprintingProtectionPrivateBrowsing =
+            (sessionRule.getPrefs("privacy.fingerprintingProtection.pbmode").get(0)) as Boolean
+
+        // Removing two of these defaults tests because depending on the test order,
+        // NavigationDelegateTest.desktopModeRFP can change the value and hence cause default
+        // verification failure
+
+        assertThat(
+            "Suspected Fingerprint Protection should be disabled by default in normal tabs",
+            fingerprintingProtection,
+            equalTo(false),
+        )
+
+        assertThat(
+            "Suspected Fingerprint Protection should be disabled by default in private tabs",
+            fingerprintingProtectionPrivateBrowsing,
+            equalTo(true),
+        )
+    }
 }

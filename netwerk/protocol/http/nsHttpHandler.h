@@ -187,9 +187,7 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   uint32_t TailBlockingDelayMax() { return mTailDelayMax; }
   uint32_t TailBlockingTotalMax() { return mTailTotalMax; }
 
-  uint32_t ThrottlingReadLimit() {
-    return mThrottleVersion == 1 ? 0 : mThrottleReadLimit;
-  }
+  uint32_t ThrottlingReadLimit() { return 0; }
   int32_t SendWindowSize() { return mSendWindowSize * 1024; }
 
   // TCP Keepalive configuration values.
@@ -241,6 +239,10 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   // cache support
   uint32_t GenerateUniqueID() { return ++mLastUniqueID; }
   uint32_t SessionStartTime() { return mSessionStartTime; }
+
+  void GenerateIdempotencyKeyForPost(const uint32_t aPostId,
+                                     nsILoadInfo* aLoadInfo,
+                                     nsACString& aOutKey);
 
   //
   // Connection management methods:
@@ -296,14 +298,13 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
     return mConnMgr->GetSocketThreadTarget(target);
   }
 
-  [[nodiscard]] nsresult SpeculativeConnect(nsHttpConnectionInfo* ci,
-                                            nsIInterfaceRequestor* callbacks,
-                                            uint32_t caps = 0,
-                                            bool aFetchHTTPSRR = false) {
+  [[nodiscard]] nsresult MaybeSpeculativeConnectWithHTTPSRR(
+      nsHttpConnectionInfo* ci, nsIInterfaceRequestor* callbacks, uint32_t caps,
+      bool aFetchHTTPSRR) {
     TickleWifi(callbacks);
     RefPtr<nsHttpConnectionInfo> clone = ci->Clone();
     return mConnMgr->SpeculativeConnect(clone, callbacks, caps, nullptr,
-                                        aFetchHTTPSRR | EchConfigEnabled());
+                                        aFetchHTTPSRR);
   }
 
   [[nodiscard]] nsresult SpeculativeConnect(nsHttpConnectionInfo* ci,
@@ -394,6 +395,11 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
     NotifyObservers(chan, NS_HTTP_ON_EXAMINE_RESPONSE_TOPIC);
   }
 
+  // Called by the channel once the cookie processing is completed.
+  void OnAfterExamineResponse(nsIHttpChannel* chan) {
+    NotifyObservers(chan, NS_HTTP_ON_AFTER_EXAMINE_RESPONSE_TOPIC);
+  }
+
   // Called by the channel once headers have been merged with cached headers
   void OnExamineMergedResponse(nsIHttpChannel* chan) {
     NotifyObservers(chan, NS_HTTP_ON_EXAMINE_MERGED_RESPONSE_TOPIC);
@@ -428,8 +434,7 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
                                                  int32_t port,
                                                  nsACString& hostLine);
 
-  static uint8_t UrgencyFromCoSFlags(uint32_t cos,
-                                     int32_t aSupportsPriority = 0);
+  static uint8_t UrgencyFromCoSFlags(uint32_t cos, int32_t aSupportsPriority);
 
   SpdyInformation* SpdyInfo() { return &mSpdyInfo; }
   bool IsH2MandatorySuiteEnabled() { return mH2MandatorySuiteEnabled; }
@@ -460,8 +465,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
     return mFocusedWindowTransactionRatio;
   }
 
-  bool ActiveTabPriority() const { return mActiveTabPriority; }
-
   // Called when an optimization feature affecting active vs background tab load
   // took place.  Called only on the parent process and only updates
   // mLastActiveTabLoadOptimizationHit timestamp to now.
@@ -471,8 +474,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   bool IsBeforeLastActiveTabLoadOptimization(TimeStamp const& when);
 
   HttpTrafficAnalyzer* GetHttpTrafficAnalyzer();
-
-  bool GetThroughCaptivePortal() { return mThroughCaptivePortal; }
 
   nsresult CompleteUpgrade(HttpTransactionShell* aTrans,
                            nsIHttpUpgradeListener* aUpgradeListener);
@@ -485,7 +486,7 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
                                 nsIInterfaceRequestor* aCallbacks,
                                 const OriginAttributes& aOriginAttributes);
 
-  bool EchConfigEnabled(bool aIsHttp3 = false) const;
+  static bool EchConfigEnabled(bool aIsHttp3 = false);
   // When EchConfig is enabled and all records with echConfig are failed, this
   // functon indicate whether we can fallback to the origin server.
   // In the case an HTTPS RRSet contains some RRs with echConfig and some
@@ -502,6 +503,9 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
                                    uint32_t aActivitySubtype, PRTime aTimestamp,
                                    uint64_t aExtraSizeData,
                                    const nsACString& aExtraStringData);
+
+  static bool GetParentalControlsEnabled() { return sParentalControlsEnabled; }
+  static void UpdateParentalControlsEnabled(bool waitForCompletion);
 
  private:
   nsHttpHandler();
@@ -585,11 +589,8 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   uint8_t mMaxPersistentConnectionsPerProxy{4};
 
   bool mThrottleEnabled{true};
-  uint32_t mThrottleVersion{2};
   uint32_t mThrottleSuspendFor{3000};
   uint32_t mThrottleResumeFor{200};
-  uint32_t mThrottleReadLimit{8000};
-  uint32_t mThrottleReadInterval{500};
   uint32_t mThrottleHoldTime{600};
   uint32_t mThrottleMaxTime{3000};
 
@@ -632,6 +633,8 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   // useragent components
   nsCString mLegacyAppName{"Mozilla"};
   nsCString mLegacyAppVersion{"5.0"};
+  uint64_t mIdempotencyKeySeed;
+  uint64_t mPrivateBrowsingIdempotencyKeySeed;
   nsCString mPlatform;
   nsCString mOscpu;
   nsCString mMisc;
@@ -657,7 +660,7 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
 
   // for broadcasting safe hint;
   bool mSafeHintEnabled{false};
-  bool mParentalControlEnabled{false};
+  static Atomic<bool, Relaxed> sParentalControlsEnabled;
 
   // true in between init and shutdown states
   Atomic<bool, Relaxed> mHandlerActive{false};
@@ -735,9 +738,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
 
   // The ratio for dispatching transactions from the focused window.
   float mFocusedWindowTransactionRatio{0.9f};
-
-  // If true, the transactions from active tab will be dispatched first.
-  bool mActiveTabPriority{true};
 
   HttpTrafficAnalyzer mHttpTrafficAnalyzer;
 
@@ -836,8 +836,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   // A list of trusted Microsoft SSO authority URLs
   nsTHashSet<nsCString> mMSAuthorities;
 #endif
-
-  Atomic<bool, Relaxed> mThroughCaptivePortal{false};
 
   // The mapping of channel id and the weak pointer of nsHttpChannel.
   nsTHashMap<nsUint64HashKey, nsWeakPtr> mIDToHttpChannelMap;

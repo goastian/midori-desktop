@@ -18,9 +18,13 @@ cmake \
   -DCMAKE_SYSROOT=$MOZ_FETCHES_DIR/sysroot \
   -DOPENSSL_USE_STATIC_LIBS=1 \
   -DCMAKE_EXE_LINKER_FLAGS=-no-pie \
+  -DCMAKE_BUILD_TYPE=Release \
   .
 
 make VERBOSE=1 -j$(nproc)
+
+# Assert that lzma compression was built
+./dmg/dmg | grep -q lzma
 
 # We only need the dmg and hfsplus tools.
 strip dmg/dmg hfs/hfsplus

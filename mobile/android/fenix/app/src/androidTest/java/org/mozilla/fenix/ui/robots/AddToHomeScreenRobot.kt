@@ -4,7 +4,6 @@
 
 package org.mozilla.fenix.ui.robots
 
-import android.os.Build
 import android.util.Log
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.ComposeTestRule
@@ -18,11 +17,10 @@ import org.mozilla.fenix.helpers.Constants.TAG
 import org.mozilla.fenix.helpers.MatcherHelper.assertUIObjectExists
 import org.mozilla.fenix.helpers.MatcherHelper.itemContainingText
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithResId
-import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdAndText
+import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdContainingText
 import org.mozilla.fenix.helpers.TestAssetHelper.waitingTime
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestHelper.packageName
-import java.util.regex.Pattern
 
 /**
  * Implementation of Robot Pattern for the Add to homescreen feature.
@@ -65,24 +63,6 @@ class AddToHomeScreenRobot {
         Log.i(TAG, "clickCancelShortcutButton: Trying to click \"Cancel\" button from \"Add to home screen\" dialog")
         cancelAddToHomeScreenButton().click()
         Log.i(TAG, "clickCancelShortcutButton: Clicked \"Cancel\" button from \"Add to home screen\" dialog")
-    }
-
-    fun clickAddAutomaticallyButton() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            Log.i(TAG, "clickAddAutomaticallyButton: Waiting for $waitingTime ms until finding \"Add automatically\" system dialog button")
-            mDevice.wait(
-                Until.findObject(
-                    By.text(
-                        Pattern.compile("Add Automatically", Pattern.CASE_INSENSITIVE),
-                    ),
-                ),
-                waitingTime,
-            )
-            Log.i(TAG, "clickAddAutomaticallyButton: Waited for $waitingTime ms until \"Add automatically\" system dialog button was found")
-            Log.i(TAG, "clickAddAutomaticallyButton: Trying to click \"Add automatically\" system dialog button")
-            addAutomaticallyButton().click()
-            Log.i(TAG, "clickAddAutomaticallyButton: Clicked \"Add automatically\" system dialog button")
-        }
     }
 
     fun verifyShortcutAdded(shortcutTitle: String) =
@@ -133,9 +113,6 @@ fun addToHomeScreen(interact: AddToHomeScreenRobot.() -> Unit): AddToHomeScreenR
     return AddToHomeScreenRobot.Transition()
 }
 
-private fun addAutomaticallyButton() =
-    mDevice.findObject(UiSelector().textContains("add automatically"))
-
 private fun cancelAddToHomeScreenButton() =
     itemWithResId("$packageName:id/cancel_button")
 private fun confirmAddToHomeScreenButton() =
@@ -143,4 +120,4 @@ private fun confirmAddToHomeScreenButton() =
 private fun shortcutTextField() =
     itemWithResId("$packageName:id/shortcut_text")
 private fun shortcutTitle(title: String) =
-    itemWithResIdAndText("$packageName:id/shortcut_text", title)
+    itemWithResIdContainingText("$packageName:id/shortcut_text", title)

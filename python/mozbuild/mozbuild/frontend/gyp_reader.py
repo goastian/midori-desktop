@@ -10,7 +10,6 @@ from collections.abc import Iterable
 import gyp
 import gyp.msvs_emulation
 import mozpack.path as mozpath
-import six
 from mozpack.files import FileFinder
 
 from mozbuild import shellutil
@@ -227,7 +226,7 @@ def process_gyp_result(
         elif spec["type"] in ("static_library", "shared_library", "executable"):
             # Remove leading 'lib' from the target_name if any, and use as
             # library name.
-            name = six.ensure_text(spec["target_name"])
+            name = spec["target_name"]
             if spec["type"] in ("static_library", "shared_library"):
                 if name.startswith("lib"):
                     name = name[3:]
@@ -354,7 +353,7 @@ def process_gyp_result(
                         if not f:
                             continue
                         # the result may be a string or a list.
-                        if isinstance(f, six.string_types):
+                        if isinstance(f, str):
                             context[var].append(f)
                         else:
                             context[var].extend(f)
@@ -398,7 +397,7 @@ def load_gyp(*args):
     return flat_list, targets, data
 
 
-class GypProcessor(object):
+class GypProcessor:
     """Reads a gyp configuration in the background using the given executor and
     emits GypContexts for the backend to process.
 

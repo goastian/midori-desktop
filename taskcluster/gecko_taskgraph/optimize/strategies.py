@@ -3,12 +3,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
+import datetime
 import logging
 
 import mozpack.path as mozpath
 from mozbuild.base import MozbuildObject
 from mozbuild.util import memoize
 from taskgraph.optimize.base import OptimizationStrategy, register_strategy
+from taskgraph.optimize.strategies import IndexSearch
+from taskgraph.util.parameterization import resolve_timestamps
 from taskgraph.util.path import match as match_path
 
 from gecko_taskgraph.optimize.mozlint import SkipUnlessMozlint
@@ -66,9 +69,7 @@ class SkipUnlessHasRelevantTests(OptimizationStrategy):
             for t in task.attributes["test_manifests"]:
                 if t.startswith(d):
                     logger.debug(
-                        "{} runs a test path ({}) contained by a modified file ({})".format(
-                            task.label, t, d
-                        )
+                        f"{task.label} runs a test path ({t}) contained by a modified file ({d})"
                     )
                     return False
         return True
@@ -96,12 +97,38 @@ class SkipUnlessChanged(OptimizationStrategy):
         changed = self.check(params["files_changed"], file_patterns)
         if not changed:
             logger.debug(
-                'no files found matching a pattern in `skip-unless-changed` for "{}"'.format(
-                    task.label
-                )
+                f'no files found matching a pattern in `skip-unless-changed` for "{task.label}"'
             )
             return True
         return False
 
 
 register_strategy("skip-unless-mozlint", args=("tools/lint",))(SkipUnlessMozlint)
+
+
+@register_strategy("skip-unless-missing")
+class SkipUnlessMissing(OptimizationStrategy):
+    """Skips a task unless it is missing from a specified index.
+
+    This simply defers to Taskgraph's `index-search` optimization. The reason
+    we need this shim is because replacement and removal optimizations can't be
+    joined together in a composite strategy as removal and replacement happen
+    at different times.
+    """
+
+    index_search = IndexSearch()
+
+    def _convert_datetime_str(self, dt):
+        if dt.endswith("Z"):
+            dt = dt[:-1]
+
+        return datetime.datetime.fromisoformat(dt).strftime(self.index_search.fmt)
+
+    def should_remove_task(self, task, params, index):
+        now = datetime.datetime.now(datetime.timezone.utc)
+        deadline = self._convert_datetime_str(
+            resolve_timestamps(now, task.task["deadline"])
+        )
+        return bool(
+            self.index_search.should_replace_task(task, params, deadline, [index])
+        )

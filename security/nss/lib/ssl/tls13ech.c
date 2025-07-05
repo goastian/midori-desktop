@@ -458,7 +458,7 @@ SSLExp_EncodeEchConfigId(PRUint8 configId, const char *publicName, unsigned int 
      *       case 0xfe0d: ECHConfigContents contents;
      *     }
      * } ECHConfig;
-    */
+     */
     rv = sslBuffer_AppendNumber(&b, TLS13_ECH_VERSION, 2);
     if (rv != SECSuccess) {
         goto loser;
@@ -864,7 +864,7 @@ tls13_EncryptClientHello(sslSocket *ss, SECItem *aadItem, const sslBuffer *chInn
     PRINT_BUF(50, (ss, "ciphertext from ECH Encrypt", chCt->data, chCt->len));
 #else
     /* Fake a tag. */
-    SECITEM_AllocItem(NULL, chCt, chPt.len + TLS13_ECH_AEAD_TAG_LEN);
+    chCt = SECITEM_AllocItem(NULL, NULL, chPt.len + TLS13_ECH_AEAD_TAG_LEN);
     if (!chCt) {
         goto loser;
     }
@@ -936,6 +936,9 @@ tls13_CopyChPreamble(sslSocket *ss, sslReader *reader, const SECItem *explicitSi
 
     /* legacy_session_id */
     rv = sslRead_ReadVariable(reader, 1, &tmpReadBuf);
+    if (rv != SECSuccess) {
+        return SECFailure;
+    }
     if (explicitSid) {
         /* Encoded SID should be empty when copying from CHOuter. */
         if (tmpReadBuf.len > 0) {
@@ -1655,7 +1658,7 @@ tls13_PadChInner(sslBuffer *chInner, uint8_t maxNameLen, uint8_t serverNameLen)
  * payloadLen = Size of zeroed placeholder field for payload.
  * payloadOffset = Out parameter, start of payload field
  * echXtn = Out parameter, constructed ECH Xtn with zeroed placeholder field.
-*/
+ */
 SECStatus
 tls13_BuildEchXtn(sslEchConfig *cfg, const SECItem *hpkeEnc, unsigned int payloadLen, PRUint16 *payloadOffset, sslBuffer *echXtn)
 {
@@ -1877,14 +1880,14 @@ tls13_ComputeEchHelloRetryTranscript(sslSocket *ss, const PRUint8 *sh, unsigned 
      */
     if (!ss->ssl3.hs.helloRetry || !ss->sec.isServer) {
         /*
-        * This function can be called in three situations:
-        *    - By the server, prior to sending the HRR, when ECH was accepted
-        *    - By the client, after receiving the HRR, but before it knows whether ECH was accepted
-        *    - By the server, after accepting ECH and receiving CH2 when it needs to reconstruct the HRR
-        * In the first two situations, we need to include the message hash of inner ClientHello1 but don't
-        * want to alter the buffer containing the current transcript.
-        * In the last, the buffer already contains the message hash of inner ClientHello1.
-        */
+         * This function can be called in three situations:
+         *    - By the server, prior to sending the HRR, when ECH was accepted
+         *    - By the client, after receiving the HRR, but before it knows whether ECH was accepted
+         *    - By the server, after accepting ECH and receiving CH2 when it needs to reconstruct the HRR
+         * In the first two situations, we need to include the message hash of inner ClientHello1 but don't
+         * want to alter the buffer containing the current transcript.
+         * In the last, the buffer already contains the message hash of inner ClientHello1.
+         */
         SSL3Hashes hashes;
         rv = tls13_ComputeHash(ss, &hashes, previousTranscript->buf, previousTranscript->len, tls13_GetHash(ss));
         if (rv != SECSuccess) {
@@ -2072,7 +2075,7 @@ loser:
     return SECFailure;
 }
 
-/* Ech Secret is HKDF-Extract(0, ClientHelloInner.random) where 
+/* Ech Secret is HKDF-Extract(0, ClientHelloInner.random) where
    "0" is a string of Hash.len bytes of value 0. */
 SECStatus
 tls13_DeriveEchSecret(const sslSocket *ss, PK11SymKey **output)
@@ -2154,6 +2157,10 @@ tls13_MaybeGreaseEch(sslSocket *ss, const sslBuffer *preamble, sslBuffer *buf)
         return SECSuccess;
     }
 
+    if (ss->firstHsDone) {
+        sslBuffer_Clear(&ss->ssl3.hs.greaseEchBuf);
+    }
+
     /* In draft-09, CH2 sends exactly the same GREASE ECH extension. */
     if (ss->ssl3.hs.helloRetry) {
         return ssl3_EmplaceExtension(ss, buf, ssl_tls13_encrypted_client_hello_xtn,
@@ -2172,6 +2179,9 @@ tls13_MaybeGreaseEch(sslSocket *ss, const sslBuffer *preamble, sslBuffer *buf)
         goto loser; /* Code set */
     }
     rv = tls13_PadChInner(&encodedCh, ss->ssl3.hs.greaseEchSize, strlen(ss->url));
+    if (rv != SECSuccess) {
+        goto loser; /* Code set */
+    }
 
     payloadLen = encodedCh.len;
     payloadLen += TLS13_ECH_AEAD_TAG_LEN; /* Aead tag */
@@ -2263,6 +2273,7 @@ tls13_MaybeGreaseEch(sslSocket *ss, const sslBuffer *preamble, sslBuffer *buf)
     }
 
     /* Stash the GREASE ECH extension - in the case of HRR, CH2 must echo it. */
+    PORT_Assert(ss->ssl3.hs.greaseEchBuf.len == 0);
     ss->ssl3.hs.greaseEchBuf = greaseBuf;
 
     sslBuffer_Clear(&chInnerXtns);
@@ -2753,7 +2764,7 @@ tls13_MaybeAcceptEch(sslSocket *ss, const SECItem *sidBytes, const PRUint8 *chOu
             return SECFailure;
         } else {
             /* Send retry_configs (if we have any) when we fail to decrypt or
-            * found no candidates. This does *not* count as negotiating ECH. */
+             * found no candidates. This does *not* count as negotiating ECH. */
             return ssl3_RegisterExtensionSender(ss, &ss->xtnData,
                                                 ssl_tls13_encrypted_client_hello_xtn,
                                                 tls13_ServerSendEchXtn);

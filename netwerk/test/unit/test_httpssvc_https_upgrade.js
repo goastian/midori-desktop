@@ -25,6 +25,11 @@ let h2Port;
 add_setup(async function setup() {
   trr_test_setup();
 
+  Services.prefs.setBoolPref(
+    "dom.security.https_first_for_custom_ports",
+    false
+  );
+
   h2Port = Services.env.get("MOZHTTP2_PORT");
   Assert.notEqual(h2Port, null);
   Assert.notEqual(h2Port, "");
@@ -36,6 +41,10 @@ add_setup(async function setup() {
 
   Services.prefs.setBoolPref("network.dns.upgrade_with_https_rr", true);
   Services.prefs.setBoolPref("network.dns.use_https_rr_as_altsvc", true);
+  Services.prefs.setBoolPref(
+    "network.dns.https_rr.check_record_with_cname",
+    false
+  );
 
   Services.prefs.setBoolPref(
     "network.dns.use_https_rr_for_speculative_connection",
@@ -51,6 +60,10 @@ add_setup(async function setup() {
     );
     Services.prefs.clearUserPref("network.dns.notifyResolution");
     Services.prefs.clearUserPref("network.dns.disablePrefetch");
+    Services.prefs.clearUserPref("dom.security.https_first_for_custom_ports");
+    Services.prefs.clearUserPref(
+      "network.dns.https_rr.check_record_with_cname"
+    );
   });
 
   if (mozinfo.socketprocess_networking) {

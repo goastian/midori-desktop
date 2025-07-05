@@ -13,7 +13,7 @@ import {assert} from '../util/assert.js';
  * @internal
  */
 export function createEvaluationError(
-  details: Protocol.Runtime.ExceptionDetails
+  details: Protocol.Runtime.ExceptionDetails,
 ): unknown {
   let name: string;
   let message: string;
@@ -51,13 +51,13 @@ export function createEvaluationError(
             url.functionName
           } at ${url.siteString}, <anonymous>:${frame.lineNumber}:${
             frame.columnNumber
-          })`
+          })`,
         );
       } else {
         stackLines.push(
           `    at ${frame.functionName || '<anonymous>'} (${frame.url}:${
             frame.lineNumber
-          }:${frame.columnNumber})`
+          }:${frame.columnNumber})`,
         );
       }
       if (stackLines.length >= Error.stackTraceLimit) {
@@ -76,7 +76,7 @@ const getErrorDetails = (details: Protocol.Runtime.ExceptionDetails) => {
   const lines = details.exception?.description?.split('\n    at ') ?? [];
   const size = Math.min(
     details.stackTrace?.callFrames.length ?? 0,
-    lines.length - 1
+    lines.length - 1,
   );
   lines.splice(-size, size);
   if (details.exception?.className) {
@@ -93,7 +93,7 @@ const getErrorDetails = (details: Protocol.Runtime.ExceptionDetails) => {
  * @internal
  */
 export function createClientError(
-  details: Protocol.Runtime.ExceptionDetails
+  details: Protocol.Runtime.ExceptionDetails,
 ): Error {
   let name: string;
   let message: string;
@@ -124,7 +124,7 @@ export function createClientError(
       stackLines.push(
         `    at ${frame.functionName || '<anonymous>'} (${frame.url}:${
           frame.lineNumber + 1
-        }:${frame.columnNumber + 1})`
+        }:${frame.columnNumber + 1})`,
       );
       if (stackLines.length >= Error.stackTraceLimit) {
         break;
@@ -140,7 +140,7 @@ export function createClientError(
  * @internal
  */
 export function valueFromRemoteObject(
-  remoteObject: Protocol.Runtime.RemoteObject
+  remoteObject: Protocol.Runtime.RemoteObject,
 ): any {
   assert(!remoteObject.objectId, 'Cannot extract value when objectId is given');
   if (remoteObject.unserializableValue) {
@@ -159,7 +159,7 @@ export function valueFromRemoteObject(
       default:
         throw new Error(
           'Unsupported unserializable value: ' +
-            remoteObject.unserializableValue
+            remoteObject.unserializableValue,
         );
     }
   }
@@ -169,15 +169,16 @@ export function valueFromRemoteObject(
 /**
  * @internal
  */
-export function addPageBinding(type: string, name: string): void {
-  // This is the CDP binding.
-  // @ts-expect-error: In a different context.
-  const callCdp = globalThis[name];
-
+export function addPageBinding(
+  type: string,
+  name: string,
+  prefix: string,
+): void {
   // Depending on the frame loading state either Runtime.evaluate or
   // Page.addScriptToEvaluateOnNewDocument might succeed. Let's check that we
   // don't re-wrap Puppeteer's binding.
-  if (callCdp[Symbol.toStringTag] === 'PuppeteerBinding') {
+  // @ts-expect-error: In a different context.
+  if (globalThis[name]) {
     return;
   }
 
@@ -194,7 +195,9 @@ export function addPageBinding(type: string, name: string): void {
       callPuppeteer.lastSeq = seq;
       callPuppeteer.args.set(seq, args);
 
-      callCdp(
+      // @ts-expect-error: In a different context.
+      // Needs to be the same as CDP_BINDING_PREFIX.
+      globalThis[prefix + name](
         JSON.stringify({
           type,
           name,
@@ -203,7 +206,7 @@ export function addPageBinding(type: string, name: string): void {
           isTrivial: !args.some(value => {
             return value instanceof Node;
           }),
-        })
+        }),
       );
 
       return new Promise((resolve, reject) => {
@@ -220,13 +223,16 @@ export function addPageBinding(type: string, name: string): void {
       });
     },
   });
-  // @ts-expect-error: In a different context.
-  globalThis[name][Symbol.toStringTag] = 'PuppeteerBinding';
 }
 
 /**
  * @internal
  */
+export const CDP_BINDING_PREFIX = 'puppeteer_';
+
+/**
+ * @internal
+ */
 export function pageBindingInitString(type: string, name: string): string {
-  return evaluationString(addPageBinding, type, name);
+  return evaluationString(addPageBinding, type, name, CDP_BINDING_PREFIX);
 }

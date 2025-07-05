@@ -11,30 +11,43 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.navArgs
 import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
+import kotlinx.coroutines.launch
+import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.R
+import org.mozilla.fenix.ext.components
+import org.mozilla.fenix.ext.requireComponents
+import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.messaging.MicrosurveyMessageController
+import org.mozilla.fenix.microsurvey.ui.ext.toMicrosurveyUIData
 import org.mozilla.fenix.theme.FirefoxTheme
-
-/**
- * todo update behaviour FXDROID-1944.
- * todo pass question and icon values from messaging FXDROID-1945.
- * todo add dismiss request FXDROID-1946.
- */
 
 /**
  * A bottom sheet fragment for displaying a microsurvey.
  */
 class MicrosurveyBottomSheetFragment : BottomSheetDialogFragment() {
 
+    private val args by navArgs<MicrosurveyBottomSheetFragmentArgs>()
+
+    private val microsurveyMessageController by lazy {
+        MicrosurveyMessageController(requireComponents.appStore, (activity as HomeActivity))
+    }
+
+    private val closeBottomSheet = { dismiss() }
+
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog =
         super.onCreateDialog(savedInstanceState).apply {
             setOnShowListener {
                 val bottomSheet = findViewById<View?>(R.id.design_bottom_sheet)
-                bottomSheet?.setBackgroundResource(android.R.color.transparent)
-                val behavior = BottomSheetBehavior.from(bottomSheet)
-                behavior.setPeekHeightToHalfScreenHeight()
-                behavior.state = BottomSheetBehavior.STATE_HALF_EXPANDED
+                bottomSheet?.let {
+                    it.setBackgroundResource(android.R.color.transparent)
+                    val behavior = BottomSheetBehavior.from(it)
+                    behavior.setPeekHeightToHalfScreenHeight()
+                    behavior.state = BottomSheetBehavior.STATE_HALF_EXPANDED
+                }
             }
         }
 
@@ -43,23 +56,43 @@ class MicrosurveyBottomSheetFragment : BottomSheetDialogFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View = ComposeView(requireContext()).apply {
-        val answers = listOf(
-            getString(R.string.likert_scale_option_1),
-            getString(R.string.likert_scale_option_2),
-            getString(R.string.likert_scale_option_3),
-            getString(R.string.likert_scale_option_4),
-            getString(R.string.likert_scale_option_5),
-        )
+        val messaging = context.components.nimbus.messaging
+        val microsurveyId = args.microsurveyId
 
-        setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+        lifecycleScope.launch {
+            val microsurveyUIData = messaging.getMessage(microsurveyId)?.toMicrosurveyUIData()
+            microsurveyUIData?.let {
+                setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnViewTreeLifecycleDestroyed)
+                microsurveyMessageController.onMicrosurveyShown(it.id)
+                setContent {
+                    FirefoxTheme {
+                        val activity = requireActivity() as HomeActivity
 
-        setContent {
-            FirefoxTheme {
-                MicrosurveyBottomSheet(
-                    question = "How satisfied are you with printing in Firefox?", // todo get value from messaging
-                    icon = R.drawable.ic_print, // todo get value from messaging
-                    answers = answers, // todo get value from messaging
-                )
+                        MicrosurveyBottomSheet(
+                            question = it.question,
+                            icon = it.icon,
+                            answers = it.answers,
+                            onPrivacyPolicyLinkClick = {
+                                closeBottomSheet()
+                                microsurveyMessageController.onPrivacyPolicyLinkClicked(
+                                    it.id,
+                                    it.utmContent,
+                                )
+                            },
+                            onCloseButtonClicked = {
+                                microsurveyMessageController.onMicrosurveyDismissed(it.id)
+                                context.settings().shouldShowMicrosurveyPrompt = false
+                                activity.isMicrosurveyPromptDismissed.value = true
+                                closeBottomSheet()
+                            },
+                            onSubmitButtonClicked = { answer ->
+                                context.settings().shouldShowMicrosurveyPrompt = false
+                                activity.isMicrosurveyPromptDismissed.value = true
+                                microsurveyMessageController.onSurveyCompleted(it.id, answer)
+                            },
+                        )
+                    }
+                }
             }
         }
     }

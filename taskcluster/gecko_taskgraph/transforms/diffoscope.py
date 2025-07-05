@@ -38,7 +38,7 @@ diff_description_schema = Schema(
         Optional("extra-args"): str,
         # Fail the task when differences are detected.
         Optional("fail-on-diff"): bool,
-        # What artifact to check the differences of. Defaults to target.tar.bz2
+        # What artifact to check the differences of. Defaults to target.tar.xz
         # for Linux, target.dmg for Mac, target.zip for Windows, target.apk for
         # Android.
         Optional("artifact"): str,
@@ -96,7 +96,7 @@ def fill_template(config, tasks):
             if artifact:
                 pass
             elif "linux" in os_hint:
-                artifact = "target.tar.bz2"
+                artifact = "target.tar.xz"
             elif "macosx" in os_hint:
                 artifact = "target.dmg"
             elif "android" in os_hint:
@@ -108,9 +108,7 @@ def fill_template(config, tasks):
             if previous_artifact is not None and previous_artifact != artifact:
                 raise Exception("Cannot compare builds from different OSes")
             urls[k] = {
-                "artifact-reference": "<{}/{}>".format(
-                    dep_name, get_artifact_path(task, artifact)
-                ),
+                "artifact-reference": f"<{dep_name}/{get_artifact_path(task, artifact)}>",
             }
             previous_artifact = artifact
 

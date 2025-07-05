@@ -8,7 +8,6 @@ from datetime import datetime, timedelta
 
 import mozversioncontrol
 import requests
-import six
 
 try:
     from cStringIO import StringIO as BytesIO
@@ -36,38 +35,13 @@ def get_commits(logger, repo_root):
         logger.warning("No VCS found for path %s" % repo_root)
         return []
 
-    # The base_ref doesn't actually return a ref, sadly
-    base_rev = repo.base_ref
-    if repo.name == "git":
-        logger.debug("Found git repo")
-        logger.debug("Base rev is %s" % base_rev)
-        if not repo.has_git_cinnabar:
-            logger.error("git cinnabar not found")
-            return []
-        changeset_iter = (
-            repo._run("cinnabar", "git2hg", rev).strip()
-            for rev in repo._run(
-                "log",
-                "--format=%H",
-                "-n50",
-                base_rev,
-                "testing/web-platform/tests",
-                "testing/web-platform/mozilla/tests",
-            ).splitlines()
-        )
-    else:
-        logger.debug("Found hg repo")
-        logger.debug("Base rev is %s" % base_rev)
-        changeset_iter = repo._run(
-            "log",
-            "-fl50",
-            "--template={node}\n",
-            "-r",
-            base_rev,
+    return repo.get_commits(
+        limit=50,
+        follow=[
             "testing/web-platform/tests",
             "testing/web-platform/mozilla/tests",
-        ).splitlines()
-    return changeset_iter
+        ],
+    )
 
 
 def should_download(logger, manifest_paths, rebuild_time=timedelta(days=5)):
@@ -93,6 +67,7 @@ def taskcluster_url(logger, commits):
         "integration/autoland": "autoland",
         "releases/mozilla-esr115": "mozilla-esr115",
         "releases/mozilla-esr128": "mozilla-esr128",
+        "releases/mozilla-esr140": "mozilla-esr140",
     }
     cset_url = (
         "https://hg.mozilla.org/{repo}/json-pushes?"
@@ -116,7 +91,7 @@ def taskcluster_url(logger, commits):
         if revision == 40 * "0":
             continue
 
-        for repo_path, index_name in six.iteritems(repos):
+        for repo_path, index_name in repos.items():
             try:
                 req_headers = HEADERS.copy()
                 req_headers.update({"Accept": "application/json"})
@@ -189,7 +164,7 @@ def download_manifest(logger, test_paths, commits_func, url_func, force=False):
         return False
 
     tar = tarfile.open(mode="r:gz", fileobj=BytesIO(req.content))
-    for paths in six.itervalues(test_paths):
+    for paths in test_paths.values():
         manifest_rel_path = (
             paths["manifest_rel_path"]
             if isinstance(paths, dict)
@@ -210,7 +185,7 @@ def download_manifest(logger, test_paths, commits_func, url_func, force=False):
                 with open(manifest_path, "wb") as dest:
                     dest.write(src.read())
                 src.close()
-            except IOError:
+            except OSError:
                 import traceback
 
                 logger.warning(

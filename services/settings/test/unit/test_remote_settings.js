@@ -447,6 +447,7 @@ add_task(async function test_get_throws_if_no_empty_fallback() {
 add_task(clear_state);
 
 add_task(async function test_get_verify_signature_no_sync() {
+  client.verifySignature = true;
   // No signature in metadata, and no sync if empty.
   let error;
   try {
@@ -488,6 +489,8 @@ add_task(async function test_get_can_verify_signature() {
   // Populate the local DB (record and metadata)
   await client.maybeSync(2000);
 
+  client.verifySignature = true;
+
   // It validates signature that was stored in local DB.
   let calledSignature;
   client._verifier = {
@@ -511,7 +514,7 @@ add_task(async function test_get_can_verify_signature() {
   }
   equal(
     error.message,
-    "Invalid content signature (main/password-fields) using 'fake-x5u'"
+    "Invalid content signature (main/password-fields) using 'fake-x5u' and signer remote-settings.content-signature.mozilla.org"
   );
 });
 add_task(clear_state);
@@ -536,6 +539,7 @@ add_task(async function test_get_does_not_verify_signature_if_load_dump() {
   ok(!called, "signature is missing but not verified");
 
   // If metadata is missing locally, it is not fetched if `syncIfEmpty` is disabled.
+  clientWithDump.verifySignature = true;
   let error;
   try {
     await clientWithDump.get({ verifySignature: true, syncIfEmpty: false });
@@ -554,6 +558,7 @@ add_task(async function test_get_does_not_verify_signature_if_load_dump() {
   const metadata = await clientWithDump.db.getMetadata();
   ok(!!Object.keys(metadata).length, "metadata was fetched");
   ok(called, "signature was verified for the data that was in dump");
+  clientWithDump.verifySignature = true;
 });
 add_task(clear_state);
 
@@ -729,6 +734,21 @@ add_task(async function test_inspect_method_uses_a_random_cache_bust() {
   notEqual(cacheBusts[1], cacheBusts[2]);
   notEqual(cacheBusts[0], cacheBusts[2]);
   Utils.fetchLatestChanges = backup;
+});
+
+add_task(async function test_jexl_context_is_shown_in_inspect() {
+  const { jexlContext } = await RemoteSettings.inspect();
+  deepEqual(Object.keys(jexlContext).sort(), [
+    "appinfo",
+    "channel",
+    "country",
+    "formFactor",
+    "locale",
+    "os",
+    "version",
+  ]);
+  deepEqual(Object.keys(jexlContext.os).sort(), ["name", "version"]);
+  deepEqual(Object.keys(jexlContext.appinfo).sort(), ["ID", "OS"]);
 });
 
 add_task(async function test_clearAll_method() {
@@ -1664,3 +1684,23 @@ wNuvFqc=
     responses[req.method]
   );
 }
+
+add_task(clear_state);
+
+add_task(async function test_hasAttachments_works_as_expected() {
+  let res = await client.db.hasAttachments();
+  Assert.equal(res, false, "Should return false, no attachments at start");
+
+  await client.db.saveAttachment("foo", {
+    record: { id: "foo" },
+    blob: new Blob(["foo"]),
+  });
+
+  res = await client.db.hasAttachments();
+  Assert.equal(res, true, "Should return true, just saved an attachment");
+
+  await client.db.pruneAttachments([]);
+
+  res = await client.db.hasAttachments();
+  Assert.equal(res, false, "Should return false after attachments are pruned");
+});

@@ -4,10 +4,8 @@
 
 const {
   DebounceCallback,
-  IdlePromise,
   PollPromise,
   Sleep,
-  TimedPromise,
   waitForMessage,
   waitForObserverTopic,
 } = ChromeUtils.importESModule(
@@ -66,24 +64,6 @@ class MockTimer {
     this.cancelled = true;
   }
 }
-
-add_task(function test_executeSoon_callback() {
-  // executeSoon() is already defined for xpcshell in head.js. As such import
-  // our implementation into a custom namespace.
-  let sync = ChromeUtils.importESModule(
-    "chrome://remote/content/marionette/sync.sys.mjs"
-  );
-
-  for (let func of ["foo", null, true, [], {}]) {
-    Assert.throws(() => sync.executeSoon(func), /TypeError/);
-  }
-
-  let a;
-  sync.executeSoon(() => {
-    a = 1;
-  });
-  executeSoon(() => equal(1, a));
-});
 
 add_task(function test_PollPromise_funcTypes() {
   for (let type of ["foo", 42, null, undefined, true, [], {}]) {
@@ -188,57 +168,6 @@ add_task(async function test_PollPromise_interval() {
   equal(2, nevals);
 });
 
-add_task(function test_TimedPromise_funcTypes() {
-  for (let type of ["foo", 42, null, undefined, true, [], {}]) {
-    Assert.throws(() => new TimedPromise(type), /TypeError/);
-  }
-  new TimedPromise(resolve => resolve());
-  new TimedPromise(function (resolve) {
-    resolve();
-  });
-});
-
-add_task(function test_TimedPromise_timeoutTypes() {
-  for (let timeout of ["foo", null, true, [], {}]) {
-    Assert.throws(
-      () => new TimedPromise(resolve => resolve(), { timeout }),
-      /TypeError/
-    );
-  }
-  for (let timeout of [1.2, -1]) {
-    Assert.throws(
-      () => new TimedPromise(resolve => resolve(), { timeout }),
-      /RangeError/
-    );
-  }
-  new TimedPromise(resolve => resolve(), { timeout: 42 });
-});
-
-add_task(async function test_TimedPromise_errorMessage() {
-  try {
-    await new TimedPromise(() => {}, { timeout: 0 });
-    ok(false, "Expected Timeout error not raised");
-  } catch (e) {
-    ok(
-      e.message.includes("TimedPromise timed out after"),
-      "Expected default error message found"
-    );
-  }
-
-  try {
-    await new TimedPromise(() => {}, {
-      errorMessage: "Not found",
-      timeout: 0,
-    });
-    ok(false, "Expected Timeout error not raised");
-  } catch (e) {
-    ok(
-      e.message.includes("Not found after"),
-      "Expected custom error message found"
-    );
-  }
-});
-
 add_task(async function test_Sleep() {
   await Sleep(0);
   for (let type of ["foo", true, null, undefined]) {
@@ -246,26 +175,6 @@ add_task(async function test_Sleep() {
   }
   Assert.throws(() => new Sleep(1.2), /RangeError/);
   Assert.throws(() => new Sleep(-1), /RangeError/);
-});
-
-add_task(async function test_IdlePromise() {
-  let called = false;
-  let win = {
-    requestAnimationFrame(callback) {
-      called = true;
-      callback();
-    },
-  };
-  await IdlePromise(win);
-  ok(called);
-});
-
-add_task(async function test_IdlePromiseAbortWhenWindowClosed() {
-  let win = {
-    closed: true,
-    requestAnimationFrame() {},
-  };
-  await IdlePromise(win);
 });
 
 add_task(function test_DebounceCallback_constructor() {

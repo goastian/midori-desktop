@@ -5,9 +5,13 @@
 package org.mozilla.fenix.library.bookmarks
 
 import android.content.Context
+import mozilla.appservices.places.BookmarkRoot
+import mozilla.components.concept.engine.prompt.ShareData
 import mozilla.components.concept.storage.BookmarkNode
 import mozilla.components.concept.storage.BookmarkNodeType
 import org.mozilla.fenix.R
+import org.mozilla.fenix.library.bookmarks.ui.BookmarkItem
+import org.mozilla.fenix.library.bookmarks.ui.BookmarkItem.Bookmark
 
 fun rootTitles(context: Context, withMobileRoot: Boolean): Map<String, String> = if (withMobileRoot) {
     mapOf(
@@ -26,6 +30,28 @@ fun rootTitles(context: Context, withMobileRoot: Boolean): Map<String, String> =
     )
 }
 
+/**
+ * Provides a lookup table for providing names for root bookmark nodes
+ *
+ * @param context The [Context] used in resolving strings.
+ */
+fun composeRootTitles(context: Context) = mapOf(
+    "root" to context.getString(R.string.library_desktop_bookmarks_root),
+    "mobile" to context.getString(R.string.library_bookmarks),
+    "menu" to context.getString(R.string.library_desktop_bookmarks_menu),
+    "toolbar" to context.getString(R.string.library_desktop_bookmarks_toolbar),
+    "unfiled" to context.getString(R.string.library_desktop_bookmarks_unfiled),
+)
+
+/**
+ * Checks to see if a [BookmarkNode] is a [BookmarkRoot] and if so, returns the user-friendly
+ * translated version of its title.
+ *
+ * @param context The [Context] used in resolving strings.
+ * @param node The [BookmarkNode] to resolve a title for.
+ * @param withMobileRoot Whether to include [BookmarkRoot.Mobile] in the Roots to check. Defaults to true.
+ * @param rootTitles A map of [BookmarkRoot] titles to their user-friendly strings. Default is defaults.
+ */
 fun friendlyRootTitle(
     context: Context,
     node: BookmarkNode,
@@ -48,4 +74,18 @@ fun BookmarkNode.flatNodeList(excludeSubtreeRoot: String?, depth: Int = 0): List
         ?.filter { it.type == BookmarkNodeType.FOLDER }
         ?.flatMap { it.flatNodeList(excludeSubtreeRoot = excludeSubtreeRoot, depth = depth + 1) }
         .orEmpty()
+}
+
+/**
+ * Whether the [BookmarkNode] is any of the [BookmarkRoot]s.
+ */
+fun BookmarkNode.inRoots() = enumValues<BookmarkRoot>().any { it.id == guid }
+
+/**
+ * Converts a List of [BookmarkItem.Bookmark]s to an Array of [ShareData]. Used for sharing one or
+ * more bookmarks
+ */
+internal fun List<Bookmark>.asShareDataArray(): Array<ShareData> {
+    return map { ShareData(title = it.title, url = it.url) }
+        .toTypedArray()
 }

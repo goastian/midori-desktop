@@ -2,8 +2,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-import errno
-import io
 import itertools
 import os
 import time
@@ -11,7 +9,6 @@ from abc import ABCMeta, abstractmethod
 from contextlib import contextmanager
 
 import mozpack.path as mozpath
-import six
 from mach.mixin.logging import LoggingMixin
 
 from mozbuild.base import ExecutionSummary
@@ -142,13 +139,13 @@ class BuildBackend(LoggingMixin):
         for path in delete_files:
             full_path = mozpath.join(self.environment.topobjdir, path)
             try:
-                with io.open(full_path, mode="r", encoding="utf-8") as existing:
+                with open(full_path, encoding="utf-8") as existing:
                     old_content = existing.read()
                     if old_content:
                         self.file_diffs[full_path] = simple_diff(
                             full_path, old_content.splitlines(), None
                         )
-            except IOError:
+            except OSError:
                 pass
             try:
                 if not self.dry_run:
@@ -239,7 +236,7 @@ class BuildBackend(LoggingMixin):
             purgecaches_dirs.append(bundledir)
 
         for dir in purgecaches_dirs:
-            with open(mozpath.join(dir, ".purgecaches"), "wt") as f:
+            with open(mozpath.join(dir, ".purgecaches"), "w") as f:
                 f.write("\n")
 
     def post_build(self, config, output, jobs, verbose, status):
@@ -284,11 +281,7 @@ class BuildBackend(LoggingMixin):
             assert fh is not None
 
         dirname = mozpath.dirname(fh.name)
-        try:
-            os.makedirs(dirname)
-        except OSError as error:
-            if error.errno != errno.EEXIST:
-                raise
+        os.makedirs(dirname, exist_ok=True)
 
         yield fh
 
@@ -315,7 +308,7 @@ class BuildBackend(LoggingMixin):
         pp.context.update(
             {
                 k: " ".join(v) if isinstance(v, list) else v
-                for k, v in six.iteritems(obj.config.substs)
+                for k, v in obj.config.substs.items()
             }
         )
         pp.context.update(

@@ -7,7 +7,6 @@ import sys
 import traceback
 import types
 
-import six
 from mozlog import commandline, get_default_logger
 
 
@@ -49,12 +48,12 @@ def test_expected_fail():
     assert_equals(2 + 2, 5)
 
 
-class TestRunner(object):
+class TestRunner:
     def __init__(self):
         self.logger = get_default_logger(component="TestRunner")
 
     def gather_tests(self):
-        for item in six.itervalues(globals()):
+        for item in globals().values():
             if isinstance(item, types.FunctionType) and item.__name__.startswith(
                 "test_"
             ):

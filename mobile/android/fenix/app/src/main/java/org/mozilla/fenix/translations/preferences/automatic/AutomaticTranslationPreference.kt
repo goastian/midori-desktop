@@ -18,13 +18,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import mozilla.components.concept.engine.translate.Language
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
+import org.mozilla.fenix.compose.InfoCard
+import org.mozilla.fenix.compose.InfoType
 import org.mozilla.fenix.compose.list.TextListItem
-import org.mozilla.fenix.shopping.ui.ReviewQualityCheckInfoCard
-import org.mozilla.fenix.shopping.ui.ReviewQualityCheckInfoType
 import org.mozilla.fenix.theme.FirefoxTheme
 import java.util.Locale
 
@@ -47,23 +47,26 @@ fun AutomaticTranslationPreference(
                 color = FirefoxTheme.colors.layer1,
             ),
     ) {
-        TextListItem(
-            label = stringResource(R.string.automatic_translation_header_preference),
-            modifier = Modifier
-                .padding(
-                    start = 56.dp,
-                )
-                .semantics { heading() }
-                .defaultMinSize(minHeight = 76.dp)
-                .wrapContentHeight(),
-            maxLabelLines = Int.MAX_VALUE,
-        )
-
-        if (hasLanguageError) {
-            CouldNotLoadLanguagesErrorWarning()
-        }
-
         LazyColumn {
+            item {
+                TextListItem(
+                    label = stringResource(R.string.automatic_translation_header_preference),
+                    modifier = Modifier
+                        .padding(
+                            start = 56.dp,
+                        )
+                        .semantics { heading() }
+                        .defaultMinSize(minHeight = 76.dp)
+                        .wrapContentHeight(),
+                    maxLabelLines = Int.MAX_VALUE,
+                )
+            }
+            if (hasLanguageError) {
+                item {
+                    CouldNotLoadLanguagesErrorWarning()
+                }
+            }
+
             items(automaticTranslationListPreferences) { item: AutomaticTranslationItemPreference ->
                 var description: String? = null
                 if (
@@ -99,9 +102,9 @@ private fun CouldNotLoadLanguagesErrorWarning() {
         .defaultMinSize(minHeight = 56.dp)
         .wrapContentHeight()
 
-    ReviewQualityCheckInfoCard(
+    InfoCard(
         description = stringResource(id = R.string.automatic_translation_error_warning_text),
-        type = ReviewQualityCheckInfoType.Warning,
+        type = InfoType.Warning,
         verticalRowAlignment = Alignment.CenterVertically,
         modifier = modifier,
     )
@@ -138,7 +141,7 @@ internal fun getAutomaticTranslationListPreferences(): List<AutomaticTranslation
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun AutomaticTranslationPreferencePreview() {
     FirefoxTheme {
         AutomaticTranslationPreference(

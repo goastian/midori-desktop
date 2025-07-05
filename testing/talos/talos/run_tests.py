@@ -41,7 +41,7 @@ def useBaseTestDefaults(base, tests):
 def set_tp_preferences(test, browser_config):
     # sanity check pageloader values
     # mandatory options: tpmanifest, tpcycles
-    if test["tpcycles"] not in six.moves.range(1, 1000):
+    if test["tpcycles"] not in range(1, 1000):
         raise TalosError("pageloader cycles must be int 1 to 1,000")
     if "tpmanifest" not in test:
         raise TalosError("tpmanifest not found in test: %s" % test)
@@ -158,12 +158,6 @@ def run_tests(config, browser_config):
     else:
         browser_config["extra_args"] = []
 
-    # pass --no-remote to firefox launch, if --develop is specified
-    # we do that to allow locally the user to have another running firefox
-    # instance
-    if browser_config["develop"]:
-        browser_config["extra_args"].append("--no-remote")
-
     # Pass subtests filter argument via a preference
     if browser_config["subtests"]:
         browser_config["preferences"]["talos.subtests"] = browser_config["subtests"]
@@ -275,10 +269,6 @@ function FindProxyForURL(url, host) {
     else:
         # we need to add 'webrender' so reported data is consistent
         talos_results.add_extra_option("webrender")
-
-    # differentiate webgl from webgl-ipc results
-    if browser_config["preferences"].get("webgl.out-of-process", False):
-        talos_results.add_extra_option("webgl-ipc")
 
     testname = None
 

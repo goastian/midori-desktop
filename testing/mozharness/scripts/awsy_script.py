@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 """
 run awsy tests in a virtualenv
 """
@@ -75,12 +73,12 @@ class AWSY(TestingMixin, MercurialScript, TooltoolMixin, CodeCoverageMixin):
                 },
             ],
             [
-                ["--tp6"],
+                ["--tp5"],
                 {
                     "action": "store_true",
-                    "dest": "tp6",
+                    "dest": "tp5",
                     "default": False,
-                    "help": "Runs tests with the tp6 pageset.",
+                    "help": "Runs tests with the tp5 pageset.",
                 },
             ],
         ]
@@ -221,8 +219,8 @@ class AWSY(TestingMixin, MercurialScript, TooltoolMixin, CodeCoverageMixin):
 
             env["DMD"] = "--mode=dark-matter --stacks=full"
 
-        runtime_testvars["tp6"] = self.config["tp6"]
-        if self.config["tp6"]:
+        runtime_testvars["tp5"] = self.config["tp5"]
+        if not self.config["tp5"]:
             # mitmproxy needs path to mozharness when installing the cert, and tooltool
             env["SCRIPTSPATH"] = scripts_path
             env["EXTERNALTOOLSPATH"] = external_tools_path
@@ -238,9 +236,8 @@ class AWSY(TestingMixin, MercurialScript, TooltoolMixin, CodeCoverageMixin):
         if self.config["test_about_blank"]:
             test_vars_file = "base-testvars.json"
         else:
-            if self.config["tp6"]:
-                test_vars_file = "tp6-testvars.json"
-            else:
+            test_vars_file = "tp6-testvars.json"
+            if self.config["tp5"]:
                 test_vars_file = "testvars.json"
 
         cmd.append(
@@ -253,7 +250,7 @@ class AWSY(TestingMixin, MercurialScript, TooltoolMixin, CodeCoverageMixin):
         cmd.append("--profile=%s" % (os.path.join(dirs["abs_work_dir"], "profile")))
         if not self.config["e10s"]:
             cmd.append("--disable-e10s")
-        cmd.extend(["--setpref={}".format(p) for p in self.config["extra_prefs"]])
+        cmd.extend([f"--setpref={p}" for p in self.config["extra_prefs"]])
         cmd.append(
             "--gecko-log=%s" % os.path.join(dirs["abs_blob_upload_dir"], "gecko.log")
         )
@@ -266,9 +263,8 @@ class AWSY(TestingMixin, MercurialScript, TooltoolMixin, CodeCoverageMixin):
             prefs_file = "base-prefs.json"
         else:
             test_file = os.path.join(self.awsy_libdir, "test_memory_usage.py")
-            if self.config["tp6"]:
-                prefs_file = "tp6-prefs.json"
-            else:
+            prefs_file = "tp6-prefs.json"
+            if self.config["tp5"]:
                 prefs_file = "prefs.json"
 
         cmd.append(

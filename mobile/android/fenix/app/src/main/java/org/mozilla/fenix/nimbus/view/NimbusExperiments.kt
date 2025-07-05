@@ -9,8 +9,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import org.mozilla.experiments.nimbus.AvailableExperiment
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
 import org.mozilla.fenix.compose.list.TextListItem
 import org.mozilla.fenix.theme.FirefoxTheme
 
@@ -42,7 +42,7 @@ fun NimbusExperiments(
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun NimbusExperimentsPreview() {
     val testExperiment = AvailableExperiment(
         userFacingName = "Name",

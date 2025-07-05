@@ -9,6 +9,7 @@
 // List of Features
 #include "UrlClassifierFeatureCryptominingAnnotation.h"
 #include "UrlClassifierFeatureCryptominingProtection.h"
+#include "UrlClassifierFeatureConsentManagerAnnotation.h"
 #include "UrlClassifierFeatureEmailTrackingDataCollection.h"
 #include "UrlClassifierFeatureEmailTrackingProtection.h"
 #include "UrlClassifierFeatureFingerprintingAnnotation.h"
@@ -35,6 +36,7 @@ void UrlClassifierFeatureFactory::Shutdown() {
 
   UrlClassifierFeatureCryptominingAnnotation::MaybeShutdown();
   UrlClassifierFeatureCryptominingProtection::MaybeShutdown();
+  UrlClassifierFeatureConsentManagerAnnotation::MaybeShutdown();
   UrlClassifierFeatureEmailTrackingDataCollection::MaybeShutdown();
   UrlClassifierFeatureEmailTrackingProtection::MaybeShutdown();
   UrlClassifierFeatureFingerprintingAnnotation::MaybeShutdown();
@@ -66,6 +68,14 @@ void UrlClassifierFeatureFactory::GetFeaturesFromChannel(
   // is not a blocking feature.
   feature =
       UrlClassifierFeatureEmailTrackingDataCollection::MaybeCreate(aChannel);
+  if (feature) {
+    aFeatures.AppendElement(feature);
+  }
+
+  // Consent Manager Annotation
+  // This must be run before any blocking features because the annotation will
+  // affect whether the channel should be blocked.
+  feature = UrlClassifierFeatureConsentManagerAnnotation::MaybeCreate(aChannel);
   if (feature) {
     aFeatures.AppendElement(feature);
   }
@@ -148,6 +158,13 @@ UrlClassifierFeatureFactory::GetFeatureByName(const nsACString& aName) {
 
   // Cryptomining Protection
   feature = UrlClassifierFeatureCryptominingProtection::GetIfNameMatches(aName);
+  if (feature) {
+    return feature.forget();
+  }
+
+  // Consent Manager Annotation
+  feature =
+      UrlClassifierFeatureConsentManagerAnnotation::GetIfNameMatches(aName);
   if (feature) {
     return feature.forget();
   }
@@ -235,6 +252,12 @@ void UrlClassifierFeatureFactory::GetFeatureNames(nsTArray<nsCString>& aArray) {
     aArray.AppendElement(name);
   }
 
+  // Consent Manager Annotation
+  name.Assign(UrlClassifierFeatureConsentManagerAnnotation::Name());
+  if (!name.IsEmpty()) {
+    aArray.AppendElement(name);
+  }
+
   // Email Tracking Data Collection
   name.Assign(UrlClassifierFeatureEmailTrackingDataCollection::Name());
   if (!name.IsEmpty()) {
@@ -308,25 +331,25 @@ struct BlockingErrorCode {
   nsresult mErrorCode;
   uint32_t mBlockingEventCode;
   const char* mConsoleMessage;
-  nsCString mConsoleCategory;
+  nsLiteralCString mConsoleCategory;
 };
 
-static const BlockingErrorCode sBlockingErrorCodes[] = {
+static constexpr BlockingErrorCode sBlockingErrorCodes[] = {
     {NS_ERROR_TRACKING_URI,
      nsIWebProgressListener::STATE_BLOCKED_TRACKING_CONTENT,
-     "TrackerUriBlocked", "Tracking Protection"_ns},
+     "TrackerUriBlockedByETP", "Tracking Protection"_ns},
     {NS_ERROR_FINGERPRINTING_URI,
      nsIWebProgressListener::STATE_BLOCKED_FINGERPRINTING_CONTENT,
-     "TrackerUriBlocked", "Tracking Protection"_ns},
+     "TrackerUriBlockedByETP", "Tracking Protection"_ns},
     {NS_ERROR_CRYPTOMINING_URI,
      nsIWebProgressListener::STATE_BLOCKED_CRYPTOMINING_CONTENT,
-     "TrackerUriBlocked", "Tracking Protection"_ns},
+     "TrackerUriBlockedByETP", "Tracking Protection"_ns},
     {NS_ERROR_SOCIALTRACKING_URI,
      nsIWebProgressListener::STATE_BLOCKED_SOCIALTRACKING_CONTENT,
-     "TrackerUriBlocked", "Tracking Protection"_ns},
+     "TrackerUriBlockedByETP", "Tracking Protection"_ns},
     {NS_ERROR_EMAILTRACKING_URI,
      nsIWebProgressListener::STATE_BLOCKED_EMAILTRACKING_CONTENT,
-     "TrackerUriBlocked", "Tracking Protection"_ns},
+     "TrackerUriBlockedByETP", "Tracking Protection"_ns},
 };
 
 }  // namespace

@@ -573,27 +573,27 @@ dbm_addel(HTAB *hashp, BUFHEAD *bufp, const DBT *key, const DBT *val)
         } else
             /* Try to squeeze key on this page */
             if (FREESPACE(bp) > PAIRSIZE(key, val)) {
-            {
-                squeeze_key(bp, key, val);
+                {
+                    squeeze_key(bp, key, val);
 
-                /* LJM: I added this because I think it was
-                 * left out on accident.
-                 * if this isn't incremented nkeys will not
-                 * be the actual number of keys in the db.
-                 */
-                hashp->NKEYS++;
-                return (0);
-            }
-        } else {
-            bufp = dbm_get_buf(hashp, bp[bp[0] - 1], bufp, 0);
-            if (!bufp) {
+                    /* LJM: I added this because I think it was
+                     * left out on accident.
+                     * if this isn't incremented nkeys will not
+                     * be the actual number of keys in the db.
+                     */
+                    hashp->NKEYS++;
+                    return (0);
+                }
+            } else {
+                bufp = dbm_get_buf(hashp, bp[bp[0] - 1], bufp, 0);
+                if (!bufp) {
 #ifdef DEBUG
-                assert(0);
+                    assert(0);
 #endif
-                return (-1);
+                    return (-1);
+                }
+                bp = (uint16 *)bufp->page;
             }
-            bp = (uint16 *)bufp->page;
-        }
 
     if (PAIRFITS(bp, key, val))
         putpair(bufp->page, key, (DBT *)val);
@@ -1136,9 +1136,6 @@ dbm_free_ovflpage(HTAB *hashp, BUFHEAD *obufp)
 static int
 open_temp(HTAB *hashp)
 {
-#ifdef XP_OS2
-    hashp->fp = mkstemp(NULL);
-#else
 #if !defined(_WIN32) && !defined(_WINDOWS) && !defined(macintosh)
     sigset_t set, oset;
 #endif
@@ -1196,7 +1193,6 @@ open_temp(HTAB *hashp)
 #if !defined(_WIN32) && !defined(_WINDOWS) && !defined(macintosh)
     (void)sigprocmask(SIG_SETMASK, &oset, (sigset_t *)NULL);
 #endif
-#endif /* !OS2 */
     return (hashp->fp != -1 ? 0 : -1);
 }
 

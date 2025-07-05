@@ -25,6 +25,7 @@ use crate::gecko_bindings::structs::{nsCSSPropertyID, AnimatedPropertyID, RefPtr
 use crate::logical_geometry::WritingMode;
 use crate::parser::ParserContext;
 use crate::str::CssString;
+use crate::stylesheets::CssRuleType;
 use crate::stylesheets::Origin;
 use crate::stylist::Stylist;
 use crate::values::{computed, serialize_atom_name};
@@ -151,8 +152,10 @@ pub struct VariableDeclaration {
 /// wide-keyword.
 #[derive(Clone, PartialEq, ToCss, ToShmem)]
 pub enum CustomDeclarationValue {
-    /// A value.
-    Value(Arc<custom_properties::SpecifiedValue>),
+    /// An unparsed value.
+    Unparsed(Arc<custom_properties::SpecifiedValue>),
+    /// An already-parsed value.
+    Parsed(Arc<crate::properties_and_values::value::SpecifiedValue>),
     /// A wide keyword.
     CSSWideKeyword(CSSWideKeyword),
 }
@@ -357,7 +360,7 @@ impl PropertyId {
     pub fn is_animatable(&self) -> bool {
         match self {
             Self::NonCustom(id) => id.is_animatable(),
-            Self::Custom(..) => true,
+            Self::Custom(_) => cfg!(feature = "gecko"),
         }
     }
 
@@ -486,8 +489,8 @@ impl PropertyId {
 
     fn allowed_in(&self, context: &ParserContext) -> bool {
         let id = match self.non_custom_id() {
-            // Custom properties are allowed everywhere
-            None => return true,
+            // Custom properties are allowed everywhere, except `position-try`.
+            None => return !context.nesting_context.rule_types.contains(CssRuleType::PositionTry),
             Some(id) => id,
         };
         id.allowed_in(context)
@@ -844,7 +847,7 @@ impl PropertyDeclaration {
             PropertyId::Custom(property_name) => {
                 let value = match input.try_parse(CSSWideKeyword::parse) {
                     Ok(keyword) => CustomDeclarationValue::CSSWideKeyword(keyword),
-                    Err(()) => CustomDeclarationValue::Value(Arc::new(
+                    Err(()) => CustomDeclarationValue::Unparsed(Arc::new(
                         custom_properties::VariableValue::parse(input, &context.url_data)?,
                     )),
                 };
@@ -1083,7 +1086,7 @@ impl<'a> PropertyDeclarationId<'a> {
     pub fn is_animatable(&self) -> bool {
         match self {
             Self::Longhand(id) => id.is_animatable(),
-            Self::Custom(_) => true,
+            Self::Custom(_) => cfg!(feature = "gecko"),
         }
     }
 
@@ -1093,7 +1096,7 @@ impl<'a> PropertyDeclarationId<'a> {
         match self {
             Self::Longhand(longhand) => longhand.is_discrete_animatable(),
             // TODO(bug 1885995): Refine this.
-            Self::Custom(_) => true,
+            Self::Custom(_) => cfg!(feature = "gecko")
         }
     }
 
@@ -1298,7 +1301,10 @@ pub struct SourcePropertyDeclaration {
 
 // This is huge, but we allocate it on the stack and then never move it,
 // we only pass `&mut SourcePropertyDeclaration` references around.
+#[cfg(feature = "gecko")]
 size_of_test!(SourcePropertyDeclaration, 632);
+#[cfg(feature = "servo")]
+size_of_test!(SourcePropertyDeclaration, 568);
 
 impl SourcePropertyDeclaration {
     /// Create one with a single PropertyDeclaration.

@@ -8,7 +8,7 @@ Mach Try Perf
 
 To make it easier for developers to find the tests they need to run we built a perf-specific try selector called ``./mach try perf``. With this tool, you no longer need to remember the obfuscated platform and test names that you need to target for your tests. Instead, the new interface shows test categories along with a simplified name of the platform that they will run on.
 
-When you trigger a try run from the perf selector, two try runs will be created. One with your changes, and one without. In your console, after you trigger the try runs, you'll find a PerfCompare link that will bring you directly to a comparison of the two pushes when they have completed.
+When you trigger a try run from the perf selector, two try runs will be created. One with your changes, and one without. The push without your changes will be done on the revision that your patches are based on (which we call the base revision). In your console, after you trigger the try runs, you'll find a PerfCompare link that will bring you directly to a comparison of the two pushes when they have completed.
 
 The tool is built to be conservative about the number of tests to run, so if you are looking for something that is not listed, it's likely hidden behind a flag found in the ``--help``. Here's a list of what you'll find there::
 
@@ -17,64 +17,71 @@ The tool is built to be conservative about the number of tests to run, so if you
     optional arguments:
       -h, --help            show this help message and exit
     perf arguments:
-      --show-all            Show all available tasks.
-      --android             Show android test categories (disabled by default).
-      --chrome              Show tests available for Chrome-based browsers
-                            (disabled by default).
-      --custom-car          Show tests available for Custom Chromium-as-Release
-                            (disabled by default).
+      --show-all            Show all available tasks. Alternatively, --full may be used.
+      --chrome              Show tests available for Chrome-based browsers (disabled by
+                            default).
+      --custom-car          Show tests available for Custom Chromium-as-Release (disabled by
+                            default)
       --safari              Show tests available for Safari (disabled by default).
-      --live-sites          Run tasks with live sites (if possible). You can also
-                            use the `live-sites` variant.
-      --profile             Run tasks with profiling (if possible). You can also
-                            use the `profiling` variant.
+      --safari-tp           Show tests available for Safari Technology Preview(disabled by
+                            default).
+      --live-sites          Run tasks with live sites (if possible). You can also use the
+                            `live-sites` variant.
+      --profile             Run tasks with profiling (if possible). You can also use the
+                            `profiling` variant.
       --single-run          Run tasks without a comparison
       -q QUERY, --query QUERY
-                            Query to run in either the perf-category selector, or
-                            the fuzzy selector if --show-all is provided.
+                            Query to run in either the perf-category selector, or the fuzzy
+                            selector if --show-all/--full is provided.
       --browsertime-upload-apk BROWSERTIME_UPLOAD_APK
-                            Path to an APK to upload. Note that this will replace
-                            the APK installed in all Android Performance tests. If
-                            the Activity, Binary Path, or Intents required change
-                            at all relative to the existing GeckoView, and Fenix
-                            tasks, then you will need to make fixes in the
-                            associated taskcluster files (e.g.
-                            taskcluster/kinds/test/browsertime-mobile.yml).
-                            Alternatively, set MOZ_FIREFOX_ANDROID_APK_OUTPUT to a
-                            path to an APK, and then run the command with
-                            --browsertime-upload-apk firefox-android. This option
-                            will only copy the APK for browsertime, see
-                            --mozperftest-upload-apk to upload APKs for startup
-                            tests.
+                            Path to an APK to upload. Note that this will replace the APK
+                            installed in all Android Performance tests. If the Activity,
+                            Binary Path, or Intents required change at all relative to the
+                            existing GeckoView, and Fenix tasks, then you will need to make
+                            fixes in the associated taskcluster files (e.g.
+                            taskcluster/kinds/test/browsertime-mobile.yml). Alternatively, set
+                            MOZ_FIREFOX_ANDROID_APK_OUTPUT to a path to an APK, and then run
+                            the command with --browsertime-upload-apk firefox-android. This
+                            option will only copy the APK for browsertime, see --mozperftest-
+                            upload-apk to upload APKs for startup tests.
       --mozperftest-upload-apk MOZPERFTEST_UPLOAD_APK
-                            See --browsertime-upload-apk. This option does the
-                            same thing except it's for mozperftest tests such as
-                            the startup ones. Note that those tests only exist
-                            through --show-all, as they aren't contained in any
-                            existing categories.
-      --detect-changes      Adds a task that detects performance changes using
-                            MWU.
+                            See --browsertime-upload-apk. This option does the same thing
+                            except it's for mozperftest tests such as the startup ones. Note
+                            that those tests only exist through --show-all/--full as they aren't
+                            contained in any existing categories.
+      --detect-changes      Adds a task that detects performance changes using MWU.
       --comparator COMPARATOR
-                            Either a path to a file to setup a custom comparison,
-                            or a builtin name. See the Firefox source docs for
-                            mach try perf for examples of how to build your own,
-                            along with the interface.
+                            Either a path to a file to setup a custom comparison, or a builtin
+                            name. See the Firefox source docs for mach try perf for examples
+                            of how to build your own, along with the interface.
       --comparator-args [ARG=VALUE [ARG=VALUE ...]]
-                            Arguments provided to the base, and new revision setup
-                            stages of the comparator.
-      --variants [ [ ...]]  Select variants to display in the selector from:
-                            fission, bytecode-cached, live-sites, profiling, swr
+                            Arguments provided to the base, and new revision setup stages of
+                            the comparator.
+      --variants [ [ ...]]  Select variants to display in the selector from: fission,
+                            bytecode-cached, live-sites, profiling, swr
       --platforms [ [ ...]]
-                            Select specific platforms to target. Android only
-                            available with --android. Available platforms:
-                            android-a51, android, windows, linux, macosx, desktop
-      --apps [ [ ...]]      Select specific applications to target from: firefox,
-                            chrome, chromium, geckoview, fenix, chrome-m, safari,
-                            custom-car
+                            Select specific platforms to target.
+                            Available platforms: android-a55, android, windows,
+                            linux, macosx, desktop
+      --apps [ [ ...]]      Select specific applications to target from: firefox, chrome,
+                            geckoview, fenix, chrome-m, safari, safari-tp, custom-car, cstm-
+                            car-m
       --clear-cache         Deletes the try_perf_revision_cache file
+      --alert ALERT         Run all tests that produced this alert summary ID based on the
+                            alert summary table in either the alerts view or the regression
+                            bug. The comparison that is produced will be based on the base
+                            revision in your local repository (i.e. the base revision your
+                            patches, if any, are based on). If only specific tests need to
+                            run, use --tests to specify them (e.g. --tests webaudio).
       --extra-args [ [ ...]]
-                            Set the extra args (e.x, --extra-args verbose post-
-                            startup-delay=1)
+                            Set the extra args (e.x, --extra-args verbose post-startup-
+                            delay=1)
+      --non-pgo             Use opt/non-pgo builds instead of shippable/pgo builds. Setting
+                            this flag will result in faster try runs.
+      --tests [TESTS [TESTS ...]], -t [TESTS [TESTS ...]]
+                            Select from all tasks that run these specific tests (e.g. amazon, or
+                            speedometer3).
+
     task configuration arguments:
       --artifact            Force artifact builds where possible.
       --no-artifact         Disable artifact builds even if being used locally.
@@ -83,7 +90,8 @@ The tool is built to be conservative about the number of tests to run, so if you
       --env ENV             Set an environment variable, of the form FOO=BAR. Can
                             be passed in multiple times.
       --gecko-profile       Create and upload a gecko profile during talos/raptor
-                            tasks.
+                            tasks. Copy paste the parameters used in this profiling
+                            run directly from about:profiling in Nightly.
       --gecko-profile-interval GECKO_PROFILE_INTERVAL
                             How frequently to take samples (ms)
       --gecko-profile-entries GECKO_PROFILE_ENTRIES
@@ -102,7 +110,7 @@ The tool is built to be conservative about the number of tests to run, so if you
 Workflow
 --------
 
-Below, you'll find an overview of the features available in ``./mach try perf``. If you'd like to learn more about how to use this tool to enhance your developement process, see the :ref:`Standard Workflow with Mach Try Perf` page.
+Below, you'll find an overview of the features available in ``./mach try perf``. If you'd like to learn more about how to use this tool to enhance your development process, see the :ref:`Standard Workflow with Mach Try Perf` page.
 
 Standard Usage
 --------------
@@ -118,12 +126,90 @@ To use mach try perf simply call ``./mach try perf``. This will open an interfac
 
 Select the categories you'd like to run, hit enter, and wait for the tool to finish the pushes. **Note that it can take some time to do both pushes, and you might not see logging for some time.**
 
+
+Retrigger
+---------
+After the push is done, you will receive a Treeherder link that you can open to view your push. Access the Treeherder link to see all your tests.
+
+To launch a retrigger, first select the task that you want to retrigger:
+
+ .. image:: ./th_select_task.png
+    :width: 300
+
+
+Then, click the rotating arrow icon in the task action bar, or press 'r' on your keyboard:
+
+ .. image:: ./th_retrigger.png
+    :width: 300
+
+
+Additionally, you can add the flag ``--rebuild=2-20`` to the try perf command to specify how many times you want to run the tests. If you want to learn more about retriggering please `visit this page <../treeherder-try/index.html#retrigger-r>`__.
+
+
+Add new jobs (mass retriggers)
+------------------------------
+
+The add new job function can be used to retrigger many tasks multiple times. To add a new job, follow these steps:
+ * Navigate to the push you want to add jobs on Treeherder.
+ * Click on the arrow drop-down on the top right of the push.
+ * Select the ``Custom push action`` from the menu.
+
+ .. image:: ./th_custom_push_action.png
+    :width: 500
+
+You can copy the values from the ``target-tasks.json`` file from your ``Decision`` task and paste them into the ``task`` option. This method is useful for mass retriggers if needed.
+After you have pasted the json values, press the ``Trigger`` button.
+
+ .. image:: ./th_custom_job_action.png
+    :width: 500
+
+Ideally, you should be able to use compare view to be more specific in the retriggers you do for tasks/tests that show a difference that they want to double-check.
+
+
+Add extra-arguments/options to try run
+--------------------------------------
+
+To add additional arguments to a try run, there are several approaches you can consider:
+
+
+Use Treeherder
+^^^^^^^^^^^^^^
+
+This method assumes that you already have the job that has been run and you want to run it again, but this time to add extra options as well. First select the task that you want to add extra options:
+
+ .. image:: ./th_select_task.png
+    :width: 300
+
+Then, click the three dots icon in the task action bar and select ``Custom Action``:
+
+ .. image:: ./th_custom_action.png
+    :width: 300
+
+A window will open where you need to select ``raptor-extra-options``. There you can add all the options you need (e.g. extra_options: 'verbose browser-cycles=3'). After finishing, press the ``Trigger`` button.
+
+ .. image:: ./th_raptor_extra_option.png
+    :width: 500
+
+Modify the yml file
+^^^^^^^^^^^^^^^^^^^
+
+This method involves identifying the YML file that contains the test you are interested in and modifying or adding the extra-options key. Under this key you can add all the parameters you desire.
+
+ .. image:: ./extra-options.png
+    :width: 500
+
+Use extra-args option
+^^^^^^^^^^^^^^^^^^^^^
+
+An alternative method is to utilize the ``--extra-args`` argument to try perf command (e.g. --extra-args verbose post-startup-delay=1).
+
+
 .. _Running Alert Tests:
 
 Running Alert Tests
 -------------------
 
-To run all the tests that triggered a given alert, use ``./mach try perf --alert <ALERT-NUMBER>``. **It's recommended to use this when working with performance alerts.** The alert number can be found in comment 0 on any alert bug `such as this one <https://bugzilla.mozilla.org/show_bug.cgi?id=1844510>`_. As seen in the image below, the alert number can be found just above the summary table.
+To run all the tests that triggered a given alert, use ``./mach try perf --alert <ALERT-NUMBER>``. Using this command will run all the tests that generated the alert summary ID provided in the regression bug. **It's recommended to use this when working with performance alerts.** The alert number can be found in comment 0 on any alert bug, `such as this one <https://bugzilla.mozilla.org/show_bug.cgi?id=1844510>`_. As seen in the image below, the alert number can be found just above the summary table. The comparison that is produced will be based on the base revision in your local repository (i.e. the base revision your patches, if any, are based on).
 
 .. image:: ./comment-zero-alert-number.png
    :alt: Comment 0 containing an alert number just above the table.
@@ -131,10 +217,17 @@ To run all the tests that triggered a given alert, use ``./mach try perf --alert
    :align: center
 
 
-Chrome and Android
-------------------
+Running Tasks of a Specific Test
+--------------------------------
 
-Android and chrome tests are disabled by default as they are often unneeded and waste our limited resources. If you need either of these, you can add ``--chrome`` and/or ``--android`` to the command like so ``./mach try perf --android --chrome``:
+Using the ``--tests`` option, you can run all tasks that run a specific test. This is based on the test name that is used in the command that runs in the task. For raptor, this is the test specified by ``--test``. For talos, it can either be a specific test in a suite like ``tp5n`` from ``xperf``, or the suite ``xperf`` can be specified. For AWSY though, there are no specific tests that can be selected so the only option to select AWSY tests is to specify ``AWSY`` as the test.
+
+If it's used with ``--alert <NUM>``, only the tasks that run the specific test will be run on try. If it's used with ``--show-all`` or ``--full``, you will only see the tasks that run the specific test in the fuzzy interface. Finally, if it's used without either of those, then categories of the tests that were specified will be displayed in the fuzzy interface. For example, if ``--tests amazon`` is used, then categories like ``amazon linux firefox`` or ``amazon desktop`` will be displayed.
+
+Chrome
+------
+
+Chrome tests are disabled by default as they are often unneeded and waste our limited resources. If you need chrome tests you can add ``--chrome`` to the command like so ``./mach try perf --chrome``:
 
 
 .. image:: ./android-chrome-try-perf.png
@@ -345,9 +438,9 @@ If you have any questions which aren't already answered below please reach out t
 
      * **Help! I can't find a test in any of the categories. What should I do?**
 
-       Use the option ``--show-all``. This will let you select tests from the ``./mach try fuzzy --full`` interface directly instead of the categories. You will always be able to find your tests this way. Please be careful with your task selections though as it's easy to run far too many tests in this way!
+       Use the option ``--show-all`` or ``--full``. This will let you select tests from the ``./mach try fuzzy --full`` interface directly instead of the categories. You will always be able to find your tests this way. Please be careful with your task selections though as it's easy to run far too many tests in this way!
 
 Future Work
 -----------
 
-The future work for this tool can be `found in this bug <https://bugzilla.mozilla.org/show_bug.cgi?id=1799178>`_. Feel free to file improvments, and bugs against it.
+The future work for this tool can be `found in this bug <https://bugzilla.mozilla.org/show_bug.cgi?id=1799178>`_. Feel free to file improvements, and bugs against it.

@@ -74,7 +74,10 @@ run-if = [
 
 ["TestIATPatcher"]
 run-if = ["os == 'win'"]
-skip-if = ["win11_2009 && bits == 32"] # fails on windows10x32
+skip-if = [
+  "win11_2009 && bits == 32", # fails on windows10x32
+  "os == 'win' && os_version == '11.26100' && processor == 'x86'", # fails on win/x86
+]
 
 ["TestIntegerPrintfMacros"]
 
@@ -99,7 +102,10 @@ run-if = ["os == 'win'"]
 ["TestMaybe"]
 
 ["TestMemoryPressureWatcherLinux"]
-skip-if = ["os != 'linux'"]
+run-if = ["os == 'linux'"]
+
+["TestMozCrash"]
+skip-if = ["os != 'linux'", "asan"]
 
 ["TestMozJemallocUtils"]
 
@@ -158,6 +164,9 @@ run-if = ["os == 'win'"]
 
 ["TestStackCookie"]
 run-if = ["os == 'win'"]
+
+["TestStackWalkInitialization"]
+run-if = ["os == 'win' && processor == 'x86_64'"]
 
 ["TestTextUtils"]
 

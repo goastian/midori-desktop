@@ -9,6 +9,7 @@ package org.mozilla.gecko;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
+import android.content.pm.PackageManager;
 import android.credentials.CreateCredentialException;
 import android.credentials.CreateCredentialRequest;
 import android.credentials.CreateCredentialResponse;
@@ -135,11 +136,26 @@ public class WebAuthnCredentialManager {
       final WebAuthnUtils.WebAuthnPublicCredential[] excludeList,
       final GeckoBundle authenticatorSelection,
       final byte[] clientDataHash) {
-    // We only use Credential Manager for Passkeys. If residentKey isn't required, use GMS FIDO2.
-    if (!authenticatorSelection.getString("residentKey", "").equals("required")) {
+    final Boolean requireResidentKey =
+        authenticatorSelection.getBoolean("requireResidentKey", false);
+
+    final Boolean residentKeyDiscouraged =
+        authenticatorSelection
+            .getString("residentKey", requireResidentKey ? "required" : "discouraged")
+            .equals("discouraged");
+
+    // We only use Credential Manager for Passkeys. If residentKey is discouraged, use GMS FIDO2.
+    if (residentKeyDiscouraged) {
       return GeckoResult.fromException(new WebAuthnUtils.Exception("NOT_SUPPORTED_ERR"));
     }
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+      return GeckoResult.fromException(new WebAuthnUtils.Exception("NOT_SUPPORTED_ERR"));
+    }
+    final Context context = GeckoAppShell.getApplicationContext();
+    // Some vendors disabled Credential Manager on Android 14+ devices.
+    // https://issuetracker.google.com/issues/349310440
+    if (!context.getPackageManager().hasSystemFeature(PackageManager.FEATURE_CREDENTIALS)) {
+      Log.w(LOGTAG, "Credential Manager is disabled on this device");
       return GeckoResult.fromException(new WebAuthnUtils.Exception("NOT_SUPPORTED_ERR"));
     }
 
@@ -166,7 +182,6 @@ public class WebAuthnCredentialManager {
             .setOrigin(credentialBundle.getString("origin"))
             .build();
 
-    final Context context = GeckoAppShell.getApplicationContext();
     final CredentialManager manager =
         (CredentialManager) context.getSystemService(Context.CREDENTIAL_SERVICE);
     if (manager == null) {

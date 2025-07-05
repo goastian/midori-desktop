@@ -15,7 +15,6 @@
 #include "mozilla/net/NeckoChannelParams.h"
 
 class nsIChannel;
-class nsIConsoleReportCollector;
 class nsICookieJarSettings;
 class nsIEffectiveTLDService;
 class nsIPrincipal;
@@ -45,6 +44,7 @@ enum CookieStatus {
 };
 
 class Cookie;
+class CookieParser;
 
 // pref string constants
 static const char kPrefMaxNumberOfCookies[] = "network.cookie.maxNumber";
@@ -69,6 +69,9 @@ class CookieCommons final {
 
   static bool PathMatches(Cookie* aCookie, const nsACString& aPath);
 
+  static bool PathMatches(const nsACString& aCookiePath,
+                          const nsACString& aPath);
+
   static nsresult GetBaseDomain(nsIEffectiveTLDService* aTLDService,
                                 nsIURI* aHostURI, nsACString& aBaseDomain,
                                 bool& aRequireHostMatch);
@@ -79,6 +82,10 @@ class CookieCommons final {
   static nsresult GetBaseDomainFromHost(nsIEffectiveTLDService* aTLDService,
                                         const nsACString& aHost,
                                         nsCString& aBaseDomain);
+
+  // This method returns true if aBaseDomain contains any colons since only
+  // IPv6 baseDomains may contain colons.
+  static bool IsIPv6BaseDomain(const nsACString& aBaseDomain);
 
   static void NotifyRejected(nsIURI* aHostURI, nsIChannel* aChannel,
                              uint32_t aRejectedReason,
@@ -100,18 +107,31 @@ class CookieCommons final {
                                     CookieStruct& aCookieData);
 
   static already_AddRefed<Cookie> CreateCookieFromDocument(
-      dom::Document* aDocument, const nsACString& aCookieString,
-      int64_t aCurrentTimeInUsec, nsIEffectiveTLDService* aTLDService,
-      mozIThirdPartyUtil* aThirdPartyUtil,
-      std::function<bool(const nsACString&, const OriginAttributes&)>&&
-          aHasExistingCookiesLambda,
-      nsIURI** aDocumentURI, nsACString& aBaseDomain, OriginAttributes& aAttrs);
+      CookieParser& aCookieParser, dom::Document* aDocument,
+      const nsACString& aCookieString, int64_t aCurrentTimeInUsec,
+      nsIEffectiveTLDService* aTLDService, mozIThirdPartyUtil* aThirdPartyUtil,
+      nsACString& aBaseDomain, OriginAttributes& aAttrs);
 
   static already_AddRefed<nsICookieJarSettings> GetCookieJarSettings(
       nsIChannel* aChannel);
 
-  static bool ShouldIncludeCrossSiteCookieForDocument(Cookie* aCookie,
-                                                      dom::Document* aDocument);
+  static bool ShouldIncludeCrossSiteCookie(Cookie* aCookie, nsIURI* aHostURI,
+                                           bool aPartitionForeign,
+                                           bool aInPrivateBrowsing,
+                                           bool aUsingStorageAccess,
+                                           bool aOn3pcbException);
+
+  static bool ShouldIncludeCrossSiteCookie(
+      nsIURI* aHostURI, int32_t aSameSiteAttr, bool aCookiePartitioned,
+      bool aPartitionForeign, bool aInPrivateBrowsing, bool aUsingStorageAccess,
+      bool aOn3pcbException);
+
+  static bool IsFirstPartyPartitionedCookieWithoutCHIPS(
+      Cookie* aCookie, const nsACString& aBaseDomain,
+      const OriginAttributes& aOriginAttributes);
+
+  static bool ShouldEnforceSessionForOriginAttributes(
+      const OriginAttributes& aOriginAttributes);
 
   static bool IsSchemeSupported(nsIPrincipal* aPrincipal);
   static bool IsSchemeSupported(nsIURI* aURI);
@@ -134,6 +154,39 @@ class CookieCommons final {
   // redirect before the final URI.
   static bool IsSameSiteForeign(nsIChannel* aChannel, nsIURI* aHostURI,
                                 bool* aHadCrossSiteRedirects);
+
+  static bool ChipsLimitEnabledAndChipsCookie(
+      const Cookie& cookie, dom::BrowsingContext* aBrowsingContext);
+
+  static void ComposeCookieString(nsTArray<RefPtr<Cookie>>& aCookieList,
+                                  nsACString& aCookieString);
+
+  static void GetServerDateHeader(nsIChannel* aChannel,
+                                  nsACString& aServerDateHeader);
+
+  enum class SecurityChecksResult {
+    // A sandboxed context detected.
+    eSandboxedError,
+    // A security error needs to be thrown.
+    eSecurityError,
+    // This context should not see cookies without returning errors.
+    eDoNotContinue,
+    // No security issues found. Proceed to expose cookies.
+    eContinue,
+  };
+
+  // Runs the security checks requied by specs on the current context (Document
+  // or Worker) to see if it's allowed to set/get cookies. In case it does
+  // (eContinue), the cookie principals are returned. Use the
+  // `aCookiePartitionedPrincipal` to retrieve CHIP cookies. Use
+  // `aCookiePrincipal` to retrieve non-CHIP cookies.
+  static SecurityChecksResult CheckGlobalAndRetrieveCookiePrincipals(
+      mozilla::dom::Document* aDocument, nsIPrincipal** aCookiePrincipal,
+      nsIPrincipal** aCookiePartitionedPrincipal);
+
+  // Return a reduced expiry attribute value if needed.
+  static int64_t MaybeReduceExpiry(int64_t aCurrentTimeInSec,
+                                   int64_t aExpiryInSec);
 };
 
 }  // namespace net

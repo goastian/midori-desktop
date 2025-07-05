@@ -10,20 +10,24 @@ import mozilla.components.concept.toolbar.ScrollableToolbar
 import mozilla.components.feature.toolbar.ToolbarFeature
 import org.mozilla.fenix.components.toolbar.ToolbarIntegration
 import org.mozilla.fenix.components.toolbar.ToolbarMenu
+import org.mozilla.fenix.components.toolbar.interactor.BrowserToolbarInteractor
 
+@Suppress("LongParameterList")
 class CustomTabToolbarIntegration(
     context: Context,
     toolbar: BrowserToolbar,
     scrollableToolbar: ScrollableToolbar,
     toolbarMenu: ToolbarMenu,
-    sessionId: String,
+    interactor: BrowserToolbarInteractor,
+    customTabId: String,
     isPrivate: Boolean,
 ) : ToolbarIntegration(
     context = context,
     toolbar = toolbar,
     scrollableToolbar = scrollableToolbar,
     toolbarMenu = toolbarMenu,
-    sessionId = sessionId,
+    interactor = interactor,
+    customTabId = customTabId,
     isPrivate = isPrivate,
     renderStyle = ToolbarFeature.RenderStyle.RegistrableDomain,
 )

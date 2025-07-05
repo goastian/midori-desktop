@@ -6,18 +6,15 @@ package org.mozilla.fenix.customtabs
 
 import android.content.Context
 import android.view.View
-import androidx.compose.foundation.layout.Column
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.coordinatorlayout.widget.CoordinatorLayout
-import androidx.core.content.ContextCompat
-import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.navArgs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import mozilla.components.browser.menu.view.MenuButton
+import mozilla.components.browser.state.state.CustomTabSessionState
+import mozilla.components.browser.state.state.ExternalAppType
 import mozilla.components.browser.state.state.SessionState
+import mozilla.components.browser.toolbar.BrowserToolbar
 import mozilla.components.concept.engine.permission.SitePermissions
 import mozilla.components.feature.contextmenu.ContextMenuCandidate
 import mozilla.components.feature.customtabs.CustomTabWindowFeature
@@ -28,24 +25,18 @@ import mozilla.components.feature.pwa.feature.WebAppHideToolbarFeature
 import mozilla.components.feature.pwa.feature.WebAppSiteControlsFeature
 import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
 import mozilla.components.support.ktx.android.arch.lifecycle.addObservers
+import mozilla.components.support.utils.ext.isContentUrl
 import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.BaseBrowserFragment
+import org.mozilla.fenix.browser.ContextMenuSnackbarDelegate
 import org.mozilla.fenix.browser.CustomTabContextMenuCandidate
-import org.mozilla.fenix.browser.FenixSnackbarDelegate
-import org.mozilla.fenix.components.menu.MenuAccessPoint
-import org.mozilla.fenix.components.toolbar.IncompleteRedesignToolbarFeature
-import org.mozilla.fenix.components.toolbar.ToolbarMenu
-import org.mozilla.fenix.components.toolbar.ToolbarPosition
-import org.mozilla.fenix.components.toolbar.navbar.CustomTabNavBar
-import org.mozilla.fenix.compose.Divider
+import org.mozilla.fenix.components.toolbar.BrowserToolbarView
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.ext.requireComponents
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.settings.quicksettings.protections.cookiebanners.getCookieBannerUIMode
-import org.mozilla.fenix.theme.FirefoxTheme
-import org.mozilla.fenix.theme.ThemeManager
 
 /**
  * Fragment used for browsing the web within external apps.
@@ -70,93 +61,25 @@ class ExternalAppBrowserFragment : BaseBrowserFragment() {
             requireComponents.core.webAppManifestStorage.getManifestCache(url)
         }
 
-        val isNavBarEnabled = IncompleteRedesignToolbarFeature(requireContext().settings()).isEnabled
-
-        // Updating the contents of the bottomToolbarContainer with CustomTabNavBar. The container gets initialized
-        // during the super.initializeUI call with BrowserNavBar.
-        // A follow up: https://bugzilla.mozilla.org/show_bug.cgi?id=1888300
-        if (isNavBarEnabled) {
-            // We need a second menu button, but we could reuse the existing builder.
-            val menuButton = MenuButton(requireContext()).apply {
-                menuBuilder = browserToolbarView.menuToolbar.menuBuilder
-                // We have to set colorFilter manually as the button isn't being managed by a [BrowserToolbarView].
-                setColorFilter(
-                    ContextCompat.getColor(
-                        context,
-                        ThemeManager.resolveAttribute(R.attr.textPrimary, context),
-                    ),
-                )
-            }
-
-            val isToolbarAtBottom = requireComponents.settings.toolbarPosition == ToolbarPosition.BOTTOM
-            bottomToolbarContainerView.composeView.setContent {
-                FirefoxTheme {
-                    Column {
-                        if (isToolbarAtBottom) {
-                            AndroidView(factory = { _ -> browserToolbarView.view })
-                        } else {
-                            Divider()
-                        }
-
-                        CustomTabNavBar(
-                            customTabSessionId = customTabSessionId,
-                            browserStore = requireComponents.core.store,
-                            menuButton = menuButton,
-                            onBackButtonClick = {
-                                browserToolbarInteractor.onBrowserToolbarMenuItemTapped(
-                                    ToolbarMenu.Item.Back(viewHistory = false),
-                                )
-                            },
-                            onBackButtonLongPress = {
-                                browserToolbarInteractor.onBrowserToolbarMenuItemTapped(
-                                    ToolbarMenu.Item.Back(viewHistory = true),
-                                )
-                            },
-                            onForwardButtonClick = {
-                                browserToolbarInteractor.onBrowserToolbarMenuItemTapped(
-                                    ToolbarMenu.Item.Forward(viewHistory = false),
-                                )
-                            },
-                            onForwardButtonLongPress = {
-                                browserToolbarInteractor.onBrowserToolbarMenuItemTapped(
-                                    ToolbarMenu.Item.Forward(viewHistory = true),
-                                )
-                            },
-                            onOpenInBrowserButtonClick = {
-                                browserToolbarInteractor.onBrowserToolbarMenuItemTapped(
-                                    ToolbarMenu.Item.OpenInFenix,
-                                )
-                            },
-                            onMenuButtonClick = {
-                                nav(
-                                    R.id.externalAppBrowserFragment,
-                                    ExternalAppBrowserFragmentDirections.actionGlobalMenuDialogFragment(
-                                        accesspoint = MenuAccessPoint.External,
-                                    ),
-                                )
-                            },
-                        )
-                    }
-                }
-            }
+        ((browserToolbarView as? BrowserToolbarView)?.toolbar as? BrowserToolbar)?.let {
+            customTabsIntegration.set(
+                feature = CustomTabsIntegration(
+                    context = requireContext(),
+                    store = requireComponents.core.store,
+                    useCases = requireComponents.useCases.customTabsUseCases,
+                    browserToolbar = it,
+                    sessionId = customTabSessionId,
+                    activity = activity,
+                    interactor = browserToolbarInteractor,
+                    isPrivate = tab.content.private,
+                    shouldReverseItems = !activity.settings().shouldUseBottomToolbar,
+                    isSandboxCustomTab = args.isSandboxCustomTab,
+                    isMenuRedesignEnabled = requireContext().settings().enableMenuRedesign,
+                ),
+                owner = this,
+                view = view,
+            )
         }
-
-        customTabsIntegration.set(
-            feature = CustomTabsIntegration(
-                store = requireComponents.core.store,
-                useCases = requireComponents.useCases.customTabsUseCases,
-                toolbar = browserToolbarView.view,
-                sessionId = customTabSessionId,
-                activity = activity,
-                onItemTapped = { browserToolbarInteractor.onBrowserToolbarMenuItemTapped(it) },
-                isPrivate = tab.content.private,
-                shouldReverseItems = !activity.settings().shouldUseBottomToolbar,
-                isSandboxCustomTab = args.isSandboxCustomTab,
-                isNavBarEnabled = isNavBarEnabled,
-            ),
-            owner = this,
-            view = view,
-        )
 
         windowFeature.set(
             feature = CustomTabWindowFeature(activity, components.core.store, customTabSessionId),
@@ -164,25 +87,29 @@ class ExternalAppBrowserFragment : BaseBrowserFragment() {
             view = view,
         )
 
-        hideToolbarFeature.set(
-            feature = WebAppHideToolbarFeature(
-                store = requireComponents.core.store,
-                customTabsStore = requireComponents.core.customTabsStore,
-                tabId = customTabSessionId,
-                manifest = manifest,
-            ) { toolbarVisible ->
-                browserToolbarView.view.isVisible = toolbarVisible
-                webAppToolbarShouldBeVisible = toolbarVisible
-                if (!toolbarVisible) {
-                    binding.engineView.setDynamicToolbarMaxHeight(0)
-                    val browserEngine =
-                        binding.swipeRefresh.layoutParams as CoordinatorLayout.LayoutParams
-                    browserEngine.bottomMargin = 0
-                }
-            },
-            owner = this,
-            view = browserToolbarView.view,
-        )
+        val customTabSession = (tab as? CustomTabSessionState)
+        val isPwaTabOrTwaTab = customTabSession?.config?.externalAppType == ExternalAppType.PROGRESSIVE_WEB_APP ||
+            customTabSession?.config?.externalAppType == ExternalAppType.TRUSTED_WEB_ACTIVITY
+
+        // Only set hideToolbarFeature if isPwaTabOrTwaTab
+        if (isPwaTabOrTwaTab) {
+            hideToolbarFeature.set(
+                feature = WebAppHideToolbarFeature(
+                    store = requireComponents.core.store,
+                    customTabsStore = requireComponents.core.customTabsStore,
+                    tabId = customTabSessionId,
+                    manifest = manifest,
+                ) { toolbarVisible ->
+                    webAppToolbarShouldBeVisible = toolbarVisible
+                    when (toolbarVisible) {
+                        true -> collapseBrowserView()
+                        false -> expandBrowserView()
+                    }
+                },
+                owner = this,
+                view = view,
+            )
+        }
 
         if (manifest != null) {
             activity.lifecycle.addObservers(
@@ -233,10 +160,6 @@ class ExternalAppBrowserFragment : BaseBrowserFragment() {
         }
     }
 
-    override fun removeSessionIfNeeded(): Boolean {
-        return customTabsIntegration.onBackPressed() || super.removeSessionIfNeeded()
-    }
-
     override fun navToQuickSettingsSheet(tab: SessionState, sitePermissions: SitePermissions?) {
         requireComponents.useCases.trackingProtectionUseCases.containsException(tab.id) { contains ->
             lifecycleScope.launch {
@@ -252,6 +175,7 @@ class ExternalAppBrowserFragment : BaseBrowserFragment() {
                                 sessionId = tab.id,
                                 url = tab.content.url,
                                 title = tab.content.title,
+                                isLocalPdf = tab.content.url.isContentUrl(),
                                 isSecured = tab.content.securityInfo.secure,
                                 sitePermissions = sitePermissions,
                                 gravity = getAppropriateLayoutGravity(),
@@ -267,6 +191,10 @@ class ExternalAppBrowserFragment : BaseBrowserFragment() {
         }
     }
 
+    override fun onBackPressed(): Boolean {
+        return super.onBackPressed() || customTabsIntegration.onBackPressed()
+    }
+
     override fun getContextMenuCandidates(
         context: Context,
         view: View,
@@ -274,6 +202,6 @@ class ExternalAppBrowserFragment : BaseBrowserFragment() {
         context,
         context.components.useCases.contextMenuUseCases,
         view,
-        FenixSnackbarDelegate(view),
+        ContextMenuSnackbarDelegate(),
     )
 }

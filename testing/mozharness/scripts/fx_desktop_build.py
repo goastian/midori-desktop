@@ -1,16 +1,11 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 """fx_desktop_build.py.
 
 script harness to build nightly firefox within Mozilla's build environment
 and developer machines alike
-
-author: Jordan Lund
-
 """
 
 import os
@@ -27,7 +22,7 @@ from mozharness.mozilla.building.buildbase import (
 )
 
 
-class FxDesktopBuild(BuildScript, object):
+class FxDesktopBuild(BuildScript):
     def __init__(self):
         buildscript_kwargs = {
             "config_options": BUILD_BASE_CONFIG_OPTIONS,

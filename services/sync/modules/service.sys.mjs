@@ -116,6 +116,9 @@ Sync11Service.prototype = {
   _lock: Utils.lock,
   _locked: false,
   _loggedIn: false,
+  // There are some scenarios where we want to kick off another sync immediately
+  // after the current sync
+  _queuedSyncReason: null,
 
   infoURL: null,
   storageURL: null,
@@ -375,6 +378,7 @@ Sync11Service.prototype = {
     }
 
     Svc.Obs.add("weave:service:setup-complete", this);
+    Svc.Obs.add("weave:service:sync:finish", this);
     Svc.Obs.add("sync:collection_changed", this); // Pulled from FxAccountsCommon
     Svc.Obs.add("fxaccounts:device_disconnected", this);
     Services.prefs.addObserver(PREFS_BRANCH + "engine.", this);
@@ -590,6 +594,12 @@ Sync11Service.prototype = {
           return;
         }
         this._handleEngineStatusChanged(engine);
+        break;
+      case "weave:service:sync:finish":
+        if (this._queuedSyncReason) {
+          this.sync({ why: this._queuedSyncReason });
+          this._queuedSyncReason = null;
+        }
         break;
     }
   },
@@ -1316,6 +1326,15 @@ Sync11Service.prototype = {
     return reason;
   },
 
+  /**
+   * Perform a full sync (or of the given engines). While a sync is in progress,
+   * this call is ignored; to guarantee a follow-up you must call queueSync().
+   *
+   * @param {Object} options
+   * @param {Array<String>} [options.engines] — names of engines to sync
+   * @param {String} [options.why] — reason for the sync
+   * @returns {Promise<void>}
+   */
   async sync({ engines, why } = {}) {
     let dateStr = Utils.formatTimestamp(new Date());
     this._log.debug("User-Agent: " + Utils.userAgent);
@@ -1345,17 +1364,8 @@ Sync11Service.prototype = {
     return this._lock(
       "service.js: sync",
       this._notify("sync", JSON.stringify({ why }), async function onNotify() {
-        let histogram =
-          Services.telemetry.getHistogramById("WEAVE_START_COUNT");
-        histogram.add(1);
-
         let synchronizer = new EngineSynchronizer(this);
         await synchronizer.sync(engineNamesToSync, why); // Might throw!
-
-        histogram = Services.telemetry.getHistogramById(
-          "WEAVE_COMPLETE_SUCCESS_COUNT"
-        );
-        histogram.add(1);
 
         // We successfully synchronized.
         // Check if the identity wants to pre-fetch a migration sentinel from
@@ -1370,6 +1380,21 @@ Sync11Service.prototype = {
         await this._maybeUpdateDeclined();
       })
     )();
+  },
+
+  /**
+   * Kick off a sync after the current one finishes, or immediately if idle.
+   *
+   * @param {String} why — reason for calling the sync
+   */
+  queueSync(why) {
+    if (this._locked) {
+      // A sync is already in flight; queue a follow-up.
+      this._queuedSyncReason = why;
+    } else {
+      // No sync right now, go ahead immediately.
+      this.sync({ why });
+    }
   },
 
   /**
@@ -1480,9 +1505,6 @@ Sync11Service.prototype = {
    */
   async wipeServer(collections) {
     let response;
-    let histogram = Services.telemetry.getHistogramById(
-      "WEAVE_WIPE_SERVER_SUCCEEDED"
-    );
     if (!collections) {
       // Strip the trailing slash.
       let res = this.resource(this.storageURL.slice(0, -1));
@@ -1491,7 +1513,6 @@ Sync11Service.prototype = {
         response = await res.delete();
       } catch (ex) {
         this._log.debug("Failed to wipe server", ex);
-        histogram.add(false);
         throw ex;
       }
       if (response.status != 200 && response.status != 404) {
@@ -1501,10 +1522,8 @@ Sync11Service.prototype = {
             " response for " +
             this.storageURL
         );
-        histogram.add(false);
         throw response;
       }
-      histogram.add(true);
       return response.headers["x-weave-timestamp"];
     }
 
@@ -1515,7 +1534,6 @@ Sync11Service.prototype = {
         response = await this.resource(url).delete();
       } catch (ex) {
         this._log.debug("Failed to wipe '" + name + "' collection", ex);
-        histogram.add(false);
         throw ex;
       }
 
@@ -1526,7 +1544,6 @@ Sync11Service.prototype = {
             " response for " +
             url
         );
-        histogram.add(false);
         throw response;
       }
 
@@ -1534,7 +1551,6 @@ Sync11Service.prototype = {
         timestamp = response.headers["x-weave-timestamp"];
       }
     }
-    histogram.add(true);
     return timestamp;
   },
 

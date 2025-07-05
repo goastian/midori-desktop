@@ -231,12 +231,7 @@ export class CreditCard {
   }
 
   isValid() {
-    return (
-      this.name !== "" &&
-      this.number !== "" &&
-      this.expMonth !== "" &&
-      this.expYear !== ""
-    );
+    return this.number !== "";
   }
 
   static fromGecko(aObj) {
@@ -611,9 +606,10 @@ export const GeckoViewAutocomplete = {
         }
         case "autofill": {
           const { fillMessageData } = JSON.parse(option.comment);
-          debug`delegateSelection ${fillMessageData}`;
-          const creditCard = CreditCard.fromGecko(fillMessageData);
-          const address = Address.fromGecko(fillMessageData);
+          const profile = fillMessageData.profile;
+          debug`delegateSelection - autofill profile ${profile}`;
+          const creditCard = CreditCard.fromGecko(profile);
+          const address = Address.fromGecko(profile);
           if (creditCard.isValid()) {
             selectionType = "creditCard";
             selectOptions.push(
@@ -690,6 +686,10 @@ export const GeckoViewAutocomplete = {
 
       debug`delegateSelection - filling form`;
 
+      if (selectedOption.hint & SelectOption.Hint.GENERATED) {
+        this.onLoginSave(selectedLogin);
+      }
+
       const actor =
         browsingContext.currentWindowGlobal.getActor("LoginManager");
 
@@ -704,17 +704,19 @@ export const GeckoViewAutocomplete = {
             : loginStyle,
       });
     } else if (selectionType === "creditCard") {
+      const actor =
+        browsingContext.currentWindowGlobal.getActor("FormAutofill");
+      const elementId = JSON.stringify(inputElementIdentifier);
       const selectedCreditCard = selectedOption?.value?.toGecko();
-      const actor =
-        browsingContext.currentWindowGlobal.getActor("FormAutofill");
 
-      actor.sendAsyncMessage("FormAutofill:FillForm", selectedCreditCard);
+      actor.autofillFields(elementId, selectedCreditCard);
     } else if (selectionType === "address") {
-      const selectedAddress = selectedOption?.value?.toGecko();
       const actor =
         browsingContext.currentWindowGlobal.getActor("FormAutofill");
+      const elementId = JSON.stringify(inputElementIdentifier);
+      const selectedAddress = selectedOption?.value?.toGecko();
 
-      actor.sendAsyncMessage("FormAutofill:FillForm", selectedAddress);
+      actor.autofillFields(elementId, selectedAddress);
     }
 
     debug`delegateSelection - form filled`;

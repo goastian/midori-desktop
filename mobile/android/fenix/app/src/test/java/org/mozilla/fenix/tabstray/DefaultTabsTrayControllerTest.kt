@@ -8,6 +8,7 @@ import androidx.navigation.NavController
 import androidx.navigation.NavDirections
 import androidx.navigation.NavOptions
 import io.mockk.MockKAnnotations
+import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.impl.annotations.MockK
@@ -19,6 +20,7 @@ import io.mockk.spyk
 import io.mockk.unmockkStatic
 import io.mockk.verify
 import io.mockk.verifyOrder
+import mozilla.appservices.places.BookmarkRoot
 import mozilla.components.browser.state.action.TabListAction
 import mozilla.components.browser.state.selector.findTab
 import mozilla.components.browser.state.selector.getNormalOrPrivateTabs
@@ -31,9 +33,11 @@ import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.browser.storage.sync.Tab
 import mozilla.components.browser.storage.sync.TabEntry
 import mozilla.components.concept.base.profiler.Profiler
+import mozilla.components.concept.storage.BookmarkNode
+import mozilla.components.concept.storage.BookmarkNodeType
+import mozilla.components.concept.storage.BookmarksStorage
 import mozilla.components.feature.accounts.push.CloseTabsUseCases
 import mozilla.components.feature.tabs.TabsUseCases
-import mozilla.components.service.glean.testing.GleanTestRule
 import mozilla.components.support.test.ext.joinBlocking
 import mozilla.components.support.test.libstate.ext.waitUntilIdle
 import mozilla.components.support.test.middleware.CaptureActionsMiddleware
@@ -65,12 +69,13 @@ import org.mozilla.fenix.collections.show
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.TabCollectionStorage
 import org.mozilla.fenix.components.appstate.AppAction
-import org.mozilla.fenix.components.bookmarks.BookmarksUseCase
+import org.mozilla.fenix.components.usecases.FenixBrowserUseCases
 import org.mozilla.fenix.ext.maxActiveTime
 import org.mozilla.fenix.ext.potentialInactiveTabs
+import org.mozilla.fenix.helpers.FenixGleanTestRule
 import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
-import org.mozilla.fenix.home.HomeFragment
-import org.mozilla.fenix.library.bookmarks.BookmarksSharedViewModel
+import org.mozilla.fenix.home.HomeScreenViewModel.Companion.ALL_NORMAL_TABS
+import org.mozilla.fenix.home.HomeScreenViewModel.Companion.ALL_PRIVATE_TABS
 import org.mozilla.fenix.utils.Settings
 import java.util.concurrent.TimeUnit
 
@@ -98,21 +103,22 @@ class DefaultTabsTrayControllerTest {
     private lateinit var tabsUseCases: TabsUseCases
 
     @MockK(relaxed = true)
+    private lateinit var fenixBrowserUseCases: FenixBrowserUseCases
+
+    @MockK(relaxed = true)
     private lateinit var activity: HomeActivity
 
     private val appStore: AppStore = mockk(relaxed = true)
     private val settings: Settings = mockk(relaxed = true)
 
-    private val bookmarksUseCase: BookmarksUseCase = mockk(relaxed = true)
+    private val bookmarksStorage: BookmarksStorage = mockk(relaxed = true)
     private val closeSyncedTabsUseCases: CloseTabsUseCases = mockk(relaxed = true)
     private val collectionStorage: TabCollectionStorage = mockk(relaxed = true)
-
-    private val bookmarksSharedViewModel: BookmarksSharedViewModel = mockk(relaxed = true)
 
     private val coroutinesTestRule: MainCoroutineRule = MainCoroutineRule()
     private val testDispatcher = coroutinesTestRule.testDispatcher
 
-    val gleanTestRule = GleanTestRule(testContext)
+    val gleanTestRule = FenixGleanTestRule(testContext)
 
     @get:Rule
     val chain: RuleChain = RuleChain.outerRule(gleanTestRule).around(coroutinesTestRule)
@@ -148,6 +154,36 @@ class DefaultTabsTrayControllerTest {
     }
 
     @Test
+    fun `GIVEN private mode and homepage as a new tab is enabled WHEN the fab is clicked THEN a new private homepage tab is displayed`() {
+        every { settings.enableHomepageAsNewTab } returns true
+
+        profiler = spyk(profiler) {
+            every { getProfilerTime() } returns Double.MAX_VALUE
+        }
+
+        assertNull(TabsTray.newPrivateTabTapped.testGetValue())
+
+        createController().handlePrivateTabsFabClick()
+
+        assertNotNull(TabsTray.newPrivateTabTapped.testGetValue())
+
+        verifyOrder {
+            profiler.getProfilerTime()
+            fenixBrowserUseCases.addNewHomepageTab(
+                private = true,
+            )
+            navController.navigate(
+                TabsTrayFragmentDirections.actionGlobalHome(focusOnAddressBar = true),
+            )
+            navigationInteractor.onTabTrayDismissed()
+            profiler.addMarker(
+                "DefaultTabTrayController.onNewTabTapped",
+                Double.MAX_VALUE,
+            )
+        }
+    }
+
+    @Test
     fun `GIVEN normal mode WHEN the fab is clicked THEN a profile marker is added for the operations executed`() {
         profiler = spyk(profiler) {
             every { getProfilerTime() } returns Double.MAX_VALUE
@@ -157,6 +193,32 @@ class DefaultTabsTrayControllerTest {
 
         verifyOrder {
             profiler.getProfilerTime()
+            navController.navigate(
+                TabsTrayFragmentDirections.actionGlobalHome(focusOnAddressBar = true),
+            )
+            navigationInteractor.onTabTrayDismissed()
+            profiler.addMarker(
+                "DefaultTabTrayController.onNewTabTapped",
+                Double.MAX_VALUE,
+            )
+        }
+    }
+
+    @Test
+    fun `GIVEN normal mode and homepage as a new tab is enabled WHEN the fab is clicked THEN a new homepage tab is displayed`() {
+        every { settings.enableHomepageAsNewTab } returns true
+
+        profiler = spyk(profiler) {
+            every { getProfilerTime() } returns Double.MAX_VALUE
+        }
+
+        createController().handleNormalTabsFabClick()
+
+        verifyOrder {
+            profiler.getProfilerTime()
+            fenixBrowserUseCases.addNewHomepageTab(
+                private = false,
+            )
             navController.navigate(
                 TabsTrayFragmentDirections.actionGlobalHome(focusOnAddressBar = true),
             )
@@ -212,7 +274,7 @@ class DefaultTabsTrayControllerTest {
         every { browserStore.state } returns mockk()
         try {
             mockkStatic("mozilla.components.browser.state.selector.SelectorsKt")
-            every { browserStore.state.findTab(any()) } returns tab
+            every { browserStore.state.findTab("testTabId") } returns tab
             every { browserStore.state.getNormalOrPrivateTabs(any()) } returns listOf(tab)
 
             createController().handleTabDeletion("testTabId", "unknown")
@@ -244,7 +306,7 @@ class DefaultTabsTrayControllerTest {
         )
         try {
             mockkStatic("mozilla.components.browser.state.selector.SelectorsKt")
-            every { browserStore.state.findTab(any()) } returns tab
+            every { browserStore.state.findTab("testTabId") } returns tab
             every { browserStore.state.getNormalOrPrivateTabs(any()) } returns listOf(tab)
             every { browserStore.state.selectedTabId } returns "testTabId"
 
@@ -257,31 +319,25 @@ class DefaultTabsTrayControllerTest {
     }
 
     @Test
-    fun `WHEN handleTrayScrollingToPosition is called with smoothScroll=true THEN it scrolls to that position with smoothScroll`() {
-        var selectTabPositionInvoked = false
-        createController(
-            selectTabPosition = { position, smoothScroll ->
-                assertEquals(3, position)
-                assertTrue(smoothScroll)
-                selectTabPositionInvoked = true
-            },
-        ).handleTrayScrollingToPosition(3, true)
-
-        assertTrue(selectTabPositionInvoked)
-    }
-
-    @Test
     fun `WHEN handleTrayScrollingToPosition is called with smoothScroll=true THEN it emits an action for the tray page of that tab position`() {
-        createController().handleTrayScrollingToPosition(33, true)
+        val pagePosition = 33
 
-        verify { trayStore.dispatch(TabsTrayAction.PageSelected(Page.positionToPage(33))) }
+        every { trayStore.state.selectedPage } returns Page.positionToPage(pagePosition)
+
+        createController().handleTrayScrollingToPosition(position = pagePosition, smoothScroll = true)
+
+        verify { trayStore.dispatch(TabsTrayAction.PageSelected(Page.positionToPage(position = pagePosition))) }
     }
 
     @Test
     fun `WHEN handleTrayScrollingToPosition is called with smoothScroll=false THEN it emits an action for the tray page of that tab position`() {
-        createController().handleTrayScrollingToPosition(44, true)
+        val pagePosition = 44
 
-        verify { trayStore.dispatch(TabsTrayAction.PageSelected(Page.positionToPage(44))) }
+        every { trayStore.state.selectedPage } returns Page.positionToPage(pagePosition)
+
+        createController().handleTrayScrollingToPosition(position = pagePosition, smoothScroll = true)
+
+        verify { trayStore.dispatch(TabsTrayAction.PageSelected(Page.positionToPage(position = pagePosition))) }
     }
 
     @Test
@@ -348,7 +404,7 @@ class DefaultTabsTrayControllerTest {
         every { browserStore.state } returns mockk()
         try {
             mockkStatic("mozilla.components.browser.state.selector.SelectorsKt")
-            every { browserStore.state.findTab(any()) } returns tab
+            every { browserStore.state.findTab("22") } returns tab
             every { browserStore.state.getNormalOrPrivateTabs(any()) } returns listOf(tab, mockk())
 
             var showUndoSnackbarForTabInvoked = false
@@ -378,7 +434,7 @@ class DefaultTabsTrayControllerTest {
         try {
             val testTabId = "33"
             mockkStatic("mozilla.components.browser.state.selector.SelectorsKt")
-            every { browserStore.state.findTab(any()) } returns tab
+            every { browserStore.state.findTab(testTabId) } returns tab
             every { browserStore.state.getNormalOrPrivateTabs(any()) } returns listOf(tab)
             every { browserStore.state.selectedTabId } returns testTabId
 
@@ -413,7 +469,7 @@ class DefaultTabsTrayControllerTest {
 
             controller.deleteMultipleTabs(listOf(privateTab, mockk()))
 
-            verify { controller.dismissTabsTrayAndNavigateHome(HomeFragment.ALL_PRIVATE_TABS) }
+            verify { controller.dismissTabsTrayAndNavigateHome(ALL_PRIVATE_TABS) }
             assertTrue(showUndoSnackbarForTabInvoked)
             verify(exactly = 0) { tabsUseCases.removeTabs(any()) }
         } finally {
@@ -442,7 +498,7 @@ class DefaultTabsTrayControllerTest {
 
             controller.deleteMultipleTabs(listOf(normalTab, normalTab))
 
-            verify { controller.dismissTabsTrayAndNavigateHome(HomeFragment.ALL_NORMAL_TABS) }
+            verify { controller.dismissTabsTrayAndNavigateHome(ALL_NORMAL_TABS) }
             verify(exactly = 0) { tabsUseCases.removeTabs(any()) }
             assertTrue(showUndoSnackbarForTabInvoked)
         } finally {
@@ -572,16 +628,24 @@ class DefaultTabsTrayControllerTest {
     }
 
     @Test
-    fun `WHEN a synced tab is closed THEN a command to close the tab is sent`() {
-        val tab = mockk<Tab>()
-        val entry = mockk<TabEntry>()
+    fun `WHEN a synced tab is closed THEN a command to close the tab is queued AND an undo snackbar is shown`() {
+        var showUndoSnackbarForSyncedTabInvoked = false
+        val controller = createController(
+            showUndoSnackbarForSyncedTab = {
+                showUndoSnackbarForSyncedTabInvoked = true
+            },
+        )
 
-        every { tab.active() }.answers { entry }
-        every { entry.url }.answers { "https://mozilla.org" }
-
-        createController().handleSyncedTabClosed(deviceId = "1234", tab)
+        val tab = Tab(
+            history = listOf(TabEntry(title = "Get Firefox", url = "https://getfirefox.com", iconUrl = null)),
+            active = 0,
+            lastUsed = 0,
+            inactive = false,
+        )
+        controller.handleSyncedTabClosed("1234", tab)
 
         coVerify(exactly = 1) { closeSyncedTabsUseCases.close("1234", any()) }
+        assertTrue(showUndoSnackbarForSyncedTabInvoked)
     }
 
     @Test
@@ -693,7 +757,7 @@ class DefaultTabsTrayControllerTest {
         trayStore.dispatch(TabsTrayAction.AddSelectTab(normalTab))
         trayStore.waitUntilIdle()
 
-        controller.handleTabSelected(inactiveTab, TrayPagerAdapter.INACTIVE_TABS_FEATURE_NAME)
+        controller.handleTabSelected(inactiveTab, INACTIVE_TABS_FEATURE_NAME)
 
         middleware.assertLastAction(TabsTrayAction.AddSelectTab::class) {
             assertEquals(normalTab, it.tab)
@@ -836,7 +900,7 @@ class DefaultTabsTrayControllerTest {
 
         assertNotNull(TabsTray.openInactiveTab.testGetValue())
 
-        verify { controller.handleTabSelected(tab, TrayPagerAdapter.INACTIVE_TABS_FEATURE_NAME) }
+        verify { controller.handleTabSelected(tab, INACTIVE_TABS_FEATURE_NAME) }
     }
 
     @Test
@@ -857,14 +921,14 @@ class DefaultTabsTrayControllerTest {
 
         assertNotNull(TabsTray.closeInactiveTab.testGetValue())
 
-        verify { controller.handleTabDeletion(tab.id, TrayPagerAdapter.INACTIVE_TABS_FEATURE_NAME) }
+        verify { controller.handleTabDeletion(tab.id, INACTIVE_TABS_FEATURE_NAME) }
     }
 
     @Test
     fun `WHEN all inactive tabs are closed THEN perform the deletion and report the telemetry event and show a Snackbar`() {
         var showSnackbarInvoked = false
         val controller = createController(
-            showUndoSnackbarForTab = {
+            showUndoSnackbarForInactiveTab = {
                 showSnackbarInvoked = true
             },
         )
@@ -900,7 +964,7 @@ class DefaultTabsTrayControllerTest {
                 url = "www.mozilla.com",
             ),
         )
-        val source = TrayPagerAdapter.INACTIVE_TABS_FEATURE_NAME
+        val source = INACTIVE_TABS_FEATURE_NAME
 
         every { controller.handleNavigateToBrowser() } just runs
 
@@ -960,7 +1024,7 @@ class DefaultTabsTrayControllerTest {
         )
         browsingModeManager = spyk(
             DefaultBrowsingModeManager(
-                _mode = BrowsingMode.Private,
+                initialMode = BrowsingMode.Private,
                 settings = settings,
                 modeDidChange = mockk(relaxed = true),
             ),
@@ -1099,18 +1163,20 @@ class DefaultTabsTrayControllerTest {
     }
 
     @Test
-    fun `GIVEN one tab is selected WHEN the save selected tabs to bookmarks button is clicked THEN report the telemetry and show a snackbar`() = runTestOnMain {
+    fun `GIVEN one tab selected and no bookmarks previously saved WHEN saving selected tabs to bookmarks THEN save bookmark in root, report telemetry, show snackbar`() = runTestOnMain {
         var showBookmarkSnackbarInvoked = false
 
+        coEvery { bookmarksStorage.getRecentBookmarks(1) } returns listOf()
+        coEvery { bookmarksStorage.getBookmark(BookmarkRoot.Mobile.id) } returns makeBookmarkFolder(guid = BookmarkRoot.Mobile.id)
         every { trayStore.state.mode.selectedTabs } returns setOf(createTab(url = "https://mozilla.org"))
 
         createController(
-            showBookmarkSnackbar = {
+            showBookmarkSnackbar = { _, _ ->
                 showBookmarkSnackbarInvoked = true
             },
         ).handleBookmarkSelectedTabsClicked()
 
-        coVerify(exactly = 1) { bookmarksUseCase.addBookmark(any(), any(), any(), any()) }
+        coVerify(exactly = 1) { bookmarksStorage.addItem(eq(BookmarkRoot.Mobile.id), any(), any(), any()) }
         assertTrue(showBookmarkSnackbarInvoked)
 
         assertNotNull(TabsTray.bookmarkSelectedTabs.testGetValue())
@@ -1120,40 +1186,153 @@ class DefaultTabsTrayControllerTest {
     }
 
     @Test
-    fun `WHEN the normal tabs page button is clicked THEN report the metric`() {
+    fun `GIVEN one tab selected and a previously saved bookmark WHEN saving selected tabs to bookmarks THEN save bookmark in last saved folder, report telemetry, show snackbar`() = runTestOnMain {
+        var showBookmarkSnackbarInvoked = false
+
+        val parentGuid = "parentGuid"
+        val previousBookmark = makeBookmarkItem(parentGuid = parentGuid)
+        coEvery { bookmarksStorage.getRecentBookmarks(eq(1), any(), any()) } returns listOf(previousBookmark)
+        coEvery { bookmarksStorage.getBookmark(parentGuid) } returns makeBookmarkFolder(guid = parentGuid)
+        every { trayStore.state.mode.selectedTabs } returns setOf(createTab(url = "https://mozilla.org"))
+
+        createController(
+            showBookmarkSnackbar = { _, _ ->
+                showBookmarkSnackbarInvoked = true
+            },
+        ).handleBookmarkSelectedTabsClicked()
+
+        coVerify(exactly = 1) { bookmarksStorage.addItem(eq(parentGuid), any(), any(), any()) }
+        assertTrue(showBookmarkSnackbarInvoked)
+
+        assertNotNull(TabsTray.bookmarkSelectedTabs.testGetValue())
+        val snapshot = TabsTray.bookmarkSelectedTabs.testGetValue()!!
+        assertEquals(1, snapshot.size)
+        assertEquals("1", snapshot.single().extra?.getValue("tab_count"))
+    }
+
+    @Test
+    fun `GIVEN multiple tabs selected and no bookmarks previously saved WHEN saving selected tabs to bookmarks THEN save bookmarks in root, report telemetry, show a snackbar`() = runTestOnMain {
+        var showBookmarkSnackbarInvoked = false
+
+        coEvery { bookmarksStorage.getRecentBookmarks(1) } returns listOf()
+        coEvery { bookmarksStorage.getBookmark(BookmarkRoot.Mobile.id) } returns makeBookmarkFolder(guid = BookmarkRoot.Mobile.id)
+        every { trayStore.state.mode.selectedTabs } returns setOf(createTab(url = "https://mozilla.org"), createTab(url = "https://mozilla2.org"))
+
+        createController(
+            showBookmarkSnackbar = { _, _ ->
+                showBookmarkSnackbarInvoked = true
+            },
+        ).handleBookmarkSelectedTabsClicked()
+
+        coVerify(exactly = 2) { bookmarksStorage.addItem(eq(BookmarkRoot.Mobile.id), any(), any(), any()) }
+        assertTrue(showBookmarkSnackbarInvoked)
+
+        assertNotNull(TabsTray.bookmarkSelectedTabs.testGetValue())
+        val snapshot = TabsTray.bookmarkSelectedTabs.testGetValue()!!
+        assertEquals(1, snapshot.size)
+        assertEquals("2", snapshot.single().extra?.getValue("tab_count"))
+    }
+
+    @Test
+    fun `GIVEN multiple tabs selected and a previously saved bookmark WHEN saving selected tabs to bookmarks THEN save bookmarks in same folder as recent bookmark, report telemetry, show a snackbar`() = runTestOnMain {
+        var showBookmarkSnackbarInvoked = false
+
+        val parentGuid = "parentGuid"
+        val previousBookmark = makeBookmarkItem(parentGuid = parentGuid)
+        coEvery { bookmarksStorage.getRecentBookmarks(eq(1), any(), any()) } returns listOf(previousBookmark)
+        coEvery { bookmarksStorage.getBookmark(parentGuid) } returns makeBookmarkFolder(guid = parentGuid)
+        every { trayStore.state.mode.selectedTabs } returns setOf(createTab(url = "https://mozilla.org"), createTab(url = "https://mozilla2.org"))
+
+        createController(
+            showBookmarkSnackbar = { _, _ ->
+                showBookmarkSnackbarInvoked = true
+            },
+        ).handleBookmarkSelectedTabsClicked()
+
+        coVerify(exactly = 2) { bookmarksStorage.addItem(eq(parentGuid), any(), any(), any()) }
+        assertTrue(showBookmarkSnackbarInvoked)
+
+        assertNotNull(TabsTray.bookmarkSelectedTabs.testGetValue())
+        val snapshot = TabsTray.bookmarkSelectedTabs.testGetValue()!!
+        assertEquals(1, snapshot.size)
+        assertEquals("2", snapshot.single().extra?.getValue("tab_count"))
+    }
+
+    @Test
+    fun `GIVEN active page is not normal tabs WHEN the normal tabs page button is clicked THEN report the metric`() {
+        every { trayStore.state.selectedPage } returns Page.PrivateTabs
+
         assertNull(TabsTray.normalModeTapped.testGetValue())
 
-        createController().handleTrayScrollingToPosition(Page.NormalTabs.ordinal, false)
+        createController().handleTrayScrollingToPosition(position = Page.NormalTabs.ordinal, smoothScroll = false)
 
         assertNotNull(TabsTray.normalModeTapped.testGetValue())
     }
 
     @Test
-    fun `WHEN the private tabs page button is clicked THEN report the metric`() {
+    fun `GIVEN active page is normal tabs WHEN normal tabs page button is clicked THEN do not report the metric`() {
+        every { trayStore.state.selectedPage } returns Page.NormalTabs
+
+        assertNull(TabsTray.normalModeTapped.testGetValue())
+
+        createController().handleTrayScrollingToPosition(position = Page.NormalTabs.ordinal, smoothScroll = false)
+
+        assertNull(TabsTray.normalModeTapped.testGetValue())
+    }
+
+    @Test
+    fun `GIVEN active page is not private tabs WHEN the private tabs page button is clicked THEN report the metric`() {
+        every { trayStore.state.selectedPage } returns Page.NormalTabs
+
         assertNull(TabsTray.privateModeTapped.testGetValue())
 
-        createController().handleTrayScrollingToPosition(Page.PrivateTabs.ordinal, false)
+        createController().handleTrayScrollingToPosition(position = Page.PrivateTabs.ordinal, smoothScroll = false)
 
         assertNotNull(TabsTray.privateModeTapped.testGetValue())
     }
 
     @Test
-    fun `WHEN the synced tabs page button is clicked THEN report the metric`() {
+    fun `GIVEN active page is private tabs WHEN the private tabs button is clicked THEN do not report the metric`() {
+        every { trayStore.state.selectedPage } returns Page.PrivateTabs
+
+        assertNull(TabsTray.privateModeTapped.testGetValue())
+
+        createController().handleTrayScrollingToPosition(position = Page.PrivateTabs.ordinal, smoothScroll = false)
+
+        assertNull(TabsTray.privateModeTapped.testGetValue())
+    }
+
+    @Test
+    fun `GIVEN active page is not synced tabs WHEN the synced tabs page button is clicked THEN report the metric`() {
+        every { trayStore.state.selectedPage } returns Page.NormalTabs
+
         assertNull(TabsTray.syncedModeTapped.testGetValue())
 
-        createController().handleTrayScrollingToPosition(Page.SyncedTabs.ordinal, false)
+        createController().handleTrayScrollingToPosition(position = Page.SyncedTabs.ordinal, smoothScroll = false)
 
         assertNotNull(TabsTray.syncedModeTapped.testGetValue())
     }
 
+    @Test
+    fun `GIVEN active page is synced tabs WHEN the synced tabs page button is clicked THEN do not report the metric`() {
+        every { trayStore.state.selectedPage } returns Page.SyncedTabs
+
+        assertNull(TabsTray.syncedModeTapped.testGetValue())
+
+        createController().handleTrayScrollingToPosition(position = Page.SyncedTabs.ordinal, smoothScroll = false)
+
+        assertNull(TabsTray.syncedModeTapped.testGetValue())
+    }
+
     private fun createController(
         navigateToHomeAndDeleteSession: (String) -> Unit = { },
-        selectTabPosition: (Int, Boolean) -> Unit = { _, _ -> },
         dismissTray: () -> Unit = { },
         showUndoSnackbarForTab: (Boolean) -> Unit = { _ -> },
+        showUndoSnackbarForInactiveTab: (Int) -> Unit = { _ -> },
+        showUndoSnackbarForSyncedTab: (CloseTabsUseCases.UndoableOperation) -> Unit = { _ -> },
         showCancelledDownloadWarning: (Int, String?, String?) -> Unit = { _, _, _ -> },
         showCollectionSnackbar: (Int, Boolean) -> Unit = { _, _ -> },
-        showBookmarkSnackbar: (Int) -> Unit = { _ -> },
+        showBookmarkSnackbar: (Int, String?) -> Unit = { _, _ -> },
     ): DefaultTabsTrayController {
         return DefaultTabsTrayController(
             activity = activity,
@@ -1167,17 +1346,42 @@ class DefaultTabsTrayControllerTest {
             profiler = profiler,
             navigationInteractor = navigationInteractor,
             tabsUseCases = tabsUseCases,
-            bookmarksUseCase = bookmarksUseCase,
+            fenixBrowserUseCases = fenixBrowserUseCases,
+            bookmarksStorage = bookmarksStorage,
             closeSyncedTabsUseCases = closeSyncedTabsUseCases,
             collectionStorage = collectionStorage,
             ioDispatcher = testDispatcher,
-            selectTabPosition = selectTabPosition,
             dismissTray = dismissTray,
             showUndoSnackbarForTab = showUndoSnackbarForTab,
+            showUndoSnackbarForInactiveTab = showUndoSnackbarForInactiveTab,
+            showUndoSnackbarForSyncedTab = showUndoSnackbarForSyncedTab,
             showCancelledDownloadWarning = showCancelledDownloadWarning,
             showCollectionSnackbar = showCollectionSnackbar,
             showBookmarkSnackbar = showBookmarkSnackbar,
-            bookmarksSharedViewModel = bookmarksSharedViewModel,
         )
     }
+
+    private fun makeBookmarkFolder(guid: String) = BookmarkNode(
+        type = BookmarkNodeType.FOLDER,
+        parentGuid = BookmarkRoot.Mobile.id,
+        guid = guid,
+        position = 42U,
+        title = "title",
+        url = "url",
+        dateAdded = 0L,
+        lastModified = 0L,
+        children = null,
+    )
+
+    private fun makeBookmarkItem(parentGuid: String) = BookmarkNode(
+        type = BookmarkNodeType.ITEM,
+        parentGuid = parentGuid,
+        guid = "guid",
+        position = 42U,
+        title = "title",
+        url = "url",
+        dateAdded = 0L,
+        lastModified = 0L,
+        children = null,
+    )
 }

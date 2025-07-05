@@ -250,11 +250,7 @@ nsresult nsFileChannel::Init() {
   // can point to different resources right after the first resource is loaded.
   nsCOMPtr<nsIFile> file;
   nsCOMPtr<nsIURI> targetURI;
-#ifdef XP_WIN
-  nsAutoString fileTarget;
-#else
-  nsAutoCString fileTarget;
-#endif
+  AutoPathString fileTarget;
   nsCOMPtr<nsIFile> resolvedFile;
   bool symLink;
   nsCOMPtr<nsIFileURL> fileURL = do_QueryInterface(mFileURI);
@@ -262,13 +258,11 @@ nsresult nsFileChannel::Init() {
       NS_SUCCEEDED(file->IsSymlink(&symLink)) && symLink &&
 #ifdef XP_WIN
       NS_SUCCEEDED(file->GetTarget(fileTarget)) &&
-      NS_SUCCEEDED(
-          NS_NewLocalFile(fileTarget, true, getter_AddRefs(resolvedFile))) &&
 #else
       NS_SUCCEEDED(file->GetNativeTarget(fileTarget)) &&
-      NS_SUCCEEDED(NS_NewNativeLocalFile(fileTarget, true,
-                                         getter_AddRefs(resolvedFile))) &&
 #endif
+      NS_SUCCEEDED(NS_NewPathStringLocalFile(fileTarget,
+                                             getter_AddRefs(resolvedFile))) &&
       NS_SUCCEEDED(
           NS_NewFileURI(getter_AddRefs(targetURI), resolvedFile, nullptr))) {
     // Make an effort to match up the query strings.
@@ -490,11 +484,6 @@ nsFileChannel::GetFile(nsIFile** file) {
 }
 
 nsresult nsFileChannel::MaybeSendFileOpenNotification() {
-  nsCOMPtr<nsIObserverService> obsService = services::GetObserverService();
-  if (!obsService) {
-    return NS_OK;
-  }
-
   nsCOMPtr<nsILoadInfo> loadInfo;
   nsresult rv = GetLoadInfo(getter_AddRefs(loadInfo));
   if (NS_FAILED(rv)) {
@@ -515,8 +504,7 @@ nsresult nsFileChannel::MaybeSendFileOpenNotification() {
 
   if ((browsingContextID != 0 && isTopLevel) ||
       !loadInfo->TriggeringPrincipal()->IsSystemPrincipal()) {
-    obsService->NotifyObservers(static_cast<nsIIdentChannel*>(this),
-                                "file-channel-opened", nullptr);
+    NotifyListeners();
   }
   return NS_OK;
 }
@@ -565,5 +553,11 @@ nsFileChannel::GetChannelId(uint64_t* aChannelId) {
 NS_IMETHODIMP
 nsFileChannel::SetChannelId(uint64_t aChannelId) {
   mChannelId = aChannelId;
+  return NS_OK;
+}
+
+nsresult nsFileChannel::NotifyListeners() {
+  // Nothing to do here, this will be handled in
+  // FileChannelChild::NotifyListeners.
   return NS_OK;
 }

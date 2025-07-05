@@ -11,17 +11,18 @@ owner = "PerfTest Team"
 page_cycles = 25
 page_timeout = 60000
 playback = "mitmproxy"
-playback_version = "8.1.1"
+playback_version = "11.0.0"
 type = "pageload"
 unit = "ms"
 use_live_sites = false
+support_class = "browsertime_pageload.py"
 
 # Keep this list in alphabetical order
 # Do not use `measure.start(URL)` in interactive tests if they need to be recorded,
 # see bug 1737822 for more information. Instead, use `navigate(URL)` after starting
 # calling `measure.start(ALIAS)`.
 
-["cnn-nav"]
+[cnn-nav]
 browser_cycles = 10 # used with --cold
 playback_pageset_manifest = "mitm7-linux-firefox-cnn-nav.manifest"
 test_cmds = [
@@ -36,10 +37,11 @@ test_cmds = [
 ]
 test_url = "https://www.cnn.com/"
 
-["facebook-nav"]
+[facebook-nav]
 browser_cycles = 10 # used with --cold
 page_timeout = 90000
-playback_pageset_manifest = "mitm6-windows-firefox-facebook-nav.manifest"
+playback_pageset_manifest_backup = "mitm6-windows-firefox-facebook-nav.manifest"
+playback_pageset_manifest = "mitm11-windows-firefox-facebook-nav.manifest"
 test_cmds = [
     ['measure.start', 'landing'],
     ['navigate', 'https://www.facebook.com/'],
@@ -60,9 +62,10 @@ test_cmds = [
 ]
 test_url = "https://www.facebook.com"
 
-["reddit-billgates-ama"]
+[reddit-billgates-ama]
 page_timeout = 240000 # at most 4 minutes required per browser cycle
 browser_cycles = 10 # used with --cold
+playback_version = "8.1.1"
 playback_pageset_manifest = "mitm6-windows-firefox-reddit-billgates-ama.manifest"
 test_cmds = [
     ['measure.start', 'billg-ama'],
@@ -76,10 +79,11 @@ test_cmds = [
 ]
 test_url = "https://www.reddit.com/"
 
-["reddit-billgates-post-1"]
+[reddit-billgates-post-1]
 browser_cycles = 10 # used with --cold
 page_timeout = 90000
-playback_pageset_manifest = "mitm6-windows-firefox-reddit-billgates-post.manifest"
+playback_version = "8.1.1"
+playback_pageset_manifest= "mitm6-windows-firefox-reddit-billgates-post.manifest"
 test_cmds = [
     ['measure.start', 'billg'],
     ['navigate', 'https://www.reddit.com/user/thisisbillgates/'],
@@ -97,10 +101,11 @@ test_cmds = [
 ]
 test_url = "https://www.reddit.com/user/thisisbillgates/"
 
-["reddit-billgates-post-2"]
+[reddit-billgates-post-2]
 browser_cycles = 10 # used with --cold
 page_timeout = 90000
-playback_pageset_manifest = "mitm6-windows-firefox-reddit-billgates-post.manifest"
+playback_version = "8.1.1"
+playback_pageset_manifest= "mitm6-windows-firefox-reddit-billgates-post.manifest"
 test_cmds = [
     ['measure.start', 'billg'],
     ['navigate', 'https://www.reddit.com/user/thisisbillgates/'],

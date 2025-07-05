@@ -241,7 +241,7 @@
     {
       "login": false,
       "name": "espn",
-      "test_url": "http://www.espn.com/nba/story/_/page/allstarweekend25788027/the-comparison-lebron-james-michael-jordan-their-own-words",
+      "test_url": "https://www.espn.com/nba/story/_/page/allstarweekend25788027/the-comparison-lebron-james-michael-jordan-their-own-words",
       "dismiss_cookie_prompt": [
         [
           "click.byXpathAndWait",
@@ -279,15 +279,6 @@
         ["measure.start", "marketplace"],
         ["navigate", "https://www.facebook.com/marketplace"],
         ["measure.stop", ""]
-      ]
-    },
-    {
-      "login": false,
-      "name": "fandom",
-      "test_url": "https://www.fandom.com/articles/fallout-76-will-live-and-die-on-the-creativity-of-its-playerbase",
-      "test_cmds": [
-        ["click.byXpathAndWait", "/html/body/div[9]/div/div/div[2]/div[1]"],
-        ["click.byXpathAndWait", "/html/body/div[9]/div/div/div[2]/div[2]"]
       ]
     },
     {
@@ -334,7 +325,7 @@
     {
       "login": false,
       "name": "imgur",
-      "test_url": "https://imgur.com/gallery/uTI7fKy",
+      "test_url": "https://imgur.com/gallery/mozilla-performance-testing-logo-sNUtC19",
       "inject_deterministic": false,
       "dismiss_cookie_prompt": [
         [
@@ -342,7 +333,7 @@
           "/html/body/div[1]/div/div/div/div[2]/div/button[2]"
         ]
       ],
-      "secondary_url": "https://imgur.com/gallery/WuOobqV",
+      "secondary_url": "https://imgur.com/gallery/firefox-logo-w8fgXyY",
       "preferences": {
         "media.autoplay.default": 5,
         "media.autoplay.ask-permission": true,
@@ -599,6 +590,15 @@
         ["navigate", "https://www.facebook.com/friends/"],
         ["wait.byTime", 5000],
         ["measure.stop", ""]
+      ]
+    },
+    {
+      "login": false,
+      "name": "fandom",
+      "test_url": "https://www.fandom.com/articles/fallout-76-will-live-and-die-on-the-creativity-of-its-playerbase",
+      "test_cmds": [
+        ["click.byXpathAndWait", "/html/body/div[9]/div/div/div[2]/div[1]"],
+        ["click.byXpathAndWait", "/html/body/div[9]/div/div/div[2]/div[2]"]
       ]
     }
   ]

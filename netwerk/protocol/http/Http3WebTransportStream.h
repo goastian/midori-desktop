@@ -7,13 +7,12 @@
 #define mozilla_net_Http3WebTransportStream_h
 
 #include <functional>
+
+#include "WebTransportStreamBase.h"
 #include "Http3StreamBase.h"
-#include "mozilla/net/NeqoHttp3Conn.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/Result.h"
 #include "mozilla/ResultVariant.h"
-#include "nsIAsyncInputStream.h"
-#include "nsIAsyncOutputStream.h"
 
 class nsIWebTransportSendStreamStats;
 class nsIWebTransportReceiveStreamStats;
@@ -22,23 +21,27 @@ namespace mozilla::net {
 
 class Http3WebTransportSession;
 
-class Http3WebTransportStream final : public Http3StreamBase,
+class Http3WebTransportStream final : public WebTransportStreamBase,
+                                      public Http3StreamBase,
                                       public nsAHttpSegmentWriter,
-                                      public nsAHttpSegmentReader,
-                                      public nsIInputStreamCallback {
+                                      public nsAHttpSegmentReader {
  public:
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSAHTTPSEGMENTWRITER
   NS_DECL_NSAHTTPSEGMENTREADER
   NS_DECL_NSIINPUTSTREAMCALLBACK
+  NS_DECL_NSIOUTPUTSTREAMCALLBACK
 
   explicit Http3WebTransportStream(
       Http3Session* aSession, uint64_t aSessionId, WebTransportStreamType aType,
-      std::function<void(Result<RefPtr<Http3WebTransportStream>, nsresult>&&)>&&
+      std::function<void(Result<RefPtr<WebTransportStreamBase>, nsresult>&&)>&&
           aCallback);
   explicit Http3WebTransportStream(Http3Session* aSession, uint64_t aSessionId,
                                    WebTransportStreamType aType,
                                    uint64_t aStreamId);
+
+  class StreamId WebTransportStreamId() const override;
+  uint64_t GetStreamId() const override;
 
   Http3WebTransportSession* GetHttp3WebTransportSession() override {
     return nullptr;
@@ -48,7 +51,7 @@ class Http3WebTransportStream final : public Http3StreamBase,
   }
   Http3Stream* GetHttp3Stream() override { return nullptr; }
 
-  void SetSendOrder(Maybe<int64_t> aSendOrder);
+  void SetSendOrder(Maybe<int64_t> aSendOrder) override;
 
   [[nodiscard]] nsresult ReadSegments() override;
   [[nodiscard]] nsresult WriteSegments() override;
@@ -60,19 +63,18 @@ class Http3WebTransportStream final : public Http3StreamBase,
                           bool interim) override {}
 
   uint64_t SessionId() const { return mSessionId; }
-  WebTransportStreamType StreamType() const { return mStreamType; }
 
-  void SendFin();
-  void Reset(uint64_t aErrorCode);
-  void SendStopSending(uint8_t aErrorCode);
+  void SendFin() override;
+  void Reset(uint64_t aErrorCode) override;
+  void SendStopSending(uint8_t aErrorCode) override;
 
-  already_AddRefed<nsIWebTransportSendStreamStats> GetSendStreamStats();
-  already_AddRefed<nsIWebTransportReceiveStreamStats> GetReceiveStreamStats();
-  void GetWriterAndReader(nsIAsyncOutputStream** aOutOutputStream,
-                          nsIAsyncInputStream** aOutInputStream);
+  already_AddRefed<nsIWebTransportSendStreamStats> GetSendStreamStats()
+      override;
+  already_AddRefed<nsIWebTransportReceiveStreamStats> GetReceiveStreamStats()
+      override;
 
   // When mRecvState is RECV_DONE, this means we already received the FIN.
-  bool RecvDone() const { return mRecvState == RECV_DONE; }
+  bool RecvDone() const override { return mRecvState == RECV_DONE; }
 
  private:
   friend class Http3WebTransportSession;
@@ -83,39 +85,6 @@ class Http3WebTransportStream final : public Http3StreamBase,
                                      uint32_t, uint32_t, uint32_t*);
   static nsresult WritePipeSegment(nsIOutputStream*, void*, char*, uint32_t,
                                    uint32_t, uint32_t*);
-  nsresult InitOutputPipe();
-  nsresult InitInputPipe();
-
-  uint64_t mSessionId{UINT64_MAX};
-  WebTransportStreamType mStreamType{WebTransportStreamType::BiDi};
-
-  enum StreamRole {
-    INCOMING,
-    OUTGOING,
-  } mStreamRole{INCOMING};
-
-  enum SendStreamState {
-    WAITING_TO_ACTIVATE,
-    WAITING_DATA,
-    SENDING,
-    SEND_DONE,
-  } mSendState{WAITING_TO_ACTIVATE};
-
-  enum RecvStreamState { BEFORE_READING, READING, RECEIVED_FIN, RECV_DONE };
-  Atomic<RecvStreamState> mRecvState{BEFORE_READING};
-
-  nsresult mSocketOutCondition = NS_ERROR_NOT_INITIALIZED;
-  nsresult mSocketInCondition = NS_ERROR_NOT_INITIALIZED;
-
-  std::function<void(Result<RefPtr<Http3WebTransportStream>, nsresult>&&)>
-      mStreamReadyCallback;
-
-  Mutex mMutex{"Http3WebTransportStream::mMutex"};
-  nsCOMPtr<nsIAsyncInputStream> mSendStreamPipeIn;
-  nsCOMPtr<nsIAsyncOutputStream> mSendStreamPipeOut MOZ_GUARDED_BY(mMutex);
-
-  nsCOMPtr<nsIAsyncInputStream> mReceiveStreamPipeIn MOZ_GUARDED_BY(mMutex);
-  nsCOMPtr<nsIAsyncOutputStream> mReceiveStreamPipeOut;
 
   uint64_t mTotalSent = 0;
   uint64_t mTotalReceived = 0;

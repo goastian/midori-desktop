@@ -11,9 +11,9 @@ use crate::values::generics::basic_shape::GenericShapeCommand;
 use crate::values::generics::basic_shape::{ArcSize, ArcSweep, ByTo, CoordinatePair};
 use crate::values::CSSFloat;
 use cssparser::Parser;
-use num_traits::FromPrimitive;
 use std::fmt::{self, Write};
 use std::iter::{Cloned, Peekable};
+use std::ops;
 use std::slice;
 use style_traits::values::SequenceWriter;
 use style_traits::{CssWriter, ParseError, StyleParseErrorKind, ToCss};
@@ -58,118 +58,15 @@ impl SVGPathData {
 
     /// Create a normalized copy of this path by converting each relative
     /// command to an absolute command.
-    pub fn normalize(&self) -> Self {
+    pub fn normalize(&self, reduce: bool) -> Self {
         let mut state = PathTraversalState {
             subpath_start: CoordPair::new(0.0, 0.0),
             pos: CoordPair::new(0.0, 0.0),
+            last_command: PathCommand::Close,
+            last_control: CoordPair::new(0.0, 0.0),
         };
-        let iter = self.0.iter().map(|seg| seg.normalize(&mut state));
+        let iter = self.0.iter().map(|seg| seg.normalize(&mut state, reduce));
         SVGPathData(crate::ArcSlice::from_iter(iter))
-    }
-
-    // FIXME: Bug 1714238, we may drop this once we use the same data structure for both SVG and
-    // CSS.
-    /// Decode the svg path raw data from Gecko.
-    #[cfg(feature = "gecko")]
-    pub fn decode_from_f32_array(path: &[f32]) -> Result<Self, ()> {
-        use crate::gecko_bindings::structs::dom::SVGPathSeg_Binding::*;
-        use crate::values::generics::basic_shape::GenericShapeCommand::*;
-
-        let mut result: Vec<PathCommand> = Vec::new();
-        let mut i: usize = 0;
-        while i < path.len() {
-            // See EncodeType() and DecodeType() in SVGPathSegUtils.h.
-            // We are using reinterpret_cast<> to encode and decode between u32 and f32, so here we
-            // use to_bits() to decode the type.
-            let seg_type = path[i].to_bits() as u16;
-            i = i + 1;
-            match seg_type {
-                PATHSEG_CLOSEPATH => result.push(Close),
-                PATHSEG_MOVETO_ABS | PATHSEG_MOVETO_REL => {
-                    debug_assert!(i + 1 < path.len());
-                    result.push(Move {
-                        point: CoordPair::new(path[i], path[i + 1]),
-                        by_to: ByTo::new(seg_type == PATHSEG_MOVETO_ABS),
-                    });
-                    i = i + 2;
-                },
-                PATHSEG_LINETO_ABS | PATHSEG_LINETO_REL => {
-                    debug_assert!(i + 1 < path.len());
-                    result.push(Line {
-                        point: CoordPair::new(path[i], path[i + 1]),
-                        by_to: ByTo::new(seg_type == PATHSEG_LINETO_ABS),
-                    });
-                    i = i + 2;
-                },
-                PATHSEG_CURVETO_CUBIC_ABS | PATHSEG_CURVETO_CUBIC_REL => {
-                    debug_assert!(i + 5 < path.len());
-                    result.push(CubicCurve {
-                        control1: CoordPair::new(path[i], path[i + 1]),
-                        control2: CoordPair::new(path[i + 2], path[i + 3]),
-                        point: CoordPair::new(path[i + 4], path[i + 5]),
-                        by_to: ByTo::new(seg_type == PATHSEG_CURVETO_CUBIC_ABS),
-                    });
-                    i = i + 6;
-                },
-                PATHSEG_CURVETO_QUADRATIC_ABS | PATHSEG_CURVETO_QUADRATIC_REL => {
-                    debug_assert!(i + 3 < path.len());
-                    result.push(QuadCurve {
-                        control1: CoordPair::new(path[i], path[i + 1]),
-                        point: CoordPair::new(path[i + 2], path[i + 3]),
-                        by_to: ByTo::new(seg_type == PATHSEG_CURVETO_QUADRATIC_ABS),
-                    });
-                    i = i + 4;
-                },
-                PATHSEG_ARC_ABS | PATHSEG_ARC_REL => {
-                    debug_assert!(i + 6 < path.len());
-                    result.push(Arc {
-                        radii: CoordPair::new(path[i], path[i + 1]),
-                        rotate: path[i + 2],
-                        arc_size: ArcSize::from_u8((path[i + 3] != 0.0f32) as u8).unwrap(),
-                        arc_sweep: ArcSweep::from_u8((path[i + 4] != 0.0f32) as u8).unwrap(),
-                        point: CoordPair::new(path[i + 5], path[i + 6]),
-                        by_to: ByTo::new(seg_type == PATHSEG_ARC_ABS),
-                    });
-                    i = i + 7;
-                },
-                PATHSEG_LINETO_HORIZONTAL_ABS | PATHSEG_LINETO_HORIZONTAL_REL => {
-                    debug_assert!(i < path.len());
-                    result.push(HLine {
-                        x: path[i],
-                        by_to: ByTo::new(seg_type == PATHSEG_LINETO_HORIZONTAL_ABS),
-                    });
-                    i = i + 1;
-                },
-                PATHSEG_LINETO_VERTICAL_ABS | PATHSEG_LINETO_VERTICAL_REL => {
-                    debug_assert!(i < path.len());
-                    result.push(VLine {
-                        y: path[i],
-                        by_to: ByTo::new(seg_type == PATHSEG_LINETO_VERTICAL_ABS),
-                    });
-                    i = i + 1;
-                },
-                PATHSEG_CURVETO_CUBIC_SMOOTH_ABS | PATHSEG_CURVETO_CUBIC_SMOOTH_REL => {
-                    debug_assert!(i + 3 < path.len());
-                    result.push(SmoothCubic {
-                        control2: CoordPair::new(path[i], path[i + 1]),
-                        point: CoordPair::new(path[i + 2], path[i + 3]),
-                        by_to: ByTo::new(seg_type == PATHSEG_CURVETO_CUBIC_SMOOTH_ABS),
-                    });
-                    i = i + 4;
-                },
-                PATHSEG_CURVETO_QUADRATIC_SMOOTH_ABS | PATHSEG_CURVETO_QUADRATIC_SMOOTH_REL => {
-                    debug_assert!(i + 1 < path.len());
-                    result.push(SmoothQuad {
-                        point: CoordPair::new(path[i], path[i + 1]),
-                        by_to: ByTo::new(seg_type == PATHSEG_CURVETO_QUADRATIC_SMOOTH_ABS),
-                    });
-                    i = i + 2;
-                },
-                PATHSEG_UNKNOWN | _ => return Err(()),
-            }
-        }
-
-        Ok(SVGPathData(crate::ArcSlice::from_iter(result.into_iter())))
     }
 
     /// Parse this SVG path string with the argument that indicates whether we should allow the
@@ -179,32 +76,61 @@ impl SVGPathData {
     // e.g. "M100 200L100 200" is a valid SVG path string. If we use tokenizer, the first ident
     // is "M100", instead of "M", and this is not correct. Therefore, we use a Peekable
     // str::Char iterator to check each character.
+    //
+    // css-shapes-1 says a path data string that does conform but defines an empty path is
+    // invalid and causes the entire path() to be invalid, so we use allow_empty to decide
+    // whether we should allow it.
+    // https://drafts.csswg.org/css-shapes-1/#typedef-basic-shape
     pub fn parse<'i, 't>(
         input: &mut Parser<'i, 't>,
         allow_empty: AllowEmpty,
     ) -> Result<Self, ParseError<'i>> {
         let location = input.current_source_location();
         let path_string = input.expect_string()?.as_ref();
+        let (path, ok) = Self::parse_bytes(path_string.as_bytes());
+        if !ok || (allow_empty == AllowEmpty::No && path.0.is_empty()) {
+            return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError))
+        }
+        return Ok(path);
+    }
 
+    /// As above, but just parsing the raw byte stream.
+    ///
+    /// Returns the (potentially empty or partial) path, and whether the parsing was ok or we found
+    /// an error. The API is a bit weird because some SVG callers require "parse until first error"
+    /// behavior.
+    pub fn parse_bytes(input: &[u8]) -> (Self, bool) {
         // Parse the svg path string as multiple sub-paths.
-        let mut path_parser = PathParser::new(path_string);
+        let mut ok = true;
+        let mut path_parser = PathParser::new(input);
+
         while skip_wsp(&mut path_parser.chars) {
             if path_parser.parse_subpath().is_err() {
-                return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
+                ok = false;
+                break;
             }
         }
 
-        // The css-shapes-1 says a path data string that does conform but defines an empty path is
-        // invalid and causes the entire path() to be invalid, so we use the argement to decide
-        // whether we should allow the empty string.
-        // https://drafts.csswg.org/css-shapes-1/#typedef-basic-shape
-        if matches!(allow_empty, AllowEmpty::No) && path_parser.path.is_empty() {
-            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
-        }
+        let path = Self(crate::ArcSlice::from_iter(path_parser.path.into_iter()));
+        (path, ok)
+    }
 
-        Ok(SVGPathData(crate::ArcSlice::from_iter(
-            path_parser.path.into_iter(),
-        )))
+    /// Serializes to the path string, potentially including quotes.
+    pub fn to_css<W>(&self, dest: &mut CssWriter<W>, quote: bool) -> fmt::Result
+    where
+        W: fmt::Write,
+    {
+        if quote {
+            dest.write_char('"')?;
+        }
+        let mut writer = SequenceWriter::new(dest, " ");
+        for command in self.commands() {
+            writer.write_item(|inner| command.to_css_for_svg(inner))?;
+        }
+        if quote {
+            dest.write_char('"')?;
+        }
+        Ok(())
     }
 }
 
@@ -214,14 +140,7 @@ impl ToCss for SVGPathData {
     where
         W: fmt::Write,
     {
-        dest.write_char('"')?;
-        {
-            let mut writer = SequenceWriter::new(dest, " ");
-            for command in self.commands() {
-                writer.write_item(|inner| command.to_css_for_svg(inner))?;
-            }
-        }
-        dest.write_char('"')
+        self.to_css(dest, /* quote = */ true)
     }
 }
 
@@ -246,8 +165,8 @@ impl Animate for SVGPathData {
         // FIXME(emilio): This allocates three copies of the path, that's not
         // great! Specially, once we're normalized once, we don't need to
         // re-normalize again.
-        let left = self.normalize();
-        let right = other.normalize();
+        let left = self.normalize(false);
+        let right = other.normalize(false);
 
         let items: Vec<_> = lists::by_computed_value::animate(&left.0, &right.0, procedure)?;
         Ok(SVGPathData(crate::ArcSlice::from_iter(items.into_iter())))
@@ -259,8 +178,8 @@ impl ComputeSquaredDistance for SVGPathData {
         if self.0.len() != other.0.len() {
             return Err(());
         }
-        let left = self.normalize();
-        let right = other.normalize();
+        let left = self.normalize(false);
+        let right = other.normalize(false);
         lists::by_computed_value::squared_distance(&left.0, &right.0)
     }
 }
@@ -278,6 +197,8 @@ pub type PathCommand = GenericShapeCommand<CSSFloat, CSSFloat>;
 struct PathTraversalState {
     subpath_start: CoordPair,
     pos: CoordPair,
+    last_command: PathCommand,
+    last_control: CoordPair,
 }
 
 impl PathCommand {
@@ -285,11 +206,16 @@ impl PathCommand {
     /// for relative commands an equivalent absolute command will be returned.
     ///
     /// See discussion: https://github.com/w3c/svgwg/issues/321
-    fn normalize(&self, state: &mut PathTraversalState) -> Self {
+    /// If reduce is true then the path will be restricted to
+    /// "M", "L", "C", "A" and "Z" commands.
+    fn normalize(&self, state: &mut PathTraversalState, reduce: bool) -> Self {
         use crate::values::generics::basic_shape::GenericShapeCommand::*;
         match *self {
             Close => {
                 state.pos = state.subpath_start;
+                if reduce {
+                    state.last_command = *self;
+                }
                 Close
             },
             Move { by_to, mut point } => {
@@ -298,6 +224,9 @@ impl PathCommand {
                 }
                 state.pos = point;
                 state.subpath_start = point;
+                if reduce {
+                    state.last_command = *self;
+                }
                 Move {
                     by_to: ByTo::To,
                     point,
@@ -308,6 +237,9 @@ impl PathCommand {
                     point += state.pos;
                 }
                 state.pos = point;
+                if reduce {
+                    state.last_command = *self;
+                }
                 Line {
                     by_to: ByTo::To,
                     point,
@@ -318,14 +250,24 @@ impl PathCommand {
                     x += state.pos.x;
                 }
                 state.pos.x = x;
-                HLine { by_to: ByTo::To, x }
+                if reduce {
+                    state.last_command = *self;
+                    PathCommand::Line { by_to: ByTo::To, point: state.pos }
+                } else {
+                    HLine { by_to: ByTo::To, x }
+                }
             },
             VLine { by_to, mut y } => {
                 if !by_to.is_abs() {
                     y += state.pos.y;
                 }
                 state.pos.y = y;
-                VLine { by_to: ByTo::To, y }
+                if reduce {
+                    state.last_command = *self;
+                    PathCommand::Line { by_to: ByTo::To, point: state.pos }
+                } else {
+                    VLine { by_to: ByTo::To, y }
+                }
             },
             CubicCurve {
                 by_to,
@@ -339,6 +281,10 @@ impl PathCommand {
                     control2 += state.pos;
                 }
                 state.pos = point;
+                if reduce {
+                    state.last_command = *self;
+                    state.last_control = control2;
+                }
                 CubicCurve {
                     by_to: ByTo::To,
                     point,
@@ -355,11 +301,25 @@ impl PathCommand {
                     point += state.pos;
                     control1 += state.pos;
                 }
-                state.pos = point;
-                QuadCurve {
-                    by_to: ByTo::To,
-                    point,
-                    control1,
+                if reduce {
+                    let c1 = state.pos + 2. * (control1 - state.pos) / 3.;
+                    let control2 = point + 2. * (control1 - point) / 3.;
+                    state.pos = point;
+                    state.last_command = *self;
+                    state.last_control = control1;
+                    CubicCurve {
+                        by_to: ByTo::To,
+                        point,
+                        control1: c1,
+                        control2,
+                    }
+                } else {
+                    state.pos = point;
+                    QuadCurve {
+                        by_to: ByTo::To,
+                        point,
+                        control1,
+                    }
                 }
             },
             SmoothCubic {
@@ -371,21 +331,57 @@ impl PathCommand {
                     point += state.pos;
                     control2 += state.pos;
                 }
-                state.pos = point;
-                SmoothCubic {
-                    by_to: ByTo::To,
-                    point,
-                    control2,
+                if reduce {
+                    let control1 = match state.last_command {
+                         PathCommand::CubicCurve { by_to: _, point: _, control1: _, control2: _ } | PathCommand::SmoothCubic { by_to: _, point: _, control2: _ } =>
+                           state.pos + state.pos - state.last_control,
+                         _ => state.pos
+                    };
+                    state.pos = point;
+                    state.last_control = control2;
+                    state.last_command = *self;
+                    CubicCurve {
+                        by_to: ByTo::To,
+                        point,
+                        control1,
+                        control2,
+                    }
+                } else {
+                    state.pos = point;
+                    SmoothCubic {
+                        by_to: ByTo::To,
+                        point,
+                        control2,
+                    }
                 }
             },
             SmoothQuad { by_to, mut point } => {
                 if !by_to.is_abs() {
                     point += state.pos;
                 }
-                state.pos = point;
-                SmoothQuad {
-                    by_to: ByTo::To,
-                    point,
+                if reduce {
+                    let control = match state.last_command {
+                         PathCommand::QuadCurve { by_to: _, point: _, control1: _ } | PathCommand::SmoothQuad { by_to: _, point: _ } =>
+                           state.pos + state.pos - state.last_control,
+                         _ => state.pos
+                    };
+                    let control1 = state.pos + 2. * (control - state.pos) / 3.;
+                    let control2 = point + 2. * (control - point) / 3.;
+                    state.pos = point;
+                    state.last_command = *self;
+                    state.last_control = control;
+                    CubicCurve {
+                        by_to: ByTo::To,
+                        point,
+                        control1,
+                        control2,
+                    }
+                } else {
+                    state.pos = point;
+                    SmoothQuad {
+                        by_to: ByTo::To,
+                        point,
+                    }
                 }
             },
             Arc {
@@ -400,13 +396,34 @@ impl PathCommand {
                     point += state.pos;
                 }
                 state.pos = point;
-                Arc {
-                    by_to: ByTo::To,
-                    point,
-                    radii,
-                    arc_sweep,
-                    arc_size,
-                    rotate,
+                if reduce {
+                    state.last_command = *self;
+                    if radii.x == 0. && radii.y == 0. {
+                        CubicCurve {
+                            by_to: ByTo::To,
+                            point: state.pos,
+                            control1: point,
+                            control2: point,
+                        }
+                    } else {
+                        Arc {
+                            by_to: ByTo::To,
+                            point,
+                            radii,
+                            arc_sweep,
+                            arc_size,
+                            rotate,
+                        }
+                    }
+                } else {
+                    Arc {
+                        by_to: ByTo::To,
+                        point,
+                        radii,
+                        arc_sweep,
+                        arc_size,
+                        rotate,
+                    }
                 }
             },
         }
@@ -508,6 +525,58 @@ impl PathCommand {
 /// The path coord type.
 pub type CoordPair = CoordinatePair<CSSFloat>;
 
+impl ops::Add<CoordPair> for CoordPair {
+    type Output = CoordPair;
+
+    fn add(self, rhs: CoordPair) -> CoordPair {
+      Self {
+        x: self.x + rhs.x,
+        y: self.y + rhs.y,
+      }
+    }
+}
+
+impl ops::Sub<CoordPair> for CoordPair {
+    type Output = CoordPair;
+
+    fn sub(self, rhs: CoordPair) -> CoordPair {
+      Self {
+        x: self.x - rhs.x,
+        y: self.y - rhs.y,
+      }
+    }
+}
+
+impl ops::Mul<CSSFloat> for CoordPair {
+    type Output = CoordPair;
+
+    fn mul(self, f: CSSFloat) -> CoordPair {
+        Self {
+            x: self.x * f,
+            y: self.y * f,
+        }
+    }
+}
+
+impl ops::Mul<CoordPair> for CSSFloat {
+    type Output = CoordPair;
+
+    fn mul(self, rhs: CoordPair) -> CoordPair {
+      rhs * self
+    }
+}
+
+impl ops::Div<CSSFloat> for CoordPair {
+    type Output = CoordPair;
+
+    fn div(self, f: CSSFloat) -> CoordPair {
+        Self {
+            x: self.x / f,
+            y: self.y / f,
+        }
+    }
+}
+
 /// SVG Path parser.
 struct PathParser<'a> {
     chars: Peekable<Cloned<slice::Iter<'a, u8>>>,
@@ -547,9 +616,9 @@ macro_rules! parse_arguments {
 impl<'a> PathParser<'a> {
     /// Return a PathParser.
     #[inline]
-    fn new(string: &'a str) -> Self {
+    fn new(bytes: &'a [u8]) -> Self {
         PathParser {
-            chars: string.as_bytes().iter().cloned().peekable(),
+            chars: bytes.iter().cloned().peekable(),
             path: Vec::new(),
         }
     }

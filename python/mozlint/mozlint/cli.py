@@ -2,8 +2,10 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import atexit
 import os
 import sys
+import tempfile
 from argparse import REMAINDER, SUPPRESS, ArgumentParser
 from pathlib import Path
 
@@ -129,6 +131,27 @@ class MozlintParser(ArgumentParser):
             },
         ],
         [
+            ["--stdin-filename"],
+            {
+                "default": None,
+                "type": str,
+                "help": "Lint a file passed in via stdin. The value is the "
+                "relative path of the file from the repo root. This is useful "
+                "for some editor or vcs integrations.",
+            },
+        ],
+        [
+            ["--dump-stdin-file"],
+            {
+                "default": None,
+                "nargs": "?",
+                "const": True,
+                "help": "If a file was passed in via --stdin-filename, this flag will "
+                "cause the resulting file (after applying any fixes) to be dumped to "
+                "the specified file path. If no value is provided, stdout will be used.",
+            },
+        ],
+        [
             ["--fix"],
             {
                 "action": "store_true",
@@ -219,12 +242,25 @@ class MozlintParser(ArgumentParser):
         if args.edit and not os.environ.get("EDITOR"):
             self.error("must set the $EDITOR environment variable to use --edit")
 
+        if args.stdin_filename and (
+            args.paths or args.workdir or args.outgoing or args.rev
+        ):
+            self.error("can't read from both stdin and file system at the same time")
+
+        invalid = None
         if args.paths:
             invalid = [p for p in args.paths if not os.path.exists(p)]
-            if invalid:
-                self.error(
-                    "the following paths do not exist:\n{}".format("\n".join(invalid))
-                )
+
+        if args.stdin_filename and not os.path.exists(args.stdin_filename):
+            invalid = [args.stdin_filename]
+
+        if invalid:
+            s_do = " does" if len(invalid) == 1 else "s do"
+            invalid = "\n".join(invalid)
+            self.error(f"the following path{s_do} not exist:\n{invalid}")
+
+        if args.dump_stdin_file and not args.stdin_filename:
+            self.error("must specify --stdin-filename alongside --dump-stdin-file")
 
         if args.formats:
             formats = []
@@ -243,21 +279,24 @@ class MozlintParser(ArgumentParser):
                     fmt_dir = os.path.dirname(path)
                     if not os.access(fmt_dir, os.W_OK | os.X_OK):
                         self.error(
-                            "the following directory is not writable: {}".format(
-                                fmt_dir
-                            )
+                            f"the following directory is not writable: {fmt_dir}"
                         )
 
                 if fmt not in all_formatters.keys():
-                    self.error(
-                        "the following formatter is not available: {}".format(fmt)
-                    )
+                    self.error(f"the following formatter is not available: {fmt}")
 
                 formats.append((fmt, path))
             args.formats = formats
         else:
             # Can't use argparse default or this choice will be always present
             args.formats = [("stylish", None)]
+
+
+def _remove_file(path):
+    try:
+        os.remove(path)
+    except Exception:
+        pass
 
 
 def find_linters(config_paths, linters=None):
@@ -327,7 +366,8 @@ def run(
     num_procs=None,
     virtualenv_manager=None,
     setupargs=None,
-    **lintargs
+    dump_stdin_file=None,
+    **lintargs,
 ):
     from mozlint import LintRoller, formatters
     from mozlint.editor import edit_issues
@@ -356,6 +396,39 @@ def run(
 
     result = None
 
+    stdin_tempfile = None
+    if fpath := (lintargs.get("stdin_filename")):
+        if lintargs.get("fix") and not dump_stdin_file:
+            # If `--fix` is specified alongside `--stdin-filename`, that
+            # implies we want to dump the result.
+            dump_stdin_file = True
+
+        # We set dir to the same directory as the file it is shadowing because
+        # some linters (e.g eslint) walk backwards from the file being linted
+        # in order to discover configuration.
+        stdin_tempfile = tempfile.NamedTemporaryFile(
+            mode="wb",
+            delete=False,
+            dir=os.path.dirname(fpath),
+            suffix=os.path.splitext(fpath)[1],
+        )
+
+        # Read directly from stdins byte buffer so that we treat the bytes
+        # as-is. Otherwise Python will convert LF to CRLF on Windows.
+        stdin_tempfile.write(b"".join(sys.stdin.buffer))
+        stdin_tempfile.close()
+        paths = [stdin_tempfile.name]
+        atexit.register(_remove_file, stdin_tempfile.name)
+
+    old_stdout = None
+    if dump_stdin_file:
+        # External integrations expect the contents of this filename to be
+        # dumped to stdout. If any log output accidentally ends up going to
+        # stdout, then that could actually end up being written to the file.
+        # Temporarily redirect stdout to stderr to guard against this.
+        old_stdout = sys.stdout
+        sys.stdout = sys.stderr
+
     try:
         lint.read(linters_info["lint_paths"])
 
@@ -369,6 +442,7 @@ def run(
             not paths
             and Path.cwd() == Path(lint.root)
             and not (outgoing or workdir or rev)
+            and not setup
         ):
             print(
                 "warning: linting the entire repo takes a long time, using --outgoing and "
@@ -393,6 +467,25 @@ def run(
     except NoValidLinter as e:
         result = lint.result
         print(str(e))
+
+    # If --dump-stdin-file is passed, simply output the file and return 0
+    # regardless of whether there were any problems or not. This is what some
+    # external integrations will expect.
+    if dump_stdin_file:
+        assert stdin_tempfile
+
+        if dump_stdin_file is True:
+            sys.stdout = old_stdout
+            dump_stdin_file = sys.stdout.buffer
+        else:
+            dump_stdin_file = open(dump_stdin_file, "wb")
+
+        try:
+            with open(stdin_tempfile.name, "rb") as fp:
+                dump_stdin_file.write(fp.read())
+        finally:
+            _remove_file(stdin_tempfile.name)
+        return 0
 
     if edit and result.issues:
         edit_issues(result)
@@ -419,7 +512,7 @@ def run(
         if out:
             fh = open(path, "w") if path else sys.stdout
 
-            if not path and fh.encoding == "ascii":
+            if not path and fh.encoding in ("ascii", "iso8859-1"):
                 # If sys.stdout.encoding is ascii, printing output will fail
                 # due to the stylish formatter's use of unicode characters.
                 # Ideally the user should fix their environment by setting

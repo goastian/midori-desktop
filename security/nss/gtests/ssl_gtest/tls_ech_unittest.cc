@@ -632,6 +632,27 @@ TEST_F(TlsConnectStreamTls13Ech, EchFixedConfig) {
   Connect();
 }
 
+TEST_F(TlsConnectTest, RenegotiateClientECHGrease) {
+  EnsureTlsSetup();
+
+  // Client speaks 1.2 or 1.3, with ECH GREASE enabled.
+  client_->SetVersionRange(SSL_LIBRARY_VERSION_TLS_1_2,
+                           SSL_LIBRARY_VERSION_TLS_1_3);
+  EXPECT_EQ(SECSuccess, SSL_EnableTls13GreaseEch(client_->ssl_fd(), PR_TRUE));
+
+  // Server speaks 1.2
+  server_->SetVersionRange(SSL_LIBRARY_VERSION_TLS_1_2,
+                           SSL_LIBRARY_VERSION_TLS_1_2);
+
+  Connect();
+
+  // Renegotiation
+  client_->PrepareForRenegotiate();
+  server_->StartRenegotiate();
+  Handshake();
+  CheckConnected();
+}
+
 // The next set of tests all use a fixed server key and a pre-built ClientHello.
 // This ClientHelo can be constructed using the above EchFixedConfig test,
 // modifying tls13_ConstructInnerExtensionsFromOuter as indicated.  For this
@@ -2477,6 +2498,26 @@ TEST_F(TlsConnectStreamTls13Ech, EchCustomExtensionWriter) {
   client_->ExpectEch();
   server_->ExpectEch();
   Connect();
+}
+
+TEST_F(TlsConnectStreamTls13, EchCustomExtensionWriterZeroRtt) {
+  EnsureTlsSetup();
+  SetupEch(client_, server_);
+  SetupForZeroRtt();
+
+  client_->Set0RttEnabled(true);
+  server_->Set0RttEnabled(true);
+  ASSERT_EQ(SECSuccess, SSL_InstallExtensionHooks(
+                            client_->ssl_fd(), 62028, EmptyExtensionWriter,
+                            nullptr, NoopExtensionHandler, nullptr));
+  SetupEch(client_, server_);
+  ExpectResumption(RESUME_TICKET);
+
+  ZeroRttSendReceive(true, true);
+  Handshake();
+  ExpectEarlyDataAccepted(true);
+  CheckConnected();
+  SendReceive();
 }
 
 TEST_F(TlsConnectStreamTls13Ech, EchCustomExtensionWriterOuterOnly) {

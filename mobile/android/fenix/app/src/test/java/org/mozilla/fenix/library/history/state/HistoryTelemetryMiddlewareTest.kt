@@ -4,7 +4,6 @@
 
 package org.mozilla.fenix.library.history.state
 
-import mozilla.components.service.glean.testing.GleanTestRule
 import mozilla.components.support.test.ext.joinBlocking
 import mozilla.components.support.test.robolectric.testContext
 import org.junit.Assert.assertNotNull
@@ -12,7 +11,7 @@ import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mozilla.fenix.GleanMetrics.Events
+import org.mozilla.fenix.helpers.FenixGleanTestRule
 import org.mozilla.fenix.library.history.History
 import org.mozilla.fenix.library.history.HistoryFragmentAction
 import org.mozilla.fenix.library.history.HistoryFragmentState
@@ -25,7 +24,7 @@ import org.mozilla.fenix.GleanMetrics.History as GleanHistory
 @RunWith(RobolectricTestRunner::class)
 class HistoryTelemetryMiddlewareTest {
     @get:Rule
-    val gleanTestRule = GleanTestRule(testContext)
+    val gleanTestRule = FenixGleanTestRule(testContext)
 
     private val middleware = HistoryTelemetryMiddleware(isInPrivateMode = false)
 
@@ -108,17 +107,5 @@ class HistoryTelemetryMiddlewareTest {
         store.dispatch(HistoryFragmentAction.DeleteTimeRange(null)).joinBlocking()
 
         assertNotNull(GleanHistory.removedAll.testGetValue())
-    }
-
-    @Test
-    fun `GIVEN recently closed is requested to be entered THEN telemetry recorded`() {
-        val store = HistoryFragmentStore(
-            initialState = HistoryFragmentState.initial,
-            middleware = listOf(middleware),
-        )
-
-        store.dispatch(HistoryFragmentAction.EnterRecentlyClosed).joinBlocking()
-
-        assertNotNull(Events.recentlyClosedTabsOpened.testGetValue())
     }
 }

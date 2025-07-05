@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 
 import datetime
 import enum
@@ -192,6 +190,7 @@ class AndroidWrench(TestingMixin, BaseScript, MozbaseMixin, AndroidMixin):
             app_name="org.mozilla.wrench",
             activity_name="android.app.NativeActivity",
             intent=None,
+            grant_runtime_permissions=False,
         )
         self.info("App launched")
         done = self.wait_until_process_done("org.mozilla.wrench", timeout=timeout)
@@ -208,7 +207,7 @@ class AndroidWrench(TestingMixin, BaseScript, MozbaseMixin, AndroidMixin):
         """
         logfile = tempfile.NamedTemporaryFile()
         self.device.pull(self.wrench_dir + "/stdout", logfile.name)
-        with open(logfile.name, "r", encoding="utf-8") as f:
+        with open(logfile.name, encoding="utf-8") as f:
             self.info("=== scraped log output ===")
             for line in f:
                 if "UNEXPECTED-FAIL" in line or "panicked" in line:
@@ -236,7 +235,9 @@ class AndroidWrench(TestingMixin, BaseScript, MozbaseMixin, AndroidMixin):
 
         self.verify_device()
         self.info("Logging device properties...")
-        self.info(self.shell_output("getprop"))
+        self.info(self.shell_output("getprop", attempts=3))
+        self.info("Uninstalling APK...")
+        self.device.uninstall_app("org.mozilla.wrench")
         self.info("Installing APK...")
         self.install_android_app(self.query_abs_dirs()["abs_apk_path"], replace=True)
 

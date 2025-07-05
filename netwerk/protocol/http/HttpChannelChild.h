@@ -10,7 +10,6 @@
 
 #include "mozilla/Mutex.h"
 #include "mozilla/StaticPrefsBase.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/extensions/StreamFilterParent.h"
 #include "mozilla/net/HttpBaseChannel.h"
@@ -33,20 +32,14 @@
 #include "nsIThreadRetargetableRequest.h"
 #include "mozilla/net/DNS.h"
 
-using mozilla::Telemetry::LABELS_HTTP_CHILD_OMT_STATS_2;
-
 class nsIEventTarget;
 class nsIInterceptedBodyCallback;
 class nsISerialEventTarget;
 class nsITransportSecurityInfo;
 class nsInputStreamPump;
 
-#define HTTP_CHANNEL_CHILD_IID                       \
-  {                                                  \
-    0x321bd99e, 0x2242, 0x4dc6, {                    \
-      0xbb, 0xec, 0xd5, 0x06, 0x29, 0x7c, 0x39, 0x83 \
-    }                                                \
-  }
+#define HTTP_CHANNEL_CHILD_IID \
+  {0x321bd99e, 0x2242, 0x4dc6, {0xbb, 0xec, 0xd5, 0x06, 0x29, 0x7c, 0x39, 0x83}}
 
 namespace mozilla::net {
 
@@ -74,7 +67,7 @@ class HttpChannelChild final : public PHttpChannelChild,
   NS_DECL_NSIHTTPCHANNELCHILD
   NS_DECL_NSIMULTIPARTCHANNEL
   NS_DECL_NSITHREADRETARGETABLEREQUEST
-  NS_DECLARE_STATIC_IID_ACCESSOR(HTTP_CHANNEL_CHILD_IID)
+  NS_INLINE_DECL_STATIC_IID(HTTP_CHANNEL_CHILD_IID)
 
   HttpChannelChild();
 
@@ -97,6 +90,7 @@ class HttpChannelChild final : public PHttpChannelChild,
                               const nsACString& aValue, bool aMerge) override;
   NS_IMETHOD SetEmptyRequestHeader(const nsACString& aHeader) override;
   NS_IMETHOD RedirectTo(nsIURI* newURI) override;
+  NS_IMETHOD TransparentRedirectTo(nsIURI* newURI) override;
   NS_IMETHOD UpgradeToSecure() override;
   NS_IMETHOD GetProtocolVersion(nsACString& aProtocolVersion) override;
   void DoDiagnosticAssertWhenOnStopNotCalledOnDestroy() override;
@@ -105,6 +99,16 @@ class HttpChannelChild final : public PHttpChannelChild,
   NS_IMETHOD SetEarlyHintObserver(nsIEarlyHintObserver* aObserver) override;
   NS_IMETHOD SetWebTransportSessionEventListener(
       WebTransportSessionEventListener* aListener) override;
+
+  NS_IMETHOD SetResponseOverride(
+      nsIReplacedHttpResponse* aReplacedHttpResponse) override {
+    return NS_OK;
+  }
+
+  NS_IMETHOD SetResponseStatus(uint32_t aStatus,
+                               const nsACString& aStatusText) override {
+    return NS_OK;
+  }
   // nsISupportsPriority
   NS_IMETHOD SetPriority(int32_t value) override;
   // nsIClassOfService
@@ -138,9 +142,8 @@ class HttpChannelChild final : public PHttpChannelChild,
       const uint32_t& registrarId, nsIURI* newOriginalURI,
       const uint32_t& newLoadFlags, const uint32_t& redirectFlags,
       const ParentLoadInfoForwarderArgs& loadInfoForwarder,
-      const nsHttpResponseHead& responseHead,
-      nsITransportSecurityInfo* securityInfo, const uint64_t& channelId,
-      const NetAddr& oldPeerAddr,
+      nsHttpResponseHead&& responseHead, nsITransportSecurityInfo* securityInfo,
+      const uint64_t& channelId, const NetAddr& oldPeerAddr,
       const ResourceTimingStructArgs& aTiming) override;
   mozilla::ipc::IPCResult RecvRedirect3Complete() override;
   mozilla::ipc::IPCResult RecvRedirectFailed(const nsresult& status) override;
@@ -309,17 +312,13 @@ class HttpChannelChild final : public PHttpChannelChild,
 
   // Target thread for delivering ODA.
   nsCOMPtr<nsISerialEventTarget> mODATarget MOZ_GUARDED_BY(mEventTargetMutex);
+  Atomic<bool, mozilla::Relaxed> mGotDataAvailable{false};
   // Used to ensure atomicity of mNeckoTarget / mODATarget;
   Mutex mEventTargetMutex{"HttpChannelChild::EventTargetMutex"};
 
   TimeStamp mLastStatusReported;
 
   uint64_t mCacheEntryId{0};
-
-  // The result of RetargetDeliveryTo for this channel.
-  // |notRequested| represents OMT is not requested by the channel owner.
-  Atomic<LABELS_HTTP_CHILD_OMT_STATS_2, mozilla::Relaxed> mOMTResult{
-      LABELS_HTTP_CHILD_OMT_STATS_2::notRequested};
 
   uint32_t mCacheKey{0};
   int32_t mCacheFetchCount{0};
@@ -459,13 +458,8 @@ class HttpChannelChild final : public PHttpChannelChild,
                                        const uint32_t& redirectFlags,
                                        nsIChannel** outChannel);
 
-  // Collect telemetry for the successful rate of OMT.
-  void CollectOMTTelemetry();
-
   // Collect telemetry for mixed content.
   void CollectMixedContentTelemetry();
-
-  void RecordChannelCompletionDurationForEarlyHint();
 
   friend class HttpAsyncAborter<HttpChannelChild>;
   friend class InterceptStreamListener;
@@ -473,8 +467,6 @@ class HttpChannelChild final : public PHttpChannelChild,
   friend class HttpBackgroundChannelChild;
   friend class NeckoTargetChannelFunctionEvent;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(HttpChannelChild, HTTP_CHANNEL_CHILD_IID)
 
 //-----------------------------------------------------------------------------
 // inline functions

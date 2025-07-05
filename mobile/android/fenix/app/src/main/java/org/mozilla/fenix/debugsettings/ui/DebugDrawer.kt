@@ -6,10 +6,11 @@ package org.mozilla.fenix.debugsettings.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
+import androidx.compose.material.Scaffold
 import androidx.compose.material.Text
 import androidx.compose.material.TopAppBar
 import androidx.compose.runtime.Composable
@@ -20,13 +21,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
 import org.mozilla.fenix.debugsettings.navigation.DebugDrawerDestination
 import org.mozilla.fenix.theme.FirefoxTheme
 
@@ -47,28 +48,34 @@ fun DebugDrawer(
     var backButtonVisible by remember { mutableStateOf(false) }
     var toolbarTitle by remember { mutableStateOf("") }
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        TopAppBar(
-            title = {
-                Text(
-                    text = toolbarTitle,
-                    color = FirefoxTheme.colors.textPrimary,
-                    style = FirefoxTheme.typography.headline6,
-                )
-            },
-            navigationIcon = if (backButtonVisible) {
-                topBarBackButton(onClick = onBackButtonClick)
-            } else {
-                null
-            },
-            backgroundColor = FirefoxTheme.colors.layer1,
-            elevation = 5.dp,
-        )
-
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = toolbarTitle,
+                        color = FirefoxTheme.colors.textPrimary,
+                        style = FirefoxTheme.typography.headline6,
+                    )
+                },
+                navigationIcon = if (backButtonVisible) {
+                    topBarBackButton(onClick = onBackButtonClick)
+                } else {
+                    null
+                },
+                backgroundColor = FirefoxTheme.colors.layer1,
+                elevation = 5.dp,
+            )
+        },
+        backgroundColor = FirefoxTheme.colors.layer1,
+    ) { paddingValues ->
         NavHost(
             navController = navController,
             startDestination = DEBUG_DRAWER_HOME_ROUTE,
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues),
         ) {
             composable(route = DEBUG_DRAWER_HOME_ROUTE) {
                 toolbarTitle = stringResource(id = R.string.debug_drawer_title)
@@ -102,7 +109,7 @@ private fun topBarBackButton(onClick: () -> Unit): @Composable () -> Unit = {
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun DebugDrawerPreview() {
     val navController = rememberNavController()
     val destinations = remember {

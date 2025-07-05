@@ -59,6 +59,9 @@ class UrlClassifierCommon final {
                               uint32_t aClassificationFlags,
                               uint32_t aLoadingState);
 
+  static void AnnotateChannelWithoutNotifying(nsIChannel* aChannel,
+                                              uint32_t aClassificationFlags);
+
   static bool IsAllowListed(nsIChannel* aChannel);
 
   static bool IsTrackingClassificationFlag(uint32_t aFlag, bool aIsPrivate);
@@ -88,13 +91,13 @@ class UrlClassifierCommon final {
   static void SetClassificationFlagsHelper(nsIChannel* aChannel,
                                            uint32_t aClassificationFlags,
                                            bool aIsThirdParty);
+  static nsresult GetTopWindowURI(nsIChannel* aChannel, nsIURI** aURI);
+
+  static bool ShouldProcessWithProtectionFeature(nsIChannel* aChannel);
 
  private:
   static uint32_t TableToClassificationFlag(
       const nsACString& aTable, const std::vector<ClassificationData>& aData);
-
-  friend class AsyncUrlChannelClassifier;
-  static nsresult GetTopWindowURI(nsIChannel* aChannel, nsIURI** aURI);
 };
 
 }  // namespace net

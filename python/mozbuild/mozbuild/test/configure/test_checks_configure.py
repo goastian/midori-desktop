@@ -6,11 +6,11 @@ import os
 import sys
 import textwrap
 import unittest
+from io import StringIO
 
 from buildconfig import topsrcdir
 from mozpack import path as mozpath
 from mozunit import MockedOpen, main
-from six import StringIO
 
 from common import ConfigureTestSandbox, ensure_exe_extension, fake_short_path
 from mozbuild.configure import ConfigureError, ConfigureSandbox
@@ -298,7 +298,7 @@ class TestChecksConfigure(unittest.TestCase):
         config, out, status = self.get_result(
             textwrap.dedent(
                 """
-            option("--with-ccache", nargs=1, help="ccache")
+            option("--with-ccache", nargs=1, help="Ccache")
             check_prog("CCACHE", ("known-a",), input="--with-ccache")
         """
             ),
@@ -310,7 +310,7 @@ class TestChecksConfigure(unittest.TestCase):
 
         script = textwrap.dedent(
             """
-            option(env="CC", nargs=1, help="compiler")
+            option(env="CC", nargs=1, help="Compiler")
             @depends("CC")
             def compiler(value):
                 return value[0].split()[0] if value else None
@@ -345,7 +345,7 @@ class TestChecksConfigure(unittest.TestCase):
 
         script = textwrap.dedent(
             """
-            option(env="TARGET", nargs=1, default="linux", help="target")
+            option(env="TARGET", nargs=1, default="linux", help="Target")
             @depends("TARGET")
             def compiler(value):
                 if value:
@@ -554,6 +554,7 @@ class TestChecksConfigure(unittest.TestCase):
                     def host(_):
                         return namespace(os='unknown', kernel='unknown')
                     toolchains_base_dir = depends(when=True)(lambda: '/mozbuild')
+                    want_bootstrap = dependable(lambda: lambda _: False)
                     include('%(topsrcdir)s/build/moz.configure/java.configure')
                 """
                 % {"topsrcdir": topsrcdir}
@@ -592,7 +593,7 @@ class TestChecksConfigure(unittest.TestCase):
         javac = mozpath.abspath("/usr/bin/javac")
         paths = {java: None, javac: None}
         expected_error_message = (
-            "ERROR: Could not locate Java at /mozbuild/jdk/jdk-17.0.11+9/bin, "
+            "ERROR: Could not locate Java at /mozbuild/jdk/jdk-17.0.15+6/bin, "
             "please run ./mach bootstrap --no-system-changes\n"
         )
 
@@ -718,14 +719,14 @@ class TestChecksConfigure(unittest.TestCase):
                 seen_flags.add(args[0])
                 args = args[1:]
             if args[0] == "--about":
-                return 0, "pkgconf {}".format(mock_pkg_config_version), ""
+                return 0, f"pkgconf {mock_pkg_config_version}", ""
             return mock_pkg_config(_, args)
 
         def get_result(cmd, args=[], bootstrapped_sysroot=False, extra_paths=None):
             return self.get_result(
                 textwrap.dedent(
                     """\
-                option('--disable-compile-environment', help='compile env')
+                option('--disable-compile-environment', help='Compile env')
                 compile_environment = depends(when='--enable-compile-environment')(lambda: True)
                 toolchain_prefix = depends(when=True)(lambda: None)
                 target_multiarch_dir = depends(when=True)(lambda: None)
@@ -742,9 +743,11 @@ class TestChecksConfigure(unittest.TestCase):
             """
                     % {
                         "topsrcdir": topsrcdir,
-                        "sysroot": "namespace(bootstrapped=True)"
-                        if bootstrapped_sysroot
-                        else "None",
+                        "sysroot": (
+                            "namespace(bootstrapped=True)"
+                            if bootstrapped_sysroot
+                            else "None"
+                        ),
                     }
                 )
                 + cmd,

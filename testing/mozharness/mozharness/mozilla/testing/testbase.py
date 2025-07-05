@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 
 import copy
 import json
@@ -35,6 +33,7 @@ from mozharness.mozilla.tooltool import TooltoolMixin
 INSTALLER_SUFFIXES = (
     ".apk",  # Android
     ".tar.bz2",
+    ".tar.xz",
     ".tar.gz",  # Linux
     ".dmg",  # Mac
     ".installer-stub.exe",
@@ -298,7 +297,7 @@ class TestingMixin(
             )
 
         for key, value in self.config.items():
-            if type(value) == str and value.startswith("http"):
+            if type(value) is str and value.startswith("http"):
                 self.config[key] = _replace_url(value, c["replace_urls"])
 
         # Any changes to c means that we need credentials
@@ -420,7 +419,7 @@ You can set this by specifying --test-url URL
         target_packages = []
         c = self.config
         for category in suite_categories:
-            specified_suites = c.get("specified_{}_suites".format(category))
+            specified_suites = c.get(f"specified_{category}_suites")
             if specified_suites:
                 found = False
                 for specified_suite in specified_suites:
@@ -456,9 +455,7 @@ You can set this by specifying --test-url URL
                 for req_file in required_files:
                     if req_file not in unpack_dirs:
                         self.info(
-                            "Adding '{}' for extraction from common.tests archive".format(
-                                req_file
-                            )
+                            f"Adding '{req_file}' for extraction from common.tests archive"
                         )
                         unpack_dirs.append(req_file)
 
@@ -496,7 +493,7 @@ You can set this by specifying --test-url URL
         suite_category,
         strict=False,
         fallback_parser_class=DesktopUnittestOutputParser,
-        **kwargs
+        **kwargs,
     ):
         """Derive and return an appropriate output parser, either the structured
         output parser or a fallback based on the type of logging in use as determined by

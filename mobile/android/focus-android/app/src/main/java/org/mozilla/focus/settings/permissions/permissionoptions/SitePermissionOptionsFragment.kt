@@ -8,7 +8,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
 import mozilla.components.lib.state.ext.observeAsComposableState
 import mozilla.components.support.utils.ext.getParcelableCompat
@@ -16,7 +16,6 @@ import org.mozilla.focus.ext.requireComponents
 import org.mozilla.focus.settings.BaseComposeFragment
 import org.mozilla.focus.settings.permissions.SitePermissionOption
 import org.mozilla.focus.state.AppAction
-import org.mozilla.focus.state.Screen
 
 class SitePermissionOptionsFragment : BaseComposeFragment() {
 
@@ -68,14 +67,6 @@ class SitePermissionOptionsFragment : BaseComposeFragment() {
     override val titleText: String
         get() = sitePermissionOptionsScreenStore.state.sitePermissionLabel
 
-    override fun onNavigateUp(): () -> Unit {
-        return {
-            requireComponents.appStore.dispatch(
-                AppAction.OpenSettings(Screen.Settings.Page.SitePermissions),
-            )
-        }
-    }
-
     @Composable
     override fun Content() {
         val sitePermissionOptionsList = sitePermissionOptionsScreenStore.observeAsComposableState { state ->
@@ -107,14 +98,14 @@ class SitePermissionOptionsFragment : BaseComposeFragment() {
         isAndroidPermissionGranted: Boolean,
     ) {
         val state = remember {
-            mutableStateOf(sitePermissionOptionSelected.prefKeyId)
+            mutableIntStateOf(sitePermissionOptionSelected.prefKeyId)
         }
         val optionsListItems = ArrayList<SitePermissionOptionListItem>()
         sitePermissionOptionsList.forEach { sitePermissionOption ->
             val sitePermissionOptionListItem = SitePermissionOptionListItem(
                 sitePermissionOption = sitePermissionOption,
                 onClick = {
-                    state.value = sitePermissionOption.prefKeyId
+                    state.intValue = sitePermissionOption.prefKeyId
                     defaultSitePermissionOptionsScreenInteractor.handleSitePermissionOptionSelected(
                         sitePermissionOption,
                     )

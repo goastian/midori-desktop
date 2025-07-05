@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "BaseProfilerSharedLibraries.h"
+#include "SharedLibraries.h"
 
 #define PATH_MAX_TOSTRING(x) #x
 #define PATH_MAX_STRING(x) PATH_MAX_TOSTRING(x)
@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <vector>
+#include <optional>
 
 #if defined(GP_OS_linux) || defined(GP_OS_android) || defined(GP_OS_freebsd)
 #  include <link.h>  // dl_phdr_info, ElfW()
@@ -163,7 +164,7 @@ class MemoryMappedFile {
   MemoryMappedFile(const MemoryMappedFile&) = delete;
   MemoryMappedFile& operator=(const MemoryMappedFile&) = delete;
 
-  ~MemoryMappedFile() {}
+  ~MemoryMappedFile() { Unmap(); }
 
   // Maps a file at |path| into memory, which can then be accessed via
   // content() as a MemoryRange object or via data(), and returns true on
@@ -553,8 +554,6 @@ class FileID {
   // a simple hash by XORing the first page worth of bytes into |identifier|.
   static bool HashElfTextSection(const void* elf_mapped_base,
                                  std::vector<uint8_t>& identifier) {
-    identifier.resize(kMDGUIDSize);
-
     void* text_section;
     size_t text_size;
     if (!FindElfSection(elf_mapped_base, ".text", SHT_PROGBITS,
@@ -565,6 +564,7 @@ class FileID {
 
     // Only provide |kMDGUIDSize| bytes to keep identifiers produced by this
     // function backwards-compatible.
+    identifier.resize(kMDGUIDSize);
     memset(&identifier[0], 0, kMDGUIDSize);
     const uint8_t* ptr = reinterpret_cast<const uint8_t*>(text_section);
     const uint8_t* ptr_end =
@@ -664,27 +664,36 @@ static std::string IDtoString(const std::vector<uint8_t>& aIdentifier) {
   return uuid;
 }
 
-// Get the breakpad Id for the binary file pointed by bin_name
-static std::string getBreakpadId(const char* bin_name) {
+// Get the ELF file identifier, which will be used for getting the breakpad Id
+// and code Id for the binary file pointed by bin_name.
+static std::optional<std::vector<uint8_t>> getElfFileIdentifier(
+    const char* bin_name) {
   std::vector<uint8_t> identifier;
   identifier.reserve(kDefaultBuildIdSize);
 
   FileID file_id(bin_name);
   if (file_id.ElfFileIdentifier(identifier)) {
-    return IDtoUUIDString(identifier);
+    return identifier;
   }
 
   return {};
 }
 
-// Get the code Id for the binary file pointed by bin_name
-static std::string getCodeId(const char* bin_name) {
-  std::vector<uint8_t> identifier;
-  identifier.reserve(kDefaultBuildIdSize);
+// Get the breakpad Id for the ELF file identifier.
+static std::string getBreakpadId(
+    const std::optional<std::vector<uint8_t>>& aIdentifier) {
+  if (aIdentifier) {
+    return IDtoUUIDString(aIdentifier.value());
+  }
 
-  FileID file_id(bin_name);
-  if (file_id.ElfFileIdentifier(identifier)) {
-    return IDtoString(identifier);
+  return {};
+}
+
+// Get the code Id for the ELF file identifier.
+static std::string getCodeId(
+    const std::optional<std::vector<uint8_t>>& aIdentifier) {
+  if (aIdentifier) {
+    return IDtoString(aIdentifier.value());
   }
 
   return {};
@@ -696,13 +705,15 @@ static SharedLibrary SharedLibraryAtPath(const char* path,
                                          unsigned long offset = 0) {
   std::string pathStr = path;
 
-  size_t pos = pathStr.rfind('\\');
+  size_t pos = pathStr.rfind('/');
   std::string nameStr =
       (pos != std::string::npos) ? pathStr.substr(pos + 1) : pathStr;
 
-  return SharedLibrary(libStart, libEnd, offset, getBreakpadId(path),
-                       getCodeId(path), nameStr, pathStr, nameStr, pathStr,
-                       std::string{}, "");
+  const auto identifier = getElfFileIdentifier(path);
+
+  return SharedLibrary(libStart, libEnd, offset, getBreakpadId(identifier),
+                       getCodeId(identifier), nameStr, pathStr, nameStr,
+                       pathStr, std::string{}, "");
 }
 
 static int dl_iterate_callback(struct dl_phdr_info* dl_info, size_t size,
@@ -729,7 +740,10 @@ static int dl_iterate_callback(struct dl_phdr_info* dl_info, size_t size,
     }
   }
 
-  libInfoList->push_back(LoadedLibraryInfo(dl_info->dlpi_name, baseAddress,
+  // Check in case it's a nullptr, as we will construct a std::string with it.
+  // It's UB to pass nullptr to the std::string constructor.
+  const char* libName = dl_info->dlpi_name ? dl_info->dlpi_name : "";
+  libInfoList->push_back(LoadedLibraryInfo(libName, baseAddress,
                                            firstMappingStart, lastMappingEnd));
 
   return 0;
@@ -851,5 +865,4 @@ SharedLibraryInfo SharedLibraryInfo::GetInfoForSelf() {
   return info;
 }
 
-void SharedLibraryInfo::Initialize() { /* do nothing */
-}
+void SharedLibraryInfo::Initialize() { /* do nothing */ }

@@ -6,7 +6,7 @@
 
 import type {ChildProcess} from 'child_process';
 
-import type * as Bidi from 'chromium-bidi/lib/cjs/protocol/protocol.js';
+import * as Bidi from 'chromium-bidi/lib/cjs/protocol/protocol.js';
 
 import type {BrowserEvents} from '../api/Browser.js';
 import {
@@ -19,6 +19,8 @@ import {
 import {BrowserContextEvent} from '../api/BrowserContext.js';
 import type {Page} from '../api/Page.js';
 import type {Target} from '../api/Target.js';
+import type {Connection as CdpConnection} from '../cdp/Connection.js';
+import type {SupportedWebDriverCapabilities} from '../common/ConnectOptions.js';
 import {EventEmitter} from '../common/EventEmitter.js';
 import {debugError} from '../common/util.js';
 import type {Viewport} from '../common/Viewport.js';
@@ -38,8 +40,10 @@ export interface BidiBrowserOptions {
   process?: ChildProcess;
   closeCallback?: BrowserCloseCallback;
   connection: BidiConnection;
+  cdpConnection?: CdpConnection;
   defaultViewport: Viewport | null;
-  ignoreHTTPSErrors?: boolean;
+  acceptInsecureCerts?: boolean;
+  capabilities?: SupportedWebDriverCapabilities;
 }
 
 /**
@@ -48,7 +52,6 @@ export interface BidiBrowserOptions {
 export class BidiBrowser extends Browser {
   readonly protocol = 'webDriverBiDi';
 
-  // TODO: Update generator to include fully module
   static readonly subscribeModules: [string, ...string[]] = [
     'browsingContext',
     'network',
@@ -70,16 +73,26 @@ export class BidiBrowser extends Browser {
 
   static async create(opts: BidiBrowserOptions): Promise<BidiBrowser> {
     const session = await Session.from(opts.connection, {
+      firstMatch: opts.capabilities?.firstMatch,
       alwaysMatch: {
-        acceptInsecureCerts: opts.ignoreHTTPSErrors,
+        ...opts.capabilities?.alwaysMatch,
+        // Capabilities that come from Puppeteer's API take precedence.
+        acceptInsecureCerts: opts.acceptInsecureCerts,
+        unhandledPromptBehavior: {
+          default: Bidi.Session.UserPromptHandlerType.Ignore,
+        },
         webSocketUrl: true,
+        // Puppeteer with WebDriver BiDi does not support prerendering
+        // yet because WebDriver BiDi behavior is not specified. See
+        // https://github.com/w3c/webdriver-bidi/issues/321.
+        'goog:prerenderingDisabled': true,
       },
     });
 
     await session.subscribe(
       session.capabilities.browserName.toLocaleLowerCase().includes('firefox')
         ? BidiBrowser.subscribeModules
-        : [...BidiBrowser.subscribeModules, ...BidiBrowser.subscribeCdpEvents]
+        : [...BidiBrowser.subscribeModules, ...BidiBrowser.subscribeCdpEvents],
     );
 
     const browser = new BidiBrowser(session.browser, opts);
@@ -96,6 +109,7 @@ export class BidiBrowser extends Browser {
   #defaultViewport: Viewport | null;
   #browserContexts = new WeakMap<UserContext, BidiBrowserContext>();
   #target = new BidiBrowserTarget(this);
+  #cdpConnection?: CdpConnection;
 
   private constructor(browserCore: BrowserCore, opts: BidiBrowserOptions) {
     super();
@@ -103,6 +117,7 @@ export class BidiBrowser extends Browser {
     this.#closeCallback = opts.closeCallback;
     this.#browserCore = browserCore;
     this.#defaultViewport = opts.defaultViewport;
+    this.#cdpConnection = opts.cdpConnection;
   }
 
   #initialize() {
@@ -129,7 +144,11 @@ export class BidiBrowser extends Browser {
   }
 
   get cdpSupported(): boolean {
-    return !this.#browserName.toLocaleLowerCase().includes('firefox');
+    return this.#cdpConnection !== undefined;
+  }
+
+  get cdpConnection(): CdpConnection | undefined {
+    return this.#cdpConnection;
   }
 
   override async userAgent(): Promise<string> {
@@ -146,19 +165,19 @@ export class BidiBrowser extends Browser {
       BrowserContextEvent.TargetCreated,
       target => {
         this.#trustedEmitter.emit(BrowserEvent.TargetCreated, target);
-      }
+      },
     );
     browserContext.trustedEmitter.on(
       BrowserContextEvent.TargetChanged,
       target => {
         this.#trustedEmitter.emit(BrowserEvent.TargetChanged, target);
-      }
+      },
     );
     browserContext.trustedEmitter.on(
       BrowserContextEvent.TargetDestroyed,
       target => {
         this.#trustedEmitter.emit(BrowserEvent.TargetDestroyed, target);
-      }
+      },
     );
 
     return browserContext;
@@ -198,7 +217,7 @@ export class BidiBrowser extends Browser {
   }
 
   override async createBrowserContext(
-    _options?: BrowserContextOptions
+    _options?: BrowserContextOptions,
   ): Promise<BidiBrowserContext> {
     const userContext = await this.#browserCore.createUserContext();
     return this.#createBrowserContext(userContext);

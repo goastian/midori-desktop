@@ -7,16 +7,26 @@ package org.mozilla.geckoview.test
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.LargeTest
 import androidx.test.filters.MediumTest
-import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
+import junit.framework.TestCase.assertTrue
+import org.hamcrest.Matchers.closeTo
+import org.hamcrest.Matchers.endsWith
+import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.greaterThan
+import org.hamcrest.Matchers.greaterThanOrEqualTo
+import org.hamcrest.Matchers.lessThan
+import org.hamcrest.Matchers.lessThanOrEqualTo
+import org.hamcrest.Matchers.notNullValue
+import org.json.JSONObject
 import org.junit.Assume.assumeThat
-import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSession.NavigationDelegate
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate.ContentPermission
 import org.mozilla.geckoview.GeckoSession.ProgressDelegate
-import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.* // ktlint-disable no-wildcard-imports
+import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.AssertCalled
+import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.NullDelegate
+import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.WithDisplay
 
 @RunWith(AndroidJUnit4::class)
 @MediumTest
@@ -111,7 +121,6 @@ class ProgressDelegateTest : BaseSessionTest() {
         })
     }
 
-    @Ignore
     @Test
     fun multipleLoads() {
         mainSession.loadUri(UNKNOWN_HOST_URI)
@@ -448,8 +457,6 @@ class ProgressDelegateTest : BaseSessionTest() {
     @WithDisplay(width = 400, height = 400)
     @Test
     fun saveAndRestoreStateNewSession() {
-        // TODO: Bug 1837551
-        assumeThat(sessionRule.env.isFission, equalTo(false))
         val helloUri = createTestUrl(HELLO_HTML_PATH)
         val startUri = createTestUrl(SAVE_STATE_PATH)
 
@@ -499,8 +506,6 @@ class ProgressDelegateTest : BaseSessionTest() {
     fun saveAndRestoreState() {
         // Bug 1662035 - disable to reduce intermittent failures
         assumeThat(sessionRule.env.isX86, equalTo(false))
-        // TODO: Bug 1837551
-        assumeThat(sessionRule.env.isFission, equalTo(false))
         val startUri = createTestUrl(SAVE_STATE_PATH)
         val savedState = collectState(startUri)
 
@@ -533,8 +538,6 @@ class ProgressDelegateTest : BaseSessionTest() {
     @WithDisplay(width = 400, height = 400)
     @Test
     fun flushSessionState() {
-        // TODO: Bug 1837551
-        assumeThat(sessionRule.env.isFission, equalTo(false))
         val startUri = createTestUrl(SAVE_STATE_PATH)
         mainSession.loadUri(startUri)
         sessionRule.waitForPageStop()
@@ -569,8 +572,6 @@ class ProgressDelegateTest : BaseSessionTest() {
     @NullDelegate(GeckoSession.HistoryDelegate::class)
     @Test
     fun noHistoryDelegateOnSessionStateChange() {
-        // TODO: Bug 1837551
-        assumeThat(sessionRule.env.isFission, equalTo(false))
         mainSession.loadTestPath(HELLO_HTML_PATH)
         sessionRule.waitForPageStop()
 
@@ -579,5 +580,137 @@ class ProgressDelegateTest : BaseSessionTest() {
             override fun onSessionStateChange(session: GeckoSession, sessionState: GeckoSession.SessionState) {
             }
         })
+    }
+
+    @Test
+    fun getWebCompatInfo() {
+        sessionRule.setPrefsUntilTestEnd(mapOf("browser.webcompat.geckoview.enableAllTestMocks" to true))
+
+        val expectedResult = """{"devicePixelRatio":2.5,"antitracking":{"hasTrackingContentBlocked":false}}"""
+
+        val info = mainSession.webCompatInfo
+        assertThat("Result should match mocked web compat info", sessionRule.waitForResult(info).toString(), equalTo(expectedResult))
+    }
+
+    @Test
+    fun getWebCompatInfoExampleSite() {
+        val url = "https://www.mozilla.org/en-US/"
+        mainSession.loadUri(url)
+        sessionRule.waitForPageStop()
+        val info = sessionRule.waitForResult(mainSession.webCompatInfo)
+        val infoUrl = info.getString("url")
+
+        assertThat("Result should match actual url", infoUrl, equalTo(url))
+    }
+
+    @Test
+    fun getWebCompatInfoError() {
+        // Catch an exception when no web page is loaded
+        try {
+            sessionRule.waitForResult(mainSession.webCompatInfo)
+            assertThat("This test is expected to fail.", true, equalTo(false))
+        } catch (error: Exception) {
+            assertTrue("Expect an exception while getting web compat info.", true)
+        }
+    }
+
+    @Test
+    fun sendMoreWebCompatInfoSuccess() {
+        sessionRule.setPrefsUntilTestEnd(mapOf("browser.webcompat.geckoview.enableAllTestMocks" to true))
+
+        val testInfo = JSONObject().apply {
+            put("reason", "test-reason")
+            put("description", "test-description")
+            put("endpointUrl", "https://webcompat.com/issues/new")
+            put("reportUrl", "https://example.com")
+        }
+
+        try {
+            sessionRule.waitForResult(mainSession.sendMoreWebCompatInfo(testInfo))
+            assertTrue("sendMoreWebCompatInfo() should succeed.", true)
+        } catch (error: Exception) {
+            assertTrue("sendMoreWebCompatInfo() should not fail.", false)
+        }
+    }
+
+    @Test
+    fun pageLoadProgressCompletedAtPageStop() {
+        sessionRule.setPrefsUntilTestEnd(mapOf("page_load.progressbar_completion" to 0))
+        val progressChanges = mutableListOf<Int>()
+
+        sessionRule.delegateUntilTestEnd(object : ProgressDelegate {
+            @AssertCalled
+            override fun onProgressChange(session: GeckoSession, progress: Int) {
+                progressChanges.add(progress)
+            }
+        })
+
+        mainSession.loadTestPath(HELLO_HTML_PATH)
+        sessionRule.waitForPageStop()
+
+        val completionIndex = progressChanges.indexOf(100)
+        assertThat("Must have more than 1 progress value", completionIndex, greaterThan(0))
+
+        val lastProgressBeforeCompletion = progressChanges[completionIndex - 1]
+
+        assertThat(
+            "Last progress before completion should be less than or equal to 80",
+            lastProgressBeforeCompletion,
+            lessThanOrEqualTo(80),
+        )
+    }
+
+    @Test
+    fun pageLoadProgressCompletedAtDOMContentLoaded() {
+        sessionRule.setPrefsUntilTestEnd(mapOf("page_load.progressbar_completion" to 1))
+        val progressChanges = mutableListOf<Int>()
+
+        sessionRule.delegateUntilTestEnd(object : ProgressDelegate {
+            @AssertCalled
+            override fun onProgressChange(session: GeckoSession, progress: Int) {
+                progressChanges.add(progress)
+            }
+        })
+
+        mainSession.loadTestPath(HELLO_HTML_PATH)
+        sessionRule.waitForPageStop()
+
+        val completionIndex = progressChanges.indexOf(100)
+        assertThat("Must have more than 1 progress value", completionIndex, greaterThan(0))
+
+        val lastProgressBeforeCompletion = progressChanges[completionIndex - 1]
+
+        assertThat(
+            "Last progress before completion should be less than 55",
+            lastProgressBeforeCompletion,
+            lessThan(55),
+        )
+    }
+
+    @Test
+    fun pageLoadProgressCompletedAtMozAfterPaintAfterDOMContentLoaded() {
+        sessionRule.setPrefsUntilTestEnd(mapOf("page_load.progressbar_completion" to 2))
+        val progressChanges = mutableListOf<Int>()
+
+        sessionRule.delegateUntilTestEnd(object : ProgressDelegate {
+            @AssertCalled
+            override fun onProgressChange(session: GeckoSession, progress: Int) {
+                progressChanges.add(progress)
+            }
+        })
+
+        mainSession.loadTestPath(HELLO_HTML_PATH)
+        sessionRule.waitForPageStop()
+
+        val completionIndex = progressChanges.indexOf(100)
+        assertThat("Must have more than 1 progress value", completionIndex, greaterThan(0))
+
+        val lastProgressBeforeCompletion = progressChanges[completionIndex - 1]
+
+        assertThat(
+            "Last progress before completion should be less than 80",
+            lastProgressBeforeCompletion,
+            lessThan(80),
+        )
     }
 }

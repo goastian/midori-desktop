@@ -16,11 +16,11 @@ task-defaults:
                 default:
                     - marionette/prod_config.py
                     - remove_executables.py
-    test-manifest-loader: null  # don't load tests in the taskgraph
-    tier:
-        by-variant:
-            headless: 2
-            default: default
+    virtualization: virtual
+
+marionette-unittest:
+    description: "Marionette unittest run"
+    treeherder-symbol: Mn(unit)
     variants:
         - webrender-sw
         - headless
@@ -28,27 +28,82 @@ task-defaults:
         by-variant:
             headless:
                 by-test-platform:
-                    (linux.*64)(-shippable)?-qr/opt: built-projects
+                    linux.*64(-shippable)?(-qr)?/opt: built-projects
                     default: []
             webrender-sw:
                 by-test-platform:
-                    .*wayland.*: []
+                    .*-wayland.*: []
                     .*/debug: built-projects
                     default: []
             default:
                 by-test-platform:
-                    .*(tsan|wayland).*: []
+                    .*-wayland.*: []
                     default: built-projects
-    virtualization: virtual
-
-marionette:
-    description: "Marionette unittest run"
-    treeherder-symbol: Mn
+    tier:
+        by-variant:
+            headless: 2
+            default: default
     max-run-time:
         by-test-platform:
-            .*asan.*: 5400
-            .*ccov.*: 3600
-            .*debug.*: 3600
-            default: 2700
+            .*-asan.*: 3600
+            .*-tsan.*: 4500
+            default: 1800
     instance-size: default
     chunks: 1
+    suite: marionette
+    test-manifest-loader: null  # don't load in taskgraph
+    mozharness:
+        extra-options:
+            - --subsuite=unittest
+            - --test-manifest=unit/unit-tests.toml
+
+marionette:
+    description: "Marionette integration run"
+    treeherder-symbol: Mn()
+    variants:
+        - webrender-sw
+        - headless
+        - inc-origin-init
+    run-on-projects:
+        by-variant:
+            headless:
+                by-test-platform:
+                    linux.*64(-shippable)?(-qr)?/opt: built-projects
+                    default: []
+            webrender-sw:
+                by-test-platform:
+                    .*-wayland.*: []
+                    .*/debug: built-projects
+                    default: []
+            inc-origin-init:
+                by-test-platform:
+                    .*-asan.*: []
+                    .*-ccov.*: []
+                    linux.*64(-shippable)?(-qr)?/.*: built-projects
+                    macosx.*64(-shippable)?(-qr)?/.*: built-projects
+                    windows1.*64.*(-shippable)?(-qr)?/.*: built-projects
+                    default: []
+            default:
+                by-test-platform:
+                    .*-wayland.*: []
+                    default: built-projects
+    tier:
+        by-variant:
+            headless: 2
+            default: default
+    max-run-time:
+        by-test-platform:
+            .*-asan.*: 3600
+            .*-tsan.*: 3600
+            .*-ccov.*: 3600
+            .*-debug.*: 3600
+            default: 2700
+    instance-size: default
+    chunks:
+        by-variant:
+            inc-origin-init: dynamic
+            default:
+                by-test-platform:
+                    .*-asan.*: 2
+                    .*-tsan.*: 2
+                    default: 1

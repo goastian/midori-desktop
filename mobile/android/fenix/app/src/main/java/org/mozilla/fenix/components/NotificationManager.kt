@@ -4,19 +4,20 @@
 
 package org.mozilla.fenix.components
 
-import android.annotation.TargetApi
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Build
 import android.os.Build.VERSION.SDK_INT
+import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.getSystemService
+import androidx.core.net.toUri
 import androidx.core.os.bundleOf
 import mozilla.components.concept.sync.Device
 import mozilla.components.concept.sync.TabData
@@ -64,6 +65,7 @@ class NotificationManager(private val context: Context) {
      * @param context The Android application context.
      * @param count The number of tabs that were closed.
      */
+    @SuppressLint("MissingPermission", "NotifyUsage")
     fun showSyncedTabsClosed(context: Context, count: Int) {
         if (count <= 0) {
             return
@@ -125,6 +127,14 @@ class NotificationManager(private val context: Context) {
         notificationManagerCompat.notify(TABS_CLOSED_TAG, notificationId, notification)
     }
 
+    /**
+     * Displays a notification for each valid tab received from a device.
+     *
+     * @param context The Android application context.
+     * @param device The device from which the tabs were received, or `null` if unavailable.
+     * @param tabs A list of tabs to be displayed.
+     */
+    @SuppressLint("MissingPermission", "NotifyUsage")
     fun showReceivedTabs(context: Context, device: Device?, tabs: List<TabData>) {
         // In the future, experiment with displaying multiple tabs from the same device as as Notification Groups.
         // For now, a single notification per tab received will suffice.
@@ -137,7 +147,7 @@ class NotificationManager(private val context: Context) {
             val showReceivedTabsIntentFlags = IntentUtils.defaultIntentPendingFlags or PendingIntent.FLAG_ONE_SHOT
             val intent = Intent(context, IntentReceiverActivity::class.java).apply {
                 action = Intent.ACTION_VIEW
-                data = Uri.parse(tab.url)
+                data = tab.url.toUri()
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
             intent.putExtra(RECEIVE_TABS_TAG, true)
@@ -172,7 +182,7 @@ class NotificationManager(private val context: Context) {
         }
     }
 
-    @TargetApi(Build.VERSION_CODES.O)
+    @RequiresApi(Build.VERSION_CODES.O)
     private fun createNotificationChannel(
         channelId: String,
         importance: Int,

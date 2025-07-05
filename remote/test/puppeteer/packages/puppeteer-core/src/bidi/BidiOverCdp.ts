@@ -25,7 +25,6 @@ const bidiServerLogger = (prefix: string, ...args: unknown[]): void => {
  */
 export async function connectBidiOverCdp(
   cdp: CdpConnection,
-  options: BidiMapper.MapperOptions
 ): Promise<BidiConnection> {
   const transportBiDi = new NoOpTransport();
   const cdpConnectionAdapter = new CdpConnectionAdapter(cdp);
@@ -51,17 +50,15 @@ export async function connectBidiOverCdp(
     cdp.url(),
     pptrTransport,
     cdp.delay,
-    cdp.timeout
+    cdp.timeout,
   );
   const bidiServer = await BidiMapper.BidiServer.createAndStart(
     transportBiDi,
     cdpConnectionAdapter,
-    // TODO: most likely need a little bit of refactoring
     cdpConnectionAdapter.browserClient(),
-    '',
-    options,
+    /* selfTargetId= */ '',
     undefined,
-    bidiServerLogger
+    bidiServerLogger,
   );
   return pptrBiDiConnection;
 }
@@ -93,7 +90,7 @@ class CdpConnectionAdapter {
       const adapter = new CDPClientAdapter(
         session,
         id,
-        this.#browserCdpConnection
+        this.#browserCdpConnection,
       );
       this.#adapters.set(session, adapter);
       return adapter;
@@ -127,7 +124,7 @@ class CDPClientAdapter<T extends CDPSession | CdpConnection>
   constructor(
     client: T,
     sessionId?: string,
-    browserClient?: BidiMapper.CdpClient
+    browserClient?: BidiMapper.CdpClient,
   ) {
     super();
     this.#client = client;
@@ -142,7 +139,7 @@ class CDPClientAdapter<T extends CDPSession | CdpConnection>
 
   #forwardMessage = <T extends keyof CDPEvents>(
     method: T,
-    event: CDPEvents[T]
+    event: CDPEvents[T],
   ) => {
     this.emit(method, event);
   };
@@ -195,7 +192,7 @@ class NoOpTransport
   }
 
   setOnMessage(
-    onMessage: (message: Bidi.ChromiumBidi.Command) => Promise<void> | void
+    onMessage: (message: Bidi.ChromiumBidi.Command) => Promise<void> | void,
   ): void {
     this.#onMessage = onMessage;
   }

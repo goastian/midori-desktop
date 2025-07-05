@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 """Generic config parsing and dumping, the way I remember it from scripts
 gone by.
 
@@ -166,7 +164,7 @@ def parse_config_file(
                 file_path = os.path.join(path, file_name)
                 break
         else:
-            raise IOError("Can't find %s in %s!" % (file_name, search_path))
+            raise OSError("Can't find %s in %s!" % (file_name, search_path))
     if file_name.endswith(".py"):
         global_dict = {}
         local_dict = {}
@@ -210,7 +208,7 @@ def download_config_file(url, file_name):
             print("Error downloading from url %s: %s" % (url, str(e)))
         except socket.timeout as e:
             print("Time out accessing %s: %s" % (url, str(e)))
-        except socket.error as e:
+        except OSError as e:
             print("Socket error when accessing %s: %s" % (url, str(e)))
         print("Sleeping %d seconds before retrying" % sleeptime)
         time.sleep(sleeptime)
@@ -223,13 +221,13 @@ def download_config_file(url, file_name):
         f = open(file_name, "w")
         f.write(contents)
         f.close()
-    except IOError as e:
+    except OSError as e:
         print("Error writing downloaded contents to file %s: %s" % (file_name, str(e)))
         raise SystemError(-1)
 
 
 # BaseConfig {{{1
-class BaseConfig(object):
+class BaseConfig:
     """Basic config setting/getting."""
 
     def __init__(

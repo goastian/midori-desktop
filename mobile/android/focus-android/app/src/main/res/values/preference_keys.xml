@@ -32,6 +32,9 @@
     <string name="pref_key_leakcanary" translatable="false"><xliff:g id="preference_key">pref_key_leakcanary</xliff:g></string>
 
     <string name="pref_key_telemetry" translatable="false"><xliff:g id="preference_key">pref_telemetry</xliff:g></string>
+    <string name="pref_key_glean_usage_profile_id" translatable="false"><xliff:g id="preference_key">pref_key_glean_usage_profile_id</xliff:g></string>
+    <string name="pref_key_daily_usage_ping" translatable="false"><xliff:g id="preference_key">pref_key_daily_usage_ping</xliff:g></string>
+    <string name="pref_key_learn_about_daily_usage_ping" translatable="false"><xliff:g id="preference_key">pref_key_learn_about_daily_usage_ping</xliff:g></string>
 
     <string name="pref_key_secure" translatable="false"><xliff:g id="preference_key">pref_secure</xliff:g></string>
 
@@ -42,10 +45,11 @@
     <string name="pref_key_biometric" translatable="false"><xliff:g id="preference_key">pref_biometric</xliff:g></string>
     <string name="pref_key_about" translatable="false"><xliff:g id="preference_key">pref_about</xliff:g></string>
     <string name="pref_key_help" translatable="false"><xliff:g id="preference_key">pref_help</xliff:g></string>
-    <string name="pref_key_rights" translatable="false"><xliff:g id="preference_key">pref_rights</xliff:g></string>
+    <string name="pref_key_terms_of_use" translatable="false"><xliff:g id="preference_key">pref_terms_of_use</xliff:g></string>
     <string name="pref_key_privacy_notice" translatable="false"><xliff:g id="preference_key">pref_privacy_notice</xliff:g></string>
     <string name="pref_key_licensing_info" translatable="false"><xliff:g id="preference_key">pref_licensing_info</xliff:g></string>
     <string name="pref_key_libraries_we_use" translatable="false"><xliff:g id="preference_key">pref_libraries_we_use</xliff:g></string>
+    <string name="pref_key_crash_reports" translatable="false"><xliff:g id="preference_key">pref_key_crash_reports</xliff:g></string>
 
     <string name="pref_key_locale" translatable="false"><xliff:g id="preference_key">pref_locale</xliff:g></string>
     <string name="pref_in_app_review_openings" translatable="false"><xliff:g id="preference_key">pref_in_app_review_openings</xliff:g></string>
@@ -65,7 +69,6 @@
     <string name="pref_key_search_screen" translatable="false"><xliff:g id="preference_key">pref_screen_search</xliff:g></string>
     <string name="pref_key_remote_debugging" translatable="false"><xliff:g id="preference_key">pref_remote_debugging</xliff:g></string>
     <string name="pref_key_open_links_in_external_app" translatable="false"><xliff:g id="preference_key">pref_key_open_links_in_external_app</xliff:g></string>
-    <string name="pref_key_studies" translatable="false"><xliff:g id="preference_key">pref_key_studies</xliff:g></string>
     <string name="pref_key_secret_settings" translatable="false"><xliff:g id="preference_key">pref_key_secret_settings</xliff:g></string>
     <string name="pref_key_use_nimbus_preview" translatable="false"><xliff:g id="preference_key">pref_key_use_nimbus_preview</xliff:g></string>
 

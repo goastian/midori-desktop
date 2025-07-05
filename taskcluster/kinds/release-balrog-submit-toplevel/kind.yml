@@ -46,7 +46,7 @@ tasks:
                 by-release-type:
                     beta: ["firefox-beta-cdntest", "firefox-beta-localtest"]
                     release(-rc)?: ["firefox-release-cdntest", "firefox-release-localtest"]
-                    esr128: ["firefox-esr128-cdntest", "firefox-esr128-localtest"]
+                    esr140: ["firefox-esr140-cdntest", "firefox-esr140-localtest"]
                     default: []
             pin-channels:
                 by-release-type:
@@ -54,7 +54,7 @@ tasks:
                     release(-rc)?: ["release-localtest", "release-cdntest"]
                     esr.*: ["esr-localtest", "esr-cdntest", "esr-localtest-next", "esr-cdntest-next"]
                     default: []
-            platforms: ["linux", "linux64", "macosx64", "win32", "win64", "win64-aarch64"]
+            platforms: ["linux", "linux64", "linux64-aarch64", "macosx64", "win32", "win64", "win64-aarch64"]
         treeherder:
             platform: firefox-release/opt
             symbol: Rel(BPFx)
@@ -71,7 +71,7 @@ tasks:
             channel-names: ["aurora", "aurora-localtest", "aurora-cdntest"]
             rules-to-update: ["devedition-cdntest", "devedition-localtest"]
             pin-channels: ["aurora-localtest", "aurora-cdntest"]
-            platforms: ["linux", "linux64", "macosx64", "win32", "win64", "win64-aarch64"]
+            platforms: ["linux", "linux64", "linux64-aarch64", "macosx64", "win32", "win64", "win64-aarch64"]
         treeherder:
             platform: devedition-release/opt
             symbol: Rel(BPDev)

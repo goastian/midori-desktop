@@ -8,7 +8,11 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   ManifestObtainer: "resource://gre/modules/ManifestObtainer.sys.mjs",
+  SelectionUtils: "resource://gre/modules/SelectionUtils.sys.mjs",
+  SpellCheckHelper: "resource://gre/modules/InlineSpellChecker.sys.mjs",
 });
+
+const MAX_TEXT_LENGTH = 4096;
 
 export class ContentDelegateChild extends GeckoViewActorChild {
   notifyParentOfViewportFit() {
@@ -31,6 +35,94 @@ export class ContentDelegateChild extends GeckoViewActorChild {
     );
   }
 
+  #getSelection(aElement, aEditFlags) {
+    if (aEditFlags & lazy.SpellCheckHelper.TEXTINPUT) {
+      return aElement?.editor?.selection;
+    }
+
+    return this.contentWindow.getSelection();
+  }
+
+  #getSelectionBoundingRect(aFocusedElement, aEditFlags) {
+    const selection = this.#getSelection(aFocusedElement, aEditFlags);
+    if (!selection || selection.isCollapsed || selection.rangeCount != 1) {
+      return null;
+    }
+    const range = selection.getRangeAt(0);
+    return range.getBoundingClientRect();
+  }
+
+  /**
+   * Show action menu if contextmenu is by mouse and we have selected text
+   */
+  #showActionMenu(aEvent) {
+    if (aEvent.pointerType !== "mouse") {
+      return false;
+    }
+
+    const win = this.contentWindow;
+    const selectionInfo = lazy.SelectionUtils.getSelectionDetails(win);
+    if (!selectionInfo.text.length) {
+      // Don't show action menu by contextmenu event if no selection
+      return false;
+    }
+
+    // The selection isn't collapsed and has a text.  We try to show action menu
+    const focusedElement =
+      Services.focus.focusedElement || aEvent.composedTarget;
+
+    const editFlags = lazy.SpellCheckHelper.isEditable(focusedElement, win);
+    const selectionEditable = !!(
+      editFlags &
+      (lazy.SpellCheckHelper.EDITABLE | lazy.SpellCheckHelper.CONTENTEDITABLE)
+    );
+    const boundingClientRect = this.#getSelectionBoundingRect(
+      focusedElement,
+      editFlags
+    );
+
+    const caretEvent = new CaretStateChangedEvent("mozcaretstatechanged", {
+      bubbles: true,
+      collapsed: selectionInfo.docSelectionIsCollapsed,
+      boundingClientRect,
+      reason: "taponcaret",
+      caretVisible: true,
+      selectionVisible: true,
+      selectionEditable,
+      selectedTextContent: selectionInfo.text,
+    });
+
+    win.dispatchEvent(caretEvent);
+
+    // If selection is changed, or focus is changed, dismiss action menu
+    const eventTarget = (() => {
+      if (editFlags & lazy.SpellCheckHelper.TEXTINPUT) {
+        return focusedElement;
+      }
+      return this.contentWindow.document;
+    })();
+
+    function dismissHandler() {
+      const dismissEvent = new CaretStateChangedEvent("mozcaretstatechanged", {
+        bubbles: true,
+        reason: "visibilitychange",
+      });
+      win.dispatchEvent(dismissEvent);
+
+      eventTarget.removeEventListener("selectionchange", dismissHandler);
+      win.removeEventListener("focusin", dismissHandler);
+      win.removeEventListener("focusout", dismissHandler);
+      win.removeEventListener("blur", dismissHandler);
+    }
+
+    eventTarget.addEventListener("selectionchange", dismissHandler);
+    win.addEventListener("focusin", dismissHandler);
+    win.addEventListener("focusout", dismissHandler);
+    win.addEventListener("blur", dismissHandler);
+
+    return true;
+  }
+
   // eslint-disable-next-line complexity
   handleEvent(aEvent) {
     debug`handleEvent: ${aEvent.type}`;
@@ -38,6 +130,11 @@ export class ContentDelegateChild extends GeckoViewActorChild {
     switch (aEvent.type) {
       case "contextmenu": {
         if (aEvent.defaultPrevented) {
+          return;
+        }
+
+        if (this.#showActionMenu(aEvent)) {
+          aEvent.preventDefault();
           return;
         }
 
@@ -75,7 +172,7 @@ export class ContentDelegateChild extends GeckoViewActorChild {
         let elementSrc = (isImage || isMedia) && (node.currentSrc || node.src);
         if (elementSrc) {
           const isBlob = elementSrc.startsWith("blob:");
-          if (isBlob && !URL.isValidObjectURL(elementSrc)) {
+          if (isBlob && !URL.isBoundToBlob(elementSrc)) {
             elementSrc = null;
           }
         }
@@ -86,15 +183,21 @@ export class ContentDelegateChild extends GeckoViewActorChild {
             // We don't have full zoom on Android, so using CSS coordinates
             // here is fine, since the CSS coordinate spaces match between the
             // child and parent processes.
+            //
+            // TODO(m_kato):
+            // title, alt and textContent should consider surrogate pair and grapheme cluster?
             screenX: aEvent.screenX,
             screenY: aEvent.screenY,
             baseUri: (baseUri && baseUri.displaySpec) || null,
             uri,
-            title,
-            alt,
+            title: (title && title.substring(0, MAX_TEXT_LENGTH)) || null,
+            alt: (alt && alt.substring(0, MAX_TEXT_LENGTH)) || null,
             elementType,
             elementSrc: elementSrc || null,
-            textContent: node.textContent || null,
+            textContent:
+              (node.textContent &&
+                node.textContent.substring(0, MAX_TEXT_LENGTH)) ||
+              null,
           };
 
           this.eventDispatcher.sendRequest(msg);

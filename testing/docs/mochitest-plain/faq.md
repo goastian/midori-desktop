@@ -69,6 +69,12 @@ Equally, if you need to change a string pref:
 ./mach mochitest --setpref="webgl.osmesa=string with whitespace" somePath/someTestFile.html
 ```
 
+To change more than one pref, you can add a `--setpref` argument for each:
+
+```
+./mach mochitest --setpref="some.boolpref=true" --setpref="some.stringpref=string with whitespace" somePath/someTestFile.html
+```
+
 ## Can tests be run under a chrome URL?
 
 Yes, use [mochitest-chrome](../chrome-tests/index.rst).
@@ -149,6 +155,13 @@ var xhr = new XMLHttpRequest();
 xhr.open("GET", "http://test/tests/dom/manifest/test/test_file.sjs");
 xhr.onload = function(e){ console.log("loaded!", this.responseText)}
 xhr.send();
+```
+
+```{note}
+Note that the first directory in the path depends on the type of test being run:
+for example, `tests` for plain mochitests, `browser` for browser mochitests, `chrome` for
+chrome mochitests, etc. Since `<objdir>/_tests/testing/mochitest/` serves as the root
+directory for the server, you can check there to find the exact path.
 ```
 
 The exact properties of the request and response parameters are defined in the

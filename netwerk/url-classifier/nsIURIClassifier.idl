@@ -77,6 +77,17 @@ interface nsIURIClassifier : nsISupports
   void asyncClassifyLocalWithFeatures(in nsIURI aURI,
                                       in Array<nsIUrlClassifierFeature> aFeatures,
                                       in nsIUrlClassifierFeature_listType aListType,
+                                      in nsIUrlClassifierFeatureCallback aCallback,
+                                      [optional] in boolean aIdlePriority);
+
+  /**
+   * Asynchronously classify a URI with list of features. This does not make
+   * network requests. This takes a list of names so it can safely be called in
+   * the content process.
+   */
+  void asyncClassifyLocalWithFeatureNames(in nsIURI aURI,
+                                      in Array<ACString> aFeatures,
+                                      in nsIUrlClassifierFeature_listType aListType,
                                       in nsIUrlClassifierFeatureCallback aCallback);
 
   /**

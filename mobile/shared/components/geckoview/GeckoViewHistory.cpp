@@ -4,7 +4,9 @@
 
 #include "GeckoViewHistory.h"
 
-#include "JavaBuiltins.h"
+#ifdef MOZ_WIDGET_ANDROID
+#  include "JavaBuiltins.h"
+#endif
 #include "jsapi.h"
 #include "js/Array.h"               // JS::GetArrayLength, JS::IsArrayObject
 #include "js/PropertyAndElement.h"  // JS_GetElement
@@ -195,7 +197,7 @@ void GeckoViewHistory::StartPendingVisitedQueries(
  * Called from the session handler for the history delegate, after the new
  * visit is recorded.
  */
-class OnVisitedCallback final : public nsIAndroidEventCallback {
+class OnVisitedCallback final : public nsIGeckoViewEventCallback {
  public:
   explicit OnVisitedCallback(GeckoViewHistory* aHistory, nsIURI* aURI)
       : mHistory(aHistory), mURI(aURI) {}
@@ -233,7 +235,7 @@ class OnVisitedCallback final : public nsIAndroidEventCallback {
   nsCOMPtr<nsIURI> mURI;
 };
 
-NS_IMPL_ISUPPORTS(OnVisitedCallback, nsIAndroidEventCallback)
+NS_IMPL_ISUPPORTS(OnVisitedCallback, nsIGeckoViewEventCallback)
 
 NS_IMETHODIMP
 GeckoViewHistory::VisitURI(nsIWidget* aWidget, nsIURI* aURI,
@@ -276,6 +278,7 @@ GeckoViewHistory::VisitURI(nsIWidget* aWidget, nsIURI* aURI,
     return NS_OK;
   }
 
+#ifdef MOZ_WIDGET_ANDROID
   AutoTArray<jni::String::LocalRef, 3> keys;
   AutoTArray<jni::Object::LocalRef, 3> values;
 
@@ -331,11 +334,12 @@ GeckoViewHistory::VisitURI(nsIWidget* aWidget, nsIURI* aURI,
   }
   auto bundle = java::GeckoBundle::New(bundleKeys, bundleValues);
 
-  nsCOMPtr<nsIAndroidEventCallback> callback =
+  nsCOMPtr<nsIGeckoViewEventCallback> callback =
       new OnVisitedCallback(this, aURI);
 
   Unused << NS_WARN_IF(
       NS_FAILED(dispatcher->Dispatch(kOnVisitedMessage, bundle, callback)));
+#endif
 
   return NS_OK;
 }
@@ -349,7 +353,7 @@ GeckoViewHistory::SetURITitle(nsIURI* aURI, const nsAString& aTitle) {
  * Called from the session handler for the history delegate, with visited
  * statuses for all requested URIs.
  */
-class GetVisitedCallback final : public nsIAndroidEventCallback {
+class GetVisitedCallback final : public nsIGeckoViewEventCallback {
  public:
   explicit GetVisitedCallback(GeckoViewHistory* aHistory,
                               ContentParent* aInterestedProcess,
@@ -437,7 +441,7 @@ class GetVisitedCallback final : public nsIAndroidEventCallback {
   nsTArray<RefPtr<nsIURI>> mURIs;
 };
 
-NS_IMPL_ISUPPORTS(GetVisitedCallback, nsIAndroidEventCallback)
+NS_IMPL_ISUPPORTS(GetVisitedCallback, nsIGeckoViewEventCallback)
 
 /**
  * Queries the history delegate to find which URIs have been visited. This
@@ -462,6 +466,7 @@ void GeckoViewHistory::QueryVisitedState(nsIWidget* aWidget,
     return;
   }
 
+#ifdef MOZ_WIDGET_ANDROID
   // Assemble a bundle like `{ urls: ["http://example.com/1", ...] }`.
   auto uris = jni::ObjectArray::New<jni::String>(aURIs.Length());
   for (size_t i = 0; i < aURIs.Length(); ++i) {
@@ -483,11 +488,12 @@ void GeckoViewHistory::QueryVisitedState(nsIWidget* aWidget,
 
   auto bundle = java::GeckoBundle::New(bundleKeys, bundleValues);
 
-  nsCOMPtr<nsIAndroidEventCallback> callback =
+  nsCOMPtr<nsIGeckoViewEventCallback> callback =
       new GetVisitedCallback(this, aInterestedProcess, std::move(aURIs));
 
   Unused << NS_WARN_IF(
       NS_FAILED(dispatcher->Dispatch(kGetVisitedMessage, bundle, callback)));
+#endif
 }
 
 /**

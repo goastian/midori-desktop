@@ -21,7 +21,6 @@ import time
 
 import mozcrash
 import mozfile
-import six
 from mozlog import get_proxy_logger
 
 from talos import results, talosconfig, utils
@@ -33,7 +32,7 @@ from talos.utils import TalosCrash, TalosRegression, run_in_debug_mode
 LOG = get_proxy_logger()
 
 
-class TTest(object):
+class TTest:
     def check_for_crashes(self, browser_config, minidump_dir, test_name):
         # check for minidumps
         found = mozcrash.check_for_crashes(
@@ -99,13 +98,6 @@ class TTest(object):
             for c in test_config.get("xperf_counters", []):
                 global_counters[c] = []
 
-        if test_config.get("responsiveness") and platform.system() != "Darwin":
-            # ignore osx for now as per bug 1245793
-            setup.env["MOZ_INSTRUMENT_EVENT_LOOP"] = "1"
-            setup.env["MOZ_INSTRUMENT_EVENT_LOOP_THRESHOLD"] = "20"
-            setup.env["MOZ_INSTRUMENT_EVENT_LOOP_INTERVAL"] = "10"
-            global_counters["responsiveness"] = []
-
         setup.env["MOZ_DISABLE_NONLOCAL_CONNECTIONS"] = "1"
 
         # instantiate an object to hold test results
@@ -113,7 +105,7 @@ class TTest(object):
             test_config, global_counters, browser_config.get("framework")
         )
 
-        for i in six.moves.range(test_config["cycles"]):
+        for i in range(test_config["cycles"]):
             time.sleep(0.25)
             LOG.info(
                 "Running cycle %d/%d for %s test..."

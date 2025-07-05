@@ -499,6 +499,134 @@ add_test(function test_hugeStringThrows() {
   run_next_test();
 });
 
+add_test(function test_verticalBar() {
+  var url = Services.io.newURI("file:///w|m");
+  Assert.equal(url.spec, "file:///w|m");
+
+  url = Services.io.newURI("file:///w||m");
+  Assert.equal(url.spec, "file:///w||m");
+
+  url = Services.io.newURI("file:///w|/m");
+  Assert.equal(url.spec, "file:///w:/m");
+
+  url = Services.io.newURI("file:C|/m/");
+  Assert.equal(url.spec, "file:///C:/m/");
+
+  url = Services.io.newURI("file:C||/m/");
+  Assert.equal(url.spec, "file:///C||/m/");
+
+  run_next_test();
+});
+
+add_test(function test_pathPercentEncodedDot() {
+  var url = stringToURL("http://example.com/hello/%2e%2E/%2e");
+  Assert.equal(url.spec, "http://example.com/");
+  Assert.equal(url.directory, "/");
+  Assert.equal(url.fileName, "");
+  Assert.equal(url.fileBaseName, "");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/hello/%2e%2E/%");
+  Assert.equal(url.spec, "http://example.com/%");
+  Assert.equal(url.directory, "/");
+  Assert.equal(url.fileName, "%");
+  Assert.equal(url.fileBaseName, "%");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/hello/%2e%2E/%2");
+  Assert.equal(url.spec, "http://example.com/%2");
+  Assert.equal(url.directory, "/");
+  Assert.equal(url.fileName, "%2");
+  Assert.equal(url.fileBaseName, "%2");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/hello/%2e%2E/%#");
+  Assert.equal(url.spec, "http://example.com/%#");
+  Assert.equal(url.directory, "/");
+  Assert.equal(url.fileName, "%");
+  Assert.equal(url.fileBaseName, "%");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/hello/%2e%2E/%2?");
+  Assert.equal(url.spec, "http://example.com/%2?");
+  Assert.equal(url.directory, "/");
+  Assert.equal(url.fileName, "%2");
+  Assert.equal(url.fileBaseName, "%2");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/hello/%2e/");
+  Assert.equal(url.spec, "http://example.com/hello/");
+  Assert.equal(url.directory, "/hello/");
+  Assert.equal(url.fileName, "");
+  Assert.equal(url.fileBaseName, "");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/%2e");
+  Assert.equal(url.spec, "http://example.com/");
+  Assert.equal(url.directory, "/");
+  Assert.equal(url.fileName, "");
+  Assert.equal(url.fileBaseName, "");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/.%2e");
+  Assert.equal(url.spec, "http://example.com/");
+  Assert.equal(url.directory, "/");
+  Assert.equal(url.fileName, "");
+  Assert.equal(url.fileBaseName, "");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/%2e.");
+  Assert.equal(url.spec, "http://example.com/");
+  Assert.equal(url.directory, "/");
+  Assert.equal(url.fileName, "");
+  Assert.equal(url.fileBaseName, "");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/%2e%2e");
+  Assert.equal(url.spec, "http://example.com/");
+  Assert.equal(url.directory, "/");
+  Assert.equal(url.fileName, "");
+  Assert.equal(url.fileBaseName, "");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/%2e%2e%2e");
+  Assert.equal(url.spec, "http://example.com/%2e%2e%2e");
+  Assert.equal(url.directory, "/");
+  Assert.equal(url.fileName, "%2e%2e%2e");
+  Assert.equal(url.fileBaseName, "%2e%2e%2e");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/%2e%2e%2e%2e");
+  Assert.equal(url.spec, "http://example.com/%2e%2e%2e%2e");
+  Assert.equal(url.directory, "/");
+  Assert.equal(url.fileName, "%2e%2e%2e%2e");
+  Assert.equal(url.fileBaseName, "%2e%2e%2e%2e");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/hello/%2e%2");
+  Assert.equal(url.spec, "http://example.com/hello/%2e%2");
+  Assert.equal(url.directory, "/hello/");
+  Assert.equal(url.fileName, "%2e%2");
+  Assert.equal(url.fileBaseName, "%2e%2");
+  Assert.equal(url.fileExtension, "");
+
+  url = stringToURL("http://example.com/hello/%2e./%2e%2e/.%2e/%2e.bar");
+  Assert.equal(url.spec, "http://example.com/%2e.bar");
+  Assert.equal(url.directory, "/");
+  Assert.equal(url.fileName, "%2e.bar");
+  Assert.equal(url.fileBaseName, "%2e");
+  Assert.equal(url.fileExtension, "bar");
+
+  url = stringToURL("http://example.com/%2eX/X%2e/%2eX");
+  Assert.equal(url.spec, "http://example.com/%2eX/X%2e/%2eX");
+  Assert.equal(url.directory, "/%2eX/X%2e/");
+  Assert.equal(url.fileName, "%2eX");
+  Assert.equal(url.fileBaseName, "%2eX");
+  Assert.equal(url.fileExtension, "");
+
+  run_next_test();
+});
+
 add_test(function test_filterWhitespace() {
   let url = stringToURL(
     " \r\n\th\nt\rt\tp://ex\r\n\tample.com/path\r\n\t/\r\n\tto the/fil\r\n\te.e\r\n\txt?que\r\n\try#ha\r\n\tsh \r\n\t "
@@ -982,12 +1110,32 @@ add_task(async function test_emptyHostWithURLType() {
     "Empty host is not allowed for URLTYPE_AUTHORITY"
   );
 
-  url = makeURL("http://foo.com/bar/", Ci.nsIStandardURL.URLTYPE_STANDARD);
+  url = makeURL("http://user@foo.com/bar/", Ci.nsIStandardURL.URLTYPE_STANDARD);
   Assert.throws(
     () => url.mutate().setHost("").finalize().spec,
-    /NS_ERROR_UNEXPECTED/,
-    "Empty host is not allowed for URLTYPE_STANDARD"
+    /NS_ERROR_MALFORMED_URI/,
+    "Setting an empty host should throw if there is a username present"
   );
+
+  url = makeURL(
+    "http://:password@foo.com/bar/",
+    Ci.nsIStandardURL.URLTYPE_STANDARD
+  );
+  Assert.throws(
+    () => url.mutate().setHost("").finalize().spec,
+    /NS_ERROR_MALFORMED_URI/,
+    "Setting an empty host should throw if there is a password present"
+  );
+
+  url = makeURL("http://foo.com:123/bar/", Ci.nsIStandardURL.URLTYPE_STANDARD);
+  Assert.throws(
+    () => url.mutate().setHost("").finalize().spec,
+    /NS_ERROR_MALFORMED_URI/,
+    "Setting an empty host should throw if there is a port present"
+  );
+
+  url = makeURL("http://foo.com/bar/", Ci.nsIStandardURL.URLTYPE_STANDARD);
+  Assert.equal(url.mutate().setHost("").finalize().spec, "http:///bar/");
 
   url = makeURL("http://foo.com/bar/", Ci.nsIStandardURL.URLTYPE_NO_AUTHORITY);
   equal(
@@ -1060,4 +1208,20 @@ add_task(async function test_bug1873976() {
 add_task(async function test_bug1890346() {
   let url = Services.io.newURI("file:..?/..");
   equal(url.spec, "file:///?/..");
+});
+
+add_task(async function test_bug1914141() {
+  equal(Services.io.isValidHostname("example.com"), true);
+  equal(Services.io.isValidHostname("example.0"), false);
+
+  equal(Services.io.isValidHostname("192.168.0.1"), true);
+  equal(Services.io.isValidHostname("192.168.0"), true);
+  equal(Services.io.isValidHostname("1.192.168.0.1"), false);
+  equal(Services.io.isValidHostname("invalid.192.168.0.1"), false);
+
+  equal(Services.io.isValidHostname("::1"), true);
+  equal(Services.io.isValidHostname("abcd::zz::00"), false);
+  equal(Services.io.isValidHostname("zzzz::1.2.3.4"), false);
+
+  equal(Services.io.isValidHostname("::1.2.3.4"), true);
 });

@@ -16,10 +16,13 @@ add_task(async function test_schema_13_db() {
   let dbConnection = Services.storage.openDatabase(do_get_cookie_file(profile));
   let version = dbConnection.schemaVersion;
   dbConnection.close();
-  Assert.equal(version, 13);
+  Assert.ok(version >= 13);
 
   // Close the profile.
   await promise_close_profile();
+
+  // Remove the cookie file in order to create another database file.
+  do_get_cookie_file(profile).remove(false);
 
   // Open CookieDatabaseConnection to manipulate DB without using services.
   let schema13db = new CookieDatabaseConnection(
@@ -47,7 +50,6 @@ add_task(async function test_schema_13_db() {
       false,
       {},
       Ci.nsICookie.SAMESITE_NONE,
-      Ci.nsICookie.SAMESITE_NONE,
       Ci.nsICookie.SCHEME_UNSET,
       !!(i % 2) // isPartitioned
     );
@@ -65,7 +67,7 @@ add_task(async function test_schema_13_db() {
   // Open connection to manipulated db
   dbConnection = Services.storage.openDatabase(do_get_cookie_file(profile));
   // Check that schema is still correct after profile reload / db opening
-  Assert.equal(dbConnection.schemaVersion, 13);
+  Assert.ok(dbConnection.schemaVersion >= 13);
 
   // Count cookies with isPartitionedAttributeSet set to 1 (true)
   let stmt = dbConnection.createStatement(

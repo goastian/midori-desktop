@@ -22,14 +22,26 @@ class QATests(SnapTestsBase):
     def __init__(self):
         self._dir = "qa_tests"
 
-        super(QATests, self).__init__(
-            exp=os.path.join(self._dir, "qa_expectations.json")
+        super().__init__(
+            exp=os.path.join(
+                self._dir, f"qa_expectations_{self._distro_release()}.json"
+            )
         )
+
+    def _distro_release(self):
+        with open("/etc/lsb-release") as lsb_release:
+            f = list(
+                filter(
+                    lambda x: x.startswith("DISTRIB_RELEASE"),
+                    lsb_release.read().split(),
+                )
+            )
+            return f[0].split("=")[1].replace(".", "")
 
     def _test_audio_playback(
         self, url, iframe_selector=None, click_to_play=False, video_selector=None
     ):
-        self._logger.info("open url {}".format(url))
+        self._logger.info(f"open url {url}")
         if url:
             self.open_tab(url)
 
@@ -46,7 +58,7 @@ class QATests(SnapTestsBase):
                 (By.CSS_SELECTOR, video_selector or "video")
             )
         )
-        self._wait.until(lambda d: type(video.get_property("duration")) == float)
+        self._wait.until(lambda d: type(video.get_property("duration")) is float)
         assert video.get_property("duration") > 0.0, "<video> duration null"
 
         # For HE-AAC page, Google Drive does not like SPACE
@@ -56,8 +68,9 @@ class QATests(SnapTestsBase):
 
         # Mostly for Google Drive video, click()/play() seems not to really
         # work to trigger, but 'k' is required
-        if click_to_play:
+        if not click_to_play:
             self._driver.execute_script("arguments[0].click();", video)
+        else:
             video.send_keys("k")
 
         ref_volume = video.get_property("volume")
@@ -72,7 +85,9 @@ class QATests(SnapTestsBase):
         self._logger.info(
             "find video: check autoplay: {}".format(video.get_property("autoplay"))
         )
-        if not click_to_play and video.get_property("paused") is True:
+        if click_to_play or (
+            not click_to_play and video.get_property("paused") is True
+        ):
             self._driver.execute_script("arguments[0].play()", video)
 
         self._logger.info("find video: sleep")
@@ -87,32 +102,24 @@ class QATests(SnapTestsBase):
 
         # this should pause
         self._logger.info("find video: pause")
-        if click_to_play:
-            video.send_keys("k")
-        else:
-            self._driver.execute_script("arguments[0].pause()", video)
+        self._driver.execute_script("arguments[0].pause()", video)
         datum = video.get_property("currentTime")
+        paused = video.get_property("paused")
         time.sleep(1)
         datum_after_sleep = video.get_property("currentTime")
-        self._logger.info(
-            "datum={} datum_after_sleep={}".format(datum, datum_after_sleep)
-        )
+        self._logger.info(f"datum={datum} datum_after_sleep={datum_after_sleep}")
         assert datum == datum_after_sleep, "<video> is sleeping"
-        assert video.get_property("paused") is True, "<video> is paused"
+        assert paused is True, "<video> is paused"
 
         self._logger.info("find video: unpause")
         # unpause and verify playback
-        if click_to_play:
-            video.send_keys("k")
-        else:
-            self._driver.execute_script("arguments[0].play()", video)
-        assert video.get_property("paused") is False, "<video> is not paused"
+        self._driver.execute_script("arguments[0].play()", video)
+        paused = video.get_property("paused")
+        assert paused is False, "<video> is not paused"
         time.sleep(2)
         datum_after_resume = video.get_property("currentTime")
         self._logger.info(
-            "datum_after_resume={} datum_after_sleep={}".format(
-                datum_after_resume, datum_after_sleep
-            )
+            f"datum_after_resume={datum_after_resume} datum_after_sleep={datum_after_sleep}"
         )
         # we wait for 2s but it's not super accurate on CI (vbox VMs?),
         # observed values +/- 15% so check for more that should avoid
@@ -125,14 +132,16 @@ class QATests(SnapTestsBase):
         self._driver.execute_script(
             "arguments[0].volume = arguments[1]", video, ref_volume * 0.25
         )
+        new_volume = video.get_property("volume")
         assert (
-            video.get_property("volume") == ref_volume * 0.25
-        ), "<video> sound volume increased"
+            new_volume == ref_volume * 0.25
+        ), f"<video> sound volume increased from {ref_volume} to {ref_volume * 0.25} but got {new_volume}"
 
         self._logger.info("find video: done")
 
     def _test_audio_video_playback(self, url):
-        self._logger.info("open url {}".format(url))
+        iframe_css_selector = "iframe[id*=ucc-]"
+        self._logger.info(f"open url {url}")
         self.open_tab(url)
         self._logger.info("find thumbnail")
         thumbnail = self._longwait.until(
@@ -143,21 +152,34 @@ class QATests(SnapTestsBase):
         self._logger.info("audio test")
         self._test_audio_playback(
             url=None,
-            iframe_selector="#drive-viewer-video-player-object-0",
+            iframe_selector=iframe_css_selector,
             click_to_play=True,
         )
 
+        # switch back
+        self._driver.switch_to.parent_frame()
+        self._logger.info("try fullscreen")
+
+        fullscreen_button = self._wait.until(
+            EC.presence_of_element_located(
+                (By.CSS_SELECTOR, "button[aria-label*='(f)']")
+            )
+        )
+        self._driver.execute_script("return arguments[0].click();", fullscreen_button)
+        time.sleep(1)
+        fullscreen = self._driver.execute_script("return document.fullscreen")
+        assert fullscreen, "<video> is fullscreen"
+
+        iframe = self._wait.until(
+            EC.visibility_of_element_located((By.CSS_SELECTOR, iframe_css_selector))
+        )
+        self._driver.switch_to.frame(iframe)
+        time.sleep(0.5)
+        # we are again in the iframe
         self._logger.info("find video again")
-        # we are still in the iframe
         video = self._wait.until(
             EC.visibility_of_element_located((By.CSS_SELECTOR, "video"))
         )
-        self._logger.info("try fullscreen")
-        promise = self._driver.execute_script(
-            "return arguments[0].requestFullscreen().then(() => { return true; }).catch(() => { return false; })",
-            video,
-        )
-        assert promise is True, "<video> full screen promised fullfilled"
 
         self._driver.execute_script("arguments[0].pause();", video)
         self._driver.execute_script("document.exitFullscreen()")
@@ -168,7 +190,7 @@ class QATests(SnapTestsBase):
         """
 
         self._test_audio_video_playback(
-            "https://drive.google.com/file/d/0BwxFVkl63-lEY3l3ODJReDg3RzQ/view?resourcekey=0-5kDw2QbFk9eLrWE1N9M1rQ"
+            "https://drive.google.com/file/d/1lY6xYRR_KC0MGosopJA6Kn6uCvJ1RgQm/view?hl=en-US"
         )
 
         return True
@@ -190,7 +212,7 @@ class QATests(SnapTestsBase):
         """
 
         self._test_audio_playback(
-            "http://www.hyperion-records.co.uk/audiotest/18%20MacCunn%20The%20Lay%20of%20the%20Last%20Minstrel%20-%20Part%202%20Final%20chorus%20O%20Caledonia!%20stern%20and%20wild.FLAC"
+            "https://dl.espressif.com/dl/audio/ff-16b-2c-44100hz.flac"
         )
 
         return True
@@ -265,25 +287,19 @@ class QATests(SnapTestsBase):
         waiter = self._longwait if long is True else self._wait
         page = waiter.until(
             EC.visibility_of_element_located(
-                (By.CSS_SELECTOR, "div.page[data-page-number='{}'] canvas".format(page))
+                (By.CSS_SELECTOR, f"div.page[data-page-number='{page}'] canvas")
             )
         )
 
-        if not self.is_esr():
-            self._wait.until(
-                lambda d: d.execute_script(
-                    'return window.getComputedStyle(document.querySelector(".loadingInput.start"), "::after").getPropertyValue("visibility");'
-                )
-                != "visible"
+        self._wait.until(
+            lambda d: d.execute_script(
+                'return window.getComputedStyle(document.querySelector(".loadingInput.start"), "::after").getPropertyValue("visibility");'
             )
-            # PDF.js can take time to settle and we don't have a nice way to wait
-            # for an event on it
-            time.sleep(1)
-        else:
-            self._logger.info("Running against ESR, just wait too much.")
-            # Big but let's be safe, this is only for ESR because its PDF.js
-            # does not have "<span class='loadingInput start'>"
-            time.sleep(10)
+            != "visible"
+        )
+        # PDF.js can take time to settle and we don't have a nice way to wait
+        # for an event on it
+        time.sleep(1)
 
         # Rendering can be slower on debug build so give more time to settle
         if self.is_debug_build():
@@ -296,7 +312,7 @@ class QATests(SnapTestsBase):
             EC.visibility_of_element_located((By.ID, "pageNumber"))
         )
         pagenum.send_keys(Keys.BACKSPACE)
-        pagenum.send_keys("{}".format(page))
+        pagenum.send_keys(f"{page}")
 
     def test_pdf_navigation(self, exp):
         """
@@ -342,7 +358,7 @@ class QATests(SnapTestsBase):
             self.pdf_get_page(2)
             # give some time for rendering to update
             time.sleep(0.2)
-            self._logger.info("assert {}".format(ref))
+            self._logger.info(f"assert {ref}")
             self.assert_rendering(exp[ref], self._driver)
 
         # click Next/Previous page
@@ -379,60 +395,41 @@ class QATests(SnapTestsBase):
         ]
 
         for menu_id in menu_buttons:
-            self._logger.info("reset to page for {}".format(menu_id))
+            self._logger.info(f"reset to page for {menu_id}")
             if menu_id != "firstPage":
                 self.pdf_go_to_page(1)
             else:
                 self.pdf_go_to_page(2)
             time.sleep(0.2)
 
-            self._logger.info("click menu for {}".format(menu_id))
+            self._logger.info(f"click menu for {menu_id}")
             # open menu
             secondary_menu.click()
 
-            self._logger.info("find button for {}".format(menu_id))
+            self._logger.info(f"find button for {menu_id}")
             button_to_test = self._wait.until(
                 EC.visibility_of_element_located((By.ID, menu_id))
             )
 
-            self._logger.info("click button for {}".format(menu_id))
+            self._logger.info(f"click button for {menu_id}")
             button_to_test.click()
 
-            # rotation does not close the menu?:
-            if menu_id == "pageRotateCw" or menu_id == "pageRotateCcw":
-                secondary_menu.click()
+            try:
+                self._wait.until(
+                    EC.invisibility_of_element_located((By.ID, "secondaryToolbar"))
+                )
+            except TimeoutException:
+                # Menu does not close itself on those??
+                if menu_id in ("pageRotateCw", "pageRotateCcw"):
+                    self._logger.info(f"force close menu for {menu_id}")
+                    secondary_menu.click()
+                    self._logger.info(f"wait menu disappear for {menu_id}")
+                    self._wait.until(
+                        EC.invisibility_of_element_located((By.ID, "secondaryToolbar"))
+                    )
 
-            time.sleep(0.75)
-
-            self._logger.info("assert {}".format(menu_id))
-            if self.is_esr() and menu_id == "documentProperties":
-                # on ESR pdf.js misreports in mm instead of inches
-                title = self._wait.until(
-                    EC.visibility_of_element_located((By.ID, "titleField"))
-                )
-                author = self._wait.until(
-                    EC.visibility_of_element_located((By.ID, "authorField"))
-                )
-                subject = self._wait.until(
-                    EC.visibility_of_element_located((By.ID, "subjectField"))
-                )
-                version = self._wait.until(
-                    EC.visibility_of_element_located((By.ID, "versionField"))
-                )
-                assert title.text == "PDF", "Incorrect PDF title reported: {}".format(
-                    title
-                )
-                assert (
-                    author.text == "Software 995"
-                ), "Incorrect PDF author reported: {}".format(author)
-                assert (
-                    subject.text == "Create PDF with Pdf 995"
-                ), "Incorrect PDF subject reported: {}".format(subject)
-                assert (
-                    version.text == "1.3"
-                ), "Incorrect PDF version reported: {}".format(version)
-            else:
-                self.assert_rendering(exp[menu_id], self._driver)
+            self._logger.info(f"assert {menu_id}")
+            self.assert_rendering(exp[menu_id], self._driver)
 
             if menu_id == "documentProperties":
                 close = self._wait.until(
@@ -513,7 +510,7 @@ class QATests(SnapTestsBase):
         for zoom, page, ref in zoom_levels:
             self.pdf_select_zoom(zoom)
             self.pdf_get_page(page, long=True)
-            self._logger.info("assert {}".format(ref))
+            self._logger.info(f"assert {ref}")
             self.assert_rendering(exp[ref], self._driver)
 
         return True
@@ -568,9 +565,11 @@ class QATests(SnapTestsBase):
             EC.visibility_of_element_located(
                 (
                     By.ID,
-                    "context-copyimage-contents"
-                    if mime_type.startswith("image/")
-                    else "context-copy",
+                    (
+                        "context-copyimage-contents"
+                        if mime_type.startswith("image/")
+                        else "context-copy"
+                    ),
                 )
             )
         )
@@ -590,9 +589,7 @@ class QATests(SnapTestsBase):
         self._driver.set_context("content")
         assert (
             in_clipboard == should_be_present
-        ), "type {} should/should ({}) not be in clipboard".format(
-            mime_type, should_be_present
-        )
+        ), f"type {mime_type} should/should ({should_be_present}) not be in clipboard"
 
     def wait_for_element_in_clipboard(self, mime_type, context_change=False):
         if context_change:
@@ -728,14 +725,39 @@ class QATests(SnapTestsBase):
                 (By.CSS_SELECTOR, ".download-state .downloadProgress")
             )
         )
-        self._wait.until(lambda d: download_progress.get_property("value") == 100)
+        self._logger.info(
+            "Download process {}".format(download_progress.get_property("value"))
+        )
+
+        try:
+            self._wait.until(lambda d: download_progress.get_property("value") == 100)
+        except TimeoutException as ex:
+            details_normal = self._wait.until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, ".download-state .downloadDetailsNormal")
+                )
+            )
+            self._logger.info(
+                "Download details normal {}".format(
+                    details_normal.get_property("value")
+                )
+            )
+            details_hover = self._wait.until(
+                EC.presence_of_element_located(
+                    (By.CSS_SELECTOR, ".download-state .downloadDetailsHover")
+                )
+            )
+            self._logger.info(
+                "Download details hover {}".format(details_hover.get_property("value"))
+            )
+            raise ex
 
         # back to page
         self._driver.set_context("content")
         return download_name
 
     def change_download_folder(self, previous=None, new=None):
-        self._logger.info("Download change folder: {} => {}".format(previous, new))
+        self._logger.info(f"Download change folder: {previous} => {new}")
         self._driver.set_context("chrome")
         self._driver.execute_script(
             "Services.prefs.setIntPref('browser.download.folderList', 2);"
@@ -747,14 +769,33 @@ class QATests(SnapTestsBase):
             "return Services.prefs.getCharPref('browser.download.dir', null);"
         )
         self._driver.set_context("content")
-        self._logger.info("Download folder pref: {}".format(download_dir_pref))
+        self._logger.info(f"Download folder pref: {download_dir_pref}")
         assert (
             download_dir_pref == new
         ), "download directory from pref should match new directory"
 
+    def enable_downloads_debug(self):
+        self._driver.set_context("chrome")
+        self._logger.info("Setting downloads loglevel to Debug")
+        self._driver.execute_script(
+            "return Services.prefs.setStringPref('browser.download.loglevel', 'Debug');"
+        )
+        self._driver.set_context("content")
+
     def open_lafibre(self):
-        download_site = self.open_tab("https://ip.lafibre.info/test-debit.php")
+        self.enable_downloads_debug()
+        download_site = self.open_tab("https://ip.lafibre.info/connectivite.php")
         return download_site
+
+    def get_lafibre_1M(self):
+        return self._wait.until(
+            EC.presence_of_element_located(
+                (
+                    By.CSS_SELECTOR,
+                    ".tableau tbody tr td a",
+                )
+            )
+        )
 
     def test_download_folder_change(self, exp):
         """
@@ -762,14 +803,7 @@ class QATests(SnapTestsBase):
         """
 
         download_site = self.open_lafibre()
-        extra_small = self._wait.until(
-            EC.presence_of_element_located(
-                (
-                    By.CSS_SELECTOR,
-                    ".tableau > tbody:nth-child(1) > tr:nth-child(6) > td:nth-child(2) > a:nth-child(1)",
-                )
-            )
-        )
+        extra_small = self.get_lafibre_1M()
         self._driver.execute_script("arguments[0].click();", extra_small)
 
         download_name = self.accept_download()
@@ -784,16 +818,16 @@ class QATests(SnapTestsBase):
             .replace("\u2066", "")
             .replace("\u2069", "")
         )
-        self._logger.info(
-            "Download folder from about:preferences: {}".format(previous_folder)
-        )
+        self._logger.info(f"Download folder from about:preferences: {previous_folder}")
         if not os.path.isabs(previous_folder):
             previous_folder = os.path.join(os.environ.get("HOME", ""), previous_folder)
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(
+            dir=os.environ.get("HOME"), prefix="snap-test-download"
+        ) as tmpdir:
             assert os.path.isdir(tmpdir), "tmpdir download should exists"
 
             download_1 = os.path.abspath(os.path.join(previous_folder, download_name))
-            self._logger.info("Download 1 assert: {}".format(download_1))
+            self._logger.info(f"Download 1 assert: {download_1}")
             assert os.path.isfile(download_1), "downloaded file #1 should exists"
 
             self.change_download_folder(previous_folder, tmpdir)
@@ -804,7 +838,7 @@ class QATests(SnapTestsBase):
             download_name2 = self.wait_for_download()
             download_2 = os.path.join(tmpdir, download_name2)
 
-            self._logger.info("Download 2 assert: {}".format(download_2))
+            self._logger.info(f"Download 2 assert: {download_2}")
             assert os.path.isfile(download_2), "downloaded file #2 should exists"
 
         return True
@@ -815,16 +849,11 @@ class QATests(SnapTestsBase):
         """
 
         download_site = self.open_lafibre()
-        extra_small = self._wait.until(
-            EC.presence_of_element_located(
-                (
-                    By.CSS_SELECTOR,
-                    ".tableau > tbody:nth-child(1) > tr:nth-child(6) > td:nth-child(2) > a:nth-child(1)",
-                )
-            )
-        )
+        extra_small = self.get_lafibre_1M()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
+        with tempfile.TemporaryDirectory(
+            dir=os.environ.get("HOME"), prefix="snap-test-download-rm"
+        ) as tmpdir:
             self.change_download_folder(None, tmpdir)
 
             self._driver.switch_to.window(download_site)
@@ -833,7 +862,7 @@ class QATests(SnapTestsBase):
             self.accept_download()
             download_name = self.wait_for_download()
             download_file = os.path.join(tmpdir, download_name)
-            self._logger.info("Download assert: {}".format(download_file))
+            self._logger.info(f"Download assert: {download_file}")
             assert os.path.isdir(tmpdir), "tmpdir download should exists"
             assert os.path.isfile(download_file), "downloaded file should exists"
 

@@ -13,9 +13,6 @@ with Files("LICENSE"):
 with Files("mots.yaml"):
     BUG_COMPONENT = ("Conduit", "mots")
 
-with Files("aclocal.m4"):
-    BUG_COMPONENT = ("Firefox Build System", "General")
-
 with Files("Cargo.*"):
     BUG_COMPONENT = ("Firefox Build System", "General")
 
@@ -32,10 +29,13 @@ with Files("docs/**"):
     BUG_COMPONENT = ("Developer Infrastructure", "Source Documentation")
     SCHEDULES.exclusive = ["docs"]
 
+with Files("eslint*"):
+    BUG_COMPONENT = ("Developer Infrastructure", "Lint and Formatting")
+
 with Files("mach*"):
     BUG_COMPONENT = ("Firefox Build System", "Mach Core")
 
-with Files("pyproject.toml"):
+with Files("pyproject.toml", "srcdir-resolver.js"):
     BUG_COMPONENT = ("Developer Infrastructure", "Lint and Formatting")
 
 with Files("*moz*"):
@@ -55,8 +55,14 @@ with Files("**/l10n.toml"):
     BUG_COMPONENT = ("Core", "Localization")
     FINAL = True
 
-with Files("README.txt"):
+with Files("README.md"):
     BUG_COMPONENT = ("Core", "General")
+
+with Files("CODE_OF_CONDUCT.md"):
+    BUG_COMPONENT = ("Core", "General")
+
+with Files("SECURITY.md"):
+    BUG_COMPONENT = ("Core", "DOM: Security")
 
 with Files("nsprpub/**"):
     BUG_COMPONENT = ("NSPR", "NSPR")
@@ -151,7 +157,6 @@ if CONFIG["ENABLE_CLANG_PLUGIN"]:
 DIRS += [
     "build",
     "config",
-    "floorp",
     "python",
     "testing",
     "third_party/python",
@@ -198,6 +203,8 @@ SPHINX_TREES["testing-rust-code"] = "docs/testing-rust-code"
 
 SPHINX_TREES["writing-rust-code"] = "docs/writing-rust-code"
 
+SPHINX_TREES["rust-components"] = "docs/rust-components"
+
 SPHINX_TREES["bug-mgmt"] = "docs/bug-mgmt"
 
 SPHINX_TREES["glossary"] = "docs/glossary"
@@ -219,5 +226,9 @@ SPHINX_TREES["nspr"] = "docs/nspr"
 SPHINX_TREES["mots"] = "docs/mots"
 
 SPHINX_TREES["update-infrastructure"] = "docs/update-infrastructure"
+
+SPHINX_TREES["content-security"] = "docs/content-security"
+
+SPHINX_TREES["jsloader"] = "docs/jsloader"
 
 include("build/templates.mozbuild")

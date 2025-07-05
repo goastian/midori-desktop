@@ -11,22 +11,23 @@ use crate::dom::TElement;
 use crate::parser::ParserContext;
 use crate::selector_parser::{SelectorImpl, SelectorParser};
 use crate::shared_lock::{
-    DeepCloneParams, DeepCloneWithLock, Locked, SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard,
+    DeepCloneWithLock, Locked, SharedRwLock, SharedRwLockReadGuard, ToCssWithGuard,
 };
 use crate::str::CssStringWriter;
 use crate::stylesheets::CssRules;
+use crate::simple_buckets_map::SimpleBucketsMap;
 use cssparser::{Parser, SourceLocation, ToCss};
 #[cfg(feature = "gecko")]
 use malloc_size_of::{
     MallocSizeOfOps, MallocUnconditionalShallowSizeOf, MallocUnconditionalSizeOf,
 };
-use selectors::context::MatchingContext;
+use selectors::context::{MatchingContext, QuirksMode};
 use selectors::matching::matches_selector;
-use selectors::parser::{AncestorHashes, ParseRelative, Selector, SelectorList};
+use selectors::parser::{Component, ParseRelative, Selector, SelectorList};
 use selectors::OpaqueElement;
 use servo_arc::Arc;
 use std::fmt::{self, Write};
-use style_traits::CssWriter;
+use style_traits::{CssWriter, ParseError};
 
 /// A scoped rule.
 #[derive(Debug, ToShmem)]
@@ -44,12 +45,11 @@ impl DeepCloneWithLock for ScopeRule {
         &self,
         lock: &SharedRwLock,
         guard: &SharedRwLockReadGuard,
-        params: &DeepCloneParams,
     ) -> Self {
         let rules = self.rules.read_with(guard);
         Self {
             bounds: self.bounds.clone(),
-            rules: Arc::new(lock.wrap(rules.deep_clone_with_lock(lock, guard, params))),
+            rules: Arc::new(lock.wrap(rules.deep_clone_with_lock(lock, guard))),
             source_location: self.source_location.clone(),
         }
     }
@@ -113,17 +113,28 @@ impl ScopeBounds {
 fn parse_scope<'a>(
     context: &ParserContext,
     input: &mut Parser<'a, '_>,
-    in_style_rule: bool,
+    parse_relative: ParseRelative,
     for_end: bool,
-) -> Option<SelectorList<SelectorImpl>> {
+) -> Result<Option<SelectorList<SelectorImpl>>, ParseError<'a>> {
     input
         .try_parse(|input| {
             if for_end {
-                input.expect_ident_matching("to")?;
+                // scope-end not existing is valid.
+                if input.try_parse(|i| i.expect_ident_matching("to")).is_err() {
+                    return Ok(None);
+                }
             }
-            input.expect_parenthesis_block()?;
+            let parens = input.try_parse(|i| i.expect_parenthesis_block());
+            if for_end {
+                // `@scope to {}` is NOT valid.
+                parens?;
+            } else if parens.is_err() {
+                // `@scope {}` is valid.
+                return Ok(None);
+            }
             input.parse_nested_block(|input| {
                 if input.is_exhausted() {
+                    // `@scope () {}` is valid.
                     return Ok(None);
                 }
                 let selector_parser = SelectorParser {
@@ -134,20 +145,16 @@ fn parse_scope<'a>(
                 };
                 let parse_relative = if for_end {
                     ParseRelative::ForScope
-                } else if in_style_rule {
-                    ParseRelative::ForNesting
                 } else {
-                    ParseRelative::No
+                    parse_relative
                 };
-                Ok(Some(SelectorList::parse_forgiving(
+                Ok(Some(SelectorList::parse_disallow_pseudo(
                     &selector_parser,
                     input,
                     parse_relative,
                 )?))
             })
         })
-        .ok()
-        .flatten()
 }
 
 impl ScopeBounds {
@@ -155,43 +162,73 @@ impl ScopeBounds {
     pub fn parse<'a>(
         context: &ParserContext,
         input: &mut Parser<'a, '_>,
-        in_style_rule: bool,
-    ) -> Self {
-        let start = parse_scope(context, input, in_style_rule, false);
-
-        let end = parse_scope(context, input, in_style_rule, true);
-        Self { start, end }
+        parse_relative: ParseRelative,
+    ) -> Result<Self, ParseError<'a>> {
+        let start = parse_scope(context, input, parse_relative, false)?;
+        let end = parse_scope(context, input, parse_relative, true)?;
+        Ok(Self { start, end })
     }
 }
 
 /// Types of implicit scope root.
-#[derive(Debug, Clone, MallocSizeOf)]
+#[derive(Debug, Copy, Clone, MallocSizeOf)]
 pub enum ImplicitScopeRoot {
     /// This implicit scope root is in the light tree.
     InLightTree(OpaqueElement),
+    /// This implicit scope root is the document element, regardless of which (light|shadow) tree
+    /// the element being matched is. This is the case for e.g. if you specified an implicit scope
+    /// within a user stylesheet.
+    DocumentElement,
+    /// The implicit scope root is in a constructed stylesheet - the scope root the element
+    /// under consideration's shadow root (If one exists).
+    Constructed,
     /// This implicit scope root is in the shadow tree.
     InShadowTree(OpaqueElement),
     /// This implicit scope root is the shadow host of the stylesheet-containing shadow tree.
     ShadowHost(OpaqueElement),
-    /// The implicit scope root is in a constructed stylesheet - the scope root the element
-    /// under consideration's shadow root (If one exists).
-    Constructed,
 }
 
 impl ImplicitScopeRoot {
     /// Return true if this matches the shadow host.
     pub fn matches_shadow_host(&self) -> bool {
         match self {
-            Self::InLightTree(..) | Self::InShadowTree(..) => false,
+            Self::InLightTree(..) | Self::InShadowTree(..) | Self::DocumentElement => false,
             Self::ShadowHost(..) | Self::Constructed => true,
         }
     }
 
-    /// Return the scope root element, given the element to be styled.
-    pub fn element(&self, current_host: Option<OpaqueElement>) -> Option<OpaqueElement> {
+    /// Return the implicit scope root element.
+    pub fn element(&self, current_host: Option<OpaqueElement>) -> ImplicitScopeTarget {
         match self {
-            Self::InLightTree(e) | Self::InShadowTree(e) | Self::ShadowHost(e) => Some(*e),
-            Self::Constructed => current_host,
+            Self::InLightTree(e) | Self::InShadowTree(e) | Self::ShadowHost(e) => {
+                ImplicitScopeTarget::Element(*e)
+            },
+            Self::Constructed | Self::DocumentElement => {
+                if matches!(self, Self::Constructed) {
+                    if let Some(host) = current_host {
+                        return ImplicitScopeTarget::Element(host);
+                    }
+                }
+                ImplicitScopeTarget::DocumentElement
+            },
+        }
+    }
+}
+
+/// Target of this implicit scope.
+pub enum ImplicitScopeTarget {
+    /// Target matches only the specified element.
+    Element(OpaqueElement),
+    /// Implicit scope whose target is the document element.
+    DocumentElement,
+}
+
+impl ImplicitScopeTarget {
+    /// Check if this element is the implicit scope.
+    fn check<E: TElement>(&self, element: E) -> bool {
+        match self {
+            Self::Element(e) => element.opaque() == *e,
+            Self::DocumentElement => element.is_root(),
         }
     }
 }
@@ -199,31 +236,33 @@ impl ImplicitScopeRoot {
 /// Target of this scope.
 pub enum ScopeTarget<'a> {
     /// Target matches an element matching the specified selector list.
-    Selector(&'a SelectorList<SelectorImpl>, &'a [AncestorHashes]),
-    /// Target matches only the specified element.
-    Element(OpaqueElement),
+    Selector(&'a SelectorList<SelectorImpl>),
+    /// Target matches an implicit scope target.
+    Implicit(ImplicitScopeTarget),
 }
 
 impl<'a> ScopeTarget<'a> {
     /// Check if the given element is the scope.
-    pub fn check<E: TElement>(
+    fn check<E: TElement>(
         &self,
         element: E,
         scope: Option<OpaqueElement>,
+        scope_subject_map: &ScopeSubjectMap,
         context: &mut MatchingContext<E::Impl>,
     ) -> bool {
         match self {
-            Self::Selector(list, hashes_list) => {
-                context.nest_for_scope_condition(scope, |context| {
-                    for (selector, hashes) in list.slice().iter().zip(hashes_list.iter()) {
-                        if matches_selector(selector, 0, Some(hashes), &element, context) {
-                            return true;
-                        }
+            Self::Selector(list) => context.nest_for_scope_condition(scope, |context| {
+                if scope_subject_map.early_reject(element, context.quirks_mode()) {
+                    return false;
+                }
+                for selector in list.slice().iter() {
+                    if matches_selector(selector, 0, None, &element, context) {
+                        return true;
                     }
-                    false
-                })
-            },
-            Self::Element(e) => element.opaque() == *e,
+                }
+                false
+            }),
+            Self::Implicit(t) => t.check(element),
         }
     }
 }
@@ -245,6 +284,7 @@ pub fn collect_scope_roots<E>(
     context: &mut MatchingContext<E::Impl>,
     target: &ScopeTarget,
     matches_shadow_host: bool,
+    scope_subject_map: &ScopeSubjectMap,
 ) -> Vec<ScopeRootCandidate>
 where
     E: TElement,
@@ -256,7 +296,7 @@ where
         if ceiling == Some(p.opaque()) {
             break;
         }
-        if target.check(p, ceiling, context) {
+        if target.check(p, ceiling, scope_subject_map, context) {
             result.push(ScopeRootCandidate {
                 root: p.opaque(),
                 proximity: ScopeProximity::new(proximity),
@@ -279,7 +319,6 @@ where
 /// That is, check if any ancestor to the root matches the scope-end selector.
 pub fn element_is_outside_of_scope<E>(
     selector: &Selector<E::Impl>,
-    hashes: &AncestorHashes,
     element: E,
     root: OpaqueElement,
     context: &mut MatchingContext<E::Impl>,
@@ -291,7 +330,7 @@ where
     let mut parent = Some(element);
     context.nest_for_scope_condition(Some(root), |context| {
         while let Some(p) = parent {
-            if matches_selector(selector, 0, Some(hashes), &p, context) {
+            if matches_selector(selector, 0, None, &p, context) {
                 return true;
             }
             if p.opaque() == root {
@@ -308,4 +347,141 @@ where
         }
         return false;
     })
+}
+
+/// A map containing simple selectors in subjects of scope selectors.
+/// This allows fast-rejecting scopes before running the full match.
+#[derive(Clone, Debug, Default, MallocSizeOf)]
+pub struct ScopeSubjectMap {
+    buckets: SimpleBucketsMap<()>,
+    any: bool,
+}
+
+impl ScopeSubjectMap {
+    /// Add the `<scope-start>` of a scope.
+    pub fn add_bound_start(&mut self, selectors: &SelectorList<SelectorImpl>, quirks_mode: QuirksMode) {
+        if self.add_selector_list(selectors, quirks_mode) {
+            self.any = true;
+        }
+    }
+
+    fn add_selector_list(&mut self, selectors: &SelectorList<SelectorImpl>, quirks_mode: QuirksMode) -> bool {
+        let mut is_any = false;
+        for selector in selectors.slice().iter() {
+            is_any = is_any || self.add_selector(selector, quirks_mode);
+        }
+        is_any
+    }
+
+    fn add_selector(&mut self, selector: &Selector<SelectorImpl>, quirks_mode: QuirksMode) -> bool {
+        let mut is_any = true;
+        let mut iter = selector.iter();
+        while let Some(c) = iter.next() {
+            let component_any = match c {
+                Component::Class(cls) => {
+                    match self.buckets.classes.try_entry(cls.0.clone(), quirks_mode) {
+                        Ok(e) => {
+                            e.or_insert(());
+                            false
+                        },
+                        Err(_) => true,
+                    }
+                },
+                Component::ID(id) => {
+                    match self.buckets.ids.try_entry(id.0.clone(), quirks_mode) {
+                        Ok(e) => {
+                            e.or_insert(());
+                            false
+                        },
+                        Err(_) => true,
+                    }
+                },
+                Component::LocalName(local_name) => {
+                    self.buckets.local_names.insert(local_name.lower_name.clone(), ());
+                    false
+                },
+                Component::Is(ref list) | Component::Where(ref list) => {
+                    self.add_selector_list(list, quirks_mode)
+                },
+                _ => true,
+            };
+
+            is_any = is_any && component_any;
+        }
+        is_any
+    }
+
+    /// Shrink the map as much as possible.
+    pub fn shrink_if_needed(&mut self) {
+        self.buckets.shrink_if_needed();
+    }
+
+    /// Clear the map.
+    pub fn clear(&mut self) {
+        self.buckets.clear();
+        self.any = false;
+    }
+
+    /// Could a given element possibly be a scope root?
+    fn early_reject<E: TElement>(&self, element: E, quirks_mode: QuirksMode) -> bool {
+        if self.any {
+            return false;
+        }
+
+        if let Some(id) = element.id() {
+            if self.buckets.ids.get(id, quirks_mode).is_some() {
+                return false;
+            }
+        }
+
+        let mut found = false;
+        element.each_class(|cls| {
+            if self.buckets.classes.get(cls, quirks_mode).is_some() {
+                found = true;
+            }
+        });
+        if found {
+            return false;
+        }
+
+        if self.buckets.local_names.get(element.local_name()).is_some() {
+            return false;
+        }
+
+        true
+    }
+}
+
+/// Determine if this selector list, when used as a scope bound selector, is considered trivial.
+pub fn scope_selector_list_is_trivial(list: &SelectorList<SelectorImpl>) -> bool {
+    fn scope_selector_is_trivial(selector: &Selector<SelectorImpl>) -> bool {
+        // A selector is trivial if:
+        // * There is no selector conditional on its siblings and/or descendant to match, and
+        // * There is no dependency on sibling relations, and
+        // * There's no ID selector in the selector. A more correct approach may be to ensure that
+        //   scoping roots of the style sharing candidates and targets have matching IDs, but that
+        //   requires re-plumbing what we pass around for scope roots.
+        let mut iter = selector.iter();
+        loop {
+            while let Some(c) = iter.next() {
+                match c {
+                    Component::ID(_) | Component::Nth(_) | Component::NthOf(_) | Component::Has(_) => return false,
+                    Component::Is(ref list) | Component::Where(ref list) | Component::Negation(ref list) =>
+                        if !scope_selector_list_is_trivial(list) {
+                            return false;
+                        }
+                    _ => (),
+                }
+            }
+
+            match iter.next_sequence() {
+                Some(c) => if c.is_sibling() {
+                    return false;
+                },
+                None => return true,
+            }
+        }
+    }
+
+    list.slice().iter().all(|s| scope_selector_is_trivial(s))
 }

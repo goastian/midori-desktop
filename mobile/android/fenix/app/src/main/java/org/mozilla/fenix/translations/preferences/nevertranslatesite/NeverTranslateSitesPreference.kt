@@ -23,12 +23,12 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
+import org.mozilla.fenix.compose.InfoCard
+import org.mozilla.fenix.compose.InfoType
 import org.mozilla.fenix.compose.list.TextListItem
-import org.mozilla.fenix.shopping.ui.ReviewQualityCheckInfoCard
-import org.mozilla.fenix.shopping.ui.ReviewQualityCheckInfoType
 import org.mozilla.fenix.theme.FirefoxTheme
 
 /**
@@ -50,24 +50,28 @@ fun NeverTranslateSitesPreference(
                 color = FirefoxTheme.colors.layer1,
             ),
     ) {
-        TextListItem(
-            label = stringResource(R.string.never_translate_site_header_preference),
-            modifier = Modifier
-                .padding(
-                    start = 56.dp,
+        LazyColumn {
+            item {
+                TextListItem(
+                    label = stringResource(R.string.never_translate_site_header_preference),
+                    modifier = Modifier
+                        .padding(
+                            start = 56.dp,
+                        )
+                        .semantics { heading() }
+                        .defaultMinSize(minHeight = 76.dp)
+                        .wrapContentHeight(),
+                    maxLabelLines = Int.MAX_VALUE,
                 )
-                .semantics { heading() }
-                .defaultMinSize(minHeight = 76.dp)
-                .wrapContentHeight(),
-            maxLabelLines = Int.MAX_VALUE,
-        )
+            }
 
-        if (hasNeverTranslateSitesError) {
-            NeverTranslateSitesErrorWarning()
-        }
+            if (hasNeverTranslateSitesError) {
+                item {
+                    NeverTranslateSitesErrorWarning()
+                }
+            }
 
-        neverTranslateSitesListPreferences?.let {
-            LazyColumn {
+            neverTranslateSitesListPreferences?.let {
                 items(neverTranslateSitesListPreferences) { item: String ->
                     val itemContentDescription = stringResource(
                         id = R.string.never_translate_site_item_list_content_description_preference,
@@ -103,9 +107,9 @@ private fun NeverTranslateSitesErrorWarning() {
         .defaultMinSize(minHeight = 56.dp)
         .wrapContentHeight()
 
-    ReviewQualityCheckInfoCard(
+    InfoCard(
         description = stringResource(id = R.string.never_translate_site_error_warning_text),
-        type = ReviewQualityCheckInfoType.Warning,
+        type = InfoType.Warning,
         verticalRowAlignment = Alignment.CenterVertically,
         modifier = modifier,
     )
@@ -121,7 +125,7 @@ internal fun getNeverTranslateSitesList(): List<String> {
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun NeverTranslateSitePreferencePreview() {
     FirefoxTheme {
         NeverTranslateSitesPreference(

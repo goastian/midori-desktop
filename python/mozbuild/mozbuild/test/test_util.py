@@ -1,4 +1,3 @@
-# coding: utf-8
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -7,18 +6,19 @@ import copy
 import hashlib
 import itertools
 import os
+import re
 import string
 import sys
 import unittest
 
 import pytest
-import six
 from mozfile.mozfile import NamedTemporaryFile
 from mozunit import main
 
 from mozbuild.util import (
     EnumString,
     EnumStringComparisonError,
+    ForwardingArgumentParser,
     HierarchicalStringList,
     MozbuildDeletionError,
     ReadOnlyDict,
@@ -38,10 +38,7 @@ from mozbuild.util import (
     resolve_target_to_make,
 )
 
-if sys.version_info[0] == 3:
-    str_type = "str"
-else:
-    str_type = "unicode"
+str_type = "str"
 
 data_path = os.path.abspath(os.path.dirname(__file__))
 data_path = os.path.join(data_path, "data")
@@ -163,18 +160,18 @@ class TestHierarchicalStringList(unittest.TestCase):
     def test_exports_subdir(self):
         self.assertEqual(self.EXPORTS._children, {})
         self.EXPORTS.foo += ["foo.h"]
-        six.assertCountEqual(self, self.EXPORTS._children, {"foo": True})
+        self.assertCountEqual(self.EXPORTS._children, {"foo": True})
         self.assertEqual(self.EXPORTS.foo._strings, ["foo.h"])
         self.EXPORTS.bar += ["bar.h"]
-        six.assertCountEqual(self, self.EXPORTS._children, {"foo": True, "bar": True})
+        self.assertCountEqual(self.EXPORTS._children, {"foo": True, "bar": True})
         self.assertEqual(self.EXPORTS.foo._strings, ["foo.h"])
         self.assertEqual(self.EXPORTS.bar._strings, ["bar.h"])
 
     def test_exports_multiple_subdir(self):
         self.EXPORTS.foo.bar = ["foobar.h"]
-        six.assertCountEqual(self, self.EXPORTS._children, {"foo": True})
-        six.assertCountEqual(self, self.EXPORTS.foo._children, {"bar": True})
-        six.assertCountEqual(self, self.EXPORTS.foo.bar._children, {})
+        self.assertCountEqual(self.EXPORTS._children, {"foo": True})
+        self.assertCountEqual(self.EXPORTS.foo._children, {"bar": True})
+        self.assertCountEqual(self.EXPORTS.foo.bar._children, {})
         self.assertEqual(self.EXPORTS._strings, [])
         self.assertEqual(self.EXPORTS.foo._strings, [])
         self.assertEqual(self.EXPORTS.foo.bar._strings, ["foobar.h"])
@@ -182,8 +179,7 @@ class TestHierarchicalStringList(unittest.TestCase):
     def test_invalid_exports_append(self):
         with self.assertRaises(ValueError) as ve:
             self.EXPORTS += "foo.h"
-        six.assertRegex(
-            self,
+        self.assertRegex(
             str(ve.exception),
             "Expected a list of strings, not <(?:type|class) '%s'>" % str_type,
         )
@@ -192,8 +188,7 @@ class TestHierarchicalStringList(unittest.TestCase):
         with self.assertRaises(ValueError) as ve:
             self.EXPORTS.foo = "foo.h"
 
-        six.assertRegex(
-            self,
+        self.assertRegex(
             str(ve.exception),
             "Expected a list of strings, not <(?:type|class) '%s'>" % str_type,
         )
@@ -202,8 +197,7 @@ class TestHierarchicalStringList(unittest.TestCase):
         with self.assertRaises(ValueError) as ve:
             self.EXPORTS += "foo.h"
 
-        six.assertRegex(
-            self,
+        self.assertRegex(
             str(ve.exception),
             "Expected a list of strings, not <(?:type|class) '%s'>" % str_type,
         )
@@ -212,10 +206,9 @@ class TestHierarchicalStringList(unittest.TestCase):
         with self.assertRaises(ValueError) as ve:
             self.EXPORTS += [True]
 
-        six.assertRegex(
-            self,
+        self.assertRegex(
             str(ve.exception),
-            "Expected a list of strings, not an element of " "<(?:type|class) 'bool'>",
+            "Expected a list of strings, not an element of <(?:type|class) 'bool'>",
         )
 
     def test_del_exports(self):
@@ -495,17 +488,13 @@ class TestStrictOrderingOnAppendListWithFlagsFactory(unittest.TestCase):
             l["b"].update(xyz=1)
 
     def test_strict_ordering_on_append_list_with_flags_factory_extend(self):
-        FooList = StrictOrderingOnAppendListWithFlagsFactory(
-            {"foo": bool, "bar": six.text_type}
-        )
+        FooList = StrictOrderingOnAppendListWithFlagsFactory({"foo": bool, "bar": str})
         foo = FooList(["a", "b", "c"])
         foo["a"].foo = True
         foo["b"].bar = "bar"
 
         # Don't allow extending lists with different flag definitions.
-        BarList = StrictOrderingOnAppendListWithFlagsFactory(
-            {"foo": six.text_type, "baz": bool}
-        )
+        BarList = StrictOrderingOnAppendListWithFlagsFactory({"foo": str, "baz": bool})
         bar = BarList(["d", "e", "f"])
         bar["d"].foo = "foo"
         bar["e"].baz = True
@@ -577,7 +566,7 @@ class TestMemoize(unittest.TestCase):
         self.assertEqual(self._count, 3)
 
     def test_memoize_method(self):
-        class foo(object):
+        class foo:
             def __init__(self):
                 self._count = 0
 
@@ -608,7 +597,7 @@ class TestMemoize(unittest.TestCase):
         self.assertEqual(refcount, sys.getrefcount(instance))
 
     def test_memoized_property(self):
-        class foo(object):
+        class foo:
             def __init__(self):
                 self._count = 0
 
@@ -689,7 +678,7 @@ class TestTypedList(unittest.TestCase):
     def test_add_coercion(self):
         objs = []
 
-        class Foo(object):
+        class Foo:
             def __init__(self, obj):
                 objs.append(obj)
 
@@ -725,11 +714,11 @@ class TestTypedList(unittest.TestCase):
 
 class TypedTestStrictOrderingOnAppendList(unittest.TestCase):
     def test_init(self):
-        class Unicode(six.text_type):
+        class Unicode(str):
             def __new__(cls, other):
-                if not isinstance(other, six.text_type):
+                if not isinstance(other, str):
                     raise ValueError()
-                return six.text_type.__new__(cls, other)
+                return str.__new__(cls, other)
 
         cls = TypedList(Unicode, StrictOrderingOnAppendList)
         l = cls()
@@ -749,7 +738,7 @@ class TypedTestStrictOrderingOnAppendList(unittest.TestCase):
 
 class TestTypedNamedTuple(unittest.TestCase):
     def test_simple(self):
-        FooBar = TypedNamedTuple("FooBar", [("foo", six.text_type), ("bar", int)])
+        FooBar = TypedNamedTuple("FooBar", [("foo", str), ("bar", int)])
 
         t = FooBar(foo="foo", bar=2)
         self.assertEqual(type(t), FooBar)
@@ -848,10 +837,9 @@ class TestEnumString(unittest.TestCase):
 
 
 class TestHexDump(unittest.TestCase):
-    @unittest.skipUnless(six.PY3, "requires Python 3")
     def test_hexdump(self):
         self.assertEqual(
-            hexdump("abcdef123💩ZYXWVU".encode("utf-8")),
+            hexdump("abcdef123💩ZYXWVU".encode()),
             [
                 "00  61 62 63 64 65 66 31 32  33 f0 9f 92 a9 5a 59 58  |abcdef123....ZYX|\n",
                 "10  57 56 55                                          |WVU             |\n",
@@ -884,6 +872,39 @@ def test_read_only_dict():
     d_copy = copy.deepcopy(d)
     assert d == d_copy
     assert isinstance(d_copy, ReadOnlyDict)
+
+
+def test_forwarding_argument_parser():
+    # init
+    parser = ForwardingArgumentParser()
+    parser.add_forwarding_group(
+        title="my forwarding group",
+        dest="fwd",
+        help="some program",
+        forwarding_help="some help",
+    )
+
+    # test help format
+    formatted_help = parser.format_help()
+    ref_help = """\
+usage: test_util.py \\[-h\\] ...
+
+option.*:
+  -h, --help   show this help message and exit
+
+my forwarding group:
+  -- --help some help
+
+  \\[--\\] fwd...  some program
+"""
+    assert re.match(ref_help, formatted_help)
+
+    # test argument parsing
+    forwarded_args = parser.parse_args(["1", "2"])
+    assert forwarded_args.fwd == ["1", "2"]
+
+    forwarded_help = parser.parse_args(["--", "--help"])
+    assert forwarded_help.fwd == ["--", "--help"]
 
 
 if __name__ == "__main__":

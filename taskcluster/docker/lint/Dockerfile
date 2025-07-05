@@ -1,7 +1,9 @@
 FROM          $DOCKER_IMAGE_PARENT
 MAINTAINER    Andrew Halberstadt <ahalberstadt@mozilla.com>
 
-VOLUME /builds/worker/.cache
+VOLUME /builds/worker/.task-cache/npm
+VOLUME /builds/worker/.task-cache/pip
+VOLUME /builds/worker/.task-cache/uv
 VOLUME /builds/worker/checkouts
 
 # We do want to install recommended packages.
@@ -15,14 +17,6 @@ ADD topsrcdir/python/mozbuild/mozbuild/action/tooltool.py /build/tooltool.py
 ADD topsrcdir/taskcluster/docker/recipes/install-node.sh /build/install-node.sh
 
 ADD system-setup.sh /tmp/system-setup.sh
-# %include tools/lint/eslint/manifest.tt
-ADD topsrcdir/tools/lint/eslint/manifest.tt /tmp/eslint.tt
-# %include tools/lint/eslint/eslint-plugin-mozilla/manifest.tt
-ADD topsrcdir/tools/lint/eslint/eslint-plugin-mozilla/manifest.tt /tmp/eslint-plugin-mozilla.tt
-# %include tools/lint/spell/codespell_requirements.txt
-ADD topsrcdir/tools/lint/spell/codespell_requirements.txt /tmp/codespell_requirements.txt
-# %include tools/lint/tox/tox_requirements.txt
-ADD topsrcdir/tools/lint/tox/tox_requirements.txt /tmp/tox_requirements.txt
 RUN bash /tmp/system-setup.sh
 
 RUN chown -R worker:worker /builds/worker/bin && chmod 755 /builds/worker/bin/*

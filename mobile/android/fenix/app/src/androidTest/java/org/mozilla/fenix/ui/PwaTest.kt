@@ -8,10 +8,12 @@ import androidx.core.net.toUri
 import org.junit.Rule
 import org.junit.Test
 import org.mozilla.fenix.customannotations.SmokeTest
+import org.mozilla.fenix.helpers.AppAndSystemHelper.clickSystemHomeScreenShortcutAddButton
 import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.MatcherHelper.itemContainingText
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.clickPageObject
 import org.mozilla.fenix.ui.robots.customTabScreen
 import org.mozilla.fenix.ui.robots.navigationToolbar
@@ -29,17 +31,20 @@ class PwaTest : TestSetup() {
     @get:Rule
     val activityTestRule = HomeActivityIntentTestRule.withDefaultSettingsOverrides()
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/845695
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/845695
     @Test
     fun externalLinkPWATest() {
         val externalLinkURL = "https://mozilla-mobile.github.io/testapp/downloads"
 
         navigationToolbar {
         }.enterURLAndEnterToBrowser(externalLinksPWAPage.toUri()) {
-            waitForPageToLoad()
+            verifyPageContent("Misc Link Types")
         }.openThreeDotMenu {
-        }.clickInstall {
-            clickAddAutomaticallyButton()
+        }.clickAddAppToHomeScreen {
+            clickSystemHomeScreenShortcutAddButton()
         }.openHomeScreenShortcut(shortcutTitle) {
             clickPageObject(itemContainingText("External link"))
         }
@@ -49,15 +54,15 @@ class PwaTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/845694
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/845694
     @Test
     fun appLikeExperiencePWATest() {
         navigationToolbar {
         }.enterURLAndEnterToBrowser(externalLinksPWAPage.toUri()) {
-            waitForPageToLoad()
+            verifyPageContent("Misc Link Types")
         }.openThreeDotMenu {
-        }.clickInstall {
-            clickAddAutomaticallyButton()
+        }.clickAddAppToHomeScreen {
+            clickSystemHomeScreenShortcutAddButton()
         }.openHomeScreenShortcut(shortcutTitle) {
         }
 
@@ -67,7 +72,7 @@ class PwaTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/834200
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/834200
     @SmokeTest
     @Test
     fun installPWAFromTheMainMenuTest() {
@@ -77,8 +82,8 @@ class PwaTest : TestSetup() {
         }.enterURLAndEnterToBrowser(pwaPage.toUri()) {
             verifyPageContent("Login Form")
         }.openThreeDotMenu {
-        }.clickInstall {
-            clickAddAutomaticallyButton()
+        }.clickAddAppToHomeScreen {
+            clickSystemHomeScreenShortcutAddButton()
         }.openHomeScreenShortcut("TEST_APP") {
             mDevice.waitForIdle()
             verifyNavURLBarHidden()

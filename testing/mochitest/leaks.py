@@ -12,8 +12,7 @@ RE_DOCSHELL = re.compile(r"I\/DocShellAndDOMWindowLeak ([+\-]{2})DOCSHELL")
 RE_DOMWINDOW = re.compile(r"I\/DocShellAndDOMWindowLeak ([+\-]{2})DOMWINDOW")
 
 
-class ShutdownLeaks(object):
-
+class ShutdownLeaks:
     """
     Parses the mochitest run log when running a debug build, assigns all leaked
     DOM windows (that are still around after test suite shutdown, despite running
@@ -277,14 +276,10 @@ class ShutdownLeaks(object):
         return sorted(counts, key=itemgetter(1), reverse=True)
 
     def _isHiddenWindowURL(self, url):
-        return (
-            url == "resource://gre-resources/hiddenWindow.html"
-            or url == "chrome://browser/content/hiddenWindowMac.xhtml"  # Win / Linux
-        )  # Mac
+        return url == "resource://gre-resources/hiddenWindowMac.xhtml"
 
 
-class LSANLeaks(object):
-
+class LSANLeaks:
     """
     Parses the log when running an LSAN build, looking for interesting stack frames
     in allocation stacks, and prints out reports.

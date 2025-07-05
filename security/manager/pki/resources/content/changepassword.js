@@ -27,6 +27,16 @@ function onLoad() {
   document.addEventListener("dialogaccept", setPassword);
 
   pw1 = document.getElementById("pw1");
+  pw1.addEventListener("input", () => {
+    setPasswordStrength();
+    checkPasswords();
+  });
+
+  let pw2 = document.getElementById("pw2");
+  pw2.addEventListener("input", () => {
+    checkPasswords();
+  });
+
   params = window.arguments[0].QueryInterface(Ci.nsIDialogParamBlock);
   token = params.objects.GetElementAt(0).QueryInterface(Ci.nsIPK11Token);
 
@@ -200,9 +210,8 @@ function checkPasswords() {
       // was called with the intention to change the password.
       // The token currently uses an empty password.
       // We will not allow changing the password from empty to empty.
-      document
-        .getElementById("set_password")
-        .getButton("accept").disabled = true;
+      document.getElementById("set_password").getButton("accept").disabled =
+        true;
       return;
     }
   }
@@ -210,3 +219,5 @@ function checkPasswords() {
   document.getElementById("set_password").getButton("accept").disabled =
     pw1 != pw2;
 }
+
+window.addEventListener("load", onLoad);

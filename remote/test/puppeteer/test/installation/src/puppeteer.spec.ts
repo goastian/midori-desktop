@@ -50,7 +50,7 @@ describe('`puppeteer`', () => {
       puppeteerInBrowserPath,
       {
         recursive: true,
-      }
+      },
     );
     spawnSync('npm', ['ci'], {
       cwd: puppeteerInBrowserPath,
@@ -69,6 +69,36 @@ describe('`puppeteer`', () => {
       await server.stop();
     }
   });
+
+  // Flaky on macos-13.
+  (platform() === 'darwin' ? it.skip : it)(
+    'runs in the extension',
+    async function () {
+      const examplePath = join(this.sandbox, 'puppeteer-in-extension');
+      fs.cpSync(join(EXAMPLES_DIR, 'puppeteer-in-extension'), examplePath, {
+        recursive: true,
+      });
+      spawnSync('npm', ['ci'], {
+        cwd: examplePath,
+        shell: true,
+      });
+      spawnSync('npm', ['run', 'build'], {
+        cwd: examplePath,
+        shell: true,
+      });
+
+      const server = await TestServer.create(examplePath);
+      try {
+        const script = await readAsset(
+          'puppeteer',
+          'puppeteer-in-extension.js',
+        );
+        await this.runScript(script, 'mjs', [String(server.port)]);
+      } finally {
+        await server.stop();
+      }
+    },
+  );
 });
 
 // Skipping this test on Windows as windows runners are much slower.
@@ -85,27 +115,27 @@ describe('`puppeteer`', () => {
     });
 
     it('evaluates', async function () {
-      assert.equal(
-        readdirSync(join(this.sandbox, '.cache', 'puppeteer', 'chrome')).length,
-        1
+      const dir = readdirSync(
+        join(this.sandbox, '.cache', 'puppeteer', 'chrome'),
       );
+      assert.equal(dir.length, 1, dir.join());
 
       await this.runScript(
         await readAsset('puppeteer', 'installCanary.js'),
-        'mjs'
+        'mjs',
       );
 
       assert.equal(
         readdirSync(join(this.sandbox, '.cache', 'puppeteer', 'chrome')).length,
-        2
+        2,
       );
 
       await this.runScript(await readAsset('puppeteer', 'trimCache.js'), 'mjs');
 
       assert.equal(
         readdirSync(join(this.sandbox, '.cache', 'puppeteer', 'chrome')).length,
-        1
+        1,
       );
     });
-  }
+  },
 );

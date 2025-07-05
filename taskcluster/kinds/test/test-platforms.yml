@@ -127,98 +127,65 @@ linux2204-64-wayland-shippable/opt:
         - webgpu
 
 ##
-# Windows platforms (matching /windows.*/)
+# Windows platforms (matching /windows.*/) 24h2 (no -qr)
 
-# win32
-windows10-32-shippable-qr/opt:
+# win11-32-24h2
+windows11-32-24h2-shippable/opt:
     build-platform: win32-shippable/opt
     build-signing-label: build-signing-win32-shippable/opt
     test-sets:
-        - browsertime
-        - talos-profiling
-        - windows-talos
-
-windows10-32-qr/opt:
-    build-platform: win32/opt
-    test-sets:
-        - browsertime
-        - windows-talos
-
-
-# win11-32
-windows11-32-2009-shippable-qr/opt:
-    build-platform: win32-shippable/opt
-    build-signing-label: build-signing-win32-shippable/opt
-    test-sets:
-        - awsy
         - desktop-screenshot-capture
-        - web-platform-tests
-        - windows32-2009-tests
+        - windows32-tests
 
-windows11-32-2009-qr/opt:
+windows11-32-24h2/opt:
     build-platform: win32/opt
     build-signing-label: build-signing-win32/opt
     test-sets:
-        - awsy
         - desktop-screenshot-capture
-        - web-platform-tests
-        - windows32-2009-tests
+        - windows32-tests
 
-windows11-32-2009-qr/debug:
+windows11-32-24h2/debug:
     build-platform: win32/debug
     build-signing-label: build-signing-win32/debug
     test-sets:
-        - web-platform-tests
-        - windows32-2009-tests
+        - windows32-tests
 
-windows11-32-2009-mingwclang-qr/debug:
+windows11-32-24h2-mingwclang/debug:
     build-platform: win32-mingwclang/debug
     test-sets:
         - mingwclang-win32-tests-debug
 
-windows11-32-2009-mingwclang-qr/opt:
+windows11-32-24h2-mingwclang/opt:
     build-platform: win32-mingwclang/opt
     test-sets:
         - mingwclang-tests-opt
 
 # win64
-windows10-64-qr/opt:
-    build-platform: win64/opt
-    test-sets:
-        - windows-talos
-        - browsertime
-
-windows11-64-2009-hw-ref-shippable/opt:
-    build-platform: win64-shippable/opt
-    build-signing-label:
-        by-variant:
-            msix: repackage-signing-msix-win64/opt
-            default: build-signing-win64/opt
-    test-sets:
-        - talos-ref-hw
-        - windows-ref-hw-tests
-
-windows11-64-2009-hw-ref/opt:
-    build-platform: win64/opt
-    build-signing-label:
-        by-variant:
-            msix: repackage-signing-msix-win64/opt
-            default: build-signing-win64/opt
-    test-sets:
-        - talos-ref-hw
-        - windows-ref-hw-tests
-
+# Bug 1909894, windows 10 + sp3 temporarily
 windows10-64-shippable-qr/opt:
     build-platform: win64-shippable/opt
     test-sets:
-        - talos-profiling
-        - windows-talos
-        - browsertime
+        - browsertime-benchmark
 
-windows10-64-nightlyasrelease-qr/opt:
-    build-platform: win64-nightlyasrelease/opt
+windows11-64-24h2-hw-ref-shippable/opt:
+    build-platform: win64-shippable/opt
+    build-signing-label:
+        by-variant:
+            msix: repackage-signing-msix-win64/opt
+            default: build-signing-win64/opt
     test-sets:
-        - browsertime
+        - browsertime-ref-hw
+        - windows-ref-hw-tests
+
+windows11-64-24h2-hw-ref/opt:
+    build-platform: win64/opt
+    build-signing-label:
+        by-variant:
+            msix: repackage-signing-msix-win64/opt
+            default: build-signing-win64/opt
+    test-sets:
+        - browsertime-ref-hw
+        - windows-ref-hw-tests
 
 # win10-64 2004
 windows10-64-2009-qr/debug:
@@ -248,17 +215,18 @@ windows10-64-2009-shippable-qr/opt:
     test-sets:
         - windows10-2009-tests
 
-# win11-64 2009
-windows11-64-2009-ccov-qr/opt:
+# win64 24h2 (no -qr)
+# no perf right now
+windows11-64-24h2-ccov/opt:
     build-platform: win64-ccov/opt
     build-signing-label: build-signing-win64-ccov/opt
     test-sets:
         - desktop-screenshot-capture
         - ccov-code-coverage-tests
         - windows11-64-2009-ccov-tests
-        - windows11-2009-tests
+        - windows11-24h2-tests
 
-windows11-64-2009-qr/debug:
+windows11-64-24h2/debug:
     build-platform: win64/debug
     build-signing-label:
         by-variant:
@@ -267,9 +235,9 @@ windows11-64-2009-qr/debug:
     test-sets:
         - web-platform-tests
         - webgpu
-        - windows11-2009-tests
+        - windows11-24h2-tests
 
-windows11-64-2009-qr/opt:
+windows11-64-24h2/opt:
     build-platform: win64/opt
     build-signing-label:
         by-variant:
@@ -281,10 +249,13 @@ windows11-64-2009-qr/opt:
         - web-platform-tests
         - web-platform-tests-backlog
         - webgpu
-        - windows11-2009-tests
+        - windows11-24h2-tests
         - talos-xperf
+        - windows-talos
+        - browsertime
+        - windows-talos-webgl
 
-windows11-64-2009-shippable-qr/opt:
+windows11-64-24h2-shippable/opt:
     build-platform: win64-shippable/opt
     build-signing-label:
         by-variant:
@@ -295,109 +266,115 @@ windows11-64-2009-shippable-qr/opt:
         - desktop-screenshot-capture
         - web-platform-tests
         - web-platform-tests-backlog
-        - windows11-2009-tests
+        - windows11-24h2-tests
         - talos-xperf
+        - talos-profiling
+        - windows-talos
+        - browsertime
+        - windows-talos-webgl
 
-windows11-64-2009-devedition-qr/opt:
+windows11-64-24h2-devedition/opt:
     build-platform: win64-devedition/opt
     build-signing-label: build-signing-win64-devedition/opt
     test-sets:
         - desktop-screenshot-capture
         - web-platform-tests
-        - windows11-2009-tests
+        - windows11-24h2-tests
 
-windows11-64-2009-asan-qr/opt:
+windows11-64-24h2-asan/opt:
     build-platform: win64-asan/opt
     test-sets:
-        - windows11-2009-tests
+        - windows11-24h2-tests
 
-windows11-64-2009-mingwclang-qr/debug:
+windows11-64-24h2-mingwclang/debug:
     build-platform: win64-mingwclang/debug
     test-sets:
         - mingwclang-tests-debug
 
-windows11-64-2009-mingwclang-qr/opt:
+windows11-64-24h2-mingwclang/opt:
     build-platform: win64-mingwclang/opt
     test-sets:
         - mingwclang-tests-opt
 
+windows11-64-24h2-nightlyasrelease/opt:
+    build-platform: win64-nightlyasrelease/opt
+    test-sets:
+        - browsertime
 
 ##
 # MacOS X platforms (matching /macosx.*/)
 
-macosx1100-64-qr/debug:
-    build-platform: macosx64/debug
-    build-signing-label: repackage-macosx64/debug
-    test-sets:
-        - macosx1100-64-jittests
-
-macosx1100-64-aarch64-qr/debug:
+macosx1500-aarch64/debug:
     build-platform: macosx64-aarch64/debug
     build-signing-label: repackage-macosx64-aarch64/debug
     test-sets:
-        - macosx1100-aarch64-qr-tests
+        - macosx1500-aarch64-tests
+        - macosx1500-64-jittests
 
-macosx1100-64-shippable-qr/opt:
+macosx1500-aarch64-shippable/opt:
     build-platform: macosx64-shippable/opt
     build-signing-label: repackage-macosx64-shippable/opt
     test-sets:
-        - macosx1100-64-jittests
-        - macosx1100-64-qr-tests
-        # - macosx64-talos
-        # - browsertime-high-priority
+        - macosx1500-64-jittests
+        - macosx1500-64-tests
+        - macosx1500-64-perftests
 
-macosx1015-64-shippable-qr/opt:
+macosx1470-64-nightlyasrelease/opt:
+    build-platform: macosx64-nightlyasrelease/opt
+    test-sets:
+        - browsertime
+
+macosx1470-64-shippable/opt:
     build-platform: macosx64-shippable/opt
     test-sets:
         - awsy
         - browsertime
         - browsertime-profiling
-        - desktop-screenshot-capture
-        - macosx1015-64-qr-tests
         - macosx64-talos
         - talos-profiling
-        - web-platform-tests
+        - macosx1470-64-tests
+        - webgpu
         - web-platform-tests-backlog
+
+macosx1470-64-devedition/opt:
+    build-platform: macosx64-devedition/opt
+    test-sets:
+        - macosx1470-64-tests
         - webgpu
 
-macosx1015-64-nightlyasrelease-qr/opt:
-    build-platform: macosx64-nightlyasrelease/opt
+macosx1470-64/opt:
+    build-platform: macosx64/opt
     test-sets:
+        - macosx1470-64-tests
+        - web-platform-tests-backlog
+        - webgpu
         - browsertime
+
+macosx1470-64/debug:
+    build-platform: macosx64/debug
+    test-sets:
+        - macosx1470-64-tests
+        - webgpu
+
+macosx1015-64-shippable-qr/opt:
+    build-platform: macosx64-shippable/opt
+    test-sets:
+        - macosx1015-64-qr-tests
 
 macosx1015-64-devedition-qr/opt:
     build-platform: macosx64-devedition/opt
     test-sets:
         - macosx1015-64-qr-tests
-        - web-platform-tests
-        - webgpu
 
 macosx1015-64-qr/opt:
     build-platform: macosx64/opt
     test-sets:
-        - desktop-screenshot-capture
         - macosx1015-64-qr-tests
-        - web-platform-tests
-        - web-platform-tests-backlog
-        - webgpu
-        - browsertime
 
 macosx1015-64-qr/debug:
     build-platform: macosx64/debug
     test-sets:
         - macosx1015-64-qr-tests
-        - web-platform-tests
-        - webgpu
-
-macosx1015-64-ccov-qr/opt:
-    build-platform: macosx64-ccov/opt
-    test-sets:
-        - macosx1015-64-qr-tests
-
-macosx1400-64-shippable-qr/opt:
-    build-platform: macosx64-shippable/opt
-    test-sets:
-        - macosx1400-64-qr-tests
 
 ##
 # Android platforms (matching /android-em.*/)
@@ -445,20 +422,6 @@ android-em-7.0-x86-qr/opt:
 
 # android-hw test platforms execute on real devices attached to Autophone hosts.
 
-# android-hw-a51-11-0 Samsung Galaxy A51 Android 11.0
-
-android-hw-a51-11-0-aarch64-qr/opt:
-    build-platform: android-aarch64/opt
-    test-sets:
-        - android-hw-browsertime
-#        - android-hw-browsertime-power
-
-android-hw-a51-11-0-aarch64-shippable-qr/opt:
-    build-platform: android-aarch64-shippable/opt
-    test-sets:
-        - android-hw-browsertime
-#        - android-hw-browsertime-power
-
 # android-hw-p5-13-0 Google Pixel 5 Android 13.0
 
 android-hw-p5-13-0-arm7-qr/opt:
@@ -479,27 +442,48 @@ android-hw-p5-13-0-arm7-qr/debug:
 android-hw-p5-13-0-android-aarch64-qr/debug:
     build-platform: android-aarch64/debug
     test-sets:
-        - android-hw-aarch64
-        - android-hw-aarch64-debug-unittests
+        - android-hw-p5-aarch64
 
 android-hw-p5-13-0-android-aarch64-qr/opt:
     build-platform: android-aarch64/opt
     test-sets:
-        - android-hw-aarch64
-        - android-hw-aarch64-opt-unittests
+        - android-hw-p5-aarch64
 
 android-hw-p5-13-0-android-aarch64-shippable-qr/opt:
     build-platform: android-aarch64-shippable/opt
     test-sets:
+        - android-hw-p5-aarch64
+
+android-hw-p6-13-0-aarch64-shippable/opt:
+    build-platform: android-aarch64-shippable/opt
+    test-sets:
+        - android-hw-speedometer-tests
+        - android-hw-power-tests
+
+android-hw-a55-14-0-aarch64-shippable/opt:
+    build-platform: android-aarch64-shippable/opt
+    test-sets:
+        - android-hw-speedometer-tests
+        - android-hw-browsertime
         - android-hw-aarch64
         - android-hw-aarch64-pgo-unittests
 
-android-hw-p6-13-0-android-aarch64-shippable-qr/opt:
-    build-platform: android-aarch64-shippable/opt
+android-hw-a55-14-0-aarch64/opt:
+    build-platform: android-aarch64/opt
     test-sets:
         - android-hw-speedometer-tests
+        - android-hw-browsertime
+        - android-hw-aarch64
+        - android-hw-aarch64-pgo-unittests
 
-android-hw-s21-13-0-android-aarch64-shippable-qr/opt:
+android-hw-a55-14-0-aarch64/debug:
+    build-platform: android-aarch64/debug
+    test-sets:
+        - android-hw-aarch64
+        - android-hw-aarch64-debug-unittests
+
+android-hw-s24-14-0-aarch64-shippable/opt:
     build-platform: android-aarch64-shippable/opt
     test-sets:
         - android-hw-speedometer-tests
+        - android-hw-power-tests

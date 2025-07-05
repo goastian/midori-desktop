@@ -27,7 +27,7 @@ describe('Workers', function () {
     expect(
       await worker?.evaluate(() => {
         return (globalThis as any).workerFunction();
-      })
+      }),
     ).toBe('worker function result');
 
     await page.goto(server.EMPTY_PAGE);
@@ -36,19 +36,23 @@ describe('Workers', function () {
   it('should emit created and destroyed events', async () => {
     const {page} = await getTestState();
 
-    const workerCreatedPromise = waitEvent<WebWorker>(page, 'workercreated');
-    using workerObj = await page.evaluateHandle(() => {
-      return new Worker('data:text/javascript,1');
-    });
-    const worker = await workerCreatedPromise;
+    const [worker, workerObj] = await Promise.all([
+      waitEvent<WebWorker>(page, 'workercreated'),
+      page.evaluateHandle(() => {
+        return new Worker('data:text/javascript,1');
+      }),
+    ]);
     using workerThisObj = await worker.evaluateHandle(() => {
       return this;
     });
-    const workerDestroyedPromise = waitEvent(page, 'workerdestroyed');
-    await page.evaluate((workerObj: Worker) => {
-      return workerObj.terminate();
-    }, workerObj);
-    expect(await workerDestroyedPromise).toBe(worker);
+    const [workerDestroyed] = await Promise.all([
+      waitEvent(page, 'workerdestroyed'),
+      page.evaluate(worker => {
+        return worker.terminate();
+      }, workerObj),
+    ]);
+
+    expect(workerDestroyed).toBe(worker);
     const error = await workerThisObj.getProperty('self').catch(error => {
       return error;
     });
@@ -100,7 +104,7 @@ describe('Workers', function () {
     const errorPromise = waitEvent<Error>(page, 'pageerror');
     await page.evaluate(() => {
       return new Worker(
-        `data:text/javascript, throw new Error('this is my error');`
+        `data:text/javascript, throw new Error('this is my error');`,
       );
     });
     const errorLog = await errorPromise;

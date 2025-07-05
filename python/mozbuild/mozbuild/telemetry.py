@@ -18,7 +18,7 @@ def cpu_brand_linux():
     """
     Read the CPU brand string out of /proc/cpuinfo on Linux.
     """
-    with open("/proc/cpuinfo", "r") as f:
+    with open("/proc/cpuinfo") as f:
         for line in f:
             if line.startswith("model name"):
                 _, brand = line.split(": ", 1)
@@ -44,7 +44,7 @@ def cpu_brand_windows():
         (brand, ty) = _winreg.QueryValueEx(h, "ProcessorNameString")
         if ty == _winreg.REG_SZ:
             return brand
-    except WindowsError:
+    except OSError:
         pass
     return None
 

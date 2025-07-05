@@ -140,6 +140,13 @@ pub struct RevalidationResult {
     pub relevant_attributes: RelevantAttributes,
 }
 
+/// The results from trying to revalidate scopes this element is in.
+#[derive(Debug, Default, PartialEq)]
+pub struct ScopeRevalidationResult {
+    /// A bit for each scope activated.
+    pub scopes_matched: SmallBitVec,
+}
+
 impl PartialEq for RevalidationResult {
     fn eq(&self, other: &Self) -> bool {
         if self.relevant_attributes != other.relevant_attributes {
@@ -312,11 +319,13 @@ pub struct StyleSharingCandidate<E: TElement> {
     /// The element.
     element: E,
     validation_data: ValidationData,
+    considered_nontrivial_scoped_style: bool,
 }
 
 struct FakeCandidate {
     _element: usize,
     _validation_data: ValidationData,
+    _may_contain_scoped_style: bool,
 }
 
 impl<E: TElement> Deref for StyleSharingCandidate<E> {
@@ -366,6 +375,14 @@ impl<E: TElement> StyleSharingCandidate<E> {
             // needed.
             NeedsSelectorFlags::No,
         )
+    }
+
+    fn scope_revalidation_results(
+        &mut self,
+        stylist: &Stylist,
+        selector_caches: &mut SelectorCaches,
+    ) -> ScopeRevalidationResult {
+        stylist.revalidate_scopes(&self.element, selector_caches, NeedsSelectorFlags::No)
     }
 }
 
@@ -447,6 +464,14 @@ impl<E: TElement> StyleSharingTarget<E> {
         )
     }
 
+    fn scope_revalidation_results(
+        &mut self,
+        stylist: &Stylist,
+        selector_caches: &mut SelectorCaches,
+    ) -> ScopeRevalidationResult {
+        stylist.revalidate_scopes(&self.element, selector_caches, NeedsSelectorFlags::Yes)
+    }
+
     /// Attempts to share a style with another node.
     pub fn share_style_if_possible(
         &mut self,
@@ -503,7 +528,12 @@ impl<Candidate> SharingCacheBase<Candidate> {
 }
 
 impl<E: TElement> SharingCache<E> {
-    fn insert(&mut self, element: E, validation_data_holder: Option<&mut StyleSharingTarget<E>>) {
+    fn insert(
+        &mut self,
+        element: E,
+        validation_data_holder: Option<&mut StyleSharingTarget<E>>,
+        considered_nontrivial_scoped_style: bool,
+    ) {
         let validation_data = match validation_data_holder {
             Some(v) => v.take_validation_data(),
             None => ValidationData::default(),
@@ -511,6 +541,7 @@ impl<E: TElement> SharingCache<E> {
         self.entries.insert(StyleSharingCandidate {
             element,
             validation_data,
+            considered_nontrivial_scoped_style,
         });
     }
 }
@@ -646,20 +677,8 @@ impl<E: TElement> StyleSharingCache<E> {
             return;
         }
 
-        // In addition to the above running animations check, we also need to
-        // check CSS animation and transition styles since it's possible that
-        // we are about to create CSS animations/transitions.
-        //
-        // These are things we don't check in the candidate match because they
-        // are either uncommon or expensive.
-        let ui_style = style.style().get_ui();
-        if ui_style.specifies_transitions() {
-            debug!("Failing to insert to the cache: transitions");
-            return;
-        }
-
-        if ui_style.specifies_animations() {
-            debug!("Failing to insert to the cache: animations");
+        if element.smil_override().is_some() {
+            debug!("Failing to insert to the cache: SMIL");
             return;
         }
 
@@ -676,7 +695,11 @@ impl<E: TElement> StyleSharingCache<E> {
             self.clear();
             self.dom_depth = dom_depth;
         }
-        self.cache_mut().insert(*element, validation_data_holder);
+        self.cache_mut().insert(
+            *element,
+            validation_data_holder,
+            style.style().flags.intersects(ComputedValueFlags::CONSIDERED_NONTRIVIAL_SCOPED_STYLE),
+        );
     }
 
     /// Clear the style sharing candidate cache.
@@ -791,8 +814,13 @@ impl<E: TElement> StyleSharingCache<E> {
             return None;
         }
 
-        if target.element.has_animations(shared_context) {
+        if target.element.has_animations(shared_context) || candidate.element.has_animations(shared_context) {
             trace!("Miss: Has Animations");
+            return None;
+        }
+
+        if target.element.smil_override().is_some() {
+            trace!("Miss: SMIL");
             return None;
         }
 
@@ -831,6 +859,13 @@ impl<E: TElement> StyleSharingCache<E> {
 
         if !checks::revalidate(target, candidate, shared, bloom, selector_caches) {
             trace!("Miss: Revalidation");
+            return None;
+        }
+
+        // While the scoped style rules may be different (e.g. `@scope { .foo + .foo { /* .. */} }`),
+        // we rely on revalidation to handle that.
+        if candidate.considered_nontrivial_scoped_style && !checks::revalidate_scope(target, candidate, shared, selector_caches) {
+            trace!("Miss: Active Scopes");
             return None;
         }
 

@@ -9,8 +9,6 @@ import traceback
 from multiprocessing import current_process
 from threading import Lock, current_thread
 
-import six
-
 from .logtypes import (
     Any,
     Boolean,
@@ -178,7 +176,7 @@ class LoggerShutdownError(Exception):
     """Raised when attempting to log after logger.shutdown() has been called."""
 
 
-class LoggerState(object):
+class LoggerState:
     def __init__(self):
         self.reset()
 
@@ -191,12 +189,12 @@ class LoggerState(object):
         self.has_shutdown = False
 
 
-class ComponentState(object):
+class ComponentState:
     def __init__(self):
         self.filter_ = None
 
 
-class StructuredLogger(object):
+class StructuredLogger:
     _lock = Lock()
     _logger_states = {}
     """Create a structured logger with the given name
@@ -232,9 +230,9 @@ class StructuredLogger(object):
         are removed, running tests are discarded and components are reset.
         """
         self._state.reset()
-        self._component_state = self._state.component_states[
-            self.component
-        ] = ComponentState()
+        self._component_state = self._state.component_states[self.component] = (
+            ComponentState()
+        )
 
     def send_message(self, topic, command, *args):
         """Send a message to each handler configured for this logger. This
@@ -277,7 +275,7 @@ class StructuredLogger(object):
 
         action = raw_data["action"]
         converted_data = convertor_registry[action].convert_known(**raw_data)
-        for k, v in six.iteritems(raw_data):
+        for k, v in raw_data.items():
             if (
                 k not in converted_data
                 and k not in convertor_registry[action].optional_args
@@ -353,7 +351,7 @@ class StructuredLogger(object):
                 # limit data to reduce unnecessary log bloat
                 self.error(
                     "Got second suite_start message before suite_end. "
-                    + "Logged with data: {}".format(json.dumps(data)[:100])
+                    + f"Logged with data: {json.dumps(data)[:100]}"
                 )
                 return False
             self._state.suite_started = True
@@ -361,7 +359,7 @@ class StructuredLogger(object):
             if not self._state.suite_started:
                 self.error(
                     "Got suite_end message before suite_start. "
-                    + "Logged with data: {}".format(json.dumps(data))
+                    + f"Logged with data: {json.dumps(data)}"
                 )
                 return False
             self._state.suite_started = False
@@ -789,7 +787,7 @@ for level_name in lint_levels:
     setattr(StructuredLogger, name, _lint_func(level_name))
 
 
-class StructuredLogFileLike(object):
+class StructuredLogFileLike:
     """Wrapper for file-like objects to redirect writes to logger
     instead. Each call to `write` becomes a single log entry of type `log`.
 

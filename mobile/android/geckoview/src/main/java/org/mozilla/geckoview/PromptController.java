@@ -4,9 +4,12 @@
 
 package org.mozilla.geckoview;
 
+import android.util.Base64;
 import android.util.Log;
+import java.security.Principal;
 import java.util.HashMap;
 import java.util.Map;
+import javax.security.auth.x500.X500Principal;
 import org.json.JSONException;
 import org.mozilla.gecko.util.EventCallback;
 import org.mozilla.gecko.util.GeckoBundle;
@@ -25,10 +28,12 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.BasePrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.BasePrompt.Observer;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.BeforeUnloadPrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.ButtonPrompt;
+import org.mozilla.geckoview.GeckoSession.PromptDelegate.CertificateRequest;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.ChoicePrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.ColorPrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.DateTimePrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.FilePrompt;
+import org.mozilla.geckoview.GeckoSession.PromptDelegate.FolderUploadPrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.IdentityCredential.AccountSelectorPrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.IdentityCredential.PrivacyPolicyPrompt;
 import org.mozilla.geckoview.GeckoSession.PromptDelegate.IdentityCredential.ProviderSelectorPrompt;
@@ -252,6 +257,39 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.TextPrompt;
     }
   }
 
+  private static final class CertificateHandler implements PromptHandler<CertificateRequest> {
+    @Override
+    public CertificateRequest newPrompt(final GeckoBundle info, final Observer observer) {
+      final String[] issuersEncoded = info.getStringArray("issuers");
+      Principal[] issuers = null;
+      if (issuersEncoded != null && issuersEncoded.length > 0) {
+        issuers = new Principal[issuersEncoded.length];
+        for (int i = 0; i < issuersEncoded.length; i++) {
+          // The encoded issuers have already been decoded by NSS, but if NSS
+          // is more permissive than X500Principal, decoding could fail. In
+          // that case, fail open by not filtering by issuer at all.
+          try {
+            issuers[i] = new X500Principal(Base64.decode(issuersEncoded[i], Base64.DEFAULT));
+          } catch (final IllegalArgumentException ex) {
+            Log.e(LOGTAG, "Error decoding issuer '" + issuersEncoded[i] + "'", ex);
+            issuers = null;
+            break;
+          }
+        }
+      }
+      return new CertificateRequest(
+          info.getString("id"), observer, info.getString("host"), issuers);
+    }
+
+    @Override
+    public GeckoResult<PromptResponse> callDelegate(
+        final CertificateRequest prompt,
+        final GeckoSession session,
+        final PromptDelegate delegate) {
+      return delegate.onRequestCertificate(session, prompt);
+    }
+  }
+
   private static final class ChoiceHandler implements PromptHandler<ChoicePrompt> {
     @Override
     public ChoicePrompt newPrompt(final GeckoBundle info, final Observer observer) {
@@ -362,6 +400,8 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.TextPrompt;
         intMode = FilePrompt.Type.SINGLE;
       } else if ("multiple".equals(mode)) {
         intMode = FilePrompt.Type.MULTIPLE;
+      } else if ("folder".equals(mode)) {
+        intMode = FilePrompt.Type.FOLDER;
       } else {
         return null;
       }
@@ -376,6 +416,22 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.TextPrompt;
     public GeckoResult<PromptResponse> callDelegate(
         final FilePrompt prompt, final GeckoSession session, final PromptDelegate delegate) {
       return delegate.onFilePrompt(session, prompt);
+    }
+  }
+
+  private static final class FolderUploadHandler implements PromptHandler<FolderUploadPrompt> {
+    @Override
+    public FolderUploadPrompt newPrompt(final GeckoBundle info, final Observer observer) {
+      return new FolderUploadPrompt(
+          info.getString("id"), info.getString("directoryName"), observer);
+    }
+
+    @Override
+    public GeckoResult<PromptResponse> callDelegate(
+        final FolderUploadPrompt prompt,
+        final GeckoSession session,
+        final PromptDelegate delegate) {
+      return delegate.onFolderUploadPrompt(session, prompt);
     }
   }
 
@@ -723,10 +779,12 @@ import org.mozilla.geckoview.GeckoSession.PromptDelegate.TextPrompt;
     sPromptHandlers.register(new ButtonHandler(), "button");
     sPromptHandlers.register(new TextHandler(), "text");
     sPromptHandlers.register(new AuthHandler(), "auth");
+    sPromptHandlers.register(new CertificateHandler(), "certificate");
     sPromptHandlers.register(new ChoiceHandler(), "choice");
     sPromptHandlers.register(new ColorHandler(), "color");
     sPromptHandlers.register(new DateTimeHandler(), "datetime");
     sPromptHandlers.register(new FileHandler(), "file");
+    sPromptHandlers.register(new FolderUploadHandler(), "folderUpload");
     sPromptHandlers.register(new PopupHandler(), "popup");
     sPromptHandlers.register(new RepostHandler(), "repost");
     sPromptHandlers.register(new ShareHandler(), "share");

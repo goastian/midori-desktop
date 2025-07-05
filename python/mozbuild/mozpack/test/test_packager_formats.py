@@ -6,7 +6,6 @@ import unittest
 from itertools import chain
 
 import mozunit
-import six
 
 import mozpack.path as mozpath
 from mozpack.chrome.manifest import (
@@ -111,26 +110,22 @@ for addon in ("addon0", "addon1", "app/chrome/addons/addon2"):
     RESULT_FLAT.update(
         {
             mozpath.join(addon, p): f
-            for p, f in six.iteritems(
-                {
-                    "chrome.manifest": [
-                        "manifest chrome/chrome.manifest",
-                        "manifest components/components.manifest",
-                    ],
-                    "chrome/chrome.manifest": [
-                        "content %s foo/bar/" % mozpath.basename(addon),
-                    ],
-                    "chrome/foo/bar/baz": FILES[
-                        mozpath.join(addon, "chrome/foo/bar/baz")
-                    ],
-                    "components/components.manifest": [
-                        "interfaces bar.xpt",
-                        "interfaces foo.xpt",
-                    ],
-                    "components/bar.xpt": bar_xpt,
-                    "components/foo.xpt": foo2_xpt,
-                }
-            )
+            for p, f in {
+                "chrome.manifest": [
+                    "manifest chrome/chrome.manifest",
+                    "manifest components/components.manifest",
+                ],
+                "chrome/chrome.manifest": [
+                    "content %s foo/bar/" % mozpath.basename(addon)
+                ],
+                "chrome/foo/bar/baz": FILES[mozpath.join(addon, "chrome/foo/bar/baz")],
+                "components/components.manifest": [
+                    "interfaces bar.xpt",
+                    "interfaces foo.xpt",
+                ],
+                "components/bar.xpt": bar_xpt,
+                "components/foo.xpt": foo2_xpt,
+            }.items()
         }
     )
 
@@ -180,12 +175,12 @@ RESULT_JAR.update(
         },
         "addon1.xpi": {
             mozpath.relpath(p, "addon1"): f
-            for p, f in six.iteritems(RESULT_FLAT)
+            for p, f in RESULT_FLAT.items()
             if p.startswith("addon1/")
         },
         "app/chrome/addons/addon2.xpi": {
             mozpath.relpath(p, "app/chrome/addons/addon2"): f
-            for p, f in six.iteritems(RESULT_FLAT)
+            for p, f in RESULT_FLAT.items()
             if p.startswith("app/chrome/addons/addon2/")
         },
     }
@@ -227,7 +222,7 @@ RESULT_OMNIJAR.update(
                 ),
                 (
                     mozpath.relpath(p, "app")
-                    for p in six.iterkeys(RESULT_FLAT)
+                    for p in RESULT_FLAT.keys()
                     if p.startswith("app/chrome/addons/addon2/")
                 ),
             )
@@ -258,14 +253,12 @@ RESULT_OMNIJAR_WITH_SUBPATH = {
 CONTENTS_WITH_BASE = {
     "bases": {
         mozpath.join("base/root", b) if b else "base/root": a
-        for b, a in six.iteritems(CONTENTS["bases"])
+        for b, a in CONTENTS["bases"].items()
     },
     "manifests": [
         m.move(mozpath.join("base/root", m.base)) for m in CONTENTS["manifests"]
     ],
-    "files": {
-        mozpath.join("base/root", p): f for p, f in six.iteritems(CONTENTS["files"])
-    },
+    "files": {mozpath.join("base/root", p): f for p, f in CONTENTS["files"].items()},
 }
 
 EXTRA_CONTENTS = {
@@ -276,7 +269,7 @@ CONTENTS_WITH_BASE["files"].update(EXTRA_CONTENTS)
 
 
 def result_with_base(results):
-    result = {mozpath.join("base/root", p): v for p, v in six.iteritems(results)}
+    result = {mozpath.join("base/root", p): v for p, v in results.items()}
     result.update(EXTRA_CONTENTS)
     return result
 
@@ -293,7 +286,7 @@ def fill_formatter(formatter, contents):
     for manifest in contents["manifests"]:
         formatter.add_manifest(manifest)
 
-    for k, v in sorted(six.iteritems(contents["files"])):
+    for k, v in sorted(contents["files"].items()):
         if k.endswith(".xpt"):
             formatter.add_interfaces(k, v)
         else:
@@ -309,7 +302,7 @@ def get_contents(registry, read_all=False, mode="rt"):
             if "b" in mode:
                 result[k] = v.open().read()
             else:
-                result[k] = six.ensure_text(v.open().read()).splitlines()
+                result[k] = v.open().read().decode().splitlines()
         else:
             result[k] = v
     return result
@@ -431,7 +424,7 @@ class TestFormatters(TestErrors, unittest.TestCase):
             self.assertTrue(is_resource(base, "modules/foo.jsm"))
             self.assertTrue(is_resource(base, "greprefs.js"))
             self.assertTrue(is_resource(base, "hyphenation/foo"))
-            self.assertTrue(is_resource(base, "update.locale"))
+            self.assertTrue(is_resource(base, "default.locale"))
             self.assertFalse(is_resource(base, "foo"))
             self.assertFalse(is_resource(base, "foo/bar/greprefs.js"))
             self.assertTrue(is_resource(base, "defaults/messenger/foo.dat"))

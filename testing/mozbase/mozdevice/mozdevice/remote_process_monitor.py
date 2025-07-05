@@ -5,8 +5,6 @@
 import re
 import time
 
-import six
-
 from .adb import ADBTimeoutError
 
 
@@ -40,7 +38,16 @@ class RemoteProcessMonitor:
             self.device.rm(self.remote_log_file)
             self.log.info("deleted remote log %s" % self.remote_log_file)
 
-    def launch(self, app, debugger_info, test_url, extra_args, env, e10s):
+    def launch(
+        self,
+        app,
+        debugger_info,
+        test_url,
+        extra_args,
+        env,
+        e10s,
+        activity="TestRunnerActivity",
+    ):
         """
         Start the remote activity.
         """
@@ -52,7 +59,6 @@ class RemoteProcessMonitor:
             args.extend(debugger_info.args)
             args.append(app)
         args.extend(extra_args)
-        activity = "TestRunnerActivity"
         self.device.launch_activity(
             self.app_name,
             activity_name=activity,
@@ -88,15 +94,13 @@ class RemoteProcessMonitor:
         except ADBTimeoutError:
             raise
         except Exception as e:
-            self.log.error(
-                "%s | exception reading log: %s" % (self.last_test_seen, str(e))
-            )
+            self.log.error(f"{self.last_test_seen} | exception reading log: {str(e)}")
             return False
         if not new_log_content:
             return False
 
         self.stdout_len += len(new_log_content)
-        new_log_content = six.ensure_str(new_log_content, errors="replace")
+        new_log_content = new_log_content.decode(errors="replace")
 
         self.log_buffer += new_log_content
         lines = self.log_buffer.split("\n")
@@ -115,7 +119,7 @@ class RemoteProcessMonitor:
 
         for line in lines:
             # This passes the line to the logger (to be logged or buffered)
-            if isinstance(line, six.text_type):
+            if isinstance(line, str):
                 # if line is unicode - let's encode it to bytes
                 parsed_messages = self.message_logger.write(
                     line.encode("UTF-8", "replace")
@@ -133,17 +137,17 @@ class RemoteProcessMonitor:
                     elif message.get("action") == "suite_end":
                         self.last_test_seen = "Last test finished"
                     elif message.get("action") == "log":
-                        line = message["message"].strip()
-                        m = re.match(r".*:\s*(\d*)", line)
+                        stripped_message = message["message"].strip()
+                        m = re.match(r".*:\s*(\d*)", stripped_message)
                         if m:
                             try:
                                 val = int(m.group(1))
-                                if "Passed:" in line:
+                                if "Passed:" in stripped_message:
                                     self.counts["pass"] += val
                                     self.last_test_seen = "Last test finished"
-                                elif "Failed:" in line:
+                                elif "Failed:" in stripped_message:
                                     self.counts["fail"] += val
-                                elif "Todo:" in line:
+                                elif "Todo:" in stripped_message:
                                     self.counts["todo"] += val
                             except ADBTimeoutError:
                                 raise
@@ -199,10 +203,16 @@ class RemoteProcessMonitor:
                 if top is None:
                     self.log.info("Failed to get top activity, retrying, once...")
                     top = self.device.get_top_activity(timeout=60)
+                    if not has_output and top is None:
+                        self.log.error(
+                            f"TEST-UNEXPECTED-FAIL | {self.last_test_seen} | "
+                            "application failed to get top activity and stdout"
+                        )
+                        return 0
 
         # Flush anything added to stdout during the sleep
         self.read_stdout()
-        self.log.info("wait for %s complete; top activity=%s" % (self.app_name, top))
+        self.log.info(f"wait for {self.app_name} complete; top activity={top}")
         if top == self.app_name:
             self.log.info("%s unexpectedly found running. Killing..." % self.app_name)
             self.kill()

@@ -25,12 +25,8 @@
 
 class nsICacheEntry;
 
-#define HTTP_CHANNEL_PARENT_IID                      \
-  {                                                  \
-    0x982b2372, 0x7aa5, 0x4e8a, {                    \
-      0xbd, 0x9f, 0x89, 0x74, 0xd7, 0xf0, 0x58, 0xeb \
-    }                                                \
-  }
+#define HTTP_CHANNEL_PARENT_IID \
+  {0x982b2372, 0x7aa5, 0x4e8a, {0xbd, 0x9f, 0x89, 0x74, 0xd7, 0xf0, 0x58, 0xeb}}
 
 namespace mozilla {
 
@@ -68,7 +64,7 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
   NS_DECL_NSIREDIRECTRESULTLISTENER
   NS_DECL_NSIMULTIPARTCHANNELLISTENER
 
-  NS_DECLARE_STATIC_IID_ACCESSOR(HTTP_CHANNEL_PARENT_IID)
+  NS_INLINE_DECL_STATIC_IID(HTTP_CHANNEL_PARENT_IID)
 
   HttpChannelParent(dom::BrowserParent* iframeEmbedding,
                     nsILoadContext* aLoadContext,
@@ -111,14 +107,14 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
   // BeginConnect.
   void OverrideReferrerInfoDuringBeginConnect(nsIReferrerInfo* aReferrerInfo);
 
-  // Set the cookie string, which will be informed to the child actor during
+  // Set the cookie strings, which will be informed to the child actor during
   // PHttpBackgroundChannel::OnStartRequest. Note that CookieService also sends
   // the information to all actors via PContent, a main thread IPC, which could
   // be slower than background IPC PHttpBackgroundChannel::OnStartRequest.
   // Therefore, another cookie notification via PBackground is needed to
   // guarantee the listener in child has the necessary cookies before
   // OnStartRequest.
-  void SetCookie(nsCString&& aCookie);
+  void SetCookieHeaders(const nsTArray<nsCString>& aCookieHeaders);
 
   using ChildEndpointPromise =
       MozPromise<ipc::Endpoint<extensions::PStreamFilterChild>, bool, true>;
@@ -172,7 +168,7 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
       const uint64_t& aEarlyHintPreloaderId,
       const nsAString& aClassicScriptHintCharset,
       const nsAString& aDocumentCharacterSet,
-      const bool& aIsUserAgentHeaderModified);
+      const bool& aIsUserAgentHeaderModified, const nsString& aInitiatorType);
 
   virtual mozilla::ipc::IPCResult RecvSetPriority(
       const int16_t& priority) override;
@@ -198,7 +194,7 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
       const OriginAttributes& originAttributes) override;
   virtual mozilla::ipc::IPCResult RecvSetCookies(
       const nsACString& aBaseDomain, const OriginAttributes& aOriginAttributes,
-      nsIURI* aHost, const bool& aFromHttp,
+      nsIURI* aHost, const bool& aFromHttp, const bool& aIsThirdParty,
       nsTArray<CookieStruct>&& aCookies) override;
   virtual mozilla::ipc::IPCResult RecvBytesRead(const int32_t& aCount) override;
   virtual mozilla::ipc::IPCResult RecvOpenOriginalCacheInputStream() override;
@@ -296,7 +292,7 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
 
   // The cookie string in Set-Cookie header. This info will be sent in
   // OnStartRequest.
-  nsCString mCookie;
+  nsTArray<nsCString> mCookieHeaders;
 
   // OnStatus is always called before OnProgress.
   // Set true in OnStatus if next OnProgress can be ignored
@@ -324,8 +320,6 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
   // directly.
   uint8_t mDataSentToChildProcess : 1;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(HttpChannelParent, HTTP_CHANNEL_PARENT_IID)
 
 }  // namespace net
 }  // namespace mozilla

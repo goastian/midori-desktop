@@ -109,7 +109,7 @@ def make_signing_description(config, jobs):
             assert worker_type in worker_type_alias_map, (
                 "Make sure to adjust the below worker_type_alias logic for "
                 "mac if you change the signing workerType aliases!"
-                " ({} not found in mapping)".format(worker_type)
+                f" ({worker_type} not found in mapping)"
             )
             worker_type = worker_type_alias_map[worker_type]
 
@@ -121,9 +121,9 @@ def make_signing_description(config, jobs):
 
 def _craft_upstream_artifacts(dep_job, dependency_kind, build_platform):
     if build_platform.startswith("win"):
-        signing_format = "autograph_authenticode_202404"
+        signing_format = "gcp_prod_autograph_authenticode_202412"
     elif build_platform.startswith("linux"):
-        signing_format = "autograph_gpg"
+        signing_format = "gcp_prod_autograph_gpg"
     elif build_platform.startswith("macosx"):
         signing_format = "mac_geckodriver"
     else:

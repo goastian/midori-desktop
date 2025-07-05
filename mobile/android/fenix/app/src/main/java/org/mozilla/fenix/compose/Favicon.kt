@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import mozilla.components.browser.icons.IconRequest
 import mozilla.components.browser.icons.compose.Placeholder
 import mozilla.components.browser.icons.compose.WithIcon
+import mozilla.components.compose.base.utils.inComposePreview
 import org.mozilla.fenix.components.components
 import org.mozilla.fenix.theme.FirefoxTheme
 
@@ -33,6 +34,7 @@ import org.mozilla.fenix.theme.FirefoxTheme
  * @param isPrivate Whether or not a private request (like in private browsing) should be used to
  * download the icon (if needed).
  * @param imageUrl Optional image URL to create an [IconRequest.Resource] from.
+ * @param roundedCornerShape The rounded corner shape used to clip the favicon.
  */
 @Composable
 fun Favicon(
@@ -41,6 +43,7 @@ fun Favicon(
     modifier: Modifier = Modifier,
     isPrivate: Boolean = false,
     imageUrl: String? = null,
+    roundedCornerShape: RoundedCornerShape = RoundedCornerShape(2.dp),
 ) {
     if (inComposePreview) {
         FaviconPlaceholder(
@@ -74,7 +77,7 @@ fun Favicon(
                     contentDescription = null,
                     modifier = modifier
                         .size(size)
-                        .clip(RoundedCornerShape(2.dp)),
+                        .clip(roundedCornerShape),
                     contentScale = ContentScale.Crop,
                 )
             }

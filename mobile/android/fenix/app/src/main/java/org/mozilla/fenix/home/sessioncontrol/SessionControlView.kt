@@ -6,6 +6,8 @@ package org.mozilla.fenix.home.sessioncontrol
 
 import android.view.View
 import androidx.annotation.VisibleForTesting
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.FragmentManager
 import androidx.lifecycle.LifecycleOwner
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
@@ -21,9 +23,11 @@ import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.ext.shouldShowRecentSyncedTabs
 import org.mozilla.fenix.ext.shouldShowRecentTabs
 import org.mozilla.fenix.home.bookmarks.Bookmark
+import org.mozilla.fenix.home.ext.showWallpaperOnboardingDialog
 import org.mozilla.fenix.home.recentvisits.RecentlyVisitedItem
 import org.mozilla.fenix.messaging.FenixMessageSurfaceId
 import org.mozilla.fenix.onboarding.HomeCFRPresenter
+import org.mozilla.fenix.search.SearchDialogFragment
 import org.mozilla.fenix.utils.Settings
 
 // This method got a little complex with the addition of the tab tray feature flag
@@ -56,11 +60,11 @@ internal fun normalModeAdapterItems(
 
     if (settings.showTopSitesFeature && topSites.isNotEmpty()) {
         shouldShowCustomizeHome = true
-        if (settings.enableComposeTopSites) {
-            items.add(AdapterItem.TopSites)
-        } else {
-            items.add(AdapterItem.TopSitePager(topSites))
-        }
+        items.add(AdapterItem.TopSitePager(topSites))
+    }
+
+    if (settings.showSetupChecklist) {
+        items.add(AdapterItem.SetupChecklist)
     }
 
     if (showRecentTab) {
@@ -98,9 +102,12 @@ internal fun normalModeAdapterItems(
     // when we switch to a Compose-only home screen.
     if (firstFrameDrawn && settings.showPocketRecommendationsFeature && pocketStories.isNotEmpty()) {
         shouldShowCustomizeHome = true
+
         items.add(AdapterItem.PocketStoriesItem)
-        items.add(AdapterItem.PocketCategoriesItem)
-        items.add(AdapterItem.PocketRecommendationsFooterItem)
+
+        if (!settings.showContentRecommendations) {
+            items.add(AdapterItem.PocketCategoriesItem)
+        }
     }
 
     if (shouldShowCustomizeHome) {
@@ -143,7 +150,7 @@ private fun AppState.toAdapterList(settings: Settings): List<AdapterItem> = when
         shouldShowRecentTabs(settings),
         shouldShowRecentSyncedTabs(),
         recentHistory,
-        pocketStories,
+        recommendationState.pocketStories,
         firstFrameDrawn,
     )
     BrowsingMode.Private -> privateModeAdapterItems()
@@ -159,12 +166,13 @@ private fun collectionTabItems(collection: TabCollection) =
  *
  * @param containerView The [View] that is used to initialize the Home recycler view.
  * @param viewLifecycleOwner [LifecycleOwner] for the view.
- * @param interactor [SessionControlInteractor] which will have delegated to all user
- * interactions.
+ * @param fragmentManager The [FragmentManager] of the parent [Fragment].
+ * @param interactor [SessionControlInteractor] which will have delegated to all user interactions.
  */
 class SessionControlView(
     containerView: View,
     viewLifecycleOwner: LifecycleOwner,
+    fragmentManager: FragmentManager,
     private val interactor: SessionControlInteractor,
 ) {
 
@@ -187,25 +195,21 @@ class SessionControlView(
                 override fun onLayoutCompleted(state: RecyclerView.State?) {
                     super.onLayoutCompleted(state)
 
-                    if (!featureRecommended && !context.settings().showHomeOnboardingDialog) {
-                        if (!context.settings().showHomeOnboardingDialog && (
-                                context.settings().showSyncCFR ||
-                                    context.settings().shouldShowJumpBackInCFR
-                                )
-                        ) {
-                            featureRecommended = HomeCFRPresenter(
-                                context = context,
-                                recyclerView = view,
-                            ).show()
-                        }
+                    val searchDialogFragment: SearchDialogFragment? =
+                        fragmentManager.fragments.find { it is SearchDialogFragment } as SearchDialogFragment?
 
-                        if (!context.settings().shouldShowJumpBackInCFR &&
-                            context.settings().showWallpaperOnboarding &&
-                            !featureRecommended
-                        ) {
-                            featureRecommended = interactor.showWallpapersOnboardingDialog(
-                                context.components.appStore.state.wallpaperState,
-                            )
+                    with(settings()) {
+                        if (!featureRecommended && !showHomeOnboardingDialog) {
+                            if (!showHomeOnboardingDialog && searchDialogFragment == null && showSyncCFR) {
+                                featureRecommended =
+                                    HomeCFRPresenter(context = context, recyclerView = view).show()
+                            }
+
+                            if (showWallpaperOnboardingDialog(featureRecommended)) {
+                                featureRecommended = interactor.showWallpapersOnboardingDialog(
+                                    context.components.appStore.state.wallpaperState,
+                                )
+                            }
                         }
                     }
 

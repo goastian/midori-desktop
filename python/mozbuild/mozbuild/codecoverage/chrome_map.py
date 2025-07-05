@@ -7,7 +7,6 @@ import os
 import re
 
 import mozpack.path as mozpath
-import six
 from mach.config import ConfigSettings
 from mach.logging import LoggingManager
 from mozpack.copier import FileRegistry
@@ -96,10 +95,14 @@ class ChromeMapBackend(CommonBackend):
     def _handle_final_target_files(self, obj):
         for path, files in obj.files.walk():
             for f in files:
-                dest = mozpath.join(obj.install_target, path, f.target_basename)
+                if isinstance(obj, FinalTargetPreprocessedFiles):
+                    basename = FinalTargetPreprocessedFiles.get_obj_basename(f)
+                else:
+                    basename = f.target_basename
+
+                dest = mozpath.join(obj.install_target, path, basename)
                 obj_path = mozpath.join(self.environment.topobjdir, dest)
-                if obj_path.endswith(".in"):
-                    obj_path = obj_path[:-3]
+
                 if isinstance(obj, FinalTargetPreprocessedFiles):
                     assert os.path.exists(obj_path), "%s should exist" % obj_path
                     pp_info = generate_pp_info(obj_path, obj.topsrcdir)
@@ -157,7 +160,7 @@ class ChromeMapBackend(CommonBackend):
             overrides = self.manifest_handler.overrides
             json.dump(
                 [
-                    {k: list(v) for k, v in six.iteritems(chrome_mapping)},
+                    {k: list(v) for k, v in chrome_mapping.items()},
                     overrides,
                     self._install_mapping,
                     {

@@ -376,6 +376,10 @@ class Tab extends TabBase {
     return -1;
   }
 
+  get groupId() {
+    return -1;
+  }
+
   get width() {
     return this.browser.clientWidth;
   }
@@ -634,10 +638,10 @@ global.openOptionsPage = async extension => {
     });
 
     const { browser } = tab;
-    const flags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
+    const loadFlags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
 
     browser.fixupAndLoadURIString(optionsPageProperties.page, {
-      flags,
+      loadFlags,
       triggeringPrincipal: extension.principal,
     });
 

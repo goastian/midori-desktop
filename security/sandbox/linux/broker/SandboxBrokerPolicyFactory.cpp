@@ -8,7 +8,6 @@
 #include "SandboxInfo.h"
 #include "SandboxLogging.h"
 
-#include "base/shared_memory.h"
 #include "mozilla/Array.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Omnijar.h"
@@ -19,6 +18,7 @@
 #include "mozilla/StaticMutex.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/UniquePtrExtensions.h"
+#include "mozilla/ipc/SharedMemoryHandle.h"
 #include "nsComponentManagerUtils.h"
 #include "nsPrintfCString.h"
 #include "nsString.h"
@@ -34,6 +34,10 @@
 
 #include "nsNetCID.h"
 #include "prenv.h"
+
+#if defined(MOZ_PROFILE_GENERATE)
+#  include <string>
+#endif
 
 #ifdef ANDROID
 #  include "cutils/properties.h"
@@ -173,11 +177,8 @@ static void CachePathsFromFileInternal(FileCacheT& aCache,
                                        const nsACString& aCwd,
                                        const nsACString& aPath) {
   nsresult rv;
-  nsCOMPtr<nsIFile> ldconfig(do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv));
-  if (NS_FAILED(rv)) {
-    return;
-  }
-  rv = ldconfig->InitWithNativePath(aPath);
+  nsCOMPtr<nsIFile> ldconfig;
+  rv = NS_NewNativeLocalFile(aPath, getter_AddRefs(ldconfig));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
@@ -255,12 +256,8 @@ static void CachePathsFromFileInternal(FileCacheT& aCache,
 static void CachePathsFromFile(FileCacheT& aCache, const nsACString& aPath) {
   // Find the new base path where that file sits in.
   nsresult rv;
-  nsCOMPtr<nsIFile> includeFile(
-      do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv));
-  if (NS_FAILED(rv)) {
-    return;
-  }
-  rv = includeFile->InitWithNativePath(aPath);
+  nsCOMPtr<nsIFile> includeFile;
+  rv = NS_NewNativeLocalFile(aPath, getter_AddRefs(includeFile));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return;
   }
@@ -301,7 +298,7 @@ static void AddLdconfigPaths(SandboxBroker::Policy* aPolicy) {
     });
   }
   for (const CacheE& e : ldConfigCache) {
-    aPolicy->AddDir(e.second, e.first.get());
+    aPolicy->AddTree(e.second, e.first.get());
   }
 }
 
@@ -315,7 +312,7 @@ static void AddLdLibraryEnvPaths(SandboxBroker::Policy* aPolicy) {
   for (const nsACString& libPath : LdLibraryEnv.Split(':')) {
     char* resolvedPath = realpath(PromiseFlatCString(libPath).get(), nullptr);
     if (resolvedPath) {
-      aPolicy->AddDir(rdonly, resolvedPath);
+      aPolicy->AddTree(rdonly, resolvedPath);
       free(resolvedPath);
     }
   }
@@ -323,7 +320,7 @@ static void AddLdLibraryEnvPaths(SandboxBroker::Policy* aPolicy) {
 
 static void AddSharedMemoryPaths(SandboxBroker::Policy* aPolicy, pid_t aPid) {
   std::string shmPath("/dev/shm");
-  if (base::SharedMemory::AppendPosixShmPrefix(&shmPath, aPid)) {
+  if (ipc::shared_memory::AppendPosixShmPrefix(&shmPath, aPid)) {
     aPolicy->AddPrefix(rdwrcr, shmPath.c_str());
   }
 }
@@ -388,16 +385,16 @@ static void AddX11Dependencies(SandboxBroker::Policy* policy) {
 
 static void AddGLDependencies(SandboxBroker::Policy* policy) {
   // Devices
-  policy->AddDir(rdwr, "/dev/dri");
+  policy->AddTree(rdwr, "/dev/dri");
   policy->AddFilePrefix(rdwr, "/dev", "nvidia");
 
   // Hardware info
   AddDriPaths(policy);
 
   // /etc and /usr/share (glvnd, libdrm, drirc, ...?)
-  policy->AddDir(rdonly, "/etc");
-  policy->AddDir(rdonly, "/usr/share");
-  policy->AddDir(rdonly, "/usr/local/share");
+  policy->AddTree(rdonly, "/etc");
+  policy->AddTree(rdonly, "/usr/share");
+  policy->AddTree(rdonly, "/usr/local/share");
 
   // Snap puts the usual /usr/share things in a different place, and
   // we'll fail to load the library if we don't have (at least) the
@@ -405,7 +402,15 @@ static void AddGLDependencies(SandboxBroker::Policy* policy) {
   if (const char* snapDesktopDir = PR_GetEnv("SNAP_DESKTOP_RUNTIME")) {
     nsAutoCString snapDesktopShare(snapDesktopDir);
     snapDesktopShare.AppendLiteral("/usr/share");
-    policy->AddDir(rdonly, snapDesktopShare.get());
+    policy->AddTree(rdonly, snapDesktopShare.get());
+  }
+
+  // Introduced by Snap's core24 changes there is a gpu-2404 dependency and
+  // it is recommended to allow access to all of it?
+  if (const char* snapRoot = PR_GetEnv("SNAP")) {
+    nsAutoCString snapRootString(snapRoot);
+    snapRootString.AppendLiteral("/gpu-2404");
+    policy->AddTree(rdonly, snapRootString.get());
   }
 
   // Note: This function doesn't do anything about Mesa's shader
@@ -416,9 +421,37 @@ static void AddGLDependencies(SandboxBroker::Policy* policy) {
   // server, because headless GL (e.g., Mesa GBM) may not need it.
 }
 
+// Assums this is an absolute path, SandboxBroker does not like relative paths:
+// RealPath() will try to get the absolute path of the llvm profile path to open
+// for writing but this will return errno=2 because the file does not exists, so
+// sandbox will not allow for its creation.
+//
+// Forcing expecting an absolute path will be enough to make sure it can be
+// allowed.
+//
+// It should only be allowed on instrumented builds, never on production
+// builds.
+#if defined(MOZ_PROFILE_GENERATE)
+static void AddLLVMProfilePathDirectory(SandboxBroker::Policy* aPolicy) {
+  std::string parentPath;
+  if (GetLlvmProfileDir(parentPath)) {
+    aPolicy->AddFutureDir(rdwrcr, parentPath.c_str());
+  }
+}
+#endif  // defined(MOZ_PROFILE_GENERATE)
+
+// Make sure the path read from environment is correct (absolute).
+const char* PathFromEnvIfAbsolute(const char* aPath) {
+  const char* envValue = PR_GetEnv(aPath);
+  if (envValue && envValue[0] == '/') {
+    return envValue;
+  }
+  return nullptr;
+}
+
 void SandboxBrokerPolicyFactory::InitContentPolicy() {
-  const bool headless =
-      StaticPrefs::security_sandbox_content_headless_AtStartup();
+  const int level = GetEffectiveContentSandboxLevel();
+  const bool headless = level >= 5;
 
   // Policy entries that are the same in every process go here, and
   // are cached over the lifetime of the factory.
@@ -439,24 +472,24 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
   policy->AddPath(rdonly, "/proc/sys/crypto/fips_enabled");
   policy->AddPath(rdonly, "/proc/cpuinfo");
   policy->AddPath(rdonly, "/proc/meminfo");
-  policy->AddDir(rdonly, "/sys/devices/cpu");
-  policy->AddDir(rdonly, "/sys/devices/system/cpu");
-  policy->AddDir(rdonly, "/lib");
-  policy->AddDir(rdonly, "/lib64");
-  policy->AddDir(rdonly, "/usr/lib");
-  policy->AddDir(rdonly, "/usr/lib32");
-  policy->AddDir(rdonly, "/usr/lib64");
-  policy->AddDir(rdonly, "/etc");
-  policy->AddDir(rdonly, "/usr/share");
-  policy->AddDir(rdonly, "/usr/local/share");
+  policy->AddTree(rdonly, "/sys/devices/cpu");
+  policy->AddTree(rdonly, "/sys/devices/system/cpu");
+  policy->AddTree(rdonly, "/lib");
+  policy->AddTree(rdonly, "/lib64");
+  policy->AddTree(rdonly, "/usr/lib");
+  policy->AddTree(rdonly, "/usr/lib32");
+  policy->AddTree(rdonly, "/usr/lib64");
+  policy->AddTree(rdonly, "/etc");
+  policy->AddTree(rdonly, "/usr/share");
+  policy->AddTree(rdonly, "/usr/local/share");
   // Various places where fonts reside
-  policy->AddDir(rdonly, "/usr/X11R6/lib/X11/fonts");
-  policy->AddDir(rdonly, "/nix/store");
+  policy->AddTree(rdonly, "/usr/X11R6/lib/X11/fonts");
+  policy->AddTree(rdonly, "/nix/store");
   // https://gitlab.com/freedesktop-sdk/freedesktop-sdk/-/blob/e434e680d22260f277f4a30ec4660ed32b591d16/files/fontconfig-flatpak.conf
-  policy->AddDir(rdonly, "/run/host/fonts");
-  policy->AddDir(rdonly, "/run/host/user-fonts");
-  policy->AddDir(rdonly, "/run/host/local-fonts");
-  policy->AddDir(rdonly, "/var/cache/fontconfig");
+  policy->AddTree(rdonly, "/run/host/fonts");
+  policy->AddTree(rdonly, "/run/host/user-fonts");
+  policy->AddTree(rdonly, "/run/host/local-fonts");
+  policy->AddTree(rdonly, "/var/cache/fontconfig");
 
   // Bug 1848615
   policy->AddPath(rdonly, "/usr");
@@ -479,20 +512,24 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
   // For that we use AddPath(, SandboxBroker::Policy::AddCondition::AddAlways).
   //
   // Allow access to XDG_CONFIG_HOME and XDG_CONFIG_DIRS
-  nsAutoCString xdgConfigHome(PR_GetEnv("XDG_CONFIG_HOME"));
+  nsAutoCString xdgConfigHome(PathFromEnvIfAbsolute("XDG_CONFIG_HOME"));
   if (!xdgConfigHome.IsEmpty()) {  // AddPath will fail on empty strings
     policy->AddFutureDir(rdonly, xdgConfigHome.get());
   }
 
   nsAutoCString xdgConfigDirs(PR_GetEnv("XDG_CONFIG_DIRS"));
   for (const auto& path : xdgConfigDirs.Split(':')) {
+    if (path[0] != '/') {
+      continue;
+    }
+
     if (!path.IsEmpty()) {  // AddPath will fail on empty strings
       policy->AddFutureDir(rdonly, PromiseFlatCString(path).get());
     }
   }
 
   // Allow fonts subdir in XDG_DATA_HOME
-  nsAutoCString xdgDataHome(PR_GetEnv("XDG_DATA_HOME"));
+  nsAutoCString xdgDataHome(PathFromEnvIfAbsolute("XDG_DATA_HOME"));
   if (!xdgDataHome.IsEmpty()) {
     nsAutoCString fontPath(xdgDataHome);
     fontPath.Append("/fonts");
@@ -502,6 +539,10 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
   // Any font subdirs in XDG_DATA_DIRS
   nsAutoCString xdgDataDirs(PR_GetEnv("XDG_DATA_DIRS"));
   for (const auto& path : xdgDataDirs.Split(':')) {
+    if (path[0] != '/') {
+      continue;
+    }
+
     nsAutoCString fontPath(path);
     fontPath.Append("/fonts");
     policy->AddFutureDir(rdonly, PromiseFlatCString(fontPath).get());
@@ -534,7 +575,7 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
           nsAutoCString tmpPath;
           rv = confDir->GetNativePath(tmpPath);
           if (NS_SUCCEEDED(rv)) {
-            policy->AddDir(rdonly, tmpPath.get());
+            policy->AddTree(rdonly, tmpPath.get());
           }
         }
       }
@@ -548,7 +589,7 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
       // GetSpecialSystemDirectory(Unix_XDG_ConfigHome) ?
       nsCOMPtr<nsIFile> confDirOrXDGConfigHomeDir;
       if (!xdgConfigHome.IsEmpty()) {
-        rv = NS_NewNativeLocalFile(xdgConfigHome, true,
+        rv = NS_NewNativeLocalFile(xdgConfigHome,
                                    getter_AddRefs(confDirOrXDGConfigHomeDir));
         // confDirOrXDGConfigHomeDir = nsIFile($XDG_CONFIG_HOME)
       } else {
@@ -584,7 +625,7 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
         nsAutoCString tmpPath;
         rv = confDir->GetNativePath(tmpPath);
         if (NS_SUCCEEDED(rv)) {
-          policy->AddDir(rdonly, tmpPath.get());
+          policy->AddTree(rdonly, tmpPath.get());
         }
       }
     }
@@ -627,7 +668,7 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
     nsAutoCString tmpPath;
     rv = ffDir->GetNativePath(tmpPath);
     if (NS_SUCCEEDED(rv)) {
-      policy->AddDir(rdonly, tmpPath.get());
+      policy->AddTree(rdonly, tmpPath.get());
     }
   }
 
@@ -637,7 +678,7 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
     // from the whole repository. MOZ_DEVELOPER_REPO_DIR is set by mach run.
     const char* developer_repo_dir = PR_GetEnv("MOZ_DEVELOPER_REPO_DIR");
     if (developer_repo_dir) {
-      policy->AddDir(rdonly, developer_repo_dir);
+      policy->AddTree(rdonly, developer_repo_dir);
     }
   }
 
@@ -668,7 +709,7 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
     // When running as a snap, the directory pointed to by $SNAP is guaranteed
     // to exist before the app is launched, but unit tests need to create it
     // dynamically, hence the use of AddFutureDir().
-    policy->AddDir(rdonly, snap);
+    policy->AddTree(rdonly, snap);
   }
 
   // Read any extra paths that will get write permissions,
@@ -679,20 +720,6 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
   // Whitelisted for reading by the user/distro
   AddDynamicPathList(policy, "security.sandbox.content.read_path_whitelist",
                      rdonly);
-
-#if defined(MOZ_CONTENT_TEMP_DIR)
-  // Add write permissions on the content process specific temporary dir.
-  nsCOMPtr<nsIFile> tmpDir;
-  rv = NS_GetSpecialDirectory(NS_APP_CONTENT_PROCESS_TEMP_DIR,
-                              getter_AddRefs(tmpDir));
-  if (NS_SUCCEEDED(rv)) {
-    nsAutoCString tmpPath;
-    rv = tmpDir->GetNativePath(tmpPath);
-    if (NS_SUCCEEDED(rv)) {
-      policy->AddDir(rdwrcr, tmpPath.get());
-    }
-  }
-#endif
 
   // userContent.css and the extensions dir sit in the profile, which is
   // normally blocked.
@@ -708,7 +735,7 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
         nsAutoCString tmpPath;
         rv = workDir->GetNativePath(tmpPath);
         if (NS_SUCCEEDED(rv)) {
-          policy->AddDir(rdonly, tmpPath.get());
+          policy->AddTree(rdonly, tmpPath.get());
         }
       }
     }
@@ -726,7 +753,7 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
               policy->AddPrefix(rdonly, tmpPath.get());
               policy->AddPath(rdonly, tmpPath.get());
             } else {
-              policy->AddDir(rdonly, tmpPath.get());
+              policy->AddTree(rdonly, tmpPath.get());
             }
           }
         }
@@ -734,7 +761,6 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
     }
   }
 
-  const int level = GetEffectiveContentSandboxLevel();
   bool allowPulse = false;
   bool allowAlsa = false;
   if (level < 4) {
@@ -748,11 +774,11 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
 
   if (allowAlsa) {
     // Bug 1309098: ALSA support
-    policy->AddDir(rdwr, "/dev/snd");
+    policy->AddTree(rdwr, "/dev/snd");
   }
 
   if (allowPulse) {
-    policy->AddDir(rdwrcr, "/dev/shm");
+    policy->AddTree(rdwrcr, "/dev/shm");
   }
 
 #ifdef MOZ_WIDGET_GTK
@@ -782,9 +808,13 @@ void SandboxBrokerPolicyFactory::InitContentPolicy() {
   // Bug 1434711 - AMDGPU-PRO crashes if it can't read it's marketing ids
   // and various other things
   if (!headless && HasAtiDrivers()) {
-    policy->AddDir(rdonly, "/opt/amdgpu/share");
+    policy->AddTree(rdonly, "/opt/amdgpu/share");
     policy->AddPath(rdonly, "/sys/module/amdgpu");
   }
+
+#if defined(MOZ_PROFILE_GENERATE)
+  AddLLVMProfilePathDirectory(policy);
+#endif
 
   mCommonContentPolicy.reset(policy);
 }
@@ -812,7 +842,7 @@ UniquePtr<SandboxBroker::Policy> SandboxBrokerPolicyFactory::GetContentPolicy(
   // No read blocking at level 2 and below.
   // file:// processes also get global read permissions
   if (level <= 2 || aFileProcess) {
-    policy->AddDir(rdonly, "/");
+    policy->AddTree(rdonly, "/");
     // Any other read-only rules will be removed as redundant by
     // Policy::FixRecursivePermissions, so there's no need to
     // early-return here.
@@ -910,16 +940,16 @@ SandboxBrokerPolicyFactory::GetRDDPolicy(int aPid) {
                   "/sys/devices/system/cpu/cpu0/cpufreq/cpuinfo_max_freq");
   policy->AddPath(rdonly, "/sys/devices/system/cpu/cpu0/cache/index2/size");
   policy->AddPath(rdonly, "/sys/devices/system/cpu/cpu0/cache/index3/size");
-  policy->AddDir(rdonly, "/sys/devices/cpu");
-  policy->AddDir(rdonly, "/sys/devices/system/cpu");
-  policy->AddDir(rdonly, "/sys/devices/system/node");
-  policy->AddDir(rdonly, "/lib");
-  policy->AddDir(rdonly, "/lib64");
-  policy->AddDir(rdonly, "/usr/lib");
-  policy->AddDir(rdonly, "/usr/lib32");
-  policy->AddDir(rdonly, "/usr/lib64");
-  policy->AddDir(rdonly, "/run/opengl-driver/lib");
-  policy->AddDir(rdonly, "/nix/store");
+  policy->AddTree(rdonly, "/sys/devices/cpu");
+  policy->AddTree(rdonly, "/sys/devices/system/cpu");
+  policy->AddTree(rdonly, "/sys/devices/system/node");
+  policy->AddTree(rdonly, "/lib");
+  policy->AddTree(rdonly, "/lib64");
+  policy->AddTree(rdonly, "/usr/lib");
+  policy->AddTree(rdonly, "/usr/lib32");
+  policy->AddTree(rdonly, "/usr/lib64");
+  policy->AddTree(rdonly, "/run/opengl-driver/lib");
+  policy->AddTree(rdonly, "/nix/store");
 
   // Bug 1647957: memory reporting.
   AddMemoryReporting(policy.get(), aPid);
@@ -935,7 +965,7 @@ SandboxBrokerPolicyFactory::GetRDDPolicy(int aPid) {
     nsAutoCString tmpPath;
     rv = ffDir->GetNativePath(tmpPath);
     if (NS_SUCCEEDED(rv)) {
-      policy->AddDir(rdonly, tmpPath.get());
+      policy->AddTree(rdonly, tmpPath.get());
     }
   }
 
@@ -945,7 +975,7 @@ SandboxBrokerPolicyFactory::GetRDDPolicy(int aPid) {
     // from the whole repository. MOZ_DEVELOPER_REPO_DIR is set by mach run.
     const char* developer_repo_dir = PR_GetEnv("MOZ_DEVELOPER_REPO_DIR");
     if (developer_repo_dir) {
-      policy->AddDir(rdonly, developer_repo_dir);
+      policy->AddTree(rdonly, developer_repo_dir);
     }
   }
 
@@ -960,6 +990,24 @@ SandboxBrokerPolicyFactory::GetRDDPolicy(int aPid) {
 #ifdef MOZ_ENABLE_V4L2
   AddV4l2Dependencies(policy.get());
 #endif  // MOZ_ENABLE_V4L2
+
+  // Bug 1903688: NVIDIA Tegra hardware decoding from Linux4Tegra
+  // Only built on ARM64 since Tegra is ARM64 SoC with different drivers, so the
+  // path are not needed on e.g. x86-64
+#if defined(__aarch64__)
+  policy->AddTree(rdonly, "/sys/devices/system/present");
+  policy->AddTree(rdonly, "/sys/module/tegra_fuse");
+  policy->AddPath(rdwr, "/dev/nvmap");
+  policy->AddPath(rdwr, "/dev/nvhost-ctrl");
+  policy->AddPath(rdwr, "/dev/nvhost-ctrl-gpu");
+  policy->AddPath(rdwr, "/dev/nvhost-nvdec");
+  policy->AddPath(rdwr, "/dev/nvhost-nvdec1");
+  policy->AddPath(rdwr, "/dev/nvhost-vic");
+#endif  // defined(__aarch64__)
+
+#if defined(MOZ_PROFILE_GENERATE)
+  AddLLVMProfilePathDirectory(policy.get());
+#endif
 
   if (policy->IsEmpty()) {
     policy = nullptr;
@@ -976,21 +1024,21 @@ SandboxBrokerPolicyFactory::GetSocketProcessPolicy(int aPid) {
   policy->AddPath(rdonly, "/proc/sys/crypto/fips_enabled");
   policy->AddPath(rdonly, "/proc/cpuinfo");
   policy->AddPath(rdonly, "/proc/meminfo");
-  policy->AddDir(rdonly, "/sys/devices/cpu");
-  policy->AddDir(rdonly, "/sys/devices/system/cpu");
-  policy->AddDir(rdonly, "/lib");
-  policy->AddDir(rdonly, "/lib64");
-  policy->AddDir(rdonly, "/usr/lib");
-  policy->AddDir(rdonly, "/usr/lib32");
-  policy->AddDir(rdonly, "/usr/lib64");
-  policy->AddDir(rdonly, "/usr/share");
-  policy->AddDir(rdonly, "/usr/local/share");
-  policy->AddDir(rdonly, "/etc");
+  policy->AddTree(rdonly, "/sys/devices/cpu");
+  policy->AddTree(rdonly, "/sys/devices/system/cpu");
+  policy->AddTree(rdonly, "/lib");
+  policy->AddTree(rdonly, "/lib64");
+  policy->AddTree(rdonly, "/usr/lib");
+  policy->AddTree(rdonly, "/usr/lib32");
+  policy->AddTree(rdonly, "/usr/lib64");
+  policy->AddTree(rdonly, "/usr/share");
+  policy->AddTree(rdonly, "/usr/local/share");
+  policy->AddTree(rdonly, "/etc");
 
   // glibc will try to stat64("/") while populating nsswitch database
   // https://sourceware.org/git/?p=glibc.git;a=blob;f=nss/nss_database.c;h=cf0306adc47f12d9bc761ab1b013629f4482b7e6;hb=9826b03b747b841f5fc6de2054bf1ef3f5c4bdf3#l396
   // denying will make getaddrinfo() return ENONAME
-  policy->AddDir(access, "/");
+  policy->AddPath(access, "/");
 
   AddLdconfigPaths(policy.get());
 
@@ -1012,9 +1060,13 @@ SandboxBrokerPolicyFactory::GetSocketProcessPolicy(int aPid) {
     nsAutoCString tmpPath;
     rv = ffDir->GetNativePath(tmpPath);
     if (NS_SUCCEEDED(rv)) {
-      policy->AddDir(rdonly, tmpPath.get());
+      policy->AddTree(rdonly, tmpPath.get());
     }
   }
+
+#if defined(MOZ_PROFILE_GENERATE)
+  AddLLVMProfilePathDirectory(policy.get());
+#endif
 
   if (policy->IsEmpty()) {
     policy = nullptr;
@@ -1030,24 +1082,24 @@ SandboxBrokerPolicyFactory::GetUtilityProcessPolicy(int aPid) {
   policy->AddPath(rdonly, "/proc/cpuinfo");
   policy->AddPath(rdonly, "/proc/meminfo");
   policy->AddPath(rdonly, nsPrintfCString("/proc/%d/exe", aPid).get());
-  policy->AddDir(rdonly, "/sys/devices/cpu");
-  policy->AddDir(rdonly, "/sys/devices/system/cpu");
-  policy->AddDir(rdonly, "/lib");
-  policy->AddDir(rdonly, "/lib64");
-  policy->AddDir(rdonly, "/usr/lib");
-  policy->AddDir(rdonly, "/usr/lib32");
-  policy->AddDir(rdonly, "/usr/lib64");
-  policy->AddDir(rdonly, "/usr/share");
-  policy->AddDir(rdonly, "/usr/local/share");
-  policy->AddDir(rdonly, "/etc");
+  policy->AddTree(rdonly, "/sys/devices/cpu");
+  policy->AddTree(rdonly, "/sys/devices/system/cpu");
+  policy->AddTree(rdonly, "/lib");
+  policy->AddTree(rdonly, "/lib64");
+  policy->AddTree(rdonly, "/usr/lib");
+  policy->AddTree(rdonly, "/usr/lib32");
+  policy->AddTree(rdonly, "/usr/lib64");
+  policy->AddTree(rdonly, "/usr/share");
+  policy->AddTree(rdonly, "/usr/local/share");
+  policy->AddTree(rdonly, "/etc");
   // Required to make sure ffmpeg loads properly, this is already existing on
   // Content and RDD
-  policy->AddDir(rdonly, "/nix/store");
+  policy->AddTree(rdonly, "/nix/store");
 
   // glibc will try to stat64("/") while populating nsswitch database
   // https://sourceware.org/git/?p=glibc.git;a=blob;f=nss/nss_database.c;h=cf0306adc47f12d9bc761ab1b013629f4482b7e6;hb=9826b03b747b841f5fc6de2054bf1ef3f5c4bdf3#l396
   // denying will make getaddrinfo() return ENONAME
-  policy->AddDir(access, "/");
+  policy->AddPath(access, "/");
 
   AddLdconfigPaths(policy.get());
   AddLdLibraryEnvPaths(policy.get());
@@ -1070,9 +1122,13 @@ SandboxBrokerPolicyFactory::GetUtilityProcessPolicy(int aPid) {
     nsAutoCString tmpPath;
     rv = ffDir->GetNativePath(tmpPath);
     if (NS_SUCCEEDED(rv)) {
-      policy->AddDir(rdonly, tmpPath.get());
+      policy->AddTree(rdonly, tmpPath.get());
     }
   }
+
+#if defined(MOZ_PROFILE_GENERATE)
+  AddLLVMProfilePathDirectory(policy.get());
+#endif
 
   if (policy->IsEmpty()) {
     policy = nullptr;

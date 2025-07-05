@@ -4,16 +4,19 @@
 
 //! Misc information about a given computed style.
 
+/// Misc information about a given computed style.
+///
+/// All flags are currently inherited for text, pseudo elements, and
+/// anonymous boxes, see StyleBuilder::for_inheritance and its callsites.
+/// If we ever want to add some flags that shouldn't inherit for them,
+/// we might want to add a function to handle this.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "servo", derive(MallocSizeOf))]
+pub struct ComputedValueFlags(u32);
+
 bitflags! {
-    /// Misc information about a given computed style.
-    ///
-    /// All flags are currently inherited for text, pseudo elements, and
-    /// anonymous boxes, see StyleBuilder::for_inheritance and its callsites.
-    /// If we ever want to add some flags that shouldn't inherit for them,
-    /// we might want to add a function to handle this.
-    #[repr(C)]
-    #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-    pub struct ComputedValueFlags: u32 {
+    impl ComputedValueFlags: u32 {
         /// Whether the style or any of the ancestors has a text-decoration-line
         /// property that should get propagated to descendants.
         ///
@@ -40,8 +43,8 @@ bitflags! {
         /// visited.
         const IS_RELEVANT_LINK_VISITED = 1 << 3;
 
-        /// A flag used to mark styles which are a pseudo-element or under one.
-        const IS_IN_PSEUDO_ELEMENT_SUBTREE = 1 << 4;
+        /// A flag used to mark styles which are a ::first-line or under one.
+        const IS_IN_FIRST_LINE_SUBTREE = 1 << 4;
 
         /// A flag used to mark styles which have contain:style or under one.
         const SELF_OR_ANCESTOR_HAS_CONTAIN_STYLE = 1 << 5;
@@ -88,6 +91,9 @@ bitflags! {
         /// https://github.com/w3c/csswg-drafts/issues/4777#issuecomment-604424845
         const HAS_AUTHOR_SPECIFIED_BORDER_BACKGROUND = 1 << 14;
 
+        /// Whether we have author-specified font-size or margin, for <h1> purposes.
+        const HAS_AUTHOR_SPECIFIED_MARGIN_AND_FONT_SIZE = 1 << 15;
+
         /// Whether there are author-specified rules for `font-family`.
         const HAS_AUTHOR_SPECIFIED_FONT_FAMILY = 1 << 16;
 
@@ -119,21 +125,16 @@ bitflags! {
         /// A flag used to mark styles which have `container-type` of `size` or
         /// `inline-size`, or under one.
         const SELF_OR_ANCESTOR_HAS_SIZE_CONTAINER_TYPE = 1 << 23;
-
-        /// Whether the style evaluated any relative selector.
-        const CONSIDERED_RELATIVE_SELECTOR = 1 << 24;
-
-        /// Whether the style evaluated the matched element to be an anchor of
-        /// a relative selector.
-        const ANCHORS_RELATIVE_SELECTOR = 1 << 25;
-
         /// Whether the style uses container query units, in which case the style depends on the
         /// container's size and we can't reuse it across cousins (without double-checking the
         /// container at least).
-        const USES_CONTAINER_UNITS = 1 << 26;
+        const USES_CONTAINER_UNITS = 1 << 24;
 
         /// Whether there are author-specific rules for text `color`.
-        const HAS_AUTHOR_SPECIFIED_TEXT_COLOR = 1 << 27;
+        const HAS_AUTHOR_SPECIFIED_TEXT_COLOR = 1 << 25;
+
+        /// Whether this style considered a scope style rule.
+        const CONSIDERED_NONTRIVIAL_SCOPED_STYLE = 1 << 26;
     }
 }
 
@@ -150,7 +151,7 @@ impl ComputedValueFlags {
     fn inherited_flags() -> Self {
         Self::IS_RELEVANT_LINK_VISITED |
             Self::CAN_BE_FRAGMENTED |
-            Self::IS_IN_PSEUDO_ELEMENT_SUBTREE |
+            Self::IS_IN_FIRST_LINE_SUBTREE |
             Self::HAS_TEXT_DECORATION_LINES |
             Self::IS_IN_OPACITY_ZERO_SUBTREE |
             Self::SELF_OR_ANCESTOR_HAS_CONTAIN_STYLE |
@@ -167,8 +168,7 @@ impl ComputedValueFlags {
     #[inline]
     fn cascade_input_flags() -> Self {
         Self::USES_VIEWPORT_UNITS_ON_CONTAINER_QUERIES |
-            Self::CONSIDERED_RELATIVE_SELECTOR |
-            Self::ANCHORS_RELATIVE_SELECTOR
+        Self::CONSIDERED_NONTRIVIAL_SCOPED_STYLE
     }
 
     /// Returns the flags that are always propagated to descendants.

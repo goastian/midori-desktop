@@ -54,7 +54,7 @@ static SECStatus DigestLength(UniquePK11Context& context, uint32_t length) {
   array[0] = length & 255;
   array[1] = (length >> 8) & 255;
 
-  return PK11_DigestOp(context.get(), array, MOZ_ARRAY_LENGTH(array));
+  return PK11_DigestOp(context.get(), array, std::size(array));
 }
 
 // Let derIssuer be the DER encoding of the issuer of certID.
@@ -138,7 +138,7 @@ static SECStatus CertIDHash(SHA384Buffer& buf, const CertID& certID,
   }
 
   bool isolateByPartitionKey =
-      originAttributes.mPrivateBrowsingId > 0
+      originAttributes.IsPrivateBrowsing()
           ? StaticPrefs::privacy_partition_network_state_ocsp_cache_pbmode()
           : StaticPrefs::privacy_partition_network_state_ocsp_cache();
   if (isolateByPartitionKey) {

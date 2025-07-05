@@ -6,6 +6,7 @@
 
 #include "EnterpriseRoots.h"
 
+#include "PKCS11ModuleDB.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Casting.h"
@@ -13,7 +14,6 @@
 #include "mozilla/Unused.h"
 #include "mozpkix/Result.h"
 #include "nsCRT.h"
-#include "nsNSSCertHelper.h"
 #include "nsThreadUtils.h"
 
 #ifdef MOZ_WIDGET_ANDROID
@@ -33,6 +33,7 @@
 extern mozilla::LazyLogModule gPIPNSSLog;
 
 using namespace mozilla;
+using namespace psm;
 
 void EnterpriseCert::CopyBytes(nsTArray<uint8_t>& dest) const {
   dest.Assign(mDER);
@@ -74,7 +75,7 @@ struct CertStoreLocation {
 // The documentation doesn't make this clear, but the certificate location
 // identified by "ROOT" contains trusted root certificates. The certificate
 // location identified by "CA" contains intermediate certificates.
-const CertStoreLocation kCertStoreLocations[] = {
+MOZ_RUNINIT const CertStoreLocation kCertStoreLocations[] = {
     CertStoreLocation(L"ROOT", true), CertStoreLocation(L"CA", false)};
 
 // Because HCERTSTORE is just a typedef void*, we can't use any of the nice
@@ -191,11 +192,13 @@ static void GatherEnterpriseCertsForLocation(DWORD locationFlag,
       EnterpriseCert enterpriseCert(certificate->pbCertEncoded,
                                     certificate->cbCertEncoded,
                                     location.mIsRoot);
-      if (!enterpriseCert.IsKnownRoot(rootsModule)) {
+      if (enterpriseCert.GetIsRoot() ||
+          !enterpriseCert.IsKnownRoot(rootsModule)) {
         certs.AppendElement(std::move(enterpriseCert));
         numImported++;
       } else {
-        MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("skipping known root cert"));
+        MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+                ("skipping intermediate that is a known root cert"));
       }
     }
     MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
@@ -410,11 +413,11 @@ OSStatus GatherEnterpriseCertsMacOS(nsTArray<EnterpriseCert>& certs,
   // this query. Further work (below) filters such certificates out.
   const CFStringRef keys[] = {kSecClass, kSecMatchLimit};
   const void* values[] = {kSecClassCertificate, kSecMatchLimitAll};
-  static_assert(ArrayLength(keys) == ArrayLength(values),
+  static_assert(std::size(keys) == std::size(values),
                 "mismatched SecItemCopyMatching key/value array sizes");
   // https://developer.apple.com/documentation/corefoundation/1516782-cfdictionarycreate
   ScopedCFType<CFDictionaryRef> searchDictionary(CFDictionaryCreate(
-      nullptr, (const void**)&keys, (const void**)&values, ArrayLength(keys),
+      nullptr, (const void**)&keys, (const void**)&values, std::size(keys),
       &kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks));
   CFTypeRef items;
   // https://developer.apple.com/documentation/security/1398306-secitemcopymatching
@@ -449,13 +452,15 @@ OSStatus GatherEnterpriseCertsMacOS(nsTArray<EnterpriseCert>& certs,
         certificateTrustResult == CertificateTrustResult::CanUseAsTrustAnchor;
     EnterpriseCert enterpriseCert(CFDataGetBytePtr(der.get()),
                                   CFDataGetLength(der.get()), isRoot);
-    if (!enterpriseCert.IsKnownRoot(rootsModule)) {
+    if (enterpriseCert.GetIsRoot() ||
+        !enterpriseCert.IsKnownRoot(rootsModule)) {
       certs.AppendElement(std::move(enterpriseCert));
       numImported++;
       MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
               ("importing as %s", isRoot ? "root" : "intermediate"));
     } else {
-      MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("skipping known root cert"));
+      MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+              ("skipping intermediate that is a known root cert"));
     }
   }
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("imported %u certs", numImported));
@@ -480,11 +485,13 @@ void GatherEnterpriseCertsAndroid(nsTArray<EnterpriseCert>& certs,
     EnterpriseCert enterpriseCert(
         reinterpret_cast<uint8_t*>(root->GetElements().Elements()),
         root->Length(), true);
-    if (!enterpriseCert.IsKnownRoot(rootsModule)) {
+    if (enterpriseCert.GetIsRoot() ||
+        !enterpriseCert.IsKnownRoot(rootsModule)) {
       certs.AppendElement(std::move(enterpriseCert));
       numImported++;
     } else {
-      MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("skipping known root cert"));
+      MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+              ("skipping intermediate that is a known root cert"));
     }
   }
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("imported %u certs", numImported));
@@ -498,7 +505,7 @@ nsresult GatherEnterpriseCerts(nsTArray<EnterpriseCert>& certs) {
   }
 
   certs.Clear();
-  UniqueSECMODModule rootsModule(SECMOD_FindModule(kRootModuleName));
+  UniqueSECMODModule rootsModule(SECMOD_FindModule(kRootModuleName.get()));
 #ifdef XP_WIN
   GatherEnterpriseCertsWindows(certs, rootsModule);
 #endif  // XP_WIN

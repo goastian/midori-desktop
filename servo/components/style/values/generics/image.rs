@@ -8,25 +8,24 @@
 
 use crate::color::mix::ColorInterpolationMethod;
 use crate::custom_properties;
-use crate::values::generics::position::PositionComponent;
-use crate::values::generics::Optional;
+use crate::values::generics::{position::PositionComponent, color::GenericLightDark, Optional};
 use crate::values::serialize_atom_identifier;
 use crate::Atom;
 use crate::Zero;
 use servo_arc::Arc;
 use std::fmt::{self, Write};
 use style_traits::{CssWriter, ToCss};
-
 /// An `<image> | none` value.
 ///
 /// https://drafts.csswg.org/css-images/#image-values
 #[derive(
-    Clone, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToComputedValue, ToResolvedValue, ToShmem,
+    Clone, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToResolvedValue, ToShmem,
 )]
 #[repr(C, u8)]
 pub enum GenericImage<G, ImageUrl, Color, Percentage, Resolution> {
     /// `none` variant.
     None,
+
     /// A `<url()>` image.
     Url(ImageUrl),
 
@@ -38,6 +37,12 @@ pub enum GenericImage<G, ImageUrl, Color, Percentage, Resolution> {
     #[cfg(feature = "gecko")]
     #[css(function = "-moz-element")]
     Element(Atom),
+
+    /// A `-moz-symbolic-icon(<icon-id>)`
+    /// NOTE(emilio): #[css(skip)] only really affects SpecifiedValueInfo, which we want because
+    /// this is chrome-only.
+    #[css(function, skip)]
+    MozSymbolicIcon(Atom),
 
     /// A paint worklet image.
     /// <https://drafts.css-houdini.org/css-paint-api/>
@@ -51,7 +56,12 @@ pub enum GenericImage<G, ImageUrl, Color, Percentage, Resolution> {
     CrossFade(Box<GenericCrossFade<Self, Color, Percentage>>),
 
     /// An `image-set()` function.
-    ImageSet(#[compute(field_bound)] Box<GenericImageSet<Self, Resolution>>),
+    ImageSet(Box<GenericImageSet<Self, Resolution>>),
+
+    /// A `light-dark()` function.
+    /// NOTE(emilio): #[css(skip)] only affects SpecifiedValueInfo. Remove or make conditional
+    /// if/when shipping light-dark() for content.
+    LightDark(#[css(skip)] Box<GenericLightDark<Self>>),
 }
 
 pub use self::GenericImage as Image;
@@ -424,8 +434,14 @@ where
                 serialize_atom_identifier(selector, dest)?;
                 dest.write_char(')')
             },
+            Image::MozSymbolicIcon(ref id) => {
+                dest.write_str("-moz-symbolic-icon(")?;
+                serialize_atom_identifier(id, dest)?;
+                dest.write_char(')')
+            },
             Image::ImageSet(ref is) => is.to_css(dest),
             Image::CrossFade(ref cf) => cf.to_css(dest),
+            Image::LightDark(ref ld) => ld.to_css(dest),
         }
     }
 }

@@ -1,6 +1,7 @@
 import unittest
 from unittest import mock
 
+import mozunit
 from mozharness.base.diskutils import DiskInfo, DiskSize, DiskutilsError, convert_to
 
 
@@ -41,7 +42,7 @@ class TestDiskInfo(unittest.TestCase):
         self.assertTrue(di.total == 0)
 
 
-class MockStatvfs(object):
+class MockStatvfs:
     def __init__(self):
         self.f_bsize = 0
         self.f_frsize = 0
@@ -87,3 +88,7 @@ class TestDiskSpace(unittest.TestCase):
         self.assertRaises(
             DiskutilsError, lambda: DiskSize().get_size(path="/", unit="GB")
         )
+
+
+if __name__ == "__main__":
+    mozunit.main()

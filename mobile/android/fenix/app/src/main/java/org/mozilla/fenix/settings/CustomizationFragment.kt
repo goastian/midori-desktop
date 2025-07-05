@@ -4,7 +4,6 @@
 
 package org.mozilla.fenix.settings
 
-import android.annotation.SuppressLint
 import android.os.Build
 import android.os.Build.VERSION.SDK_INT
 import android.os.Bundle
@@ -16,6 +15,7 @@ import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreference
 import org.mozilla.fenix.FeatureFlags
 import org.mozilla.fenix.GleanMetrics.AppTheme
+import org.mozilla.fenix.GleanMetrics.CustomizationSettings
 import org.mozilla.fenix.GleanMetrics.PullToRefreshInBrowser
 import org.mozilla.fenix.GleanMetrics.ToolbarSettings
 import org.mozilla.fenix.R
@@ -64,6 +64,7 @@ class CustomizationFragment : PreferenceFragmentCompat() {
         } else {
             setupToolbarCategory()
         }
+
         // if tab strip is enabled, swipe toolbar to switch tabs should not be enabled so the
         // preference is not shown
         setupGesturesCategory(isSwipeToolbarToSwitchTabsVisible = !tabletAndTabStripEnabled)
@@ -88,8 +89,6 @@ class CustomizationFragment : PreferenceFragmentCompat() {
         }
     }
 
-    @SuppressLint("WrongConstant")
-    // Suppressing erroneous lint warning about using MODE_NIGHT_AUTO_BATTERY, a likely library bug
     private fun bindAutoBatteryTheme() {
         radioAutoBatteryTheme = requirePreference(R.string.pref_key_auto_battery_theme)
         radioAutoBatteryTheme.onClickListener {
@@ -156,7 +155,7 @@ class CustomizationFragment : PreferenceFragmentCompat() {
 
     private fun setupGesturesCategory(isSwipeToolbarToSwitchTabsVisible: Boolean) {
         requirePreference<SwitchPreference>(R.string.pref_key_website_pull_to_refresh).apply {
-            isVisible = FeatureFlags.pullToRefreshEnabled
+            isVisible = FeatureFlags.PULL_TO_REFRESH_ENABLED
             isChecked = context.settings().isPullToRefreshEnabledInBrowser
             onPreferenceChangeListener = SharedPreferenceUpdater()
         }
@@ -175,6 +174,9 @@ class CustomizationFragment : PreferenceFragmentCompat() {
         when (preference.key) {
             resources.getString(R.string.pref_key_website_pull_to_refresh) -> {
                 PullToRefreshInBrowser.enabled.set(requireContext().settings().isPullToRefreshEnabledInBrowser)
+            }
+            resources.getString(R.string.pref_key_dynamic_toolbar) -> {
+                CustomizationSettings.dynamicToolbar.set(requireContext().settings().isDynamicToolbarEnabled)
             }
         }
         return super.onPreferenceTreeClick(preference)

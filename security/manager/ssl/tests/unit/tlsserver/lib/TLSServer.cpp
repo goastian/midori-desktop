@@ -41,8 +41,8 @@ SSLAntiReplayContext* antiReplay = nullptr;
 DebugLevel gDebugLevel = DEBUG_ERRORS;
 uint16_t gCallbackPort = 0;
 
-const std::string kPEMBegin = "-----BEGIN ";
-const std::string kPEMEnd = "-----END ";
+static const char kPEMBegin[] = "-----BEGIN ";
+static const char kPEMEnd[] = "-----END ";
 const char DEFAULT_CERT_NICKNAME[] = "default-ee";
 
 struct Connection {
@@ -88,7 +88,8 @@ static bool DecodePEMFile(const std::string& filename, SECItem* item) {
     return false;
   }
 
-  if (strncmp(buf, kPEMBegin.c_str(), kPEMBegin.size()) != 0) {
+  if (strncmp(buf, kPEMBegin, std::string::traits_type::length(kPEMBegin)) !=
+      0) {
     return false;
   }
 
@@ -99,7 +100,7 @@ static bool DecodePEMFile(const std::string& filename, SECItem* item) {
       return false;
     }
 
-    if (strncmp(buf, kPEMEnd.c_str(), kPEMEnd.size()) == 0) {
+    if (strncmp(buf, kPEMEnd, std::string::traits_type::length(kPEMEnd)) == 0) {
       break;
     }
 
@@ -553,7 +554,8 @@ int StartServer(int argc, char* argv[], SSLSNISocketConfig sniSocketConfig,
     return 1;
   }
 
-  NSS_SetAlgorithmPolicy(SEC_OID_XYBER768D00, NSS_USE_ALG_IN_SSL_KX, 0);
+  /* Disabling NSS_KEY_SIZE_POLICY as we operate with short keys. */
+  NSS_OptionSet(NSS_KEY_SIZE_POLICY_FLAGS, 0);
 
   if (SSL_ConfigServerSessionIDCache(0, 0, 0, nullptr) != SECSuccess) {
     PrintPRError("SSL_ConfigServerSessionIDCache failed");

@@ -5,7 +5,6 @@
 import time
 
 import pytest
-import six
 
 import mozlog
 
@@ -15,16 +14,14 @@ def pytest_addoption(parser):
     # Pytest's parser doesn't have the add_argument_group method Mozlog expects.
     group = parser.getgroup("mozlog")
 
-    for name, (_class, _help) in six.iteritems(mozlog.commandline.log_formatters):
-        group.addoption("--log-{0}".format(name), action="append", help=_help)
+    for name, (_class, _help) in mozlog.commandline.log_formatters.items():
+        group.addoption(f"--log-{name}", action="append", help=_help)
 
-    formatter_options = six.iteritems(mozlog.commandline.fmt_options)
+    formatter_options = mozlog.commandline.fmt_options.items()
     for name, (_class, _help, formatters, action) in formatter_options:
         for formatter in formatters:
             if formatter in mozlog.commandline.log_formatters:
-                group.addoption(
-                    "--log-{0}-{1}".format(formatter, name), action=action, help=_help
-                )
+                group.addoption(f"--log-{formatter}-{name}", action=action, help=_help)
 
 
 def pytest_configure(config):
@@ -33,7 +30,7 @@ def pytest_configure(config):
         config.pluginmanager.register(MozLog())
 
 
-class MozLog(object):
+class MozLog:
     def __init__(self):
         self._started = False
         self.results = {}
@@ -90,7 +87,7 @@ class MozLog(object):
             status = "SKIP" if not hasattr(report, "wasxfail") else "FAIL"
         if report.longrepr is not None:
             longrepr = report.longrepr
-            if isinstance(longrepr, six.string_types):
+            if isinstance(longrepr, str):
                 # When using pytest-xdist, longrepr is serialised as a str
                 message = stack = longrepr
                 if longrepr.startswith("[XPASS(strict)]"):
@@ -100,7 +97,7 @@ class MozLog(object):
             elif hasattr(longrepr, "reprcrash"):
                 # For failures, longrepr is a ReprExceptionInfo
                 crash = longrepr.reprcrash
-                message = "{0} (line {1})".format(crash.message, crash.lineno)
+                message = f"{crash.message} (line {crash.lineno})"
                 stack = longrepr.reprtraceback
             elif hasattr(longrepr, "errorstring"):
                 message = longrepr.errorstring

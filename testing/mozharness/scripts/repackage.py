@@ -69,6 +69,10 @@ class Repackage(BaseScript):
             "sfx-stub": config.get("sfx-stub"),
             "installer-tag": config["installer-tag"],
             "stub-installer-tag": config["stub-installer-tag"],
+            "deb-templates": config["deb-templates"],
+            "rpm-templates": config["rpm-templates"],
+            "deb-l10n-templates": config["deb-l10n-templates"],
+            "flatpak-templates": config.get("flatpak-templates"),
             "wsx-stub": config["wsx-stub"],
         }
         subst.update(dirs)
@@ -84,7 +88,7 @@ class Repackage(BaseScript):
             for arg, filename in repack_config["inputs"].items():
                 command.extend(
                     [
-                        "--{}".format(arg),
+                        f"--{arg}",
                         os.path.join(dirs["abs_input_dir"], filename),
                     ]
                 )

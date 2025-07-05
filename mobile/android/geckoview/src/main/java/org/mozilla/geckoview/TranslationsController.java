@@ -94,8 +94,15 @@ public class TranslationsController {
     }
 
     /**
-     * Returns the preferred languages of the user in the following order: 1. App languages 2. Web
-     * requested languages 3. OS language
+     * Returns the preferred languages of the user in the following order:
+     *
+     * <p>1. Most recent target languages
+     *
+     * <p>2. Web requested languages
+     *
+     * <p>3. App languages
+     *
+     * <p>4. OS language
      *
      * @return a GeckoResult with a user's preferred language(s) or null or an exception
      */
@@ -126,8 +133,6 @@ public class TranslationsController {
     /**
      * Manage the language model or models. Options are to download or delete a BCP 47 language or
      * all or cache.
-     *
-     * <p>Bug 1869404 will add an option for deleting translations model "cache".
      *
      * @param options contain language, operation, and operation level to perform on the model
      * @return the request proceeded as expected or an exception.
@@ -566,7 +571,7 @@ public class TranslationsController {
         final List<Language> fromLanguages = new ArrayList<>();
         final List<Language> toLanguages = new ArrayList<>();
         try {
-          final GeckoBundle[] fromBundle = bundle.getBundleArray("fromLanguages");
+          final GeckoBundle[] fromBundle = bundle.getBundleArray("sourceLanguages");
           for (final var item : fromBundle) {
             final var result = Language.fromBundle(item);
             if (result != null) {
@@ -574,7 +579,7 @@ public class TranslationsController {
             }
           }
 
-          final GeckoBundle[] toBundle = bundle.getBundleArray("toLanguages");
+          final GeckoBundle[] toBundle = bundle.getBundleArray("targetLanguages");
           for (final var item : toBundle) {
             final var result = Language.fromBundle(item);
             if (result != null) {
@@ -793,19 +798,19 @@ public class TranslationsController {
      * This will complete a translation using defaults. Before translating, any required models will
      * be downloaded by the toolkit engine.
      *
-     * @param fromLanguage BCP 47 language tag that the page should be translated from. Usually will
-     *     be the suggested detected language or user specified.
-     * @param toLanguage BCP 47 language tag that the page should be translated to. Usually will be
-     *     the suggested preference language or user specified.
+     * @param sourceLanguage BCP 47 language tag that the page should be translated from. Usually
+     *     will be the suggested detected language or user specified.
+     * @param targetLanguage BCP 47 language tag that the page should be translated to. Usually will
+     *     be the suggested preference language or user specified.
      * @return Void if the translate process begins or exceptionally if an issue occurs.
      */
     @AnyThread
     private @NonNull GeckoResult<Void> baseTranslate(
-        @NonNull final String fromLanguage, @NonNull final String toLanguage) {
+        @NonNull final String sourceLanguage, @NonNull final String targetLanguage) {
 
       final GeckoBundle bundle = new GeckoBundle(2);
-      bundle.putString("fromLanguage", fromLanguage);
-      bundle.putString("toLanguage", toLanguage);
+      bundle.putString("sourceLanguage", sourceLanguage);
+      bundle.putString("targetLanguage", targetLanguage);
       return mSession
           .getEventDispatcher()
           .queryVoid(TRANSLATE_EVENT, bundle)
@@ -1008,7 +1013,7 @@ public class TranslationsController {
           return null;
         }
         return new TranslationPair(
-            bundle.getString("fromLanguage"), bundle.getString("toLanguage"));
+            bundle.getString("sourceLanguage"), bundle.getString("targetLanguage"));
       }
     }
 
@@ -1090,29 +1095,6 @@ public class TranslationsController {
       public final @NonNull Boolean hasVisibleChange;
 
       /**
-       * This constructor is deprecated, please use the [TranslationState] with [hasVisibleChange]
-       * parameter. This constructor will be removed in bug 1895275. Translation State constructor.
-       *
-       * @param requestedTranslationPair the language pair to translate
-       * @param error if an error occurred
-       * @param detectedLanguages detected language
-       * @param isEngineReady if the engine is ready for translations
-       */
-      @Deprecated
-      @DeprecationSchedule(version = 130, id = "translation-state-deprecated-constructor")
-      public TranslationState(
-          final @Nullable TranslationPair requestedTranslationPair,
-          final @Nullable String error,
-          final @Nullable DetectedLanguages detectedLanguages,
-          final @NonNull Boolean isEngineReady) {
-        this.requestedTranslationPair = requestedTranslationPair;
-        this.error = error;
-        this.detectedLanguages = detectedLanguages;
-        this.isEngineReady = isEngineReady;
-        this.hasVisibleChange = false;
-      }
-
-      /**
        * Translation State constructor.
        *
        * @param requestedTranslationPair the language pair to translate
@@ -1163,7 +1145,7 @@ public class TranslationsController {
           return null;
         }
         return new TranslationState(
-            TranslationPair.fromBundle(bundle.getBundle("requestedTranslationPair")),
+            TranslationPair.fromBundle(bundle.getBundle("requestedLanguagePair")),
             bundle.getString("error"),
             DetectedLanguages.fromBundle(bundle.getBundle("detectedLanguages")),
             bundle.getBoolean("isEngineReady", false),
@@ -1306,6 +1288,11 @@ public class TranslationsController {
         return null;
       }
       try {
+        final String variant = bundle.getString("variant", "");
+        if (!variant.isEmpty()) {
+          // Variants are not currently supported in Android. Ignore this model. See Bug 1943444.
+          return null;
+        }
         final String code = bundle.getString("langTag", "");
         if (code.equals("")) {
           Log.w(LOGTAG, "Deserialized an empty language code.");

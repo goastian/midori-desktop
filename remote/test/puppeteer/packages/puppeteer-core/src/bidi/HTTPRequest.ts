@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 import type * as Bidi from 'chromium-bidi/lib/cjs/protocol/protocol.js';
+import type {Protocol} from 'devtools-protocol';
 
 import type {CDPSession} from '../api/CDPSession.js';
 import type {
@@ -18,6 +19,7 @@ import {
 } from '../api/HTTPRequest.js';
 import {PageEvent} from '../api/Page.js';
 import {UnsupportedOperation} from '../common/Errors.js';
+import {stringToBase64} from '../util/encoding.js';
 
 import type {Request} from './core/Request.js';
 import type {BidiFrame} from './Frame.js';
@@ -32,13 +34,14 @@ export class BidiHTTPRequest extends HTTPRequest {
   static from(
     bidiRequest: Request,
     frame: BidiFrame,
-    redirect?: BidiHTTPRequest
+    redirect?: BidiHTTPRequest,
   ): BidiHTTPRequest {
     const request = new BidiHTTPRequest(bidiRequest, frame, redirect);
     request.#initialize();
     return request;
   }
-  #redirectBy: BidiHTTPRequest | undefined;
+
+  #redirectChain: BidiHTTPRequest[];
   #response: BidiHTTPResponse | null = null;
   override readonly id: string;
   readonly #frame: BidiFrame;
@@ -47,7 +50,7 @@ export class BidiHTTPRequest extends HTTPRequest {
   private constructor(
     request: Request,
     frame: BidiFrame,
-    redirectBy?: BidiHTTPRequest
+    redirect?: BidiHTTPRequest,
   ) {
     super();
     requests.set(request, this);
@@ -56,7 +59,7 @@ export class BidiHTTPRequest extends HTTPRequest {
 
     this.#request = request;
     this.#frame = frame;
-    this.#redirectBy = redirectBy;
+    this.#redirectChain = redirect ? redirect.#redirectChain : [];
     this.id = request.id;
   }
 
@@ -67,6 +70,8 @@ export class BidiHTTPRequest extends HTTPRequest {
   #initialize() {
     this.#request.on('redirect', request => {
       const httpRequest = BidiHTTPRequest.from(request, this.#frame, this);
+      this.#redirectChain.push(this);
+
       request.once('success', () => {
         this.#frame
           .page()
@@ -81,7 +86,11 @@ export class BidiHTTPRequest extends HTTPRequest {
       void httpRequest.finalizeInterceptions();
     });
     this.#request.once('success', data => {
-      this.#response = BidiHTTPResponse.from(data, this);
+      this.#response = BidiHTTPResponse.from(
+        data,
+        this,
+        this.#frame.page().browser().cdpSupported,
+      );
     });
     this.#request.on('authenticate', this.#handleAuthentication);
 
@@ -93,7 +102,7 @@ export class BidiHTTPRequest extends HTTPRequest {
           {
             headers: this.headers(),
           },
-          0
+          0,
         );
       });
     }
@@ -104,7 +113,12 @@ export class BidiHTTPRequest extends HTTPRequest {
   }
 
   override resourceType(): ResourceType {
-    throw new UnsupportedOperation();
+    if (!this.#frame.page().browser().cdpSupported) {
+      throw new UnsupportedOperation();
+    }
+    return (
+      this.#request.resourceType || 'other'
+    ).toLowerCase() as ResourceType;
   }
 
   override method(): string {
@@ -112,11 +126,17 @@ export class BidiHTTPRequest extends HTTPRequest {
   }
 
   override postData(): string | undefined {
-    throw new UnsupportedOperation();
+    if (!this.#frame.page().browser().cdpSupported) {
+      throw new UnsupportedOperation();
+    }
+    return this.#request.postData;
   }
 
   override hasPostData(): boolean {
-    throw new UnsupportedOperation();
+    if (!this.#frame.page().browser().cdpSupported) {
+      throw new UnsupportedOperation();
+    }
+    return this.#request.hasPostData;
   }
 
   override async fetchPostData(): Promise<string | undefined> {
@@ -126,7 +146,7 @@ export class BidiHTTPRequest extends HTTPRequest {
   get #hasInternalHeaderOverwrite(): boolean {
     return Boolean(
       Object.keys(this.#extraHTTPHeaders).length ||
-        Object.keys(this.#userAgentHeaders).length
+        Object.keys(this.#userAgentHeaders).length,
     );
   }
 
@@ -165,21 +185,15 @@ export class BidiHTTPRequest extends HTTPRequest {
     return this.#request.navigation !== undefined;
   }
 
-  override initiator(): Bidi.Network.Initiator {
-    return this.#request.initiator;
+  override initiator(): Protocol.Network.Initiator | undefined {
+    return {
+      ...this.#request.initiator,
+      type: this.#request.initiator?.type ?? 'other',
+    };
   }
 
   override redirectChain(): BidiHTTPRequest[] {
-    if (this.#redirectBy === undefined) {
-      return [];
-    }
-    const redirects = [this.#redirectBy];
-    for (const redirect of redirects) {
-      if (redirect.#redirectBy !== undefined) {
-        redirects.push(redirect.#redirectBy);
-      }
-    }
-    return redirects;
+    return this.#redirectChain.slice();
   }
 
   override frame(): BidiFrame {
@@ -188,19 +202,19 @@ export class BidiHTTPRequest extends HTTPRequest {
 
   override async continue(
     overrides?: ContinueRequestOverrides,
-    priority?: number | undefined
+    priority?: number | undefined,
   ): Promise<void> {
     return await super.continue(
       {
         headers: this.#hasInternalHeaderOverwrite ? this.headers() : undefined,
         ...overrides,
       },
-      priority
+      priority,
     );
   }
 
   override async _continue(
-    overrides: ContinueRequestOverrides = {}
+    overrides: ContinueRequestOverrides = {},
   ): Promise<void> {
     const headers: Bidi.Network.Header[] = getBidiHeaders(overrides.headers);
     this.interception.handled = true;
@@ -212,7 +226,7 @@ export class BidiHTTPRequest extends HTTPRequest {
         body: overrides.postData
           ? {
               type: 'base64',
-              value: btoa(overrides.postData),
+              value: stringToBase64(overrides.postData),
             }
           : undefined,
         headers: headers.length > 0 ? headers : undefined,
@@ -233,15 +247,19 @@ export class BidiHTTPRequest extends HTTPRequest {
 
   override async _respond(
     response: Partial<ResponseForRequest>,
-    _priority?: number
+    _priority?: number,
   ): Promise<void> {
     this.interception.handled = true;
-    const responseBody: string | undefined =
-      response.body && response.body instanceof Uint8Array
-        ? response.body.toString('base64')
-        : response.body
-          ? btoa(response.body)
-          : undefined;
+
+    let parsedBody:
+      | {
+          contentLength: number;
+          base64: string;
+        }
+      | undefined;
+    if (response.body) {
+      parsedBody = HTTPRequest.getResponse(response.body);
+    }
 
     const headers: Bidi.Network.Header[] = getBidiHeaders(response.headers);
     const hasContentLength = headers.some(header => {
@@ -258,13 +276,12 @@ export class BidiHTTPRequest extends HTTPRequest {
       });
     }
 
-    if (responseBody && !hasContentLength) {
-      const encoder = new TextEncoder();
+    if (parsedBody?.contentLength && !hasContentLength) {
       headers.push({
         name: 'content-length',
         value: {
           type: 'string',
-          value: String(encoder.encode(responseBody).byteLength),
+          value: String(parsedBody.contentLength),
         },
       });
     }
@@ -275,10 +292,10 @@ export class BidiHTTPRequest extends HTTPRequest {
         statusCode: status,
         headers: headers.length > 0 ? headers : undefined,
         reasonPhrase: STATUS_TEXTS[status],
-        body: responseBody
+        body: parsedBody?.base64
           ? {
               type: 'base64',
-              value: responseBody,
+              value: parsedBody?.base64,
             }
           : undefined,
       })
@@ -310,6 +327,10 @@ export class BidiHTTPRequest extends HTTPRequest {
       });
     }
   };
+
+  timing(): Bidi.Network.FetchTimingInfo {
+    return this.#request.timing();
+  }
 }
 
 function getBidiHeaders(rawHeaders?: Record<string, unknown>) {

@@ -13,19 +13,33 @@ namespace net {
 
 class NeqoHttp3Conn final {
  public:
+  static nsresult InitUseNSPRForIO(
+      const nsACString& aOrigin, const nsACString& aAlpn,
+      const NetAddr& aLocalAddr, const NetAddr& aRemoteAddr,
+      uint32_t aMaxTableSize, uint16_t aMaxBlockedStreams, uint64_t aMaxData,
+      uint64_t aMaxStreamData, bool aVersionNegotiation, bool aWebTransport,
+      const nsACString& aQlogDir, uint32_t aDatagramSize,
+      uint32_t aProviderFlags, uint32_t aIdleTimeout, NeqoHttp3Conn** aConn) {
+    return neqo_http3conn_new_use_nspr_for_io(
+        &aOrigin, &aAlpn, &aLocalAddr, &aRemoteAddr, aMaxTableSize,
+        aMaxBlockedStreams, aMaxData, aMaxStreamData, aVersionNegotiation,
+        aWebTransport, &aQlogDir, aDatagramSize, aProviderFlags, aIdleTimeout,
+        (const mozilla::net::NeqoHttp3Conn**)aConn);
+  }
+
   static nsresult Init(const nsACString& aOrigin, const nsACString& aAlpn,
                        const NetAddr& aLocalAddr, const NetAddr& aRemoteAddr,
                        uint32_t aMaxTableSize, uint16_t aMaxBlockedStreams,
                        uint64_t aMaxData, uint64_t aMaxStreamData,
                        bool aVersionNegotiation, bool aWebTransport,
                        const nsACString& aQlogDir, uint32_t aDatagramSize,
-                       uint32_t aMaxAccumulatedTime, uint32_t aProviderFlags,
-                       NeqoHttp3Conn** aConn) {
+                       uint32_t aProviderFlags, uint32_t aIdleTimeout,
+                       int64_t socket, NeqoHttp3Conn** aConn) {
     return neqo_http3conn_new(
         &aOrigin, &aAlpn, &aLocalAddr, &aRemoteAddr, aMaxTableSize,
         aMaxBlockedStreams, aMaxData, aMaxStreamData, aVersionNegotiation,
-        aWebTransport, &aQlogDir, aDatagramSize, aMaxAccumulatedTime,
-        aProviderFlags, (const mozilla::net::NeqoHttp3Conn**)aConn);
+        aWebTransport, &aQlogDir, aDatagramSize, aProviderFlags, aIdleTimeout,
+        socket, (const mozilla::net::NeqoHttp3Conn**)aConn);
   }
 
   void Close(uint64_t aError) { neqo_http3conn_close(this, aError); }
@@ -42,14 +56,25 @@ class NeqoHttp3Conn final {
     neqo_http3conn_authenticated(this, aError);
   }
 
-  nsresult ProcessInput(const NetAddr& aRemoteAddr,
-                        const nsTArray<uint8_t>& aPacket) {
-    return neqo_http3conn_process_input(this, &aRemoteAddr, &aPacket);
+  nsresult ProcessInputUseNSPRForIO(const NetAddr& aRemoteAddr,
+                                    const nsTArray<uint8_t>& aPacket) {
+    return neqo_http3conn_process_input_use_nspr_for_io(this, &aRemoteAddr,
+                                                        &aPacket);
   }
 
-  nsresult ProcessOutputAndSend(void* aContext, SendFunc aSendFunc,
-                                SetTimerFunc aSetTimerFunc) {
-    return neqo_http3conn_process_output_and_send(this, aContext, aSendFunc,
+  ProcessInputResult ProcessInput() {
+    return neqo_http3conn_process_input(this);
+  }
+
+  nsresult ProcessOutputAndSendUseNSPRForIO(void* aContext, SendFunc aSendFunc,
+                                            SetTimerFunc aSetTimerFunc) {
+    return neqo_http3conn_process_output_and_send_use_nspr_for_io(
+        this, aContext, aSendFunc, aSetTimerFunc);
+  }
+
+  ProcessOutputAndSendResult ProcessOutputAndSend(void* aContext,
+                                                  SetTimerFunc aSetTimerFunc) {
+    return neqo_http3conn_process_output_and_send(this, aContext,
                                                   aSetTimerFunc);
   }
 
@@ -160,6 +185,83 @@ class NeqoHttp3Conn final {
   ~NeqoHttp3Conn() = delete;
   NeqoHttp3Conn(const NeqoHttp3Conn&) = delete;
   NeqoHttp3Conn& operator=(const NeqoHttp3Conn&) = delete;
+};
+
+class NeqoEncoder final {
+ public:
+  static void Init(NeqoEncoder** aEncoder) {
+    neqo_encoder_new((const mozilla::net::NeqoEncoder**)aEncoder);
+  }
+
+  void EncodeByte(uint8_t aData) { neqo_encode_byte(this, aData); }
+
+  void EncodeVarint(uint64_t aData) { neqo_encode_varint(this, aData); }
+
+  void EncodeUint(uint32_t aSize, uint64_t aData) {
+    neqo_encode_uint(this, aSize, aData);
+  }
+
+  void EncodeBuffer(const uint8_t* aBuf, uint32_t aCount) {
+    neqo_encode_buffer(this, aBuf, aCount);
+  }
+
+  void EncodeBufferWithVarintLen(const uint8_t* aBuf, uint32_t aCount) {
+    neqo_encode_vvec(this, aBuf, aCount);
+  }
+
+  void GetData(const uint8_t** aBuf, uint32_t* aLength) {
+    return neqo_encode_get_data(this, aBuf, aLength);
+  }
+
+  static size_t VarintLength(uint64_t aValue) {
+    return neqo_encode_varint_len(aValue);
+  }
+
+  void AddRef() { neqo_encoder_addref(this); }
+  void Release() { neqo_encoder_release(this); }
+
+ private:
+  NeqoEncoder() = delete;
+  ~NeqoEncoder() = delete;
+  NeqoEncoder(const NeqoEncoder&) = delete;
+  NeqoEncoder& operator=(const NeqoEncoder&) = delete;
+};
+
+class NeqoDecoder final {
+ public:
+  static void Init(const uint8_t* aBuf, uint32_t aCount,
+                   NeqoDecoder** aDecoder) {
+    neqo_decoder_new(aBuf, aCount, (const mozilla::net::NeqoDecoder**)aDecoder);
+  }
+
+  bool DecodeVarint(uint64_t* aResult) {
+    return neqo_decode_varint(this, aResult);
+  }
+
+  bool DecodeUint32(uint32_t* aResult) {
+    return neqo_decode_uint32(this, aResult);
+  }
+
+  bool Decode(uint32_t aCount, const uint8_t** aBuf, uint32_t* aLength) {
+    return neqo_decode(this, aCount, aBuf, aLength);
+  }
+
+  void DecodeRemainder(const uint8_t** aBuf, uint32_t* aLength) {
+    neqo_decode_remainder(this, aBuf, aLength);
+  }
+
+  uint64_t Remaining() { return neqo_decoder_remaining(this); }
+
+  uint64_t Offset() { return neqo_decoder_offset(this); }
+
+  void AddRef() { neqo_decoder_addref(this); }
+  void Release() { neqo_decoder_release(this); }
+
+ private:
+  NeqoDecoder() = delete;
+  ~NeqoDecoder() = delete;
+  NeqoDecoder(const NeqoDecoder&) = delete;
+  NeqoDecoder& operator=(const NeqoDecoder&) = delete;
 };
 
 }  // namespace net

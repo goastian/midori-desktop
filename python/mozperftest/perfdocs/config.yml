@@ -34,12 +34,16 @@ suites:
             perfstats: ""
             webpagetest-firefox: ""
             webpagetest-chrome: ""
-            android-startup: ""
 
     browser/base/content/test:
         description: "Performance tests from the 'browser/base/content/test' folder."
         tests:
             Dom-size: ""
+
+    browser/components/translations/tests/browser:
+        description: "Performance tests for Translations models on Firefox Desktop"
+        tests:
+            "Full-Page Translation (Spanish to English)": ""
 
     dom/serviceworkers/test/performance:
         description: "Performance tests running through Mochitest for Service Workers"
@@ -47,3 +51,37 @@ suites:
             "Service Worker Caching": ""
             "Service Worker Fetch": ""
             "Service Worker Registration": ""
+            "Service Worker Update": ""
+
+    toolkit/components/ml/tests/browser:
+        description: "Performance tests running through Mochitest for ML Models"
+        tests:
+            "browser_ml_engine_perf.js": ""
+            "browser_ml_engine_multi_perf.js": ""
+            "ML Semantic History Search": ""
+            "browser_ml_suggest_feature_perf.js": ""
+            "browser_ml_suggest_inference.js": ""
+            "browser_ml_autofill_perf.js": ""
+            "browser_ml_summarizer_perf.js": ""
+            "ML Smart Tab Clustering": ""
+            "browser_ml_smart_tab_perf.js": ""
+            "browser_ml_llama_summarizer_perf.js": ""
+            "ML Speech T5 TTS": ""
+
+    intl/benchmarks/test/xpcshell:
+        description: "Performance tests running through XPCShell for Intl code"
+        tests:
+            "IntlDateTimeFormat": ""
+            "IntlLocale": ""
+            "IntlNumberFormat": ""
+            "IntlPluralRules": ""
+
+    dom/webgpu/tests/mochitest:
+        description: "Performance tests from the 'dom/webgpu/tests/mochitest' folder."
+        tests:
+            "Queue Write": ""
+
+    toolkit/components/url-classifier/tests/performance:
+        description: "Performance tests for the URL Classifier"
+        tests:
+            "UrlClassifierExceptionListLookup": ""

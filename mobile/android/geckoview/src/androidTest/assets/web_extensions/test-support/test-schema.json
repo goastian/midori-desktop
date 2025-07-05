@@ -51,6 +51,18 @@
         ]
       },
       {
+        "name": "clearUserPref",
+        "type": "function",
+        "async": true,
+        "description": "Clears the user pref.",
+        "parameters": [
+          {
+            "name": "pref",
+            "type": "string"
+          }
+        ]
+      },
+      {
         "name": "getLinkColor",
         "type": "function",
         "async": true,
@@ -95,22 +107,6 @@
         "async": true,
         "description": "Revokes SSL certificate overrides.",
         "parameters": []
-      },
-      {
-        "name": "setScalar",
-        "type": "function",
-        "async": true,
-        "description": "Set the given value to the scalar with the given id.",
-        "parameters": [
-          {
-            "type": "string",
-            "name": "id"
-          },
-          {
-            "type": "any",
-            "name": "value"
-          }
-        ]
       },
       {
         "name": "setResolutionAndScaleTo",
@@ -203,6 +199,18 @@
         ]
       },
       {
+        "name": "zoomToFocusedInput",
+        "type": "function",
+        "async": true,
+        "description": "Invokes nsIDOMWindowUtils.zoomToFocusedInput for the document of the tabId.",
+        "parameters": [
+          {
+            "type": "number",
+            "name": "tabId"
+          }
+        ]
+      },
+      {
         "name": "promiseAllPaintsDone",
         "type": "function",
         "async": true,
@@ -245,7 +253,21 @@
         "description": "Clears the sites on the HSTS list.",
         "parameters": []
       },
+      {
+        "name": "isSessionHistoryInParentRunning",
+        "type": "function",
+        "async": true,
+        "description": "Checks if session history in parent (SHIP) is running.",
+        "parameters": []
+      },
 
+      {
+        "name": "isFissionRunning",
+        "type": "function",
+        "async": true,
+        "description": "Checks if fission is running.",
+        "parameters": []
+      },
       {
         "name": "triggerCookieBannerDetected",
         "type": "function",
@@ -300,6 +322,23 @@
             "type": "object",
             "properties": {},
             "additionalProperties": { "type": "any" }
+          }
+        ]
+      },
+
+      {
+        "name": "setHandlingUserInput",
+        "type": "function",
+        "async": true,
+        "description": "Invokes nsIDOMWindowUtils.setHandlingUserInput to simulate user input activation.",
+        "parameters": [
+          {
+            "type": "number",
+            "name": "tabId"
+          },
+          {
+            "type": "boolean",
+            "name": "handlingUserInput"
           }
         ]
       }

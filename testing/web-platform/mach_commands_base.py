@@ -4,6 +4,9 @@
 
 import sys
 
+from mozlog import handlers
+from mozlog.structuredlog import log_levels
+
 
 def create_parser_wpt():
     from wptrunner import wptcommandline
@@ -19,7 +22,23 @@ def create_parser_wpt():
     return result
 
 
-class WebPlatformTestsRunner(object):
+class CriticalLogBuffer(handlers.BaseHandler):
+    """
+    Buffer critical log entries
+    """
+
+    def __init__(self):
+        self.log_entries = []
+
+    def __call__(self, data):
+        if (
+            data["action"] == "log"
+            and log_levels[data["level"]] <= log_levels["CRITICAL"]
+        ):
+            self.log_entries.append(data)
+
+
+class WebPlatformTestsRunner:
     """Run web platform tests."""
 
     def __init__(self, setup):
@@ -50,14 +69,32 @@ class WebPlatformTestsRunner(object):
                 logger.info(e.help())
                 return 1
         elif kwargs["product"] == "firefox_android":
-            from wptrunner import wptcommandline
-
-            kwargs = wptcommandline.check_args(self.setup.kwargs_common(kwargs))
+            kwargs = self.setup.kwargs_firefox_android(kwargs)
         else:
             kwargs = self.setup.kwargs_wptrun(kwargs)
 
-        result = wptrunner.start(**kwargs)
+        log_buffer = CriticalLogBuffer()
+        logger.add_handler(log_buffer)
+
+        result = 1
+        try:
+            result = wptrunner.start(**kwargs)
+        finally:
+            if int(result) != 0:
+                self._process_log_errors(logger, log_buffer, kwargs)
+            logger.remove_handler(log_buffer)
         return int(result)
+
+    def _process_log_errors(self, logger, log_buffer, kwargs):
+        for item in log_buffer.log_entries:
+            if (
+                kwargs["webdriver_binary"] is None
+                and "webdriver" in item["message"]
+                and self.setup.topobjdir
+            ):
+                print(
+                    "ERROR: Couldn't find geckodriver binary required to run wdspec tests, consider `ac_add_options --enable-geckodriver` in your build configuration"
+                )
 
     def update_manifest(self, logger, **kwargs):
         import manifestupdate

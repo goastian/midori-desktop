@@ -4,10 +4,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "Cookie.h"
+#include "CookieCommons.h"
 #include "CookieStorage.h"
 #include "mozilla/Encoding.h"
 #include "mozilla/dom/ToJSValue.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/NetwerkMetrics.h"
 #include "mozilla/StaticPrefs_network.h"
 #include "nsIURLParser.h"
 #include "nsURLHelper.h"
@@ -67,11 +68,19 @@ already_AddRefed<Cookie> Cookie::FromCookieStruct(
   UTF_8_ENCODING->DecodeWithoutBOMHandling(aCookieData.value(),
                                            cookie->mData.value());
 
-  // If sameSite/rawSameSite values aren't sensible reset to Default
+  // If sameSite value is not sensible reset to Default
   // cf. 5.4.7 in draft-ietf-httpbis-rfc6265bis-09
-  if (!Cookie::ValidateSameSite(cookie->mData)) {
-    cookie->mData.sameSite() = nsICookie::SAMESITE_LAX;
-    cookie->mData.rawSameSite() = nsICookie::SAMESITE_NONE;
+  if (cookie->mData.sameSite() != nsICookie::SAMESITE_NONE &&
+      cookie->mData.sameSite() != nsICookie::SAMESITE_LAX &&
+      cookie->mData.sameSite() != nsICookie::SAMESITE_STRICT &&
+      cookie->mData.sameSite() != nsICookie::SAMESITE_UNSET) {
+    cookie->mData.sameSite() = nsICookie::SAMESITE_UNSET;
+  }
+
+  // Enforce session cookie if the partition is session-only.
+  if (CookieCommons::ShouldEnforceSessionForOriginAttributes(
+          aOriginAttributes)) {
+    cookie->mData.isSession() = true;
   }
 
   return cookie.forget();
@@ -128,8 +137,7 @@ size_t Cookie::SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const {
          mData.name().SizeOfExcludingThisIfUnshared(MallocSizeOf) +
          mData.value().SizeOfExcludingThisIfUnshared(MallocSizeOf) +
          mData.host().SizeOfExcludingThisIfUnshared(MallocSizeOf) +
-         mData.path().SizeOfExcludingThisIfUnshared(MallocSizeOf) +
-         mFilePathCache.SizeOfExcludingThisIfUnshared(MallocSizeOf);
+         mData.path().SizeOfExcludingThisIfUnshared(MallocSizeOf);
 }
 
 bool Cookie::IsStale() const {
@@ -198,11 +206,7 @@ NS_IMETHODIMP Cookie::GetLastAccessed(int64_t* aTime) {
   return NS_OK;
 }
 NS_IMETHODIMP Cookie::GetSameSite(int32_t* aSameSite) {
-  if (StaticPrefs::network_cookie_sameSite_laxByDefault()) {
-    *aSameSite = SameSite();
-  } else {
-    *aSameSite = RawSameSite();
-  }
+  *aSameSite = SameSite();
   return NS_OK;
 }
 NS_IMETHODIMP Cookie::GetSchemeMap(nsICookie::schemeType* aSchemeMap) {
@@ -224,36 +228,6 @@ const OriginAttributes& Cookie::OriginAttributesNative() {
 
 const Cookie& Cookie::AsCookie() { return *this; }
 
-const nsCString& Cookie::GetFilePath() {
-  MOZ_DIAGNOSTIC_ASSERT(NS_IsMainThread());
-
-  if (Path().IsEmpty()) {
-    // If we don't have a path, just return the (empty) file path cache.
-    return mFilePathCache;
-  }
-  if (!mFilePathCache.IsEmpty()) {
-    // If we've computed the answer before, just return it.
-    return mFilePathCache;
-  }
-
-  nsIURLParser* parser = net_GetStdURLParser();
-  NS_ENSURE_TRUE(parser, mFilePathCache);
-
-  int32_t pathLen = Path().Length();
-  int32_t filepathLen = 0;
-  uint32_t filepathPos = 0;
-
-  nsresult rv = parser->ParsePath(PromiseFlatCString(Path()).get(), pathLen,
-                                  &filepathPos, &filepathLen, nullptr,
-                                  nullptr,            // don't care about query
-                                  nullptr, nullptr);  // don't care about ref
-  NS_ENSURE_SUCCESS(rv, mFilePathCache);
-
-  mFilePathCache = Substring(Path(), filepathPos, filepathLen);
-
-  return mFilePathCache;
-}
-
 // compatibility method, for use with the legacy nsICookie interface.
 // here, expires == 0 denotes a session cookie.
 NS_IMETHODIMP
@@ -264,19 +238,6 @@ Cookie::GetExpires(uint64_t* aExpires) {
     *aExpires = Expiry() > 0 ? Expiry() : 1;
   }
   return NS_OK;
-}
-
-// static
-bool Cookie::ValidateSameSite(const CookieStruct& aCookieData) {
-  // For proper migration towards a laxByDefault world,
-  // sameSite is initialized to LAX even though the server
-  // has never sent it.
-  if (aCookieData.rawSameSite() == aCookieData.sameSite()) {
-    return aCookieData.rawSameSite() >= nsICookie::SAMESITE_NONE &&
-           aCookieData.rawSameSite() <= nsICookie::SAMESITE_STRICT;
-  }
-  return aCookieData.rawSameSite() == nsICookie::SAMESITE_NONE &&
-         aCookieData.sameSite() == nsICookie::SAMESITE_LAX;
 }
 
 already_AddRefed<Cookie> Cookie::Clone() const {

@@ -20,49 +20,49 @@ from .util import normsep
 # built-in filters
 
 
-def _match(exprs, **values):
-    if any(parse(e, **values) for e in exprs.splitlines() if e):
+def _match(exprs, strict, **values):
+    if any(parse(e, strict=strict, **values) for e in exprs.splitlines() if e):
         return True
     return False
 
 
-def skip_if(tests, values):
+def skip_if(tests, values, strict=False):
     """
     Sets disabled on all tests containing the `skip-if` tag and whose condition
     is True. This filter is added by default.
     """
     tag = "skip-if"
     for test in tests:
-        if tag in test and _match(test[tag], **values):
-            test.setdefault("disabled", "{}: {}".format(tag, test[tag]))
+        if tag in test and _match(test[tag], strict, **values):
+            test.setdefault("disabled", f"{tag}: {test[tag]}")
         yield test
 
 
-def run_if(tests, values):
+def run_if(tests, values, strict=False):
     """
     Sets disabled on all tests containing the `run-if` tag and whose condition
     is False. This filter is added by default.
     """
     tag = "run-if"
     for test in tests:
-        if tag in test and not _match(test[tag], **values):
-            test.setdefault("disabled", "{}: {}".format(tag, test[tag]))
+        if tag in test and not _match(test[tag], strict, **values):
+            test.setdefault("disabled", f"{tag}: {test[tag]}")
         yield test
 
 
-def fail_if(tests, values):
+def fail_if(tests, values, strict=False):
     """
     Sets expected to 'fail' on all tests containing the `fail-if` tag and whose
     condition is True. This filter is added by default.
     """
     tag = "fail-if"
     for test in tests:
-        if tag in test and _match(test[tag], **values):
+        if tag in test and _match(test[tag], strict, **values):
             test["expected"] = "fail"
         yield test
 
 
-def enabled(tests, values):
+def enabled(tests, values, strict=False):
     """
     Removes all tests containing the `disabled` key. This filter can be
     added by passing `disabled=False` into `active_tests`.
@@ -72,7 +72,7 @@ def enabled(tests, values):
             yield test
 
 
-def exists(tests, values):
+def exists(tests, values, strict=False):
     """
     Removes all tests that do not exist on the file system. This filter is
     added by default, but can be removed by passing `exists=False` into
@@ -86,7 +86,7 @@ def exists(tests, values):
 # built-in instance filters
 
 
-class InstanceFilter(object):
+class InstanceFilter:
     """
     Generally only one instance of a class filter should be applied at a time.
     Two instances of `InstanceFilter` are considered equal if they have the
@@ -103,7 +103,7 @@ class InstanceFilter(object):
         self.fmt_args = ", ".join(
             itertools.chain(
                 [str(a) for a in args],
-                ["{}={}".format(k, v) for k, v in kwargs.items()],
+                [f"{k}={v}" for k, v in kwargs.items()],
             )
         )
 
@@ -113,7 +113,7 @@ class InstanceFilter(object):
         return self.__hash__() == other.__hash__()
 
     def __str__(self):
-        return "{}({})".format(self.__class__.__name__, self.fmt_args)
+        return f"{self.__class__.__name__}({self.fmt_args})"
 
 
 class subsuite(InstanceFilter):
@@ -135,7 +135,7 @@ class subsuite(InstanceFilter):
         InstanceFilter.__init__(self, name=name)
         self.name = name
 
-    def __call__(self, tests, values):
+    def __call__(self, tests, values, strict=False):
         # Look for conditional subsuites, and replace them with the subsuite
         # itself (if the condition is true), or nothing.
         for test in tests:
@@ -145,7 +145,7 @@ class subsuite(InstanceFilter):
                     subsuite, cond = subsuite.split(",")
                 except ValueError:
                     raise ParseError("subsuite condition can't contain commas")
-                matched = parse(cond, **values)
+                matched = parse(cond, strict, **values)
                 if matched:
                     test["subsuite"] = subsuite
                 else:
@@ -178,7 +178,7 @@ class chunk_by_slice(InstanceFilter):
         self.total_chunks = total_chunks
         self.disabled = disabled
 
-    def __call__(self, tests, values):
+    def __call__(self, tests, values, strict=False):
         tests = list(tests)
         if self.disabled:
             chunk_tests = tests[:]
@@ -230,7 +230,7 @@ class chunk_by_dir(InstanceFilter):
         self.total_chunks = total_chunks
         self.depth = depth
 
-    def __call__(self, tests, values):
+    def __call__(self, tests, values, strict=False):
         tests_by_dir = defaultdict(list)
         ordered_dirs = []
         for test in tests:
@@ -283,7 +283,7 @@ class chunk_by_manifest(InstanceFilter):
         self.this_chunk = this_chunk
         self.total_chunks = total_chunks
 
-    def __call__(self, tests, values):
+    def __call__(self, tests, values, strict=False):
         tests = list(tests)
         manifests = set(t["manifest"] for t in tests)
 
@@ -372,7 +372,7 @@ class chunk_by_runtime(InstanceFilter):
         chunks.sort(key=lambda x: (x[0], len(x[1])))
         return chunks
 
-    def __call__(self, tests, values):
+    def __call__(self, tests, values, strict=False):
         tests = list(tests)
         manifests = set(self.get_manifest(t) for t in tests)
         chunks = self.get_chunked_manifests(manifests)
@@ -380,10 +380,7 @@ class chunk_by_runtime(InstanceFilter):
         # pylint --py3k W1619
         # pylint: disable=W1633
         self.logger.debug(
-            "Cumulative test runtime is around {} minutes (average is {} minutes)".format(
-                round(runtime / 60),
-                round(sum([c[0] for c in chunks]) / (60 * len(chunks))),
-            )
+            f"Cumulative test runtime is around {round(runtime / 60)} minutes (average is {round(sum([c[0] for c in chunks]) / (60 * len(chunks)))} minutes)"
         )
         return (t for t in tests if self.get_manifest(t) in this_manifests)
 
@@ -414,7 +411,7 @@ class tags(InstanceFilter):
             tags = [tags]
         self.tags = tags
 
-    def __call__(self, tests, values):
+    def __call__(self, tests, values, strict=False):
         for test in tests:
             if "tags" not in test:
                 continue
@@ -440,14 +437,14 @@ class failures(InstanceFilter):
         InstanceFilter.__init__(self, keyword)
         self.keyword = keyword.strip('"')
 
-    def __call__(self, tests, values):
+    def __call__(self, tests, values, strict=False):
         for test in tests:
             for key in ["skip-if", "fail-if"]:
                 if key not in test:
                     continue
 
                 matched = [
-                    self.keyword in e and parse(e, **values)
+                    self.keyword in e and parse(e, strict, **values)
                     for e in test[key].splitlines()
                     if e
                 ]
@@ -470,7 +467,7 @@ class pathprefix(InstanceFilter):
         self.paths = paths
         self.missing = set()
 
-    def __call__(self, tests, values):
+    def __call__(self, tests, values, strict=False):
         seen = set()
         for test in tests:
             for testpath in self.paths:
@@ -537,7 +534,7 @@ class filterlist(MutableSequence):
         if not callable(item):
             raise TypeError("Filters must be callable!")
         if item in self:
-            raise ValueError("Filter {} is already applied!".format(item))
+            raise ValueError(f"Filter {item} is already applied!")
 
     def __getitem__(self, key):
         return self.items[key]

@@ -48,7 +48,7 @@ def _generate_task_output_files(job, filenames, locale=None):
 
 
 def identify_desired_signing_keys(project, product):
-    if project in ["mozilla-central", "comm-central", "larch", "pine"]:
+    if project in ["mozilla-central", "comm-central", "larch", "pine", "maple"]:
         return "nightly"
     if project == "mozilla-beta":
         if product == "devedition":
@@ -104,11 +104,7 @@ def make_task_description(config, jobs):
         locale_suffix = ""
         if locale:
             locale_suffix = f"{locale}/"
-        artifact_path = "<{}/{}/{}target.complete.mar>".format(
-            dep_job.kind,
-            get_artifact_prefix(dep_job),
-            locale_suffix,
-        )
+        artifact_path = f"<{dep_job.kind}/{get_artifact_prefix(dep_job)}/{locale_suffix}target.complete.mar>"
         for build in sorted(builds):
             partial_info = {
                 "locale": build_locale,

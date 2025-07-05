@@ -12,20 +12,23 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.Icon
 import androidx.compose.material.IconButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
+import mozilla.components.compose.base.Divider
 import mozilla.components.service.fxa.manager.AccountState
 import mozilla.components.service.fxa.manager.AccountState.NotAuthenticated
 import mozilla.components.service.fxa.store.Account
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.Divider
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
 import org.mozilla.fenix.theme.FirefoxTheme
 import org.mozilla.fenix.theme.Theme
 
@@ -40,7 +43,8 @@ internal fun MenuHeader(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 12.dp, end = 6.dp),
+            .padding(start = 12.dp, end = 6.dp)
+            .verticalScroll(rememberScrollState()),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         MozillaAccountMenuButton(
@@ -54,12 +58,16 @@ internal fun MenuHeader(
 
         Divider(modifier = Modifier.size(width = 2.dp, height = 32.dp))
 
+        Spacer(modifier = Modifier.width(4.dp))
+
         IconButton(
             onClick = onHelpButtonClick,
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.mozac_ic_help_circle_24),
-                contentDescription = null,
+                contentDescription = stringResource(
+                    id = R.string.browser_main_menu_content_description_help_button,
+                ),
                 tint = FirefoxTheme.colors.iconSecondary,
             )
         }
@@ -69,14 +77,16 @@ internal fun MenuHeader(
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.mozac_ic_settings_24),
-                contentDescription = null,
+                contentDescription = stringResource(
+                    id = R.string.browser_main_menu_content_description_settings_button,
+                ),
                 tint = FirefoxTheme.colors.iconSecondary,
             )
         }
     }
 }
 
-@LightDarkPreview
+@PreviewLightDark
 @Composable
 private fun MenuHeaderPreview() {
     FirefoxTheme {

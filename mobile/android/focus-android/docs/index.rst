@@ -7,7 +7,6 @@ Specific documentation on a few topics is available at:
 .. toctree::
    :maxdepth: 1
 
-   Adjust Usage <Adjust-Usage.md>
    Architecture Decisions <Architecture-Decisions.md>
    Battery Debugging <Battery-Debugging.md>
    Content blocking <Content-blocking.md>
@@ -25,4 +24,3 @@ Specific documentation on a few topics is available at:
    Sprint Process <Sprint-Process.md>
    Telemetry <Telemetry.md>
    UI Test <UI-Test.md>
-   l10n Screenshot Generation <l10n-Screenshot-Generation.md>

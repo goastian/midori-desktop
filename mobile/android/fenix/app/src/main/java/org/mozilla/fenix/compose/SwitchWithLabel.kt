@@ -26,8 +26,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
 import org.mozilla.fenix.theme.FirefoxTheme
 import androidx.compose.material.Switch as MaterialSwitch
 
@@ -37,29 +38,33 @@ private const val DISABLED_ALPHA = 0.5f
  * UI for a switch with label that can be on or off.
  *
  * @param label Text to be displayed next to the switch.
- * @param description An optional description text below the label.
  * @param checked Whether or not the switch is checked.
+ * @param modifier Modifier to be applied to the switch layout.
+ * @param description An optional description text below the label.
+ * @param enabled Whether the switch is enabled or grayed out.
+ * @param labelStyle The style to be applied to the label text.
  * @param onCheckedChange Invoked when Switch is being clicked, therefore the change of checked
  * state is requested.
- * @param modifier Modifier to be applied to the switch layout.
- * @param enabled Whether the switch is enabled or grayed out.
  */
 @Composable
 fun SwitchWithLabel(
     label: String,
-    description: String? = null,
     checked: Boolean,
-    onCheckedChange: ((Boolean) -> Unit),
     modifier: Modifier = Modifier,
+    description: String? = null,
     enabled: Boolean = true,
+    labelStyle: TextStyle = FirefoxTheme.typography.subtitle1,
+    onCheckedChange: ((Boolean) -> Unit),
 ) {
     Row(
-        modifier = modifier
+        modifier = Modifier
             .toggleable(
                 value = checked,
                 enabled = enabled,
                 role = Role.Switch,
                 onValueChange = onCheckedChange,
+            ).then(
+                modifier,
             ),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -78,7 +83,7 @@ fun SwitchWithLabel(
                 } else {
                     FirefoxTheme.colors.textDisabled
                 },
-                style = FirefoxTheme.typography.subtitle1,
+                style = labelStyle,
             )
 
             description?.let {
@@ -144,7 +149,7 @@ private fun Switch(
     )
 }
 
-@LightDarkPreview
+@PreviewLightDark
 @Composable
 private fun SwitchWithLabelPreview() {
     FirefoxTheme {
@@ -165,10 +170,9 @@ private fun SwitchWithLabelPreview() {
             var enabledSwitchState by remember { mutableStateOf(false) }
             SwitchWithLabel(
                 label = if (enabledSwitchState) "On" else "Off",
-                description = "Description text",
                 checked = enabledSwitchState,
-                onCheckedChange = { enabledSwitchState = it },
-            )
+                description = "Description text",
+            ) { enabledSwitchState = it }
 
             Text(
                 text = "Disabled",
@@ -183,16 +187,14 @@ private fun SwitchWithLabelPreview() {
                 label = "Off",
                 checked = disabledSwitchStateOff,
                 enabled = false,
-                onCheckedChange = { disabledSwitchStateOff = it },
-            )
+            ) { disabledSwitchStateOff = it }
 
             var disabledSwitchStateOn by remember { mutableStateOf(true) }
             SwitchWithLabel(
                 label = "On",
                 checked = disabledSwitchStateOn,
                 enabled = false,
-                onCheckedChange = { disabledSwitchStateOn = it },
-            )
+            ) { disabledSwitchStateOn = it }
 
             Text(
                 text = "Nested",
@@ -209,9 +211,8 @@ private fun SwitchWithLabelPreview() {
                 SwitchWithLabel(
                     label = "Nested",
                     checked = nestedSwitchState,
-                    onCheckedChange = { nestedSwitchState = it },
                     modifier = Modifier.weight(1f),
-                )
+                ) { nestedSwitchState = it }
             }
         }
     }

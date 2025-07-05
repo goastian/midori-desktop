@@ -4,7 +4,6 @@
 import argparse
 import os
 
-import six
 from mozlog.commandline import add_logging_group
 
 
@@ -33,7 +32,7 @@ class _ListTests(_StopAction):
         print("================\n")
         test_class_names = [
             (test_class.name(), test_class.description())
-            for test_class in six.itervalues(test.test_dict())
+            for test_class in test.test_dict().values()
         ]
         test_class_names.sort()
         for name, description in test_class_names:
@@ -144,7 +143,8 @@ def create_parser(mach_interface=False):
         "After talos is finished, profiler.firefox.com will be launched in "
         "Firefox so you can analyze the local profiles. To disable "
         "auto-launching of profiler.firefox.com set the "
-        "DISABLE_PROFILE_LAUNCH=1 env var.",
+        "DISABLE_PROFILE_LAUNCH=1 env var. "
+        "Copy paste the parameters used in this profiling run directly from about:profiling in Nightly.",
     )
     add_arg(
         "--gecko-profile-interval",

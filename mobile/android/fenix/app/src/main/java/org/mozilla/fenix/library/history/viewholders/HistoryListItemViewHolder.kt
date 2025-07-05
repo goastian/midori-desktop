@@ -23,6 +23,9 @@ class HistoryListItemViewHolder(
     view: View,
     private val selectionHolder: SelectionHolder<History>,
     private val store: HistoryFragmentStore,
+    private val onHistoryItemClicked: (History) -> Unit,
+    private val onRecentlyClosedClicked: () -> Unit,
+    private val onDeleteInitiated: (Set<History>) -> Unit,
 ) : RecyclerView.ViewHolder(view) {
 
     private var item: History? = null
@@ -30,7 +33,7 @@ class HistoryListItemViewHolder(
 
     init {
         binding.recentlyClosedNavEmpty.recentlyClosedNav.setOnClickListener {
-            store.dispatch(HistoryFragmentAction.EnterRecentlyClosed)
+            onRecentlyClosedClicked()
         }
 
         binding.historyLayout.overflowView.apply {
@@ -39,6 +42,7 @@ class HistoryListItemViewHolder(
             setOnClickListener {
                 val item = item ?: return@setOnClickListener
                 store.dispatch(HistoryFragmentAction.DeleteItems(setOf(item)))
+                onDeleteInitiated(setOf(item))
             }
         }
     }
@@ -87,6 +91,9 @@ class HistoryListItemViewHolder(
 
         binding.historyLayout.setOnClickListener {
             store.dispatch(HistoryFragmentAction.HistoryItemClicked(item))
+            if (mode.selectedItems.isEmpty()) {
+                onHistoryItemClicked(item)
+            }
         }
         binding.historyLayout.setOnLongClickListener {
             store.dispatch(HistoryFragmentAction.HistoryItemLongClicked(item))

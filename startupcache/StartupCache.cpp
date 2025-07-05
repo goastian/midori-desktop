@@ -29,7 +29,7 @@
 #include "nsITimer.h"
 #include "mozilla/Omnijar.h"
 #include "prenv.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/StartupcacheMetrics.h"
 #include "nsThreadUtils.h"
 #include "nsXULAppAPI.h"
 #include "nsIProtocolHandler.h"
@@ -186,8 +186,8 @@ nsresult StartupCache::Init() {
   // cache in.
   char* env = PR_GetEnv("MOZ_STARTUP_CACHE");
   if (env && *env) {
-    rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(env), false,
-                         getter_AddRefs(mFile));
+    MOZ_TRY(
+        NS_NewNativeLocalFile(nsDependentCString(env), getter_AddRefs(mFile)));
   } else {
     nsCOMPtr<nsIFile> file;
     rv = NS_GetSpecialDirectory("ProfLDS", getter_AddRefs(file));
@@ -204,13 +204,10 @@ nsresult StartupCache::Init() {
     if (NS_FAILED(rv) && rv != NS_ERROR_FILE_ALREADY_EXISTS) return rv;
 
     rv = file->AppendNative(nsLiteralCString(STARTUP_CACHE_NAME));
-
     NS_ENSURE_SUCCESS(rv, rv);
 
-    mFile = file;
+    mFile = file.forget();
   }
-
-  NS_ENSURE_TRUE(mFile, NS_ERROR_UNEXPECTED);
 
   mObserverService = do_GetService("@mozilla.org/observer-service;1");
 
@@ -297,7 +294,7 @@ Result<Ok, nsresult> StartupCache::LoadArchive() {
     return Err(NS_ERROR_UNEXPECTED);
   }
 
-  Range<uint8_t> header(data, data + headerSize);
+  Range<const uint8_t> header(data, data + headerSize);
   data += headerSize;
 
   mCacheEntriesBaseOffset = sizeof(MAGIC) + sizeof(headerSize) + headerSize;
@@ -380,10 +377,9 @@ nsresult StartupCache::GetBuffer(const char* id, const char** outbuf,
   NS_ASSERTION(NS_IsMainThread(),
                "Startup cache only available on main thread");
 
-  Telemetry::LABELS_STARTUP_CACHE_REQUESTS label =
-      Telemetry::LABELS_STARTUP_CACHE_REQUESTS::Miss;
-  auto telemetry =
-      MakeScopeExit([&label] { Telemetry::AccumulateCategorical(label); });
+  auto label = glean::startup_cache::RequestsLabel::eMiss;
+  auto telemetry = MakeScopeExit(
+      [&label] { glean::startup_cache::requests.EnumGet(label).Add(); });
 
   MutexAutoLock lock(mTableLock);
   decltype(mTable)::Ptr p = mTable.lookup(nsDependentCString(id));
@@ -393,7 +389,7 @@ nsresult StartupCache::GetBuffer(const char* id, const char** outbuf,
 
   auto& value = p->value();
   if (value.mData) {
-    label = Telemetry::LABELS_STARTUP_CACHE_REQUESTS::HitMemory;
+    label = glean::startup_cache::RequestsLabel::eHitmemory;
   } else {
     if (!mCacheData.initialized()) {
       return NS_ERROR_NOT_AVAILABLE;
@@ -435,7 +431,7 @@ nsresult StartupCache::GetBuffer(const char* id, const char** outbuf,
 
     MMAP_FAULT_HANDLER_CATCH(NS_ERROR_FAILURE)
 
-    label = Telemetry::LABELS_STARTUP_CACHE_REQUESTS::HitDisk;
+    label = glean::startup_cache::RequestsLabel::eHitdisk;
   }
 
   if (!value.mRequested) {
@@ -454,7 +450,6 @@ nsresult StartupCache::GetBuffer(const char* id, const char** outbuf,
   return NS_OK;
 }
 
-// Makes a copy of the buffer, client retains ownership of inbuf.
 nsresult StartupCache::PutBuffer(const char* id, UniqueFreePtr<char[]>&& inbuf,
                                  uint32_t len) MOZ_NO_THREAD_SAFETY_ANALYSIS {
   NS_ASSERTION(NS_IsMainThread(),

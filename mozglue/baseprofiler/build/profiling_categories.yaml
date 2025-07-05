@@ -37,12 +37,17 @@
 # The list of available color names for categories is:
 # - transparent
 # - blue
+# - brown
+# - darkgrey
 # - green
 # - grey
 # - lightblue
+# - lightgreen
+# - lightred
 # - magenta
 # - orange
 # - purple
+# - red
 # - yellow
 #
 # subcategories [required]
@@ -256,6 +261,13 @@
     - name: JAVA_BLOCKED
       label: Other
 
+- name: MAILNEWS
+  label: Mailnews
+  color: brown
+  subcategories:
+    - name: MAILNEWS
+      label: Other
+
 - name: IPC
   label: IPC
   color: lightgreen
@@ -304,4 +316,18 @@
   color: grey
   subcategories:
     - name: REMOTE_PROTOCOL
+      label: Other
+
+- name: SANDBOX
+  label: Sandbox
+  color: grey
+  subcategories:
+    - name: SANDBOX
+      label: Other
+
+- name: TELEMETRY
+  label: Telemetry
+  color: grey
+  subcategories:
+    - name: TELEMETRY
       label: Other

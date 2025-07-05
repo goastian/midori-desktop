@@ -7,14 +7,20 @@
 
 use crate::computed_value_flags::ComputedValueFlags;
 use crate::dom::TElement;
-use crate::properties::longhands::contain::computed_value::T as Contain;
-use crate::properties::longhands::container_type::computed_value::T as ContainerType;
-use crate::properties::longhands::content_visibility::computed_value::T as ContentVisibility;
+#[cfg(feature = "gecko")]
+use crate::properties::longhands::{
+    contain::computed_value::T as Contain,
+    container_type::computed_value::T as ContainerType,
+    content_visibility::computed_value::T as ContentVisibility,
+    overflow_x::computed_value::T as Overflow
+};
 use crate::properties::longhands::display::computed_value::T as Display;
 use crate::properties::longhands::float::computed_value::T as Float;
-use crate::properties::longhands::overflow_x::computed_value::T as Overflow;
 use crate::properties::longhands::position::computed_value::T as Position;
 use crate::properties::{self, ComputedValues, StyleBuilder};
+
+#[cfg(feature = "gecko")]
+use selectors::parser::PseudoElement;
 
 /// A struct that implements all the adjustment methods.
 ///
@@ -116,11 +122,7 @@ where
     }
 
     // https://drafts.csswg.org/css-display/#unbox-mathml
-    //
-    // We always treat XUL as display: none. We don't use display:
-    // contents in XUL anyway, so should be fine to be consistent with
-    // MathML unless there's a use case for it.
-    if element.is_mathml_element() || element.is_xul_element() {
+    if element.is_mathml_element() {
         return true;
     }
 
@@ -157,6 +159,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     /// This makes the element not be a flex container, with all that it
     /// implies, but it should be safe. It matches blink, see
     /// https://bugzilla.mozilla.org/show_bug.cgi?id=1786147#c10
+    #[cfg(feature = "gecko")]
     fn adjust_for_webkit_line_clamp(&mut self) {
         use crate::properties::longhands::_moz_box_orient::computed_value::T as BoxOrient;
         use crate::values::specified::box_::{DisplayInside, DisplayOutside};
@@ -271,9 +274,9 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             }
         }
 
-        if self.style.is_pseudo_element() {
+        if self.style.pseudo.is_some_and(|p| p.is_first_line()) {
             self.style
-                .add_flags(ComputedValueFlags::IS_IN_PSEUDO_ELEMENT_SUBTREE);
+                .add_flags(ComputedValueFlags::IS_IN_FIRST_LINE_SUBTREE);
         }
 
         if self.style.is_root_element {
@@ -281,6 +284,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
                 .add_flags(ComputedValueFlags::IS_ROOT_ELEMENT_STYLE);
         }
 
+        #[cfg(feature = "gecko")]
         if box_style
             .clone_effective_containment()
             .contains(Contain::STYLE)
@@ -398,29 +402,6 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         }
     }
 
-    /// This implements an out-of-date spec. The new spec moves the handling of
-    /// this to layout, which Gecko implements but Servo doesn't.
-    ///
-    /// See https://github.com/servo/servo/issues/15229
-    #[cfg(feature = "servo")]
-    fn adjust_for_alignment(&mut self, layout_parent_style: &ComputedValues) {
-        use crate::computed_values::align_items::T as AlignItems;
-        use crate::computed_values::align_self::T as AlignSelf;
-
-        if self.style.get_position().clone_align_self() == AlignSelf::Auto &&
-            !self.style.is_absolutely_positioned()
-        {
-            let self_align = match layout_parent_style.get_position().clone_align_items() {
-                AlignItems::Stretch => AlignSelf::Stretch,
-                AlignItems::Baseline => AlignSelf::Baseline,
-                AlignItems::FlexStart => AlignSelf::FlexStart,
-                AlignItems::FlexEnd => AlignSelf::FlexEnd,
-                AlignItems::Center => AlignSelf::Center,
-            };
-            self.style.mutate_position().set_align_self(self_align);
-        }
-    }
-
     /// The initial value of border-*-width may be changed at computed value
     /// time.
     ///
@@ -431,6 +412,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
 
     /// column-rule-style: none causes a computed column-rule-width of zero
     /// at computed value time.
+    #[cfg(feature = "gecko")]
     fn adjust_for_column_rule_width(&mut self) {
         let column_style = self.style.get_column();
         if !column_style.clone_column_rule_style().none_or_hidden() {
@@ -478,6 +460,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         }
     }
 
+    #[cfg(feature = "gecko")]
     fn adjust_for_contain(&mut self) {
         let box_style = self.style.get_box();
         let container_type = box_style.clone_container_type();
@@ -510,13 +493,13 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             //     Applies layout containment, style containment, and inline-size
             //     containment to the principal box.
             ContainerType::InlineSize => {
-                new_contain.insert(Contain::LAYOUT | Contain::STYLE | Contain::INLINE_SIZE)
+                new_contain.insert(Contain::STYLE | Contain::INLINE_SIZE)
             },
             // https://drafts.csswg.org/css-contain-3/#valdef-container-type-size:
             //     Applies layout containment, style containment, and size
             //     containment to the principal box.
             ContainerType::Size => {
-                new_contain.insert(Contain::LAYOUT | Contain::STYLE | Contain::SIZE)
+                new_contain.insert(Contain::STYLE | Contain::SIZE)
             },
         }
         if new_contain == old_contain {
@@ -535,6 +518,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     /// an auto value
     ///
     /// <https://github.com/w3c/csswg-drafts/issues/8407>
+    #[cfg(feature = "gecko")]
     fn adjust_for_contain_intrinsic_size(&mut self) {
         let content_visibility = self.style.get_box().clone_content_visibility();
         if content_visibility != ContentVisibility::Auto {
@@ -571,9 +555,8 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             return;
         }
 
-        // FIXME(emilio): ::before and ::after should support display: contents,
-        // see bug 1418138.
-        if self.style.pseudo.is_some() {
+        // FIXME(emilio): ::before and ::after should support display: contents, see bug 1418138.
+        if self.style.pseudo.is_some_and(|p| !p.is_element_backed()) {
             self.style.mutate_box().set_display(Display::Inline);
             return;
         }
@@ -592,10 +575,24 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     /// parent, but we need to make sure it's still scrollable.
     #[cfg(feature = "gecko")]
     fn adjust_for_text_control_editing_root(&mut self) {
+        use crate::properties::longhands::white_space_collapse::computed_value::T as WhiteSpaceCollapse;
         use crate::selector_parser::PseudoElement;
 
         if self.style.pseudo != Some(&PseudoElement::MozTextControlEditingRoot) {
             return;
+        }
+
+        let old_collapse = self.style.get_inherited_text().clone_white_space_collapse();
+        let new_collapse = match old_collapse {
+            WhiteSpaceCollapse::Preserve | WhiteSpaceCollapse::BreakSpaces => old_collapse,
+            WhiteSpaceCollapse::Collapse |
+            WhiteSpaceCollapse::PreserveSpaces |
+            WhiteSpaceCollapse::PreserveBreaks => WhiteSpaceCollapse::Preserve,
+        };
+        if new_collapse != old_collapse {
+            self.style
+                .mutate_inherited_text()
+                .set_white_space_collapse(new_collapse);
         }
 
         let box_style = self.style.get_box();
@@ -647,7 +644,6 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     ///
     /// In this case, we don't want to inherit the text alignment into the
     /// table.
-    #[cfg(feature = "gecko")]
     fn adjust_for_table_text_align(&mut self) {
         use crate::properties::longhands::text_align::computed_value::T as TextAlign;
         if self.style.get_box().clone_display() != Display::Table {
@@ -662,23 +658,6 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         self.style
             .mutate_inherited_text()
             .set_text_align(TextAlign::Start)
-    }
-
-    /// Computes the used text decoration for Servo.
-    ///
-    /// FIXME(emilio): This is a layout tree concept, should move away from
-    /// style, since otherwise we're going to have the same subtle bugs WebKit
-    /// and Blink have with this very same thing.
-    #[cfg(feature = "servo")]
-    fn adjust_for_text_decorations_in_effect(&mut self) {
-        use crate::values::computed::text::TextDecorationsInEffect;
-
-        let decorations_in_effect = TextDecorationsInEffect::from_style(&self.style);
-        if self.style.get_inherited_text().text_decorations_in_effect != decorations_in_effect {
-            self.style
-                .mutate_inherited_text()
-                .text_decorations_in_effect = decorations_in_effect;
-        }
     }
 
     #[cfg(feature = "gecko")]
@@ -892,7 +871,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
     #[cfg(feature = "gecko")]
     fn adjust_for_marker_pseudo(&mut self) {
         use crate::values::computed::counters::Content;
-        use crate::values::computed::font::{FontFamily, FontSynthesis};
+        use crate::values::computed::font::{FontFamily, FontSynthesis, FontSynthesisStyle};
         use crate::values::computed::text::{LetterSpacing, WordSpacing};
 
         let is_legacy_marker = self.style.pseudo.map_or(false, |p| p.is_marker()) &&
@@ -918,7 +897,7 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
             if !flags.contains(ComputedValueFlags::HAS_AUTHOR_SPECIFIED_FONT_SYNTHESIS_STYLE) {
                 self.style
                     .mutate_font()
-                    .set_font_synthesis_style(FontSynthesis::None);
+                    .set_font_synthesis_style(FontSynthesisStyle::None);
             }
         }
         if !flags.contains(ComputedValueFlags::HAS_AUTHOR_SPECIFIED_LETTER_SPACING) {
@@ -971,31 +950,25 @@ impl<'a, 'b: 'a> StyleAdjuster<'a, 'b> {
         }
         self.adjust_for_top_layer();
         self.blockify_if_necessary(layout_parent_style, element);
+        #[cfg(feature = "gecko")]
         self.adjust_for_webkit_line_clamp();
         self.adjust_for_position();
         self.adjust_for_overflow();
-        self.adjust_for_contain();
-        self.adjust_for_contain_intrinsic_size();
         #[cfg(feature = "gecko")]
         {
-            self.adjust_for_table_text_align();
+            self.adjust_for_contain();
+            self.adjust_for_contain_intrinsic_size();
             self.adjust_for_justify_items();
         }
-        #[cfg(feature = "servo")]
-        {
-            self.adjust_for_alignment(layout_parent_style);
-        }
+        self.adjust_for_table_text_align();
         self.adjust_for_border_width();
+        #[cfg(feature = "gecko")]
         self.adjust_for_column_rule_width();
         self.adjust_for_outline_width();
         self.adjust_for_writing_mode(layout_parent_style);
         #[cfg(feature = "gecko")]
         {
             self.adjust_for_ruby(layout_parent_style, element);
-        }
-        #[cfg(feature = "servo")]
-        {
-            self.adjust_for_text_decorations_in_effect();
         }
         #[cfg(feature = "gecko")]
         {

@@ -6,6 +6,7 @@ package org.mozilla.fenix.components.toolbar
 
 import android.content.Context
 import androidx.annotation.VisibleForTesting
+import androidx.appcompat.content.res.AppCompatResources
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import mozilla.components.browser.state.selector.normalTabs
@@ -13,14 +14,22 @@ import mozilla.components.browser.state.selector.privateTabs
 import mozilla.components.browser.toolbar.BrowserToolbar
 import mozilla.components.browser.toolbar.display.DisplayToolbar
 import mozilla.components.concept.toolbar.ScrollableToolbar
+import mozilla.components.concept.toolbar.Toolbar
 import mozilla.components.feature.tabs.toolbar.TabCounterToolbarButton
 import mozilla.components.feature.toolbar.ToolbarBehaviorController
 import mozilla.components.feature.toolbar.ToolbarFeature
 import mozilla.components.feature.toolbar.ToolbarPresenter
 import mozilla.components.support.base.feature.LifecycleAwareFeature
+import mozilla.components.support.ktx.android.content.getColorFromAttr
 import mozilla.components.support.ktx.android.view.hideKeyboard
+import mozilla.components.ui.tabcounter.TabCounterMenu
+import mozilla.telemetry.glean.private.NoExtras
+import org.mozilla.fenix.GleanMetrics.AddressToolbar
 import org.mozilla.fenix.R
+import org.mozilla.fenix.browser.tabstrip.isTabStripEnabled
+import org.mozilla.fenix.components.menu.MenuAccessPoint
 import org.mozilla.fenix.components.toolbar.interactor.BrowserToolbarInteractor
+import org.mozilla.fenix.components.toolbar.ui.createShareBrowserAction
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.theme.ThemeManager
@@ -30,11 +39,12 @@ import org.mozilla.fenix.theme.ThemeManager
  */
 @SuppressWarnings("LongParameterList")
 abstract class ToolbarIntegration(
-    context: Context,
-    toolbar: BrowserToolbar,
+    private val context: Context,
+    private val toolbar: BrowserToolbar,
     scrollableToolbar: ScrollableToolbar,
     toolbarMenu: ToolbarMenu,
-    sessionId: String?,
+    private val interactor: BrowserToolbarInteractor,
+    private val customTabId: String?,
     isPrivate: Boolean,
     renderStyle: ToolbarFeature.RenderStyle,
 ) : LifecycleAwareFeature {
@@ -43,23 +53,30 @@ abstract class ToolbarIntegration(
     private val toolbarPresenter: ToolbarPresenter = ToolbarPresenter(
         toolbar = toolbar,
         store = store,
-        customTabId = sessionId,
+        customTabId = customTabId,
         shouldDisplaySearchTerms = true,
         urlRenderConfiguration = ToolbarFeature.UrlRenderConfiguration(
             context.components.publicSuffixList,
-            ThemeManager.resolveAttribute(R.attr.textPrimary, context),
+            context.getColorFromAttr(R.attr.textPrimary),
             renderStyle = renderStyle,
         ),
     )
 
     private val menuPresenter =
-        MenuPresenter(toolbar, context.components.core.store, sessionId)
+        MenuPresenter(toolbar, context.components.core.store, customTabId)
 
-    private val toolbarController = ToolbarBehaviorController(scrollableToolbar, store, sessionId)
+    private val toolbarController = ToolbarBehaviorController(scrollableToolbar, store, customTabId)
 
     init {
-        toolbar.display.menuBuilder = toolbarMenu.menuBuilder
+        if (!context.settings().enableMenuRedesign) {
+            toolbar.display.menuBuilder = toolbarMenu.menuBuilder
+        }
+
         toolbar.private = isPrivate
+
+        if (context.settings().enableMenuRedesign && customTabId == null) {
+            addMenuBrowserAction()
+        }
     }
 
     override fun start() {
@@ -77,25 +94,51 @@ abstract class ToolbarIntegration(
     fun invalidateMenu() {
         menuPresenter.invalidateActions()
     }
+
+    private fun addMenuBrowserAction() {
+        val menuAction = Toolbar.ActionButton(
+            imageDrawable = AppCompatResources.getDrawable(
+                context,
+                R.drawable.mozac_ic_ellipsis_vertical_24,
+            )!!,
+            contentDescription = context.getString(R.string.content_description_menu),
+            visible = {
+                context.settings().enableMenuRedesign
+            },
+            weight = { Int.MAX_VALUE },
+            iconTintColorResource = ThemeManager.resolveAttribute(R.attr.textPrimary, context),
+            listener = {
+                val accessPoint = if (customTabId.isNullOrBlank()) {
+                    MenuAccessPoint.Browser
+                } else {
+                    MenuAccessPoint.External
+                }
+
+                interactor.onMenuButtonClicked(accessPoint = accessPoint)
+            },
+        )
+
+        toolbar.addBrowserAction(menuAction)
+    }
 }
 
 @SuppressWarnings("LongParameterList")
 class DefaultToolbarIntegration(
-    context: Context,
-    toolbar: BrowserToolbar,
+    private val context: Context,
+    private val toolbar: BrowserToolbar,
     scrollableToolbar: ScrollableToolbar,
     toolbarMenu: ToolbarMenu,
-    lifecycleOwner: LifecycleOwner,
-    sessionId: String? = null,
-    isPrivate: Boolean,
-    isNavBarEnabled: Boolean = false,
-    interactor: BrowserToolbarInteractor,
+    private val lifecycleOwner: LifecycleOwner,
+    customTabId: String? = null,
+    private val isPrivate: Boolean,
+    private val interactor: BrowserToolbarInteractor,
 ) : ToolbarIntegration(
     context = context,
     toolbar = toolbar,
     scrollableToolbar = scrollableToolbar,
     toolbarMenu = toolbarMenu,
-    sessionId = sessionId,
+    interactor = interactor,
+    customTabId = customTabId,
     isPrivate = isPrivate,
     renderStyle = ToolbarFeature.RenderStyle.UncoloredUrl,
 ) {
@@ -107,64 +150,71 @@ class DefaultToolbarIntegration(
         settings = context.settings(),
         toolbar = toolbar,
         isPrivate = isPrivate,
-        sessionId = sessionId,
-        onShoppingCfrActionClicked = interactor::onShoppingCfrActionClicked,
-        onShoppingCfrDisplayed = interactor::onShoppingCfrDisplayed,
+        customTabId = customTabId,
     )
 
     init {
-        toolbar.display.menuBuilder = toolbarMenu.menuBuilder
-        toolbar.private = isPrivate
-
         toolbar.display.indicators = listOf(
             DisplayToolbar.Indicators.SECURITY,
             DisplayToolbar.Indicators.EMPTY,
             DisplayToolbar.Indicators.HIGHLIGHT,
         )
 
-        if (isNavBarEnabled) {
-            toolbar.hideMenuButton()
-            toolbar.setDisplayHorizontalPadding(
-                context.resources.getDimensionPixelSize(
-                    R.dimen.browser_fragment_display_toolbar_padding,
-                ),
-            )
+        if (context.isTabStripEnabled()) {
+            addShareBrowserAction()
         } else {
-            val tabCounterMenu = FenixTabCounterMenu(
-                context = context,
-                onItemTapped = {
-                    interactor.onTabCounterMenuItemTapped(it)
-                },
-                iconColor = if (isPrivate) {
-                    ContextCompat.getColor(context, R.color.fx_mobile_private_text_color_primary)
-                } else {
-                    null
-                },
-            ).also {
-                it.updateMenu(context.settings().toolbarPosition)
-            }
-
-            val tabsAction = TabCounterToolbarButton(
-                lifecycleOwner = lifecycleOwner,
-                showTabs = {
-                    toolbar.hideKeyboard()
-                    interactor.onTabCounterClicked()
-                },
-                store = store,
-                menu = tabCounterMenu,
-                showMaskInPrivateMode = context.settings().feltPrivateBrowsingEnabled,
-            )
-
-            val tabCount = if (isPrivate) {
-                store.state.privateTabs.size
-            } else {
-                store.state.normalTabs.size
-            }
-
-            tabsAction.updateCount(tabCount)
-
-            toolbar.addBrowserAction(tabsAction)
+            addNewTabBrowserAction()
+            addTabCounterBrowserAction()
         }
+    }
+
+    private fun addNewTabBrowserAction() {
+        val newTabAction = BrowserToolbar.Button(
+            imageDrawable = AppCompatResources.getDrawable(context, R.drawable.mozac_ic_plus_24)!!,
+            contentDescription = context.getString(R.string.library_new_tab),
+            visible = { false },
+            weight = { NEW_TAB_ACTION_WEIGHT },
+            iconTintColorResource = ThemeManager.resolveAttribute(R.attr.textPrimary, context),
+            listener = interactor::onNewTabButtonClicked,
+        )
+
+        toolbar.addBrowserAction(newTabAction)
+    }
+
+    private fun addTabCounterBrowserAction() {
+        val tabCounterAction = TabCounterToolbarButton(
+            lifecycleOwner = lifecycleOwner,
+            showTabs = {
+                toolbar.hideKeyboard()
+                interactor.onTabCounterClicked()
+            },
+            store = store,
+            menu = buildTabCounterMenu(),
+            visible = { true },
+            weight = { TAB_COUNTER_ACTION_WEIGHT },
+        )
+
+        val tabCount = if (isPrivate) {
+            store.state.privateTabs.size
+        } else {
+            store.state.normalTabs.size
+        }
+
+        tabCounterAction.updateCount(tabCount)
+
+        toolbar.addBrowserAction(tabCounterAction)
+    }
+
+    private fun addShareBrowserAction() {
+        toolbar.addBrowserAction(
+            BrowserToolbar.createShareBrowserAction(
+                context = context,
+                listener = {
+                    AddressToolbar.shareTapped.record((NoExtras()))
+                    interactor.onShareActionClicked()
+                },
+            ),
+        )
     }
 
     override fun start() {
@@ -175,5 +225,25 @@ class DefaultToolbarIntegration(
     override fun stop() {
         cfrPresenter.stop()
         super.stop()
+    }
+
+    private fun buildTabCounterMenu(): TabCounterMenu =
+        FenixTabCounterMenu(
+            context = context,
+            onItemTapped = {
+                interactor.onTabCounterMenuItemTapped(it)
+            },
+            iconColor = if (isPrivate) {
+                ContextCompat.getColor(context, R.color.fx_mobile_private_icon_color_primary)
+            } else {
+                null
+            },
+        ).also {
+            it.updateMenu(context.settings().toolbarPosition)
+        }
+
+    companion object {
+        private const val NEW_TAB_ACTION_WEIGHT = 1
+        private const val TAB_COUNTER_ACTION_WEIGHT = 2
     }
 }

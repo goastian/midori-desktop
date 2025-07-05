@@ -8,12 +8,15 @@ import android.content.res.Configuration
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import org.junit.Rule
 import org.junit.Test
+import org.mozilla.fenix.customannotations.SkipLeaks
+import org.mozilla.fenix.helpers.AppAndSystemHelper.enableOrDisableBackGestureNavigationOnDevice
 import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.TestAssetHelper
 import org.mozilla.fenix.helpers.TestHelper.exitMenu
 import org.mozilla.fenix.helpers.TestHelper.verifyDarkThemeApplied
 import org.mozilla.fenix.helpers.TestHelper.verifyLightThemeApplied
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.homeScreen
 import org.mozilla.fenix.ui.robots.navigationToolbar
 
@@ -23,6 +26,9 @@ class SettingsCustomizeTest : TestSetup() {
         AndroidComposeTestRule(
             HomeActivityIntentTestRule.withDefaultSettingsOverrides(),
         ) { it.activity }
+
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
 
     private fun getUiTheme(): Boolean {
         val mode =
@@ -35,7 +41,7 @@ class SettingsCustomizeTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/344212
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/344212
     @Test
     fun changeThemeOfTheAppTest() {
         // Goes through the settings and changes the default search engine, then verifies it changes.
@@ -51,36 +57,40 @@ class SettingsCustomizeTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/466571
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/466571
     @Test
     fun setToolbarPositionTest() {
         homeScreen {
         }.openThreeDotMenu {
         }.openSettings {
         }.openCustomizeSubMenu {
-            verifyToolbarPositionPreference("Bottom")
+            verifyAddressBarPositionPreference("Bottom")
             clickTopToolbarToggle()
-            verifyToolbarPositionPreference("Top")
+            verifyAddressBarPositionPreference("Top")
         }.goBack {
         }.goBack {
-            verifyToolbarPosition(defaultPosition = false)
+            verifyAddressBarPosition(bottomPosition = false)
         }.openThreeDotMenu {
         }.openSettings {
         }.openCustomizeSubMenu {
             clickBottomToolbarToggle()
-            verifyToolbarPositionPreference("Bottom")
+            verifyAddressBarPositionPreference("Bottom")
             exitMenu()
         }
         homeScreen {
-            verifyToolbarPosition(defaultPosition = true)
+            verifyAddressBarPosition(bottomPosition = true)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1058682
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1058682
     @Test
+    @SkipLeaks
     fun turnOffSwipeToSwitchTabsPreferenceTest() {
         val firstWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
         val secondWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 2)
+
+        // Disable the back gesture from the edge of the screen on the device.
+        enableOrDisableBackGestureNavigationOnDevice(backGestureNavigationEnabled = false)
 
         homeScreen {
         }.openThreeDotMenu {
@@ -103,7 +113,7 @@ class SettingsCustomizeTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1992289
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1992289
     @Test
     fun pullToRefreshPreferenceTest() {
         homeScreen {

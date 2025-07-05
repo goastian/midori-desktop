@@ -204,8 +204,7 @@ function Cookie(
   isHttpOnly,
   inBrowserElement = false,
   originAttributes = {},
-  sameSite = Ci.nsICookie.SAMESITE_NONE,
-  rawSameSite = Ci.nsICookie.SAMESITE_NONE,
+  sameSite = Ci.nsICookie.SAMESITE_UNSET,
   schemeMap = Ci.nsICookie.SCHEME_UNSET,
   isPartitioned = false
 ) {
@@ -222,9 +221,11 @@ function Cookie(
   this.inBrowserElement = inBrowserElement;
   this.originAttributes = originAttributes;
   this.sameSite = sameSite;
-  this.rawSameSite = rawSameSite;
   this.schemeMap = schemeMap;
   this.isPartitioned = isPartitioned;
+
+  // For pre version 15 compatibility:
+  this.rawSameSite = sameSite;
 
   let strippedHost = host.charAt(0) == "." ? host.slice(1) : host;
 
@@ -690,7 +691,8 @@ function CookieDatabaseConnection(file, schema) {
       break;
     }
 
-    case 13: {
+    case 13:
+    case 14: {
       if (!exists) {
         this.db.executeSimpleSQL(
           "CREATE TABLE moz_cookies (                     \
@@ -748,6 +750,79 @@ function CookieDatabaseConnection(file, schema) {
            :originAttributes,             \
            :sameSite,                     \
            :rawSameSite,                  \
+           :schemeMap,                    \
+           :isPartitionedAttributeSet)"
+      );
+
+      this.stmtDelete = this.db.createStatement(
+        "DELETE FROM moz_cookies          \
+           WHERE name = :name AND host = :host AND path = :path AND \
+                 originAttributes = :originAttributes"
+      );
+
+      this.stmtUpdate = this.db.createStatement(
+        "UPDATE moz_cookies SET lastAccessed = :lastAccessed \
+           WHERE name = :name AND host = :host AND path = :path AND \
+                 originAttributes = :originAttributes"
+      );
+
+      break;
+    }
+    case 15: {
+      if (!exists) {
+        this.db.executeSimpleSQL(
+          "CREATE TABLE moz_cookies (                     \
+            id INTEGER PRIMARY KEY,                       \
+            originAttributes TEXT NOT NULL DEFAULT '',    \
+            name TEXT,                                    \
+            value TEXT,                                   \
+            host TEXT,                                    \
+            path TEXT,                                    \
+            expiry INTEGER,                               \
+            lastAccessed INTEGER,                         \
+            creationTime INTEGER,                         \
+            isSecure INTEGER,                             \
+            isHttpOnly INTEGER,                           \
+            inBrowserElement INTEGER DEFAULT 0,           \
+            sameSite INTEGER DEFAULT 0,                   \
+            schemeMap INTEGER DEFAULT 0,                  \
+            isPartitionedAttributeSet INTEGER DEFAULT 0,  \
+            CONSTRAINT moz_uniqueid UNIQUE (name, host, path, originAttributes))"
+        );
+
+        this.db.executeSimpleSQL("PRAGMA journal_mode = WAL");
+        this.db.executeSimpleSQL("PRAGMA wal_autocheckpoint = 16");
+      }
+
+      this.stmtInsert = this.db.createStatement(
+        "INSERT INTO moz_cookies (        \
+           name,                          \
+           value,                         \
+           host,                          \
+           path,                          \
+           expiry,                        \
+           lastAccessed,                  \
+           creationTime,                  \
+           isSecure,                      \
+           isHttpOnly,                    \
+           inBrowserElement,              \
+           originAttributes,              \
+           sameSite,                      \
+           schemeMap,                     \
+           isPartitionedAttributeSet      \
+         ) VALUES (                       \
+           :name,                         \
+           :value,                        \
+           :host,                         \
+           :path,                         \
+           :expiry,                       \
+           :lastAccessed,                 \
+           :creationTime,                 \
+           :isSecure,                     \
+           :isHttpOnly,                   \
+           :inBrowserElement,             \
+           :originAttributes,             \
+           :sameSite,                     \
            :schemeMap,                    \
            :isPartitionedAttributeSet)"
       );
@@ -888,6 +963,7 @@ CookieDatabaseConnection.prototype = {
         break;
 
       case 13:
+      case 14:
         this.stmtInsert.bindByName("name", cookie.name);
         this.stmtInsert.bindByName("value", cookie.value);
         this.stmtInsert.bindByName("host", cookie.host);
@@ -904,6 +980,29 @@ CookieDatabaseConnection.prototype = {
         );
         this.stmtInsert.bindByName("sameSite", cookie.sameSite);
         this.stmtInsert.bindByName("rawSameSite", cookie.rawSameSite);
+        this.stmtInsert.bindByName("schemeMap", cookie.schemeMap);
+        this.stmtInsert.bindByName(
+          "isPartitionedAttributeSet",
+          cookie.isPartitioned
+        );
+        break;
+
+      case 15:
+        this.stmtInsert.bindByName("name", cookie.name);
+        this.stmtInsert.bindByName("value", cookie.value);
+        this.stmtInsert.bindByName("host", cookie.host);
+        this.stmtInsert.bindByName("path", cookie.path);
+        this.stmtInsert.bindByName("expiry", cookie.expiry);
+        this.stmtInsert.bindByName("lastAccessed", cookie.lastAccessed);
+        this.stmtInsert.bindByName("creationTime", cookie.creationTime);
+        this.stmtInsert.bindByName("isSecure", cookie.isSecure);
+        this.stmtInsert.bindByName("isHttpOnly", cookie.isHttpOnly);
+        this.stmtInsert.bindByName("inBrowserElement", cookie.inBrowserElement);
+        this.stmtInsert.bindByName(
+          "originAttributes",
+          ChromeUtils.originAttributesToSuffix(cookie.originAttributes)
+        );
+        this.stmtInsert.bindByName("sameSite", cookie.sameSite);
         this.stmtInsert.bindByName("schemeMap", cookie.schemeMap);
         this.stmtInsert.bindByName(
           "isPartitionedAttributeSet",
@@ -940,6 +1039,7 @@ CookieDatabaseConnection.prototype = {
       case 11:
       case 12:
       case 13:
+      case 14:
         this.stmtDelete.bindByName("name", cookie.name);
         this.stmtDelete.bindByName("host", cookie.host);
         this.stmtDelete.bindByName("path", cookie.path);
@@ -985,6 +1085,7 @@ CookieDatabaseConnection.prototype = {
       case 11:
       case 12:
       case 13:
+      case 14:
         this.stmtDelete.bindByName("name", cookie.name);
         this.stmtDelete.bindByName("host", cookie.host);
         this.stmtDelete.bindByName("path", cookie.path);

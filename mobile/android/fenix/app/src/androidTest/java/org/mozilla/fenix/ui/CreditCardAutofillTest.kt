@@ -6,6 +6,7 @@ package org.mozilla.fenix.ui
 
 import org.junit.Rule
 import org.junit.Test
+import org.mozilla.fenix.customannotations.SkipLeaks
 import org.mozilla.fenix.customannotations.SmokeTest
 import org.mozilla.fenix.helpers.AppAndSystemHelper.bringAppToForeground
 import org.mozilla.fenix.helpers.AppAndSystemHelper.putAppToBackground
@@ -16,6 +17,7 @@ import org.mozilla.fenix.helpers.TestAssetHelper
 import org.mozilla.fenix.helpers.TestHelper.exitMenu
 import org.mozilla.fenix.helpers.TestHelper.packageName
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.clickPageObject
 import org.mozilla.fenix.ui.robots.homeScreen
 import org.mozilla.fenix.ui.robots.navigationToolbar
@@ -43,7 +45,10 @@ class CreditCardAutofillTest : TestSetup() {
     @get:Rule
     val activityIntentTestRule = HomeActivityIntentTestRule.withDefaultSettingsOverrides()
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1512792
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1512792
     @SmokeTest
     @Test
     fun verifyCreditCardAutofillTest() {
@@ -81,7 +86,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1512798
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1512798
     @SmokeTest
     @Test
     fun deleteSavedCreditCardUsingToolbarButtonTest() {
@@ -108,7 +113,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2271192
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2271192
     @SmokeTest
     @Test
     fun deleteSavedCreditCardUsingMenuButtonTest() {
@@ -135,7 +140,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1512788
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1512788
     @Test
     fun verifyCreditCardsSectionTest() {
         homeScreen {
@@ -159,7 +164,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1859917
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1859917
     @Test
     fun verifyManageCreditCardsPromptOptionTest() {
         val creditCardFormPage = TestAssetHelper.getCreditCardFormAsset(mockWebServer)
@@ -189,7 +194,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1512790
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1512790
     @Test
     fun verifyCreditCardsAutofillToggleTest() {
         val creditCardFormPage = TestAssetHelper.getCreditCardFormAsset(mockWebServer)
@@ -230,7 +235,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1512795
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1512795
     @Test
     fun verifyEditCardsViewTest() {
         homeScreen {
@@ -266,7 +271,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1512796
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1512796
     @Test
     fun verifyEditedCardIsSavedTest() {
         val creditCardFormPage = TestAssetHelper.getCreditCardFormAsset(mockWebServer)
@@ -314,8 +319,9 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1512797
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1512797
     @Test
+    @SkipLeaks(reasons = ["https://bugzilla.mozilla.org/show_bug.cgi?id=1935999"])
     fun verifyCreditCardCannotBeSavedWithoutCardNumberOrNameTest() {
         homeScreen {
         }.openThreeDotMenu {
@@ -349,7 +355,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1512794
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1512794
     @Test
     fun verifyMultipleCreditCardsCanBeAddedTest() {
         val creditCardFormPage = TestAssetHelper.getCreditCardFormAsset(mockWebServer)
@@ -405,7 +411,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2271304
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2271304
     @Test
     fun verifyDoNotSaveCreditCardFromPromptTest() {
         val creditCardFormPage = TestAssetHelper.getCreditCardFormAsset(mockWebServer)
@@ -417,7 +423,7 @@ class CreditCardAutofillTest : TestSetup() {
                 MockCreditCard1.MOCK_NAME_ON_CARD,
                 MockCreditCard1.MOCK_EXPIRATION_MONTH_AND_YEAR,
             )
-            clickPageObject(itemWithResId("$packageName:id/save_cancel"))
+            clickNegativeSaveCreditCardPromptButton()
             verifyUpdateOrSaveCreditCardPromptExists(exists = false)
         }.openThreeDotMenu {
         }.openSettings {
@@ -426,7 +432,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1779194
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1779194
     @Test
     fun verifySaveCreditCardFromPromptTest() {
         val creditCardFormPage = TestAssetHelper.getCreditCardFormAsset(mockWebServer)
@@ -453,7 +459,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2271305
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2271305
     @Test
     fun verifyCancelCreditCardUpdatePromptTest() {
         val creditCardFormPage = TestAssetHelper.getCreditCardFormAsset(mockWebServer)
@@ -490,7 +496,7 @@ class CreditCardAutofillTest : TestSetup() {
             verifyAutofilledCreditCard(MockCreditCard2.MOCK_CREDIT_CARD_NUMBER)
             changeCreditCardExpiryDate(MockCreditCard1.MOCK_EXPIRATION_MONTH_AND_YEAR)
             clickCreditCardFormSubmitButton()
-            clickPageObject(itemWithResId("$packageName:id/save_cancel"))
+            clickNegativeSaveCreditCardPromptButton()
             verifyUpdateOrSaveCreditCardPromptExists(false)
         }.openThreeDotMenu {
         }.openSettings {
@@ -504,7 +510,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1779195
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1779195
     @Test
     fun verifyConfirmCreditCardUpdatePromptTest() {
         val creditCardFormPage = TestAssetHelper.getCreditCardFormAsset(mockWebServer)
@@ -555,7 +561,7 @@ class CreditCardAutofillTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1512791
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1512791
     @Test
     fun verifyCreditCardRedirectionsToAutofillSectionAfterInterruptionTest() {
         homeScreen {

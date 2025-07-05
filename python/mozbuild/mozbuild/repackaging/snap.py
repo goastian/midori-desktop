@@ -11,11 +11,11 @@ from urllib.request import urlretrieve
 
 from mozbuild.repackaging.application_ini import get_application_ini_values
 from mozbuild.repackaging.snapcraft_transform import (
-    DesktopFileTransform,
     SnapcraftTransform,
+    SnapDesktopFile,
 )
 
-UPSTREAM = "https://github.com/canonical/firefox-snap/raw/{}/"
+UPSTREAM = "https://github.com/{}/raw/{}/"
 DEPS = [
     "snap/hooks/disconnect-plug-host-hunspell",
     "snap/hooks/post-refresh",
@@ -25,19 +25,22 @@ DEPS = [
 
 
 def repackage_snap(
+    log,
     srcdir,
     objdir,
     snapdir,
     snapcraft,
     appname,
+    reponame="canonical/firefox-snap",
     branchname="nightly",
+    wmclass=None,
     arch="amd64",
     dry_run=False,
 ):
     pkgsrc = os.path.join(snapdir, "source", "usr", "lib", "firefox")
     os.path.join(pkgsrc, "distribution")
 
-    upstream_repo = UPSTREAM.format(branchname)
+    upstream_repo = UPSTREAM.format(reponame, branchname)
 
     # Obtain the build's version info
     version, buildno = get_application_ini_values(
@@ -54,17 +57,16 @@ def repackage_snap(
 
     os.chmod(os.path.join(snapdir, "firefox.launcher"), 0o0777)
 
-    shutil.copy(os.path.join(objdir, "dist", "bin", "geckodriver"), pkgsrc)
+    shutil.copy(os.path.join(objdir, "dist", "host", "bin", "geckodriver"), pkgsrc)
 
     shutil.copy(
         os.path.join(srcdir, "browser/branding/nightly/default256.png"), snapdir
     )
-    source_desktop = os.path.join(
-        srcdir, "taskcluster/docker/firefox-snap/firefox.desktop"
-    )
     with open(os.path.join(snapdir, "firefox.desktop"), "w") as desktop_file:
         desktop_file.write(
-            DesktopFileTransform(source_desktop, icon="default256.png").repack()
+            SnapDesktopFile(
+                log, appname=appname, branchname=branchname, wmclass=wmclass
+            ).repack()
         )
 
     source_yaml = os.path.join(snapdir, "original.snapcraft.yaml")

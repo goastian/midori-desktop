@@ -3,25 +3,24 @@
  * Copyright 2024 Google Inc.
  * SPDX-License-Identifier: Apache-2.0
  */
+import type {NodeFor} from 'puppeteer';
 import {expectType, expectNotType} from 'tsd';
 
-import type {NodeFor} from 'puppeteer';
-
 declare const nodeFor: <Selector extends string>(
-  selector: Selector
+  selector: Selector,
 ) => NodeFor<Selector>;
 
 {
   {
     expectType<HTMLTableRowElement>(
       nodeFor(
-        '[data-testid="my-component"] div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div tbody tr'
-      )
+        '[data-testid="my-component"] div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div tbody tr',
+      ),
     );
     expectNotType<Element>(
       nodeFor(
-        '[data-testid="my-component"] div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div tbody tr'
-      )
+        '[data-testid="my-component"] div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div div tbody tr',
+      ),
     );
   }
   {
@@ -98,11 +97,31 @@ declare const nodeFor: <Selector extends string>(
   }
   {
     expectType<HTMLAnchorElement>(
-      nodeFor('ignored ignored > ignored + ignored | a#ignore')
+      nodeFor('ignored ignored > ignored + ignored | a#ignore'),
     );
     expectNotType<Element>(
-      nodeFor('ignored ignored > ignored + ignored | a#ignore')
+      nodeFor('ignored ignored > ignored + ignored | a#ignore'),
     );
+  }
+  {
+    expectType<HTMLAnchorElement>(nodeFor('custom-element >>> a'));
+    expectNotType<Element>(nodeFor('custom-element >>> a'));
+  }
+  {
+    expectType<Element>(nodeFor('div ::-p-text(world)'));
+    expectNotType<HTMLDivElement>(nodeFor('div ::-p-text(world)'));
+  }
+  {
+    expectType<HTMLDivElement>(nodeFor('div ::-p-text(world) >>>> div'));
+    expectNotType<Element>(nodeFor('div ::-p-text(world) >>>> div'));
+  }
+  {
+    expectType<HTMLAnchorElement>(nodeFor('a::-p-text(Hello)'));
+    expectNotType<Element>(nodeFor('a::-p-text(Hello)'));
+  }
+  {
+    expectType<HTMLAnchorElement>(nodeFor('a:is([href], [href])'));
+    expectNotType<Element>(nodeFor('a:is([href], [href])'));
   }
 }
 {
@@ -156,7 +175,7 @@ declare const nodeFor: <Selector extends string>(
   }
   {
     expectType<Element>(
-      nodeFor('ignored ignored > ignored ~ ignored + ignored | #ignored')
+      nodeFor('ignored ignored > ignored ~ ignored + ignored | #ignored'),
     );
   }
 }

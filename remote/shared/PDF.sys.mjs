@@ -6,7 +6,9 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   assert: "chrome://remote/content/shared/webdriver/Assert.sys.mjs",
+  error: "chrome://remote/content/shared/webdriver/Errors.sys.mjs",
   Log: "chrome://remote/content/shared/Log.sys.mjs",
+  pprint: "chrome://remote/content/shared/Format.sys.mjs",
 });
 
 ChromeUtils.defineLazyGetter(lazy, "logger", () => lazy.Log.get());
@@ -15,6 +17,8 @@ export const print = {
   maxScaleValue: 2.0,
   minScaleValue: 0.1,
 };
+
+export const MIN_PAGE_SIZE = 0.0352;
 
 print.defaults = {
   // The size of the page in centimeters.
@@ -42,8 +46,14 @@ print.addDefaultSettings = function (settings) {
     shrinkToFit = true,
   } = settings;
 
-  lazy.assert.object(page, `Expected "page" to be a object, got ${page}`);
-  lazy.assert.object(margin, `Expected "margin" to be a object, got ${margin}`);
+  lazy.assert.object(
+    page,
+    lazy.pprint`Expected "page" to be an object, got ${page}`
+  );
+  lazy.assert.object(
+    margin,
+    lazy.pprint`Expected "margin" to be an object, got ${margin}`
+  );
 
   if (!("width" in page)) {
     page.width = print.defaults.page.width;
@@ -51,6 +61,18 @@ print.addDefaultSettings = function (settings) {
 
   if (!("height" in page)) {
     page.height = print.defaults.page.height;
+  }
+
+  if (page.width < MIN_PAGE_SIZE) {
+    throw new lazy.error.InvalidArgumentError(
+      `Expected "page.width" to be greater than or equal to ${MIN_PAGE_SIZE}cm, got ${page.width}cm.`
+    );
+  }
+
+  if (page.height < MIN_PAGE_SIZE) {
+    throw new lazy.error.InvalidArgumentError(
+      `Expected "page.height" to be greater than or equal to ${MIN_PAGE_SIZE}cm, got ${page.height}cm.`
+    );
   }
 
   if (!("top" in margin)) {
@@ -157,11 +179,14 @@ function parseRanges(ranges) {
     let limits;
     if (typeof range !== "string") {
       // We got a single integer so the limits are just that page
-      lazy.assert.positiveInteger(range);
+      lazy.assert.positiveInteger(
+        range,
+        lazy.pprint`Expected "range" to be a string or a positive integer, got ${range}`
+      );
       limits = [range, range];
     } else {
       // We got a string presumably of the form <int> | <int>? "-" <int>?
-      const msg = `Expected a range of the form <int> or <int>-<int>, got ${range}`;
+      const msg = lazy.pprint`Expected "range" to be of the form <int> or <int>-<int>, got ${range}`;
 
       limits = range.split("-").map(x => x.trim());
       lazy.assert.that(o => [1, 2].includes(o.length), msg)(limits);
@@ -171,7 +196,7 @@ function parseRanges(ranges) {
         limits.push(limits[0]);
       }
 
-      // Need to check that both limits are strings conisting only of
+      // Need to check that both limits are strings consisting only of
       // decimal digits (or empty strings)
       const assertNumeric = lazy.assert.that(o => /^\d*$/.test(o), msg);
       limits.every(x => assertNumeric(x));
@@ -188,7 +213,7 @@ function parseRanges(ranges) {
     }
     lazy.assert.that(
       x => x[0] <= x[1],
-      "Lower limit ${parts[0]} is higher than upper limit ${parts[1]}"
+      lazy.pprint`Expected "range" lower limit to be less than the upper limit, got ${range}`
     )(limits);
 
     allLimits.push(limits);

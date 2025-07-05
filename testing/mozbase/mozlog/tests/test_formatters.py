@@ -1,5 +1,3 @@
-# encoding: utf-8
-
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -292,10 +290,10 @@ FORMATS = {
 def ids(test):
     ids = []
     for value in FORMATS[test]:
-        args = ", ".join(["{}={}".format(k, v) for k, v in value[1].items()])
+        args = ", ".join([f"{k}={v}" for k, v in value[1].items()])
         if args:
-            args = "-{}".format(args)
-        ids.append("{}{}".format(value[0], args))
+            args = f"-{args}"
+        ids.append(f"{value[0]}{args}")
     return ids
 
 

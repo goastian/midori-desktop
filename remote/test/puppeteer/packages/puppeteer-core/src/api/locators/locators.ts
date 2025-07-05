@@ -16,7 +16,6 @@ import {
   first,
   firstValueFrom,
   from,
-  fromEvent,
   identity,
   ignoreElements,
   map,
@@ -33,7 +32,7 @@ import {
 import type {EventType} from '../../common/EventEmitter.js';
 import {EventEmitter} from '../../common/EventEmitter.js';
 import type {Awaitable, HandleFor, NodeFor} from '../../common/types.js';
-import {debugError, timeout} from '../../common/util.js';
+import {debugError, fromAbortSignal, timeout} from '../../common/util.js';
 import type {
   BoundingBox,
   ClickOptions,
@@ -43,48 +42,22 @@ import type {Frame} from '../Frame.js';
 import type {Page} from '../Page.js';
 
 /**
+ * Whether to wait for the element to be
+ * {@link ElementHandle.isVisible | visible} or
+ * {@link ElementHandle.isHidden | hidden}.
+ * `null` to disable visibility checks.
+ *
  * @public
  */
 export type VisibilityOption = 'hidden' | 'visible' | null;
-/**
- * @public
- */
-export interface LocatorOptions {
-  /**
-   * Whether to wait for the element to be `visible` or `hidden`. `null` to
-   * disable visibility checks.
-   */
-  visibility: VisibilityOption;
-  /**
-   * Total timeout for the entire locator operation.
-   *
-   * Pass `0` to disable timeout.
-   *
-   * @defaultValue `Page.getDefaultTimeout()`
-   */
-  timeout: number;
-  /**
-   * Whether to scroll the element into viewport if not in the viewprot already.
-   * @defaultValue `true`
-   */
-  ensureElementIsInTheViewport: boolean;
-  /**
-   * Whether to wait for input elements to become enabled before the action.
-   * Applicable to `click` and `fill` actions.
-   * @defaultValue `true`
-   */
-  waitForEnabled: boolean;
-  /**
-   * Whether to wait for the element's bounding box to be same between two
-   * animation frames.
-   * @defaultValue `true`
-   */
-  waitForStableBoundingBox: boolean;
-}
+
 /**
  * @public
  */
 export interface ActionOptions {
+  /**
+   * A signal to abort the locator action.
+   */
   signal?: AbortSignal;
 }
 /**
@@ -123,17 +96,19 @@ export interface LocatorEvents extends Record<EventType, unknown> {
  * whole operation is retried. Various preconditions for a successful action are
  * checked automatically.
  *
+ * See {@link https://pptr.dev/guides/page-interactions#locators} for details.
+ *
  * @public
  */
 export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
   /**
-   * Creates a race between multiple locators but ensures that only a single one
-   * acts.
+   * Creates a race between multiple locators trying to locate elements in
+   * parallel but ensures that only a single element receives the action.
    *
    * @public
    */
   static race<Locators extends readonly unknown[] | []>(
-    locators: Locators
+    locators: Locators,
   ): Locator<AwaitedLocator<Locators[number]>> {
     return RaceLocator.create(locators);
   }
@@ -161,37 +136,28 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
   protected operators = {
     conditions: (
       conditions: Array<Action<T, never>>,
-      signal?: AbortSignal
+      signal?: AbortSignal,
     ): OperatorFunction<HandleFor<T>, HandleFor<T>> => {
       return mergeMap((handle: HandleFor<T>) => {
         return merge(
           ...conditions.map(condition => {
             return condition(handle, signal);
-          })
+          }),
         ).pipe(defaultIfEmpty(handle));
       });
     },
     retryAndRaceWithSignalAndTimer: <T>(
       signal?: AbortSignal,
-      cause?: Error
+      cause?: Error,
     ): OperatorFunction<T, T> => {
       const candidates = [];
       if (signal) {
-        candidates.push(
-          fromEvent(signal, 'abort').pipe(
-            map(() => {
-              if (signal.reason instanceof Error) {
-                signal.reason.cause = cause;
-              }
-              throw signal.reason;
-            })
-          )
-        );
+        candidates.push(fromAbortSignal(signal, cause));
       }
       candidates.push(timeout(this._timeout, cause));
       return pipe(
         retry({delay: RETRY_DELAY}),
-        raceWith<T, never[]>(...candidates)
+        raceWith<T, never[]>(...candidates),
       );
     },
   };
@@ -201,42 +167,75 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
     return this._timeout;
   }
 
+  /**
+   * Creates a new locator instance by cloning the current locator and setting
+   * the total timeout for the locator actions.
+   *
+   * Pass `0` to disable timeout.
+   *
+   * @defaultValue `Page.getDefaultTimeout()`
+   */
   setTimeout(timeout: number): Locator<T> {
     const locator = this._clone();
     locator._timeout = timeout;
     return locator;
   }
 
+  /**
+   * Creates a new locator instance by cloning the current locator with the
+   * visibility property changed to the specified value.
+   */
   setVisibility<NodeType extends Node>(
     this: Locator<NodeType>,
-    visibility: VisibilityOption
+    visibility: VisibilityOption,
   ): Locator<NodeType> {
     const locator = this._clone();
     locator.visibility = visibility;
     return locator;
   }
 
+  /**
+   * Creates a new locator instance by cloning the current locator and
+   * specifying whether to wait for input elements to become enabled before the
+   * action. Applicable to `click` and `fill` actions.
+   *
+   * @defaultValue `true`
+   */
   setWaitForEnabled<NodeType extends Node>(
     this: Locator<NodeType>,
-    value: boolean
+    value: boolean,
   ): Locator<NodeType> {
     const locator = this._clone();
     locator.#waitForEnabled = value;
     return locator;
   }
 
+  /**
+   * Creates a new locator instance by cloning the current locator and
+   * specifying whether the locator should scroll the element into viewport if
+   * it is not in the viewport already.
+   *
+   * @defaultValue `true`
+   */
   setEnsureElementIsInTheViewport<ElementType extends Element>(
     this: Locator<ElementType>,
-    value: boolean
+    value: boolean,
   ): Locator<ElementType> {
     const locator = this._clone();
     locator.#ensureElementIsInTheViewport = value;
     return locator;
   }
 
+  /**
+   * Creates a new locator instance by cloning the current locator and
+   * specifying whether the locator has to wait for the element's bounding box
+   * to be same between two consecutive animation frames.
+   *
+   * @defaultValue `true`
+   */
   setWaitForStableBoundingBox<ElementType extends Element>(
     this: Locator<ElementType>,
-    value: boolean
+    value: boolean,
   ): Locator<ElementType> {
     const locator = this._clone();
     locator.#waitForStableBoundingBox = value;
@@ -261,7 +260,7 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
    */
   #waitForEnabledIfNeeded = <ElementType extends Node>(
     handle: HandleFor<ElementType>,
-    signal?: AbortSignal
+    signal?: AbortSignal,
   ): Observable<never> => {
     if (!this.#waitForEnabled) {
       return EMPTY;
@@ -286,8 +285,8 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
           timeout: this._timeout,
           signal,
         },
-        handle
-      )
+        handle,
+      ),
     ).pipe(ignoreElements());
   };
 
@@ -296,7 +295,7 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
    * frames and waits till they are the same.
    */
   #waitForStableBoundingBoxIfNeeded = <ElementType extends Element>(
-    handle: HandleFor<ElementType>
+    handle: HandleFor<ElementType>,
   ): Observable<never> => {
     if (!this.#waitForStableBoundingBox) {
       return EMPTY;
@@ -327,7 +326,7 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
               });
             });
           });
-        })
+        }),
       );
     }).pipe(
       first(([rect1, rect2]) => {
@@ -339,7 +338,7 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
         );
       }),
       retry({delay: RETRY_DELAY}),
-      ignoreElements()
+      ignoreElements(),
     );
   };
 
@@ -347,7 +346,7 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
    * Checks if the element is in the viewport and auto-scrolls it if it is not.
    */
   #ensureElementIsInTheViewportIfNeeded = <ElementType extends Element>(
-    handle: HandleFor<ElementType>
+    handle: HandleFor<ElementType>,
   ): Observable<never> => {
     if (!this.#ensureElementIsInTheViewport) {
       return EMPTY;
@@ -363,13 +362,13 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
         return defer(() => {
           return from(handle.isIntersectingViewport({threshold: 0}));
         }).pipe(first(identity), retry({delay: RETRY_DELAY}), ignoreElements());
-      })
+      }),
     );
   };
 
   #click<ElementType extends Element>(
     this: Locator<ElementType>,
-    options?: Readonly<LocatorClickOptions>
+    options?: Readonly<LocatorClickOptions>,
   ): Observable<void> {
     const signal = options?.signal;
     const cause = new Error('Locator.click');
@@ -380,7 +379,7 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
           this.#waitForStableBoundingBoxIfNeeded,
           this.#waitForEnabledIfNeeded,
         ],
-        signal
+        signal,
       ),
       tap(() => {
         return this.emit(LocatorEvent.Action, undefined);
@@ -390,17 +389,17 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
           catchError(err => {
             void handle.dispose().catch(debugError);
             throw err;
-          })
+          }),
         );
       }),
-      this.operators.retryAndRaceWithSignalAndTimer(signal, cause)
+      this.operators.retryAndRaceWithSignalAndTimer(signal, cause),
     );
   }
 
   #fill<ElementType extends Element>(
     this: Locator<ElementType>,
     value: string,
-    options?: Readonly<ActionOptions>
+    options?: Readonly<ActionOptions>,
   ): Observable<void> {
     const signal = options?.signal;
     const cause = new Error('Locator.fill');
@@ -411,7 +410,7 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
           this.#waitForStableBoundingBoxIfNeeded,
           this.#waitForEnabledIfNeeded,
         ],
-        signal
+        signal,
       ),
       tap(() => {
         return this.emit(LocatorEvent.Action, undefined);
@@ -449,7 +448,7 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
             }
 
             return 'unknown';
-          })
+          }),
         )
           .pipe(
             mergeMap(inputType => {
@@ -493,11 +492,11 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
                         input.value = originalValue;
                       }
                       return newValue.substring(originalValue.length);
-                    }, value)
+                    }, value),
                   ).pipe(
                     mergeMap(textToType => {
                       return from(handle.type(textToType));
-                    })
+                    }),
                   );
                 case 'other-input':
                   return from(handle.focus()).pipe(
@@ -506,34 +505,34 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
                         handle.evaluate((input, value) => {
                           (input as HTMLInputElement).value = value;
                           input.dispatchEvent(
-                            new Event('input', {bubbles: true})
+                            new Event('input', {bubbles: true}),
                           );
                           input.dispatchEvent(
-                            new Event('change', {bubbles: true})
+                            new Event('change', {bubbles: true}),
                           );
-                        }, value)
+                        }, value),
                       );
-                    })
+                    }),
                   );
                 case 'unknown':
                   throw new Error(`Element cannot be filled out.`);
               }
-            })
+            }),
           )
           .pipe(
             catchError(err => {
               void handle.dispose().catch(debugError);
               throw err;
-            })
+            }),
           );
       }),
-      this.operators.retryAndRaceWithSignalAndTimer(signal, cause)
+      this.operators.retryAndRaceWithSignalAndTimer(signal, cause),
     );
   }
 
   #hover<ElementType extends Element>(
     this: Locator<ElementType>,
-    options?: Readonly<ActionOptions>
+    options?: Readonly<ActionOptions>,
   ): Observable<void> {
     const signal = options?.signal;
     const cause = new Error('Locator.hover');
@@ -543,7 +542,7 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
           this.#ensureElementIsInTheViewportIfNeeded,
           this.#waitForStableBoundingBoxIfNeeded,
         ],
-        signal
+        signal,
       ),
       tap(() => {
         return this.emit(LocatorEvent.Action, undefined);
@@ -553,16 +552,16 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
           catchError(err => {
             void handle.dispose().catch(debugError);
             throw err;
-          })
+          }),
         );
       }),
-      this.operators.retryAndRaceWithSignalAndTimer(signal, cause)
+      this.operators.retryAndRaceWithSignalAndTimer(signal, cause),
     );
   }
 
   #scroll<ElementType extends Element>(
     this: Locator<ElementType>,
-    options?: Readonly<LocatorScrollOptions>
+    options?: Readonly<LocatorScrollOptions>,
   ): Observable<void> {
     const signal = options?.signal;
     const cause = new Error('Locator.scroll');
@@ -572,7 +571,7 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
           this.#ensureElementIsInTheViewportIfNeeded,
           this.#waitForStableBoundingBoxIfNeeded,
         ],
-        signal
+        signal,
       ),
       tap(() => {
         return this.emit(LocatorEvent.Action, undefined);
@@ -589,16 +588,16 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
               }
             },
             options?.scrollTop,
-            options?.scrollLeft
-          )
+            options?.scrollLeft,
+          ),
         ).pipe(
           catchError(err => {
             void handle.dispose().catch(debugError);
             throw err;
-          })
+          }),
         );
       }),
-      this.operators.retryAndRaceWithSignalAndTimer(signal, cause)
+      this.operators.retryAndRaceWithSignalAndTimer(signal, cause),
     );
   }
 
@@ -628,8 +627,8 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
     const cause = new Error('Locator.waitHandle');
     return await firstValueFrom(
       this._wait(options).pipe(
-        this.operators.retryAndRaceWithSignalAndTimer(options?.signal, cause)
-      )
+        this.operators.retryAndRaceWithSignalAndTimer(options?.signal, cause),
+      ),
     );
   }
 
@@ -669,7 +668,7 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
       await (handle as ElementHandle<Node>).frame.waitForFunction(
         predicate,
         {signal, timeout: this._timeout},
-        handle
+        handle,
       );
       return true;
     });
@@ -683,7 +682,7 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
    * @internal
    */
   filterHandle<S extends T>(
-    predicate: Predicate<HandleFor<T>, HandleFor<S>>
+    predicate: Predicate<HandleFor<T>, HandleFor<S>>,
   ): Locator<S> {
     return new FilteredLocator(this._clone(), predicate);
   }
@@ -697,9 +696,12 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
     return new MappedLocator(this._clone(), mapper);
   }
 
+  /**
+   * Clicks the located element.
+   */
   click<ElementType extends Element>(
     this: Locator<ElementType>,
-    options?: Readonly<LocatorClickOptions>
+    options?: Readonly<LocatorClickOptions>,
   ): Promise<void> {
     return firstValueFrom(this.#click(options));
   }
@@ -707,27 +709,33 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
   /**
    * Fills out the input identified by the locator using the provided value. The
    * type of the input is determined at runtime and the appropriate fill-out
-   * method is chosen based on the type. contenteditable, selector, inputs are
-   * supported.
+   * method is chosen based on the type. `contenteditable`, select, textarea and
+   * input elements are supported.
    */
   fill<ElementType extends Element>(
     this: Locator<ElementType>,
     value: string,
-    options?: Readonly<ActionOptions>
+    options?: Readonly<ActionOptions>,
   ): Promise<void> {
     return firstValueFrom(this.#fill(value, options));
   }
 
+  /**
+   * Hovers over the located element.
+   */
   hover<ElementType extends Element>(
     this: Locator<ElementType>,
-    options?: Readonly<ActionOptions>
+    options?: Readonly<ActionOptions>,
   ): Promise<void> {
     return firstValueFrom(this.#hover(options));
   }
 
+  /**
+   * Scrolls the located element.
+   */
   scroll<ElementType extends Element>(
     this: Locator<ElementType>,
-    options?: Readonly<LocatorScrollOptions>
+    options?: Readonly<LocatorScrollOptions>,
   ): Promise<void> {
     return firstValueFrom(this.#scroll(options));
   }
@@ -739,12 +747,12 @@ export abstract class Locator<T> extends EventEmitter<LocatorEvents> {
 export class FunctionLocator<T> extends Locator<T> {
   static create<Ret>(
     pageOrFrame: Page | Frame,
-    func: () => Awaitable<Ret>
+    func: () => Awaitable<Ret>,
   ): Locator<Ret> {
     return new FunctionLocator<Ret>(pageOrFrame, func).setTimeout(
       'getDefaultTimeout' in pageOrFrame
         ? pageOrFrame.getDefaultTimeout()
-        : pageOrFrame.page().getDefaultTimeout()
+        : pageOrFrame.page().getDefaultTimeout(),
     );
   }
 
@@ -769,7 +777,7 @@ export class FunctionLocator<T> extends Locator<T> {
         this.#pageOrFrame.waitForFunction(this.#func, {
           timeout: this.timeout,
           signal,
-        })
+        }),
       );
     }).pipe(throwIfEmpty());
   }
@@ -813,10 +821,10 @@ export abstract class DelegatedLocator<T, U> extends Locator<U> {
 
   override setVisibility<ValueType extends Node, NodeType extends Node>(
     this: DelegatedLocator<ValueType, NodeType>,
-    visibility: VisibilityOption
+    visibility: VisibilityOption,
   ): DelegatedLocator<ValueType, NodeType> {
     const locator = super.setVisibility<NodeType>(
-      visibility
+      visibility,
     ) as DelegatedLocator<ValueType, NodeType>;
     locator.#delegate = locator.#delegate.setVisibility<ValueType>(visibility);
     return locator;
@@ -824,10 +832,10 @@ export abstract class DelegatedLocator<T, U> extends Locator<U> {
 
   override setWaitForEnabled<ValueType extends Node, NodeType extends Node>(
     this: DelegatedLocator<ValueType, NodeType>,
-    value: boolean
+    value: boolean,
   ): DelegatedLocator<ValueType, NodeType> {
     const locator = super.setWaitForEnabled<NodeType>(
-      value
+      value,
     ) as DelegatedLocator<ValueType, NodeType>;
     locator.#delegate = this.#delegate.setWaitForEnabled(value);
     return locator;
@@ -838,10 +846,10 @@ export abstract class DelegatedLocator<T, U> extends Locator<U> {
     ElementType extends Element,
   >(
     this: DelegatedLocator<ValueType, ElementType>,
-    value: boolean
+    value: boolean,
   ): DelegatedLocator<ValueType, ElementType> {
     const locator = super.setEnsureElementIsInTheViewport<ElementType>(
-      value
+      value,
     ) as DelegatedLocator<ValueType, ElementType>;
     locator.#delegate = this.#delegate.setEnsureElementIsInTheViewport(value);
     return locator;
@@ -852,10 +860,10 @@ export abstract class DelegatedLocator<T, U> extends Locator<U> {
     ElementType extends Element,
   >(
     this: DelegatedLocator<ValueType, ElementType>,
-    value: boolean
+    value: boolean,
   ): DelegatedLocator<ValueType, ElementType> {
     const locator = super.setWaitForStableBoundingBox<ElementType>(
-      value
+      value,
     ) as DelegatedLocator<ValueType, ElementType>;
     locator.#delegate = this.#delegate.setWaitForStableBoundingBox(value);
     return locator;
@@ -882,7 +890,7 @@ export class FilteredLocator<From, To extends From> extends DelegatedLocator<
   override _clone(): FilteredLocator<From, To> {
     return new FilteredLocator(
       this.delegate.clone(),
-      this.#predicate
+      this.#predicate,
     ).copyOptions(this);
   }
 
@@ -890,7 +898,7 @@ export class FilteredLocator<From, To extends From> extends DelegatedLocator<
     return this.delegate._wait(options).pipe(
       mergeMap(handle => {
         return from(
-          Promise.resolve(this.#predicate(handle, options?.signal))
+          Promise.resolve(this.#predicate(handle, options?.signal)),
         ).pipe(
           filter(value => {
             return value;
@@ -898,10 +906,10 @@ export class FilteredLocator<From, To extends From> extends DelegatedLocator<
           map(() => {
             // SAFETY: It passed the predicate, so this is correct.
             return handle as HandleFor<To>;
-          })
+          }),
         );
       }),
-      throwIfEmpty()
+      throwIfEmpty(),
     );
   }
 }
@@ -915,7 +923,7 @@ export type Mapper<From, To> = (value: From) => Awaitable<To>;
  */
 export type HandleMapper<From, To> = (
   value: HandleFor<From>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ) => Awaitable<HandleFor<To>>;
 /**
  * @internal
@@ -930,7 +938,7 @@ export class MappedLocator<From, To> extends DelegatedLocator<From, To> {
 
   override _clone(): MappedLocator<From, To> {
     return new MappedLocator(this.delegate.clone(), this.#mapper).copyOptions(
-      this
+      this,
     );
   }
 
@@ -938,7 +946,7 @@ export class MappedLocator<From, To> extends DelegatedLocator<From, To> {
     return this.delegate._wait(options).pipe(
       mergeMap(handle => {
         return from(Promise.resolve(this.#mapper(handle, options?.signal)));
-      })
+      }),
     );
   }
 }
@@ -948,7 +956,7 @@ export class MappedLocator<From, To> extends DelegatedLocator<From, To> {
  */
 export type Action<T, U> = (
   element: HandleFor<T>,
-  signal?: AbortSignal
+  signal?: AbortSignal,
 ) => Observable<U>;
 /**
  * @internal
@@ -956,12 +964,12 @@ export type Action<T, U> = (
 export class NodeLocator<T extends Node> extends Locator<T> {
   static create<Selector extends string>(
     pageOrFrame: Page | Frame,
-    selector: Selector
+    selector: Selector,
   ): Locator<NodeFor<Selector>> {
     return new NodeLocator<NodeFor<Selector>>(pageOrFrame, selector).setTimeout(
       'getDefaultTimeout' in pageOrFrame
         ? pageOrFrame.getDefaultTimeout()
-        : pageOrFrame.page().getDefaultTimeout()
+        : pageOrFrame.page().getDefaultTimeout(),
     );
   }
 
@@ -1002,7 +1010,7 @@ export class NodeLocator<T extends Node> extends Locator<T> {
 
   override _clone(): NodeLocator<T> {
     return new NodeLocator<T>(this.#pageOrFrame, this.#selector).copyOptions(
-      this
+      this,
     );
   }
 
@@ -1014,14 +1022,14 @@ export class NodeLocator<T extends Node> extends Locator<T> {
           visible: false,
           timeout: this._timeout,
           signal,
-        }) as Promise<HandleFor<T> | null>
+        }) as Promise<HandleFor<T> | null>,
       );
     }).pipe(
       filter((value): value is NonNullable<typeof value> => {
         return value !== null;
       }),
       throwIfEmpty(),
-      this.operators.conditions([this.#waitForVisibilityIfNeeded], signal)
+      this.operators.conditions([this.#waitForVisibilityIfNeeded], signal),
     );
   }
 }
@@ -1031,7 +1039,7 @@ export class NodeLocator<T extends Node> extends Locator<T> {
  */
 export type AwaitedLocator<T> = T extends Locator<infer S> ? S : never;
 function checkLocatorArray<T extends readonly unknown[] | []>(
-  locators: T
+  locators: T,
 ): ReadonlyArray<Locator<AwaitedLocator<T[number]>>> {
   for (const locator of locators) {
     if (!(locator instanceof Locator)) {
@@ -1045,7 +1053,7 @@ function checkLocatorArray<T extends readonly unknown[] | []>(
  */
 export class RaceLocator<T> extends Locator<T> {
   static create<T extends readonly unknown[]>(
-    locators: T
+    locators: T,
   ): Locator<AwaitedLocator<T[number]>> {
     const array = checkLocatorArray(locators);
     return new RaceLocator(array);
@@ -1062,7 +1070,7 @@ export class RaceLocator<T> extends Locator<T> {
     return new RaceLocator<T>(
       this.#locators.map(locator => {
         return locator.clone();
-      })
+      }),
     ).copyOptions(this);
   }
 
@@ -1070,7 +1078,7 @@ export class RaceLocator<T> extends Locator<T> {
     return race(
       ...this.#locators.map(locator => {
         return locator._wait(options);
-      })
+      }),
     );
   }
 }

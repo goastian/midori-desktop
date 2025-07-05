@@ -56,7 +56,6 @@ def populate_scopes_and_upstream_artifacts(config, jobs):
         assert dep_job
 
         upstream_artifacts = dep_job.attributes["release_artifacts"]
-        attribution_task_ref = "<{}>".format(dep_job.label)
         prefix = get_artifact_prefix(dep_job)
         artifacts = []
         for artifact in upstream_artifacts:
@@ -81,9 +80,9 @@ def populate_scopes_and_upstream_artifacts(config, jobs):
         job["scopes"] = [bucket_scope, action_scope]
 
         partner_path = job["partner-path"].format(**repl_dict)
-        job.setdefault("worker", {})[
-            "upstream-artifacts"
-        ] = generate_upstream_artifacts(attribution_task_ref, artifacts, partner_path)
+        job.setdefault("worker", {})["upstream-artifacts"] = (
+            generate_upstream_artifacts(dep_job.kind, artifacts, partner_path)
+        )
 
         yield job
 
@@ -99,12 +98,11 @@ def make_task_description(config, jobs):
         if not build_platform:
             raise Exception("Cannot find build platform!")
 
-        label = config.kind
         description = "Beetmover for partner attribution"
         attributes = copy_attributes_from_dependent_job(dep_job)
 
         task = {
-            "label": label,
+            "label": "{}-{}".format(config.kind, job["name"]),
             "description": description,
             "dependencies": {dep_job.kind: dep_job.label},
             "attributes": attributes,
@@ -121,12 +119,12 @@ def make_task_description(config, jobs):
         yield task
 
 
-def generate_upstream_artifacts(attribution_task, artifacts, partner_path):
+def generate_upstream_artifacts(attribution_task_kind, artifacts, partner_path):
     upstream_artifacts = []
     for artifact, partner, subpartner, platform, locale in artifacts:
         upstream_artifacts.append(
             {
-                "taskId": {"task-reference": attribution_task},
+                "taskId": {"task-reference": f"<{attribution_task_kind}>"},
                 "taskType": "repackage",
                 "paths": [artifact],
                 "locale": partner_path.format(

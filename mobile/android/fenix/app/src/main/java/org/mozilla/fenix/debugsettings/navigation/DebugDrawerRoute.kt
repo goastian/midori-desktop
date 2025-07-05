@@ -8,11 +8,20 @@ import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.store.BrowserStore
+import mozilla.components.concept.storage.CreditCardsAddressesStorage
 import mozilla.components.concept.storage.LoginsStorage
 import org.mozilla.fenix.R
+import org.mozilla.fenix.debugsettings.addresses.AddressesDebugLocalesRepository
+import org.mozilla.fenix.debugsettings.addresses.AddressesTools
+import org.mozilla.fenix.debugsettings.cfrs.CfrToolsState
+import org.mozilla.fenix.debugsettings.cfrs.CfrToolsStore
+import org.mozilla.fenix.debugsettings.gleandebugtools.GleanDebugToolsStore
+import org.mozilla.fenix.debugsettings.gleandebugtools.ui.GleanDebugToolsScreen
 import org.mozilla.fenix.debugsettings.logins.LoginsTools
+import org.mozilla.fenix.debugsettings.region.RegionTools
 import org.mozilla.fenix.debugsettings.store.DebugDrawerAction
 import org.mozilla.fenix.debugsettings.store.DebugDrawerStore
+import org.mozilla.fenix.debugsettings.cfrs.CfrTools as CfrToolsScreen
 import org.mozilla.fenix.debugsettings.tabs.TabTools as TabToolsScreen
 
 /**
@@ -34,6 +43,22 @@ enum class DebugDrawerRoute(val route: String, @StringRes val title: Int) {
         route = "logins",
         title = R.string.debug_drawer_logins_title,
     ),
+    Addresses(
+        route = "addresses",
+        title = R.string.debug_drawer_addresses_title,
+    ),
+    CfrTools(
+        route = "cfr_tools",
+        title = R.string.debug_drawer_cfr_tools_title,
+    ),
+    GleanDebugTools(
+        route = "glean_debug_tools",
+        title = R.string.glean_debug_tools_title,
+    ),
+    RegionDebugTools(
+        route = "region_debug_tools",
+        title = R.string.debug_drawer_region_tools_title,
+    ),
     ;
 
     companion object {
@@ -42,16 +67,25 @@ enum class DebugDrawerRoute(val route: String, @StringRes val title: Int) {
          *
          * @param debugDrawerStore [DebugDrawerStore] used to dispatch navigation actions.
          * @param browserStore [BrowserStore] used to access [BrowserState].
+         * @param cfrToolsStore [CfrToolsStore] used to access [CfrToolsState].
+         * @param gleanDebugToolsStore [GleanDebugToolsStore] used to dispatch glean debug tools actions.
          * @param loginsStorage [LoginsStorage] used to access logins for [LoginsScreen].
+         * @param addressesDebugLocalesRepository used to control storage for [AddressesTools].
+         * @param creditCardsAddressesStorage used to access addresses for [AddressesTools].
          * @param inactiveTabsEnabled Whether the inactive tabs feature is enabled.
          */
+        @Suppress("LongParameterList")
         fun generateDebugDrawerDestinations(
             debugDrawerStore: DebugDrawerStore,
             browserStore: BrowserStore,
+            cfrToolsStore: CfrToolsStore,
+            gleanDebugToolsStore: GleanDebugToolsStore,
             loginsStorage: LoginsStorage,
+            addressesDebugLocalesRepository: AddressesDebugLocalesRepository,
+            creditCardsAddressesStorage: CreditCardsAddressesStorage,
             inactiveTabsEnabled: Boolean,
         ): List<DebugDrawerDestination> =
-            DebugDrawerRoute.values().map { debugDrawerRoute ->
+            entries.map { debugDrawerRoute ->
                 val onClick: () -> Unit
                 val content: @Composable () -> Unit
                 when (debugDrawerRoute) {
@@ -75,6 +109,47 @@ enum class DebugDrawerRoute(val route: String, @StringRes val title: Int) {
                             LoginsTools(
                                 browserStore = browserStore,
                                 loginsStorage = loginsStorage,
+                            )
+                        }
+                    }
+
+                    Addresses -> {
+                        onClick = {
+                            debugDrawerStore.dispatch(DebugDrawerAction.NavigateTo.Addresses)
+                        }
+                        content = {
+                            AddressesTools(
+                                debugLocalesRepository = addressesDebugLocalesRepository,
+                                creditCardsAddressesStorage = creditCardsAddressesStorage,
+                            )
+                        }
+                    }
+
+                    CfrTools -> {
+                        onClick = {
+                            debugDrawerStore.dispatch(DebugDrawerAction.NavigateTo.CfrTools)
+                        }
+                        content = {
+                            CfrToolsScreen(cfrToolsStore = cfrToolsStore)
+                        }
+                    }
+
+                    GleanDebugTools -> {
+                        onClick = {
+                            debugDrawerStore.dispatch(DebugDrawerAction.NavigateTo.GleanDebugTools)
+                        }
+                        content = {
+                            GleanDebugToolsScreen(gleanDebugToolsStore = gleanDebugToolsStore)
+                        }
+                    }
+
+                    RegionDebugTools -> {
+                        onClick = {
+                            debugDrawerStore.dispatch(DebugDrawerAction.NavigateTo.RegionDebugTools)
+                        }
+                        content = {
+                            RegionTools(
+                                browserStore = browserStore,
                             )
                         }
                     }

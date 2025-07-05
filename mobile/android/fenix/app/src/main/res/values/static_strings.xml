@@ -2,7 +2,7 @@
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
-<resources>
+<resources xmlns:moz="http://schemas.android.com/apk/res-auto" xmlns:tools="http://schemas.android.com/tools">
     <!-- Name of the application -->
     <string name="app_name" translatable="false">Firefox Fenix</string>
     <string name="firefox" translatable="false">Firefox</string>
@@ -25,9 +25,10 @@
     <!-- Application Services abbreviation used in AboutFragment -->
     <string name="app_services_abbreviation" translatable="false">AS</string>
     <!-- Name for the Pocket product -->
-    <string name="pocket_product_name" translatable="false">Pocket</string>
-    <!-- Name for the Fakespot product -->
-    <string name="shopping_product_name" translatable="false">Fakespot</string>
+    <string name="pocket_product_name" translatable="false" tools:ignore="UnusedResources" moz:removedIn="140">Pocket</string>
+
+    <!-- App preference label for keeping the debug menu (secret settings, secret debug info, nimbus experiments, etc.) permanently revealed -->
+    <string name="preferences_persistent_debug_menu" translatable="false">Keep Debug Menu revealed</string>
 
     <!-- Secret Settings Strings -->
     <!-- Label for the secret settings preference -->
@@ -72,21 +73,49 @@
     <string name="preferences_sync_debug_temporary_auth_error_button_title">Simulate temporary account auth error</string>
     <!-- Button title for simulating an FxA permanent auth error inside the Sync Debug menu -->
     <string name="preferences_sync_debug_permanent_auth_error_button_title">Simulate permanent account auth error</string>
-    <!-- Label for enabling the Tabs Tray to Compose changes -->
-    <string name="preferences_debug_settings_tabs_tray_to_compose" translatable="false">Enable Tabs Tray to Compose rewrite</string>
-    <!-- Label for enabling the Compose Top Sites -->
-    <string name="preferences_debug_settings_compose_top_sites" translatable="false">Enable Compose Top Sites</string>
+    <!-- Label for enabling the Compose Homepage -->
+    <string name="preferences_debug_settings_compose_homepage" translatable="false">Enable Compose Homepage</string>
+    <!-- Label for enabling the Compose Bookmarks -->
+    <string name="preferences_debug_settings_compose_bookmarks" translatable="false">Enable Compose Bookmarks</string>
+    <!-- Label for enabling the Homepage Search Bar -->
+    <string name="preferences_debug_settings_homepage_searchbar" translatable="false">Enable Homepage Search Bar</string>
+    <!-- Label for enabling the Compose Logins -->
+    <string name="preferences_debug_settings_compose_logins" translatable="false">Enable Compose Logins</string>
+    <!-- Label for enabling Homepage as a New Tab -->
+    <string name="preferences_debug_settings_homepage_as_new_tab" translatable="false">Enable Homepage as a New Tab</string>
+    <!-- Label for enabling MARS API integration -->
+    <string name="preferences_debug_settings_mars_api" translatable="false">Enable MARS API integration</string>
+    <!-- Label for enabling Merino content recommendations -->
+    <string name="preferences_debug_settings_merino_content_recommendations" translatable="false">Enable Merino Content Recommendations</string>
     <!-- Label for enabling the menu redesign -->
     <string name="preferences_debug_settings_menu_redesign" translatable="false">Enable Menu Redesign</string>
     <!-- Label for enabling Firefox Suggest -->
     <string name="preferences_debug_settings_fxsuggest" translatable="false">Enable Firefox Suggest</string>
-    <!-- Label for enabling Toolbar Redesign incomplete portions -->
-    <string name="preferences_debug_settings_toolbar_redesign" translatable="false">Enable Toolbar Redesign incomplete portions</string>
+    <!-- Label for enabling the redesigned toolbar -->
+    <string name="preferences_debug_settings_composable_toolbar" translatable="false">Enable Composable Toolbar</string>
     <!-- Label for enabling Felt Privacy -->
     <string name="preferences_debug_felt_privacy" translatable="false">Enable Felt Privacy</string>
     <!-- Label for enabling the Debug Drawer -->
     <string name="preferences_debug_settings_debug_drawer" translatable="false">Enable Debug Drawer</string>
+    <!-- Label for enabling the microsurvey feature -->
+    <string name="preferences_debug_settings_microsurvey_feature" translatable="false">Enable Microsurvey Feature</string>
+    <!-- Label for enabling Unified Trust Panel -->
+    <string name="preferences_debug_settings_unified_trust_panel" translatable="false">Enable Unified Trust Panel</string>
+    <!-- Label for enabling Trending Searches -->
+    <string name="preferences_debug_settings_trending_searches" translatable="false">Enable Trending Searches</string>
+    <!-- Label for enabling remote search configuration -->
+    <string name="preferences_debug_settings_remote_search_configuration" translatable="false">Enable Remote Search Configuration (requires restart)</string>
+    <!-- Label for enabling Recent Searches -->
+    <string name="preferences_debug_settings_recent_searches" translatable="false">Enable Recent Searches</string>
+    <!-- Label for enabling Shortcut Suggestions -->
+    <string name="preferences_debug_settings_shortcuts_suggestions" translatable="false">Enable Shortcut Suggestions</string>
+    <!-- Label for enabling the Tab Strip -->
+    <string name="preferences_tab_strip_title" translatable="false" moz:removedIn="139" tools:ignore="UnusedResources">Enable Tab Strip</string>
+    <string name="preferences_tab_strip_details" translatable="false" moz:removedIn="139" tools:ignore="UnusedResources">Highly experimental, early access preview.</string>
 
+    <!-- Label for enabling the DNS over HTTPS settings -->
+    <string name="preferences_debug_settings_enable_doh_settings" translatable="false">Enable DNS over HTTPS settings</string>
+    
     <!-- A secret menu option in the tabs tray for making a tab inactive for testing. -->
     <string name="inactive_tabs_menu_item">Make inactive</string>
 
@@ -96,6 +125,9 @@
     <!-- Secret debug info strings -->
     <string name="debug_info_region_home" translatable="false">Home region</string>
     <string name="debug_info_region_current" translatable="false">Current region</string>
+    <string name="debug_info_distribution_id" translatable="false">Distribution ID</string>
+    <string name="debug_info_play_referrer" translatable="false">Play install referrer</string>
+    <string name="debug_info_run_query_provider_test" translatable="false">Run query provider test</string>
 
     <!-- Profiler settings -->
     <string name="preferences_start_profiler">Start Profiler</string>
@@ -117,6 +149,7 @@
     <string name="profiler_start_cancel">Cancel</string>
 
     <string name="profiler_gathering">Gathering the profile</string>
+    <string name="profiler_stopping">Stopping the profiler</string>
     <string name="profiler_no_info">No information was gathered</string>
 
     <string name="profiler_waiting_start">Waiting for Profiler to start</string>
@@ -129,7 +162,70 @@
 
     <string name="profiler_uploaded_url_to_clipboard">URL copied to clipboard successfully</string>
 
-    <string name="review_quality_check_retailer_name_amazon">Amazon</string>
-    <string name="review_quality_check_retailer_name_bestbuy">Best Buy</string>
-    <string name="review_quality_check_retailer_name_walmart">Walmart</string>
+    <!-- Debug drawer "contextual feature recommendation" (CFR) tools -->
+    <!-- The description of the reset CFR section in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_reset_cfr_description">Toggle off a CFR to reset it. Toggle on a CFR to mark it as shown.</string>
+    <!-- The text of the reset CFR timestamp button in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_reset_cfr_timestamp">Reset last CFR shown timestamp</string>
+    <!-- The title of the homepage CFRs section in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_homepage_cfr_title">Homepage CFRs</string>
+    <!-- The title of the tabs tray CFRs section in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_tabs_tray_cfr_title">Tabs Tray CFRs</string>
+    <!-- The title of the toolbar CFRs section in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_toolbar_cfr_title">Toolbar CFRs</string>
+    <!-- The title of the other CFRs section in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_other_cfr_title">Other CFRs</string>
+    <!-- The homepage nav toolbar CFR description in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_homepage_nav_toolbar_description" moz:removedIn="140" tools:ignore="UnusedResources">Displayed when the user is on the homepage and sees the new navigation bar for the first time. Note that this CFR must be displayed in order for the Homepage Sync CFR to be shown.</string>
+    <!-- The homepage search bar CFR title in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_homepage_searchbar_title">Homepage Searchbar</string>
+    <!-- The homepage searchbar CFR description in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_homepage_searchbar_description">Displayed when a new user sees the homepage for the first time.</string>
+    <!-- The homepage sync CFR title in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_homepage_sync_title">Homepage Sync</string>
+    <!-- The homepage sync CFR description in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_homepage_sync_description">Displayed the first time visiting the homepage after signing-in and the Homepage Navigation Toolbar CFR has been shown.</string>
+    <!-- The inactive tabs CFR title in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_inactive_tabs_title">Inactive Tabs</string>
+    <!-- The inactive tabs CFR description in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_inactive_tabs_description">Displayed the first time the user gets an inactive tab and a CFR has not been shown in at least 3 days.</string>
+    <!-- The tab auto close banner title in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_tab_auto_close_title">Tab Auto Close</string>
+    <!-- The tab auto close banner description in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_tab_auto_close_description">Displayed the first time the user has at least 6 normal tabs or 6 private tabs open at once and a CFR has not been shown in at least 3 days.</string>
+    <!-- The navigation buttons CFR title in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_navigation_buttons_title" moz:removedIn="140" tools:ignore="UnusedResources">Navigation Buttons</string>
+    <!-- The navigation buttons CFR description in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_navigation_buttons_description" moz:removedIn="140" tools:ignore="UnusedResources">Displayed the first time the user double taps on the forward or backward navigation buttons within 5 seconds.</string>
+    <!-- The open in app CFR title in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_open_in_app_title">Open in App</string>
+    <!-- The open in app CFR description in CFR Tools -->
+    <string name="debug_drawer_cfr_tools_open_in_app_description">Displayed when the user has the “Open links in apps” setting set to “Never”, and it is the user’s first time visiting a website that can be opened in an installed native app.</string>
+
+    <!-- Glean debug tools -->
+    <!-- The title of the logging section in Glean debug tools -->
+    <string name="glean_debug_tools_logging_title">Logging</string>
+    <!-- The label of the log pings to console switch in Glean debug tools -->
+    <string name="glean_debug_tools_log_pings_to_console">Log pings to console</string>
+    <!-- The title of the debug view section in Glean debug tools -->
+    <string name="glean_debug_tools_debug_view_title">Debug View</string>
+    <!-- The debug view tag text placeholder in Glean debug tools -->
+    <string name="glean_debug_tools_debug_view_tag_placeholder">Enter the debug view tag here</string>
+    <!-- The debug view tag error message in Glean debug tools. The first parameter is the maximum
+        number of characters that can be in the debug view tag -->
+    <string name="glean_debug_tools_debug_view_tag_error">Exceeded the maximum number of characters (%1$s)</string>
+    <!-- The open debug view for a certain debug view tag button text in Glean debug tools. The
+        first parameter is the debug view tag. -->
+    <string name="glean_debug_tools_open_debug_view_debug_view_tag">Open recent pings for “%1$s” in debug view (in default browser)</string>
+    <!-- The copy debug view link for a certain debug view tag button text in Glean debug tools. The
+        first parameter is the debug view tag. -->
+    <string name="glean_debug_tools_copy_debug_view_link_debug_view_tag">Copy debug view link for recent pings for “%1$s” </string>
+    <!-- The open debug view button text in Glean debug tools -->
+    <string name="glean_debug_tools_open_debug_view">Open debug view (in default browser)</string>
+    <!-- The copy debug view link button text in Glean debug tools -->
+    <string name="glean_debug_tools_copy_debug_view_link">Copy debug view link</string>
+    <!-- The send ping button text in Glean debug tools -->
+    <string name="glean_debug_tools_send_ping_button_text">Send Ping</string>
+    <!-- The send pings toast message. The first parameter is the type of ping -->
+    <string name="glean_debug_tools_send_ping_toast_message">Sent %1$s ping</string>
 </resources>

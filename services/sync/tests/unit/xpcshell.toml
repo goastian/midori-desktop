@@ -52,10 +52,7 @@ skip-if = ["appname == 'thunderbird'"]
 skip-if = ["appname == 'thunderbird'"]
 
 ["test_bookmark_engine.js"]
-skip-if = [
-  "appname == 'thunderbird'",
-  "tsan", # Runs unreasonably slow on TSan, bug 1612707
-]
+skip-if = ["appname == 'thunderbird'"]
 
 ["test_bookmark_order.js"]
 skip-if = ["appname == 'thunderbird'"]
@@ -70,10 +67,7 @@ skip-if = ["appname == 'thunderbird'"]
 skip-if = ["appname == 'thunderbird'"]
 
 ["test_bookmark_tracker.js"]
-skip-if = [
-  "appname == 'thunderbird'",
-  "tsan", # Runs unreasonably slow on TSan, bug 1612707
-]
+skip-if = ["appname == 'thunderbird'"]
 requesttimeoutfactor = 4
 
 ["test_bridged_engine.js"]
@@ -105,6 +99,7 @@ skip-if = ["appname == 'thunderbird'"]
 
 ["test_errorhandler_1.js"]
 run-sequentially = "Frequent timeouts, bug 1395148"
+skip-if = ["os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt"] # Bug 1864117
 
 ["test_errorhandler_2.js"]
 run-sequentially = "Frequent timeouts, bug 1395148"
@@ -114,16 +109,12 @@ run-sequentially = "Frequent timeouts, bug 1395148"
 ["test_errorhandler_sync_checkServerError.js"]
 
 ["test_extension_storage_engine.js"]
-skip-if = ["appname == 'thunderbird'"]
 run-sequentially = "extension-storage migration happens only once, and must be tested first."
+skip-if = ["appname == 'thunderbird'"]
 
 ["test_extension_storage_engine_kinto.js"]
-skip-if = ["appname == 'thunderbird'"]
 run-sequentially = "extension-storage migration happens only once, and must be tested first."
-
-["test_extension_storage_migration_telem.js"]
 skip-if = ["appname == 'thunderbird'"]
-run-sequentially = "extension-storage migration happens only once, and must be tested first."
 
 ["test_extension_storage_tracker_kinto.js"]
 skip-if = ["appname == 'thunderbird'"]
@@ -203,10 +194,6 @@ skip-if = ["appname == 'thunderbird'"]
 
 ["test_service_attributes.js"]
 # Bug 752243: Profile cleanup frequently fails
-skip-if = [
-  "os == 'mac'",
-  "os == 'linux'",
-]
 
 ["test_service_cluster.js"]
 
@@ -237,10 +224,6 @@ run-sequentially = "Frequent timeouts, bug 1395148"
 
 ["test_service_wipeServer.js"]
 # Bug 752243: Profile cleanup frequently fails
-skip-if = [
-  "os == 'mac'",
-  "os == 'linux'",
-]
 
 ["test_status.js"]
 
@@ -267,16 +250,16 @@ skip-if = ["appname == 'thunderbird'"]
 skip-if = ["appname == 'thunderbird'"]
 
 ["test_tab_quickwrite.js"]
-skip-if = ["appname == 'thunderbird'"]
+skip-if = [
+  "appname == 'thunderbird'",
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1819545
+]
 
 ["test_tab_tracker.js"]
 skip-if = ["appname == 'thunderbird'"]
 
 ["test_telemetry.js"]
-skip-if = [
-  "appname == 'thunderbird'",
-  "tsan", # Unreasonably slow, bug 1612707
-]
+skip-if = ["appname == 'thunderbird'"]
 requesttimeoutfactor = 4
 
 ["test_tracker_addChanged.js"]

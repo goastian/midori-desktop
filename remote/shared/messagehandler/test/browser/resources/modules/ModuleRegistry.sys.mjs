@@ -3,9 +3,9 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 export const modules = {
-  root: {},
-  "windowglobal-in-root": {},
-  windowglobal: {},
+  root: { vendor: {} },
+  "windowglobal-in-root": { vendor: {} },
+  windowglobal: { vendor: {} },
 };
 
 const BASE_FOLDER =
@@ -16,14 +16,25 @@ ChromeUtils.defineESModuleGetters(modules.root, {
   command: `${BASE_FOLDER}/root/command.sys.mjs`,
   event: `${BASE_FOLDER}/root/event.sys.mjs`,
   invalid: `${BASE_FOLDER}/root/invalid.sys.mjs`,
+  retry: `${BASE_FOLDER}/root/retry.sys.mjs`,
   rootOnly: `${BASE_FOLDER}/root/rootOnly.sys.mjs`,
   windowglobaltoroot: `${BASE_FOLDER}/root/windowglobaltoroot.sys.mjs`,
+});
+
+// eslint-disable-next-line mozilla/lazy-getter-object-name
+ChromeUtils.defineESModuleGetters(modules.root.vendor, {
+  vendored: `${BASE_FOLDER}/root/vendor/vendored.sys.mjs`,
 });
 
 // eslint-disable-next-line mozilla/lazy-getter-object-name
 ChromeUtils.defineESModuleGetters(modules["windowglobal-in-root"], {
   command: `${BASE_FOLDER}/windowglobal-in-root/command.sys.mjs`,
   event: `${BASE_FOLDER}/windowglobal-in-root/event.sys.mjs`,
+});
+
+// eslint-disable-next-line mozilla/lazy-getter-object-name
+ChromeUtils.defineESModuleGetters(modules["windowglobal-in-root"].vendor, {
+  vendored: `${BASE_FOLDER}/windowglobal-in-root/vendor/vendored.sys.mjs`,
 });
 
 // eslint-disable-next-line mozilla/lazy-getter-object-name
@@ -36,5 +47,11 @@ ChromeUtils.defineESModuleGetters(modules.windowglobal, {
   eventonprefchange: `${BASE_FOLDER}/windowglobal/eventonprefchange.sys.mjs`,
   retry: `${BASE_FOLDER}/windowglobal/retry.sys.mjs`,
   sessiondataupdate: `${BASE_FOLDER}/windowglobal/sessiondataupdate.sys.mjs`,
+  timeout: `${BASE_FOLDER}/windowglobal/timeout.sys.mjs`,
   windowglobaltoroot: `${BASE_FOLDER}/windowglobal/windowglobaltoroot.sys.mjs`,
+});
+
+// eslint-disable-next-line mozilla/lazy-getter-object-name
+ChromeUtils.defineESModuleGetters(modules.windowglobal.vendor, {
+  vendored: `${BASE_FOLDER}/windowglobal/vendor/vendored.sys.mjs`,
 });

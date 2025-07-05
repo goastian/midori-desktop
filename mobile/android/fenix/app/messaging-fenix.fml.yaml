@@ -45,7 +45,12 @@ import:
               INACTIVE_5_DAYS: "'app_launched'|eventLastSeen('Days', 0) >= 5"
 
               # Behavioral Targeting Events
+              # See https://experimenter.info/mobile-behavioral-targeting for more info
               RECENTLY_PRINTED:  "'print_tapped'|eventLastSeen('Hours') <= 24"
+              SECOND_HOMEPAGE_VIEW: "'home_screen_displayed'|eventSum('Years', 4, 0) >= 2"
+              PERFORMED_A_SEARCH_AGAIN_RECENTLY: "'performed_search'|eventSum('Years', 4, 0) >= 2 && 'performed_search'|eventLastSeen('Minutes') < 1"
+              FXA_CURRENTLY_SIGNED_IN: "is_fxa_signed_in == true"
+              FXA_MORE_THAN_1_DEVICE: "fxa_connected_devices > 1"
 
               # Has the user signed in the last 4 years
               FXA_SIGNED_IN: "'sync_auth.sign_in'|eventLastSeen('Years', 0) <= 4"
@@ -77,6 +82,7 @@ import:
               OPEN_SETTINGS_TRACKING_PROTECTION: ://settings_tracking_protection
               OPEN_SETTINGS_WALLPAPERS: ://settings_wallpapers
               OPEN_SETTINGS: ://settings
+              OPEN_SHARE_SHEET: ://share_sheet
               TURN_ON_SYNC: ://turn_on_sync
             styles:
               DEFAULT:
@@ -97,7 +103,7 @@ import:
               NOTIFICATION:
                 priority: 50
                 max-display-count: 1
-              MICRO_SURVEY:
+              MICROSURVEY:
                 priority: 50
                 max-display-count: 5
             $$surfaces:

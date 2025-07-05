@@ -26,17 +26,18 @@ import org.mozilla.focus.helpers.TestAssetHelper.getGenericTabAsset
 import org.mozilla.focus.helpers.TestHelper.createCustomTabIntent
 import org.mozilla.focus.helpers.TestHelper.mDevice
 import org.mozilla.focus.helpers.TestHelper.waitingTime
+import org.mozilla.focus.helpers.TestSetup
 import org.mozilla.focus.testAnnotations.SmokeTest
 import java.io.IOException
 
 @RunWith(AndroidJUnit4ClassRunner::class)
-class CustomTabTest {
+class CustomTabTest : TestSetup() {
     private lateinit var webServer: MockWebServer
-    private val MENU_ITEM_LABEL = "TestItem4223"
-    private val ACTION_BUTTON_DESCRIPTION = "TestButton"
+    private val menuItemTestLabel = "TestItem4223"
+    private val actionButtonDescription = "TestButton"
     private val featureSettingsHelper = FeatureSettingsHelper()
 
-    @get: Rule
+    @get:Rule
     val activityTestRule = ActivityTestRule(
         IntentReceiverActivity::class.java,
         true,
@@ -44,7 +45,8 @@ class CustomTabTest {
     )
 
     @Before
-    fun setUp() {
+    override fun setUp() {
+        super.setUp()
         featureSettingsHelper.setCfrForTrackingProtectionEnabled(false)
         featureSettingsHelper.setShowStartBrowsingCfrEnabled(false)
         featureSettingsHelper.setCookieBannerReductionEnabled(false)
@@ -70,7 +72,7 @@ class CustomTabTest {
         val customTabPage = getGenericAsset(webServer)
         val customTabActivity =
             launchActivity<IntentReceiverActivity>(
-                createCustomTabIntent(customTabPage.url, MENU_ITEM_LABEL, ACTION_BUTTON_DESCRIPTION),
+                createCustomTabIntent(customTabPage.url, menuItemTestLabel, actionButtonDescription),
             )
 
         browserScreen {
@@ -80,11 +82,11 @@ class CustomTabTest {
         }
 
         customTab {
-            verifyCustomTabActionButton(ACTION_BUTTON_DESCRIPTION)
+            verifyCustomTabActionButton(actionButtonDescription)
             verifyShareButtonIsDisplayed()
             openCustomTabMenu()
             verifyTheStandardMenuItems()
-            verifyCustomMenuItem(MENU_ITEM_LABEL)
+            verifyCustomMenuItem(menuItemTestLabel)
             // Close the menu and close the tab
             mDevice.pressBack()
             closeCustomTab()

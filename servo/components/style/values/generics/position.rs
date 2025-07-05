@@ -5,8 +5,19 @@
 //! Generic types for CSS handling of specified and computed values of
 //! [`position`](https://drafts.csswg.org/css-backgrounds-3/#position)
 
+use std::fmt::Write;
+
+use style_traits::CssWriter;
+use style_traits::SpecifiedValueInfo;
+use style_traits::ToCss;
+
+use crate::logical_geometry::PhysicalSide;
 use crate::values::animated::ToAnimatedZero;
+use crate::values::generics::box_::PositionProperty;
+use crate::values::generics::length::{AnchorResolutionResult, GenericAnchorSizeFunction};
 use crate::values::generics::ratio::Ratio;
+use crate::values::generics::Optional;
+use crate::values::DashedIdent;
 
 /// A generic type for representing a CSS [position](https://drafts.csswg.org/css-values/#position).
 #[derive(
@@ -121,6 +132,7 @@ impl<Pos> PositionOrAuto<Pos> {
     PartialEq,
     Parse,
     SpecifiedValueInfo,
+    ToAnimatedValue,
     ToAnimatedZero,
     ToComputedValue,
     ToCss,
@@ -170,6 +182,7 @@ impl<Integer> ZIndex<Integer> {
     MallocSizeOf,
     PartialEq,
     SpecifiedValueInfo,
+    ToAnimatedValue,
     ToComputedValue,
     ToCss,
     ToResolvedValue,
@@ -199,6 +212,7 @@ pub enum PreferredRatio<N> {
     MallocSizeOf,
     PartialEq,
     SpecifiedValueInfo,
+    ToAnimatedValue,
     ToComputedValue,
     ToCss,
     ToResolvedValue,
@@ -234,5 +248,263 @@ impl<N> ToAnimatedZero for AspectRatio<N> {
     #[inline]
     fn to_animated_zero(&self) -> Result<Self, ()> {
         Err(())
+    }
+}
+
+/// Specified type for `inset` properties, which allows
+/// the use of the `anchor()` function.
+/// Note(dshin): `LengthPercentageOrAuto` is not used here because
+/// having `LengthPercentageOrAuto` and `AnchorFunction` in the enum
+/// pays the price of the discriminator for `LengthPercentage | Auto`
+/// as well as `LengthPercentageOrAuto | AnchorFunction`. This increases
+/// the size of the style struct, which would not be great.
+/// On the other hand, we trade for code duplication, so... :(
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    ToCss,
+    ToShmem,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToResolvedValue,
+)]
+#[repr(C)]
+pub enum GenericInset<P, LP> {
+    /// A `<length-percentage>` value.
+    LengthPercentage(LP),
+    /// An `auto` value.
+    Auto,
+    /// Inset defined by the anchor element.
+    ///
+    /// <https://drafts.csswg.org/css-anchor-position-1/#anchor-pos>
+    AnchorFunction(
+        #[animation(field_bound)]
+        #[distance(field_bound)]
+        Box<GenericAnchorFunction<P, LP>>,
+    ),
+    /// Inset defined by the size of the anchor element.
+    ///
+    /// <https://drafts.csswg.org/css-anchor-position-1/#anchor-pos>
+    AnchorSizeFunction(
+        #[animation(field_bound)]
+        #[distance(field_bound)]
+        Box<GenericAnchorSizeFunction<LP>>,
+    ),
+    /// A `<length-percentage>` value, guaranteed to contain `calc()`,
+    /// which then is guaranteed to contain `anchor()` or `anchor-size()`.
+    AnchorContainingCalcFunction(LP),
+}
+
+impl<P, LP> SpecifiedValueInfo for GenericInset<P, LP>
+where
+    LP: SpecifiedValueInfo,
+{
+    fn collect_completion_keywords(f: style_traits::KeywordsCollectFn) {
+        LP::collect_completion_keywords(f);
+        f(&["auto"]);
+        if static_prefs::pref!("layout.css.anchor-positioning.enabled") {
+            f(&["anchor", "anchor-size"]);
+        }
+    }
+}
+
+impl<P, LP> GenericInset<P, LP> {
+    /// `auto` value.
+    #[inline]
+    pub fn auto() -> Self {
+        Self::Auto
+    }
+
+    /// Return true if it is 'auto'.
+    #[inline]
+    #[cfg(feature = "servo")]
+    pub fn is_auto(&self) -> bool {
+        matches!(self, Self::Auto)
+    }
+}
+
+pub use self::GenericInset as Inset;
+
+/// Anchor function used by inset properties. This resolves
+/// to length at computed time.
+///
+/// https://drafts.csswg.org/css-anchor-position-1/#funcdef-anchor
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToShmem,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToResolvedValue,
+    Serialize,
+    Deserialize,
+)]
+#[repr(C)]
+pub struct GenericAnchorFunction<Percentage, LengthPercentage> {
+    /// Anchor name of the element to anchor to.
+    /// If omitted, selects the implicit anchor element.
+    #[animation(constant)]
+    pub target_element: DashedIdent,
+    /// Where relative to the target anchor element to position
+    /// the anchored element to.
+    pub side: AnchorSide<Percentage>,
+    /// Value to use in case the anchor function is invalid.
+    pub fallback: Optional<LengthPercentage>,
+}
+
+impl<Percentage, LengthPercentage> ToCss for GenericAnchorFunction<Percentage, LengthPercentage>
+where
+    Percentage: ToCss,
+    LengthPercentage: ToCss,
+{
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> std::fmt::Result
+    where
+        W: Write,
+    {
+        dest.write_str("anchor(")?;
+        if !self.target_element.is_empty() {
+            self.target_element.to_css(dest)?;
+            dest.write_str(" ")?;
+        }
+        self.side.to_css(dest)?;
+        if let Some(f) = self.fallback.as_ref() {
+            // This comma isn't really `derive()`-able, unfortunately.
+            dest.write_str(", ")?;
+            f.to_css(dest)?;
+        }
+        dest.write_str(")")
+    }
+}
+
+impl<Percentage, LengthPercentage> GenericAnchorFunction<Percentage, LengthPercentage> {
+    /// Resolve the anchor function. On failure, return reference to fallback, if exists.
+    pub fn resolve<'a>(
+        &'a self,
+        side: PhysicalSide,
+        position_property: PositionProperty,
+    ) -> AnchorResolutionResult<'a, LengthPercentage> {
+        if !position_property.is_absolutely_positioned() {
+            return AnchorResolutionResult::new_anchor_invalid(self.fallback.as_ref());
+        }
+
+        if !self.side.valid_for(side) {
+            return AnchorResolutionResult::new_anchor_invalid(self.fallback.as_ref());
+        }
+
+        // TODO(dshin): Do the actual anchor resolution here.
+        AnchorResolutionResult::new_anchor_invalid(self.fallback.as_ref())
+    }
+}
+
+/// Keyword values for the anchor positioning function.
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToCss,
+    ToShmem,
+    Parse,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToResolvedValue,
+    Serialize,
+    Deserialize,
+)]
+#[repr(u8)]
+pub enum AnchorSideKeyword {
+    /// Inside relative (i.e. Same side) to the inset property it's used in.
+    Inside,
+    /// Same as above, but outside (i.e. Opposite side).
+    Outside,
+    /// Top of the anchor element.
+    Top,
+    /// Left of the anchor element.
+    Left,
+    /// Right of the anchor element.
+    Right,
+    /// Bottom of the anchor element.
+    Bottom,
+    /// Refers to the start side of the anchor element for the same axis of the inset
+    /// property it's used in, resolved against the positioned element's containing
+    /// block's writing mode.
+    Start,
+    /// Same as above, but for the end side.
+    End,
+    /// Same as `start`, resolved against the positioned element's writing mode.
+    SelfStart,
+    /// Same as above, but for the end side.
+    SelfEnd,
+    /// Halfway between `start` and `end` sides.
+    Center,
+}
+
+impl AnchorSideKeyword {
+    fn valid_for(&self, side: PhysicalSide) -> bool {
+        match self {
+            Self::Left | Self::Right => matches!(side, PhysicalSide::Left | PhysicalSide::Right),
+            Self::Top | Self::Bottom => matches!(side, PhysicalSide::Top | PhysicalSide::Bottom),
+            Self::Inside |
+            Self::Outside |
+            Self::Start |
+            Self::End |
+            Self::SelfStart |
+            Self::SelfEnd |
+            Self::Center => true,
+        }
+    }
+}
+
+/// Anchor side for the anchor positioning function.
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    Parse,
+    SpecifiedValueInfo,
+    ToCss,
+    ToShmem,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToResolvedValue,
+    Serialize,
+    Deserialize,
+)]
+#[repr(C)]
+pub enum AnchorSide<P> {
+    /// A keyword value for the anchor side.
+    Keyword(AnchorSideKeyword),
+    /// Percentage value between the `start` and `end` sides.
+    Percentage(P),
+}
+
+impl<P> AnchorSide<P> {
+    /// Is this anchor side valid for a given side?
+    pub fn valid_for(&self, side: PhysicalSide) -> bool {
+        match self {
+            Self::Keyword(k) => k.valid_for(side),
+            Self::Percentage(_) => true,
+        }
     }
 }

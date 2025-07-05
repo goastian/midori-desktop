@@ -25,7 +25,7 @@ from mozbuild.vendor.rewrite_mozbuild import (
     remove_file_from_moz_build_file,
 )
 
-DEFAULT_EXCLUDE_FILES = [".git*", ".git*/**"]
+DEFAULT_EXCLUDE_FILES = [".git*", ".git*/**", "**/.cvsignore"]
 DEFAULT_KEEP_FILES = ["**/moz.build", "**/moz.yaml"]
 DEFAULT_INCLUDE_FILES = []
 
@@ -115,12 +115,14 @@ class VendorManifest(MozbuildObject):
         force,
         add_to_exports,
         patch_mode,
+        new_files_only,
     ):
         self.manifest = manifest
         self.yaml_file = yaml_file
         self._extract_directory = throwe
         self.logInfo = functools.partial(self.log, logging.INFO, "vendor")
         self.patch_mode = patch_mode
+        self.new_files_only = new_files_only
         if "vendor-directory" not in self.manifest["vendoring"]:
             self.manifest["vendoring"]["vendor-directory"] = os.path.dirname(
                 self.yaml_file
@@ -157,7 +159,11 @@ class VendorManifest(MozbuildObject):
         )
 
         # ==========================================================
-        if not force and self.manifest["origin"]["revision"] == new_revision:
+        if (
+            not force
+            and not new_files_only
+            and self.manifest["origin"]["revision"] == new_revision
+        ):
             # We're up to date, don't do anything
             self.logInfo({}, "Latest upstream matches in-tree.")
             return
@@ -165,6 +171,15 @@ class VendorManifest(MozbuildObject):
             # Only print the new revision to stdout
             print("%s %s" % (new_revision, timestamp))
             return
+
+        # ==========================================================
+        if new_files_only:
+            # Some steps don't make sense for new_files_only.
+            self.manifest["vendoring"].setdefault("skip-vendoring-steps", [])
+            self.manifest["vendoring"]["skip-vendoring-steps"] += [
+                "spurious-check",
+                "update-moz-yaml",
+            ]
 
         # ==========================================================
         if flavor == "regular":
@@ -211,38 +226,31 @@ class VendorManifest(MozbuildObject):
         # blame.  So really all we can do is just download and replace the
         # files and see if they changed...
 
-        def download_and_write_file(url, destination):
+        def download_file_revision(upstream_path, revision, destination):
+            if self.new_files_only and os.path.isfile(destination):
+                return
+
+            url = self.source_host.upstream_path_to_file(revision, upstream_path)
             self.logInfo(
                 {"local_file": destination, "url": url},
                 "Downloading {local_file} from {url}...",
             )
 
-            with mozfile.NamedTemporaryFile() as tmpfile:
-                try:
-                    req = requests.get(url, stream=True)
-                    for data in req.iter_content(4096):
-                        tmpfile.write(data)
-                    tmpfile.seek(0)
-
-                    shutil.copy2(tmpfile.name, destination)
-                except Exception as e:
-                    raise (e)
+            self.source_host.download_single_file(url, destination)
 
         # Only one of these loops will have content, so just do them both
         for f in self.manifest["vendoring"].get("individual-files", []):
-            url = self.source_host.upstream_path_to_file(new_revision, f["upstream"])
             destination = self.get_full_path(f["destination"])
-            download_and_write_file(url, destination)
+            download_file_revision(f["upstream"], new_revision, destination)
 
         for f in self.manifest["vendoring"].get("individual-files-list", []):
-            url = self.source_host.upstream_path_to_file(
-                new_revision,
-                self.manifest["vendoring"]["individual-files-default-upstream"] + f,
+            upstream_path = (
+                self.manifest["vendoring"]["individual-files-default-upstream"] + f
             )
             destination = self.get_full_path(
                 self.manifest["vendoring"]["individual-files-default-destination"] + f
             )
-            download_and_write_file(url, destination)
+            download_file_revision(upstream_path, new_revision, destination)
 
     def process_regular_or_individual(
         self, is_individual, new_revision, timestamp, ignore_modified, add_to_exports
@@ -264,7 +272,7 @@ class VendorManifest(MozbuildObject):
                 os.path.dirname(self.yaml_file),
                 self.manifest["vendoring"]["vendor-directory"],
             )
-        elif "patches" in self.manifest["vendoring"]:
+        elif "patches" in self.manifest["vendoring"] and not self.new_files_only:
             # Remind the user
             self.log(
                 logging.CRITICAL,
@@ -394,21 +402,26 @@ class VendorManifest(MozbuildObject):
         for pattern in patterns:
             pattern_full_path = mozpath.join(directory, pattern)
             # If pattern is a directory recursively add contents of directory
+            # Sort the list to ensure we preserve 01_, 02_ ordering
             if os.path.isdir(pattern_full_path):
                 # Append double asterisk to the end to make glob.iglob recursively match
                 # contents of directory
                 paths.extend(
-                    iglob_hidden(mozpath.join(pattern_full_path, "**"), recursive=True)
+                    sorted(
+                        iglob_hidden(
+                            mozpath.join(pattern_full_path, "**"), recursive=True
+                        )
+                    )
                 )
             # Otherwise pattern is a file or wildcard expression so add it without altering it
+            # Sort the list to ensure we preserve 01_, 02_ ordering for e.g. *.patch globs
             else:
-                paths.extend(iglob_hidden(pattern_full_path, recursive=True))
+                paths.extend(sorted(iglob_hidden(pattern_full_path, recursive=True)))
         # Remove folder names from list of paths in order to avoid prematurely
         # truncating directories elsewhere
-        # Sort the final list to ensure we preserve 01_, 02_ ordering for e.g. *.patch globs
-        final_paths = sorted(
-            [mozpath.normsep(path) for path in paths if not os.path.isdir(path)]
-        )
+        final_paths = [
+            mozpath.normsep(path) for path in paths if not os.path.isdir(path)
+        ]
         return final_paths
 
     def fetch_and_unpack(self, revision):
@@ -604,7 +617,9 @@ class VendorManifest(MozbuildObject):
                 # Then copy over the directories
                 if self.should_perform_step("move-contents"):
                     self.logInfo({"d": vendor_dir}, "Copying to {d}.")
-                    mozfile.copy_contents(tmpextractdir.name, vendor_dir)
+                    mozfile.copy_contents(
+                        tmpextractdir.name, vendor_dir, ignore_dangling_symlinks=True
+                    )
                 else:
                     self.logInfo({}, "Skipping copying contents into tree.")
                     self._extract_directory = lambda: tmpextractdir.name

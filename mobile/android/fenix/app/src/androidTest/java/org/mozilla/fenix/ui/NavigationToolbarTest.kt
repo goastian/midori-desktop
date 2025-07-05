@@ -8,12 +8,16 @@ import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import androidx.core.net.toUri
 import org.junit.Rule
 import org.junit.Test
+import org.mozilla.fenix.customannotations.SkipLeaks
 import org.mozilla.fenix.customannotations.SmokeTest
-import org.mozilla.fenix.helpers.AppAndSystemHelper.runWithSystemLocaleChanged
+import org.mozilla.fenix.helpers.AppAndSystemHelper.enableOrDisableBackGestureNavigationOnDevice
+import org.mozilla.fenix.helpers.AppAndSystemHelper.runWithAppLocaleChanged
 import org.mozilla.fenix.helpers.HomeActivityTestRule
 import org.mozilla.fenix.helpers.TestAssetHelper
+import org.mozilla.fenix.helpers.TestAssetHelper.waitingTimeLong
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.homeScreen
 import org.mozilla.fenix.ui.robots.navigationToolbar
 import java.util.Locale
@@ -35,13 +39,20 @@ class NavigationToolbarTest : TestSetup() {
             HomeActivityTestRule.withDefaultSettingsOverrides(),
         ) { it.activity }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/987326
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/987326
     // Swipes the nav bar left/right to switch between tabs
     @SmokeTest
     @Test
+    @SkipLeaks
     fun swipeToSwitchTabTest() {
         val firstWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
         val secondWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 2)
+
+        // Disable the back gesture from the edge of the screen on the device.
+        enableOrDisableBackGestureNavigationOnDevice(backGestureNavigationEnabled = false)
 
         navigationToolbar {
         }.enterURLAndEnterToBrowser(firstWebPage.url) {
@@ -55,15 +66,18 @@ class NavigationToolbarTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/987327
-    // Because it requires changing system prefs, this test will run only on Debug builds
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/987327
     @Test
+    @SkipLeaks
     fun swipeToSwitchTabInRTLTest() {
         val firstWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
         val secondWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 2)
-        val arabicLocale = Locale("ar", "AR")
+        val arabicLocale = Locale.Builder().setLanguage("ar").setRegion("AR").build()
 
-        runWithSystemLocaleChanged(arabicLocale, composeTestRule.activityRule) {
+        // Disable the back gesture from the edge of the screen on the device.
+        enableOrDisableBackGestureNavigationOnDevice(backGestureNavigationEnabled = false)
+
+        runWithAppLocaleChanged(arabicLocale, composeTestRule.activityRule) {
             navigationToolbar {
             }.enterURLAndEnterToBrowser(firstWebPage.url) {
             }.openTabDrawer(composeTestRule) {
@@ -77,7 +91,7 @@ class NavigationToolbarTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2265279
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2265279
     @SmokeTest
     @Test
     fun verifySecurePageSecuritySubMenuTest() {
@@ -86,7 +100,7 @@ class NavigationToolbarTest : TestSetup() {
 
         navigationToolbar {
         }.enterURLAndEnterToBrowser(defaultWebPage.toUri()) {
-            waitForPageToLoad()
+            verifyPageContent("Login Form")
         }.openSiteSecuritySheet {
             verifyQuickActionSheet(defaultWebPage, true)
             openSecureConnectionSubMenu(true)
@@ -94,7 +108,7 @@ class NavigationToolbarTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2265280
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2265280
     @SmokeTest
     @Test
     fun verifyInsecurePageSecuritySubMenuTest() {
@@ -102,7 +116,7 @@ class NavigationToolbarTest : TestSetup() {
 
         navigationToolbar {
         }.enterURLAndEnterToBrowser(defaultWebPage.url) {
-            waitForPageToLoad()
+            verifyPageContent(defaultWebPage.content)
         }.openSiteSecuritySheet {
             verifyQuickActionSheet(defaultWebPage.url.toString(), false)
             openSecureConnectionSubMenu(false)
@@ -110,22 +124,24 @@ class NavigationToolbarTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1661318
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1661318
     @SmokeTest
     @Test
+    @SkipLeaks
     fun verifyClearCookiesFromQuickSettingsTest() {
-        val helpPageUrl = "mozilla.org"
+        val loginPage = "https://mozilla-mobile.github.io/testapp/loginForm"
+        val originWebsite = "mozilla-mobile.github.io"
 
-        homeScreen {
-        }.openThreeDotMenu {
-        }.openHelp {
+        navigationToolbar {
+        }.enterURLAndEnterToBrowser(loginPage.toUri()) {
+            waitForPageToLoad(waitingTimeLong)
         }.openSiteSecuritySheet {
             clickQuickActionSheetClearSiteData()
-            verifyClearSiteDataPrompt(helpPageUrl)
+            verifyClearSiteDataPrompt(originWebsite)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1360555
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1360555
     @SmokeTest
     @Test
     fun goToHomeScreenTest() {
@@ -134,25 +150,25 @@ class NavigationToolbarTest : TestSetup() {
         navigationToolbar {
         }.enterURLAndEnterToBrowser(genericURL.url) {
             mDevice.waitForIdle()
-        }.goToHomescreen {
+        }.goToHomescreen(composeTestRule) {
             verifyHomeScreen()
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2256552
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2256552
     @SmokeTest
     @Test
     fun goToHomeScreenInPrivateModeTest() {
         val genericURL = TestAssetHelper.getGenericAsset(mockWebServer, 1)
 
         homeScreen {
-            togglePrivateBrowsingModeOnOff()
+            togglePrivateBrowsingModeOnOff(composeTestRule = composeTestRule)
         }
 
         navigationToolbar {
         }.enterURLAndEnterToBrowser(genericURL.url) {
             mDevice.waitForIdle()
-        }.goToHomescreen {
+        }.goToHomescreen(composeTestRule) {
             verifyHomeScreen()
         }
     }

@@ -11,12 +11,11 @@ import re
 import mozpack.path as mozpath
 import taskgraph
 from taskgraph.transforms.base import TransformSequence
+from taskgraph.util.docker import create_context_tar, generate_context_hash
 from taskgraph.util.schema import Schema
 from voluptuous import Optional, Required
 
 from gecko_taskgraph.util.docker import (
-    create_context_tar,
-    generate_context_hash,
     image_path,
 )
 
@@ -55,6 +54,7 @@ docker_image_schema = Schema(
         Optional("definition"): str,
         # List of package tasks this docker image depends on.
         Optional("packages"): [str],
+        Optional("arch"): str,
         Optional(
             "index",
             description="information for indexing this build so its artifacts can be discovered",
@@ -86,9 +86,7 @@ def fill_template(config, tasks):
         for p in packages:
             if f"packages-{p}" not in config.kind_dependencies_tasks:
                 raise Exception(
-                    "Missing package job for {}-{}: {}".format(
-                        config.kind, image_name, p
-                    )
+                    f"Missing package job for {config.kind}-{image_name}: {p}"
                 )
 
         if not taskgraph.fast:
@@ -97,12 +95,10 @@ def fill_template(config, tasks):
                 context_file = os.path.join(CONTEXTS_DIR, f"{image_name}.tar.gz")
                 logger.info(f"Writing {context_file} for docker image {image_name}")
                 context_hash = create_context_tar(
-                    GECKO, context_path, context_file, image_name, args
+                    GECKO, context_path, context_file, args
                 )
             else:
-                context_hash = generate_context_hash(
-                    GECKO, context_path, image_name, args
-                )
+                context_hash = generate_context_hash(GECKO, context_path, args)
         else:
             if config.write_artifacts:
                 raise Exception("Can't write artifacts if `taskgraph.fast` is set.")
@@ -110,9 +106,7 @@ def fill_template(config, tasks):
         digest_data = [context_hash]
         digest_data += [json.dumps(args, sort_keys=True)]
 
-        description = "Build the docker image {} for use by dependent tasks".format(
-            image_name
-        )
+        description = f"Build the docker image {image_name} for use by dependent tasks"
 
         args["DOCKER_IMAGE_PACKAGES"] = " ".join(f"<{p}>" for p in packages)
 
@@ -122,6 +116,11 @@ def fill_template(config, tasks):
         # because images are read more often and it is worth the trade-off to
         # burn more CPU once to reduce image size.
         zstd_level = "3" if int(config.params["level"]) == 1 else "10"
+
+        if task.get("arch", "") == "arm64":
+            worker_type = "images-gcp-aarch64"
+        else:
+            worker_type = "images-gcp"
 
         # include some information that is useful in reconstructing this task
         # from JSON
@@ -142,7 +141,7 @@ def fill_template(config, tasks):
                 "tier": 1,
             },
             "run-on-projects": [],
-            "worker-type": "images-gcp",
+            "worker-type": worker_type,
             "worker": {
                 "implementation": "docker-worker",
                 "os": "linux",
@@ -155,9 +154,7 @@ def fill_template(config, tasks):
                 ],
                 "env": {
                     "CONTEXT_TASK_ID": {"task-reference": "<decision>"},
-                    "CONTEXT_PATH": "public/docker-contexts/{}.tar.gz".format(
-                        image_name
-                    ),
+                    "CONTEXT_PATH": f"public/docker-contexts/{image_name}.tar.gz",
                     "HASH": context_hash,
                     "PROJECT": config.params["project"],
                     "IMAGE_NAME": image_name,
@@ -182,9 +179,13 @@ def fill_template(config, tasks):
             worker["docker-image"] = IMAGE_BUILDER_IMAGE
             digest_data.append(f"image-builder-image:{IMAGE_BUILDER_IMAGE}")
         else:
-            worker["docker-image"] = {"in-tree": "image_builder"}
+            if task.get("arch", "") == "arm64":
+                image_builder = "image_builder_arm64"
+            else:
+                image_builder = "image_builder"
+            worker["docker-image"] = {"in-tree": image_builder}
             deps = taskdesc.setdefault("dependencies", {})
-            deps["docker-image"] = f"{config.kind}-image_builder"
+            deps["docker-image"] = f"{config.kind}-{image_builder}"
 
         if packages:
             deps = taskdesc.setdefault("dependencies", {})

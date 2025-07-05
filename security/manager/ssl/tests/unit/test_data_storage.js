@@ -14,18 +14,31 @@ let dataStorage = dataStorageManager.get(
 );
 
 add_task(function test_data_storage() {
+  // There shouldn't be anything in the data storage to begin with.
+  Assert.equal(dataStorage.getAll().length, 0);
+
   // Test putting a simple key/value pair.
   dataStorage.put("test", "value", Ci.nsIDataStorage.Persistent);
   Assert.equal(dataStorage.get("test", Ci.nsIDataStorage.Persistent), "value");
 
   // Test that getting a value with the same key but of a different type throws.
   Assert.throws(
+    () => dataStorage.get("test", Ci.nsIDataStorage.Temporary),
+    /NS_ERROR_NOT_AVAILABLE/,
+    "getting a value of a type that hasn't been set yet should throw"
+  );
+  Assert.throws(
     () => dataStorage.get("test", Ci.nsIDataStorage.Private),
     /NS_ERROR_NOT_AVAILABLE/,
     "getting a value of a type that hasn't been set yet should throw"
   );
 
-  // Put with Private data shouldn't affect Persistent data
+  // Put with Temporary/Private data shouldn't affect Persistent data
+  dataStorage.put("test", "temporary", Ci.nsIDataStorage.Temporary);
+  Assert.equal(
+    dataStorage.get("test", Ci.nsIDataStorage.Temporary),
+    "temporary"
+  );
   dataStorage.put("test", "private", Ci.nsIDataStorage.Private);
   Assert.equal(dataStorage.get("test", Ci.nsIDataStorage.Private), "private");
   Assert.equal(dataStorage.get("test", Ci.nsIDataStorage.Persistent), "value");
@@ -41,10 +54,20 @@ add_task(function test_data_storage() {
     /NS_ERROR_NOT_AVAILABLE/,
     "getting a removed value should throw"
   );
-  // But removing one type shouldn't affect the other
+  // But removing one type shouldn't affect the others
+  Assert.equal(
+    dataStorage.get("test", Ci.nsIDataStorage.Temporary),
+    "temporary"
+  );
   Assert.equal(dataStorage.get("test", Ci.nsIDataStorage.Private), "private");
-  // Test removing the other type as well
+  // Test removing the other types as well
+  dataStorage.remove("test", Ci.nsIDataStorage.Temporary);
   dataStorage.remove("test", Ci.nsIDataStorage.Private);
+  Assert.throws(
+    () => dataStorage.get("test", Ci.nsIDataStorage.Temporary),
+    /NS_ERROR_NOT_AVAILABLE/,
+    "getting a removed value should throw"
+  );
   Assert.throws(
     () => dataStorage.get("test", Ci.nsIDataStorage.Private),
     /NS_ERROR_NOT_AVAILABLE/,
@@ -94,9 +117,13 @@ add_task(function test_data_storage() {
       "getting a removed value should throw"
     );
   }
+
+  // Getting all entries should return an empty array.
+  Assert.equal(dataStorage.getAll().length, 0);
+
   // Add new entries.
   for (let i = 0; i < 2048; i++) {
-    let padded = i.toString().padStart(5, "1");
+    let padded = i.toString().padStart(5, "*");
     dataStorage.put(
       `key${padded}`,
       `value${padded}`,
@@ -110,10 +137,40 @@ add_task(function test_data_storage() {
   }
   // Ensure each new entry was added.
   for (let i = 0; i < 2048; i++) {
-    let padded = i.toString().padStart(5, "1");
+    let padded = i.toString().padStart(5, "*");
     let val = dataStorage.get(`key${padded}`, Ci.nsIDataStorage.Persistent);
     Assert.equal(val, `value${padded}`);
     val = dataStorage.get(`key${padded}`, Ci.nsIDataStorage.Private);
     Assert.equal(val, `value${padded}`);
+  }
+
+  // Getting all of the entries all at once should work.
+  let entries = dataStorage.getAll();
+  Assert.equal(entries.length, 4096);
+  let persistentEntries = entries.filter(
+    entry => entry.type == Ci.nsIDataStorage.Persistent
+  );
+  Assert.equal(persistentEntries.length, 2048);
+  let privateEntries = entries.filter(
+    entry => entry.type == Ci.nsIDataStorage.Private
+  );
+  Assert.equal(privateEntries.length, 2048);
+  let compareEntries = (a, b) => {
+    if (a.key < b.key) {
+      return -1;
+    }
+    if (a.key == b.key) {
+      return 0;
+    }
+    return 1;
+  };
+  persistentEntries.sort(compareEntries);
+  privateEntries.sort(compareEntries);
+  for (let i = 0; i < 2048; i++) {
+    let padded = i.toString().padStart(5, "*");
+    Assert.equal(persistentEntries[i].key, `key${padded}`);
+    Assert.equal(persistentEntries[i].value, `value${padded}`);
+    Assert.equal(privateEntries[i].key, `key${padded}`);
+    Assert.equal(privateEntries[i].value, `value${padded}`);
   }
 });

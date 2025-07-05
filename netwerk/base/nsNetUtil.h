@@ -29,6 +29,8 @@
 #include "nsServiceManagerUtils.h"
 #include "nsString.h"
 #include "nsTArray.h"
+#include "mozilla/net/idna_glue.h"
+#include "mozilla/net/MozURL_ffi.h"
 
 class nsIPrincipal;
 class nsIAsyncStreamCopier;
@@ -135,7 +137,7 @@ nsresult NS_GetURIWithNewRef(nsIURI* aInput, const nsACString& aRef,
 nsresult NS_GetURIWithoutRef(nsIURI* aInput, nsIURI** aOutput);
 
 nsresult NS_GetSanitizedURIStringFromURI(nsIURI* aUri,
-                                         nsAString& aSanitizedSpec);
+                                         nsACString& aSanitizedSpec);
 
 /*
  * How to create a new Channel, using NS_NewChannel,
@@ -190,8 +192,7 @@ nsresult NS_NewChannelInternal(
     nsILoadGroup* aLoadGroup = nullptr,
     nsIInterfaceRequestor* aCallbacks = nullptr,
     nsLoadFlags aLoadFlags = nsIRequest::LOAD_NORMAL,
-    nsIIOService* aIoService = nullptr, uint32_t aSandboxFlags = 0,
-    bool aSkipCheckForBrokenURLOrZeroSized = false);
+    nsIIOService* aIoService = nullptr, uint32_t aSandboxFlags = 0);
 
 // See NS_NewChannelInternal for usage and argument description
 nsresult NS_NewChannelInternal(
@@ -248,8 +249,7 @@ nsresult NS_NewChannel(
     nsILoadGroup* aLoadGroup = nullptr,
     nsIInterfaceRequestor* aCallbacks = nullptr,
     nsLoadFlags aLoadFlags = nsIRequest::LOAD_NORMAL,
-    nsIIOService* aIoService = nullptr, uint32_t aSandboxFlags = 0,
-    bool aSkipCheckForBrokenURLOrZeroSized = false);
+    nsIIOService* aIoService = nullptr, uint32_t aSandboxFlags = 0);
 
 // See NS_NewChannelInternal for usage and argument description
 nsresult NS_NewChannel(
@@ -260,8 +260,7 @@ nsresult NS_NewChannel(
     nsILoadGroup* aLoadGroup = nullptr,
     nsIInterfaceRequestor* aCallbacks = nullptr,
     nsLoadFlags aLoadFlags = nsIRequest::LOAD_NORMAL,
-    nsIIOService* aIoService = nullptr, uint32_t aSandboxFlags = 0,
-    bool aSkipCheckForBrokenURLOrZeroSized = false);
+    nsIIOService* aIoService = nullptr, uint32_t aSandboxFlags = 0);
 
 // See NS_NewChannelInternal for usage and argument description
 nsresult NS_NewChannel(
@@ -274,8 +273,7 @@ nsresult NS_NewChannel(
     nsILoadGroup* aLoadGroup = nullptr,
     nsIInterfaceRequestor* aCallbacks = nullptr,
     nsLoadFlags aLoadFlags = nsIRequest::LOAD_NORMAL,
-    nsIIOService* aIoService = nullptr, uint32_t aSandboxFlags = 0,
-    bool aSkipCheckForBrokenURLOrZeroSized = false);
+    nsIIOService* aIoService = nullptr, uint32_t aSandboxFlags = 0);
 
 nsresult NS_GetIsDocumentChannel(nsIChannel* aChannel, bool* aIsDocument);
 
@@ -297,8 +295,33 @@ int32_t NS_GetDefaultPort(const char* scheme,
  * The UTS #46 ToASCII operation as parametrized by the WHATWG URL Standard.
  *
  * Use this function to prepare a host name for network protocols.
+ *
+ * Do not try to optimize and avoid calling this function if you already
+ * have ASCII. This function optimizes internally, and calling it is
+ * required for correctness!
+ *
+ * Use `NS_DomainToDisplayAndASCII` if you need both this function and
+ * `NS_DomainToDisplay` together.
+ *
+ * The function is available to privileged JavaScript callers via
+ * nsIIDNService.
+ *
+ * Rust callers that don't happen to be using XPCOM strings are better
+ * off using the `idna` crate directly.
  */
-nsresult NS_DomainToASCII(const nsACString& aHost, nsACString& aASCII);
+inline nsresult NS_DomainToASCII(const nsACString& aDomain,
+                                 nsACString& aASCII) {
+  return mozilla_net_domain_to_ascii_impl(&aDomain, false, &aASCII);
+}
+
+/**
+ * Bogus variant for callers that try pass through IPv6 addresses or even port
+ * numbers!
+ */
+inline nsresult NS_DomainToASCIIAllowAnyGlyphfulASCII(const nsACString& aDomain,
+                                                      nsACString& aASCII) {
+  return mozilla_net_domain_to_ascii_impl(&aDomain, true, &aASCII);
+}
 
 /**
  * The UTS #46 ToUnicode operation as parametrized by the WHATWG URL Standard,
@@ -306,16 +329,57 @@ nsresult NS_DomainToASCII(const nsACString& aHost, nsACString& aASCII);
  * instead.
  *
  * Use this function to prepare a host name for display to the user.
+ *
+ * Use `NS_DomainToDisplayAndASCII` if you need both this function and
+ * `NS_DomainToASCII` together.
+ *
+ * The function is available to privileged JavaScript callers via
+ * nsIIDNService.
+ *
+ * Rust callers that don't happen to be using XPCOM strings are better
+ * off using the `idna` crate directly. (See `idna_glue` for what policy
+ * closure to use.)
  */
-nsresult NS_DomainToDisplay(const nsACString& aHost, nsACString& aDisplay);
+inline nsresult NS_DomainToDisplay(const nsACString& aDomain,
+                                   nsACString& aDisplay) {
+  return mozilla_net_domain_to_display_impl(&aDomain, false, &aDisplay);
+}
+
+/**
+ * Bogus variant for callers that try pass through IPv6 addresses or even port
+ * numbers!
+ */
+inline nsresult NS_DomainToDisplayAllowAnyGlyphfulASCII(
+    const nsACString& aDomain, nsACString& aDisplay) {
+  return mozilla_net_domain_to_display_impl(&aDomain, true, &aDisplay);
+}
 
 /**
  * The UTS #46 ToUnicode operation as parametrized by the WHATWG URL Standard.
  *
- * It's most likely incorrect to call this function, and `NS_DomainToDisplay`
- * should typically be called instead.
+ * It's most likely INCORRECT to call this function, and `NS_DomainToDisplay`
+ * should typically be called instead. Please avoid adding new callers, so
+ * that this conversion could be removed entirely!
+ *
+ * The function is available to privileged JavaScript callers via
+ * nsIIDNService.
+ *
+ * Rust callers that don't happen to be using XPCOM strings are better
+ * off using the `idna` crate directly.
  */
-nsresult NS_DomainToUnicode(const nsACString& aHost, nsACString& aUnicode);
+inline nsresult NS_DomainToUnicode(const nsACString& aDomain,
+                                   nsACString& aUnicode) {
+  return mozilla_net_domain_to_unicode_impl(&aDomain, false, &aUnicode);
+}
+
+/**
+ * Bogus variant for callers that try pass through IPv6 addresses or even port
+ * numbers!
+ */
+inline nsresult NS_DomainToUnicodeAllowAnyGlyphfulASCII(
+    const nsACString& aDomain, nsACString& aDisplay) {
+  return mozilla_net_domain_to_unicode_impl(&aDomain, true, &aDisplay);
+}
 
 /**
  * This function is a helper function to get a protocol's default port if the
@@ -619,8 +683,7 @@ inline void NS_QueryNotificationCallbacks(T* channel, const nsIID& iid,
 
 template <class C, class T>
 inline void NS_QueryNotificationCallbacks(C* channel, nsCOMPtr<T>& result) {
-  NS_QueryNotificationCallbacks(channel, NS_GET_TEMPLATE_IID(T),
-                                getter_AddRefs(result));
+  NS_QueryNotificationCallbacks(channel, NS_GET_IID(T), getter_AddRefs(result));
 }
 
 /**
@@ -697,7 +760,7 @@ template <class T>
 inline void NS_QueryNotificationCallbacks(nsIInterfaceRequestor* callbacks,
                                           nsILoadGroup* loadGroup,
                                           nsCOMPtr<T>& result) {
-  NS_QueryNotificationCallbacks(callbacks, loadGroup, NS_GET_TEMPLATE_IID(T),
+  NS_QueryNotificationCallbacks(callbacks, loadGroup, NS_GET_IID(T),
                                 getter_AddRefs(result));
 }
 
@@ -810,15 +873,6 @@ bool NS_SecurityCompareURIs(nsIURI* aSourceURI, nsIURI* aTargetURI,
 
 bool NS_URIIsLocalFile(nsIURI* aURI);
 
-// When strict file origin policy is enabled, SecurityCompareURIs will fail for
-// file URIs that do not point to the same local file. This call provides an
-// alternate file-specific origin check that allows target files that are
-// contained in the same directory as the source.
-//
-// https://developer.mozilla.org/en-US/docs/Same-origin_policy_for_file:_URIs
-bool NS_RelaxStrictFileOriginPolicy(nsIURI* aTargetURI, nsIURI* aSourceURI,
-                                    bool aAllowDirectoryTarget = false);
-
 bool NS_IsInternalSameURIRedirect(nsIChannel* aOldChannel,
                                   nsIChannel* aNewChannel, uint32_t aFlags);
 
@@ -842,6 +896,12 @@ nsresult NS_LinkRedirectChannels(uint64_t channelId,
 nsILoadInfo::CrossOriginEmbedderPolicy
 NS_GetCrossOriginEmbedderPolicyFromHeader(
     const nsACString& aHeader, bool aIsOriginTrialCoepCredentiallessEnabled);
+
+/**
+ * Return true if the header is a dictionary where the key force-load-at-top
+ * has the value true. Otherwise, return false.
+ */
+bool NS_GetForceLoadAtTopFromHeader(const nsACString& aHeader);
 
 /** Given the first (disposition) token from a Content-Disposition header,
  * tell whether it indicates the content is inline or attachment
@@ -885,6 +945,12 @@ bool NS_IsAboutBlankAllowQueryAndFragment(nsIURI* uri);
  * Test whether a URI is "about:srcdoc".  |uri| must not be null
  */
 bool NS_IsAboutSrcdoc(nsIURI* uri);
+
+/**
+ * Test whether a URI has an "about", "blob", "data", "file", or an HTTP(S)
+ * scheme.
+ */
+bool NS_IsFetchScheme(nsIURI* uri);
 
 nsresult NS_GenerateHostPort(const nsCString& host, int32_t port,
                              nsACString& hostLine);
@@ -971,10 +1037,16 @@ nsresult NS_GetSecureUpgradedURI(nsIURI* aURI, nsIURI** aUpgradedURI);
 
 nsresult NS_CompareLoadInfoAndLoadContext(nsIChannel* aChannel);
 
+// The type of classification to perform.
+enum class ClassifyType : uint8_t {
+  SafeBrowsing,  // Perform Safe Browsing classification.
+  ETP,           // Perform URL Classification for Enhanced Tracking Protection.
+};
+
 /**
  * Return true if this channel should be classified by the URL classifier.
  */
-bool NS_ShouldClassifyChannel(nsIChannel* aChannel);
+bool NS_ShouldClassifyChannel(nsIChannel* aChannel, ClassifyType aType);
 
 /**
  * Helper to set the blocking reason on loadinfo of the channel.
@@ -1024,21 +1096,9 @@ nsresult GetParameterHTTP(const nsACString& aHeaderVal, const char* aParamName,
 bool ChannelIsPost(nsIChannel* aChannel);
 
 /**
- * Convenience functions for verifying nsIURI schemes. These functions simply
- * wrap aURI->SchemeIs(), but specify the protocol as part of the function name.
+ * Convenience function for verifying nsIURI scheme is either HTTP or HTTPS.
  */
-
-bool SchemeIsHTTP(nsIURI* aURI);
-bool SchemeIsHTTPS(nsIURI* aURI);
-bool SchemeIsJavascript(nsIURI* aURI);
-bool SchemeIsChrome(nsIURI* aURI);
-bool SchemeIsAbout(nsIURI* aURI);
-bool SchemeIsBlob(nsIURI* aURI);
-bool SchemeIsFile(nsIURI* aURI);
-bool SchemeIsData(nsIURI* aURI);
-bool SchemeIsViewSource(nsIURI* aURI);
-bool SchemeIsResource(nsIURI* aURI);
-bool SchemeIsFTP(nsIURI* aURI);
+bool SchemeIsHttpOrHttps(nsIURI* aURI);
 
 // Helper functions for SetProtocol methods to follow
 // step 2.1 in https://url.spec.whatwg.org/#scheme-state
@@ -1095,7 +1155,8 @@ enum ASDestination : uint8_t {
   DESTINATION_VIDEO,
   DESTINATION_WORKER,
   DESTINATION_XSLT,
-  DESTINATION_FETCH
+  DESTINATION_FETCH,
+  DESTINATION_JSON
 };
 
 void ParseAsValue(const nsAString& aValue, nsAttrValue& aResult);
@@ -1125,6 +1186,11 @@ bool IsCoepCredentiallessEnabled(bool aIsOriginTrialCoepCredentiallessEnabled);
 
 void ParseSimpleURISchemes(const nsACString& schemeList);
 
+nsresult AddExtraHeaders(nsIHttpChannel* aHttpChannel,
+                         const nsACString& aExtraHeaders, bool aMerge = true);
+
+bool IsLocalNetworkAccess(nsILoadInfo::IPAddressSpace aParentIPAddressSpace,
+                          nsILoadInfo::IPAddressSpace aTargetIPAddressSpace);
 }  // namespace net
 }  // namespace mozilla
 

@@ -45,28 +45,36 @@ task-defaults:
               path: /builds/worker/artifacts/
               type: directory
             - name: public/build/geckoview-androidTest.apk
-              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/withGeckoBinaries/debug/geckoview-withGeckoBinaries-debug-androidTest.apk
+              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/debug/geckoview-debug-androidTest.apk
               type: file
             - name: public/build/geckoview-test_runner.apk
-              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/apk/withGeckoBinaries/debug/test_runner-withGeckoBinaries-debug.apk
+              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/apk/debug/test_runner-debug.apk
               type: file
             - name: public/build/geckoview-test_runner.aab
-              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/bundle/withGeckoBinariesDebug/test_runner-withGeckoBinaries-debug.aab
+              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/bundle/debug/test_runner-debug.aab
               type: file
             - name: public/build/geckoview_example.apk
-              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/apk/withGeckoBinaries/debug/geckoview_example-withGeckoBinaries-debug.apk
+              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/apk/debug/geckoview_example-debug.apk
               type: file
             - name: public/build/geckoview_example.aab
-              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/bundle/withGeckoBinariesDebug/geckoview_example-withGeckoBinaries-debug.aab
+              path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/bundle/debug/geckoview_example-debug.aab
               type: file
             - name: public/build/mozconfig
               path: /builds/worker/workspace/obj-build/.mozconfig
               type: file
+            - name: public/reports
+              path: /builds/worker/workspace/obj-build/gradle/build/reports
+              type: directory
     run:
         using: mozharness
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
-        mozconfig-variant: null
+        mozconfig-variant:
+            by-release-type:
+                beta: beta
+                release.*: release
+                esr.*: release
+                default: nightly
         tooltool-downloads: internal
         # Note: These settings are only honored by nightly (i.e. shipping) builds
         update-channel:
@@ -116,12 +124,13 @@ tasks:
             type: shippable-with-multi-l10n
         treeherder:
             platform: android-5-0-geckoview-fat-aar-shippable/opt
-            symbol: Bgv
+            symbol: B
         dependencies:
             android-x86-shippable: build-android-x86-shippable/opt
             android-x86_64-shippable: build-android-x86_64-shippable/opt
             android-arm-shippable: build-android-arm-shippable/opt
             android-aarch64-shippable: build-android-aarch64-shippable/opt
+        worker-type: b-linux-xlarge-gcp
         worker:
             env:
                 PERFHERDER_EXTRA_OPTIONS: android-geckoview-fat-aar-nightly
@@ -152,13 +161,14 @@ tasks:
             job-name: android-geckoview-fat-aar-opt-lite
             type: shippable-with-multi-l10n
         treeherder:
-            platform: android-4-1-geckoview-fat-aar-shippable/opt
-            symbol: Bgvl
+            platform: android-5-0-geckoview-fat-aar-shippable/opt
+            symbol: Bl
         dependencies:
             android-x86-shippable-lite: build-android-x86-shippable-lite/opt
             android-x86_64-shippable-lite: build-android-x86_64-shippable-lite/opt
             android-arm-shippable-lite: build-android-arm-shippable-lite/opt
             android-aarch64-shippable-lite: build-android-aarch64-shippable-lite/opt
+        worker-type: b-linux-xlarge-gcp
         worker:
             env:
                 PERFHERDER_EXTRA_OPTIONS: android-geckoview-fat-aar-nightly-lite
@@ -183,7 +193,7 @@ tasks:
             job-name: android-geckoview-fat-aar-opt
         treeherder:
             platform: android-5-0-geckoview-fat-aar/opt
-            symbol: Bgv
+            symbol: B
         dependencies:
             android-x86-opt: build-android-x86/opt
             android-x86_64-opt: build-android-x86_64/opt

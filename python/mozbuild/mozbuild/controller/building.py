@@ -16,7 +16,6 @@ from collections import Counter, OrderedDict, namedtuple
 from itertools import dropwhile, islice, takewhile
 from textwrap import TextWrapper
 
-import six
 from mach.site import CommandSiteManager
 
 try:
@@ -92,18 +91,19 @@ BuildOutputResult = namedtuple(
 )
 
 
-class TierStatus(object):
+class TierStatus:
     """Represents the state and progress of tier traversal.
 
     The build system is organized into linear phases called tiers. Each tier
     executes in the order it was defined, 1 at a time.
     """
 
-    def __init__(self, resources):
+    def __init__(self, resources, metrics):
         """Accepts a SystemResourceMonitor to record results against."""
         self.tiers = OrderedDict()
         self.tier_status = OrderedDict()
         self.resources = resources
+        self.metrics = metrics
 
     def set_tiers(self, tiers):
         """Record the set of known tiers."""
@@ -121,6 +121,10 @@ class TierStatus(object):
         t = self.tiers[tier]
         t["begin_time"] = time.monotonic()
         self.resources.begin_phase(tier)
+        metrics_tier_name = "tier_" + tier.replace("-", "_") + "_duration"
+        metrics_attribute = getattr(self.metrics.mozbuild, metrics_tier_name, None)
+        if metrics_attribute:
+            metrics_attribute.start()
 
     def finish_tier(self, tier):
         """Record that execution of a tier has finished."""
@@ -128,6 +132,10 @@ class TierStatus(object):
         t = self.tiers[tier]
         t["finish_time"] = time.monotonic()
         t["duration"] = self.resources.finish_phase(tier)
+        metrics_tier_name = "tier_" + tier.replace("-", "_") + "_duration"
+        metrics_attribute = getattr(self.metrics.mozbuild, metrics_tier_name, None)
+        if metrics_attribute:
+            metrics_attribute.stop()
 
 
 def record_cargo_timings(resource_monitor, timings_path):
@@ -178,7 +186,7 @@ def record_cargo_timings(resource_monitor, timings_path):
 class BuildMonitor(MozbuildObject):
     """Monitors the output of the build."""
 
-    def init(self, warnings_path, terminal):
+    def init(self, warnings_path, terminal, metrics):
         """Create a new monitor.
 
         warnings_path is a path of a warnings database to use.
@@ -190,7 +198,7 @@ class BuildMonitor(MozbuildObject):
         )
         self._resources_started = False
 
-        self.tiers = TierStatus(self.resources)
+        self.tiers = TierStatus(self.resources, metrics)
 
         self.warnings_database = WarningsDatabase()
         if os.path.exists(warnings_path):
@@ -350,11 +358,11 @@ class BuildMonitor(MozbuildObject):
                 build_resources_profile_path = self._get_state_filename(
                     "profile_build_resources.json"
                 )
-            with io.open(
+            with open(
                 build_resources_profile_path, "w", encoding="utf-8", newline="\n"
             ) as fh:
-                to_write = six.ensure_text(
-                    json.dumps(self.resources.as_profile(), separators=(",", ":"))
+                to_write = json.dumps(
+                    self.resources.as_profile(), separators=(",", ":")
                 )
                 fh.write(to_write)
         except Exception as e:
@@ -586,7 +594,7 @@ class BuildProgressFooter(Footer):
 
     def __init__(self, terminal, monitor):
         Footer.__init__(self, terminal)
-        self.tiers = six.viewitems(monitor.tiers.tier_status)
+        self.tiers = monitor.tiers.tier_status.items()
 
     def draw(self):
         """Draws this footer in the terminal."""
@@ -757,16 +765,17 @@ class StaticAnalysisOutputManager(OutputManager):
                     self._handler.release()
 
     def write(self, path, output_format):
-        assert output_format in ("text", "json"), "Invalid output format {}".format(
-            output_format
-        )
+        assert output_format in (
+            "text",
+            "json",
+        ), f"Invalid output format {output_format}"
         path = mozpath.realpath(path)
 
         if output_format == "json":
             self.monitor._warnings_database.save_to_file(path)
 
         else:
-            with io.open(path, "w", encoding="utf-8", newline="\n") as f:
+            with open(path, "w", encoding="utf-8", newline="\n") as f:
                 f.write(self.raw)
 
         self.log(
@@ -777,7 +786,7 @@ class StaticAnalysisOutputManager(OutputManager):
         )
 
 
-class CCacheStats(object):
+class CCacheStats:
     """Holds statistics from ccache.
 
     Instances can be subtracted from each other to obtain differences.
@@ -904,7 +913,6 @@ class CCacheStats(object):
                 self._parse_line(line)
 
     def _parse_line(self, line):
-        line = six.ensure_text(line)
         for stat_key, stat_description in self.STATS_KEYS:
             if line.startswith(stat_description):
                 raw_value = self._strip_prefix(line, stat_description)
@@ -1083,7 +1091,7 @@ class BuildDriver(MozbuildObject):
     ):
         warnings_path = self._get_state_filename("warnings.json")
         monitor = self._spawn(BuildMonitor)
-        monitor.init(warnings_path, self.log_manager.terminal)
+        monitor.init(warnings_path, self.log_manager.terminal, metrics)
         status = self._build(
             monitor,
             metrics,
@@ -1237,6 +1245,7 @@ class BuildDriver(MozbuildObject):
             mozbuild_metrics.sccache.set(using_sccache)
             mozbuild_metrics.icecream.set(get_substs_flag("CXX_IS_ICECREAM"))
             mozbuild_metrics.project.set(substs.get("MOZ_BUILD_APP", ""))
+            mozbuild_metrics.target.set(target)
 
             all_backends = config.substs.get("BUILD_BACKENDS", [None])
             active_backend = all_backends[0]
@@ -1412,9 +1421,9 @@ class BuildDriver(MozbuildObject):
             )
 
             if os.path.exists(pathToThirdparty):
-                with io.open(
-                    pathToThirdparty, encoding="utf-8", newline="\n"
-                ) as f, io.open(pathToGenerated, encoding="utf-8", newline="\n") as g:
+                with open(pathToThirdparty, encoding="utf-8", newline="\n") as f, open(
+                    pathToGenerated, encoding="utf-8", newline="\n"
+                ) as g:
                     # Normalize the path (no trailing /)
                     LOCAL_SUPPRESS_DIRS = tuple(
                         [line.strip("\n/") for line in f]
@@ -1703,17 +1712,16 @@ class BuildDriver(MozbuildObject):
     def _write_mozconfig_json(self):
         mozconfig_json = mozpath.join(self.topobjdir, ".mozconfig.json")
         with FileAvoidWrite(mozconfig_json) as fh:
-            to_write = six.ensure_text(
-                json.dumps(
-                    {
-                        "topsrcdir": self.topsrcdir,
-                        "topobjdir": self.topobjdir,
-                        "mozconfig": self.mozconfig,
-                    },
-                    sort_keys=True,
-                    indent=2,
-                )
+            to_write = json.dumps(
+                {
+                    "topsrcdir": self.topsrcdir,
+                    "topobjdir": self.topobjdir,
+                    "mozconfig": self.mozconfig,
+                },
+                sort_keys=True,
+                indent=2,
             )
+
             # json.dumps in python2 inserts some trailing whitespace while
             # json.dumps in python3 does not, which defeats the FileAvoidWrite
             # mechanism. Strip the trailing whitespace to avoid rewriting this
@@ -1777,7 +1785,7 @@ class BuildDriver(MozbuildObject):
         # Copy the original mozconfig to the objdir.
         mozconfig_objdir = mozpath.join(self.topobjdir, ".mozconfig")
         if mozconfig["path"]:
-            with open(mozconfig["path"], "r") as ifh:
+            with open(mozconfig["path"]) as ifh:
                 with FileAvoidWrite(mozconfig_objdir) as ofh:
                     ofh.write(ifh.read())
         else:
@@ -1841,7 +1849,7 @@ class BuildDriver(MozbuildObject):
             # We'll just use an empty substs if there is no config.
             pass
         clobberer = Clobberer(self.topsrcdir, self.topobjdir, substs)
-        clobber_output = six.StringIO()
+        clobber_output = io.StringIO()
         res = clobberer.maybe_do_clobber(os.getcwd(), auto_clobber, clobber_output)
         clobber_output.seek(0)
         for line in clobber_output.readlines():

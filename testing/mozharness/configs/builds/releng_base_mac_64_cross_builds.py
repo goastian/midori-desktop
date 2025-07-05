@@ -31,6 +31,9 @@ config = {
     ],
     "enable_check_test": False,
     "vcs_share_base": "/builds/hg-shared",
+    "upload_env": {
+        "UPLOAD_PATH": "/builds/worker/artifacts",
+    },
     #########################################################################
     #########################################################################
     ###### 64 bit specific ######
@@ -46,7 +49,7 @@ config = {
         "MOZ_CRASHREPORTER_NO_REPORT": "1",
         "LC_ALL": "C",
         ## 64 bit specific
-        "PATH": "/usr/local/bin:/bin:" "/usr/bin:/usr/local/sbin:/usr/sbin:/sbin"
+        "PATH": "/usr/local/bin:/bin:" "/usr/bin:/usr/local/sbin:/usr/sbin:/sbin",
         ##
     },
     "mozconfig_platform": "macosx64",

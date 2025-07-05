@@ -6,6 +6,11 @@ name: raptor
 manifest: testing/raptor/raptor/raptor.toml
 static-only: False
 metrics:
+    "cpu Time":
+        aliases:
+            - cpuTime
+        description: >
+            Specifies cumulative CPU usage in milliseconds across all threads of the process since the process start.
     "First Paint":
         aliases:
             - fcp
@@ -54,9 +59,9 @@ metrics:
             - ContentfulSpeedIndex
         description: >
             Similar to SpeedIndex, except that it uses the contentfulness of a frame to determine
-            visual completeness instead of the histogram differences. The contentfulness is determined
-            by calculating the number of edges found in the frame. A lower number of edges detected
-            gives a smaller contentfulness value (and a smaller visually complete value).
+            visual completeness, rather than relying on histogram differences. The contentfulness
+            is determined by calculating the number of edges found in the frame. A lower number of
+            edges detected gives a smaller contentfulness value (and a smaller visually complete value).
     "Perceptual Speed Index":
         aliases:
             - PerceptualSpeedIndex
@@ -64,6 +69,20 @@ metrics:
             Similar to SpeedIndex, except that it uses the structural similarity index measure (ssim)
             to determine visual completeness. This technique compares the luminance, contrast, and
             structure of the frames (a given frame vs. a final frame) to determine the completeness.
+    "Estimated Frame Latency (First)":
+        aliases:
+            - estimatedFirstFrameLatency
+        description: >
+            A metric used to denote the latency on displaying the first frame of a video. Calculated
+            by using videos of the pageload from which key frames are identified by matching a given
+            solid RGB color with fuzz.
+    "Estimated Frame Latency (Any)":
+        aliases:
+            - estimatedAnyFrameLatency
+        description: >
+            Similar to estimatedFirstFrameLatency, except that it uses all identified frames during
+            video playback, normalized to be an estimate of when the first frame was displayed by
+            using the expected time offset from the video itself.
 
 suites:
     desktop:
@@ -161,13 +180,10 @@ suites:
             ares6: ""
             assorted-dom: ""
             jetstream2: ""
+            jetstream3: ""
             matrix-react-bench: ""
             motionmark-1-3: ""
             motionmark-htmlsuite-1-3: ""
-            motionmark-animometer: ""
-            motionmark-animometer-ramp: ""
-            motionmark-htmlsuite: ""
-            motionmark-htmlsuite-ramp: ""
             speedometer: ""
             speedometer3: ""
             stylebench: ""
@@ -184,12 +200,14 @@ suites:
             youtube-playback-av1-sfr: ""
             youtube-playback-h264-1080p30: ""
             youtube-playback-h264-1080p60: ""
+            youtube-playback-h264-720p60: ""
             youtube-playback-h264-full-1080p30: ""
             youtube-playback-h264-full-1080p60: ""
             youtube-playback-h264-sfr: ""
             youtube-playback-hfr: ""
             youtube-playback-v9-1080p30: ""
             youtube-playback-v9-1080p60: ""
+            youtube-playback-vp9-720p60: ""
             youtube-playback-v9-full-1080p30: ""
             youtube-playback-v9-full-1080p60: ""
             youtube-playback-vp9-sfr: ""
@@ -204,10 +222,13 @@ suites:
     custom:
         description: "Browsertime tests that use a custom pageload test script. These use the pageload type, but may have other intentions."
         tests:
-            browsertime: "Used to run vanilla browsertime tests through raptor. For example: `./mach raptor --browsertime -t browsertime --browsertime-arg url=https://www.sitespeed.io --browsertime-arg iterations=3`"
+            browsertime: "Used to run vanilla browsertime tests through raptor. For example: `./mach raptor -t browsertime --browsertime-arg url=https://www.sitespeed.io --browsertime-arg iterations=3`"
             process-switch: "Measures process switch time"
             welcome: "Measures pageload metrics for the first-install about:welcome page"
-            grandprix: "Runs the Grandprix benchmark"
+            idb-open-many-par: "Measures opening many IndexedDB databases in parallel"
+            idb-open-many-seq: "Measures opening many IndexedDB databases in sequence"
+            idb-open-few-par: "Measures opening a few IndexedDB databases in parallel"
+            idb-open-few-seq: "Measures opening a few IndexedDB databases in sequence"
             addMab1: "Use add API to send many small ArrayBuffers to IndexedDB in one transaction"
             addMabN: "Use add API to send many small ArrayBuffers to IndexedDB independently"
             addMar1: "Use add API to send many small Arrays to IndexedDB in one transaction"
@@ -222,8 +243,21 @@ suites:
             addkBLN: "Use add API to send a couple of large Blobs to IndexedDB independently"
             constant-regression: "Generates a constant value that can be changed to induce a regression."
             getkeyrng: "Measures the speed of key-range based reads of IndexedDB"
-            upload: "Measures http/2 file upload throughput"
-            upload-h3: "Measures http/3 file upload throughput"
+            trr-cloudf: "Tests DNS lookup time on a Cloudflare TRR server."
+            trr-cira: "Tests DNS lookup time on a CIRA TRR server."
+            trr-comcas: "Tests DNS lookup time on a Comcast TRR server."
+            trr-next: "Tests DNS lookup time on a NextDNS TRR server."
+            trr-native: "Tests DNS lookup time via native DNS."
+            trr-w-clou: "Tests DNS lookup time on a Cloudflare TRR server, with the TRR connection warmed up."
+            trr-w-cira: "Tests DNS lookup time on a CIRA TRR server, with the TRR connection warmed up."
+            trr-w-comc: "Tests DNS lookup time on a Comcast TRR server, with the TRR connection warmed up."
+            trr-w-next: "Tests DNS lookup time on a NextDNS TRR server, with the TRR connection warmed up."
+            upload: "Measures HTTP/2 file upload throughput with a remote server"
+            upload-h3: "Measures HTTP/3 file upload throughput with a remote server"
+            h2-upload: "Measures HTTP/2 file upload throughput with a local server"
+            h2-download: "Measures HTTP/2 download throughput with a local server"
+            h3-upload: "Measures HTTP/3 file upload throughput with a local server"
+            h3-download: "Measures HTTP/3 download throughput with a local server"
             throttled: "Pageload test using a throttled network environment"
             sample-python-support: "A sample test that uses a python support file to modify the test command."
             connect: "Verifies that connection time on a pageload is zero when a speculative connection has first been made"
@@ -231,8 +265,22 @@ suites:
                 A pageload benchmark test that quickly runs through a selection of the
                 pages available to produce a single overall metric for fcp, lcp, and
                 loadtime. The metrics from all pages get summarized with the geomean, and mean.
+            vpl-av1: "Measures AV1 1080p video playback latency."
+            vpl-h264: "Measures H264 1080p video playback latency."
+            vpl-vp9: "Measures VP9 1080p video playback latency."
+            ve-av1-rt: "Measures AV1 encoding performance for 1080p video in real-time mode."
+            ve-av1-q: "Measures AV1 encoding performance for 1080p video in quality mode."
+            ve-h264-rt: "Measures H264-baseline encoding performance for 1080p video in real-time mode using Annex B format."
+            ve-h264-rt-sd: "Measures H264-baseline encoding performance for 480p video in real-time mode using Annex B format."
+            ve-h264-q: "Measures H264-baseline encoding performance for 1080p video in quality mode using AVC format."
+            ve-h264-q-sd: "Measures H264-baseline encoding performance for 480p video in quality mode using AVC format."
+            ve-vp8-rt: "Measures VP8 encoding performance for 1080p video in real-time mode."
+            ve-vp8-q: "Measures VP8 encoding performance for 1080p video in quality mode."
+            ve-vp9-rt: "Measures VP9 encoding performance for 1080p video in real-time mode."
+            ve-vp9-q: "Measures VP9 encoding performance for 1080p video in quality mode."
+
     interactive:
-        description: "Browsertime tests that interact with the webpage. Includes responsiveness tests as they make use of this support for navigation. These form of tests allow the specification of browsertime commands through the test manifest."
+        description: "Browsertime tests that interact with the webpage. Includes responsiveness tests as they make use of this support for navigation. This type of test allows the specification of browsertime commands through the test manifest."
         tests:
             cnn-nav: "Navigates to cnn main page, then to the world sub-page."
             facebook-nav: "Navigates to facebook, then the sub-pages friends, marketplace, groups."
@@ -240,7 +288,7 @@ suites:
             reddit-billgates-post-1: "Navigates the `thisisbillgates` user starting at the main user page, then to the posts, comments, hot, and top sections."
             reddit-billgates-post-2: "Navigates the `thisisbillgates` user starting at the main user page, then to the posts, comments, hot, and top sections."
     unittests:
-        description: "These tests aren't used in standard testing, they are only used in the Raptor unit tests (they are similar to raptor-tp6 tests though)."
+        description: "These tests aren't used in standard testing, they are only used in the Raptor unit tests (they are similar to raptor-tp6 tests)."
         tests:
             test-page-1: ""
             test-page-2: ""

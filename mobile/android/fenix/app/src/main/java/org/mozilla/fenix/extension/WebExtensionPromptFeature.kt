@@ -6,6 +6,10 @@ package org.mozilla.fenix.extension
 
 import android.content.Context
 import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.TextView
+import androidx.annotation.UiContext
 import androidx.annotation.VisibleForTesting
 import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.FragmentManager
@@ -16,6 +20,7 @@ import kotlinx.coroutines.flow.mapNotNull
 import mozilla.components.browser.state.action.WebExtensionAction
 import mozilla.components.browser.state.state.extension.WebExtensionPromptRequest
 import mozilla.components.browser.state.store.BrowserStore
+import mozilla.components.concept.engine.webextension.PermissionPromptResponse
 import mozilla.components.concept.engine.webextension.WebExtensionInstallException
 import mozilla.components.feature.addons.Addon
 import mozilla.components.feature.addons.AddonManager
@@ -26,19 +31,21 @@ import mozilla.components.lib.state.ext.flowScoped
 import mozilla.components.support.base.feature.LifecycleAwareFeature
 import mozilla.components.support.ktx.android.content.appVersionName
 import mozilla.components.ui.widgets.withCenterAlignedButtons
+import org.mozilla.fenix.BuildConfig
 import org.mozilla.fenix.R
 import org.mozilla.fenix.ext.components
+import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.theme.ThemeManager
-import java.lang.ref.WeakReference
 
 /**
  * Feature implementation for handling [WebExtensionPromptRequest] and showing the respective UI.
  */
 class WebExtensionPromptFeature(
     private val store: BrowserStore,
-    private val context: Context,
-    private val addonManager: AddonManager = context.components.addonManager,
+    @UiContext private val context: Context,
     private val fragmentManager: FragmentManager,
+    private val onLinkClicked: (String, Boolean) -> Unit,
+    private val addonManager: AddonManager = context.components.addonManager,
 ) : LifecycleAwareFeature {
 
     /**
@@ -121,7 +128,12 @@ class WebExtensionPromptFeature(
         addon: Addon,
         promptRequest: WebExtensionPromptRequest.AfterInstallation.Permissions.Required,
     ) {
-        showPermissionDialog(addon = addon, promptRequest = promptRequest, permissions = promptRequest.permissions)
+        showPermissionDialog(
+            addon = addon,
+            promptRequest = promptRequest,
+            permissions = promptRequest.permissions,
+            origins = promptRequest.origins,
+        )
     }
 
     @VisibleForTesting
@@ -129,11 +141,14 @@ class WebExtensionPromptFeature(
         addon: Addon,
         promptRequest: WebExtensionPromptRequest.AfterInstallation.Permissions.Optional,
     ) {
-        val shouldGrantWithoutPrompt = Addon.localizePermissions(promptRequest.permissions, context).isEmpty()
+        val shouldGrantWithoutPrompt = Addon.localizePermissions(
+            promptRequest.permissions,
+            context,
+        ).isEmpty() && promptRequest.origins.isEmpty()
 
         // If we don't have any promptable permissions, just proceed.
         if (shouldGrantWithoutPrompt) {
-            handlePermissions(promptRequest, granted = true)
+            handlePermissions(promptRequest, granted = true, privateBrowsingAllowed = false)
             return
         }
 
@@ -142,30 +157,40 @@ class WebExtensionPromptFeature(
             promptRequest = promptRequest,
             forOptionalPermissions = true,
             permissions = promptRequest.permissions,
+            origins = promptRequest.origins,
         )
     }
 
     @VisibleForTesting
     internal fun handleInstallationFailedRequest(
         exception: WebExtensionInstallException,
-    ) {
+    ): AlertDialog? {
         val addonName = exception.extensionName ?: ""
-        var title = context.getString(R.string.mozac_feature_addons_failed_to_install, "")
+        val appName = context.getString(R.string.app_name)
+
+        var title = context.getString(R.string.mozac_feature_addons_cant_install_extension)
+        var url: String? = null
         val message = when (exception) {
             is WebExtensionInstallException.Blocklisted -> {
-                context.getString(R.string.mozac_feature_addons_blocklisted_1, addonName)
+                url = formatBlocklistURL(exception)
+                context.getString(R.string.mozac_feature_addons_blocklisted_2, addonName, appName)
+            }
+
+            is WebExtensionInstallException.SoftBlocked -> {
+                url = formatBlocklistURL(exception)
+                context.getString(R.string.mozac_feature_addons_soft_blocked_1, addonName, appName)
             }
 
             is WebExtensionInstallException.UserCancelled -> {
                 // We don't want to show an error message when users cancel installation.
-                return
+                return null
             }
 
             is WebExtensionInstallException.UnsupportedAddonType,
             is WebExtensionInstallException.Unknown,
             -> {
                 // Making sure we don't have a
-                // Title = Failed to install
+                // Title = Can't install extension
                 // Message = Failed to install $addonName
                 title = ""
                 if (addonName.isNotEmpty()) {
@@ -173,6 +198,10 @@ class WebExtensionPromptFeature(
                 } else {
                     context.getString(R.string.mozac_feature_addons_extension_failed_to_install)
                 }
+            }
+
+            is WebExtensionInstallException.AdminInstallOnly -> {
+                context.getString(R.string.mozac_feature_addons_admin_install_only, addonName)
             }
 
             is WebExtensionInstallException.NetworkFailure -> {
@@ -190,7 +219,6 @@ class WebExtensionPromptFeature(
             }
 
             is WebExtensionInstallException.Incompatible -> {
-                val appName = context.getString(R.string.app_name)
                 val version = context.appVersionName
                 context.getString(
                     R.string.mozac_feature_addons_failed_to_install_incompatible_error,
@@ -201,10 +229,22 @@ class WebExtensionPromptFeature(
             }
         }
 
-        showDialog(
+        return showDialog(
             title = title,
             message = message,
+            url = url,
         )
+    }
+
+    private fun formatBlocklistURL(exception: WebExtensionInstallException): String? {
+        var url: String? = exception.extensionId?.let { AMO_BLOCKED_PAGE_URL.format(it) }
+        // Only append the version if the URL is valid and we have a version. The AMO "blocked" page
+        // can be loaded without a version, but it's always better to specify a version if we have one.
+        if (url != null && exception.extensionVersion != null) {
+            url += "${exception.extensionVersion}/"
+        }
+
+        return url
     }
 
     /**
@@ -220,6 +260,7 @@ class WebExtensionPromptFeature(
         promptRequest: WebExtensionPromptRequest.AfterInstallation.Permissions,
         forOptionalPermissions: Boolean = false,
         permissions: List<String> = emptyList(),
+        origins: List<String> = emptyList(),
     ) {
         if (isInstallationInProgress || hasExistingPermissionDialogFragment()) {
             return
@@ -229,22 +270,56 @@ class WebExtensionPromptFeature(
             addon = addon,
             forOptionalPermissions = forOptionalPermissions,
             permissions = permissions,
+            origins = origins,
             promptsStyling = AddonDialogFragment.PromptsStyling(
                 gravity = Gravity.BOTTOM,
                 shouldWidthMatchParent = true,
                 confirmButtonBackgroundColor = ThemeManager.resolveAttribute(
-                    R.attr.accent,
+                    R.attr.actionPrimary,
                     context,
                 ),
                 confirmButtonTextColor = ThemeManager.resolveAttribute(
-                    R.attr.textOnColorPrimary,
+                    R.attr.textActionPrimary,
+                    context,
+                ),
+                confirmButtonDisabledBackgroundColor = ThemeManager.resolveAttribute(
+                    R.attr.actionPrimaryDisabled,
+                    context,
+                ),
+                confirmButtonDisabledTextColor = ThemeManager.resolveAttribute(
+                    R.attr.textActionPrimaryDisabled,
                     context,
                 ),
                 confirmButtonRadius =
                 (context.resources.getDimensionPixelSize(R.dimen.tab_corner_radius)).toFloat(),
+                learnMoreLinkTextColor = ThemeManager.resolveAttribute(
+                    R.attr.textAccent,
+                    context,
+                ),
             ),
-            onPositiveButtonClicked = { handlePermissions(promptRequest, granted = true) },
-            onNegativeButtonClicked = { handlePermissions(promptRequest, granted = false) },
+            onPositiveButtonClicked = { _, privateBrowsingAllowed ->
+                handlePermissions(
+                    promptRequest,
+                    granted = true,
+                    privateBrowsingAllowed,
+                )
+            },
+            onNegativeButtonClicked = {
+                handlePermissions(
+                    promptRequest,
+                    granted = false,
+                    privateBrowsingAllowed = false,
+                )
+            },
+            onLearnMoreClicked = {
+                onLinkClicked.invoke(
+                    SupportUtils.getSumoURLForTopic(
+                        context,
+                        SupportUtils.SumoTopic.EXTENSION_PERMISSIONS,
+                    ),
+                    false,
+                )
+            },
         )
         dialog.show(
             fragmentManager,
@@ -254,38 +329,38 @@ class WebExtensionPromptFeature(
 
     private fun tryToReAttachButtonHandlersToPreviousDialog() {
         findPreviousPermissionDialogFragment()?.let { dialog ->
-            dialog.onPositiveButtonClicked = { addon ->
+            dialog.onPositiveButtonClicked = { addon, privateBrowsingAllowed ->
                 store.state.webExtensionPromptRequest?.let { promptRequest ->
                     if (promptRequest is WebExtensionPromptRequest.AfterInstallation.Permissions &&
                         addon.id == promptRequest.extension.id
                     ) {
-                        handlePermissions(promptRequest, granted = true)
+                        handlePermissions(promptRequest, granted = true, privateBrowsingAllowed)
                     }
                 }
             }
             dialog.onNegativeButtonClicked = {
                 store.state.webExtensionPromptRequest?.let { promptRequest ->
                     if (promptRequest is WebExtensionPromptRequest.AfterInstallation.Permissions) {
-                        handlePermissions(promptRequest, granted = false)
+                        handlePermissions(promptRequest, granted = false, privateBrowsingAllowed = false)
+                    }
+                }
+            }
+            dialog.onLearnMoreClicked = {
+                store.state.webExtensionPromptRequest?.let { promptRequest ->
+                    if (promptRequest is WebExtensionPromptRequest.AfterInstallation.Permissions) {
+                        onLinkClicked.invoke(
+                            SupportUtils.getSumoURLForTopic(
+                                context,
+                                SupportUtils.SumoTopic.EXTENSION_PERMISSIONS,
+                            ),
+                            false,
+                        )
                     }
                 }
             }
         }
 
         findPreviousPostInstallationDialogFragment()?.let { dialog ->
-            dialog.onConfirmButtonClicked = { addon, allowInPrivateBrowsing ->
-                store.state.webExtensionPromptRequest?.let { promptRequest ->
-                    if (promptRequest is WebExtensionPromptRequest.AfterInstallation.PostInstallation &&
-                        addon.id == promptRequest.extension.id
-                    ) {
-                        handlePostInstallationButtonClicked(
-                            allowInPrivateBrowsing = allowInPrivateBrowsing,
-                            context = WeakReference(context),
-                            addon = addon,
-                        )
-                    }
-                }
-            }
             dialog.onDismissed = {
                 store.state.webExtensionPromptRequest?.let { _ ->
                     consumePromptRequest()
@@ -297,8 +372,21 @@ class WebExtensionPromptFeature(
     private fun handlePermissions(
         promptRequest: WebExtensionPromptRequest.AfterInstallation.Permissions,
         granted: Boolean,
+        privateBrowsingAllowed: Boolean,
     ) {
-        promptRequest.onConfirm(granted)
+        when (promptRequest) {
+            is WebExtensionPromptRequest.AfterInstallation.Permissions.Optional -> {
+                promptRequest.onConfirm(granted)
+            }
+
+            is WebExtensionPromptRequest.AfterInstallation.Permissions.Required -> {
+                val response = PermissionPromptResponse(
+                    isPermissionsGranted = granted,
+                    isPrivateModeGranted = privateBrowsingAllowed,
+                )
+                promptRequest.onConfirm(response)
+            }
+        }
         consumePromptRequest()
     }
 
@@ -328,24 +416,17 @@ class WebExtensionPromptFeature(
 
     private fun showPostInstallationDialog(addon: Addon) {
         if (!isInstallationInProgress && !hasExistingAddonPostInstallationDialogFragment()) {
-            // Fragment may not be attached to the context anymore during onConfirmButtonClicked handling,
-            // but we still want to be able to process user selection of the 'allowInPrivateBrowsing' pref.
-            // This is a best-effort attempt to do so - retain a weak reference to the application context
-            // (to avoid a leak), which we attempt to use to access addonManager.
-            // See https://github.com/mozilla-mobile/fenix/issues/15816
-            val weakApplicationContext: WeakReference<Context> = WeakReference(context)
-
             val dialog = AddonInstallationDialogFragment.newInstance(
                 addon = addon,
                 promptsStyling = AddonDialogFragment.PromptsStyling(
                     gravity = Gravity.BOTTOM,
                     shouldWidthMatchParent = true,
                     confirmButtonBackgroundColor = ThemeManager.resolveAttribute(
-                        R.attr.accent,
+                        R.attr.actionPrimary,
                         context,
                     ),
                     confirmButtonTextColor = ThemeManager.resolveAttribute(
-                        R.attr.textOnColorPrimary,
+                        R.attr.textActionPrimary,
                         context,
                     ),
                     confirmButtonRadius =
@@ -354,50 +435,46 @@ class WebExtensionPromptFeature(
                 onDismissed = {
                     consumePromptRequest()
                 },
-                onConfirmButtonClicked = { _, allowInPrivateBrowsing ->
-                    handlePostInstallationButtonClicked(
-                        addon = addon,
-                        context = weakApplicationContext,
-                        allowInPrivateBrowsing = allowInPrivateBrowsing,
-                    )
+                onConfirmButtonClicked = { _ ->
+                    consumePromptRequest()
                 },
             )
             dialog.show(fragmentManager, POST_INSTALLATION_DIALOG_FRAGMENT_TAG)
         }
     }
 
-    private fun handlePostInstallationButtonClicked(
-        context: WeakReference<Context>,
-        allowInPrivateBrowsing: Boolean,
-        addon: Addon,
-    ) {
-        if (allowInPrivateBrowsing) {
-            context.get()?.components?.addonManager?.setAddonAllowedInPrivateBrowsing(
-                addon = addon,
-                allowed = true,
-                onSuccess = { updatedAddon ->
-                    onAddonChanged(updatedAddon)
-                },
-            )
-        }
-        consumePromptRequest()
-    }
-
     @VisibleForTesting
     internal fun showDialog(
         title: String,
         message: String,
-    ) {
+        url: String? = null,
+    ): AlertDialog {
         context.let {
-            AlertDialog.Builder(it)
+            var dialog: AlertDialog? = null
+            val inflater = LayoutInflater.from(it)
+            val view = inflater.inflate(R.layout.addon_installation_failed_dialog, null)
+            val messageView = view.findViewById<TextView>(R.id.message)
+            messageView.text = message
+
+            if (url != null) {
+                val linkView = view.findViewById<TextView>(R.id.link)
+                linkView.visibility = View.VISIBLE
+                linkView.setOnClickListener {
+                    onLinkClicked(url, true) // shouldOpenInBrowser
+                    dialog?.dismiss()
+                }
+            }
+
+            dialog = AlertDialog.Builder(it)
                 .setTitle(title)
                 .setPositiveButton(android.R.string.ok) { _, _ -> }
                 .setCancelable(false)
-                .setMessage(
-                    message,
-                )
-                .show()
+                .setView(view)
+                .create()
                 .withCenterAlignedButtons()
+            dialog.show()
+
+            return dialog
         }
     }
 
@@ -405,5 +482,6 @@ class WebExtensionPromptFeature(
         private const val PERMISSIONS_DIALOG_FRAGMENT_TAG = "ADDONS_PERMISSIONS_DIALOG_FRAGMENT"
         private const val POST_INSTALLATION_DIALOG_FRAGMENT_TAG =
             "ADDONS_INSTALLATION_DIALOG_FRAGMENT"
+        private const val AMO_BLOCKED_PAGE_URL = "${BuildConfig.AMO_BASE_URL}/android/blocked-addon/%s/"
     }
 }

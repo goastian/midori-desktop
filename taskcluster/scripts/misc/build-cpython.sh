@@ -35,10 +35,9 @@ case `uname -s` in
                 macosx_version_min=10.12
                 ;;
         esac
-        macosx_sdk=14.4
         # NOTE: both CFLAGS and CPPFLAGS need to be set here, otherwise
         # configure step fails.
-        sysroot_flags="-isysroot ${MOZ_FETCHES_DIR}/MacOSX${macosx_sdk}.sdk -mmacosx-version-min=${macosx_version_min}"
+        sysroot_flags="-isysroot ${MOZ_FETCHES_DIR}/MacOSX15.4.sdk -mmacosx-version-min=${macosx_version_min}"
         export CPPFLAGS="${sysroot_flags} -I${xz_prefix}/include"
         export CFLAGS=${sysroot_flags}
         export LDFLAGS="${LDFLAGS} ${sysroot_flags} -L${xz_prefix}/lib"
@@ -83,6 +82,7 @@ case `uname -s` in
         cp /usr/local/opt/openssl/lib/libssl*.dylib ${work_dir}/python/lib/
         cp /usr/local/opt/openssl/lib/libcrypto*.dylib ${work_dir}/python/lib/
         cp ${xz_prefix}/lib/liblzma.dylib ${work_dir}/python/lib/
+        cp ${xz_prefix}/lib/liblzma.5.dylib ${work_dir}/python/lib/
 
         # Instruct the loader to search for the lib in rpath instead of the one used during linking
         install_name_tool -change /usr/local/opt/openssl@1.1/lib/libssl.1.1.dylib @rpath/libssl.1.1.dylib ${work_dir}/python/lib/python3.*/lib-dynload/_ssl.cpython-3*-darwin.so
@@ -105,11 +105,11 @@ case `uname -s` in
         ${work_dir}/python/bin/python3 -m pip install certifi==2024.2.2
         ;;
     Linux)
-        cp /usr/lib/x86_64-linux-gnu/libffi.so.* ${work_dir}/python/lib/
-        cp /usr/lib/x86_64-linux-gnu/libssl.so.* ${work_dir}/python/lib/
-        cp /usr/lib/x86_64-linux-gnu/libcrypto.so.* ${work_dir}/python/lib/
-        cp /lib/x86_64-linux-gnu/libncursesw.so.* ${work_dir}/python/lib/
-        cp /lib/x86_64-linux-gnu/libtinfo.so.* ${work_dir}/python/lib/
+        cp /usr/lib/$(uname -m)-linux-gnu/libffi.so.* ${work_dir}/python/lib/
+        cp /usr/lib/$(uname -m)-linux-gnu/libssl.so.* ${work_dir}/python/lib/
+        cp /usr/lib/$(uname -m)-linux-gnu/libcrypto.so.* ${work_dir}/python/lib/
+        cp /lib/$(uname -m)-linux-gnu/libncursesw.so.* ${work_dir}/python/lib/
+        cp /lib/$(uname -m)-linux-gnu/libtinfo.so.* ${work_dir}/python/lib/
         ;;
 esac
 

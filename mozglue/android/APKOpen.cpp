@@ -21,7 +21,6 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <zlib.h>
 #include "dlfcn.h"
 #include "APKOpen.h"
 #include <sys/time.h>
@@ -36,11 +35,13 @@
 #include "mozilla/arm.h"
 #include "mozilla/Bootstrap.h"
 #include "mozilla/Printf.h"
+#include "mozilla/ProcessType.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Try.h"
 #include "mozilla/UniquePtr.h"
 #include "XREChildData.h"
+#include "XREShellData.h"
 
 /* Android headers don't define RUSAGE_THREAD */
 #ifndef RUSAGE_THREAD
@@ -134,7 +135,7 @@ void abortThroughJava(const char* msg) {
   env->PopLocalFrame(nullptr);
 }
 
-Bootstrap::UniquePtr gBootstrap;
+MOZ_RUNINIT Bootstrap::UniquePtr gBootstrap;
 #ifndef MOZ_FOLD_LIBS
 static void* sqlite_handle = nullptr;
 static void* nspr_handle = nullptr;
@@ -361,16 +362,23 @@ static void FreeArgv(char** argv, int argc) {
   delete[] (argv);
 }
 
+// These are mirrored in GeckoLoader.java
+#define PROCESS_TYPE_MAIN 0
+#define PROCESS_TYPE_CHILD 1
+#define PROCESS_TYPE_XPCSHELL 2
+
 extern "C" APKOPEN_EXPORT void MOZ_JNICALL
-Java_org_mozilla_gecko_mozglue_GeckoLoader_nativeRun(
-    JNIEnv* jenv, jclass jc, jobjectArray jargs, int prefsFd, int prefMapFd,
-    int ipcFd, int crashFd, bool xpcshell, jstring outFilePath) {
+Java_org_mozilla_gecko_mozglue_GeckoLoader_nativeRun(JNIEnv* jenv, jclass jc,
+                                                     jobjectArray jargs,
+                                                     jintArray jfds,
+                                                     jint processType,
+                                                     jstring outFilePath) {
   EnsureBaseProfilerInitialized();
 
   int argc = 0;
   char** argv = CreateArgvFromObjectArray(jenv, jargs, &argc);
 
-  if (ipcFd < 0) {
+  if (processType != PROCESS_TYPE_CHILD) {
     if (gBootstrap == nullptr) {
       FreeArgv(argv, argc);
       return;
@@ -379,26 +387,89 @@ Java_org_mozilla_gecko_mozglue_GeckoLoader_nativeRun(
 #ifdef MOZ_LINKER
     ElfLoader::Singleton.ExpectShutdown(false);
 #endif
-    const char* outFilePathRaw = nullptr;
-    if (xpcshell) {
-      MOZ_ASSERT(outFilePath);
-      outFilePathRaw = jenv->GetStringUTFChars(outFilePath, nullptr);
+    gBootstrap->XRE_SetGeckoThreadEnv(jenv);
+    if (!argv) {
+      __android_log_print(
+          ANDROID_LOG_FATAL, "mozglue", "Failed to get arguments for %s",
+          processType == PROCESS_TYPE_XPCSHELL ? "XRE_XPCShellMain"
+                                               : "XRE_main");
+      return;
     }
-    gBootstrap->GeckoStart(jenv, argv, argc, sAppData, xpcshell,
-                           outFilePathRaw);
-    if (outFilePathRaw) {
-      jenv->ReleaseStringUTFChars(outFilePath, outFilePathRaw);
+
+    jsize size = jenv->GetArrayLength(jfds);
+    if (size != 2) {
+      __android_log_print(ANDROID_LOG_FATAL, "mozglue",
+                          "Wrong number of file descriptors passed to a "
+                          "browser/xpcshell process");
+      return;
+    }
+    jint* fds = jenv->GetIntArrayElements(jfds, nullptr);
+    int crashChildNotificationSocket = fds[0];
+    int crashHelperSocket = fds[1];
+    jenv->ReleaseIntArrayElements(jfds, fds, JNI_ABORT);
+
+    if (processType == PROCESS_TYPE_XPCSHELL) {
+      MOZ_ASSERT(outFilePath);
+      const char* outFilePathRaw =
+          jenv->GetStringUTFChars(outFilePath, nullptr);
+      FILE* outFile = outFilePathRaw ? fopen(outFilePathRaw, "w") : nullptr;
+      if (outFile) {
+        XREShellData shellData;
+        // We redirect both stdout and stderr to the same file, to conform with
+        // what runxpcshell.py does on Desktop.
+        shellData.outFile = outFile;
+        shellData.errFile = outFile;
+        shellData.crashChildNotificationSocket = crashChildNotificationSocket;
+        shellData.crashHelperSocket = crashHelperSocket;
+        int result =
+            gBootstrap->XRE_XPCShellMain(argc, argv, nullptr, &shellData);
+        fclose(shellData.outFile);
+        if (result) {
+          __android_log_print(ANDROID_LOG_INFO, "mozglue",
+                              "XRE_XPCShellMain returned %d", result);
+        }
+      } else {
+        __android_log_print(ANDROID_LOG_FATAL, "mozglue",
+                            "XRE_XPCShellMain cannot open %s", outFilePathRaw);
+      }
+      if (outFilePathRaw) {
+        jenv->ReleaseStringUTFChars(outFilePath, outFilePathRaw);
+      }
+    } else {
+      BootstrapConfig config;
+      config.appData = &sAppData;
+      config.appDataPath = nullptr;
+      config.crashChildNotificationSocket = crashChildNotificationSocket;
+      config.crashHelperSocket = crashHelperSocket;
+
+      int result = gBootstrap->XRE_main(argc, argv, config);
+      if (result) {
+        __android_log_print(ANDROID_LOG_INFO, "mozglue", "XRE_main returned %d",
+                            result);
+      }
     }
 #ifdef MOZ_LINKER
     ElfLoader::Singleton.ExpectShutdown(true);
 #endif
   } else {
-    gBootstrap->XRE_SetAndroidChildFds(jenv,
-                                       {prefsFd, prefMapFd, ipcFd, crashFd});
-    gBootstrap->XRE_SetProcessType(argv[argc - 1]);
+    if (argc < 2) {
+      FreeArgv(argv, argc);
+      return;
+    }
+
+    SetGeckoProcessType(argv[--argc]);
+    SetGeckoChildID(argv[--argc]);
+#if defined(MOZ_MEMORY)
+    // XRE_IsContentProcess is not accessible here
+    jemalloc_reset_small_alloc_randomization(
+        /* aRandomizeSmall */ GetGeckoProcessType() !=
+        GeckoProcessType_Content);
+#endif
+
+    gBootstrap->XRE_SetAndroidChildFds(jenv, jfds);
 
     XREChildData childData;
-    gBootstrap->XRE_InitChildProcess(argc - 1, argv, &childData);
+    gBootstrap->XRE_InitChildProcess(argc, argv, &childData);
   }
 
 #ifdef MOZ_WIDGET_ANDROID
@@ -414,6 +485,18 @@ extern "C" APKOPEN_EXPORT mozglueresult ChildProcessInit(int argc,
                                                          char* argv[]) {
   EnsureBaseProfilerInitialized();
 
+  if (argc < 2) {
+    return FAILURE;
+  }
+
+  SetGeckoProcessType(argv[--argc]);
+  SetGeckoChildID(argv[--argc]);
+#if defined(MOZ_MEMORY)
+  // XRE_IsContentProcess is not accessible here
+  jemalloc_reset_small_alloc_randomization(
+      /* aRandomizeSmall */ GetGeckoProcessType() != GeckoProcessType_Content);
+#endif
+
   if (loadNSSLibs() != SUCCESS) {
     return FAILURE;
   }
@@ -423,8 +506,6 @@ extern "C" APKOPEN_EXPORT mozglueresult ChildProcessInit(int argc,
   if (loadGeckoLibs().isErr()) {
     return FAILURE;
   }
-
-  gBootstrap->XRE_SetProcessType(argv[--argc]);
 
   XREChildData childData;
   return NS_FAILED(gBootstrap->XRE_InitChildProcess(argc, argv, &childData));

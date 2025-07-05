@@ -2,8 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-/* eslint-disable no-restricted-globals */
-
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
@@ -84,7 +82,7 @@ event.synthesizeMouseAtPoint = function (left, top, opts, win) {
 };
 
 /**
- * Synthesise a touch event at a point.
+ * Synthesize a touch event at a point.
  *
  * If the type is specified in opts, a touch event of that type is
  * fired. Otherwise, a touchstart followed by a touchend is performed.
@@ -107,37 +105,31 @@ event.synthesizeTouchAtPoint = function (left, top, opts, win) {
 };
 
 /**
- * Synthesise a wheel scroll event at a point.
+ * Synthesize a wheel event in `win` at a point, without flushing layout.
  *
- * @param {number} left
- *     Offset from viewport left, in CSS pixels
- * @param {number} top
- *     Offset from viewport top, in CSS pixels
- * @param {object} opts
- *     Object which may contain the properties "shiftKey", "ctrlKey",
- *     "altKey", "metaKey", "accessKey", "deltaX", "deltaY", "deltaZ",
- *     "deltaMode", "lineOrPageDeltaX", "lineOrPageDeltaY", "isMomentum",
- *     "isNoLineOrPageDelta", "isCustomizedByPrefs", "expectedOverflowDeltaX",
- *     "expectedOverflowDeltaY"
- * @param {Window} win
- *     Window object.
+ * @param {number} left - Floating-point value for the X offset in CSS pixels.
+ * @param {number} top - Floating-point value for the Y offset in CSS pixels.
+ * @param {module:EventUtils~WheelEventData} event - Details of the wheel event
+ *     to dispatch.
+ * @param {DOMWindow} win - DOM window used to dispatch the event.
  */
-event.synthesizeWheelAtPoint = function (left, top, opts, win) {
+event.synthesizeWheelAtPoint = function (left, top, event, win) {
   const dpr = win.devicePixelRatio;
 
   // All delta properties expect the value in device pixels while the
   // WebDriver specification uses CSS pixels.
-  if (typeof opts.deltaX !== "undefined") {
-    opts.deltaX *= dpr;
+  // TODO: check if the conversion needs to be done at the platform level
+  if (typeof event.deltaX !== "undefined") {
+    event.deltaX *= dpr;
   }
-  if (typeof opts.deltaY !== "undefined") {
-    opts.deltaY *= dpr;
+  if (typeof event.deltaY !== "undefined") {
+    event.deltaY *= dpr;
   }
-  if (typeof opts.deltaZ !== "undefined") {
-    opts.deltaZ *= dpr;
+  if (typeof event.deltaZ !== "undefined") {
+    event.deltaZ *= dpr;
   }
 
-  return _getEventUtils(win).synthesizeWheelAtPoint(left, top, opts, win);
+  return _getEventUtils(win).synthesizeWheelAtPoint(left, top, event, win);
 };
 
 event.synthesizeMultiTouch = function (opts, win) {

@@ -11,6 +11,7 @@ shift
 CONFIG=$(echo $* | tr -d "'")
 
 # Android build flag
+IS_ANDROID=false
 if [[ "$ARTIFACT_NAME" == *"android"* ]]; then
   IS_ANDROID=true
 fi
@@ -22,6 +23,10 @@ CUSTOM_CAR_DIR=$PWD
 # Setup depot_tools
 git clone https://chromium.googlesource.com/chromium/tools/depot_tools.git
 export PATH="$PATH:$CUSTOM_CAR_DIR/depot_tools"
+# Bug 1901936 changes to config upstream for depot tools path
+if [[ $(uname -s) == "Linux" ]]; then
+  export XDG_CONFIG_HOME=$CUSTOM_CAR_DIR
+fi
 
 # Log the current revision of depot tools for easier tracking in the future
 DEPOT_TOOLS_REV=$(cd depot_tools && git rev-parse HEAD && cd ..)
@@ -55,7 +60,7 @@ fi
 # Logic for macosx64
 if [[ $(uname -s) == "Darwin" ]]; then
   # Modify the config with fetched sdk path
-  export MACOS_SYSROOT="$MOZ_FETCHES_DIR/MacOSX14.4.sdk"
+  export MACOS_SYSROOT="$MOZ_FETCHES_DIR/MacOSX15.4.sdk"
 
   # Avoid mixing up the system python and toolchain python in the
   # python path configuration
@@ -106,7 +111,7 @@ if [[ $(uname -o) == "Msys" ]]; then
   pushd "$WINDOWSSDKDIR"
   mkdir -p Debuggers/x64/
   popd
-  mv $MOZ_FETCHES_DIR/VS/VC/Redist/MSVC/14.38.33135/x64/Microsoft.VC143.CRT/* chrome_dll/system32/
+  mv $MOZ_FETCHES_DIR/VS/VC/Redist/MSVC/14.40.33807/x64/Microsoft.VC143.CRT/* chrome_dll/system32/
   mv "$WINDOWSSDKDIR/App Certification Kit/"* "$WINDOWSSDKDIR"/Debuggers/x64/
   export WINDIR="$PWD/chrome_dll"
 
@@ -164,7 +169,7 @@ fi
 # Now we can run hooks and fetch PGO + everything else
 gclient runhooks
 
-# PGO data should be in src/chrome/build/pgo_profiles/ 
+# PGO data should be in src/chrome/build/pgo_profiles/
 # with a name like "chrome-{OS}-<some unique identifier>"
 export PGO_DATA_DIR="$CUSTOM_CAR_DIR/chromium/src/chrome/build/pgo_profiles"
 for entry in "$PGO_DATA_DIR"/*
@@ -191,6 +196,19 @@ CONFIG=$(echo $CONFIG pgo_data_path='"'$PGO_FILE'"')
 # Set up then build chrome
 gn gen out/Default --args="$CONFIG"
 autoninja -C out/Default $FINAL_BIN
+
+# Make artifact smaller for win/linux
+if [[ $(uname -s) == "Linux" ]] || [[ $(uname -o) == "Msys" ]]; then
+  if [ "$IS_ANDROID" = false ]; then
+    rm -rf out/Default/.ninjadeps
+    rm -rf out/Default/*_deps
+    rm -rf out/Default/gen/*
+    rm -rf out/Default/obj/*
+    rm -rf out/Default/thinlto-cache
+    rm -rf out/Default/*/gen/*
+    rm -rf out/Default/*/obj/*
+  fi
+fi
 
 # Gather binary and related files into a zip, and upload it
 cd ..

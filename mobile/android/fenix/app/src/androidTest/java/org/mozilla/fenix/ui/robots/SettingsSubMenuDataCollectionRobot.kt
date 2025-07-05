@@ -8,11 +8,9 @@ import android.util.Log
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.RootMatchers
-import androidx.test.espresso.matcher.ViewMatchers
 import androidx.test.espresso.matcher.ViewMatchers.isChecked
 import androidx.test.espresso.matcher.ViewMatchers.isNotChecked
 import androidx.test.espresso.matcher.ViewMatchers.withClassName
-import androidx.test.espresso.matcher.ViewMatchers.withEffectiveVisibility
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import org.hamcrest.CoreMatchers.allOf
@@ -35,30 +33,33 @@ class SettingsSubMenuDataCollectionRobot {
 
     fun verifyDataCollectionView(
         isUsageAndTechnicalDataEnabled: Boolean,
-        isMarketingDataEnabled: Boolean,
+        isDailyUsagePingEnabled: Boolean,
         studiesSummary: String,
+        isAutomaticallySendCrashReportsEnabled: Boolean,
     ) {
         assertUIObjectExists(
             goBackButton(),
             itemContainingText(getStringResource(R.string.preferences_data_collection)),
-            itemContainingText(getStringResource(R.string.preference_usage_data)),
-            itemContainingText(getStringResource(R.string.preferences_usage_data_description)),
+            itemContainingText(getStringResource(R.string.preference_usage_data_2)),
+            itemContainingText(getStringResource(R.string.preferences_usage_data_description_1)),
+            itemContainingText(getStringResource(R.string.preference_usage_data_learn_more)),
+            itemContainingText(getStringResource(R.string.studies_title)),
+            itemContainingText(studiesSummary),
+            itemContainingText(getStringResource(R.string.preferences_daily_usage_ping_title)),
+            itemContainingText(getStringResource(R.string.preferences_daily_usage_ping_description)),
+            itemContainingText(getStringResource(R.string.preferences_daily_usage_ping_learn_more)),
+            itemContainingText(getStringResource(R.string.preferences_automatically_send_crashes_title)),
+            itemContainingText(getStringResource(R.string.preferences_automatically_send_crashes_description)),
+            itemContainingText(getStringResource(R.string.onboarding_preferences_dialog_crash_reporting_learn_more)),
         )
         verifyUsageAndTechnicalDataToggle(isUsageAndTechnicalDataEnabled)
-        assertUIObjectExists(
-            itemContainingText(getStringResource(R.string.preferences_marketing_data)),
-            itemContainingText(getStringResource(R.string.preferences_marketing_data_description2)),
-        )
-        verifyMarketingDataToggle(isMarketingDataEnabled)
-        assertUIObjectExists(
-            itemContainingText(getStringResource(R.string.preference_experiments_2)),
-            itemContainingText(studiesSummary),
-        )
+        verifyDailyUsagePingToggle(isDailyUsagePingEnabled)
+        verifyAutomaticallySendCrashReportsToggle(isAutomaticallySendCrashReportsEnabled)
     }
 
     fun verifyUsageAndTechnicalDataToggle(enabled: Boolean) {
-        Log.i(TAG, "verifyUsageAndTechnicalDataToggle: Trying to verify that the \"Usage and technical data\" toggle is checked: $enabled")
-        onView(withText(R.string.preference_usage_data))
+        Log.i(TAG, "verifyUsageAndTechnicalDataToggle: Trying to verify that the \"Technical and interaction data\" toggle is checked: $enabled")
+        onView(withText(R.string.preference_usage_data_2))
             .check(
                 matches(
                     hasCousin(
@@ -76,9 +77,9 @@ class SettingsSubMenuDataCollectionRobot {
         Log.i(TAG, "verifyUsageAndTechnicalDataToggle: Verified that the \"Usage and technical data\" toggle is checked: $enabled")
     }
 
-    fun verifyMarketingDataToggle(enabled: Boolean) {
-        Log.i(TAG, "verifyMarketingDataToggle: Trying to verify that the \"Marketing data\" toggle is checked: $enabled")
-        onView(withText(R.string.preferences_marketing_data))
+    fun verifyDailyUsagePingToggle(enabled: Boolean) {
+        Log.i(TAG, "verifyDailyUsagePingToggle: Trying to verify that the \"Daily usage ping\" toggle is checked: $enabled")
+        onView(withText(R.string.preferences_daily_usage_ping_title))
             .check(
                 matches(
                     hasCousin(
@@ -93,7 +94,27 @@ class SettingsSubMenuDataCollectionRobot {
                     ),
                 ),
             )
-        Log.i(TAG, "verifyMarketingDataToggle: Verified that the \"Marketing data\" toggle is checked: $enabled")
+        Log.i(TAG, "verifyDailyUsagePingToggle: Verified that the \"Daily usage ping\" toggle is checked: $enabled")
+    }
+
+    fun verifyAutomaticallySendCrashReportsToggle(enabled: Boolean) {
+        Log.i(TAG, "verifyDailyUsagePingToggle: Trying to verify that the \"Automatically send crash reports\" toggle is checked: $enabled")
+        onView(withText(R.string.preferences_automatically_send_crashes_title))
+            .check(
+                matches(
+                    hasCousin(
+                        allOf(
+                            withClassName(endsWith("Switch")),
+                            if (enabled) {
+                                isChecked()
+                            } else {
+                                isNotChecked()
+                            },
+                        ),
+                    ),
+                ),
+            )
+        Log.i(TAG, "verifyDailyUsagePingToggle: Verified that the \"Daily usage ping\" toggle is checked: $enabled")
     }
 
     fun verifyStudiesToggle(enabled: Boolean) {
@@ -112,20 +133,20 @@ class SettingsSubMenuDataCollectionRobot {
     }
 
     fun clickUsageAndTechnicalDataToggle() {
-        Log.i(TAG, "clickUsageAndTechnicalDataToggle: Trying to click the \"Usage and technical data\" toggle")
-        itemContainingText(getStringResource(R.string.preference_usage_data)).click()
-        Log.i(TAG, "clickUsageAndTechnicalDataToggle: Clicked the \"Usage and technical data\" toggle")
+        Log.i(TAG, "clickUsageAndTechnicalDataToggle: Trying to click the \"Technical and interaction data\" toggle")
+        itemContainingText(getStringResource(R.string.preference_usage_data_2)).click()
+        Log.i(TAG, "clickUsageAndTechnicalDataToggle: Clicked the \"Technical and interaction data\" toggle")
     }
 
-    fun clickMarketingDataToggle() {
-        Log.i(TAG, "clickUsageAndTechnicalDataToggle: Trying to click the \"Marketing data\" toggle")
-        itemContainingText(getStringResource(R.string.preferences_marketing_data)).click()
-        Log.i(TAG, "clickUsageAndTechnicalDataToggle: Clicked the \"Marketing data\" toggle")
+    fun clickDailyUsagePingToggle() {
+        Log.i(TAG, "clickDailyUsagePingToggle: Trying to click the \"Daily usage ping\" toggle")
+        itemContainingText(getStringResource(R.string.preferences_daily_usage_ping_title)).click()
+        Log.i(TAG, "clickDailyUsagePingToggle: Clicked the \"Daily usage ping\" toggle")
     }
 
     fun clickStudiesOption() {
         Log.i(TAG, "clickStudiesOption: Trying to click the \"Studies\" option")
-        itemContainingText(getStringResource(R.string.preference_experiments_2)).click()
+        itemContainingText(getStringResource(R.string.studies_title)).click()
         Log.i(TAG, "clickStudiesOption: Clicked the \"Studies\" option")
     }
 
@@ -133,25 +154,6 @@ class SettingsSubMenuDataCollectionRobot {
         Log.i(TAG, "clickStudiesToggle: Trying to click the \"Studies\" toggle")
         itemWithResId("$packageName:id/studies_switch").click()
         Log.i(TAG, "clickStudiesToggle: Clicked the \"Studies\" toggle")
-    }
-
-    fun verifyStudiesDialog() {
-        assertUIObjectExists(
-            itemWithResId("$packageName:id/alertTitle"),
-            itemContainingText(getStringResource(R.string.studies_restart_app)),
-        )
-        Log.i(TAG, "verifyStudiesDialog: Trying to verify that the \"Studies\" dialog \"Ok\" button is visible")
-        studiesDialogOkButton().check(matches(withEffectiveVisibility(ViewMatchers.Visibility.VISIBLE)))
-        Log.i(TAG, "verifyStudiesDialog: Verified that the \"Studies\" dialog \"Ok\" button is visible")
-        Log.i(TAG, "verifyStudiesDialog: Trying to verify that the \"Studies\" dialog \"Cancel\" button is visible")
-        studiesDialogCancelButton().check(matches(withEffectiveVisibility(ViewMatchers.Visibility.VISIBLE)))
-        Log.i(TAG, "verifyStudiesDialog: Verified that the \"Studies\" dialog \"Cancel\" button is visible")
-    }
-
-    fun clickStudiesDialogCancelButton() {
-        Log.i(TAG, "clickStudiesDialogCancelButton: Trying to click the \"Studies\" dialog \"Cancel\" button")
-        studiesDialogCancelButton().click()
-        Log.i(TAG, "clickStudiesDialogCancelButton: Clicked the \"Studies\" dialog \"Cancel\" button")
     }
 
     fun clickStudiesDialogOkButton() {

@@ -50,6 +50,8 @@ const OTHER = "example.com";
 
 add_setup(async function setup() {
   trr_test_setup();
+  // For canon-name flags
+  Services.prefs.setBoolPref("network.dns.always_ai_canonname", false);
 
   registerCleanupFunction(async () => {
     trr_clear_prefs();
@@ -433,6 +435,10 @@ add_task(
 
     let [, inRecord, inStatus] = await listener;
     equal(inStatus, Cr.NS_OK);
+    Assert.ok(
+      !inRecord.QueryInterface(Ci.nsIDNSHTTPSSVCRecord).IsTRR(),
+      "resolved by Native"
+    );
     let answer = inRecord.QueryInterface(Ci.nsIDNSHTTPSSVCRecord).records;
     equal(answer[0].priority, 1);
     equal(answer[0].name, "service.com");

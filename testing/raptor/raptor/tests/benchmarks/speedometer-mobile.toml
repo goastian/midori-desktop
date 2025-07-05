@@ -1,7 +1,10 @@
 [DEFAULT]
 alert_threshold = 2.0
 apps = "fenix, geckoview, refbrow, chrome-m, cstm-car-m"
+gather_cpuTime = true
 gecko_profile_interval = 1
+gecko_profile_features = "stackwalk,js,cpu,processcpu,ipcmessages,nomarkerstacks"
+gecko_profile_threads = "GeckoMain,Compositor,Renderer,TaskController,StyleThread"
 expose_browser_profiler = true
 lower_is_better = false
 owner = "SpiderMonkey Team"
@@ -20,7 +23,7 @@ browser_cycles = 5
 owner = "Performance Team"
 cold = true
 repository = "https://github.com/WebKit/Speedometer"
-repository_revision = "8d67f28d0281ac4330f283495b7f48286654ad7d"
+repository_revision = "1386415be8fef2f6b6bbdbe1828872471c5d802a"
 host_from_parent = false
 support_class = "speedometer3.py"
 test_script = "speedometer3.js"

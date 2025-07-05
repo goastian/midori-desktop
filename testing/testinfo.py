@@ -10,6 +10,7 @@ import posixpath
 import re
 import subprocess
 from collections import defaultdict
+from typing import Dict
 
 import mozpack.path as mozpath
 import requests
@@ -17,6 +18,7 @@ import six.moves.urllib_parse as urlparse
 from mozbuild.base import MachCommandConditions as conditions
 from mozbuild.base import MozbuildObject
 from mozfile import which
+from mozinfo.platforminfo import PlatformInfo
 from moztest.resolve import TestManifestLoader, TestResolver
 from redo import retriable
 
@@ -24,7 +26,14 @@ REFERER = "https://wiki.developer.mozilla.org/en-US/docs/Mozilla/Test-Info"
 MAX_DAYS = 30
 
 
-class TestInfo(object):
+class SetEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, set):
+            return list(obj)
+        return super().default(obj)
+
+
+class TestInfo:
     """
     Support 'mach test-info'.
     """
@@ -250,7 +259,7 @@ class TestInfoReport(TestInfo):
             # returns multiple records for the same test; that can happen if the report
             # sometimes maps more than one ActiveData record to the same path.
             new_value = item.get(label, 0) + value
-            if type(new_value) == int:
+            if type(new_value) is int:
                 item[label] = new_value
             else:
                 item[label] = float(round(new_value, 2))  # pylint: disable=W1633
@@ -378,7 +387,7 @@ class TestInfoReport(TestInfo):
         # TODO: use start/end properly
         if runcounts_input_file:
             try:
-                with open(runcounts_input_file, "r") as f:
+                with open(runcounts_input_file) as f:
                     runcounts = json.load(f)
             except:
                 print("Unable to load runcounts from path: %s" % runcounts_input_file)
@@ -471,15 +480,19 @@ class TestInfoReport(TestInfo):
                 print("Warning: Missing job type names from date: %s" % datekey)
                 continue
 
+            # TODO: changed this to include all manifests, not just first
             for m in runcounts[datekey]["manifests"]:
-                man_name = list(m.keys())[0]
+                for man_name in m.keys():
+                    for job_type_id, result, classification, count in m[man_name]:
+                        # HACK: we treat shippable and opt the same for mozinfo and runcounts
+                        job_name = jtn[job_type_id].replace("-shippable", "")
 
-                for job_type_id, result, classification, count in m[man_name]:
-                    # format: job_type_name, result, classification, count
-                    # find matching jtn, result, classification and increment 'count'
-                    job_name = jtn[job_type_id]
-                    key = (job_name, result, classification)
-                    testgroup_runinfo[man_name][key] += count
+                        # format: job_type_name, result, classification, count
+                        # find matching jtn, result, classification and increment 'count'
+                        key = (job_name, result, classification)
+
+                        # only keep the "parent" manifest
+                        testgroup_runinfo[man_name.split(":")[0]][key] += count
 
         for m in testgroup_runinfo:
             retVal[m] = [
@@ -565,6 +578,7 @@ class TestInfoReport(TestInfo):
         end,
         show_testruns,
         runcounts_input_file,
+        config_matrix_output_file,
     ):
         def matches_filters(test):
             """
@@ -631,9 +645,27 @@ class TestInfoReport(TestInfo):
                     manifest_path = "%s:%s" % (t["ancestor_manifest"], t["manifest"])
                 manifest_paths.add(manifest_path)
         manifest_count = len(manifest_paths)
-        print(
-            "Resolver found {} tests, {} manifests".format(len(tests), manifest_count)
-        )
+        print(f"Resolver found {len(tests)} tests, {manifest_count} manifests")
+
+        if config_matrix_output_file:
+            topsrcdir = self.build_obj.topsrcdir
+            config_matrix = {}
+            for manifest in manifest_paths:
+                # we want the first part of the parent:child, as parent shows up in MHTP
+                # TODO: figure out a better solution for child manifests
+                if ".toml" in manifest:
+                    relpath = mozpath.relpath(
+                        f"{manifest.split('.toml')[0]}.toml", topsrcdir
+                    )
+                else:
+                    relpath = mozpath.relpath(manifest, topsrcdir)
+                # hack for wpt manifests
+                if relpath.startswith(".."):
+                    relpath = "/" + relpath.replace("../", "")
+                config_matrix[relpath] = self.create_matrix_from_task_graph(
+                    relpath, runcount
+                )
+            self.write_report(config_matrix, config_matrix_output_file)
 
         if show_manifests:
             topsrcdir = self.build_obj.topsrcdir
@@ -656,9 +688,7 @@ class TestInfoReport(TestInfo):
                 if relpath in files_info:
                     bug_component = files_info[relpath].get("BUG_COMPONENT")
                     if bug_component:
-                        key = "{}::{}".format(
-                            bug_component.product, bug_component.component
-                        )
+                        key = f"{bug_component.product}::{bug_component.component}"
                     else:
                         key = "<unknown bug component>"
                     if (not components) or (key in components):
@@ -738,11 +768,11 @@ class TestInfoReport(TestInfo):
                                 temp.extend(condition.split("\n"))
                             annotation_conditions = temp
 
-                            for condition in annotation_conditions:
+                            for c in annotation_conditions:
                                 condition_count += 1
                                 # Trim reftest fuzzy-if ranges: everything after the first comma
                                 # eg. "Android,0-2,1-3" -> "Android"
-                                condition = condition.split(",")[0]
+                                condition = c.split(",")[0]
                                 if condition not in conditions:
                                     conditions[condition] = 0
                                 conditions[condition] += 1
@@ -751,9 +781,7 @@ class TestInfoReport(TestInfo):
                 if relpath in files_info:
                     bug_component = files_info[relpath].get("BUG_COMPONENT")
                     if bug_component:
-                        key = "{}::{}".format(
-                            bug_component.product, bug_component.component
-                        )
+                        key = f"{bug_component.product}::{bug_component.component}"
                     else:
                         key = "<unknown bug component>"
                     if (not components) or (key in components):
@@ -871,7 +899,7 @@ class TestInfoReport(TestInfo):
         )
 
     def write_report(self, by_component, output_file):
-        json_report = json.dumps(by_component, indent=2, sort_keys=True)
+        json_report = json.dumps(by_component, indent=2, sort_keys=True, cls=SetEncoder)
         if output_file:
             output_file = os.path.abspath(output_file)
             output_dir = os.path.dirname(output_file)
@@ -954,3 +982,156 @@ class TestInfoReport(TestInfo):
             "%s: %d deleted, %d added, %d common"
             % (component, len(deleted), len(added), common)
         )
+
+    ################################################################################
+    ###
+    ###  Below is code for creating a os/version/processor/config/variant matrix
+    ###
+
+    def build_matrix_cache(self):
+        # this is an attempt to cache the .json for the duration of the task
+        filename = "task-graph.json"
+        if os.path.exists(filename):
+            with open(filename) as f:
+                data = json.load(f)
+        else:
+            url = (
+                "https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.v2.mozilla-central.latest.taskgraph.decision/artifacts/public/"
+                + filename
+            )
+
+            response = requests.get(url, headers={"User-agent": "mach-test-info/1.0"})
+            data = response.json()
+            with open(filename, "w") as f:
+                json.dump(data, f)
+
+        for task in data.values():
+            task_label: str = task["label"]
+            # HACK: we treat shippable and opt the same from mozinfo, runtime counts
+            task_label = task_label.replace("-shippable", "")
+
+            # we only want test tasks
+            if not task_label.startswith("test-"):
+                continue
+            if task_label.endswith("-cf"):
+                continue
+
+            try:
+                parts = task_label.split("-")
+                if int(parts[-1]):
+                    task_label = "-".join(parts[:-1])
+            except ValueError:
+                pass
+
+            # TODO: this only works for tasks where we schedule by manifest
+            env = task.get("task", {}).get("payload", {}).get("env", {})
+
+            mhtp = json.loads(env.get("MOZHARNESS_TEST_PATHS", "{}"))
+            if not mhtp:
+                # mock up logic here if matching task
+                suite = self.find_non_test_path_loader(task_label)
+                if not suite:
+                    continue
+                mhtp[suite] = [suite]
+
+            # TODO: figure out a better method for dealing with TEST_TAG
+            # when we have a test_tag, all skipped manifests are added to chunk 1.
+            # we are skipping real manifests, but avoiding many overreported manifests.
+            #
+            # NOTE: some variants only have a single chunk, so no numbers
+            if json.loads(env.get("MOZHARNESS_TEST_TAG", "{}")):
+                if not json.loads(env.get("MOZHARNESS_TEST_PATHS", "{}")):
+                    # mock up logic here if matching task
+                    suite = self.find_non_test_path_loader(task_label)
+                    if not suite:
+                        continue
+                    mhtp[suite] = [suite]
+
+            for suite in mhtp:
+                for manifest in mhtp[suite]:
+                    self.matrix_map[manifest].append(task_label)
+
+            extra = task.get("task", {}).get("extra", {}).get("test-setting", {})
+            platform_info = PlatformInfo(extra)
+
+            self.task_tuples[task_label] = platform_info
+
+    matrix_map = defaultdict(list)
+    task_tuples: Dict[str, PlatformInfo] = {}
+
+    def find_non_test_path_loader(self, label):
+        # TODO: how to keep this list synchronized?
+        known_suites = [
+            "mochitest-browser-media",
+            "telemetry-tests-client",
+            "mochitest-webgl2-ext",
+            "mochitest-webgl1-ext",
+            "jittest-1proc",
+            "mochitest-browser-translations",
+            "jsreftest",
+            "mochitest-browser-screenshots",
+            "marionette-unittest",
+        ]
+        match = [x for x in known_suites if x in label]
+        if match:
+            return match[0]
+        return ""
+
+    # find manifest in matrix_map and for all tasks that run this
+    # pull the tuples out and create a definitive list
+    def create_matrix_from_task_graph(self, target_manifest, runcount):
+        results = {}
+
+        if not self.matrix_map:
+            self.build_matrix_cache()
+
+        # for tasks with no MOZHARNESS_TEST_PATHS, provide basic data
+        if target_manifest in runcount and self.find_non_test_path_loader(
+            runcount[target_manifest][0][0]
+        ):
+            suite = self.find_non_test_path_loader(runcount[target_manifest][0][0])
+            self.matrix_map[target_manifest] = self.matrix_map[suite]
+
+        for tl in self.matrix_map.get(target_manifest, []):
+            task_label = tl.replace("-shippable", "")
+            platform_info = self.task_tuples[task_label]
+
+            # add in runcounts, we can find find the index of the given task_label in 'job_type_names',
+            # use that to get specific runs
+            passed = 0
+            failed = 0
+            if target_manifest in runcount:
+                # data = [[job_name, result, classification, count], ...]
+                for data in [
+                    x for x in runcount[target_manifest] if task_label == x[0]
+                ]:
+                    if data[1] == "passed":
+                        passed += data[-1]
+                    else:
+                        failed += data[-1]
+
+            # this helps avoid 'skipped' manifests
+            if passed == 0 and failed == 0:
+                continue
+
+            if platform_info.os not in results:
+                results[platform_info.os] = {}
+            os = results[platform_info.os]
+            if platform_info.os_version not in os:
+                os[platform_info.os_version] = {}
+            os_version = os[platform_info.os_version]
+            if platform_info.arch not in os_version:
+                os_version[platform_info.arch] = {}
+            arch = os_version[platform_info.arch]
+            if platform_info.build_type not in arch:
+                arch[platform_info.build_type] = {}
+
+            if platform_info.test_variant not in arch[platform_info.build_type]:
+                arch[platform_info.build_type][platform_info.test_variant] = {
+                    "pass": 0,
+                    "fail": 0,
+                }
+            arch[platform_info.build_type][platform_info.test_variant]["pass"] += passed
+            arch[platform_info.build_type][platform_info.test_variant]["fail"] += failed
+
+        return results

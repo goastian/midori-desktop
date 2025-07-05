@@ -29,7 +29,7 @@ function getHashCommon(aStr, useBase64) {
   let stringStream = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(
     Ci.nsIStringInputStream
   );
-  stringStream.data = aStr;
+  stringStream.setByteStringData(aStr);
   hasher.updateFromStream(stringStream, -1);
 
   return hasher.finish(useBase64);
@@ -157,7 +157,7 @@ add_task(async function test_preload_empty() {
     certDB,
     ee_cert,
     SEC_ERROR_UNKNOWN_ISSUER,
-    certificateUsageSSLServer
+    Ci.nsIX509CertDB.verifyUsageTLSServer
   );
 });
 
@@ -210,7 +210,7 @@ add_task(async function test_preload_invalid_hash() {
     certDB,
     ee_cert,
     SEC_ERROR_UNKNOWN_ISSUER,
-    certificateUsageSSLServer
+    Ci.nsIX509CertDB.verifyUsageTLSServer
   );
 });
 
@@ -245,7 +245,7 @@ add_task(async function test_preload_invalid_length() {
     certDB,
     ee_cert,
     SEC_ERROR_UNKNOWN_ISSUER,
-    certificateUsageSSLServer
+    Ci.nsIX509CertDB.verifyUsageTLSServer
   );
 });
 
@@ -275,13 +275,13 @@ add_task(async function test_preload_basic() {
     certDB,
     ee_cert,
     SEC_ERROR_UNKNOWN_ISSUER,
-    certificateUsageSSLServer
+    Ci.nsIX509CertDB.verifyUsageTLSServer
   );
   await checkCertErrorGeneric(
     certDB,
     ee_cert_2,
     SEC_ERROR_UNKNOWN_ISSUER,
-    certificateUsageSSLServer
+    Ci.nsIX509CertDB.verifyUsageTLSServer
   );
 
   let intermediateBytes = readFile(
@@ -318,21 +318,12 @@ add_task(async function test_preload_basic() {
   // If the certdb is cached from a previous run, the intermediate will have
   // already been deleted, so this may "fail".
   run_certutil_on_directory(certDir.path, args, false);
-  let certsCachedPromise = TestUtils.topicObserved(
-    "psm:intermediate-certs-cached"
-  );
-  await asyncConnectTo("ee.example.com", PRErrorCodeSuccess);
-  let subjectAndData = await certsCachedPromise;
-  Assert.equal(subjectAndData.length, 2, "expecting [subject, data]");
-  // Since the intermediate is preloaded, we don't save it to the profile's
-  // certdb.
-  Assert.equal(subjectAndData[1], "0", `expecting "0" certs imported`);
 
   await checkCertErrorGeneric(
     certDB,
     ee_cert,
     PRErrorCodeSuccess,
-    certificateUsageSSLServer
+    Ci.nsIX509CertDB.verifyUsageTLSServer
   );
 
   let localDB = await IntermediatePreloadsClient.client.db;
@@ -354,7 +345,7 @@ add_task(async function test_preload_basic() {
     certDB,
     ee_cert_2,
     SEC_ERROR_UNKNOWN_ISSUER,
-    certificateUsageSSLServer
+    Ci.nsIX509CertDB.verifyUsageTLSServer
   );
 });
 
@@ -434,63 +425,20 @@ add_task(async function test_delete() {
   );
 });
 
-function findCertByCommonName(certDB, commonName) {
-  for (let cert of certDB.getCerts()) {
-    if (cert.commonName == commonName) {
-      return cert;
-    }
-  }
-  return null;
-}
-
-add_task(async function test_healer() {
-  Services.prefs.setBoolPref(INTERMEDIATES_ENABLED_PREF, true);
-  Services.prefs.setIntPref(INTERMEDIATES_DL_PER_POLL_PREF, 100);
-
+add_task(async function test_bug1966632() {
   let certDB = Cc["@mozilla.org/security/x509certdb;1"].getService(
     Ci.nsIX509CertDB
   );
-  // Add an intermediate as if it had previously been cached.
-  addCertFromFile(certDB, "test_intermediate_preloads/int.pem", ",,");
-  // Add an intermediate with non-default trust settings as if it had been added by the user.
-  addCertFromFile(certDB, "test_intermediate_preloads/int2.pem", "CTu,,");
 
-  let syncResult = await syncAndDownload(["int.pem", "int2.pem"]);
-  equal(syncResult, "success", "Preloading update should have run");
-
-  equal(
-    (await locallyDownloaded()).length,
-    2,
-    "There should have been 2 downloads"
-  );
-
-  let healerRanPromise = TestUtils.topicObserved(
-    "psm:intermediate-preloading-healer-ran"
-  );
-  Services.prefs.setIntPref(
-    "security.intermediate_preloading_healer.timer_interval_ms",
-    500
-  );
-  Services.prefs.setBoolPref(
-    "security.intermediate_preloading_healer.enabled",
-    true
-  );
-  await healerRanPromise;
-  Services.prefs.setBoolPref(
-    "security.intermediate_preloading_healer.enabled",
-    false
-  );
-
-  let intermediate = findCertByCommonName(
+  constructCertFromFile("test_intermediate_preloads/bug1966632-int1.pem", ",,");
+  await checkRootOfBuiltChain(
     certDB,
-    "intermediate-preloading-intermediate"
+    constructCertFromFile("test_intermediate_preloads/bug1966632-ee.pem", ",,"),
+    "G/ANXI8TwJTdF+AFBM8IiIUPEv0Gf6H5LA/b9guG4yE=",
+    new Date("2025-05-21T00:00:00Z").getTime() / 1000,
+    undefined,
+    Ci.nsIX509CertDB.FLAG_LOCAL_ONLY
   );
-  equal(intermediate, null, "should not find intermediate in NSS");
-  let intermediate2 = findCertByCommonName(
-    certDB,
-    "intermediate-preloading-intermediate2"
-  );
-  notEqual(intermediate2, null, "should find second intermediate in NSS");
 });
 
 function run_test() {

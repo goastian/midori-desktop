@@ -70,7 +70,7 @@
 #include "ProfilerBacktrace.h"
 #include "ProfileBuffer.h"
 #include "RegisteredThread.h"
-#include "BaseProfilerSharedLibraries.h"
+#include "SharedLibraries.h"
 #include "ThreadInfo.h"
 #include "VTuneProfiler.h"
 
@@ -102,45 +102,6 @@
 #if defined(GP_OS_darwin)
 #  define HAVE_NATIVE_UNWIND
 #  define USE_FRAME_POINTER_STACK_WALK
-#endif
-
-// No stack-walking in baseprofiler on linux, android, bsd.
-// APIs now make it easier to capture backtraces from the Base Profiler, which
-// is currently not supported on these platform, and would lead to a MOZ_CRASH
-// in REGISTERS_SYNC_POPULATE(). `#if 0` added in bug 1658232, follow-up bugs
-// should be referenced in meta bug 1557568.
-#if 0
-// Android builds use the ARM Exception Handling ABI to unwind.
-#  if defined(GP_PLAT_arm_linux) || defined(GP_PLAT_arm_android)
-#    define HAVE_NATIVE_UNWIND
-#    define USE_EHABI_STACKWALK
-#    include "EHABIStackWalk.h"
-#  endif
-
-// Linux/BSD builds use LUL, which uses DWARF info to unwind stacks.
-#  if defined(GP_PLAT_amd64_linux) || defined(GP_PLAT_x86_linux) ||       \
-      defined(GP_PLAT_amd64_android) || defined(GP_PLAT_x86_android) ||   \
-      defined(GP_PLAT_mips64_linux) || defined(GP_PLAT_arm64_linux) ||    \
-      defined(GP_PLAT_arm64_android) || defined(GP_PLAT_amd64_freebsd) || \
-      defined(GP_PLAT_arm64_freebsd)
-#    define HAVE_NATIVE_UNWIND
-#    define USE_LUL_STACKWALK
-#    include "lul/LulMain.h"
-#    include "lul/platform-linux-lul.h"
-
-// On linux we use LUL for periodic samples and synchronous samples, but we use
-// FramePointerStackWalk for backtrace samples when MOZ_PROFILING is enabled.
-// (See the comment at the top of the file for a definition of
-// periodic/synchronous/backtrace.).
-//
-// FramePointerStackWalk can produce incomplete stacks when the current entry is
-// in a shared library without framepointers, however LUL can take a long time
-// to initialize, which is undesirable for consumers of
-// profiler_suspend_and_sample_thread like the Background Hang Reporter.
-#    if defined(MOZ_PROFILING)
-#      define USE_FRAME_POINTER_STACK_WALK
-#    endif
-#  endif
 #endif
 
 // We can only stackwalk without expensive initialization on platforms which
@@ -278,7 +239,8 @@ class MOZ_RAII PSAutoLock {
   detail::BaseProfilerAutoLock mLock;
 };
 
-detail::BaseProfilerMutex PSAutoLock::gPSMutex{"Base Profiler mutex"};
+MOZ_RUNINIT detail::BaseProfilerMutex PSAutoLock::gPSMutex{
+    "Base Profiler mutex"};
 
 // Only functions that take a PSLockRef arg can access CorePS's and ActivePS's
 // fields.
@@ -326,14 +288,7 @@ typedef const PSAutoLock& PSLockRef;
 //   TLSRegisteredThread::RacyRegisteredThread().
 class CorePS {
  private:
-  CorePS()
-      : mProcessStartTime(TimeStamp::ProcessCreation())
-#ifdef USE_LUL_STACKWALK
-        ,
-        mLul(nullptr)
-#endif
-  {
-  }
+  CorePS() : mProcessStartTime(TimeStamp::ProcessCreation()) {}
 
   ~CorePS() {}
 
@@ -375,12 +330,6 @@ class CorePS {
     // - CorePS::mRegisteredPages itself (its elements' children are
     // measured above)
     // - CorePS::mInterposeObserver
-
-#if defined(USE_LUL_STACKWALK)
-    if (sInstance->mLul) {
-      aLulSize += sInstance->mLul->SizeOfIncludingThis(aMallocSizeOf);
-    }
-#endif
   }
 
   // No PSLockRef is needed for this field because it's immutable.
@@ -470,17 +419,6 @@ class CorePS {
     }
   }
 
-#ifdef USE_LUL_STACKWALK
-  static lul::LUL* Lul(PSLockRef) {
-    MOZ_ASSERT(sInstance);
-    return sInstance->mLul.get();
-  }
-  static void SetLul(PSLockRef, UniquePtr<lul::LUL> aLul) {
-    MOZ_ASSERT(sInstance);
-    sInstance->mLul = std::move(aLul);
-  }
-#endif
-
   PS_GET_AND_SET(const std::string&, ProcessName)
   PS_GET_AND_SET(const std::string&, ETLDplus1)
 
@@ -501,11 +439,6 @@ class CorePS {
 
   // Non-owning pointers to all active counters
   Vector<BaseProfilerCount*> mCounters;
-
-#ifdef USE_LUL_STACKWALK
-  // LUL's state. Null prior to the first activation, non-null thereafter.
-  UniquePtr<lul::LUL> mLul;
-#endif
 
   // Process name, provided by child process initialization code.
   std::string mProcessName;
@@ -1049,7 +982,8 @@ ExtractBaseProfilerChunkManager() {
 
 }  // namespace detail
 
-Atomic<uint32_t, MemoryOrdering::Relaxed> RacyFeatures::sActiveAndFeatures(0);
+MFBT_DATA Atomic<uint32_t, MemoryOrdering::Relaxed>
+    RacyFeatures::sActiveAndFeatures(0);
 
 /* static */
 void RacyFeatures::SetActive(uint32_t aFeatures) {
@@ -1477,175 +1411,6 @@ static void DoEHABIBacktrace(PSLockRef aLock,
 }
 #endif
 
-#ifdef USE_LUL_STACKWALK
-
-// See the comment at the callsite for why this function is necessary.
-#  if defined(MOZ_HAVE_ASAN_IGNORE)
-MOZ_ASAN_IGNORE static void ASAN_memcpy(void* aDst, const void* aSrc,
-                                        size_t aLen) {
-  // The obvious thing to do here is call memcpy(). However, although
-  // ASAN_memcpy() is not instrumented by ASAN, memcpy() still is, and the
-  // false positive still manifests! So we must implement memcpy() ourselves
-  // within this function.
-  char* dst = static_cast<char*>(aDst);
-  const char* src = static_cast<const char*>(aSrc);
-
-  for (size_t i = 0; i < aLen; i++) {
-    dst[i] = src[i];
-  }
-}
-#  endif
-
-static void DoLULBacktrace(PSLockRef aLock,
-                           const RegisteredThread& aRegisteredThread,
-                           const Registers& aRegs, NativeStack& aNativeStack) {
-  // WARNING: this function runs within the profiler's "critical section".
-  // WARNING: this function might be called while the profiler is inactive, and
-  //          cannot rely on ActivePS.
-
-  const mcontext_t* mc = &aRegs.mContext->uc_mcontext;
-
-  lul::UnwindRegs startRegs;
-  memset(&startRegs, 0, sizeof(startRegs));
-
-#  if defined(GP_PLAT_amd64_linux) || defined(GP_PLAT_amd64_android)
-  startRegs.xip = lul::TaggedUWord(mc->gregs[REG_RIP]);
-  startRegs.xsp = lul::TaggedUWord(mc->gregs[REG_RSP]);
-  startRegs.xbp = lul::TaggedUWord(mc->gregs[REG_RBP]);
-#  elif defined(GP_PLAT_amd64_freebsd)
-  startRegs.xip = lul::TaggedUWord(mc->mc_rip);
-  startRegs.xsp = lul::TaggedUWord(mc->mc_rsp);
-  startRegs.xbp = lul::TaggedUWord(mc->mc_rbp);
-#  elif defined(GP_PLAT_arm_linux) || defined(GP_PLAT_arm_android)
-  startRegs.r15 = lul::TaggedUWord(mc->arm_pc);
-  startRegs.r14 = lul::TaggedUWord(mc->arm_lr);
-  startRegs.r13 = lul::TaggedUWord(mc->arm_sp);
-  startRegs.r12 = lul::TaggedUWord(mc->arm_ip);
-  startRegs.r11 = lul::TaggedUWord(mc->arm_fp);
-  startRegs.r7 = lul::TaggedUWord(mc->arm_r7);
-#  elif defined(GP_PLAT_arm64_linux) || defined(GP_PLAT_arm64_android)
-  startRegs.pc = lul::TaggedUWord(mc->pc);
-  startRegs.x29 = lul::TaggedUWord(mc->regs[29]);
-  startRegs.x30 = lul::TaggedUWord(mc->regs[30]);
-  startRegs.sp = lul::TaggedUWord(mc->sp);
-#  elif defined(GP_PLAT_arm64_freebsd)
-  startRegs.pc = lul::TaggedUWord(mc->mc_gpregs.gp_elr);
-  startRegs.x29 = lul::TaggedUWord(mc->mc_gpregs.gp_x[29]);
-  startRegs.x30 = lul::TaggedUWord(mc->mc_gpregs.gp_lr);
-  startRegs.sp = lul::TaggedUWord(mc->mc_gpregs.gp_sp);
-#  elif defined(GP_PLAT_x86_linux) || defined(GP_PLAT_x86_android)
-  startRegs.xip = lul::TaggedUWord(mc->gregs[REG_EIP]);
-  startRegs.xsp = lul::TaggedUWord(mc->gregs[REG_ESP]);
-  startRegs.xbp = lul::TaggedUWord(mc->gregs[REG_EBP]);
-#  elif defined(GP_PLAT_mips64_linux)
-  startRegs.pc = lul::TaggedUWord(mc->pc);
-  startRegs.sp = lul::TaggedUWord(mc->gregs[29]);
-  startRegs.fp = lul::TaggedUWord(mc->gregs[30]);
-#  else
-#    error "Unknown plat"
-#  endif
-
-  // Copy up to N_STACK_BYTES from rsp-REDZONE upwards, but not going past the
-  // stack's registered top point.  Do some basic sanity checks too.  This
-  // assumes that the TaggedUWord holding the stack pointer value is valid, but
-  // it should be, since it was constructed that way in the code just above.
-
-  // We could construct |stackImg| so that LUL reads directly from the stack in
-  // question, rather than from a copy of it.  That would reduce overhead and
-  // space use a bit.  However, it gives a problem with dynamic analysis tools
-  // (ASan, TSan, Valgrind) which is that such tools will report invalid or
-  // racing memory accesses, and such accesses will be reported deep inside LUL.
-  // By taking a copy here, we can either sanitise the copy (for Valgrind) or
-  // copy it using an unchecked memcpy (for ASan, TSan).  That way we don't have
-  // to try and suppress errors inside LUL.
-  //
-  // N_STACK_BYTES is set to 160KB.  This is big enough to hold all stacks
-  // observed in some minutes of testing, whilst keeping the size of this
-  // function (DoNativeBacktrace)'s frame reasonable.  Most stacks observed in
-  // practice are small, 4KB or less, and so the copy costs are insignificant
-  // compared to other profiler overhead.
-  //
-  // |stackImg| is allocated on this (the sampling thread's) stack.  That
-  // implies that the frame for this function is at least N_STACK_BYTES large.
-  // In general it would be considered unacceptable to have such a large frame
-  // on a stack, but it only exists for the unwinder thread, and so is not
-  // expected to be a problem.  Allocating it on the heap is troublesome because
-  // this function runs whilst the sampled thread is suspended, so any heap
-  // allocation risks deadlock.  Allocating it as a global variable is not
-  // thread safe, which would be a problem if we ever allow multiple sampler
-  // threads.  Hence allocating it on the stack seems to be the least-worst
-  // option.
-
-  lul::StackImage stackImg;
-
-  {
-#  if defined(GP_PLAT_amd64_linux) || defined(GP_PLAT_amd64_android) || \
-      defined(GP_PLAT_amd64_freebsd)
-    uintptr_t rEDZONE_SIZE = 128;
-    uintptr_t start = startRegs.xsp.Value() - rEDZONE_SIZE;
-#  elif defined(GP_PLAT_arm_linux) || defined(GP_PLAT_arm_android)
-    uintptr_t rEDZONE_SIZE = 0;
-    uintptr_t start = startRegs.r13.Value() - rEDZONE_SIZE;
-#  elif defined(GP_PLAT_arm64_linux) || defined(GP_PLAT_arm64_android) || \
-      defined(GP_PLAT_arm64_freebsd)
-    uintptr_t rEDZONE_SIZE = 0;
-    uintptr_t start = startRegs.sp.Value() - rEDZONE_SIZE;
-#  elif defined(GP_PLAT_x86_linux) || defined(GP_PLAT_x86_android)
-    uintptr_t rEDZONE_SIZE = 0;
-    uintptr_t start = startRegs.xsp.Value() - rEDZONE_SIZE;
-#  elif defined(GP_PLAT_mips64_linux)
-    uintptr_t rEDZONE_SIZE = 0;
-    uintptr_t start = startRegs.sp.Value() - rEDZONE_SIZE;
-#  else
-#    error "Unknown plat"
-#  endif
-    uintptr_t end = reinterpret_cast<uintptr_t>(aRegisteredThread.StackTop());
-    uintptr_t ws = sizeof(void*);
-    start &= ~(ws - 1);
-    end &= ~(ws - 1);
-    uintptr_t nToCopy = 0;
-    if (start < end) {
-      nToCopy = end - start;
-      if (nToCopy > lul::N_STACK_BYTES) nToCopy = lul::N_STACK_BYTES;
-    }
-    MOZ_ASSERT(nToCopy <= lul::N_STACK_BYTES);
-    stackImg.mLen = nToCopy;
-    stackImg.mStartAvma = start;
-    if (nToCopy > 0) {
-      // If this is a vanilla memcpy(), ASAN makes the following complaint:
-      //
-      //   ERROR: AddressSanitizer: stack-buffer-underflow ...
-      //   ...
-      //   HINT: this may be a false positive if your program uses some custom
-      //   stack unwind mechanism or swapcontext
-      //
-      // This code is very much a custom stack unwind mechanism! So we use an
-      // alternative memcpy() implementation that is ignored by ASAN.
-#  if defined(MOZ_HAVE_ASAN_IGNORE)
-      ASAN_memcpy(&stackImg.mContents[0], (void*)start, nToCopy);
-#  else
-      memcpy(&stackImg.mContents[0], (void*)start, nToCopy);
-#  endif
-      (void)VALGRIND_MAKE_MEM_DEFINED(&stackImg.mContents[0], nToCopy);
-    }
-  }
-
-  size_t framePointerFramesAcquired = 0;
-  lul::LUL* lul = CorePS::Lul(aLock);
-  lul->Unwind(reinterpret_cast<uintptr_t*>(aNativeStack.mPCs),
-              reinterpret_cast<uintptr_t*>(aNativeStack.mSPs),
-              &aNativeStack.mCount, &framePointerFramesAcquired,
-              MAX_NATIVE_FRAMES, &startRegs, &stackImg);
-
-  // Update stats in the LUL stats object.  Unfortunately this requires
-  // three global memory operations.
-  lul->mStats.mContext += 1;
-  lul->mStats.mCFI += aNativeStack.mCount - 1 - framePointerFramesAcquired;
-  lul->mStats.mFP += framePointerFramesAcquired;
-}
-
-#endif
-
 #ifdef HAVE_NATIVE_UNWIND
 static void DoNativeBacktrace(PSLockRef aLock,
                               const RegisteredThread& aRegisteredThread,
@@ -1656,9 +1421,7 @@ static void DoNativeBacktrace(PSLockRef aLock,
   // profiler_suspend_and_sample_thread() for details). The only part of the
   // ordering that matters is that LUL must precede FRAME_POINTER, because on
   // Linux they can both be present.
-#  if defined(USE_LUL_STACKWALK)
-  DoLULBacktrace(aLock, aRegisteredThread, aRegs, aNativeStack);
-#  elif defined(USE_EHABI_STACKWALK)
+#  if defined(USE_EHABI_STACKWALK)
   DoEHABIBacktrace(aLock, aRegisteredThread, aRegs, aNativeStack);
 #  elif defined(USE_FRAME_POINTER_STACK_WALK)
   DoFramePointerBacktrace(aLock, aRegisteredThread, aRegs, aNativeStack);
@@ -1805,25 +1568,17 @@ static void StreamCategories(SpliceableJSONWriter& aWriter) {
   //   },
   //   ...
   // ]
-
-#define CATEGORY_JSON_BEGIN_CATEGORY(name, labelAsString, color) \
-  aWriter.Start();                                               \
-  aWriter.StringProperty("name", labelAsString);                 \
-  aWriter.StringProperty("color", color);                        \
-  aWriter.StartArrayProperty("subcategories");
-#define CATEGORY_JSON_SUBCATEGORY(supercategory, name, labelAsString) \
-  aWriter.StringElement(labelAsString);
-#define CATEGORY_JSON_END_CATEGORY \
-  aWriter.EndArray();              \
-  aWriter.EndObject();
-
-  MOZ_PROFILING_CATEGORY_LIST(CATEGORY_JSON_BEGIN_CATEGORY,
-                              CATEGORY_JSON_SUBCATEGORY,
-                              CATEGORY_JSON_END_CATEGORY)
-
-#undef CATEGORY_JSON_BEGIN_CATEGORY
-#undef CATEGORY_JSON_SUBCATEGORY
-#undef CATEGORY_JSON_END_CATEGORY
+  for (const auto& categoryInfo : GetProfilingCategoryList()) {
+    aWriter.Start();
+    aWriter.StringProperty("name", MakeStringSpan(categoryInfo.mName));
+    aWriter.StringProperty("color", MakeStringSpan(categoryInfo.mColor));
+    aWriter.StartArrayProperty("subcategories");
+    for (const auto& subcategoryName : categoryInfo.mSubcategoryNames) {
+      aWriter.StringElement(MakeStringSpan(subcategoryName));
+    }
+    aWriter.EndArray();
+    aWriter.EndObject();
+  }
 }
 
 static void StreamMarkerSchema(SpliceableJSONWriter& aWriter) {
@@ -1848,6 +1603,28 @@ static void StreamMarkerSchema(SpliceableJSONWriter& aWriter) {
 
 static int64_t MicrosecondsSince1970();
 
+static void MaybeWriteRawStartTimeValue(SpliceableJSONWriter& aWriter,
+                                        const TimeStamp& aStartTime) {
+#ifdef XP_LINUX
+  aWriter.DoubleProperty(
+      "startTimeAsClockMonotonicNanosecondsSinceBoot",
+      static_cast<double>(aStartTime.RawClockMonotonicNanosecondsSinceBoot()));
+#endif
+
+#ifdef XP_DARWIN
+  aWriter.DoubleProperty(
+      "startTimeAsMachAbsoluteTimeNanoseconds",
+      static_cast<double>(aStartTime.RawMachAbsoluteTimeNanoseconds()));
+#endif
+
+#ifdef XP_WIN
+  Maybe<uint64_t> startTimeQPC = aStartTime.RawQueryPerformanceCounterValue();
+  if (startTimeQPC)
+    aWriter.DoubleProperty("startTimeAsQueryPerformanceCounterValue",
+                           static_cast<double>(*startTimeQPC));
+#endif
+}
+
 static void StreamMetaJSCustomObject(PSLockRef aLock,
                                      SpliceableJSONWriter& aWriter,
                                      bool aIsShuttingDown) {
@@ -1856,13 +1633,21 @@ static void StreamMetaJSCustomObject(PSLockRef aLock,
   aWriter.IntProperty("version", GECKO_PROFILER_FORMAT_VERSION);
 
   // The "startTime" field holds the number of milliseconds since midnight
-  // January 1, 1970 GMT. This grotty code computes (Now - (Now -
-  // ProcessStartTime)) to convert CorePS::ProcessStartTime() into that form.
-  // Note: This is the only absolute time in the profile! All other timestamps
-  // are relative to this startTime.
-  TimeDuration delta = TimeStamp::Now() - CorePS::ProcessStartTime();
-  aWriter.DoubleProperty(
-      "startTime", MicrosecondsSince1970() / 1000.0 - delta.ToMilliseconds());
+  // January 1, 1970 GMT (the "Unix epoch"). This grotty code computes (Now -
+  // (Now - ProcessStartTime)) to convert CorePS::ProcessStartTime() into that
+  // form. Note: This start time, and the platform-specific "raw start time",
+  // are the only absolute time values in the profile! All other timestamps are
+  // relative to this startTime.
+  TimeStamp startTime = CorePS::ProcessStartTime();
+  TimeStamp now = TimeStamp::Now();
+  double millisecondsSinceUnixEpoch =
+      static_cast<double>(MicrosecondsSince1970()) / 1000.0;
+  double millisecondsSinceStartTime = (now - startTime).ToMilliseconds();
+  double millisecondsBetweenUnixEpochAndStartTime =
+      millisecondsSinceUnixEpoch - millisecondsSinceStartTime;
+  aWriter.DoubleProperty("startTime", millisecondsBetweenUnixEpochAndStartTime);
+
+  MaybeWriteRawStartTimeValue(aWriter, startTime);
 
   aWriter.DoubleProperty("profilingStartTime", (ActivePS::ProfilingStartTime() -
                                                 CorePS::ProcessStartTime())
@@ -1959,12 +1744,16 @@ static void locked_profiler_stream_json_for_this_process(
 
     // Put meta data
     aWriter.StartObjectProperty("meta");
-    { StreamMetaJSCustomObject(aLock, aWriter, aIsShuttingDown); }
+    {
+      StreamMetaJSCustomObject(aLock, aWriter, aIsShuttingDown);
+    }
     aWriter.EndObject();
 
     // Put page data
     aWriter.StartArrayProperty("pages");
-    { StreamPages(aLock, aWriter); }
+    {
+      StreamPages(aLock, aWriter);
+    }
     aWriter.EndArray();
 
     buffer.StreamProfilerOverheadToJSON(aWriter, CorePS::ProcessStartTime(),
@@ -1993,7 +1782,9 @@ static void locked_profiler_stream_json_for_this_process(
     aWriter.EndArray();
 
     aWriter.StartArrayProperty("pausedRanges");
-    { buffer.StreamPausedRangesToJSON(aWriter, aSinceTime); }
+    {
+      buffer.StreamPausedRangesToJSON(aWriter, aSinceTime);
+    }
     aWriter.EndArray();
   }
 
@@ -2628,6 +2419,8 @@ void profiler_init(void* aStackTop) {
   LOG("profiler_init");
 
   profiler_init_main_thread_id();
+
+  Flow::Init();
 
   VTUNE_INIT();
 

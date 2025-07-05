@@ -4,14 +4,16 @@
 
 package org.mozilla.fenix.debugsettings.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.draggable2D
+import androidx.compose.foundation.gestures.rememberDraggable2DState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.DrawerValue
 import androidx.compose.material.ModalDrawer
-import androidx.compose.material.Snackbar
-import androidx.compose.material.SnackbarHost
-import androidx.compose.material.SnackbarHostState
 import androidx.compose.material.Text
 import androidx.compose.material.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -20,6 +22,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
@@ -27,18 +30,31 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.tooling.preview.PreviewLightDark
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.launch
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
 import org.mozilla.fenix.compose.button.FloatingActionButton
 import org.mozilla.fenix.debugsettings.navigation.DebugDrawerDestination
 import org.mozilla.fenix.debugsettings.store.DrawerStatus
 import org.mozilla.fenix.theme.FirefoxTheme
+import kotlin.math.roundToInt
+
+/**
+ * The initial x offset of the debug drawer FAB from [Alignment.CenterStart].
+ */
+private const val INITIAL_FAB_OFFSET_X = 0f
+
+/**
+ * The initial y offset of the debug drawer FAB from [Alignment.CenterStart].
+ */
+private const val INITIAL_FAB_OFFSET_Y = 0f
 
 /**
  * Overlay for presenting app-wide debugging content.
@@ -51,6 +67,8 @@ import org.mozilla.fenix.theme.FirefoxTheme
  * @param onDrawerClose Invoked when the drawer is closed.
  * @param onDrawerBackButtonClick Invoked when the user taps on the back button in the app bar.
  */
+@OptIn(ExperimentalFoundationApi::class)
+@Suppress("LongMethod")
 @Composable
 fun DebugOverlay(
     navController: NavHostController,
@@ -60,8 +78,10 @@ fun DebugOverlay(
     onDrawerClose: () -> Unit,
     onDrawerBackButtonClick: () -> Unit,
 ) {
-    val snackbarState = remember { SnackbarHostState() }
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    var debugDrawerFabOffsetX by remember { mutableStateOf(INITIAL_FAB_OFFSET_X) }
+    var debugDrawerFabOffsetY by remember { mutableStateOf(INITIAL_FAB_OFFSET_Y) }
+    val scope = rememberCoroutineScope()
 
     LaunchedEffect(drawerStatus) {
         if (drawerStatus == DrawerStatus.Open) {
@@ -78,6 +98,12 @@ fun DebugOverlay(
             }
     }
 
+    BackHandler(enabled = drawerStatus == DrawerStatus.Open) {
+        scope.launch {
+            drawerState.close()
+        }
+    }
+
     Box(
         modifier = Modifier.fillMaxSize(),
     ) {
@@ -85,7 +111,14 @@ fun DebugOverlay(
             icon = painterResource(R.drawable.ic_debug_transparent_fire_24),
             modifier = Modifier
                 .align(Alignment.CenterStart)
-                .padding(start = 16.dp),
+                .padding(start = 16.dp)
+                .offset { IntOffset(debugDrawerFabOffsetX.roundToInt(), debugDrawerFabOffsetY.roundToInt()) }
+                .draggable2D(
+                    state = rememberDraggable2DState { offset ->
+                        debugDrawerFabOffsetX += offset.x
+                        debugDrawerFabOffsetY += offset.y
+                    },
+                ),
             onClick = {
                 onDrawerOpen()
             },
@@ -122,21 +155,11 @@ fun DebugOverlay(
                 )
             }
         }
-
-        // This must be the last element in the Box
-        SnackbarHost(
-            hostState = snackbarState,
-            modifier = Modifier.align(Alignment.BottomCenter),
-        ) { snackbarData ->
-            Snackbar(
-                snackbarData = snackbarData,
-            )
-        }
     }
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun DebugOverlayPreview() {
     val navController = rememberNavController()
     var drawerStatus by remember { mutableStateOf(DrawerStatus.Closed) }

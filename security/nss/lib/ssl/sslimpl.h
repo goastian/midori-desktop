@@ -130,7 +130,7 @@ typedef enum { SSLAppOpRead = 0,
 #define DTLS_RETRANSMIT_FINISHED_MS 30000
 
 /* default number of entries in namedGroupPreferences */
-#define SSL_NAMED_GROUP_COUNT 32
+#define SSL_NAMED_GROUP_COUNT 33
 
 /* The maximum DH and RSA bit-length supported. */
 #define SSL_MAX_DH_KEY_BITS 8192
@@ -183,7 +183,7 @@ typedef struct ssl3DHParamsStr ssl3DHParams;
 
 struct ssl3CertNodeStr {
     struct ssl3CertNodeStr *next;
-    CERTCertificate *cert;
+    SECItem *derCert;
 };
 
 typedef SECStatus (*sslHandshakeFunc)(sslSocket *ss);
@@ -296,6 +296,7 @@ typedef struct sslOptionsStr {
     unsigned int callExtensionWriterOnEchInner : 1;
     unsigned int enableGrease : 1;
     unsigned int enableChXtnPermutation : 1;
+    unsigned int dbLoadCertChain : 1;
 } sslOptions;
 
 typedef enum { sslHandshakingUndetermined = 0,
@@ -1978,8 +1979,8 @@ SECStatus SSLExp_AeadDecrypt(const SSLAeadContext *ctx, PRUint64 counter,
  If encoding function fails, the function has the install the appropriate error code and return an error.
 
  Certificate Compression decoding function operates an output buffer allocated in NSS.
- The function returns success or an error code. 
- If successful, the function sets the number of bytes used to stored the decoded certificate 
+ The function returns success or an error code.
+ If successful, the function sets the number of bytes used to stored the decoded certificate
  in the outparam usedLen. If provided buffer is not enough to store the output (or any problem has occured during
  decoding of the buffer), the function has the install the appropriate error code and return an error.
  Note: usedLen is always <= outputLen.
@@ -2051,9 +2052,11 @@ SECStatus SSLExp_SetTls13GreaseEchSize(PRFileDesc *fd, PRUint8 size);
 SECStatus SSLExp_EnableTls13BackendEch(PRFileDesc *fd, PRBool enabled);
 SECStatus SSLExp_CallExtensionWriterOnEchInner(PRFileDesc *fd, PRBool enabled);
 
+SECStatus SSLExp_PeerCertificateChainDER(PRFileDesc *fd, SECItemArray **out);
+
 SEC_END_PROTOS
 
-#if defined(XP_UNIX) || defined(XP_OS2)
+#if defined(XP_UNIX)
 #define SSL_GETPID getpid
 #elif defined(WIN32)
 #define SSL_GETPID _getpid

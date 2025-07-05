@@ -35,12 +35,12 @@ struct DnsAndConnectSockets {
 struct DNSCacheEntries {
   nsCString hostname;
   nsTArray<nsCString> hostaddr;
-  uint16_t family;
-  int64_t expiration;
-  nsCString netInterface;
-  bool TRR;
+  uint16_t family{0};
+  int64_t expiration{0};
+  bool TRR{false};
   nsCString originAttributesSuffix;
   nsCString flags;
+  uint16_t resolveType{0};
 };
 
 struct HttpConnInfo {
@@ -60,6 +60,39 @@ struct HttpRetParams {
   uint16_t port;
   nsCString httpVersion;
   bool ssl;
+};
+
+struct Http3ConnStats {
+  // Total packets received, including all the bad ones.
+  uint64_t packetsRx;
+  // Duplicate packets received.
+  uint64_t dupsRx;
+  // Dropped packets or dropped garbage.
+  uint64_t droppedRx;
+  // The number of packet that were saved for later processing.
+  uint64_t savedDatagrams;
+  // Total packets sent.
+  uint64_t packetsTx;
+  // Total number of packets that are declared lost.
+  uint64_t lost;
+  // Late acknowledgments, for packets that were declared lost already.
+  uint64_t lateAck;
+  // Acknowledgments for packets that contained data that was marked
+  // for retransmission when the PTO timer popped.
+  uint64_t ptoAck;
+  // Count PTOs. Single PTOs, 2 PTOs in a row, 3 PTOs in row, etc. are counted
+  // separately.
+  CopyableTArray<uint64_t> ptoCounts;
+  // The count of WouldBlock errors encountered during receive operations.
+  uint64_t wouldBlockRx;
+  // The count of WouldBlock errors encountered during transmit operations.
+  uint64_t wouldBlockTx;
+};
+
+struct Http3ConnectionStatsParams {
+  nsCString host;
+  uint16_t port;
+  CopyableTArray<Http3ConnStats> stats;
 };
 
 }  // namespace net
@@ -99,8 +132,10 @@ struct ParamTraits<mozilla::net::DNSCacheEntries> {
     WriteParam(aWriter, aParam.hostaddr);
     WriteParam(aWriter, aParam.family);
     WriteParam(aWriter, aParam.expiration);
-    WriteParam(aWriter, aParam.netInterface);
     WriteParam(aWriter, aParam.TRR);
+    WriteParam(aWriter, aParam.originAttributesSuffix);
+    WriteParam(aWriter, aParam.flags);
+    WriteParam(aWriter, aParam.resolveType);
   }
 
   static bool Read(MessageReader* aReader, paramType* aResult) {
@@ -108,8 +143,10 @@ struct ParamTraits<mozilla::net::DNSCacheEntries> {
            ReadParam(aReader, &aResult->hostaddr) &&
            ReadParam(aReader, &aResult->family) &&
            ReadParam(aReader, &aResult->expiration) &&
-           ReadParam(aReader, &aResult->netInterface) &&
-           ReadParam(aReader, &aResult->TRR);
+           ReadParam(aReader, &aResult->TRR) &&
+           ReadParam(aReader, &aResult->originAttributesSuffix) &&
+           ReadParam(aReader, &aResult->flags) &&
+           ReadParam(aReader, &aResult->resolveType);
   }
 };
 
@@ -167,6 +204,56 @@ struct ParamTraits<mozilla::net::HttpRetParams> {
            ReadParam(aReader, &aResult->port) &&
            ReadParam(aReader, &aResult->httpVersion) &&
            ReadParam(aReader, &aResult->ssl);
+  }
+};
+
+template <>
+struct ParamTraits<mozilla::net::Http3ConnStats> {
+  typedef mozilla::net::Http3ConnStats paramType;
+
+  static void Write(MessageWriter* aWriter, const paramType& aParam) {
+    WriteParam(aWriter, aParam.packetsRx);
+    WriteParam(aWriter, aParam.dupsRx);
+    WriteParam(aWriter, aParam.droppedRx);
+    WriteParam(aWriter, aParam.savedDatagrams);
+    WriteParam(aWriter, aParam.packetsTx);
+    WriteParam(aWriter, aParam.lost);
+    WriteParam(aWriter, aParam.lateAck);
+    WriteParam(aWriter, aParam.ptoAck);
+    WriteParam(aWriter, aParam.ptoCounts);
+    WriteParam(aWriter, aParam.wouldBlockRx);
+    WriteParam(aWriter, aParam.wouldBlockTx);
+  }
+
+  static bool Read(MessageReader* aReader, paramType* aResult) {
+    return ReadParam(aReader, &aResult->packetsRx) &&
+           ReadParam(aReader, &aResult->dupsRx) &&
+           ReadParam(aReader, &aResult->droppedRx) &&
+           ReadParam(aReader, &aResult->savedDatagrams) &&
+           ReadParam(aReader, &aResult->packetsTx) &&
+           ReadParam(aReader, &aResult->lost) &&
+           ReadParam(aReader, &aResult->lateAck) &&
+           ReadParam(aReader, &aResult->ptoAck) &&
+           ReadParam(aReader, &aResult->ptoCounts) &&
+           ReadParam(aReader, &aResult->wouldBlockRx) &&
+           ReadParam(aReader, &aResult->wouldBlockTx);
+  }
+};
+
+template <>
+struct ParamTraits<mozilla::net::Http3ConnectionStatsParams> {
+  typedef mozilla::net::Http3ConnectionStatsParams paramType;
+
+  static void Write(MessageWriter* aWriter, const paramType& aParam) {
+    WriteParam(aWriter, aParam.host);
+    WriteParam(aWriter, aParam.port);
+    WriteParam(aWriter, aParam.stats);
+  }
+
+  static bool Read(MessageReader* aReader, paramType* aResult) {
+    return ReadParam(aReader, &aResult->host) &&
+           ReadParam(aReader, &aResult->port) &&
+           ReadParam(aReader, &aResult->stats);
   }
 };
 

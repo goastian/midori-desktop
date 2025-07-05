@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 import copy
 import gzip
 import json
@@ -214,6 +212,15 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidM
                     "help": "Repeat tests (used for confirm-failures) X times.",
                 },
             ],
+            [
+                ["--timeout-multiplier"],
+                {
+                    "action": "store",
+                    "dest": "timeout_multiplier",
+                    "type": float,
+                    "help": "Sets the timeout multiplier (0.25 for `--backlog` tests by default)",
+                },
+            ],
         ]
         + copy.deepcopy(testing_config_options)
         + copy.deepcopy(code_coverage_config_options)
@@ -410,7 +417,7 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidM
             cmd.append("--test-type=%s" % test_type)
 
         if c["extra_prefs"]:
-            cmd.extend(["--setpref={}".format(p) for p in c["extra_prefs"]])
+            cmd.extend([f"--setpref={p}" for p in c["extra_prefs"]])
 
         if c["disable_fission"]:
             cmd.append("--disable-fission")
@@ -431,7 +438,9 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidM
             cmd.append("--skip-implementation-status=%s" % implementation_status)
 
         # Bug 1643177 - reduce timeout multiplier for web-platform-tests backlog
-        if c["backlog"]:
+        if "timeout_multiplier" in c:
+            cmd.append("--timeout-multiplier=%s" % c["timeout_multiplier"])
+        elif c["backlog"]:
             cmd.append("--timeout-multiplier=0.25")
 
         test_paths = set()
@@ -452,11 +461,11 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidM
                 if not os.path.exists(path):
                     self.critical("Unable to locate web-platform-test groups file.")
 
-                cmd.append("--test-groups={}".format(path))
+                cmd.append(f"--test-groups={path}")
 
                 for key in mozharness_test_paths.keys():
                     if "web-platform" not in key:
-                        self.info("Ignoring test_paths for {} harness".format(key))
+                        self.info(f"Ignoring test_paths for {key} harness")
                         continue
                     paths = mozharness_test_paths.get(key, [])
                     for p in paths:
@@ -464,7 +473,7 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidM
                             # Assume this is a filesystem path rather than a test id
                             path = os.path.relpath(p, "testing/web-platform")
                             if ".." in path:
-                                self.fatal("Invalid WPT path: {}".format(path))
+                                self.fatal(f"Invalid WPT path: {path}")
                             path = os.path.join(dirs["abs_wpttest_dir"], path)
                         else:
                             path = p
@@ -651,6 +660,11 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidM
 
         if self.is_android:
             env["ADB_PATH"] = self.adb_path
+
+        env["MOZ_GMP_PATH"] = os.pathsep.join(
+            os.path.join(dirs["abs_test_bin_dir"], "plugins", p, "1.0")
+            for p in ("gmp-fake", "gmp-fakeopenh264")
+        )
 
         env = self.query_env(partial_env=env, log_level=INFO)
 

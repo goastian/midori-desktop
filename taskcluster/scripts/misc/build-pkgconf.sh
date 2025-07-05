@@ -13,16 +13,21 @@ x86_64-unknown-linux-gnu)
     CC="clang --sysroot=$MOZ_FETCHES_DIR/sysroot-x86_64-linux-gnu"
     EXE=
     ;;
+aarch64-unknown-linux-gnu)
+    TARGET=$1
+    CC="clang --target=$TARGET --sysroot=$MOZ_FETCHES_DIR/sysroot-aarch64-linux-gnu"
+    EXE=
+    ;;
 x86_64-apple-darwin)
     export MACOSX_DEPLOYMENT_TARGET=10.12
     TARGET=$1
-    CC="clang --target=$TARGET -isysroot $MOZ_FETCHES_DIR/MacOSX14.4.sdk"
+    CC="clang --target=$TARGET -isysroot $MOZ_FETCHES_DIR/MacOSX15.4.sdk"
     EXE=
     ;;
 aarch64-apple-darwin)
     export MACOSX_DEPLOYMENT_TARGET=11.0
     TARGET=$1
-    CC="clang --target=$TARGET -isysroot $MOZ_FETCHES_DIR/MacOSX14.4.sdk"
+    CC="clang --target=$TARGET -isysroot $MOZ_FETCHES_DIR/MacOSX15.4.sdk"
     EXE=
     ;;
 x86_64-pc-windows-gnu)

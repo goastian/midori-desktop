@@ -38,6 +38,14 @@ class Cookie final : public nsICookie {
   NS_DECL_ISUPPORTS
   NS_DECL_NSICOOKIE
 
+  static Cookie* Cast(nsICookie* aCookie) {
+    return static_cast<Cookie*>(aCookie);
+  }
+
+  static const Cookie* Cast(const nsICookie* aCookie) {
+    return static_cast<const Cookie*>(aCookie);
+  }
+
  private:
   // for internal use only. see Cookie::Create().
   Cookie(const CookieStruct& aCookieData,
@@ -49,9 +57,6 @@ class Cookie final : public nsICookie {
       const OriginAttributes& aOriginAttributes);
 
  public:
-  // Returns false if rawSameSite has an invalid value, compared to sameSite.
-  static bool ValidateSameSite(const CookieStruct& aCookieData);
-
   // Generate a unique and monotonically increasing creation time. See comment
   // in Cookie.cpp.
   static int64_t GenerateUniqueCreationTime(int64_t aCreationTime);
@@ -78,7 +83,6 @@ class Cookie final : public nsICookie {
     return nsDependentCSubstring(mData.host(), IsDomain() ? 1 : 0);
   }
   inline const nsCString& Path() const { return mData.path(); }
-  const nsCString& GetFilePath();
   inline int64_t Expiry() const { return mData.expiry(); }  // in seconds
   inline int64_t LastAccessed() const {
     return mData.lastAccessed();
@@ -98,11 +102,6 @@ class Cookie final : public nsICookie {
     return mOriginAttributes;
   }
   inline int32_t SameSite() const { return mData.sameSite(); }
-  inline int32_t RawSameSite() const { return mData.rawSameSite(); }
-  inline bool IsDefaultSameSite() const {
-    return SameSite() == nsICookie::SAMESITE_LAX &&
-           RawSameSite() == nsICookie::SAMESITE_NONE;
-  }
   inline uint8_t SchemeMap() const { return mData.schemeMap(); }
 
   // setters
@@ -120,6 +119,10 @@ class Cookie final : public nsICookie {
   }
   inline void SetHost(const nsACString& aHost) { mData.host() = aHost; }
 
+  uint32_t NameAndValueBytes() {
+    return mData.name().Length() + mData.value().Length();
+  }
+
   bool IsStale() const;
 
   const CookieStruct& ToIPC() const { return mData; }
@@ -135,27 +138,30 @@ class Cookie final : public nsICookie {
   // Please update SizeOfIncludingThis if this strategy changes.
   CookieStruct mData;
   OriginAttributes mOriginAttributes;
-  nsCString mFilePathCache;
 };
 
 // Comparator class for sorting cookies before sending to a server.
 class CompareCookiesForSending {
  public:
-  bool Equals(const Cookie* aCookie1, const Cookie* aCookie2) const {
-    return aCookie1->CreationTime() == aCookie2->CreationTime() &&
-           aCookie2->Path().Length() == aCookie1->Path().Length();
+  bool Equals(const nsICookie* aCookie1, const nsICookie* aCookie2) const {
+    return Cookie::Cast(aCookie1)->CreationTime() ==
+               Cookie::Cast(aCookie2)->CreationTime() &&
+           Cookie::Cast(aCookie2)->Path().Length() ==
+               Cookie::Cast(aCookie1)->Path().Length();
   }
 
-  bool LessThan(const Cookie* aCookie1, const Cookie* aCookie2) const {
+  bool LessThan(const nsICookie* aCookie1, const nsICookie* aCookie2) const {
     // compare by cookie path length in accordance with RFC2109
-    int32_t result = aCookie2->Path().Length() - aCookie1->Path().Length();
+    int32_t result = Cookie::Cast(aCookie2)->Path().Length() -
+                     Cookie::Cast(aCookie1)->Path().Length();
     if (result != 0) return result < 0;
 
     // when path lengths match, older cookies should be listed first.  this is
     // required for backwards compatibility since some websites erroneously
     // depend on receiving cookies in the order in which they were sent to the
     // browser!  see bug 236772.
-    return aCookie1->CreationTime() < aCookie2->CreationTime();
+    return Cookie::Cast(aCookie1)->CreationTime() <
+           Cookie::Cast(aCookie2)->CreationTime();
   }
 };
 

@@ -24,7 +24,6 @@ import sys
 import mozinfo
 import pycert
 import pykey
-import six
 from mozfile import NamedTemporaryFile
 
 
@@ -57,12 +56,12 @@ def runUtil(util, args):
     proc = subprocess.run(
         [util] + args,
         env=env,
-        universal_newlines=True,
+        text=True,
     )
     return proc.returncode
 
 
-class PKCS12(object):
+class PKCS12:
     """Utility class for reading a specification and generating
     a PKCS12 file"""
 
@@ -101,7 +100,7 @@ class PKCS12(object):
     def toPEM(self):
         output = "-----BEGIN PKCS12-----"
         der = self.toDER()
-        b64 = six.ensure_text(base64.b64encode(der))
+        b64 = base64.b64encode(der).decode()
         while b64:
             output += "\n" + b64[:64]
             b64 = b64[64:]

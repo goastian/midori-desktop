@@ -6,6 +6,7 @@
 
 XPIDL_SOURCES += [
     "mozIThirdPartyUtil.idl",
+    "nsIAndroidContentInputStream.idl",
     "nsIArrayBufferInputStream.idl",
     "nsIAsyncStreamCopier.idl",
     "nsIAsyncStreamCopier2.idl",
@@ -42,7 +43,6 @@ XPIDL_SOURCES += [
     "nsIForcePendingChannel.idl",
     "nsIFormPOSTActionChannel.idl",
     "nsIHttpAuthenticatorCallback.idl",
-    "nsIHttpPushListener.idl",
     "nsIIncrementalDownload.idl",
     "nsIIncrementalStreamLoader.idl",
     "nsIInputStreamChannel.idl",
@@ -54,6 +54,7 @@ XPIDL_SOURCES += [
     "nsILoadGroupChild.idl",
     "nsILoadInfo.idl",
     "nsIMIMEInputStream.idl",
+    "nsIMockNetworkLayerController.idl",
     "nsIMultiPartChannel.idl",
     "nsINestedURI.idl",
     "nsINetAddr.idl",
@@ -105,6 +106,7 @@ XPIDL_SOURCES += [
     "nsIStreamListenerTee.idl",
     "nsIStreamLoader.idl",
     "nsIStreamTransportService.idl",
+    "nsISuspendableChannelWrapper.idl",
     "nsISyncStreamListener.idl",
     "nsISystemProxySettings.idl",
     "nsIThreadRetargetableRequest.idl",
@@ -163,6 +165,7 @@ EXPORTS.mozilla.net += [
     "DashboardTypes.h",
     "DefaultURI.h",
     "InterceptionInfo.h",
+    "IPv4Parser.h",
     "MemoryDownloader.h",
     "NetworkConnectivityService.h",
     "Predictor.h",
@@ -171,6 +174,7 @@ EXPORTS.mozilla.net += [
     "RedirectChannelRegistrar.h",
     "RequestContextService.h",
     "SimpleChannelParent.h",
+    "SimpleURIUnknownSchemes.h",
     "SSLTokensCache.h",
     "ThrottleQueue.h",
 ]
@@ -184,9 +188,12 @@ UNIFIED_SOURCES += [
     "DefaultURI.cpp",
     "EventTokenBucket.cpp",
     "InterceptionInfo.cpp",
+    "IPv4Parser.cpp",
     "LoadContextInfo.cpp",
     "LoadInfo.cpp",
     "MemoryDownloader.cpp",
+    "MockNetworkLayer.cpp",
+    "MockNetworkLayerController.cpp",
     "NetworkConnectivityService.cpp",
     "NetworkDataCountLayer.cpp",
     "nsAsyncRedirectVerifyHelper.cpp",
@@ -240,7 +247,9 @@ UNIFIED_SOURCES += [
     "SimpleBuffer.cpp",
     "SimpleChannel.cpp",
     "SimpleChannelParent.cpp",
+    "SimpleURIUnknownSchemes.cpp",
     "SSLTokensCache.cpp",
+    "SuspendableChannelWrapper.cpp",
     "ThrottleQueue.cpp",
     "Tickler.cpp",
     "TLSServerSocket.cpp",
@@ -287,10 +296,12 @@ else:
     ]
 
 EXTRA_JS_MODULES += [
+    "EssentialDomainsRemoteSettings.sys.mjs",
     "NetUtil.sys.mjs",
+    "SimpleURIUnknownSchemesRemoteObserver.sys.mjs",
 ]
 
-DIRS += ["mozurl", "rust-helper", "http-sfv"]
+DIRS += ["mozurl", "rust-helper", "http-sfv", "idna_glue"]
 
 include("/ipc/chromium/chromium-config.mozbuild")
 

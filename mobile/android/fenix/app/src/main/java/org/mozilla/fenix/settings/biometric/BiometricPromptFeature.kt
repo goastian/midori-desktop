@@ -39,8 +39,7 @@ class BiometricPromptFeature(
     internal var biometricPrompt: BiometricPrompt? = null
 
     override fun start() {
-        val executor = ContextCompat.getMainExecutor(context)
-        biometricPrompt = BiometricPrompt(fragment, executor, PromptCallback())
+        ensureBiometricPromptInitialized()
     }
 
     override fun stop() {
@@ -58,7 +57,17 @@ class BiometricPromptFeature(
             .setTitle(title)
             .build()
 
-        biometricPrompt?.authenticate(promptInfo)
+        ensureBiometricPromptInitialized()
+
+        biometricPrompt?.authenticate(promptInfo) ?: logger.error("biometricPrompt was null.")
+    }
+
+    @VisibleForTesting
+    internal fun ensureBiometricPromptInitialized() {
+        if (biometricPrompt == null) {
+            val executor = ContextCompat.getMainExecutor(context)
+            biometricPrompt = BiometricPrompt(fragment, executor, PromptCallback())
+        }
     }
 
     internal inner class PromptCallback : BiometricPrompt.AuthenticationCallback() {
@@ -83,10 +92,8 @@ class BiometricPromptFeature(
         /**
          * Checks if the appropriate SDK version and hardware capabilities are met to use the feature.
          */
-        fun canUseFeature(context: Context): Boolean {
+        fun canUseFeature(manager: BiometricManager): Boolean {
             return if (SDK_INT >= M) {
-                val manager = BiometricManager.from(context)
-
                 manager.isHardwareAvailable() && manager.isEnrolled()
             } else {
                 false

@@ -32,17 +32,21 @@ class FeatureSettingsHelperDelegate() : FeatureSettingsHelper {
         isHomeOnboardingDialogEnabled = settings.showHomeOnboardingDialog,
         homeOnboardingDialogVersion = getHomeOnboardingVersion(),
         isPocketEnabled = settings.showPocketRecommendationsFeature,
-        isJumpBackInCFREnabled = settings.shouldShowJumpBackInCFR,
         isRecentTabsFeatureEnabled = settings.showRecentTabsFeature,
         isRecentlyVisitedFeatureEnabled = settings.historyMetadataUIFeature,
         isPWAsPromptEnabled = !settings.userKnowsAboutPwas,
-        isTCPCFREnabled = settings.shouldShowTotalCookieProtectionCFR,
         isWallpaperOnboardingEnabled = settings.showWallpaperOnboarding,
         isDeleteSitePermissionsEnabled = settings.deleteSitePermissions,
         isOpenInAppBannerEnabled = settings.shouldShowOpenInAppBanner,
         etpPolicy = getETPPolicy(settings),
-        composeTopSitesEnabled = settings.enableComposeTopSites,
         isLocationPermissionEnabled = getFeaturePermission(PhoneFeature.LOCATION, settings),
+        isMenuRedesignEnabled = settings.enableMenuRedesign,
+        isMenuRedesignCFREnabled = settings.shouldShowMenuCFR,
+        isNewBookmarksEnabled = settings.useNewBookmarks,
+        isMicrosurveyEnabled = settings.microsurveyFeatureEnabled,
+        shouldUseBottomToolbar = settings.shouldUseBottomToolbar,
+        onboardingFeatureEnabled = settings.onboardingFeatureEnabled,
+        isComposeHomepageEnabled = settings.enableComposeHomepage,
     )
 
     /**
@@ -62,16 +66,19 @@ class FeatureSettingsHelperDelegate() : FeatureSettingsHelper {
         }
 
     override var isPocketEnabled: Boolean by updatedFeatureFlags::isPocketEnabled
-    override var isJumpBackInCFREnabled: Boolean by updatedFeatureFlags::isJumpBackInCFREnabled
     override var isWallpaperOnboardingEnabled: Boolean by updatedFeatureFlags::isWallpaperOnboardingEnabled
     override var isRecentTabsFeatureEnabled: Boolean by updatedFeatureFlags::isRecentTabsFeatureEnabled
     override var isRecentlyVisitedFeatureEnabled: Boolean by updatedFeatureFlags::isRecentlyVisitedFeatureEnabled
     override var isPWAsPromptEnabled: Boolean by updatedFeatureFlags::isPWAsPromptEnabled
-    override var isTCPCFREnabled: Boolean by updatedFeatureFlags::isTCPCFREnabled
     override var isOpenInAppBannerEnabled: Boolean by updatedFeatureFlags::isOpenInAppBannerEnabled
     override var etpPolicy: ETPPolicy by updatedFeatureFlags::etpPolicy
-    override var composeTopSitesEnabled: Boolean by updatedFeatureFlags::composeTopSitesEnabled
     override var isLocationPermissionEnabled: SitePermissionsRules.Action by updatedFeatureFlags::isLocationPermissionEnabled
+    override var isMenuRedesignEnabled: Boolean by updatedFeatureFlags::isMenuRedesignEnabled
+    override var isMenuRedesignCFREnabled: Boolean by updatedFeatureFlags::isMenuRedesignCFREnabled
+    override var isMicrosurveyEnabled: Boolean by updatedFeatureFlags::isMicrosurveyEnabled
+    override var shouldUseBottomToolbar: Boolean by updatedFeatureFlags::shouldUseBottomToolbar
+    override var onboardingFeatureEnabled: Boolean by updatedFeatureFlags::onboardingFeatureEnabled
+    override var isComposeHomepageEnabled: Boolean by updatedFeatureFlags::isComposeHomepageEnabled
 
     override fun applyFlagUpdates() {
         Log.i(TAG, "applyFlagUpdates: Trying to apply the updated feature flags: $updatedFeatureFlags")
@@ -91,17 +98,21 @@ class FeatureSettingsHelperDelegate() : FeatureSettingsHelper {
         settings.showHomeOnboardingDialog = featureFlags.isHomeOnboardingDialogEnabled
         setHomeOnboardingVersion(featureFlags.homeOnboardingDialogVersion)
         settings.showPocketRecommendationsFeature = featureFlags.isPocketEnabled
-        settings.shouldShowJumpBackInCFR = featureFlags.isJumpBackInCFREnabled
         settings.showRecentTabsFeature = featureFlags.isRecentTabsFeatureEnabled
         settings.historyMetadataUIFeature = featureFlags.isRecentlyVisitedFeatureEnabled
         settings.userKnowsAboutPwas = !featureFlags.isPWAsPromptEnabled
-        settings.shouldShowTotalCookieProtectionCFR = featureFlags.isTCPCFREnabled
         settings.showWallpaperOnboarding = featureFlags.isWallpaperOnboardingEnabled
         settings.deleteSitePermissions = featureFlags.isDeleteSitePermissionsEnabled
         settings.shouldShowOpenInAppBanner = featureFlags.isOpenInAppBannerEnabled
-        settings.enableComposeTopSites = featureFlags.composeTopSitesEnabled
+        settings.enableMenuRedesign = featureFlags.isMenuRedesignEnabled
+        settings.shouldShowMenuCFR = featureFlags.isMenuRedesignCFREnabled
+        settings.useNewBookmarks = featureFlags.isNewBookmarksEnabled
+        settings.microsurveyFeatureEnabled = featureFlags.isMicrosurveyEnabled
+        settings.shouldUseBottomToolbar = featureFlags.shouldUseBottomToolbar
         setETPPolicy(featureFlags.etpPolicy)
         setPermissions(PhoneFeature.LOCATION, featureFlags.isLocationPermissionEnabled)
+        settings.onboardingFeatureEnabled = featureFlags.onboardingFeatureEnabled
+        settings.enableComposeHomepage = featureFlags.isComposeHomepageEnabled
     }
 }
 
@@ -109,17 +120,21 @@ private data class FeatureFlags(
     var isHomeOnboardingDialogEnabled: Boolean,
     var homeOnboardingDialogVersion: Int,
     var isPocketEnabled: Boolean,
-    var isJumpBackInCFREnabled: Boolean,
     var isRecentTabsFeatureEnabled: Boolean,
     var isRecentlyVisitedFeatureEnabled: Boolean,
     var isPWAsPromptEnabled: Boolean,
-    var isTCPCFREnabled: Boolean,
     var isWallpaperOnboardingEnabled: Boolean,
     var isDeleteSitePermissionsEnabled: Boolean,
     var isOpenInAppBannerEnabled: Boolean,
     var etpPolicy: ETPPolicy,
-    var composeTopSitesEnabled: Boolean,
     var isLocationPermissionEnabled: SitePermissionsRules.Action,
+    var isMenuRedesignEnabled: Boolean,
+    var isMenuRedesignCFREnabled: Boolean,
+    var isNewBookmarksEnabled: Boolean,
+    var isMicrosurveyEnabled: Boolean,
+    var shouldUseBottomToolbar: Boolean,
+    var onboardingFeatureEnabled: Boolean,
+    var isComposeHomepageEnabled: Boolean,
 )
 
 internal fun getETPPolicy(settings: Settings): ETPPolicy {

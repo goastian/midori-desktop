@@ -5,8 +5,9 @@
 import { GeckoViewUtils } from "resource://gre/modules/GeckoViewUtils.sys.mjs";
 import { EventEmitter } from "resource://gre/modules/EventEmitter.sys.mjs";
 
-const PRIVATE_BROWSING_PERMISSION = {
-  permissions: ["internal:privateBrowsingAllowed"],
+const PRIVATE_BROWSING_PERM_NAME = "internal:privateBrowsingAllowed";
+const PRIVATE_BROWSING_PERMS = {
+  permissions: [PRIVATE_BROWSING_PERM_NAME],
   origins: [],
 };
 
@@ -339,8 +340,10 @@ async function exportExtension(aAddon, aSourceURI) {
   if (userDisabled) {
     disabledFlags.push("userDisabled");
   }
-  if (blocklistState !== Ci.nsIBlocklistService.STATE_NOT_BLOCKED) {
+  if (blocklistState === Ci.nsIBlocklistService.STATE_BLOCKED) {
     disabledFlags.push("blocklistDisabled");
+  } else if (blocklistState === Ci.nsIBlocklistService.STATE_SOFTBLOCKED) {
+    disabledFlags.push("softBlocklistDisabled");
   }
   if (embedderDisabled) {
     disabledFlags.push("appDisabled");
@@ -354,7 +357,13 @@ async function exportExtension(aAddon, aSourceURI) {
     disabledFlags.push("appVersionDisabled");
   }
   const baseURL = policy ? policy.getURL() : "";
-  const privateBrowsingAllowed = policy ? policy.privateBrowsingAllowed : false;
+  let privateBrowsingAllowed;
+  if (policy) {
+    privateBrowsingAllowed = policy.privateBrowsingAllowed;
+  } else {
+    const { permissions } = await lazy.ExtensionPermissions.get(aAddon.id);
+    privateBrowsingAllowed = permissions.includes(PRIVATE_BROWSING_PERM_NAME);
+  }
 
   let updateDate;
   try {
@@ -520,7 +529,7 @@ class ExtensionPromptObserver {
     Services.obs.addObserver(this, "webextension-optional-permission-prompt");
   }
 
-  async permissionPrompt(aInstall, aAddon, aInfo) {
+  async permissionPromptRequest(aInstall, aAddon, aInfo) {
     const { sourceURI } = aInstall;
     const { permissions } = aInfo;
 
@@ -533,6 +542,14 @@ class ExtensionPromptObserver {
     });
 
     if (response.allow) {
+      if (response.privateBrowsingAllowed) {
+        await lazy.ExtensionPermissions.add(aAddon.id, PRIVATE_BROWSING_PERMS);
+      } else {
+        await lazy.ExtensionPermissions.remove(
+          aAddon.id,
+          PRIVATE_BROWSING_PERMS
+        );
+      }
       aInfo.resolve();
     } else {
       aInfo.reject();
@@ -555,7 +572,7 @@ class ExtensionPromptObserver {
       case "webextension-permission-prompt": {
         const { info } = aSubject.wrappedJSObject;
         const { addon, install } = info;
-        this.permissionPrompt(install, addon, info);
+        this.permissionPromptRequest(install, addon, info);
         break;
       }
       case "webextension-optional-permission-prompt": {
@@ -583,7 +600,9 @@ class AddonInstallObserver {
     lazy.EventDispatcher.instance.sendRequest({
       type: "GeckoView:WebExtension:OnInstallationFailed",
       extension,
+      addonId: aAddon?.id,
       addonName: aAddonName,
+      addonVersion: aAddon?.version,
       error: aError,
     });
   }
@@ -960,9 +979,9 @@ export var GeckoViewWebExtension = {
 
   async setPrivateBrowsingAllowed(aId, aAllowed) {
     if (aAllowed) {
-      await lazy.ExtensionPermissions.add(aId, PRIVATE_BROWSING_PERMISSION);
+      await lazy.ExtensionPermissions.add(aId, PRIVATE_BROWSING_PERMS);
     } else {
-      await lazy.ExtensionPermissions.remove(aId, PRIVATE_BROWSING_PERMISSION);
+      await lazy.ExtensionPermissions.remove(aId, PRIVATE_BROWSING_PERMS);
     }
 
     // Reload the extension if it is already enabled.  This ensures any change

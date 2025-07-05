@@ -246,6 +246,7 @@ static const oidValDef curveOptList[] = {
     { CIPHER_NAME("CURVE25519"), SEC_OID_CURVE25519,
       NSS_USE_ALG_IN_SSL_KX | NSS_USE_ALG_IN_CERT_SIGNATURE },
     { CIPHER_NAME("XYBER768D00"), SEC_OID_XYBER768D00, 0 },
+    { CIPHER_NAME("MLKEM768X25519"), SEC_OID_MLKEM768X25519, 0 },
     /* ANSI X9.62 named elliptic curves (characteristic two field) */
     { CIPHER_NAME("C2PNB163V1"), SEC_OID_ANSIX962_EC_C2PNB163V1,
       NSS_USE_ALG_IN_SSL_KX | NSS_USE_ALG_IN_CERT_SIGNATURE },
@@ -436,6 +437,8 @@ static const oidValDef kxOptList[] = {
     { CIPHER_NAME("ECDHE-RSA"), SEC_OID_TLS_ECDHE_RSA, NSS_USE_ALG_IN_SSL_KX },
     { CIPHER_NAME("ECDH-ECDSA"), SEC_OID_TLS_ECDH_ECDSA, NSS_USE_ALG_IN_SSL_KX },
     { CIPHER_NAME("ECDH-RSA"), SEC_OID_TLS_ECDH_RSA, NSS_USE_ALG_IN_SSL_KX },
+    { CIPHER_NAME("TLS-REQUIRE-EMS"), SEC_OID_TLS_REQUIRE_EMS, NSS_USE_ALG_IN_SSL_KX },
+
 };
 
 static const oidValDef smimeKxOptList[] = {
@@ -790,6 +793,79 @@ secmod_getOperationString(NSSPolicyOperation operation)
             break;
     }
     return "invalid";
+}
+
+/* Allow external applications fetch the policy oid based on the internal
+ * string mapping used by the configuration system. The search can be
+ * narrowed by supplying the name of the table (list) that the policy
+ * is on. The value 'Any' allows the policy to be searched on all lists */
+SECOidTag
+SECMOD_PolicyStringToOid(const char *policy, const char *list)
+{
+    PRBool any = (PORT_Strcasecmp(list, "Any") == 0) ? PR_TRUE : PR_FALSE;
+    int len = PORT_Strlen(policy);
+    int i, j;
+
+    for (i = 0; i < PR_ARRAY_SIZE(algOptLists); i++) {
+        const algListsDef *algOptList = &algOptLists[i];
+        if (any || (PORT_Strcasecmp(algOptList->description, list) == 0)) {
+            for (j = 0; j < algOptList->entries; j++) {
+                const oidValDef *algOpt = &algOptList->list[j];
+                unsigned name_size = algOpt->name_size;
+                if (len == name_size &&
+                    PORT_Strcasecmp(algOpt->name, policy) == 0) {
+                    return algOpt->oid;
+                }
+            }
+        }
+    }
+    return SEC_OID_UNKNOWN;
+}
+
+/* Allow external applications fetch the NSS option based on the internal
+ * string mapping used by the configuration system. */
+PRUint32
+SECMOD_PolicyStringToOpt(const char *policy)
+{
+    int len = PORT_Strlen(policy);
+    int i;
+
+    for (i = 0; i < PR_ARRAY_SIZE(freeOptList); i++) {
+        const optionFreeDef *freeOpt = &freeOptList[i];
+        unsigned name_size = freeOpt->name_size;
+        if (len == name_size &&
+            PORT_Strcasecmp(freeOpt->name, policy) == 0) {
+            return freeOpt->option;
+        }
+    }
+    return 0;
+}
+
+/* Allow external applications map policy flags to their string equivalance.
+ * Some strings represent more than one flag. If more than one flag is included
+ * the returned string is the string that contains any of the
+ * supplied flags unless exact is specified. If exact is specified, then the
+ * returned value matches all the included flags and only those flags. For
+ * Example: 'ALL-SIGNATURE' has the bits NSS_USE_ALG_IN_CERTSIGNATURE|
+ * NSS_USE_ALG_IN_SMIME_SIGNATURE|NSS_USE_ALG_IN_ANY_SIGNATURE. If you ask for
+ * NSS_USE_ALG_IN_CERT_SIGNATURE|NSS_USE_ALG_IN_SMIME_SIGNATURE and don't set
+ * exact, this function will return 'ALL-SIGNATURE' if you do set exact, you must
+ * include all three bits in value to get 'All-SIGNATURE'*/
+const char *
+SECMOD_FlagsToPolicyString(PRUint32 val, PRBool exact)
+{
+    int i;
+
+    for (i = 0; i < PR_ARRAY_SIZE(policyFlagList); i++) {
+        const policyFlagDef *policy = &policyFlagList[i];
+        if (exact && (policy->flag == val)) {
+            return policy->name;
+        }
+        if (!exact && ((policy->flag & val) == policy->flag)) {
+            return policy->name;
+        }
+    }
+    return NULL;
 }
 
 static SECStatus
@@ -2239,6 +2315,72 @@ loser:
     return module;
 }
 
+SECMODModule *
+SECMOD_LoadModuleWithFunction(const char *moduleName, CK_C_GetFunctionList fentry)
+{
+    SECMODModule *module = NULL;
+    SECMODModule *oldModule = NULL;
+    SECStatus rv;
+
+    /* initialize the underlying module structures */
+    SECMOD_Init();
+
+    module = secmod_NewModule();
+    if (module == NULL) {
+        goto loser;
+    }
+
+    module->commonName = PORT_ArenaStrdup(module->arena, moduleName ? moduleName : "");
+    module->internal = PR_FALSE;
+    module->isFIPS = PR_FALSE;
+    /* if the system FIPS mode is enabled, force FIPS to be on */
+    if (SECMOD_GetSystemFIPSEnabled()) {
+        module->isFIPS = PR_TRUE;
+    }
+
+    module->isCritical = PR_FALSE;
+    /* new field */
+    module->trustOrder = NSSUTIL_DEFAULT_TRUST_ORDER;
+    /* new field */
+    module->cipherOrder = NSSUTIL_DEFAULT_CIPHER_ORDER;
+    /* new field */
+    module->isModuleDB = PR_FALSE;
+    module->moduleDBOnly = PR_FALSE;
+
+    module->ssl[0] = 0;
+    module->ssl[1] = 0;
+
+    secmod_PrivateModuleCount++;
+
+    /* load it */
+    rv = secmod_LoadPKCS11ModuleFromFunction(module, &oldModule, fentry);
+    if (rv != SECSuccess) {
+        goto loser;
+    }
+
+    /* if we just reload an old module, no need to add it to any lists.
+     * we simple release all our references */
+    if (oldModule) {
+        /* This module already exists, don't link it anywhere. This
+         * will probably destroy this module */
+        SECMOD_DestroyModule(module);
+        return oldModule;
+    }
+
+    SECMOD_AddModuleToList(module);
+    /* handle any additional work here */
+    return module;
+
+loser:
+    if (module) {
+        if (module->loaded) {
+            SECMOD_UnloadModule(module);
+        }
+        SECMOD_AddModuleToUnloadList(module);
+    }
+    return module;
+}
+
 /*
  * load a PKCS#11 module and add it to the default NSS trust domain
  */
@@ -2247,6 +2389,25 @@ SECMOD_LoadUserModule(char *modulespec, SECMODModule *parent, PRBool recurse)
 {
     SECStatus rv = SECSuccess;
     SECMODModule *newmod = SECMOD_LoadModule(modulespec, parent, recurse);
+    SECMODListLock *moduleLock = SECMOD_GetDefaultModuleListLock();
+
+    if (newmod) {
+        SECMOD_GetReadLock(moduleLock);
+        rv = STAN_AddModuleToDefaultTrustDomain(newmod);
+        SECMOD_ReleaseReadLock(moduleLock);
+        if (SECSuccess != rv) {
+            SECMOD_DestroyModule(newmod);
+            return NULL;
+        }
+    }
+    return newmod;
+}
+
+SECMODModule *
+SECMOD_LoadUserModuleWithFunction(const char *moduleName, CK_C_GetFunctionList fentry)
+{
+    SECStatus rv = SECSuccess;
+    SECMODModule *newmod = SECMOD_LoadModuleWithFunction(moduleName, fentry);
     SECMODListLock *moduleLock = SECMOD_GetDefaultModuleListLock();
 
     if (newmod) {

@@ -9,11 +9,10 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from io import StringIO
 
-import six
 from buildconfig import topobjdir, topsrcdir
 from mozpack import path as mozpath
-from six import StringIO, string_types
 
 from mozbuild.configure import ConfigureSandbox
 from mozbuild.util import ReadOnlyNamespace, memoized_property
@@ -33,7 +32,7 @@ def ensure_exe_extension(path):
     return path
 
 
-class ConfigureTestVFS(object):
+class ConfigureTestVFS:
     def __init__(self, paths):
         self._paths = set(mozpath.abspath(p) for p in paths)
 
@@ -92,9 +91,7 @@ class ConfigureTestSandbox(ConfigureSandbox):
     def __init__(self, paths, config, environ, *args, **kwargs):
         self._search_path = environ.get("PATH", "").split(os.pathsep)
 
-        self._subprocess_paths = {
-            mozpath.abspath(k): v for k, v in six.iteritems(paths) if v
-        }
+        self._subprocess_paths = {mozpath.abspath(k): v for k, v in paths.items() if v}
 
         paths = list(paths)
 
@@ -103,9 +100,9 @@ class ConfigureTestSandbox(ConfigureSandbox):
             environ["CONFIG_SHELL"] = mozpath.abspath("/bin/sh")
             self._subprocess_paths[environ["CONFIG_SHELL"]] = self.shell
             paths.append(environ["CONFIG_SHELL"])
-        self._subprocess_paths[
-            mozpath.join(topsrcdir, "build/win32/vswhere.exe")
-        ] = self.vswhere
+        self._subprocess_paths[mozpath.join(topsrcdir, "build/win32/vswhere.exe")] = (
+            self.vswhere
+        )
 
         vfs = ConfigureTestVFS(paths)
 
@@ -142,7 +139,7 @@ class ConfigureTestSandbox(ConfigureSandbox):
 
     @memoized_property
     def _wrapped_ctypes(self):
-        class CTypesFunc(object):
+        class CTypesFunc:
             def __init__(self, func):
                 self._func = func
 
@@ -162,12 +159,12 @@ class ConfigureTestSandbox(ConfigureSandbox):
     @memoized_property
     def _wrapped__winreg(self):
         def OpenKey(*args, **kwargs):
-            raise WindowsError()
+            raise OSError()
 
         return ReadOnlyNamespace(HKEY_LOCAL_MACHINE=0, OpenKey=OpenKey)
 
     def create_unicode_buffer(self, *args, **kwargs):
-        class Buffer(object):
+        class Buffer:
             def __init__(self):
                 self.value = ""
 
@@ -178,7 +175,7 @@ class ConfigureTestSandbox(ConfigureSandbox):
         return length
 
     def which(self, command, mode=None, path=None, exts=None):
-        if isinstance(path, string_types):
+        if isinstance(path, str):
             path = path.split(os.pathsep)
 
         for parent in path or self._search_path:
@@ -200,7 +197,7 @@ class ConfigureTestSandbox(ConfigureSandbox):
         else:
             retcode, stdout, stderr = func(stdin, args[1:])
 
-        class Process(object):
+        class Process:
             def communicate(self, stdin=None):
                 return stdout, stderr
 
@@ -295,7 +292,7 @@ class BaseConfigureTest(unittest.TestCase):
 
         if mozconfig:
             fh, mozconfig_path = tempfile.mkstemp(text=True)
-            os.write(fh, six.ensure_binary(mozconfig))
+            os.write(fh, mozconfig.encode())
             os.close(fh)
         else:
             mozconfig_path = os.path.join(
@@ -305,7 +302,6 @@ class BaseConfigureTest(unittest.TestCase):
         try:
             environ = dict(
                 environ,
-                OLD_CONFIGURE=os.path.join(topsrcdir, "old-configure"),
                 MOZCONFIG=mozconfig_path,
             )
 

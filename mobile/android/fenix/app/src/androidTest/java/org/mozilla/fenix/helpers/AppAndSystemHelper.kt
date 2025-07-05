@@ -5,21 +5,23 @@
 
 package org.mozilla.fenix.helpers
 
-import android.Manifest
 import android.app.ActivityManager
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.content.res.Configuration
-import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Environment
 import android.os.storage.StorageManager
 import android.os.storage.StorageVolume
 import android.provider.Settings
 import android.util.Log
+import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
+import androidx.core.net.toUri
+import androidx.core.os.LocaleListCompat
 import androidx.test.espresso.Espresso
 import androidx.test.espresso.IdlingRegistry
 import androidx.test.espresso.IdlingResource
@@ -27,7 +29,6 @@ import androidx.test.espresso.intent.Intents.intended
 import androidx.test.espresso.intent.matcher.IntentMatchers.toPackage
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.ActivityTestRule
-import androidx.test.runner.permission.PermissionRequester
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiObject
 import androidx.test.uiautomator.UiSelector
@@ -37,26 +38,35 @@ import kotlinx.coroutines.runBlocking
 import mozilla.appservices.places.BookmarkRoot
 import mozilla.components.browser.storage.sync.PlacesBookmarksStorage
 import mozilla.components.browser.storage.sync.PlacesHistoryStorage
+import mozilla.components.support.locale.LocaleManager.resetToSystemDefault
+import mozilla.components.support.locale.LocaleManager.setNewLocale
 import org.junit.Assert
 import org.junit.Assert.assertEquals
-import org.mozilla.fenix.Config
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.components.PermissionStorage
 import org.mozilla.fenix.customtabs.ExternalAppBrowserActivity
+import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.helpers.Constants.PackageName.PIXEL_LAUNCHER
 import org.mozilla.fenix.helpers.Constants.PackageName.YOUTUBE_APP
 import org.mozilla.fenix.helpers.Constants.TAG
+import org.mozilla.fenix.helpers.MatcherHelper.assertUIObjectExists
+import org.mozilla.fenix.helpers.MatcherHelper.itemContainingText
+import org.mozilla.fenix.helpers.MatcherHelper.itemWithPackageNameAndDescription
+import org.mozilla.fenix.helpers.MatcherHelper.itemWithResId
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdContainingText
+import org.mozilla.fenix.helpers.NetworkConnectionStatusHelper.checkActiveNetworkState
 import org.mozilla.fenix.helpers.TestAssetHelper.waitingTime
 import org.mozilla.fenix.helpers.TestAssetHelper.waitingTimeShort
 import org.mozilla.fenix.helpers.TestHelper.appContext
 import org.mozilla.fenix.helpers.TestHelper.mDevice
+import org.mozilla.fenix.helpers.TestHelper.packageName
 import org.mozilla.fenix.helpers.ext.waitNotNull
 import org.mozilla.fenix.helpers.idlingresource.NetworkConnectionIdlingResource
 import org.mozilla.fenix.ui.robots.BrowserRobot
 import org.mozilla.gecko.util.ThreadUtils
 import java.io.File
 import java.util.Locale
+import java.util.regex.Pattern
 
 object AppAndSystemHelper {
 
@@ -64,8 +74,7 @@ object AppAndSystemHelper {
     suspend fun bookmarks() = bookmarksStorage.getTree(BookmarkRoot.Mobile.id)?.children
     fun getPermissionAllowID(): String {
         Log.i(TAG, "getPermissionAllowID: Trying to get the permission button resource ID based on API.")
-        return when
-            (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
+        return when (Build.VERSION.SDK_INT > Build.VERSION_CODES.P) {
             true -> {
                 Log.i(TAG, "getPermissionAllowID: Getting the permission button resource ID for API ${Build.VERSION.SDK_INT}.")
                 "com.android.permissioncontroller"
@@ -234,6 +243,8 @@ object AppAndSystemHelper {
     fun setNetworkEnabled(enabled: Boolean) {
         val networkDisconnectedIdlingResource = NetworkConnectionIdlingResource(false)
         val networkConnectedIdlingResource = NetworkConnectionIdlingResource(true)
+        val enableNetworkTimerIdlingResource = TimerIdlingResource(5000)
+        val disableNetworkTimerIdlingResource = TimerIdlingResource(3000)
 
         when (enabled) {
             true -> {
@@ -259,6 +270,16 @@ object AppAndSystemHelper {
                     IdlingRegistry.getInstance().unregister(networkConnectedIdlingResource)
                 }
                 Log.i(TAG, "setNetworkEnabled: Network connection was enabled.")
+
+                // Register the TimerIdlingResource
+                IdlingRegistry.getInstance().register(enableNetworkTimerIdlingResource)
+
+                // Wait for the TimerIdlingResource to become idle
+                Espresso.onIdle {
+                    IdlingRegistry.getInstance().unregister(networkConnectedIdlingResource)
+                    // Check the active network state
+                    checkActiveNetworkState(enabled = true)
+                }
             }
 
             false -> {
@@ -284,6 +305,34 @@ object AppAndSystemHelper {
                     IdlingRegistry.getInstance().unregister(networkDisconnectedIdlingResource)
                 }
                 Log.i(TAG, "setNetworkEnabled: Network connection was disabled.")
+
+                // Register the TimerIdlingResource
+                IdlingRegistry.getInstance().register(enableNetworkTimerIdlingResource)
+
+                // Wait for the TimerIdlingResource to become idle
+                Espresso.onIdle {
+                    IdlingRegistry.getInstance().unregister(disableNetworkTimerIdlingResource)
+                    // Check the active network state
+                    checkActiveNetworkState(enabled = false)
+                }
+            }
+        }
+    }
+
+    fun disableWifiNetworkConnection() {
+        mDevice.executeShellCommand("svc wifi disable")
+        Log.i(TAG, "disableWifiNetworkConnection: Wifi network connection disable command sent.")
+    }
+
+    fun enableDataSaverSystemSetting(enabled: Boolean) {
+        when (enabled) {
+            true -> {
+                mDevice.executeShellCommand("cmd netpolicy set restrict-background true")
+                Log.i(TAG, "enableDataSaverSystemSetting: Command to enable data saver system setting sent.")
+            }
+            false -> {
+                mDevice.executeShellCommand("cmd netpolicy set restrict-background false")
+                Log.i(TAG, "enableDataSaverSystemSetting: Command to disable data saver system setting sent.")
             }
         }
     }
@@ -309,6 +358,9 @@ object AppAndSystemHelper {
                 Log.i(TAG, "assertExternalAppOpens: Matched open intent to $appPackageName.")
             } catch (e: AssertionFailedError) {
                 Log.i(TAG, "assertExternalAppOpens: Intent match failure. ${e.message}")
+            } finally {
+                // Stop the app from running in the background
+                forceCloseApp(appPackageName)
             }
         } else {
             Log.i(TAG, "assertExternalAppOpens: Trying to verify the \"Could not open file\" message.")
@@ -332,6 +384,9 @@ object AppAndSystemHelper {
                     .waitForExists(waitingTime),
             )
             Log.i(TAG, "assertNativeAppOpens: App package name matched.")
+
+            // Stop the app from running in the background
+            forceCloseApp(appPackageName)
         } else {
             Log.i(TAG, "assertNativeAppOpens: Trying to verify the page redirect URL.")
             BrowserRobot().verifyUrl(url)
@@ -340,9 +395,30 @@ object AppAndSystemHelper {
     }
 
     fun assertYoutubeAppOpens() {
+        Log.i(TAG, "assertYoutubeAppOpens: Trying to revoke the Notifications permission for the YouTube app.")
+        runBlocking {
+            // This will prevent the Youtube app to show the "Allow notifications" dialog
+            Log.i(TAG, "assertYoutubeAppOpens: Granting the Notifications permission for the YouTube app.")
+            mDevice.executeShellCommand("pm grant com.google.android.youtube android.permission.POST_NOTIFICATIONS")
+            Log.i(TAG, "assertYoutubeAppOpens: Granted the Notifications permission for the YouTube app.")
+        }
         Log.i(TAG, "assertYoutubeAppOpens: Trying to check the intent to YouTube.")
         intended(toPackage(YOUTUBE_APP))
         Log.i(TAG, "assertYoutubeAppOpens: Verified the intent matches YouTube.")
+
+        // Stop the app from running in the background
+        forceCloseApp(YOUTUBE_APP)
+    }
+
+    /**
+     * Force stops the app from running in the background.
+     *
+     * @param appPackageName The package name of the app to be stopped.
+     */
+    fun forceCloseApp(appPackageName: String) {
+        Log.i(TAG, "forceCloseApp: Trying to stop the $appPackageName app from running in the background.")
+        mDevice.executeShellCommand("am force-stop $appPackageName")
+        Log.i(TAG, "forceCloseApp: Force-stopped the $appPackageName app.")
     }
 
     /**
@@ -418,12 +494,54 @@ object AppAndSystemHelper {
 
     // Permission deny dialogs differ on various Android APIs
     fun denyPermission() {
-        Log.i(TAG, "denyPermission: Waiting $waitingTime ms for the \"Deny\" button to exist.")
-        mDevice.findObject(UiSelector().textContains("Deny")).waitForExists(waitingTime)
-        Log.i(TAG, "denyPermission: Waited for $waitingTime ms for the \"Deny\" button to exist.")
-        Log.i(TAG, "denyPermission: Trying to click the \"Deny\" button.")
-        mDevice.findObject(UiSelector().textContains("Deny")).click()
-        Log.i(TAG, "denyPermission: Clicked the \"Deny\" button.")
+        Log.i(TAG, "denyPermission: Waiting $waitingTime ms for the negative camera system permission button to exist.")
+        itemWithResId("com.android.permissioncontroller:id/permission_deny_button").waitForExists(waitingTime)
+        Log.i(TAG, "denyPermission: Waited for $waitingTime ms for the negative camera system permission button to exist.")
+        Log.i(TAG, "denyPermission: Trying to click the negative camera system permission button.")
+        itemWithResId("com.android.permissioncontroller:id/permission_deny_button").click()
+        Log.i(TAG, "denyPermission: Clicked the negative camera system permission button.")
+    }
+
+    fun verifySystemPhotoAndVideoPickerExists() {
+        assertUIObjectExists(itemWithResId("com.google.android.providers.media.module:id/bottom_sheet"))
+    }
+
+    fun closeSystemPhotoAndVideoPicker() {
+        Log.i(TAG, "closeSystemPhotoAndVideoPicker: Trying to click the system photo picker close button")
+        itemWithPackageNameAndDescription("com.google.android.providers.media.module", "Cancel").click()
+        Log.i(TAG, "closeSystemPhotoAndVideoPicker: Clicked the system photo picker close button")
+    }
+
+    fun clickSystemHomeScreenShortcutAddButton() {
+        when (Build.VERSION.SDK_INT) {
+            in Build.VERSION_CODES.O..Build.VERSION_CODES.R -> clickAddAutomaticallyButton()
+            in Build.VERSION_CODES.S..Build.VERSION_CODES.UPSIDE_DOWN_CAKE -> clickAddToHomeScreenButton()
+        }
+    }
+
+    fun clickAddAutomaticallyButton() {
+        Log.i(TAG, "clickAddAutomaticallyButton: Waiting for $waitingTime ms until finding \"Add automatically\" system dialog button")
+        mDevice.wait(
+            Until.findObject(
+                By.text(
+                    Pattern.compile("Add Automatically", Pattern.CASE_INSENSITIVE),
+                ),
+            ),
+            waitingTime,
+        )
+        Log.i(TAG, "clickAddAutomaticallyButton: Waited for $waitingTime ms until \"Add automatically\" system dialog button was found")
+        Log.i(TAG, "clickAddAutomaticallyButton: Trying to click \"Add automatically\" system dialog button")
+        itemContainingText("add automatically").click()
+        Log.i(TAG, "clickAddAutomaticallyButton: Clicked \"Add automatically\" system dialog button")
+    }
+
+    fun clickAddToHomeScreenButton() {
+        Log.i(TAG, "clickAddToHomeScreenButton: Waiting for $waitingTime ms for the \"Add to home screen\" system dialog button to exist")
+        itemContainingText("Add to home screen").waitForExists(waitingTime)
+        Log.i(TAG, "clickAddToHomeScreenButton: Waited for $waitingTime ms for the \"Add to home screen\" system dialog button to exist")
+        Log.i(TAG, "clickAddToHomeScreenButton: Trying to click the \"Add to home screen\" system dialog button and wait for $waitingTimeShort ms for a new window")
+        itemContainingText("Add to home screen").clickAndWaitForNewWindow(waitingTimeShort)
+        Log.i(TAG, "clickAddToHomeScreenButton: Clicked the \"Add to home screen\" system dialog button and wait for $waitingTimeShort ms for a new window")
     }
 
     fun isTestLab(): Boolean {
@@ -431,66 +549,63 @@ object AppAndSystemHelper {
     }
 
     /**
-     * Changes the default language of the entire device, not just the app.
+     * Changes the default language of the app, simulating a system locale change.
      * Runs the test in its testBlock.
-     * Cleans up and sets the default locale after it's done.
+     * Cleans up and sets the system default locale after it's done.
      */
-    fun runWithSystemLocaleChanged(locale: Locale, testRule: ActivityTestRule<HomeActivity>, testBlock: () -> Unit) {
-        val defaultLocale = Locale.getDefault()
+    fun runWithSystemLocaleChanged(locale: LocaleListCompat, testBlock: () -> Unit) {
+        Log.i(TAG, "runWithSystemLocaleChanged: Trying to set the locale.")
+        ThreadUtils.runOnUiThread {
+            AppCompatDelegate.setApplicationLocales(locale)
+        }
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync()
 
         try {
-            Log.i(TAG, "runWithSystemLocaleChanged: Trying to set the locale.")
-            setSystemLocale(locale)
-            Log.i(TAG, "runWithSystemLocaleChanged: Running the test block.")
+            Log.i(TAG, "Running the test block after locale change.")
             testBlock()
-            ThreadUtils.runOnUiThread { testRule.activity.recreate() }
-            Log.i(TAG, "runWithSystemLocaleChanged: Test block finished.")
+            Log.i(TAG, "Test block finished.")
         } catch (e: Exception) {
-            Log.i(TAG, "runWithSystemLocaleChanged: The test block has thrown an exception.${e.message}")
+            Log.i(
+                TAG,
+                "runWithSystemLocaleChanged: The test block has thrown an exception.${e.message}",
+            )
             e.printStackTrace()
+            throw e
         } finally {
-            Log.i(TAG, "runWithSystemLocaleChanged: Trying to reset the locale to default.")
-            setSystemLocale(defaultLocale)
+            ThreadUtils.runOnUiThread { AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList()) }
         }
     }
 
     /**
-     * Changes the default language of the entire device, not just the app.
-     * We can only use this if we're running on a debug build, otherwise it will change the permission manifests in release builds.
+     * Changes the app language, different then the system default.
+     * Runs the test in its testBlock.
+     * Cleans up and sets the system locale after it's done.
      */
-    fun setSystemLocale(locale: Locale) {
-        if (Config.channel.isDebug) {
-            /* Sets permission to change device language */
-            Log.i(
-                TAG,
-                "setSystemLocale: Requesting permission to change system locale to $locale.",
-            )
-            PermissionRequester().apply {
-                addPermissions(
-                    Manifest.permission.CHANGE_CONFIGURATION,
-                )
-                requestPermissions()
-            }
-            Log.i(
-                TAG,
-                "setSystemLocale: Received permission to change system locale to $locale.",
-            )
-            val activityManagerNative = Class.forName("android.app.ActivityManagerNative")
-            val am = activityManagerNative.getMethod("getDefault", *arrayOfNulls(0))
-                .invoke(activityManagerNative, *arrayOfNulls(0))
-            val config =
-                InstrumentationRegistry.getInstrumentation().context.resources.configuration
-            config.javaClass.getDeclaredField("locale")[config] = locale
-            config.javaClass.getDeclaredField("userSetLocale").setBoolean(config, true)
-            am.javaClass.getMethod(
-                "updateConfiguration",
-                Configuration::class.java,
-            ).invoke(am, config)
+    fun runWithAppLocaleChanged(locale: Locale, testRule: ActivityTestRule<HomeActivity>, testBlock: () -> Unit) {
+        val localeUseCases = appContext.components.useCases.localeUseCases
+        val defaultLocale = Locale.getDefault()
+        Log.i(TAG, "runWithSystemLocaleChanged: Storing the system default locale $defaultLocale.")
+
+        try {
+            Log.i(TAG, "runWithAppLocaleChanged: Trying to set the locale to $locale.")
+            setNewLocale(appContext, localeUseCases, locale)
+            // We need to recreate the activity to apply the new locale
+            Log.i(TAG, "runWithAppLocaleChanged: Recreating the activity to apply the new locale.")
+            ThreadUtils.runOnUiThread { testRule.activity.recreate() }
+            Log.i(TAG, "runWithAppLocaleChanged: Running the test block.")
+            testBlock()
+            Log.i(TAG, "runWithAppLocaleChanged: Test block finished.")
+        } catch (e: Exception) {
+            Log.i(TAG, "runWithAppLocaleChanged: The test block has thrown an exception.${e.message}")
+            e.printStackTrace()
+            throw e
+        } finally {
+            Log.i(TAG, "runWithAppLocaleChanged final block: Trying to reset the locale to system default $defaultLocale.")
+            resetToSystemDefault(appContext, appContext.components.useCases.localeUseCases)
+            Log.i(TAG, "runWithAppLocaleChanged finally block: Recreating the activity to apply the new locale.")
+            ThreadUtils.runOnUiThread { testRule.activity.recreate() }
+            Log.i(TAG, "runWithAppLocaleChanged final block: Locale reset to system default $defaultLocale.")
         }
-        Log.i(
-            TAG,
-            "setSystemLocale: Changed system locale to $locale.",
-        )
     }
 
     fun putAppToBackground() {
@@ -502,6 +617,9 @@ object AppAndSystemHelper {
             waitingTime,
         )
         Log.i(TAG, "putAppToBackground: Waited for the app to be gone for $waitingTime ms.")
+        Log.i(TAG, "putAppToBackground: Trying to press device home button")
+        mDevice.pressHome()
+        Log.i(TAG, "putAppToBackground: Pressed the device home button")
     }
 
     /**
@@ -511,10 +629,16 @@ object AppAndSystemHelper {
      * The index of the most recent opened app will always have index 2, meaning that the previously opened app will have index 1.
      */
     fun bringAppToForeground() {
+        Log.i(TAG, "bringAppToForeground: Trying to press the device Recent apps button.")
+        mDevice.pressRecentApps()
+        Log.i(TAG, "bringAppToForeground: Pressed the device Recent apps button.")
         Log.i(TAG, "bringAppToForeground: Trying to select the app from the recent apps tray and wait for $waitingTime ms for a new window")
         mDevice.findObject(UiSelector().index(2).packageName(PIXEL_LAUNCHER))
             .clickAndWaitForNewWindow(waitingTimeShort)
         Log.i(TAG, "bringAppToForeground: Selected the app from the recent apps tray.")
+        Log.i(TAG, "bringAppToForeground: Waiting for $waitingTime ms for $packageName window to be updated")
+        mDevice.waitForWindowUpdate(packageName, waitingTime)
+        Log.i(TAG, "bringAppToForeground: Waited for $waitingTime ms for $packageName window to be updated")
     }
 
     fun verifyKeyboardVisibility(isExpectedToBeVisible: Boolean = true) {
@@ -537,7 +661,7 @@ object AppAndSystemHelper {
         val context = InstrumentationRegistry.getInstrumentation().getTargetContext()
         val intent = Intent().apply {
             action = Intent.ACTION_VIEW
-            data = Uri.parse(url)
+            data = url.toUri()
             `package` = TestHelper.packageName
             flags = Intent.FLAG_ACTIVITY_NEW_TASK
         }
@@ -560,7 +684,10 @@ object AppAndSystemHelper {
     fun runWithCondition(condition: Boolean, testBlock: () -> Unit) {
         Log.i(TAG, "runWithCondition: Trying to run the test based on condition. The condition is: $condition.")
         if (condition) {
+            Log.i(TAG, "runWithCondition: The condition was true. Running the test.")
             testBlock()
+        } else {
+            Log.i(TAG, "runWithCondition: The condition was false. Skipping the test.")
         }
     }
 
@@ -595,5 +722,53 @@ object AppAndSystemHelper {
             itemWithResIdContainingText("android:id/button2", "Cancel").click()
             Log.i(TAG, "dismissSetAsDefaulltBrowserOnboardingDialog: Clicked the \"Cancel\" dialog button.")
         }
+    }
+
+    // Prevent or allow the System UI from reading the clipboard content
+    // By preventing, the quick share or nearby share dialog will not be displayed
+    fun allowOrPreventSystemUIFromReadingTheClipboard(allowToReadClipboard: Boolean) {
+        if (allowToReadClipboard) {
+            Log.i(TAG, "allowOrPreventSystemUIFromReadingTheClipboard: Trying to allow the System UI from reading the clipboard content")
+            mDevice.executeShellCommand("appops set com.android.systemui READ_CLIPBOARD allow")
+            Log.i(TAG, "TestSetup: Successfully allowed the System UI from reading the clipboard content")
+        } else {
+            Log.i(TAG, "allowOrPreventSystemUIFromReadingTheClipboard: Trying to prevent the System UI from reading the clipboard content")
+            mDevice.executeShellCommand("appops set com.android.systemui READ_CLIPBOARD deny")
+            Log.i(TAG, "TestSetup: Successfully prevented the System UI from reading the clipboard content")
+        }
+    }
+
+    // Enable or disable the back gesture from the edge of the screen on the device.
+    fun enableOrDisableBackGestureNavigationOnDevice(backGestureNavigationEnabled: Boolean) {
+        if (backGestureNavigationEnabled) {
+            Log.i(TAG, "enableOrDisableBackGestureNavigationOnDevice: Trying to enable the back gesture navigation from the right edge of the screen on the device")
+            mDevice.executeShellCommand("settings put secure back_gesture_inset_scale_right 1")
+            Log.i(TAG, "enableOrDisableBackGestureNavigationOnDevice: Successfully enabled the back gesture navigation from the right edge of the screen on the device")
+            Log.i(TAG, "enableOrDisableBackGestureNavigationOnDevice: Trying to enable the back gesture navigation from the left edge of the screen on the device")
+            mDevice.executeShellCommand("settings put secure back_gesture_inset_scale_left 1")
+            Log.i(TAG, "enableOrDisableBackGestureNavigationOnDevice: Successfully enabled the back gesture navigation from the left edge of the screen on the device on the device")
+        } else {
+            Log.i(TAG, "enableOrDisableBackGestureNavigationOnDevice: Trying to disable the back gesture navigation from the right edge of the screen on the device")
+            mDevice.executeShellCommand("settings put secure back_gesture_inset_scale_right 0")
+            Log.i(TAG, "enableOrDisableBackGestureNavigationOnDevice: Successfully disabled the back gesture navigation from the right edge of the screen on the device")
+            Log.i(TAG, "enableOrDisableBackGestureNavigationOnDevice: Trying to disable the back gesture navigation from the left edge of the screen on the device")
+            mDevice.executeShellCommand("settings put secure back_gesture_inset_scale_left 0")
+            Log.i(TAG, "enableOrDisableBackGestureNavigationOnDevice: Successfully disabled the back gesture navigation from the left edge of the screen on the device on the device")
+        }
+    }
+
+    fun isNetworkConnected(): Boolean {
+        val connectivityManager =
+            appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+        val network = connectivityManager.activeNetwork
+        val networkCapabilities = connectivityManager.getNetworkCapabilities(network)
+        val isConnected =
+            networkCapabilities != null &&
+                networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                networkCapabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+
+        Log.i(TAG, "isNetworkConnected: Checking if network is connected: $isConnected")
+        return isConnected
     }
 }

@@ -33,9 +33,7 @@ class MockRequest {
     this.originalURI = uri;
   }
 
-  get QueryInterface() {
-    return ChromeUtils.generateQI(["nsIRequest", "nsIChannel"]);
-  }
+  QueryInterface = ChromeUtils.generateQI(["nsIRequest", "nsIChannel"]);
 }
 
 class MockWebProgress {
@@ -162,22 +160,6 @@ class MockTopContext {
     }
   }
 }
-
-const hasPromiseResolved = async function (promise) {
-  let resolved = false;
-  promise.finally(() => (resolved = true));
-  // Make sure microtasks have time to run.
-  await new Promise(resolve => Services.tm.dispatchToMainThread(resolve));
-  return resolved;
-};
-
-const hasPromiseRejected = async function (promise) {
-  let rejected = false;
-  promise.catch(() => (rejected = true));
-  // Make sure microtasks have time to run.
-  await new Promise(resolve => Services.tm.dispatchToMainThread(resolve));
-  return rejected;
-};
 
 add_task(
   async function test_waitForInitialNavigation_initialDocumentNoWindowGlobal() {
@@ -463,9 +445,8 @@ add_task(
 
     ok(!webProgress.isLoadingDocument, "Document is not loading");
 
-    const { currentURI, targetURI } = await waitForInitialNavigationCompleted(
-      webProgress
-    );
+    const { currentURI, targetURI } =
+      await waitForInitialNavigationCompleted(webProgress);
 
     ok(!webProgress.isLoadingDocument, "Document is not loading");
     ok(

@@ -25,6 +25,7 @@ class CustomTabMenu(
     private val context: Context,
     private val store: BrowserStore,
     private val currentTabId: String,
+    private val isOnboardingTab: Boolean = false,
     private val onItemTapped: (ToolbarMenu.Item) -> Unit = {},
 ) : ToolbarMenu {
 
@@ -44,7 +45,7 @@ class CustomTabMenu(
             primaryContentDescription = context.getString(R.string.content_description_back),
             primaryImageTintResource = context.theme.resolveAttribute(R.attr.primaryText),
             isInPrimaryState = {
-                selectedSession?.content?.canGoBack ?: false
+                selectedSession?.content?.canGoBack == true
             },
             secondaryImageTintResource = context.theme.resolveAttribute(R.attr.disabled),
             disableInSecondaryState = true,
@@ -58,7 +59,7 @@ class CustomTabMenu(
             primaryContentDescription = context.getString(R.string.content_description_forward),
             primaryImageTintResource = context.theme.resolveAttribute(R.attr.primaryText),
             isInPrimaryState = {
-                selectedSession?.content?.canGoForward ?: true
+                selectedSession?.content?.canGoForward != false
             },
             secondaryImageTintResource = context.theme.resolveAttribute(R.attr.disabled),
             disableInSecondaryState = true,
@@ -101,7 +102,7 @@ class CustomTabMenu(
             imageResource = R.drawable.mozac_ic_device_desktop_24,
             label = context.getString(R.string.preference_performance_request_desktop_site2),
             initialState = {
-                selectedSession?.content?.desktopMode ?: true
+                selectedSession?.content?.desktopMode != false
             },
         ) { checked ->
             onItemTapped.invoke(ToolbarMenu.CustomTabItem.RequestDesktop(checked))
@@ -119,39 +120,46 @@ class CustomTabMenu(
             onItemTapped.invoke(ToolbarMenu.CustomTabItem.AddToHomeScreen)
         }
 
-        val appName = context.getString(R.string.app_name)
-        val openInFocus = SimpleBrowserMenuItem(
-            label = context.getString(R.string.menu_open_with_default_browser2, appName),
-        ) {
-            onItemTapped.invoke(ToolbarMenu.CustomTabItem.OpenInBrowser)
-        }
+        val menuItems = mutableListOf(
+            menuToolbar,
+            BrowserMenuDivider(),
+            findInPage,
+            desktopMode.apply { visible = { selectedSession?.content?.isPdf == false } },
+            reportSiteIssue,
+            BrowserMenuDivider(),
+            addToHomescreen,
+        )
 
-        val openInApp = SimpleBrowserMenuItem(
-            label = context.getString(R.string.menu_open_with_a_browser2),
-        ) {
-            onItemTapped.invoke(ToolbarMenu.CustomTabItem.OpenInApp)
+        if (!isOnboardingTab) {
+            val appName = context.getString(R.string.app_name)
+            val openInFocus = SimpleBrowserMenuItem(
+                label = context.getString(R.string.menu_open_with_default_browser2, appName),
+            ) {
+                onItemTapped.invoke(ToolbarMenu.CustomTabItem.OpenInBrowser)
+            }
+            menuItems.add(openInFocus)
+
+            val openInApp = SimpleBrowserMenuItem(
+                label = context.getString(R.string.menu_open_with_a_browser2),
+            ) {
+                onItemTapped.invoke(ToolbarMenu.CustomTabItem.OpenInApp)
+            }
+            menuItems.add(openInApp)
         }
 
         val poweredBy = BrowserMenuCategory(
-            label = context.getString(R.string.menu_custom_tab_branding, context.getString(R.string.app_name)),
+            label = context.getString(
+                R.string.menu_custom_tab_branding,
+                context.getString(R.string.app_name),
+            ),
             textSize = CAPTION_TEXT_SIZE,
             textColorResource = context.theme.resolveAttribute(R.attr.secondaryText),
             backgroundColorResource = context.theme.resolveAttribute(R.attr.colorPrimary),
             textStyle = Typeface.NORMAL,
         )
 
-        listOfNotNull(
-            menuToolbar,
-            BrowserMenuDivider(),
-            findInPage,
-            desktopMode,
-            reportSiteIssue,
-            BrowserMenuDivider(),
-            addToHomescreen,
-            openInFocus,
-            openInApp,
-            poweredBy,
-        )
+        menuItems.add(poweredBy)
+        menuItems.toList()
     }
 
     companion object {

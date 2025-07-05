@@ -22,11 +22,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
-import org.mozilla.fenix.compose.ext.thenConditional
+import mozilla.components.compose.base.modifier.thenConditional
 import org.mozilla.fenix.theme.FirefoxTheme
 
 const val ITEM_WIDTH = 328
@@ -129,6 +130,8 @@ fun ListItemTabLarge(
  * Shared default configuration of a ListItemTabLarge Composable.
  *
  * @param imageUrl URL from where the to download a header image of the tab this composable renders.
+ * @param imageContentScale Optional scale parameter used to determine the aspect ratio scaling to
+ * be used on the image.
  * @param backgroundColor Background [Color] of the item.
  * @param contentPadding Padding used for the image and details of the item.
  * @param onClick Optional callback to be invoked when this composable is clicked.
@@ -137,6 +140,7 @@ fun ListItemTabLarge(
 @Composable
 fun ListItemTabSurface(
     imageUrl: String,
+    imageContentScale: ContentScale = ContentScale.Fit,
     backgroundColor: Color = FirefoxTheme.colors.layer2,
     contentPadding: PaddingValues = PaddingValues(16.dp),
     onClick: (() -> Unit)? = null,
@@ -164,7 +168,13 @@ fun ListItemTabSurface(
                 .size(imageWidth, imageHeight)
                 .clip(RoundedCornerShape(8.dp))
 
-            Image(imageUrl, imageModifier, false, imageWidth)
+            Image(
+                url = imageUrl,
+                modifier = imageModifier,
+                private = false,
+                targetSize = imageWidth,
+                contentScale = imageContentScale,
+            )
 
             Spacer(Modifier.width(16.dp))
 
@@ -179,7 +189,7 @@ fun ListItemTabSurface(
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun ListItemTabLargePreview() {
     FirefoxTheme {
         ListItemTabLarge(
@@ -191,7 +201,7 @@ private fun ListItemTabLargePreview() {
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun ListItemTabSurfacePreview() {
     FirefoxTheme {
         ListItemTabSurface(
@@ -207,7 +217,7 @@ private fun ListItemTabSurfacePreview() {
 }
 
 @Composable
-@LightDarkPreview
+@PreviewLightDark
 private fun ListItemTabSurfaceWithCustomBackgroundPreview() {
     FirefoxTheme {
         ListItemTabSurface(

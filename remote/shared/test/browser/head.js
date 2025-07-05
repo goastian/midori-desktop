@@ -75,15 +75,20 @@ function assertNavigationEvents(
     `Found ${expectedEvents} events for navigationId ${navigationId}`
   );
 
+  const sameDocumentEvents = ["fragment-navigated", "same-document-changed"];
+
   if (isSameDocument) {
     // Check there are no navigation-started/stopped events.
     ok(!navigationEvents.some(e => e.name === "navigation-started"));
     ok(!navigationEvents.some(e => e.name === "navigation-stopped"));
 
-    const locationChanged = navigationEvents.find(
-      e => e.name === "location-changed"
+    const locationChanged = navigationEvents.find(e =>
+      sameDocumentEvents.includes(e.name)
     );
-    is(locationChanged.name, "location-changed", "event has the expected name");
+    ok(
+      sameDocumentEvents.includes(locationChanged.name),
+      "event has the expected name"
+    );
     is(locationChanged.data.url, url, "event has the expected url");
     is(
       locationChanged.data.navigableId,
@@ -91,8 +96,8 @@ function assertNavigationEvents(
       "event has the expected navigable"
     );
   } else {
-    // Check there is no location-changed event.
-    ok(!navigationEvents.some(e => e.name === "location-changed"));
+    // Check there is no fragment-navigated/same-document-changed event.
+    ok(!navigationEvents.some(e => sameDocumentEvents.includes(e.name)));
 
     const started = navigationEvents.find(e => e.name === "navigation-started");
     const stopped = navigationEvents.find(e => e.name === "navigation-stopped");
@@ -202,4 +207,67 @@ async function loadURL(browser, url, options = {}) {
   );
   BrowserTestUtils.startLoadingURIString(browser, url);
   return loaded;
+}
+
+/**
+ * For a support file resolve its relative path to the absolute path.
+ *
+ * @param {string} path
+ *     The path or a filename of a support file.
+ * @returns {string}
+ *     Absolute path of the support file.
+ */
+function getSupportFilePath(path) {
+  let absolutePath = getChromeDir(getResolvedURI(gTestPath));
+
+  for (const part of path.split("/")) {
+    if (part === "..") {
+      absolutePath = absolutePath.parent;
+    } else {
+      absolutePath.append(part);
+    }
+  }
+
+  if (!absolutePath.exists()) {
+    throw new Error(`${absolutePath.path} does not exist`);
+  }
+
+  return absolutePath.path;
+}
+
+/**
+ * Reads file from provided path and returns its contents encoded with base64
+ *
+ * @param {string} path
+ *     The Path to load.
+ * @returns {Promise}
+ *     Promise which will resolved when the file finished loading.
+ */
+async function readFileAsBase64(path) {
+  const file = new FileUtils.File(path);
+
+  const contents = await new Promise((resolve, reject) => {
+    NetUtil.asyncFetch(
+      {
+        uri: file,
+        loadUsingSystemPrincipal: true,
+      },
+      (inputStream, status) => {
+        if (!Components.isSuccessCode(status)) {
+          reject(new Error("Failed to read file; status = " + status));
+          return;
+        }
+
+        const fileContents = NetUtil.readInputStreamToString(
+          inputStream,
+          inputStream.available()
+        );
+        inputStream.close();
+
+        resolve(fileContents);
+      }
+    );
+  });
+
+  return btoa(contents);
 }

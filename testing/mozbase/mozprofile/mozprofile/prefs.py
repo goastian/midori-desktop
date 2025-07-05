@@ -14,9 +14,10 @@ import six
 from six import StringIO, string_types
 
 try:
-    from six.moves.configparser import SafeConfigParser as ConfigParser
+    from configparser import SafeConfigParser as ConfigParser
 except ImportError:  # SafeConfigParser was removed in 3.12
     from configparser import ConfigParser
+
 try:
     ConfigParser.read_file
 except AttributeError:  # read_file was added in 3.2, readfp removed in 3.12
@@ -35,7 +36,7 @@ class PreferencesReadError(Exception):
     """read error for preferences files"""
 
 
-class Preferences(object):
+class Preferences:
     """assembly of preferences from various sources"""
 
     def __init__(self, prefs=None):
@@ -153,7 +154,7 @@ class Preferences(object):
         if type(prefs) not in [list, dict]:
             raise PreferencesReadError("Malformed preferences: %s" % path)
         if isinstance(prefs, list):
-            if [i for i in prefs if type(i) != list or len(i) != 2]:
+            if [i for i in prefs if type(i) is not list or len(i) != 2]:
                 raise PreferencesReadError("Malformed preferences: %s" % path)
             values = [i[1] for i in prefs]
         elif isinstance(prefs, dict):

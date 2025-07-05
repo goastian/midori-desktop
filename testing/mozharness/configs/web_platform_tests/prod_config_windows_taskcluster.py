@@ -1,8 +1,6 @@
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 
 # This is a template config file for web-platform-tests test.
 
@@ -22,7 +20,7 @@ DESKTOP_VISUALFX_THEME = {
 TASKBAR_AUTOHIDE_REG_PATH = {
     "Windows 7": r"HKCU:SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StuckRects2",
     "Windows 10": r"HKCU:SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\StuckRects3",
-}.get("{} {}".format(platform.system(), platform.release()))
+}.get(f"{platform.system()} {platform.release()}")
 #####
 
 config = {
@@ -85,9 +83,7 @@ config = {
             "cmd": [
                 "powershell",
                 "-command",
-                "\"&{{&Set-ItemProperty -Path 'HKCU:Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects' -Name VisualFXSetting -Value {}}}\"".format(
-                    DESKTOP_VISUALFX_THEME
-                ),
+                f"\"&{{&Set-ItemProperty -Path 'HKCU:Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\VisualEffects' -Name VisualFXSetting -Value {DESKTOP_VISUALFX_THEME}}}\"",
             ],
             "architectures": ["32bit", "64bit"],
             "halt_on_failure": True,
@@ -109,9 +105,7 @@ config = {
             "cmd": [
                 "powershell",
                 "-command",
-                "\"&{{$p='{}';$v=(Get-ItemProperty -Path $p).Settings;$v[8]=3;&Set-ItemProperty -Path $p -Name Settings -Value $v}}\"".format(
-                    TASKBAR_AUTOHIDE_REG_PATH
-                ),
+                f"\"&{{$p='{TASKBAR_AUTOHIDE_REG_PATH}';$v=(Get-ItemProperty -Path $p).Settings;$v[8]=3;&Set-ItemProperty -Path $p -Name Settings -Value $v}}\"",
             ],
             "architectures": ["32bit", "64bit"],
             "halt_on_failure": True,

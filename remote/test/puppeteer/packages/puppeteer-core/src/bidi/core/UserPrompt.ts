@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import type * as Bidi from 'chromium-bidi/lib/cjs/protocol/protocol.js';
+import * as Bidi from 'chromium-bidi/lib/cjs/protocol/protocol.js';
 
 import {EventEmitter} from '../../common/EventEmitter.js';
 import {inertIfDisposed, throwIfDisposed} from '../../util/decorators.js';
@@ -42,7 +42,7 @@ export class UserPrompt extends EventEmitter<{
 }> {
   static from(
     browsingContext: BrowsingContext,
-    info: Bidi.BrowsingContext.UserPromptOpenedParameters
+    info: Bidi.BrowsingContext.UserPromptOpenedParameters,
   ): UserPrompt {
     const userPrompt = new UserPrompt(browsingContext, info);
     userPrompt.#initialize();
@@ -57,7 +57,7 @@ export class UserPrompt extends EventEmitter<{
 
   private constructor(
     context: BrowsingContext,
-    info: Bidi.BrowsingContext.UserPromptOpenedParameters
+    info: Bidi.BrowsingContext.UserPromptOpenedParameters,
   ) {
     super();
 
@@ -67,14 +67,14 @@ export class UserPrompt extends EventEmitter<{
 
   #initialize() {
     const browserContextEmitter = this.#disposables.use(
-      new EventEmitter(this.browsingContext)
+      new EventEmitter(this.browsingContext),
     );
     browserContextEmitter.once('closed', ({reason}) => {
       this.dispose(`User prompt already closed: ${reason}`);
     });
 
     const sessionEmitter = this.#disposables.use(
-      new EventEmitter(this.#session)
+      new EventEmitter(this.#session),
     );
     sessionEmitter.on('browsingContext.userPromptClosed', parameters => {
       if (parameters.context !== this.browsingContext.id) {
@@ -96,6 +96,12 @@ export class UserPrompt extends EventEmitter<{
     return this.closed;
   }
   get handled(): boolean {
+    if (
+      this.info.handler === Bidi.Session.UserPromptHandlerType.Accept ||
+      this.info.handler === Bidi.Session.UserPromptHandlerType.Dismiss
+    ) {
+      return true;
+    }
     return this.#result !== undefined;
   }
   get result(): UserPromptResult | undefined {
@@ -121,7 +127,7 @@ export class UserPrompt extends EventEmitter<{
     return this.#result!;
   }
 
-  [disposeSymbol](): void {
+  override [disposeSymbol](): void {
     this.#reason ??=
       'User prompt already closed, probably because the associated browsing context was destroyed.';
     this.emit('closed', {reason: this.#reason});

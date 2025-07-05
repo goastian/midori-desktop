@@ -174,6 +174,22 @@ where
 
     fn collect_user_agent_rules(&mut self) {
         self.collect_stylist_rules(Origin::UserAgent);
+        #[cfg(feature = "gecko")]
+        self.collect_view_transition_dynamic_rules();
+    }
+
+    #[cfg(feature = "gecko")]
+    fn collect_view_transition_dynamic_rules(&mut self) {
+        if !self.pseudo_element.is_some_and(|p| p.is_named_view_transition()) {
+            return;
+        }
+        let len_before_vt_rules = self.rules.len();
+        self.element.synthesize_view_transition_dynamic_rules(self.rules);
+        if cfg!(debug_assertions) && self.rules.len() != len_before_vt_rules {
+            for declaration in &self.rules[len_before_vt_rules..] {
+                assert_eq!(declaration.level(), CascadeLevel::UANormal);
+            }
+        }
     }
 
     fn collect_user_rules(&mut self) {
@@ -199,11 +215,9 @@ where
                 self.context.visited_handling(),
                 self.rules,
             );
-        if cfg!(debug_assertions) {
-            if self.rules.len() != length_before_preshints {
-                for declaration in &self.rules[length_before_preshints..] {
-                    assert_eq!(declaration.level(), CascadeLevel::PresHints);
-                }
+        if cfg!(debug_assertions) && self.rules.len() != length_before_preshints {
+            for declaration in &self.rules[length_before_preshints..] {
+                assert_eq!(declaration.level(), CascadeLevel::PresHints);
             }
         }
     }
@@ -354,7 +368,10 @@ where
             let cascade_level = CascadeLevel::AuthorNormal {
                 shadow_cascade_order,
             };
+            debug_assert!(!collector.context.featureless(), "How?");
+            collector.context.featureless = true;
             collector.collect_rules_in_map(host_rules, cascade_level, style_data);
+            collector.context.featureless = false;
         });
     }
 

@@ -37,7 +37,13 @@ export function getCommandForRunner(runner: TestRunner): [string, ...string[]] {
     case TestRunner.Mocha:
       return [`mocha`, '--config=./e2e/.mocharc.js'];
     case TestRunner.Node:
-      return ['node', '--test', '--test-reporter', 'spec', 'e2e/build/'];
+      return [
+        'node',
+        '--test',
+        '--test-reporter',
+        'spec',
+        'e2e/build/**/*.e2e.js',
+      ];
   }
 
   throw new Error(`Unknown test runner ${runner}!`);
@@ -46,7 +52,7 @@ export function getCommandForRunner(runner: TestRunner): [string, ...string[]] {
 function getExecutable(command: string[]) {
   const executable = command.shift()!;
   const debugError = `Error running '${executable}' with arguments '${command.join(
-    ' '
+    ' ',
   )}'.`;
 
   return {
@@ -81,7 +87,7 @@ function updateExecutablePath(command: string, root?: string) {
 async function executeCommand(
   context: BuilderContext,
   command: string[],
-  env: NodeJS.ProcessEnv = {}
+  env: NodeJS.ProcessEnv = {},
 ) {
   let project: JsonObject;
   if (context.target) {
@@ -89,7 +95,7 @@ async function executeCommand(
     command[0] = updateExecutablePath(command[0]!, String(project['root']));
   }
 
-  await new Promise(async (resolve, reject) => {
+  await new Promise((resolve, reject) => {
     context.logger.debug(`Trying to execute command - ${command.join(' ')}.`);
     const {executable, args, debugError, error} = getExecutable(command);
     let path = context.workspaceRoot;
@@ -126,7 +132,7 @@ async function executeCommand(
 function message(
   message: string,
   context: BuilderContext,
-  type: 'info' | 'success' | 'error' = 'info'
+  type: 'info' | 'success' | 'error' = 'info',
 ): void {
   let style: string;
   switch (type) {
@@ -141,13 +147,13 @@ function message(
       break;
   }
   context.logger.info(
-    `${terminalStyles.bold}${style}${message}${terminalStyles.clear}`
+    `${terminalStyles.bold}${style}${message}${terminalStyles.clear}`,
   );
 }
 
 async function startServer(
   options: PuppeteerBuilderOptions,
-  context: BuilderContext
+  context: BuilderContext,
 ): Promise<BuilderRun> {
   context.logger.debug('Trying to start server.');
   const target = targetFromTargetString(options.devServerTarget);
@@ -169,22 +175,45 @@ async function startServer(
   return server;
 }
 
+async function getServerAndUrl(
+  options: PuppeteerBuilderOptions,
+  context: BuilderContext,
+): Promise<{
+  baseUrl: string;
+  server: BuilderRun | null;
+}> {
+  if (options.baseUrl) {
+    return {
+      baseUrl: options.baseUrl,
+      server: null,
+    };
+  }
+
+  const server = await startServer(options, context);
+  const result = await server.result;
+
+  return {
+    baseUrl: result['baseUrl'],
+    server,
+  };
+}
+
 async function executeE2ETest(
   options: PuppeteerBuilderOptions,
-  context: BuilderContext
+  context: BuilderContext,
 ): Promise<BuilderOutput> {
   let server: BuilderRun | null = null;
   try {
     message('\n Building tests 🛠️ ... \n', context);
     await executeCommand(context, [`tsc`, '-p', 'e2e/tsconfig.json']);
 
-    server = await startServer(options, context);
-    const result = await server.result;
+    const result = await getServerAndUrl(options, context);
+    server = result.server;
 
     message('\n Running tests 🧪 ... \n', context);
     const testRunnerCommand = getCommandForRunner(options.testRunner);
     await executeCommand(context, testRunnerCommand, {
-      baseUrl: result['baseUrl'],
+      baseUrl: result.baseUrl,
     });
 
     message('\n 🚀 Test ran successfully! 🚀 ', context, 'success');

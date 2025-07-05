@@ -16,7 +16,7 @@ from optparse import OptionParser
 import mozfile
 import mozinfo
 import requests
-from six import PY3, reraise
+from six import PY3
 
 try:
     import pefile
@@ -38,14 +38,7 @@ class InvalidBinary(Exception):
 
 
 class InvalidSource(Exception):
-    """Thrown when the specified source is not a recognized file type.
-
-    Supported types:
-    Linux:   tar.gz, tar.bz2
-    Mac:     dmg
-    Windows: zip, exe
-
-    """
+    """Thrown when the specified source is not a recognized file type."""
 
 
 class UninstallError(Exception):
@@ -99,7 +92,7 @@ def get_binary(path, app_name):
 
 
 def install(src, dest):
-    """Install a zip, exe, tar.gz, tar.bz2 or dmg file, and return the path of
+    """Install a zip, exe, tar.gz, tar.bz2, tar.xz or dmg file, and return the path of
     the installation folder.
 
     :param src: Path to the install file
@@ -107,14 +100,14 @@ def install(src, dest):
                  files the folder should not exist yet)
     """
     if not is_installer(src):
-        msg = "{} is not a valid installer file".format(src)
+        msg = f"{src} is not a valid installer file"
         if "://" in src:
             try:
                 return _install_url(src, dest)
             except Exception:
                 exc, val, tb = sys.exc_info()
-                error = InvalidSource("{} ({})".format(msg, val))
-                reraise(InvalidSource, error, tb)
+                error = InvalidSource(f"{msg} ({val})")
+                raise error.with_traceback(tb)
         raise InvalidSource(msg)
 
     src = os.path.realpath(src)
@@ -128,14 +121,17 @@ def install(src, dest):
     trbk = None
     try:
         install_dir = None
-        if src.lower().endswith(".dmg"):
-            install_dir = _install_dmg(src, dest)
-        elif src.lower().endswith(".exe"):
-            install_dir = _install_exe(src, dest)
-        elif src.lower().endswith(".msix"):
+        if src.lower().endswith(".msix"):
+            # MSIX packages _are_ ZIP files, so we need to look for them first.
             install_dir = _install_msix(src)
         elif zipfile.is_zipfile(src) or tarfile.is_tarfile(src):
             install_dir = mozfile.extract(src, dest)[0]
+        elif src.lower().endswith(".dmg"):
+            install_dir = _install_dmg(src, dest)
+        elif src.lower().endswith(".exe"):
+            install_dir = _install_exe(src, dest)
+        else:
+            raise InvalidSource(f"{src} is not a valid installer file")
 
         return install_dir
 
@@ -154,9 +150,9 @@ def install(src, dest):
                     pass
         if issubclass(cls, Exception):
             error = InstallError('Failed to install "%s (%s)"' % (src, str(exc)))
-            reraise(InstallError, error, trbk)
+            raise error.with_traceback(trbk)
         # any other kind of exception like KeyboardInterrupt is just re-raised.
-        reraise(cls, exc, trbk)
+        raise exc.with_traceback(trbk)
 
     finally:
         # trbk won't get GC'ed due to circular reference
@@ -168,9 +164,9 @@ def is_installer(src):
     """Tests if the given file is a valid installer package.
 
     Supported types:
-    Linux:   tar.gz, tar.bz2
-    Mac:     dmg
-    Windows: zip, exe
+    All: zip, tar.gz, tar.bz2, tar.xz
+    Linux, Mac: dmg
+    Windows: exe, msix
 
     On Windows pefile will be used to determine if the executable is the
     right type, if it is installed on the system.
@@ -182,14 +178,16 @@ def is_installer(src):
     if not os.path.isfile(src):
         return False
 
-    if mozinfo.isLinux:
-        return tarfile.is_tarfile(src)
-    elif mozinfo.isMac:
+    if mozinfo.isWin and src.lower().endswith(".msix"):
+        # MSIX packages _are_ ZIP files, so look for them first.
+        return True
+    if zipfile.is_zipfile(src):
+        return True
+    if tarfile.is_tarfile(src):
+        return True
+    if mozinfo.isMac or mozinfo.isLinux:
         return src.lower().endswith(".dmg")
-    elif mozinfo.isWin:
-        if zipfile.is_zipfile(src):
-            return True
-
+    if mozinfo.isWin:
         if os.access(src, os.X_OK) and src.lower().endswith(".exe"):
             if has_pefile:
                 # try to determine if binary is actually a gecko installer
@@ -204,7 +202,7 @@ def is_installer(src):
                 # pefile not available, just assume a proper binary was passed in
                 return True
 
-        return False
+    return False
 
 
 def uninstall(install_folder):
@@ -258,7 +256,7 @@ def uninstall(install_folder):
                 error = UninstallError(
                     "Failed to uninstall %s (%s)" % (install_folder, str(ex))
                 )
-                reraise(UninstallError, error, trbk)
+                raise error.with_traceback(trbk)
 
             finally:
                 # trbk won't get GC'ed due to circular reference
@@ -298,6 +296,9 @@ def _install_dmg(src, dest):
     dest -- the path to extract to
 
     """
+    if mozinfo.isLinux:
+        return _install_dmg_cross(src, dest)
+
     appDir = None
     try:
         # According to the Apple doc, the hdiutil output is stable and is based on the tab
@@ -332,6 +333,49 @@ def _install_dmg(src, dest):
     finally:
         if appDir:
             subprocess.check_call('hdiutil detach "%s" -quiet' % appDir, shell=True)
+
+    return dest
+
+
+def _install_dmg_cross(src, dest):
+    # This is a cross build, use hfsplus and dmg tools to extract the dmg.
+    try:
+        import buildconfig
+
+        dmg_tool = buildconfig.substs.get("DMG_TOOL")
+        hfs_tool = buildconfig.substs.get("HFS_TOOL")
+    except ImportError:
+        pass
+
+    if not dmg_tool:
+        dmg_tool = os.environ.get("DMG_TOOL")
+    if not dmg_tool:
+        raise InstallError("No DMG_TOOL in environment")
+
+    if not hfs_tool:
+        hfs_tool = os.environ.get("HFS_TOOL")
+    if not hfs_tool:
+        raise InstallError("No HFS_TOOL in environment")
+
+    oldcwd = os.getcwd()
+    try:
+        os.chdir(dest)
+        with open(os.devnull, "wb") as devnull:
+            subprocess.check_call(
+                [
+                    dmg_tool,
+                    "extract",
+                    src,
+                    "extracted_img",
+                ],
+                stdout=devnull,
+            )
+            subprocess.check_call(
+                [hfs_tool, "extracted_img", "extractall"],
+                stdout=devnull,
+            )
+    finally:
+        os.chdir(oldcwd)
 
     return dest
 
@@ -375,13 +419,28 @@ def _get_msix_install_location(pkg):
                             cmd = (
                                 f'powershell.exe "Get-AppxPackage" "-Name" "{pkgname}"'
                             )
+                            # Powershell "helpfully" wraps long lines and there's
+                            # no tidy way to tell it not to, so we'll have to
+                            # reconstruct the value. Output could look like this:
+                            # InstallLocation   : C:\Program
+                            #                     Files\WindowsApps\...
+                            # Don't strip trailing spaces. The space between
+                            # "Program" and "Files" is at the end of the first
+                            # line. (Not in this comment, due to linting.)
+                            location = None
                             for line in (
                                 subprocess.check_output(cmd)
                                 .decode("utf-8")
                                 .splitlines()
                             ):
                                 if line.startswith("InstallLocation"):
-                                    return "C:{}".format(line.split(":")[-1].strip())
+                                    location = line[line.find(": ") + 2 :]
+                                elif location is not None:
+                                    if line.startswith(" "):
+                                        location += line.lstrip()
+                                    else:
+                                        break
+                            return location
 
     raise Exception(f"Couldn't find install location of {pkg}")
 

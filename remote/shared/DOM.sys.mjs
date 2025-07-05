@@ -69,7 +69,7 @@ dom.Strategy = {
  * See the {@link dom.Strategy} enum for a full list of supported
  * search strategies that can be passed to <var>strategy</var>.
  *
- * @param {Object<string, WindowProxy>} container
+ * @param {Record<string, WindowProxy>} container
  *     Window object.
  * @param {string} strategy
  *     Search strategy whereby to locate the element(s).
@@ -754,7 +754,7 @@ dom.isEditable = function (el) {
  *     Vertical offset relative to target's top-left corner.  Defaults to
  *     the centre of the target's bounding box.
  *
- * @returns {Object<string, number>}
+ * @returns {Record<string, number>}
  *     X- and Y coordinates.
  *
  * @throws TypeError
@@ -864,6 +864,7 @@ dom.getContainer = function (el) {
  */
 dom.isInView = function (el) {
   let originalPointerEvents = el.style.pointerEvents;
+  let originalStyleAttrValue = el.getAttribute("style");
 
   try {
     el.style.pointerEvents = "auto";
@@ -878,6 +879,11 @@ dom.isInView = function (el) {
     return tree.includes(el);
   } finally {
     el.style.pointerEvents = originalPointerEvents;
+    if (originalStyleAttrValue === null) {
+      el.removeAttribute("style");
+    } else if (el.getAttribute("style") != originalStyleAttrValue) {
+      el.setAttribute("style", originalStyleAttrValue);
+    }
   }
 };
 

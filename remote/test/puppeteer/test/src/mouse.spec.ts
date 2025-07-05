@@ -110,9 +110,9 @@ describe('Mouse', function () {
       await handle.evaluate(element => {
         return element.value.substring(
           element.selectionStart,
-          element.selectionEnd
+          element.selectionEnd,
         );
-      })
+      }),
     ).toBe(text);
   });
   it('should trigger hover state', async () => {
@@ -123,19 +123,19 @@ describe('Mouse', function () {
     expect(
       await page.evaluate(() => {
         return document.querySelector('button:hover')!.id;
-      })
+      }),
     ).toBe('button-6');
     await page.hover('#button-2');
     expect(
       await page.evaluate(() => {
         return document.querySelector('button:hover')!.id;
-      })
+      }),
     ).toBe('button-2');
     await page.hover('#button-91');
     expect(
       await page.evaluate(() => {
         return document.querySelector('button:hover')!.id;
-      })
+      }),
     ).toBe('button-91');
   });
   it('should trigger hover state with removed window.Node', async () => {
@@ -150,7 +150,7 @@ describe('Mouse', function () {
     expect(
       await page.evaluate(() => {
         return document.querySelector('button:hover')!.id;
-      })
+      }),
     ).toBe('button-6');
   });
   it('should set modifier keys on click', async () => {
@@ -163,7 +163,7 @@ describe('Mouse', function () {
         e => {
           return ((globalThis as any).lastEvent = e);
         },
-        true
+        true,
       );
     });
     const modifiers = new Map<KeyInput, string>([
@@ -180,7 +180,7 @@ describe('Mouse', function () {
       await page.keyboard.down(modifier);
       await page.click('#button-3');
       if (
-        !(await page.evaluate((mod: string) => {
+        !(await page.evaluate(mod => {
           return (globalThis as any).lastEvent[mod];
         }, key))
       ) {
@@ -191,7 +191,7 @@ describe('Mouse', function () {
     await page.click('#button-3');
     for (const [modifier, key] of modifiers) {
       if (
-        await page.evaluate((mod: string) => {
+        await page.evaluate(mod => {
           return (globalThis as any).lastEvent[mod];
         }, key)
       ) {
@@ -212,7 +212,7 @@ describe('Mouse', function () {
 
     await page.mouse.move(
       boundingBoxBefore.x + boundingBoxBefore.width / 2,
-      boundingBoxBefore.y + boundingBoxBefore.height / 2
+      boundingBoxBefore.y + boundingBoxBefore.height / 2,
     );
 
     await page.mouse.wheel({deltaY: -100});
@@ -221,6 +221,32 @@ describe('Mouse', function () {
       width: 230,
       height: 230,
     });
+  });
+  it('should set ctrlKey on the wheel event', async () => {
+    const {page, server, isFirefox} = await getTestState();
+    await page.goto(server.EMPTY_PAGE);
+    const ctrlKey = page.evaluate(() => {
+      return new Promise(resolve => {
+        window.addEventListener(
+          'wheel',
+          event => {
+            resolve(event.ctrlKey);
+          },
+          {
+            once: true,
+          },
+        );
+      });
+    });
+    await page.keyboard.down('Control');
+    await page.mouse.wheel({deltaY: -100});
+    // Scroll back to work around
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=1901211.
+    if (isFirefox) {
+      await page.mouse.wheel({deltaY: 100});
+    }
+    await page.keyboard.up('Control');
+    expect(await ctrlKey).toBeTruthy();
   });
   it('should tween mouse movement', async () => {
     const {page} = await getTestState();
@@ -273,7 +299,7 @@ describe('Mouse', function () {
 
   const addMouseDataListeners = (
     page: Page,
-    options: AddMouseDataListenersOptions = {}
+    options: AddMouseDataListenersOptions = {},
   ) => {
     return page.evaluate(({includeMove}) => {
       const clicks: ClickData[] = [];

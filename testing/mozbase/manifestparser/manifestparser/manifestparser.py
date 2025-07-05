@@ -4,7 +4,6 @@
 
 import codecs
 import fnmatch
-import io
 import json
 import os
 import shutil
@@ -43,7 +42,7 @@ def denormalize_path(path):
 # objects for parsing manifests
 
 
-class ManifestParser(object):
+class ManifestParser:
     """read .ini manifests"""
 
     def __init__(
@@ -149,7 +148,7 @@ class ManifestParser(object):
             if self.finder:
                 fp = codecs.getreader("utf-8")(self.finder.get(filename).open())
             else:
-                fp = io.open(filename, encoding="utf-8")
+                fp = open(filename, encoding="utf-8")
         else:
             fp = filename
             if hasattr(fp, "name"):
@@ -184,13 +183,13 @@ class ManifestParser(object):
                             f"NOTE TOML include file present, but not used: {toml_name}"
                         )
             elif file_ext != ".toml":
-                raise IOError(
+                raise OSError(
                     f"manfestparser file extension not supported: {include_file}"
                 )
             if not self.path_exists(include_file):
                 message = "Included file '%s' does not exist" % include_file
                 if self.strict:
-                    raise IOError(message)
+                    raise OSError(message)
                 else:
                     sys.stderr.write("%s\n" % message)
                     return
@@ -222,7 +221,7 @@ class ManifestParser(object):
             elif file_ext == ".toml":
                 read_fn = read_toml
             else:
-                raise IOError(f"manfestparser file extension not supported: {filename}")
+                raise OSError(f"manfestparser file extension not supported: {filename}")
         defaults["here"] = here
 
         # read the configuration
@@ -247,9 +246,13 @@ class ManifestParser(object):
             #   is True.
             # - Any variables from the "[include:...]" section.
             # - The defaults of the included manifest.
-            self.manifest_defaults[
-                (parentmanifest, manifest_defaults_filename)
-            ] = defaults
+            #
+            # parentmanifest is whatever the value of ancestor_manifest will be,
+            # i.e. a relative path with platform-native separators.
+            # filename is an absolute path with platform-native separators.
+            self.manifest_defaults[(parentmanifest, manifest_defaults_filename)] = (
+                defaults
+            )
             if manifest_defaults_filename != filename:
                 self.manifest_defaults[(parentmanifest, filename)] = defaults
         else:
@@ -327,7 +330,7 @@ class ManifestParser(object):
             if isinstance(filename, str) and not self.path_exists(filename)
         ]
         if missing:
-            raise IOError("Missing files: %s" % ", ".join(missing))
+            raise OSError("Missing files: %s" % ", ".join(missing))
 
         # default variables
         _defaults = defaults.copy() or self._defaults.copy()
@@ -463,7 +466,7 @@ class ManifestParser(object):
         if missing:
             missing_paths = [test["path"] for test in missing]
             if self.strict:
-                raise IOError(
+                raise OSError(
                     "Strict mode enabled, test paths must exist. "
                     "The following test(s) are missing: %s"
                     % json.dumps(missing_paths, indent=2)
@@ -681,7 +684,7 @@ class ManifestParser(object):
                 if not os.path.exists(source):
                     message = "Missing test: '%s' does not exist!"
                     if self.strict:
-                        raise IOError(message)
+                        raise OSError(message)
                     print(message + " Skipping.", file=sys.stderr)
                     continue
                 destination = os.path.join(rootdir, _relpath)
@@ -778,7 +781,7 @@ class ManifestParser(object):
         manifest_dict = {}
 
         if os.path.basename(filename) != filename:
-            raise IOError("filename should not include directory name")
+            raise OSError("filename should not include directory name")
 
         # no need to hit directories more than once
         _directories = directories
@@ -852,7 +855,7 @@ class ManifestParser(object):
 
             # write to manifest
             write_content = "\n".join(
-                ["[{}]".format(denormalize_path(filename)) for filename in filenames]
+                [f"[{denormalize_path(filename)}]" for filename in filenames]
             )
             print(write_content, file=write)
 
@@ -888,7 +891,13 @@ class TestManifest(ManifestParser):
         self.last_used_filters = []
 
     def active_tests(
-        self, exists=True, disabled=True, filters=None, noDefaultFilters=False, **values
+        self,
+        exists=True,
+        disabled=True,
+        filters=None,
+        noDefaultFilters=False,
+        strictExpressions=False,
+        **values,
     ):
         """
         Run all applied filters on the set of tests.
@@ -925,7 +934,7 @@ class TestManifest(ManifestParser):
 
         self.last_used_filters = fltrs[:]
         for fn in fltrs:
-            tests = fn(tests, values)
+            tests = fn(tests, values, strict=strictExpressions)
         return list(tests)
 
     def test_paths(self):

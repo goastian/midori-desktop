@@ -440,7 +440,6 @@ async function throwScriptError(options = {}) {
     scriptError.initWithWindowID(
       options.text,
       options.sourceName || "sourceName",
-      null,
       options.lineNumber || 0,
       options.columnNumber || 0,
       flag,
@@ -469,20 +468,20 @@ class RecordEvents {
    * Then `await record(someTimeout)` to record a timeline that you
    * can make assertions about.
    *
+   * ```js
    * const history = new RecordEvents(expectedNumberOfEvents);
    *
    * history.addRecorder({
-   *  event: Runtime.executionContextDestroyed,
-   *  eventName: "Runtime.executionContextDestroyed",
-   *  messageFn: payload => {
-   *    return `Received Runtime.executionContextDestroyed for id ${payload.executionContextId}`;
-   *  },
+   *   event: Runtime.executionContextDestroyed,
+   *   eventName: "Runtime.executionContextDestroyed",
+   *   messageFn: payload => {
+   *     return `Received Runtime.executionContextDestroyed for id ${payload.executionContextId}`;
+   *   },
    * });
-   *
+   * ```
    *
    * @param {number} total
    *     Number of expected events. Stop recording when this number is exceeded.
-   *
    */
   constructor(total) {
     this.events = [];

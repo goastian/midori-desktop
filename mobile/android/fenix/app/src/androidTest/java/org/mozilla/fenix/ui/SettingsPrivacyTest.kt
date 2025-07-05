@@ -10,9 +10,12 @@ import org.mozilla.fenix.helpers.HomeActivityTestRule
 import org.mozilla.fenix.helpers.TestAssetHelper
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.homeScreen
 import org.mozilla.fenix.ui.robots.navigationToolbar
 import org.mozilla.fenix.ui.robots.notificationShade
+import org.mozilla.fenix.utils.DURATION_MS_TRANSLATIONS
+import org.mozilla.fenix.utils.exitMenu
 
 /**
  *  Tests for verifying the the privacy and security section of the Settings menu
@@ -23,7 +26,10 @@ class SettingsPrivacyTest : TestSetup() {
     @get:Rule
     val activityTestRule = HomeActivityTestRule.withDefaultSettingsOverrides(skipOnboarding = true)
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2092698
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2092698
     @Test
     fun settingsPrivacyItemsTest() {
         homeScreen {
@@ -37,7 +43,7 @@ class SettingsPrivacyTest : TestSetup() {
             verifySettingsOptionSummary("Cookie Banner Blocker in private browsing", "")
             verifyEnhancedTrackingProtectionButton()
             verifySettingsOptionSummary("Enhanced Tracking Protection", "Standard")
-            verifySitePermissionsButton()
+            verifySiteSettingsButton()
             verifyDeleteBrowsingDataButton()
             verifyDeleteBrowsingDataOnQuitButton()
             verifySettingsOptionSummary("Delete browsing data on quit", "Off")
@@ -47,38 +53,32 @@ class SettingsPrivacyTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/243362
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/243362
     @Test
     fun verifyDataCollectionSettingsTest() {
-        homeScreen {
-        }.openThreeDotMenu {
-        }.openSettings {
-        }.openSettingsSubMenuDataCollection {
+        homeScreen {}.openThreeDotMenu {}.openSettings {}.openSettingsSubMenuDataCollection {
+            // Studies depends on the telemetry switch,  if telemetry is off studies will be
+            // turned off as well, and will require the app to be restarted.
+            // Daily usage ping should default to telemetry pref value
             verifyDataCollectionView(
-                true,
-                true,
-                "On",
+                isUsageAndTechnicalDataEnabled = true,
+                isDailyUsagePingEnabled = true,
+                studiesSummary = "On",
+                isAutomaticallySendCrashReportsEnabled = false,
             )
             clickUsageAndTechnicalDataToggle()
-            verifyUsageAndTechnicalDataToggle(false)
-            clickUsageAndTechnicalDataToggle()
-            verifyUsageAndTechnicalDataToggle(true)
-            clickMarketingDataToggle()
-            verifyMarketingDataToggle(false)
-            clickMarketingDataToggle()
-            verifyMarketingDataToggle(true)
-            clickStudiesOption()
-            verifyStudiesToggle(true)
-            clickStudiesToggle()
-            verifyStudiesDialog()
-            clickStudiesDialogCancelButton()
-            verifyStudiesToggle(true)
+            verifyDataCollectionView(
+                isUsageAndTechnicalDataEnabled = false,
+                isDailyUsagePingEnabled = true,
+                studiesSummary = "Off",
+                isAutomaticallySendCrashReportsEnabled = false,
+            )
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1024594
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1024594
     @Test
-    fun verifyNotificationsSettingsTest() {
+    fun allowAppToSendNotifications() {
         val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
 
         // Clear all existing notifications
@@ -93,7 +93,7 @@ class SettingsPrivacyTest : TestSetup() {
         navigationToolbar {
         }.enterURLAndEnterToBrowser(defaultWebPage.url) {
         }.openNotificationShade {
-            verifySystemNotificationExists("Close private tabs")
+            verifySystemNotificationExists("Close private tabs?")
         }.closeNotificationTray {
         }.openThreeDotMenu {
         }.openSettings {
@@ -101,15 +101,7 @@ class SettingsPrivacyTest : TestSetup() {
         }.openSettingsSubMenuNotifications {
             verifyAllSystemNotificationsToggleState(true)
             verifyPrivateBrowsingSystemNotificationsToggleState(true)
-            clickPrivateBrowsingSystemNotificationsToggle()
-            verifyPrivateBrowsingSystemNotificationsToggleState(false)
-            clickAllSystemNotificationsToggle()
-            verifyAllSystemNotificationsToggleState(false)
-        }.goBack {
-            verifySettingsOptionSummary("Notifications", "Not allowed")
-        }.goBackToBrowser {
-        }.openNotificationShade {
-            verifySystemNotificationDoesNotExist("Close private tabs")
+            exitMenu(DURATION_MS_TRANSLATIONS)
         }
     }
 }

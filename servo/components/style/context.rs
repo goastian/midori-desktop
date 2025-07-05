@@ -34,9 +34,10 @@ use selectors::context::SelectorCaches;
 #[cfg(feature = "gecko")]
 use servo_arc::Arc;
 #[cfg(feature = "servo")]
-use servo_atoms::Atom;
+use stylo_atoms::Atom;
 use std::fmt;
 use std::ops;
+use std::time::{Duration, Instant};
 use style_traits::CSSPixel;
 use style_traits::DevicePixel;
 #[cfg(feature = "servo")]
@@ -306,7 +307,7 @@ pub struct TraversalStatistics {
     /// The number of times the stylist was rebuilt.
     pub stylist_rebuilds: u32,
     /// Time spent in the traversal, in milliseconds.
-    pub traversal_time_ms: f64,
+    pub traversal_time: Duration,
     /// Whether this was a parallel traversal.
     pub is_parallel: bool,
     /// Whether this is a "large" traversal.
@@ -317,10 +318,6 @@ pub struct TraversalStatistics {
 /// See https://bugzilla.mozilla.org/show_bug.cgi?id=1331856#c2
 impl fmt::Display for TraversalStatistics {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        debug_assert!(
-            self.traversal_time_ms != 0.0,
-            "should have set traversal time"
-        );
         writeln!(f, "[PERF] perf block start")?;
         writeln!(
             f,
@@ -361,7 +358,7 @@ impl fmt::Display for TraversalStatistics {
         )?;
         writeln!(f, "[PERF],declarations,{}", self.declarations)?;
         writeln!(f, "[PERF],stylist_rebuilds,{}", self.stylist_rebuilds)?;
-        writeln!(f, "[PERF],traversal_time_ms,{}", self.traversal_time_ms)?;
+        writeln!(f, "[PERF],traversal_time_ms,{}", self.traversal_time.as_secs_f64() * 1000.)?;
         writeln!(f, "[PERF] perf block end")
     }
 }
@@ -374,7 +371,7 @@ impl TraversalStatistics {
         aggregated: PerThreadTraversalStatistics,
         traversal: &D,
         parallel: bool,
-        start: f64,
+        start: Instant,
     ) -> TraversalStatistics
     where
         E: TElement,
@@ -393,7 +390,7 @@ impl TraversalStatistics {
             dependency_selectors: stylist.num_invalidations() as u32,
             declarations: stylist.num_declarations() as u32,
             stylist_rebuilds: stylist.num_rebuilds() as u32,
-            traversal_time_ms: (time::precise_time_s() - start) * 1000.0,
+            traversal_time: Instant::now() - start,
             is_parallel: parallel,
             is_large,
         }
@@ -425,18 +422,6 @@ bitflags! {
     }
 }
 
-#[cfg(feature = "gecko")]
-bitflags! {
-    /// Represents which tasks are performed in a SequentialTask as a result of
-    /// animation-only restyle.
-    pub struct PostAnimationTasks: u8 {
-        /// Display property was changed from none in animation-only restyle so
-        /// that we need to resolve styles for descendants in a subsequent
-        /// normal restyle.
-        const DISPLAY_CHANGED_FROM_NONE_FOR_SMIL = 0x01;
-    }
-}
-
 /// A task to be run in sequential mode on the parent (non-worker) thread. This
 /// is used by the style system to queue up work which is not safe to do during
 /// the parallel traversal.
@@ -459,19 +444,6 @@ pub enum SequentialTask<E: TElement> {
         /// The tasks which are performed in this SequentialTask.
         tasks: UpdateAnimationsTasks,
     },
-
-    /// Performs one of a number of possible tasks as a result of animation-only
-    /// restyle.
-    ///
-    /// Currently we do only process for resolving descendant elements that were
-    /// display:none subtree for SMIL animation.
-    #[cfg(feature = "gecko")]
-    PostAnimation {
-        /// The target element.
-        el: SendElement<E>,
-        /// The tasks which are performed in this SequentialTask.
-        tasks: PostAnimationTasks,
-    },
 }
 
 impl<E: TElement> SequentialTask<E> {
@@ -489,10 +461,6 @@ impl<E: TElement> SequentialTask<E> {
             } => {
                 el.update_animations(before_change_style, tasks);
             },
-            #[cfg(feature = "gecko")]
-            PostAnimation { el, tasks } => {
-                el.process_post_animation(tasks);
-            },
         }
     }
 
@@ -508,17 +476,6 @@ impl<E: TElement> SequentialTask<E> {
         UpdateAnimations {
             el: unsafe { SendElement::new(el) },
             before_change_style,
-            tasks,
-        }
-    }
-
-    /// Creates a task to do post-process for a given element as a result of
-    /// animation-only restyle.
-    #[cfg(feature = "gecko")]
-    pub fn process_post_animation(el: E, tasks: PostAnimationTasks) -> Self {
-        use self::SequentialTask::*;
-        PostAnimation {
-            el: unsafe { SendElement::new(el) },
             tasks,
         }
     }

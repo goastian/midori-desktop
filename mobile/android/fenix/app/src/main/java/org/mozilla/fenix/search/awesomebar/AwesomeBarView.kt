@@ -17,15 +17,18 @@ import mozilla.components.browser.state.state.searchEngines
 import mozilla.components.browser.state.state.selectedOrDefaultSearchEngine
 import mozilla.components.concept.awesomebar.AwesomeBar
 import mozilla.components.concept.engine.Engine
-import mozilla.components.concept.engine.EngineSession
 import mozilla.components.feature.awesomebar.provider.BookmarksStorageSuggestionProvider
 import mozilla.components.feature.awesomebar.provider.CombinedHistorySuggestionProvider
+import mozilla.components.feature.awesomebar.provider.DEFAULT_RECENT_SEARCH_SUGGESTION_LIMIT
 import mozilla.components.feature.awesomebar.provider.HistoryStorageSuggestionProvider
+import mozilla.components.feature.awesomebar.provider.RecentSearchSuggestionsProvider
 import mozilla.components.feature.awesomebar.provider.SearchActionProvider
 import mozilla.components.feature.awesomebar.provider.SearchEngineSuggestionProvider
 import mozilla.components.feature.awesomebar.provider.SearchSuggestionProvider
 import mozilla.components.feature.awesomebar.provider.SearchTermSuggestionsProvider
 import mozilla.components.feature.awesomebar.provider.SessionSuggestionProvider
+import mozilla.components.feature.awesomebar.provider.TopSitesSuggestionProvider
+import mozilla.components.feature.awesomebar.provider.TrendingSearchProvider
 import mozilla.components.feature.fxsuggest.FxSuggestSuggestionProvider
 import mozilla.components.feature.search.SearchUseCases
 import mozilla.components.feature.session.SessionUseCases
@@ -45,6 +48,7 @@ import org.mozilla.fenix.components.Core.Companion.METADATA_SHORTCUT_SUGGESTION_
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.containsQueryParameters
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.nimbus.FxNimbus
 import org.mozilla.fenix.search.SearchEngineSource
 import org.mozilla.fenix.search.SearchFragmentState
 
@@ -64,58 +68,35 @@ class AwesomeBarView(
     private val defaultCombinedHistoryProvider: CombinedHistorySuggestionProvider
     private val shortcutsEnginePickerProvider: ShortcutsSuggestionProvider
     private val defaultSearchSuggestionProvider: SearchSuggestionProvider
+    private val defaultTopSitesSuggestionProvider: TopSitesSuggestionProvider
+    private val defaultTrendingSearchProvider: TrendingSearchProvider
     private val defaultSearchActionProvider: SearchActionProvider
-    private val searchEngineSuggestionProvider: SearchEngineSuggestionProvider
+    private var searchEngineSuggestionProvider: SearchEngineSuggestionProvider?
     private val searchSuggestionProviderMap: MutableMap<SearchEngine, List<AwesomeBar.SuggestionProvider>>
 
-    private val loadUrlUseCase = object : SessionUseCases.LoadUrlUseCase {
-        override fun invoke(
-            url: String,
-            flags: EngineSession.LoadUrlFlags,
-            additionalHeaders: Map<String, String>?,
-        ) {
-            interactor.onUrlTapped(url, flags)
-        }
-    }
+    private var _loadUrlUseCase: SessionUseCases.LoadUrlUseCase? = null
+    private val loadUrlUseCase get() = _loadUrlUseCase!!
 
-    private val searchUseCase = object : SearchUseCases.SearchUseCase {
-        override fun invoke(
-            searchTerms: String,
-            searchEngine: SearchEngine?,
-            parentSessionId: String?,
-        ) {
-            interactor.onSearchTermsTapped(searchTerms)
-        }
-    }
+    private var _searchUseCase: SearchUseCases.SearchUseCase? = null
+    private val searchUseCase get() = _searchUseCase!!
 
-    private val historySearchTermUseCase = object : SearchUseCases.SearchUseCase {
-        override fun invoke(
-            searchTerms: String,
-            searchEngine: SearchEngine?,
-            parentSessionId: String?,
-        ) {
-            interactor.onSearchTermsTapped(searchTerms)
-        }
-    }
+    private var _historySearchTermUseCase: SearchUseCases.SearchUseCase? = null
+    private val historySearchTermUseCase get() = _historySearchTermUseCase!!
 
-    private val shortcutSearchUseCase = object : SearchUseCases.SearchUseCase {
-        override fun invoke(
-            searchTerms: String,
-            searchEngine: SearchEngine?,
-            parentSessionId: String?,
-        ) {
-            interactor.onSearchTermsTapped(searchTerms)
-        }
-    }
+    private var _shortcutSearchUseCase: SearchUseCases.SearchUseCase? = null
+    private val shortcutSearchUseCase get() = _shortcutSearchUseCase!!
 
-    private val selectTabUseCase = object : TabsUseCases.SelectTabUseCase {
-        override fun invoke(tabId: String) {
-            interactor.onExistingSessionSelected(tabId)
-        }
-    }
+    private var _selectTabUseCase: TabsUseCases.SelectTabUseCase? = null
+    private val selectTabUseCase get() = _selectTabUseCase!!
 
     init {
         val primaryTextColor = activity.getColorFromAttr(R.attr.textPrimary)
+
+        _loadUrlUseCase = AwesomeBarLoadUrlUseCase(interactor)
+        _searchUseCase = AwesomeBarSearchUseCase(interactor)
+        _historySearchTermUseCase = AwesomeBarSearchUseCase(interactor)
+        _shortcutSearchUseCase = AwesomeBarSearchUseCase(interactor)
+        _selectTabUseCase = AwesomeBarSelectTabUseCase(interactor)
 
         engineForSpeculativeConnects = when (activity.browsingModeManager.mode) {
             BrowsingMode.Normal -> components.core.engine
@@ -167,6 +148,27 @@ class AwesomeBarView(
                     BrowsingMode.Private -> true
                 },
                 suggestionsHeader = getSearchEngineSuggestionsHeader(),
+            )
+
+        defaultTopSitesSuggestionProvider =
+            TopSitesSuggestionProvider(
+                topSitesStorage = components.core.topSitesStorage,
+                loadUrlUseCase = loadUrlUseCase,
+                icons = components.core.icons,
+                engine = engineForSpeculativeConnects,
+                maxNumberOfSuggestions = FxNimbus.features.topSitesSuggestions.value().maxSuggestions,
+            )
+
+        defaultTrendingSearchProvider =
+            TrendingSearchProvider(
+                fetchClient = components.core.client,
+                privateMode = when (activity.browsingModeManager.mode) {
+                    BrowsingMode.Normal -> false
+                    BrowsingMode.Private -> true
+                },
+                searchUseCase = searchUseCase,
+                limit = FxNimbus.features.trendingSearches.value().maxSuggestions,
+                icon = searchBitmap,
             )
 
         defaultSearchActionProvider =
@@ -277,9 +279,16 @@ class AwesomeBarView(
         }
 
         if (state.showSearchTermHistory) {
-            getSearchTermSuggestionsProvider(state.searchEngineSource)?.let {
-                providersToAdd.add(it)
-            }
+            getSearchTermSuggestionsProvider(
+                searchEngineSource = state.searchEngineSource,
+            )?.let { providersToAdd.add(it) }
+        }
+
+        if (state.showRecentSearches) {
+            getRecentSearchSuggestionsProvider(
+                searchEngineSource = state.searchEngineSource,
+                maxNumberOfSuggestions = FxNimbus.features.recentSearches.value().maxSuggestions,
+            )?.let { providersToAdd.add(it) }
         }
 
         if (state.showAllHistorySuggestions) {
@@ -341,18 +350,49 @@ class AwesomeBarView(
 
         if (state.showSponsoredSuggestions || state.showNonSponsoredSuggestions) {
             providersToAdd.add(
-                FxSuggestSuggestionProvider(
-                    resources = activity.resources,
-                    loadUrlUseCase = loadUrlUseCase,
-                    includeSponsoredSuggestions = state.showSponsoredSuggestions,
-                    includeNonSponsoredSuggestions = state.showNonSponsoredSuggestions,
-                    suggestionsHeader = activity.getString(R.string.firefox_suggest_header),
-                    contextId = activity.settings().contileContextId,
-                ),
+                if (activity.settings().boostAmpWikiSuggestions) {
+                    FxSuggestSuggestionProvider(
+                        resources = activity.resources,
+                        loadUrlUseCase = loadUrlUseCase,
+                        includeSponsoredSuggestions = state.showSponsoredSuggestions,
+                        includeNonSponsoredSuggestions = state.showNonSponsoredSuggestions,
+                        suggestionsHeader = activity.getString(R.string.firefox_suggest_header),
+                        contextId = activity.settings().contileContextId,
+                        scorer = FxSuggestionExperimentScorer(),
+                    )
+                } else {
+                    FxSuggestSuggestionProvider(
+                        resources = activity.resources,
+                        loadUrlUseCase = loadUrlUseCase,
+                        includeSponsoredSuggestions = state.showSponsoredSuggestions,
+                        includeNonSponsoredSuggestions = state.showNonSponsoredSuggestions,
+                        suggestionsHeader = activity.getString(R.string.firefox_suggest_header),
+                        contextId = activity.settings().contileContextId,
+                    )
+                },
             )
         }
 
-        providersToAdd.add(searchEngineSuggestionProvider)
+        providersToAdd.add(requireNotNull(searchEngineSuggestionProvider))
+
+        if (state.showShortcutsSuggestions) {
+            providersToAdd.add(defaultTopSitesSuggestionProvider)
+        }
+
+        if (state.showTrendingSearches) {
+            val suggestionHeader = state.searchEngineSource.searchEngine?.name?.let { searchEngineName ->
+                getString(
+                    activity,
+                    R.string.trending_searches_header_2,
+                    searchEngineName,
+                )
+            }
+            defaultTrendingSearchProvider.setSearchEngine(
+                state.searchEngineSource.searchEngine,
+                suggestionHeader,
+            )
+            providersToAdd.add(defaultTrendingSearchProvider)
+        }
 
         return providersToAdd
     }
@@ -432,6 +472,24 @@ class AwesomeBarView(
             icon = getDrawable(activity, R.drawable.ic_history)?.toBitmap(),
             engine = engineForSpeculativeConnects,
             suggestionsHeader = getSearchEngineSuggestionsHeader(searchEngineSource.searchEngine),
+        )
+    }
+
+    @VisibleForTesting
+    internal fun getRecentSearchSuggestionsProvider(
+        searchEngineSource: SearchEngineSource,
+        maxNumberOfSuggestions: Int = DEFAULT_RECENT_SEARCH_SUGGESTION_LIMIT,
+    ): AwesomeBar.SuggestionProvider? {
+        val validSearchEngine = searchEngineSource.searchEngine ?: return null
+
+        return RecentSearchSuggestionsProvider(
+            historyStorage = components.core.historyStorage,
+            searchUseCase = historySearchTermUseCase,
+            searchEngine = validSearchEngine,
+            maxNumberOfSuggestions = maxNumberOfSuggestions,
+            icon = getDrawable(activity, R.drawable.ic_history)?.toBitmap(),
+            engine = engineForSpeculativeConnects,
+            suggestionsHeader = activity.getString(R.string.recent_searches_header),
         )
     }
 
@@ -567,6 +625,20 @@ class AwesomeBarView(
             null
         }
 
+    /**
+     * Handles clean up of the [org.mozilla.fenix.search.awesomebar.AwesomeBarView] since it holds
+     * concrete references to various life cycle sensitive elements
+     */
+    internal fun onDestroy() {
+        view.removeAllProviders()
+        searchEngineSuggestionProvider = null
+        _loadUrlUseCase = null
+        _searchUseCase = null
+        _historySearchTermUseCase = null
+        _shortcutSearchUseCase = null
+        _selectTabUseCase = null
+    }
+
     data class SearchProviderState(
         val showSearchShortcuts: Boolean,
         val showSearchTermHistory: Boolean,
@@ -581,6 +653,9 @@ class AwesomeBarView(
         val showAllSessionSuggestions: Boolean,
         val showSponsoredSuggestions: Boolean,
         val showNonSponsoredSuggestions: Boolean,
+        val showTrendingSearches: Boolean,
+        val showRecentSearches: Boolean,
+        val showShortcutsSuggestions: Boolean,
         val searchEngineSource: SearchEngineSource,
     )
 
@@ -651,5 +726,8 @@ fun SearchFragmentState.toSearchProviderState() = AwesomeBarView.SearchProviderS
     showAllSessionSuggestions = showAllSessionSuggestions,
     showSponsoredSuggestions = showSponsoredSuggestions,
     showNonSponsoredSuggestions = showNonSponsoredSuggestions,
+    showTrendingSearches = showTrendingSearches,
+    showRecentSearches = showRecentSearches,
+    showShortcutsSuggestions = showShortcutsSuggestions,
     searchEngineSource = searchEngineSource,
 )

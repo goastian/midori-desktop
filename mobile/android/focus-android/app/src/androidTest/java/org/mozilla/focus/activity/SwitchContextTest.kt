@@ -16,31 +16,31 @@ import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mozilla.focus.R
 import org.mozilla.focus.activity.robots.notificationTray
 import org.mozilla.focus.activity.robots.searchScreen
 import org.mozilla.focus.helpers.FeatureSettingsHelper
 import org.mozilla.focus.helpers.MainActivityFirstrunTestRule
 import org.mozilla.focus.helpers.MockWebServerHelper
 import org.mozilla.focus.helpers.TestAssetHelper
-import org.mozilla.focus.helpers.TestHelper.getStringResource
 import org.mozilla.focus.helpers.TestHelper.mDevice
 import org.mozilla.focus.helpers.TestHelper.pressHomeKey
 import org.mozilla.focus.helpers.TestHelper.waitingTime
+import org.mozilla.focus.helpers.TestSetup
 import org.mozilla.focus.testAnnotations.SmokeTest
 import java.io.IOException
 
 // This test switches out of Focus and opens it from the private browsing notification
 @RunWith(AndroidJUnit4ClassRunner::class)
-class SwitchContextTest {
+class SwitchContextTest : TestSetup() {
     private lateinit var webServer: MockWebServer
     private val featureSettingsHelper = FeatureSettingsHelper()
 
-    @get: Rule
-    var mActivityTestRule = MainActivityFirstrunTestRule(showFirstRun = false)
+    @get:Rule
+    val mActivityTestRule = MainActivityFirstrunTestRule(showFirstRun = false)
 
     @Before
-    fun setUp() {
+    override fun setUp() {
+        super.setUp()
         featureSettingsHelper.setCfrForTrackingProtectionEnabled(false)
         webServer = MockWebServer().apply {
             dispatcher = MockWebServerHelper.AndroidAssetDispatcher()
@@ -77,7 +77,7 @@ class SwitchContextTest {
         // Pull down system bar and select Open
         mDevice.openNotification()
         notificationTray {
-            verifySystemNotificationExists(getStringResource(R.string.notification_erase_text))
+            verifySystemNotificationExists("Erase browsing history?")
             expandEraseBrowsingNotification()
         }.clickNotificationOpenButton {
             verifyBrowserView()
@@ -88,17 +88,17 @@ class SwitchContextTest {
     @Test
     fun switchFromSettingsToFocusTest() {
         // Initialize UiDevice instance
-        val LAUNCH_TIMEOUT = 5000
-        val SETTINGS_APP = "com.android.settings"
+        val appLaunchTimeoutMillis = 5000
+        val settingsPackage = "com.android.settings"
         val settingsApp = mDevice.findObject(
             UiSelector()
-                .packageName(SETTINGS_APP)
+                .packageName(settingsPackage)
                 .enabled(true),
         )
         val launcherPackage = mDevice.launcherPackageName
         val context = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext
         val intent = context.packageManager
-            .getLaunchIntentForPackage(SETTINGS_APP)
+            .getLaunchIntentForPackage(settingsPackage)
         val testPage = TestAssetHelper.getGenericAsset(webServer)
 
         // Open a webpage
@@ -112,7 +112,7 @@ class SwitchContextTest {
         Assert.assertNotNull(launcherPackage)
         mDevice.wait(
             Until.hasObject(By.pkg(launcherPackage).depth(0)),
-            LAUNCH_TIMEOUT.toLong(),
+            appLaunchTimeoutMillis.toLong(),
         )
 
         // Launch the app
@@ -123,7 +123,7 @@ class SwitchContextTest {
         // switch to Focus
         mDevice.openNotification()
         notificationTray {
-            verifySystemNotificationExists(getStringResource(R.string.notification_erase_text))
+            verifySystemNotificationExists("Erase browsing history?")
             expandEraseBrowsingNotification()
         }.clickNotificationOpenButton {
             verifyBrowserView()

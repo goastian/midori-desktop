@@ -6,34 +6,12 @@
 import expect from 'expect';
 import {TimeoutError} from 'puppeteer';
 
-import {launch} from './mocha-utils.js';
+import {setupSeparateTestBrowserHooks} from './mocha-utils.js';
 
 describe('device request prompt', function () {
-  let state: Awaited<ReturnType<typeof launch>>;
-
-  before(async () => {
-    state = await launch(
-      {
-        args: ['--enable-features=WebBluetoothNewPermissionsBackend'],
-        ignoreHTTPSErrors: true,
-      },
-      {
-        after: 'all',
-      }
-    );
-  });
-
-  after(async () => {
-    await state.close();
-  });
-
-  beforeEach(async () => {
-    state.context = await state.browser.createBrowserContext();
-    state.page = await state.context.newPage();
-  });
-
-  afterEach(async () => {
-    await state.context.close();
+  const state = setupSeparateTestBrowserHooks({
+    args: ['--enable-features=WebBluetoothNewPermissionsBackend'],
+    acceptInsecureCerts: true,
   });
 
   // Bug: #11072
@@ -47,7 +25,19 @@ describe('device request prompt', function () {
     await expect(
       page.waitForDevicePrompt({
         timeout: 10,
-      })
+      }),
     ).rejects.toThrow(TimeoutError);
+  });
+
+  it('can be aborted', async function () {
+    const {page} = state;
+
+    const abortController = new AbortController();
+    const task = page.waitForDevicePrompt({
+      signal: abortController.signal,
+    });
+
+    abortController.abort();
+    await expect(task).rejects.toThrow(/aborted/);
   });
 });

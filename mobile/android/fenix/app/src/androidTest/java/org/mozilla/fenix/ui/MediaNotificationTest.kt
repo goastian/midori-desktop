@@ -16,6 +16,7 @@ import org.mozilla.fenix.helpers.TestAssetHelper
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestHelper.verifySnackBarText
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.browserScreen
 import org.mozilla.fenix.ui.robots.clickPageObject
 import org.mozilla.fenix.ui.robots.homeScreen
@@ -35,11 +36,14 @@ class MediaNotificationTest : TestSetup() {
             HomeActivityTestRule.withDefaultSettingsOverrides(),
         ) { it.activity }
 
-    @Rule(order = 1)
+    @get:Rule(order = 1)
+    val memoryLeaksRule = DetectMemoryLeaksRule()
+
+    @Rule(order = 2)
     @JvmField
     val retryTestRule = RetryTestRule(3)
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1347033
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1347033
     @SmokeTest
     @Test
     fun verifyVideoPlaybackSystemNotificationTest() {
@@ -74,7 +78,7 @@ class MediaNotificationTest : TestSetup() {
         mDevice.pressBack()
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2316010
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2316010
     @SmokeTest
     @Test
     fun verifyAudioPlaybackSystemNotificationTest() {
@@ -109,7 +113,7 @@ class MediaNotificationTest : TestSetup() {
         mDevice.pressBack()
     }
 
-    // TestRail: https://testrail.stage.mozaws.net/index.php?/cases/view/903595
+    // TestRail: https://mozilla.testrail.io/index.php?/cases/view/903595
     @Test
     fun mediaSystemNotificationInPrivateModeTest() {
         val audioTestPage = TestAssetHelper.getAudioPageAsset(mockWebServer)

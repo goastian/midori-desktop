@@ -22,7 +22,6 @@
 #include "nsThreadUtils.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/StaticPrefs_network.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/Try.h"
 
 //-----------------------------------------------------------------------------
@@ -36,6 +35,11 @@ LazyLogModule gProxyLog("proxy");
 #define LOG(args) MOZ_LOG(gProxyLog, LogLevel::Debug, args)
 #define MOZ_WPAD_URL "http://wpad/wpad.dat"
 #define MOZ_DHCP_WPAD_OPTION 252
+
+// If a GetOption call is in progress (which may block)
+// this will be set to true so we don't dispatch another task
+// until the pending one is complete.
+static Atomic<bool> sGetOptionInProgress(false);
 
 // These pointers are declared in nsProtocolProxyService.cpp
 extern const char kProxyType_HTTPS[];
@@ -435,6 +439,7 @@ void nsPACMan::Shutdown() {
 
 nsresult nsPACMan::DispatchToPAC(already_AddRefed<nsIRunnable> aEvent,
                                  bool aSync) {
+  LOG(("nsPACMan::DispatchToPAC"));
   MOZ_ASSERT(NS_IsMainThread(), "wrong thread");
 
   nsCOMPtr<nsIRunnable> e(aEvent);
@@ -464,6 +469,7 @@ nsresult nsPACMan::DispatchToPAC(already_AddRefed<nsIRunnable> aEvent,
 nsresult nsPACMan::AsyncGetProxyForURI(nsIURI* uri, nsPACManCallback* callback,
                                        uint32_t flags,
                                        bool mainThreadResponse) {
+  LOG(("nsPACMan::AsyncGetProxyForURI"));
   MOZ_ASSERT(NS_IsMainThread(), "wrong thread");
   if (mShutdown) return NS_ERROR_NOT_AVAILABLE;
 
@@ -489,6 +495,7 @@ nsresult nsPACMan::AsyncGetProxyForURI(nsIURI* uri, nsPACManCallback* callback,
 
 nsresult nsPACMan::PostQuery(PendingPACQuery* query) {
   MOZ_ASSERT(!NS_IsMainThread(), "wrong thread");
+  LOG(("nsPACMan::PostQuery"));
 
   if (mShutdown) {
     query->Complete(NS_ERROR_NOT_AVAILABLE, ""_ns);
@@ -576,6 +583,7 @@ nsresult nsPACMan::LoadPACFromURI(const nsACString& aSpec,
 }
 
 nsresult nsPACMan::GetPACFromDHCP(nsACString& aSpec) {
+  nsresult rv;
   MOZ_ASSERT(!NS_IsMainThread(), "wrong thread");
   if (!mDHCPClient) {
     LOG(
@@ -584,22 +592,59 @@ nsresult nsPACMan::GetPACFromDHCP(nsACString& aSpec) {
          MOZ_DHCP_WPAD_OPTION));
     return NS_ERROR_NOT_IMPLEMENTED;
   }
-  nsresult rv;
-  rv = mDHCPClient->GetOption(MOZ_DHCP_WPAD_OPTION, aSpec);
-  if (NS_FAILED(rv)) {
-    LOG((
-        "nsPACMan::GetPACFromDHCP DHCP option %d query failed with result %d\n",
-        MOZ_DHCP_WPAD_OPTION, (uint32_t)rv));
-  } else {
-    LOG(
-        ("nsPACMan::GetPACFromDHCP DHCP option %d query succeeded, finding PAC "
-         "URL %s\n",
-         MOZ_DHCP_WPAD_OPTION, aSpec.BeginReading()));
+  if (sGetOptionInProgress &&
+      StaticPrefs::network_proxy_dhcp_wpad_only_one_outstanding()) {
+    LOG(("GetPACFromDHCP task already in progress"));
+    return NS_ERROR_IN_PROGRESS;
   }
-  return rv;
+
+  MonitorAutoLock lock(mMonitor);
+  mPACStringFromDHCP.Truncate();
+
+  RefPtr<nsPACMan> self = this;
+  sGetOptionInProgress = true;
+  rv = NS_DispatchBackgroundTask(
+      NS_NewRunnableFunction(
+          "nsPACMan::GetPACFromDHCP",
+          [dhcpClient = nsCOMPtr{mDHCPClient}, self] {
+            nsAutoCString spec;
+            nsresult rv;
+            rv = dhcpClient->GetOption(MOZ_DHCP_WPAD_OPTION, spec);
+            if (NS_FAILED(rv)) {
+              LOG(
+                  ("nsPACMan::GetPACFromDHCP DHCP option %d "
+                   "query failed with result %d\n",
+                   MOZ_DHCP_WPAD_OPTION, (uint32_t)rv));
+            } else {
+              LOG(
+                  ("nsPACMan::GetPACFromDHCP DHCP option %d query succeeded,"
+                   "finding PAC URL %s\n",
+                   MOZ_DHCP_WPAD_OPTION, spec.BeginReading()));
+            }
+            MonitorAutoLock lock(self->mMonitor);
+            self->mPACStringFromDHCP = spec;
+            sGetOptionInProgress = false;
+            self->mMonitor.NotifyAll();
+          }),
+      NS_DISPATCH_EVENT_MAY_BLOCK);
+
+  if (NS_FAILED(rv)) {
+    sGetOptionInProgress = false;
+    return rv;
+  }
+
+  // If the call to GetOption does not complete in a reasonable amount of time,
+  // we should continue to avoid blocking all network traffic.
+  mMonitor.Wait(TimeDuration::FromSeconds(
+      StaticPrefs::network_proxy_dhcp_wpad_timeout_sec()));
+  aSpec = mPACStringFromDHCP;
+  mPACStringFromDHCP.Truncate();
+
+  return NS_OK;
 }
 
 nsresult nsPACMan::ConfigureWPAD(nsACString& aSpec) {
+  LOG(("nsPACMan::ConfigureWPAD(%s)", nsCString(aSpec).get()));
   MOZ_ASSERT(!NS_IsMainThread(), "wrong thread");
 
   if (!IsProxyConfigValidForWPAD(mProxyConfigType, mAutoDetect)) {
@@ -634,6 +679,7 @@ void nsPACMan::AssignPACURISpec(const nsACString& aSpec) {
 void nsPACMan::StartLoading() {
   MOZ_ASSERT(NS_IsMainThread(), "wrong thread");
   mLoadPending = false;
+  LOG(("nsPACMan::StartLoading"));
 
   {
     // CancelExistingLoad was called...
@@ -667,6 +713,7 @@ void nsPACMan::StartLoading() {
 
 void nsPACMan::ContinueLoadingAfterPACUriKnown() {
   MOZ_ASSERT(NS_IsMainThread(), "wrong thread");
+  LOG(("nsPACMan::ContinueLoadingAfterPACUriKnown"));
 
   nsCOMPtr<nsIStreamLoader> loader;
   {
@@ -806,6 +853,7 @@ void nsPACMan::ProcessPendingQ() {
 
 // returns true if progress was made by shortening the queue
 bool nsPACMan::ProcessPending() {
+  LOG(("nsPACMan::AsyncGetProxyForURI"));
   if (mPendingQ.isEmpty()) return false;
 
   // queue during normal load, but if we are retrying a failed load then

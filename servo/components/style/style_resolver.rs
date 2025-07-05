@@ -236,6 +236,7 @@ where
             },
             parent_style,
             layout_parent_style,
+            include_starting_style,
             primary_results.has_starting_style,
         )
     }
@@ -245,6 +246,7 @@ where
         inputs: CascadeInputs,
         parent_style: Option<&ComputedValues>,
         layout_parent_style: Option<&ComputedValues>,
+        include_starting_style: IncludeStartingStyle,
         may_have_starting_style: bool,
     ) -> PrimaryStyle {
         // Before doing the cascade, check the sharing cache and see if we can
@@ -252,10 +254,7 @@ where
         let may_reuse = self.element.matches_user_and_content_rules() &&
             parent_style.is_some() &&
             inputs.rules.is_some() &&
-            // If this style was considered in any way for relative selector matching,
-            // we do not want to lose that fact by sharing a style with something that
-            // did not.
-            !inputs.flags.contains(ComputedValueFlags::CONSIDERED_RELATIVE_SELECTOR);
+            include_starting_style == IncludeStartingStyle::No;
 
         if may_reuse {
             let cached = self.context.thread_local.sharing_cache.lookup_by_rules(
@@ -297,6 +296,7 @@ where
 
         let mut pseudo_styles = EagerPseudoStyles::default();
 
+        // FIXME(bug 1954142): This should account for element-backed pseudo elements.
         if !self.element.is_pseudo_element() {
             let layout_parent_style_for_pseudo =
                 layout_parent_style_for_pseudo(&primary_style, layout_parent_style);
@@ -413,6 +413,7 @@ where
                 inputs.primary,
                 parent_style,
                 layout_parent_style,
+                IncludeStartingStyle::No,
                 may_have_starting_style,
             );
 

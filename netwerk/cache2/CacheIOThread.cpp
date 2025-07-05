@@ -6,6 +6,7 @@
 #include "CacheFileIOManager.h"
 #include "CacheLog.h"
 #include "CacheObserver.h"
+#include "GeckoProfiler.h"
 
 #include "nsIRunnable.h"
 #include "nsISupportsImpl.h"
@@ -17,61 +18,12 @@
 #include "mozilla/IOInterposer.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/ThreadEventQueue.h"
-#include "mozilla/Telemetry.h"
-#include "mozilla/TelemetryHistogramEnums.h"
 
 #ifdef XP_WIN
 #  include <windows.h>
 #endif
 
 namespace mozilla::net {
-
-namespace {  // anon
-
-class CacheIOTelemetry {
- public:
-  using size_type = CacheIOThread::EventQueue::size_type;
-  static size_type mMinLengthToReport[CacheIOThread::LAST_LEVEL];
-  static void Report(uint32_t aLevel, size_type aLength);
-};
-
-static CacheIOTelemetry::size_type const kGranularity = 30;
-
-CacheIOTelemetry::size_type
-    CacheIOTelemetry::mMinLengthToReport[CacheIOThread::LAST_LEVEL] = {
-        kGranularity, kGranularity, kGranularity, kGranularity,
-        kGranularity, kGranularity, kGranularity, kGranularity};
-
-// static
-void CacheIOTelemetry::Report(uint32_t aLevel,
-                              CacheIOTelemetry::size_type aLength) {
-  if (mMinLengthToReport[aLevel] > aLength) {
-    return;
-  }
-
-  static Telemetry::HistogramID telemetryID[] = {
-      Telemetry::HTTP_CACHE_IO_QUEUE_2_OPEN_PRIORITY,
-      Telemetry::HTTP_CACHE_IO_QUEUE_2_READ_PRIORITY,
-      Telemetry::HTTP_CACHE_IO_QUEUE_2_MANAGEMENT,
-      Telemetry::HTTP_CACHE_IO_QUEUE_2_OPEN,
-      Telemetry::HTTP_CACHE_IO_QUEUE_2_READ,
-      Telemetry::HTTP_CACHE_IO_QUEUE_2_WRITE_PRIORITY,
-      Telemetry::HTTP_CACHE_IO_QUEUE_2_WRITE,
-      Telemetry::HTTP_CACHE_IO_QUEUE_2_INDEX,
-      Telemetry::HTTP_CACHE_IO_QUEUE_2_EVICT};
-
-  // Each bucket is a multiply of kGranularity (30, 60, 90..., 300+)
-  aLength = (aLength / kGranularity);
-  // Next time report only when over the current length + kGranularity
-  mMinLengthToReport[aLevel] = (aLength + 1) * kGranularity;
-
-  // 10 is number of buckets we have in each probe
-  aLength = std::min<size_type>(aLength, 10);
-
-  Telemetry::Accumulate(telemetryID[aLevel], aLength - 1);  // counted from 0
-}
-
-}  // namespace
 
 namespace detail {
 
@@ -196,7 +148,7 @@ nsresult CacheIOThread::Init() {
   RefPtr<CacheIOThread> self = this;
   mThread =
       PR_CreateThread(PR_USER_THREAD, ThreadFunc, this, PR_PRIORITY_NORMAL,
-                      PR_GLOBAL_THREAD, PR_JOINABLE_THREAD, 128 * 1024);
+                      PR_GLOBAL_THREAD, PR_JOINABLE_THREAD, 256 * 1024);
   if (!mThread) {
     // Treat this thread as already shutdown.
     MonitorAutoLock lock(mMonitor);
@@ -222,7 +174,7 @@ nsresult CacheIOThread::Dispatch(already_AddRefed<nsIRunnable> aRunnable,
 
   nsCOMPtr<nsIRunnable> runnable(aRunnable);
 
-  // Runnable is always expected to be non-null, hard null-check bellow.
+  // Runnable is always expected to be non-null, hard null-check below.
   MOZ_ASSERT(runnable);
 
   MonitorAutoLock lock(mMonitor);
@@ -357,8 +309,6 @@ already_AddRefed<nsIEventTarget> CacheIOThread::Target() {
 
 // static
 void CacheIOThread::ThreadFunc(void* aClosure) {
-  // XXXmstange We'd like to register this thread with the profiler, but doing
-  // so causes leaks, see bug 1323100.
   NS_SetCurrentThreadName("Cache2 I/O");
 
   mozilla::IOInterposer::RegisterCurrentThread();
@@ -370,6 +320,7 @@ void CacheIOThread::ThreadFunc(void* aClosure) {
 }
 
 void CacheIOThread::ThreadFunc() {
+  char stackTop;
   nsCOMPtr<nsIThreadInternal> threadInternal;
 
   {
@@ -382,6 +333,9 @@ void CacheIOThread::ThreadFunc() {
         MakeRefPtr<ThreadEventQueue>(MakeUnique<mozilla::EventQueue>());
     nsCOMPtr<nsIThread> xpcomThread =
         nsThreadManager::get().CreateCurrentThread(queue);
+#if defined(MOZ_GECKO_PROFILER)
+    profiler_register_thread("Cache2 I/O", &stackTop);
+#endif
 
     threadInternal = do_QueryInterface(xpcomThread);
     if (threadInternal) threadInternal->SetObserver(this);
@@ -450,6 +404,9 @@ void CacheIOThread::ThreadFunc() {
   }  // lock
 
   if (threadInternal) threadInternal->SetObserver(nullptr);
+#if defined(MOZ_GECKO_PROFILER)
+  profiler_unregister_thread();
+#endif
 }
 
 void CacheIOThread::LoopOneLevel(uint32_t aLevel) {
@@ -460,7 +417,6 @@ void CacheIOThread::LoopOneLevel(uint32_t aLevel) {
   mCurrentlyExecutingLevel = aLevel;
 
   bool returnEvents = false;
-  bool reportTelemetry = true;
 
   EventQueue::size_type index;
   {
@@ -472,11 +428,6 @@ void CacheIOThread::LoopOneLevel(uint32_t aLevel) {
         // to execute it!  Don't forget to return what we haven't exec.
         returnEvents = true;
         break;
-      }
-
-      if (reportTelemetry) {
-        reportTelemetry = false;
-        CacheIOTelemetry::Report(aLevel, length);
       }
 
       // Drop any previous flagging, only an event on the current level may set

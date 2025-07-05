@@ -45,7 +45,7 @@
  */
 #include "seccomon.h"
 
-#if defined(XP_UNIX) || defined(XP_WIN32) || defined(XP_OS2)
+#if defined(XP_UNIX) || defined(XP_WIN32)
 
 #include "cert.h"
 #include "ssl.h"
@@ -262,7 +262,7 @@ struct inheritanceStr {
 
 typedef struct inheritanceStr inheritance;
 
-#if defined(_WIN32) || defined(XP_OS2)
+#if defined(_WIN32)
 
 #define DEFAULT_CACHE_DIRECTORY "\\temp"
 
@@ -276,7 +276,7 @@ typedef struct inheritanceStr inheritance;
 
 /************************************************************************/
 
-/* SSL Session Cache has a smaller set of functions to initialize than 
+/* SSL Session Cache has a smaller set of functions to initialize than
  * ssl does. some ssl_functions can't be initialized before NSS has been
  * initialized, and the cache may be configured before NSS is initialized
  * so thus the special init function */
@@ -342,7 +342,7 @@ UnlockSet(cacheDesc *cache, PRUint32 set)
 /************************************************************************/
 
 /* Put a certificate in the cache.  Update the cert index in the sce.
-*/
+ */
 static PRUint32
 CacheCert(cacheDesc *cache, CERTCertificate *cert, sidCacheEntry *sce)
 {
@@ -399,7 +399,7 @@ Get32BitNameHash(const SECItem *name)
 }
 
 /* Put a name in the cache.  Update the cert index in the sce.
-*/
+ */
 static PRUint32
 CacheSrvName(cacheDesc *cache, SECItem *name, sidCacheEntry *sce)
 {
@@ -862,21 +862,6 @@ ssl_ServerUncacheSessionID(sslSessionID *sid)
     PORT_SetError(err);
 }
 
-#ifdef XP_OS2
-
-#define INCL_DOSPROCESS
-#include <os2.h>
-
-long
-gettid(void)
-{
-    PTIB ptib;
-    PPIB ppib;
-    DosGetInfoBlocks(&ptib, &ppib);
-    return ((long)ptib->tib_ordinal); /* thread id */
-}
-#endif
-
 static void
 CloseCache(cacheDesc *cache)
 {
@@ -1056,9 +1041,6 @@ InitCache(cacheDesc *cache, int maxCacheEntries, int maxCertCacheEntries,
 #elif defined(XP_WIN32)
         cfn = PR_smprintf("%s/svrcache_%d_%x.ssl", directory, myPid,
                           GetCurrentThreadId());
-#elif defined(XP_OS2)
-        cfn = PR_smprintf("%s/svrcache_%d_%x.ssl", directory, myPid,
-                          gettid());
 #else
 #error "Don't know how to create file name for this platform!"
 #endif

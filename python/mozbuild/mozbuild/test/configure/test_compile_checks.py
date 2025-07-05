@@ -5,11 +5,11 @@
 import os
 import textwrap
 import unittest
+from io import StringIO
 
 import mozpack.path as mozpath
 from buildconfig import topsrcdir
 from mozunit import main
-from six import StringIO
 from test_toolchain_helpers import FakeCompiler
 
 from common import ConfigureTestSandbox
@@ -411,12 +411,10 @@ class TestWarningChecks(BaseCompileChecks):
             self.assertEqual(
                 out,
                 textwrap.dedent(
-                    """\
+                    f"""\
                 checking whether the C compiler supports {flag}... yes
                 checking whether the C++ compiler supports {flag}... yes
-            """.format(
-                        flag=flag
-                    )
+            """
                 ),
             )
 

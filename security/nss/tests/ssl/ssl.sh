@@ -203,7 +203,7 @@ kill_selfserv()
 
   echo "trying to kill selfserv with PID ${PID} at `date`"
 
-  if [ "${OS_ARCH}" = "WINNT" -o "${OS_ARCH}" = "WIN95" -o "${OS_ARCH}" = "OS2" ]; then
+  if [ "${OS_ARCH}" = "WINNT" ]; then
       echo "${KILL} ${PID}"
       ${KILL} ${PID}
   else
@@ -982,8 +982,8 @@ ssl_policy_pkix_ocsp()
   echo " vfyserv -o wrong.host.badssl.com -d ${P_R_SERVERDIR} 2>&1 | tee ${P_R_SERVERDIR}/vfy.out"
   vfyserv -o wrong.host.badssl.com -d ${P_R_SERVERDIR} 2>&1 | tee ${P_R_SERVERDIR}/vfy.out
   # make sure we have the domain mismatch, not bad signature error
-  echo "grep 12276 ${P_R_SERVERDIR}/vfy.out"
-  grep 12276 ${P_R_SERVERDIR}/vfy.out
+  echo "grep -E '12276|5961' ${P_R_SERVERDIR}/vfy.out"
+  grep -E '12276|5961' ${P_R_SERVERDIR}/vfy.out
   RET=$?
   html_msg $RET $RET_EXP "${testname}" \
            "produced a returncode of $RET, expected is $RET_EXP"
@@ -1023,12 +1023,12 @@ ssl_policy_selfserv()
   SAVE_SERVER_OPTIONS=${SERVER_OPTIONS}
   # make sure policy is working in the multiprocess case is working on
   # UNIX-like OS's. Other OS's can't properly clean up the child processes
-  # when our test suite kills the parent, so just use the single process 
+  # when our test suite kills the parent, so just use the single process
   # self serve for them
-  if [ "${OS_ARCH}" != "WINNT" -a "${OS_ARCH}" != "WIN95" -a "${OS_ARCH}" != "OS2" ]; then
-      SERVER_OPTIONS="-M 3 ${SERVER_OPTIONS}"
-  fi
-  
+  # if [ "${OS_ARCH}" != "WINNT" ]; then
+  #    SERVER_OPTIONS="-M 3 ${SERVER_OPTIONS}"
+  # fi
+
   start_selfserv $CIPHER_SUITES
 
   SERVER_OPTIONS="${SAVE_SERVER_OPTIONS}"
@@ -1597,7 +1597,7 @@ ssl_run_tests()
     do
         case "${SSL_TEST}" in
         "policy")
-            if [ "${TEST_MODE}" = "SHARED_DB" ] ; then
+            if using_sql ; then
                 ssl_policy_listsuites
                 ssl_policy_selfserv
                 ssl_policy_pkix_ocsp

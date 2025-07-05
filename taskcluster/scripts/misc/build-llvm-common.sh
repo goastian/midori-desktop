@@ -39,11 +39,11 @@ case "$target" in
     -DCMAKE_LIPO=$MOZ_FETCHES_DIR/clang/bin/llvm-lipo
     -DCMAKE_SYSTEM_NAME=Darwin
     -DCMAKE_SYSTEM_VERSION=$MACOSX_DEPLOYMENT_TARGET
-    -DCMAKE_OSX_SYSROOT=$MOZ_FETCHES_DIR/MacOSX14.4.sdk
+    -DCMAKE_OSX_SYSROOT=$MOZ_FETCHES_DIR/MacOSX15.4.sdk
     -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld
     -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld
     -DDARWIN_osx_ARCHS=$arch
-    -DDARWIN_osx_SYSROOT=$MOZ_FETCHES_DIR/MacOSX14.4.sdk
+    -DDARWIN_osx_SYSROOT=$MOZ_FETCHES_DIR/MacOSX15.4.sdk
     -DDARWIN_macosx_OVERRIDE_SDK_VERSION=11.0
     -DDARWIN_osx_BUILTIN_ARCHS=$arch
     -DLLVM_DEFAULT_TARGET_TRIPLE=$target
@@ -187,8 +187,18 @@ eval cmake \
 ninja -v $install
 
 if [ "$what" = "compiler-rt" ]; then
-  # ninja install doesn't copy the PDBs
+  # ninja install doesn't copy the PDBs, if any
   case "$target" in
+  aarch64-pc-windows-msvc)
+      # No pdb generated in that platform/arch configuration since
+      # https://github.com/llvm/llvm-project/commit/655933070219f2b6f3a457c7e5af7edd4b5291b4
+      if echo "$@" | grep -q trunk
+      then
+        test -z "$(find -name "*.pdb")"
+      else
+        cp lib/windows/*pdb $dir/lib/windows/
+      fi
+    ;;
   *-pc-windows-msvc)
     cp lib/windows/*pdb $dir/lib/windows/
     ;;

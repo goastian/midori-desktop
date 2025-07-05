@@ -7,33 +7,31 @@ package org.mozilla.fenix.ui
 import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import org.junit.Rule
 import org.junit.Test
-import org.mozilla.fenix.R
 import org.mozilla.fenix.customannotations.SmokeTest
-import org.mozilla.fenix.helpers.DataGenerationHelper.getStringResource
 import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithResId
 import org.mozilla.fenix.helpers.TestAssetHelper
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestHelper.packageName
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.clickPageObject
 import org.mozilla.fenix.ui.robots.homeScreen
 import org.mozilla.fenix.ui.robots.navigationToolbar
 
 class CrashReportingTest : TestSetup() {
-    private val tabCrashMessage = getStringResource(R.string.tab_crash_title_2)
-
     @get:Rule
     val activityTestRule = AndroidComposeTestRule(
         HomeActivityIntentTestRule(
             isPocketEnabled = false,
-            isJumpBackInCFREnabled = false,
             isWallpaperOnboardingEnabled = false,
-            isTCPCFREnabled = false,
         ),
     ) { it.activity }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/308906
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
+
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/308906
     @Test
     fun closeTabFromCrashedTabReporterTest() {
         homeScreen {
@@ -45,7 +43,7 @@ class CrashReportingTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2336134
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2336134
     @Test
     fun restoreTabFromTabCrashedReporterTest() {
         val website = TestAssetHelper.getGenericAsset(mockWebServer, 1)
@@ -61,7 +59,7 @@ class CrashReportingTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1681928
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1681928
     @SmokeTest
     @Test
     fun useAppWhileTabIsCrashedTest() {
@@ -80,13 +78,13 @@ class CrashReportingTest : TestSetup() {
 
         navigationToolbar {
         }.openTabCrashReporter {
-            verifyPageContent(tabCrashMessage)
+            verifyTabCrashReporterView()
         }.openTabDrawer(activityTestRule) {
             verifyExistingOpenTabs(firstWebPage.title)
-            verifyExistingOpenTabs("about:crashcontent")
+            verifyExistingOpenTabs(secondWebPage.title)
         }.closeTabDrawer {
-        }.goToHomescreen {
-            verifyExistingTopSitesList()
+        }.goToHomescreen(activityTestRule) {
+            verifyExistingTopSitesList(activityTestRule)
         }.openThreeDotMenu {
             verifySettingsButton()
         }

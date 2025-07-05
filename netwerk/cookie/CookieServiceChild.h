@@ -46,10 +46,19 @@ class CookieServiceChild final : public PCookieServiceChild,
  private:
   ~CookieServiceChild();
 
-  void RecordDocumentCookie(Cookie* aCookie, const OriginAttributes& aAttrs);
+  enum class CookieNotificationAction {
+    NoActionNeeded,
+    CookieAdded,
+    CookieChanged,
+    CookieDeleted,
+  };
 
-  uint32_t CountCookiesFromHashTable(const nsACString& aBaseDomain,
-                                     const OriginAttributes& aOriginAttrs);
+  CookieNotificationAction RecordDocumentCookie(Cookie* aCookie,
+                                                const OriginAttributes& aAttrs);
+
+  void NotifyObservers(Cookie* aCookie, const OriginAttributes& aAttrs,
+                       CookieNotificationAction aAction,
+                       const Maybe<nsID>& aOperationID = Nothing());
 
   static bool RequireThirdPartyCheck(nsILoadInfo* aLoadInfo);
 
@@ -63,13 +72,16 @@ class CookieServiceChild final : public PCookieServiceChild,
       nsTArray<OriginAttributes>&& aAttrsList);
 
   mozilla::ipc::IPCResult RecvRemoveCookie(const CookieStruct& aCookie,
-                                           const OriginAttributes& aAttrs);
+                                           const OriginAttributes& aAttrs,
+                                           const Maybe<nsID>& aOperationID);
 
   mozilla::ipc::IPCResult RecvAddCookie(const CookieStruct& aCookie,
-                                        const OriginAttributes& aAttrs);
+                                        const OriginAttributes& aAttrs,
+                                        const Maybe<nsID>& aOperationID);
 
   void RemoveSingleCookie(const CookieStruct& aCookie,
-                          const OriginAttributes& aAttrs);
+                          const OriginAttributes& aAttrs,
+                          const Maybe<nsID>& aOperationID);
 
   CookiesMap mCookiesMap;
   nsCOMPtr<mozIThirdPartyUtil> mThirdPartyUtil;

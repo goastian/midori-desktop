@@ -2,6 +2,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+import os
+
 from taskgraph.transforms.base import TransformSequence
 
 transforms = TransformSequence()
@@ -31,15 +33,77 @@ def set_component_attribute(config, tasks):
 
 @transforms.add
 def define_ui_test_command_line(config, tasks):
+    def apk_path(component_fragment, variant, apk_filename):
+        return os.path.join(
+            "/builds/worker/workspace/obj-build",
+            "gradle/build",
+            f"mobile/android/android-components/{component_fragment}",
+            f"outputs/apk/{variant}",
+            apk_filename,
+        )
+
     for task in tasks:
+        component = task["attributes"]["component"]
+        device_type = "arm"  # This maps to existing Flank configurations in automation/taskcluster/androidTest (e.g, flank-arm.yml)
+
+        apk_app, apk_test = None, None
+
+        if component == "samples-browser":
+            # Case 2: Exact match for "samples-browser" – gecko paths with "-debug"
+            apk_app = apk_path(
+                "samples/browser", "gecko/debug", "samples-browser-gecko-debug.apk"
+            )
+            apk_test = apk_path(
+                "samples/browser",
+                "androidTest/gecko/debug",
+                "samples-browser-gecko-debug-androidTest.apk",
+            )
+
+        elif component.startswith("samples-"):
+            # Case 3: Other samples-* (e.g., samples-glean)
+            sample = component.replace("samples-", "")
+            apk_app = apk_path(
+                f"samples/{sample}", "debug", f"samples-{sample}-debug.apk"
+            )
+            apk_test = apk_path(
+                f"samples/{sample}",
+                "androidTest/debug",
+                f"samples-{sample}-debug-androidTest.apk",
+            )
+
+        elif "-" in component:
+            # Case 1a: Component with dash (e.g., feature-share → components/feature/share)
+            category, submodule = component.split("-", 1)
+            apk_app = apk_path(
+                "samples/browser", "gecko/debug", "samples-browser-gecko-debug.apk"
+            )
+            apk_test = apk_path(
+                f"components/{category}/{submodule}",
+                "androidTest/debug",
+                f"{component}-debug-androidTest.apk",
+            )
+
+        else:
+            # Case 1b: Component with no dash (e.g., browser → components/browser/engine-gecko)
+            apk_app = apk_path(
+                "samples/browser", "gecko/debug", "samples-browser-gecko-debug.apk"
+            )
+            apk_test = apk_path(
+                f"components/{component}/engine-gecko",
+                "androidTest/debug",
+                "browser-engine-gecko-debug-androidTest.apk",
+            )
+
         run = task.setdefault("run", {})
         post_gradlew = run.setdefault("post-gradlew", [])
         post_gradlew.append(
             [
-                "automation/taskcluster/androidTest/ui-test.sh",
-                task["attributes"]["component"],
-                "arm",
-                "1",
+                "python3",
+                "../../../taskcluster/scripts/tests/test-lab.py",
+                device_type,
+                apk_app,
+                "--apk_test",
+                apk_test,
             ]
         )
 

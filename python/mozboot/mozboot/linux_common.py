@@ -13,7 +13,7 @@ def is_non_x86_64():
     return platform.machine() != "x86_64"
 
 
-class MobileAndroidBootstrapper(object):
+class MobileAndroidBootstrapper:
     def __init__(self, **kwargs):
         pass
 
@@ -21,27 +21,13 @@ class MobileAndroidBootstrapper(object):
         from mozboot import android
 
         os_arch = platform.machine()
+
         android.ensure_android(
             "linux",
             os_arch,
             artifact_mode=artifact_mode,
             no_interactive=self.no_interactive,
-        )
-        android.ensure_android(
-            "linux",
-            os_arch,
-            artifact_mode=artifact_mode,
-            no_interactive=self.no_interactive,
-            system_images_only=True,
             avd_manifest_path=android.AVD_MANIFEST_X86_64,
-        )
-        android.ensure_android(
-            "linux",
-            os_arch,
-            artifact_mode=artifact_mode,
-            no_interactive=self.no_interactive,
-            system_images_only=True,
-            avd_manifest_path=android.AVD_MANIFEST_ARM,
         )
 
     def install_mobile_android_artifact_mode_packages(self, mozconfig_builder):
@@ -51,8 +37,7 @@ class MobileAndroidBootstrapper(object):
         from mozboot import android
 
         android.ensure_java("linux", platform.machine())
-        self.install_toolchain_artifact(android.LINUX_X86_64_ANDROID_AVD)
-        self.install_toolchain_artifact(android.LINUX_ARM_ANDROID_AVD)
+        self.install_toolchain_artifact(android.X86_64_ANDROID_AVD)
 
     def generate_mobile_android_mozconfig(self, artifact_mode=False):
         from mozboot import android
@@ -77,7 +62,6 @@ class LinuxBootstrapper(MobileAndroidBootstrapper):
                 "findutils",  # contains xargs
                 "gzip",
                 "libxml2",  # used by bootstrapped clang
-                "m4",
                 "make",
                 "perl",
                 "tar",

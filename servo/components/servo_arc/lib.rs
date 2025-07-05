@@ -26,10 +26,6 @@
 #![allow(missing_docs)]
 
 #[cfg(feature = "servo")]
-extern crate serde;
-extern crate stable_deref_trait;
-
-#[cfg(feature = "servo")]
 use serde::{Deserialize, Serialize};
 use stable_deref_trait::{CloneStableDeref, StableDeref};
 use std::alloc::{self, Layout};
@@ -376,7 +372,7 @@ impl<T: ?Sized> Arc<T> {
     /// allocation
     #[inline]
     pub fn ptr_eq(this: &Self, other: &Self) -> bool {
-        this.ptr() as *const () == other.ptr() as *const ()
+        this.raw_ptr() == other.raw_ptr()
     }
 
     fn ptr(&self) -> *mut ArcInner<T> {
@@ -384,8 +380,8 @@ impl<T: ?Sized> Arc<T> {
     }
 
     /// Returns a raw ptr to the underlying allocation.
-    pub fn raw_ptr(&self) -> *const c_void {
-        self.p.as_ptr() as *const _
+    pub fn raw_ptr(&self) -> ptr::NonNull<()> {
+        self.p.cast()
     }
 }
 

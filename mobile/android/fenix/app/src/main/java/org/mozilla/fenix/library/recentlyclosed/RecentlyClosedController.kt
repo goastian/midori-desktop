@@ -14,8 +14,7 @@ import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.prompt.ShareData
 import mozilla.components.feature.recentlyclosed.RecentlyClosedTabsStorage
 import mozilla.components.feature.tabs.TabsUseCases
-import mozilla.components.service.glean.private.NoExtras
-import org.mozilla.fenix.BrowserDirection
+import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.GleanMetrics.RecentlyClosedTabs
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.R
@@ -114,9 +113,7 @@ class DefaultRecentlyClosedController(
                 RecentlyClosedAction.RemoveClosedTabAction(item),
             )
 
-            activity.openToBrowser(
-                from = BrowserDirection.FromRecentlyClosed,
-            )
+            handleOpen(item, activity.browsingModeManager.mode)
         }
     }
 

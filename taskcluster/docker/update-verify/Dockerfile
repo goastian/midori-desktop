@@ -11,9 +11,8 @@ RUN dpkg --add-architecture i386 && apt-get -q update \
     # p7zip-full is for extracting Windows and OS X packages
     # wget is for downloading update.xml, installers, and MARs
     # libgtk-3-0 is required to run the Firefox updater
-    && apt-get -q --yes install p7zip-full wget libgtk-3-0 libgtk-3.0:i386 python3-cairo
+    && apt-get -q --yes install p7zip-full wget libgtk-3-0 libgtk-3.0:i386 python3-cairo zip
 
-VOLUME /builds/worker/.cache
 VOLUME /builds/worker/checkouts
 
 RUN mkdir /build
@@ -23,10 +22,8 @@ RUN bash /tmp/system-setup.sh
 RUN chown -R worker:worker /builds/worker/bin && chmod 755 /builds/worker/bin/*
 ENV PATH $PATH:/builds/worker/bin
 
-# Set variable normally configured at login, by the shells parent process, these
-# are taken from GNU su manual
-ENV           LANG          en_US.UTF-8
-ENV           LC_ALL        en_US.UTF-8
+ENV           LANG          C.UTF-8
+ENV           LC_ALL        C.UTF-8
 
 # Set a default command useful for debugging
 CMD ["/bin/bash", "--login"]

@@ -1,6 +1,9 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
+import unittest
+
+import mozinfo
 
 from marionette_driver.errors import InvalidArgumentException
 from marionette_harness import MarionetteTestCase
@@ -82,6 +85,9 @@ class TestWindowRect(MarionetteTestCase):
         with self.assertRaises(InvalidArgumentException):
             self.marionette.set_window_rect(height=None, width=None, x=None, y=None)
 
+    @unittest.skipIf(
+        mozinfo.display == "wayland", "Wayland doesn't support window positioning"
+    )
     def test_set_position(self):
         old_position = self.marionette.window_rect
         wanted_position = {"x": old_position["x"] + 10, "y": old_position["y"] + 10}
@@ -154,8 +160,10 @@ class TestWindowRect(MarionetteTestCase):
         )
         expected_rect = self.marionette.window_rect
 
-        self.assertEqual(new_rect["x"], wanted_rect["x"])
-        self.assertEqual(new_rect["y"], wanted_rect["y"])
+        if mozinfo.display != "wayland":
+            self.assertEqual(new_rect["x"], wanted_rect["x"])
+            self.assertEqual(new_rect["y"], wanted_rect["y"])
+
         self.assertEqual(
             new_rect["width"],
             wanted_rect["width"],
@@ -170,8 +178,11 @@ class TestWindowRect(MarionetteTestCase):
                 new_rect["height"], wanted_rect["height"]
             ),
         )
-        self.assertEqual(new_rect["x"], expected_rect["x"])
-        self.assertEqual(new_rect["y"], expected_rect["y"])
+
+        if mozinfo.display != "wayland":
+            self.assertEqual(new_rect["x"], wanted_rect["x"])
+            self.assertEqual(new_rect["y"], wanted_rect["y"])
+
         self.assertEqual(
             new_rect["width"],
             expected_rect["width"],
@@ -246,6 +257,7 @@ class TestWindowRect(MarionetteTestCase):
         # make this test pass, irregardless of system characteristics.
 
         os = self.marionette.session_capabilities["platformName"]
+        version = self.marionette.session_capabilities["moz:platformVersion"]
 
         # Regardless of platform, headless always supports being positioned
         # off-screen.
@@ -256,7 +268,8 @@ class TestWindowRect(MarionetteTestCase):
         # Certain WMs prohibit windows from being moved off-screen,
         # but we don't have this information.  It should be safe to
         # assume a window can be moved to (0,0) or less.
-        elif os == "linux":
+        # Wayland doesn't supports being positioned at all.
+        elif os == "linux" and mozinfo.display != "wayland":
             # certain WMs prohibit windows from being moved off-screen
             self.assertLessEqual(new_position["x"], 0)
             self.assertLessEqual(new_position["y"], 0)
@@ -266,7 +279,12 @@ class TestWindowRect(MarionetteTestCase):
         # being moved to (0,0).
         elif os == "mac":
             self.assertEqual(-8, new_position["x"])
-            self.assertEqual(23, new_position["y"])
+            # as of osx 11 (darwin 20), we have a 24 pixel menu bar
+            # https://phabricator.services.mozilla.com/D224403#7737386
+            if int(version.split(".")[0]) >= 20:
+                self.assertEqual(25, new_position["y"])
+            else:
+                self.assertEqual(23, new_position["y"])
 
         # It turns out that Windows is the only platform on which the
         # window can be reliably positioned off-screen.

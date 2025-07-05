@@ -22,7 +22,6 @@ import org.mozilla.focus.helpers.MainActivityIntentsTestRule
 import org.mozilla.focus.helpers.StringsHelper.AF_GENERAL_HEADING
 import org.mozilla.focus.helpers.StringsHelper.AF_HELP
 import org.mozilla.focus.helpers.StringsHelper.AF_LANGUAGE_MENU
-import org.mozilla.focus.helpers.StringsHelper.AF_LANGUAGE_SYSTEM_DEFAULT
 import org.mozilla.focus.helpers.StringsHelper.AF_SETTINGS
 import org.mozilla.focus.helpers.StringsHelper.EN_AFRIKAANS_LOCALE
 import org.mozilla.focus.helpers.StringsHelper.EN_LANGUAGE_MENU_HEADING
@@ -32,16 +31,17 @@ import org.mozilla.focus.helpers.StringsHelper.FR_LANGUAGE_SYSTEM_DEFAULT
 import org.mozilla.focus.helpers.StringsHelper.FR_SETTINGS
 import org.mozilla.focus.helpers.TestHelper.exitToTop
 import org.mozilla.focus.helpers.TestHelper.verifyTranslatedTextExists
+import org.mozilla.focus.helpers.TestSetup
 import org.mozilla.focus.locale.Locales
 import org.mozilla.focus.testAnnotations.SmokeTest
 import org.mozilla.gecko.util.ThreadUtils.runOnUiThread
 
 // Tests for the General settings sub-menu: changing theme, locale and default browser
-class SettingsGeneralTest {
-    @get: Rule
-    var mActivityTestRule = MainActivityIntentsTestRule(showFirstRun = false)
+class SettingsGeneralTest : TestSetup() {
+    @get:Rule
+    val mActivityTestRule = MainActivityIntentsTestRule(showFirstRun = false)
 
-    @get: Rule
+    @get:Rule
     var watcher: TestRule = object : TestWatcher() {
         override fun starting(description: Description) {
             println("Starting test: " + description.methodName)
@@ -76,7 +76,7 @@ class SettingsGeneralTest {
     @SmokeTest
     @Test
     fun englishSystemLocaleTest() {
-        /* Go to Settings and change language to French*/
+        // Go to Settings and change language to French
         homeScreen {
         }.openMainMenu {
         }.openSettings {
@@ -87,16 +87,16 @@ class SettingsGeneralTest {
             verifyTranslatedTextExists(AF_LANGUAGE_MENU)
             exitToTop()
         }
-        /* Exit to main and see the UI is in French as well */
+        // Exit to main and see the UI is localized as well
         homeScreen {
         }.openMainMenu {
             verifyTranslatedTextExists(AF_SETTINGS)
             verifyTranslatedTextExists(AF_HELP)
-            /* change back to system locale, verify the locale is changed */
+            // change back to system locale, verify the locale is changed
         }.openSettings(AF_SETTINGS) {
         }.openGeneralSettingsMenu(AF_GENERAL_HEADING) {
             openLanguageSelectionMenu(AF_LANGUAGE_MENU)
-            selectLanguage(AF_LANGUAGE_SYSTEM_DEFAULT)
+            selectSystemDefault()
             verifyTranslatedTextExists(EN_LANGUAGE_MENU_HEADING)
             exitToTop()
         }
@@ -109,14 +109,14 @@ class SettingsGeneralTest {
 
     @Test
     fun frenchLocaleTest() {
-        /* Go to Settings */
+        // Go to Settings
         homeScreen {
         }.openMainMenu {
         }.openSettings(FR_SETTINGS) {
         }.openGeneralSettingsMenu(FR_GENERAL_HEADING) {
             openLanguageSelectionMenu(FR_LANGUAGE_MENU)
             verifySystemLocaleSelected(FR_LANGUAGE_SYSTEM_DEFAULT)
-            /* change locale to English, verify the locale is changed */
+            // change locale to English, verify the locale is changed
             selectLanguage(EN_AFRIKAANS_LOCALE)
             verifyTranslatedTextExists(AF_LANGUAGE_MENU)
             exitToTop()

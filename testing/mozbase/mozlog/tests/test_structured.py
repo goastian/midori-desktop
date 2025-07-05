@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 import argparse
 import json
 import optparse
@@ -14,7 +12,7 @@ from mozlog import commandline, formatters, handlers, reader, stdadapter, struct
 from six import StringIO
 
 
-class TestHandler(object):
+class TestHandler:
     def __init__(self):
         self.items = []
 
@@ -47,7 +45,7 @@ class BaseStructuredTest(unittest.TestCase):
         specials = set(["time"])
 
         all_expected.update(expected)
-        for key, value in six.iteritems(all_expected):
+        for key, value in all_expected.items():
             self.assertEqual(actual[key], value)
 
         self.assertEqual(set(all_expected.keys()) | specials, set(actual.keys()))
@@ -969,7 +967,7 @@ class TestBuffer(BaseStructuredTest):
         specials = set(["time"])
 
         all_expected.update(expected)
-        for key, value in six.iteritems(all_expected):
+        for key, value in all_expected.items():
             self.assertEqual(actual[key], value)
 
         self.assertEqual(set(all_expected.keys()) | specials, set(actual.keys()))

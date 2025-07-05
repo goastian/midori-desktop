@@ -35,7 +35,6 @@ XPCOMUtils.defineLazyPreferenceGetter(
 export class FxAccountsTelemetry {
   constructor(fxai) {
     this._fxai = fxai;
-    Services.telemetry.setEventRecordingEnabled("fxa", true);
   }
 
   // Records an event *in the Fxa/Sync ping*.
@@ -96,6 +95,39 @@ export class FxAccountsTelemetry {
     return lazy.CryptoUtils.sha256(deviceId + uid);
   }
 
+  // Record when the user opens the choose what to sync menu.
+  async recordOpenCWTSMenu(why = null) {
+    try {
+      let extra = {};
+      if (why) {
+        extra.why = why;
+      }
+      Glean.syncSettings.openChooseWhatToSyncMenu.record(extra);
+    } catch (ex) {
+      log.error("Failed to record manage sync settings telemetry", ex);
+      console.error("Failed to record manage sync settings telemetry", ex);
+    }
+  }
+
+  // Record when the user saves sync settings.
+  async recordSaveSyncSettings(settings = null) {
+    try {
+      let extra = {};
+
+      if (settings && (settings.enabledEngines || settings.disabledEngines)) {
+        extra.enabled_engines = settings.enabledEngines.toString();
+        extra.disabled_engines = settings.disabledEngines.toString();
+
+        Glean.syncSettings.save.record(extra);
+      } else {
+        Glean.syncSettings.save.record();
+      }
+    } catch (ex) {
+      log.error("Failed to record save sync settings telemetry", ex);
+      console.error("Failed to record save sync settings telemetry", ex);
+    }
+  }
+
   // Record the connection of FxA or one of its services.
   // Note that you must call this before performing the actual connection
   // or we may record incorrect data - for example, we will not be able to
@@ -112,6 +144,9 @@ export class FxAccountsTelemetry {
   async recordConnection(services, how = null) {
     try {
       let extra = {};
+      if (how) {
+        extra.value = how;
+      }
       // Record that fxa was connected if it isn't currently - it will be soon.
       if (!(await this._fxai.getUserAccountData())) {
         extra.fxa = "true";
@@ -120,7 +155,7 @@ export class FxAccountsTelemetry {
       if (services.includes("sync")) {
         extra.sync = "true";
       }
-      Services.telemetry.recordEvent("fxa", "connect", "account", how, extra);
+      Glean.fxa.connectAccount.record(extra);
     } catch (ex) {
       log.error("Failed to record connection telemetry", ex);
       console.error("Failed to record connection telemetry", ex);
@@ -143,6 +178,9 @@ export class FxAccountsTelemetry {
   async recordDisconnection(service = null, how = null) {
     try {
       let extra = {};
+      if (how) {
+        extra.value = how;
+      }
       if (!service) {
         extra.fxa = "true";
         // We need a way to enumerate all services - but for now we just hard-code
@@ -158,13 +196,7 @@ export class FxAccountsTelemetry {
           `recordDisconnection has invalid value for service: ${service}`
         );
       }
-      Services.telemetry.recordEvent(
-        "fxa",
-        "disconnect",
-        "account",
-        how,
-        extra
-      );
+      Glean.fxa.disconnectAccount.record(extra);
     } catch (ex) {
       log.error("Failed to record disconnection telemetry", ex);
       console.error("Failed to record disconnection telemetry", ex);

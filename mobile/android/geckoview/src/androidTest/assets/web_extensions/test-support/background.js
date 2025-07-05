@@ -14,11 +14,11 @@ const APIS = {
       ${code}
     })()`);
   },
-  SetScalar({ id, value }) {
-    browser.test.setScalar(id, value);
-  },
   GetRequestedLocales() {
     return browser.test.getRequestedLocales();
+  },
+  ClearUserPref({ pref }) {
+    return browser.test.clearUserPref(pref);
   },
   GetLinkColor({ tab, selector }) {
     return browser.test.getLinkColor(tab.id, selector);
@@ -59,6 +59,9 @@ const APIS = {
   FlushApzRepaints({ tab }) {
     return browser.test.flushApzRepaints(tab.id);
   },
+  ZoomToFocusedInput({ tab }) {
+    return browser.test.zoomToFocusedInput(tab.id);
+  },
   PromiseAllPaintsDone({ tab }) {
     return browser.test.promiseAllPaintsDone(tab.id);
   },
@@ -74,6 +77,12 @@ const APIS = {
   ClearHSTSState() {
     return browser.test.clearHSTSState();
   },
+  IsSessionHistoryInParentRunning() {
+    return browser.test.isSessionHistoryInParentRunning();
+  },
+  IsFissionRunning() {
+    return browser.test.isFissionRunning();
+  },
   TriggerCookieBannerDetected({ tab }) {
     return browser.test.triggerCookieBannerDetected(tab.id);
   },
@@ -85,6 +94,9 @@ const APIS = {
   },
   TriggerLanguageStateChange({ tab, languageState }) {
     return browser.test.triggerLanguageStateChange(tab.id, languageState);
+  },
+  SetHandlingUserInput({ tab, handlingUserInput }) {
+    return browser.test.setHandlingUserInput(tab.id, handlingUserInput);
   },
 };
 

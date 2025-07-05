@@ -1027,6 +1027,8 @@ async function test_ipv4_trr_fallback() {
 async function test_no_retry_without_doh() {
   info("Bug 1648147 - if the TRR returns 0.0.0.0 we should not retry with DNS");
   Services.prefs.setBoolPref("network.trr.fallback-on-zero-response", false);
+  Services.prefs.setBoolPref("network.socket.ip_addr_any.disabled", false);
+  Services.prefs.setBoolPref("network.trr.allow-rfc1918", true);
 
   async function test(url, ip) {
     setModeAndURI(2, `doh?responseIP=${ip}`);
@@ -1073,6 +1075,9 @@ async function test_no_retry_without_doh() {
     await test(`http://unknown.ipv4.stuff:666/path`, "0.0.0.0");
     await test(`http://unknown.ipv6.stuff:666/path`, "::");
   }
+
+  Services.prefs.clearUserPref("network.trr.allow-rfc1918");
+  Services.prefs.clearUserPref("network.socket.ip_addr_any.disabled");
 }
 
 async function test_connection_reuse_and_cycling() {

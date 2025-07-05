@@ -8,12 +8,12 @@ import os
 import subprocess
 import tempfile
 from concurrent.futures import ThreadPoolExecutor, as_completed, thread
-from multiprocessing import cpu_count
 
 import mozinfo
 from mach.decorators import Command, CommandArgument
 from manifestparser import TestManifest
 from manifestparser import filters as mpf
+from mozbuild.util import cpu_count
 from mozfile import which
 from tqdm import tqdm
 
@@ -46,7 +46,7 @@ def python(
     command_context.log_manager.terminal_handler.setLevel(logging.CRITICAL)
 
     # Note: subprocess requires native strings in os.environ on Windows.
-    append_env = {"PYTHONDONTWRITEBYTECODE": str("1")}
+    append_env = {"PYTHONDONTWRITEBYTECODE": "1"}
 
     if virtualenv:
         command_context._virtualenv_name = virtualenv
@@ -182,10 +182,10 @@ def run_python_tests(
     tests = mp.active_tests(filters=filters, disabled=False, python=3, **mozinfo.info)
 
     if not tests:
-        submsg = "for subsuite '{}' ".format(subsuite) if subsuite else ""
+        submsg = f"for subsuite '{subsuite}' " if subsuite else ""
         message = (
             "TEST-UNEXPECTED-FAIL | No tests collected "
-            + "{}(Not in PYTHON_UNITTEST_MANIFESTS?)".format(submsg)
+            + f"{submsg}(Not in PYTHON_UNITTEST_MANIFESTS?)"
         )
         command_context.log(logging.WARN, "python-test", {}, message)
         return 1
@@ -330,7 +330,7 @@ def _run_python_test(command_context, test, jobs, verbose):
         env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
-        universal_newlines=True,
+        text=True,
         encoding="UTF-8",
     )
 

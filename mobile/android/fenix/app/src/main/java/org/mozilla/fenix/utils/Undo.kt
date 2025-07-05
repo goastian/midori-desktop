@@ -10,7 +10,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.mozilla.fenix.components.FenixSnackbar
+import org.mozilla.fenix.compose.core.Action
+import org.mozilla.fenix.compose.snackbar.Snackbar
+import org.mozilla.fenix.compose.snackbar.SnackbarState
 import org.mozilla.fenix.ext.settings
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -35,14 +37,13 @@ fun Context.getUndoDelay(): Long {
  *
  * Execution of suspend blocks happens on [Dispatchers.Main].
  *
- * @param view A [View] used to determine a parent for the [FenixSnackbar].
- * @param message A message displayed as part of [FenixSnackbar].
- * @param undoActionTitle Label for the action associated with the [FenixSnackbar].
+ * @param view A [View] used to determine a parent for the [Snackbar].
+ * @param message A message displayed as part of [Snackbar].
+ * @param undoActionTitle Label for the action associated with the [Snackbar].
  * @param onCancel A suspend block to execute in case of cancellation.
- * @param operation A suspend block to execute if user doesn't cancel via the displayed [FenixSnackbar].
- * @param anchorView A [View] to which [FenixSnackbar] should be anchored.
- * @param elevation The elevation of the [FenixSnackbar].
- * @param paddedForBottomToolbar Whether or not [FenixSnackbar] is displayed with the bottom toolbar.
+ * @param operation A suspend block to execute if user doesn't cancel via the displayed [Snackbar].
+ * @param anchorView A [View] to which [Snackbar] should be anchored.
+ * @param elevation The elevation of the [Snackbar].
  */
 fun CoroutineScope.allowUndo(
     view: View,
@@ -52,7 +53,6 @@ fun CoroutineScope.allowUndo(
     operation: suspend (context: Context) -> Unit,
     anchorView: View? = null,
     elevation: Float? = null,
-    paddedForBottomToolbar: Boolean = false,
 ) {
     // By using an AtomicBoolean, we achieve memory effects of reading and
     // writing a volatile variable.
@@ -60,20 +60,31 @@ fun CoroutineScope.allowUndo(
 
     @Suppress("ComplexCondition")
     fun showUndoSnackbar() {
-        val snackbar = FenixSnackbar
+        val snackbar = Snackbar
             .make(
-                view = view,
-                duration = FenixSnackbar.LENGTH_INDEFINITE,
-                isDisplayedWithBrowserToolbar = paddedForBottomToolbar,
+                snackBarParentView = view,
+                snackbarState = SnackbarState(
+                    message = message,
+                    duration = SnackbarState.Duration.Preset.Indefinite,
+                    action = Action(
+                        label = undoActionTitle,
+                        onClick = {
+                            requestedUndo.set(true)
+                            launch {
+                                onCancel.invoke()
+                            }
+                        },
+                    ),
+                    onDismiss = {
+                        launch {
+                            if (!requestedUndo.get()) {
+                                operation.invoke(view.context)
+                            }
+                        }
+                    },
+                ),
             )
-            .setText(message)
             .setAnchorView(anchorView)
-            .setAction(undoActionTitle) {
-                requestedUndo.set(true)
-                launch {
-                    onCancel.invoke()
-                }
-            }
 
         elevation?.also {
             snackbar.view.elevation = it

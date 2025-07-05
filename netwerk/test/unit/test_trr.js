@@ -8,7 +8,6 @@ SetParentalControlEnabled(false);
 
 function setup() {
   Services.prefs.setBoolPref("network.dns.get-ttl", false);
-  Services.prefs.setBoolPref("network.http.http2.allow-push", true);
   h2Port = trr_test_setup();
 }
 
@@ -16,6 +15,7 @@ setup();
 registerCleanupFunction(async () => {
   trr_clear_prefs();
   Services.prefs.clearUserPref("network.dns.get-ttl");
+  Services.prefs.clearUserPref("network.dns.disableIPv6");
 });
 
 async function waitForConfirmation(expectedResponseIP, confirmationShouldFail) {
@@ -133,22 +133,6 @@ add_task(async function test_trr_flags() {
 });
 
 add_task(test_A_record);
-
-add_task(async function test_push() {
-  info("Verify DOH push");
-  Services.dns.clearCache(true);
-  info("Asking server to push us a record");
-  setModeAndURI(3, "doh?responseIP=5.5.5.5&push=true");
-
-  await new TRRDNSListener("first.example.com", "5.5.5.5");
-
-  // At this point the second host name should've been pushed and we can resolve it using
-  // cache only. Set back the URI to a path that fails.
-  // Don't clear the cache, otherwise we lose the pushed record.
-  setModeAndURI(3, "404");
-
-  await new TRRDNSListener("push.example.org", "2018::2018");
-}).skip("H2 push is disabled");
 
 add_task(test_AAAA_records);
 
@@ -924,6 +908,82 @@ add_task(
     Assert.equal(
       await Glean.networking.trrRequestCount.private.testGetValue(),
       2
+    );
+    // We've made 4 TRR requests.
+    Assert.equal(
+      await Glean.networking.trrRequestSize.other.testGetValue().count,
+      4
+    );
+    Assert.equal(
+      await Glean.networking.trrResponseSize.other.testGetValue().count,
+      4
+    );
+  }
+);
+
+add_task(
+  { skip_if: () => mozinfo.socketprocess_networking },
+  async function test_trr_timing_telemetry() {
+    setModeAndURI(Ci.nsIDNSService.MODE_TRRONLY, `doh`);
+    Services.dns.clearCache(true);
+
+    // Close the previous TRR connection.
+    Services.obs.notifyObservers(null, "net:cancel-all-connections");
+    await new Promise(r => do_timeout(3000, r));
+
+    Services.fog.testResetFOG();
+    // Disable IPv6, so we only send one TRR request.
+    Services.prefs.setBoolPref("network.dns.disableIPv6", true);
+    await new TRRDNSListener("timing.com", { expectedAnswer: "5.5.5.5" });
+
+    await new Promise(r => do_timeout(100, r));
+
+    let dnsStart = await Glean.networking.trrDnsStart.other.testGetValue();
+    let dnsEnd = await Glean.networking.trrDnsEnd.other.testGetValue();
+    let tcpConnection =
+      await Glean.networking.trrTcpConnection.other.testGetValue();
+    let tlsHandshake =
+      await Glean.networking.trrTlsHandshake.other.testGetValue();
+    let openToFirstSent =
+      await Glean.networking.trrOpenToFirstSent.other.testGetValue();
+    let firstSentToLastReceived =
+      await Glean.networking.trrFirstSentToLastReceived.other.testGetValue();
+    let openToFirstReceived =
+      await Glean.networking.trrOpenToFirstReceived.other.testGetValue();
+    let completeLoad =
+      await Glean.networking.trrCompleteLoad.other.testGetValue();
+
+    info("dnsStart=" + JSON.stringify(dnsStart));
+    info("dnsEnd=" + JSON.stringify(dnsEnd));
+    info("tcpConnection=" + JSON.stringify(tcpConnection));
+    info("tlsHandshake=" + JSON.stringify(tlsHandshake));
+    info("openToFirstSent=" + JSON.stringify(openToFirstSent));
+    info("firstSentToLastReceived=" + JSON.stringify(firstSentToLastReceived));
+    info("openToFirstReceived=" + JSON.stringify(openToFirstReceived));
+    info("completeLoad=" + JSON.stringify(completeLoad));
+
+    Assert.equal(dnsStart.count, 1);
+    Assert.equal(dnsEnd.count, 1);
+    Assert.equal(tcpConnection.count, 1);
+    Assert.equal(tlsHandshake.count, 1);
+    Assert.equal(openToFirstSent.count, 1);
+    Assert.equal(firstSentToLastReceived.count, 1);
+    Assert.equal(openToFirstReceived.count, 1);
+    Assert.equal(completeLoad.count, 1);
+
+    function getValue(obj) {
+      const keys = Object.keys(obj);
+      return keys.length ? +keys[0] : 0;
+    }
+    Assert.greaterOrEqual(
+      getValue(openToFirstReceived.values),
+      getValue(openToFirstSent.values),
+      "openToFirstReceived >= openToFirstSent"
+    );
+    Assert.greaterOrEqual(
+      getValue(completeLoad.values),
+      getValue(openToFirstReceived.values),
+      "completeLoad >= openToFirstReceived"
     );
   }
 );

@@ -56,6 +56,8 @@ class NetlinkService : public nsIRunnable {
   nsresult GetDnsSuffixList(nsTArray<nsCString>& aDnsSuffixList);
   nsresult GetResolvers(nsTArray<NetAddr>& aResolvers);
 
+  static bool HasNonLocalIPv6Address();
+
  private:
   void EnqueueGenMsg(uint16_t aMsgType, uint8_t aFamily);
   void EnqueueRtMsg(uint8_t aFamily, void* aAddress);
@@ -88,8 +90,8 @@ class NetlinkService : public nsIRunnable {
   int mShutdownPipe[2]{-1, -1};
 
   // IP addresses that are used to check the route for public traffic.
-  struct in_addr mRouteCheckIPv4 {};
-  struct in6_addr mRouteCheckIPv6 {};
+  struct in_addr mRouteCheckIPv4{};
+  struct in6_addr mRouteCheckIPv6{};
 
   pid_t mPid;
   uint32_t mMsgId{0};

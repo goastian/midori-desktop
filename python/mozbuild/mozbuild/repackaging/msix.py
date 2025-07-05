@@ -22,6 +22,7 @@ import time
 import urllib
 from collections import defaultdict
 from pathlib import Path
+from shlex import quote as shlex_quote
 
 import mozpack.path as mozpath
 from mach.util import get_state_dir
@@ -31,8 +32,8 @@ from mozpack.files import FileFinder, JarFinder
 from mozpack.manifests import InstallManifest
 from mozpack.mozjar import JarReader
 from mozpack.packager.unpack import UnpackFinder
-from six.moves import shlex_quote
 
+from mozbuild.configure import confvars
 from mozbuild.dirutils import ensureParentDir
 from mozbuild.repackaging.application_ini import get_application_ini_values
 
@@ -169,6 +170,16 @@ def get_embedded_version(version, buildid):
     return version
 
 
+def remove_single_line_comments(text):
+    """Remove C++ style single-line comments from the text."""
+    lines = []
+    for line in text.splitlines():
+        line = re.sub("//.*", "", line)
+        lines.append(line)
+
+    return "\n".join(lines)
+
+
 def get_appconstants_sys_mjs_values(finder, *args):
     r"""Extract values, such as the display version like `MOZ_APP_VERSION_DISPLAY:
     "...";`, from the omnijar.  This allows to determine the beta number, like
@@ -178,9 +189,12 @@ def get_appconstants_sys_mjs_values(finder, *args):
     """
     lines = defaultdict(list)
     for _, f in finder.find("**/modules/AppConstants.sys.mjs"):
-        # MOZ_OFFICIAL_BRANDING is split across two lines, so remove line breaks
-        # immediately following ":"s so those values can be read.
-        data = f.open().read().decode("utf-8").replace(":\n", ":")
+        # MOZ_OFFICIAL_BRANDING is split across multiple lines and there is a
+        # comment in between property key and value. Remove the comment, line
+        # breaks and spaces immediately following ":"s so those values can be
+        # read.
+        data = remove_single_line_comments(f.open().read().decode("utf-8"))
+        data = re.sub(":[\n\\s]+", ":", data)
         for line in data.splitlines():
             for arg in args:
                 if arg in line:
@@ -195,29 +209,23 @@ def get_appconstants_sys_mjs_values(finder, *args):
 
 def get_branding(use_official, topsrcdir, build_app, finder, log=None):
     """Figure out which branding directory to use."""
-    conf_vars = mozpath.join(topsrcdir, build_app, "confvars.sh")
+    confvars_path = mozpath.join(topsrcdir, build_app, "confvars.sh")
+    confvars_content = confvars.parse(confvars_path)
+    for key, value in confvars_content.items():
+        log(
+            logging.INFO,
+            "msix",
+            {"key": key, "conf_vars": confvars_path, "value": value},
+            "Read '{key}' from {conf_vars}: {value}",
+        )
 
     def conf_vars_value(key):
-        lines = [line.strip() for line in open(conf_vars).readlines()]
-        for line in lines:
-            if line and line[0] == "#":
-                continue
-            if key not in line:
-                continue
-            _, _, value = line.partition("=")
-            if not value:
-                continue
-            log(
-                logging.INFO,
-                "msix",
-                {"key": key, "conf_vars": conf_vars, "value": value},
-                "Read '{key}' from {conf_vars}: {value}",
-            )
-            return value
+        if key in confvars_content:
+            return confvars_content[key]
         log(
             logging.ERROR,
             "msix",
-            {"key": key, "conf_vars": conf_vars},
+            {"key": key, "conf_vars": confvars_content},
             "Unable to find '{key}' in {conf_vars}!",
         )
 
@@ -350,17 +358,15 @@ def repackage_msix(
         "nightly",
         "unofficial",
     ):
-        raise Exception("channel is unrecognized: {}".format(channel))
+        raise Exception(f"channel is unrecognized: {channel}")
 
     # TODO: maybe we can fish this from the package directly?  Maybe from a DLL,
     # maybe from application.ini?
     if arch is None or arch not in _MSIX_ARCH.keys():
-        raise Exception(
-            "arch name must be provided and one of {}.".format(_MSIX_ARCH.keys())
-        )
+        raise Exception(f"arch name must be provided and one of {_MSIX_ARCH.keys()}.")
 
     if not os.path.exists(dir_or_package):
-        raise Exception("{} does not exist".format(dir_or_package))
+        raise Exception(f"{dir_or_package} does not exist")
 
     if (
         os.path.isfile(dir_or_package)
@@ -404,7 +410,7 @@ def repackage_msix(
 
     first = next(values)
     if not displayname:
-        displayname = "Mozilla {}".format(first)
+        displayname = f"Mozilla {first}"
 
         if channel == "beta":
             # Release (official) and Beta share branding.  Differentiate Beta a little bit.
@@ -474,7 +480,7 @@ def repackage_msix(
         use_official_branding, topsrcdir, build_app, unpack_finder, log
     )
     if not os.path.isdir(branding):
-        raise Exception("branding dir {} does not exist".format(branding))
+        raise Exception(f"branding dir {branding} does not exist")
 
     template = os.path.join(topsrcdir, build_app, "installer", "windows", "msix")
 
@@ -487,31 +493,27 @@ def repackage_msix(
 
     # The convention is $MOZBUILD_STATE_PATH/cache/$FEATURE.
     output_dir = mozpath.normsep(
-        mozpath.join(
-            get_state_dir(), "cache", "mach-msix", "msix-temp-{}".format(channel)
-        )
+        mozpath.join(get_state_dir(), "cache", "mach-msix", f"msix-temp-{channel}")
     )
 
     # Like 'Firefox Package Root', 'Firefox Nightly Package Root', 'Firefox Beta
     # Package Root'.  This is `BrandFullName` in the installer, and we want to
     # be close but to not match.  By not matching, we hope to prevent confusion
     # and/or errors between regularly installed builds and App Package builds.
-    instdir = "{} Package Root".format(displayname)
+    instdir = f"{displayname} Package Root"
 
     # The standard package name is like "CompanyNoSpaces.ProductNoSpaces".
-    identity = identity or "{}.{}".format(vendor, displayname).replace(" ", "")
+    identity = identity or f"{vendor}.{displayname}".replace(" ", "")
 
     # We might want to include the publisher ID hash here.  I.e.,
     # "__{publisherID}".  My locally produced MSIX was named like
     # `Mozilla.MozillaFirefoxNightly_89.0.0.0_x64__4gf61r4q480j0`, suggesting also a
     # missing field, but it's not necessary, since this is just an output file name.
-    package_output_name = "{identity}_{version}_{arch}".format(
-        identity=identity, version=version, arch=_MSIX_ARCH[arch]
-    )
+    package_output_name = f"{identity}_{version}_{_MSIX_ARCH[arch]}"
     # The convention is $MOZBUILD_STATE_PATH/cache/$FEATURE.
     default_output = mozpath.normsep(
         mozpath.join(
-            get_state_dir(), "cache", "mach-msix", "{}.msix".format(package_output_name)
+            get_state_dir(), "cache", "mach-msix", f"{package_output_name}.msix"
         )
     )
     output = output or default_output
@@ -727,7 +729,7 @@ def repackage_msix(
     # provide more feedback, so we prefer invoking with these flags.  This will
     # also accommodate `wine makeappx.exe`.
     stdout = subprocess.run(
-        [makeappx], check=False, capture_output=True, universal_newlines=True
+        [makeappx], check=False, capture_output=True, text=True
     ).stdout
     is_makeappx = "MakeAppx Tool" in stdout
 
@@ -766,9 +768,7 @@ def _sign_msix_win(output, force, log, verbose):
         log(
             logging.INFO, "msix", {"args": args, "joined": joined}, "Invoking: {joined}"
         )
-        return subprocess.run(
-            args, check=check, universal_newlines=True, capture_output=True
-        ).stdout
+        return subprocess.run(args, check=check, text=True, capture_output=True).stdout
 
     signtool = find_sdk_tool("signtool.exe", log=log)
     if not signtool:
@@ -790,7 +790,7 @@ def _sign_msix_win(output, force, log, verbose):
         get_state_dir(),
         "cache",
         "mach-msix",
-        "{}.crt".format(friendly_name).replace(" ", "_").lower(),
+        f"{friendly_name}.crt".replace(" ", "_").lower(),
     )
     crt_path = mozpath.abspath(crt_path)
     ensureParentDir(crt_path)
@@ -806,25 +806,21 @@ def _sign_msix_win(output, force, log, verbose):
             logging.INFO,
             "msix",
             {"crt_path": crt_path},
-            "Creating new self signed certificate at: {}".format(crt_path),
+            f"Creating new self signed certificate at: {crt_path}",
         )
 
         thumbprints = [
             thumbprint.strip()
             for thumbprint in powershell(
-                (
-                    r"Get-ChildItem -Path Cert:\CurrentUser\My"
-                    '| Where-Object {{$_.Subject -Match "{}"}}'
-                    '| Where-Object {{$_.FriendlyName -Match "{}"}}'
-                    "| Select-Object -ExpandProperty Thumbprint"
-                ).format(vendor, friendly_name)
+                r"Get-ChildItem -Path Cert:\CurrentUser\My"
+                f'| Where-Object {{$_.Subject -Match "{vendor}"}}'
+                f'| Where-Object {{$_.FriendlyName -Match "{friendly_name}"}}'
+                "| Select-Object -ExpandProperty Thumbprint"
             ).splitlines()
         ]
         if len(thumbprints) > 1:
             raise Exception(
-                "Multiple certificates with friendly name found: {}".format(
-                    friendly_name
-                )
+                f"Multiple certificates with friendly name found: {friendly_name}"
             )
 
         if len(thumbprints) == 1:
@@ -835,14 +831,12 @@ def _sign_msix_win(output, force, log, verbose):
         if force or not thumbprint:
             thumbprint = (
                 powershell(
-                    (
-                        'New-SelfSignedCertificate -Type Custom -Subject "{}" '
-                        '-KeyUsage DigitalSignature -FriendlyName "{}"'
-                        r" -CertStoreLocation Cert:\CurrentUser\My"
-                        ' -TextExtension @("2.5.29.37={{text}}1.3.6.1.5.5.7.3.3", '
-                        '"2.5.29.19={{text}}")'
-                        "| Select-Object -ExpandProperty Thumbprint"
-                    ).format(publisher, friendly_name)
+                    f'New-SelfSignedCertificate -Type Custom -Subject "{publisher}" '
+                    f'-KeyUsage DigitalSignature -FriendlyName "{friendly_name}"'
+                    r" -CertStoreLocation Cert:\CurrentUser\My"
+                    ' -TextExtension @("2.5.29.37={text}1.3.6.1.5.5.7.3.3", '
+                    '"2.5.29.19={text}")'
+                    "| Select-Object -ExpandProperty Thumbprint"
                 )
                 .strip()
                 .upper()
@@ -850,15 +844,11 @@ def _sign_msix_win(output, force, log, verbose):
 
         if not thumbprint:
             raise Exception(
-                "Failed to find or create certificate with friendly name: {}".format(
-                    friendly_name
-                )
+                f"Failed to find or create certificate with friendly name: {friendly_name}"
             )
 
         powershell(
-            r'Export-Certificate -Cert Cert:\CurrentUser\My\{} -FilePath "{}"'.format(
-                thumbprint, crt_path
-            )
+            rf'Export-Certificate -Cert Cert:\CurrentUser\My\{thumbprint} -FilePath "{crt_path}"'
         )
         log(
             logging.INFO,
@@ -868,10 +858,8 @@ def _sign_msix_win(output, force, log, verbose):
         )
 
         powershell(
-            (
-                r'Export-PfxCertificate -Cert Cert:\CurrentUser\My\{} -FilePath "{}"'
-                ' -Password (ConvertTo-SecureString -String "{}" -Force -AsPlainText)'
-            ).format(thumbprint, pfx_path, password)
+            rf'Export-PfxCertificate -Cert Cert:\CurrentUser\My\{thumbprint} -FilePath "{pfx_path}"'
+            f' -Password (ConvertTo-SecureString -String "{password}" -Force -AsPlainText)'
         )
         log(
             logging.INFO,
@@ -893,15 +881,13 @@ def _sign_msix_win(output, force, log, verbose):
     thumbprints = [
         thumbprint.strip()
         for thumbprint in powershell(
-            'Get-PfxCertificate -FilePath "{}" | Select-Object -ExpandProperty Thumbprint'.format(
-                crt_path
-            )
+            f'Get-PfxCertificate -FilePath "{crt_path}" | Select-Object -ExpandProperty Thumbprint'
         ).splitlines()
     ]
     if len(thumbprints) > 1:
-        raise Exception("Multiple thumbprints found for PFX: {}".format(pfx_path))
+        raise Exception(f"Multiple thumbprints found for PFX: {pfx_path}")
     if len(thumbprints) == 0:
-        raise Exception("No thumbprints found for PFX: {}".format(pfx_path))
+        raise Exception(f"No thumbprints found for PFX: {pfx_path}")
     thumbprint = thumbprints[0]
     log(
         logging.INFO,
@@ -940,8 +926,8 @@ def _sign_msix_win(output, force, log, verbose):
         root_thumbprints = [
             root_thumbprint.strip()
             for root_thumbprint in powershell(
-                r"Get-ChildItem -Path Cert:\LocalMachine\Root\{} "
-                "| Select-Object -ExpandProperty Thumbprint".format(thumbprint),
+                rf"Get-ChildItem -Path Cert:\LocalMachine\Root\{thumbprint} "
+                "| Select-Object -ExpandProperty Thumbprint",
                 check=False,
             ).splitlines()
         ]
@@ -1005,7 +991,7 @@ def _sign_msix_posix(output, force, log, verbose):
             full_args,
             check=check,
             capture_output=capture_output,
-            universal_newlines=True,
+            text=True,
         )
 
     # These are baked into enough places under `browser/` that we need not
@@ -1026,7 +1012,7 @@ def _sign_msix_posix(output, force, log, verbose):
     key_path = mozpath.join(cache_dir, "MozillaMSIX.key")
     pfx_path = mozpath.join(
         cache_dir,
-        "{}.pfx".format(friendly_name).replace(" ", "_").lower(),
+        f"{friendly_name}.pfx".replace(" ", "_").lower(),
     )
     pfx_path = mozpath.abspath(pfx_path)
     ensureParentDir(pfx_path)
@@ -1036,7 +1022,7 @@ def _sign_msix_posix(output, force, log, verbose):
             logging.INFO,
             "msix",
             {"pfx_path": pfx_path},
-            "Creating new self signed certificate at: {}".format(pfx_path),
+            f"Creating new self signed certificate at: {pfx_path}",
         )
 
         # Ultimately, we only end up using the CA certificate

@@ -43,25 +43,36 @@ function waitForDocLoadComplete(aBrowser = gBrowser) {
   });
 }
 
-function setupMockAlertsService() {
+function setupMockAlertsService(expectedObj) {
   const alertsService = {
     showAlertNotification: (
       image,
       title,
-      text,
+      body,
       clickable,
       cookie,
       clickCallback
     ) => {
+      // We need to invoke the event handler ourselves.
+      clickCallback(null, "alertshow", null);
+
+      // check the expectations, if passed in
+      if (expectedObj) {
+        expectedObj.title && Assert.equal(title, expectedObj.title);
+        expectedObj.body && Assert.equal(body, expectedObj.body);
+      }
+
       // We are invoking the event handler ourselves directly.
       clickCallback(null, "alertclickcallback", null);
+      clickCallback(null, "alertfinished", null);
     },
   };
-  const gBrowserGlue = Cc["@mozilla.org/browser/browserglue;1"].getService(
-    Ci.nsIObserver
+  const { AccountsGlue } = ChromeUtils.importESModule(
+    "resource:///modules/AccountsGlue.sys.mjs"
   );
-  gBrowserGlue.observe(
-    { wrappedJSObject: alertsService },
+  const wrappedService = { wrappedJSObject: alertsService };
+  AccountsGlue.observe(
+    wrappedService,
     "browser-glue-test",
     "mock-alerts-service"
   );

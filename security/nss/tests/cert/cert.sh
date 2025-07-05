@@ -1688,7 +1688,7 @@ cert_inc_count()
 ########################################################################
 cert_san_and_generic_extensions()
 {
-    EXTDUMP=${CERT_EXTENSIONS_DIR}/sanext.der
+    EXTDUMP=sanext.der
 
     DIR="-d ${CERT_EXTENSIONS_DIR} -f ${R_PWFILE}"
     CERTNAME="-n WithSAN"
@@ -2662,7 +2662,7 @@ cert_test_password
 cert_test_distrust
 cert_test_ocspresp
 cert_test_rsapss
-if [ "${TEST_MODE}" = "SHARED_DB" ] ; then
+if using_sql ; then
   cert_test_rsapss_policy
 fi
 cert_test_token_uri

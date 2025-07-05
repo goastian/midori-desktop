@@ -12,16 +12,23 @@ import androidx.annotation.VisibleForTesting
 import androidx.core.view.isVisible
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import androidx.navigation.Navigation
 import androidx.navigation.findNavController
 import androidx.navigation.fragment.findNavController
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import mozilla.components.concept.base.crash.Breadcrumb
 import mozilla.components.concept.engine.webextension.EnableSource
 import mozilla.components.feature.addons.Addon
 import mozilla.components.feature.addons.AddonManager
 import mozilla.components.feature.addons.AddonManagerException
+import mozilla.components.feature.addons.ui.AddonsManagerAdapter
 import mozilla.components.feature.addons.ui.translateName
+import mozilla.components.support.base.log.logger.Logger
+import mozilla.components.support.ktx.android.content.appName
+import mozilla.components.support.ktx.android.content.appVersionName
+import org.mozilla.fenix.BrowserDirection
 import org.mozilla.fenix.BuildConfig
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.R
@@ -37,11 +44,14 @@ import org.mozilla.fenix.ext.showToolbar
 class InstalledAddonDetailsFragment : Fragment() {
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal lateinit var addon: Addon
+    internal val logger = Logger("InstalledAddonDetailsFragment")
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
     internal val binding get() = _binding!!
 
-    private var _binding: FragmentInstalledAddOnDetailsBinding? = null
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    @Suppress("VariableNaming")
+    internal var _binding: FragmentInstalledAddOnDetailsBinding? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -86,43 +96,60 @@ class InstalledAddonDetailsFragment : Fragment() {
         bindUI()
     }
 
-    private fun bindAddon() {
-        lifecycleScope.launch(Dispatchers.IO) {
+    @VisibleForTesting
+    internal fun provideAddonManager() = requireContext().components.addonManager
+
+    @VisibleForTesting
+    internal fun bindAddon(dispatchers: CoroutineDispatcher = Dispatchers.IO) {
+        lifecycleScope.launch(dispatchers) {
+            // Only needed in case we are not able to find the add-on.
+            var breadcrumb: Breadcrumb? = null
             try {
-                val addons = requireContext().components.addonManager.getAddons()
-                lifecycleScope.launch(Dispatchers.Main) {
-                    runIfFragmentIsAttached {
-                        addons.find { addon.id == it.id }.let {
-                            if (it == null) {
-                                throw AddonManagerException(
-                                    Exception(
-                                        "Addon ${addon.id} not found, isInstalled: ${addon.isInstalled()}",
-                                    ),
-                                )
-                            } else {
-                                addon = it
-                                bindUI()
-                            }
-                            binding.addOnProgressBar.isVisible = false
-                            binding.addonContainer.isVisible = true
+                val latestAddon = provideAddonManager().getAddonByID(addon.id)
+                runIfFragmentIsAttached {
+                    if (latestAddon == null) {
+                        breadcrumb = Breadcrumb(
+                            "Addon ${addon.id} not found, isInstalled: ${addon.isInstalled()}",
+                        )
+                        throw AddonManagerException(Exception("Addon ${addon.id} not found"))
+                    } else {
+                        withContext(Dispatchers.Main) {
+                            addon = latestAddon
+                            bindUI()
                         }
+                    }
+                    withContext(Dispatchers.Main) {
+                        binding.addOnProgressBar.isVisible = false
+                        binding.addonContainer.isVisible = true
                     }
                 }
             } catch (e: AddonManagerException) {
+                val crashReporter = context?.components?.analytics?.crashReporter
+                breadcrumb?.let {
+                    crashReporter?.recordCrashBreadcrumb(it)
+                }
+                crashReporter?.submitCaughtException(e)
                 lifecycleScope.launch(Dispatchers.Main) {
-                    runIfFragmentIsAttached {
-                        showSnackBar(
-                            binding.root,
-                            getString(R.string.mozac_feature_addons_failed_to_query_extensions),
-                        )
-                        findNavController().popBackStack()
-                    }
+                    logger.error("Unable to bind addon", e)
+                    showUnableToQueryAddonsMessage()
                 }
             }
         }
     }
 
-    private fun bindUI() {
+    @VisibleForTesting
+    internal fun showUnableToQueryAddonsMessage() {
+        runIfFragmentIsAttached {
+            showSnackBar(
+                binding.root,
+                getString(R.string.mozac_feature_addons_failed_to_query_extensions),
+            )
+            findNavController().popBackStack()
+        }
+    }
+
+    @VisibleForTesting
+    internal fun bindUI() {
         bindEnableSwitch()
         bindSettings()
         bindDetails()
@@ -130,6 +157,30 @@ class InstalledAddonDetailsFragment : Fragment() {
         bindAllowInPrivateBrowsingSwitch()
         bindRemoveButton()
         bindReportButton()
+        context?.let {
+            val messageBarWarningView =
+                binding.root.findViewById<View>(mozilla.components.feature.addons.R.id.add_on_messagebar_warning)
+            val messageBarErrorView =
+                binding.root.findViewById<View>(mozilla.components.feature.addons.R.id.add_on_messagebar_error)
+
+            AddonsManagerAdapter.bindMessageBars(
+                it,
+                messageBarWarningView,
+                messageBarErrorView,
+                onLearnMoreLinkClicked = { link ->
+                    openLearnMoreLink(
+                        activity as HomeActivity,
+                        link,
+                        addon,
+                        BrowserDirection.FromAddonDetailsFragment,
+                    )
+                },
+                addon,
+                addon.translateName(it),
+                it.appName,
+                it.appVersionName,
+            )
+        }
     }
 
     @VisibleForTesting
@@ -312,7 +363,7 @@ class InstalledAddonDetailsFragment : Fragment() {
             )
 
             // Send user to the newly open tab.
-            Navigation.findNavController(it).navigate(
+            it.findNavController().navigate(
                 InstalledAddonDetailsFragmentDirections.actionGlobalBrowser(null),
             )
         }
@@ -340,7 +391,7 @@ class InstalledAddonDetailsFragment : Fragment() {
                     InstalledAddonDetailsFragmentDirections
                         .actionInstalledAddonFragmentToAddonInternalSettingsFragment(addon)
                 }
-                Navigation.findNavController(this).navigate(directions)
+                this.findNavController().navigate(directions)
             }
         }
     }
@@ -351,7 +402,7 @@ class InstalledAddonDetailsFragment : Fragment() {
                 InstalledAddonDetailsFragmentDirections.actionInstalledAddonFragmentToAddonDetailsFragment(
                     addon,
                 )
-            Navigation.findNavController(binding.root).navigate(directions)
+            binding.root.findNavController().navigate(directions)
         }
     }
 
@@ -361,7 +412,7 @@ class InstalledAddonDetailsFragment : Fragment() {
                 InstalledAddonDetailsFragmentDirections.actionInstalledAddonFragmentToAddonPermissionsDetailsFragment(
                     addon,
                 )
-            Navigation.findNavController(binding.root).navigate(directions)
+            binding.root.findNavController().navigate(directions)
         }
     }
 

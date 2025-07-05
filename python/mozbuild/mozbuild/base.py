@@ -6,14 +6,12 @@ import errno
 import io
 import json
 import logging
-import multiprocessing
 import os
 import subprocess
 import sys
 from pathlib import Path
 
 import mozpack.path as mozpath
-import six
 from mach.mixin.process import ProcessExecutionMixin
 from mozboot.mozconfig import MozconfigFindException
 from mozfile import which
@@ -21,6 +19,7 @@ from mozversioncontrol import (
     GitRepository,
     HgRepository,
     InvalidRepoPath,
+    JujutsuRepository,
     MissingConfigureInfo,
     MissingVCSTool,
     get_repository_from_build_config,
@@ -31,7 +30,7 @@ from .backend.configenvironment import ConfigEnvironment, ConfigStatusFailure
 from .configure import ConfigureSandbox
 from .controller.clobber import Clobberer
 from .mozconfig import MozconfigLoader, MozconfigLoadException
-from .util import memoize, memoized_property
+from .util import cpu_count, memoize, memoized_property
 
 try:
     import psutil
@@ -65,7 +64,7 @@ class BinaryNotFoundException(Exception):
         self.path = path
 
     def __str__(self):
-        return "Binary expected at {} does not exist.".format(self.path)
+        return f"Binary expected at {self.path} does not exist."
 
     def help(self):
         return "It looks like your program isn't built. You can run |./mach build| to build it."
@@ -142,7 +141,7 @@ class MozbuildObject(ProcessExecutionMixin):
         mozconfig = MozconfigLoader.AUTODETECT
 
         def load_mozinfo(path):
-            info = json.load(io.open(path, "rt", encoding="utf-8"))
+            info = json.load(open(path, encoding="utf-8"))
             topsrcdir = info.get("topsrcdir")
             topobjdir = os.path.dirname(path)
             mozconfig = info.get("mozconfig")
@@ -208,7 +207,7 @@ class MozbuildObject(ProcessExecutionMixin):
             return True
 
         deps = []
-        with io.open(dep_file, "r", encoding="utf-8", newline="\n") as fh:
+        with open(dep_file, encoding="utf-8", newline="\n") as fh:
             deps = fh.read().splitlines()
 
         mtime = os.path.getmtime(output)
@@ -233,7 +232,7 @@ class MozbuildObject(ProcessExecutionMixin):
         # we last built the backend, re-generate the backend if
         # so.
         outputs = []
-        with io.open(backend_file, "r", encoding="utf-8", newline="\n") as fh:
+        with open(backend_file, encoding="utf-8", newline="\n") as fh:
             outputs = fh.read().splitlines()
         for output in outputs:
             if not os.path.isfile(mozpath.join(self.topobjdir, output)):
@@ -279,7 +278,7 @@ class MozbuildObject(ProcessExecutionMixin):
         # the environment variable, which has an impact on autodetection (when
         # path is MozconfigLoader.AUTODETECT), and memoization wouldn't account
         # for it without the explicit (unused) argument.
-        out = six.StringIO()
+        out = io.StringIO()
         env = os.environ
         if path and path != MozconfigLoader.AUTODETECT:
             env = dict(env)
@@ -295,9 +294,11 @@ class MozbuildObject(ProcessExecutionMixin):
         class ReducedConfigureSandbox(ConfigureSandbox):
             def depends_impl(self, *args, **kwargs):
                 args = tuple(
-                    a
-                    if not isinstance(a, six.string_types) or a != "--help"
-                    else self._always.sandboxed
+                    (
+                        a
+                        if not isinstance(a, str) or a != "--help"
+                        else self._always.sandboxed
+                    )
                     for a in args
                 )
                 return super(ReducedConfigureSandbox, self).depends_impl(
@@ -371,12 +372,9 @@ class MozbuildObject(ProcessExecutionMixin):
                 config_status
             )
         except ConfigStatusFailure as e:
-            six.raise_from(
-                BuildEnvironmentNotFoundException(
-                    "config.status is outdated or broken. Run configure."
-                ),
-                e,
-            )
+            raise BuildEnvironmentNotFoundException(
+                "config.status is outdated or broken. Run configure."
+            ) from e
 
         return self._config_environment
 
@@ -747,7 +745,7 @@ class MozbuildObject(ProcessExecutionMixin):
             if job_size == 0:
                 job_size = 2.0 if self.substs.get("CC_TYPE") == "gcc" else 1.0  # GiB
 
-            cpus = multiprocessing.cpu_count()
+            cpus = cpu_count()
             if not psutil or not job_size:
                 num_jobs = cpus
             else:
@@ -938,7 +936,7 @@ class MachCommandBase(MozbuildObject):
             self._ensure_state_subdir_exists(".")
             logfile = self._get_state_filename("last_log.json")
             try:
-                fd = open(logfile, "wt")
+                fd = open(logfile, "w")
                 self.log_manager.add_json_handler(fd)
             except Exception as e:
                 self.log(
@@ -954,7 +952,7 @@ class MachCommandBase(MozbuildObject):
         )
 
 
-class MachCommandConditions(object):
+class MachCommandConditions:
     """A series of commonly used condition functions which can be applied to
     mach commands with providers deriving from MachCommandBase.
     """
@@ -1002,6 +1000,13 @@ class MachCommandConditions(object):
         return False
 
     @staticmethod
+    def is_android_cpu(cls):
+        """Targeting Android CPU."""
+        if hasattr(cls, "substs"):
+            return "ANDROID_CPU_ARCH" in cls.substs
+        return False
+
+    @staticmethod
     def is_firefox_or_android(cls):
         """Must have a Firefox or Android build."""
         return MachCommandConditions.is_firefox(
@@ -1039,6 +1044,14 @@ class MachCommandConditions(object):
             return False
 
     @staticmethod
+    def is_jj(cls):
+        """Must have a jj source checkout."""
+        try:
+            return isinstance(cls.repository, JujutsuRepository)
+        except InvalidRepoPath:
+            return False
+
+    @staticmethod
     def is_artifact_build(cls):
         """Must be an artifact build."""
         if hasattr(cls, "substs"):
@@ -1056,13 +1069,13 @@ class MachCommandConditions(object):
     def is_buildapp_in(cls, apps):
         """Must have a build for one of the given app"""
         for app in apps:
-            attr = getattr(MachCommandConditions, "is_{}".format(app), None)
+            attr = getattr(MachCommandConditions, f"is_{app}", None)
             if attr and attr(cls):
                 return True
         return False
 
 
-class PathArgument(object):
+class PathArgument:
     """Parse a filesystem path argument and transform it in various ways."""
 
     def __init__(self, arg, topsrcdir, topobjdir, cwd=None):

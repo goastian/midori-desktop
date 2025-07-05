@@ -5,13 +5,12 @@
 import re
 from collections import OrderedDict
 
-import six
 from packaging.version import Version
 
 from mozpack.errors import errors
 
 
-class Flag(object):
+class Flag:
     """
     Class for flags in manifest entries in the form:
         "flag"   (same as "flag=true")
@@ -68,7 +67,7 @@ class Flag(object):
         return str(self) == other
 
 
-class StringFlag(object):
+class StringFlag:
     """
     Class for string flags in manifest entries in the form:
         "flag=string"
@@ -136,7 +135,7 @@ class StringFlag(object):
         return str(self) == other
 
 
-class VersionFlag(object):
+class VersionFlag:
     """
     Class for version flags in manifest entries in the form:
         "flag=version"
@@ -270,7 +269,7 @@ class Flags(OrderedDict):
             flags.match(application='foo', appversion='3.0') returns False
 
         """
-        for name, value in six.iteritems(filter):
+        for name, value in filter.items():
             if name not in self:
                 continue
             if not self[name].matches(value):

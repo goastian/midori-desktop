@@ -13,6 +13,7 @@
 #include "mozilla/dom/FetchPriority.h"
 #include "mozilla/dom/ShadowRoot.h"
 #include "mozilla/dom/ShadowRootBinding.h"
+#include "mozilla/glean/ParserHtmlMetrics.h"
 #include "mozilla/CheckedInt.h"
 #include "mozilla/Likely.h"
 #include "mozilla/StaticPrefs_dom.h"
@@ -546,22 +547,21 @@ nsIContentHandle* nsHtml5TreeBuilder::createElement(
         }
         break;
       case kNameSpaceID_SVG:
-        if (nsGkAtoms::image == aName) {
+        if (nsGkAtoms::image == aName || nsGkAtoms::feImage == aName) {
           nsHtml5String url =
               aAttributes->getValue(nsHtml5AttributeName::ATTR_HREF);
           if (!url) {
             url = aAttributes->getValue(nsHtml5AttributeName::ATTR_XLINK_HREF);
           }
           if (url) {
-            // Currently SVG's `<image>` element lacks support for
-            // `fetchpriority`, see bug 1847712. Hence passing nullptr which
-            // maps to the auto state
-            // (https://html.spec.whatwg.org/#fetch-priority-attribute).
-            auto fetchPriority = nullptr;
+            nsHtml5String crossOrigin =
+                aAttributes->getValue(nsHtml5AttributeName::ATTR_CROSSORIGIN);
+            nsHtml5String fetchPriority =
+                aAttributes->getValue(nsHtml5AttributeName::ATTR_FETCHPRIORITY);
 
             mSpeculativeLoadQueue.AppendElement()->InitImage(
-                url, nullptr, nullptr, nullptr, nullptr, nullptr, false,
-                fetchPriority);
+                url, crossOrigin, /* aMedia = */ nullptr, nullptr, nullptr,
+                nullptr, false, fetchPriority);
           }
         } else if (nsGkAtoms::script == aName) {
           nsHtml5TreeOperation* treeOp =
@@ -620,14 +620,8 @@ nsIContentHandle* nsHtml5TreeBuilder::createElement(
                   aAttributes->getValue(nsHtml5AttributeName::ATTR_INTEGRITY);
               nsHtml5String referrerPolicy = aAttributes->getValue(
                   nsHtml5AttributeName::ATTR_REFERRERPOLICY);
-
-              // Bug 1847712: SVG's `<script>` element doesn't support
-              // `fetchpriority` yet.
-              // Use the empty string and rely on the
-              // "invalid value default" state being used later.
-              // Compared to using a non-empty string, this doesn't
-              // require calling `Release()` for the string.
-              nsHtml5String fetchPriority = nsHtml5String::EmptyString();
+              nsHtml5String fetchPriority = aAttributes->getValue(
+                  nsHtml5AttributeName::ATTR_FETCHPRIORITY);
 
               mSpeculativeLoadQueue.AppendElement()->InitScript(
                   url, nullptr, type, crossOrigin, /* aMedia = */ nullptr,
@@ -753,14 +747,15 @@ nsIContentHandle* nsHtml5TreeBuilder::createElement(
     if (mBuilder) {
       nsHtml5TreeOperation::SetFormElement(
           static_cast<nsIContent*>(content),
-          static_cast<nsIContent*>(aFormElement));
+          static_cast<nsIContent*>(aFormElement),
+          static_cast<nsIContent*>(aIntendedParent));
     } else {
       nsHtml5TreeOperation* treeOp = mOpQueue.AppendElement(mozilla::fallible);
       if (MOZ_UNLIKELY(!treeOp)) {
         MarkAsBrokenAndRequestSuspensionWithoutBuilder(NS_ERROR_OUT_OF_MEMORY);
         return nullptr;
       }
-      opSetFormElement operation(content, aFormElement);
+      opSetFormElement operation(content, aFormElement, aIntendedParent);
       treeOp->Init(mozilla::AsVariant(operation));
     }
   }
@@ -1138,6 +1133,8 @@ void nsHtml5TreeBuilder::markMalformedIfScript(nsIContentHandle* aElement) {
 
 void nsHtml5TreeBuilder::start(bool fragment) {
   mCurrentHtmlScriptCannotDocumentWriteOrBlock = false;
+  mozilla::glean::parsing::svg_unusual_pcdata.AddToDenominator(1);
+
 #ifdef DEBUG
   mActive = true;
 #endif
@@ -1205,6 +1202,21 @@ void nsHtml5TreeBuilder::elementPushed(int32_t aNamespace, nsAtom* aName,
    * table elements shouldn't be used as surrogate parents for user experience
    * reasons.
    */
+
+  if (MOZ_UNLIKELY(isInSVGOddPCData)) {
+    // We are seeing an element that has children, which could not have child
+    // elements in HTML, i.e., is parsed as PCDATA in SVG but CDATA in HTML.
+    mozilla::glean::parsing::svg_unusual_pcdata.AddToNumerator(1);
+  }
+  if (MOZ_UNLIKELY(aNamespace == kNameSpaceID_SVG)) {
+    if ((aName == nsGkAtoms::style) || (aName == nsGkAtoms::xmp) ||
+        (aName == nsGkAtoms::iframe) || (aName == nsGkAtoms::noembed) ||
+        (aName == nsGkAtoms::noframes) || (aName == nsGkAtoms::noscript) ||
+        (aName == nsGkAtoms::script)) {
+      isInSVGOddPCData++;
+    }
+  }
+
   if (aNamespace != kNameSpaceID_XHTML) {
     return;
   }
@@ -1253,6 +1265,14 @@ void nsHtml5TreeBuilder::elementPopped(int32_t aNamespace, nsAtom* aName,
   NS_ASSERTION(aElement, "No element!");
   if (aNamespace == kNameSpaceID_MathML) {
     return;
+  }
+  if (MOZ_UNLIKELY(aNamespace == kNameSpaceID_SVG)) {
+    if ((aName == nsGkAtoms::style) || (aName == nsGkAtoms::xmp) ||
+        (aName == nsGkAtoms::iframe) || (aName == nsGkAtoms::noembed) ||
+        (aName == nsGkAtoms::noframes) || (aName == nsGkAtoms::noscript) ||
+        (aName == nsGkAtoms::script)) {
+      isInSVGOddPCData--;
+    }
   }
   // we now have only SVG and HTML
   if (aName == nsGkAtoms::script) {

@@ -119,6 +119,25 @@ class SearchEngineFragmentTest {
                     every { name } returns searchEngineName
                 }
             }
+            every {
+                fragment.findPreference<CheckBoxPreference>(testContext.getString(R.string.pref_key_show_trending_search_suggestions))
+            } returns mockk(relaxed = true) {
+                every { context } returns testContext
+
+                mockkStatic("mozilla.components.browser.state.state.SearchStateKt")
+                every { testContext.components.core.store.state.search } returns mockk(relaxed = true)
+                every { any<SearchState>().selectedOrDefaultSearchEngine } returns mockk(relaxed = true)
+            }
+            every {
+                fragment.findPreference<SwitchPreference>(testContext.getString(R.string.pref_key_show_recent_search_suggestions))
+            } returns mockk(relaxed = true) {
+                every { context } returns testContext
+            }
+            every {
+                fragment.findPreference<SwitchPreference>(testContext.getString(R.string.pref_key_show_shortcuts_suggestions))
+            } returns mockk(relaxed = true) {
+                every { context } returns testContext
+            }
 
             // Trigger the preferences setup.
             fragment.onResume()

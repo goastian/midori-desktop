@@ -76,14 +76,7 @@ class PairFragment : Fragment(R.layout.fragment_pair), UserInteractionHandler {
                         false,
                     )
                 },
-                scanMessage =
-                if (requireContext().settings().allowDomesticChinaFxaServer &&
-                    org.mozilla.fenix.Config.channel.isMozillaOnline
-                ) {
-                    R.string.pair_instructions_2_cn
-                } else {
-                    R.string.pair_instructions_2
-                },
+                scanMessage = R.string.pair_instructions_2,
             ),
             owner = this,
             view = view,
@@ -110,6 +103,7 @@ class PairFragment : Fragment(R.layout.fragment_pair), UserInteractionHandler {
         private const val VIBRATE_LENGTH = 200L
     }
 
+    @Suppress("OVERRIDE_DEPRECATION")
     override fun onRequestPermissionsResult(
         requestCode: Int,
         permissions: Array<String>,

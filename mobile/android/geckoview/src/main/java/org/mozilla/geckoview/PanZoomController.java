@@ -203,6 +203,7 @@ public class PanZoomController {
     public final int actionIndex;
     public final long time;
     public final int metaState;
+    public final int toolType;
     public final int pointerId[];
     public final int historySize;
     public final long historicalTime[];
@@ -216,6 +217,7 @@ public class PanZoomController {
     public final float y[];
     public final float orientation[];
     public final float pressure[];
+    public final float tilt[];
     public final float toolMajor[];
     public final float toolMinor[];
 
@@ -225,6 +227,7 @@ public class PanZoomController {
       actionIndex = event.getActionIndex();
       time = event.getEventTime();
       metaState = event.getMetaState();
+      toolType = event.getToolType(0);
       historySize = event.getHistorySize();
       historicalTime = new long[historySize];
       historicalX = new float[historySize * count];
@@ -238,6 +241,7 @@ public class PanZoomController {
       y = new float[count];
       orientation = new float[count];
       pressure = new float[count];
+      tilt = new float[count];
       toolMajor = new float[count];
       toolMinor = new float[count];
 
@@ -271,6 +275,7 @@ public class PanZoomController {
 
         orientation[i] = coords.orientation;
         pressure[i] = coords.pressure;
+        tilt[i] = coords.getAxisValue(MotionEvent.AXIS_TILT);
 
         // If we are converting to CSS pixels, we should adjust the radii as well.
         toolMajor[i] = coords.toolMajor;
@@ -301,7 +306,7 @@ public class PanZoomController {
     private native @InputResult int handleMouseEvent(
         int action, long time, int metaState, float x, float y, int buttons);
 
-    @WrapForJNI(calledFrom = "ui", dispatchTo = "gecko")
+    @WrapForJNI(calledFrom = "ui")
     private native void handleDragEvent(
         int action, long time, float x, float y, GeckoDragAndDrop.DropData data);
 
@@ -614,6 +619,11 @@ public class PanZoomController {
     ThreadUtils.assertOnUiThread();
 
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+      return false;
+    }
+
+    if (!mAttached) {
+      // This might be during start up, so we cannot handle drag event.
       return false;
     }
 

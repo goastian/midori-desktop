@@ -5,11 +5,12 @@
 package org.mozilla.fenix.search.toolbar
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.view.View
 import android.view.ViewGroup
 import androidx.annotation.VisibleForTesting
+import androidx.core.graphics.drawable.toDrawable
+import androidx.core.graphics.scale
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
@@ -53,7 +54,10 @@ class SearchSelectorToolbarAction(
             initialSearchEngine?.let {
                 this.setIcon(
                     icon = initialSearchEngine.getScaledIcon(this.context),
-                    contentDescription = initialSearchEngine.name,
+                    contentDescription = context.getString(
+                        R.string.search_engine_selector_content_description,
+                        initialSearchEngine.name,
+                    ),
                 )
             }
 
@@ -99,7 +103,10 @@ class SearchSelectorToolbarAction(
                                     setTint(view.context.getColorFromAttr(R.attr.textPrimary))
                                 }
                             },
-                            contentDescription = searchEngine.name,
+                            contentDescription = view.context.getString(
+                                R.string.search_engine_selector_content_description,
+                                searchEngine.name,
+                            ),
                         )
                     }
             }.also {
@@ -116,12 +123,7 @@ class SearchSelectorToolbarAction(
 internal fun SearchEngine.getScaledIcon(context: Context): BitmapDrawable {
     val iconSize =
         context.resources.getDimensionPixelSize(R.dimen.preference_icon_drawable_size)
-    val scaledIcon = Bitmap.createScaledBitmap(
-        icon,
-        iconSize,
-        iconSize,
-        true,
-    )
+    val scaledIcon = icon.scale(iconSize, iconSize, filter = true)
 
-    return BitmapDrawable(context.resources, scaledIcon)
+    return scaledIcon.toDrawable(context.resources)
 }

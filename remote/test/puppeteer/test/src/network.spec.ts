@@ -132,7 +132,7 @@ describe('network', function () {
       page.on('request', request => {
         return initiators.set(
           request.url().split('/').pop(),
-          request.initiator()
+          request.initiator(),
         );
       });
       await page.goto(server.PREFIX + '/initiator.html');
@@ -140,31 +140,31 @@ describe('network', function () {
       expect(initiators.get('initiator.html').type).toBe('other');
       expect(initiators.get('initiator.js').type).toBe('parser');
       expect(initiators.get('initiator.js').url).toBe(
-        server.PREFIX + '/initiator.html'
+        server.PREFIX + '/initiator.html',
       );
       expect(initiators.get('frame.html').type).toBe('parser');
       expect(initiators.get('frame.html').url).toBe(
-        server.PREFIX + '/initiator.html'
+        server.PREFIX + '/initiator.html',
       );
       expect(initiators.get('script.js').type).toBe('parser');
       expect(initiators.get('script.js').url).toBe(
-        server.PREFIX + '/frames/frame.html'
+        server.PREFIX + '/frames/frame.html',
       );
       expect(initiators.get('style.css').type).toBe('parser');
       expect(initiators.get('style.css').url).toBe(
-        server.PREFIX + '/frames/frame.html'
+        server.PREFIX + '/frames/frame.html',
       );
       expect(initiators.get('initiator.js').type).toBe('parser');
       expect(initiators.get('injectedfile.js').type).toBe('script');
       expect(initiators.get('injectedfile.js').stack.callFrames[0]!.url).toBe(
-        server.PREFIX + '/initiator.js'
+        server.PREFIX + '/initiator.js',
       );
       expect(initiators.get('injectedstyle.css').type).toBe('script');
       expect(initiators.get('injectedstyle.css').stack.callFrames[0]!.url).toBe(
-        server.PREFIX + '/initiator.js'
+        server.PREFIX + '/initiator.js',
       );
       expect(initiators.get('initiator.js').url).toBe(
-        server.PREFIX + '/initiator.html'
+        server.PREFIX + '/initiator.html',
       );
     });
   });
@@ -177,26 +177,35 @@ describe('network', function () {
       expect(response.fromCache()).toBe(false);
     });
 
-    it('should work', async () => {
-      const {page, server} = await getTestState();
+    // Run this cache test both with a stylesheet and a script.
+    // Firefox currently does not handle network events for cached CSS files.
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=1879438
+    for (const {html, resource, type} of [
+      {html: 'one-style.html', resource: 'one-style.css', type: 'stylesheet'},
+      {html: 'one-script.html', resource: 'one-script.js', type: 'script'},
+    ]) {
+      it(`should work for ${type}`, async () => {
+        const {page, server} = await getTestState();
 
-      const responses = new Map();
-      page.on('response', r => {
-        return (
-          !isFavicon(r.request()) && responses.set(r.url().split('/').pop(), r)
-        );
+        const responses = new Map();
+        page.on('response', r => {
+          return (
+            !isFavicon(r.request()) &&
+            responses.set(r.url().split('/').pop(), r)
+          );
+        });
+
+        // Load and re-load to make sure it's cached.
+        await page.goto(server.PREFIX + '/cached/' + html);
+        await page.reload();
+
+        expect(responses.size).toBe(2);
+        expect(responses.get(resource).status()).toBe(200);
+        expect(responses.get(resource).fromCache()).toBe(true);
+        expect(responses.get(html).status()).toBe(304);
+        expect(responses.get(html).fromCache()).toBe(false);
       });
-
-      // Load and re-load to make sure it's cached.
-      await page.goto(server.PREFIX + '/cached/one-style.html');
-      await page.reload();
-
-      expect(responses.size).toBe(2);
-      expect(responses.get('one-style.css').status()).toBe(200);
-      expect(responses.get('one-style.css').fromCache()).toBe(true);
-      expect(responses.get('one-style.html').status()).toBe(304);
-      expect(responses.get('one-style.html').fromCache()).toBe(false);
-    });
+    }
   });
 
   describe('Response.fromServiceWorker', function () {
@@ -324,7 +333,7 @@ describe('network', function () {
         return (error = error_);
       });
       expect(error.message).toContain(
-        'Response body is unavailable for redirect responses'
+        'Response body is unavailable for redirect responses',
       );
     });
     it('should wait until response completes', async () => {
@@ -391,10 +400,11 @@ describe('network', function () {
 
       const response = (await page.goto(server.PREFIX + '/pptr.png'))!;
       const imageBuffer = fs.readFileSync(
-        path.join(__dirname, '../assets', 'pptr.png')
+        path.join(__dirname, '../assets', 'pptr.png'),
       );
       const responseBuffer = await response.buffer();
-      expect(responseBuffer.equals(imageBuffer)).toBe(true);
+
+      expect(Buffer.from(responseBuffer).equals(imageBuffer)).toBe(true);
     });
     it('should work with compression', async () => {
       const {page, server} = await getTestState();
@@ -402,10 +412,10 @@ describe('network', function () {
       server.enableGzip('/pptr.png');
       const response = (await page.goto(server.PREFIX + '/pptr.png'))!;
       const imageBuffer = fs.readFileSync(
-        path.join(__dirname, '../assets', 'pptr.png')
+        path.join(__dirname, '../assets', 'pptr.png'),
       );
       const responseBuffer = await response.buffer();
-      expect(responseBuffer.equals(imageBuffer)).toBe(true);
+      expect(Buffer.from(responseBuffer).equals(imageBuffer)).toBe(true);
     });
     it('should throw if the response does not have a body', async () => {
       const {page, server} = await getTestState();
@@ -426,7 +436,7 @@ describe('network', function () {
           return (
             response.request().method() === 'OPTIONS' && response.url() === url
           );
-        }
+        },
       );
 
       // Trigger a request with a preflight.
@@ -440,7 +450,7 @@ describe('network', function () {
 
       const response = await responsePromise;
       await expect(response.buffer()).rejects.toThrowError(
-        'Could not load body for this request. This might happen if the request is a preflight request.'
+        'Could not load body for this request. This might happen if the request is a preflight request.',
       );
     });
   });
@@ -474,6 +484,9 @@ describe('network', function () {
       const {page, server} = await getTestState();
       const responses: HTTPResponse[] = [];
       page.on('response', response => {
+        if (isFavicon(response)) {
+          return;
+        }
         return responses.push(response);
       });
       await page.goto(server.EMPTY_PAGE);
@@ -499,22 +512,31 @@ describe('network', function () {
       expect(request.frame() === page.mainFrame()).toBe(true);
       expect(request.frame()!.url()).toBe(server.EMPTY_PAGE);
     });
-    it('Page.Events.RequestServedFromCache', async () => {
-      const {page, server} = await getTestState();
 
-      const cached: string[] = [];
-      page.on('requestservedfromcache', r => {
-        return cached.push(r.url().split('/').pop()!);
-      });
+    // Run this cache test both with a stylesheet and a script.
+    // Firefox currently does not handle network events for cached CSS files.
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=1879438
+    for (const {html, resource, type} of [
+      {html: 'one-style.html', resource: 'one-style.css', type: 'stylesheet'},
+      {html: 'one-script.html', resource: 'one-script.js', type: 'script'},
+    ]) {
+      it(`Page.Events.RequestServedFromCache for ${type}`, async () => {
+        const {page, server} = await getTestState();
 
-      await page.goto(server.PREFIX + '/cached/one-style.html');
-      expect(cached).toEqual([]);
-      await new Promise(res => {
-        setTimeout(res, 1000);
+        const cached: string[] = [];
+        page.on('requestservedfromcache', r => {
+          return !isFavicon(r) && cached.push(r.url().split('/').pop()!);
+        });
+
+        await page.goto(server.PREFIX + '/cached/' + html);
+        expect(cached).toEqual([]);
+        await new Promise(res => {
+          setTimeout(res, 1000);
+        });
+        await page.reload();
+        expect(cached).toEqual([resource]);
       });
-      await page.reload();
-      expect(cached).toEqual(['one-style.css']);
-    });
+    }
     it('Page.Events.Response', async () => {
       const {page, server} = await getTestState();
 
@@ -555,7 +577,7 @@ describe('network', function () {
       if (isChrome) {
         expect(failedRequest.failure()!.errorText).toBe('net::ERR_FAILED');
       } else {
-        expect(failedRequest.failure()!.errorText).toBe('NS_ERROR_FAILURE');
+        expect(failedRequest.failure()!.errorText).toBe('NS_ERROR_ABORT');
       }
     });
     it('Page.Events.RequestFinished', async () => {
@@ -599,18 +621,24 @@ describe('network', function () {
 
       const events: string[] = [];
       page.on('request', request => {
-        !isFavicon(request) &&
+        if (!isFavicon(request)) {
           events.push(`${request.method()} ${request.url()}`);
+        }
       });
       page.on('response', response => {
-        !isFavicon(response) &&
+        if (!isFavicon(response)) {
           events.push(`${response.status()} ${response.url()}`);
+        }
       });
       page.on('requestfinished', request => {
-        !isFavicon(request) && events.push(`DONE ${request.url()}`);
+        if (!isFavicon(request)) {
+          events.push(`DONE ${request.url()}`);
+        }
       });
       page.on('requestfailed', request => {
-        !isFavicon(request) && events.push(`FAIL ${request.url()}`);
+        if (!isFavicon(request)) {
+          events.push(`FAIL ${request.url()}`);
+        }
       });
       server.setRedirect('/foo.html', '/empty.html');
       const FOO_URL = server.PREFIX + '/foo.html';
@@ -699,13 +727,24 @@ describe('network', function () {
         error = error_ as Error;
       }
       expect(error.message).toBe(
-        'Expected value of header "foo" to be String, but "number" is found.'
+        'Expected value of header "foo" to be String, but "number" is found.',
       );
     });
   });
 
   describe('Page.authenticate', function () {
     it('should work', async () => {
+      const {page, server} = await getTestState();
+      server.setAuth('/empty.html', 'user', 'pass');
+      await page.authenticate({
+        username: 'user',
+        password: 'pass',
+      });
+      const response = (await page.goto(server.EMPTY_PAGE))!;
+      expect(response.status()).toBe(200);
+    });
+
+    it('should error if authentication is required but not enabled', async () => {
       const {page, server} = await getTestState();
 
       server.setAuth('/empty.html', 'user', 'pass');
@@ -717,7 +756,7 @@ describe('network', function () {
         // In headful, an error is thrown instead of 401.
         if (
           !(error as Error).message?.includes(
-            'net::ERR_INVALID_AUTH_CREDENTIALS'
+            'net::ERR_INVALID_AUTH_CREDENTIALS',
           )
         ) {
           throw error;
@@ -753,52 +792,60 @@ describe('network', function () {
       });
       let response = (await page.goto(server.EMPTY_PAGE))!;
       expect(response.status()).toBe(200);
-      await page.authenticate({
-        username: '',
-        password: '',
-      });
+      await page.authenticate(null);
       // Navigate to a different origin to bust Chrome's credential caching.
       try {
         response = (await page.goto(
-          server.CROSS_PROCESS_PREFIX + '/empty.html'
+          server.CROSS_PROCESS_PREFIX + '/empty.html',
         ))!;
         expect(response.status()).toBe(401);
       } catch (error) {
         // In headful, an error is thrown instead of 401.
         if (
           !(error as Error).message?.includes(
-            'net::ERR_INVALID_AUTH_CREDENTIALS'
+            'net::ERR_INVALID_AUTH_CREDENTIALS',
           )
         ) {
           throw error;
         }
       }
     });
-    it('should not disable caching', async () => {
-      const {page, server} = await getTestState();
 
-      // Use unique user/password since Chrome caches credentials per origin.
-      server.setAuth('/cached/one-style.css', 'user4', 'pass4');
-      server.setAuth('/cached/one-style.html', 'user4', 'pass4');
-      await page.authenticate({
-        username: 'user4',
-        password: 'pass4',
+    // Run this cache test both with a stylesheet and a script.
+    // Firefox currently does not handle network events for cached CSS files.
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=1879438
+    for (const {html, resource, type} of [
+      {html: 'one-style.html', resource: 'one-style.css', type: 'stylesheet'},
+      {html: 'one-script.html', resource: 'one-script.js', type: 'script'},
+    ]) {
+      it(`should not disable caching for ${type}`, async () => {
+        const {page, server} = await getTestState();
+
+        // Use unique user/password since Chrome caches credentials per origin.
+        const user = `user4-${type};`;
+        const pass = `pass4-${type};`;
+        server.setAuth('/cached/' + resource, user, pass);
+        server.setAuth('/cached/' + html, user, pass);
+        await page.authenticate({
+          username: user,
+          password: pass,
+        });
+
+        const responses = new Map();
+        page.on('response', r => {
+          return responses.set(r.url().split('/').pop(), r);
+        });
+
+        // Load and re-load to make sure it's cached.
+        await page.goto(server.PREFIX + '/cached/' + html);
+        await page.reload();
+
+        expect(responses.get(resource).status()).toBe(200);
+        expect(responses.get(resource).fromCache()).toBe(true);
+        expect(responses.get(html).status()).toBe(304);
+        expect(responses.get(html).fromCache()).toBe(false);
       });
-
-      const responses = new Map();
-      page.on('response', r => {
-        return responses.set(r.url().split('/').pop(), r);
-      });
-
-      // Load and re-load to make sure it's cached.
-      await page.goto(server.PREFIX + '/cached/one-style.html');
-      await page.reload();
-
-      expect(responses.get('one-style.css').status()).toBe(200);
-      expect(responses.get('one-style.css').fromCache()).toBe(true);
-      expect(responses.get('one-style.html').status()).toBe(304);
-      expect(responses.get('one-style.html').fromCache()).toBe(false);
-    });
+    }
   });
 
   describe('raw network headers', () => {
@@ -838,9 +885,14 @@ describe('network', function () {
     });
 
     it('Cross-origin set-cookie', async () => {
-      const {page, httpsServer, close} = await launch({
-        ignoreHTTPSErrors: true,
-      });
+      const {page, httpsServer, close} = await launch(
+        {
+          acceptInsecureCerts: true,
+        },
+        {
+          createContext: true,
+        },
+      );
       try {
         await page.goto(httpsServer.PREFIX + '/empty.html');
 
@@ -943,7 +995,7 @@ describe('network', function () {
       const remoteAddress = response.remoteAddress();
       // Either IPv6 or IPv4, depending on environment.
       expect(
-        remoteAddress.ip!.includes('::1') || remoteAddress.ip === '127.0.0.1'
+        remoteAddress.ip!.includes('::1') || remoteAddress.ip === '127.0.0.1',
       ).toBe(true);
       expect(remoteAddress.port).toBe(server.PORT);
     });
@@ -960,7 +1012,7 @@ describe('network', function () {
       expect(redirectChain).toHaveLength(1);
       expect(redirectChain[0]!.url()).toContain('/foo.html');
       expect(redirectChain[0]!.response()!.remoteAddress().port).toBe(
-        server.PORT
+        server.PORT,
       );
     });
   });

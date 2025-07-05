@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 
 import copy
 import glob
@@ -180,7 +178,7 @@ class AndroidProfileRun(TestingMixin, BaseScript, MozbaseMixin, AndroidMixin):
         httpd.start(block=False)
 
         profile_data_dir = os.path.join(topsrcdir, "testing", "profiles")
-        with open(os.path.join(profile_data_dir, "profiles.json"), "r") as fh:
+        with open(os.path.join(profile_data_dir, "profiles.json")) as fh:
             base_profiles = json.load(fh)["profileserver"]
 
         prefpaths = [
@@ -245,29 +243,7 @@ class AndroidProfileRun(TestingMixin, BaseScript, MozbaseMixin, AndroidMixin):
                     timeout = 360
                 time.sleep(timeout)
 
-            driver.set_context("chrome")
-            driver.execute_script(
-                """
-                let cancelQuit = Components.classes["@mozilla.org/supports-PRBool;1"]
-                    .createInstance(Components.interfaces.nsISupportsPRBool);
-                Services.obs.notifyObservers(cancelQuit, "quit-application-requested", null);
-                return cancelQuit.data;
-            """
-            )
-            driver.execute_script(
-                """
-                Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit)
-            """
-            )
-
-            # There is a delay between execute_script() returning and the profile data
-            # actually getting written out, so poll the device until we get a profile.
-            for i in range(50):
-                if not adbdevice.process_exist(app):
-                    break
-                time.sleep(2)
-            else:
-                raise Exception("Android App (%s) never quit" % app)
+            driver.quit(in_app=True)
 
             # Pull all the profraw files and en-US.log
             adbdevice.pull(outputdir, "/builds/worker/workspace/")

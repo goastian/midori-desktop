@@ -10,6 +10,9 @@
 #include <poll.h>
 #include <unistd.h>
 #include <linux/rtnetlink.h>
+#include <ifaddrs.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 
 #include "nsThreadUtils.h"
 #include "NetlinkService.h"
@@ -24,8 +27,9 @@
 #include "mozilla/Base64.h"
 #include "mozilla/FunctionTypeTraits.h"
 #include "mozilla/ProfilerThreadSleep.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/NetwerkMetrics.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/ScopeExit.h"
 
 #if defined(HAVE_RES_NINIT)
 #  include <netinet/in.h>
@@ -73,6 +77,11 @@ static void GetAddrStr(const in_common_addr* aAddr, uint8_t aFamily,
   }
   _retval.Assign(addr);
 }
+
+// Assume true by default.
+static Atomic<bool, MemoryOrdering::Relaxed> sHasNonLocalIPv6{true};
+// static
+bool NetlinkService::HasNonLocalIPv6Address() { return sHasNonLocalIPv6; }
 
 class NetlinkAddress {
  public:
@@ -240,7 +249,7 @@ class NetlinkNeighbor {
   bool mHasMAC{false};
   uint8_t mMAC[ETH_ALEN]{};
   in_common_addr mAddr{};
-  struct ndmsg mNeigh {};
+  struct ndmsg mNeigh{};
 };
 
 class NetlinkLink {
@@ -286,7 +295,7 @@ class NetlinkLink {
 
  private:
   nsCString mName;
-  struct ifinfomsg mIface {};
+  struct ifinfomsg mIface{};
 };
 
 class NetlinkRoute {
@@ -471,7 +480,7 @@ class NetlinkRoute {
 
   uint32_t mOif{};
   uint32_t mPrio{};
-  struct rtmsg mRtm {};
+  struct rtmsg mRtm{};
 };
 
 class NetlinkMsg {
@@ -492,17 +501,17 @@ class NetlinkMsg {
   bool SendRequest(int aFD, void* aRequest, uint32_t aRequestLength) {
     MOZ_ASSERT(!mIsPending, "Request has been already sent!");
 
-    struct sockaddr_nl kernel {};
+    struct sockaddr_nl kernel{};
     memset(&kernel, 0, sizeof(kernel));
     kernel.nl_family = AF_NETLINK;
     kernel.nl_groups = 0;
 
-    struct iovec io {};
+    struct iovec io{};
     memset(&io, 0, sizeof(io));
     io.iov_base = aRequest;
     io.iov_len = aRequestLength;
 
-    struct msghdr rtnl_msg {};
+    struct msghdr rtnl_msg{};
     memset(&rtnl_msg, 0, sizeof(rtnl_msg));
     rtnl_msg.msg_iov = &io;
     rtnl_msg.msg_iovlen = 1;
@@ -646,17 +655,17 @@ void NetlinkService::OnNetlinkMessage(int aNetlinkSocket) {
   // for netlink messages.
   char buffer[4096];
 
-  struct sockaddr_nl kernel {};
+  struct sockaddr_nl kernel{};
   memset(&kernel, 0, sizeof(kernel));
   kernel.nl_family = AF_NETLINK;
   kernel.nl_groups = 0;
 
-  struct iovec io {};
+  struct iovec io{};
   memset(&io, 0, sizeof(io));
   io.iov_base = buffer;
   io.iov_len = sizeof(buffer);
 
-  struct msghdr rtnl_reply {};
+  struct msghdr rtnl_reply{};
   memset(&rtnl_reply, 0, sizeof(rtnl_reply));
   rtnl_reply.msg_iov = &io;
   rtnl_reply.msg_iovlen = 1;
@@ -1156,7 +1165,7 @@ NetlinkService::Run() {
     return NS_ERROR_FAILURE;
   }
 
-  struct sockaddr_nl addr {};
+  struct sockaddr_nl addr{};
   memset(&addr, 0, sizeof(addr));
 
   addr.nl_family = AF_NETLINK;
@@ -1229,13 +1238,13 @@ nsresult NetlinkService::Init(NetlinkServiceListener* aListener) {
 
   if (inet_pton(AF_INET, ROUTE_CHECK_IPV4, &mRouteCheckIPv4) != 1) {
     LOG(("Cannot parse address " ROUTE_CHECK_IPV4));
-    MOZ_DIAGNOSTIC_ASSERT(false, "Cannot parse address " ROUTE_CHECK_IPV4);
+    MOZ_DIAGNOSTIC_CRASH("Cannot parse address " ROUTE_CHECK_IPV4);
     return NS_ERROR_UNEXPECTED;
   }
 
   if (inet_pton(AF_INET6, ROUTE_CHECK_IPV6, &mRouteCheckIPv6) != 1) {
     LOG(("Cannot parse address " ROUTE_CHECK_IPV6));
-    MOZ_DIAGNOSTIC_ASSERT(false, "Cannot parse address " ROUTE_CHECK_IPV6);
+    MOZ_DIAGNOSTIC_CRASH("Cannot parse address " ROUTE_CHECK_IPV6);
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -1681,7 +1690,7 @@ void NetlinkService::ExtractDNSProperties() {
   nsTArray<NetAddr> resolvers;
 #if defined(HAVE_RES_NINIT)
   [&]() {
-    struct __res_state res {};
+    struct __res_state res{};
     int ret = res_ninit(&res);
     if (ret != 0) {
       LOG(("Call to res_ninit failed: %d", ret));
@@ -1822,18 +1831,18 @@ void NetlinkService::CalculateNetworkID() {
     if (mNetworkId != output) {
       // new id
       if (found4 && !found6) {
-        Telemetry::Accumulate(Telemetry::NETWORK_ID2, 1);  // IPv4 only
+        glean::network::id.AccumulateSingleSample(1);  // IPv4 only
       } else if (!found4 && found6) {
-        Telemetry::Accumulate(Telemetry::NETWORK_ID2, 3);  // IPv6 only
+        glean::network::id.AccumulateSingleSample(3);  // IPv6 only
       } else {
-        Telemetry::Accumulate(Telemetry::NETWORK_ID2, 4);  // Both!
+        glean::network::id.AccumulateSingleSample(4);  // Both!
       }
       mNetworkId = output;
       idChanged = true;
     } else {
       // same id
       LOG(("Same network id"));
-      Telemetry::Accumulate(Telemetry::NETWORK_ID2, 2);
+      glean::network::id.AccumulateSingleSample(2);
     }
   } else {
     // no id
@@ -1842,8 +1851,13 @@ void NetlinkService::CalculateNetworkID() {
     if (!mNetworkId.IsEmpty()) {
       mNetworkId.Truncate();
       idChanged = true;
-      Telemetry::Accumulate(Telemetry::NETWORK_ID2, 0);
+      glean::network::id.AccumulateSingleSample(0);
     }
+  }
+
+  if (idChanged) {
+    sHasNonLocalIPv6 = found6;
+    LOG(("has IPv6: %d", bool(sHasNonLocalIPv6)));
   }
 
   // If this is first time we calculate network ID, don't report it as a network
@@ -1871,12 +1885,8 @@ void NetlinkService::CalculateNetworkID() {
 }
 
 void NetlinkService::GetNetworkID(nsACString& aNetworkID) {
-#ifdef BASE_BROWSER_VERSION
-  aNetworkID.Truncate();
-#else
   MutexAutoLock lock(mMutex);
   aNetworkID = mNetworkId;
-#endif
 }
 
 nsresult NetlinkService::GetDnsSuffixList(nsTArray<nsCString>& aDnsSuffixList) {

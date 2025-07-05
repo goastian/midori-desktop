@@ -15,9 +15,10 @@ import android.content.Intent.EXTRA_TEXT
 import android.content.Intent.FLAG_ACTIVITY_MULTIPLE_TASK
 import android.content.Intent.FLAG_ACTIVITY_NEW_DOCUMENT
 import android.net.Uri
+import android.os.Build
 import androidx.annotation.VisibleForTesting
+import androidx.core.net.toUri
 import androidx.navigation.NavController
-import com.google.android.material.snackbar.Snackbar
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -32,13 +33,14 @@ import mozilla.components.concept.sync.TabData
 import mozilla.components.feature.accounts.push.SendTabUseCases
 import mozilla.components.feature.session.SessionUseCases
 import mozilla.components.feature.share.RecentAppsStorage
-import mozilla.components.service.glean.private.NoExtras
 import mozilla.components.support.ktx.kotlin.isExtensionUrl
+import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.GleanMetrics.Events
 import org.mozilla.fenix.GleanMetrics.SyncAccount
 import org.mozilla.fenix.R
-import org.mozilla.fenix.components.FenixSnackbar
+import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
+import org.mozilla.fenix.components.appstate.AppAction.ShareAction
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.share.listadapters.AppShareOption
 
@@ -75,12 +77,13 @@ interface ShareController {
  * Default behavior of [ShareController]. Other implementations are possible.
  *
  * @param context [Context] used for various Android interactions.
+ * @param appStore Instance of [AppStore] for interacting with application wide state.
  * @param shareSubject Desired message subject used when sharing through 3rd party apps, like email clients.
  * @param shareData The list of [ShareData]s that can be shared.
  * @param sendTabUseCases Instance of [SendTabUseCases] which allows sending tabs to account devices.
  * @param saveToPdfUseCase Instance of [SessionUseCases.SaveToPdfUseCase] to generate a PDF of a given tab.
  * @param printUseCase Instance of [SessionUseCases.PrintContentUseCase] to print content of a given tab.
- * @param snackbar Instance of [FenixSnackbar] for displaying styled snackbars.
+ * @param sentFromFirefoxManager Instance of [SentFromFirefoxManager] to facilitate "Sent from" nimbus experiment.
  * @param navController [NavController] used for navigation.
  * @param recentAppsStorage Instance of [RecentAppsStorage] for storing and retrieving the most recent apps.
  * @param viewLifecycleScope [CoroutineScope] used for retrieving the most recent apps in the background.
@@ -91,12 +94,13 @@ interface ShareController {
 @Suppress("TooManyFunctions", "LongParameterList")
 class DefaultShareController(
     private val context: Context,
+    private val appStore: AppStore,
     private val shareSubject: String?,
     private val shareData: List<ShareData>,
     private val sendTabUseCases: SendTabUseCases,
     private val saveToPdfUseCase: SessionUseCases.SaveToPdfUseCase,
     private val printUseCase: SessionUseCases.PrintContentUseCase,
-    private val snackbar: FenixSnackbar,
+    private val sentFromFirefoxManager: SentFromFirefoxManager,
     private val navController: NavController,
     private val recentAppsStorage: RecentAppsStorage,
     private val viewLifecycleScope: CoroutineScope,
@@ -118,7 +122,12 @@ class DefaultShareController(
     }
 
     override fun handleShareToApp(app: AppShareOption) {
-        Events.shareToApp.record(getShareToAppSafeExtra(app.packageName))
+        Events.shareToApp.record(
+            getShareToAppSafeExtra(
+                appPackage = app.packageName,
+                sentFromFirefoxEnabled = sentFromFirefoxManager.featureEnabled,
+            ),
+        )
         if (app.packageName == ACTION_COPY_LINK_TO_CLIPBOARD) {
             copyClipboard()
             dismiss(ShareController.Result.SUCCESS)
@@ -131,7 +140,11 @@ class DefaultShareController(
         }
 
         val intent = Intent(ACTION_SEND).apply {
-            putExtra(EXTRA_TEXT, getShareText())
+            val sharedText = sentFromFirefoxManager.maybeAppendShareText(
+                packageName = app.packageName,
+                shareText = getShareText(),
+            )
+            putExtra(EXTRA_TEXT, sharedText)
             putExtra(EXTRA_SUBJECT, getShareSubject())
             type = "text/plain"
             flags = FLAG_ACTIVITY_NEW_DOCUMENT + FLAG_ACTIVITY_MULTIPLE_TASK
@@ -145,9 +158,8 @@ class DefaultShareController(
         } catch (e: Exception) {
             when (e) {
                 is SecurityException, is ActivityNotFoundException -> {
-                    snackbar.setText(context.getString(R.string.share_error_snackbar))
-                    snackbar.setLength(FenixSnackbar.LENGTH_LONG)
-                    snackbar.show()
+                    appStore.dispatch(ShareAction.ShareToAppFailed)
+
                     ShareController.Result.SHARE_ERROR
                 }
                 else -> throw e
@@ -174,32 +186,44 @@ class DefaultShareController(
 
     override fun handleShareToDevice(device: Device) {
         SyncAccount.sendTab.record(NoExtras())
-        shareToDevicesWithRetry { sendTabUseCases.sendToDeviceAsync(device.id, shareData.toTabData()) }
+        shareToDevicesWithRetry(listOf(device.id)) {
+            sendTabUseCases.sendToDeviceAsync(device.id, shareData.toTabData())
+        }
     }
 
     override fun handleShareToAllDevices(devices: List<Device>) {
-        shareToDevicesWithRetry { sendTabUseCases.sendToAllAsync(shareData.toTabData()) }
+        shareToDevicesWithRetry(
+            devices.map { it.id },
+        ) { sendTabUseCases.sendToAllAsync(shareData.toTabData()) }
     }
 
     override fun handleSignIn() {
         SyncAccount.signInToSendTab.record(NoExtras())
         val directions = ShareFragmentDirections.actionGlobalTurnOnSync(
-            padSnackbar = true,
             entrypoint = fxaEntrypoint as FenixFxAEntryPoint,
         )
         navController.nav(R.id.shareFragment, directions)
         dismiss(ShareController.Result.DISMISSED)
     }
 
+    /**
+     * Share tabs with other devices linked to user's account.
+     *
+     * @param destination List of device IDs to share tabs with.
+     * @param shareOperation Operation to be executed for actually sharing tabs.
+     */
     @OptIn(DelicateCoroutinesApi::class) // GlobalScope usage
-    private fun shareToDevicesWithRetry(shareOperation: () -> Deferred<Boolean>) {
+    private fun shareToDevicesWithRetry(
+        destination: List<String>,
+        shareOperation: () -> Deferred<Boolean>,
+    ) {
         // Use GlobalScope to allow the continuation of this method even if the share fragment is closed.
         GlobalScope.launch(Dispatchers.Main) {
             val result = if (shareOperation.invoke().await()) {
-                showSuccess()
+                showSuccess(destination)
                 ShareController.Result.SUCCESS
             } else {
-                showFailureWithRetryOption { shareToDevicesWithRetry(shareOperation) }
+                showFailureWithRetryOption(destination)
                 ShareController.Result.DISMISSED
             }
             if (navController.currentDestination?.id == R.id.shareFragment) {
@@ -208,36 +232,31 @@ class DefaultShareController(
         }
     }
 
+    /**
+     * Inform about the successful sharing of tabs.
+     *
+     * @param destination List of device IDs to which tabs were shared.
+     */
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    fun showSuccess() {
-        snackbar.apply {
-            setText(getSuccessMessage())
-            setLength(Snackbar.LENGTH_SHORT)
-            show()
-        }
+    fun showSuccess(destination: List<String>) {
+        appStore.dispatch(ShareAction.SharedTabsSuccessfully(destination, shareData.toTabData()))
     }
 
+    /**
+     * Inform about the failure of sharing tabs.
+     *
+     * @param destination List of device IDs to which tabs were tried to be shared.
+     */
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    fun showFailureWithRetryOption(operation: () -> Unit) {
-        snackbar.setText(context.getString(R.string.sync_sent_tab_error_snackbar))
-        snackbar.setLength(Snackbar.LENGTH_LONG)
-        snackbar.setAction(context.getString(R.string.sync_sent_tab_error_snackbar_action), operation)
-        snackbar.setAppropriateBackground(true)
-        snackbar.show()
-    }
-
-    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    fun getSuccessMessage(): String = with(context) {
-        when (shareData.size) {
-            1 -> getString(R.string.sync_sent_tab_snackbar)
-            else -> getString(R.string.sync_sent_tabs_snackbar)
-        }
+    fun showFailureWithRetryOption(destination: List<String>) {
+        appStore.dispatch(ShareAction.ShareTabsFailed(destination, shareData.toTabData()))
     }
 
     @VisibleForTesting
     fun getShareText() = shareData.joinToString("\n\n") { data ->
         val url = data.url.orEmpty()
-        if (url.isExtensionUrl()) {
+        val text = data.text.orEmpty()
+        val shareUrl = if (url.isExtensionUrl()) {
             // Sharing moz-extension:// URLs is not practical in general, as
             // they will only work on the current device.
 
@@ -246,10 +265,11 @@ class DefaultShareController(
             // now and needs a clean fix once we have a reader specific protocol
             // e.g. ext+reader://
             // https://github.com/mozilla-mobile/android-components/issues/2879
-            Uri.parse(url).getQueryParameter("url") ?: url
+            url.toUri().getQueryParameter("url") ?: url
         } else {
             url
         }
+        listOfNotNull(text, shareUrl).filter { it.isNotEmpty() }.joinToString("\n")
     }
 
     @VisibleForTesting
@@ -272,9 +292,14 @@ class DefaultShareController(
         val clipData = ClipData.newPlainText(getShareSubject(), getShareText())
 
         clipboardManager.setPrimaryClip(clipData)
-        snackbar.setText(context.getString(R.string.toast_copy_link_to_clipboard))
-        snackbar.setLength(FenixSnackbar.LENGTH_SHORT)
-        snackbar.show()
+
+        // Android 13+ shows by default a popup for copied text.
+        // Avoid overlapping popups informing the user when the URL is copied to the clipboard.
+        // and only show our snackbar when Android will not show an indication by default.                 *
+        // See https://developer.android.com/develop/ui/views/touch-and-input/copy-paste#duplicate-notifications).
+        if (Build.VERSION.SDK_INT <= Build.VERSION_CODES.S_V2) {
+            appStore.dispatch(ShareAction.CopyLinkToClipboard)
+        }
     }
 
     companion object {

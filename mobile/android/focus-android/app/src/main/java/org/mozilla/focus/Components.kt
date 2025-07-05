@@ -22,8 +22,12 @@ import mozilla.components.feature.app.links.AppLinksInterceptor
 import mozilla.components.feature.app.links.AppLinksUseCases
 import mozilla.components.feature.contextmenu.ContextMenuUseCases
 import mozilla.components.feature.customtabs.store.CustomTabsServiceStore
+import mozilla.components.feature.downloads.DateTimeProvider
+import mozilla.components.feature.downloads.DefaultDateTimeProvider
+import mozilla.components.feature.downloads.DefaultFileSizeFormatter
 import mozilla.components.feature.downloads.DownloadMiddleware
 import mozilla.components.feature.downloads.DownloadsUseCases
+import mozilla.components.feature.downloads.FileSizeFormatter
 import mozilla.components.feature.media.MediaSessionFeature
 import mozilla.components.feature.media.middleware.RecordingDevicesMiddleware
 import mozilla.components.feature.prompts.PromptMiddleware
@@ -73,6 +77,8 @@ import org.mozilla.focus.state.AppState
 import org.mozilla.focus.state.AppStore
 import org.mozilla.focus.state.Screen
 import org.mozilla.focus.telemetry.GleanMetricsService
+import org.mozilla.focus.telemetry.GleanUsageReportingMetricsService
+import org.mozilla.focus.telemetry.GleanUsageReportingMetricsService.GleanProfileIdPreferenceStore
 import org.mozilla.focus.telemetry.TelemetryMiddleware
 import org.mozilla.focus.telemetry.startuptelemetry.AppStartReasonProvider
 import org.mozilla.focus.telemetry.startuptelemetry.StartupActivityLog
@@ -94,6 +100,7 @@ class Components(
             AppState(
                 screen = if (context.settings.isFirstRun) Screen.FirstRun else Screen.Home,
                 topSites = emptyList(),
+                isPinningSupported = null,
             ),
         )
     }
@@ -101,9 +108,7 @@ class Components(
     private val notificationManagerCompat = NotificationManagerCompat.from(context)
 
     val notificationsDelegate: NotificationsDelegate by lazy {
-        NotificationsDelegate(
-            notificationManagerCompat,
-        )
+        NotificationsDelegate(notificationManagerCompat)
     }
 
     val appStartReasonProvider by lazy { AppStartReasonProvider() }
@@ -121,7 +126,7 @@ class Components(
     val engineDefaultSettings by lazy {
         DefaultSettings(
             requestInterceptor = AppContentInterceptor(context),
-            trackingProtectionPolicy = settings.createTrackingProtectionPolicy(),
+            trackingProtectionPolicy = EngineProvider.createTrackingProtectionPolicy(context),
             javascriptEnabled = !settings.shouldBlockJavaScript(),
             remoteDebuggingEnabled = settings.shouldEnableRemoteDebugging(),
             webFontsEnabled = !settings.shouldBlockWebFonts(),
@@ -133,7 +138,7 @@ class Components(
 
     val engine: Engine by lazy {
         engineOverride ?: EngineProvider.createEngine(context, engineDefaultSettings).apply {
-            this@Components.settings.setupSafeBrowsing(this)
+            EngineProvider.setupSafeBrowsing(this, this@Components.settings.shouldUseSafeBrowsing())
             WebCompatFeature.install(this)
             WebCompatReporterFeature.install(this, "focus-geckoview")
         }
@@ -215,9 +220,17 @@ class Components(
 
     val customTabsUseCases: CustomTabsUseCases by lazy { CustomTabsUseCases(store, sessionUseCases.loadUrl) }
 
-    val crashReporter: CrashReporter by lazy { createCrashReporter(context, notificationsDelegate) }
+    val crashReporter: CrashReporter by lazy { createCrashReporter(context) }
 
     val metrics: GleanMetricsService by lazy { GleanMetricsService(context) }
+
+    val usageReportingMetricsService: GleanUsageReportingMetricsService by lazy {
+        GleanUsageReportingMetricsService(
+            gleanProfileIdStore = GleanProfileIdPreferenceStore(
+                context,
+            ),
+        )
+    }
 
     val experiments: NimbusApi by lazy {
         createNimbus(context, BuildConfig.NIMBUS_ENDPOINT)
@@ -236,15 +249,18 @@ class Components(
     val appLinksInterceptor by lazy {
         AppLinksInterceptor(
             context,
-            interceptLinkClicks = true,
             launchInApp = {
                 context.settings.openLinksInExternalApp
             },
         )
     }
+
+    val fileSizeFormatter: FileSizeFormatter by lazy { DefaultFileSizeFormatter(context.applicationContext) }
+
+    val dateTimeProvider: DateTimeProvider by lazy { DefaultDateTimeProvider() }
 }
 
-private fun createCrashReporter(context: Context, notificationsDelegate: NotificationsDelegate): CrashReporter {
+private fun createCrashReporter(context: Context): CrashReporter {
     val services = mutableListOf<CrashReporterService>()
 
     if (BuildConfig.SENTRY_TOKEN.isNotEmpty()) {
@@ -300,7 +316,6 @@ private fun createCrashReporter(context: Context, notificationsDelegate: Notific
         shouldPrompt = CrashReporter.Prompt.ALWAYS,
         enabled = true,
         nonFatalCrashIntent = pendingIntent,
-        notificationsDelegate = notificationsDelegate,
     )
 }
 

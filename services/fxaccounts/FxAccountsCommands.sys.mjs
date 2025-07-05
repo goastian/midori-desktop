@@ -21,9 +21,14 @@ import { Observers } from "resource://services-common/observers.sys.mjs";
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
+  AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
   BulkKeyBundle: "resource://services-sync/keys.sys.mjs",
   CryptoWrapper: "resource://services-sync/record.sys.mjs",
   PushCrypto: "resource://gre/modules/PushCrypto.sys.mjs",
+  getRemoteCommandStore: "resource://services-sync/TabsStore.sys.mjs",
+  RemoteCommand: "resource://services-sync/TabsStore.sys.mjs",
+  Utils: "resource://services-sync/util.sys.mjs",
+  NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(
@@ -37,11 +42,22 @@ XPCOMUtils.defineLazyPreferenceGetter(
   }
 );
 
+XPCOMUtils.defineLazyServiceGetter(
+  lazy,
+  "idleService",
+  "@mozilla.org/widget/useridleservice;1",
+  "nsIUserIdleService"
+);
+
+const TOPIC_TABS_CHANGED = "services.sync.tabs.changed";
+const COMMAND_MAX_PAYLOAD_SIZE = 16 * 1024;
+
 export class FxAccountsCommands {
   constructor(fxAccountsInternal) {
     this._fxai = fxAccountsInternal;
     this.sendTab = new SendTab(this, fxAccountsInternal);
     this.closeTab = new CloseRemoteTab(this, fxAccountsInternal);
+    this.commandQueue = new CommandQueue(this, fxAccountsInternal);
     this._invokeRateLimitExpiry = 0;
   }
 
@@ -50,23 +66,16 @@ export class FxAccountsCommands {
 
     if (!CLIENT_IS_THUNDERBIRD) {
       // Invalid keys usually means the account is not verified yet.
-      const encryptedSendTabKeys = await this.sendTab.getEncryptedSendTabKeys();
+      const encryptedSendTabKeys = await this.sendTab.getEncryptedCommandKeys();
 
       if (encryptedSendTabKeys) {
         commands[COMMAND_SENDTAB] = encryptedSendTabKeys;
       }
 
-      // Close Tab is still a worked-on feature, so we should not broadcast it widely yet
-      let closeTabEnabled = Services.prefs.getBoolPref(
-        "identity.fxaccounts.commands.remoteTabManagement.enabled",
-        false
-      );
-      if (closeTabEnabled) {
-        const encryptedCloseTabKeys =
-          await this.closeTab.getEncryptedCloseTabKeys();
-        if (encryptedCloseTabKeys) {
-          commands[COMMAND_CLOSETAB] = encryptedCloseTabKeys;
-        }
+      const encryptedCloseTabKeys =
+        await this.closeTab.getEncryptedCommandKeys();
+      if (encryptedCloseTabKeys) {
+        commands[COMMAND_CLOSETAB] = encryptedCloseTabKeys;
       }
     }
 
@@ -133,9 +142,8 @@ export class FxAccountsCommands {
       if (notifiedIndex > 0 && notifiedIndex < lastCommandIndex) {
         return;
       }
-      const { index, messages } = await this._fetchDeviceCommands(
-        lastCommandIndex
-      );
+      const { index, messages } =
+        await this._fetchDeviceCommands(lastCommandIndex);
       if (messages.length) {
         await state.updateUserAccountData({
           device: { ...device, lastCommandIndex: index },
@@ -269,9 +277,9 @@ export class FxAccountsCommands {
 }
 
 /**
- * Send Tab is built on top of FxA commands.
+ * This is built on top of FxA commands.
  *
- * Devices exchange keys wrapped in the oldsync key between themselves (getEncryptedSendTabKeys)
+ * Devices exchange keys wrapped in the oldsync key between themselves (getEncryptedCommandKeys)
  * during the device registration flow. The FxA server can theoretically never
  * retrieve the send tab keys since it doesn't know the oldsync key.
  *
@@ -281,12 +289,179 @@ export class FxAccountsCommands {
  * The push keys are different from the send-tab keys. The FxA server uses
  * the push keys to deliver the tabs using same mechanism we use for web-push.
  * However, clients use the send-tab keys for end-to-end encryption.
+ *
+ * Every command uses the same key management code, although each has its own key.
  */
-export class SendTab {
+
+export class Command {
   constructor(commands, fxAccountsInternal) {
     this._commands = commands;
     this._fxai = fxAccountsInternal;
   }
+
+  // Must be set by the command.
+  deviceCapability; // eg, COMMAND_SENDTAB;
+  keyFieldName; // eg, "sendTabKeys";
+  encryptedKeyFieldName; // eg, "encryptedSendTabKeys"
+
+  // Returns true if the target device is compatible with FxA Commands Send tab.
+  isDeviceCompatible(device) {
+    return (
+      device.availableCommands &&
+      device.availableCommands[this.deviceCapability]
+    );
+  }
+
+  async _encrypt(bytes, device) {
+    let bundle = device.availableCommands[this.deviceCapability];
+    if (!bundle) {
+      throw new Error(`Device ${device.id} does not have send tab keys.`);
+    }
+    const oldsyncKey = await this._fxai.keys.getKeyForScope(SCOPE_OLD_SYNC);
+    // Older clients expect this to be hex, due to pre-JWK sync key ids :-(
+    const ourKid = this._fxai.keys.kidAsHex(oldsyncKey);
+    const { kid: theirKid } = JSON.parse(
+      device.availableCommands[this.deviceCapability]
+    );
+    if (theirKid != ourKid) {
+      throw new Error("Target Send Tab key ID is different from ours");
+    }
+    const json = JSON.parse(bundle);
+    const wrapper = new lazy.CryptoWrapper();
+    wrapper.deserialize({ payload: json });
+    const syncKeyBundle = lazy.BulkKeyBundle.fromJWK(oldsyncKey);
+    let { publicKey, authSecret } = await wrapper.decrypt(syncKeyBundle);
+    authSecret = urlsafeBase64Decode(authSecret);
+    publicKey = urlsafeBase64Decode(publicKey);
+
+    const { ciphertext: encrypted } = await lazy.PushCrypto.encrypt(
+      bytes,
+      publicKey,
+      authSecret
+    );
+    return urlsafeBase64Encode(encrypted);
+  }
+
+  async _decrypt(ciphertext) {
+    let { privateKey, publicKey, authSecret } =
+      await this._getPersistedCommandKeys();
+    publicKey = urlsafeBase64Decode(publicKey);
+    authSecret = urlsafeBase64Decode(authSecret);
+    ciphertext = new Uint8Array(urlsafeBase64Decode(ciphertext));
+    return lazy.PushCrypto.decrypt(
+      privateKey,
+      publicKey,
+      authSecret,
+      // The only Push encoding we support.
+      { encoding: "aes128gcm" },
+      ciphertext
+    );
+  }
+
+  async _getPersistedCommandKeys() {
+    const { device } = await this._fxai.getUserAccountData(["device"]);
+    return device && device[this.keyFieldName];
+  }
+
+  async _generateAndPersistCommandKeys() {
+    let [publicKey, privateKey] = await lazy.PushCrypto.generateKeys();
+    publicKey = urlsafeBase64Encode(publicKey);
+    let authSecret = lazy.PushCrypto.generateAuthenticationSecret();
+    authSecret = urlsafeBase64Encode(authSecret);
+    const sendTabKeys = {
+      publicKey,
+      privateKey,
+      authSecret,
+    };
+    await this._fxai.withCurrentAccountState(async state => {
+      const { device = {} } = await state.getUserAccountData(["device"]);
+      device[this.keyFieldName] = sendTabKeys;
+      log.trace(
+        `writing to ${this.keyFieldName} for command ${this.deviceCapability}`
+      );
+      await state.updateUserAccountData({
+        device,
+      });
+    });
+    return sendTabKeys;
+  }
+
+  async _getPersistedEncryptedCommandKey() {
+    const data = await this._fxai.getUserAccountData([
+      this.encryptedKeyFieldName,
+    ]);
+    return data[this.encryptedKeyFieldName];
+  }
+
+  async _generateAndPersistEncryptedCommandKey() {
+    if (!(await this._fxai.keys.canGetKeyForScope(SCOPE_OLD_SYNC))) {
+      log.info("Can't fetch keys, so unable to determine command keys");
+      return null;
+    }
+    let sendTabKeys = await this._getPersistedCommandKeys();
+    if (!sendTabKeys) {
+      log.info("Could not find command keys, generating them");
+      sendTabKeys = await this._generateAndPersistCommandKeys();
+    }
+    // Strip the private key from the bundle to encrypt.
+    const keyToEncrypt = {
+      publicKey: sendTabKeys.publicKey,
+      authSecret: sendTabKeys.authSecret,
+    };
+    let oldsyncKey;
+    try {
+      oldsyncKey = await this._fxai.keys.getKeyForScope(SCOPE_OLD_SYNC);
+    } catch (ex) {
+      log.warn("Failed to fetch keys, so unable to determine command keys", ex);
+      return null;
+    }
+    const wrapper = new lazy.CryptoWrapper();
+    wrapper.cleartext = keyToEncrypt;
+    const keyBundle = lazy.BulkKeyBundle.fromJWK(oldsyncKey);
+    await wrapper.encrypt(keyBundle);
+    const encryptedSendTabKeys = JSON.stringify({
+      // This is expected in hex, due to pre-JWK sync key ids :-(
+      kid: this._fxai.keys.kidAsHex(oldsyncKey),
+      IV: wrapper.IV,
+      hmac: wrapper.hmac,
+      ciphertext: wrapper.ciphertext,
+    });
+    await this._fxai.withCurrentAccountState(async state => {
+      let data = {};
+      data[this.encryptedKeyFieldName] = encryptedSendTabKeys;
+      await state.updateUserAccountData(data);
+    });
+    return encryptedSendTabKeys;
+  }
+
+  async getEncryptedCommandKeys() {
+    log.trace("Getting command keys", this.deviceCapability);
+    let encryptedSendTabKeys = await this._getPersistedEncryptedCommandKey();
+    const sendTabKeys = await this._getPersistedCommandKeys();
+    if (!encryptedSendTabKeys || !sendTabKeys) {
+      log.info(
+        `Generating and persisting encrypted key (${!!encryptedSendTabKeys}, ${!!sendTabKeys})`
+      );
+      // Generating the encrypted key requires the sync key so we expect to fail
+      // in some cases (primary password is locked, account not verified, etc)
+      // However, we will eventually end up generating it when we can, and device registration
+      // will handle this late update and update the remote record as necessary, so it gets there in the end.
+      // It's okay to persist these keys in plain text; they're encrypted.
+      encryptedSendTabKeys =
+        await this._generateAndPersistEncryptedCommandKey();
+    }
+    return encryptedSendTabKeys;
+  }
+}
+
+/**
+ * Send Tab
+ */
+export class SendTab extends Command {
+  deviceCapability = COMMAND_SENDTAB;
+  keyFieldName = "sendTabKeys";
+  encryptedKeyFieldName = "encryptedSendTabKeys";
+
   /**
    * @param {Device[]} to - Device objects (typically returned by fxAccounts.getDevicesList()).
    * @param {Object} tab
@@ -330,13 +505,6 @@ export class SendTab {
     return report;
   }
 
-  // Returns true if the target device is compatible with FxA Commands Send tab.
-  isDeviceCompatible(device) {
-    return (
-      device.availableCommands && device.availableCommands[COMMAND_SENDTAB]
-    );
-  }
-
   // Handle incoming send tab payload, called by FxAccountsCommands.
   async handle(senderID, { encrypted }, reason) {
     const bytes = await this._decrypt(encrypted);
@@ -362,237 +530,22 @@ export class SendTab {
       uri,
     };
   }
-
-  async _encrypt(bytes, device) {
-    let bundle = device.availableCommands[COMMAND_SENDTAB];
-    if (!bundle) {
-      throw new Error(`Device ${device.id} does not have send tab keys.`);
-    }
-    const oldsyncKey = await this._fxai.keys.getKeyForScope(SCOPE_OLD_SYNC);
-    // Older clients expect this to be hex, due to pre-JWK sync key ids :-(
-    const ourKid = this._fxai.keys.kidAsHex(oldsyncKey);
-    const { kid: theirKid } = JSON.parse(
-      device.availableCommands[COMMAND_SENDTAB]
-    );
-    if (theirKid != ourKid) {
-      throw new Error("Target Send Tab key ID is different from ours");
-    }
-    const json = JSON.parse(bundle);
-    const wrapper = new lazy.CryptoWrapper();
-    wrapper.deserialize({ payload: json });
-    const syncKeyBundle = lazy.BulkKeyBundle.fromJWK(oldsyncKey);
-    let { publicKey, authSecret } = await wrapper.decrypt(syncKeyBundle);
-    authSecret = urlsafeBase64Decode(authSecret);
-    publicKey = urlsafeBase64Decode(publicKey);
-
-    const { ciphertext: encrypted } = await lazy.PushCrypto.encrypt(
-      bytes,
-      publicKey,
-      authSecret
-    );
-    return urlsafeBase64Encode(encrypted);
-  }
-
-  async _getPersistedSendTabKeys() {
-    const { device } = await this._fxai.getUserAccountData(["device"]);
-    return device && device.sendTabKeys;
-  }
-
-  async _decrypt(ciphertext) {
-    let { privateKey, publicKey, authSecret } =
-      await this._getPersistedSendTabKeys();
-    publicKey = urlsafeBase64Decode(publicKey);
-    authSecret = urlsafeBase64Decode(authSecret);
-    ciphertext = new Uint8Array(urlsafeBase64Decode(ciphertext));
-    return lazy.PushCrypto.decrypt(
-      privateKey,
-      publicKey,
-      authSecret,
-      // The only Push encoding we support.
-      { encoding: "aes128gcm" },
-      ciphertext
-    );
-  }
-
-  async _generateAndPersistSendTabKeys() {
-    let [publicKey, privateKey] = await lazy.PushCrypto.generateKeys();
-    publicKey = urlsafeBase64Encode(publicKey);
-    let authSecret = lazy.PushCrypto.generateAuthenticationSecret();
-    authSecret = urlsafeBase64Encode(authSecret);
-    const sendTabKeys = {
-      publicKey,
-      privateKey,
-      authSecret,
-    };
-    await this._fxai.withCurrentAccountState(async state => {
-      const { device } = await state.getUserAccountData(["device"]);
-      await state.updateUserAccountData({
-        device: {
-          ...device,
-          sendTabKeys,
-        },
-      });
-    });
-    return sendTabKeys;
-  }
-
-  async _getPersistedEncryptedSendTabKey() {
-    const { encryptedSendTabKeys } = await this._fxai.getUserAccountData([
-      "encryptedSendTabKeys",
-    ]);
-    return encryptedSendTabKeys;
-  }
-
-  async _generateAndPersistEncryptedSendTabKey() {
-    let sendTabKeys = await this._getPersistedSendTabKeys();
-    if (!sendTabKeys) {
-      log.info("Could not find sendtab keys, generating them");
-      sendTabKeys = await this._generateAndPersistSendTabKeys();
-    }
-    // Strip the private key from the bundle to encrypt.
-    const keyToEncrypt = {
-      publicKey: sendTabKeys.publicKey,
-      authSecret: sendTabKeys.authSecret,
-    };
-    if (!(await this._fxai.keys.canGetKeyForScope(SCOPE_OLD_SYNC))) {
-      log.info("Can't fetch keys, so unable to determine sendtab keys");
-      return null;
-    }
-    let oldsyncKey;
-    try {
-      oldsyncKey = await this._fxai.keys.getKeyForScope(SCOPE_OLD_SYNC);
-    } catch (ex) {
-      log.warn("Failed to fetch keys, so unable to determine sendtab keys", ex);
-      return null;
-    }
-    const wrapper = new lazy.CryptoWrapper();
-    wrapper.cleartext = keyToEncrypt;
-    const keyBundle = lazy.BulkKeyBundle.fromJWK(oldsyncKey);
-    await wrapper.encrypt(keyBundle);
-    const encryptedSendTabKeys = JSON.stringify({
-      // This is expected in hex, due to pre-JWK sync key ids :-(
-      kid: this._fxai.keys.kidAsHex(oldsyncKey),
-      IV: wrapper.IV,
-      hmac: wrapper.hmac,
-      ciphertext: wrapper.ciphertext,
-    });
-    await this._fxai.withCurrentAccountState(async state => {
-      await state.updateUserAccountData({
-        encryptedSendTabKeys,
-      });
-    });
-    return encryptedSendTabKeys;
-  }
-
-  async getEncryptedSendTabKeys() {
-    let encryptedSendTabKeys = await this._getPersistedEncryptedSendTabKey();
-    const sendTabKeys = await this._getPersistedSendTabKeys();
-    if (!encryptedSendTabKeys || !sendTabKeys) {
-      log.info("Generating and persisting encrypted sendtab keys");
-      // `_generateAndPersistEncryptedKeys` requires the sync key
-      // which cannot be accessed if the login manager is locked
-      // (i.e when the primary password is locked) or if the sync keys
-      // aren't accessible (account isn't verified)
-      // so this function could fail to retrieve the keys
-      // however, device registration will trigger when the account
-      // is verified, so it's OK
-      // Note that it's okay to persist those keys, because they are
-      // already persisted in plaintext and the encrypted bundle
-      // does not include the sync-key (the sync key is used to encrypt
-      // it though)
-      encryptedSendTabKeys =
-        await this._generateAndPersistEncryptedSendTabKey();
-    }
-    return encryptedSendTabKeys;
-  }
 }
 
 /**
- * Close Tabs is built on-top of device commands and handles
- * actions a client wants to perform on tabs found on other devices
- * This class is very similar to the Send Tab component in FxAccountsCommands
- *
- * Devices exchange keys wrapped in the oldsync key between themselves (getEncryptedCloseTabKeys)
- * during the device registration flow. The FxA server can theoretically never
- * retrieve the close tab keys since it doesn't know the oldsync key.
- *
- * Note: Close Tabs does things slightly different from SendTab
- * The sender encrypts the close-tab command using the receiver's public key,
- * and the FxA server stores it (without re-encrypting).
- * A web-push notifies the receiver that a new command is available.
- * The receiver decrypts the payload using its private key.
+ * Close Tabs
  */
-export class CloseRemoteTab {
-  constructor(commands, fxAccountsInternal) {
-    this._commands = commands;
-    this._fxai = fxAccountsInternal;
-    this.pendingClosedTabs = new Map();
-    // pushes happen per device, making a timer per device makes sending
-    // the pushes a little more sane
-    this.pushTimers = new Map();
-  }
-
-  /**
-   * Sending a push everytime the user wants to close a tab on a remote device
-   * could lead to excessive notifications to the users device, push throttling, etc
-   * so we add the tabs to a queue and have a timer that sends the push after a certain
-   * amount of "inactivity"
-   */
-  /**
-   * @param {Device} targetDevice - Device object (typically returned by fxAccounts.getDevicesList()).
-   * @param {String} tab - url for the tab to close
-   * @param {Integer} how far to delay, in miliseconds, the push for this timer
-   */
-  enqueueTabToClose(targetDevice, tab, pushDelay = 6000) {
-    if (this.pendingClosedTabs.has(targetDevice.id)) {
-      this.pendingClosedTabs.get(targetDevice.id).tabs.push(tab);
-    } else {
-      this.pendingClosedTabs.set(targetDevice.id, {
-        device: targetDevice,
-        tabs: [tab],
-      });
-    }
-
-    // extend the timer
-    this._refreshPushTimer(targetDevice.id, pushDelay);
-  }
-
-  async _refreshPushTimer(deviceId, pushDelay) {
-    // If the user is still performing "actions" for this device
-    // reset the timer to send the push
-    if (this.pushTimers.has(deviceId)) {
-      clearTimeout(this.pushTimers.get(deviceId));
-    }
-
-    // There is a possibility that the browser closes before this actually executes
-    // we should catch the browser as it's closing and immediately fire these
-    // See https://bugzilla.mozilla.org/show_bug.cgi?id=1888299
-    const timerId = setTimeout(async () => {
-      let { device, tabs } = this.pendingClosedTabs.get(deviceId);
-      // send a push notification for this specific device
-      await this._sendCloseTabPush(device, tabs);
-
-      // Clear the timer
-      this.pushTimers.delete(deviceId);
-      // We also need to locally store the tabs we sent so the user doesn't
-      // see these anymore
-      this.pendingClosedTabs.delete(deviceId);
-
-      // This is used for tests only, to get around timer woes
-      Observers.notify("test:fxaccounts:commands:close-uri:sent");
-    }, pushDelay);
-
-    // Store the new timer with the device
-    this.pushTimers.set(deviceId, timerId);
-  }
+export class CloseRemoteTab extends Command {
+  deviceCapability = COMMAND_CLOSETAB;
+  keyFieldName = "closeTabKeys";
+  encryptedKeyFieldName = "encryptedCloseTabKeys";
 
   /**
    * @param {Device} target - Device object (typically returned by fxAccounts.getDevicesList()).
    * @param {String[]} urls - array of urls that should be closed on the remote device
    */
-  async _sendCloseTabPush(target, urls) {
+  async sendCloseTabsCommand(target, urls, flowID) {
     log.info(`Sending tab closures to ${target.id} device.`);
-    const flowID = this._fxai.telemetry.generateFlowID();
     const encoder = new TextEncoder();
     try {
       const streamID = this._fxai.telemetry.generateFlowID();
@@ -610,22 +563,21 @@ export class CloseRemoteTab {
         this._fxai.telemetry.sanitizeDeviceId(target.id),
         { flowID, streamID }
       );
+      return true;
     } catch (error) {
       // We should also show the user there was some kind've error
       log.error("Error while invoking a send tab command.", error);
+      return false;
     }
   }
 
-  // Returns true if the target device is compatible with FxA Commands Send tab.
+  // Returns true if:
+  // - The target device is compatible with closing a tab (device capability) and
+  // - The local device has the feature enabled locally
   isDeviceCompatible(device) {
-    let pref = Services.prefs.getBoolPref(
-      "identity.fxaccounts.commands.remoteTabManagement.enabled",
-      false
-    );
     return (
-      pref &&
-      device.availableCommands &&
-      device.availableCommands[COMMAND_CLOSETAB]
+      lazy.NimbusFeatures.remoteTabManagement.getVariable("closeTabsEnabled") &&
+      super.isDeviceCompatible(device)
     );
   }
 
@@ -647,143 +599,346 @@ export class CloseRemoteTab {
       urls,
     };
   }
+}
 
-  async _encrypt(bytes, device) {
-    let bundle = device.availableCommands[COMMAND_CLOSETAB];
-    if (!bundle) {
-      throw new Error(`Device ${device.id} does not have close tab keys.`);
-    }
-    const oldsyncKey = await this._fxai.keys.getKeyForScope(SCOPE_OLD_SYNC);
-    const json = JSON.parse(bundle);
-    const wrapper = new lazy.CryptoWrapper();
-    wrapper.deserialize({ payload: json });
-    const syncKeyBundle = lazy.BulkKeyBundle.fromJWK(oldsyncKey);
-    let { publicKey, authSecret } = await wrapper.decrypt(syncKeyBundle);
-    authSecret = urlsafeBase64Decode(authSecret);
-    publicKey = urlsafeBase64Decode(publicKey);
+export class CommandQueue {
+  // The delay between a command being queued and it being actioned. This delay
+  // is primarily to support "undo" functionality in the UI.
+  // It's likely we will end up needing a different delay per command (including no delay), but this
+  // seems fine while we work that out.
+  DELAY = 5000;
 
-    const { ciphertext: encrypted } = await lazy.PushCrypto.encrypt(
-      bytes,
-      publicKey,
-      authSecret
+  // The timer ID if we have one scheduled, otherwise null
+  #timer = null;
+
+  // `this.#onShutdown` bound to `this`.
+  #onShutdownBound = null;
+
+  // Since we only ever show one notification to the user
+  // we keep track of how many tabs have actually been closed
+  // and update the count, user dismissing the notification will
+  // reset the count
+  closeTabNotificationCount = 0;
+  hasPendingCloseTabNotification = false;
+
+  // We ensure the queue is flushed soon after startup. After the first tab sync we see, we
+  // wait for this many seconds of being idle before checking.
+  // Note that this delay has nothing to do with DELAY - that is for "undo" capability, this
+  // delay is to ensure we don't put unnecessary load on the browser during startup.
+  #idleThresholdSeconds = 3;
+  #isObservingTabSyncs = false;
+  // This helps ensure we aren't flushing the queue multiple times concurrently.
+  #flushQueuePromise = null;
+
+  constructor(commands, fxAccountsInternal) {
+    this._commands = commands;
+    this._fxai = fxAccountsInternal;
+    Services.obs.addObserver(this, "services.sync.tabs.command-queued");
+    Services.obs.addObserver(this, "weave:engine:sync:finish");
+    this.#isObservingTabSyncs = true;
+    log.trace("Command queue observer created");
+    this.#onShutdownBound = this.#onShutdown.bind(this);
+    lazy.AsyncShutdown.appShutdownConfirmed.addBlocker(
+      "FxAccountsCommands: flush command queue",
+      this.#onShutdownBound
     );
-    return urlsafeBase64Encode(encrypted);
   }
 
-  async _getPersistedCloseTabKeys() {
-    const { device } = await this._fxai.getUserAccountData(["device"]);
-    return device && device.closeTabKeys;
-  }
-
-  async _decrypt(ciphertext) {
-    let { privateKey, publicKey, authSecret } =
-      await this._getPersistedCloseTabKeys();
-    publicKey = urlsafeBase64Decode(publicKey);
-    authSecret = urlsafeBase64Decode(authSecret);
-    ciphertext = new Uint8Array(urlsafeBase64Decode(ciphertext));
-    return lazy.PushCrypto.decrypt(
-      privateKey,
-      publicKey,
-      authSecret,
-      // The only Push encoding we support.
-      { encoding: "aes128gcm" },
-      ciphertext
+  // Used for tests - when in the browser this object lives forever.
+  shutdown() {
+    if (this.#timer) {
+      clearTimeout(this.#timer);
+    }
+    Services.obs.removeObserver(this, "services.sync.tabs.command-queued");
+    if (this.#isObservingTabSyncs) {
+      Services.obs.removeObserver(this, "weave:engine:sync:finish");
+      this.#isObservingTabSyncs = false;
+    }
+    lazy.AsyncShutdown.appShutdownConfirmed.removeBlocker(
+      this.#onShutdownBound
     );
+    this.#onShutdownBound = null;
   }
 
-  async _generateAndPersistCloseTabKeys() {
-    let [publicKey, privateKey] = await lazy.PushCrypto.generateKeys();
-    publicKey = urlsafeBase64Encode(publicKey);
-    let authSecret = lazy.PushCrypto.generateAuthenticationSecret();
-    authSecret = urlsafeBase64Encode(authSecret);
-    const closeTabKeys = {
-      publicKey,
-      privateKey,
-      authSecret,
-    };
-    await this._fxai.withCurrentAccountState(async state => {
-      const { device } = await state.getUserAccountData(["device"]);
-      await state.updateUserAccountData({
-        device: {
-          ...device,
-          closeTabKeys,
-        },
-      });
-    });
-    return closeTabKeys;
-  }
+  observe(subject, topic, data) {
+    log.trace(
+      `CommandQueue observed topic=${topic}, data=${data}, subject=${subject}`
+    );
+    switch (topic) {
+      case "services.sync.tabs.command-queued":
+        this.flushQueue().catch(e => {
+          log.error("Failed to flush the outgoing queue", e);
+        });
+        break;
 
-  async _getPersistedEncryptedCloseTabKey() {
-    const { encryptedCloseTabKeys } = await this._fxai.getUserAccountData([
-      "encryptedCloseTabKeys",
-    ]);
-    return encryptedCloseTabKeys;
-  }
+      case "weave:engine:sync:finish":
+        // This is to pick up pending commands we failed to send in the last session.
+        if (data != "tabs") {
+          return;
+        }
+        Services.obs.removeObserver(this, "weave:engine:sync:finish");
+        this.#isObservingTabSyncs = false;
+        this.#checkQueueAfterStartup();
+        break;
 
-  async _generateAndPersistEncryptedCloseTabKeys() {
-    let closeTabKeys = await this._getPersistedCloseTabKeys();
-    if (!closeTabKeys) {
-      log.info("Could not find closeTab keys, generating them");
-      closeTabKeys = await this._generateAndPersistCloseTabKeys();
+      default:
+        log.error(`unexpected observer topic: ${topic}`);
     }
-    // Strip the private key from the bundle to encrypt.
-    const keyToEncrypt = {
-      publicKey: closeTabKeys.publicKey,
-      authSecret: closeTabKeys.authSecret,
+  }
+
+  // for test mocking.
+  _getIdleService() {
+    return lazy.idleService;
+  }
+
+  async #checkQueueAfterStartup() {
+    // do this on idle because we are probably syncing quite close to startup.
+    const idleService = this._getIdleService();
+    const idleObserver = (/* subject, topic, data */) => {
+      idleService.removeIdleObserver(idleObserver, this.#idleThresholdSeconds);
+      log.info("checking if the command queue is empty now we are idle");
+      this.flushQueue()
+        .then(didSend => {
+          // TODO: it would be good to get telemetry here, because we expect this to be true rarely.
+          log.info(
+            `pending command check had ${didSend ? "some" : "no"} commands`
+          );
+        })
+        .catch(err => {
+          log.error(
+            "Checking for pending tab commands after first tab sync failed",
+            err
+          );
+        });
     };
-    if (!(await this._fxai.keys.canGetKeyForScope(SCOPE_OLD_SYNC))) {
-      log.info("Can't fetch keys, so unable to determine closeTab keys");
-      return null;
+    idleService.addIdleObserver(idleObserver, this.#idleThresholdSeconds);
+  }
+
+  async flushQueue(isForShutdown = false) {
+    // We really don't want multiple queue flushes concurrently, which is a real possibility.
+    // If we are shutting down and there's already a `flushQueue()` running, it's almost certainly
+    // not going to be `isForShutdown()`. We don't really want to wait for that to complete just
+    // to start another, so there's a risk we will fail to send commands in that scenario - but
+    // we will send them at startup time.
+    if (this.#flushQueuePromise == null) {
+      this.#flushQueuePromise = this.#flushQueue(isForShutdown);
     }
-    let oldsyncKey;
     try {
-      oldsyncKey = await this._fxai.keys.getKeyForScope(SCOPE_OLD_SYNC);
-    } catch (ex) {
-      log.warn(
-        "Failed to fetch keys, so unable to determine closeTab keys",
-        ex
-      );
-      return null;
+      return await this.#flushQueuePromise;
+    } finally {
+      this.#flushQueuePromise = null;
     }
-    const wrapper = new lazy.CryptoWrapper();
-    wrapper.cleartext = keyToEncrypt;
-    const keyBundle = lazy.BulkKeyBundle.fromJWK(oldsyncKey);
-    await wrapper.encrypt(keyBundle);
-    const encryptedCloseTabKeys = JSON.stringify({
-      // This is expected in hex, due to pre-JWK sync key ids :-(
-      kid: this._fxai.keys.kidAsHex(oldsyncKey),
-      IV: wrapper.IV,
-      hmac: wrapper.hmac,
-      ciphertext: wrapper.ciphertext,
-    });
-    await this._fxai.withCurrentAccountState(async state => {
-      await state.updateUserAccountData({
-        encryptedCloseTabKeys,
-      });
-    });
-    return encryptedCloseTabKeys;
   }
 
-  async getEncryptedCloseTabKeys() {
-    let encryptedCloseTabKeys = await this._getPersistedEncryptedCloseTabKey();
-    const closeTabKeys = await this._getPersistedCloseTabKeys();
-    if (!encryptedCloseTabKeys || !closeTabKeys) {
-      log.info("Generating and persisting encrypted closeTab keys");
-      // `_generateAndPersistEncryptedCloseTabKeys` requires the sync key
-      // which cannot be accessed if the login manager is locked
-      // (i.e when the primary password is locked) or if the sync keys
-      // aren't accessible (account isn't verified)
-      // so this function could fail to retrieve the keys
-      // however, device registration will trigger when the account
-      // is verified, so it's OK
-      // Note that it's okay to persist those keys, because they are
-      // already persisted in plaintext and the encrypted bundle
-      // does not include the sync-key (the sync key is used to encrypt
-      // it though)
-      encryptedCloseTabKeys =
-        await this._generateAndPersistEncryptedCloseTabKeys();
+  async #flushQueue(isForShutdown) {
+    // get all the queued items to work out what's ready to send. If a device has queued item less than
+    // our pushDelay, then we don't send *any* command for that device yet, but ensure a timer is set
+    // for the delay.
+    let store = await lazy.getRemoteCommandStore();
+    let pending = await store.getUnsentCommands();
+    log.trace("flushQueue total queued items", pending.length);
+    // any timeRequested less than `sendThreshold` should be sent now (unless we are shutting down,
+    // in which case we send everything now)
+    let now = this.now();
+    // We want to be efficient with batching commands to send to the user
+    // so we categorize things into 3 buckets:
+    // mustSend - overdue and should be sent as early as we can
+    // canSend - is due but not yet "overdue", should be sent if possible
+    // early - can still be undone and should not be sent yet
+    const mustSendThreshold = isForShutdown ? Infinity : now - this.DELAY;
+    const canSendThreshold = isForShutdown ? Infinity : now - this.DELAY * 2;
+    // make a map of deviceId -> device
+    let recentDevices = this._fxai.device.recentDeviceList;
+    if (!recentDevices.length) {
+      // If we can't map a device ID to the device with the keys etc, we are screwed!
+      log.error("No devices available for queued tab commands");
+      return false;
     }
-    return encryptedCloseTabKeys;
+    let deviceMap = new Map(recentDevices.map(d => [d.id, d]));
+    // make a map of commands keyed by device ID.
+    let byDevice = Map.groupBy(pending, c => c.deviceId);
+    let nextTime = Infinity;
+    let didSend = false;
+    for (let [deviceId, commands] of byDevice) {
+      let device = deviceMap.get(deviceId);
+      if (!device) {
+        // If we can't map *this* device ID to a device with the keys etc, we are screwed!
+        // This however *is* possible if the target device was disconnected before we had a chance to send it,
+        // so remove this item.
+        log.warn("Unknown device for queued tab commands", deviceId);
+        await Promise.all(
+          commands.map(command => store.removeRemoteCommand(deviceId, command))
+        );
+        continue;
+      }
+      let toSend = [];
+      // We process in reverse order so it's newest-to-oldest
+      // which means if the newest is already a "must send"
+      // we can simply send all of the "can sends"
+      for (const command of commands.reverse()) {
+        if (!(command.command instanceof lazy.RemoteCommand.CloseTab)) {
+          log.error(`Ignoring unknown pending command ${command}`);
+          continue;
+        }
+        if (command.timeRequested <= mustSendThreshold) {
+          log.trace(
+            `command for url ${command.command.url} is overdue, adding to send`
+          );
+          toSend.push(command);
+        } else if (command.timeRequested <= canSendThreshold) {
+          if (toSend.length) {
+            log.trace(`command for url ${command.command.url} is due,
+              since there others to be sent, also adding to send`);
+            toSend.push(command);
+          } else {
+            // Though it's due, since there are no others we can check again
+            // and see if we can batch
+            nextTime = Math.min(nextTime, command.timeRequested + this.DELAY);
+          }
+        } else {
+          // We set the next timer just a little later to ensure we'll have an overdue
+          nextTime = Math.min(
+            nextTime,
+            command.timeRequested + this.DELAY * 1.1
+          );
+          // Since the list is sorted newest to oldest,
+          // we can assume the rest are not ready
+          break;
+        }
+      }
+
+      if (toSend.length) {
+        let urlsToClose = toSend.map(c => c.command.url);
+        // Generate a flowID to use for all chunked commands
+        const flowID = this._fxai.telemetry.generateFlowID();
+        // If we're dealing with large sets of urls, we should split them across
+        // multiple payloads to prevent breaking the issues for the user
+        let chunks = this.chunkUrls(urlsToClose, COMMAND_MAX_PAYLOAD_SIZE);
+        for (let chunk of chunks) {
+          if (
+            await this._commands.closeTab.sendCloseTabsCommand(
+              device,
+              chunk,
+              flowID
+            )
+          ) {
+            // We build a set from the sent urls for faster comparing
+            const urlChunkSet = new Set(chunk);
+            // success! Mark them as sent.
+            for (let cmd of toSend.filter(c =>
+              urlChunkSet.has(c.command.url)
+            )) {
+              log.trace(
+                `Setting pending command for device ${deviceId} as sent`,
+                cmd
+              );
+              await store.setPendingCommandSent(cmd);
+              didSend = true;
+            }
+          } else {
+            // We should investigate a better backoff strategy
+            // https://bugzilla.mozilla.org/show_bug.cgi?id=1899433
+            // For now just say 60s.
+            log.warn(
+              `Failed to send close tab commands for device ${deviceId}`
+            );
+            nextTime = Math.min(nextTime, now + 60000);
+          }
+        }
+      } else {
+        log.trace(`Skipping send for device ${deviceId}`);
+      }
+    }
+
+    if (didSend) {
+      Services.obs.notifyObservers(null, TOPIC_TABS_CHANGED);
+    }
+
+    if (nextTime == Infinity) {
+      log.info("No new close-tab timer needed");
+    } else if (isForShutdown) {
+      // because we never delay sending in this case the logic above should never set `nextTime`
+      log.error(
+        "logic error in command queue manager: flush for shutdown should never set a timer"
+      );
+    } else {
+      let delay = nextTime - now + 10;
+      log.trace(`Setting new close-tab timer for ${delay}ms`);
+      this._ensureTimer(delay);
+    }
+    return didSend;
+  }
+
+  // Take a an array of urls and a max size and split them into chunks
+  // that are smaller than the passed in max size
+  // Note: This method modifies the passed in array
+  chunkUrls(urls, maxSize) {
+    let chunks = [];
+
+    // For optimal packing, we sort the array of urls from shortest-to-longest
+    urls.sort((a, b) => a.length - b.length);
+
+    while (urls.length) {
+      let chunk = lazy.Utils.tryFitItems(urls, maxSize);
+      if (!chunk.length) {
+        // None of the remaining URLs can fit into a single command
+        urls.forEach(url => {
+          log.warn(`Skipping oversized URL: ${url}`);
+        });
+        break;
+      }
+      chunks.push(chunk);
+      // Remove the processed URLs from the list
+      urls.splice(0, chunk.length);
+    }
+    return chunks;
+  }
+
+  async _ensureTimer(timeout) {
+    log.info(
+      `Setting a new close-tab timer with delay=${timeout} with existing timer=${!!this
+        .#timer}`
+    );
+
+    if (this.#timer) {
+      clearTimeout(this.#timer);
+    }
+
+    // If the browser shuts down while a timer exists we should force the send
+    // While we should pick up the command after a restart, we don't know
+    // how long that will be.
+    // See https://bugzilla.mozilla.org/show_bug.cgi?id=1888299
+    this.#timer = setTimeout(async () => {
+      // XXX - this might be racey - if a new timer fires before this promise resolves - it
+      // might seem unlikely, but network is involved!
+      // flushQueue might create another timer, so we must clear our current timer first.
+      this.#timer = null;
+      await this.flushQueue();
+    }, timeout);
+  }
+
+  // On shutdown we want to send any pending items - ie, pretend the timer fired *now*.
+  // Sadly it's not easy for us to abort any in-flight requests, nor to limit the amount of
+  // time any new requests we create take, so we don't do this for now. This means that in
+  // the case of a super slow network or super slow FxA, we might crash at shutdown, but we
+  // can think of doing this in a followup.
+  async #onShutdown() {
+    // If there is no timer set, then there's nothing pending to do.
+    log.debug(
+      `CommandQueue shutdown is flushing the queue with a timer=${!!this
+        .#timer}`
+    );
+    if (this.#timer) {
+      // We don't want the current one to fire at the same time!
+      clearTimeout(this.#timer);
+      this.#timer = null;
+      await this.flushQueue(true);
+    }
+  }
+
+  // hook points for tests.
+  now() {
+    return Date.now();
   }
 }
 

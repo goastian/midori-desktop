@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.selection.selectable
@@ -36,11 +37,11 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.traversalIndex
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import mozilla.components.compose.base.button.PrimaryButton
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
-import org.mozilla.fenix.compose.button.PrimaryButton
 import org.mozilla.fenix.theme.FirefoxTheme
 
 /**
@@ -49,9 +50,10 @@ import org.mozilla.fenix.theme.FirefoxTheme
  * @param menuItems List of items to be displayed in the menu.
  * @param showMenu Whether or not the menu is currently displayed to the user.
  * @param cornerShape Shape to apply to the corners of the dropdown.
- * @param onDismissRequest Invoked when user dismisses the menu or on orientation changes.
  * @param modifier Modifier to be applied to the menu.
+ * @param canShowCheckItems Whether the user can check items on the dropdown menu.
  * @param offset Offset to be added to the position of the menu.
+ * @param onDismissRequest Invoked when user dismisses the menu or on orientation changes.
  */
 @Suppress("LongMethod")
 @Composable
@@ -59,9 +61,10 @@ private fun Menu(
     menuItems: List<MenuItem>,
     showMenu: Boolean,
     cornerShape: RoundedCornerShape,
-    onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    canShowCheckItems: Boolean = false,
     offset: DpOffset = DpOffset.Zero,
+    onDismissRequest: () -> Unit,
 ) {
     DisposableEffect(LocalConfiguration.current.orientation) {
         onDispose { onDismissRequest() }
@@ -115,7 +118,7 @@ private fun Menu(
                         item.onClick()
                     },
                 ) {
-                    if (hasCheckedItems) {
+                    if (hasCheckedItems || canShowCheckItems) {
                         if (item.isChecked) {
                             selectedItemIndex = index
                             Icon(
@@ -155,25 +158,37 @@ private fun Menu(
  *
  * @param menuItems List of items to be displayed in the menu.
  * @param showMenu Whether or not the menu is currently displayed to the user.
- * @param onDismissRequest Invoked when user dismisses the menu or on orientation changes.
  * @param modifier Modifier to be applied to the menu.
+ * @param canShowCheckItems Whether the user can check items on the dropdown menu.
  * @param offset Offset to be added to the position of the menu.
+ * @param onDismissRequest Invoked when user dismisses the menu or on orientation changes.
  */
+@Deprecated(
+    message = "Use DropdownMenu instead with updated parameters and MenuItem type",
+    replaceWith = ReplaceWith(
+        expression = "DropdownMenu( menuItems = menuItems, expanded = showMenu, modifier = modifier," +
+            " offset = offset, onDismissRequest = onDismissRequest)",
+        imports = ["org.mozilla.fenix.compose.menu.DropdownMenu", "org.mozilla.fenix.compose.menu.MenuItem"],
+    ),
+    level = DeprecationLevel.WARNING,
+)
 @Composable
 fun ContextualMenu(
     menuItems: List<MenuItem>,
     showMenu: Boolean,
-    onDismissRequest: () -> Unit,
     modifier: Modifier = Modifier,
+    canShowCheckItems: Boolean = false,
     offset: DpOffset = DpOffset.Zero,
+    onDismissRequest: () -> Unit,
 ) {
     Menu(
         menuItems = menuItems,
         showMenu = showMenu,
-        cornerShape = RoundedCornerShape(size = 5.dp),
-        onDismissRequest = onDismissRequest,
         modifier = modifier,
+        canShowCheckItems = canShowCheckItems,
+        cornerShape = RoundedCornerShape(size = 5.dp),
         offset = offset,
+        onDismissRequest = onDismissRequest,
     )
 }
 
@@ -194,13 +209,17 @@ data class MenuItem(
     val onClick: () -> Unit,
 )
 
-@LightDarkPreview
+@PreviewLightDark
 @Composable
+@Suppress("Deprecation")
 private fun ContextualMenuPreview() {
     var showMenu by remember { mutableStateOf(false) }
     FirefoxTheme {
         Box(modifier = Modifier.size(400.dp)) {
-            PrimaryButton(text = "Show menu") {
+            PrimaryButton(
+                text = "Show menu",
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 showMenu = true
             }
 

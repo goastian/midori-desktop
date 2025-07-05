@@ -12,7 +12,9 @@ EXPORTS.mozilla += [
     "decimal/Decimal.h",
     "decimal/DoubleConversion.h",
     "IntegerPrintfMacros.h",
+    "LoggingCore.h",
     "MmapFaultHandler.h",
+    "Now.h",
     "PlatformConditionVariable.h",
     "PlatformMutex.h",
     "PlatformRWLock.h",
@@ -44,7 +46,9 @@ SOURCES += [
     "AutoProfilerLabel.cpp",
     "AwakeTimeStamp.cpp",
     "Debug.cpp",
+    "LoggingCore.cpp",
     "MmapFaultHandler.cpp",
+    "Now.cpp",
     "Printf.cpp",
     "SIMD.cpp",
     "StackWalk.cpp",
@@ -99,11 +103,7 @@ if CONFIG["OS_ARCH"] == "WINNT":
         "WindowsUnicode.cpp",
     ]
 
-    OS_LIBS += [
-        "dbghelp",
-        "oleaut32",
-        "ole32",
-    ]
+    OS_LIBS += ["dbghelp", "oleaut32", "ole32", "mincore"]
 
     if not CONFIG["JS_STANDALONE"]:
         SOURCES += [

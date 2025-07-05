@@ -21,13 +21,14 @@ import mozilla.components.concept.engine.cookiehandling.CookieBannersStorage
 import mozilla.components.concept.engine.permission.SitePermissions
 import mozilla.components.feature.session.SessionUseCases
 import mozilla.components.lib.publicsuffixlist.PublicSuffixList
-import mozilla.components.service.glean.private.NoExtras
+import mozilla.components.support.utils.ext.isContentUrl
+import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.GleanMetrics.CookieBanners
 import org.mozilla.fenix.GleanMetrics.Pings
 import org.mozilla.fenix.R
 import org.mozilla.fenix.addons.showSnackBar
 import org.mozilla.fenix.browser.BrowserFragmentDirections
-import org.mozilla.fenix.components.FenixSnackbar
+import org.mozilla.fenix.compose.snackbar.SnackbarState
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getRootView
 import org.mozilla.fenix.ext.runIfFragmentIsAttached
@@ -97,6 +98,7 @@ class DefaultCookieBannerDetailsController(
                                     sessionId = tab.id,
                                     url = tab.content.url,
                                     title = tab.content.title,
+                                    isLocalPdf = tab.content.url.isContentUrl(),
                                     isSecured = tab.content.securityInfo.secure,
                                     sitePermissions = sitePermissions,
                                     gravity = gravity,
@@ -165,7 +167,7 @@ class DefaultCookieBannerDetailsController(
                         showSnackBar(
                             view,
                             context.getString(R.string.cookie_banner_handling_report_site_snack_bar_text_2),
-                            FenixSnackbar.LENGTH_LONG,
+                            SnackbarState.Duration.Preset.Long,
                         )
                     }
                     withContext(Dispatchers.IO) {

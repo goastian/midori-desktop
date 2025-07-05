@@ -9,7 +9,6 @@ from collections import defaultdict
 from operator import itemgetter
 
 import mozpack.path as mozpath
-import six
 from mozpack.chrome.manifest import parse_manifest_line
 
 from mozbuild.backend.base import BuildBackend
@@ -47,10 +46,10 @@ from mozbuild.jar import DeprecatedJarManifest, JarManifestParser
 from mozbuild.preprocessor import Preprocessor
 
 
-class XPIDLManager(object):
+class XPIDLManager:
     """Helps manage XPCOM IDLs in the context of the build system."""
 
-    class Module(object):
+    class Module:
         def __init__(self):
             self.idl_files = set()
             self.directories = set()
@@ -90,10 +89,10 @@ class XPIDLManager(object):
 
         The stem of an IDL file is the basename of the file with no .idl extension.
         """
-        return itertools.chain(*[m.stems() for m in six.itervalues(self.modules)])
+        return itertools.chain(*[m.stems() for m in self.modules.values()])
 
 
-class BinariesCollection(object):
+class BinariesCollection:
     """Tracks state of binaries produced by the build."""
 
     def __init__(self):
@@ -197,6 +196,16 @@ class CommonBackend(BuildBackend):
             ]
             if objdir_files:
                 self._handle_generated_sources(objdir_files)
+            return False
+
+        elif isinstance(obj, FinalTargetPreprocessedFiles):
+            for path, files in obj.files.walk():
+                for f in files:
+                    basename = FinalTargetPreprocessedFiles.get_obj_basename(f)
+                    relpath = mozpath.join(obj.install_target, path, basename)
+                    self._handle_generated_sources(
+                        [ObjDirPath(obj._context, "!/" + relpath).full_path]
+                    )
             return False
 
         else:

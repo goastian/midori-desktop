@@ -4,19 +4,22 @@
 ---
 loader: taskgraph.loader.transform:loader
 
-only-for-attributes:
-    - build_platform
+only-for-build-platforms:
+    - linux64-snap/opt
+    - linux64-snap/debug
 
 transforms:
     - taskgraph.transforms.from_deps
     - gecko_taskgraph.transforms.job
-    - gecko_taskgraph.transforms.task
     - gecko_taskgraph.transforms.snap_test
+    - gecko_taskgraph.transforms.task
 
 kind-dependencies:
     - snap-upstream-build
 
 task-defaults:
+    from-deps:
+        group-by: single-with-filters
     attributes:
         retrigger: true
         cron: true
@@ -26,48 +29,67 @@ task-defaults:
     run:
         using: run-task
         checkout: false
+    fetches:
+        snap-upstream-build:
+            - firefox.snap
+            - snap-tests.zip
     worker:
         max-run-time: 900
         env:
             WAYLAND_DISPLAY: 'wayland-0'
+            MOZ_ENABLE_WAYLAND: '1'
         artifacts:
             - name: public/build
               type: directory
               path: builds/worker/artifacts/
+        os-groups:
+            - snap_sudo
 
 tasks:
-    basic:
-        from-deps:
-            group-by: single-with-filters
-        description: Runs basic tests on a Firefox Snap package
-        worker-type: t-linux-wayland-vm
+    basic-2204:
+        description: Runs basic tests on a Firefox Snap package against Ubuntu 22.04
+        scopes:
+            - generic-worker:os-group:gecko-t/t-linux-2204-wayland-snap/snap_sudo
+        worker-type: t-linux-2204-wayland-snap
         run:
             command: >-
               export TASKCLUSTER_ROOT_DIR=$PWD && cd $MOZ_FETCHES_DIR/ && ./tests.sh --basic
-        fetches:
-            snap-upstream-build:
-                - firefox.snap
-                - snap-tests.zip
-        treeherder:
-            platform: linux64/opt
-            symbol: Sel(basic)
         attributes:
             snap_test_type: basic
+            snap_test_release: "2204"
 
-    qa:
-        from-deps:
-            group-by: single-with-filters
-        description: Runs some QA tests on a Firefox Snap package
-        worker-type: t-linux-wayland-vm
+    qa-2204:
+        description: Runs some QA tests on a Firefox Snap package against Ubuntu 22.04
+        scopes:
+            - generic-worker:os-group:gecko-t/t-linux-2204-wayland-snap/snap_sudo
+        worker-type: t-linux-2204-wayland-snap
         run:
             command: >-
               export TASKCLUSTER_ROOT_DIR=$PWD && cd $MOZ_FETCHES_DIR/ && ./tests.sh --qa
-        fetches:
-            snap-upstream-build:
-                - firefox.snap
-                - snap-tests.zip
-        treeherder:
-            platform: linux64/opt
-            symbol: Sel(QA)
         attributes:
             snap_test_type: qa
+            snap_test_release: "2204"
+
+    basic-2404:
+        description: Runs basic tests on a Firefox Snap package against Ubuntu 24.04
+        scopes:
+            - generic-worker:os-group:gecko-t/t-linux-2404-wayland-snap/snap_sudo
+        worker-type: t-linux-2404-wayland-snap
+        run:
+            command: >-
+              export TASKCLUSTER_ROOT_DIR=$PWD && cd $MOZ_FETCHES_DIR/ && ./tests.sh --basic
+        attributes:
+            snap_test_type: basic
+            snap_test_release: "2404"
+
+    qa-2404:
+        description: Runs some QA tests on a Firefox Snap package against Ubuntu 24.04
+        scopes:
+            - generic-worker:os-group:gecko-t/t-linux-2404-wayland-snap/snap_sudo
+        worker-type: t-linux-2404-wayland-snap
+        run:
+            command: >-
+              export TASKCLUSTER_ROOT_DIR=$PWD && cd $MOZ_FETCHES_DIR/ && ./tests.sh --qa
+        attributes:
+            snap_test_type: qa
+            snap_test_release: "2404"

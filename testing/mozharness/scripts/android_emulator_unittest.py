@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 
 import copy
 import datetime
@@ -152,6 +150,16 @@ class AndroidEmulatorTest(
                     "help": "Extra user prefs.",
                 },
             ],
+            [
+                ["--tag"],
+                {
+                    "action": "append",
+                    "default": [],
+                    "dest": "test_tags",
+                    "help": "Filter out tests that don't have the given tag. Can be used multiple "
+                    "times in which case the test must contain at least one of the given tags.",
+                },
+            ],
         ]
         + copy.deepcopy(testing_config_options)
         + copy.deepcopy(code_coverage_config_options)
@@ -199,6 +207,7 @@ class AndroidEmulatorTest(
         self.disable_fission = c.get("disable_fission")
         self.web_content_isolation_strategy = c.get("web_content_isolation_strategy")
         self.extra_prefs = c.get("extra_prefs")
+        self.test_tags = c.get("test_tags")
 
     def query_abs_dirs(self):
         if self.abs_dirs:
@@ -332,7 +341,7 @@ class AndroidEmulatorTest(
             if category in SUITE_REPEATABLE:
                 cmd.extend(["--repeat=%s" % c.get("repeat")])
             else:
-                self.log("--repeat not supported in {}".format(category), level=WARNING)
+                self.log(f"--repeat not supported in {category}", level=WARNING)
 
         # do not add --disable fission if we don't have --disable-e10s
         if c["disable_fission"] and category not in ["gtest", "cppunittest"]:
@@ -343,11 +352,14 @@ class AndroidEmulatorTest(
                 "--web-content-isolation-strategy=%s"
                 % c["web_content_isolation_strategy"]
             )
-        cmd.extend(["--setpref={}".format(p) for p in self.extra_prefs])
+        cmd.extend([f"--setpref={p}" for p in self.extra_prefs])
 
         if not (self.verify_enabled or self.per_test_coverage):
-            if user_paths:
-                cmd.extend(user_paths)
+            if user_paths or self.test_tags:
+                if user_paths:
+                    cmd.extend(user_paths)
+                if self.test_tags:
+                    cmd.extend([f"--tag={t}" for t in self.test_tags])
             else:
                 if self.this_chunk is not None:
                     cmd.extend(["--this-chunk", self.this_chunk])

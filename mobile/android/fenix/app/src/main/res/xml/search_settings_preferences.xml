@@ -37,6 +37,18 @@
             android:layout="@layout/checkbox_left_preference"
             android:title="@string/preferences_show_search_suggestions_in_private"
             app:iconSpaceReserved="false" />
+        <CheckBoxPreference
+            android:defaultValue="true"
+            android:dependency="@string/pref_key_show_search_suggestions"
+            android:key="@string/pref_key_show_trending_search_suggestions"
+            android:layout="@layout/checkbox_left_preference"
+            android:title="@string/preferences_show_trending_search_suggestions"
+            app:iconSpaceReserved="false" />
+        <SwitchPreference
+            app:iconSpaceReserved="false"
+            android:defaultValue="true"
+            android:key="@string/pref_key_show_recent_search_suggestions"
+            android:title="@string/preferences_show_recent_search_suggestions" />
     </PreferenceCategory>
 
     <PreferenceCategory
@@ -54,6 +66,11 @@
             android:defaultValue="true"
             android:key="@string/pref_key_search_bookmarks"
             android:title='@string/preferences_search_bookmarks' />
+        <SwitchPreference
+            app:iconSpaceReserved="false"
+            android:defaultValue="true"
+            android:key="@string/pref_key_show_shortcuts_suggestions"
+            android:title='@string/preferences_show_shortcuts' />
         <SwitchPreference
             app:iconSpaceReserved="false"
             android:defaultValue="true"

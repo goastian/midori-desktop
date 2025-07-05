@@ -7,15 +7,16 @@ header = """/* This Source Code Form is subject to the terms of the Mozilla Publ
 #ifdef __clang__
 #  pragma GCC diagnostic ignored "-Wreturn-type-c-linkage"
 #endif
-// Work-around silly windows.h define.
-#pragma push_macro("STRICT")
-#undef STRICT
-#pragma push_macro("TRANSPARENT")
-#undef TRANSPARENT
+
+#ifndef mozilla_ServoStyleConsts_h
+#define mozilla_ServoStyleConsts_h
 """
 trailer = """
 #pragma pop_macro("STRICT")
 #pragma pop_macro("TRANSPARENT")
+
+#endif // mozilla_ServoStyleConsts_h
+
 #pragma GCC diagnostic pop
 #include "mozilla/ServoStyleConstsInlines.h"
 """
@@ -23,7 +24,6 @@ autogen_warning = """/* DO NOT MODIFY THIS MANUALLY! This file was generated usi
  * To modify this file, edit servo/ports/geckolib/cbindgen.toml and build Firefox.
  */
 """
-include_guard = "mozilla_ServoStyleConsts_h"
 include_version = true
 braces = "SameLine"
 line_length = 80
@@ -31,6 +31,13 @@ tab_width = 2
 language = "C++"
 namespaces = ["mozilla"]
 includes = ["mozilla/ServoStyleConstsForwards.h", "mozilla/ServoStyleSet.h"]
+after_includes = """
+// Work-around silly windows.h define.
+#pragma push_macro("STRICT")
+#undef STRICT
+#pragma push_macro("TRANSPARENT")
+#undef TRANSPARENT
+"""
 
 [parse]
 parse_deps = true
@@ -81,12 +88,14 @@ exclude = [
 include = [
   "AnchorName",
   "AnchorScope",
+  "AnimationName",
   "AnimationTimeline",
   "AnimationIterationCount",
   "AnimationDirection",
   "AnimationFillMode",
   "AnimationPlayState",
   "AnimationComposition",
+  "AnimationDuration",
   "Appearance",
   "Au",
   "BreakBetween",
@@ -96,14 +105,14 @@ include = [
   "BoolInteger",
   "OutlineStyle",
   "CaptionSide",
+  "ColorGamut",
   "FontSizeAdjust",
   "FontPalette",
   "FontLanguageOverride",
   "FontVariantEastAsian",
   "FontVariantLigatures",
   "FontVariantNumeric",
-  "InsetArea",
-  "InsetAreaKeyword",
+  "ComputedMozPrefFeatureValue",
   "ComputedFontStretchRange",
   "ComputedFontStyleDescriptor",
   "ComputedFontWeightRange",
@@ -116,7 +125,9 @@ include = [
   "DisplayMode",
   "Platform",
   "PositionAnchor",
-  "PositionTryOptions",
+  "PositionArea",
+  "PositionAreaKeyword",
+  "PositionTryFallbacks",
   "PositionTryOrder",
   "PositionVisibility",
   "GtkThemeFamily",
@@ -130,6 +141,7 @@ include = [
   "FontFaceSourceTechFlags",
   "FontLanguageOverride",
   "FontSynthesis",
+  "FontSynthesisStyle",
   "GenericFontFamily",
   "FontFamily",
   "FontFamilyNameSyntax",
@@ -141,7 +153,11 @@ include = [
   "OffsetRotate",
   "RayFunction",
   "UnicodeRange",
+  "UserInput",
+  "UserFocus",
   "UserSelect",
+  "PointerEvents",
+  "Inert",
   "Float",
   "Clear",
   "OverscrollBehavior",
@@ -150,7 +166,7 @@ include = [
   "ScrollSnapStop",
   "ScrollSnapStrictness",
   "ScrollSnapType",
-  "ScrollTimelineName",
+  "TimelineName",
   "TransitionBehavior",
   "ViewTimelineInset",
   "OverflowAnchor",
@@ -171,7 +187,7 @@ include = [
   "Time",
   "Rect",
   "InitialLetter",
-  "IntersectionObserverRootMargin",
+  "IntersectionObserverMargin",
   "Size",
   "MaxSize",
   "FlexBasis",
@@ -180,6 +196,8 @@ include = [
   "BackgroundSize",
   "BaselineSource",
   "BorderImageSlice",
+  "BorderImageRepeat",
+  "BorderImageRepeatKeyword",
   "BorderSpacing",
   "BorderRadius",
   "ColorScheme",
@@ -241,7 +259,6 @@ include = [
   "Translate",
   "BorderImageWidth",
   "ComputedUrl",
-  "ComputedImageUrl",
   "UrlOrNone",
   "Filter",
   "Gradient",
@@ -263,6 +280,7 @@ include = [
   "CounterSet",
   "CounterIncrement",
   "WritingMode",
+  "WritingModeProperty",
   "Content",
   "ContentItem",
   "AlignSelf",
@@ -294,17 +312,38 @@ include = [
   "ImageRendering",
   "PrintColorAdjust",
   "ForcedColorAdjust",
+  "ForcedColors",
   "ScrollbarGutter",
   "ScrollDirection",
   "HyphenateCharacter",
+  "HyphenateLimitChars",
+  "NumberOrAuto",
   "ComputedLinearStop",
   "PiecewiseLinearFunction",
   "BeforeFlag",
+  "VectorEffect",
   "XTextScale",
   "Zoom",
   "TransitionProperty",
+  "ViewTransitionClass",
+  "ViewTransitionName",
+  "Inset",
+  "AnchorFunction",
+  "AnchorSizeFunction",
+  "Margin",
+  "PositionProperty",
+  "PhysicalAxis",
+  "PhysicalSide",
+  "QueryFontMetricsFlags",
 ]
-item_types = ["enums", "structs", "unions", "typedefs", "functions", "constants"]
+item_types = [
+  "enums",
+  "structs",
+  "unions",
+  "typedefs",
+  "functions",
+  "constants",
+]
 renaming_overrides_prefixing = true
 
 # Prevent some renaming for Gecko types that cbindgen doesn't otherwise understand.
@@ -469,7 +508,12 @@ renaming_overrides_prefixing = true
   inline float ToPercentage() const;
   inline bool HasPercent() const;
   inline bool HasLengthAndPercentage() const;
+  inline bool BehavesLikeStretchOnInlineAxis() const;
+  inline bool BehavesLikeStretchOnBlockAxis() const;
   inline bool BehavesLikeInitialValueOnBlockAxis() const;
+  inline bool BehavesLikeInitialValue(LogicalAxis) const;
+  inline bool HasAnchorPositioningFunction() const;
+  inline explicit StyleGenericSize(const LengthPercent &);
 """
 
 "GenericFlexBasis" = """
@@ -483,7 +527,12 @@ renaming_overrides_prefixing = true
   inline float ToPercentage() const;
   inline bool HasPercent() const;
   inline bool HasLengthAndPercentage() const;
+  inline bool BehavesLikeStretchOnInlineAxis() const;
+  inline bool BehavesLikeStretchOnBlockAxis() const;
   inline bool BehavesLikeInitialValueOnBlockAxis() const;
+  inline bool BehavesLikeInitialValue(LogicalAxis) const;
+  inline bool HasAnchorPositioningFunction() const;
+  inline explicit StyleGenericMaxSize(const LengthPercent &);
 """
 
 "GenericPosition" = """
@@ -545,6 +594,10 @@ renaming_overrides_prefixing = true
   inline bool IsUnder() const;
   inline bool IsLeft() const;
   inline bool IsRight() const;
+"""
+
+"VectorEffect" = """
+  bool HasNonScalingStroke() const { return bool(*this & StyleVectorEffect::NON_SCALING_STROKE); }
 """
 
 # TODO(emilio): Add hooks to cbindgen to be able to generate [[nodiscard]]
@@ -723,6 +776,16 @@ renaming_overrides_prefixing = true
   inline nsAtom* AsAtom() const;
 """
 
+"GenericHyphenateLimitChars" = """
+  static StyleGenericHyphenateLimitChars Auto() {
+    return StyleGenericHyphenateLimitChars{
+      StyleNumberOrAuto<Integer>::Auto(),
+      StyleNumberOrAuto<Integer>::Auto(),
+      StyleNumberOrAuto<Integer>::Auto(),
+    };
+  };
+"""
+
 "Atom" = """
   StyleAtom(size_t) = delete;
   StyleAtom() = delete;
@@ -833,8 +896,6 @@ renaming_overrides_prefixing = true
   inline bool IsLocalRef() const;
   inline bool HasRef() const;
   inline StyleCorsMode CorsMode() const;
-  already_AddRefed<nsIURI> ResolveLocalRef(nsIURI* aBase) const;
-  already_AddRefed<nsIURI> ResolveLocalRef(const nsIContent* aContent) const;
 
   // Only relevant for images.
   inline bool IsImageResolved() const;
@@ -908,7 +969,7 @@ renaming_overrides_prefixing = true
   bool IsImageRequestType() const;
 
   // Gets the image request URL.
-  const StyleComputedImageUrl* GetImageRequestURLValue() const;
+  const StyleComputedUrl* GetImageRequestURLValue() const;
 
   // Gets the image data of this image if it has any image request.
   imgRequestProxy* GetImageRequest() const;
@@ -961,11 +1022,6 @@ renaming_overrides_prefixing = true
   bool IsNamedFamily(const nsAString&) const;
 """
 
-"TimelineOrKeyframesName" = """
- public:
-  inline nsAtom* AsAtom() const;
-"""
-
 "FontWeight" = """
  SERVO_FIXED_POINT_HELPERS(StyleFontWeight, uint16_t, StyleFONT_WEIGHT_FRACTION_BITS);
  bool IsNormal() const { return *this == NORMAL; }
@@ -977,8 +1033,7 @@ renaming_overrides_prefixing = true
  SERVO_FIXED_POINT_HELPERS(StyleFontStyle, int16_t, StyleFONT_STYLE_FRACTION_BITS);
  bool IsNormal() const { return *this == NORMAL; }
  inline bool IsItalic() const;
- inline bool IsOblique() const;
- inline float ObliqueAngle() const;  // Only for use when IsOblique() is true
+ inline float ObliqueAngle() const;  // Not for use when IsItalic() is true
  inline float SlantAngle() const;  // Returns angle for any font-style, including
                                    // normal/italic as well as explicit oblique
 """
@@ -1007,14 +1062,31 @@ renaming_overrides_prefixing = true
   StyleAnimationName() : _0(nsGkAtoms::_empty) {}
 """
 
+"TimelineName" = """
+ public:
+  StyleTimelineName() : _0(nsGkAtoms::_empty) {}
+  nsAtom* AsAtom() const { return _0.AsAtom(); }
+"""
+
 "GenericViewTimelineInset" = """
  public:
   inline StyleGenericViewTimelineInset();
 """
 
+"ViewTransitionName" = """
+ public:
+  StyleViewTransitionName() : _0(nsGkAtoms::_empty) {}
+"""
+
 "Time" = """
  float ToSeconds() const { return seconds; }
  float ToMilliseconds() const { return seconds * 1000.0f; }
+"""
+
+"ComputedFontStyleDescriptor" = """
+  inline static StyleComputedFontStyleDescriptor Normal() {
+    return StyleComputedFontStyleDescriptor::Oblique(0, 0);
+  }
 """
 
 "FontFaceSourceTechFlags" = """
@@ -1099,4 +1171,26 @@ renaming_overrides_prefixing = true
     return IsNonCustom() &&
            nsCSSPropertyID(AsNonCustom()._0) == eCSSProperty_all;
   }
+"""
+
+"GenericInset" = """
+  inline bool HasPercent() const;
+  inline bool ConvertsToLength() const;
+  inline bool HasLengthAndPercentage() const;
+  inline bool HasAnchorPositioningFunction() const;
+  inline nscoord ToLength() const;
+  inline bool ConvertsToPercentage() const;
+  inline float ToPercentage() const;
+  inline explicit StyleGenericInset(const LP &);
+"""
+
+"GenericMargin" = """
+  inline bool HasPercent() const;
+  inline bool ConvertsToLength() const;
+  inline bool HasLengthAndPercentage() const;
+  inline nscoord ToLength() const;
+  inline bool ConvertsToPercentage() const;
+  inline float ToPercentage() const;
+  inline bool HasAnchorPositioningFunction() const;
+  inline explicit StyleGenericMargin(const LP &);
 """

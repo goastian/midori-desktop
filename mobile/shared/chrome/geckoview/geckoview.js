@@ -22,6 +22,8 @@ ChromeUtils.defineESModuleGetters(this, {
   RemoteSecuritySettings:
     "resource://gre/modules/psm/RemoteSecuritySettings.sys.mjs",
   SafeBrowsing: "resource://gre/modules/SafeBrowsing.sys.mjs",
+  CaptchaDetectionPingUtils:
+    "resource://gre/modules/CaptchaDetectionPingUtils.sys.mjs",
 });
 
 ChromeUtils.defineLazyGetter(this, "WindowEventDispatcher", () =>
@@ -49,7 +51,7 @@ XPCOMUtils.defineLazyScriptGetter(
  */
 var ModuleManager = {
   get _initData() {
-    return window.arguments[0].QueryInterface(Ci.nsIAndroidView).initData;
+    return window.arguments[0].QueryInterface(Ci.nsIGeckoViewView).initData;
   },
 
   init(aBrowser, aModules) {
@@ -539,10 +541,7 @@ function createBrowser() {
   // This is only needed for mochitests, so that they honor the
   // prefers-color-scheme.content-override pref. GeckoView doesn't set this
   // pref to anything other than the default value otherwise.
-  browser.setAttribute(
-    "style",
-    "color-scheme: env(-moz-content-preferred-color-scheme)"
-  );
+  browser.style.colorScheme = "env(-moz-content-preferred-color-scheme)";
 
   return browser;
 }
@@ -792,6 +791,7 @@ function startup() {
               esModuleURI: "resource://autofill/FormAutofillChild.sys.mjs",
               events: {
                 focusin: {},
+                "form-changed": {},
                 "form-submission-detected": {},
               },
             },
@@ -922,6 +922,14 @@ function startup() {
       Blocklist.loadBlocklistAsync();
     });
 
+    InitLater(() => {
+      // Call the init function for the CaptchaDetectionPingUtils module.
+      // This function adds pref observers that flushes the ping. It also
+      // submits the ping if it has data and has been about 24 hours since the
+      // last submission.
+      CaptchaDetectionPingUtils.init();
+    });
+
     // This should always go last, since the idle tasks (except for the ones with
     // timeouts) should execute in order. Note that this observer notification is
     // not guaranteed to fire, since the window could close before we get here.
@@ -943,3 +951,5 @@ function startup() {
 
   InitializationTracker.onInitialized(performance.now());
 }
+
+window.addEventListener("DOMContentLoaded", startup, { once: true });

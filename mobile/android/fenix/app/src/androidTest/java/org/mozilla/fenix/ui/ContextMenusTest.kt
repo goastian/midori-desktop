@@ -12,6 +12,7 @@ import org.mozilla.fenix.helpers.AppAndSystemHelper.assertExternalAppOpens
 import org.mozilla.fenix.helpers.Constants.PackageName.YOUTUBE_APP
 import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.MatcherHelper.itemContainingText
+import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdAndText
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithText
 import org.mozilla.fenix.helpers.RetryTestRule
 import org.mozilla.fenix.helpers.TestAssetHelper
@@ -19,6 +20,7 @@ import org.mozilla.fenix.helpers.TestHelper.clickSnackbarButton
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestHelper.verifySnackBarText
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.clickContextMenuItem
 import org.mozilla.fenix.ui.robots.clickPageObject
 import org.mozilla.fenix.ui.robots.downloadRobot
@@ -46,15 +48,20 @@ class ContextMenusTest : TestSetup() {
     val composeTestRule =
         AndroidComposeTestRule(
             HomeActivityIntentTestRule(
-                isJumpBackInCFREnabled = false,
+                // workaround for toolbar at top position by default
+                // remove with https://bugzilla.mozilla.org/show_bug.cgi?id=1917640
+                shouldUseBottomToolbar = true,
             ),
         ) { it.activity }
 
-    @Rule(order = 1)
+    @get:Rule(order = 1)
+    val memoryLeaksRule = DetectMemoryLeaksRule()
+
+    @Rule(order = 2)
     @JvmField
     val retryTestRule = RetryTestRule(3)
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/243837
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/243837
     @Test
     fun verifyOpenLinkNewTabContextMenuOptionTest() {
         val pageLinks =
@@ -69,7 +76,7 @@ class ContextMenusTest : TestSetup() {
             verifyContextMenuForLocalHostLinks(genericURL.url)
             clickContextMenuItem("Open link in new tab")
             verifySnackBarText("New tab opened")
-            clickSnackbarButton("SWITCH")
+            clickSnackbarButton(composeTestRule, "SWITCH")
             verifyUrl(genericURL.url.toString())
         }.openTabDrawer(composeTestRule) {
             verifyNormalBrowsingButtonIsSelected()
@@ -78,7 +85,7 @@ class ContextMenusTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/244655
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/244655
     @Test
     fun verifyOpenLinkInNewPrivateTabContextMenuOptionTest() {
         val pageLinks =
@@ -93,7 +100,7 @@ class ContextMenusTest : TestSetup() {
             verifyContextMenuForLocalHostLinks(genericURL.url)
             clickContextMenuItem("Open link in private tab")
             verifySnackBarText("New private tab opened")
-            clickSnackbarButton("SWITCH")
+            clickSnackbarButton(composeTestRule, "SWITCH")
             verifyUrl(genericURL.url.toString())
         }.openTabDrawer(composeTestRule) {
             verifyPrivateBrowsingButtonIsSelected()
@@ -101,7 +108,7 @@ class ContextMenusTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/243832
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/243832
     @Test
     fun verifyCopyLinkContextMenuOptionTest() {
         val pageLinks =
@@ -122,7 +129,7 @@ class ContextMenusTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/243838
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/243838
     @Test
     fun verifyShareLinkContextMenuOptionTest() {
         val pageLinks =
@@ -138,11 +145,12 @@ class ContextMenusTest : TestSetup() {
             clickContextMenuItem("Share link")
             shareOverlay {
                 verifyShareLinkIntent(genericURL.url)
+                mDevice.pressBack()
             }
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/243833
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/243833
     @Test
     fun verifyOpenImageNewTabContextMenuOptionTest() {
         val pageLinks =
@@ -157,12 +165,12 @@ class ContextMenusTest : TestSetup() {
             verifyLinkImageContextMenuItems(imageResource.url)
             clickContextMenuItem("Open image in new tab")
             verifySnackBarText("New tab opened")
-            clickSnackbarButton("SWITCH")
+            clickSnackbarButton(composeTestRule, "SWITCH")
             verifyUrl(imageResource.url.toString())
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/243834
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/243834
     @Test
     fun verifyCopyImageLocationContextMenuOptionTest() {
         val pageLinks =
@@ -183,7 +191,7 @@ class ContextMenusTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/243835
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/243835
     @Test
     fun verifySaveImageContextMenuOptionTest() {
         val pageLinks =
@@ -207,7 +215,7 @@ class ContextMenusTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/352050
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/352050
     @Test
     fun verifyContextMenuLinkVariationsTest() {
         val pageLinks =
@@ -231,7 +239,7 @@ class ContextMenusTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2333840
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2333840
     @Test
     fun verifyPDFContextMenuLinkVariationsTest() {
         val genericURL =
@@ -241,6 +249,7 @@ class ContextMenusTest : TestSetup() {
         }.enterURLAndEnterToBrowser(genericURL.url) {
             clickPageObject(itemWithText("PDF form file"))
             waitForPageToLoad()
+            clickPageObject(itemWithResIdAndText("android:id/button2", "CANCEL"))
             longClickPageObject(itemWithText("Wikipedia link"))
             verifyContextMenuForLinksToOtherHosts("wikipedia.org".toUri())
             dismissContentContextMenu()
@@ -252,7 +261,7 @@ class ContextMenusTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/832094
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/832094
     @Test
     fun verifyOpenLinkInAppContextMenuOptionTest() {
         val defaultWebPage = TestAssetHelper.getExternalLinksAsset(mockWebServer)

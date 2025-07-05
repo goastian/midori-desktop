@@ -16,6 +16,7 @@ user_pref("browser.newtabpage.activity-stream.asrouter.providers.messaging-exper
 user_pref("browser.newtabpage.activity-stream.feeds.system.topstories", false);
 user_pref("browser.newtabpage.activity-stream.tippyTop.service.endpoint", "");
 user_pref("browser.newtabpage.activity-stream.discoverystream.config", "[]");
+user_pref("browser.newtabpage.activity-stream.unifiedAds.endpoint", "");
 
 // For Activity Stream firstrun page, use an empty string to avoid fetching.
 user_pref("browser.newtabpage.activity-stream.fxaccounts.endpoint", "");
@@ -67,6 +68,11 @@ user_pref("media.block-autoplay-until-in-foreground", false);
 user_pref("toolkit.telemetry.coverage.endpoint.base", "http://localhost");
 // Don't ask for a request in testing unless explicitly set this as true.
 user_pref("media.geckoview.autoplay.request", false);
+// No need to delay wakelock releasing for testing
+user_pref("media.wakelock.audio.delay-releasing.ms", 0);
+// Don't use SCContentSharingPicker in tests as it will block on user
+// interaction.
+user_pref("media.getdisplaymedia.screencapturekit.picker.enabled", false);
 user_pref("geo.provider.network.compare.url", "");
 user_pref("browser.region.network.url", "");
 // Do not unload tabs on low memory when testing
@@ -95,3 +101,5 @@ user_pref("widget.gtk.overlay-scrollbars.enabled", false);
 // Generally, we don't want daily idle tasks run during tests. Specific tests
 // can re-enable if needed.
 user_pref("idle.lastDailyNotification", -1);
+// Honor logging prefs set for certain test suites.
+user_pref("logging.config.clear_on_startup", false);

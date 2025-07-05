@@ -1,9 +1,7 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 """Generic logging classes and functionalities for single and multi file logging.
 Capturing console output and providing general logging functionalities.
 
@@ -66,7 +64,7 @@ logging.Formatter.converter = time.gmtime
 
 
 # LogMixin {{{1
-class LogMixin(object):
+class LogMixin:
     """This is a mixin for any object to access similar logging functionality
 
     The logging functionality described here is specially useful for those
@@ -372,7 +370,7 @@ class OutputParser(LogMixin):
 
 
 # BaseLogger {{{1
-class BaseLogger(object):
+class BaseLogger:
     """Base class in charge of logging handling logic such as creating logging
     files, dirs, attaching to the console output and managing its output.
 

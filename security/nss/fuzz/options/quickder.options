@@ -1,3 +1,4 @@
 [libfuzzer]
-max_len = 10000
+len_control = 100
+max_len = 16777215
 

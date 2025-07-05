@@ -201,13 +201,14 @@ def make_task_description(config, jobs):
             task["scopes"] = [
                 add_scope_prefix(config, "signing:cert:release-apple-notarization")
             ]
-            task[
-                "description"
-            ] = "Notarization of '{}' locales for build '{}/{}'".format(
-                get_locales_description(attributes, "en-US"),
-                build_platform,
-                attributes.get("build_type"),
+            task["description"] = (
+                "Notarization of '{}' locales for build '{}/{}'".format(
+                    get_locales_description(attributes, "en-US"),
+                    build_platform,
+                    attributes.get("build_type"),
+                )
             )
+            task["retries"] = 0
         elif "macosx" in build_platform:
             # iscript overrides
             task["worker"]["mac-behavior"] = "mac_sign_and_pkg"
@@ -219,7 +220,7 @@ def make_task_description(config, jobs):
             assert worker_type_alias in worker_type_alias_map, (
                 "Make sure to adjust the below worker_type_alias logic for "
                 "mac if you change the signing workerType aliases!"
-                " ({} not found in mapping)".format(worker_type_alias)
+                f" ({worker_type_alias} not found in mapping)"
             )
             worker_type_alias = worker_type_alias_map[worker_type_alias]
             for attr in ("entitlements-url", "requirements-plist-url"):

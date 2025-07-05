@@ -8,6 +8,10 @@ import android.content.Context
 import android.net.Uri
 import android.util.Log
 import android.view.View
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.ComposeTestRule
+import androidx.compose.ui.test.performClick
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.longClick
 import androidx.test.espresso.intent.Intents
@@ -18,9 +22,10 @@ import androidx.test.espresso.matcher.ViewMatchers.withParent
 import androidx.test.espresso.matcher.ViewMatchers.withText
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.By.res
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject
-import androidx.test.uiautomator.UiObjectNotFoundException
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.UiScrollable
 import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
@@ -31,11 +36,11 @@ import org.junit.Assert
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.mozilla.fenix.R
-import org.mozilla.fenix.helpers.Constants.RETRY_COUNT
+import org.mozilla.fenix.compose.snackbar.SNACKBAR_BUTTON_TEST_TAG
+import org.mozilla.fenix.compose.snackbar.SNACKBAR_TEST_TAG
 import org.mozilla.fenix.helpers.Constants.TAG
 import org.mozilla.fenix.helpers.MatcherHelper.assertUIObjectExists
 import org.mozilla.fenix.helpers.MatcherHelper.itemContainingText
-import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdAndText
 import org.mozilla.fenix.helpers.TestAssetHelper.waitingTime
 import org.mozilla.fenix.helpers.TestAssetHelper.waitingTimeShort
 import org.mozilla.fenix.helpers.TestAssetHelper.waitingTimeVeryShort
@@ -112,31 +117,19 @@ object TestHelper {
         )
     }
 
-    fun clickSnackbarButton(expectedText: String) {
-        for (i in 1..RETRY_COUNT) {
-            Log.i(TAG, "clickSnackbarButton: Started try #$i")
-            try {
-                Log.i(TAG, "clickSnackbarButton: Waiting for $waitingTimeShort ms for the $expectedText snackbar button to exist")
-                itemWithResIdAndText("$packageName:id/snackbar_btn", expectedText).waitForExists(waitingTimeShort)
-                Log.i(TAG, "clickSnackbarButton: Waited for $waitingTimeShort ms for the $expectedText snackbar button to exist")
-                Log.i(TAG, "clickSnackbarButton: Trying to click the $expectedText and wait for $waitingTime ms for a new window")
-                itemWithResIdAndText("$packageName:id/snackbar_btn", expectedText).clickAndWaitForNewWindow(waitingTimeShort)
-                Log.i(TAG, "clickSnackbarButton: Clicked the $expectedText and waited for $waitingTime ms for a new window")
-
-                break
-            } catch (e: UiObjectNotFoundException) {
-                Log.i(TAG, "clickSnackbarButton: UiObjectNotFoundException caught, executing fallback methods")
-                if (i == RETRY_COUNT) {
-                    throw e
-                }
-            }
-        }
+    fun clickSnackbarButton(composeTestRule: ComposeTestRule, expectedText: String) {
+        Log.i(TAG, "clickSnackbarButton: Waiting for compose test rule to be idle")
+        composeTestRule.waitForIdle()
+        Log.i(TAG, "clickSnackbarButton: Waited for compose test rule to be idle")
+        Log.i(TAG, "clickSnackbarButton: Trying to click $expectedText snackbar button")
+        composeTestRule.onNode(hasTestTag(SNACKBAR_BUTTON_TEST_TAG) or hasText(expectedText)).performClick()
+        Log.i(TAG, "clickSnackbarButton: Clicked $expectedText snackbar button")
     }
 
     fun waitUntilSnackbarGone() {
         Log.i(TAG, "waitUntilSnackbarGone: Waiting for $waitingTime ms until the snckabar is gone")
         mDevice.findObject(
-            UiSelector().resourceId("$packageName:id/snackbar_layout"),
+            UiSelector().resourceId(SNACKBAR_TEST_TAG),
         ).waitUntilGone(waitingTime)
         Log.i(TAG, "waitUntilSnackbarGone: Waited for $waitingTime ms until the snckabar was gone")
     }
@@ -190,4 +183,28 @@ object TestHelper {
         mDevice.waitForWindowUpdate(packageName, waitingTimeVeryShort)
         Log.i(TAG, "waitForAppWindowToBeUpdated: Waited for $waitingTimeVeryShort ms for $packageName window to be updated")
     }
+
+    fun setPortraitDisplayOrientation() {
+        Log.i(TAG, "setPortraitDisplayOrientation: Trying to set device display orientation to portrait")
+        mDevice.setOrientationPortrait()
+        Log.i(TAG, "setPortraitDisplayOrientation: Display orientation was set to portrait")
+        Log.i(TAG, "setPortraitDisplayOrientation: Waiting for device to be idle")
+        mDevice.waitForIdle()
+        Log.i(TAG, "setPortraitDisplayOrientation: Waited for device to be idle")
+    }
+
+    fun setLandscapeDisplayOrientation() {
+        Log.i(TAG, "setLandscapeDisplayOrientation: Trying to set device display orientation to landscape")
+        mDevice.setOrientationLandscape()
+        Log.i(TAG, "setLandscapeDisplayOrientation: Display orientation was set to landscape")
+        Log.i(TAG, "setLandscapeDisplayOrientation: Waiting for device to be idle")
+        mDevice.waitForIdle()
+        Log.i(TAG, "setLandscapeDisplayOrientation: Waited for device to be idle")
+    }
+
+    val snackbar: UiObject2?
+        get() = mDevice.findObject(res(SNACKBAR_TEST_TAG))
+
+    val snackbarButton: UiObject2?
+        get() = mDevice.findObject(res(SNACKBAR_BUTTON_TEST_TAG))
 }

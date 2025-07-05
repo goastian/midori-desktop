@@ -14,6 +14,7 @@ import android.text.InputFilter
 import android.text.format.DateUtils
 import android.view.View
 import androidx.appcompat.app.AlertDialog
+import androidx.core.content.edit
 import androidx.lifecycle.lifecycleScope
 import androidx.navigation.fragment.findNavController
 import androidx.preference.CheckBoxPreference
@@ -40,9 +41,10 @@ import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.FeatureFlags
 import org.mozilla.fenix.GleanMetrics.SyncAccount
 import org.mozilla.fenix.R
-import org.mozilla.fenix.components.FenixSnackbar
 import org.mozilla.fenix.components.StoreProvider
 import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
+import org.mozilla.fenix.compose.snackbar.Snackbar
+import org.mozilla.fenix.compose.snackbar.SnackbarState
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getPreferenceKey
 import org.mozilla.fenix.ext.requireComponents
@@ -68,12 +70,12 @@ class AccountSettingsFragment : PreferenceFragmentCompat() {
 
         override fun onLoggedOut() {
             viewLifecycleOwner.lifecycleScope.launch {
-                findNavController().popBackStack()
+                findNavController().popBackStack(R.id.accountSettingsFragment, inclusive = true)
 
                 // Remove the device name when we log out.
                 context?.let {
                     val deviceNameKey = it.getPreferenceKey(R.string.pref_key_sync_device_name)
-                    preferenceManager.sharedPreferences?.edit()?.remove(deviceNameKey)?.apply()
+                    preferenceManager.sharedPreferences?.edit { remove(deviceNameKey) }
                 }
             }
         }
@@ -326,7 +328,7 @@ class AccountSettingsFragment : PreferenceFragmentCompat() {
             isChecked = syncEnginesStatus.getOrElse(SyncEngine.Tabs) { true }
         }
         requirePreference<CheckBoxPreference>(R.string.pref_key_sync_address).apply {
-            isVisible = FeatureFlags.syncAddressesFeature
+            isVisible = FeatureFlags.SYNC_ADDRESSES_FEATURE
             isEnabled = syncEnginesStatus.containsKey(SyncEngine.Addresses)
             isChecked = syncEnginesStatus.getOrElse(SyncEngine.Addresses) { true }
         }
@@ -405,13 +407,13 @@ class AccountSettingsFragment : PreferenceFragmentCompat() {
     private fun getChangeListenerForDeviceName(): Preference.OnPreferenceChangeListener {
         return Preference.OnPreferenceChangeListener { _, newValue ->
             accountSettingsInteractor.onChangeDeviceName(newValue as String) {
-                FenixSnackbar.make(
-                    view = requireView(),
-                    duration = FenixSnackbar.LENGTH_LONG,
-                    isDisplayedWithBrowserToolbar = false,
-                )
-                    .setText(getString(R.string.empty_device_name_error))
-                    .show()
+                Snackbar.make(
+                    snackBarParentView = requireView(),
+                    snackbarState = SnackbarState(
+                        message = getString(R.string.empty_device_name_error),
+                        duration = SnackbarState.Duration.Preset.Long,
+                    ),
+                ).show()
             }
         }
     }
@@ -426,6 +428,7 @@ class AccountSettingsFragment : PreferenceFragmentCompat() {
 
         override fun onStarted() {
             viewLifecycleOwner.lifecycleScope.launch {
+                @Suppress("DEPRECATION")
                 view?.announceForAccessibility(getString(R.string.sync_syncing_in_progress))
                 pref.title = getString(R.string.sync_syncing_in_progress)
                 pref.isEnabled = false

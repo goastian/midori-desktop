@@ -30,8 +30,8 @@ namespace net {
 
 // Target spec and optional proxy type to use, set by the respective
 // initialization function so we can cover all combinations.
-static nsAutoCString httpSpec;
-static nsAutoCString proxyType;
+MOZ_RUNINIT static nsAutoCString httpSpec;
+MOZ_RUNINIT static nsAutoCString proxyType;
 static size_t minSize;
 
 static int FuzzingInitNetworkHttp(int* argc, char*** argv) {
@@ -167,13 +167,15 @@ static int FuzzingRunNetworkHttp(const uint8_t* data, size_t size) {
         MOZ_CRASH("do_QueryInterface failed.");
       }
 
-      loadInfo = new LoadInfo(
-          nsContentUtils::GetSystemPrincipal(),  // loading principal
-          nsContentUtils::GetSystemPrincipal(),  // triggering principal
-          nullptr,                               // Context
-          secFlags, nsIContentPolicy::TYPE_INTERNAL_XMLHTTPREQUEST_ASYNC,
-          Maybe<mozilla::dom::ClientInfo>(),
-          Maybe<mozilla::dom::ServiceWorkerDescriptor>(), sandboxFlags);
+      loadInfo =
+          LoadInfo::Create(
+              nsContentUtils::GetSystemPrincipal(),  // loading principal
+              nsContentUtils::GetSystemPrincipal(),  // triggering principal
+              nullptr,                               // Context
+              secFlags, nsIContentPolicy::TYPE_INTERNAL_XMLHTTPREQUEST_ASYNC,
+              Maybe<mozilla::dom::ClientInfo>(),
+              Maybe<mozilla::dom::ServiceWorkerDescriptor>(), sandboxFlags)
+              .unwrap();
 
       rv = pph->NewProxiedChannel(url, proxyInfo,
                                   0,        // aProxyResolveFlags

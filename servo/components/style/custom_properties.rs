@@ -24,7 +24,7 @@ use crate::properties_and_values::{
 use crate::selector_map::{PrecomputedHashMap, PrecomputedHashSet};
 use crate::stylesheets::UrlExtraData;
 use crate::stylist::Stylist;
-use crate::values::computed;
+use crate::values::computed::{self, ToComputedValue};
 use crate::values::specified::FontRelativeLength;
 use crate::Atom;
 use cssparser::{
@@ -79,8 +79,9 @@ fn get_safearea_inset_right(device: &Device, url_data: &UrlExtraData) -> Variabl
     VariableValue::pixels(device.safe_area_insets().right, url_data)
 }
 
+#[cfg(feature = "gecko")]
 fn get_content_preferred_color_scheme(device: &Device, url_data: &UrlExtraData) -> VariableValue {
-    use crate::gecko::media_features::PrefersColorScheme;
+    use crate::queries::values::PrefersColorScheme;
     let prefers_color_scheme = unsafe {
         crate::gecko_bindings::bindings::Gecko_MediaFeatures_PrefersColorScheme(
             device.document(),
@@ -96,6 +97,12 @@ fn get_content_preferred_color_scheme(device: &Device, url_data: &UrlExtraData) 
     )
 }
 
+#[cfg(feature = "servo")]
+fn get_content_preferred_color_scheme(_device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    // TODO: Add an implementation for Servo.
+    VariableValue::ident("light", url_data)
+}
+
 fn get_scrollbar_inline_size(device: &Device, url_data: &UrlExtraData) -> VariableValue {
     VariableValue::pixels(device.scrollbar_inline_size().px(), url_data)
 }
@@ -107,6 +114,7 @@ static ENVIRONMENT_VARIABLES: [EnvironmentVariable; 4] = [
     make_variable!(atom!("safe-area-inset-right"), get_safearea_inset_right),
 ];
 
+#[cfg(feature = "gecko")]
 macro_rules! lnf_int {
     ($id:ident) => {
         unsafe {
@@ -114,6 +122,14 @@ macro_rules! lnf_int {
                 crate::gecko_bindings::bindings::LookAndFeel_IntID::$id as i32,
             )
         }
+    };
+}
+
+#[cfg(feature = "servo")]
+macro_rules! lnf_int {
+    ($id:ident) => {
+        // TODO: Add an implementation for Servo.
+        0
     };
 }
 
@@ -126,7 +142,14 @@ macro_rules! lnf_int_variable {
     }};
 }
 
-static CHROME_ENVIRONMENT_VARIABLES: [EnvironmentVariable; 9] = [
+fn eval_gtk_csd_titlebar_radius(device: &Device, url_data: &UrlExtraData) -> VariableValue {
+    let int_pixels = lnf_int!(TitlebarRadius);
+    let unzoomed_scale =
+        device.device_pixel_ratio_ignoring_full_zoom().get() / device.device_pixel_ratio().get();
+    VariableValue::pixels(int_pixels as f32 * unzoomed_scale, url_data)
+}
+
+static CHROME_ENVIRONMENT_VARIABLES: [EnvironmentVariable; 10] = [
     lnf_int_variable!(
         atom!("-moz-mac-titlebar-height"),
         MacTitlebarHeight,
@@ -137,9 +160,13 @@ static CHROME_ENVIRONMENT_VARIABLES: [EnvironmentVariable; 9] = [
         TitlebarButtonSpacing,
         int_pixels
     ),
-    lnf_int_variable!(
+    make_variable!(
         atom!("-moz-gtk-csd-titlebar-radius"),
-        TitlebarRadius,
+        eval_gtk_csd_titlebar_radius
+    ),
+    lnf_int_variable!(
+        atom!("-moz-gtk-csd-tooltip-radius"),
+        TooltipRadius,
         int_pixels
     ),
     lnf_int_variable!(
@@ -222,6 +249,23 @@ pub struct VariableValue {
 
 trivial_to_computed_value!(VariableValue);
 
+/// Given a potentially registered variable value turn it into a computed custom property value.
+pub fn compute_variable_value(
+    value: &Arc<VariableValue>,
+    registration: &PropertyRegistrationData,
+    computed_context: &computed::Context,
+) -> Option<ComputedRegisteredValue> {
+    if registration.syntax.is_universal() {
+        return Some(ComputedRegisteredValue::universal(Arc::clone(value)));
+    }
+    compute_value(
+        &value.css,
+        &value.url_data,
+        registration,
+        computed_context,
+    ).ok()
+}
+
 // For all purposes, we want values to be considered equal if their css text is equal.
 impl PartialEq for VariableValue {
     fn eq(&self, other: &Self) -> bool {
@@ -275,11 +319,6 @@ impl ComputedCustomProperties {
         name: &Name,
         value: ComputedRegisteredValue,
     ) {
-        // Broadening the assert to
-        // registration.syntax.is_universal() ^ value.as_universal().is_none() would require
-        // rewriting the cascade to not temporarily store unparsed custom properties with references
-        // as universal in the custom properties map.
-        debug_assert!(!registration.syntax.is_universal() || value.as_universal().is_some());
         self.map_mut(registration).insert(name, value)
     }
 
@@ -902,26 +941,29 @@ pub struct CustomPropertiesBuilder<'a, 'b: 'a> {
     references_from_non_custom_properties: NonCustomReferenceMap<Vec<Name>>,
 }
 
-fn has_non_custom_dependency(
+fn find_non_custom_references(
     registration: &PropertyRegistrationData,
     value: &VariableValue,
     may_have_color_scheme: bool,
     is_root_element: bool,
-) -> bool {
+    include_universal: bool,
+) -> Option<NonCustomReferences> {
     let dependent_types = registration.syntax.dependent_types();
-    if dependent_types.is_empty() {
-        return false;
-    }
-    if dependent_types.intersects(DependentDataTypes::COLOR) && may_have_color_scheme {
-        return true;
-    }
-    if dependent_types.intersects(DependentDataTypes::LENGTH) {
+    let may_reference_length = dependent_types.intersects(DependentDataTypes::LENGTH) ||
+        (include_universal && registration.syntax.is_universal());
+    if may_reference_length {
         let value_dependencies = value.references.non_custom_references(is_root_element);
         if !value_dependencies.is_empty() {
-            return true;
+            return Some(value_dependencies);
         }
     }
-    false
+    if dependent_types.intersects(DependentDataTypes::COLOR) && may_have_color_scheme {
+        // NOTE(emilio): We might want to add a NonCustomReferences::COLOR_SCHEME or something but
+        // it's not really needed for correctness, so for now we use an Option for that to signal
+        // that there might be a dependencies.
+        return Some(NonCustomReferences::empty());
+    }
+    None
 }
 
 impl<'a, 'b: 'a> CustomPropertiesBuilder<'a, 'b> {
@@ -994,7 +1036,7 @@ impl<'a, 'b: 'a> CustomPropertiesBuilder<'a, 'b> {
         let map = &mut self.custom_properties;
         let registration = self.stylist.get_custom_property_registration(&name);
         match value {
-            CustomDeclarationValue::Value(unparsed_value) => {
+            CustomDeclarationValue::Unparsed(unparsed_value) => {
                 // At this point of the cascade we're not guaranteed to have seen the color-scheme
                 // declaration, so need to assume the worst. We could track all system color
                 // keyword tokens + the light-dark() function, but that seems non-trivial /
@@ -1003,12 +1045,14 @@ impl<'a, 'b: 'a> CustomPropertiesBuilder<'a, 'b> {
                 // Non-custom dependency is really relevant for registered custom properties
                 // that require computed value of such dependencies.
                 let has_dependency = unparsed_value.references.any_var ||
-                    has_non_custom_dependency(
+                    find_non_custom_references(
                         registration,
                         unparsed_value,
                         may_have_color_scheme,
                         self.computed_context.is_root_element(),
-                    );
+                        /* include_unregistered = */ false,
+                    )
+                    .is_some();
                 // If the variable value has no references to other properties, perform
                 // substitution here instead of forcing a full traversal in `substitute_all`
                 // afterwards.
@@ -1023,6 +1067,10 @@ impl<'a, 'b: 'a> CustomPropertiesBuilder<'a, 'b> {
                 }
                 self.may_have_cycles = true;
                 let value = ComputedRegisteredValue::universal(Arc::clone(unparsed_value));
+                map.insert(registration, name, value);
+            },
+            CustomDeclarationValue::Parsed(parsed_value) => {
+                let value = parsed_value.to_computed_value(&self.computed_context);
                 map.insert(registration, name, value);
             },
             CustomDeclarationValue::CSSWideKeyword(keyword) => match keyword {
@@ -1165,62 +1213,82 @@ impl<'a, 'b: 'a> CustomPropertiesBuilder<'a, 'b> {
         }
 
         let existing_value = self.custom_properties.get(registration, &name);
-        match (existing_value, value) {
-            (None, &CustomDeclarationValue::CSSWideKeyword(CSSWideKeyword::Initial)) => {
-                debug_assert!(registration.inherits(), "Should've been handled earlier");
-                // The initial value of a custom property without a
-                // guaranteed-invalid initial value is the same as it
-                // not existing in the map.
-                if registration.initial_value.is_none() {
-                    return false;
+        let existing_value = match existing_value {
+            None => {
+                if matches!(value, CustomDeclarationValue::CSSWideKeyword(CSSWideKeyword::Initial)) {
+                    debug_assert!(registration.inherits(), "Should've been handled earlier");
+                    // The initial value of a custom property without a
+                    // guaranteed-invalid initial value is the same as it
+                    // not existing in the map.
+                    if registration.initial_value.is_none() {
+                        return false;
+                    }
                 }
+                return true;
             },
-            (
-                Some(existing_value),
-                &CustomDeclarationValue::CSSWideKeyword(CSSWideKeyword::Initial),
-            ) => {
-                debug_assert!(registration.inherits(), "Should've been handled earlier");
-                // Don't bother overwriting an existing value with the initial value specified in
-                // the registration.
-                if let Some(initial_value) = self
-                    .stylist
-                    .get_custom_property_initial_values()
-                    .get(registration, name)
-                {
-                    return existing_value != initial_value;
-                }
-            },
-            (Some(_), &CustomDeclarationValue::CSSWideKeyword(CSSWideKeyword::Inherit)) => {
-                debug_assert!(!registration.inherits(), "Should've been handled earlier");
-                // existing_value is the registered initial value.
-                // Don't bother adding it to self.custom_properties.non_inherited
-                // if the key is also absent from self.inherited.non_inherited.
-                if self
-                    .computed_context
-                    .inherited_custom_properties()
-                    .non_inherited
-                    .get(name)
-                    .is_none()
-                {
-                    return false;
-                }
-            },
-            (Some(existing_value), &CustomDeclarationValue::Value(ref value)) => {
+            Some(v) => v,
+        };
+        let computed_value = match value {
+            CustomDeclarationValue::Unparsed(value) => {
                 // Don't bother overwriting an existing value with the same
                 // specified value.
                 if let Some(existing_value) = existing_value.as_universal() {
                     return existing_value != value;
                 }
-                if let Ok(value) = compute_value(
-                    &value.css,
-                    &value.url_data,
-                    registration,
-                    self.computed_context,
-                ) {
-                    return existing_value.v != value.v;
+                if !registration.syntax.is_universal() {
+                    compute_value(
+                        &value.css,
+                        &value.url_data,
+                        registration,
+                        self.computed_context,
+                    ).ok()
+                } else {
+                    None
                 }
             },
-            _ => {},
+            CustomDeclarationValue::Parsed(value) => {
+                Some(value.to_computed_value(&self.computed_context))
+            },
+            CustomDeclarationValue::CSSWideKeyword(kw) => {
+                match kw {
+                    CSSWideKeyword::Inherit => {
+                        debug_assert!(!registration.inherits(), "Should've been handled earlier");
+                        // existing_value is the registered initial value.
+                        // Don't bother adding it to self.custom_properties.non_inherited
+                        // if the key is also absent from self.inherited.non_inherited.
+                        if self
+                            .computed_context
+                            .inherited_custom_properties()
+                            .non_inherited
+                            .get(name)
+                            .is_none()
+                        {
+                            return false;
+                        }
+                    },
+                    CSSWideKeyword::Initial => {
+                        debug_assert!(registration.inherits(), "Should've been handled earlier");
+                        // Don't bother overwriting an existing value with the initial value specified in
+                        // the registration.
+                        if let Some(initial_value) = self
+                            .stylist
+                            .get_custom_property_initial_values()
+                            .get(registration, name)
+                        {
+                            return existing_value != initial_value;
+                        }
+                    },
+                    CSSWideKeyword::Unset => {
+                        debug_assert!(false, "Should've been handled earlier");
+                    },
+                    CSSWideKeyword::Revert | CSSWideKeyword::RevertLayer => {},
+                }
+                None
+            }
+        };
+
+        if let Some(value) = computed_value {
+            return existing_value.v != value.v;
         }
 
         true
@@ -1432,18 +1500,17 @@ fn substitute_all(
                 let registration = context.stylist.get_custom_property_registration(name);
                 let value = context.map.get(registration, name)?.as_universal()?;
                 let is_root = context.computed_context.is_root_element();
-                // We need to keep track of (potential) non-custom-references even on unregistered
+                // We need to keep track of potential non-custom-references even on unregistered
                 // properties for cycle-detection purposes.
-                let value_non_custom_references = value.references.non_custom_references(is_root);
-                context.non_custom_references |= value_non_custom_references;
-                let has_dependency = value.references.any_var ||
-                    !value_non_custom_references.is_empty() ||
-                    has_non_custom_dependency(
-                        registration,
-                        value,
-                        context.has_color_scheme,
-                        is_root,
-                    );
+                let non_custom_refs = find_non_custom_references(
+                    registration,
+                    value,
+                    context.has_color_scheme,
+                    is_root,
+                    /* include_unregistered = */ true,
+                );
+                context.non_custom_references |= non_custom_refs.unwrap_or_default();
+                let has_dependency = value.references.any_var || non_custom_refs.is_some();
                 // Nothing to resolve.
                 if !has_dependency {
                     debug_assert!(!value.references.any_env, "Should've been handled earlier");
@@ -1659,13 +1726,15 @@ fn substitute_all(
             if let Some(ref mut deferred) = context.deferred_properties {
                 // We need to defer this property if it has a non-custom property dependency, or
                 // any variable that it references is already deferred.
-                defer =
-                    has_non_custom_dependency(
-                        registration,
-                        v,
-                        context.has_color_scheme,
-                        context.computed_context.is_root_element(),
-                    ) || v.references.refs.iter().any(|reference| {
+                defer = find_non_custom_references(
+                    registration,
+                    v,
+                    context.has_color_scheme,
+                    context.computed_context.is_root_element(),
+                    /* include_unregistered = */ false,
+                )
+                .is_some() ||
+                    v.references.refs.iter().any(|reference| {
                         reference.is_var && deferred.get(&reference.name).is_some()
                     });
 
@@ -1770,11 +1839,10 @@ fn substitute_references_if_needed_and_apply(
 
     let inherited = computed_context.inherited_custom_properties();
     let url_data = &value.url_data;
-    let value = match substitute_internal(
+    let substitution = match substitute_internal(
         value,
         custom_properties,
         stylist,
-        registration,
         computed_context,
     ) {
         Ok(v) => v,
@@ -1782,16 +1850,18 @@ fn substitute_references_if_needed_and_apply(
             handle_invalid_at_computed_value_time(name, custom_properties, computed_context);
             return;
         },
-    }
-    .into_value(url_data);
+    };
 
     // If variable fallback results in a wide keyword, deal with it now.
     {
-        let css = value.to_variable_value().css;
-        let mut input = ParserInput::new(&css);
-        let mut input = Parser::new(&mut input);
+        let css = &substitution.css;
+        let css_wide_kw = {
+            let mut input = ParserInput::new(&css);
+            let mut input = Parser::new(&mut input);
+            input.try_parse(CSSWideKeyword::parse)
+        };
 
-        if let Ok(kw) = input.try_parse(CSSWideKeyword::parse) {
+        if let Ok(kw) = css_wide_kw {
             // TODO: It's unclear what this should do for revert / revert-layer, see
             // https://github.com/w3c/csswg-drafts/issues/9131. For now treating as unset
             // seems fine?
@@ -1828,81 +1898,60 @@ fn substitute_references_if_needed_and_apply(
         }
     }
 
+    let value = match substitution.into_value(url_data, registration, computed_context) {
+        Ok(v) => v,
+        Err(()) => {
+            handle_invalid_at_computed_value_time(name, custom_properties, computed_context);
+            return;
+        }
+    };
+
     custom_properties.insert(registration, name, value);
 }
 
-enum Substitution<'a> {
-    Universal(UniversalSubstitution<'a>),
-    Computed(ComputedRegisteredValue),
-}
-
-impl<'a> Default for Substitution<'a> {
-    fn default() -> Self {
-        Self::Universal(UniversalSubstitution::default())
-    }
-}
-
 #[derive(Default)]
-struct UniversalSubstitution<'a> {
+struct Substitution<'a> {
     css: Cow<'a, str>,
     first_token_type: TokenSerializationType,
     last_token_type: TokenSerializationType,
 }
 
-impl<'a> UniversalSubstitution<'a> {
+impl<'a> Substitution<'a> {
     fn from_value(v: VariableValue) -> Self {
-        UniversalSubstitution {
-            css: Cow::from(v.css),
+        Substitution {
+            css: v.css.into(),
             first_token_type: v.first_token_type,
             last_token_type: v.last_token_type,
         }
     }
-}
 
-impl<'a> Substitution<'a> {
+    fn into_value(
+        self,
+        url_data: &UrlExtraData,
+        registration: &PropertyRegistrationData,
+        computed_context: &computed::Context,
+    ) -> Result<ComputedRegisteredValue, ()> {
+        if registration.syntax.is_universal() {
+            return Ok(ComputedRegisteredValue::universal(Arc::new(VariableValue {
+                css: self.css.into_owned(),
+                first_token_type: self.first_token_type,
+                last_token_type: self.last_token_type,
+                url_data: url_data.clone(),
+                references: Default::default(),
+            })))
+        }
+        compute_value(&self.css, url_data, registration, computed_context)
+    }
+
     fn new(
         css: &'a str,
         first_token_type: TokenSerializationType,
         last_token_type: TokenSerializationType,
     ) -> Self {
-        Self::Universal(UniversalSubstitution {
+        Self {
             css: Cow::Borrowed(css),
             first_token_type,
             last_token_type,
-        })
-    }
-
-    fn into_universal(self) -> UniversalSubstitution<'a> {
-        match self {
-            Substitution::Universal(substitution) => substitution,
-            Substitution::Computed(computed) => {
-                UniversalSubstitution::from_value(computed.to_variable_value())
-            },
-        }
-    }
-
-    fn from_value(v: VariableValue) -> Self {
-        debug_assert!(
-            !v.has_references(),
-            "Computed values shouldn't have references"
-        );
-        let substitution = UniversalSubstitution::from_value(v);
-        Self::Universal(substitution)
-    }
-
-    fn into_value(self, url_data: &UrlExtraData) -> ComputedRegisteredValue {
-        match self {
-            Substitution::Universal(substitution) => {
-                let value = Arc::new(VariableValue {
-                    css: substitution.css.into_owned(),
-                    first_token_type: substitution.first_token_type,
-                    last_token_type: substitution.last_token_type,
-                    url_data: url_data.clone(),
-                    references: Default::default(),
-                });
-                ComputedRegisteredValue::universal(value)
-            },
-            Substitution::Computed(computed) => computed,
         }
     }
 }
@@ -1948,7 +1997,6 @@ fn do_substitute_chunk<'a>(
     last_token_type: TokenSerializationType,
     url_data: &UrlExtraData,
     custom_properties: &'a ComputedCustomProperties,
-    registration: &PropertyRegistrationData,
     stylist: &Stylist,
     computed_context: &computed::Context,
     references: &mut std::iter::Peekable<std::slice::Iter<VarOrEnvReference>>,
@@ -1963,10 +2011,6 @@ fn do_substitute_chunk<'a>(
         .map_or(true, |reference| reference.end > end)
     {
         let result = &css[start..end];
-        if !registration.syntax.is_universal() {
-            let computed_value = compute_value(result, url_data, registration, computed_context)?;
-            return Ok(Substitution::Computed(computed_value));
-        }
         return Ok(Substitution::new(result, first_token_type, last_token_type));
     }
 
@@ -1991,11 +2035,10 @@ fn do_substitute_chunk<'a>(
             computed_context,
             references,
         )?;
-        let substitution = substitution.into_universal();
 
         // Optimize the property: var(--...) case to avoid allocating at all.
-        if reference.start == start && reference.end == end && registration.syntax.is_universal() {
-            return Ok(Substitution::Universal(substitution));
+        if reference.start == start && reference.end == end {
+            return Ok(substitution);
         }
 
         substituted.push(
@@ -2010,11 +2053,6 @@ fn do_substitute_chunk<'a>(
     if cur_pos != end {
         substituted.push(&css[cur_pos..end], next_token_type, last_token_type)?;
     }
-    if !registration.syntax.is_universal() {
-        let computed_value =
-            compute_value(&substituted.css, url_data, registration, computed_context)?;
-        return Ok(Substitution::Computed(computed_value));
-    }
     Ok(Substitution::from_value(substituted))
 }
 
@@ -2027,41 +2065,17 @@ fn substitute_one_reference<'a>(
     computed_context: &computed::Context,
     references: &mut std::iter::Peekable<std::slice::Iter<VarOrEnvReference>>,
 ) -> Result<Substitution<'a>, ()> {
-    let registration;
     if reference.is_var {
-        registration = stylist.get_custom_property_registration(&reference.name);
+        let registration = stylist.get_custom_property_registration(&reference.name);
         if let Some(v) = custom_properties.get(registration, &reference.name) {
-            #[cfg(debug_assertions)]
-            debug_assert!(v.is_parsed(registration), "Should be already computed");
-            if registration.syntax.is_universal() {
-                // Skip references that are inside the outer variable (in fallback for example).
-                while references
-                    .next_if(|next_ref| next_ref.end <= reference.end)
-                    .is_some()
-                {}
-            } else {
-                // We need to validate the fallback if any, since invalid fallback should
-                // invalidate the whole variable.
-                if let Some(ref fallback) = reference.fallback {
-                    let _ = do_substitute_chunk(
-                        css,
-                        fallback.start.get(),
-                        reference.end - 1, // Don't include the closing parenthesis.
-                        fallback.first_token_type,
-                        fallback.last_token_type,
-                        url_data,
-                        custom_properties,
-                        registration,
-                        stylist,
-                        computed_context,
-                        references,
-                    )?;
-                }
-            }
-            return Ok(Substitution::Computed(v.clone()));
+            // Skip references that are inside the outer variable (in fallback for example).
+            while references
+                .next_if(|next_ref| next_ref.end <= reference.end)
+                .is_some()
+            {}
+            return Ok(Substitution::from_value(v.to_variable_value()))
         }
     } else {
-        registration = PropertyRegistrationData::unregistered();
         let device = stylist.device();
         if let Some(v) = device.environment().get(&reference.name, device, url_data) {
             while references
@@ -2084,7 +2098,6 @@ fn substitute_one_reference<'a>(
         fallback.last_token_type,
         url_data,
         custom_properties,
-        registration,
         stylist,
         computed_context,
         references,
@@ -2096,7 +2109,6 @@ fn substitute_internal<'a>(
     variable_value: &'a VariableValue,
     custom_properties: &'a ComputedCustomProperties,
     stylist: &Stylist,
-    registration: &PropertyRegistrationData,
     computed_context: &computed::Context,
 ) -> Result<Substitution<'a>, ()> {
     let mut refs = variable_value.references.refs.iter().peekable();
@@ -2108,7 +2120,6 @@ fn substitute_internal<'a>(
         variable_value.last_token_type,
         &variable_value.url_data,
         custom_properties,
-        registration,
         stylist,
         computed_context,
         &mut refs,
@@ -2127,9 +2138,7 @@ pub fn substitute<'a>(
         variable_value,
         custom_properties,
         stylist,
-        PropertyRegistrationData::unregistered(),
         computed_context,
     )?;
-    let v = v.into_universal();
     Ok(v.css)
 }

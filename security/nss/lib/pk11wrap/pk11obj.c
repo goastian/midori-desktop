@@ -555,6 +555,7 @@ PK11_SignatureLen(SECKEYPrivateKey *key)
 
     switch (key->keyType) {
         case rsaKey:
+        case rsaPssKey:
             val = PK11_GetPrivateModulusLen(key);
             if (val == -1) {
                 return pk11_backupGetSignLength(key);
@@ -576,8 +577,8 @@ PK11_SignatureLen(SECKEYPrivateKey *key)
                 return length * 2;
             }
             return pk11_backupGetSignLength(key);
-        case edKey:
         case ecKey:
+        case edKey:
             rv = PK11_ReadAttribute(key->pkcs11Slot, key->pkcs11ID, CKA_EC_PARAMS,
                                     NULL, &attributeItem);
             if (rv == SECSuccess) {
@@ -2093,10 +2094,11 @@ PK11_MatchItem(PK11SlotInfo *slot, CK_OBJECT_HANDLE searchID,
 
     if ((theTemplate[0].ulValueLen == 0) || (theTemplate[0].ulValueLen == -1)) {
         PORT_DestroyCheapArena(&tmpArena);
-        if (matchclass == CKO_CERTIFICATE)
+        if (matchclass == CKO_CERTIFICATE) {
             PORT_SetError(SEC_ERROR_BAD_KEY);
-        else
+        } else {
             PORT_SetError(SEC_ERROR_NO_KEY);
+        }
         return CK_INVALID_HANDLE;
     }
 

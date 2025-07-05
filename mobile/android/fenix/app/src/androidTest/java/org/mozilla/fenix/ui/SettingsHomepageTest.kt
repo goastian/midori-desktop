@@ -4,6 +4,7 @@
 
 package org.mozilla.fenix.ui
 
+import androidx.compose.ui.test.junit4.AndroidComposeTestRule
 import org.junit.Ignore
 import org.junit.Rule
 import org.junit.Test
@@ -16,6 +17,7 @@ import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestHelper.restartApp
 import org.mozilla.fenix.helpers.TestHelper.verifySnackBarText
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.browserScreen
 import org.mozilla.fenix.ui.robots.homeScreen
 import org.mozilla.fenix.ui.robots.navigationToolbar
@@ -26,13 +28,19 @@ import org.mozilla.fenix.ui.robots.navigationToolbar
  */
 class SettingsHomepageTest : TestSetup() {
     @get:Rule
-    val activityIntentTestRule = HomeActivityIntentTestRule.withDefaultSettingsOverrides(skipOnboarding = true)
+    val composeTestRule =
+        AndroidComposeTestRule(
+            HomeActivityIntentTestRule.withDefaultSettingsOverrides(skipOnboarding = true),
+        ) { it.activity }
+
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
 
     @Rule
     @JvmField
     val retryTestRule = RetryTestRule(3)
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1564843
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1564843
     @Test
     fun verifyHomepageSettingsTest() {
         homeScreen {
@@ -43,7 +51,7 @@ class SettingsHomepageTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1564859
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1564859
     @Test
     fun verifyShortcutOptionTest() {
         // en-US defaults
@@ -56,14 +64,14 @@ class SettingsHomepageTest : TestSetup() {
 
         homeScreen {
             defaultTopSites.forEach { item ->
-                verifyExistingTopSitesTabs(item)
+                verifyExistingTopSitesTabs(composeTestRule, item)
             }
         }.openThreeDotMenu {
         }.openCustomizeHome {
             clickShortcutsButton()
         }.goBackToHomeScreen {
             defaultTopSites.forEach { item ->
-                verifyNotExistingTopSitesList(item)
+                verifyNotExistingTopSiteItem(composeTestRule, item)
             }
         }
         // Disabling the "Shortcuts" homepage setting option should remove the "Add to shortcuts" from main menu option
@@ -75,17 +83,17 @@ class SettingsHomepageTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1565003
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1565003
     @Test
     fun verifyRecentlyVisitedOptionTest() {
-        activityIntentTestRule.applySettingsExceptions {
+        composeTestRule.activityRule.applySettingsExceptions {
             it.isRecentTabsFeatureEnabled = false
         }
         val genericURL = getGenericAsset(mockWebServer, 1)
 
         navigationToolbar {
         }.enterURLAndEnterToBrowser(genericURL.url) {
-        }.goToHomescreen {
+        }.goToHomescreen(composeTestRule) {
             verifyRecentlyVisitedSectionIsDisplayed(true)
         }.openThreeDotMenu {
         }.openCustomizeHome {
@@ -95,7 +103,7 @@ class SettingsHomepageTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1564999
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1564999
     @SmokeTest
     @Test
     fun jumpBackInOptionTest() {
@@ -103,17 +111,17 @@ class SettingsHomepageTest : TestSetup() {
 
         navigationToolbar {
         }.enterURLAndEnterToBrowser(genericURL.url) {
-        }.goToHomescreen {
+        }.goToHomescreen(composeTestRule) {
             verifyJumpBackInSectionIsDisplayed()
         }.openThreeDotMenu {
         }.openCustomizeHome {
             clickJumpBackInButton()
         }.goBackToHomeScreen {
-            verifyJumpBackInSectionIsNotDisplayed()
+            verifyJumpBackInSectionIsNotDisplayed(composeTestRule)
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1565000
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1565000
     @SmokeTest
     @Test
     fun recentBookmarksOptionTest() {
@@ -123,7 +131,7 @@ class SettingsHomepageTest : TestSetup() {
         }.enterURLAndEnterToBrowser(genericURL.url) {
         }.openThreeDotMenu {
         }.bookmarkPage {
-        }.goToHomescreen {
+        }.goToHomescreen(composeTestRule) {
             verifyBookmarksSectionIsDisplayed(exists = true)
         }.openThreeDotMenu {
         }.openCustomizeHome {
@@ -133,7 +141,7 @@ class SettingsHomepageTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1569831
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1569831
     @SmokeTest
     @Test
     fun verifyOpeningScreenOptionsTest() {
@@ -150,7 +158,7 @@ class SettingsHomepageTest : TestSetup() {
             verifySelectedOpeningScreenOption("Homepage")
         }
 
-        restartApp(activityIntentTestRule)
+        restartApp(composeTestRule.activityRule)
 
         homeScreen {
             verifyHomeScreen()
@@ -164,14 +172,14 @@ class SettingsHomepageTest : TestSetup() {
             verifySettingsOptionSummary("Homepage", "Open on last tab")
         }
 
-        restartApp(activityIntentTestRule)
+        restartApp(composeTestRule.activityRule)
 
         browserScreen {
             verifyUrl(genericURL.url.toString())
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1569843
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1569843
     @Test
     fun verifyOpeningScreenAfterLaunchingExternalLinkTest() {
         val genericPage = getGenericAsset(mockWebServer, 1)
@@ -183,12 +191,9 @@ class SettingsHomepageTest : TestSetup() {
             clickOpeningScreenOption("Homepage")
         }.goBackToHomeScreen {}
 
-        with(activityIntentTestRule) {
+        with(composeTestRule.activityRule) {
             finishActivity()
             mDevice.waitForIdle()
-            this.applySettingsExceptions {
-                it.isTCPCFREnabled = false
-            }
             openAppFromExternalLink(genericPage.url.toString())
         }
 
@@ -197,7 +202,7 @@ class SettingsHomepageTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/1676359
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1676359
     @Ignore("Intermittent test: https://github.com/mozilla-mobile/fenix/issues/26559")
     @Test
     fun verifyWallpaperChangeTest() {

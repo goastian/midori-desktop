@@ -6,7 +6,12 @@ package org.mozilla.fenix.ui.robots
 
 import android.net.Uri
 import android.util.Log
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.ComposeTestRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.assertion.ViewAssertions.matches
 import androidx.test.espresso.matcher.ViewMatchers.isDisplayed
@@ -21,6 +26,7 @@ import org.hamcrest.Matchers.allOf
 import org.mozilla.fenix.R
 import org.mozilla.fenix.helpers.Constants
 import org.mozilla.fenix.helpers.Constants.TAG
+import org.mozilla.fenix.helpers.DataGenerationHelper.getStringResource
 import org.mozilla.fenix.helpers.HomeActivityComposeTestRule
 import org.mozilla.fenix.helpers.TestAssetHelper.waitingTime
 import org.mozilla.fenix.helpers.TestHelper.mDevice
@@ -65,10 +71,16 @@ class LibrarySubMenusMultipleSelectionToolbarRobot {
         Log.i(Constants.TAG, "verifyMultiSelectionCheckmark: Verified that the multi-selection checkmark for item with url: $url is displayed")
     }
 
-    fun verifyMultiSelectionCounter() {
-        Log.i(TAG, "verifyMultiSelectionCounter: Trying to verify that the multi-selection toolbar containing: \"1 selected\" is displayed")
-        onView(withText("1 selected")).check(matches(isDisplayed()))
-        Log.i(TAG, "verifyMultiSelectionCounter: Verified that the multi-selection toolbar containing: \"1 selected\" is displayed")
+    fun verifyMultiSelectionCounter(counterNumber: Int) {
+        Log.i(TAG, "verifyMultiSelectionCounter: Trying to verify that the multi-selection toolbar containing: \"$counterNumber selected\" is displayed")
+        onView(withText("$counterNumber selected")).check(matches(isDisplayed()))
+        Log.i(TAG, "verifyMultiSelectionCounter: Verified that the multi-selection toolbar containing: \"$counterNumber selected\" is displayed")
+    }
+
+    fun verifyMultiSelectionCounter(counterNumber: Int, composeTestRule: ComposeTestRule) {
+        Log.i(TAG, "verifyMultiSelectionCounter: Trying to verify that the multi-selection toolbar containing: \"$counterNumber selected\" is displayed")
+        composeTestRule.onNodeWithText("$counterNumber selected").assertIsDisplayed()
+        Log.i(TAG, "verifyMultiSelectionCounter: Verified that the multi-selection toolbar containing: \"$counterNumber selected\" is displayed")
     }
 
     fun verifyShareHistoryButton() {
@@ -145,6 +157,18 @@ class LibrarySubMenusMultipleSelectionToolbarRobot {
         Log.i(TAG, "clickMultiSelectionDelete: Clicked the multi-selection delete button")
     }
 
+    fun clickMultiSelectDeleteButton(composeTestRule: ComposeTestRule) {
+        Log.i(TAG, "clickMultiSelectDeleteButton: Trying to click the multi-selection delete button")
+        redesignedBookmarksDeleteButton(composeTestRule).performClick()
+        Log.i(TAG, "clickMultiSelectDeleteButton: Clicked the multi-selection delete button")
+    }
+
+    fun clickMultiSelectThreeDotButton(composeTestRule: ComposeTestRule) {
+        Log.i(TAG, "clickMultiSelectThreeDotButton: Trying to click the multi-selection three dot button")
+        composeTestRule.onNodeWithContentDescription(getStringResource(R.string.content_description_menu)).performClick()
+        Log.i(TAG, "clickMultiSelectThreeDotButton: Clicked the multi-selection three dot button")
+    }
+
     class Transition {
         fun closeToolbarReturnToHistory(interact: HistoryRobot.() -> Unit): HistoryRobot.Transition {
             Log.i(TAG, "closeToolbarReturnToHistory: Trying to click the navigate up toolbar button")
@@ -155,22 +179,25 @@ class LibrarySubMenusMultipleSelectionToolbarRobot {
             return HistoryRobot.Transition()
         }
 
-        fun closeToolbarReturnToBookmarks(interact: BookmarksRobot.() -> Unit): BookmarksRobot.Transition {
-            Log.i(TAG, "closeToolbarReturnToBookmarks: Trying to click the navigate up toolbar button")
-            closeToolbarButton().click()
-            Log.i(TAG, "closeToolbarReturnToBookmarks: Clicked the navigate up toolbar button")
-
-            BookmarksRobot().interact()
-            return BookmarksRobot.Transition()
-        }
-
         fun clickOpenNewTab(composeTestRule: HomeActivityComposeTestRule, interact: TabDrawerRobot.() -> Unit): TabDrawerRobot.Transition {
             Log.i(TAG, "clickOpenNewTab: Trying to click the multi-select \"Open in a new tab\" context menu button")
             openInNewTabButton().click()
             Log.i(TAG, "clickOpenNewTab: Clicked the multi-select \"Open in a new tab\" context menu button")
             Log.i(TAG, "clickOpenNewTab: Trying to verify that the tabs tray exists")
-            composeTestRule.onNodeWithTag(TabsTrayTestTag.tabsTray).assertExists()
+            composeTestRule.onNodeWithTag(TabsTrayTestTag.TABS_TRAY).assertExists()
             Log.i(TAG, "clickOpenNewTab: Verified that the tabs tray exists")
+
+            TabDrawerRobot(composeTestRule).interact()
+            return TabDrawerRobot.Transition(composeTestRule)
+        }
+
+        fun clickOpenInNewTabButton(composeTestRule: HomeActivityComposeTestRule, interact: TabDrawerRobot.() -> Unit): TabDrawerRobot.Transition {
+            Log.i(TAG, "clickOpenInNewTabButton: Trying to click the multi-select \"Open in a new tab\" context menu button")
+            redesignedBookmarksOpenInNewTabButton(composeTestRule).performClick()
+            Log.i(TAG, "clickOpenInNewTabButton: Clicked the multi-select \"Open in a new tab\" context menu button")
+            Log.i(TAG, "clickOpenInNewTabButton: Trying to verify that the tabs tray exists")
+            composeTestRule.onNodeWithTag(TabsTrayTestTag.TABS_TRAY).assertExists()
+            Log.i(TAG, "clickOpenInNewTabButton: Verified that the tabs tray exists")
 
             TabDrawerRobot(composeTestRule).interact()
             return TabDrawerRobot.Transition(composeTestRule)
@@ -200,6 +227,12 @@ private fun shareBookmarksButton() = onView(withId(R.id.share_bookmark_multi_sel
 
 private fun openInNewTabButton() = onView(withText("Open in new tab"))
 
+private fun redesignedBookmarksOpenInNewTabButton(composeTestRule: ComposeTestRule) =
+    composeTestRule.onNodeWithText(getStringResource(R.string.bookmark_menu_open_in_new_tab_button))
+
 private fun openInPrivateTabButton() = onView(withText("Open in private tab"))
+
+private fun redesignedBookmarksDeleteButton(composeTestRule: ComposeTestRule) =
+    composeTestRule.onNodeWithText(getStringResource(R.string.bookmark_menu_delete_button))
 
 private fun deleteButton() = onView(withText("Delete"))

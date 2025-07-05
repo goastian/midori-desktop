@@ -70,6 +70,7 @@ import org.mozilla.geckoview.Autofill;
 import org.mozilla.geckoview.ContentBlocking;
 import org.mozilla.geckoview.ExperimentDelegate;
 import org.mozilla.geckoview.GeckoDisplay;
+import org.mozilla.geckoview.GeckoPreferenceController;
 import org.mozilla.geckoview.GeckoResult;
 import org.mozilla.geckoview.GeckoRuntime;
 import org.mozilla.geckoview.GeckoRuntime.ActivityDelegate;
@@ -988,6 +989,14 @@ public class GeckoSessionTestRule implements TestRule {
   /** Sets an experiment delegate on the runtime creator. */
   public void setExperimentDelegate(final ExperimentDelegate delegate) {
     RuntimeCreator.setExperimentDelegate(delegate);
+  }
+
+  /**
+   * Convenience method to facilitate setting a preference delegate in order to use the test harness
+   * delegate callback framework.
+   */
+  public void setPreferenceDelegate(final GeckoPreferenceController.Observer.Delegate delegate) {
+    RuntimeCreator.setGeckoPreferenceDelegate(delegate);
   }
 
   public @Nullable GeckoDisplay getDisplay() {
@@ -2681,6 +2690,22 @@ public class GeckoSessionTestRule implements TestRule {
   }
 
   /**
+   * Called to clear a user set value from a specific preference. This will, in effect, reset the
+   * value to the default value. If no default value exists the preference will cease to exist.
+   *
+   * <p>See nsIPrefBranch.idl for more details.
+   *
+   * @param pref Pref name.
+   */
+  public void clearUserPref(final @NonNull String pref) {
+    webExtensionApiCall(
+        "ClearUserPref",
+        args -> {
+          args.put("pref", pref);
+        });
+  }
+
+  /**
    * Gets the color of a link for a given selector.
    *
    * @param selector Selector that matches the link
@@ -2735,21 +2760,6 @@ public class GeckoSessionTestRule implements TestRule {
     void setArgs(JSONObject object) throws JSONException;
   }
 
-  /**
-   * Sets value to the given scalar.
-   *
-   * @param id the scalar to be set.
-   * @param value the value to set.
-   */
-  public <T> void setScalar(final String id, final T value) {
-    webExtensionApiCall(
-        "SetScalar",
-        args -> {
-          args.put("id", id);
-          args.put("value", value);
-        });
-  }
-
   /** Invokes nsIDOMWindowUtils.setResolutionAndScaleTo. */
   public void setResolutionAndScaleTo(final GeckoSession session, final float resolution) {
     webExtensionApiCall(
@@ -2765,9 +2775,24 @@ public class GeckoSessionTestRule implements TestRule {
     webExtensionApiCall(session, "FlushApzRepaints", null);
   }
 
+  /** Invokes nsIDOMWindowUtils.zoomToFocusedInput. */
+  public void zoomToFocusedInput(final GeckoSession session) {
+    webExtensionApiCall(session, "ZoomToFocusedInput", null);
+  }
+
   /** Invokes a simplified version of promiseAllPaintsDone in paint_listener.js. */
   public void promiseAllPaintsDone(final GeckoSession session) {
     webExtensionApiCall(session, "PromiseAllPaintsDone", null);
+  }
+
+  /** Invokes nsIDOMWindowUtils.setHandlingUserInput. */
+  public void setHandlingUserInput(final GeckoSession session, final boolean handlingUserInput) {
+    webExtensionApiCall(
+        session,
+        "SetHandlingUserInput",
+        args -> {
+          args.put("handlingUserInput", handlingUserInput);
+        });
   }
 
   /** Returns true if Gecko is using a GPU process. */
@@ -2788,6 +2813,16 @@ public class GeckoSessionTestRule implements TestRule {
   /** Clears sites from the HSTS list. */
   public void clearHSTSState() {
     webExtensionApiCall("ClearHSTSState", null);
+  }
+
+  /** Checks if SHIP is running. */
+  public boolean isSessionHistoryInParentRunning() {
+    return (Boolean) webExtensionApiCall("IsSessionHistoryInParentRunning", null);
+  }
+
+  /** Checks if fission is running. */
+  public boolean isFissionRunning() {
+    return (Boolean) webExtensionApiCall("IsFissionRunning", null);
   }
 
   private Object webExtensionApiCall(

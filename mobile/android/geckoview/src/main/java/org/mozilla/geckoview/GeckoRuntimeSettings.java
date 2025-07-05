@@ -22,7 +22,9 @@ import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import org.mozilla.gecko.EventDispatcher;
 import org.mozilla.gecko.GeckoSystemStateListener;
@@ -344,6 +346,18 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
     }
 
     /**
+     * Set whether Fission should be enabled or not. This must be set before startup. Note: Session
+     * History in Parent (SHIP) will be enabled as well if Fission is enabled.
+     *
+     * @param enabled A flag determining whether fission should be enabled.
+     * @return The builder instance.
+     */
+    public @NonNull Builder fissionEnabled(final boolean enabled) {
+      getSettings().mFissionEnabled.set(enabled);
+      return this;
+    }
+
+    /**
      * Set whether a candidate page should automatically offer a translation via a popup.
      *
      * @param enabled A flag determining whether the translations offer popup should be enabled.
@@ -351,6 +365,17 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
      */
     public @NonNull Builder translationsOfferPopup(final boolean enabled) {
       getSettings().setTranslationsOfferPopup(enabled);
+      return this;
+    }
+
+    /**
+     * Sets whether Session History in Parent (SHIP) should be disabled or not.
+     *
+     * @param value A flag determining whether SHIP should be disabled or not.
+     * @return The builder instance.
+     */
+    public @NonNull Builder disableShip(final boolean value) {
+      getSettings().mDisableShip.set(value);
       return this;
     }
 
@@ -555,6 +580,17 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
     }
 
     /**
+     * Set the default DNS-over-HTTPS server URI.
+     *
+     * @param uri default URI of the DNS-over-HTTPS server.
+     * @return This Builder instance.
+     */
+    public @NonNull Builder defaultRecursiveResolverUri(final @NonNull String uri) {
+      getSettings().setDefaultRecursiveResolverUri(uri);
+      return this;
+    }
+
+    /**
      * Set the factor by which to increase the keepalive timeout when the NS_HTTP_LARGE_KEEPALIVE
      * flag is used for a connection.
      *
@@ -563,6 +599,45 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
      */
     public @NonNull Builder largeKeepaliveFactor(final int factor) {
       getSettings().setLargeKeepaliveFactor(factor);
+      return this;
+    }
+
+    /**
+     * Set this flag to disable low-memory detection. Set this when running tests to avoid
+     * unpredictable behavior at runtime.
+     *
+     * @param enable True if low-memory detection should be enabled, false otherwise.
+     * @return This Builder instance.
+     */
+    public @NonNull Builder lowMemoryDetection(final boolean enable) {
+      getSettings().mLowMemoryDetection = enable;
+      return this;
+    }
+
+    /**
+     * Sets whether the same document navigation should override the load type or not.
+     *
+     * @param value A flag determining whether same document navigation should override the load
+     *     type or not.
+     * @return The builder instance.
+     */
+    public @NonNull Builder setSameDocumentNavigationOverridesLoadType(final boolean value) {
+      getSettings().setSameDocumentNavigationOverridesLoadType(value);
+      return this;
+    }
+
+    /**
+     * Sets the uri to force-disable the same document navigation overriding the load type. If it is
+     * an empty string (default value), there's no specific domain that the same document navigation
+     * overriding the load type is disabled.
+     *
+     * @param uri URI that will be used to force-disable the same document navigation overriding the
+     *     load type on a specific domain.
+     * @return The builder instance.
+     */
+    public @NonNull Builder setSameDocumentNavigationOverridesLoadTypeForceDisable(
+        @NonNull final String uri) {
+      getSettings().setSameDocumentNavigationOverridesLoadTypeForceDisable(uri);
       return this;
     }
   }
@@ -603,8 +678,12 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
   /* package */ final Pref<Boolean> mDevToolsConsoleToLogcat =
       new Pref<>("devtools.console.stdout.chrome", true);
   /* package */ final Pref<Boolean> mAboutConfig = new Pref<>("general.aboutConfig.enable", false);
+  /* package */ final PrefWithoutDefault<Boolean> mFissionEnabled =
+      new PrefWithoutDefault<>("fission.autostart");
   /* package */ final Pref<Boolean> mForceUserScalable =
       new Pref<>("browser.ui.zoom.force-user-scalable", false);
+  /* package */ final PrefWithoutDefault<Integer> mWebContentIsolationStrategy =
+      new PrefWithoutDefault<>("fission.webContentIsolationStrategy");
   /* package */ final Pref<Boolean> mAutofillLogins =
       new Pref<Boolean>("signon.autofillForms", true);
   /* package */ final Pref<Boolean> mAutomaticallyOfferPopup =
@@ -617,6 +696,10 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
       new PrefWithoutDefault<>("network.trr.mode");
   /* package */ final PrefWithoutDefault<String> mTrustedRecursiveResolverUri =
       new PrefWithoutDefault<>("network.trr.uri");
+  /* package */ final PrefWithoutDefault<String> mDefaultRecursiveResolverUri =
+      new PrefWithoutDefault<>("network.trr.default_provider_uri");
+  /* package */ final PrefWithoutDefault<String> mTrustedRecursiveResolverExcludedDomains =
+      new PrefWithoutDefault<>("network.trr.excluded-domains");
   /* package */ final PrefWithoutDefault<Integer> mLargeKeepalivefactor =
       new PrefWithoutDefault<>("network.http.largeKeepaliveFactor");
   /* package */ final Pref<Integer> mProcessCount = new Pref<>("dom.ipc.processCount", 2);
@@ -634,12 +717,47 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
       new Pref<Boolean>("privacy.globalprivacycontrol.pbmode.enabled", true);
   /* package */ final Pref<Boolean> mGlobalPrivacyControlFunctionalityEnabled =
       new Pref<Boolean>("privacy.globalprivacycontrol.functionality.enabled", true);
-
+  /* package */ final PrefWithoutDefault<Boolean> mFingerprintingProtection =
+      new PrefWithoutDefault<Boolean>("privacy.fingerprintingProtection");
+  /* package */ final PrefWithoutDefault<Boolean> mFingerprintingProtectionPrivateMode =
+      new PrefWithoutDefault<Boolean>("privacy.fingerprintingProtection.pbmode");
+  /* package */ final PrefWithoutDefault<String> mFingerprintingProtectionOverrides =
+      new PrefWithoutDefault<>("privacy.fingerprintingProtection.overrides");
+  /* package */ final Pref<Boolean> mFdlibmMathEnabled =
+      new Pref<Boolean>("javascript.options.use_fdlibm_for_sin_cos_tan", false);
+  /* package */ final Pref<Integer> mUserCharacteristicPingCurrentVersion =
+      new Pref<>("toolkit.telemetry.user_characteristics_ping.current_version", 0);
+  /* package */ PrefWithoutDefault<Boolean> mDisableShip =
+      new PrefWithoutDefault<Boolean>("fission.disableSessionHistoryInParent");
+  /* package */ final Pref<Boolean> mFetchPriorityEnabled =
+      new Pref<Boolean>("network.fetchpriority.enabled", false);
+  /* package */ final Pref<Boolean> mParallelMarkingEnabled =
+      new Pref<Boolean>("javascript.options.mem.gc_parallel_marking", false);
+  /* package */ final Pref<Boolean> mCookieBehaviorOptInPartitioning =
+      new Pref<Boolean>("network.cookie.cookieBehavior.optInPartitioning", false);
+  /* package */ final Pref<Boolean> mCookieBehaviorOptInPartitioningPBM =
+      new Pref<Boolean>("network.cookie.cookieBehavior.optInPartitioning.pbmode", false);
+  /* package */ final Pref<Integer> mCertificateTransparencyMode =
+      new Pref<Integer>("security.pki.certificate_transparency.mode", 0);
+  /* package */ final PrefWithoutDefault<Boolean> mPostQuantumKeyExchangeTLSEnabled =
+      new PrefWithoutDefault<Boolean>("security.tls.enable_kyber");
+  /* package */ final PrefWithoutDefault<Boolean> mPostQuantumKeyExchangeHttp3Enabled =
+      new PrefWithoutDefault<Boolean>("network.http.http3.enable_kyber");
+  /* package */ final Pref<Boolean> mDohAutoselectEnabled =
+      new Pref<Boolean>("network.android_doh.autoselect_enabled", false);
+  /* package */ final Pref<Boolean> mSameDocumentNavigationOverridesLoadType =
+      new Pref<Boolean>("docshell.shistory.sameDocumentNavigationOverridesLoadType", true);
+  /* package */ final Pref<String> mSameDocumentNavigationOverridesLoadTypeForceDisable =
+      new Pref<String>(
+          "docshell.shistory.sameDocumentNavigationOverridesLoadType.forceDisable", "");
+  /* package */ final Pref<String> mBannedPorts =
+      new Pref<String>("network.security.ports.banned", "");
   /* package */ int mPreferredColorScheme = COLOR_SCHEME_SYSTEM;
 
   /* package */ boolean mForceEnableAccessibility;
   /* package */ boolean mDebugPause;
   /* package */ boolean mUseMaxScreenDepth;
+  /* package */ boolean mLowMemoryDetection = true;
   /* package */ float mDisplayDensityOverride = -1.0f;
   /* package */ int mDisplayDpiOverride;
   /* package */ int mScreenWidthOverride;
@@ -690,6 +808,7 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
     mForceEnableAccessibility = settings.mForceEnableAccessibility;
     mDebugPause = settings.mDebugPause;
     mUseMaxScreenDepth = settings.mUseMaxScreenDepth;
+    mLowMemoryDetection = settings.mLowMemoryDetection;
     mDisplayDensityOverride = settings.mDisplayDensityOverride;
     mDisplayDpiOverride = settings.mDisplayDpiOverride;
     mScreenWidthOverride = settings.mScreenWidthOverride;
@@ -774,6 +893,131 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
   }
 
   /**
+   * Set the Fingerprint protection in all tabs.
+   *
+   * @param enabled Whether we set the pref to true or false
+   * @return This GeckoRuntimeSettings instance
+   */
+  public @NonNull GeckoRuntimeSettings setFingerprintingProtection(final boolean enabled) {
+    mFingerprintingProtection.commit(enabled);
+    return this;
+  }
+
+  /**
+   * Set the Fingerprint protection in private tabs.
+   *
+   * @param enabled Whether we set the pref to true or false
+   * @return This GeckoRuntimeSettings instance
+   */
+  public @NonNull GeckoRuntimeSettings setFingerprintingProtectionPrivateBrowsing(
+      final boolean enabled) {
+    mFingerprintingProtectionPrivateMode.commit(enabled);
+    return this;
+  }
+
+  /**
+   * Set the Fingerprint protection overrides
+   *
+   * @param overrides The overrides value to add or remove fingerprinting protection targets. Please
+   *     check RFPTargets.inc for all supported targets.
+   * @return This GeckoRuntimeSettings instance
+   */
+  public @NonNull GeckoRuntimeSettings setFingerprintingProtectionOverrides(
+      @NonNull final String overrides) {
+    mFingerprintingProtectionOverrides.commit(overrides);
+    return this;
+  }
+
+  /**
+   * Set the pref to control whether to use fdlibm for Math.sin, Math.cos, and Math.tan.
+   *
+   * @param enabled Whether we set the pref to true or false
+   * @return This GeckoRuntimeSettings instance
+   */
+  public @NonNull GeckoRuntimeSettings setFdlibmMathEnabled(final boolean enabled) {
+    mFdlibmMathEnabled.commit(enabled);
+    return this;
+  }
+
+  /**
+   * Get whether Fingerprint protection is enabled in all tabs.
+   *
+   * @return Whether Fingerprint protection is enabled in all tabs.
+   */
+  public @Nullable Boolean getFingerprintingProtection() {
+
+    return mFingerprintingProtection.get();
+  }
+
+  /**
+   * Get whether Fingerprint protection is enabled private browsing mode.
+   *
+   * @return Whether Fingerprint protection is enabled private browsing mode.
+   */
+  public @Nullable Boolean getFingerprintingProtectionPrivateBrowsing() {
+    return mFingerprintingProtectionPrivateMode.get();
+  }
+
+  /**
+   * Get Fingerprint protection overrides.
+   *
+   * @return The string of the fingerprinting protection overrides.
+   */
+  public @NonNull String getFingerprintingProtectionOverrides() {
+    return mFingerprintingProtectionOverrides.get();
+  }
+
+  /**
+   * Get whether to use fdlibm for Math.sin, Math.cos, and Math.tan.
+   *
+   * @return Whether the fdlibm is used
+   */
+  public boolean getFdlibmMathEnabled() {
+    return mFdlibmMathEnabled.get();
+  }
+
+  /**
+   * Set the pref to control the cookie behavior opt-in partitioning.
+   *
+   * @param enabled Whether we set the pref to true or false
+   * @return This GeckoRuntimeSettings instance
+   */
+  public @NonNull GeckoRuntimeSettings setCookieBehaviorOptInPartitioning(final boolean enabled) {
+    mCookieBehaviorOptInPartitioning.commit(enabled);
+    return this;
+  }
+
+  /**
+   * Set the pref to control the cookie behavior opt-in partitioning in private browsing mode.
+   *
+   * @param enabled Whether we set the pref to true or false
+   * @return This GeckoRuntimeSettings instance
+   */
+  public @NonNull GeckoRuntimeSettings setCookieBehaviorOptInPartitioningPBM(
+      final boolean enabled) {
+    mCookieBehaviorOptInPartitioningPBM.commit(enabled);
+    return this;
+  }
+
+  /**
+   * Get whether the cookie behavior opt-in partitioning is enabled.
+   *
+   * @return Whether the cookie behavior opt-in partitioning is enabled.
+   */
+  public boolean getCookieBehaviorOptInPartitioning() {
+    return mCookieBehaviorOptInPartitioning.get();
+  }
+
+  /**
+   * Get whether the cookie behavior opt-in partitioning in private browsing mode is enabled.
+   *
+   * @return Whether the cookie behavior opt-in partitioning in private browsing mode is enabled.
+   */
+  public boolean getCookieBehaviorOptInPartitioningPBM() {
+    return mCookieBehaviorOptInPartitioningPBM.get();
+  }
+
+  /**
    * Get whether Extensions Process support is enabled.
    *
    * @return Whether Extensions Process support is enabled.
@@ -835,6 +1079,69 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
       final @NonNull Long timeframeMs) {
     mExtensionsProcessCrashTimeframe.commit(timeframeMs);
     return this;
+  }
+
+  /**
+   * Set the pref to control whether network.fetchpriority.enabled is enabled.
+   *
+   * @param enabled Whether to enable the Fetch Priority feature
+   * @return This GeckoRuntimeSettings instance
+   */
+  public @NonNull GeckoRuntimeSettings setFetchPriorityEnabled(final boolean enabled) {
+    mFetchPriorityEnabled.commit(enabled);
+    return this;
+  }
+
+  /**
+   * Get whether network.fetchpriority.enabled is enabled.
+   *
+   * @return Whether Fetch Priority is enabled
+   */
+  public boolean getFetchPriorityEnabled() {
+    return mFetchPriorityEnabled.get();
+  }
+
+  /**
+   * Set the pref to control security.pki.certificate_transparency.mode.
+   *
+   * @param mode What to set the certificate transparency mode to. 0 disables certificate
+   *     transparency entirely. 1 enables certificate transparency, but only collects telemetry. 2
+   *     enforces certificate transparency.
+   * @return This GeckoRuntimeSettings instance
+   */
+  public @NonNull GeckoRuntimeSettings setCertificateTransparencyMode(final int mode) {
+    mCertificateTransparencyMode.commit(mode);
+    return this;
+  }
+
+  /**
+   * Get the value of security.pki.certificate_transparency.mode.
+   *
+   * @return What certificate transparency mode has been set.
+   */
+  public @NonNull int getCertificateTransparencyMode() {
+    return mCertificateTransparencyMode.get();
+  }
+
+  /**
+   * Set the pref to control whether javascript.options.mem.gc_parallel_marking is enabled.
+   *
+   * @param enabled Whether to enable the JS GC Parallel Marking feature. This feature is purely a
+   *     performance feature and should have no noticeable behavior change for the user.
+   * @return This GeckoRuntimeSettings instance
+   */
+  public @NonNull GeckoRuntimeSettings setParallelMarkingEnabled(final boolean enabled) {
+    mParallelMarkingEnabled.commit(enabled);
+    return this;
+  }
+
+  /**
+   * Get whether javascript.options.mem.gc_parallel_marking is enabled.
+   *
+   * @return Whether Parallel Marking is enabled
+   */
+  public boolean getParallelMarkingEnabled() {
+    return mParallelMarkingEnabled.get();
   }
 
   /**
@@ -916,6 +1223,15 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
    */
   public boolean getUseMaxScreenDepth() {
     return mUseMaxScreenDepth;
+  }
+
+  /**
+   * Gets whether the runtime should detect low-memory conditions.
+   *
+   * @return True if low-memory detection should be enabled.
+   */
+  public boolean getLowMemoryDetection() {
+    return mLowMemoryDetection;
   }
 
   /**
@@ -1154,14 +1470,14 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
     return setFontSizeFactorInternal(fontSizeFactor);
   }
 
-  /*
+  /**
    * Enable the Enteprise Roots feature.
    *
-   * When Enabled, GeckoView will fetch the third-party root certificates added to the
-   * Android OS CA store and will use them internally.
+   * <p>When Enabled, GeckoView will fetch the third-party root certificates added to the Android OS
+   * CA store and will use them internally.
    *
-   * @param enabled whether to enable this feature or not
-   * @return This GeckoRuntimeSettings instance
+   * @param enabled Whether to enable this feature or not.
+   * @return This GeckoRuntimeSettings instance.
    */
   public @NonNull GeckoRuntimeSettings setEnterpriseRootsEnabled(final boolean enabled) {
     mEnterpriseRootsEnabled.commit(enabled);
@@ -1306,6 +1622,35 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
   }
 
   /**
+   * Set the pref to control whether network.android_doh.autoselect_enabled is enabled. When the
+   * pref is enabled the browser will automatically select a DoH provider from a region specific
+   * list provided by remote-settings if the browser is using the 'Default protection' mode for DNS
+   * over HTTPS. This means `network.trr.mode` was previously set to 0 by calling
+   * `setTrustedRecursiveResolverMode(TRR_MODE_OFF)`
+   *
+   * <p>When automatic selection is enabled the browser will run heuristic checks to determine
+   * whether DoH can be enabled for the current network (checks for parental controls, split horizon
+   * DNS, canary domain, etc) and if these pass it will set the `doh-rollout.mode` pref to 2
+   * (TRR_MODE_FIRST) and `doh-rollout.uri` to the URL of the automatically selected provider.
+   *
+   * @param enabled Whether to enable the DoHController component
+   * @return This GeckoRuntimeSettings instance
+   */
+  public @NonNull GeckoRuntimeSettings setDohAutoselectEnabled(final boolean enabled) {
+    mDohAutoselectEnabled.commit(enabled);
+    return this;
+  }
+
+  /**
+   * Get whether network.trr.android_rollout_enabled is enabled.
+   *
+   * @return Whether the DoHController component will be initialized
+   */
+  public boolean getDohAutoselectEnabled() {
+    return mDohAutoselectEnabled.get();
+  }
+
+  /**
    * Gets whether double-tap zooming is enabled.
    *
    * @return True if double-tap zooming is enabled, false otherwise.
@@ -1377,6 +1722,59 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
     return this;
   }
 
+  /** See the `WebContentIsolationStrategy` enum in `ProcessIsolation.cpp`. */
+  @Retention(RetentionPolicy.SOURCE)
+  @IntDef({STRATEGY_ISOLATE_NOTHING, STRATEGY_ISOLATE_EVERYTHING, STRATEGY_ISOLATE_HIGH_VALUE})
+  public @interface WebContentIsolationStrategy {};
+
+  /**
+   * All web content is loaded into a shared `web` content process. This is similar to the
+   * non-Fission behaviour, however remote subframes may still be used for sites with special
+   * isolation behaviour, such as extension or mozillaweb content processes.
+   */
+  public static final int STRATEGY_ISOLATE_NOTHING = 0;
+
+  /**
+   * Web content is always isolated into its own `webIsolated` content process based on site-origin,
+   * and will only load in a shared `web` content process if site-origin could not be determined.
+   */
+  public static final int STRATEGY_ISOLATE_EVERYTHING = 1;
+
+  /**
+   * Only isolates web content loaded by sites which are considered "high value". A site is
+   * considered "high value" if it has been granted a `highValue*` permission by the permission
+   * manager, which is done in response to certain actions.
+   */
+  public static final int STRATEGY_ISOLATE_HIGH_VALUE = 2;
+
+  /**
+   * Get the strategy used to control how sites are isolated into separate processes when Fission is
+   * enabled. This pref has no effect if Fission is disabled.
+   *
+   * <p>Setting should conform to {@link WebContentIsolationStrategy}, but is not automatically
+   * mapped.
+   *
+   * @return The web content isolation strategy.
+   */
+  public @Nullable Integer getWebContentIsolationStrategy() {
+    return mWebContentIsolationStrategy.get();
+  }
+
+  /**
+   * Set the strategy used to control how sites are isolated into separate processes when Fission is
+   * enabled. This pref has no effect if Fission is disabled.
+   *
+   * <p>Setting must conform to {@link WebContentIsolationStrategy} options.
+   *
+   * @param strategy The specified strategy defined by {@link WebContentIsolationStrategy}.
+   * @return This GeckoRuntimeSettings instance.
+   */
+  public @NonNull GeckoRuntimeSettings setWebContentIsolationStrategy(
+      final @NonNull @WebContentIsolationStrategy Integer strategy) {
+    mWebContentIsolationStrategy.commit(strategy);
+    return this;
+  }
+
   /**
    * Gets whether or not force user scalable zooming should be enabled or not.
    *
@@ -1405,6 +1803,16 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
    */
   public boolean getLoginAutofillEnabled() {
     return mAutofillLogins.get();
+  }
+
+  /**
+   * Gets whether fission is enabled or not. Note: There is no setter after startup. See {@link
+   * Builder#fissionEnabled(boolean)} for setting.
+   *
+   * @return True if fission is enabled or false otherwise.
+   */
+  public @Nullable Boolean getFissionEnabled() {
+    return mFissionEnabled.get();
   }
 
   /**
@@ -1618,11 +2026,184 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
     return this;
   }
 
+  /**
+   * Get the default DNS-over-HTTPS (DoH) server URI.
+   *
+   * @return default URI of the DoH server.
+   */
+  public @Nullable String getDefaultRecursiveResolverUri() {
+    return mDefaultRecursiveResolverUri.get();
+  }
+
+  /**
+   * Set the default DNS-over-HTTPS server URI.
+   *
+   * @param uri default URI of the DNS-over-HTTPS server.
+   * @return This GeckoRuntimeSettings instance.
+   */
+  public @NonNull GeckoRuntimeSettings setDefaultRecursiveResolverUri(final @NonNull String uri) {
+    mDefaultRecursiveResolverUri.commit(uri);
+    return this;
+  }
+
+  /**
+   * Get the domains excluded from using DNS-over-HTTPS
+   *
+   * @return A list of strings containing the domains saved in the pref.
+   */
+  public @NonNull List<String> getTrustedRecursiveResolverExcludedDomains() {
+    final String domains = mTrustedRecursiveResolverExcludedDomains.get();
+    if (domains.isEmpty()) {
+      return List.of();
+    }
+    return Arrays.asList(domains.split("[\\s,]+"));
+  }
+
+  /**
+   * Set the DNS-over-HTTPS excluded domains
+   *
+   * @param domains list of domains that will be excluded from using DoH. They will use platform DNS
+   *     instead.
+   * @return This GeckoRuntimeSettings instance.
+   */
+  public @NonNull GeckoRuntimeSettings setTrustedRecursiveResolverExcludedDomains(
+      final @NonNull List<String> domains) {
+    mTrustedRecursiveResolverExcludedDomains.commit(String.join(",", domains));
+    return this;
+  }
+
+  /**
+   * Get the current user characteristic ping version.
+   *
+   * @return The current version.
+   */
+  public @NonNull int getUserCharacteristicPingCurrentVersion() {
+    return mUserCharacteristicPingCurrentVersion.get();
+  }
+
+  /**
+   * Set the current user characteristic ping version.
+   *
+   * @param version The version number.
+   * @return This GeckoRuntimeSettings instance.
+   */
+  public @NonNull GeckoRuntimeSettings setUserCharacteristicPingCurrentVersion(final int version) {
+    mUserCharacteristicPingCurrentVersion.commit(version);
+    return this;
+  }
+
+  /**
+   * Retrieve the status of the disable session history in parent (SHIP) preference. May be null if
+   * the value hasn't been specifically initialized.
+   *
+   * <p>Note, there is no conventional setter because this may only be set before Gecko is
+   * initialized.
+   *
+   * <p>Set before initialization using {@link Builder#disableShip(boolean)}.
+   *
+   * @return True if SHIP is disabled, false if SHIP is enabled.
+   */
+  public @Nullable Boolean getDisableShip() {
+    return mDisableShip.get();
+  }
+
+  /**
+   * Set the preferences that control the use of post-quantum key exchange mechanisms
+   *
+   * @param enable Whether to enable or disable the preferences.
+   * @return This GeckoRuntimeSettings instance
+   */
+  public @NonNull GeckoRuntimeSettings setPostQuantumKeyExchangeEnabled(final boolean enable) {
+    mPostQuantumKeyExchangeTLSEnabled.commit(enable);
+    mPostQuantumKeyExchangeHttp3Enabled.commit(enable);
+    return this;
+  }
+
+  /**
+   * Get whether post-quantum key exchange mechanisms are enabled.
+   *
+   * @return Whether post-quantum key exchange mechanisms are enabled.
+   */
+  public @NonNull boolean getPostQuantumKeyExchangeEnabled() {
+    final Boolean tlsEnabled = mPostQuantumKeyExchangeTLSEnabled.get();
+    final Boolean h3Enabled = mPostQuantumKeyExchangeHttp3Enabled.get();
+    return (tlsEnabled != null && tlsEnabled) && (h3Enabled != null && h3Enabled);
+  }
+
+  /**
+   * Set the preference that controls which destination ports Firefox should refuse to connect to.
+   *
+   * @param portList Comma separated list of ports
+   * @return This GeckoRuntimeSettings instance
+   */
+  public @NonNull GeckoRuntimeSettings setBannedPorts(final @NonNull String portList) {
+    mBannedPorts.commit(portList);
+    return this;
+  }
+
+  /**
+   * Get the list of banned ports as a comma separated string
+   *
+   * @return a String containing the list of banned ports
+   */
+  public @NonNull String getBannedPorts() {
+    return mBannedPorts.get();
+  }
+
   // For internal use only
   /* protected */ @NonNull
   GeckoRuntimeSettings setProcessCount(final int processCount) {
     mProcessCount.commit(processCount);
     return this;
+  }
+
+  /**
+   * Sets whether the same document navigation should override the load type or not.
+   *
+   * @param value A flag determining whether same document navigation should override the load type
+   *     or not.
+   * @return This GeckoRuntimeSettings instance.
+   */
+  public @NonNull GeckoRuntimeSettings setSameDocumentNavigationOverridesLoadType(
+      final boolean value) {
+    mSameDocumentNavigationOverridesLoadType.commit(value);
+    return this;
+  }
+
+  /**
+   * Gets whether the same document navigation should override the load type or not.
+   *
+   * @return Whether the same document navigation should override the load type or not.
+   */
+  public @NonNull boolean getSameDocumentNavigationOverridesLoadType() {
+    return mSameDocumentNavigationOverridesLoadType.get();
+  }
+
+  /**
+   * Sets the uri to force-disable the same document navigation overriding the load type. If it is
+   * an empty string (default value), there's no specific domain that the same document navigation
+   * overriding the load type is disabled.
+   *
+   * @param uri URI that will be used to force-disable the same document navigation overriding the
+   *     load type on a specific domain.
+   * @return This GeckoRuntimeSettings instance.
+   */
+  public @NonNull GeckoRuntimeSettings setSameDocumentNavigationOverridesLoadTypeForceDisable(
+      @NonNull final String uri) {
+    mSameDocumentNavigationOverridesLoadTypeForceDisable.commit(uri);
+    return this;
+  }
+
+  /**
+   * Gets the uri to force-disable the same document navigation overriding the load type. If it is
+   * an empty string (default value), there's no specific domain that the same document navigation
+   * overriding the load type is disabled.
+   *
+   * @return URI that will be used to force-disable the same document navigation overriding the load
+   *     type on a specific domain.
+   */
+  public @NonNull String getSameDocumentNavigationOverridesLoadTypeForceDisable() {
+    return mSameDocumentNavigationOverridesLoadTypeForceDisable.get();
   }
 
   @Override // Parcelable
@@ -1634,6 +2215,7 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
     ParcelableUtils.writeBoolean(out, mForceEnableAccessibility);
     ParcelableUtils.writeBoolean(out, mDebugPause);
     ParcelableUtils.writeBoolean(out, mUseMaxScreenDepth);
+    ParcelableUtils.writeBoolean(out, mLowMemoryDetection);
     out.writeFloat(mDisplayDensityOverride);
     out.writeInt(mDisplayDpiOverride);
     out.writeInt(mScreenWidthOverride);
@@ -1653,6 +2235,7 @@ public final class GeckoRuntimeSettings extends RuntimeSettings {
     mForceEnableAccessibility = ParcelableUtils.readBoolean(source);
     mDebugPause = ParcelableUtils.readBoolean(source);
     mUseMaxScreenDepth = ParcelableUtils.readBoolean(source);
+    mLowMemoryDetection = ParcelableUtils.readBoolean(source);
     mDisplayDensityOverride = source.readFloat();
     mDisplayDpiOverride = source.readInt();
     mScreenWidthOverride = source.readInt();

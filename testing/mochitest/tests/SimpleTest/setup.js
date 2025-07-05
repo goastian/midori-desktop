@@ -13,10 +13,6 @@
 /* import-globals-from ../../chrome-harness.js */
 /* import-globals-from ../../chunkifyTests.js */
 
-// It appears we expect these from one of the MochiKit scripts.
-/* global toggleElementClass, removeElementClass, addElementClass,
-          hasElementClass */
-
 TestRunner.logEnabled = true;
 TestRunner.logger = LogController;
 
@@ -228,7 +224,24 @@ if (params.timeoutAsPass) {
 }
 
 if (params.conditionedProfile) {
-  TestRunner.conditionedProfile = true;
+  TestRunner.conditionedProfile = {
+    knownServiceWorkers: null,
+  };
+  // Asynchronously populate knownServiceWorkers above.  Because we only check
+  // this list after awaiting a different call to registeredServiceWorkers() in
+  // SimpleTest.js's afterCleanup, we are guaranteed that the list will be
+  // populated before we check it.
+  //
+  // That said, the question is whether the list was sampled before the test
+  // could start and add a ServiceWorker.  And the answer is mainly yes because
+  // the request will make it to the parent process main thread before any call
+  // to register() can get there with very high probability.  (We are dealing
+  // with different top-level protocols so there are some theoretical
+  // opportunities for pathological scheduling but practically speaking it is
+  // very unlikely to happen.)
+  SpecialPowers.registeredServiceWorkers(/* aForce */ true).then(workers => {
+    TestRunner.conditionedProfile.knownServiceWorkers = workers;
+  });
 }
 
 if (params.comparePrefs) {
@@ -301,33 +314,27 @@ RunSet.reloadAndRunAll = function (e) {
 
 // UI Stuff
 function toggleVisible(elem) {
-  toggleElementClass("invisible", elem);
-}
-
-function makeVisible(elem) {
-  removeElementClass(elem, "invisible");
-}
-
-function makeInvisible(elem) {
-  addElementClass(elem, "invisible");
+  elem.classList.toggle("invisible");
 }
 
 function isVisible(elem) {
   // you may also want to check for
   // getElement(elem).style.display == "none"
-  return !hasElementClass(elem, "invisible");
+  return !elem.classList.contains("invisible");
 }
 
 function toggleNonTests(e) {
   e.preventDefault();
   var elems = document.getElementsByClassName("non-test");
-  for (var i = "0"; i < elems.length; i++) {
+  for (var i = 0; i < elems.length; i++) {
     toggleVisible(elems[i]);
   }
-  if (isVisible(elems[0])) {
-    $("toggleNonTests").innerHTML = "Hide Non-Tests";
+  if (!elems.length) {
+    $("toggleNonTests").textContent = "No Non-Tests";
+  } else if (isVisible(elems[0])) {
+    $("toggleNonTests").textContent = "Hide Non-Tests";
   } else {
-    $("toggleNonTests").innerHTML = "Show Non-Tests";
+    $("toggleNonTests").textContent = "Show Non-Tests";
   }
 }
 

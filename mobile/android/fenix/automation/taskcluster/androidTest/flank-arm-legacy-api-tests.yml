@@ -20,36 +20,34 @@ gcloud:
   performance-metrics: true
 
   test-targets:
-    - notPackage org.mozilla.fenix.screenshots
     - notPackage org.mozilla.fenix.syncintegration
     - notPackage org.mozilla.fenix.experimentintegration
-    - class org.mozilla.fenix.ui.MainMenuTest#goBackTest
-    - class org.mozilla.fenix.ui.MainMenuTest#goForwardTest
+    - class org.mozilla.fenix.ui.MainMenuTest#navigateBackAndForwardTest
     - class org.mozilla.fenix.ui.HistoryTest#verifyHistoryMenuWithHistoryItemsTest
     - class org.mozilla.fenix.ui.CollectionTest#deleteCollectionTest
     - class org.mozilla.fenix.ui.HistoryTest#noHistoryInPrivateBrowsingTest
-    - class org.mozilla.fenix.ui.TabbedBrowsingTest#openNewTabTest
-    - class org.mozilla.fenix.ui.TabbedBrowsingTest#openNewPrivateTabTest
+    - class org.mozilla.fenix.ui.MainMenuTest#openNewTabTest
+    - class org.mozilla.fenix.ui.TabbedBrowsingTest#closeAllTabsTest
     - class org.mozilla.fenix.ui.TopSitesTest#openTopSiteInANewTabTest
-    - class org.mozilla.fenix.ui.BookmarksTest#addBookmarkTest
+    - class org.mozilla.fenix.ui.BookmarksTest#verifyAddBookmarkButtonTest
 
   device:
-    - model: Pixel2.arm
+    - model: MediumPhone.arm
       version: 26
       locale: en_US
-    - model: Pixel2.arm
-      version: 27
+    - model: MediumPhone.arm
+      version: 28
       locale: en_US
-    - model: redfin
+    - model: MediumPhone.arm
       version: 30
       locale: en_US
-    - model: x1q
-      version: 29
+    - model: MediumPhone.arm
+      version: 32
       locale: en_US
 
 flank:
   project: GOOGLE_PROJECT
-  max-test-shards: 50
+  max-test-shards: 4
   num-test-runs: 1
   output-style: compact
   full-junit-result: true

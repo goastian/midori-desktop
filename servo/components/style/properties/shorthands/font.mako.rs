@@ -34,7 +34,9 @@
 >
     use crate::computed_values::font_variant_caps::T::SmallCaps;
     use crate::parser::Parse;
-    use crate::properties::longhands::{font_family, font_style, font_size, font_weight, font_stretch};
+    use crate::properties::longhands::{font_family, font_style, font_weight, font_stretch};
+    #[cfg(feature = "gecko")]
+    use crate::properties::longhands::font_size;
     use crate::properties::longhands::font_variant_caps;
     use crate::values::specified::font::LineHeight;
     use crate::values::specified::{FontSize, FontWeight};
@@ -315,14 +317,15 @@
             % for p in subprops_for_value_info:
             ${p}::collect_completion_keywords(f);
             % endfor
+            % if engine == "gecko":
             <SystemFont as SpecifiedValueInfo>::collect_completion_keywords(f);
+            % endif
         }
     }
 </%helpers:shorthand>
 
 <%helpers:shorthand name="font-variant"
                     engines="gecko servo"
-                    servo_pref="layout.legacy_layout",
                     sub_properties="font-variant-caps
                                     ${'font-variant-alternates' if engine == 'gecko' else ''}
                                     ${'font-variant-east-asian' if engine == 'gecko' else ''}
@@ -467,14 +470,18 @@
                     spec="https://drafts.csswg.org/css-fonts-3/#propdef-font-variant">
     <% sub_properties = ["weight", "style", "small_caps", "position"] %>
 
-    use crate::values::specified::FontSynthesis;
+    use crate::values::specified::{FontSynthesis, FontSynthesisStyle};
 
     pub fn parse_value<'i, 't>(
         _context: &ParserContext,
         input: &mut Parser<'i, 't>,
     ) -> Result<Longhands, ParseError<'i>> {
     % for prop in sub_properties:
+    % if prop == "style":
+        let mut style = FontSynthesisStyle::None;
+    % else:
         let mut ${prop} = FontSynthesis::None;
+    % endif
     % endfor
 
         if input.try_parse(|input| input.expect_ident_matching("none")).is_ok() {
@@ -484,12 +491,25 @@
             while !input.is_exhausted() {
                 try_match_ident_ignore_ascii_case! { input,
                 % for prop in sub_properties:
+                % if prop == "style":
+                    "style" if style == FontSynthesisStyle::None => {
+                        has_custom_value = true;
+                        style = FontSynthesisStyle::Auto;
+                        continue;
+                    },
+                % else:
                     "${prop.replace('_', '-')}" if ${prop} == FontSynthesis::None => {
                         has_custom_value = true;
                         ${prop} = FontSynthesis::Auto;
                         continue;
                     },
+                % endif
                 % endfor
+                    "oblique-only" if style == FontSynthesisStyle::None => {
+                        has_custom_value = true;
+                        style = FontSynthesisStyle::ObliqueOnly;
+                        continue;
+                    },
                 }
             }
             if !has_custom_value {
@@ -508,7 +528,20 @@
         fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result where W: fmt::Write {
             let mut has_any = false;
 
-        % for prop in sub_properties:
+    % for prop in sub_properties:
+        % if prop == "style":
+            if self.font_synthesis_style != &FontSynthesisStyle::None {
+                if has_any {
+                    dest.write_char(' ')?;
+                }
+                has_any = true;
+                if self.font_synthesis_style == &FontSynthesisStyle::Auto {
+                    dest.write_str("style")?;
+                } else {
+                    dest.write_str("oblique-only")?;
+                }
+            }
+        % else:
             if self.font_synthesis_${prop} == &FontSynthesis::Auto {
                 if has_any {
                     dest.write_char(' ')?;
@@ -516,7 +549,8 @@
                 has_any = true;
                 dest.write_str("${prop.replace('_', '-')}")?;
             }
-        % endfor
+        % endif
+    % endfor
 
             if !has_any {
                 dest.write_str("none")?;
@@ -532,6 +566,7 @@
         fn collect_completion_keywords(f: KeywordsCollectFn) {
             f(&[
                 "none",
+                "oblique-only",
             % for prop in sub_properties:
                 "${prop.replace('_', '-')}",
             % endfor

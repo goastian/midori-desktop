@@ -38,7 +38,6 @@ import sys
 
 import ecdsa
 import rsa
-import six
 from pyasn1.codec.der import encoder
 from pyasn1.type import namedtype, tag, univ
 from pyasn1_modules import rfc2459
@@ -80,12 +79,12 @@ def _truncate_digest(digest, curve):
     return i.to_bytes(math.ceil(i.bit_length() / 8), byteorder="big")
 
 
-def byteStringToHexifiedBitString(string):
+def byteStringToHexifiedBitString(bytes):
     """Takes a string of bytes and returns a hex string representing
     those bytes for use with pyasn1.type.univ.BitString. It must be of
     the form "'<hex bytes>'H", where the trailing 'H' indicates to
     pyasn1 that the input is a hex string."""
-    return "'%s'H" % six.ensure_binary(string).hex()
+    return "'%s'H" % bytes.hex()
 
 
 class UnknownBaseError(Exception):
@@ -193,7 +192,7 @@ class PrivateKeyInfo(univ.Sequence):
     )
 
 
-class RSAKey(object):
+class RSAKey:
     # For reference, when encoded as a subject public key info, the
     # base64-encoded sha-256 hash of this key is
     # VCIlmPM9NkgFQtrs4Oa5TeFcDu6MWRTKSNdePEhOgD8=
@@ -719,7 +718,7 @@ class RSAKey(object):
     def toPEM(self):
         output = "-----BEGIN PRIVATE KEY-----"
         der = self.toDER()
-        b64 = six.ensure_text(base64.b64encode(der))
+        b64 = base64.b64encode(der).decode()
         while b64:
             output += "\n" + b64[:64]
             b64 = b64[64:]
@@ -784,7 +783,7 @@ def longToEvenLengthHexString(val):
     return h
 
 
-class ECCKey(object):
+class ECCKey:
     secp256k1KeyPair = (
         "35ee7c7289d8fef7a86afe5da66d8bc2ebb6a8543fd2fead089f45ce7acd0fa6"
         + "4382a9500c41dad770ffd4b511bf4b492eb1238800c32c4f76c73a3f3294e7c5",
@@ -867,7 +866,7 @@ class ECCKey(object):
         """Return the EC private key in PEM-encoded form."""
         output = "-----BEGIN EC PRIVATE KEY-----"
         der = self.toDER()
-        b64 = six.ensure_text(base64.b64encode(der))
+        b64 = base64.b64encode(der).decode()
         while b64:
             output += "\n" + b64[:64]
             b64 = b64[64:]
@@ -913,7 +912,7 @@ class ECCKey(object):
         assert hashAlgorithm.startswith("hash:")
         hashAlgorithm = hashAlgorithm[len("hash:") :]
         k = _gen_k(self.curve)
-        digest = hashlib.new(hashAlgorithm, six.ensure_binary(data)).digest()
+        digest = hashlib.new(hashAlgorithm, data).digest()
         digest = _truncate_digest(digest, self.curve)
         # NOTE: Under normal circumstances it's advisable to use
         # sign_digest_deterministic. In this case we don't want the library's

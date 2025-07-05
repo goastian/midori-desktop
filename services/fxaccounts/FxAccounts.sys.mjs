@@ -9,6 +9,7 @@ import { clearTimeout, setTimeout } from "resource://gre/modules/Timer.sys.mjs";
 import { FxAccountsStorageManager } from "resource://gre/modules/FxAccountsStorage.sys.mjs";
 
 import {
+  ATTACHED_CLIENTS_CACHE_DURATION,
   ERRNO_INVALID_AUTH_TOKEN,
   ERROR_AUTH_ERROR,
   ERROR_INVALID_PARAMETER,
@@ -412,7 +413,9 @@ export class FxAccounts {
   /**
    * Returns an array listing all the OAuth clients connected to the
    * authenticated user's account. This includes browsers and web sessions - no
-   * filtering is done of the set returned by the FxA server.
+   * filtering is done of the set returned by the FxA server. This is using a cached
+   * result if it's not older than 4 hours. If the cached data is too old or
+   * missing, it fetches new data and updates the cache.
    *
    * @typedef {Object} AttachedClient
    * @property {String} id - OAuth `client_id` of the client.
@@ -421,14 +424,44 @@ export class FxAccounts {
    *
    * @returns {Array.<AttachedClient>} A list of attached clients.
    */
-  async listAttachedOAuthClients() {
-    // We expose last accessed times in 'days ago'
+  async listAttachedOAuthClients(forceRefresh = false) {
+    const now = Date.now();
+
+    // Check if cached data is still valid
+    if (
+      this._cachedClients &&
+      now - this._cachedClientsTimestamp < ATTACHED_CLIENTS_CACHE_DURATION &&
+      !forceRefresh
+    ) {
+      return this._cachedClients;
+    }
+
+    // Cache is empty or expired, fetch new data
+    let clients = null;
+    try {
+      clients = await this._fetchAttachedOAuthClients();
+      this._cachedClients = clients;
+      this._cachedClientsTimestamp = now;
+    } catch (error) {
+      log.error("Could not update attached clients list ", error);
+      clients = [];
+    }
+
+    return clients;
+  }
+
+  /**
+   * This private method actually fetches the clients from the server.
+   * It should not be called directly by consumers of this API.
+   * @returns {Array.<AttachedClient>}
+   * @private
+   */
+  async _fetchAttachedOAuthClients() {
     const ONE_DAY = 24 * 60 * 60 * 1000;
 
     return this._withSessionToken(async sessionToken => {
-      const response = await this._internal.fxAccountsClient.attachedClients(
-        sessionToken
-      );
+      const response =
+        await this._internal.fxAccountsClient.attachedClients(sessionToken);
       const attachedClients = response.body;
       const timestamp = response.headers["x-timestamp"];
       const now =
@@ -531,7 +564,9 @@ export class FxAccounts {
    *        {
    *          email: String: The user's email address
    *          uid: String: The user's unique id
-   *          verified: Boolean: email verification status
+   *          verified: Boolean: Firefox verification status. If false, the account should
+   *                    be considered partially logged-in to this Firefox. This may be false
+   *                    even if the underying account verfied status is true.
    *          displayName: String or null if not known.
    *          avatar: URL of the avatar for the user. May be the default
    *                  avatar, or null in edge-cases (eg, if there's an account
@@ -543,13 +578,21 @@ export class FxAccounts {
    *        or null if no user is signed in. This function never fails except
    *        in pathological cases (eg, file-system errors, etc)
    */
-  getSignedInUser() {
+  getSignedInUser(addnFields = []) {
     // Note we don't return the session token, but use it to see if we
-    // should fetch the profile.
-    const ACCT_DATA_FIELDS = ["email", "uid", "verified", "sessionToken"];
+    // should fetch the profile. Ditto scopedKeys re verified.
+    const ACCT_DATA_FIELDS = [
+      "email",
+      "uid",
+      "verified",
+      "scopedKeys",
+      "sessionToken",
+    ];
     const PROFILE_FIELDS = ["displayName", "avatar", "avatarDefault"];
     return this._withCurrentAccountState(async currentState => {
-      const data = await currentState.getUserAccountData(ACCT_DATA_FIELDS);
+      const data = await currentState.getUserAccountData(
+        ACCT_DATA_FIELDS.concat(addnFields)
+      );
       if (!data) {
         return null;
       }
@@ -557,12 +600,22 @@ export class FxAccounts {
         await this.signOut();
         return null;
       }
-      if (!this._internal.isUserEmailVerified(data) && !lazy.oauthEnabled) {
+      if (lazy.oauthEnabled) {
+        // data.verified is the sessionToken status. oauth cares only about whether it has the keys.
+        // (Note that this never forces `.verified` to `true` even if we *do* have the keys, which
+        // seems slightly odd)
+        // Note that is the primary-password is locked we can't get the scopedKeys even if they exist, so
+        // we don't want to pretend the user is unverified in that case.
+        if (Services.logins.isLoggedIn && !data.scopedKeys) {
+          data.verified = false;
+        }
+      } else if (!data.verified) {
         // If the email is not verified, start polling for verification,
         // but return null right away.  We don't want to return a promise
         // that might not be fulfilled for a long time.
         this._internal.startVerifiedCheck(data);
       }
+      delete data.scopedKeys;
 
       let profileData = null;
       if (data.sessionToken) {
@@ -747,9 +800,8 @@ FxAccountsInternal.prototype = {
   // to help with our mocking story.
   initialize() {
     ChromeUtils.defineLazyGetter(this, "fxaPushService", function () {
-      return Cc["@mozilla.org/fxaccounts/push;1"].getService(
-        Ci.nsISupports
-      ).wrappedJSObject;
+      return Cc["@mozilla.org/fxaccounts/push;1"].getService(Ci.nsISupports)
+        .wrappedJSObject;
     });
 
     this.keys = new lazy.FxAccountsKeys(this);
@@ -771,6 +823,11 @@ FxAccountsInternal.prototype = {
     }
 
     this.currentTimer = null;
+    // This holds the list of attached clients from the /account/attached_clients endpoint
+    // Most calls to that endpoint generally don't need fresh data so we try to prevent
+    // as many network requests as possible
+    this._cachedAttachedClients = null;
+    this._cachedAttachedClientsTimestamp = 0;
     // This object holds details about, and storage for, the current user. It
     // is replaced when a different user signs in. Instead of using it directly,
     // you should try and use `withCurrentAccountState`.
@@ -796,7 +853,7 @@ FxAccountsInternal.prototype = {
         throw this._error(ERROR_NO_ACCOUNT);
       }
 
-      if (!this.isUserEmailVerified(data)) {
+      if (!data.verified) {
         // Signed-in user has not verified email
         throw this._error(ERROR_UNVERIFIED_ACCOUNT);
       }
@@ -812,7 +869,7 @@ FxAccountsInternal.prototype = {
       throw this._error(ERROR_NO_ACCOUNT);
     }
 
-    if (mustBeVerified && !this.isUserEmailVerified(data)) {
+    if (mustBeVerified && !data.verified) {
       // Signed-in user has not verified email
       throw this._error(ERROR_UNVERIFIED_ACCOUNT);
     }
@@ -856,7 +913,15 @@ FxAccountsInternal.prototype = {
   _commands: null,
   get commands() {
     if (!this._commands) {
-      this._commands = new lazy.FxAccountsCommands(this);
+      // FxAccountsCommands registers a shutdown blocker and must not be
+      // instantiated if shutdown already started.
+      if (
+        !Services.startup.isInOrBeyondShutdownPhase(
+          Ci.nsIAppStartup.SHUTDOWN_PHASE_APPSHUTDOWNCONFIRMED
+        )
+      ) {
+        this._commands = new lazy.FxAccountsCommands(this);
+      }
     }
     return this._commands;
   },
@@ -1012,7 +1077,7 @@ FxAccountsInternal.prototype = {
     // the background? Already does for updateAccountData ;)
     await currentAccountState.promiseInitialized;
     // Starting point for polling if new user
-    if (!this.isUserEmailVerified(credentials) && !lazy.oauthEnabled) {
+    if (!lazy.oauthEnabled && !credentials.verified) {
       this.startVerifiedCheck(credentials);
     }
     await this.notifyObservers(ONLOGIN_NOTIFICATION);
@@ -1171,10 +1236,6 @@ FxAccountsInternal.prototype = {
     return this.currentAccountState.getUserAccountData(fieldNames);
   },
 
-  isUserEmailVerified: function isUserEmailVerified(data) {
-    return !!(data && data.verified);
-  },
-
   /**
    * Setup for and if necessary do email verification polling.
    */
@@ -1182,12 +1243,14 @@ FxAccountsInternal.prototype = {
     let currentState = this.currentAccountState;
     return currentState.getUserAccountData().then(data => {
       if (data) {
-        if (!this.isUserEmailVerified(data)) {
-          this.startPollEmailStatus(
-            currentState,
-            data.sessionToken,
-            "browser-startup"
-          );
+        if (!lazy.oauthEnabled) {
+          if (!data.verified) {
+            this.startPollEmailStatus(
+              currentState,
+              data.sessionToken,
+              "browser-startup"
+            );
+          }
         }
       }
       return data;
@@ -1276,6 +1339,10 @@ FxAccountsInternal.prototype = {
   // since verification polling continues in the background.
   async pollEmailStatus(currentState, sessionToken, why) {
     log.debug("entering pollEmailStatus: " + why);
+    if (lazy.oauthEnabled) {
+      log.debug("not polling for verification because oauth is enabled");
+      return;
+    }
     let nextPollMs;
     try {
       const response = await this.checkEmailStatus(sessionToken, {
@@ -1345,7 +1412,6 @@ FxAccountsInternal.prototype = {
       await currentState.updateUserAccountData({ verified: true });
       const accountData = await currentState.getUserAccountData();
       this._setLastUserPref(accountData.email);
-      // Now that the user is verified, we can proceed to fetch keys
       if (currentState.whenVerifiedDeferred) {
         currentState.whenVerifiedDeferred.resolve(accountData);
         delete currentState.whenVerifiedDeferred;
@@ -1485,6 +1551,7 @@ FxAccountsInternal.prototype = {
    **/
   async setUserVerified() {
     await this.withCurrentAccountState(async currentState => {
+      // TODO: setting `verified` is unnecessary if oauthEnabled - it looks at our key state.
       const userData = await currentState.getUserAccountData();
       if (!userData.verified) {
         await currentState.updateUserAccountData({ verified: true });
@@ -1499,7 +1566,7 @@ FxAccountsInternal.prototype = {
       // No signed-in user
       throw this._error(ERROR_NO_ACCOUNT);
     }
-    if (!this.isUserEmailVerified(data)) {
+    if (!data.verified) {
       // Signed-in user has not verified email
       throw this._error(ERROR_UNVERIFIED_ACCOUNT);
     }

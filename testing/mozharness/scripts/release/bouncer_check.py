@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 # lint_ignore=E501
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 """ bouncer_check.py
 
 A script to check HTTP statuses of Bouncer products to be shipped.
@@ -124,21 +122,21 @@ class BouncerCheck(BaseScript):
             from urlparse import urlparse
 
         def do_check_url():
-            self.log("Checking {}".format(url))
+            self.log(f"Checking {url}")
             r = session.head(url, verify=True, timeout=10, allow_redirects=True)
             try:
                 r.raise_for_status()
             except HTTPError:
-                self.error("FAIL: {}, status: {}".format(url, r.status_code))
+                self.error(f"FAIL: {url}, status: {r.status_code}")
                 raise
 
             final_url = urlparse(r.url)
             if final_url.scheme != "https":
-                self.error("FAIL: URL scheme is not https: {}".format(r.url))
+                self.error(f"FAIL: URL scheme is not https: {r.url}")
                 self.return_code = EXIT_STATUS_DICT[TBPL_FAILURE]
 
             if final_url.netloc not in self.config["cdn_urls"]:
-                self.error("FAIL: host not in allowed locations: {}".format(r.url))
+                self.error(f"FAIL: host not in allowed locations: {r.url}")
                 self.return_code = EXIT_STATUS_DICT[TBPL_FAILURE]
 
         try:

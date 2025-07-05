@@ -41,7 +41,7 @@ class MacosDevice(Layer):
         stdout, stderr = p.communicate(timeout=45)
         if p.returncode != 0:
             raise subprocess.CalledProcessError(
-                stdout=stdout, stderr=stderr, returncode=p.returncode
+                p.returncode, args, output=stdout, stderr=stderr
             )
 
         return stdout
@@ -82,7 +82,7 @@ class MacosDevice(Layer):
                     shutil.rmtree(str(mount))
         if not found:
             self.error(f"No app file found in {dmg}")
-            raise IOError(dmg)
+            raise OSError(dmg)
 
     def run(self, metadata):
         #  Each DMG is mounted, then we look for the .app

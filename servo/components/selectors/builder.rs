@@ -29,6 +29,11 @@ use servo_arc::{Arc, ThinArc};
 use smallvec::SmallVec;
 use std::cmp;
 use std::slice;
+use bitflags::bitflags;
+use derive_more::{Add, AddAssign};
+
+#[cfg(feature = "to_shmem")]
+use to_shmem_derive::ToShmem;
 
 /// Top-level SelectorBuilder struct. This should be stack-allocated by the consumer and never
 /// moved (because it contains a lot of inline data that would be slow to memmove).
@@ -85,7 +90,7 @@ impl<Impl: SelectorImpl> SelectorBuilder<Impl> {
     #[inline(always)]
     pub fn build(&mut self, parse_relative: ParseRelative) -> ThinArc<SpecificityAndFlags, Component<Impl>> {
         // Compute the specificity and flags.
-        let sf = specificity_and_flags(self.components.iter());
+        let sf = specificity_and_flags(self.components.iter(), /* for_nesting_parent = */ false);
         self.build_with_specificity_and_flags(sf, parse_relative)
     }
 
@@ -169,7 +174,8 @@ where
 }
 
 /// Flags that indicate at which point of parsing a selector are we.
-#[derive(Clone, Copy, Default, Eq, PartialEq, ToShmem)]
+#[derive(Clone, Copy, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "to_shmem", derive(ToShmem))]
 pub(crate) struct SelectorFlags(u8);
 
 bitflags! {
@@ -178,9 +184,8 @@ bitflags! {
         const HAS_SLOTTED = 1 << 1;
         const HAS_PART = 1 << 2;
         const HAS_PARENT = 1 << 3;
-        const HAS_NON_FEATURELESS_COMPONENT = 1 << 4;
-        const HAS_HOST = 1 << 5;
-        const HAS_SCOPE = 1 << 6;
+        const HAS_HOST = 1 << 4;
+        const HAS_SCOPE = 1 << 5;
     }
 }
 
@@ -201,12 +206,13 @@ impl SelectorFlags {
     ///
     /// It is not supposed to work, because :is(::before) is invalid. We can't propagate the
     /// pseudo-flags from inner to outer selectors, to avoid breaking our invariants.
-    pub(crate) fn for_nesting() -> Self {
-        Self::all() - (Self::HAS_PSEUDO | Self::HAS_SLOTTED | Self::HAS_PART)
+    pub(crate) fn forbidden_for_nesting() -> Self {
+        Self::HAS_PSEUDO | Self::HAS_SLOTTED | Self::HAS_PART
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ToShmem)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[cfg_attr(feature = "to_shmem", derive(ToShmem))]
 pub struct SpecificityAndFlags {
     /// There are two free bits here, since we use ten bits for each specificity
     /// kind (id, class, element).
@@ -259,15 +265,17 @@ impl From<Specificity> for u32 {
 
 fn specificity_and_flags<Impl>(
     iter: slice::Iter<Component<Impl>>,
+    for_nesting_parent: bool,
 ) -> SpecificityAndFlags
 where
     Impl: SelectorImpl,
 {
-    complex_selector_specificity_and_flags(iter).into()
+    complex_selector_specificity_and_flags(iter, for_nesting_parent).into()
 }
 
 fn complex_selector_specificity_and_flags<Impl>(
     iter: slice::Iter<Component<Impl>>,
+    for_nesting_parent: bool,
 ) -> SpecificityAndFlags
 where
     Impl: SelectorImpl,
@@ -276,6 +284,7 @@ where
         simple_selector: &Component<Impl>,
         specificity: &mut Specificity,
         flags: &mut SelectorFlags,
+        for_nesting_parent: bool,
     ) where
         Impl: SelectorImpl,
     {
@@ -284,28 +293,32 @@ where
             Component::ParentSelector => flags.insert(SelectorFlags::HAS_PARENT),
             Component::Part(..) => {
                 flags.insert(SelectorFlags::HAS_PART);
-                specificity.element_selectors += 1
+                if !for_nesting_parent {
+                    specificity.element_selectors += 1
+                }
             },
-            Component::PseudoElement(..) => {
+            Component::PseudoElement(ref pseudo) => {
+                use crate::parser::PseudoElement;
                 flags.insert(SelectorFlags::HAS_PSEUDO);
-                specificity.element_selectors += 1
+                if !for_nesting_parent {
+                    specificity.element_selectors += pseudo.specificity_count();
+                }
             },
             Component::LocalName(..) => {
-                flags.insert(SelectorFlags::HAS_NON_FEATURELESS_COMPONENT);
                 specificity.element_selectors += 1
             },
             Component::Slotted(ref selector) => {
-                flags.insert(
-                    SelectorFlags::HAS_SLOTTED | SelectorFlags::HAS_NON_FEATURELESS_COMPONENT,
-                );
-                specificity.element_selectors += 1;
-                // Note that due to the way ::slotted works we only compete with
-                // other ::slotted rules, so the above rule doesn't really
-                // matter, but we do it still for consistency with other
-                // pseudo-elements.
-                //
-                // See: https://github.com/w3c/csswg-drafts/issues/1915
-                *specificity += Specificity::from(selector.specificity());
+                flags.insert(SelectorFlags::HAS_SLOTTED);
+                if !for_nesting_parent {
+                    specificity.element_selectors += 1;
+                    // Note that due to the way ::slotted works we only compete with
+                    // other ::slotted rules, so the above rule doesn't really
+                    // matter, but we do it still for consistency with other
+                    // pseudo-elements.
+                    //
+                    // See: https://github.com/w3c/csswg-drafts/issues/1915
+                    *specificity += Specificity::from(selector.specificity());
+                }
                 flags.insert(selector.flags());
             },
             Component::Host(ref selector) => {
@@ -314,11 +327,10 @@ where
                 if let Some(ref selector) = *selector {
                     // See: https://github.com/w3c/csswg-drafts/issues/1915
                     *specificity += Specificity::from(selector.specificity());
-                    flags.insert(selector.flags() - SelectorFlags::HAS_NON_FEATURELESS_COMPONENT);
+                    flags.insert(selector.flags());
                 }
             },
             Component::ID(..) => {
-                flags.insert(SelectorFlags::HAS_NON_FEATURELESS_COMPONENT);
                 specificity.id_selectors += 1;
             },
             Component::Class(..) |
@@ -329,7 +341,6 @@ where
             Component::Empty |
             Component::Nth(..) |
             Component::NonTSPseudoClass(..) => {
-                flags.insert(SelectorFlags::HAS_NON_FEATURELESS_COMPONENT);
                 specificity.class_like_selectors += 1;
             },
             Component::Scope | Component::ImplicitScope => {
@@ -346,9 +357,9 @@ where
                 //     specificity of a regular pseudo-class with that of its
                 //     selector argument S.
                 specificity.class_like_selectors += 1;
-                let sf = selector_list_specificity_and_flags(nth_of_data.selectors().iter());
+                let sf = selector_list_specificity_and_flags(nth_of_data.selectors().iter(), for_nesting_parent);
                 *specificity += Specificity::from(sf.specificity);
-                flags.insert(sf.flags | SelectorFlags::HAS_NON_FEATURELESS_COMPONENT);
+                flags.insert(sf.flags);
             },
             // https://drafts.csswg.org/selectors/#specificity-rules:
             //
@@ -358,16 +369,16 @@ where
             Component::Where(ref list) |
             Component::Negation(ref list) |
             Component::Is(ref list) => {
-                let sf = selector_list_specificity_and_flags(list.slice().iter());
+                let sf = selector_list_specificity_and_flags(list.slice().iter(), /* nested = */ true);
                 if !matches!(*simple_selector, Component::Where(..)) {
                     *specificity += Specificity::from(sf.specificity);
                 }
                 flags.insert(sf.flags);
             },
             Component::Has(ref relative_selectors) => {
-                let sf = relative_selector_list_specificity_and_flags(relative_selectors);
+                let sf = relative_selector_list_specificity_and_flags(relative_selectors, for_nesting_parent);
                 *specificity += Specificity::from(sf.specificity);
-                flags.insert(sf.flags | SelectorFlags::HAS_NON_FEATURELESS_COMPONENT);
+                flags.insert(sf.flags);
             },
             Component::ExplicitUniversalType |
             Component::ExplicitAnyNamespace |
@@ -377,7 +388,6 @@ where
             Component::RelativeSelectorAnchor |
             Component::Invalid(..) => {
                 // Does not affect specificity
-                flags.insert(SelectorFlags::HAS_NON_FEATURELESS_COMPONENT);
             },
         }
     }
@@ -389,6 +399,7 @@ where
             &simple_selector,
             &mut specificity,
             &mut flags,
+            for_nesting_parent,
         );
     }
     SpecificityAndFlags {
@@ -400,11 +411,19 @@ where
 /// Finds the maximum specificity of elements in the list and returns it.
 pub(crate) fn selector_list_specificity_and_flags<'a, Impl: SelectorImpl>(
     itr: impl Iterator<Item = &'a Selector<Impl>>,
+    for_nesting_parent: bool,
 ) -> SpecificityAndFlags {
     let mut specificity = 0;
     let mut flags = SelectorFlags::empty();
     for selector in itr {
-        specificity = std::cmp::max(specificity, selector.specificity());
+        let selector_flags = selector.flags();
+        let selector_specificity = if for_nesting_parent && selector_flags.intersects(SelectorFlags::forbidden_for_nesting()) {
+            // In this case we need to re-compute the specificity.
+            specificity_and_flags(selector.iter_raw_match_order(), for_nesting_parent).specificity
+        } else {
+            selector.specificity()
+        };
+        specificity = std::cmp::max(specificity, selector_specificity);
         flags.insert(selector.flags());
     }
     SpecificityAndFlags { specificity, flags }
@@ -412,6 +431,7 @@ pub(crate) fn selector_list_specificity_and_flags<'a, Impl: SelectorImpl>(
 
 pub(crate) fn relative_selector_list_specificity_and_flags<Impl: SelectorImpl>(
     list: &[RelativeSelector<Impl>],
+    for_nesting_parent: bool,
 ) -> SpecificityAndFlags {
-    selector_list_specificity_and_flags(list.iter().map(|rel| &rel.selector))
+    selector_list_specificity_and_flags(list.iter().map(|rel| &rel.selector), for_nesting_parent)
 }

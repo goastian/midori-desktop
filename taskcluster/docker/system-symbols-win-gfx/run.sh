@@ -50,10 +50,12 @@ pushd "${MOZ_FETCHES_DIR}/symbol-scrapers/windows-graphics-drivers"
     download_extract_sha256sums "${sha256}"
   fi
 
-  DUMP_SYMS="${MOZ_FETCHES_DIR}/dump_syms/dump_syms" /bin/bash -x script.sh
+  PATH="${MOZ_FETCHES_DIR}/7zz/:${MOZ_FETCHES_DIR}/cabextract/:${PATH}" DUMP_SYMS="${MOZ_FETCHES_DIR}/dump_syms/dump_syms" /bin/bash -x script.sh
   zip -r9 "/builds/worker/artifacts/${SHA256SUMS}" SHA256SUMS
 popd
 
-if [ ! -f "/builds/worker/artifacts/target.crashreporter-symbols.zip" ]; then
+zip_files=$(find /builds/worker/artifacts -name "target.crashreporter-symbols.*.zip")
+
+if [ -z "${zip_files}" ]; then
   echo "No symbols zip produced, upload task will fail"
 fi

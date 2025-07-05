@@ -5,21 +5,35 @@
 package org.mozilla.focus.locale.screen
 
 import android.app.Activity
+import androidx.annotation.VisibleForTesting
 import mozilla.components.lib.state.Middleware
 import mozilla.components.lib.state.MiddlewareContext
 import mozilla.components.support.locale.LocaleManager
+import mozilla.components.support.locale.LocaleManager.getSystemDefault
 import mozilla.components.support.locale.LocaleUseCases
 import org.mozilla.focus.locale.Locales
 import org.mozilla.focus.settings.InstalledSearchEnginesSettingsFragment
 import org.mozilla.gecko.util.ThreadUtils.runOnUiThread
 import java.util.Locale
 
-class LanguageMiddleware(val activity: Activity, private val localeUseCase: LocaleUseCases) :
-    Middleware<LanguageScreenState, LanguageScreenAction> {
-
-    private val storage by lazy {
-        LanguageStorage(context = activity)
-    }
+/**
+ * [Middleware] responsible for handling actions related to language selection and updates in the
+ * language settings screen. It interacts with [LanguageStorage] to persist the selected language and
+ * [LocaleUseCases] to apply the selected language to the system.
+ *
+ * This middleware intercepts [LanguageScreenAction]s, updates the stored language preference, and triggers
+ * a locale change that affects the application's displayed language. It also handles the initial population
+ * of available languages when the language screen is first displayed.
+ *
+ * @param activity The current activity. Used for accessing resources and triggering activity recreation.
+ * @param localeUseCase Use cases for interacting with locales, provided by [LocaleUseCases].
+ * @param storage The storage for managing language preferences, provided by [LanguageStorage].
+ */
+class LanguageMiddleware(
+    private val activity: Activity,
+    private val localeUseCase: LocaleUseCases,
+    private val storage: LanguageStorage,
+) : Middleware<LanguageScreenState, LanguageScreenAction> {
 
     override fun invoke(
         context: MiddlewareContext<LanguageScreenState, LanguageScreenAction>,
@@ -38,8 +52,8 @@ class LanguageMiddleware(val activity: Activity, private val localeUseCase: Loca
                  */
                 context.dispatch(
                     LanguageScreenAction.UpdateLanguages(
-                        storage.getLanguages(),
-                        storage.getSelectedLanguageTag(),
+                        storage.languages,
+                        storage.selectedLanguage,
                     ),
                 )
             }
@@ -55,15 +69,35 @@ class LanguageMiddleware(val activity: Activity, private val localeUseCase: Loca
      *
      * @param languageTag selected Language Tag that comes from Language object
      */
-    private fun setCurrentLanguage(languageTag: String) {
+    internal fun setCurrentLanguage(languageTag: String) {
         InstalledSearchEnginesSettingsFragment.languageChanged = true
         val locale: Locale?
+
         if (languageTag == LanguageStorage.LOCALE_SYSTEM_DEFAULT) {
-            LocaleManager.resetToSystemDefault(activity, localeUseCase)
+            locale = getSystemDefault()
+            resetToSystemDefault()
         } else {
             locale = Locales.parseLocaleCode(languageTag)
-            LocaleManager.setNewLocale(activity, localeUseCase, locale)
+            setNewLocale(locale)
         }
+
+        activity.applicationContext.resources.apply {
+            configuration.setLocale(locale)
+            configuration.setLayoutDirection(locale)
+            @Suppress("DEPRECATION")
+            updateConfiguration(configuration, displayMetrics)
+        }
+
         runOnUiThread { activity.recreate() }
+    }
+
+    @VisibleForTesting
+    internal fun resetToSystemDefault() {
+        LocaleManager.resetToSystemDefault(activity, localeUseCase)
+    }
+
+    @VisibleForTesting
+    internal fun setNewLocale(locale: Locale) {
+        LocaleManager.setNewLocale(activity, localeUseCase, locale)
     }
 }

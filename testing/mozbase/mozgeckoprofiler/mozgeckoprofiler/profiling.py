@@ -1,10 +1,15 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-import json
 import os
 import shutil
 import tempfile
+
+try:
+    import orjson
+except ImportError:
+    orjson = None
+    import json
 
 from mozlog import get_proxy_logger
 
@@ -14,25 +19,24 @@ LOG = get_proxy_logger("profiler")
 
 
 def save_gecko_profile(profile, filename):
-    with open(filename, "w") as f:
-        json.dump(profile, f)
+    with open(filename, "wb") as f:
+        if orjson is not None:
+            f.write(orjson.dumps(profile))
+        else:
+            f.write(json.dumps(profile).encode("utf-8"))
 
 
-def symbolicate_profile_json(profile_path, objdir_path):
+def symbolicate_profile_json(profile_path, firefox_symbols_path):
     """
     Symbolicate a single JSON profile.
     """
     temp_dir = tempfile.mkdtemp()
     missing_symbols_zip = os.path.join(temp_dir, "missingsymbols.zip")
 
-    firefox_symbol_path = os.path.join(objdir_path, "dist", "crashreporter-symbols")
-    if not os.path.isdir(firefox_symbol_path):
-        os.mkdir(firefox_symbol_path)
-
     windows_symbol_path = os.path.join(temp_dir, "windows")
     os.mkdir(windows_symbol_path)
 
-    symbol_paths = {"FIREFOX": firefox_symbol_path, "WINDOWS": windows_symbol_path}
+    symbol_paths = {"FIREFOX": firefox_symbols_path, "WINDOWS": windows_symbol_path}
 
     symbolicator = ProfileSymbolicator(
         {
@@ -67,16 +71,18 @@ def symbolicate_profile_json(profile_path, objdir_path):
     )
 
     try:
-        with open(profile_path, "r", encoding="utf-8") as profile_file:
-            profile = json.load(profile_file)
+        with open(profile_path, "rb") as profile_file:
+            if orjson is not None:
+                profile = orjson.loads(profile_file.read())
+            else:
+                profile = json.load(profile_file)
         symbolicator.dump_and_integrate_missing_symbols(profile, missing_symbols_zip)
         symbolicator.symbolicate_profile(profile)
         # Overwrite the profile in place.
         save_gecko_profile(profile, profile_path)
     except MemoryError:
         LOG.error(
-            "Ran out of memory while trying"
-            " to symbolicate profile {0}".format(profile_path)
+            "Ran out of memory while trying" f" to symbolicate profile {profile_path}"
         )
     except Exception as e:
         LOG.error("Encountered an exception during profile symbolication")

@@ -37,6 +37,7 @@
 #include "secmod.h"
 #include "plgetopt.h"
 #include "plstr.h"
+#include "zlib.h"
 
 #if defined(WIN32)
 #include <fcntl.h>
@@ -234,6 +235,8 @@ PrintUsageHeader()
             "  [-A requestfile] [-L totalconnections] [-P {client,server}]\n"
             "  [-N echConfigs] [-Q] [-z externalPsk]\n"
             "  [-i echGreaseSize]\n"
+            "  [--enable-rfc8701-grease] [--enable-ch-extension-permutation]\n"
+            "  [--zlib-certificate-compression] \n"
             "\n",
             progName);
 }
@@ -305,7 +308,7 @@ PrintParameterUsage()
     fprintf(stderr, "%-20s Comma separated list of enabled groups for TLS key exchange.\n"
                     "%-20s The following values are valid:\n"
                     "%-20s P256, P384, P521, x25519, FF2048, FF3072, FF4096, FF6144, FF8192\n"
-                    "%-20s xyber768d00\n",
+                    "%-20s xyber768d00, mlkem768x25519\n",
             "-I", "", "", "");
     fprintf(stderr, "%-20s Comma separated list of signature schemes in preference order.\n"
                     "%-20s The following values are valid:\n"
@@ -407,11 +410,11 @@ disableAllSSLCiphers()
 typedef struct
 {
     PRBool shouldPause; /* PR_TRUE if we should use asynchronous peer cert
-                        * authentication */
+                         * authentication */
     PRBool isPaused;    /* PR_TRUE if libssl is waiting for us to validate the
-                        * peer's certificate and restart the handshake. */
+                         * peer's certificate and restart the handshake. */
     void *dbHandle;     /* Certificate database handle to use while
-                        * authenticating the peer's certificate. */
+                         * authenticating the peer's certificate. */
     PRBool testFreshStatusFromSideChannel;
     PRErrorCode sideChannelRevocationTestResultCode;
     PRBool requireDataForIntermediates;
@@ -585,11 +588,11 @@ verifyFromSideChannel(CERTCertificate *cert, ServerCertAuth *sca)
 static void
 dumpCertificatePEM(CERTCertificate *cert)
 {
-    SECItem data;
-    data.data = cert->derCert.data;
-    data.len = cert->derCert.len;
-    fprintf(stderr, "%s\n%s\n%s\n", NS_CERT_HEADER,
-            BTOA_DataToAscii(data.data, data.len), NS_CERT_TRAILER);
+    char *asciiDER = BTOA_DataToAscii(cert->derCert.data, cert->derCert.len);
+    if (asciiDER) {
+        fprintf(stderr, "%s\n%s\n%s\n", NS_CERT_HEADER, asciiDER, NS_CERT_TRAILER);
+        PORT_Free(asciiDER);
+    }
 }
 
 static void
@@ -605,9 +608,9 @@ dumpServerCertificateChain(PRFileDesc *fd)
     if (!dumpServerChain) {
         return;
     } else if (dumpServerChain == 1) {
-        dumpFunction = (SECU_PPFunc)SECU_PrintCertificateBasicInfo;
+        dumpFunction = SECU_PrintCertificateBasicInfo;
     } else {
-        dumpFunction = (SECU_PPFunc)SECU_PrintCertificate;
+        dumpFunction = SECU_PrintCertificate;
         if (dumpServerChain > 2) {
             dumpCertPEM = PR_TRUE;
         }
@@ -844,7 +847,7 @@ own_GetClientAuthData(void *arg,
     return NSS_GetClientAuthData(arg, socket, caNames, pRetCert, pRetKey);
 }
 
-#if defined(WIN32) || defined(OS2)
+#if defined(WIN32)
 void
 thread_main(void *arg)
 {
@@ -1078,6 +1081,9 @@ PRBool enablePostHandshakeAuth = PR_FALSE;
 PRBool enableDelegatedCredentials = PR_FALSE;
 const secuExporter *enabledExporters = NULL;
 unsigned int enabledExporterCount = 0;
+PRBool enableRfc8701Grease = PR_FALSE;
+PRBool enableCHExtensionPermuation = PR_FALSE;
+PRBool zlibCertificateCompression = PR_FALSE;
 
 static int
 writeBytesToServer(PRFileDesc *s, const PRUint8 *buf, int nb)
@@ -1360,6 +1366,47 @@ printEchRetryConfigs(PRFileDesc *s)
     return SECSuccess;
 }
 
+static SECStatus
+zlibCertificateEncode(const SECItem *input, SECItem *output)
+{
+    if (!input || !input->data || input->len == 0 || !output) {
+        PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+        return SECFailure;
+    }
+
+    unsigned long maxCompressedLen = compressBound(input->len);
+    SECITEM_AllocItem(NULL, output, maxCompressedLen);
+
+    int ret = compress(output->data, (unsigned long *)&output->len, input->data, input->len);
+    if (ret != Z_OK) {
+        PR_SetError(SEC_ERROR_LIBRARY_FAILURE, 0);
+        return SECFailure;
+    }
+
+    return SECSuccess;
+}
+
+static SECStatus
+zlibCertificateDecode(const SECItem *input,
+                      unsigned char *output, size_t outputLen,
+                      size_t *usedLen)
+{
+    if (!input || !input->data || input->len == 0 || !output || outputLen == 0) {
+        PR_SetError(SEC_ERROR_INVALID_ARGS, 0);
+        return SECFailure;
+    }
+
+    *usedLen = outputLen;
+
+    int ret = uncompress(output, (unsigned long *)usedLen, input->data, input->len);
+    if (ret != Z_OK) {
+        PR_SetError(SEC_ERROR_BAD_DATA, 0);
+        return SECFailure;
+    }
+
+    return SECSuccess;
+}
+
 static int
 run()
 {
@@ -1372,6 +1419,7 @@ run()
     PRFileDesc *std_out;
     PRPollDesc pollset[2] = { { 0 }, { 0 } };
     PRBool wrStarted = PR_FALSE;
+    SSLCertificateCompressionAlgorithm zlibCompressionAlg = { 1, "zlib", zlibCertificateEncode, zlibCertificateDecode };
 
     handshakeComplete = PR_FALSE;
 
@@ -1455,9 +1503,9 @@ run()
                 cipher |= ctmp;
                 cipherString++;
             } else {
-                if (!isalpha(ndx))
+                if (!isalpha((unsigned char)ndx))
                     Usage();
-                ndx = tolower(ndx) - 'a';
+                ndx = tolower((unsigned char)ndx) - 'a';
                 if (ndx < PR_ARRAY_SIZE(ssl3CipherSuites)) {
                     cipher = ssl3CipherSuites[ndx];
                 }
@@ -1600,6 +1648,33 @@ run()
         }
     }
 
+    if (enableRfc8701Grease) {
+        rv = SSL_OptionSet(s, SSL_ENABLE_GREASE, PR_TRUE);
+        if (rv != SECSuccess) {
+            SECU_PrintError(progName, "error enabling grease");
+            error = 1;
+            goto done;
+        }
+    }
+
+    if (enableCHExtensionPermuation) {
+        rv = SSL_OptionSet(s, SSL_ENABLE_CH_EXTENSION_PERMUTATION, PR_TRUE);
+        if (rv != SECSuccess) {
+            SECU_PrintError(progName, "error enabling ch extension permutation");
+            error = 1;
+            goto done;
+        }
+    }
+
+    if (zlibCertificateCompression) {
+        rv = SSL_SetCertificateCompressionAlgorithm(s, zlibCompressionAlg);
+        if (rv != SECSuccess) {
+            SECU_PrintError(progName, "error setting zlib certificate compression algorithm");
+            error = 1;
+            goto done;
+        }
+    }
+
     if (enabledGroups) {
         rv = SSL_NamedGroupConfig(s, enabledGroups, enabledGroupsCount);
         if (rv < 0) {
@@ -1723,7 +1798,7 @@ run()
     pollset[STDIN_FD].in_flags = PR_POLL_READ;
     std_out = PR_GetSpecialFD(PR_StandardOutput);
 
-#if defined(WIN32) || defined(OS2)
+#if defined(WIN32)
     /* PR_Poll cannot be used with stdin on Windows or OS/2.  (sigh).
     ** But use of PR_Poll and non-blocking sockets is a major feature
     ** of this program.  So, we simulate a pollable stdin with a
@@ -1884,6 +1959,14 @@ done:
     return error;
 }
 
+const char *cmdLineOptions = "46A:BCDEFGHI:J:KL:M:N:OP:QR:STUV:W:X:YZa:bc:d:efgh:i:m:n:op:qr:st:uvw:x:z:";
+const PLLongOpt cmdLineLongOpts[] = {
+    { .longOptName = "enable-rfc8701-grease", .longOption = 0, .valueRequired = PR_FALSE },
+    { .longOptName = "enable-ch-extension-permutation", .longOption = 1, .valueRequired = PR_FALSE },
+    { .longOptName = "zlib-certificate-compression", .longOption = 2, .valueRequired = PR_FALSE },
+    { .longOptName = NULL },
+};
+
 int
 main(int argc, char **argv)
 {
@@ -1923,13 +2006,24 @@ main(int argc, char **argv)
         }
     }
 
-    optstate = PL_CreateOptState(argc, argv,
-                                 "46A:BCDEFGHI:J:KL:M:N:OP:QR:STUV:W:X:YZa:bc:d:efgh:i:m:n:op:qr:st:uvw:x:z:");
+    optstate = PL_CreateLongOptState(argc, argv, cmdLineOptions, cmdLineLongOpts);
     while ((optstatus = PL_GetNextOpt(optstate)) == PL_OPT_OK) {
-        switch (optstate->option) {
+        switch (optstate->longOption) {
             case '?':
             default:
                 Usage();
+                break;
+
+            case 0:
+                enableRfc8701Grease = PR_TRUE;
+                break;
+
+            case 1:
+                enableCHExtensionPermuation = PR_TRUE;
+                break;
+
+            case 2:
+                zlibCertificateCompression = PR_TRUE;
                 break;
 
             case '4':

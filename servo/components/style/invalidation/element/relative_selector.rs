@@ -6,11 +6,12 @@
 
 use crate::data::ElementData;
 use crate::dom::{TElement, TNode};
+#[cfg(feature = "gecko")]
 use crate::gecko_bindings::structs::ServoElementSnapshotTable;
 use crate::invalidation::element::element_wrapper::ElementWrapper;
 use crate::invalidation::element::invalidation_map::{
     Dependency, DependencyInvalidationKind, NormalDependencyInvalidationKind,
-    RelativeDependencyInvalidationKind, RelativeSelectorInvalidationMap,
+    RelativeDependencyInvalidationKind, RelativeSelectorInvalidationMap, TSStateForInvalidation,
 };
 use crate::invalidation::element::invalidator::{
     DescendantInvalidationLists, Invalidation, InvalidationProcessor, InvalidationResult,
@@ -21,15 +22,17 @@ use crate::invalidation::element::state_and_attributes::{
     check_dependency, dependency_may_be_relevant, invalidated_descendants, invalidated_self,
     invalidated_sibling, push_invalidation, should_process_descendants,
 };
+#[cfg(feature = "servo")]
+use crate::selector_parser::SnapshotMap as ServoElementSnapshotTable;
 use crate::stylist::{CascadeData, Stylist};
 use dom::ElementState;
 use fxhash::FxHashMap;
 use selectors::matching::{
-    matches_compound_selector_from, matches_selector, CompoundSelectorMatchingResult,
-    ElementSelectorFlags, IncludeStartingStyle, MatchingContext, MatchingForInvalidation,
-    MatchingMode, NeedsSelectorFlags, QuirksMode, SelectorCaches, VisitedHandlingMode,
+    matches_selector, ElementSelectorFlags, IncludeStartingStyle, MatchingContext,
+    MatchingForInvalidation, MatchingMode, NeedsSelectorFlags, QuirksMode, SelectorCaches,
+    VisitedHandlingMode,
 };
-use selectors::parser::{Combinator, SelectorKey};
+use selectors::parser::SelectorKey;
 use selectors::OpaqueElement;
 use smallvec::SmallVec;
 use std::ops::DerefMut;
@@ -204,51 +207,10 @@ impl<'a, E: TElement> OptimizationContext<'a, E> {
             );
             (combinator.unwrap(), o)
         };
-        if combinator.is_sibling() {
-            if prev_offset >= dependency.selector.len() - 1 {
-                // Hit the relative combinator - we don't have enough information to
-                // see if there's going to be a downstream match.
-                return false;
-            }
-            if matches!(self.operation, DomMutationOperation::Remove) {
-                // This is sad :( The sibling relation of a removed element is lost, and we don't
-                // propagate sibling traversal map to selector matching context, so we need to do
-                // manual matching here. TODO(dshin): Worth changing selector matching for this?
-
-                // Try matching this compound, then...
-                // Note: We'll not hit the leftmost sequence (Since we would have returned early
-                // if we'd hit the relative selector anchor).
-                if matches!(
-                    matches_compound_selector_from(
-                        &dependency.selector,
-                        dependency.selector.len() - prev_offset + 1,
-                        &mut matching_context,
-                        &element
-                    ),
-                    CompoundSelectorMatchingResult::NotMatched
-                ) {
-                    return true;
-                }
-
-                // ... Match the rest of the selector, manually traversing.
-                let mut prev_sibling = self.sibling_traversal_map.prev_sibling_for(&element);
-                while let Some(sib) = prev_sibling {
-                    if matches_selector(
-                        &dependency.selector,
-                        prev_offset,
-                        None,
-                        &sib,
-                        &mut matching_context,
-                    ) {
-                        return false;
-                    }
-                    if matches!(combinator, Combinator::NextSibling) {
-                        break;
-                    }
-                    prev_sibling = self.sibling_traversal_map.prev_sibling_for(&sib);
-                }
-                return true;
-            }
+        if combinator.is_sibling() && prev_offset >= dependency.selector.len() - 1 {
+            // Hit the relative combinator - we don't have enough information to
+            // see if there's going to be a downstream match.
+            return false;
         }
         !matches_selector(
             &dependency.selector,
@@ -555,13 +517,44 @@ where
                 if !operation.accept(&dependency.dep, element) {
                     return true;
                 }
-                if dependency
-                    .state
-                    .avoid_blanket_invalidation_on_dom_mutation()
-                {
-                    // We assume here that these dependencies are handled elsewhere,
-                    // in a more constrained manner.
-                    return true;
+                // This section contain potential optimization for not running full invalidation -
+                // consult documentation in `TSStateForInvalidation`.
+                if dependency.state.may_be_optimized() {
+                    if operation.is_side_effect() {
+                        // Side effect operations act on element not being mutated, so they can't
+                        // change the match outcome of these optimizable pseudoclasses.
+                        return true;
+                    }
+                    debug_assert!(
+                        self.optimization_context.is_some(),
+                        "Optimization context not available for DOM mutation?"
+                    );
+                    if dependency.state.contains(TSStateForInvalidation::EMPTY) &&
+                        element.first_element_child().is_some()
+                    {
+                        return true;
+                    }
+
+                    let sibling_traversal_map = self
+                        .optimization_context
+                        .as_ref()
+                        .unwrap()
+                        .sibling_traversal_map;
+                    if dependency
+                        .state
+                        .contains(TSStateForInvalidation::NTH_EDGE_FIRST) &&
+                        sibling_traversal_map.prev_sibling_for(&element).is_some()
+                    {
+                        return true;
+                    }
+
+                    if dependency
+                        .state
+                        .contains(TSStateForInvalidation::NTH_EDGE_LAST) &&
+                        sibling_traversal_map.next_sibling_for(&element).is_some()
+                    {
+                        return true;
+                    }
                 }
                 self.add_dependency(&dependency.dep, element, scope);
                 true
@@ -1114,7 +1107,11 @@ where
                 descendant_invalidations.dom_descendants.push(invalidation)
             },
             NormalDependencyInvalidationKind::Siblings => sibling_invalidations.push(invalidation),
-            _ => unreachable!(),
+            // Note(dshin, bug 1940212): Nesting can enabling stuffing pseudo-elements into :has, like `::marker { :has(&) }`.
+            // Ideally, we can just not insert the dependency into the invalidation map, but the necessary selector information
+            // for this (i.e. `HAS_PSEUDO`) is filtered out in `replace_parent_selector` through
+            // `SelectorFlags::forbidden_for_nesting`, so just ignoring such dependencies here is the best we can do.
+            _ => (),
         }
     }
 

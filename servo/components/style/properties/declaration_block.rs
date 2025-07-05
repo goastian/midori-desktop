@@ -31,7 +31,7 @@ use crate::stylist::Stylist;
 use crate::values::computed::Context;
 use cssparser::{
     parse_important, AtRuleParser, CowRcStr, DeclarationParser, Delimiter, ParseErrorKind, Parser,
-    ParserInput, QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser,
+    ParserInput, ParserState, QualifiedRuleParser, RuleBodyItemParser, RuleBodyParser, SourceLocation,
 };
 use itertools::Itertools;
 use selectors::SelectorList;
@@ -303,6 +303,7 @@ impl<'a> DoubleEndedIterator for DeclarationImportanceIterator<'a> {
 pub struct AnimationValueIterator<'a, 'cx, 'cx_a: 'cx> {
     iter: DeclarationImportanceIterator<'a>,
     context: &'cx mut Context<'cx_a>,
+    style: &'a ComputedValues,
     default_values: &'a ComputedValues,
 }
 
@@ -310,11 +311,13 @@ impl<'a, 'cx, 'cx_a: 'cx> AnimationValueIterator<'a, 'cx, 'cx_a> {
     fn new(
         declarations: &'a PropertyDeclarationBlock,
         context: &'cx mut Context<'cx_a>,
+        style: &'a ComputedValues,
         default_values: &'a ComputedValues,
     ) -> AnimationValueIterator<'a, 'cx, 'cx_a> {
         AnimationValueIterator {
             iter: declarations.declaration_importance_iter(),
             context,
+            style,
             default_values,
         }
     }
@@ -332,7 +335,7 @@ impl<'a, 'cx, 'cx_a: 'cx> Iterator for AnimationValueIterator<'a, 'cx, 'cx_a> {
             }
 
             let animation =
-                AnimationValue::from_declaration(decl, &mut self.context, self.default_values);
+                AnimationValue::from_declaration(decl, &mut self.context, self.style, self.default_values);
 
             if let Some(anim) = animation {
                 return Some(anim);
@@ -416,9 +419,10 @@ impl PropertyDeclarationBlock {
     pub fn to_animation_value_iter<'a, 'cx, 'cx_a: 'cx>(
         &'a self,
         context: &'cx mut Context<'cx_a>,
+        style: &'a ComputedValues,
         default_values: &'a ComputedValues,
     ) -> AnimationValueIterator<'a, 'cx, 'cx_a> {
-        AnimationValueIterator::new(self, context, default_values)
+        AnimationValueIterator::new(self, context, style, default_values)
     }
 
     /// Returns whether this block contains any declaration with `!important`.
@@ -936,7 +940,7 @@ impl PropertyDeclarationBlock {
         );
 
         if let Some(cv) = computed_values {
-            context.builder.custom_properties = cv.custom_properties.clone();
+            context.builder.custom_properties = cv.custom_properties().clone();
         };
 
         match (declaration, computed_values) {
@@ -1416,11 +1420,18 @@ pub struct DeclarationParserState<'i> {
     importance: Importance,
     /// A list of errors that have happened so far. Not all of them might be reported.
     errors: SmallParseErrorVec<'i>,
+    /// The start of the first declaration
+    first_declaration_start: SourceLocation,
     /// The last parsed property id, if any.
     last_parsed_property_id: Option<PropertyId>,
 }
 
 impl<'i> DeclarationParserState<'i> {
+    /// Getter for first_declaration_start.
+    pub fn first_declaration_start(&self) -> SourceLocation {
+        self.first_declaration_start
+    }
+
     /// Returns whether any parsed declarations have been parsed so far.
     pub fn has_parsed_declarations(&self) -> bool {
         !self.output_block.is_empty()
@@ -1437,6 +1448,7 @@ impl<'i> DeclarationParserState<'i> {
         context: &ParserContext,
         name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
+        declaration_start: &ParserState,
     ) -> Result<(), ParseError<'i>> {
         let id = match PropertyId::parse(&name, context) {
             Ok(id) => id,
@@ -1451,17 +1463,28 @@ impl<'i> DeclarationParserState<'i> {
             PropertyDeclaration::parse_into(&mut self.declarations, id, context, input)
         })?;
         self.importance = match input.try_parse(parse_important) {
-            Ok(()) => Importance::Important,
+            Ok(()) => {
+                if !context.allows_important_declarations() {
+                    return Err(input.new_custom_error(StyleParseErrorKind::UnexpectedImportantDeclaration));
+                }
+                Importance::Important
+            },
             Err(_) => Importance::Normal,
         };
         // In case there is still unparsed text in the declaration, we should roll back.
         input.expect_exhausted()?;
+        let has_parsed_declarations = self.has_parsed_declarations();
         self.output_block
             .extend(self.declarations.drain(), self.importance);
         // We've successfully parsed a declaration, so forget about
         // `last_parsed_property_id`. It'd be wrong to associate any
         // following error with this property.
         self.last_parsed_property_id = None;
+
+        if !has_parsed_declarations {
+            self.first_declaration_start = declaration_start.source_location();
+        }
+
         Ok(())
     }
 
@@ -1535,8 +1558,9 @@ impl<'a, 'b, 'i> DeclarationParser<'i> for PropertyDeclarationParser<'a, 'b, 'i>
         &mut self,
         name: CowRcStr<'i>,
         input: &mut Parser<'i, 't>,
+        declaration_start: &ParserState,
     ) -> Result<(), ParseError<'i>> {
-        self.state.parse_value(self.context, name, input)
+        self.state.parse_value(self.context, name, input, declaration_start)
     }
 }
 
@@ -1605,12 +1629,20 @@ fn report_one_css_error<'i>(
                 return;
             }
         }
-        error = match *property {
-            PropertyId::Custom(ref c) => {
-                StyleParseErrorKind::new_invalid(format!("--{}", c), error)
-            },
-            _ => StyleParseErrorKind::new_invalid(property.non_custom_id().unwrap().name(), error),
-        };
+        // Was able to parse property ID - Either an invalid value, or is constrained
+        // by the rule block it's in to be invalid. In the former case, we need to unwrap
+        // the error to be more specific.
+        if !matches!(
+            error.kind,
+            ParseErrorKind::Custom(StyleParseErrorKind::UnexpectedImportantDeclaration)
+        ) {
+            error = match *property {
+                PropertyId::Custom(ref c) => {
+                    StyleParseErrorKind::new_invalid(format!("--{}", c), error)
+                },
+                _ => StyleParseErrorKind::new_invalid(property.non_custom_id().unwrap().name(), error),
+            };
+        }
     }
 
     let location = error.location;

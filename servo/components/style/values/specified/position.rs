@@ -12,11 +12,13 @@ use crate::selector_map::PrecomputedHashMap;
 use crate::str::HTML_SPACE_CHARACTERS;
 use crate::values::computed::LengthPercentage as ComputedLengthPercentage;
 use crate::values::computed::{Context, Percentage, ToComputedValue};
-use crate::values::generics::position::AspectRatio as GenericAspectRatio;
 use crate::values::generics::position::Position as GenericPosition;
 use crate::values::generics::position::PositionComponent as GenericPositionComponent;
 use crate::values::generics::position::PositionOrAuto as GenericPositionOrAuto;
 use crate::values::generics::position::ZIndex as GenericZIndex;
+use crate::values::generics::position::{AnchorSide, AspectRatio as GenericAspectRatio};
+use crate::values::generics::position::{GenericAnchorFunction, GenericInset};
+use crate::values::specified;
 use crate::values::specified::{AllowQuirks, Integer, LengthPercentage, NonNegativeNumber};
 use crate::values::DashedIdent;
 use crate::{Atom, Zero};
@@ -493,6 +495,7 @@ impl PositionAnchor {
     Clone,
     Copy,
     Debug,
+    Default,
     Eq,
     MallocSizeOf,
     Parse,
@@ -504,19 +507,75 @@ impl PositionAnchor {
     ToResolvedValue,
     ToShmem,
 )]
-#[css(bitflags(mixed = "flip-block,flip-inline,flip-start"))]
+#[repr(u8)]
+/// How to swap values for the automatically-generated position tactic.
+pub enum PositionTryFallbacksTryTacticKeyword {
+    /// Magic value for no change.
+    #[css(skip)]
+    #[default]
+    None,
+    /// Swap the values in the block axis.
+    FlipBlock,
+    /// Swap the values in the inline axis.
+    FlipInline,
+    /// Swap the values in the start properties.
+    FlipStart,
+}
+
+impl PositionTryFallbacksTryTacticKeyword {
+    fn is_none(&self) -> bool {
+        *self == Self::None
+    }
+}
+
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Default,
+    Eq,
+    MallocSizeOf,
+    PartialEq,
+    Serialize,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+)]
 #[repr(C)]
-/// https://drafts.csswg.org/css-anchor-position-1/#typedef-position-try-options-try-tactic
-/// <try-tactic>
-pub struct PositionTryOptionsTryTactic(u8);
-bitflags! {
-    impl PositionTryOptionsTryTactic: u8 {
-        /// `flip-block`
-        const FLIP_BLOCK = 1 << 0;
-        /// `flip-inline`
-        const FLIP_INLINE = 1 << 1;
-        /// `flip-start`
-        const FLIP_START = 1 << 2;
+/// Changes for the automatically-generated position option.
+/// Note that this is order-dependent - e.g. `flip-start flip-inline` != `flip-inline flip-start`.
+///
+/// https://drafts.csswg.org/css-anchor-position-1/#typedef-position-try-fallbacks-try-tactic
+pub struct PositionTryFallbacksTryTactic(
+    pub PositionTryFallbacksTryTacticKeyword,
+    pub PositionTryFallbacksTryTacticKeyword,
+    pub PositionTryFallbacksTryTacticKeyword,
+);
+
+impl Parse for PositionTryFallbacksTryTactic {
+    fn parse<'i, 't>(
+        _context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        let first = input.try_parse(PositionTryFallbacksTryTacticKeyword::parse)?;
+        let second = input
+            .try_parse(PositionTryFallbacksTryTacticKeyword::parse)
+            .unwrap_or_default();
+        let third = input
+            .try_parse(PositionTryFallbacksTryTacticKeyword::parse)
+            .unwrap_or_default();
+        if first == second || first == third || (!second.is_none() && second == third) {
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
+        }
+        Ok(Self(first, second, third))
+    }
+}
+
+impl PositionTryFallbacksTryTactic {
+    fn is_empty(&self) -> bool {
+        self.0.is_none()
     }
 }
 
@@ -532,13 +591,13 @@ bitflags! {
     ToShmem,
 )]
 #[repr(C)]
-/// https://drafts.csswg.org/css-anchor-position-1/#propdef-position-try-options
+/// https://drafts.csswg.org/css-anchor-position-1/#propdef-position-try-fallbacks
 /// <dashed-ident> || <try-tactic>
 pub struct DashedIdentAndOrTryTactic {
     /// `<dashed-ident>`
     pub ident: DashedIdent,
     /// `<try-tactic>`
-    pub try_tactic: PositionTryOptionsTryTactic,
+    pub try_tactic: PositionTryFallbacksTryTactic,
 }
 
 impl Parse for DashedIdentAndOrTryTactic {
@@ -548,7 +607,7 @@ impl Parse for DashedIdentAndOrTryTactic {
     ) -> Result<Self, ParseError<'i>> {
         let mut result = Self {
             ident: DashedIdent::empty(),
-            try_tactic: PositionTryOptionsTryTactic::empty(),
+            try_tactic: PositionTryFallbacksTryTactic::default(),
         };
 
         loop {
@@ -560,7 +619,7 @@ impl Parse for DashedIdentAndOrTryTactic {
             }
             if result.try_tactic.is_empty() {
                 if let Ok(try_tactic) =
-                    input.try_parse(|i| PositionTryOptionsTryTactic::parse(context, i))
+                    input.try_parse(|i| PositionTryFallbacksTryTactic::parse(context, i))
                 {
                     result.try_tactic = try_tactic;
                     continue;
@@ -589,14 +648,14 @@ impl Parse for DashedIdentAndOrTryTactic {
     ToShmem,
 )]
 #[repr(u8)]
-/// https://drafts.csswg.org/css-anchor-position-1/#propdef-position-try-options
-/// [ [<dashed-ident> || <try-tactic>] | <'inset-area'> ]
-pub enum PositionTryOptionsItem {
+/// https://drafts.csswg.org/css-anchor-position-1/#propdef-position-try-fallbacks
+/// [ [<dashed-ident> || <try-tactic>] | <'position-area'> ]
+pub enum PositionTryFallbacksItem {
     /// `<dashed-ident> || <try-tactic>`
     IdentAndOrTactic(DashedIdentAndOrTryTactic),
-    #[parse(parse_fn = "InsetArea::parse_except_none")]
-    /// `<inset-area>`
-    InsetArea(InsetArea),
+    #[parse(parse_fn = "PositionArea::parse_except_none")]
+    /// `<position-area>`
+    PositionArea(PositionArea),
 }
 
 #[derive(
@@ -613,14 +672,14 @@ pub enum PositionTryOptionsItem {
 )]
 #[css(comma)]
 #[repr(C)]
-/// https://drafts.csswg.org/css-anchor-position-1/#position-try-options
-pub struct PositionTryOptions(
+/// https://drafts.csswg.org/css-anchor-position-1/#position-try-fallbacks
+pub struct PositionTryFallbacks(
     #[css(iterable, if_empty = "none")]
     #[ignore_malloc_size_of = "Arc"]
-    pub crate::ArcSlice<PositionTryOptionsItem>,
+    pub crate::ArcSlice<PositionTryFallbacksItem>,
 );
 
-impl PositionTryOptions {
+impl PositionTryFallbacks {
     #[inline]
     /// Return the `none` value.
     pub fn none() -> Self {
@@ -633,7 +692,7 @@ impl PositionTryOptions {
     }
 }
 
-impl Parse for PositionTryOptions {
+impl Parse for PositionTryFallbacks {
     fn parse<'i, 't>(
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
@@ -643,10 +702,10 @@ impl Parse for PositionTryOptions {
         }
         // The common case is unlikely to include many alternate positioning
         // styles, so space for four on the stack should typically be enough.
-        let mut items: SmallVec<[PositionTryOptionsItem; 4]> =
-            smallvec![PositionTryOptionsItem::parse(context, input)?];
+        let mut items: SmallVec<[PositionTryFallbacksItem; 4]> =
+            smallvec![PositionTryFallbacksItem::parse(context, input)?];
         while input.try_parse(|input| input.expect_comma()).is_ok() {
-            items.push(PositionTryOptionsItem::parse(context, input)?);
+            items.push(PositionTryFallbacksItem::parse(context, input)?);
         }
         Ok(Self(ArcSlice::from_iter(items.drain(..))))
     }
@@ -759,9 +818,9 @@ impl PositionVisibility {
 )]
 #[allow(missing_docs)]
 #[repr(u8)]
-/// Possible values for the `inset-area` preperty's keywords.
-/// https://drafts.csswg.org/css-anchor-position-1/#propdef-inset-area
-pub enum InsetAreaKeyword {
+/// Possible values for the `position-area` preperty's keywords.
+/// https://drafts.csswg.org/css-anchor-position-1/#propdef-position-area
+pub enum PositionAreaKeyword {
     #[default]
     None,
 
@@ -832,7 +891,7 @@ pub enum InsetAreaKeyword {
 }
 
 #[allow(missing_docs)]
-impl InsetAreaKeyword {
+impl PositionAreaKeyword {
     #[inline]
     pub fn none() -> Self {
         Self::None
@@ -930,7 +989,7 @@ impl InsetAreaKeyword {
 }
 
 #[inline]
-fn is_compatible_pairing(first: InsetAreaKeyword, second: InsetAreaKeyword) -> bool {
+fn is_compatible_pairing(first: PositionAreaKeyword, second: PositionAreaKeyword) -> bool {
     if first.is_none() || second.is_none() {
         // `none` is not allowed as one of the keywords when two keywords are
         // provided.
@@ -985,22 +1044,22 @@ fn is_compatible_pairing(first: InsetAreaKeyword, second: InsetAreaKeyword) -> b
     ToShmem,
 )]
 #[repr(C)]
-/// https://drafts.csswg.org/css-anchor-position-1/#propdef-inset-area
-pub struct InsetArea {
+/// https://drafts.csswg.org/css-anchor-position-1/#propdef-position-area
+pub struct PositionArea {
     /// First keyword, if any.
-    pub first: InsetAreaKeyword,
+    pub first: PositionAreaKeyword,
     /// Second keyword, if any.
-    #[css(skip_if = "InsetAreaKeyword::is_none")]
-    pub second: InsetAreaKeyword,
+    #[css(skip_if = "PositionAreaKeyword::is_none")]
+    pub second: PositionAreaKeyword,
 }
 
 #[allow(missing_docs)]
-impl InsetArea {
+impl PositionArea {
     #[inline]
     pub fn none() -> Self {
         Self {
-            first: InsetAreaKeyword::None,
-            second: InsetAreaKeyword::None,
+            first: PositionAreaKeyword::None,
+            second: PositionAreaKeyword::None,
         }
     }
 
@@ -1022,7 +1081,7 @@ impl InsetArea {
         allow_none: bool,
     ) -> Result<Self, ParseError<'i>> {
         let mut location = input.current_source_location();
-        let mut first = InsetAreaKeyword::parse(input)?;
+        let mut first = PositionAreaKeyword::parse(input)?;
         if first.is_none() {
             if allow_none {
                 return Ok(Self::none());
@@ -1031,12 +1090,12 @@ impl InsetArea {
         }
 
         location = input.current_source_location();
-        let second = input.try_parse(InsetAreaKeyword::parse);
-        if let Ok(InsetAreaKeyword::None) = second {
+        let second = input.try_parse(PositionAreaKeyword::parse);
+        if let Ok(PositionAreaKeyword::None) = second {
             // `none` is only allowed as a single value
             return Err(location.new_custom_error(StyleParseErrorKind::UnspecifiedError));
         }
-        let mut second = second.unwrap_or(InsetAreaKeyword::None);
+        let mut second = second.unwrap_or(PositionAreaKeyword::None);
         if second.is_none() {
             // Either there was no second keyword and try_parse returned a
             // BasicParseErrorKind::EndOfInput, or else the second "keyword"
@@ -1062,16 +1121,16 @@ impl InsetArea {
             // since their meaning is inferred from their order. However, if
             // both keywords are the same, only one should be set.
             if first == second {
-                second = InsetAreaKeyword::None;
+                second = PositionAreaKeyword::None;
             }
-        } else if second == InsetAreaKeyword::SpanAll {
+        } else if second == PositionAreaKeyword::SpanAll {
             // Span-all is the default behavior, so specifying `span-all` is
             // superfluous.
-            second = InsetAreaKeyword::None;
-        } else if first == InsetAreaKeyword::SpanAll {
+            second = PositionAreaKeyword::None;
+        } else if first == PositionAreaKeyword::SpanAll {
             // Same here, but the non-superfluous keyword must come first.
             first = second;
-            second = InsetAreaKeyword::None;
+            second = PositionAreaKeyword::None;
         } else if first.is_vertical() ||
             second.is_horizontal() ||
             first.is_inline() ||
@@ -1087,7 +1146,7 @@ impl InsetArea {
     }
 }
 
-impl Parse for InsetArea {
+impl Parse for PositionArea {
     fn parse<'i, 't>(
         context: &ParserContext,
         input: &mut Parser<'i, 't>,
@@ -1684,5 +1743,84 @@ impl AspectRatio {
                 NonNegativeNumber::new(h),
             )),
         }
+    }
+}
+
+/// A specified value for inset types.
+pub type Inset = GenericInset<specified::Percentage, LengthPercentage>;
+
+impl Inset {
+    /// Parses an inset type, allowing the unitless length quirk.
+    /// <https://quirks.spec.whatwg.org/#the-unitless-length-quirk>
+    #[inline]
+    pub fn parse_quirky<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+        allow_quirks: AllowQuirks,
+    ) -> Result<Self, ParseError<'i>> {
+        if let Ok(l) = input.try_parse(|i| LengthPercentage::parse_quirky(context, i, allow_quirks))
+        {
+            return Ok(Self::LengthPercentage(l));
+        }
+        match input.try_parse(|i| i.expect_ident_matching("auto")) {
+            Ok(_) => return Ok(Self::Auto),
+            Err(e) if !static_prefs::pref!("layout.css.anchor-positioning.enabled") => {
+                return Err(e.into())
+            },
+            Err(_) => (),
+        };
+        if let Ok(inner) = input.try_parse(|i| AnchorFunction::parse(context, i)) {
+            return Ok(Self::AnchorFunction(Box::new(inner)));
+        }
+        if let Ok(inner) = input.try_parse(|i| specified::AnchorSizeFunction::parse(context, i)) {
+            return Ok(Self::AnchorSizeFunction(Box::new(inner)));
+        }
+        Ok(Self::AnchorContainingCalcFunction(input.try_parse(
+            |i| LengthPercentage::parse_quirky_with_anchor_functions(context, i, allow_quirks),
+        )?))
+    }
+}
+
+impl Parse for Inset {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        Self::parse_quirky(context, input, AllowQuirks::No)
+    }
+}
+
+/// A specified value for `anchor()` function.
+pub type AnchorFunction = GenericAnchorFunction<specified::Percentage, LengthPercentage>;
+
+impl Parse for AnchorFunction {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        if !static_prefs::pref!("layout.css.anchor-positioning.enabled") {
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
+        }
+        input.expect_function_matching("anchor")?;
+        input.parse_nested_block(|i| {
+            let target_element = i.try_parse(|i| DashedIdent::parse(context, i)).ok();
+            let side = AnchorSide::parse(context, i)?;
+            let target_element = if target_element.is_none() {
+                i.try_parse(|i| DashedIdent::parse(context, i)).ok()
+            } else {
+                target_element
+            };
+            let fallback = i
+                .try_parse(|i| {
+                    i.expect_comma()?;
+                    LengthPercentage::parse(context, i)
+                })
+                .ok();
+            Ok(Self {
+                target_element: target_element.unwrap_or_else(DashedIdent::empty),
+                side,
+                fallback: fallback.into(),
+            })
+        })
     }
 }

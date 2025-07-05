@@ -8,7 +8,7 @@ const puppeteer = require('puppeteer');
 /**
  * To have Puppeteer fetch a Firefox binary for you, first run:
  *
- * PUPPETEER_PRODUCT=firefox npm install
+ * npx puppeteer browsers install firefox
  *
  * To get additional logging about which browser binary is executed,
  * run this example as:
@@ -19,7 +19,7 @@ const puppeteer = require('puppeteer');
  */
 
 const firefoxOptions = {
-  product: 'firefox',
+  browser: 'firefox',
   extraPrefsFirefox: {
     // Enable additional Firefox logging from its protocol implementation
     // 'remote.log.level': 'Trace',

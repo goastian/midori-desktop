@@ -26,7 +26,20 @@ class TalosRunner(MozbuildObject):
         2. Make config for Talos Mozharness
         3. Run mozharness
         """
-
+        # Validate that the user is using a supported python version before doing anything else
+        max_py_major, max_py_minor = 3, 11
+        sys_maj, sys_min = sys.version_info.major, sys.version_info.minor
+        if sys_min > max_py_minor:
+            raise PythonVersionException(
+                print(
+                    f"\tPlease downgrade your Python version as talos does not yet support Python "
+                    f"versions greater than {max_py_major}.{max_py_minor}."
+                    f"\n\tYou seem to currently be using Python {sys_maj}.{sys_min}."
+                    f"\n\tSee here for a possible solution in debugging your python environment: "
+                    f"https://firefox-source-docs.mozilla.org/testing/perfdocs/"
+                    f"debugging.html#debugging-local-python-environment"
+                )
+            )
         try:
             self.init_variables(talos_args)
         except BinaryNotFoundException as e:
@@ -96,7 +109,7 @@ class TalosRunner(MozbuildObject):
         try:
             config_file = open(self.config_file_path, "wb")
             config_file.write(six.ensure_binary(json.dumps(self.config)))
-        except IOError as e:
+        except OSError as e:
             err_str = "Error writing to Talos Mozharness config file {0}:{1}"
             print(err_str.format(self.config_file_path, str(e)))
             raise e
@@ -145,3 +158,7 @@ def run_talos_test(command_context, **kwargs):
     except Exception as e:
         print(str(e))
         return 1
+
+
+class PythonVersionException(Exception):
+    pass

@@ -31,6 +31,13 @@ NS_IMETHODIMP CookieNotification::GetBaseDomain(nsACString& aBaseDomain) {
   return NS_OK;
 }
 
+NS_IMETHODIMP CookieNotification::GetIsThirdParty(bool* aResult) {
+  NS_ENSURE_ARG_POINTER(aResult);
+
+  *aResult = mIsThirdParty;
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 CookieNotification::GetBatchDeletedCookies(nsIArray** aResult) {
   NS_ENSURE_ARG_POINTER(aResult);
@@ -52,6 +59,13 @@ CookieNotification::GetBrowsingContextId(uint64_t* aResult) {
 NS_IMETHODIMP
 CookieNotification::GetBrowsingContext(dom::BrowsingContext** aResult) {
   *aResult = dom::BrowsingContext::Get(mBrowsingContextId).take();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+CookieNotification::GetOperationID(nsID** aOperationID) {
+  NS_ENSURE_ARG_POINTER(aOperationID);
+  *aOperationID = mOperationID;
   return NS_OK;
 }
 

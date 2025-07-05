@@ -73,11 +73,17 @@ subsuite = "mozbuild"
 
 ["repackaging/test_deb.py"]
 
+["repackaging/test_utils.py"]
+
+["repackaging/test_rpm.py"]
+
 ["test_artifact_cache.py"]
 
 ["test_artifacts.py"]
 
 ["test_base.py"]
+
+["test_confvars.py"]
 
 ["test_containers.py"]
 

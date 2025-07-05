@@ -5,14 +5,21 @@
 
 #include "nsISupports.idl"
 #include "nsICookie.idl"
+#include "nsIThirdPartyCookieBlockingExceptionListService.idl"
+#include "nsIURI.idl"
 
 %{ C++
+#include <functional>
 namespace mozilla {
 class OriginAttributes;
+namespace net {
+class CookieStruct;
+} // namespace net
 } // mozilla namespace
 %}
 
 [ptr] native OriginAttributesPtr(mozilla::OriginAttributes);
+native CheckStructFunctionRef(const std::function< bool(mozilla::net::CookieStruct&) > &);
 
 /**
  * An optional interface for accessing or removing the cookies
@@ -80,7 +87,9 @@ interface nsICookieManager : nsISupports
   nsresult removeNative(in AUTF8String   aHost,
                         in ACString      aName,
                         in AUTF8String   aPath,
-                        in OriginAttributesPtr aOriginAttributes);
+                        in OriginAttributesPtr aOriginAttributes,
+                        in boolean       aFromHttp,
+                        in nsIDPtr       aOperationID);
 
   /**
    * Add a cookie. nsICookieService is the normal way to do this. This
@@ -117,6 +126,10 @@ interface nsICookieManager : nsISupports
    *        the originAttributes of this cookie.
    * @param aSameSite
    *        the SameSite attribute.
+   * @param aSchemeMap
+   *        the schemes this cookie has been set on. See nsICookie.idl.
+   * @param aIsPartitioned
+   *        true if the cookie should be stored with the Partitioned attribute.
    */
   [implicit_jscontext]
   void add(in AUTF8String aHost,
@@ -129,10 +142,12 @@ interface nsICookieManager : nsISupports
            in int64_t     aExpiry,
            in jsval aOriginAttributes,
            in int32_t aSameSite,
-           in nsICookie_schemeType aSchemeMap);
+           in nsICookie_schemeType aSchemeMap,
+           [optional] in boolean aIsPartitioned);
 
   [notxpcom]
-  nsresult addNative(in AUTF8String aHost,
+  nsresult addNative(in nsIURI aCookieURI,
+                     in AUTF8String aHost,
                      in AUTF8String aPath,
                      in ACString    aName,
                      in AUTF8String aValue,
@@ -142,7 +157,11 @@ interface nsICookieManager : nsISupports
                      in int64_t     aExpiry,
                      in OriginAttributesPtr aOriginAttributes,
                      in int32_t aSameSite,
-                     in nsICookie_schemeType aSchemeMap);
+                     in nsICookie_schemeType aSchemeMap,
+                     in boolean     aIsPartitioned,
+                     in boolean     aFromHttp,
+                     in nsIDPtr     aOperationID,
+                     in CheckStructFunctionRef aCheckValid);
 
   /**
    * Find whether a given cookie already exists.
@@ -220,6 +239,8 @@ interface nsICookieManager : nsISupports
    *        acceptable host strings.
    * @param aOriginAttributes The originAttributes of cookies that would be
    *                          retrived.
+   * @param aSorted (optional) if true the cookies will be sorted by creation
+   *                time and path length as described in RFC 6265
    *
    * @return an array of nsICookie objects.
    *
@@ -227,7 +248,14 @@ interface nsICookieManager : nsISupports
    */
   [implicit_jscontext]
   Array<nsICookie> getCookiesFromHost(in AUTF8String aHost,
-                                      in jsval aOriginAttributes);
+                                      in jsval aOriginAttributes,
+                                      [optional] in boolean aSorted);
+
+  [notxpcom]
+  nsresult getCookiesFromHostNative(in AUTF8String aHost,
+                                    in OriginAttributesPtr aOriginAttributes,
+                                    in boolean aSorted,
+                                    out Array<nsICookie> aCookies);
 
   /**
    * Returns an array of all cookies whose origin attributes matches aPattern
@@ -239,9 +267,12 @@ interface nsICookieManager : nsISupports
    *        of only the host portion of a URI. see @add for a description of
    *        acceptable host strings. This attribute is optional. It will search
    *        all hosts if this attribute is not given.
+   * @param aSorted (optional) if true the cookies will be sorted by creation
+   *                time and path length as described in RFC 6265
    */
   Array<nsICookie> getCookiesWithOriginAttributes(in AString aPattern,
-                                                  [optional] in AUTF8String aHost);
+                                                  [optional] in AUTF8String aHost,
+                                                  [optional] in boolean aSorted);
 
   /**
    * Remove all the cookies whose origin attributes matches aPattern
@@ -275,4 +306,22 @@ interface nsICookieManager : nsISupports
    * Retrieves all the cookies that were created on or after aSinceWhen, order
    * by creation time */
   Array<nsICookie> getCookiesSince(in int64_t aSinceWhen);
+
+
+  /**
+   * Adds a list of exceptions to the third party cookie blocking exception
+   * list.
+   */
+  void addThirdPartyCookieBlockingExceptions(
+    in Array<nsIThirdPartyCookieExceptionEntry> aExcpetions);
+
+  /**
+   * Removes a list of exceptions from the third party cookie blocking
+   * exception list.
+   */
+  void removeThirdPartyCookieBlockingExceptions(
+    in Array<nsIThirdPartyCookieExceptionEntry> aExceptions);
+
+  // Test getter to inspect remote exception list state.
+  Array<ACString> testGet3PCBExceptions();
 };

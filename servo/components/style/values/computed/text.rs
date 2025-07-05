@@ -4,12 +4,10 @@
 
 //! Computed types for text properties.
 
-#[cfg(feature = "servo")]
-use crate::properties::StyleBuilder;
-use crate::values::computed::length::{Length, LengthPercentage};
-use crate::values::computed::{Context, ToComputedValue};
+use crate::values::computed::length::LengthPercentage;
+use crate::values::generics::NumberOrAuto;
 use crate::values::generics::text::{
-    GenericInitialLetter, GenericTextDecorationLength, GenericTextIndent, Spacing,
+    GenericHyphenateLimitChars, GenericInitialLetter, GenericTextDecorationLength, GenericTextIndent,
 };
 use crate::values::specified::text as specified;
 use crate::values::specified::text::{TextEmphasisFillMode, TextEmphasisShapeKeyword};
@@ -36,6 +34,21 @@ pub type TextAlign = specified::TextAlignKeyword;
 /// The computed value of `text-indent`.
 pub type TextIndent = GenericTextIndent<LengthPercentage>;
 
+/// A computed value for the `hyphenate-character` property.
+pub type HyphenateLimitChars = GenericHyphenateLimitChars<CSSInteger>;
+
+impl HyphenateLimitChars {
+    /// Return the `auto` value, which has all three component values as `auto`.
+    #[inline]
+    pub fn auto() -> Self {
+        Self {
+            total_word_length: NumberOrAuto::Auto,
+            pre_hyphen_length: NumberOrAuto::Auto,
+            post_hyphen_length: NumberOrAuto::Auto,
+        }
+    }
+}
+
 /// A computed value for the `letter-spacing` property.
 #[repr(transparent)]
 #[derive(
@@ -50,13 +63,15 @@ pub type TextIndent = GenericTextIndent<LengthPercentage>;
     ToAnimatedZero,
     ToResolvedValue,
 )]
-pub struct LetterSpacing(pub Length);
+pub struct GenericLetterSpacing<L>(pub L);
+/// This is generic just to make the #[derive()] code do the right thing for lengths.
+pub type LetterSpacing = GenericLetterSpacing<LengthPercentage>;
 
 impl LetterSpacing {
     /// Return the `normal` computed value, which is just zero.
     #[inline]
     pub fn normal() -> Self {
-        LetterSpacing(Length::zero())
+        Self(LengthPercentage::zero())
     }
 }
 
@@ -76,89 +91,14 @@ impl ToCss for LetterSpacing {
     }
 }
 
-impl ToComputedValue for specified::LetterSpacing {
-    type ComputedValue = LetterSpacing;
-    fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
-        match *self {
-            Spacing::Normal => LetterSpacing(Length::zero()),
-            Spacing::Value(ref v) => LetterSpacing(v.to_computed_value(context)),
-        }
-    }
-
-    fn from_computed_value(computed: &Self::ComputedValue) -> Self {
-        if computed.0.is_zero() {
-            return Spacing::Normal;
-        }
-        Spacing::Value(ToComputedValue::from_computed_value(&computed.0))
-    }
-}
-
 /// A computed value for the `word-spacing` property.
 pub type WordSpacing = LengthPercentage;
-
-impl ToComputedValue for specified::WordSpacing {
-    type ComputedValue = WordSpacing;
-
-    fn to_computed_value(&self, context: &Context) -> Self::ComputedValue {
-        match *self {
-            Spacing::Normal => LengthPercentage::zero(),
-            Spacing::Value(ref v) => v.to_computed_value(context),
-        }
-    }
-
-    fn from_computed_value(computed: &Self::ComputedValue) -> Self {
-        Spacing::Value(ToComputedValue::from_computed_value(computed))
-    }
-}
 
 impl WordSpacing {
     /// Return the `normal` computed value, which is just zero.
     #[inline]
     pub fn normal() -> Self {
         LengthPercentage::zero()
-    }
-}
-
-/// A struct that represents the _used_ value of the text-decoration property.
-///
-/// FIXME(emilio): This is done at style resolution time, though probably should
-/// be done at layout time, otherwise we need to account for display: contents
-/// and similar stuff when we implement it.
-///
-/// FIXME(emilio): Also, should be just a bitfield instead of three bytes.
-#[derive(Clone, Copy, Debug, Default, MallocSizeOf, PartialEq, ToResolvedValue)]
-pub struct TextDecorationsInEffect {
-    /// Whether an underline is in effect.
-    pub underline: bool,
-    /// Whether an overline decoration is in effect.
-    pub overline: bool,
-    /// Whether a line-through style is in effect.
-    pub line_through: bool,
-}
-
-impl TextDecorationsInEffect {
-    /// Computes the text-decorations in effect for a given style.
-    #[cfg(feature = "servo")]
-    pub fn from_style(style: &StyleBuilder) -> Self {
-        // Start with no declarations if this is an atomic inline-level box;
-        // otherwise, start with the declarations in effect and add in the text
-        // decorations that this block specifies.
-        let mut result = if style.get_box().clone_display().is_atomic_inline_level() {
-            Self::default()
-        } else {
-            style
-                .get_parent_inherited_text()
-                .text_decorations_in_effect
-                .clone()
-        };
-
-        let line = style.get_text().clone_text_decoration_line();
-
-        result.underline |= line.contains(TextDecorationLine::UNDERLINE);
-        result.overline |= line.contains(TextDecorationLine::OVERLINE);
-        result.line_through |= line.contains(TextDecorationLine::LINE_THROUGH);
-
-        result
     }
 }
 

@@ -4,28 +4,29 @@
 package org.mozilla.focus.activity
 
 import androidx.test.internal.runner.junit4.AndroidJUnit4ClassRunner
+import mozilla.components.browser.engine.gecko.BuildConfig
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mozilla.focus.R
 import org.mozilla.focus.activity.robots.homeScreen
 import org.mozilla.focus.helpers.FeatureSettingsHelper
 import org.mozilla.focus.helpers.MainActivityFirstrunTestRule
-import org.mozilla.focus.helpers.TestHelper.getTargetContext
+import org.mozilla.focus.helpers.TestSetup
 import org.mozilla.focus.testAnnotations.SmokeTest
 
 // This test visits each About page and checks whether some essential elements are being displayed
 @RunWith(AndroidJUnit4ClassRunner::class)
-class MozillaSupportPagesTest {
+class MozillaSupportPagesTest : TestSetup() {
     private val featureSettingsHelper = FeatureSettingsHelper()
 
-    @get: Rule
+    @get:Rule
     val mActivityTestRule = MainActivityFirstrunTestRule(showFirstRun = false)
 
     @Before
-    fun setUp() {
+    override fun setUp() {
+        super.setUp()
         featureSettingsHelper.setCfrForTrackingProtectionEnabled(false)
     }
 
@@ -74,19 +75,13 @@ class MozillaSupportPagesTest {
 
     @SmokeTest
     @Test
-    fun openYourRightsPageTest() {
-        val yourRightsString = getTargetContext.getString(
-            R.string.your_rights_content1,
-            getTargetContext.getString(R.string.app_name),
-            "Mozilla Public License",
-        )
-
+    fun openTermsOfUsePageTest() {
         homeScreen {
         }.openMainMenu {
         }.openSettings {
         }.openMozillaSettingsMenu {
-        }.openYourRightsPage {
-            verifyPageContent(yourRightsString)
+        }.openTermsOfUsePage {
+            verifyPageURL("/about/legal/terms/firefox-focus/")
         }
     }
 
@@ -98,7 +93,10 @@ class MozillaSupportPagesTest {
         }.openSettings {
         }.openMozillaSettingsMenu {
         }.openLibrariesUsedPage {
-            verifyLibrariesUsedTitle()
+            if (!BuildConfig.DEBUG) {
+                verifyLibrariesUsedTitle()
+                verifyTheLibrariesListNotEmpty()
+            }
         }
     }
 

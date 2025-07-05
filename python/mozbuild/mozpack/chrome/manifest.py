@@ -4,16 +4,14 @@
 
 import os
 import re
-
-import six
-from six.moves.urllib.parse import urlparse
+from urllib.parse import urlparse
 
 import mozpack.path as mozpath
 from mozpack.chrome.flags import Flags
 from mozpack.errors import errors
 
 
-class ManifestEntry(object):
+class ManifestEntry:
     """
     Base class for all manifest entry types.
     Subclasses may define the following class or member variables:
@@ -345,7 +343,7 @@ MANIFESTS_TYPES = dict(
     [
         (c.type, c)
         for c in globals().values()
-        if type(c) == type
+        if type(c) is type
         and issubclass(c, ManifestEntry)
         and hasattr(c, "type")
         and c.type
@@ -380,7 +378,8 @@ def parse_manifest(root, path, fileobj=None):
         fileobj = open(path)
     linenum = 0
     for line in fileobj:
-        line = six.ensure_text(line)
+        if isinstance(line, bytes):
+            line = line.decode()
         linenum += 1
         with errors.context(path, linenum):
             e = parse_manifest_line(base, line)

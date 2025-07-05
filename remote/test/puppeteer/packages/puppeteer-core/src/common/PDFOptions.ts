@@ -45,19 +45,19 @@ export type LowerCasePaperFormat =
  *
  * - `Ledger`: 17in x 11in
  *
- * - `A0`: 33.1in x 46.8in
+ * - `A0`: 33.1102in x 46.811in
  *
- * - `A1`: 23.4in x 33.1in
+ * - `A1`: 23.3858in x 33.1102in
  *
- * - `A2`: 16.54in x 23.4in
+ * - `A2`: 16.5354in x 23.3858in
  *
- * - `A3`: 11.7in x 16.54in
+ * - `A3`: 11.6929in x 16.5354in
  *
- * - `A4`: 8.27in x 11.7in
+ * - `A4`: 8.2677in x 11.6929in
  *
- * - `A5`: 5.83in x 8.27in
+ * - `A5`: 5.8268in x 8.2677in
  *
- * - `A6`: 4.13in x 5.83in
+ * - `A6`: 4.1339in x 5.8268in
  *
  * @public
  */
@@ -158,6 +158,7 @@ export interface PDFOptions {
   omitBackground?: boolean;
   /**
    * Generate tagged (accessible) PDF.
+   *
    * @defaultValue `true`
    * @experimental
    */
@@ -165,20 +166,26 @@ export interface PDFOptions {
   /**
    * Generate document outline.
    *
-   * @remarks
-   * If this is enabled the PDF will also be tagged (accessible)
-   * Currently only works in old Headless (headless = 'shell')
-   * {@link https://issues.chromium.org/issues/41387522#comment48 | Chromium feature request}
-   *
    * @defaultValue `false`
    * @experimental
    */
   outline?: boolean;
   /**
    * Timeout in milliseconds. Pass `0` to disable timeout.
+   *
+   * The default value can be changed by using {@link Page.setDefaultTimeout}
+   *
    * @defaultValue `30_000`
    */
   timeout?: number;
+  /**
+   * If true, waits for `document.fonts.ready` to resolve. This might require
+   * activating the page using {@link Page.bringToFront} if the page is in the
+   * background.
+   *
+   * @defaultValue `true`
+   */
+  waitForFonts?: boolean;
 }
 
 /**
@@ -219,11 +226,11 @@ export const paperFormats: Record<LowerCasePaperFormat, PaperFormatDimensions> =
     legal: {width: 8.5, height: 14},
     tabloid: {width: 11, height: 17},
     ledger: {width: 17, height: 11},
-    a0: {width: 33.1, height: 46.8},
-    a1: {width: 23.4, height: 33.1},
-    a2: {width: 16.54, height: 23.4},
-    a3: {width: 11.7, height: 16.54},
-    a4: {width: 8.27, height: 11.7},
-    a5: {width: 5.83, height: 8.27},
-    a6: {width: 4.13, height: 5.83},
+    a0: {width: 33.1102, height: 46.811},
+    a1: {width: 23.3858, height: 33.1102},
+    a2: {width: 16.5354, height: 23.3858},
+    a3: {width: 11.6929, height: 16.5354},
+    a4: {width: 8.2677, height: 11.6929},
+    a5: {width: 5.8268, height: 8.2677},
+    a6: {width: 4.1339, height: 5.8268},
   } as const;

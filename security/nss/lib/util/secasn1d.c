@@ -581,7 +581,7 @@ sec_asn1d_init_state_based_on_template(sec_asn1d_state *state)
             dest = state->dest;
             if (encode_kind & SEC_ASN1_INLINE) {
                 /* check that there are no extraneous bits */
-                PORT_Assert(encode_kind == SEC_ASN1_INLINE && !optional);
+                PORT_Assert(encode_kind == SEC_ASN1_INLINE);
                 state->place = afterInline;
             } else {
                 state->place = afterImplicit;
@@ -1466,7 +1466,7 @@ sec_asn1d_free_child(sec_asn1d_state *state, PRBool error)
              * unless we keep track of every pointer. So instead we have a
              * memory leak when decoding fails half-way, unless an arena is
              * used. See bug 95311 .
-            */
+             */
         }
         state->child = NULL;
         state->our_mark = NULL;
@@ -2749,7 +2749,7 @@ dump_states(SEC_ASN1DecoderContext *cx)
         printf("%s: tmpl kind %s",
                (state == cx->current) ? "STATE" : "State",
                kindBuf);
-        printf(" %s", (state->place >= 0 && state->place <= notInUse) ? place_names[state->place] : "(undefined)");
+        printf(" %s", (state->place <= notInUse) ? place_names[state->place] : "(undefined)");
         if (!i)
             printf(", expect 0x%02lx",
                    state->expect_tag_number | state->expect_tag_modifiers);
@@ -2782,7 +2782,7 @@ SEC_ASN1DecoderUpdate(SEC_ASN1DecoderContext *cx,
         consumed = 0;
 #ifdef DEBUG_ASN1D_STATES
         printf("\nPLACE = %s, next byte = 0x%02x, %p[%lu]\n",
-               (state->place >= 0 && state->place <= notInUse) ? place_names[state->place] : "(undefined)",
+               (state->place <= notInUse) ? place_names[state->place] : "(undefined)",
                len ? (unsigned int)((unsigned char *)buf)[consumed] : 0,
                buf, consumed);
         dump_states(cx);
@@ -2946,9 +2946,8 @@ SEC_ASN1DecoderUpdate(SEC_ASN1DecoderContext *cx,
 
             depth = state->depth;
             if (what == SEC_ASN1_EndOfContents && !state->indefinite) {
-                PORT_Assert(state->parent != NULL && state->parent->indefinite);
                 depth--;
-                PORT_Assert(depth == state->parent->depth);
+                PORT_Assert(depth == sec_asn1d_get_enclosing_construct(state)->depth);
             }
             (*state->top->filter_proc)(state->top->filter_arg,
                                        buf, consumed, depth, what);
@@ -3005,7 +3004,11 @@ SEC_ASN1DecoderFinish(SEC_ASN1DecoderContext *cx)
     SECStatus rv;
 
     if (!cx || cx->status == needBytes) {
-        PORT_SetError(SEC_ERROR_BAD_DER);
+        if (0 == PORT_GetError()) {
+            /* don't clobber a real reason for the failure like bad password
+             * or invalid algorithm */
+            PORT_SetError(SEC_ERROR_BAD_DER);
+        }
         rv = SECFailure;
     } else {
         rv = SECSuccess;

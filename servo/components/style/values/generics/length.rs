@@ -5,10 +5,16 @@
 //! Generic types for CSS values related to length.
 
 use crate::parser::{Parse, ParserContext};
-#[cfg(feature = "gecko")]
+use crate::values::generics::box_::PositionProperty;
+use crate::values::generics::Optional;
+use crate::values::DashedIdent;
 use crate::Zero;
 use cssparser::Parser;
+use std::fmt::Write;
 use style_traits::ParseError;
+use style_traits::StyleParseErrorKind;
+use style_traits::ToCss;
+use style_traits::{CssWriter, SpecifiedValueInfo};
 
 /// A `<length-percentage> | auto` value.
 #[allow(missing_docs)]
@@ -28,6 +34,7 @@ use style_traits::ParseError;
     ToResolvedValue,
     ToShmem,
 )]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 #[repr(C, u8)]
 pub enum GenericLengthPercentageOrAuto<LengthPercent> {
     LengthPercentage(LengthPercent),
@@ -132,13 +139,11 @@ impl<LengthPercentage: Parse> Parse for LengthPercentageOrAuto<LengthPercentage>
 #[allow(missing_docs)]
 #[derive(
     Animate,
-    Clone,
     ComputeSquaredDistance,
-    Copy,
+    Clone,
     Debug,
     MallocSizeOf,
     PartialEq,
-    SpecifiedValueInfo,
     ToAnimatedValue,
     ToAnimatedZero,
     ToComputedValue,
@@ -156,11 +161,39 @@ pub enum GenericSize<LengthPercent> {
     MinContent,
     #[animation(error)]
     FitContent,
+    #[cfg(feature = "gecko")]
     #[animation(error)]
     MozAvailable,
+    #[cfg(feature = "gecko")]
+    #[animation(error)]
+    WebkitFillAvailable,
+    #[animation(error)]
+    Stretch,
     #[animation(error)]
     #[css(function = "fit-content")]
     FitContentFunction(LengthPercent),
+    AnchorSizeFunction(
+        #[animation(field_bound)]
+        #[distance(field_bound)]
+        Box<GenericAnchorSizeFunction<LengthPercent>>
+    ),
+    AnchorContainingCalcFunction(LengthPercent),
+}
+
+impl<LengthPercent> SpecifiedValueInfo for GenericSize<LengthPercent>
+where
+LengthPercent: SpecifiedValueInfo
+{
+    fn collect_completion_keywords(f: style_traits::KeywordsCollectFn) {
+        LengthPercent::collect_completion_keywords(f);
+        f(&["auto", "stretch", "fit-content"]);
+        if cfg!(feature = "gecko") {
+            f(&["max-content", "min-content", "-moz-available", "-webkit-fill-available"]);
+        }
+        if static_prefs::pref!("layout.css.anchor-positioning.enabled") {
+            f(&["anchor-size"]);
+        }
+    }
 }
 
 pub use self::GenericSize as Size;
@@ -185,11 +218,9 @@ impl<LengthPercentage> Size<LengthPercentage> {
     Animate,
     Clone,
     ComputeSquaredDistance,
-    Copy,
     Debug,
     MallocSizeOf,
     PartialEq,
-    SpecifiedValueInfo,
     ToAnimatedValue,
     ToAnimatedZero,
     ToComputedValue,
@@ -207,11 +238,39 @@ pub enum GenericMaxSize<LengthPercent> {
     MinContent,
     #[animation(error)]
     FitContent,
+    #[cfg(feature = "gecko")]
     #[animation(error)]
     MozAvailable,
+    #[cfg(feature = "gecko")]
+    #[animation(error)]
+    WebkitFillAvailable,
+    #[animation(error)]
+    Stretch,
     #[animation(error)]
     #[css(function = "fit-content")]
     FitContentFunction(LengthPercent),
+    AnchorSizeFunction(
+        #[animation(field_bound)]
+        #[distance(field_bound)]
+        Box<GenericAnchorSizeFunction<LengthPercent>>
+    ),
+    AnchorContainingCalcFunction(LengthPercent),
+}
+
+impl<LP> SpecifiedValueInfo for GenericMaxSize<LP>
+where
+    LP: SpecifiedValueInfo
+{
+    fn collect_completion_keywords(f: style_traits::KeywordsCollectFn) {
+        LP::collect_completion_keywords(f);
+        f(&["none", "stretch", "fit-content"]);
+        if cfg!(feature = "gecko") {
+            f(&["max-content", "min-content", "-moz-available", "-webkit-fill-available"]);
+        }
+        if static_prefs::pref!("layout.css.anchor-positioning.enabled") {
+            f(&["anchor-size"]);
+        }
+    }
 }
 
 pub use self::GenericMaxSize as MaxSize;
@@ -300,5 +359,287 @@ impl<LengthPercent> LengthPercentageOrNormal<LengthPercent> {
     #[inline]
     pub fn normal() -> Self {
         LengthPercentageOrNormal::Normal
+    }
+}
+
+/// Anchor size function used by sizing, margin and inset properties.
+/// This resolves to the size of the anchor at computed time.
+///
+/// https://drafts.csswg.org/css-anchor-position-1/#funcdef-anchor-size
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToShmem,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToResolvedValue,
+    Serialize,
+    Deserialize,
+)]
+#[repr(C)]
+pub struct GenericAnchorSizeFunction<LengthPercentage> {
+    /// Anchor name of the element to anchor to.
+    /// If omitted (i.e. empty), selects the implicit anchor element.
+    #[animation(constant)]
+    pub target_element: DashedIdent,
+    /// Size of the positioned element, expressed in that of the anchor element.
+    /// If omitted, defaults to the axis of the property the function is used in.
+    pub size: AnchorSizeKeyword,
+    /// Value to use in case the anchor function is invalid.
+    pub fallback: Optional<LengthPercentage>,
+}
+
+impl<LengthPercentage> ToCss for GenericAnchorSizeFunction<LengthPercentage>
+where
+    LengthPercentage: ToCss,
+{
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> std::fmt::Result
+    where
+        W: Write,
+    {
+        dest.write_str("anchor-size(")?;
+        let mut previous_entry_printed = false;
+        if !self.target_element.is_empty() {
+            previous_entry_printed = true;
+            self.target_element.to_css(dest)?;
+        }
+        if self.size != AnchorSizeKeyword::None {
+            if previous_entry_printed {
+                dest.write_str(" ")?;
+            }
+            previous_entry_printed = true;
+            self.size.to_css(dest)?;
+        }
+        if let Some(f) = self.fallback.as_ref() {
+            if previous_entry_printed {
+                dest.write_str(", ")?;
+            }
+            f.to_css(dest)?;
+        }
+        dest.write_str(")")
+    }
+}
+
+impl<LengthPercentage> Parse for GenericAnchorSizeFunction<LengthPercentage>
+where
+    LengthPercentage: Parse,
+{
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        if !static_prefs::pref!("layout.css.anchor-positioning.enabled") {
+            return Err(input.new_custom_error(StyleParseErrorKind::UnspecifiedError));
+        }
+        input.expect_function_matching("anchor-size")?;
+        Self::parse_inner(
+            context,
+            input,
+            |i| LengthPercentage::parse(context, i)
+        )
+    }
+}
+
+/// Result of resolving an anchor function.
+pub enum AnchorResolutionResult<'a, LengthPercentage> {
+    /// Function resolved to a valid anchor.
+    Resolved(LengthPercentage),
+    /// Referenced anchor is invalid, but fallback is used.
+    Fallback(&'a LengthPercentage),
+    /// Referenced anchor is invalid.
+    Invalid,
+}
+
+impl<'a, LengthPercentage> AnchorResolutionResult<'a, LengthPercentage> {
+    /// Return result for an invalid anchor function, depending on if it has any fallback.
+    pub fn new_anchor_invalid(fallback: Option<&'a LengthPercentage>) -> Self {
+        if let Some(fb) = fallback {
+            return Self::Fallback(fb);
+        }
+        Self::Invalid
+    }
+}
+
+impl<LengthPercentage> GenericAnchorSizeFunction<LengthPercentage>
+{
+    /// Parse the inner part of `anchor-size()`, after the parser has consumed "anchor-size(".
+    pub fn parse_inner<'i, 't, F>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+        f: F,
+    ) -> Result<Self, ParseError<'i>>
+    where
+        F: FnOnce(&mut Parser<'i, '_>) -> Result<LengthPercentage, ParseError<'i>>,
+    {
+        input.parse_nested_block(|i| {
+            let mut target_element = i
+                .try_parse(|i| DashedIdent::parse(context, i))
+                .unwrap_or(DashedIdent::empty());
+            let size = i.try_parse(AnchorSizeKeyword::parse).unwrap_or(AnchorSizeKeyword::None);
+            if target_element.is_empty() {
+                target_element = i
+                    .try_parse(|i| DashedIdent::parse(context, i))
+                    .unwrap_or(DashedIdent::empty());
+            }
+            let previous_parsed = !target_element.is_empty() || size != AnchorSizeKeyword::None;
+            let fallback = i
+                .try_parse(|i| {
+                    if previous_parsed {
+                        i.expect_comma()?;
+                    }
+                    f(i)
+                })
+                .ok();
+            Ok(GenericAnchorSizeFunction {
+                target_element,
+                size: size.into(),
+                fallback: fallback.into(),
+            })
+        })
+    }
+
+    /// Resolve the anchor size function. On failure, return reference to fallback, if exists.
+    pub fn resolve<'a>(
+        &'a self,
+        position_property: PositionProperty,
+    ) -> AnchorResolutionResult<'a, LengthPercentage> {
+        if !position_property.is_absolutely_positioned() {
+            return AnchorResolutionResult::new_anchor_invalid(self.fallback.as_ref());
+        }
+
+        // TODO(dshin): Do the actual anchor resolution here.
+        AnchorResolutionResult::new_anchor_invalid(self.fallback.as_ref())
+    }
+}
+
+/// Keyword values for the anchor size function.
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Copy,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    Parse,
+    SpecifiedValueInfo,
+    ToCss,
+    ToShmem,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToResolvedValue,
+    Serialize,
+    Deserialize,
+)]
+#[repr(u8)]
+pub enum AnchorSizeKeyword {
+    /// Magic value for nothing.
+    #[css(skip)]
+    None,
+    /// Width of the anchor element.
+    Width,
+    /// Height of the anchor element.
+    Height,
+    /// Block size of the anchor element.
+    Block,
+    /// Inline size of the anchor element.
+    Inline,
+    /// Same as `Block`, resolved against the positioned element's writing mode.
+    SelfBlock,
+    /// Same as `Inline`, resolved against the positioned element's writing mode.
+    SelfInline,
+}
+
+/// Specified type for `margin` properties, which allows
+/// the use of the `anchor-size()` function.
+#[derive(
+    Animate,
+    Clone,
+    ComputeSquaredDistance,
+    Debug,
+    MallocSizeOf,
+    PartialEq,
+    ToCss,
+    ToShmem,
+    ToAnimatedValue,
+    ToAnimatedZero,
+    ToComputedValue,
+    ToResolvedValue,
+)]
+#[repr(C)]
+pub enum GenericMargin<LP> {
+    /// A `<length-percentage>` value.
+    LengthPercentage(LP),
+    /// An `auto` value.
+    Auto,
+    /// Margin size defined by the anchor element.
+    ///
+    /// https://drafts.csswg.org/css-anchor-position-1/#funcdef-anchor-size
+    AnchorSizeFunction(
+        #[animation(field_bound)]
+        #[distance(field_bound)]
+        Box<GenericAnchorSizeFunction<LP>>,
+    ),
+    /// A `<length-percentage>` value, guaranteed to contain `calc()`,
+    /// which then is guaranteed to contain `anchor()` or `anchor-size()`.
+    AnchorContainingCalcFunction(LP),
+}
+
+#[cfg(feature = "servo")]
+impl<LP> GenericMargin<LP> {
+    /// Return true if it is 'auto'.
+    #[inline]
+    pub fn is_auto(&self) -> bool {
+        matches!(self, Self::Auto)
+    }
+}
+
+#[cfg(feature = "servo")]
+impl GenericMargin<crate::values::computed::LengthPercentage> {
+    /// Returns true if the computed value is absolute 0 or 0%.
+    #[inline]
+    pub fn is_definitely_zero(&self) -> bool {
+        match self {
+            Self::LengthPercentage(lp) => lp.is_definitely_zero(),
+            _ => false,
+        }
+    }
+}
+
+impl<LP> SpecifiedValueInfo for GenericMargin<LP>
+where
+    LP: SpecifiedValueInfo,
+{
+    fn collect_completion_keywords(f: style_traits::KeywordsCollectFn) {
+        LP::collect_completion_keywords(f);
+        f(&["auto"]);
+        if static_prefs::pref!("layout.css.anchor-positioning.enabled") {
+            f(&["anchor-size"]);
+        }
+    }
+}
+
+impl<LP> Zero for GenericMargin<LP>
+where
+    LP: Zero,
+{
+    fn is_zero(&self) -> bool {
+        match self {
+            Self::LengthPercentage(l) => l.is_zero(),
+            Self::Auto | Self::AnchorSizeFunction(_) | Self::AnchorContainingCalcFunction(_) => {
+                false
+            },
+        }
+    }
+
+    fn zero() -> Self {
+        Self::LengthPercentage(LP::zero())
     }
 }

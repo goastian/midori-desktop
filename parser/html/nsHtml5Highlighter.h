@@ -173,12 +173,15 @@ class nsHtml5Highlighter {
    */
   void AddBase(nsHtml5String aValue);
 
+  /** Starts the body */
+  void StartBodyContents();
+
+ private:
   /**
    * Starts a wrapper around a run of characters.
    */
   void StartCharacters();
 
- private:
   /**
    * Starts a span with no class.
    */
@@ -197,9 +200,7 @@ class nsHtml5Highlighter {
    */
   void EndSpanOrA();
 
-  /**
-   * Ends a wrapper around a run of characters.
-   */
+  /** Ends a wrapper around a run of characters. */
   void EndCharactersAndStartMarkupRun();
 
   /**
@@ -275,6 +276,15 @@ class nsHtml5Highlighter {
    */
   void Push(nsAtom* aName, nsHtml5HtmlAttributes* aAttributes,
             mozilla::dom::HTMLContentCreatorFunction aCreator);
+
+  /** Pushes a <span id="line<lineno>"> */
+  void PushCurrentLineContainer();
+
+  /**
+   * Pops all inlines from the stack, pushes a pre, and pushes all inlines back
+   * with the same attributes.
+   */
+  void NewLine();
 
   /**
    * Pops the current node off the stack.
@@ -389,51 +399,6 @@ class nsHtml5Highlighter {
    * The element stack.
    */
   nsTArray<nsIContent**> mStack;
-
-  /**
-   * The string "comment"
-   */
-  static char16_t sComment[];
-
-  /**
-   * The string "cdata"
-   */
-  static char16_t sCdata[];
-
-  /**
-   * The string "start-tag"
-   */
-  static char16_t sStartTag[];
-
-  /**
-   * The string "attribute-name"
-   */
-  static char16_t sAttributeName[];
-
-  /**
-   * The string "attribute-value"
-   */
-  static char16_t sAttributeValue[];
-
-  /**
-   * The string "end-tag"
-   */
-  static char16_t sEndTag[];
-
-  /**
-   * The string "doctype"
-   */
-  static char16_t sDoctype[];
-
-  /**
-   * The string "entity"
-   */
-  static char16_t sEntity[];
-
-  /**
-   * The string "pi"
-   */
-  static char16_t sPi[];
 
   /**
    * Whether base is already visited once.

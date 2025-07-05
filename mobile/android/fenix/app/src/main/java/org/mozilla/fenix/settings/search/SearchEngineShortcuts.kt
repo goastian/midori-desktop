@@ -36,18 +36,21 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.createBitmap
 import mozilla.components.browser.state.search.SearchEngine
 import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.state.SearchState
 import mozilla.components.browser.state.state.availableSearchEngines
 import mozilla.components.browser.state.store.BrowserStore
+import mozilla.components.compose.base.menu.DropdownMenu
+import mozilla.components.compose.base.menu.MenuItem
+import mozilla.components.compose.base.menu.MenuItem.FixedItem.Level
+import mozilla.components.compose.base.text.Text
 import mozilla.components.lib.state.ext.observeAsComposableState
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.ContextualMenu
-import org.mozilla.fenix.compose.MenuItem
-import org.mozilla.fenix.compose.annotation.LightDarkPreview
 import org.mozilla.fenix.theme.FirefoxTheme
 
 /**
@@ -159,7 +162,7 @@ private fun SearchItem(
                 .size(24.dp),
             bitmap = engine.icon.asImageBitmap(),
             contentDescription = stringResource(
-                id = R.string.search_engine_icon_content_description,
+                id = R.string.search_engine_icon_content_description_1,
                 engine.name,
             ),
         )
@@ -192,24 +195,23 @@ private fun SearchItem(
                         tint = FirefoxTheme.colors.iconPrimary,
                     )
 
-                    ContextualMenu(
-                        showMenu = isMenuExpanded.value,
-                        onDismissRequest = { isMenuExpanded.value = false },
+                    DropdownMenu(
                         menuItems = listOf(
-                            MenuItem(
-                                stringResource(R.string.search_engine_edit),
-                                color = FirefoxTheme.colors.textCritical,
-                            ) {
-                                onEditEngineClicked(engine)
-                            },
-                            MenuItem(
-                                stringResource(R.string.search_engine_delete),
-                                color = FirefoxTheme.colors.textCritical,
-                            ) {
-                                onDeleteEngineClicked(engine)
-                            },
+                            MenuItem.TextItem(
+                                text = Text.Resource(R.string.search_engine_edit),
+                                level = Level.Critical,
+                                onClick = { onEditEngineClicked(engine) },
+                            ),
+                            MenuItem.TextItem(
+                                text = Text.Resource(R.string.search_engine_delete),
+                                level = Level.Critical,
+                                onClick = { onDeleteEngineClicked(engine) },
+                            ),
                         ),
+                        expanded = isMenuExpanded.value,
+                        modifier = Modifier,
                         offset = DpOffset(x = 0.dp, y = (-24).dp),
+                        onDismissRequest = { isMenuExpanded.value = false },
                     )
                 }
             }
@@ -258,7 +260,7 @@ private fun AddEngineButton(
     }
 }
 
-@LightDarkPreview
+@PreviewLightDark
 @Composable
 private fun SearchEngineShortcutsPreview() {
     FirefoxTheme {
@@ -281,7 +283,7 @@ private fun SearchEngineShortcutsPreview() {
 }
 
 private fun generateFakeEnginesList(): List<SearchEngine> {
-    val dummyBitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+    val dummyBitmap = createBitmap(1, 1, Bitmap.Config.ARGB_8888)
     dummyBitmap.eraseColor(Color.BLUE)
 
     return listOf(
@@ -305,7 +307,7 @@ private fun generateFakeEngines(
     return SearchEngine(
         id = id,
         name = name,
-        icon = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply {
+        icon = createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply {
             eraseColor(Color.BLUE)
         },
         type = type,

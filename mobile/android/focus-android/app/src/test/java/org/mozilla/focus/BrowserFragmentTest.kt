@@ -9,18 +9,25 @@ import android.graphics.Bitmap
 import android.util.AttributeSet
 import android.view.LayoutInflater
 import android.view.View
+import mozilla.components.browser.state.state.ContentState
+import mozilla.components.browser.state.state.CustomTabConfig
+import mozilla.components.browser.state.state.CustomTabSessionState
+import mozilla.components.browser.state.state.ExternalAppType
 import mozilla.components.concept.engine.EngineSession
 import mozilla.components.concept.engine.EngineView
 import mozilla.components.concept.engine.selection.SelectionActionDelegate
 import mozilla.components.support.test.robolectric.testContext
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.spy
 import org.mockito.Mockito.verify
 import org.mockito.Mockito.verifyNoMoreInteractions
+import org.mozilla.focus.browser.BrowserCoordinatorLayout
 import org.mozilla.focus.databinding.FragmentBrowserBinding
-import org.mozilla.focus.widget.ResizableKeyboardCoordinatorLayout
+import org.mozilla.focus.fragment.BrowserFragment
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
@@ -58,7 +65,7 @@ class BrowserFragmentTest {
 
         // Get the layout parent of the EngineView
         val engineViewParent = spy(
-            (engineView as View).parent as ResizableKeyboardCoordinatorLayout,
+            (engineView as View).parent as BrowserCoordinatorLayout,
         )
 
         assertNotNull(engineViewParent)
@@ -70,6 +77,29 @@ class BrowserFragmentTest {
         // If propagated, an additional ViewGroup.requestDisallowInterceptTouchEvent would have been registered.
         verifyNoMoreInteractions(engineViewParent)
     }
+
+    @Test
+    fun `test isOnboardingTab returns the expected value for each external app type`() {
+        ExternalAppType.entries.forEach {
+            val sessionState = testCustomTabSessionState(it)
+            when (it) {
+                ExternalAppType.CUSTOM_TAB,
+                ExternalAppType.PROGRESSIVE_WEB_APP,
+                ExternalAppType.TRUSTED_WEB_ACTIVITY,
+                -> assertFalse(BrowserFragment().isOnboardingTab(sessionState))
+
+                ExternalAppType.ONBOARDING_CUSTOM_TAB ->
+                    assertTrue(
+                        BrowserFragment().isOnboardingTab(sessionState),
+                    )
+            }
+        }
+    }
+
+    private fun testCustomTabSessionState(externalAppType: ExternalAppType) = CustomTabSessionState(
+        content = ContentState(""),
+        config = CustomTabConfig(externalAppType = externalAppType),
+    )
 }
 
 /**
@@ -105,4 +135,15 @@ class DummyEngineView(context: Context) : View(context), EngineView {
     }
 
     override var selectionActionDelegate: SelectionActionDelegate? = null
+
+    override fun addWindowInsetsListener(
+        key: String,
+        listener: androidx.core.view.OnApplyWindowInsetsListener?,
+    ) {
+        // no-op
+    }
+
+    override fun removeWindowInsetsListener(key: String) {
+        // no-op
+    }
 }

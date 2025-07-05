@@ -7,10 +7,11 @@ package org.mozilla.focus.settings.privacy
 import android.content.SharedPreferences
 import android.os.Build
 import android.os.Bundle
+import androidx.core.content.edit
 import androidx.preference.Preference
 import androidx.preference.SwitchPreferenceCompat
 import mozilla.components.lib.auth.canUseBiometricFeature
-import mozilla.components.service.glean.private.NoExtras
+import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.focus.GleanMetrics.CookieBanner
 import org.mozilla.focus.GleanMetrics.PrivacySettings
 import org.mozilla.focus.GleanMetrics.TrackingProtectionExceptions
@@ -39,8 +40,7 @@ class PrivacySecuritySettingsFragment :
             getString(R.string.preference_security_biometric_summary2, appName)
 
         // Remove the biometric toggle if the software or hardware do not support it
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || !requireContext().canUseBiometricFeature()
-        ) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || !requireContext().canUseBiometricFeature()) {
             biometricPreference?.let { preferenceScreen.removePreference(it) }
         }
         if (!FocusNimbus.features.onboarding.value().isCfrEnabled ||
@@ -135,10 +135,9 @@ class PrivacySecuritySettingsFragment :
         if (!requireContext().canUseBiometricFeature()) {
             switch?.isChecked = false
             switch?.isEnabled = false
-            preferenceManager.sharedPreferences
-                ?.edit()
-                ?.putBoolean(resources.getString(R.string.pref_key_biometric), false)
-                ?.apply()
+            preferenceManager.sharedPreferences?.edit {
+                putBoolean(resources.getString(R.string.pref_key_biometric), false)
+            }
         } else {
             switch?.isEnabled = true
         }
@@ -155,7 +154,6 @@ class PrivacySecuritySettingsFragment :
     }
 
     override fun onPreferenceTreeClick(preference: Preference): Boolean {
-        val settings = requireContext().settings
         val engineSharedPreferencesListener = EngineSharedPreferencesListener(requireContext())
         when (preference.key) {
             resources.getString(R.string.pref_key_screen_exceptions) -> {
@@ -176,28 +174,24 @@ class PrivacySecuritySettingsFragment :
                 engineSharedPreferencesListener.updateTrackingProtectionPolicy(
                     EngineSharedPreferencesListener.ChangeSource.SETTINGS.source,
                     EngineSharedPreferencesListener.TrackerChanged.SOCIAL.tracker,
-                    settings.shouldBlockSocialTrackers(),
                 )
 
             resources.getString(R.string.pref_key_privacy_block_ads) ->
                 engineSharedPreferencesListener.updateTrackingProtectionPolicy(
                     EngineSharedPreferencesListener.ChangeSource.SETTINGS.source,
                     EngineSharedPreferencesListener.TrackerChanged.ADVERTISING.tracker,
-                    settings.shouldBlockAdTrackers(),
                 )
 
             resources.getString(R.string.pref_key_privacy_block_analytics) ->
                 engineSharedPreferencesListener.updateTrackingProtectionPolicy(
                     EngineSharedPreferencesListener.ChangeSource.SETTINGS.source,
                     EngineSharedPreferencesListener.TrackerChanged.ANALYTICS.tracker,
-                    settings.shouldBlockAnalyticTrackers(),
                 )
 
             resources.getString(R.string.pref_key_privacy_block_other3) ->
                 engineSharedPreferencesListener.updateTrackingProtectionPolicy(
                     EngineSharedPreferencesListener.ChangeSource.SETTINGS.source,
                     EngineSharedPreferencesListener.TrackerChanged.CONTENT.tracker,
-                    settings.shouldBlockOtherTrackers(),
                 )
             resources.getString(R.string.pref_key_cookie_banner_settings) -> {
                 CookieBanner.visitedSetting.record(NoExtras())
@@ -210,10 +204,6 @@ class PrivacySecuritySettingsFragment :
             resources.getString(R.string.pref_key_site_permissions) ->
                 requireComponents.appStore.dispatch(
                     AppAction.OpenSettings(page = Screen.Settings.Page.SitePermissions),
-                )
-            resources.getString(R.string.pref_key_studies) ->
-                requireComponents.appStore.dispatch(
-                    AppAction.OpenSettings(page = Screen.Settings.Page.Studies),
                 )
         }
         return super.onPreferenceTreeClick(preference)
@@ -231,9 +221,9 @@ class PrivacySecuritySettingsFragment :
             ) == true
         ) {
             sharedPreferences
-                .edit()
-                .putBoolean(resources.getString(R.string.pref_key_secure), true)
-                .apply()
+                .edit {
+                    putBoolean(resources.getString(R.string.pref_key_secure), true)
+                }
 
             // Disable the stealth switch
             switch?.isChecked = true
@@ -241,14 +231,6 @@ class PrivacySecuritySettingsFragment :
         } else {
             // Enable the stealth switch
             switch?.isEnabled = true
-        }
-    }
-
-    companion object {
-        const val FRAGMENT_TAG = "PrivacySecuritySettings"
-
-        fun newInstance(): PrivacySecuritySettingsFragment {
-            return PrivacySecuritySettingsFragment()
         }
     }
 }

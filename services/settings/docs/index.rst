@@ -14,7 +14,7 @@ The ``get()`` method returns the list of entries for a specific key. Each entry 
 
 .. code-block:: js
 
-    const { RemoteSettings } = ChromeUtils.import("resource://services-settings/remote-settings.sys.mjs");
+    const { RemoteSettings } = ChromeUtils.importESModule("resource://services-settings/remote-settings.sys.mjs");
 
     const data = await RemoteSettings("a-key").get();
 
@@ -124,7 +124,10 @@ Remote files are not downloaded automatically. In order to keep attachments in s
         toDelete.map(record => client.attachments.deleteDownloaded(record))
       );
 
-      // Download new attachments
+      // Download a bundle of all attachments if local cache is empty (see details below)
+      client.attachments.cacheAll();
+
+      // OR download new attachments individually
       const fileContents = await Promise.all(
         toDownload.map(async record => {
           const { buffer } = await client.attachments.download(record);
@@ -133,7 +136,17 @@ Remote files are not downloaded automatically. In order to keep attachments in s
       );
     });
 
-The provided helper will:
+The provided ``cacheAll`` helper will:
+  - be a no-op if the local attachment cache is not empty
+    - Use ``pruneAttachments()`` to clear or set the ``force`` parameter to true if you know you want to override this.
+  - download and extract all attachments if bundling is enabled for the collection
+  - return a nullable boolean to inform the calling function what happened
+    - ``null`` if the attachment bundle download was not attempted (ex: client is offline)
+    - ``false`` if at least one attachment failed to be extracted
+    - ``true`` if the bundle was found and extracted without error
+
+
+The provided ``download`` helper will:
   - fetch the remote binary content
   - write the file in the local IndexedDB
   - check the file size
@@ -163,10 +176,6 @@ The provided helper will:
 .. note::
 
     A ``downloadAsBytes()`` method returning an ``ArrayBuffer`` is also available, if writing the attachment locally is not necessary.
-
-    Some ``downloadToDisk()`` and ``deleteFromDisk()`` methods are also available but generally discouraged, since they are prone to leaving extraneous files
-    in the profile directory (see `Bug 1634127 <https://bugzilla.mozilla.org/show_bug.cgi?id=1634127>`_).
-
 
 .. _services/initial-data:
 

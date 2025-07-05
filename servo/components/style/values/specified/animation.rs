@@ -7,8 +7,8 @@
 use crate::parser::{Parse, ParserContext};
 use crate::properties::{NonCustomPropertyId, PropertyId, ShorthandId};
 use crate::values::generics::animation as generics;
-use crate::values::specified::{LengthPercentage, NonNegativeNumber};
-use crate::values::{CustomIdent, KeyframesName, TimelineName};
+use crate::values::specified::{LengthPercentage, NonNegativeNumber, Time};
+use crate::values::{CustomIdent, DashedIdent, KeyframesName};
 use crate::Atom;
 use cssparser::Parser;
 use std::fmt::{self, Write};
@@ -150,6 +150,24 @@ impl TransitionBehavior {
     }
 }
 
+/// A specified value for the `animation-duration` property.
+pub type AnimationDuration = generics::GenericAnimationDuration<Time>;
+
+impl Parse for AnimationDuration {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        if static_prefs::pref!("layout.css.scroll-driven-animations.enabled")
+            && input.try_parse(|i| i.expect_ident_matching("auto")).is_ok()
+        {
+            return Ok(Self::auto());
+        }
+
+        Time::parse_non_negative(context, input).map(AnimationDuration::Time)
+    }
+}
+
 /// https://drafts.csswg.org/css-animations/#animation-iteration-count
 #[derive(
     Copy, Clone, Debug, MallocSizeOf, PartialEq, Parse, SpecifiedValueInfo, ToCss, ToShmem,
@@ -255,7 +273,10 @@ impl AnimationDirection {
     #[inline]
     pub fn match_keywords(name: &AnimationName) -> bool {
         if let Some(name) = name.as_atom() {
+            #[cfg(feature = "gecko")]
             return name.with_str(|n| Self::from_ident(n).is_ok());
+            #[cfg(feature = "servo")]
+            return Self::from_ident(name).is_ok();
         }
         false
     }
@@ -287,7 +308,10 @@ impl AnimationPlayState {
     #[inline]
     pub fn match_keywords(name: &AnimationName) -> bool {
         if let Some(name) = name.as_atom() {
+            #[cfg(feature = "gecko")]
             return name.with_str(|n| Self::from_ident(n).is_ok());
+            #[cfg(feature = "servo")]
+            return Self::from_ident(name).is_ok();
         }
         false
     }
@@ -321,8 +345,11 @@ impl AnimationFillMode {
     /// Note: animation-name:none is its initial value, so we don't have to match none here.
     #[inline]
     pub fn match_keywords(name: &AnimationName) -> bool {
-        if let Some(atom) = name.as_atom() {
-            return !name.is_none() && atom.with_str(|n| Self::from_ident(n).is_ok());
+        if let Some(name) = name.as_atom() {
+            #[cfg(feature = "gecko")]
+            return name.with_str(|n| Self::from_ident(n).is_ok());
+            #[cfg(feature = "servo")]
+            return Self::from_ident(name).is_ok();
         }
         false
     }
@@ -419,10 +446,10 @@ pub enum ScrollAxis {
     Block = 0,
     /// The inline axis of the scroll container.
     Inline = 1,
-    /// The vertical block axis of the scroll container.
-    Vertical = 2,
     /// The horizontal axis of the scroll container.
-    Horizontal = 3,
+    X = 2,
+    /// The vertical axis of the scroll container.
+    Y = 3,
 }
 
 impl ScrollAxis {
@@ -525,6 +552,63 @@ impl generics::ViewFunction<LengthPercentage> {
     }
 }
 
+/// The typedef of scroll-timeline-name or view-timeline-name.
+///
+/// https://drafts.csswg.org/scroll-animations-1/#scroll-timeline-name
+/// https://drafts.csswg.org/scroll-animations-1/#view-timeline-name
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    MallocSizeOf,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
+)]
+#[repr(C)]
+pub struct TimelineName(DashedIdent);
+
+impl TimelineName {
+    /// Returns the `none` value.
+    pub fn none() -> Self {
+        Self(DashedIdent::empty())
+    }
+
+    /// Check if this is `none` value.
+    pub fn is_none(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl Parse for TimelineName {
+    fn parse<'i, 't>(
+        context: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        if input.try_parse(|i| i.expect_ident_matching("none")).is_ok() {
+            return Ok(Self::none());
+        }
+
+        DashedIdent::parse(context, input).map(TimelineName)
+    }
+}
+
+impl ToCss for TimelineName {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
+        if self.is_none() {
+            return dest.write_str("none");
+        }
+
+        self.0.to_css(dest)
+    }
+}
+
 /// A specified value for the `animation-timeline` property.
 pub type AnimationTimeline = generics::GenericAnimationTimeline<LengthPercentage>;
 
@@ -535,22 +619,19 @@ impl Parse for AnimationTimeline {
     ) -> Result<Self, ParseError<'i>> {
         use crate::values::generics::animation::ViewFunction;
 
-        // <single-animation-timeline> = auto | none | <custom-ident> | <scroll()> | <view()>
+        // <single-animation-timeline> = auto | none | <dashed-ident> | <scroll()> | <view()>
         // https://drafts.csswg.org/css-animations-2/#typedef-single-animation-timeline
 
         if input.try_parse(|i| i.expect_ident_matching("auto")).is_ok() {
             return Ok(Self::Auto);
         }
 
-        if input.try_parse(|i| i.expect_ident_matching("none")).is_ok() {
-            return Ok(AnimationTimeline::Timeline(TimelineName::none()));
-        }
-
+        // This parses none or <dashed-indent>.
         if let Ok(name) = input.try_parse(|i| TimelineName::parse(context, i)) {
             return Ok(AnimationTimeline::Timeline(name));
         }
 
-        // Parse possible functions
+        // Parse <scroll()> or <view()>.
         let location = input.current_source_location();
         let function = input.expect_function()?.clone();
         input.parse_nested_block(move |i| {
@@ -566,9 +647,6 @@ impl Parse for AnimationTimeline {
         })
     }
 }
-
-/// A value for the scroll-timeline-name or view-timeline-name.
-pub type ScrollTimelineName = AnimationName;
 
 /// A specified value for the `view-timeline-inset` property.
 pub type ViewTimelineInset = generics::GenericViewTimelineInset<LengthPercentage>;
@@ -587,5 +665,124 @@ impl Parse for ViewTimelineInset {
         };
 
         Ok(Self { start, end })
+    }
+}
+
+/// The view-transition-name: `none | <custom-ident>`.
+///
+/// https://drafts.csswg.org/css-view-transitions-1/#view-transition-name-prop
+///
+/// We use a single atom for this. Empty atom represents `none`.
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    PartialEq,
+    MallocSizeOf,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToResolvedValue,
+    ToShmem,
+)]
+#[repr(C)]
+pub struct ViewTransitionName(Atom);
+
+impl ViewTransitionName {
+    /// Returns the `none` value.
+    pub fn none() -> Self {
+        Self(atom!(""))
+    }
+
+    /// Returns whether this is the special `none` value.
+    pub fn is_none(&self) -> bool {
+        self.0 == atom!("")
+    }
+}
+
+impl Parse for ViewTransitionName {
+    fn parse<'i, 't>(
+        _: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        let location = input.current_source_location();
+        let ident = input.expect_ident()?;
+        if ident.eq_ignore_ascii_case("none") {
+            return Ok(Self::none());
+        }
+
+        // We check none already, so don't need to exclude none here.
+        // Note: The values none and auto are excluded from <custom-ident> here.
+        Ok(Self(CustomIdent::from_ident(location, ident, &["auto"])?.0))
+    }
+}
+
+impl ToCss for ViewTransitionName {
+    fn to_css<W>(&self, dest: &mut CssWriter<W>) -> fmt::Result
+    where
+        W: Write,
+    {
+        use crate::values::serialize_atom_identifier;
+
+        if self.is_none() {
+            return dest.write_str("none");
+        }
+
+        serialize_atom_identifier(&self.0, dest)
+    }
+}
+
+/// The view-transition-class: `none | <custom-ident>+`.
+///
+/// https://drafts.csswg.org/css-view-transitions-2/#view-transition-class-prop
+///
+/// Empty slice represents `none`.
+#[derive(
+    Clone,
+    Debug,
+    Eq,
+    Hash,
+    PartialEq,
+    MallocSizeOf,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+)]
+#[repr(C)]
+#[value_info(other_values = "none")]
+pub struct ViewTransitionClass(
+    #[css(iterable, if_empty = "none")]
+    #[ignore_malloc_size_of = "Arc"]
+    crate::ArcSlice<CustomIdent>,
+);
+
+impl ViewTransitionClass {
+    /// Returns the default value, `none`. We use the default slice (i.e. empty) to represent it.
+    pub fn none() -> Self {
+        Self(Default::default())
+    }
+
+    /// Returns whether this is the `none` value.
+    pub fn is_none(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl Parse for ViewTransitionClass {
+    fn parse<'i, 't>(
+        _: &ParserContext,
+        input: &mut Parser<'i, 't>,
+    ) -> Result<Self, ParseError<'i>> {
+        use style_traits::{Separator, Space};
+
+        if input.try_parse(|i| i.expect_ident_matching("none")).is_ok() {
+            return Ok(Self::none());
+        }
+
+        Ok(Self(crate::ArcSlice::from_iter(
+            Space::parse(input, |i| CustomIdent::parse(i, &["none"]))?.into_iter(),
+        )))
     }
 }

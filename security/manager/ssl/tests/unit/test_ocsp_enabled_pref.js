@@ -46,7 +46,7 @@ async function testOff() {
   await checkEVStatus(
     gCertDB,
     certFromFile("test-oid-path-ee"),
-    certificateUsageSSLServer,
+    Ci.nsIX509CertDB.verifyUsageTLSServer,
     false
   );
   await stopOCSPResponder(ocspResponder);
@@ -58,7 +58,7 @@ async function testOff() {
     gCertDB,
     certFromFile("non-ev-root-path-ee"),
     PRErrorCodeSuccess,
-    certificateUsageSSLServer
+    Ci.nsIX509CertDB.verifyUsageTLSServer
   );
   await stopOCSPResponder(ocspResponder);
 }
@@ -75,7 +75,7 @@ async function testOn() {
   await checkEVStatus(
     gCertDB,
     certFromFile("test-oid-path-ee"),
-    certificateUsageSSLServer,
+    Ci.nsIX509CertDB.verifyUsageTLSServer,
     gEVExpected
   );
   await stopOCSPResponder(ocspResponder);
@@ -88,7 +88,94 @@ async function testOn() {
     gCertDB,
     certFromFile("non-ev-root-path-ee"),
     PRErrorCodeSuccess,
-    certificateUsageSSLServer
+    Ci.nsIX509CertDB.verifyUsageTLSServer
+  );
+  await stopOCSPResponder(ocspResponder);
+}
+
+async function testCRLiteEnforced() {
+  Services.prefs.setBoolPref("security.OCSP.require", false);
+  info("Setting security.OCSP.require to false");
+
+  Services.prefs.setIntPref("security.OCSP.enabled", 1);
+  info("Setting security.OCSP.enabled to 1");
+
+  Services.prefs.setIntPref("security.pki.crlite_mode", 2);
+  info("Setting security.pki.crlite_mode to 2");
+
+  // When CRLite is enforced, OCSP requests should be made for DV certs that do
+  // not chain to a builtin root.
+  clearOCSPCache();
+  let ocspResponder = getOCSPResponder(["non-ev-root-path-ee"]);
+  await checkCertErrorGeneric(
+    gCertDB,
+    certFromFile("non-ev-root-path-ee"),
+    PRErrorCodeSuccess,
+    Ci.nsIX509CertDB.verifyUsageTLSServer
+  );
+  await stopOCSPResponder(ocspResponder);
+
+  // The rest of the tests here use "security.test.built_in_root_hash", which
+  // only works in debug builds.
+  if (!AppConstants.DEBUG) {
+    return;
+  }
+
+  // When CRLite is enforced, OCSP requests should not be made for DV certs
+  // that chain to a builtin root.
+  let nonEVRootCert = certFromFile("non-evroot-ca");
+  Services.prefs.setCharPref(
+    "security.test.built_in_root_hash",
+    nonEVRootCert.sha256Fingerprint
+  );
+  info(
+    "Setting security.test.built_in_root_hash to " +
+      nonEVRootCert.sha256Fingerprint
+  );
+
+  clearOCSPCache();
+  ocspResponder = getOCSPResponder([]);
+  await checkCertErrorGeneric(
+    gCertDB,
+    certFromFile("non-ev-root-path-ee"),
+    PRErrorCodeSuccess,
+    Ci.nsIX509CertDB.verifyUsageTLSServer
+  );
+  await stopOCSPResponder(ocspResponder);
+
+  // When CRLite is enforced and OCSP is required, OCSP requests should be made
+  // for DV certs.
+  Services.prefs.setBoolPref("security.OCSP.require", true);
+  info("Setting security.OCSP.require to true");
+  clearOCSPCache();
+  ocspResponder = getOCSPResponder(["non-ev-root-path-ee"]);
+  await checkCertErrorGeneric(
+    gCertDB,
+    certFromFile("non-ev-root-path-ee"),
+    PRErrorCodeSuccess,
+    Ci.nsIX509CertDB.verifyUsageTLSServer
+  );
+  await stopOCSPResponder(ocspResponder);
+
+  // When CRLite is enforced, OCSP requests should be made for EV certs.
+  Services.prefs.setBoolPref("security.OCSP.require", true);
+  info("Setting security.OCSP.require to true");
+  let evroot = certFromFile("evroot");
+  Services.prefs.setCharPref(
+    "security.test.built_in_root_hash",
+    evroot.sha256Fingerprint
+  );
+  info(
+    "Setting security.test.built_in_root_hash to " + evroot.sha256Fingerprint
+  );
+
+  clearOCSPCache();
+  ocspResponder = getOCSPResponder(["test-oid-path-ee"]);
+  await checkEVStatus(
+    gCertDB,
+    certFromFile("test-oid-path-ee"),
+    Ci.nsIX509CertDB.verifyUsageTLSServer,
+    gEVExpected
   );
   await stopOCSPResponder(ocspResponder);
 }
@@ -107,7 +194,7 @@ async function testEVOnly() {
   await checkEVStatus(
     gCertDB,
     certFromFile("test-oid-path-ee"),
-    certificateUsageSSLServer,
+    Ci.nsIX509CertDB.verifyUsageTLSServer,
     gEVExpected
   );
   await stopOCSPResponder(ocspResponder);
@@ -119,7 +206,7 @@ async function testEVOnly() {
     gCertDB,
     certFromFile("non-ev-root-path-ee"),
     PRErrorCodeSuccess,
-    certificateUsageSSLServer
+    Ci.nsIX509CertDB.verifyUsageTLSServer
   );
   await stopOCSPResponder(ocspResponder);
 }
@@ -129,6 +216,8 @@ add_task(async function () {
     Services.prefs.clearUserPref("network.dns.localDomains");
     Services.prefs.clearUserPref("security.OCSP.enabled");
     Services.prefs.clearUserPref("security.OCSP.require");
+    Services.prefs.clearUserPref("security.pki.crlite_mode");
+    Services.prefs.clearUserPref("security.test.built_in_root_hash");
   });
   Services.prefs.setCharPref("network.dns.localDomains", "www.example.com");
   // Enable hard fail to ensure chains that should only succeed because they get
@@ -143,4 +232,5 @@ add_task(async function () {
   await testOff();
   await testOn();
   await testEVOnly();
+  await testCRLiteEnforced();
 });

@@ -14,8 +14,10 @@
 #include "HTTPSRecordResolver.h"
 #include "NSSErrorsService.h"
 #include "base/basictypes.h"
+#include "mozilla/AppShutdown.h"
 #include "mozilla/Components.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/NetwerkMetrics.h"
+#include "mozilla/glean/NetwerkProtocolHttpMetrics.h"
 #include "mozilla/net/SSLTokensCache.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Tokenizer.h"
@@ -85,8 +87,6 @@ nsHttpTransaction::nsHttpTransaction() {
 #endif
   mSelfAddr.raw.family = PR_AF_UNSPEC;
   mPeerAddr.raw.family = PR_AF_UNSPEC;
-
-  mThroughCaptivePortal = gHttpHandler->GetThroughCaptivePortal();
 }
 
 void nsHttpTransaction::ResumeReading() {
@@ -142,36 +142,8 @@ void nsHttpTransaction::SetClassOfService(ClassOfService cos) {
   }
 }
 
-class ReleaseOnSocketThread final : public mozilla::Runnable {
- public:
-  explicit ReleaseOnSocketThread(nsTArray<nsCOMPtr<nsISupports>>&& aDoomed)
-      : Runnable("ReleaseOnSocketThread"), mDoomed(std::move(aDoomed)) {}
-
-  NS_IMETHOD
-  Run() override {
-    mDoomed.Clear();
-    return NS_OK;
-  }
-
-  void Dispatch() {
-    nsCOMPtr<nsIEventTarget> sts =
-        do_GetService("@mozilla.org/network/socket-transport-service;1");
-    Unused << sts->Dispatch(this, nsIEventTarget::DISPATCH_NORMAL);
-  }
-
- private:
-  virtual ~ReleaseOnSocketThread() = default;
-
-  nsTArray<nsCOMPtr<nsISupports>> mDoomed;
-};
-
 nsHttpTransaction::~nsHttpTransaction() {
   LOG(("Destroying nsHttpTransaction @%p\n", this));
-
-  if (mPushedStream) {
-    mPushedStream->OnPushFailed();
-    mPushedStream = nullptr;
-  }
 
   if (mTokenBucketCancel) {
     mTokenBucketCancel->Cancel(NS_ERROR_ABORT);
@@ -189,17 +161,6 @@ nsHttpTransaction::~nsHttpTransaction() {
   delete mResponseHead;
   delete mChunkedDecoder;
   ReleaseBlockingTransaction();
-
-  nsTArray<nsCOMPtr<nsISupports>> arrayToRelease;
-  if (mConnection) {
-    arrayToRelease.AppendElement(mConnection.forget());
-  }
-
-  if (!arrayToRelease.IsEmpty()) {
-    RefPtr<ReleaseOnSocketThread> r =
-        new ReleaseOnSocketThread(std::move(arrayToRelease));
-    r->Dispatch();
-  }
 }
 
 nsresult nsHttpTransaction::Init(
@@ -210,9 +171,7 @@ nsresult nsHttpTransaction::Init(
     uint64_t browserId, HttpTrafficCategory trafficCategory,
     nsIRequestContext* requestContext, ClassOfService classOfService,
     uint32_t initialRwin, bool responseTimeoutEnabled, uint64_t channelId,
-    TransactionObserverFunc&& transactionObserver,
-    OnPushCallback&& aOnPushCallback,
-    HttpTransactionShell* transWithPushedStream, uint32_t aPushedStreamId) {
+    TransactionObserverFunc&& transactionObserver) {
   nsresult rv;
 
   LOG1(("nsHttpTransaction::Init [this=%p caps=%x]\n", this, caps));
@@ -231,7 +190,6 @@ nsresult nsHttpTransaction::Init(
 
   mChannelId = channelId;
   mTransactionObserver = std::move(transactionObserver);
-  mOnPushCallback = std::move(aOnPushCallback);
   mBrowserId = browserId;
 
   mTrafficCategory = trafficCategory;
@@ -251,6 +209,7 @@ nsresult nsHttpTransaction::Init(
   if (NS_FAILED(rv)) return rv;
 
   mConnInfo = cinfo;
+  mFinalizedConnInfo = cinfo;
   mCallbacks = callbacks;
   mConsumerTarget = target;
   mCaps = caps;
@@ -307,10 +266,7 @@ nsresult nsHttpTransaction::Init(
 
   if (mHasRequestBody) {
     // wrap the headers and request body in a multiplexed input stream.
-    nsCOMPtr<nsIMultiplexInputStream> multi;
-    rv = nsMultiplexInputStreamConstructor(NS_GET_IID(nsIMultiplexInputStream),
-                                           getter_AddRefs(multi));
-    if (NS_FAILED(rv)) return rv;
+    RefPtr<nsMultiplexInputStream> multi = new nsMultiplexInputStream();
 
     rv = multi->AppendStream(headers);
     if (NS_FAILED(rv)) return rv;
@@ -321,9 +277,8 @@ nsresult nsHttpTransaction::Init(
     // wrap the multiplexed input stream with a buffered input stream, so
     // that we write data in the largest chunks possible.  this is actually
     // necessary to workaround some common server bugs (see bug 137155).
-    nsCOMPtr<nsIInputStream> stream(do_QueryInterface(multi));
     rv = NS_NewBufferedInputStream(getter_AddRefs(mRequestStream),
-                                   stream.forget(),
+                                   multi.forget(),
                                    nsIOService::gDefaultSegmentSize);
     if (NS_FAILED(rv)) return rv;
   } else {
@@ -360,13 +315,6 @@ nsresult nsHttpTransaction::Init(
   NS_NewPipe2(getter_AddRefs(mPipeIn), getter_AddRefs(mPipeOut), true, true,
               nsIOService::gDefaultSegmentSize,
               nsIOService::gDefaultSegmentCount);
-
-  if (transWithPushedStream && aPushedStreamId) {
-    RefPtr<nsHttpTransaction> trans =
-        transWithPushedStream->AsHttpTransaction();
-    MOZ_ASSERT(trans);
-    mPushedStream = trans->TakePushedStreamById(aPushedStreamId);
-  }
 
   bool forceUseHTTPSRR = StaticPrefs::network_dns_force_use_https_rr();
   if ((StaticPrefs::network_dns_use_https_rr_as_altsvc() &&
@@ -476,11 +424,17 @@ void nsHttpTransaction::SetH2WSConnRefTaken() {
   }
 }
 
-UniquePtr<nsHttpResponseHead> nsHttpTransaction::TakeResponseHead() {
+UniquePtr<nsHttpResponseHead> nsHttpTransaction::TakeResponseHeadAndConnInfo(
+    nsHttpConnectionInfo** aOut) {
   MOZ_ASSERT(!mResponseHeadTaken, "TakeResponseHead called 2x");
 
   // Lock TakeResponseHead() against main thread
   MutexAutoLock lock(mLock);
+
+  if (aOut) {
+    RefPtr<nsHttpConnectionInfo> connInfo = mFinalizedConnInfo;
+    connInfo.forget(aOut);
+  }
 
   mResponseHeadTaken = true;
 
@@ -561,6 +515,7 @@ void nsHttpTransaction::OnActivated() {
 
   mActivated = true;
   gHttpHandler->ConnMgr()->AddActiveTransaction(this);
+  FinalizeConnInfo();
 }
 
 void nsHttpTransaction::GetSecurityCallbacks(nsIInterfaceRequestor** cb) {
@@ -585,7 +540,7 @@ void nsHttpTransaction::SetSecurityCallbacks(
 
 void nsHttpTransaction::OnTransportStatus(nsITransport* transport,
                                           nsresult status, int64_t progress) {
-  LOG1(("nsHttpTransaction::OnSocketStatus [this=%p status=%" PRIx32
+  LOG1(("nsHttpTransaction::OnTransportStatus [this=%p status=%" PRIx32
         " progress=%" PRId64 "]\n",
         this, static_cast<uint32_t>(status), progress));
 
@@ -607,7 +562,7 @@ void nsHttpTransaction::OnTransportStatus(nsITransport* transport,
   // for domainLookupStart/End and connectStart/End
   // If we are using a persistent connection they will remain null,
   // and the correct value will be returned in Performance.
-  if (TimingEnabled() && GetRequestStart().IsNull()) {
+  if (GetRequestStart().IsNull()) {
     if (status == NS_NET_STATUS_RESOLVING_HOST) {
       SetDomainLookupStart(TimeStamp::Now(), true);
     } else if (status == NS_NET_STATUS_RESOLVED_HOST) {
@@ -818,10 +773,8 @@ nsresult nsHttpTransaction::WritePipeSegment(nsIOutputStream* stream,
 
   if (trans->mTransactionDone) return NS_BASE_STREAM_CLOSED;  // stop iterating
 
-  if (trans->TimingEnabled()) {
-    // Set the timestamp to Now(), only if it null
-    trans->SetResponseStart(TimeStamp::Now(), true);
-  }
+  // Set the timestamp to Now(), only if it null
+  trans->SetResponseStart(TimeStamp::Now(), true);
 
   // Bug 1153929 - add checks to fix windows crash
   MOZ_ASSERT(trans->mWriter);
@@ -1029,51 +982,6 @@ already_AddRefed<nsHttpConnectionInfo> nsHttpTransaction::GetConnInfo() const {
   return connInfo.forget();
 }
 
-already_AddRefed<Http2PushedStreamWrapper>
-nsHttpTransaction::TakePushedStreamById(uint32_t aStreamId) {
-  MOZ_ASSERT(mConsumerTarget->IsOnCurrentThread());
-  MOZ_ASSERT(aStreamId);
-
-  auto entry = mIDToStreamMap.Lookup(aStreamId);
-  if (entry) {
-    RefPtr<Http2PushedStreamWrapper> stream = entry.Data();
-    entry.Remove();
-    return stream.forget();
-  }
-
-  return nullptr;
-}
-
-void nsHttpTransaction::OnPush(Http2PushedStreamWrapper* aStream) {
-  LOG(("nsHttpTransaction::OnPush %p aStream=%p", this, aStream));
-  MOZ_ASSERT(aStream);
-  MOZ_ASSERT(mOnPushCallback);
-  MOZ_ASSERT(mConsumerTarget);
-
-  RefPtr<Http2PushedStreamWrapper> stream = aStream;
-  if (!mConsumerTarget->IsOnCurrentThread()) {
-    RefPtr<nsHttpTransaction> self = this;
-    if (NS_FAILED(mConsumerTarget->Dispatch(
-            NS_NewRunnableFunction("nsHttpTransaction::OnPush",
-                                   [self, stream]() { self->OnPush(stream); }),
-            NS_DISPATCH_NORMAL))) {
-      stream->OnPushFailed();
-    }
-    return;
-  }
-
-  mIDToStreamMap.WithEntryHandle(stream->StreamID(), [&](auto&& entry) {
-    MOZ_ASSERT(!entry);
-    entry.OrInsert(stream);
-  });
-
-  if (NS_FAILED(mOnPushCallback(stream->StreamID(), stream->GetResourceUrl(),
-                                stream->GetRequestString(), this))) {
-    stream->OnPushFailed();
-    mIDToStreamMap.Remove(stream->StreamID());
-  }
-}
-
 nsHttpTransaction* nsHttpTransaction::AsHttpTransaction() { return this; }
 
 HttpTransactionParent* nsHttpTransaction::AsHttpTransactionParent() {
@@ -1116,7 +1024,7 @@ bool nsHttpTransaction::PrepareSVCBRecordsForRetry(
   bool unused;
   nsTArray<RefPtr<nsISVCBRecord>> records;
   Unused << mHTTPSSVCRecord->GetAllRecordsWithEchConfig(
-      mCaps & NS_HTTP_DISALLOW_SPDY, noHttp3, &aAllRecordsHaveEchConfig,
+      mCaps & NS_HTTP_DISALLOW_SPDY, noHttp3, mCname, &aAllRecordsHaveEchConfig,
       &unused, records);
 
   // Note that it's possible that we can't get any usable record here. For
@@ -1158,8 +1066,9 @@ nsHttpTransaction::PrepareFastFallbackConnInfo(bool aEchConfigUsed) {
 
   RefPtr<nsHttpConnectionInfo> fallbackConnInfo;
   nsCOMPtr<nsISVCBRecord> fastFallbackRecord;
-  Unused << mHTTPSSVCRecord->GetServiceModeRecord(
-      mCaps & NS_HTTP_DISALLOW_SPDY, true, getter_AddRefs(fastFallbackRecord));
+  Unused << mHTTPSSVCRecord->GetServiceModeRecordWithCname(
+      mCaps & NS_HTTP_DISALLOW_SPDY, true, mCname,
+      getter_AddRefs(fastFallbackRecord));
 
   if (fastFallbackRecord && aEchConfigUsed) {
     nsAutoCString echConfig;
@@ -1198,7 +1107,7 @@ void nsHttpTransaction::PrepareConnInfoForRetry(nsresult aReason) {
   RefPtr<nsHttpConnectionInfo> failedConnInfo = mConnInfo->Clone();
   mConnInfo = nullptr;
   bool echConfigUsed =
-      gHttpHandler->EchConfigEnabled(failedConnInfo->IsHttp3()) &&
+      nsHttpHandler::EchConfigEnabled(failedConnInfo->IsHttp3()) &&
       !failedConnInfo->GetEchConfig().IsEmpty();
 
   if (mFastFallbackTriggered) {
@@ -1227,7 +1136,7 @@ void nsHttpTransaction::PrepareConnInfoForRetry(nsresult aReason) {
     return;
   }
 
-  Telemetry::HistogramID id = Telemetry::TRANSACTION_ECH_RETRY_OTHERS_COUNT;
+  TRANSACTION_ECH_RETRY_COUNT id = TRANSACTION_ECH_RETRY_OTHERS_COUNT;
   auto updateCount = MakeScopeExit([&] {
     auto entry = mEchRetryCounterMap.Lookup(id);
     MOZ_ASSERT(entry, "table not initialized");
@@ -1240,7 +1149,7 @@ void nsHttpTransaction::PrepareConnInfoForRetry(nsresult aReason) {
     LOG((" Got SSL_ERROR_ECH_RETRY_WITHOUT_ECH, use empty echConfig to retry"));
     failedConnInfo->SetEchConfig(EmptyCString());
     failedConnInfo.swap(mConnInfo);
-    id = Telemetry::TRANSACTION_ECH_RETRY_WITHOUT_ECH_COUNT;
+    id = TRANSACTION_ECH_RETRY_WITHOUT_ECH_COUNT;
     return;
   }
 
@@ -1262,7 +1171,7 @@ void nsHttpTransaction::PrepareConnInfoForRetry(nsresult aReason) {
       failedConnInfo->SetEchConfig(retryEchConfig);
       failedConnInfo.swap(mConnInfo);
     }
-    id = Telemetry::TRANSACTION_ECH_RETRY_WITH_ECH_COUNT;
+    id = TRANSACTION_ECH_RETRY_WITH_ECH_COUNT;
     return;
   }
 
@@ -1272,7 +1181,7 @@ void nsHttpTransaction::PrepareConnInfoForRetry(nsresult aReason) {
       NS_FAILED(aReason)) {
     LOG((" Got SSL_ERROR_ECH_FAILED, try other records"));
     if (aReason == psm::GetXPCOMFromNSSError(SSL_ERROR_ECH_FAILED)) {
-      id = Telemetry::TRANSACTION_ECH_RETRY_ECH_FAILED_COUNT;
+      id = TRANSACTION_ECH_RETRY_ECH_FAILED_COUNT;
     }
     if (mRecordsForRetry.IsEmpty()) {
       if (mHTTPSSVCRecord) {
@@ -1324,8 +1233,8 @@ void nsHttpTransaction::MaybeReportFailedSVCDomain(
     return;
   }
 
-  Telemetry::Accumulate(Telemetry::DNS_HTTPSSVC_CONNECTION_FAILED_REASON,
-                        ErrorCodeToFailedReason(aReason));
+  glean::http::dns_httpssvc_connection_failed_reason.AccumulateSingleSample(
+      ErrorCodeToFailedReason(aReason));
 
   nsCOMPtr<nsIDNSService> dns = do_GetService(NS_DNSSERVICE_CONTRACTID);
   if (dns) {
@@ -1363,15 +1272,15 @@ static void MaybeRemoveSSLToken(nsITransportSecurityInfo* aSecurityInfo) {
        static_cast<uint32_t>(rv)));
 }
 
+const int64_t TELEMETRY_REQUEST_SIZE_10M = (int64_t)10 * (int64_t)(1 << 20);
+const int64_t TELEMETRY_REQUEST_SIZE_50M =
+    (int64_t)5 * TELEMETRY_REQUEST_SIZE_10M;
+const int64_t TELEMETRY_REQUEST_SIZE_100M =
+    (int64_t)10 * TELEMETRY_REQUEST_SIZE_10M;
+
 void nsHttpTransaction::Close(nsresult reason) {
   LOG(("nsHttpTransaction::Close [this=%p reason=%" PRIx32 "]\n", this,
        static_cast<uint32_t>(reason)));
-
-  {
-    MutexAutoLock lock(mLock);
-    mEarlyHintObserver = nullptr;
-    mWebTransportSessionEventListener = nullptr;
-  }
 
   if (!mClosed) {
     gHttpHandler->ConnMgr()->RemoveActiveTransaction(this);
@@ -1574,14 +1483,27 @@ void nsHttpTransaction::Close(nsresult reason) {
     }
   }
 
-  Telemetry::Accumulate(Telemetry::HTTP_TRANSACTION_RESTART_REASON,
-                        mRestartReason);
+  glean::http::transaction_restart_reason.AccumulateSingleSample(
+      mRestartReason);
 
   if (!mResponseIsComplete && NS_SUCCEEDED(reason) && isHttp2or3) {
     // Responses without content-length header field are still complete if
     // they are transfered over http2 or http3 and the stream is properly
     // closed.
     mResponseIsComplete = true;
+  }
+
+  if (reason == NS_ERROR_NET_RESET && mResponseIsComplete && isHttp2or3) {
+    // See bug 1940663. When using HTTP/2 or HTTP/3, receiving the
+    // NS_ERROR_NET_RESET error code indicates that the connection intends
+    // to restart this transaction. However, if the transaction has already
+    // completed and we've passed the point of restarting, we should avoid
+    // propagating the error code and overwrite it to NS_OK.
+    //
+    // TODO: Refactor the mechanism by which a connection instructs a
+    // transaction to restart. This will allow us to remove this hack.
+    LOG(("Transaction is already done, overriding error code to NS_OK"));
+    reason = NS_OK;
   }
 
   if ((mChunkedDecoder || (mContentLength >= int64_t(0))) &&
@@ -1662,46 +1584,97 @@ void nsHttpTransaction::Close(nsresult reason) {
     // Use mOrigConnInfo as an indicator that this transaction is completed
     // successfully with an HTTPSSVC record.
     if (mOrigConnInfo) {
-      Telemetry::Accumulate(Telemetry::DNS_HTTPSSVC_CONNECTION_FAILED_REASON,
-                            HTTPSSVC_CONNECTION_OK);
+      glean::http::dns_httpssvc_connection_failed_reason.AccumulateSingleSample(
+          HTTPSSVC_CONNECTION_OK);
     }
   }
 
   // mTimings.responseEnd is normally recorded based on the end of a
   // HTTP delimiter such as chunked-encodings or content-length. However,
   // EOF or an error still require an end time be recorded.
-  if (TimingEnabled()) {
-    const TimingStruct timings = Timings();
-    if (timings.responseEnd.IsNull() && !timings.responseStart.IsNull()) {
-      SetResponseEnd(TimeStamp::Now());
+
+  const TimingStruct timings = Timings();
+  if (timings.responseEnd.IsNull() && !timings.responseStart.IsNull()) {
+    SetResponseEnd(TimeStamp::Now());
+  }
+
+  if (!timings.requestStart.IsNull() && !timings.responseEnd.IsNull()) {
+    TimeDuration elapsed = timings.responseEnd - timings.requestStart;
+    double megabits = static_cast<double>(mContentRead) * 8.0 / 1000000.0;
+    uint32_t mbps = static_cast<uint32_t>(megabits / elapsed.ToSeconds());
+    nsAutoCString serverKey;
+
+    switch (mHttpVersion) {
+      case HttpVersion::v1_0:
+      case HttpVersion::v1_1: {
+        if (NS_SUCCEEDED(reason)) {
+          serverKey.Assign(mServerHeader.EqualsLiteral("cloudflare")
+                               ? "h1_cloudflare"_ns
+                               : "h1_others"_ns);
+        }
+        if (mContentRead > TELEMETRY_REQUEST_SIZE_10M) {
+          glean::networking::http_1_download_throughput.AccumulateSingleSample(
+              mbps);
+          if (mContentRead <= TELEMETRY_REQUEST_SIZE_50M) {
+            glean::networking::http_1_download_throughput_10_50
+                .AccumulateSingleSample(mbps);
+          } else if (mContentRead <= TELEMETRY_REQUEST_SIZE_100M) {
+            glean::networking::http_1_download_throughput_50_100
+                .AccumulateSingleSample(mbps);
+          } else {
+            glean::networking::http_1_download_throughput_100
+                .AccumulateSingleSample(mbps);
+          }
+        }
+        break;
+      }
+      case HttpVersion::v2_0: {
+        if (NS_SUCCEEDED(reason)) {
+          serverKey.Assign(mServerHeader.EqualsLiteral("cloudflare")
+                               ? "h2_cloudflare"_ns
+                               : "h2_others"_ns);
+        }
+        if (mContentRead > TELEMETRY_REQUEST_SIZE_10M) {
+          if (mContentRead <= TELEMETRY_REQUEST_SIZE_50M) {
+            glean::networking::http_2_download_throughput_10_50
+                .AccumulateSingleSample(mbps);
+          } else if (mContentRead <= TELEMETRY_REQUEST_SIZE_100M) {
+            glean::networking::http_2_download_throughput_50_100
+                .AccumulateSingleSample(mbps);
+          } else {
+            glean::networking::http_2_download_throughput_100
+                .AccumulateSingleSample(mbps);
+          }
+        }
+        break;
+      }
+      case HttpVersion::v3_0: {
+        if (NS_SUCCEEDED(reason)) {
+          serverKey.Assign(mServerHeader.EqualsLiteral("cloudflare")
+                               ? "h3_cloudflare"_ns
+                               : "h3_others"_ns);
+        }
+        if (mContentRead > TELEMETRY_REQUEST_SIZE_10M) {
+          if (mContentRead <= TELEMETRY_REQUEST_SIZE_50M) {
+            glean::networking::http_3_download_throughput_10_50
+                .AccumulateSingleSample(mbps);
+          } else if (mContentRead <= TELEMETRY_REQUEST_SIZE_100M) {
+            glean::networking::http_3_download_throughput_50_100
+                .AccumulateSingleSample(mbps);
+          } else {
+            glean::networking::http_3_download_throughput_100
+                .AccumulateSingleSample(mbps);
+          }
+        }
+        break;
+      }
+      default:
+        break;
     }
 
-    // Accumulate download throughput telemetry
-    const int64_t TELEMETRY_DOWNLOAD_SIZE_GREATER_THAN_10MB =
-        (int64_t)10 * (int64_t)(1 << 20);
-    if ((mContentRead > TELEMETRY_DOWNLOAD_SIZE_GREATER_THAN_10MB) &&
-        !timings.requestStart.IsNull() && !timings.responseEnd.IsNull()) {
-      TimeDuration elapsed = timings.responseEnd - timings.requestStart;
-      double megabits = static_cast<double>(mContentRead) * 8.0 / 1000000.0;
-      uint32_t mpbs = static_cast<uint32_t>(megabits / elapsed.ToSeconds());
-
-      switch (mHttpVersion) {
-        case HttpVersion::v1_0:
-        case HttpVersion::v1_1:
-          glean::networking::http_1_download_throughput.AccumulateSingleSample(
-              mpbs);
-          break;
-        case HttpVersion::v2_0:
-          glean::networking::http_2_download_throughput.AccumulateSingleSample(
-              mpbs);
-          break;
-        case HttpVersion::v3_0:
-          glean::networking::http_3_download_throughput.AccumulateSingleSample(
-              mpbs);
-          break;
-        default:
-          break;
-      }
+    if (!serverKey.IsEmpty()) {
+      glean::network::http_fetch_duration.Get(serverKey).AccumulateRawDuration(
+          elapsed);
     }
   }
 
@@ -1711,16 +1684,6 @@ void nsHttpTransaction::Close(nsresult reason) {
       hta->AccumulateHttpTransferredSize(mTrafficCategory, mTransferSize,
                                          mContentRead);
     }
-  }
-
-  if (mThroughCaptivePortal) {
-    Telemetry::ScalarAdd(
-        Telemetry::ScalarID::NETWORKING_HTTP_TRANSACTIONS_CAPTIVE_PORTAL, 1);
-  }
-
-  if (relConn && mConnection) {
-    MutexAutoLock lock(mLock);
-    mConnection = nullptr;
   }
 
   if (isHttp2or3 &&
@@ -1737,6 +1700,16 @@ void nsHttpTransaction::Close(nsresult reason) {
     mResolver->Close();
     mResolver = nullptr;
   }
+
+  {
+    MutexAutoLock lock(mLock);
+    mEarlyHintObserver = nullptr;
+    mWebTransportSessionEventListener = nullptr;
+    if (relConn && mConnection) {
+      mConnection = nullptr;
+    }
+  }
+
   ReleaseBlockingTransaction();
 
   // release some resources that we no longer need
@@ -1749,8 +1722,24 @@ void nsHttpTransaction::Close(nsresult reason) {
   }
 
   for (const auto& entry : mEchRetryCounterMap) {
-    Telemetry::Accumulate(static_cast<Telemetry::HistogramID>(entry.GetKey()),
-                          entry.GetData());
+    switch (entry.GetKey()) {
+      case TRANSACTION_ECH_RETRY_OTHERS_COUNT:
+        glean::http::transaction_ech_retry_others_count.AccumulateSingleSample(
+            entry.GetData());
+        break;
+      case TRANSACTION_ECH_RETRY_WITH_ECH_COUNT:
+        glean::http::transaction_ech_retry_with_ech_count
+            .AccumulateSingleSample(entry.GetData());
+        break;
+      case TRANSACTION_ECH_RETRY_WITHOUT_ECH_COUNT:
+        glean::http::transaction_ech_retry_without_ech_count
+            .AccumulateSingleSample(entry.GetData());
+        break;
+      case TRANSACTION_ECH_RETRY_ECH_FAILED_COUNT:
+        glean::http::transaction_ech_retry_ech_failed_count
+            .AccumulateSingleSample(entry.GetData());
+        break;
+    }
   }
 
   // closing this pipe triggers the channel's OnStopRequest method.
@@ -1785,6 +1774,14 @@ static inline void RemoveAlternateServiceUsedHeader(
     DebugOnly<nsresult> rv =
         aRequestHead->SetHeader(nsHttp::Alternate_Service_Used, "0"_ns);
     MOZ_ASSERT(NS_SUCCEEDED(rv));
+  }
+}
+
+void nsHttpTransaction::FinalizeConnInfo() {
+  RefPtr<nsHttpConnectionInfo> cloned = mConnInfo->Clone();
+  {
+    MutexAutoLock lock(mLock);
+    mFinalizedConnInfo.swap(cloned);
   }
 }
 
@@ -2019,7 +2016,12 @@ nsresult nsHttpTransaction::ParseLineSegment(char* segment, uint32_t len) {
     mLineBuf.Truncate();
     // discard this response if it is a 100 continue or other 1xx status.
     uint16_t status = mResponseHead->Status();
-    if (status == 103) {
+    if (status == 103 &&
+        (StaticPrefs::network_early_hints_over_http_v1_1_enabled() ||
+         mResponseHead->Version() != HttpVersion::v1_1)) {
+      // Observe Early Hints info for interfacing with Devtools
+      ReportResponseHeader(NS_HTTP_ACTIVITY_SUBTYPE_EARLYHINT_RESPONSE_HEADER);
+
       nsCString linkHeader;
       nsresult rv = mResponseHead->GetHeader(nsHttp::Link, linkHeader);
 
@@ -2189,8 +2191,8 @@ bool nsHttpTransaction::HandleWebTransportResponse(uint16_t aStatus) {
   if (!(aStatus >= 200 && aStatus < 300)) {
     return false;
   }
-
-  RefPtr<Http3WebTransportSession> wtSession =
+  LOG(("HandleWebTransportResponse mConnection=%p", mConnection.get()));
+  RefPtr<WebTransportSessionBase> wtSession =
       mConnection->GetWebTransportSession(this);
   if (!wtSession) {
     return false;
@@ -2269,6 +2271,8 @@ nsresult nsHttpTransaction::HandleContentStart() {
       // wait to be called again...
       return NS_OK;
     }
+
+    Unused << mResponseHead->GetHeader(nsHttp::Server, mServerHeader);
 
     bool responseChecked = false;
     if (mIsForWebTransport) {
@@ -2352,8 +2356,8 @@ nsresult nsHttpTransaction::HandleContentStart() {
 
     // Report telemetry
     if (mSupportsHTTP3) {
-      Accumulate(Telemetry::TRANSACTION_WAIT_TIME_HTTP2_SUP_HTTP3,
-                 mPendingDurationTime.ToMilliseconds());
+      glean::http::transaction_wait_time_http2_sup_http3.AccumulateRawDuration(
+          mPendingDurationTime);
     }
 
     // If we're only connecting then we're going to be upgrading this
@@ -2493,9 +2497,7 @@ nsresult nsHttpTransaction::HandleContent(char* buf, uint32_t count,
     }
     ReleaseBlockingTransaction();
 
-    if (TimingEnabled()) {
-      SetResponseEnd(TimeStamp::Now());
-    }
+    SetResponseEnd(TimeStamp::Now());
 
     // report the entire response has arrived
     gHttpHandler->ObserveHttpActivityWithArgs(
@@ -2542,21 +2544,11 @@ nsresult nsHttpTransaction::ProcessData(char* buf, uint32_t count,
     if (count && bytesConsumed) memmove(buf, buf + bytesConsumed, count);
 
     if (mResponseHead && mHaveAllHeaders) {
-      auto reportResponseHeader = [&](uint32_t aSubType) {
-        nsAutoCString completeResponseHeaders;
-        mResponseHead->Flatten(completeResponseHeaders, false);
-        completeResponseHeaders.AppendLiteral("\r\n");
-        gHttpHandler->ObserveHttpActivityWithArgs(
-            HttpActivityArgs(mChannelId),
-            NS_HTTP_ACTIVITY_TYPE_HTTP_TRANSACTION, aSubType, PR_Now(), 0,
-            completeResponseHeaders);
-      };
-
       if (mConnection->IsProxyConnectInProgress()) {
-        reportResponseHeader(NS_HTTP_ACTIVITY_SUBTYPE_PROXY_RESPONSE_HEADER);
+        ReportResponseHeader(NS_HTTP_ACTIVITY_SUBTYPE_PROXY_RESPONSE_HEADER);
       } else if (!mReportedResponseHeader) {
         mReportedResponseHeader = true;
-        reportResponseHeader(NS_HTTP_ACTIVITY_SUBTYPE_RESPONSE_HEADER);
+        ReportResponseHeader(NS_HTTP_ACTIVITY_SUBTYPE_RESPONSE_HEADER);
       }
     }
   }
@@ -2598,6 +2590,16 @@ nsresult nsHttpTransaction::ProcessData(char* buf, uint32_t count,
 
   return NS_OK;
 }
+
+// Used to report response header data to devtools
+void nsHttpTransaction::ReportResponseHeader(uint32_t aSubType) {
+  nsAutoCString completeResponseHeaders;
+  mResponseHead->Flatten(completeResponseHeaders, false);
+  completeResponseHeaders.AppendLiteral("\r\n");
+  gHttpHandler->ObserveHttpActivityWithArgs(
+      HttpActivityArgs(mChannelId), NS_HTTP_ACTIVITY_TYPE_HTTP_TRANSACTION,
+      aSubType, PR_Now(), 0, completeResponseHeaders);
+};
 
 // Called when the transaction marked for blocking is associated with a
 // connection (i.e. added to a new h1 conn, an idle http connection, etc..) It
@@ -2911,6 +2913,10 @@ class DeleteHttpTransaction : public Runnable {
 void nsHttpTransaction::DeleteSelfOnConsumerThread() {
   LOG(("nsHttpTransaction::DeleteSelfOnConsumerThread [this=%p]\n", this));
 
+  if (mConnection && OnSocketThread()) {
+    mConnection = nullptr;
+  }
+
   bool val;
   if (!mConsumerTarget ||
       (NS_SUCCEEDED(mConsumerTarget->IsOnCurrentThread(&val)) && val)) {
@@ -3217,7 +3223,7 @@ void nsHttpTransaction::UpdateConnectionInfo(nsHttpConnectionInfo* aConnInfo) {
 
 nsresult nsHttpTransaction::OnHTTPSRRAvailable(
     nsIDNSHTTPSSVCRecord* aHTTPSSVCRecord,
-    nsISVCBRecord* aHighestPriorityRecord) {
+    nsISVCBRecord* aHighestPriorityRecord, const nsACString& aCname) {
   LOG(("nsHttpTransaction::OnHTTPSRRAvailable [this=%p] mActivated=%d", this,
        mActivated));
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
@@ -3271,16 +3277,15 @@ nsresult nsHttpTransaction::OnHTTPSRRAvailable(
     nsCOMPtr<nsIDNSService> dns = do_GetService(NS_DNSSERVICE_CONTRACTID);
     bool allRecordsExcluded = false;
     Unused << record->GetAllRecordsExcluded(&allRecordsExcluded);
-    Telemetry::Accumulate(Telemetry::DNS_HTTPSSVC_CONNECTION_FAILED_REASON,
-                          allRecordsExcluded
-                              ? HTTPSSVC_CONNECTION_ALL_RECORDS_EXCLUDED
-                              : HTTPSSVC_CONNECTION_NO_USABLE_RECORD);
+    glean::http::dns_httpssvc_connection_failed_reason.AccumulateSingleSample(
+        allRecordsExcluded ? HTTPSSVC_CONNECTION_ALL_RECORDS_EXCLUDED
+                           : HTTPSSVC_CONNECTION_NO_USABLE_RECORD);
     if (allRecordsExcluded &&
         StaticPrefs::network_dns_httpssvc_reset_exclustion_list() && dns) {
       Unused << dns->ResetExcludedSVCDomainName(mConnInfo->GetOrigin());
-      if (NS_FAILED(record->GetServiceModeRecord(mCaps & NS_HTTP_DISALLOW_SPDY,
-                                                 mCaps & NS_HTTP_DISALLOW_HTTP3,
-                                                 getter_AddRefs(svcbRecord)))) {
+      if (NS_FAILED(record->GetServiceModeRecordWithCname(
+              mCaps & NS_HTTP_DISALLOW_SPDY, mCaps & NS_HTTP_DISALLOW_HTTP3,
+              aCname, getter_AddRefs(svcbRecord)))) {
         return NS_ERROR_FAILURE;
       }
     } else {
@@ -3291,6 +3296,8 @@ nsresult nsHttpTransaction::OnHTTPSRRAvailable(
   // Remember this RR set. In the case that the connection establishment failed,
   // we will use other records to retry.
   mHTTPSSVCRecord = record;
+  mCname = aCname;
+  LOG(("has cname:%s", mCname.get()));
 
   RefPtr<nsHttpConnectionInfo> newInfo =
       mConnInfo->CloneAndAdoptHTTPSSVCRecord(svcbRecord);
@@ -3333,14 +3340,12 @@ nsresult nsHttpTransaction::OnHTTPSRRAvailable(
 
   // echConfig is used, so initialize the retry counters to 0.
   if (!mConnInfo->GetEchConfig().IsEmpty()) {
-    mEchRetryCounterMap.InsertOrUpdate(
-        Telemetry::TRANSACTION_ECH_RETRY_WITH_ECH_COUNT, 0);
-    mEchRetryCounterMap.InsertOrUpdate(
-        Telemetry::TRANSACTION_ECH_RETRY_WITHOUT_ECH_COUNT, 0);
-    mEchRetryCounterMap.InsertOrUpdate(
-        Telemetry::TRANSACTION_ECH_RETRY_ECH_FAILED_COUNT, 0);
-    mEchRetryCounterMap.InsertOrUpdate(
-        Telemetry::TRANSACTION_ECH_RETRY_OTHERS_COUNT, 0);
+    mEchRetryCounterMap.InsertOrUpdate(TRANSACTION_ECH_RETRY_WITH_ECH_COUNT, 0);
+    mEchRetryCounterMap.InsertOrUpdate(TRANSACTION_ECH_RETRY_WITHOUT_ECH_COUNT,
+                                       0);
+    mEchRetryCounterMap.InsertOrUpdate(TRANSACTION_ECH_RETRY_ECH_FAILED_COUNT,
+                                       0);
+    mEchRetryCounterMap.InsertOrUpdate(TRANSACTION_ECH_RETRY_OTHERS_COUNT, 0);
   }
 
   return NS_OK;
@@ -3469,7 +3474,7 @@ void nsHttpTransaction::OnFastFallbackTimer() {
     return;
   }
 
-  bool echConfigUsed = gHttpHandler->EchConfigEnabled(mConnInfo->IsHttp3()) &&
+  bool echConfigUsed = nsHttpHandler::EchConfigEnabled(mConnInfo->IsHttp3()) &&
                        !mConnInfo->GetEchConfig().IsEmpty();
   mBackupConnInfo = PrepareFastFallbackConnInfo(echConfigUsed);
   if (!mBackupConnInfo) {
@@ -3557,10 +3562,6 @@ nsHttpTransaction::GetName(nsACString& aName) {
 
 bool nsHttpTransaction::GetSupportsHTTP3() { return mSupportsHTTP3; }
 
-const int64_t TELEMETRY_REQUEST_SIZE_10M = (int64_t)10 * (int64_t)(1 << 20);
-const int64_t TELEMETRY_REQUEST_SIZE_50M = (int64_t)50 * (int64_t)(1 << 20);
-const int64_t TELEMETRY_REQUEST_SIZE_100M = (int64_t)100 * (int64_t)(1 << 20);
-
 void nsHttpTransaction::CollectTelemetryForUploads() {
   if ((mRequestSize < TELEMETRY_REQUEST_SIZE_10M) ||
       mTimings.requestStart.IsNull() || mTimings.responseStart.IsNull()) {
@@ -3575,8 +3576,8 @@ void nsHttpTransaction::CollectTelemetryForUploads() {
   TimeDuration sendTime = mTimings.responseStart - mTimings.requestStart;
   double megabits = static_cast<double>(mRequestSize) * 8.0 / 1000000.0;
   uint32_t mpbs = static_cast<uint32_t>(megabits / sendTime.ToSeconds());
-  Telemetry::Accumulate(Telemetry::HTTP_UPLOAD_BANDWIDTH_MBPS, protocolVersion,
-                        mpbs);
+  glean::http::upload_bandwidth_mbps.Get(protocolVersion)
+      .AccumulateSingleSample(mpbs);
 
   switch (mHttpVersion) {
     case HttpVersion::v1_0:

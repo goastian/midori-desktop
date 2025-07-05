@@ -17,6 +17,7 @@ import io.mockk.mockkObject
 import io.mockk.spyk
 import io.mockk.unmockkObject
 import io.mockk.verify
+import io.mockk.verifyOrder
 import kotlinx.coroutines.test.runTest
 import mozilla.components.browser.state.action.AwesomeBarAction
 import mozilla.components.browser.state.action.BrowserAction
@@ -26,7 +27,6 @@ import mozilla.components.browser.state.state.BrowserState
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.EngineSession
 import mozilla.components.feature.tabs.TabsUseCases
-import mozilla.components.service.glean.testing.GleanTestRule
 import mozilla.components.support.test.libstate.ext.waitUntilIdle
 import mozilla.components.support.test.middleware.CaptureActionsMiddleware
 import mozilla.components.support.test.robolectric.testContext
@@ -46,10 +46,17 @@ import org.mozilla.fenix.GleanMetrics.UnifiedSearch
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
-import org.mozilla.fenix.components.Core
 import org.mozilla.fenix.components.metrics.MetricsUtils
+import org.mozilla.fenix.components.search.BOOKMARKS_SEARCH_ENGINE_ID
+import org.mozilla.fenix.components.search.HISTORY_SEARCH_ENGINE_ID
+import org.mozilla.fenix.components.search.TABS_SEARCH_ENGINE_ID
+import org.mozilla.fenix.components.usecases.FenixBrowserUseCases
+import org.mozilla.fenix.ext.components
+import org.mozilla.fenix.helpers.FenixGleanTestRule
 import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
+import org.mozilla.fenix.search.SearchDialogFragmentDirections.Companion.actionGleanDebugToolsFragment
 import org.mozilla.fenix.search.SearchDialogFragmentDirections.Companion.actionGlobalAddonsManagementFragment
+import org.mozilla.fenix.search.SearchDialogFragmentDirections.Companion.actionGlobalBrowser
 import org.mozilla.fenix.search.SearchDialogFragmentDirections.Companion.actionGlobalSearchEngineFragment
 import org.mozilla.fenix.search.toolbar.SearchSelectorMenu
 import org.mozilla.fenix.settings.SupportUtils
@@ -72,11 +79,14 @@ class SearchDialogControllerTest {
     @MockK(relaxed = true)
     private lateinit var settings: Settings
 
+    @MockK(relaxed = true)
+    private lateinit var fenixBrowserUseCases: FenixBrowserUseCases
+
     private lateinit var middleware: CaptureActionsMiddleware<BrowserState, BrowserAction>
     private lateinit var browserStore: BrowserStore
 
     @get:Rule
-    val gleanTestRule = GleanTestRule(testContext)
+    val gleanTestRule = FenixGleanTestRule(testContext)
 
     @Before
     fun setUp() {
@@ -92,7 +102,8 @@ class SearchDialogControllerTest {
         every { navController.currentDestination } returns mockk {
             every { id } returns R.id.searchDialogFragment
         }
-        every { MetricsUtils.recordSearchMetrics(searchEngine, any(), any()) } just Runs
+        every { activity.components.nimbus.events } returns mockk()
+        every { MetricsUtils.recordSearchMetrics(searchEngine, any(), any(), any()) } just Runs
     }
 
     @After
@@ -111,13 +122,50 @@ class SearchDialogControllerTest {
 
         browserStore.waitUntilIdle()
 
-        verify {
-            activity.openToBrowserAndLoad(
+        verifyOrder {
+            navController.navigate(actionGlobalBrowser())
+
+            fenixBrowserUseCases.loadUrlOrSearch(
                 searchTermOrURL = url,
                 newTab = false,
-                from = BrowserDirection.FromSearchDialog,
-                engine = searchEngine,
                 forceSearch = false,
+                private = activity.browsingModeManager.mode.isPrivate,
+                searchEngine = searchEngine,
+            )
+        }
+
+        middleware.assertLastAction(AwesomeBarAction.EngagementFinished::class) { action ->
+            assertFalse(action.abandoned)
+        }
+
+        assertNotNull(Events.enteredUrl.testGetValue())
+        val snapshot = Events.enteredUrl.testGetValue()!!
+        assertEquals(1, snapshot.size)
+        assertEquals("false", snapshot.single().extra?.getValue("autocomplete"))
+    }
+
+    @Test
+    fun `GIVEN default search engine is selected and homepage as a new tab is enabled WHEN url is committed THEN load the url`() {
+        val url = "https://www.google.com/"
+        assertNull(Events.enteredUrl.testGetValue())
+
+        every { store.state.defaultEngine } returns searchEngine
+        every { settings.enableHomepageAsNewTab } returns true
+        every { store.state.tabId } returns null
+
+        createController().handleUrlCommitted(url)
+
+        browserStore.waitUntilIdle()
+
+        verifyOrder {
+            navController.navigate(actionGlobalBrowser())
+
+            fenixBrowserUseCases.loadUrlOrSearch(
+                searchTermOrURL = url,
+                newTab = false,
+                forceSearch = false,
+                private = activity.browsingModeManager.mode.isPrivate,
+                searchEngine = searchEngine,
             )
         }
 
@@ -142,13 +190,15 @@ class SearchDialogControllerTest {
 
         browserStore.waitUntilIdle()
 
-        verify {
-            activity.openToBrowserAndLoad(
+        verifyOrder {
+            navController.navigate(actionGlobalBrowser())
+
+            fenixBrowserUseCases.loadUrlOrSearch(
                 searchTermOrURL = url,
                 newTab = false,
-                from = BrowserDirection.FromSearchDialog,
-                engine = searchEngine,
                 forceSearch = true,
+                private = activity.browsingModeManager.mode.isPrivate,
+                searchEngine = searchEngine,
             )
         }
 
@@ -190,13 +240,43 @@ class SearchDialogControllerTest {
 
         browserStore.waitUntilIdle()
 
-        verify {
-            activity.openToBrowserAndLoad(
+        verifyOrder {
+            navController.navigate(actionGlobalBrowser())
+
+            fenixBrowserUseCases.loadUrlOrSearch(
                 searchTermOrURL = searchTerm,
                 newTab = false,
-                from = BrowserDirection.FromSearchDialog,
-                engine = searchEngine,
                 forceSearch = true,
+                private = activity.browsingModeManager.mode.isPrivate,
+                searchEngine = searchEngine,
+            )
+        }
+
+        middleware.assertLastAction(AwesomeBarAction.EngagementFinished::class) { action ->
+            assertFalse(action.abandoned)
+        }
+    }
+
+    @Test
+    fun `GIVEN homepage as a new tab is enabled WHEN search term is committed THEN perform search in the existing tab`() {
+        val searchTerm = "Firefox"
+
+        every { settings.enableHomepageAsNewTab } returns true
+        every { store.state.tabId } returns null
+
+        createController().handleUrlCommitted(searchTerm)
+
+        browserStore.waitUntilIdle()
+
+        verifyOrder {
+            navController.navigate(actionGlobalBrowser())
+
+            fenixBrowserUseCases.loadUrlOrSearch(
+                searchTermOrURL = searchTerm,
+                newTab = false,
+                forceSearch = true,
+                private = activity.browsingModeManager.mode.isPrivate,
+                searchEngine = searchEngine,
             )
         }
 
@@ -269,6 +349,18 @@ class SearchDialogControllerTest {
     }
 
     @Test
+    fun handleGleanUrlCommitted() {
+        val url = "about:glean"
+        val directions = actionGleanDebugToolsFragment()
+
+        createController().handleUrlCommitted(url)
+
+        browserStore.waitUntilIdle()
+
+        verify { navController.navigate(directions) }
+    }
+
+    @Test
     fun handleMozillaUrlCommitted() {
         val url = "moz://a"
         assertNull(Events.enteredUrl.testGetValue())
@@ -279,12 +371,15 @@ class SearchDialogControllerTest {
 
         browserStore.waitUntilIdle()
 
-        verify {
-            activity.openToBrowserAndLoad(
+        verifyOrder {
+            navController.navigate(actionGlobalBrowser())
+
+            fenixBrowserUseCases.loadUrlOrSearch(
                 searchTermOrURL = SupportUtils.getMozillaPageUrl(SupportUtils.MozillaPage.MANIFESTO),
                 newTab = false,
-                from = BrowserDirection.FromSearchDialog,
-                engine = searchEngine,
+                forceSearch = false,
+                private = activity.browsingModeManager.mode.isPrivate,
+                searchEngine = searchEngine,
             )
         }
 
@@ -411,6 +506,67 @@ class SearchDialogControllerTest {
     }
 
     @Test
+    fun `GIVEN homepage as a new tab is enabled WHEN an url suggestion is tapped THEN load url in the existing tab`() {
+        val url = "https://www.google.com/"
+        val flags = EngineSession.LoadUrlFlags.all()
+
+        assertNull(Events.enteredUrl.testGetValue())
+
+        every { settings.enableHomepageAsNewTab } returns true
+        every { store.state.tabId } returns null
+
+        createController().handleUrlTapped(url, flags)
+        createController().handleUrlTapped(url)
+
+        browserStore.waitUntilIdle()
+
+        verify {
+            activity.openToBrowserAndLoad(
+                searchTermOrURL = url,
+                newTab = false,
+                from = BrowserDirection.FromSearchDialog,
+                flags = flags,
+            )
+        }
+
+        assertNotNull(Events.enteredUrl.testGetValue())
+        val snapshot = Events.enteredUrl.testGetValue()!!
+        assertEquals(2, snapshot.size)
+        assertEquals("false", snapshot.first().extra?.getValue("autocomplete"))
+        assertEquals("false", snapshot[1].extra?.getValue("autocomplete"))
+
+        middleware.assertLastAction(AwesomeBarAction.EngagementFinished::class) { action ->
+            assertFalse(action.abandoned)
+        }
+    }
+
+    @Test
+    fun `GIVEN homepage as a new tab is enabled WHEN a search suggestion is tapped THEN perform search in the existing tab`() {
+        val searchTerms = "fenix"
+
+        every { settings.enableHomepageAsNewTab } returns true
+        every { store.state.tabId } returns null
+
+        createController().handleSearchTermsTapped(searchTerms)
+
+        browserStore.waitUntilIdle()
+
+        verify {
+            activity.openToBrowserAndLoad(
+                searchTermOrURL = searchTerms,
+                newTab = false,
+                from = BrowserDirection.FromSearchDialog,
+                engine = searchEngine,
+                forceSearch = true,
+            )
+        }
+
+        middleware.assertLastAction(AwesomeBarAction.EngagementFinished::class) { action ->
+            assertFalse(action.abandoned)
+        }
+    }
+
+    @Test
     fun handleSearchTermsTapped() {
         val searchTerms = "fenix"
 
@@ -466,7 +622,7 @@ class SearchDialogControllerTest {
     fun `WHEN history search engine is selected THEN dispatch correct action`() {
         val searchEngine: SearchEngine = mockk(relaxed = true)
         every { searchEngine.type } returns SearchEngine.Type.APPLICATION
-        every { searchEngine.id } returns Core.HISTORY_SEARCH_ENGINE_ID
+        every { searchEngine.id } returns HISTORY_SEARCH_ENGINE_ID
 
         assertNull(UnifiedSearch.engineSelected.testGetValue())
 
@@ -497,7 +653,7 @@ class SearchDialogControllerTest {
     fun `WHEN bookmarks search engine is selected THEN dispatch correct action`() {
         val searchEngine: SearchEngine = mockk(relaxed = true)
         every { searchEngine.type } returns SearchEngine.Type.APPLICATION
-        every { searchEngine.id } returns Core.BOOKMARKS_SEARCH_ENGINE_ID
+        every { searchEngine.id } returns BOOKMARKS_SEARCH_ENGINE_ID
 
         assertNull(UnifiedSearch.engineSelected.testGetValue())
 
@@ -528,7 +684,7 @@ class SearchDialogControllerTest {
     fun `WHEN tabs search engine is selected THEN dispatch correct action`() {
         val searchEngine: SearchEngine = mockk(relaxed = true)
         every { searchEngine.type } returns SearchEngine.Type.APPLICATION
-        every { searchEngine.id } returns Core.TABS_SEARCH_ENGINE_ID
+        every { searchEngine.id } returns TABS_SEARCH_ENGINE_ID
 
         assertNull(UnifiedSearch.engineSelected.testGetValue())
 
@@ -635,6 +791,7 @@ class SearchDialogControllerTest {
             activity = activity,
             store = browserStore,
             tabsUseCases = TabsUseCases(browserStore),
+            fenixBrowserUseCases = fenixBrowserUseCases,
             fragmentStore = store,
             navController = navController,
             settings = settings,

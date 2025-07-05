@@ -6,12 +6,14 @@ package org.mozilla.gecko.process;
 
 import android.os.DeadObjectException;
 import android.os.IBinder;
+import android.os.ParcelFileDescriptor;
 import android.os.RemoteException;
 import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.collection.ArrayMap;
 import androidx.collection.ArraySet;
 import androidx.collection.SimpleArrayMap;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -19,8 +21,6 @@ import java.util.UUID;
 import org.mozilla.gecko.GeckoAppShell;
 import org.mozilla.gecko.GeckoNetworkManager;
 import org.mozilla.gecko.GeckoThread;
-import org.mozilla.gecko.GeckoThread.FileDescriptors;
-import org.mozilla.gecko.GeckoThread.ParcelFileDescriptors;
 import org.mozilla.gecko.IGeckoEditableChild;
 import org.mozilla.gecko.IGeckoEditableParent;
 import org.mozilla.gecko.TelemetryUtils;
@@ -198,6 +198,10 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
       return mPid;
     }
 
+    protected IChildProcess getChild() {
+      return mChild;
+    }
+
     private GeckoResult<IChildProcess> completeFailedBind(
         @NonNull final ServiceAllocator.BindException e) {
       XPCOMEventTarget.assertOnLauncherThread();
@@ -263,7 +267,6 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
       final IChildProcess child = IChildProcess.Stub.asInterface(service);
       try {
         mPid = child.getPid();
-        onBinderConnected(child);
       } catch (final DeadObjectException e) {
         unbindService();
 
@@ -287,10 +290,6 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
         mPendingBind = null;
       }
     }
-
-    // Subclasses of ChildConnection can override this method to make any IChildProcess calls
-    // specific to their process type immediately after connection.
-    protected void onBinderConnected(@NonNull final IChildProcess child) throws RemoteException {}
 
     @Override
     protected void onReleaseResources() {
@@ -328,7 +327,7 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
 
     // Unique ID used to identify each GPU process instance. Will always be non-zero,
     // and unlike the process' pid cannot be the same value for successive instances.
-    private int mUniqueGpuProcessId;
+    private final int mUniqueGpuProcessId;
     // Static counter used to initialize each instance's mUniqueGpuProcessId
     private static int sUniqueGpuProcessIdCounter = 0;
 
@@ -343,17 +342,24 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
       mUniqueGpuProcessId = sUniqueGpuProcessIdCounter++;
     }
 
-    @Override
-    protected void onBinderConnected(@NonNull final IChildProcess child) throws RemoteException {
-      mCompositorSurfaceManager = new CompositorSurfaceManager(child.getCompositorSurfaceManager());
-      mSurfaceAllocator = child.getSurfaceAllocator(mUniqueGpuProcessId);
-    }
-
     public CompositorSurfaceManager getCompositorSurfaceManager() {
+      if (mCompositorSurfaceManager == null && getChild() != null) {
+        try {
+          mCompositorSurfaceManager =
+              new CompositorSurfaceManager(getChild().getCompositorSurfaceManager());
+        } catch (final RemoteException ignored) {
+        }
+      }
       return mCompositorSurfaceManager;
     }
 
     public ISurfaceAllocator getSurfaceAllocator() {
+      if (mSurfaceAllocator == null && getChild() != null) {
+        try {
+          mSurfaceAllocator = getChild().getSurfaceAllocator(mUniqueGpuProcessId);
+        } catch (final RemoteException ignored) {
+        }
+      }
       return mSurfaceAllocator;
     }
   }
@@ -748,12 +754,7 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
 
   @WrapForJNI
   private static GeckoResult<Integer> start(
-      final GeckoProcessType type,
-      final String[] args,
-      final int prefsFd,
-      final int prefMapFd,
-      final int ipcFd,
-      final int crashFd) {
+      final GeckoProcessType type, final String[] args, final int[] fds) {
     final GeckoResult<Integer> result = new GeckoResult<>();
     final StartInfo info =
         new StartInfo(
@@ -762,14 +763,10 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
                 .args(args)
                 .userSerialNumber(System.getenv("MOZ_ANDROID_USER_SERIAL_NUMBER"))
                 .extras(GeckoThread.getActiveExtras())
-                .flags(filterFlagsForChild(GeckoThread.getActiveFlags()))
-                .fds(
-                    FileDescriptors.builder()
-                        .prefs(prefsFd)
-                        .prefMap(prefMapFd)
-                        .ipc(ipcFd)
-                        .crashReporter(crashFd)
-                        .build())
+                .flags(
+                    filterFlagsForChild(
+                        GeckoThread.getActiveFlags(), type != GeckoProcessType.PARENT))
+                .fds(fds)
                 .build());
 
     XPCOMEventTarget.runOnLauncherThread(
@@ -777,14 +774,15 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
           INSTANCE
               .start(info)
               .accept(result::complete, result::completeExceptionally)
-              .finally_(info.pfds::close);
+              .finally_(info::cleanup);
         });
 
     return result;
   }
 
-  private static int filterFlagsForChild(final int flags) {
-    return flags & GeckoThread.FLAG_ENABLE_NATIVE_CRASHREPORTER;
+  private static int filterFlagsForChild(final int flags, final boolean child) {
+    return (flags & GeckoThread.FLAG_ENABLE_NATIVE_CRASHREPORTER)
+        | (child ? GeckoThread.FLAG_CHILD : 0);
   }
 
   private static class StartInfo {
@@ -792,7 +790,7 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
     final String crashHandler;
     final GeckoThread.InitInfo init;
 
-    final ParcelFileDescriptors pfds;
+    final ParcelFileDescriptor[] pfds;
 
     private StartInfo(final GeckoProcessType type, final GeckoThread.InitInfo initInfo) {
       this.type = type;
@@ -801,8 +799,26 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
           GeckoAppShell.getCrashHandlerService() != null
               ? GeckoAppShell.getCrashHandlerService().getName()
               : null;
+
       // The native side owns the File Descriptors so we cannot call adopt here.
-      pfds = ParcelFileDescriptors.from(initInfo.fds);
+      pfds = new ParcelFileDescriptor[initInfo.fds.length];
+      for (int i = 0; i < initInfo.fds.length; ++i) {
+        try {
+          pfds[i] = ParcelFileDescriptor.fromFd(initInfo.fds[i]);
+        } catch (final IOException ex) {
+          throw new RuntimeException(ex);
+        }
+      }
+    }
+
+    private void cleanup() {
+      for (final ParcelFileDescriptor pfd : pfds) {
+        try {
+          pfd.close();
+        } catch (final IOException ex) {
+          Log.d(LOGTAG, "Failed to close fd", ex);
+        }
+      }
     }
   }
 
@@ -894,10 +910,7 @@ public final class GeckoProcessManager extends IProcessManager.Stub {
                       info.init.flags,
                       info.init.userSerialNumber,
                       info.crashHandler,
-                      info.pfds.prefs,
-                      info.pfds.prefMap,
-                      info.pfds.ipc,
-                      info.pfds.crashReporter);
+                      info.pfds);
               if (result == IChildProcess.STARTED_OK) {
                 return connection.getPid();
               } else {

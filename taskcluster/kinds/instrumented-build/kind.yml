@@ -216,8 +216,8 @@ tasks:
             job-name: instrumented-android-x86
         shipping-product: fennec
         treeherder:
-            platform: android-5-0-x86/pgo
-        worker-type: b-linux-gcp
+            platform: android-5-0-x86-shippable/opt
+        worker-type: b-linux-xlarge-gcp
         worker:
             docker-image: {in-tree: android-build}
             env:
@@ -228,19 +228,19 @@ tasks:
                   path: /builds/worker/artifacts/
                   type: directory
                 - name: public/build/geckoview-androidTest.apk
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/withGeckoBinaries/debug/geckoview-withGeckoBinaries-debug-androidTest.apk
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/debug/geckoview-debug-androidTest.apk
                   type: file
                 - name: public/build/geckoview-test_runner.apk
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/apk/withGeckoBinaries/debug/test_runner-withGeckoBinaries-debug.apk
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/apk/debug/test_runner-debug.apk
                   type: file
                 - name: public/build/geckoview-test_runner.aab
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/bundle/withGeckoBinariesDebug/test_runner-withGeckoBinaries-debug.aab
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/bundle/debug/test_runner-debug.aab
                   type: file
                 - name: public/build/geckoview_example.apk
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/apk/withGeckoBinaries/debug/geckoview_example-withGeckoBinaries-debug.apk
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/apk/debug/geckoview_example-debug.apk
                   type: file
                 - name: public/build/geckoview_example.aab
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/bundle/withGeckoBinariesDebug/geckoview_example-withGeckoBinaries-debug.aab
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/bundle/debug/geckoview_example-debug.aab
                   type: file
         run:
             config:
@@ -271,8 +271,8 @@ tasks:
             job-name: instrumented-android-x86_64
         shipping-product: fennec
         treeherder:
-            platform: android-5-0-x86_64/pgo
-        worker-type: b-linux-gcp
+            platform: android-5-0-x86_64-shippable/opt
+        worker-type: b-linux-xlarge-gcp
         worker:
             docker-image: {in-tree: android-build}
             env:
@@ -283,19 +283,19 @@ tasks:
                   path: /builds/worker/artifacts/
                   type: directory
                 - name: public/build/geckoview-androidTest.apk
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/withGeckoBinaries/debug/geckoview-withGeckoBinaries-debug-androidTest.apk
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/debug/geckoview-debug-androidTest.apk
                   type: file
                 - name: public/build/geckoview-test_runner.apk
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/apk/withGeckoBinaries/debug/test_runner-withGeckoBinaries-debug.apk
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/apk/debug/test_runner-debug.apk
                   type: file
                 - name: public/build/geckoview-test_runner.aab
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/bundle/withGeckoBinariesDebug/test_runner-withGeckoBinaries-debug.aab
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/bundle/debug/test_runner-debug.aab
                   type: file
                 - name: public/build/geckoview_example.apk
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/apk/withGeckoBinaries/debug/geckoview_example-withGeckoBinaries-debug.apk
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/apk/debug/geckoview_example-debug.apk
                   type: file
                 - name: public/build/geckoview_example.aab
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/bundle/withGeckoBinariesDebug/geckoview_example-withGeckoBinaries-debug.aab
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/bundle/debug/geckoview_example-debug.aab
                   type: file
         run:
             config:
@@ -326,8 +326,8 @@ tasks:
             job-name: instrumented-android-aarch64
         shipping-product: fennec
         treeherder:
-            platform: android-5-0-aarch64/pgo
-        worker-type: b-linux-gcp
+            platform: android-5-0-aarch64-shippable/opt
+        worker-type: b-linux-xlarge-gcp
         worker:
             docker-image: {in-tree: android-build}
             env:
@@ -338,24 +338,79 @@ tasks:
                   path: /builds/worker/artifacts/
                   type: directory
                 - name: public/build/geckoview-androidTest.apk
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/withGeckoBinaries/debug/geckoview-withGeckoBinaries-debug-androidTest.apk
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/debug/geckoview-debug-androidTest.apk
                   type: file
                 - name: public/build/geckoview-test_runner.apk
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/apk/withGeckoBinaries/debug/test_runner-withGeckoBinaries-debug.apk
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/apk/debug/test_runner-debug.apk
                   type: file
                 - name: public/build/geckoview-test_runner.aab
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/bundle/withGeckoBinariesDebug/test_runner-withGeckoBinaries-debug.aab
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/bundle/debug/test_runner-debug.aab
                   type: file
                 - name: public/build/geckoview_example.apk
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/apk/withGeckoBinaries/debug/geckoview_example-withGeckoBinaries-debug.apk
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/apk/debug/geckoview_example-debug.apk
                   type: file
                 - name: public/build/geckoview_example.aab
-                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/bundle/withGeckoBinariesDebug/geckoview_example-withGeckoBinaries-debug.aab
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/bundle/debug/geckoview_example-debug.aab
                   type: file
         run:
             config:
                 - builds/releng_base_android_64_builds.py
             custom-build-variant-cfg: aarch64-profile-generate
+            tooltool-downloads: internal
+        run-on-projects: ['release']
+        fetches:
+            toolchain:
+                - android-gradle-dependencies
+                - android-ndk-linux
+                - android-sdk-linux
+                - linux64-jdk
+                - linux64-clang
+                - linux64-rust-android
+                - linux64-rust-size
+                - linux64-cbindgen
+                - linux64-dump_syms
+                - linux64-nasm
+                - linux64-node
+                - sysroot-x86_64-linux-gnu
+                - sysroot-wasm32-wasi
+
+    android-arm-shippable/opt:
+        description: "Android 5.0 ARM PGO instrumented"
+        index:
+            product: mobile
+            job-name: instrumented-android-arm
+        shipping-product: fennec
+        treeherder:
+            platform: android-5-0-armv7-shippable/opt
+        worker-type: b-linux-xlarge-gcp
+        worker:
+            docker-image: {in-tree: android-build}
+            env:
+                GRADLE_USER_HOME: "/builds/worker/checkouts/gecko/mobile/android/gradle/dotgradle-offline"
+                TOOLTOOL_MANIFEST: "mobile/android/config/tooltool-manifests/android/releng.manifest"
+            artifacts:
+                - name: public/build
+                  path: /builds/worker/artifacts/
+                  type: directory
+                - name: public/build/geckoview-androidTest.apk
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview/outputs/apk/androidTest/debug/geckoview-debug-androidTest.apk
+                  type: file
+                - name: public/build/geckoview-test_runner.apk
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/apk/debug/test_runner-debug.apk
+                  type: file
+                - name: public/build/geckoview-test_runner.aab
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/test_runner/outputs/bundle/debug/test_runner-debug.aab
+                  type: file
+                - name: public/build/geckoview_example.apk
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/apk/debug/geckoview_example-debug.apk
+                  type: file
+                - name: public/build/geckoview_example.aab
+                  path: /builds/worker/workspace/obj-build/gradle/build/mobile/android/geckoview_example/outputs/bundle/debug/geckoview_example-debug.aab
+                  type: file
+        run:
+            config:
+                - builds/releng_base_android_64_builds.py
+            custom-build-variant-cfg: arm-profile-generate
             tooltool-downloads: internal
         run-on-projects: ['release']
         fetches:
@@ -470,6 +525,44 @@ tasks:
             extra-config:
                 stage_platform: win64
                 mozconfig_platform: win64
+        run-on-projects: ['release']
+        fetches:
+            toolchain:
+                - linux64-clang
+                - linux64-rust-cross
+                - linux64-rust-size
+                - linux64-nasm
+                - linux64-node
+                - linux64-cbindgen
+                - linux64-dump_syms
+                - linux64-wine
+                - linux64-winchecksec
+                - nsis
+                - sysroot-x86_64-linux-gnu
+                - sysroot-wasm32-wasi
+                - vs
+                - windows-rs
+            fetch:
+                - upx-3.95-win
+
+    win64-aarch64-shippable/opt:
+        description: "Win64 AArch64 Shippable PGO Instrumented"
+        index:
+            product: firefox
+            job-name: instrumented-win64-aarch64
+        shipping-product: firefox
+        treeherder:
+            platform: windows2012-aarch64-shippable/opt
+        worker-type: b-linux-gcp
+        run:
+            options: [append-env-variables-from-configs]
+            mozconfig-variant: profile-generate
+            config:
+                - builds/releng_base_firefox.py
+                - builds/releng_base_linux_64_builds.py
+            extra-config:
+                stage_platform: win64-aarch64
+                mozconfig_platform: win64-aarch64
         run-on-projects: ['release']
         fetches:
             toolchain:

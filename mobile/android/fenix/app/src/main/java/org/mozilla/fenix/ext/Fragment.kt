@@ -6,7 +6,6 @@ package org.mozilla.fenix.ext
 
 import android.app.Activity
 import android.content.Intent
-import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import androidx.activity.result.ActivityResult
@@ -24,8 +23,8 @@ import mozilla.components.support.utils.ext.isLandscape
 import org.mozilla.fenix.NavHostActivity
 import org.mozilla.fenix.R
 import org.mozilla.fenix.components.Components
-import org.mozilla.fenix.components.toolbar.ToolbarPosition
-import org.mozilla.fenix.components.toolbar.navbar.ToolbarContainerView
+import org.mozilla.fenix.components.toolbar.ToolbarContainerView
+import org.mozilla.fenix.utils.isLargeScreenSize
 
 /**
  * Get the requireComponents of this application.
@@ -85,13 +84,6 @@ fun Fragment.redirectToReAuth(
         // https://issuetracker.google.com/issues/37125819
         activity?.invalidateOptionsMenu()
         when (currentLocation) {
-            R.id.loginDetailFragment,
-            R.id.editLoginFragment,
-            R.id.addLoginFragment,
-            R.id.savedLoginsFragment,
-            -> {
-                findNavController().popBackStack(R.id.savedLoginsAuthFragment, false)
-            }
             R.id.creditCardEditorFragment,
             R.id.creditCardsManagementFragment,
             -> {
@@ -156,53 +148,17 @@ fun Fragment.registerForActivityResult(
 }
 
 /**
- *  Checks whether the current fragment is running on a tablet.
+ *  Checks whether the current fragment is running on a large window.
  */
-fun Fragment.isTablet(): Boolean {
-    return resources.getBoolean(R.bool.tablet)
+fun Fragment.isLargeWindow(): Boolean {
+    return requireContext().isLargeWindow()
 }
 
 /**
- *
- * Manages the state of the NavBar upon an orientation change.
- *
- * @param parent The top level [ViewGroup] of the fragment, which will be hosting toolbar/navbar container.
- * @param toolbarView [View] responsible for showing the AddressBar.
- * @param bottomToolbarContainerView The [ToolbarContainerView] hosting the NavBar.
- * @param reinitializeNavBar lambda for re-initializing the NavBar inside the host [Fragment].
+ * Checks whether the current fragment is running on a tablet.
  */
-fun Fragment.updateNavBarForConfigurationChange(
-    parent: ViewGroup,
-    toolbarView: View,
-    bottomToolbarContainerView: ToolbarContainerView?,
-    reinitializeNavBar: () -> Unit,
-) {
-    if (requireContext().isLandscape()) {
-        // In landscape mode we want to remove the navigation bar.
-        parent.removeView(bottomToolbarContainerView)
-
-        // If address bar was positioned at bottom and we have removed the toolbar container, we are adding address bar
-        // back.
-        val isToolbarAtBottom = requireComponents.settings.toolbarPosition == ToolbarPosition.BOTTOM
-
-        // Toolbar already having a parent is an edge case, but it could happen if configurationChange is called after
-        // onCreateView with the same orientation. Caught it on a foldable emulator while going from single screen
-        // portrait mode to landscape tablet, back and forth.
-        val hasParent = toolbarView.parent != null
-        if (isToolbarAtBottom && !hasParent) {
-            parent.addView(toolbarView)
-        }
-    } else {
-        // Already having a bottomContainer after switching back to portrait mode will happen when address bar is
-        // positioned at bottom and also as an edge case if configurationChange is called after onCreateView with the
-        // same orientation. Caught it on a foldable emulator while going from single screen portrait mode to landscape
-        // table, back and forth.
-        bottomToolbarContainerView?.let {
-            parent.removeView(it)
-        }
-
-        reinitializeNavBar()
-    }
+fun Fragment.isLargeScreenSize(): Boolean {
+    return requireContext().isLargeScreenSize()
 }
 
 /**
@@ -226,7 +182,7 @@ fun Fragment.updateMicrosurveyPromptForConfigurationChange(
         bottomToolbarContainerView?.let {
             parent.removeView(it)
         }
-    }
 
-    reinitializeMicrosurveyPrompt()
+        reinitializeMicrosurveyPrompt()
+    }
 }

@@ -11,6 +11,7 @@ import org.mozilla.fenix.helpers.HomeActivityIntentTestRule
 import org.mozilla.fenix.helpers.TestAssetHelper.TestAsset
 import org.mozilla.fenix.helpers.TestAssetHelper.getGPCTestAsset
 import org.mozilla.fenix.helpers.TestSetup
+import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
 import org.mozilla.fenix.ui.robots.homeScreen
 import org.mozilla.fenix.ui.robots.navigationToolbar
 
@@ -23,11 +24,12 @@ class GlobalPrivacyControlTest : TestSetup() {
 
     @get:Rule
     val activityTestRule = HomeActivityIntentTestRule(
-        isJumpBackInCFREnabled = false,
-        isTCPCFREnabled = false,
         isWallpaperOnboardingEnabled = false,
         skipOnboarding = true,
     )
+
+    @get:Rule
+    val memoryLeaksRule = DetectMemoryLeaksRule()
 
     @Before
     override fun setUp() {
@@ -35,7 +37,7 @@ class GlobalPrivacyControlTest : TestSetup() {
         gpcPage = getGPCTestAsset(mockWebServer)
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2429327
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2429327
     @Test
     fun testGPCinNormalBrowsing() {
         navigationToolbar {
@@ -54,7 +56,7 @@ class GlobalPrivacyControlTest : TestSetup() {
         }
     }
 
-    // TestRail link: https://testrail.stage.mozaws.net/index.php?/cases/view/2429364
+    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2429364
     @Test
     fun testGPCinPrivateBrowsing() {
         homeScreen { }.togglePrivateBrowsingMode()

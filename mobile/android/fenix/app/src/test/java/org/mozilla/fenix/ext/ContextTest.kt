@@ -13,20 +13,21 @@ import android.widget.TextView
 import androidx.test.core.app.ApplicationProvider
 import io.mockk.every
 import io.mockk.mockk
-import io.mockk.mockkObject
-import io.mockk.unmockkObject
-import mozilla.components.support.locale.LocaleManager
-import mozilla.components.support.locale.LocaleManager.getSystemDefault
+import io.mockk.verify
 import mozilla.components.support.test.robolectric.testContext
-import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.mozilla.experiments.nimbus.NimbusEventStore
 import org.mozilla.fenix.FenixApplication
 import org.mozilla.fenix.R
+import org.mozilla.fenix.components.toolbar.ToolbarPosition
 import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
+import org.mozilla.fenix.utils.Settings
 import java.lang.String.format
 import java.util.Locale
 
@@ -34,24 +35,15 @@ import java.util.Locale
 class ContextTest {
 
     private lateinit var mockContext: Context
-    private val selectedLocale = Locale("ro", "RO")
+    private val selectedLocale = Locale.Builder().setLanguage("ro").setRegion("RO").build()
     private val appName = "Firefox Preview"
 
     private val mockId: Int = 11
 
     @Before
     fun setup() {
-        mockkObject(LocaleManager)
-
         mockContext = mockk(relaxed = true)
         mockContext.resources.configuration.setLocale(selectedLocale)
-
-        every { LocaleManager.getCurrentLocale(mockContext) } returns selectedLocale
-    }
-
-    @After
-    fun teardown() {
-        unmockkObject(LocaleManager)
     }
 
     @Test
@@ -68,7 +60,6 @@ class ContextTest {
     fun `getStringWithArgSafe returns English locale for incorrect formatted string`() {
         val englishString = "Try the new %1s"
         val incorrectlyFormattedString = "Incearca noul %1&amp;s"
-        every { getSystemDefault() } returns Locale("en")
         every { mockContext.getString(mockId) } returns incorrectlyFormattedString
         every { format(mockContext.getString(mockId), appName) } returns format(englishString, appName)
 
@@ -165,5 +156,34 @@ class ContextTest {
         val comparisonStr = testContext.getString(R.string.private_browsing_common_myths)
         val actualStr = testContext.getPreferenceKey(R.string.private_browsing_common_myths)
         assertEquals(comparisonStr, actualStr)
+    }
+
+    @Test
+    fun `recordEventInNimbus records the given event to the Nimbus event store`() {
+        val eventStore = mockk<NimbusEventStore>(relaxed = true)
+        every { mockContext.components.nimbus.events } returns eventStore
+
+        val eventId = "test event"
+        mockContext.recordEventInNimbus(eventId)
+
+        verify { eventStore.recordEvent(eventId) }
+    }
+
+    @Test
+    fun `GIVEN context WHEN toolbar position is bottom THEN isToolbarAtBottom returns true`() {
+        val settings: Settings = mockk()
+        every { testContext.settings() } returns settings
+        every { settings.toolbarPosition } returns ToolbarPosition.BOTTOM
+
+        assertTrue(testContext.isToolbarAtBottom())
+    }
+
+    @Test
+    fun `GIVEN context WHEN toolbar position is top THEN isToolbarAtBottom returns false`() {
+        val settings: Settings = mockk()
+        every { testContext.settings() } returns settings
+        every { settings.toolbarPosition } returns ToolbarPosition.TOP
+
+        assertFalse(testContext.isToolbarAtBottom())
     }
 }

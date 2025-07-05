@@ -11,9 +11,7 @@ import static org.mozilla.geckoview.GeckoSession.GeckoPrintException.ERROR_NO_PR
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
-import android.content.ContentResolver;
 import android.content.Context;
-import android.database.Cursor;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
 import android.graphics.Point;
@@ -27,6 +25,7 @@ import android.os.IInterface;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.os.SystemClock;
+import android.provider.DocumentsContract;
 import android.text.TextUtils;
 import android.util.Base64;
 import android.util.Log;
@@ -51,6 +50,7 @@ import java.io.InputStream;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.ref.WeakReference;
+import java.security.Principal;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
 import java.security.cert.X509Certificate;
@@ -284,6 +284,7 @@ public class GeckoSession {
   private float mViewportLeft;
   private float mViewportTop;
   private float mViewportZoom = 1.0f;
+  private int mKeyboardHeight = 0; // The software keyboard height, 0 if it's hidden.
 
   //
   // NOTE: These values are also defined in
@@ -392,9 +393,9 @@ public class GeckoSession {
     // cases, the viewport information we have in Java is no longer valid and needs to
     // be replaced with the new viewport information provided.
     @WrapForJNI(calledFrom = "ui")
-    private void updateRootFrameMetrics(
-        final float scrollX, final float scrollY, final float zoom) {
-      GeckoSession.this.onMetricsChanged(scrollX, scrollY, zoom);
+    private void notifyCompositorScrollUpdate(
+        final float scrollX, final float scrollY, final float zoom, final int source) {
+      GeckoSession.this.onCompositorScrollUpdate(scrollX, scrollY, zoom, source);
     }
 
     @WrapForJNI(calledFrom = "ui")
@@ -409,6 +410,12 @@ public class GeckoSession {
 
     @WrapForJNI(calledFrom = "ui", dispatchTo = "gecko")
     public native void onSafeAreaInsetsChanged(int top, int right, int bottom, int left);
+
+    @WrapForJNI(calledFrom = "ui", dispatchTo = "gecko")
+    public native void onPipModeChanged(boolean enabled);
+
+    @WrapForJNI(calledFrom = "ui", dispatchTo = "gecko")
+    public native void onKeyboardHeightChanged(int height);
 
     @WrapForJNI(calledFrom = "ui")
     public void setPointerIcon(
@@ -650,7 +657,7 @@ public class GeckoSession {
             case 0: // OPEN_DEFAULTWINDOW
             case 1: // OPEN_CURRENTWINDOW
               return NavigationDelegate.TARGET_WINDOW_CURRENT;
-            default: // OPEN_NEWWINDOW, OPEN_NEWTAB, OPEN_NEWTAB_BACKGROUND
+            default: // OPEN_NEWWINDOW, OPEN_NEWTAB, OPEN_NEWTAB_BACKGROUND, OPEN_NEWTAB_FOREGROUND
               return NavigationDelegate.TARGET_WINDOW_NEW;
           }
         }
@@ -1041,6 +1048,8 @@ public class GeckoSession {
           }
         }
       };
+
+  private CompositorScrollDelegate mCompositorScrollDelegate = null;
 
   private final GeckoSessionHandler<ContentBlocking.Delegate> mContentBlockingHandler =
       new GeckoSessionHandler<ContentBlocking.Delegate>(
@@ -1606,6 +1615,22 @@ public class GeckoSession {
             }
           });
     }
+
+    @WrapForJNI(calledFrom = "gecko")
+    private void onHideDynamicToolbar() {
+      final Window self = this;
+      ThreadUtils.runOnUiThread(
+          () -> {
+            final GeckoSession session = self.mOwner.get();
+            if (session == null) {
+              return;
+            }
+            final ContentDelegate delegate = session.getContentDelegate();
+            if (delegate != null) {
+              delegate.onHideDynamicToolbar(session);
+            }
+          });
+    }
   }
 
   private class Listener implements BundleEventListener {
@@ -2012,6 +2037,8 @@ public class GeckoSession {
     private @LoadFlags int mLoadFlags = LOAD_FLAGS_NONE;
     private boolean mIsDataUri;
     private @HeaderFilter int mHeaderFilter = HEADER_FILTER_CORS_SAFELISTED;
+    private @Nullable String mOriginalInput;
+    private boolean mTextDirectiveUserActivation;
 
     private static @NonNull String createDataUri(
         @NonNull final byte[] bytes, @Nullable final String mimeType) {
@@ -2051,7 +2078,8 @@ public class GeckoSession {
           && equals(mHeaders, other.mHeaders)
           && equals(mLoadFlags, other.mLoadFlags)
           && equals(mIsDataUri, other.mIsDataUri)
-          && equals(mHeaderFilter, other.mHeaderFilter);
+          && equals(mHeaderFilter, other.mHeaderFilter)
+          && equals(mTextDirectiveUserActivation, other.mTextDirectiveUserActivation);
     }
 
     /**
@@ -2198,6 +2226,32 @@ public class GeckoSession {
       mLoadFlags = flags;
       return this;
     }
+
+    /**
+     * If this load originates from the address bar, sets the original user input before it got
+     * fixed up to a URI.
+     *
+     * @param originalInput original user address bar input.
+     * @return this {@link Loader} instance.
+     */
+    @NonNull
+    public Loader originalInput(final @Nullable String originalInput) {
+      mOriginalInput = originalInput;
+      return this;
+    }
+
+    /**
+     * Set the text directive user activation for the document opened in the window.
+     *
+     * @param textDirectiveUserActivation true if the first text directive wants to be scrolled into
+     *     view.
+     * @return this {@link Loader} instance.
+     */
+    @NonNull
+    public Loader textDirectiveUserActivation(final boolean textDirectiveUserActivation) {
+      mTextDirectiveUserActivation = textDirectiveUserActivation;
+      return this;
+    }
   }
 
   /**
@@ -2266,6 +2320,7 @@ public class GeckoSession {
               msg.putString("uri", request.mUri);
               msg.putInt("flags", loadFlags);
               msg.putInt("headerFilter", request.mHeaderFilter);
+              msg.putBoolean("textDirectiveUserActivation", request.mTextDirectiveUserActivation);
 
               if (request.mReferrerUri != null) {
                 msg.putString("referrerUri", request.mReferrerUri);
@@ -2277,6 +2332,10 @@ public class GeckoSession {
 
               if (request.mHeaders != null) {
                 msg.putBundle("headers", request.mHeaders);
+              }
+
+              if (request.mOriginalInput != null) {
+                msg.putString("originalInput", request.mOriginalInput);
               }
 
               mEventDispatcher.dispatch("GeckoView:LoadUri", msg);
@@ -2622,6 +2681,10 @@ public class GeckoSession {
     } else {
       // Delete any pending memory pressure events since we're active again.
       ThreadUtils.removeUiThreadCallbacks(mNotifyMemoryPressure);
+
+      if (mAttachedCompositor) {
+        mCompositor.onKeyboardHeightChanged(mKeyboardHeight);
+      }
     }
 
     ThreadUtils.runOnUiThread(() -> getAutofillSupport().onActiveChanged(active));
@@ -2783,7 +2846,15 @@ public class GeckoSession {
       final GeckoBundle formdata = updateData.getBundle("formdata");
 
       if (history != null) {
-        mState.putBundle("history", history);
+        // when full session history update received, don't bother with partial state update ops.
+        // This is due to the suboptimal array ops in the partial update logic which regresses
+        // thread cpuTime while the legacy bundle operation performs better.
+        if (history.getInt("fromIdx") == -1) {
+          mState.putBundle("history", history);
+        } else {
+          mState.putBundle(
+              "history", getPartiallyUpdatedHistoryChange(history).getBundle("history"));
+        }
       }
 
       if (scroll != null) {
@@ -2795,6 +2866,44 @@ public class GeckoSession {
       }
 
       return;
+    }
+
+    private @NonNull GeckoBundle getPartiallyUpdatedHistoryChange(
+        final @NonNull GeckoBundle update) {
+      final int kLastIndex = Integer.MAX_VALUE - 1;
+      final GeckoBundle historyBundle = new GeckoBundle();
+      final GeckoBundle[] updateHistoryEntries = update.getBundleArray("entries");
+      final int updateFromIdx = update.getInt("fromIdx");
+
+      // start off with an empty session entries array and
+      // then populate it with the updated session entries
+      update.putBundleArray("entries", new GeckoBundle[] {});
+
+      // no need to store fromIdx in the history state bundle as it has nothing to do with it
+      update.remove("fromIdx");
+
+      historyBundle.putBundle("history", update);
+
+      if (updateFromIdx != kLastIndex) {
+        final int start = updateFromIdx + 1;
+        historyBundle
+            .getBundle("history")
+            .putBundleArray("entries", spliceSessionHistory(start, updateHistoryEntries));
+      }
+      return historyBundle;
+    }
+
+    private GeckoBundle[] spliceSessionHistory(final int startIndex, final GeckoBundle[] entries) {
+      final GeckoBundle[] historyEntries = getHistoryEntries();
+      if (historyEntries != null) {
+        // when a partial history update received, delete the session entries starting from
+        // startIndex then append the new session entries to the end.
+        final GeckoBundle[] newHistoryEntries = new GeckoBundle[startIndex + entries.length];
+        System.arraycopy(historyEntries, 0, newHistoryEntries, 0, startIndex);
+        System.arraycopy(entries, 0, newHistoryEntries, startIndex, entries.length);
+        return newHistoryEntries;
+      }
+      return new GeckoBundle[] {};
     }
 
     @Override
@@ -2944,7 +3053,9 @@ public class GeckoSession {
         throw new IllegalStateException("No history state exists.");
       }
 
-      return history.getInt("index") + history.getInt("fromIdx");
+      // The index for the array of session entries is 1-based,
+      // so we subtract 1 to get the current index
+      return history.getInt("index") - 1;
     }
 
     // Some helpers for common code.
@@ -2992,139 +3103,51 @@ public class GeckoSession {
   }
 
   /**
-   * Request analysis of product's reviews for a given product URL.
+   * Get the web compatibility info when a site is reported as broken.
    *
-   * @param url The URL of the product page.
-   * @return a {@link GeckoResult} result of review analysis object.
+   * @return a {@link GeckoResult} containing the WebCompatInfo as a JSONObject.
    */
   @AnyThread
-  public @NonNull GeckoResult<ReviewAnalysis> requestAnalysis(@NonNull final String url) {
-    final GeckoBundle bundle = new GeckoBundle(1);
-    bundle.putString("url", url);
+  public @NonNull GeckoResult<JSONObject> getWebCompatInfo() {
     return mEventDispatcher
-        .queryBundle("GeckoView:RequestAnalysis", bundle)
-        .map(analysisBundle -> new ReviewAnalysis(analysisBundle.getBundle("analysis")));
-  }
-
-  /**
-   * Request the creation of an analysis of product's reviews for a given product URL.
-   *
-   * @param url The URL of the product page.
-   * @return a {@link GeckoResult} result of status of analysis.
-   */
-  @AnyThread
-  public @NonNull GeckoResult<String> requestCreateAnalysis(@NonNull final String url) {
-    final GeckoBundle bundle = new GeckoBundle(1);
-    bundle.putString("url", url);
-    return mEventDispatcher.queryString("GeckoView:RequestCreateAnalysis", bundle);
-  }
-
-  /**
-   * Request the status of the current analysis of product's reviews for a given product URL.
-   *
-   * @param url The URL of the product page.
-   * @return a {@link GeckoResult} result of status of analysis.
-   */
-  @AnyThread
-  public @NonNull GeckoResult<AnalysisStatusResponse> requestAnalysisStatus(
-      @NonNull final String url) {
-    final GeckoBundle bundle = new GeckoBundle(1);
-    bundle.putString("url", url);
-    return mEventDispatcher
-        .queryBundle("GeckoView:RequestAnalysisStatus", bundle)
-        .map(statusBundle -> new AnalysisStatusResponse(statusBundle.getBundle("status")));
-  }
-
-  /**
-   * Poll for the status of the current analysis of product's reviews for a given product URL.
-   *
-   * @param url The URL of the product page.
-   * @return a {@link GeckoResult} result of status of analysis.
-   */
-  @AnyThread
-  public @NonNull GeckoResult<String> pollForAnalysisCompleted(@NonNull final String url) {
-    final GeckoBundle bundle = new GeckoBundle(1);
-    bundle.putString("url", url);
-    return mEventDispatcher.queryString("GeckoView:PollForAnalysisCompleted", bundle);
-  }
-
-  /**
-   * Send a click event to the Ad Attribution API.
-   *
-   * @param aid Ad id of the recommended product.
-   * @return a {@link GeckoResult} result of whether or not sending the event was successful.
-   */
-  @AnyThread
-  public @NonNull GeckoResult<Boolean> sendClickAttributionEvent(@NonNull final String aid) {
-    final GeckoBundle bundle = new GeckoBundle(1);
-    bundle.putString("aid", aid);
-    return mEventDispatcher.queryBoolean("GeckoView:SendClickAttributionEvent", bundle);
-  }
-
-  /**
-   * Send an impression event to the Ad Attribution API.
-   *
-   * @param aid Ad id of the recommended product.
-   * @return a {@link GeckoResult} result of whether or not sending the event was successful.
-   */
-  @AnyThread
-  public @NonNull GeckoResult<Boolean> sendImpressionAttributionEvent(@NonNull final String aid) {
-    final GeckoBundle bundle = new GeckoBundle(1);
-    bundle.putString("aid", aid);
-    return mEventDispatcher.queryBoolean("GeckoView:SendImpressionAttributionEvent", bundle);
-  }
-
-  /**
-   * Send a placement event to the Ad Attribution API.
-   *
-   * @param aid Ad id of the recommended product.
-   * @return a {@link GeckoResult} result of whether or not sending the event was successful.
-   */
-  @AnyThread
-  public @NonNull GeckoResult<Boolean> sendPlacementAttributionEvent(@NonNull final String aid) {
-    final GeckoBundle bundle = new GeckoBundle(1);
-    bundle.putString("aid", aid);
-    return mEventDispatcher.queryBoolean("GeckoView:SendPlacementAttributionEvent", bundle);
-  }
-
-  /**
-   * Request product recommendations given a specific product url.
-   *
-   * @param url The URL of the product page.
-   * @return a {@link GeckoResult} result of product recommendations.
-   */
-  @AnyThread
-  public @NonNull GeckoResult<List<Recommendation>> requestRecommendations(
-      @NonNull final String url) {
-    final GeckoBundle bundle = new GeckoBundle(1);
-    bundle.putString("url", url);
-    return mEventDispatcher
-        .queryBundle("GeckoView:RequestRecommendations", bundle)
+        .queryString("GeckoView:GetWebCompatInfo")
         .map(
-            recommendationsBundle -> {
-              final GeckoBundle[] bundles = recommendationsBundle.getBundleArray("recommendations");
-              final ArrayList<Recommendation> recArray = new ArrayList<>(bundles.length);
-              if (recArray != null) {
-                for (final GeckoBundle b : bundles) {
-                  recArray.add(new Recommendation(b));
-                }
+            value -> {
+              if (value == null) {
+                throw new IllegalStateException("Unable to get web compat info");
               }
-              return recArray;
+              return new JSONObject(value);
             });
   }
 
   /**
-   * Report that a product is back in stock.
+   * Send more web compatibility info when a site is reported as broken.
    *
-   * @param url The URL of the product page.
-   * @return a {@link GeckoResult} result of whether reporting a product is back in stock was
-   *     successful.
+   * @param info A {@link JSONObject} containing the web compatibility report details. The expected
+   *     format of the JSON object is:
+   *     <pre><code>
+   *             {
+   *               "reason": "User-selected reason for reporting",
+   *               "description": "User-provided description of the issue",
+   *               "endpointUrl": "https://webcompat.com/issues/new",
+   *               "reportUrl": "URL of the reported site",
+   *               "reporterConfig": {
+   *                 "src": "android-components-reporter",
+   *                 "utm_campaign": "report-site-issue-button",
+   *                 "utm_source": "android-components-reporter"
+   *               },
+   *               "webcompatInfo": { //JSONObject from GeckoSession.getWebCompatInfo() }
+   *             }
+   *             </code></pre>
+   *
+   * @return a {@link GeckoResult} wil complete if sending more web compatibility info was
+   *     successful. Will complete exceptionally if the web compat info was not sent.
    */
   @AnyThread
-  public @NonNull GeckoResult<String> reportBackInStock(@NonNull final String url) {
-    final GeckoBundle bundle = new GeckoBundle(1);
-    bundle.putString("url", url);
-    return mEventDispatcher.queryString("GeckoView:ReportBackInStock", bundle);
+  public @NonNull GeckoResult<Void> sendMoreWebCompatInfo(@NonNull final JSONObject info) {
+    final GeckoBundle bundle = new GeckoBundle();
+    bundle.putString("info", info.toString());
+    return mEventDispatcher.queryVoid("GeckoView:SendMoreWebCompatInfo", bundle);
   }
 
   // This is the GeckoDisplay acquired via acquireDisplay(), if any.
@@ -3285,11 +3308,37 @@ public class GeckoSession {
     mScrollHandler.setDelegate(delegate, this);
   }
 
+  /**
+   * Get the current scroll callback handler.
+   *
+   * @return An implementation of ScrollDelegate.
+   */
   @UiThread
-  @SuppressWarnings("checkstyle:javadocmethod")
   public @Nullable ScrollDelegate getScrollDelegate() {
     ThreadUtils.assertOnUiThread();
     return mScrollHandler.getDelegate();
+  }
+
+  /**
+   * Set the compositor scroll callback handler. This will replace the current handler.
+   *
+   * @param delegate An implementation of CompositorScrollDelegate.
+   */
+  @UiThread
+  public void setCompositorScrollDelegate(final @Nullable CompositorScrollDelegate delegate) {
+    ThreadUtils.assertOnUiThread();
+    mCompositorScrollDelegate = delegate;
+  }
+
+  /**
+   * Get the current compositor scroll callback handler.
+   *
+   * @return An implementation of CompositorScrollDelegate.
+   */
+  @UiThread
+  public @Nullable CompositorScrollDelegate getCompositorScrollDelegate() {
+    ThreadUtils.assertOnUiThread();
+    return mCompositorScrollDelegate;
   }
 
   /**
@@ -3654,571 +3703,6 @@ public class GeckoSession {
     }
   }
 
-  /** Contains information about the analysis of a product's reviews. */
-  @AnyThread
-  public static class ReviewAnalysis {
-    /** Analysis URL. */
-    @Nullable public final String analysisURL;
-
-    /** Product identifier (ASIN/SKU). */
-    @Nullable public final String productId;
-
-    /** Reliability grade for the product's reviews. */
-    @Nullable public final String grade;
-
-    /** Product rating adjusted to exclude untrusted reviews. */
-    @Nullable public final Double adjustedRating;
-
-    /** Boolean indicating if the analysis is stale. */
-    public final boolean needsAnalysis;
-
-    /** Boolean indicating if the page is not supported. */
-    public final boolean pageNotSupported;
-
-    /** Boolean indicating if there are not enough reviews. */
-    public final boolean notEnoughReviews;
-
-    /** Object containing highlights for product. */
-    @Nullable public final Highlight highlights;
-
-    /** Time since the last analysis was performed. */
-    public final long lastAnalysisTime;
-
-    /** Boolean indicating if reported that this product has been deleted. */
-    public final boolean deletedProductReported;
-
-    /** Boolean indicating if this product is now deleted. */
-    public final boolean deletedProduct;
-
-    /* package */ ReviewAnalysis(final GeckoBundle message) {
-      analysisURL = message.getString("analysis_url");
-      productId = message.getString("product_id");
-      grade = message.getString("grade");
-      adjustedRating = message.getDoubleObject("adjusted_rating");
-      needsAnalysis = message.getBoolean("needs_analysis");
-      pageNotSupported = message.getBoolean("page_not_supported");
-      notEnoughReviews = message.getBoolean("not_enough_reviews");
-      if (message.getBundle("highlights") == null) {
-        highlights = null;
-      } else {
-        highlights = new Highlight(message.getBundle("highlights"));
-      }
-      lastAnalysisTime = message.getLong("last_analysis_time");
-      deletedProductReported = message.getBoolean("deleted_product_reported");
-      deletedProduct = message.getBoolean("deleted_product");
-    }
-
-    /**
-     * Initialize a ReviewAnalysis object with a builder object
-     *
-     * @param builder A ReviewAnalysis.Builder instance
-     */
-    protected ReviewAnalysis(final @NonNull Builder builder) {
-      analysisURL = builder.mAnalysisUrl;
-      productId = builder.mProductId;
-      grade = builder.mGrade;
-      adjustedRating = builder.mAdjustedRating;
-      needsAnalysis = builder.mNeedsAnalysis;
-      pageNotSupported = builder.mPageNotSupported;
-      notEnoughReviews = builder.mNotEnoughReviews;
-      highlights = builder.mHighlights;
-      lastAnalysisTime = builder.mLastAnalysisTime;
-      deletedProduct = builder.mDeletedProduct;
-      deletedProductReported = builder.mDeletedProductReported;
-    }
-
-    /** This is a Builder used by ReviewAnalysis class */
-    public static class Builder {
-      /* package */ String mAnalysisUrl = "";
-      /* package */ String mProductId = "";
-      /* package */ String mGrade = null;
-      /* package */ Double mAdjustedRating = 0.0;
-      /* package */ Boolean mNeedsAnalysis = false;
-      /* package */ Boolean mPageNotSupported = false;
-      /* package */ Boolean mNotEnoughReviews = false;
-      /* package */ Highlight mHighlights = new Highlight();
-      /* package */ long mLastAnalysisTime = 0;
-      /* package */ Boolean mDeletedProductReported = false;
-      /* package */ Boolean mDeletedProduct = false;
-
-      /**
-       * Construct a Builder instance with the specified product ID.
-       *
-       * @param productId A String with the product ID.
-       */
-      public Builder(final @Nullable String productId) {
-        productId(productId);
-      }
-
-      /**
-       * Set the analysis URL
-       *
-       * @param analysisUrl A URI String
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull ReviewAnalysis.Builder analysisUrl(final @Nullable String analysisUrl) {
-        mAnalysisUrl = analysisUrl;
-        return this;
-      }
-
-      /**
-       * Set the product identifier
-       *
-       * @param productId A product ID String
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull ReviewAnalysis.Builder productId(final @Nullable String productId) {
-        mProductId = productId;
-        return this;
-      }
-
-      /**
-       * Set the grade of the product
-       *
-       * @param grade A grade String
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull ReviewAnalysis.Builder grade(final @Nullable String grade) {
-        mGrade = grade;
-        return this;
-      }
-
-      /**
-       * Set the adjusted rating
-       *
-       * @param adjustedRating the adjusted rating of the product
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull ReviewAnalysis.Builder adjustedRating(final @NonNull Double adjustedRating) {
-        mAdjustedRating = adjustedRating;
-        return this;
-      }
-
-      /**
-       * Set the flag that indicates whether this product needs analysis
-       *
-       * @param needsAnalysis indicates whether this product needs analysis
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull ReviewAnalysis.Builder needsAnalysis(final @NonNull Boolean needsAnalysis) {
-        mNeedsAnalysis = needsAnalysis;
-        return this;
-      }
-
-      /**
-       * Set the flag that indicates whether this product page is supported
-       *
-       * @param pageNotSupported indicates whether this product page is supported
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull ReviewAnalysis.Builder pageNotSupported(
-          final @NonNull Boolean pageNotSupported) {
-        mPageNotSupported = pageNotSupported;
-        return this;
-      }
-
-      /**
-       * Set the flag that indicates whether there are not enough reviews
-       *
-       * @param notEnoughReviews indicates whether there are not enough reviews
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull ReviewAnalysis.Builder notEnoughReviews(
-          final @NonNull Boolean notEnoughReviews) {
-        mNotEnoughReviews = notEnoughReviews;
-        return this;
-      }
-
-      /**
-       * Set an empty highlights object for the product
-       *
-       * @param highlight A Highlight object (can be null) to overwrite the default empty Highlight
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull ReviewAnalysis.Builder highlights(final @Nullable Highlight highlight) {
-        mHighlights = highlight;
-        return this;
-      }
-
-      /**
-       * Set the time of the analysis
-       *
-       * @param lastAnalysisTime The time of the analysis
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull ReviewAnalysis.Builder lastAnalysisTime(final long lastAnalysisTime) {
-        mLastAnalysisTime = lastAnalysisTime;
-        return this;
-      }
-
-      /**
-       * Set the flag that indicates whether this deleted product was reported
-       *
-       * @param deletedProductReported Boolean to indicate whether this deleted product was reported
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull ReviewAnalysis.Builder deletedProductReported(
-          final @NonNull Boolean deletedProductReported) {
-        mDeletedProductReported = deletedProductReported;
-        return this;
-      }
-
-      /**
-       * Set the flag that indicates whether the product is deleted
-       *
-       * @param deletedProduct Boolean to indicate whether the product is deleted
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull ReviewAnalysis.Builder deletedProduct(final @NonNull Boolean deletedProduct) {
-        mDeletedProduct = deletedProduct;
-        return this;
-      }
-
-      /**
-       * @return A {@link ReviewAnalysis} constructed with the values from this Builder instance.
-       */
-      @AnyThread
-      public @NonNull ReviewAnalysis build() {
-        return new ReviewAnalysis(this);
-      }
-    }
-
-    /** Contains information about highlights of a product's reviews. */
-    public static class Highlight {
-      /** Highlights about the quality of a product. */
-      @Nullable public final String[] quality;
-
-      /** Highlights about the price of a product. */
-      @Nullable public final String[] price;
-
-      /** Highlights about the shipping of a product. */
-      @Nullable public final String[] shipping;
-
-      /** Highlights about the appearance of a product. */
-      @Nullable public final String[] appearance;
-
-      /** Highlights about the competitiveness of a product. */
-      @Nullable public final String[] competitiveness;
-
-      /* package */ Highlight(final GeckoBundle message) {
-        quality = message.getStringArray("quality");
-        price = message.getStringArray("price");
-        shipping = message.getStringArray("shipping");
-        appearance = message.getStringArray("packaging/appearance");
-        competitiveness = message.getStringArray("competitiveness");
-      }
-
-      /** Empty constructor for tests. */
-      protected Highlight() {
-        quality = null;
-        price = null;
-        shipping = null;
-        appearance = null;
-        competitiveness = null;
-      }
-    }
-  }
-
-  /** Contains information about a product recommendation. */
-  @AnyThread
-  public static class Recommendation {
-    /** Analysis URL. */
-    @NonNull public final String analysisUrl;
-
-    /** Adjusted rating. */
-    @NonNull public final Double adjustedRating;
-
-    /** Whether or not it is a sponsored recommendation. */
-    @NonNull public final Boolean sponsored;
-
-    /** Url of product recommendation image. */
-    @NonNull public final String imageUrl;
-
-    /** Unique identifier for the ad entity. */
-    @NonNull public final String aid;
-
-    /** Url of recommended product. */
-    @NonNull public final String url;
-
-    /** Name of recommended product. */
-    @NonNull public final String name;
-
-    /** Grade of recommended product. */
-    @NonNull public final String grade;
-
-    /** Price of recommended product. */
-    @NonNull public final String price;
-
-    /** Currency of recommended product. */
-    @NonNull public final String currency;
-
-    /* package */ Recommendation(@NonNull final GeckoBundle message) {
-      analysisUrl = message.getString("analysis_url");
-      adjustedRating = message.getDouble("adjusted_rating");
-      sponsored = message.getBoolean("sponsored");
-      imageUrl = message.getString("image_url");
-      aid = message.getString("aid");
-      url = message.getString("url");
-      name = message.getString("name");
-      grade = message.getString("grade");
-      price = message.getString("price");
-      currency = message.getString("currency");
-    }
-
-    /**
-     * Initialize Recommendation with a builder object
-     *
-     * @param builder A Recommendation.Builder instance
-     */
-    protected Recommendation(final @NonNull Builder builder) {
-      url = builder.mUrl;
-      analysisUrl = builder.mAnalysisUrl;
-      adjustedRating = builder.mAdjustedRating;
-      sponsored = builder.mSponsored;
-      imageUrl = builder.mImageUrl;
-      aid = builder.mAid;
-      name = builder.mName;
-      grade = builder.mGrade;
-      price = builder.mPrice;
-      currency = builder.mCurrency;
-    }
-
-    /** This is a Builder used by Recommendation class */
-    public static class Builder {
-      /* package */ String mAnalysisUrl = "";
-      /* package */ Double mAdjustedRating = 0.0;
-      /* package */ Boolean mSponsored = false;
-      /* package */ String mImageUrl = "";
-      /* package */ String mAid = "";
-      /* package */ String mUrl = "";
-      /* package */ String mName = "";
-      /* package */ String mGrade = "";
-      /* package */ String mPrice = "";
-      /* package */ String mCurrency = "";
-
-      /**
-       * Construct a Builder instance with the specified recommendation URL.
-       *
-       * @param recommendationUrl A URI String.
-       */
-      public Builder(final @NonNull String recommendationUrl) {
-        url(recommendationUrl);
-      }
-
-      /**
-       * Set the analysis URL
-       *
-       * @param analysisUrl A URI String
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull Recommendation.Builder analysisUrl(final @NonNull String analysisUrl) {
-        mAnalysisUrl = analysisUrl;
-        return this;
-      }
-
-      /**
-       * Set the adjusted rating
-       *
-       * @param adjustedRating the adjusted rating of the product
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull Recommendation.Builder adjustedRating(final @NonNull Double adjustedRating) {
-        mAdjustedRating = adjustedRating;
-        return this;
-      }
-
-      /**
-       * Set the flag that indicates whether this recommendation is sponsored or not
-       *
-       * @param sponsored indicates whether this recommendation is sponsored
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull Recommendation.Builder sponsored(final @NonNull Boolean sponsored) {
-        mSponsored = sponsored;
-        return this;
-      }
-
-      /**
-       * Set the image URL
-       *
-       * @param imageUrl An image URL String
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull Recommendation.Builder imageUrl(final @NonNull String imageUrl) {
-        mImageUrl = imageUrl;
-        return this;
-      }
-
-      /**
-       * Set the ad identifier
-       *
-       * @param aid The id String
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull Recommendation.Builder aid(final @NonNull String aid) {
-        mAid = aid;
-        return this;
-      }
-
-      /**
-       * Set the recommendation URL
-       *
-       * @param url A URI String
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull Recommendation.Builder url(final @NonNull String url) {
-        mUrl = url;
-        return this;
-      }
-
-      /**
-       * Set the name of the recommended product
-       *
-       * @param name A name String
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull Recommendation.Builder name(final @NonNull String name) {
-        mName = name;
-        return this;
-      }
-
-      /**
-       * Set the grade of the recommended product
-       *
-       * @param grade A grade String
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull Recommendation.Builder grade(final @NonNull String grade) {
-        mGrade = grade;
-        return this;
-      }
-
-      /**
-       * Set the price of the recommended product
-       *
-       * @param price A price String
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull Recommendation.Builder price(final @NonNull String price) {
-        mPrice = price;
-        return this;
-      }
-
-      /**
-       * Set the currency of the price of the recommended product
-       *
-       * @param currency A currency String
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull Recommendation.Builder currency(final @NonNull String currency) {
-        mCurrency = currency;
-        return this;
-      }
-
-      /**
-       * @return A {@link Recommendation} constructed with the values from this Builder instance.
-       */
-      @AnyThread
-      public @NonNull Recommendation build() {
-        return new Recommendation(this);
-      }
-    }
-  }
-
-  /** Contains information about a product's analysis status response. */
-  @AnyThread
-  public static class AnalysisStatusResponse {
-    /** Status of the analysis. */
-    @NonNull public final String status;
-
-    /** Indicates the progress of the analysis. */
-    @NonNull public final Double progress;
-
-    /* package */ AnalysisStatusResponse(@NonNull final GeckoBundle message) {
-      status = message.getString("status");
-      progress = message.getDoubleObject("progress", 0.0);
-    }
-
-    /**
-     * Initialize AnalysisStatusResponse with a builder object
-     *
-     * @param builder A AnalysisStatusResponse.Builder instance
-     */
-    protected AnalysisStatusResponse(final @NonNull Builder builder) {
-      status = builder.mStatus;
-      progress = builder.mProgress;
-    }
-
-    /** This is a Builder used by AnalysisStatusResponse class */
-    public static class Builder {
-      /* package */ String mStatus = "";
-      /* package */ Double mProgress = 0.0;
-
-      /**
-       * Construct a Builder instance with the specified AnalysisStatusResponse status.
-       *
-       * @param status A status String.
-       */
-      public Builder(final @NonNull String status) {
-        status(status);
-      }
-
-      /**
-       * Set the status.
-       *
-       * @param status A status String.
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull AnalysisStatusResponse.Builder status(final @NonNull String status) {
-        mStatus = status;
-        return this;
-      }
-
-      /**
-       * Set the progress.
-       *
-       * @param progress Indicates the progress of the analysis.
-       * @return This Builder instance.
-       */
-      @AnyThread
-      public @NonNull AnalysisStatusResponse.Builder progress(final @NonNull Double progress) {
-        mProgress = progress;
-        return this;
-      }
-
-      /**
-       * @return A {@link AnalysisStatusResponse} constructed with the values from this Builder
-       *     instance.
-       */
-      @AnyThread
-      public @NonNull AnalysisStatusResponse build() {
-        return new AnalysisStatusResponse(this);
-      }
-    }
-  }
-
   public interface ContentDelegate {
     /**
      * A page title was discovered in the content or updated after the content loaded.
@@ -4277,18 +3761,6 @@ public class GeckoSession {
     @UiThread
     default void onMetaViewportFitChange(
         @NonNull final GeckoSession session, @NonNull final String viewportFit) {}
-
-    /**
-     * This method is scheduled for deprecation, see Bug 1898055 for details.
-     *
-     * <p>Session is on a product url.
-     *
-     * @param session The GeckoSession that initiated the callback.
-     */
-    @Deprecated
-    @DeprecationSchedule(id = "session-onProductUrl", version = 131)
-    @UiThread
-    default void onProductUrl(@NonNull final GeckoSession session) {}
 
     /** Element details for onContextMenu callbacks. */
     class ContextElement {
@@ -4517,6 +3989,14 @@ public class GeckoSession {
      */
     @UiThread
     default void onShowDynamicToolbar(@NonNull final GeckoSession geckoSession) {}
+
+    /**
+     * The app should hide its dynamic toolbar.
+     *
+     * @param geckoSession GeckoSession that initiated the callback.
+     */
+    @UiThread
+    default void onHideDynamicToolbar(@NonNull final GeckoSession geckoSession) {}
 
     /**
      * This method is called when a cookie banner was detected.
@@ -5003,7 +4483,7 @@ public class GeckoSession {
           case 0: // OPEN_DEFAULTWINDOW
           case 1: // OPEN_CURRENTWINDOW
             return TARGET_WINDOW_CURRENT;
-          default: // OPEN_NEWWINDOW, OPEN_NEWTAB, OPEN_NEWTAB_BACKGROUND
+          default: // OPEN_NEWWINDOW, OPEN_NEWTAB, OPEN_NEWTAB_BACKGROUND, OPEN_NEWTAB_FOREGROUND
             return TARGET_WINDOW_NEW;
         }
       }
@@ -5318,6 +4798,42 @@ public class GeckoSession {
        * Confirms the prompt.
        *
        * @param allowOrDeny whether the navigation should be allowed to continue or not.
+       * @return A {@link PromptResponse} which can be used to complete the {@link GeckoResult}
+       *     associated with this prompt.
+       */
+      @UiThread
+      public @NonNull PromptResponse confirm(final @Nullable AllowOrDeny allowOrDeny) {
+        ensureResult().putBoolean("allow", allowOrDeny != AllowOrDeny.DENY);
+        return super.confirm();
+      }
+    }
+
+    /**
+     * FolderUploadPrompt represents a prompt shown whenever the browser needs to upload folder data
+     */
+    class FolderUploadPrompt extends BasePrompt {
+      /** The directory name to confirm folder tries to uploading. */
+      public final @Nullable String directoryName;
+
+      /**
+       * A constructor for FolderUploadPrompt
+       *
+       * @param id The identification for this prompt.
+       * @param directoryName The directory that is confirmed.
+       * @param observer A callback to notify when the prompt has been completed.
+       */
+      protected FolderUploadPrompt(
+          @NonNull final String id,
+          @Nullable final String directoryName,
+          @NonNull final Observer observer) {
+        super(id, null, observer);
+        this.directoryName = directoryName;
+      }
+
+      /**
+       * Confirms the prompt.
+       *
+       * @param allowOrDeny whether the browser should allow resubmitting data.
        * @return A {@link PromptResponse} which can be used to complete the {@link GeckoResult}
        *     associated with this prompt.
        */
@@ -6198,7 +5714,7 @@ public class GeckoSession {
      */
     class FilePrompt extends BasePrompt {
       @Retention(RetentionPolicy.SOURCE)
-      @IntDef({Type.SINGLE, Type.MULTIPLE})
+      @IntDef({Type.SINGLE, Type.MULTIPLE, Type.FOLDER})
       public @interface FileType {}
 
       /** Types of file prompts. */
@@ -6208,6 +5724,9 @@ public class GeckoSession {
 
         /** Prompt for multiple files. */
         public static final int MULTIPLE = 2;
+
+        /** Prompt for directory. */
+        public static final int FOLDER = 3;
 
         protected Type() {}
       }
@@ -6284,7 +5803,7 @@ public class GeckoSession {
       @UiThread
       public @NonNull PromptResponse confirm(
           @NonNull final Context context, @NonNull final Uri[] uris) {
-        if (Type.SINGLE == type && (uris == null || uris.length != 1)) {
+        if ((Type.SINGLE == type || Type.FOLDER == type) && (uris == null || uris.length != 1)) {
           throw new IllegalArgumentException();
         }
 
@@ -6292,10 +5811,28 @@ public class GeckoSession {
         for (int i = 0; i < paths.length; i++) {
           paths[i] = getFile(context, uris[i]);
           if (paths[i] == null) {
-            Log.e(LOGTAG, "Only file URIs are supported: " + uris[i]);
+            if (DEBUG) {
+              Log.e(LOGTAG, "Only file URIs are supported: " + uris[i]);
+            }
           }
         }
         ensureResult().putStringArray("files", paths);
+
+        if (Type.FOLDER == type && uris[0] != null) {
+          GeckoBundle[] filesInWebKitDirectory = filesInWebKitDirectory = new GeckoBundle[0];
+          try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N
+                && DocumentsContract.isTreeUri(uris[0])) {
+              filesInWebKitDirectory =
+                  IntentUtils.traverseTreeUri(context, uris[0]).stream()
+                      .map(f -> f.toGeckoBundle())
+                      .toArray(GeckoBundle[]::new);
+            }
+          } catch (final OutOfMemoryError e) {
+            Log.e(LOGTAG, "Cannot traverse child directories", e);
+          }
+          ensureResult().putBundleArray("filesInWebKitDirectory", filesInWebKitDirectory);
+        }
 
         return super.confirm();
       }
@@ -6307,33 +5844,14 @@ public class GeckoSession {
         if ("file".equals(uri.getScheme())) {
           return uri.getPath();
         }
-        final ContentResolver cr = context.getContentResolver();
-        final Cursor cur =
-            cr.query(
-                uri,
-                new String[] {"_data"}, /* selection */
-                null,
-                /* args */ null, /* sort */
-                null);
-        if (cur == null) {
-          return null;
-        }
-        try {
-          final int idx = cur.getColumnIndex("_data");
-          if (idx < 0 || !cur.moveToFirst()) {
-            return null;
+        if ("content".equals(uri.getScheme())) {
+          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && DocumentsContract.isTreeUri(uri)) {
+            return IntentUtils.resolveTreeUri(context, uri);
           }
-          do {
-            try {
-              final String path = cur.getString(idx);
-              if (path != null && !path.isEmpty()) {
-                return path;
-              }
-            } catch (final Exception e) {
-            }
-          } while (cur.moveToNext());
-        } finally {
-          cur.close();
+          if (DocumentsContract.isDocumentUri(context, uri)) {
+            return IntentUtils.resolveDocumentUri(context, uri);
+          }
+          return IntentUtils.resolveContentUri(context, uri);
         }
         return null;
       }
@@ -6427,6 +5945,48 @@ public class GeckoSession {
       public @NonNull PromptResponse dismiss() {
         ensureResult().putInt("response", Result.ABORT);
         return super.dismiss();
+      }
+    }
+
+    /** CertificateRequest represents a request for a client authentication certificate. */
+    class CertificateRequest extends BasePrompt {
+      /** The host requesting the certificate. */
+      public final @NonNull String host;
+
+      /** The X.500 Distinguished Names the server specified as acceptable issuers. */
+      public final @Nullable Principal[] issuers;
+
+      @Deprecated
+      @DeprecationSchedule(id = "CertificateRequest-CertificateRequest", version = 143)
+      protected CertificateRequest(
+          final @NonNull String id, final Observer observer, final String host) {
+        super(id, null, observer);
+        this.host = host;
+        this.issuers = null;
+      }
+
+      protected CertificateRequest(
+          final @NonNull String id,
+          final Observer observer,
+          final String host,
+          final Principal[] issuers) {
+        super(id, null, observer);
+        this.host = host;
+        this.issuers = issuers;
+      }
+
+      /**
+       * Complete the request by responding with the alias of the selected certificate (or null if
+       * none was selected).
+       *
+       * @param alias The alias of the certificate selected (may be null).
+       * @return A {@link PromptResponse} which can be used to complete the {@link GeckoResult}
+       *     associated with this prompt.
+       */
+      @UiThread
+      public @NonNull PromptResponse confirm(final @Nullable String alias) {
+        ensureResult().putString("alias", alias);
+        return super.confirm();
       }
     }
 
@@ -6530,6 +6090,20 @@ public class GeckoSession {
     @UiThread
     default @Nullable GeckoResult<PromptResponse> onButtonPrompt(
         @NonNull final GeckoSession session, @NonNull final ButtonPrompt prompt) {
+      return null;
+    }
+
+    /**
+     * Display a folder upload prompt.
+     *
+     * @param session GeckoSession that triggered the prompt.
+     * @param prompt The {@link FolderUploadPrompt} that describes the prompt.
+     * @return A {@link GeckoResult} resolving to a {@link PromptResponse} which includes all
+     *     necessary information to resolve the prompt.
+     */
+    @UiThread
+    default @Nullable GeckoResult<PromptResponse> onFolderUploadPrompt(
+        @NonNull final GeckoSession session, @NonNull final FolderUploadPrompt prompt) {
       return null;
     }
 
@@ -6688,6 +6262,20 @@ public class GeckoSession {
     }
 
     /**
+     * Handle a request for a client authentication certificate. This will occur when a host
+     * requests one during the TLS handshake.
+     *
+     * @param session The {@link GeckoSession} that triggered the request.
+     * @param request The {@link CertificateRequest} containing the request details.
+     * @return A {@link GeckoResult} resolving to a {@link PromptResponse}.
+     */
+    @UiThread
+    default @Nullable GeckoResult<PromptResponse> onRequestCertificate(
+        @NonNull final GeckoSession session, @NonNull final CertificateRequest request) {
+      return null;
+    }
+
+    /**
      * Handle a credit card save prompt request. This is triggered by the user entering new or
      * modified credit card credentials into a form.
      *
@@ -6822,6 +6410,55 @@ public class GeckoSession {
     @UiThread
     default void onScrollChanged(
         @NonNull final GeckoSession session, final int scrollX, final int scrollY) {}
+  }
+
+  /** Information about an update to the content's scroll position. */
+  public class ScrollPositionUpdate {
+    // The scroll position changed as a direct result of user interaction.
+    @WrapForJNI public static final int SOURCE_USER_INTERACTION = 0;
+    // The scroll position changed progammatically. This can include
+    // changes caused by script on the page, and changes caused by
+    // the browser engine such as scrolling an element into view.
+    @WrapForJNI public static final int SOURCE_OTHER = 1;
+
+    // The new horizontal scroll position in CSS pixels.
+    public float scrollX;
+    // The new vertical scroll position in CSS pixels.
+    public float scrollY;
+    // The new zoom level.
+    // This is used to relate scrollX and scrollY, which are
+    // in CSS pixels, to quantities in screen pixels.
+    // Multiply scrollX/scrollY by zoom to get screen pixels.
+    public float zoom;
+    // The source of the scroll position change. One of
+    // SOURCE_USER_INTERACTION or SOURCE_OTHER.
+    public int source;
+  }
+
+  /**
+   * GeckoSession applications implement this interface to handle scroll events.
+   *
+   * <p>Differences from ScrollDelegate:
+   *
+   * <ul>
+   *   <li>onScrollChanged() is called as soon as the scroll change is composited visually. For
+   *       scrolling triggered by user interaction, this notification can have a lower latency than
+   *       ScrollDelegate.onScrollChanged().
+   *   <li>In addition to the scroll position in pixels, the notification contains auxiliary
+   *       information such as whether the scroll change was a result of user interaction. This can
+   *       be extended over time as needed.
+   * </ul>
+   */
+  public interface CompositorScrollDelegate {
+    /**
+     * The scroll position of the content has changed.
+     *
+     * @param session GeckoSession that initiated the callback.
+     * @param update Information about the scroll position change.
+     */
+    @UiThread
+    default void onScrollChanged(
+        @NonNull final GeckoSession session, @NonNull final ScrollPositionUpdate update) {}
   }
 
   /**
@@ -7821,14 +7458,26 @@ public class GeckoSession {
     mOverscroll.setDistance(y, OverscrollEdgeEffect.AXIS_Y);
   }
 
-  /* package */ void onMetricsChanged(final float scrollX, final float scrollY, final float zoom) {
+  /* package */ void onCompositorScrollUpdate(
+      final float scrollX, final float scrollY, final float zoom, final int source) {
     if (DEBUG) {
       ThreadUtils.assertOnUiThread();
     }
 
-    mViewportLeft = scrollX;
-    mViewportTop = scrollY;
+    // Tbe incoming scrollX and scrollY are in CSS pixels.
+    // For mViewportLeft/Top, convert them to Screen pixels.
+    mViewportLeft = scrollX * zoom;
+    mViewportTop = scrollY * zoom;
     mViewportZoom = zoom;
+
+    final ScrollPositionUpdate update = new ScrollPositionUpdate();
+    update.scrollX = scrollX;
+    update.scrollY = scrollY;
+    update.zoom = zoom;
+    update.source = source;
+    if (mCompositorScrollDelegate != null) {
+      mCompositorScrollDelegate.onScrollChanged(this, update);
+    }
   }
 
   /* protected */ void onWindowBoundsChanged() {
@@ -7869,6 +7518,20 @@ public class GeckoSession {
 
     if (mAttachedCompositor) {
       mCompositor.onSafeAreaInsetsChanged(top, right, bottom, left);
+    }
+  }
+
+  /* package */ void onKeyboardHeight(final int height) {
+    ThreadUtils.assertOnUiThread();
+
+    if (mKeyboardHeight == height) {
+      return;
+    }
+
+    mKeyboardHeight = height;
+
+    if (mAttachedCompositor) {
+      mCompositor.onKeyboardHeightChanged(mKeyboardHeight);
     }
   }
 

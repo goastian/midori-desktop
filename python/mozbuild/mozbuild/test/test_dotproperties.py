@@ -1,11 +1,9 @@
-# -*- coding: utf-8 -*-
-
 import os
 import unittest
+from io import StringIO
 
 import mozpack.path as mozpath
 from mozunit import main
-from six import StringIO
 
 from mozbuild.dotproperties import DotProperties
 

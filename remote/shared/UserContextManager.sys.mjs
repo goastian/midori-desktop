@@ -11,6 +11,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ContextualIdentityListener:
     "chrome://remote/content/shared/listeners/ContextualIdentityListener.sys.mjs",
   generateUUID: "chrome://remote/content/shared/UUID.sys.mjs",
+  TabManager: "chrome://remote/content/shared/TabManager.sys.mjs",
 });
 
 const DEFAULT_CONTEXT_ID = "default";
@@ -152,6 +153,32 @@ export class UserContextManagerClass {
   }
 
   /**
+   * Returns an array of tabs related
+   * to the provided internal user context id.
+   *
+   * @param {string} internalId
+   *     The internal user context id.
+   *
+   * @returns {Array<Tab>}
+   *     The array of tabs.
+   */
+  getTabsForUserContext(internalId) {
+    const tabs = [];
+
+    for (const tab of lazy.TabManager.tabs) {
+      if (
+        (tab.hasAttribute("usercontextid") &&
+          parseInt(tab.getAttribute("usercontextid"), 10) == internalId) ||
+        (!tab.hasAttribute("usercontextid") && internalId === 0)
+      ) {
+        tabs.push(tab);
+      }
+    }
+
+    return tabs;
+  }
+
+  /**
    * Returns an array of all known user context ids.
    *
    * @returns {Array<string>}
@@ -174,6 +201,9 @@ export class UserContextManagerClass {
   /**
    * Removes a user context and closes all related container tabs.
    *
+   * Note: When closing the related container tabs possible "beforeunload"
+   * prompts will be ignored.
+   *
    * @param {string} userContextId
    *     The id of the user context to remove.
    * @param {object=} options
@@ -190,7 +220,9 @@ export class UserContextManagerClass {
 
     const internalId = this.getInternalIdById(userContextId);
     if (closeContextTabs) {
-      lazy.ContextualIdentityService.closeContainerTabs(internalId);
+      lazy.ContextualIdentityService.closeContainerTabs(internalId, {
+        skipPermitUnload: true,
+      });
     }
     lazy.ContextualIdentityService.remove(internalId);
   }

@@ -9,7 +9,7 @@
 #include "nsHttp.h"
 #include "nsISupports.h"
 #include "nsAHttpTransaction.h"
-#include "Http3WebTransportSession.h"
+#include "WebTransportSessionBase.h"
 #include "HttpTrafficAnalyzer.h"
 #include "nsIRequest.h"
 
@@ -31,16 +31,14 @@ class nsHttpResponseHead;
 //-----------------------------------------------------------------------------
 
 // 5a66aed7-eede-468b-ac2b-e5fb431fcc5c
-#define NS_AHTTPCONNECTION_IID                       \
-  {                                                  \
-    0x5a66aed7, 0xeede, 0x468b, {                    \
-      0xac, 0x2b, 0xe5, 0xfb, 0x43, 0x1f, 0xcc, 0x5c \
-    }                                                \
-  }
+#define NS_AHTTPCONNECTION_IID \
+  {0x5a66aed7, 0xeede, 0x468b, {0xac, 0x2b, 0xe5, 0xfb, 0x43, 0x1f, 0xcc, 0x5c}}
 
 class nsAHttpConnection : public nsISupports {
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_AHTTPCONNECTION_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_AHTTPCONNECTION_IID)
+
+  NS_DECL_THREADSAFE_ISUPPORTS
 
   //-------------------------------------------------------------------------
   // NOTE: these methods may only be called on the socket thread.
@@ -108,7 +106,7 @@ class nsAHttpConnection : public nsISupports {
                                                nsIAsyncInputStream**,
                                                nsIAsyncOutputStream**) = 0;
 
-  [[nodiscard]] virtual Http3WebTransportSession* GetWebTransportSession(
+  [[nodiscard]] virtual WebTransportSessionBase* GetWebTransportSession(
       nsAHttpTransaction* aTransaction) = 0;
 
   // called by a transaction to get the TLS socket control from the socket.
@@ -174,9 +172,13 @@ class nsAHttpConnection : public nsISupports {
   virtual bool GetEchConfigUsed() = 0;
   virtual PRIntervalTime LastWriteTime() = 0;
   virtual void SetCloseReason(ConnectionCloseReason aReason) = 0;
-};
 
-NS_DEFINE_STATIC_IID_ACCESSOR(nsAHttpConnection, NS_AHTTPCONNECTION_IID)
+  friend class DeleteAHttpConnection;
+  void DeleteSelfOnSocketThread();
+
+ protected:
+  virtual ~nsAHttpConnection();
+};
 
 #define NS_DECL_NSAHTTPCONNECTION(fwdObject)                                 \
   [[nodiscard]] nsresult OnHeadersAvailable(                                 \
@@ -186,7 +188,7 @@ NS_DEFINE_STATIC_IID_ACCESSOR(nsAHttpConnection, NS_AHTTPCONNECTION_IID)
   [[nodiscard]] nsresult TakeTransport(                                      \
       nsISocketTransport**, nsIAsyncInputStream**, nsIAsyncOutputStream**)   \
       override;                                                              \
-  [[nodiscard]] Http3WebTransportSession* GetWebTransportSession(            \
+  [[nodiscard]] WebTransportSessionBase* GetWebTransportSession(             \
       nsAHttpTransaction* aTransaction) override;                            \
   bool IsPersistent() override;                                              \
   bool IsReused() override;                                                  \

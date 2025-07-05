@@ -38,9 +38,6 @@ class GeckoRuntimeRunner(BaseRunner):
             # its execution.
             self.cmdargs.append("--wait-for-browser")
 
-        # allows you to run an instance of Firefox separately from any other instances
-        self.env["MOZ_NO_REMOTE"] = "1"
-
         # Disable crash reporting dialogs that interfere with debugging
         self.env["GNOME_DISABLE_CRASH_DIALOG"] = "1"
         self.env["XRE_NO_WINDOWS_CRASH_DIALOG"] = "1"
@@ -105,8 +102,8 @@ class BlinkRuntimeRunner(BaseRunner):
 
         data_dir, name = os.path.split(self.profile.profile)
         profile_args = [
-            "--user-data-dir={}".format(data_dir),
-            "--profile-directory={}".format(name),
+            f"--user-data-dir={data_dir}",
+            f"--profile-directory={name}",
             "--no-first-run",
         ]
         self.cmdargs.extend(profile_args)

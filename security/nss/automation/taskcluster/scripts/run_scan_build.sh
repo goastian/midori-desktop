@@ -2,16 +2,12 @@
 
 source $(dirname "$0")/tools.sh
 
-# Clone NSPR if needed.
-if [ ! -d "nspr" ]; then
-    hg_clone https://hg.mozilla.org/projects/nspr ./nspr default
-
-    if [[ -f nss/nspr.patch && "$ALLOW_NSPR_PATCH" == "1" ]]; then
-      pushd nspr
-      cat ../nss/nspr.patch | patch -p1
-      popd
-    fi
+cp -a "${VCS_PATH}/nss" "${VCS_PATH}/nspr" .
+cd nspr
+if [[ -f ../nss/nspr.patch && "$ALLOW_NSPR_PATCH" == "1" ]]; then
+  cat ../nss/nspr.patch | patch -p1
 fi
+cd ..
 
 # Build.
 cd nss
@@ -40,13 +36,14 @@ for i in "${!scan[@]}"; do
 done
 
 # run scan-build (only building affected directories)
-scan-build-5.0 -o /home/worker/artifacts --use-cc=$CC --use-c++=$CCC make nss_build_all && cd ..
+scan-build -o /builds/worker/artifacts --use-cc=$CC --use-c++=$CCC make nss_build_all
+STATUS=$?
+cd ..
 
 # print errors we found
 set +v +x
-STATUS=0
 for i in "${!scan[@]}"; do
-   n=$(grep -Rn "$i" /home/worker/artifacts/*/report-*.html | wc -l)
+   n=$(grep -Rn "$i" /builds/worker/artifacts/*/report-*.html | wc -l)
    if [ $n -ne ${scan[$i]} ]; then
      STATUS=1
      echo "$(date '+%T') WARNING - TEST-UNEXPECTED-FAIL: $i contains $n scan-build errors"

@@ -8,7 +8,13 @@ import subprocess
 
 import mozversion
 
-from mozperftest.utils import ON_TRY
+from mozperftest.utils import (
+    CHROME_DESKTOP_APPS,
+    CHROME_MOBILE_APPS,
+    FIREFOX_DESKTOP_APPS,
+    FIREFOX_MOBILE_APPS,
+    ON_TRY,
+)
 
 
 class MultipleApplicationSetups(Exception):
@@ -79,16 +85,26 @@ class DesktopVersionProducer(BaseVersionProducer):
                     if match:
                         version = match.group(2)
             else:
-                # On windows we need to use wimc to get the version
-                command = r'wmic datafile where name="{0}"'.format(
-                    binary.replace("\\", r"\\")
+                # Define the PowerShell command. We use this method on Windows since WMIC will
+                # soon be deprecated.
+                binary_path = pathlib.Path(binary)
+                command = (
+                    rf'(Get-ItemProperty -Path "{binary_path}").VersionInfo.FileVersion'
                 )
-                bmeta = subprocess.check_output(command)
-
-                meta_re = re.compile(r"\s+([\d.a-z]+)\s+")
-                match = meta_re.findall(bmeta.decode("utf-8"))
-                if len(match) > 0:
-                    version = match[-1]
+                self.logger.info(
+                    "Attempting to get browser application version with powershell..."
+                )
+                bmeta = subprocess.check_output(
+                    ["powershell", "-Command", command],
+                    text=True,
+                )
+                if not bmeta:
+                    self.logger.warning("Unable to acquire browser version")
+                else:
+                    version = bmeta.strip()
+                    self.logger.info(
+                        "Successfully acquired browser version: %s" % version
+                    )
         except Exception as e:
             self.logger.warning(
                 "Failed to get browser meta data through fallback method: %s-%s"
@@ -137,7 +153,7 @@ class BaseSetup:
 
 @binary_setup
 class FirefoxSetup(BaseSetup):
-    apps = ["firefox"]
+    apps = FIREFOX_DESKTOP_APPS
 
     def setup_binary(self):
         if ON_TRY:
@@ -151,7 +167,7 @@ class FirefoxSetup(BaseSetup):
 
 @binary_setup
 class ChromeSetup(BaseSetup):
-    apps = ["chrome"]
+    apps = CHROME_DESKTOP_APPS
 
     def setup_binary(self):
         if ON_TRY:
@@ -175,7 +191,7 @@ class ChromeSetup(BaseSetup):
 
 @binary_setup
 class ChromeMobileSetup(BaseSetup):
-    apps = ["chrome-m"]
+    apps = CHROME_MOBILE_APPS
     version_producer = MobileVersionProducer
 
     def setup_binary(self):
@@ -184,7 +200,7 @@ class ChromeMobileSetup(BaseSetup):
 
 @binary_setup
 class FirefoxMobileSetup(BaseSetup):
-    apps = ["fenix", "geckoview", "focus"]
+    apps = FIREFOX_MOBILE_APPS
     version_producer = MobileVersionProducer
 
     def setup_binary(self):

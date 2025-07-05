@@ -24,12 +24,8 @@ class HttpTransactionShell;
 class nsHttpHandler;
 
 // Use to support QI nsIChannel to TRRServiceChannel
-#define NS_TRRSERVICECHANNEL_IID                     \
-  {                                                  \
-    0x361c4bb1, 0xd6b2, 0x493b, {                    \
-      0x86, 0xbc, 0x88, 0xd3, 0x5d, 0x16, 0x38, 0xfa \
-    }                                                \
-  }
+#define NS_TRRSERVICECHANNEL_IID \
+  {0x361c4bb1, 0xd6b2, 0x493b, {0x86, 0xbc, 0x88, 0xd3, 0x5d, 0x16, 0x38, 0xfa}}
 
 // TRRServiceChannel is designed to fetch DNS data from DoH server. This channel
 // MUST only be used by TRR.
@@ -49,7 +45,7 @@ class TRRServiceChannel : public HttpBaseChannel,
   NS_DECL_NSITRANSPORTEVENTSINK
   NS_DECL_NSIPROXIEDCHANNEL
   NS_DECL_NSIPROTOCOLPROXYCALLBACK
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_TRRSERVICECHANNEL_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_TRRSERVICECHANNEL_IID)
 
   // nsIRequest
   NS_IMETHOD SetCanceledReason(const nsACString& aReason) override;
@@ -98,12 +94,15 @@ class TRRServiceChannel : public HttpBaseChannel,
     return NS_OK;
   }
 
-  [[nodiscard]] nsresult OnPush(uint32_t aPushedStreamId,
-                                const nsACString& aUrl,
-                                const nsACString& aRequestString,
-                                HttpTransactionShell* aTransaction);
-  void SetPushedStreamTransactionAndId(
-      HttpTransactionShell* aTransWithPushedStream, uint32_t aPushedStreamId);
+  NS_IMETHOD SetResponseOverride(
+      nsIReplacedHttpResponse* aReplacedHttpResponse) override {
+    return NS_OK;
+  }
+
+  NS_IMETHOD SetResponseStatus(uint32_t aStatus,
+                               const nsACString& aStatusText) override {
+    return NS_OK;
+  }
 
   // nsITimedChannel
   NS_IMETHOD GetDomainLookupStart(
@@ -133,7 +132,7 @@ class TRRServiceChannel : public HttpBaseChannel,
   virtual void DoNotifyListenerCleanup() override;
   virtual void DoAsyncAbort(nsresult aStatus) override;
   bool IsIsolated() { return false; };
-  void ProcessAltService();
+  void ProcessAltService(nsHttpConnectionInfo* aTransConnInfo);
   nsresult CallOnStartRequest();
 
   void MaybeStartDNSPrefetch();
@@ -161,16 +160,12 @@ class TRRServiceChannel : public HttpBaseChannel,
 
   nsCOMPtr<nsIRequest> mTransactionPump;
   RefPtr<HttpTransactionShell> mTransaction;
-  uint32_t mPushedStreamId{0};
-  RefPtr<HttpTransactionShell> mTransWithPushedStream;
   DataMutex<nsCOMPtr<nsICancelable>> mProxyRequest;
   nsCOMPtr<nsIEventTarget> mCurrentEventTarget;
 
   friend class HttpAsyncAborter<TRRServiceChannel>;
   friend class nsHttpHandler;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(TRRServiceChannel, NS_TRRSERVICECHANNEL_IID)
 
 }  // namespace mozilla::net
 

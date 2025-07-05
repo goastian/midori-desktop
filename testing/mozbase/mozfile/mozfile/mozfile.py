@@ -13,8 +13,8 @@ import time
 import warnings
 from contextlib import contextmanager
 from textwrap import dedent
-
-from six.moves import urllib
+from urllib.parse import urlparse
+from urllib.request import urlopen
 
 __all__ = [
     "extract_tarball",
@@ -332,7 +332,11 @@ def copy_contents(srcdir, dstdir, ignore_dangling_symlinks=False):
                     linkto = os.readlink(srcname)
                     os.symlink(linkto, dstname)
                 elif os.path.isdir(srcname):
-                    copy_contents(srcname, dstname)
+                    copy_contents(
+                        srcname,
+                        dstname,
+                        ignore_dangling_symlinks=ignore_dangling_symlinks,
+                    )
                 else:
                     _call_windows_retry(shutil.copy2, (srcname, dstname))
             except OSError as why:
@@ -486,11 +490,6 @@ def which(cmd, mode=os.F_OK | os.X_OK, path=None, exts=None, extra_search_dirs=(
     if not exts:
         exts = oldexts.split(os.pathsep)
 
-    # This ensures that `cmd` without any extensions will be found.
-    # See: https://bugs.python.org/issue31405
-    if "." not in exts:
-        exts.append(".")
-
     os.environ["PATHEXT"] = os.pathsep.join(exts)
     try:
         path = shutil_which(cmd, mode=mode, path=path)
@@ -523,7 +522,7 @@ def which(cmd, mode=os.F_OK | os.X_OK, path=None, exts=None, extra_search_dirs=(
 # utilities for temporary resources
 
 
-class NamedTemporaryFile(object):
+class NamedTemporaryFile:
     """
     Like tempfile.NamedTemporaryFile except it works on Windows
     in the case where you open the created file a second time.
@@ -608,7 +607,7 @@ def is_url(thing):
     Return True if thing looks like a URL.
     """
 
-    parsed = urllib.parse.urlparse(thing)
+    parsed = urlparse(thing)
     if "scheme" in parsed:
         return len(parsed.scheme) >= 2
     else:
@@ -630,7 +629,7 @@ def load(resource):
         # if no scheme is given, it is a file path
         return open(resource)
 
-    return urllib.request.urlopen(resource)
+    return urlopen(resource)
 
 
 # see https://docs.python.org/3/whatsnew/3.12.html#imp

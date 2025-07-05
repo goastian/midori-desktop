@@ -9,6 +9,7 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   ActorManagerParent: "resource://gre/modules/ActorManagerParent.sys.mjs",
+  DoHController: "resource://gre/modules/DoHController.sys.mjs",
   EventDispatcher: "resource://gre/modules/Messaging.sys.mjs",
   PdfJs: "resource://pdf.js/PdfJs.sys.mjs",
 });
@@ -218,6 +219,17 @@ export class GeckoViewStartup {
           ],
         });
 
+        GeckoViewUtils.addLazyGetter(this, "GeckoViewPreferences", {
+          module: "resource://gre/modules/GeckoViewPreferences.sys.mjs",
+          ged: [
+            "GeckoView:Preferences:GetPref",
+            "GeckoView:Preferences:SetPref",
+            "GeckoView:Preferences:ClearPref",
+            "GeckoView:Preferences:RegisterObserver",
+            "GeckoView:Preferences:UnregisterObserver",
+          ],
+        });
+
         break;
       }
 
@@ -234,6 +246,24 @@ export class GeckoViewStartup {
           },
           {
             handler: _ => this.GeckoViewRemoteDebugger,
+          }
+        );
+
+        GeckoViewUtils.addLazyPrefObserver(
+          {
+            name: "network.android_doh.autoselect_enabled",
+            default: false,
+          },
+          {
+            handler: _ => {
+              if (
+                Services.prefs.getBoolPref(
+                  "network.android_doh.autoselect_enabled"
+                )
+              ) {
+                lazy.DoHController.init();
+              }
+            },
           }
         );
 

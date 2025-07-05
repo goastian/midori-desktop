@@ -127,6 +127,7 @@ tools_init()
   cp ${QADIR}/tools/pbmac1-invalid-bad-iter.p12 ${TOOLSDIR}/data
   cp ${QADIR}/tools/pbmac1-invalid-bad-salt.p12 ${TOOLSDIR}/data
   cp ${QADIR}/tools/pbmac1-invalid-no-length.p12 ${TOOLSDIR}/data
+  cp ${QADIR}/tools/corrupted_cert_bag.p12 ${TOOLSDIR}/data
 
   cd ${TOOLSDIR}
 }
@@ -159,6 +160,7 @@ import_p12_file()
 
   ${BINDIR}/pk12util -i ${1} -d ${3} -k ${R_PWFILE} -w ${R_PWFILE} 2>&1
   ret=$?
+  echo "return=$ret expect=${4}"
   html_msg $ret ${4} "Importing ${1} (pk12util -i)"
   check_tmpfile
 }
@@ -207,6 +209,7 @@ export_p12_file()
                        ${CERT_CIPHER_OPT} "${CERT_CIPHER}" \
                        ${HASH_ALG_OPT} "${HASH_ALG}" 2>&1
   ret=$?
+  echo "return=$ret expect=${7}"
   html_msg $ret ${7} "Exporting with [${4}:${5}:${6}] (pk12util -o)"
   check_tmpfile
   if [ ${7} -eq 0 ]; then
@@ -501,6 +504,12 @@ tools_p12_import_old_files()
   html_msg $ret 0 "Importing PKCS#12 file with and implicit KDF value"
   check_tmpfile
 
+  echo "pk12util -I -l corrupted_cert_bag.p12 -W start"
+  ${BINDIR}/pk12util -I -l ${TOOLSDIR}/data/corrupted_cert_bag.p12 -W start 2>&1
+  ret=$?
+  html_msg $ret 17 "Listing a PKCS#12 file with corrupted certificate bag"
+  check_tmpfile
+
 }
 
 tools_p12_import_rsa_pss_private_key()
@@ -541,21 +550,21 @@ tools_p12_import_pbmac1_samples()
   html_msg $ret 0 "Importing private key pbmac1 hmac-sha-512 from PKCS#12 file"
   check_tmpfile
 
-  echo "${BINDIR}/pk12util -l ${TOOLSDIR}/data/pbmac1-invalid-bad-iter.p12 -d ${P_R_COPYDIR} -k ${R_PWFILE} -W '1234'"
-  ${BINDIR}/pk12util -l ${TOOLSDIR}/data/pbmac1-invalid-bad-iter.p12 -d ${P_R_COPYDIR} -k ${R_PWFILE} -W '1234' 2>&1
+  echo "${BINDIR}/pk12util -l ${TOOLSDIR}/data/pbmac1-invalid-bad-iter.p12 -d ${P_R_COPYDIR} -k ${R_PWFILE} -W '1234' -I"
+  ${BINDIR}/pk12util -l ${TOOLSDIR}/data/pbmac1-invalid-bad-iter.p12 -d ${P_R_COPYDIR} -k ${R_PWFILE} -W '1234' -I 2>&1
   ret=$?
   html_msg $ret 19 "Fail to list private key with bad iterator"
   check_tmpfile
 
-  echo "${BINDIR}/pk12util -l ${TOOLSDIR}/data/pbmac1-invalid-bad-salt.p12 -d ${P_R_COPYDIR} -k ${R_PWFILE} -W '1234'"
-  ${BINDIR}/pk12util -l ${TOOLSDIR}/data/pbmac1-invalid-bad-salt.p12 -d ${P_R_COPYDIR} -k ${R_PWFILE} -W '1234' 2>&1
+  echo "${BINDIR}/pk12util -l ${TOOLSDIR}/data/pbmac1-invalid-bad-salt.p12 -d ${P_R_COPYDIR} -k ${R_PWFILE} -W '1234' -I"
+  ${BINDIR}/pk12util -l ${TOOLSDIR}/data/pbmac1-invalid-bad-salt.p12 -d ${P_R_COPYDIR} -k ${R_PWFILE} -W '1234' -I 2>&1
   ret=$?
   echo "Fail to list private key with bad salt val=$ret"
   html_msg $ret 19 "Fail to import private key with bad salt"
   check_tmpfile
 
-  echo "${BINDIR}/pk12util -l ${TOOLSDIR}/data/pbmac1-invalid-no-length.p12 -d ${P_R_COPYDIR} -k ${R_PWFILE} -W '1234'"
-  ${BINDIR}/pk12util -l ${TOOLSDIR}/data/pbmac1-invalid-no-length.p12 -d ${P_R_COPYDIR} -k ${R_PWFILE} -W '1234' 2>&1
+  echo "${BINDIR}/pk12util -l ${TOOLSDIR}/data/pbmac1-invalid-no-length.p12 -d ${P_R_COPYDIR} -k ${R_PWFILE} -W '1234' -I "
+  ${BINDIR}/pk12util -l ${TOOLSDIR}/data/pbmac1-invalid-no-length.p12 -d ${P_R_COPYDIR} -k ${R_PWFILE} -W '1234' -I 2>&1
   ret=$?
   echo "Fail to import private key with no length val=$ret"
   html_msg $ret 19 "Fail to import private key with no length"
@@ -584,7 +593,7 @@ tools_p12()
   tools_p12_export_with_invalid_ciphers
   tools_p12_import_old_files
   tools_p12_import_pbmac1_samples
-  if [ "${TEST_MODE}" = "SHARED_DB" ] ; then
+  if using_sql; then
     tools_p12_import_rsa_pss_private_key
     tools_p12_policy
   fi
@@ -630,6 +639,8 @@ verify_p12()
   # p12util -l will verify that decryption works properly.
   pp -t pkcs12 -i ${1} -o ${TMP}
   while read line ; do
+     # strip trailing carriage return
+     line="${line%$'\r'}"
      # first up: if we see an unencrypted key bag, then we know that the key
      # was unencrypted (NOTE: pk12util currently can't generate these kinds of
      # files).

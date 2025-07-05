@@ -3,13 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 plugins {
-    id "org.gradle.kotlin.kotlin-dsl" version "4.2.1"
+    alias(libs.plugins.kotlin.dsl)
 }
+
+buildDir = "${gradle.mozconfig.topobjdir}/gradle/build/mobile/android/fenix/plugins/apksize"
 
 repositories {
         gradle.mozconfig.substs.GRADLE_MAVEN_REPOSITORIES.each { repository ->
             maven {
-                url repository
+                url = repository
                 if (gradle.mozconfig.substs.ALLOW_INSECURE_GRADLE_REPOSITORIES) {
                     allowInsecureProtocol = true
                 }

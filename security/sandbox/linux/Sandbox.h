@@ -9,6 +9,7 @@
 
 #include "mozilla/Maybe.h"
 #include "mozilla/Types.h"
+#include "mozilla/UniquePtrExtensions.h"
 #include "nsXULAppAPI.h"
 #include <vector>
 
@@ -26,7 +27,9 @@ class FileDescriptor;
 
 // This must be called early, before glib creates any worker threads.
 // (See bug 1176099.)
-MOZ_EXPORT void SandboxEarlyInit();
+MOZ_EXPORT void SandboxEarlyInit(
+    Maybe<mozilla::UniqueFileHandle>&& aSandboxReporter,
+    Maybe<mozilla::UniqueFileHandle>&& aChrootClient);
 
 // A collection of sandbox parameters that have to be extracted from
 // prefs or other libxul facilities and passed down, because
@@ -51,6 +54,23 @@ struct ContentProcessSandboxParams {
       const Maybe<ipc::FileDescriptor>& aBroker);
 };
 
+// Similarly to ContentProcessSandboxParams, a collection of
+// parameters for the socket process.  Currently this is just the
+// level (and the broker), but in the future there could be more.
+struct SocketProcessSandboxParams {
+  // Socket process sandbox level; see also GetEffectiveSandboxLevel
+  // and the comments for "security.sandbox.socket.process.level" in
+  // browser/app/profile/firefox.js
+  int mLevel = 0;
+
+  // The filesystem broker client fd; this *is* a RAII class so it
+  // needs to be `release()`d or moved to consume it.
+  mozilla::UniqueFileHandle mBroker;
+
+  static SocketProcessSandboxParams ForThisProcess(
+      const Maybe<ipc::FileDescriptor>& aBroker);
+};
+
 // Call only if SandboxInfo::CanSandboxContent() returns true.
 // (No-op if the sandbox is disabled.)
 // isFileProcess determines whether we allow system wide file reads.
@@ -63,13 +83,19 @@ MOZ_EXPORT void SetMediaPluginSandbox(const char* aFilePath);
 
 MOZ_EXPORT void SetRemoteDataDecoderSandbox(int aBroker);
 
-MOZ_EXPORT void SetSocketProcessSandbox(int aBroker);
+MOZ_EXPORT void SetSocketProcessSandbox(SocketProcessSandboxParams&& aParams);
 
 MOZ_EXPORT void SetUtilitySandbox(int aBroker, ipc::SandboxingKind aKind);
 
 // We want to turn on/off crashing on error when running some tests
 // This will return current value and set the aValue we pass
 MOZ_EXPORT bool SetSandboxCrashOnError(bool aValue);
+
+// Call SandboxProfiler::Create to make sure SandboxProfiler exists if it should
+// exists, i.e., profiler symbols were found and the profiler is running
+MOZ_EXPORT void CreateSandboxProfiler();
+
+MOZ_EXPORT void DestroySandboxProfiler();
 
 }  // namespace mozilla
 

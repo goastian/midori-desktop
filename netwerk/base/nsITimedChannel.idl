@@ -11,6 +11,7 @@ class TimeStamp;
 }
 #include "nsTArrayForwardDeclare.h"
 #include "nsCOMPtr.h"
+#include "mozilla/Unused.h"
 %}
 
 native TimeStamp(mozilla::TimeStamp);
@@ -27,11 +28,6 @@ interface nsIServerTiming : nsISupports {
 // All properties return zero if the value is not available
 [scriptable, builtinclass, uuid(ca63784d-959c-4c3a-9a59-234a2a520de0)]
 interface nsITimedChannel : nsISupports {
-  // Set this attribute to true to enable collection of timing data.
-  // channelCreationTime will be available even with this attribute set to
-  // false.
-  attribute boolean timingEnabled;
-
   // The number of redirects
   attribute uint8_t redirectCount;
   attribute uint8_t internalRedirectCount;
@@ -70,7 +66,7 @@ interface nsITimedChannel : nsISupports {
   [noscript] attribute TimeStamp redirectEnd;
 
   // The initiator type
-  [noscript] attribute AString initiatorType;
+  attribute AString initiatorType;
 
   // This flag should be set to false only if a cross-domain redirect occurred
   [noscript] attribute boolean allRedirectsSameOrigin;
@@ -83,6 +79,20 @@ interface nsITimedChannel : nsISupports {
   inline bool TimingAllowCheck(nsIPrincipal* aOrigin) {
     bool allowed = false;
     return NS_SUCCEEDED(TimingAllowCheck(aOrigin, &allowed)) && allowed;
+  }
+  %}
+  // Determines if bodyInfo should be opaque to the given origin
+  cenum BodyInfoAccess : 8 {
+    DISALLOWED  = 0,
+    ALLOW_SIZES = 1,
+    ALLOW_ALL   = 2
+  };
+  [noscript] nsITimedChannel_BodyInfoAccess bodyInfoAccessAllowedCheck(in nsIPrincipal origin);
+  %{C++
+  inline BodyInfoAccess BodyInfoAccessAllowedCheck(nsIPrincipal* aOrigin) {
+    BodyInfoAccess allowed = BodyInfoAccess::DISALLOWED;
+    mozilla::Unused << BodyInfoAccessAllowedCheck(aOrigin, &allowed);
+    return allowed;
   }
   %}
 

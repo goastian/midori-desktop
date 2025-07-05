@@ -28,12 +28,8 @@ namespace mozilla {
 class Encoding;
 }
 
-#define NS_ICONTENT_SINK_IID                         \
-  {                                                  \
-    0xcf9a7cbb, 0xfcbc, 0x4e13, {                    \
-      0x8e, 0xf5, 0x18, 0xef, 0x2d, 0x3d, 0x58, 0x29 \
-    }                                                \
-  }
+#define NS_ICONTENT_SINK_IID \
+  {0xcf9a7cbb, 0xfcbc, 0x4e13, {0x8e, 0xf5, 0x18, 0xef, 0x2d, 0x3d, 0x58, 0x29}}
 
 class nsIContentSink : public nsISupports {
  protected:
@@ -42,7 +38,7 @@ class nsIContentSink : public nsISupports {
   using NotNull = mozilla::NotNull<T>;
 
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_ICONTENT_SINK_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_ICONTENT_SINK_IID)
 
   /**
    * This method is called by the parser when it is entered from
@@ -130,6 +126,8 @@ class nsIContentSink : public nsISupports {
    */
   virtual bool IsScriptExecuting() { return false; }
 
+  virtual void ContinueParsingDocumentAfterCurrentScript() {};
+
   /**
    * Posts a runnable that continues parsing.
    */
@@ -137,7 +135,5 @@ class nsIContentSink : public nsISupports {
 
   virtual void InitialTranslationCompleted() {}
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(nsIContentSink, NS_ICONTENT_SINK_IID)
 
 #endif /* nsIContentSink_h___ */

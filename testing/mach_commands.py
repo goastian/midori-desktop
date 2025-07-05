@@ -5,10 +5,12 @@
 import argparse
 import logging
 import os
-import subprocess
 import sys
+from datetime import date, timedelta
+from typing import List, Optional
 
 import requests
+from clean_skipfails import CleanSkipfails
 from mach.decorators import Command, CommandArgument, SubCommand
 from mozbuild.base import BuildEnvironmentNotFoundException
 from mozbuild.base import MachCommandConditions as conditions
@@ -72,17 +74,15 @@ ADD_TEST_SUPPORTED_SUITES = [
     "mochitest-chrome",
     "mochitest-plain",
     "mochitest-browser-chrome",
-    "web-platform-tests-privatebrowsing",
-    "web-platform-tests-testharness",
+    "web-platform-tests",
     "web-platform-tests-reftest",
     "xpcshell",
 ]
 ADD_TEST_SUPPORTED_DOCS = ["js", "html", "xhtml", "xul"]
 
 SUITE_SYNONYMS = {
-    "wpt": "web-platform-tests-testharness",
-    "wpt-privatebrowsing": "web-platform-tests-privatebrowsing",
-    "wpt-testharness": "web-platform-tests-testharness",
+    "wpt": "web-platform-tests",
+    "wpt-testharness": "web-platform-tests",
     "wpt-reftest": "web-platform-tests-reftest",
 }
 
@@ -149,7 +149,6 @@ def addtest(
     editor=MISSING_ARG,
     **kwargs,
 ):
-    import io
 
     import addtest
     from moztest.resolve import TEST_SUITES
@@ -183,25 +182,23 @@ def addtest(
     if not suite:
         print(
             "We couldn't automatically determine a suite. "
-            "Please specify `--suite` with one of the following options:\n{}\n"
+            f"Please specify `--suite` with one of the following options:\n{ADD_TEST_SUPPORTED_SUITES}\n"
             "If you'd like to add support to a new suite, please file a bug "
-            "blocking https://bugzilla.mozilla.org/show_bug.cgi?id=1540285.".format(
-                ADD_TEST_SUPPORTED_SUITES
-            )
+            "blocking https://bugzilla.mozilla.org/show_bug.cgi?id=1540285."
         )
         return 1
 
     if doc not in ADD_TEST_SUPPORTED_DOCS:
         print(
             "Error: invalid `doc`. Either pass in a test with a valid extension"
-            "({}) or pass in the `doc` argument".format(ADD_TEST_SUPPORTED_DOCS)
+            f"({ADD_TEST_SUPPORTED_DOCS}) or pass in the `doc` argument"
         )
         return 1
 
     creator_cls = addtest.creator_for_suite(suite)
 
     if creator_cls is None:
-        print("Sorry, `addtest` doesn't currently know how to add {}".format(suite))
+        print(f"Sorry, `addtest` doesn't currently know how to add {suite}")
         return 1
 
     creator = creator_cls(command_context.topsrcdir, test, suite, doc, **kwargs)
@@ -216,14 +213,14 @@ def addtest(
         added_tests = True
         if path:
             paths.append(path)
-            print("Adding a test file at {} (suite `{}`)".format(path, suite))
+            print(f"Adding a test file at {path} (suite `{suite}`)")
 
             try:
                 os.makedirs(os.path.dirname(path))
             except OSError:
                 pass
 
-            with io.open(path, "w", newline="\n") as f:
+            with open(path, "w", newline="\n") as f:
                 f.write(template)
         else:
             # write to stdout if you passed only suite and doc and not a file path
@@ -242,9 +239,7 @@ def addtest(
         mach_command = TEST_SUITES[suite]["mach_command"]
         print(
             "Please make sure to add the new test to your commit. "
-            "You can now run the test with:\n    ./mach {} {}".format(
-                mach_command, test
-            )
+            f"You can now run the test with:\n    ./mach {mach_command} {test}"
         )
 
     if editor is not MISSING_ARG:
@@ -297,7 +292,7 @@ def guess_suite(abs_test):
     )
 
     if in_wpt_folder:
-        guessed_suite = "web-platform-tests-testharness"
+        guessed_suite = "web-platform-tests"
         if "/css/" in abs_test:
             guessed_suite = "web-platform-tests-reftest"
     elif (
@@ -442,7 +437,7 @@ def test(command_context, what, extra_args, **log_args):
     for (flavor, subsuite), tests in sorted(buckets.items()):
         _, m = get_suite_definition(flavor, subsuite)
         if "mach_command" not in m:
-            substr = "-{}".format(subsuite) if subsuite else ""
+            substr = f"-{subsuite}" if subsuite else ""
             print(UNKNOWN_FLAVOR % (flavor, substr))
             status = 1
             continue
@@ -717,57 +712,6 @@ def run_jsshelltests(command_context, **kwargs):
 
 
 @Command(
-    "cramtest",
-    category="testing",
-    description="Mercurial style .t tests for command line applications.",
-)
-@CommandArgument(
-    "test_paths",
-    nargs="*",
-    metavar="N",
-    help="Test paths to run. Each path can be a test file or directory. "
-    "If omitted, the entire suite will be run.",
-)
-@CommandArgument(
-    "cram_args",
-    nargs=argparse.REMAINDER,
-    help="Extra arguments to pass down to the cram binary. See "
-    "'./mach python -m cram -- -h' for a list of available options.",
-)
-def cramtest(command_context, cram_args=None, test_paths=None, test_objects=None):
-    command_context.activate_virtualenv()
-    import mozinfo
-    from manifestparser import TestManifest
-
-    if test_objects is None:
-        from moztest.resolve import TestResolver
-
-        resolver = command_context._spawn(TestResolver)
-        if test_paths:
-            # If we were given test paths, try to find tests matching them.
-            test_objects = resolver.resolve_tests(paths=test_paths, flavor="cram")
-        else:
-            # Otherwise just run everything in CRAMTEST_MANIFESTS
-            test_objects = resolver.resolve_tests(flavor="cram")
-
-    if not test_objects:
-        message = "No tests were collected, check spelling of the test paths."
-        command_context.log(logging.WARN, "cramtest", {}, message)
-        return 1
-
-    mp = TestManifest()
-    mp.tests.extend(test_objects)
-    tests = mp.active_tests(disabled=False, **mozinfo.info)
-
-    python = command_context.virtualenv_manager.python_path
-    cmd = [python, "-m", "cram"] + cram_args + [t["relpath"] for t in tests]
-    return subprocess.call(cmd, cwd=command_context.topsrcdir)
-
-
-from datetime import date, timedelta
-
-
-@Command(
     "test-info", category="testing", description="Display historical test results."
 )
 def test_info(command_context):
@@ -887,6 +831,10 @@ def test_info_tests(
 )
 @CommandArgument("--output-file", help="Path to report file.")
 @CommandArgument("--runcounts-input-file", help="Optional path to report file.")
+@CommandArgument(
+    "--config-matrix-output-file",
+    help="Path to report the config matrix for each manifest.",
+)
 @CommandArgument("--verbose", action="store_true", help="Enable debug logging.")
 @CommandArgument(
     "--start",
@@ -915,6 +863,7 @@ def test_report(
     end,
     show_testruns,
     runcounts_input_file,
+    config_matrix_output_file,
 ):
     import testinfo
     from mozbuild import build_commands
@@ -943,6 +892,7 @@ def test_report(
         end,
         show_testruns,
         runcounts_input_file,
+        config_matrix_output_file,
     )
 
 
@@ -1297,6 +1247,18 @@ def manifest(_command_context):
     action="store_true",
     help="Determine manifest changes, but do not write them",
 )
+@CommandArgument(
+    "-I",
+    "--implicit-vars",
+    action="store_true",
+    help="Use implicit variables in reftest manifests",
+)
+@CommandArgument(
+    "-n",
+    "--new-version",
+    dest="new_version",
+    help="New version to use for annotations",
+)
 def skipfails(
     command_context,
     try_url,
@@ -1310,6 +1272,8 @@ def skipfails(
     max_failures=-1,
     verbose=False,
     dry_run=False,
+    implicit_vars=False,
+    new_version=None,
 ):
     from skipfails import Skipfails
 
@@ -1327,7 +1291,16 @@ def skipfails(
     else:
         max_failures = -1
 
-    Skipfails(command_context, try_url, verbose, bugzilla, dry_run, turbo).run(
+    Skipfails(
+        command_context,
+        try_url,
+        verbose,
+        bugzilla,
+        dry_run,
+        turbo,
+        implicit_vars,
+        new_version,
+    ).run(
         meta_bug_id,
         save_tasks,
         use_tasks,
@@ -1335,3 +1308,46 @@ def skipfails(
         use_failures,
         max_failures,
     )
+
+
+@SubCommand(
+    "manifest",
+    "clean-skip-fails",
+    description="Update manifests to remove skip-if conditions for a specific platform. Only works for TOML manifests.",
+)
+@CommandArgument(
+    "manifest_search_path",
+    nargs=1,
+    help="Path to the folder containing the manifests to update, or the path to a single manifest",
+)
+@CommandArgument(
+    "-o",
+    "--os",
+    default=None,
+    dest="os_name",
+    help="OS to remove (linux, mac, win)",
+)
+@CommandArgument(
+    "-s",
+    "--os_version",
+    default=None,
+    dest="os_version",
+    help="Version of the OS to remove (eg: 18.04 for linux)",
+)
+@CommandArgument(
+    "-p",
+    "--processor",
+    default=None,
+    dest="processor",
+    help="Type of processor architecture to remove (eg: x86)",
+)
+def clean_skipfails(
+    command_context,
+    manifest_search_path: List[str],
+    os_name: Optional[str] = None,
+    os_version: Optional[str] = None,
+    processor: Optional[str] = None,
+):
+    CleanSkipfails(
+        command_context, manifest_search_path[0], os_name, os_version, processor
+    ).run()

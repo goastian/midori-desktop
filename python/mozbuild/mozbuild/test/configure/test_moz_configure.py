@@ -31,7 +31,7 @@ class TargetTest(BaseConfigureTest):
         elif "apple-darwin" in self.HOST:
             platform = "darwin"
         else:
-            raise Exception("Missing platform for HOST {}".format(self.HOST))
+            raise Exception(f"Missing platform for HOST {self.HOST}")
         sandbox = self.get_sandbox({}, {}, args, env, cls=sandbox_class(platform))
         return sandbox._value_for(sandbox["target"]).alias
 
@@ -161,7 +161,7 @@ class TestMozConfigure(BaseConfigureTest):
     def test_nsis_version(self):
         this = self
 
-        class FakeNSIS(object):
+        class FakeNSIS:
             def __init__(self, version):
                 self.version = version
 
@@ -191,6 +191,21 @@ class TestMozConfigure(BaseConfigureTest):
         self.assertEqual(check_nsis_version("v3.0-2"), "3.0")
         self.assertEqual(check_nsis_version("v3.0.1"), "3.0")
         self.assertEqual(check_nsis_version("v3.1"), "3.1")
+
+
+class TestConfVars(BaseConfigureTest):
+    def test_loading(self):
+        sandbox = self.get_sandbox(
+            paths={},
+            config={},
+            args=[
+                "--enable-project=python/mozbuild/mozbuild/test/configure/data/confvars"
+            ],
+        )
+        self.assertEqual(
+            list(sandbox._helper),
+            ["CONFVAR= a b c", "OTHER_CONFVAR=d"],
+        )
 
 
 if __name__ == "__main__":

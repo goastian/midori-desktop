@@ -29,16 +29,6 @@ if CONFIG["MOZ_GECKO_PROFILER"]:
     ]
 
     if CONFIG["OS_TARGET"] in ("Android", "Linux", "FreeBSD"):
-        if CONFIG["TARGET_CPU"] in ("arm", "aarch64", "x86", "x86_64", "mips64"):
-            UNIFIED_SOURCES += [
-                "lul/AutoObjectMapper.cpp",
-                "lul/LulCommon.cpp",
-                "lul/LulDwarf.cpp",
-                "lul/LulDwarfSummariser.cpp",
-                "lul/LulElf.cpp",
-                "lul/LulMain.cpp",
-                "lul/platform-linux-lul.cpp",
-            ]
         # These files cannot be built in unified mode because of name clashes with mozglue headers on Android.
         SOURCES += [
             "core/shared-libraries-linux.cc",
@@ -75,8 +65,8 @@ GeneratedFile(
 EXPORTS += [
     "!public/ProfilingCategoryList.h",
     "public/BaseProfiler.h",
-    "public/BaseProfilerSharedLibraries.h",
     "public/BaseProfilingCategory.h",
+    "public/SharedLibraries.h",
 ]
 
 EXPORTS.mozilla += [
@@ -93,6 +83,7 @@ EXPORTS.mozilla += [
     "public/BaseProfilerState.h",
     "public/BaseProfilerUtils.h",
     "public/FailureLatch.h",
+    "public/Flow.h",
     "public/leb128iterator.h",
     "public/ModuloBuffer.h",
     "public/PowerOfTwo.h",
@@ -113,6 +104,7 @@ EXPORTS.mozilla += [
 
 UNIFIED_SOURCES += [
     "core/BaseAndGeckoProfilerDetail.cpp",
+    "core/Flow.cpp",
     "core/ProfilerUtils.cpp",
 ]
 

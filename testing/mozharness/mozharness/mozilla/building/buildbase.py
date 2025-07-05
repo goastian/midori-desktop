@@ -1,13 +1,10 @@
 #!/usr/bin/env python
-# ***** BEGIN LICENSE BLOCK *****
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this file,
 # You can obtain one at http://mozilla.org/MPL/2.0/.
-# ***** END LICENSE BLOCK *****
 """ buildbase.py.
 
 provides a base class for fx desktop builds
-author: Jordan Lund
 
 """
 import copy
@@ -182,12 +179,11 @@ class BuildingConfig(BaseConfig):
     def get_cfgs_from_files(self, all_config_files, options):
         """
         Determine the configuration from the normal options and from
-        `--branch`, `--build-pool`, and `--custom-build-variant-cfg`.  If the
+        `--custom-build-variant-cfg`.  If the
         files for any of the latter options are also given with `--config-file`
         or `--opt-config-file`, they are only parsed once.
 
-        The build pool has highest precedence, followed by branch, build
-        variant, and any normally-specified configuration files.
+        The build variant has highest precedence, followed any normally-specified configuration files.
         """
         # override from BaseConfig
 
@@ -196,41 +192,29 @@ class BuildingConfig(BaseConfig):
         # eg ('builds/branch_specifics.py', {'foo': 'bar'})
         all_config_dicts = []
         # important config files
-        variant_cfg_file = pool_cfg_file = ""
-
-        # we want to make the order in which the options were given
-        # not matter. ie: you can supply --branch before --build-pool
-        # or vice versa and the hierarchy will not be different
+        variant_cfg_file = ""
 
         # ### The order from highest precedence to lowest is:
         # # There can only be one of these...
-        # 1) build_pool: this can be either staging, pre-prod, and prod cfgs
-        # 2) build_variant: these could be known like asan and debug
+        # 1) build_variant: these could be known like asan and debug
         #                   or a custom config
         #
         # # There can be many of these
-        # 3) all other configs: these are any configs that are passed with
+        # 2) all other configs: these are any configs that are passed with
         #                       --cfg and --opt-cfg. There order is kept in
         #                       which they were passed on the cmd line. This
-        #                       behaviour is maintains what happens by default
+        #                       behaviour maintains what happens by default
         #                       in mozharness
 
-        # so, let's first assign the configs that hold a known position of
-        # importance (1 through 3)
+        # so, let's first assign the config that holds a known position of
+        # importance
         for i, cf in enumerate(all_config_files):
-            if options.build_pool:
-                if cf == BuildOptionParser.build_pool_cfg_file:
-                    pool_cfg_file = all_config_files[i]
-
             if cf == options.build_variant:
                 variant_cfg_file = all_config_files[i]
 
-        # now remove these from the list if there was any.
-        # we couldn't pop() these in the above loop as mutating a list while
-        # iterating through it causes spurious results :)
-        for cf in [pool_cfg_file, variant_cfg_file]:
-            if cf:
-                all_config_files.remove(cf)
+        # now remove it from the list
+        if variant_cfg_file:
+            all_config_files.remove(variant_cfg_file)
 
         # now let's update config with the remaining config files.
         # this functionality is the same as the base class
@@ -238,28 +222,17 @@ class BuildingConfig(BaseConfig):
             super(BuildingConfig, self).get_cfgs_from_files(all_config_files, options)
         )
 
-        # stack variant, branch, and pool cfg files on top of that,
-        # if they are present, in that order
+        # stack variant cfg file on top of that, if it is present
         if variant_cfg_file:
             # take the whole config
             all_config_dicts.append(
                 (variant_cfg_file, parse_config_file(variant_cfg_file))
             )
-        config_paths = options.config_paths or ["."]
-        if pool_cfg_file:
-            # take only the specific pool. If we are here, the pool
-            # must be present
-            build_pool_configs = parse_config_file(
-                pool_cfg_file, search_path=config_paths + [DEFAULT_CONFIG_PATH]
-            )
-            all_config_dicts.append(
-                (pool_cfg_file, build_pool_configs[options.build_pool])
-            )
         return all_config_dicts
 
 
 # noinspection PyUnusedLocal
-class BuildOptionParser(object):
+class BuildOptionParser:
     # TODO add nosetests for this class
     platform = None
     bits = None
@@ -273,7 +246,6 @@ class BuildOptionParser(object):
     path_base = "builds/releng_sub_%s_configs/"
     build_variants = {
         "add-on-devel": path_base + "%s_add-on-devel.py",
-        "asan": path_base + "%s_asan.py",
         "asan-tc": path_base + "%s_asan_tc.py",
         "asan-reporter-tc": path_base + "%s_asan_reporter_tc.py",
         "fuzzing-asan-tc": path_base + "%s_fuzzing_asan_tc.py",
@@ -286,55 +258,35 @@ class BuildOptionParser(object):
         "cross-fuzzing-debug": path_base + "%s_cross_fuzzing_debug.py",
         "debug": path_base + "%s_debug.py",
         "fuzzing-debug": path_base + "%s_fuzzing_debug.py",
-        "asan-and-debug": path_base + "%s_asan_and_debug.py",
         "asan-tc-and-debug": path_base + "%s_asan_tc_and_debug.py",
-        "stat-and-debug": path_base + "%s_stat_and_debug.py",
         "code-coverage-debug": path_base + "%s_code_coverage_debug.py",
         "code-coverage-opt": path_base + "%s_code_coverage_opt.py",
         "source": path_base + "%s_source.py",
         "noopt-debug": path_base + "%s_noopt_debug.py",
-        "arm-gradle-dependencies": path_base
-        + "%s_arm_gradle_dependencies.py",  # NOQA: E501
         "arm": path_base + "%s_arm.py",
         "arm-lite": path_base + "%s_arm_lite.py",
-        "arm-beta": path_base + "%s_arm_beta.py",
-        "arm-beta-debug": path_base + "%s_arm_beta_debug.py",
         "arm-debug": path_base + "%s_arm_debug.py",
-        "arm-lite-debug": path_base + "%s_arm_debug_lite.py",
-        "arm-debug-ccov": path_base + "%s_arm_debug_ccov.py",
-        "arm-debug-searchfox": path_base + "%s_arm_debug_searchfox.py",
-        "arm-gradle": path_base + "%s_arm_gradle.py",
+        "arm-profile-generate": path_base + "%s_arm_profile_generate.py",
         "rusttests": path_base + "%s_rusttests.py",
         "rusttests-debug": path_base + "%s_rusttests_debug.py",
         "x86": path_base + "%s_x86.py",
         "x86-lite": path_base + "%s_x86_lite.py",
-        "x86-beta": path_base + "%s_x86_beta.py",
-        "x86-beta-debug": path_base + "%s_x86_beta_debug.py",
-        "x86-debug": path_base + "%s_x86_debug.py",
-        "x86-lite-debug": path_base + "%s_x86_debug_lite.py",
         "x86-profile-generate": path_base + "%s_x86_profile_generate.py",
         "x86_64": path_base + "%s_x86_64.py",
         "x86_64-lite": path_base + "%s_x86_64_lite.py",
-        "x86_64-beta": path_base + "%s_x86_64_beta.py",
-        "x86_64-beta-debug": path_base + "%s_x86_64_beta_debug.py",
         "x86_64-debug": path_base + "%s_x86_64_debug.py",
-        "x86_64-lite-debug": path_base + "%s_x86_64_debug_lite.py",
         "x86_64-debug-isolated-process": path_base
         + "%s_x86_64_debug_isolated_process.py",
         "x86_64-profile-generate": path_base + "%s_x86_64_profile_generate.py",
-        "arm-partner-sample1": path_base + "%s_arm_partner_sample1.py",
         "aarch64": path_base + "%s_aarch64.py",
         "aarch64-lite": path_base + "%s_aarch64_lite.py",
-        "aarch64-beta": path_base + "%s_aarch64_beta.py",
-        "aarch64-beta-debug": path_base + "%s_aarch64_beta_debug.py",
-        "aarch64-pgo": path_base + "%s_aarch64_pgo.py",
         "aarch64-debug": path_base + "%s_aarch64_debug.py",
-        "aarch64-lite-debug": path_base + "%s_aarch64_debug_lite.py",
+        "aarch64-fenix-debug": path_base + "%s_aarch64_fenix_debug.py",
+        "aarch64-debug-searchfox": path_base + "%s_aarch64_debug_searchfox.py",
         "aarch64-profile-generate": path_base + "%s_aarch64_profile_generate.py",
         "android-geckoview-docs": path_base + "%s_geckoview_docs.py",
         "valgrind": path_base + "%s_valgrind.py",
     }
-    build_pool_cfg_file = "builds/build_pool_specifics.py"
 
     @classmethod
     def _query_pltfrm_and_bits(cls, target_option, options):
@@ -446,14 +398,7 @@ class BuildOptionParser(object):
                 % (prospective_cfg_path, str(list(cls.build_variants.keys())))
             )
         parser.values.config_files.append(valid_variant_cfg_path)
-        setattr(parser.values, option.dest, value)  # the pool
-
-    @classmethod
-    def set_build_pool(cls, option, opt, value, parser):
-        # first let's add the build pool file where there may be pool
-        # specific keys/values. Then let's store the pool name
-        parser.values.config_files.append(cls.build_pool_cfg_file)
-        setattr(parser.values, option.dest, value)  # the pool
+        setattr(parser.values, option.dest, value)  # the variant
 
     @classmethod
     def set_build_branch(cls, option, opt, value, parser):
@@ -518,19 +463,6 @@ BUILD_BASE_CONFIG_OPTIONS = [
             " additional config to use. Either pass a config path"
             " or use a valid shortname from: "
             "%s" % (list(BuildOptionParser.build_variants.keys()),),
-        },
-    ],
-    [
-        ["--build-pool"],
-        {
-            "action": "callback",
-            "callback": BuildOptionParser.set_build_pool,
-            "type": "string",
-            "dest": "build_pool",
-            "help": "This will update the config with specific pool"
-            " environment keys/values. The dicts for this are"
-            " in %s\nValid values: staging or"
-            " production" % ("builds/build_pool_specifics.py",),
         },
     ],
     [
@@ -613,7 +545,6 @@ class BuildScript(
     def _pre_config_lock(self, rw_config):
         c = self.config
         cfg_files_and_dicts = rw_config.all_cfg_files_and_dicts
-        build_pool = c.get("build_pool", "")
         build_variant = c.get("build_variant", "")
         variant_cfg = ""
         if build_variant:
@@ -621,22 +552,12 @@ class BuildScript(
                 BuildOptionParser.platform,
                 BuildOptionParser.bits,
             )
-        build_pool_cfg = BuildOptionParser.build_pool_cfg_file
 
         cfg_match_msg = "Script was run with '%(option)s %(type)s' and \
 '%(type)s' matches a key in '%(type_config_file)s'. Updating self.config with \
 items from that key's value."
 
         for i, (target_file, target_dict) in enumerate(cfg_files_and_dicts):
-            if build_pool_cfg and build_pool_cfg in target_file:
-                self.info(
-                    cfg_match_msg
-                    % {
-                        "option": "--build-pool",
-                        "type": build_pool,
-                        "type_config_file": build_pool_cfg,
-                    }
-                )
             if variant_cfg and variant_cfg in target_file:
                 self.info(
                     cfg_match_msg
@@ -687,7 +608,7 @@ items from that key's value."
             # explicitly
             if c.get("update_channel"):
                 update_channel = c["update_channel"]
-                if six.PY2 and isinstance(update_channel, six.text_type):
+                if six.PY2 and isinstance(update_channel, str):
                     update_channel = update_channel.encode("utf-8")
                 env["MOZ_UPDATE_CHANNEL"] = update_channel
             else:  # let's just give the generic channel based on branch
@@ -726,7 +647,7 @@ items from that key's value."
             else:
                 self.fatal(e.msg)
 
-        self.info("Use mozconfig: {}".format(abs_mozconfig_path))
+        self.info(f"Use mozconfig: {abs_mozconfig_path}")
 
         # print its contents
         content = self.read_from_file(abs_mozconfig_path, error_level=FATAL)
@@ -991,10 +912,9 @@ items from that key's value."
         if self.config.get("debug_build"):
             return False
 
-        # OS X opt builds without a variant are shipped.
-        if self.config.get("platform") == "macosx64":
-            if not self.config.get("build_variant"):
-                return True
+        # shippable builds set nightly_build
+        if self.query_is_nightly():
+            return True
 
         # Android opt builds without a variant are shipped.
         if self.config.get("platform") == "android":
@@ -1009,7 +929,7 @@ items from that key's value."
             self.info("%s does not exist; not loading build profile data" % p)
             return None
 
-        with open(p, "r") as fh:
+        with open(p) as fh:
             profile = json.load(fh)
 
         try:
@@ -1066,7 +986,7 @@ items from that key's value."
                 self.info(msg)
                 return
 
-        with open(stats_file, "r") as fh:
+        with open(stats_file) as fh:
             stats = json.load(fh)
 
         def get_stat(key):
@@ -1077,14 +997,22 @@ items from that key's value."
                 val = sum(val["counts"].values())
             return val
 
+        def hit_rate(hits, total):
+            if hits == total:
+                return 100
+            rate = hits * 100 / total
+            # If the rate is not quite 100%, avoid values that will round to 100%.
+            if rate > 99.99:
+                return 99.99
+            return rate
+
         total = get_stat("requests_executed")
         hits = get_stat("cache_hits")
-        if total > 0:
-            hits /= float(total)
+        errors = get_stat("cache_errors")
 
         yield {
-            "name": "sccache hit rate",
-            "value": hits,
+            "name": "sccache percent hit",
+            "value": hit_rate(hits, total),
             "subtests": [],
             "alertThreshold": 50.0,
             "lowerIsBetter": False,
@@ -1093,9 +1021,39 @@ items from that key's value."
             "shouldAlert": False,
         }
 
+        if isinstance(stats["stats"]["cache_hits"]["counts"], dict):
+            for lang, value in stats["stats"]["cache_hits"]["counts"].items():
+                yield {
+                    "name": f"sccache percent hit {lang}",
+                    "value": hit_rate(
+                        value,
+                        (value + stats["stats"]["cache_misses"]["counts"].get(lang, 0)),
+                    ),
+                    "subtests": [],
+                    "alertThreshold": 50.0,
+                    "lowerIsBetter": False,
+                    # We want to always collect metrics.
+                    # But disable automatic alerting on it
+                    "shouldAlert": False,
+                }
+
+        yield {
+            "name": "sccache cache_read_errors",
+            "value": stats["stats"]["cache_read_errors"],
+            "alertThreshold": 50.0,
+            "subtests": [],
+        }
+
         yield {
             "name": "sccache cache_write_errors",
             "value": stats["stats"]["cache_write_errors"],
+            "alertThreshold": 50.0,
+            "subtests": [],
+        }
+
+        yield {
+            "name": "sccache cache_errors",
+            "value": errors,
             "alertThreshold": 50.0,
             "subtests": [],
         }
@@ -1114,7 +1072,7 @@ items from that key's value."
         dirs = self.query_abs_dirs()
 
         dist_dir = os.path.join(dirs["abs_obj_dir"], "dist")
-        for ext in ["apk", "dmg", "tar.bz2", "zip"]:
+        for ext in ["apk", "dmg", "tar.bz2", "zip", "tar.xz"]:
             name = "target." + ext
             if os.path.exists(os.path.join(dist_dir, name)):
                 packageName = name
@@ -1491,9 +1449,7 @@ items from that key's value."
         elif build_platform.startswith("ios"):
             return
         else:
-            err = "Build platform {} didn't start with 'mac', 'linux', 'win', 'android' or 'ios'".format(
-                build_platform
-            )
+            err = f"Build platform {build_platform} didn't start with 'mac', 'linux', 'win', 'android' or 'ios'"
             self.fatal(err)
         try:
             with open(artifact_yml_path) as artfile:

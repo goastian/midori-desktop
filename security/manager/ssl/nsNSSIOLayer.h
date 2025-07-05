@@ -8,9 +8,11 @@
 #define nsNSSIOLayer_h
 
 #include "mozilla/Assertions.h"
+#include "mozilla/StaticPtr.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
 #include "nsCOMPtr.h"
+#include "nsIObserver.h"
 #include "nsIProxyInfo.h"
 #include "nsITLSSocketControl.h"
 #include "nsITlsHandshakeListener.h"
@@ -21,17 +23,9 @@
 
 namespace mozilla {
 class OriginAttributes;
-namespace psm {
-class SharedSSLState;
-}  // namespace psm
 }  // namespace mozilla
 
-const uint32_t kIPCClientCertsSlotTypeModern = 1;
-const uint32_t kIPCClientCertsSlotTypeLegacy = 2;
-
 using mozilla::OriginAttributes;
-
-class nsIObserver;
 
 // Order matters for UpdateEchExtensioNStatus.
 enum class EchExtensionStatus {
@@ -40,13 +34,20 @@ enum class EchExtensionStatus {
   kReal         // A 'real' ECH Extension was sent
 };
 
-class nsSSLIOLayerHelpers {
+enum class PublicOrPrivate { Public, Private };
+
+class nsSSLIOLayerHelpers : public nsIObserver {
  public:
-  explicit nsSSLIOLayerHelpers(uint32_t aTlsFlags = 0);
-  ~nsSSLIOLayerHelpers();
+  NS_DECL_THREADSAFE_ISUPPORTS
+  NS_DECL_NSIOBSERVER
+
+  explicit nsSSLIOLayerHelpers(PublicOrPrivate aPublicOrPrivate,
+                               uint32_t aTlsFlags = 0);
+
+  static void GlobalInit();
+  static void GlobalCleanup();
 
   nsresult Init();
-  void Cleanup();
 
   static bool nsSSLIOLayerInitialized;
   static PRDescIdentity nsSSLIOLayerIdentity;
@@ -54,10 +55,8 @@ class nsSSLIOLayerHelpers {
   static PRIOMethods nsSSLIOLayerMethods;
   static PRIOMethods nsSSLPlaintextLayerMethods;
 
-  bool mTreatUnsafeNegotiationAsBroken;
-
-  void setTreatUnsafeNegotiationAsBroken(bool broken);
-  bool treatUnsafeNegotiationAsBroken();
+ protected:
+  virtual ~nsSSLIOLayerHelpers();
 
  private:
   struct IntoleranceEntry {
@@ -76,16 +75,16 @@ class nsSSLIOLayerHelpers {
   nsTHashtable<nsCStringHashKey> mInsecureFallbackSites;
 
  public:
-  void rememberTolerantAtVersion(const nsACString& hostname, int16_t port,
+  void rememberTolerantAtVersion(const nsACString& hostname, uint16_t port,
                                  uint16_t tolerant);
   bool fallbackLimitReached(const nsACString& hostname, uint16_t intolerant);
-  bool rememberIntolerantAtVersion(const nsACString& hostname, int16_t port,
+  bool rememberIntolerantAtVersion(const nsACString& hostname, uint16_t port,
                                    uint16_t intolerant, uint16_t minVersion,
                                    PRErrorCode intoleranceReason);
-  void forgetIntolerance(const nsACString& hostname, int16_t port);
-  void adjustForTLSIntolerance(const nsACString& hostname, int16_t port,
+  void forgetIntolerance(const nsACString& hostname, uint16_t port);
+  void adjustForTLSIntolerance(const nsACString& hostname, uint16_t port,
                                /*in/out*/ SSLVersionRange& range);
-  PRErrorCode getIntoleranceReason(const nsACString& hostname, int16_t port);
+  PRErrorCode getIntoleranceReason(const nsACString& hostname, uint16_t port);
 
   void clearStoredData();
   void loadVersionFallbackLimit();
@@ -98,10 +97,19 @@ class nsSSLIOLayerHelpers {
   uint16_t mVersionFallbackLimit;
 
  private:
+  const PublicOrPrivate mPublicOrPrivate;
+
   mozilla::Mutex mutex MOZ_UNANNOTATED;
-  nsCOMPtr<nsIObserver> mPrefObserver;
   uint32_t mTlsFlags;
 };
+
+namespace {
+static mozilla::StaticRefPtr<nsSSLIOLayerHelpers> gPublicSSLIOLayerHelpers;
+static mozilla::StaticRefPtr<nsSSLIOLayerHelpers> gPrivateSSLIOLayerHelpers;
+}  // namespace
+
+already_AddRefed<nsSSLIOLayerHelpers> PublicSSLIOLayerHelpers();
+already_AddRefed<nsSSLIOLayerHelpers> PrivateSSLIOLayerHelpers();
 
 nsresult nsSSLIOLayerNewSocket(int32_t family, const char* host, int32_t port,
                                nsIProxyInfo* proxy,
@@ -125,11 +133,13 @@ SECStatus zlibCertificateDecode(const SECItem* input, unsigned char* output,
 SECStatus brotliCertificateDecode(const SECItem* input, unsigned char* output,
                                   size_t outputLen, size_t* usedLen);
 
+SECStatus zstdCertificateDecode(const SECItem* input, unsigned char* output,
+                                size_t outputLen, size_t* usedLen);
+
 extern "C" {
 using FindObjectsCallback = void (*)(uint8_t type, size_t id_len,
                                      const uint8_t* id, size_t data_len,
-                                     const uint8_t* data, uint32_t slotType,
-                                     void* ctx);
+                                     const uint8_t* data, void* ctx);
 void DoFindObjects(FindObjectsCallback cb, void* ctx);
 using SignCallback = void (*)(size_t data_len, const uint8_t* data, void* ctx);
 void DoSign(size_t cert_len, const uint8_t* cert, size_t data_len,

@@ -6,7 +6,9 @@
 
 /* eslint-disable import/order */
 
-import {readFile, writeFile} from 'fs/promises';
+import {readFile, writeFile, copyFile} from 'fs/promises';
+
+import versionData from './versions.json' with {type: 'json'};
 
 import {docgen, spliceIntoSection} from '@puppeteer/docgen';
 import {execa} from 'execa';
@@ -42,42 +44,56 @@ export const docsNgSchematicsTask = task({
   },
 });
 
-export const docsChromiumSupportTask = task({
+export const docsBrowserSupportTask = task({
   name: 'docs:supported-browsers',
   run: async () => {
     const content = await readFile('docs/supported-browsers.md', {
       encoding: 'utf8',
     });
-    const {versionsPerRelease} = await import('./versions.js');
-    const buffer = [];
-    for (const [chromiumVersion, puppeteerVersion] of versionsPerRelease) {
+    // Create table view
+    const buffer = [
+      '| Puppeteer | Chrome | Firefox |',
+      '| --------- | ------ | ------- |',
+    ];
+    for (const [puppeteerVersion, browserVersions] of versionData.versions) {
       if (puppeteerVersion === 'NEXT') {
         continue;
       }
-      if (semver.gte(puppeteerVersion, '20.0.0')) {
-        buffer.push(
-          `  * [Chrome for Testing](https://developer.chrome.com/blog/chrome-for-testing/) ${chromiumVersion} - [Puppeteer ${puppeteerVersion}](${getApiUrl(
-            puppeteerVersion
-          )})`
-        );
+
+      const puppeteerVer = `[Puppeteer ${puppeteerVersion}](${getApiUrl(
+        puppeteerVersion,
+      )})`;
+
+      let firefoxVer = '';
+      if (semver.gte(puppeteerVersion, '23.0.0')) {
+        // Firefox pin need a prefix of `stable_` to be downloaded
+        // For the user that is not relaxant on this page
+        firefoxVer = `[Firefox](https://www.mozilla.org/en-US/firefox/) ${browserVersions.firefox.split('_').at(-1)}`;
+      } else if (semver.gte(puppeteerVersion, '2.1.0')) {
+        firefoxVer = `Firefox Nightly (at the time)`;
       } else {
-        buffer.push(
-          `  * Chromium ${chromiumVersion} - [Puppeteer ${puppeteerVersion}](${getApiUrl(
-            puppeteerVersion
-          )})`
-        );
+        firefoxVer = `Firefox not supported`;
       }
+
+      let chromeVer = '';
+      if (semver.gte(puppeteerVersion, '20.0.0')) {
+        chromeVer = `[Chrome for Testing](https://developer.chrome.com/blog/chrome-for-testing/) ${browserVersions.chrome}`;
+      } else {
+        chromeVer = `Chromium ${browserVersions.chrome}`;
+      }
+
+      buffer.push(`| ${puppeteerVer} | ${chromeVer} | ${firefoxVer} |`);
     }
     await writeFile(
       'docs/supported-browsers.md',
-      spliceIntoSection('version', content, buffer.join('\n'))
+      spliceIntoSection('version', content, buffer.join('\n')),
     );
   },
 });
 
 export const docsTask = task({
   name: 'docs',
-  dependencies: [docsNgSchematicsTask, docsChromiumSupportTask],
+  dependencies: [docsNgSchematicsTask, docsBrowserSupportTask],
   run: async () => {
     // Copy main page.
     const mainPage = await readFile('README.md', 'utf-8');
@@ -96,8 +112,11 @@ export const docsTask = task({
     const index = await readFile('docs/browsers-api/index.md', 'utf-8');
     await writeFile(
       'docs/browsers-api/index.md',
-      index.replace('# API Reference', readme)
+      index.replace('# API Reference', readme),
     );
+
+    // Copy combined changelog.
+    await copyFile('CHANGELOG.md', 'docs/CHANGELOG.md');
 
     // Format everything.
     await execa('prettier', ['--ignore-path', 'none', '--write', 'docs']);

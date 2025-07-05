@@ -7,6 +7,7 @@
 #include "HttpLog.h"
 
 #include "mozilla/StaticPrefs_network.h"
+#include "mozilla/glean/NetwerkProtocolHttpMetrics.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/Unused.h"
 #include "nsSocketTransportService2.h"
@@ -245,7 +246,7 @@ void HttpTrafficAnalyzer::IncrementHttpConnection(
 }
 
 #define CLAMP_U32(num) \
-  Clamp<uint32_t>(num, 0, std::numeric_limits<uint32_t>::max())
+  std::clamp<uint32_t>(num, 0, std::numeric_limits<uint32_t>::max())
 
 void HttpTrafficAnalyzer::AccumulateHttpTransferredSize(
     HttpTrafficCategory aCategory, uint64_t aBytesRead, uint64_t aBytesSent) {
@@ -260,8 +261,8 @@ void HttpTrafficAnalyzer::AccumulateHttpTransferredSize(
   // Telemetry supports uint32_t only, and we send KB here.
   auto total = CLAMP_U32((aBytesRead >> 10) + (aBytesSent >> 10));
   if (aBytesRead || aBytesSent) {
-    Telemetry::ScalarAdd(Telemetry::ScalarID::NETWORKING_DATA_TRANSFERRED_V3_KB,
-                         NS_ConvertUTF8toUTF16(gKeyName[aCategory]), total);
+    glean::networking::data_transferred_v3_kb.Get(gKeyName[aCategory])
+        .Add(total);
   }
 }
 

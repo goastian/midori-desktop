@@ -20,6 +20,14 @@ class DownloadError extends Error {
   }
 }
 
+class DownloadBundleError extends Error {
+  constructor(url, resp) {
+    super(`Could not download bundle ${url}`);
+    this.name = "DownloadBundleError";
+    this.resp = resp;
+  }
+}
+
 class BadContentError extends Error {
   constructor(path) {
     super(`${path} content does not match server hash`);
@@ -103,6 +111,9 @@ export class Downloader {
   static get DownloadError() {
     return DownloadError;
   }
+  static get DownloadBundleError() {
+    return DownloadBundleError;
+  }
   static get BadContentError() {
     return BadContentError;
   }
@@ -113,9 +124,10 @@ export class Downloader {
     return NotFoundError;
   }
 
-  constructor(...folders) {
-    this.folders = ["settings", ...folders];
-    this._cdnURLs = {};
+  constructor(bucketName, collectionName, ...subFolders) {
+    this.folders = ["settings", bucketName, collectionName, ...subFolders];
+    this.bucketName = bucketName;
+    this.collectionName = collectionName;
   }
 
   /**
@@ -157,6 +169,126 @@ export class Downloader {
    */
   async download(record, options) {
     return this.#fetchAttachment(record, options);
+  }
+
+  /**
+   * Downloads an attachment bundle for a given collection, if one exists. Fills in the cache
+   * for all attachments provided by the bundle.
+   *
+   * @param {Boolean} force Set to true to force a sync even when local data exists
+   * @returns {Boolean} True if all attachments were processed successfully, false if failed, null if skipped.
+   */
+  async cacheAll(force = false) {
+    // If we're offline, don't try
+    if (lazy.Utils.isOffline) {
+      return null;
+    }
+
+    // Do nothing if local cache has some data and force is not true
+    if (!force && (await this.cacheImpl.hasData())) {
+      return null;
+    }
+
+    // Save attachments in bulks.
+    const BULK_SAVE_COUNT = 50;
+
+    const url =
+      (await lazy.Utils.baseAttachmentsURL()) +
+      `bundles/${this.bucketName}--${this.collectionName}.zip`;
+    const tmpZipFilePath = PathUtils.join(
+      PathUtils.tempDir,
+      `${Services.uuid.generateUUID().toString().slice(1, -1)}.zip`
+    );
+    let allSuccess = true;
+
+    try {
+      // 1. Download the zip archive to disk
+      const resp = await lazy.Utils.fetch(url);
+      if (!resp.ok) {
+        throw new Downloader.DownloadBundleError(url, resp);
+      }
+
+      const downloaded = await resp.arrayBuffer();
+      await IOUtils.write(tmpZipFilePath, new Uint8Array(downloaded), {
+        tmpPath: `${tmpZipFilePath}.tmp`,
+      });
+
+      // 2. Read the zipped content
+      const zipReader = Cc["@mozilla.org/libjar/zip-reader;1"].createInstance(
+        Ci.nsIZipReader
+      );
+
+      const tmpZipFile = await IOUtils.getFile(tmpZipFilePath);
+      zipReader.open(tmpZipFile);
+
+      const cacheEntries = [];
+      const zipFiles = Array.from(zipReader.findEntries("*.meta.json"));
+      allSuccess = !!zipFiles.length;
+
+      for (let i = 0; i < zipFiles.length; i++) {
+        const lastLoop = i == zipFiles.length - 1;
+        const entryName = zipFiles[i];
+        try {
+          // 3. Read the meta.json entry
+          const recordZStream = zipReader.getInputStream(entryName);
+          const recordDataLength = recordZStream.available();
+          const recordStream = Cc[
+            "@mozilla.org/scriptableinputstream;1"
+          ].createInstance(Ci.nsIScriptableInputStream);
+          recordStream.init(recordZStream);
+          const recordBytes = recordStream.readBytes(recordDataLength);
+          const recordBlob = new Blob([recordBytes], {
+            type: "application/json",
+          });
+          const record = JSON.parse(await recordBlob.text());
+          recordZStream.close();
+          recordStream.close();
+
+          // 4. Read the attachment entry
+          const zStream = zipReader.getInputStream(record.id);
+          const dataLength = zStream.available();
+          const stream = Cc[
+            "@mozilla.org/scriptableinputstream;1"
+          ].createInstance(Ci.nsIScriptableInputStream);
+          stream.init(zStream);
+          const fileBytes = stream.readBytes(dataLength);
+          const blob = new Blob([fileBytes]);
+
+          cacheEntries.push([record.id, { record, blob }]);
+
+          stream.close();
+          zStream.close();
+        } catch (ex) {
+          lazy.console.warn(
+            `${this.bucketName}/${this.collectionName}: Unable to extract attachment of ${entryName}.`,
+            ex
+          );
+          allSuccess = false;
+        }
+
+        // 5. Save bulk to cache (last loop or reached count)
+        if (lastLoop || cacheEntries.length == BULK_SAVE_COUNT) {
+          try {
+            await this.cacheImpl.setMultiple(cacheEntries);
+          } catch (ex) {
+            lazy.console.warn(
+              `${this.bucketName}/${this.collectionName}: Unable to save attachments in cache`,
+              ex
+            );
+            allSuccess = false;
+          }
+          cacheEntries.splice(0); // start new bulk.
+        }
+      }
+    } catch (ex) {
+      lazy.console.warn(
+        `${this.bucketName}/${this.collectionName}: Unable to retrieve remote-settings attachment bundle.`,
+        ex
+      );
+      return false;
+    }
+
+    return allSuccess;
   }
 
   /**
@@ -342,8 +474,8 @@ export class Downloader {
    * No-op if the attachment does not exist.
    *
    * @param record A Remote Settings entry with attachment.
-   * @param {Object} options Some options.
-   * @param {string} options.attachmentId The attachment identifier to use for
+   * @param {Object} [options] Some options.
+   * @param {string} [options.attachmentId] The attachment identifier to use for
    *                                      accessing and deleting the attachment.
    *                                      (default: `record.id`)
    */
@@ -367,67 +499,6 @@ export class Downloader {
   async prune(excludeIds) {
     return this.cacheImpl.prune(excludeIds);
   }
-
-  /**
-   * @deprecated See https://bugzilla.mozilla.org/show_bug.cgi?id=1634127
-   *
-   * Download the record attachment into the local profile directory
-   * and return a file:// URL that points to the local path.
-   *
-   * No-op if the file was already downloaded and not corrupted.
-   *
-   * @param {Object} record A Remote Settings entry with attachment.
-   * @param {Object} options Some download options.
-   * @param {Number} options.retries Number of times download should be retried (default: `3`)
-   * @throws {Downloader.DownloadError} if the file could not be fetched.
-   * @throws {Downloader.BadContentError} if the downloaded file integrity is not valid.
-   * @throws {Downloader.ServerInfoError} if the server response is not valid.
-   * @throws {NetworkError} if fetching the attachment fails.
-   * @returns {String} the absolute file path to the downloaded attachment.
-   */
-  async downloadToDisk(record, options = {}) {
-    const { retries = 3 } = options;
-    const {
-      attachment: { filename, size, hash },
-    } = record;
-    const localFilePath = PathUtils.join(
-      PathUtils.localProfileDir,
-      ...this.folders,
-      filename
-    );
-    const localFileUrl = PathUtils.toFileURI(localFilePath);
-
-    await this._makeDirs();
-
-    let retried = 0;
-    while (true) {
-      if (
-        await lazy.RemoteSettingsWorker.checkFileHash(localFileUrl, size, hash)
-      ) {
-        return localFileUrl;
-      }
-      // File does not exist or is corrupted.
-      if (retried > retries) {
-        throw new Downloader.BadContentError(localFilePath);
-      }
-      try {
-        // Download and write on disk.
-        const buffer = await this.downloadAsBytes(record, {
-          checkHash: false, // Hash will be checked on file.
-          retries: 0, // Already in a retry loop.
-        });
-        await IOUtils.write(localFilePath, new Uint8Array(buffer), {
-          tmpPath: `${localFilePath}.tmp`,
-        });
-      } catch (e) {
-        if (retried >= retries) {
-          throw e;
-        }
-      }
-      retried++;
-    }
-  }
-
   /**
    * Download the record attachment and return its content as bytes.
    *
@@ -444,7 +515,14 @@ export class Downloader {
       attachment: { location, hash, size },
     } = record;
 
-    const remoteFileUrl = (await this._baseAttachmentsURL()) + location;
+    let baseURL;
+    try {
+      baseURL = await lazy.Utils.baseAttachmentsURL();
+    } catch (error) {
+      throw new Downloader.ServerInfoError(error);
+    }
+
+    const remoteFileUrl = baseURL + location;
 
     const { retries = 3, checkHash = true } = options;
     let retried = 0;
@@ -468,53 +546,6 @@ export class Downloader {
       }
       retried++;
     }
-  }
-
-  /**
-   * @deprecated See https://bugzilla.mozilla.org/show_bug.cgi?id=1634127
-   *
-   * Delete the record attachment downloaded locally.
-   * This is the counterpart of `downloadToDisk()`.
-   * Use `deleteDownloaded()` if `download()` was used to retrieve
-   * the attachment.
-   *
-   * No-op if the related file does not exist.
-   *
-   * @param record A Remote Settings entry with attachment.
-   */
-  async deleteFromDisk(record) {
-    const {
-      attachment: { filename },
-    } = record;
-    const path = PathUtils.join(
-      PathUtils.localProfileDir,
-      ...this.folders,
-      filename
-    );
-    await IOUtils.remove(path);
-    await this._rmDirs();
-  }
-
-  async _baseAttachmentsURL() {
-    if (!this._cdnURLs[lazy.Utils.SERVER_URL]) {
-      const resp = await lazy.Utils.fetch(`${lazy.Utils.SERVER_URL}/`);
-      let serverInfo;
-      try {
-        serverInfo = await resp.json();
-      } catch (error) {
-        throw new Downloader.ServerInfoError(error);
-      }
-      // Server capabilities expose attachments configuration.
-      const {
-        capabilities: {
-          attachments: { base_url },
-        },
-      } = serverInfo;
-      // Make sure the URL always has a trailing slash.
-      this._cdnURLs[lazy.Utils.SERVER_URL] =
-        base_url + (base_url.endsWith("/") ? "" : "/");
-    }
-    return this._cdnURLs[lazy.Utils.SERVER_URL];
   }
 
   async _fetchAttachment(url) {
@@ -571,25 +602,22 @@ export class Downloader {
 
   // Separate variable to allow tests to override this.
   static _RESOURCE_BASE_URL = "resource://app/defaults";
+}
 
-  async _makeDirs() {
-    const dirPath = PathUtils.join(PathUtils.localProfileDir, ...this.folders);
-    await IOUtils.makeDirectory(dirPath, { createAncestors: true });
-  }
-
-  async _rmDirs() {
-    for (let i = this.folders.length; i > 0; i--) {
-      const dirPath = PathUtils.join(
-        PathUtils.localProfileDir,
-        ...this.folders.slice(0, i)
-      );
-      try {
-        await IOUtils.remove(dirPath);
-      } catch (e) {
-        // This could fail if there's something in
-        // the folder we're not permitted to remove.
-        break;
-      }
-    }
+/**
+ * A bare downloader that does not store anything in cache.
+ */
+export class UnstoredDownloader extends Downloader {
+  get cacheImpl() {
+    const cacheImpl = {
+      get: async () => {},
+      set: async () => {},
+      setMultiple: async () => {},
+      delete: async () => {},
+      prune: async () => {},
+      hasData: async () => false,
+    };
+    Object.defineProperty(this, "cacheImpl", { value: cacheImpl });
+    return cacheImpl;
   }
 }

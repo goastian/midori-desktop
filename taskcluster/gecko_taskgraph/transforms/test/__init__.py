@@ -17,7 +17,6 @@ what should run where. this is the wrong place for special-casing platforms,
 for example - use `all_tests.py` instead.
 """
 
-
 import logging
 from importlib import import_module
 
@@ -28,6 +27,7 @@ from voluptuous import Any, Exclusive, Optional, Required
 
 from gecko_taskgraph.optimize.schema import OptimizationSchema
 from gecko_taskgraph.transforms.job import job_description_schema
+from gecko_taskgraph.transforms.job.run_task import run_task_schema
 from gecko_taskgraph.transforms.test.other import get_mobile_project
 from gecko_taskgraph.util.chunking import manifest_loaders
 
@@ -121,7 +121,14 @@ test_description_schema = Schema(
         Required("instance-size"): optionally_keyed_by(
             "test-platform",
             "variant",
-            Any("default", "large", "large-noscratch", "xlarge", "xlarge-noscratch"),
+            Any(
+                "default",
+                "large",
+                "large-noscratch",
+                "xlarge",
+                "xlarge-noscratch",
+                "large-dw",
+            ),
         ),
         # type of virtualization or hardware required by test.
         Required("virtualization"): optionally_keyed_by(
@@ -174,7 +181,9 @@ test_description_schema = Schema(
             Optional("actions"): [str],
             # additional command-line options for mozharness, beyond those
             # automatically added
-            Required("extra-options"): optionally_keyed_by("test-platform", [str]),
+            Required("extra-options"): optionally_keyed_by(
+                "test-platform", "variant", "subtest", "app", [str]
+            ),
             # the artifact name (including path) to test on the build task; this is
             # generally set in a per-kind transformation
             Optional("build-artifact-name"): str,
@@ -258,7 +267,7 @@ test_description_schema = Schema(
         ): optionally_keyed_by("release-type", "test-platform", bool),
         # The target name, specifying the build artifact to be tested.
         # If None or not specified, a transform sets the target based on OS:
-        # target.dmg (Mac), target.apk (Android), target.tar.bz2 (Linux),
+        # target.dmg (Mac), target.apk (Android), target.tar.xz (Linux),
         # or target.zip (Windows).
         Optional("target"): optionally_keyed_by(
             "app",
@@ -287,6 +296,10 @@ test_description_schema = Schema(
         Optional("supports-artifact-builds"): bool,
         # Version of python used to run the task
         Optional("use-python"): job_description_schema["use-python"],
+        # Cache mounts / volumes to set up
+        Optional("use-caches"): optionally_keyed_by(
+            "test-platform", run_task_schema["use-caches"]
+        ),
     }
 )
 
@@ -298,7 +311,6 @@ def handle_keyed_by_mozharness(config, tasks):
         "mozharness",
         "mozharness.chunked",
         "mozharness.config",
-        "mozharness.extra-options",
         "mozharness.script",
     ]
     for task in tasks:
@@ -355,6 +367,7 @@ def set_defaults(config, tasks):
         task.setdefault("variants", [])
         task.setdefault("supports-artifact-builds", True)
         task.setdefault("use-python", "system")
+        task.setdefault("use-caches", ["checkout", "pip", "uv"])
 
         task["mozharness"].setdefault("extra-options", [])
         task["mozharness"].setdefault("requires-signed-builds", False)
@@ -381,7 +394,13 @@ def run_variant_transforms(config, tasks):
 
 @transforms.add
 def resolve_keys(config, tasks):
-    keys = ("require-signed-extensions", "run-without-variant", "suite", "suite.name")
+    keys = (
+        "require-signed-extensions",
+        "run-without-variant",
+        "suite",
+        "suite.name",
+        "use-caches",
+    )
     for task in tasks:
         for key in keys:
             resolve_keyed_by(
@@ -407,9 +426,9 @@ def run_remaining_transforms(config, tasks):
         ("worker", None),
         ("confirm_failure", None),
         ("pernosco", lambda t: t["build-platform"].startswith("linux64")),
-        # These transforms should always run last as there is never any
-        # difference in configuration from one chunk to another (other than
-        # chunk number).
+        ("os_integration", None),
+        # These transforms should run last as there is never any difference in
+        # configuration from one chunk to another (other than chunk number).
         ("chunk", None),
     )
 
@@ -423,6 +442,19 @@ def run_remaining_transforms(config, tasks):
             xforms.add(mod.transforms)
 
         yield from xforms(config, [task])
+
+
+@transforms.add
+def define_tags(config, tasks):
+    for task in tasks:
+        tags = task.setdefault("tags", {})
+        tags.setdefault("test-suite", task["suite"])
+        tags.setdefault("test-platform", task["test-platform"])
+        variant = task.get("attributes", {}).get("unittest_variant")
+        if variant:
+            tags.setdefault("test-variant", variant)
+
+        yield task
 
 
 @transforms.add

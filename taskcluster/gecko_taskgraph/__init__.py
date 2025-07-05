@@ -13,12 +13,6 @@ from gecko_taskgraph.config import graph_config_schema
 
 GECKO = os.path.normpath(os.path.realpath(os.path.join(__file__, "..", "..", "..")))
 
-# Maximum number of dependencies a single task can have
-# https://firefox-ci-tc.services.mozilla.com/docs/reference/platform/queue/task-schema
-# specifies 100, but we also optionally add the decision task id as a dep in
-# taskgraph.create, so let's set this to 99.
-MAX_DEPENDENCIES = 99
-
 # Overwrite Taskgraph's default graph_config_schema with a custom one.
 taskgraph_config.graph_config_schema = graph_config_schema
 
@@ -61,15 +55,19 @@ def register(graph_config):
 
     del registry["skip-unless-changed"]
 
-    from gecko_taskgraph import (  # noqa: trigger target task method registration
-        morph,  # noqa: trigger morph registration
+    from gecko_taskgraph import (  # noqa
+        # trigger target task method registration
+        morph,  # noqa
+        filter_tasks,
         target_tasks,
     )
 
     android_taskgraph.register(graph_config)
 
     from gecko_taskgraph.parameters import register_parameters
-    from gecko_taskgraph.util import dependencies  # noqa: trigger group_by registration
+
+    # trigger group_by registration
+    from gecko_taskgraph.util import dependencies  # noqa
     from gecko_taskgraph.util.verify import verifications
 
     # Don't use the upstream verifications, and replace them with our own.

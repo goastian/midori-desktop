@@ -18,11 +18,11 @@ import mozilla.components.lib.state.ext.observeAsComposableState
 import mozilla.components.support.locale.LocaleUseCases
 import org.mozilla.focus.R
 import org.mozilla.focus.ext.components
-import org.mozilla.focus.ext.requireComponents
 import org.mozilla.focus.settings.BaseComposeFragment
-import org.mozilla.focus.state.AppAction
-import org.mozilla.focus.state.Screen
 
+/**
+ * A [BaseComposeFragment] responsible for displaying and managing the language selection screen.
+ */
 class LanguageFragment : BaseComposeFragment() {
     private lateinit var browserStore: BrowserStore
     private lateinit var localeUseCases: LocaleUseCases
@@ -39,6 +39,7 @@ class LanguageFragment : BaseComposeFragment() {
                 LanguageMiddleware(
                     activity = requireActivity(),
                     localeUseCase = localeUseCases,
+                    storage = LanguageStorage(requireContext()),
                 ),
             ),
         )
@@ -49,14 +50,6 @@ class LanguageFragment : BaseComposeFragment() {
 
     override val titleRes: Int
         get() = R.string.preference_language
-
-    override fun onNavigateUp(): () -> Unit {
-        return {
-            requireComponents.appStore.dispatch(
-                AppAction.OpenSettings(Screen.Settings.Page.General),
-            )
-        }
-    }
 
     @Composable
     override fun Content() {

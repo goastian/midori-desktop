@@ -3,7 +3,7 @@ set -x -e -v
 
 export TARGET_TRIPLE="x86_64-apple-darwin"
 
-MACOS_SYSROOT="${MOZ_FETCHES_DIR}/MacOSX14.4.sdk"
+MACOS_SYSROOT=$(ls -d $MOZ_FETCHES_DIR/MacOSX1*.sdk)
 CLANGDIR="${MOZ_FETCHES_DIR}/clang"
 
 # Deploy the wrench dependencies
@@ -58,3 +58,7 @@ export MOZ_CARGO_WRAP_LD="${CC}"
 export MOZ_CARGO_WRAP_LD_CXX="${CXX}"
 export MOZ_CARGO_WRAP_LDFLAGS="${TARGET_CFLAGS}"
 export CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER="${GECKO_PATH}/build/cargo-linker"
+
+# Ensure that any dependencies which use bindgen pass the correct
+# sysroot. Specificlly, this is needed to compile mozangle.
+export BINDGEN_EXTRA_CLANG_ARGS="--sysroot ${MACOS_SYSROOT}"

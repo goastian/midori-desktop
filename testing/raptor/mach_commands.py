@@ -34,7 +34,7 @@ class RaptorRunner(MozbuildObject):
         3. Run mozharness
         """
         # Validate that the user is using a supported python version before doing anything else
-        max_py_major, max_py_minor = 3, 11
+        max_py_major, max_py_minor = 3, 13
         sys_maj, sys_min = sys.version_info.major, sys.version_info.minor
         if sys_min > max_py_minor:
             raise PythonVersionException(
@@ -252,7 +252,7 @@ class RaptorRunner(MozbuildObject):
             config_file = open(self.config_file_path, "w")
             config_file.write(json.dumps(self.config))
             config_file.close()
-        except IOError as e:
+        except OSError as e:
             err_str = "Error writing to Raptor Mozharness config file {0}:{1}"
             print(err_str.format(self.config_file_path, str(e)))
             raise e
@@ -269,7 +269,7 @@ class RaptorRunner(MozbuildObject):
 
 
 def setup_node(command_context):
-    """Fetch the latest node-18 binary and install it into the .mozbuild directory."""
+    """Fetch the latest node-22 binary and install it into the .mozbuild directory."""
     import platform
 
     from mozbuild.artifact_commands import artifact_toolchain
@@ -278,11 +278,11 @@ def setup_node(command_context):
 
     print("Setting up node for browsertime...")
     state_dir = get_state_dir()
-    cache_path = os.path.join(state_dir, "browsertime", "node-18")
+    cache_path = os.path.join(state_dir, "browsertime", "node-22")
 
     def __check_for_node():
         # Check standard locations first
-        node_exe = find_node_executable(min_version=Version("18.0.0"))
+        node_exe = find_node_executable(min_version=Version("22.0.0"))
         if node_exe and (node_exe[0] is not None):
             return node_exe[0]
         if not os.path.exists(cache_path):
@@ -295,14 +295,14 @@ def setup_node(command_context):
             node_exe_path = os.path.join(
                 state_dir,
                 "browsertime",
-                "node-18",
+                "node-22",
                 "node",
             )
         else:
             node_exe_path = os.path.join(
                 state_dir,
                 "browsertime",
-                "node-18",
+                "node-22",
                 "node",
                 "bin",
             )
@@ -315,7 +315,7 @@ def setup_node(command_context):
 
     node_exe = __check_for_node()
     if node_exe is None:
-        toolchain_job = "{}-node-18"
+        toolchain_job = "{}-node-22"
         plat = platform.system()
         if plat == "Windows":
             toolchain_job = toolchain_job.format("win64")
@@ -327,11 +327,7 @@ def setup_node(command_context):
         else:
             toolchain_job = toolchain_job.format("linux64")
 
-        print(
-            "Downloading Node v18 from Taskcluster toolchain {}...".format(
-                toolchain_job
-            )
-        )
+        print(f"Downloading Node 22 from Taskcluster toolchain {toolchain_job}...")
 
         if not os.path.exists(cache_path):
             os.makedirs(cache_path, exist_ok=True)
@@ -353,11 +349,11 @@ def setup_node(command_context):
 
         node_exe = __check_for_node()
         if node_exe is None:
-            raise Exception("Could not find Node v18 binary for Raptor-Browsertime")
+            raise Exception("Could not find Node v22 binary for Raptor-Browsertime")
 
-        print("Finished downloading Node v18 from Taskcluster")
+        print("Finished downloading Node v22 from Taskcluster")
 
-    print("Node v18+ found at: %s" % node_exe)
+    print("Node v22+ found at: %s" % node_exe)
     return node_exe
 
 
@@ -389,7 +385,7 @@ def run_raptor(command_context, **kwargs):
         )
 
         install = (
-            InstallIntent.NO if kwargs.pop("noinstall", False) else InstallIntent.YES
+            InstallIntent.NO if kwargs.pop("no_install", False) else InstallIntent.YES
         )
         verbose = False
         if (

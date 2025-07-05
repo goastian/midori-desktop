@@ -25,15 +25,14 @@ use std::ops::Add;
 use style_traits::values::specified::AllowedNumericType;
 use style_traits::{CssWriter, ParseError, SpecifiedValueInfo, StyleParseErrorKind, ToCss};
 
-#[cfg(feature = "gecko")]
 pub use self::align::{AlignContent, AlignItems, AlignSelf, ContentDistribution};
-#[cfg(feature = "gecko")]
 pub use self::align::{JustifyContent, JustifyItems, JustifySelf, SelfAlignment};
 pub use self::angle::{AllowUnitlessZeroAngle, Angle};
 pub use self::animation::{
-    AnimationComposition, AnimationDirection, AnimationFillMode, AnimationIterationCount,
-    AnimationName, AnimationPlayState, AnimationTimeline, ScrollAxis, ScrollTimelineName,
-    TransitionBehavior, TransitionProperty, ViewTimelineInset,
+    AnimationComposition, AnimationDirection, AnimationDuration, AnimationFillMode,
+    AnimationIterationCount, AnimationName, AnimationPlayState, AnimationTimeline, ScrollAxis,
+    TimelineName, TransitionBehavior, TransitionProperty, ViewTimelineInset, ViewTransitionClass,
+    ViewTransitionName,
 };
 pub use self::background::{BackgroundRepeat, BackgroundSize};
 pub use self::basic_shape::FillRule;
@@ -44,9 +43,10 @@ pub use self::border::{
 pub use self::box_::{
     Appearance, BaselineSource, BreakBetween, BreakWithin, Clear, Contain, ContainIntrinsicSize,
     ContainerName, ContainerType, ContentVisibility, Display, Float, LineClamp, Overflow,
-    OverflowAnchor, OverflowClipBox, OverscrollBehavior, Perspective, Resize, ScrollSnapAlign,
-    ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType, ScrollbarGutter,
-    TouchAction, VerticalAlign, WillChange, Zoom,
+    OverflowAnchor, OverflowClipBox, OverscrollBehavior, Perspective, PositionProperty, Resize,
+    ScrollSnapAlign, ScrollSnapAxis, ScrollSnapStop, ScrollSnapStrictness, ScrollSnapType,
+    ScrollbarGutter, TouchAction, VerticalAlign, WillChange, WillChangeBits, WritingModeProperty,
+    Zoom,
 };
 pub use self::color::{
     Color, ColorOrAuto, ColorPropertyValue, ColorScheme, ForcedColorAdjust, PrintColorAdjust,
@@ -59,16 +59,16 @@ pub use self::flex::FlexBasis;
 pub use self::font::{FontFamily, FontLanguageOverride, FontPalette, FontStyle};
 pub use self::font::{FontFeatureSettings, FontVariantLigatures, FontVariantNumeric};
 pub use self::font::{
-    FontSize, FontSizeAdjust, FontSizeAdjustFactor, FontSizeKeyword, FontStretch, FontSynthesis,
+    FontSize, FontSizeAdjust, FontSizeAdjustFactor, FontSizeKeyword, FontStretch, FontSynthesis, FontSynthesisStyle,
 };
 pub use self::font::{FontVariantAlternates, FontWeight};
 pub use self::font::{FontVariantEastAsian, FontVariationSettings, LineHeight};
 pub use self::font::{MathDepth, MozScriptMinSize, MozScriptSizeMultiplier, XLang, XTextScale};
 pub use self::image::{EndingShape as GradientEndingShape, Gradient, Image, ImageRendering};
-pub use self::length::{AbsoluteLength, CalcLengthPercentage, CharacterWidth};
+pub use self::length::{AbsoluteLength, AnchorSizeFunction, CalcLengthPercentage, CharacterWidth};
 pub use self::length::{FontRelativeLength, Length, LengthOrNumber, NonNegativeLengthOrNumber};
 pub use self::length::{LengthOrAuto, LengthPercentage, LengthPercentageOrAuto};
-pub use self::length::{MaxSize, Size};
+pub use self::length::{Margin, MaxSize, Size};
 pub use self::length::{NoCalcLength, ViewportPercentageLength, ViewportVariant};
 pub use self::length::{
     NonNegativeLength, NonNegativeLengthPercentage, NonNegativeLengthPercentageOrAuto,
@@ -80,25 +80,27 @@ pub use self::motion::{OffsetPath, OffsetPosition, OffsetRotate};
 pub use self::outline::OutlineStyle;
 pub use self::page::{PageName, PageOrientation, PageSize, PageSizeOrientation, PaperSize};
 pub use self::percentage::{NonNegativePercentage, Percentage};
+pub use self::position::AnchorFunction;
 pub use self::position::AnchorName;
 pub use self::position::AnchorScope;
 pub use self::position::AspectRatio;
+pub use self::position::Inset;
 pub use self::position::PositionAnchor;
-pub use self::position::PositionTryOptions;
+pub use self::position::PositionTryFallbacks;
 pub use self::position::PositionTryOrder;
 pub use self::position::PositionVisibility;
 pub use self::position::{GridAutoFlow, GridTemplateAreas, Position, PositionOrAuto};
-pub use self::position::{InsetArea, InsetAreaKeyword};
 pub use self::position::{MasonryAutoFlow, MasonryItemOrder, MasonryPlacement};
+pub use self::position::{PositionArea, PositionAreaKeyword};
 pub use self::position::{PositionComponent, ZIndex};
 pub use self::ratio::Ratio;
 pub use self::rect::NonNegativeLengthOrNumberRect;
 pub use self::resolution::Resolution;
 pub use self::svg::{DProperty, MozContextProperties};
 pub use self::svg::{SVGLength, SVGOpacity, SVGPaint};
-pub use self::svg::{SVGPaintOrder, SVGStrokeDashArray, SVGWidth};
+pub use self::svg::{SVGPaintOrder, SVGStrokeDashArray, SVGWidth, VectorEffect};
 pub use self::svg_path::SVGPathData;
-pub use self::text::HyphenateCharacter;
+pub use self::text::{HyphenateCharacter, HyphenateLimitChars};
 pub use self::text::RubyPosition;
 pub use self::text::TextAlignLast;
 pub use self::text::TextUnderlinePosition;
@@ -111,10 +113,12 @@ pub use self::transform::{Rotate, Scale, Transform};
 pub use self::transform::{TransformBox, TransformOrigin, TransformStyle, Translate};
 #[cfg(feature = "gecko")]
 pub use self::ui::CursorImage;
-pub use self::ui::{BoolInteger, Cursor, UserSelect};
+pub use self::ui::{
+    BoolInteger, Cursor, Inert, MozTheme, PointerEvents, ScrollbarColor, UserFocus, UserInput,
+    UserSelect,
+};
 pub use super::generics::grid::GridTemplateComponent as GenericGridTemplateComponent;
 
-#[cfg(feature = "gecko")]
 pub mod align;
 pub mod angle;
 pub mod animation;
@@ -131,10 +135,9 @@ pub mod easing;
 pub mod effects;
 pub mod flex;
 pub mod font;
-#[cfg(feature = "gecko")]
-pub mod gecko;
 pub mod grid;
 pub mod image;
+pub mod intersection_observer;
 pub mod length;
 pub mod list;
 pub mod motion;
@@ -587,13 +590,17 @@ impl ToComputedValue for Opacity {
     }
 }
 
-/// A specified `<integer>`, optionally coming from a `calc()` expression.
+/// A specified `<integer>`, either a simple integer value or a calc expression.
+/// Note that a calc expression may not actually be an integer; it will be rounded
+/// at computed-value time.
 ///
 /// <https://drafts.csswg.org/css-values/#integers>
-#[derive(Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, PartialOrd, ToShmem)]
-pub struct Integer {
-    value: CSSInteger,
-    was_calc: bool,
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, PartialOrd, ToShmem)]
+pub enum Integer {
+    /// A literal integer value.
+    Literal(CSSInteger),
+    /// A calc expression, whose value will be rounded later if necessary.
+    Calc(CSSFloat),
 }
 
 impl Zero for Integer {
@@ -604,7 +611,7 @@ impl Zero for Integer {
 
     #[inline]
     fn is_zero(&self) -> bool {
-        self.value() == 0
+        *self == 0
     }
 }
 
@@ -616,7 +623,7 @@ impl One for Integer {
 
     #[inline]
     fn is_one(&self) -> bool {
-        self.value() == 1
+        *self == 1
     }
 }
 
@@ -629,23 +636,20 @@ impl PartialEq<i32> for Integer {
 impl Integer {
     /// Trivially constructs a new `Integer` value.
     pub fn new(val: CSSInteger) -> Self {
-        Integer {
-            value: val,
-            was_calc: false,
-        }
+        Self::Literal(val)
     }
 
-    /// Returns the integer value associated with this value.
+    /// Returns the (rounded) integer value associated with this value.
     pub fn value(&self) -> CSSInteger {
-        self.value
+        match *self {
+            Self::Literal(i) => i,
+            Self::Calc(n) => (n + 0.5).floor() as CSSInteger,
+        }
     }
 
     /// Trivially constructs a new integer value from a `calc()` expression.
-    fn from_calc(val: CSSInteger) -> Self {
-        Integer {
-            value: val,
-            was_calc: true,
-        }
+    fn from_calc(val: CSSFloat) -> Self {
+        Self::Calc(val)
     }
 }
 
@@ -661,7 +665,7 @@ impl Parse for Integer {
             } => Ok(Integer::new(v)),
             Token::Function(ref name) => {
                 let function = CalcNode::math_function(context, name, location)?;
-                let result = CalcNode::parse_integer(context, input, function)?;
+                let result = CalcNode::parse_number(context, input, function)?;
                 Ok(Integer::from_calc(result))
             },
             ref t => Err(location.new_unexpected_token_error(t.clone())),
@@ -710,7 +714,7 @@ impl ToComputedValue for Integer {
 
     #[inline]
     fn to_computed_value(&self, _: &Context) -> i32 {
-        self.value
+        self.value()
     }
 
     #[inline]
@@ -724,14 +728,14 @@ impl ToCss for Integer {
     where
         W: Write,
     {
-        if self.was_calc {
-            dest.write_str("calc(")?;
+        match *self {
+            Integer::Literal(i) => i.to_css(dest),
+            Integer::Calc(n) => {
+                dest.write_str("calc(")?;
+                n.to_css(dest)?;
+                dest.write_char(')')
+            }
         }
-        self.value.to_css(dest)?;
-        if self.was_calc {
-            dest.write_char(')')?;
-        }
-        Ok(())
     }
 }
 

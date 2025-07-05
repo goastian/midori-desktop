@@ -20,7 +20,7 @@ from .string_version import StringVersion
 _os = os
 
 
-class unknown(object):
+class unknown:
     """marker class for unknown information"""
 
     # pylint: disable=W1629
@@ -46,6 +46,7 @@ info = {
     "bits": unknown,
     "has_sandbox": unknown,
     "display": None,
+    "android_version": "",
     "automation": bool(os.environ.get("MOZ_AUTOMATION", False)),
 }
 (system, node, release, version, machine, processor) = platform.uname()
@@ -54,12 +55,9 @@ info = {
 # get os information and related data
 if system in ["Microsoft", "Windows"]:
     info["os"] = "win"
-    # There is a Python bug on Windows to determine platform values
-    # http://bugs.python.org/issue7860
-    if "PROCESSOR_ARCHITEW6432" in os.environ:
-        processor = os.environ.get("PROCESSOR_ARCHITEW6432", processor)
-    else:
-        processor = os.environ.get("PROCESSOR_ARCHITECTURE", processor)
+    # uname().processor on Windows gives the full CPU name but
+    # mozinfo.processor is only about CPU architecture
+    processor = machine
     system = os.environ.get("OS", system).replace("_", " ")
     (major, minor, build_number, _, _) = os.sys.getwindowsversion()
     version = "%d.%d.%d" % (major, minor, build_number)
@@ -107,7 +105,7 @@ elif system == "Linux":
     info["os"] = "linux"
     info["linux_distro"] = distribution
 elif system in ["DragonFly", "FreeBSD", "NetBSD", "OpenBSD"]:
-    info["os"] = "bsd"
+    info["os"] = "bsd"  # community builds
     version = os_version = sys.platform
 elif system == "Darwin":
     (release, versioninfo, machine) = platform.mac_ver()
@@ -116,7 +114,7 @@ elif system == "Darwin":
     os_version = "%s.%s" % (versionNums[0], versionNums[1].ljust(2, "0"))
     info["os"] = "mac"
 elif sys.platform in ("solaris", "sunos5"):
-    info["os"] = "unix"
+    info["os"] = "unix"  # community builds
     os_version = version = sys.platform
 else:
     os_version = version = unknown
@@ -146,7 +144,6 @@ info["version"] = version
 info["os_version"] = StringVersion(os_version)
 info["is_ubuntu"] = "Ubuntu" in version
 
-
 # processor type and bits
 if processor in ["i386", "i686"]:
     if bits == "32bit":
@@ -159,8 +156,6 @@ elif processor.upper() == "AMD64":
 elif processor.upper() == "ARM64":
     bits = "64bit"
     processor = "aarch64"
-elif processor == "Power Macintosh":
-    processor = "ppc"
 elif processor == "arm" and bits == "64bit":
     processor = "aarch64"
 
@@ -191,9 +186,9 @@ else:
 
 # standard value of choices, for easy inspection
 choices = {
-    "os": ["linux", "bsd", "win", "mac", "unix"],
+    "os": ["linux", "win", "mac"],
     "bits": [32, 64],
-    "processor": ["x86", "x86_64", "ppc"],
+    "processor": ["x86", "x86_64", "aarch64"],
 }
 
 
@@ -239,9 +234,6 @@ def update(new_info):
     # convenience data for os access
     for os_name in choices["os"]:
         globals()["is" + os_name.title()] = info["os"] == os_name
-    # unix is special
-    if isLinux or isBsd:  # noqa
-        globals()["isUnix"] = True
 
 
 def find_and_update_from_json(*dirs, **kwargs):
@@ -293,7 +285,7 @@ def find_and_update_from_json(*dirs, **kwargs):
     # by default, exceptions are suppressed. Set this to True if otherwise
     # desired.
     if kwargs.get("raise_exception", False):
-        raise IOError("mozinfo.json could not be found.")
+        raise OSError("mozinfo.json could not be found.")
     return None
 
 

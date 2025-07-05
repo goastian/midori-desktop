@@ -7,6 +7,8 @@
 #[cfg(feature = "gecko")]
 use crate::counter_style::{CounterStyle, CounterStyleParsingFlags};
 use crate::parser::{Parse, ParserContext};
+#[cfg(feature = "servo")]
+use crate::properties::longhands::list_style_type::SpecifiedValue as ListStyleType;
 use cssparser::{Parser, Token};
 use style_traits::{ParseError, StyleParseErrorKind};
 
@@ -81,6 +83,21 @@ impl Parse for ListStyleType {
     ) -> Result<Self, ParseError<'i>> {
         let flags = CounterStyleParsingFlags::ALLOW_NONE | CounterStyleParsingFlags::ALLOW_STRING;
         Ok(Self(CounterStyle::parse(context, input, flags)?))
+    }
+}
+
+#[cfg(feature = "servo")]
+impl ListStyleType {
+    /// Initial specified value for `list-style-type`.
+    #[inline]
+    pub fn disc() -> Self {
+        Self::Disc
+    }
+
+    /// none value.
+    #[inline]
+    pub fn none() -> Self {
+        Self::None
     }
 }
 

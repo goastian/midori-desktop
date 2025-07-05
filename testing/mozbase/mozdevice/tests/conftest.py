@@ -1,10 +1,10 @@
 import sys
+from io import StringIO
 from random import randint, seed
 from unittest.mock import patch
 
 import mozdevice
 import pytest
-from six import StringIO
 
 # set up required module-level variables/objects
 seed(1488590)
@@ -63,7 +63,7 @@ def mock_shell_output(monkeypatch):
     """
 
     def shell_output_wrapper(
-        object, cmd, env=None, cwd=None, timeout=None, enable_run_as=False
+        object, cmd, env=None, cwd=None, timeout=None, enable_run_as=False, attempts=3
     ):
         """Actual monkeypatch implementation of the shell_output method call.
 

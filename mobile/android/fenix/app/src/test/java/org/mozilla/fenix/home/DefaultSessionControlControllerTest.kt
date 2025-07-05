@@ -6,7 +6,9 @@ package org.mozilla.fenix.home
 
 import androidx.navigation.NavController
 import androidx.navigation.NavDirections
+import io.mockk.Runs
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.spyk
@@ -29,7 +31,7 @@ import mozilla.components.feature.session.SessionUseCases
 import mozilla.components.feature.tab.collections.TabCollection
 import mozilla.components.feature.tabs.TabsUseCases
 import mozilla.components.feature.top.sites.TopSite
-import mozilla.components.service.glean.testing.GleanTestRule
+import mozilla.components.feature.top.sites.TopSitesUseCases
 import mozilla.components.service.nimbus.messaging.Message
 import mozilla.components.support.test.ext.joinBlocking
 import mozilla.components.support.test.robolectric.testContext
@@ -57,18 +59,23 @@ import org.mozilla.fenix.browser.browsingmode.BrowsingMode
 import org.mozilla.fenix.components.Analytics
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.TabCollectionStorage
+import org.mozilla.fenix.components.accounts.FenixFxAEntryPoint
 import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.components.appstate.AppState
+import org.mozilla.fenix.components.appstate.setup.checklist.ChecklistItem
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.settings
+import org.mozilla.fenix.helpers.FenixGleanTestRule
 import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.home.bookmarks.Bookmark
+import org.mozilla.fenix.home.mars.MARSUseCases
 import org.mozilla.fenix.home.recenttabs.RecentTab
 import org.mozilla.fenix.home.sessioncontrol.DefaultSessionControlController
 import org.mozilla.fenix.messaging.MessageController
 import org.mozilla.fenix.onboarding.WallpaperOnboardingDialogFragment.Companion.THUMBNAILS_SELECTION_COUNT
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.utils.Settings
+import org.mozilla.fenix.utils.maybeShowAddSearchWidgetPrompt
 import org.mozilla.fenix.wallpapers.Wallpaper
 import org.mozilla.fenix.wallpapers.WallpaperState
 import java.io.File
@@ -81,7 +88,7 @@ class DefaultSessionControlControllerTest {
     val coroutinesTestRule = MainCoroutineRule()
 
     @get:Rule
-    val gleanTestRule = GleanTestRule(testContext)
+    val gleanTestRule = FenixGleanTestRule(testContext)
 
     private val activity: HomeActivity = mockk(relaxed = true)
     private val filesDir: File = mockk(relaxed = true)
@@ -93,6 +100,8 @@ class DefaultSessionControlControllerTest {
     private val tabsUseCases: TabsUseCases = mockk(relaxed = true)
     private val reloadUrlUseCase: SessionUseCases = mockk(relaxed = true)
     private val selectTabUseCase: TabsUseCases = mockk(relaxed = true)
+    private val topSitesUseCases: TopSitesUseCases = mockk(relaxed = true)
+    private val marsUseCases: MARSUseCases = mockk(relaxed = true)
     private val settings: Settings = mockk(relaxed = true)
     private val analytics: Analytics = mockk(relaxed = true)
     private val scope = coroutinesTestRule.scope
@@ -303,7 +312,7 @@ class DefaultSessionControlControllerTest {
 
     @Test
     fun `handleCollectionRemoveTab one tab`() {
-        val tab = mockk<ComponentTab> ()
+        val tab = mockk<ComponentTab>()
 
         val expectedCollection = mockk<TabCollection> {
             every { id } returns 123L
@@ -465,6 +474,30 @@ class DefaultSessionControlControllerTest {
     }
 
     @Test
+    fun `GIVEN homepage as a new tab is enabled WHEN Default TopSite is selected THEN open top site in existing tab`() {
+        val topSite = TopSite.Default(
+            id = 1L,
+            title = "Mozilla",
+            url = "mozilla.org",
+            createdAt = 0,
+        )
+        val controller = spyk(createController())
+
+        every { controller.getAvailableSearchEngines() } returns listOf(searchEngine)
+        every { settings.enableHomepageAsNewTab } returns true
+
+        controller.handleSelectTopSite(topSite, position = 0)
+
+        verify {
+            activity.openToBrowserAndLoad(
+                searchTermOrURL = topSite.url,
+                newTab = false,
+                from = BrowserDirection.FromHome,
+            )
+        }
+    }
+
+    @Test
     fun `GIVEN existing tab for url WHEN Default TopSite selected THEN open new tab`() {
         val url = "mozilla.org"
         val existingTabForUrl = createTab(url = url)
@@ -553,7 +586,7 @@ class DefaultSessionControlControllerTest {
                 startLoading = true,
             )
         }
-        verify { controller.submitTopSitesImpressionPing(topSite, position) }
+        verify { controller.recordTopSitesClickTelemetry(topSite, position) }
         verify { navController.navigate(R.id.browserFragment) }
     }
 
@@ -959,7 +992,7 @@ class DefaultSessionControlControllerTest {
                 startLoading = true,
             )
         }
-        verify { controller.submitTopSitesImpressionPing(topSite, position) }
+        verify { controller.recordTopSitesClickTelemetry(topSite, position) }
         verify { navController.navigate(R.id.browserFragment) }
     }
 
@@ -992,7 +1025,7 @@ class DefaultSessionControlControllerTest {
             topSiteImpressionPinged = true
         }
 
-        controller.submitTopSitesImpressionPing(topSite, position)
+        controller.recordTopSitesClickTelemetry(topSite, position)
 
         assertNotNull(TopSites.contileClick.testGetValue())
 
@@ -1005,6 +1038,137 @@ class DefaultSessionControlControllerTest {
         assertEquals("newtab", event[0].extra!!["source"])
 
         assertTrue(topSiteImpressionPinged)
+    }
+
+    @Test
+    fun `GIVEN MARS API integration is enabled WHEN the provided top site is clicked THEN send a click callback request`() {
+        val controller = spyk(createController())
+        val topSite = TopSite.Provided(
+            id = 3,
+            title = "Mozilla",
+            url = "https://mozilla.com",
+            clickUrl = "https://mozilla.com/click",
+            imageUrl = "https://test.com/image2.jpg",
+            impressionUrl = "https://mozilla.com/impression",
+            createdAt = 3,
+        )
+        val position = 0
+
+        every { controller.getAvailableSearchEngines() } returns listOf(searchEngine)
+        every { settings.marsAPIEnabled } returns true
+
+        assertNull(TopSites.contileImpression.testGetValue())
+
+        var topSiteImpressionPinged = false
+        Pings.topsitesImpression.testBeforeNextSubmit {
+            assertEquals(3L, TopSites.contileTileId.testGetValue())
+            assertEquals("mozilla", TopSites.contileAdvertiser.testGetValue())
+            assertNull(TopSites.contileReportingUrl.testGetValue())
+
+            topSiteImpressionPinged = true
+        }
+
+        controller.handleSelectTopSite(topSite, position)
+
+        verify { marsUseCases.recordInteraction(topSite.clickUrl) }
+
+        val event = TopSites.contileClick.testGetValue()!!
+
+        assertEquals(1, event.size)
+        assertEquals("top_sites", event[0].category)
+        assertEquals("contile_click", event[0].name)
+        assertEquals("1", event[0].extra!!["position"])
+        assertEquals("newtab", event[0].extra!!["source"])
+
+        assertTrue(topSiteImpressionPinged)
+    }
+
+    @Test
+    fun `GIVEN MARS API integration is enabled WHEN the provided top site is seen THEN send a impression callback request`() {
+        val controller = spyk(createController())
+        val topSite = TopSite.Provided(
+            id = 3,
+            title = "Mozilla",
+            url = "https://mozilla.com",
+            clickUrl = "https://mozilla.com/click",
+            imageUrl = "https://test.com/image2.jpg",
+            impressionUrl = "https://mozilla.com/impression",
+            createdAt = 3,
+        )
+        val position = 0
+
+        every { controller.getAvailableSearchEngines() } returns listOf(searchEngine)
+        every { settings.marsAPIEnabled } returns true
+
+        assertNull(TopSites.contileImpression.testGetValue())
+
+        var topSiteImpressionSubmitted = false
+        Pings.topsitesImpression.testBeforeNextSubmit {
+            assertEquals(3L, TopSites.contileTileId.testGetValue())
+            assertEquals("mozilla", TopSites.contileAdvertiser.testGetValue())
+            assertNull(TopSites.contileReportingUrl.testGetValue())
+
+            topSiteImpressionSubmitted = true
+        }
+
+        controller.handleTopSiteImpression(topSite, position)
+
+        verify { marsUseCases.recordInteraction(topSite.impressionUrl) }
+
+        val event = TopSites.contileImpression.testGetValue()!!
+
+        assertEquals(1, event.size)
+        assertEquals("top_sites", event[0].category)
+        assertEquals("contile_impression", event[0].name)
+        assertEquals("1", event[0].extra!!["position"])
+        assertEquals("newtab", event[0].extra!!["source"])
+
+        assertTrue(topSiteImpressionSubmitted)
+    }
+
+    @Test
+    fun `GIVEN a provided top site WHEN the provided top site has an impression THEN submit a top site impression ping`() {
+        val controller = spyk(createController())
+        val topSite = TopSite.Provided(
+            id = 3,
+            title = "Mozilla",
+            url = "https://mozilla.com",
+            clickUrl = "https://mozilla.com/click",
+            imageUrl = "https://test.com/image2.jpg",
+            impressionUrl = "https://example.com",
+            createdAt = 3,
+        )
+        val position = 0
+
+        assertNull(TopSites.contileImpression.testGetValue())
+
+        var topSiteImpressionSubmitted = false
+        Pings.topsitesImpression.testBeforeNextSubmit {
+            assertNotNull(TopSites.contileTileId.testGetValue())
+            assertEquals(3L, TopSites.contileTileId.testGetValue())
+
+            assertNotNull(TopSites.contileAdvertiser.testGetValue())
+            assertEquals("mozilla", TopSites.contileAdvertiser.testGetValue())
+
+            assertNotNull(TopSites.contileReportingUrl.testGetValue())
+            assertEquals(topSite.impressionUrl, TopSites.contileReportingUrl.testGetValue())
+
+            topSiteImpressionSubmitted = true
+        }
+
+        controller.handleTopSiteImpression(topSite, position)
+
+        assertNotNull(TopSites.contileImpression.testGetValue())
+
+        val event = TopSites.contileImpression.testGetValue()!!
+
+        assertEquals(1, event.size)
+        assertEquals("top_sites", event[0].category)
+        assertEquals("contile_impression", event[0].name)
+        assertEquals("1", event[0].extra!!["position"])
+        assertEquals("newtab", event[0].extra!!["source"])
+
+        assertTrue(topSiteImpressionSubmitted)
     }
 
     @Test
@@ -1050,6 +1214,46 @@ class DefaultSessionControlControllerTest {
 
         assertEquals(true, undoSnackbarCalled)
         assertEquals("Mozilla", undoSnackbarShownFor)
+    }
+
+    @Test
+    fun `WHEN the frecent top site is updated THEN add the frecent top site as a pinned top site`() {
+        val topSite = TopSite.Frecent(
+            id = 1L,
+            title = "Mozilla",
+            url = "mozilla.org",
+            createdAt = 0,
+        )
+
+        val controller = spyk(createController())
+        val title = "Firefox"
+        val url = "firefox.com"
+
+        controller.updateTopSite(topSite = topSite, title = title, url = url)
+
+        verify {
+            topSitesUseCases.addPinnedSites(title = title, url = url)
+        }
+    }
+
+    @Test
+    fun `WHEN the pinned top site is updated THEN update the pinned top site in storage`() {
+        val topSite = TopSite.Pinned(
+            id = 1L,
+            title = "Mozilla",
+            url = "mozilla.org",
+            createdAt = 0,
+        )
+
+        val controller = spyk(createController())
+        val title = "Firefox"
+        val url = "firefox.com"
+
+        controller.updateTopSite(topSite = topSite, title = title, url = url)
+
+        verify {
+            topSitesUseCases.updateTopSites(topSite = topSite, title = title, url = url)
+        }
     }
 
     @Test
@@ -1323,6 +1527,141 @@ class DefaultSessionControlControllerTest {
         }
     }
 
+    @Test
+    fun `GIVEN item is a group WHEN onChecklistItemClicked is called THEN dispatch checklist performs the expected actions`() {
+        val controller = createController()
+        val group = mockk<ChecklistItem.Group>()
+
+        controller.onChecklistItemClicked(group)
+
+        verify { appStore.dispatch(AppAction.SetupChecklistAction.ChecklistItemClicked(group)) }
+    }
+
+    @Test
+    fun `GIVEN item is a task WHEN onChecklistItemClicked is called THEN performs the expected actions`() {
+        every { activity.showSetDefaultBrowserPrompt() } just Runs
+        val controller = createController()
+        val task = mockk<ChecklistItem.Task>()
+        every { task.type } returns ChecklistItem.Task.Type.SET_AS_DEFAULT
+
+        controller.onChecklistItemClicked(task)
+
+        verify { activity.showSetDefaultBrowserPrompt() }
+        verify { appStore.dispatch(AppAction.SetupChecklistAction.ChecklistItemClicked(task)) }
+    }
+
+    @Test
+    fun `WHEN set as default task THEN navigationActionFor calls the set to default prompt`() {
+        val controller = createController()
+        val task = mockk<ChecklistItem.Task>()
+        every { activity.showSetDefaultBrowserPrompt() } just Runs
+        every { task.type } returns ChecklistItem.Task.Type.SET_AS_DEFAULT
+
+        controller.navigationActionFor(task)
+
+        verify { activity.showSetDefaultBrowserPrompt() }
+    }
+
+    @Test
+    fun `WHEN sign in task THEN navigationActionFor navigates to the expected fragment`() {
+        val controller = createController()
+        val task = mockk<ChecklistItem.Task>()
+        every { task.type } returns ChecklistItem.Task.Type.SIGN_IN
+        every { navController.currentDestination } returns mockk {
+            every { id } returns R.id.homeFragment
+        }
+
+        controller.navigationActionFor(task)
+
+        verify {
+            navController.navigate(
+                HomeFragmentDirections.actionGlobalTurnOnSync(FenixFxAEntryPoint.NewUserOnboarding),
+                null,
+            )
+        }
+    }
+
+    @Test
+    fun `WHEN select theme task THEN navigationActionFor navigates to the expected fragment`() {
+        val controller = createController()
+        val task = mockk<ChecklistItem.Task>()
+        every { task.type } returns ChecklistItem.Task.Type.SELECT_THEME
+        every { navController.currentDestination } returns mockk {
+            every { id } returns R.id.homeFragment
+        }
+
+        controller.navigationActionFor(task)
+
+        verify {
+            navController.navigate(
+                HomeFragmentDirections.actionGlobalCustomizationFragment(),
+                null,
+            )
+        }
+    }
+
+    @Test
+    fun `WHEN toolbar placement task THEN navigationActionFor navigates to the expected fragment`() {
+        val controller = createController()
+        val task = mockk<ChecklistItem.Task>()
+        every { task.type } returns ChecklistItem.Task.Type.CHANGE_TOOLBAR_PLACEMENT
+        every { navController.currentDestination } returns mockk {
+            every { id } returns R.id.homeFragment
+        }
+
+        controller.navigationActionFor(task)
+
+        verify {
+            navController.navigate(
+                HomeFragmentDirections.actionGlobalCustomizationFragment(),
+                null,
+            )
+        }
+    }
+
+    @Test
+    fun `WHEN install search widget task THEN navigationActionFor calls the add search widget prompt`() {
+        val controller = createController()
+        val task = mockk<ChecklistItem.Task>()
+        mockkStatic("org.mozilla.fenix.utils.AddSearchWidgetPromptKt")
+        every { maybeShowAddSearchWidgetPrompt(activity) } just Runs
+        every { task.type } returns ChecklistItem.Task.Type.INSTALL_SEARCH_WIDGET
+
+        controller.navigationActionFor(task)
+
+        verify {
+            maybeShowAddSearchWidgetPrompt(activity)
+        }
+    }
+
+    @Test
+    fun `WHEN extensions task THEN navigationActionFor navigates to the expected fragment`() {
+        val controller = createController()
+        val task = mockk<ChecklistItem.Task>()
+        every { task.type } returns ChecklistItem.Task.Type.EXPLORE_EXTENSION
+        every { navController.currentDestination } returns mockk {
+            every { id } returns R.id.homeFragment
+        }
+
+        controller.navigationActionFor(task)
+
+        verify {
+            navController.navigate(
+                HomeFragmentDirections.actionGlobalAddonsManagementFragment(),
+                null,
+            )
+        }
+    }
+
+    @Test
+    fun `WHEN on remove checklist button clicked THEN onRemoveChecklistButtonClicked dispatches the expected action to the app store `() {
+        val controller = createController()
+
+        controller.onRemoveChecklistButtonClicked()
+
+        verify { appStore.dispatch(AppAction.SetupChecklistAction.Closed) }
+    }
+
     private fun createController(
         registerCollectionStorageObserver: () -> Unit = { },
         showTabTray: () -> Unit = { },
@@ -1338,8 +1677,10 @@ class DefaultSessionControlControllerTest {
             tabCollectionStorage = tabCollectionStorage,
             addTabUseCase = tabsUseCases.addTab,
             restoreUseCase = mockk(relaxed = true),
-            reloadUrlUseCase = reloadUrlUseCase.reload,
             selectTabUseCase = selectTabUseCase.selectTab,
+            reloadUrlUseCase = reloadUrlUseCase.reload,
+            topSitesUseCases = topSitesUseCases,
+            marsUseCases = marsUseCases,
             appStore = appStore,
             navController = navController,
             viewLifecycleScope = scope,
@@ -1367,7 +1708,7 @@ class DefaultSessionControlControllerTest {
     ) = Wallpaper(
         name = "name",
         collection = Wallpaper.Collection(
-            name = Wallpaper.firefoxCollectionName,
+            name = Wallpaper.FIREFOX_COLLECTION,
             heading = null,
             description = null,
             availableLocales = null,

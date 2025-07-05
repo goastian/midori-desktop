@@ -14,7 +14,6 @@
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-import { ComponentUtils } from "resource://gre/modules/ComponentUtils.sys.mjs";
 import { TestUtils } from "resource://testing-common/TestUtils.sys.mjs";
 
 const lazy = {};
@@ -31,33 +30,9 @@ XPCOMUtils.defineLazyServiceGetters(lazy, {
   ],
 });
 
-const PROCESSSELECTOR_CONTRACTID = "@mozilla.org/ipc/processselector;1";
-const OUR_PROCESSSELECTOR_CID = Components.ID(
-  "{f9746211-3d53-4465-9aeb-ca0d96de0253}"
-);
-const EXISTING_JSID = Cc[PROCESSSELECTOR_CONTRACTID];
-const DEFAULT_PROCESSSELECTOR_CID = EXISTING_JSID
-  ? Components.ID(EXISTING_JSID.number)
-  : null;
-
 let gListenerId = 0;
 
-// A process selector that always asks for a new process.
-function NewProcessSelector() {}
-
-NewProcessSelector.prototype = {
-  classID: OUR_PROCESSSELECTOR_CID,
-  QueryInterface: ChromeUtils.generateQI(["nsIContentProcessProvider"]),
-
-  provideProcess() {
-    return Ci.nsIContentProcessProvider.NEW_PROCESS;
-  },
-};
-
-let registrar = Components.manager.QueryInterface(Ci.nsIComponentRegistrar);
-let selectorFactory =
-  ComponentUtils.generateSingletonFactory(NewProcessSelector);
-registrar.registerFactory(OUR_PROCESSSELECTOR_CID, "", null, selectorFactory);
+const DISABLE_CONTENT_PROCESS_REUSE_PREF = "dom.ipc.disableContentProcessReuse";
 
 const kAboutPageRegistrationContentScript =
   "chrome://mochikit/content/tests/BrowserTestUtils/content-about-page-utils.js";
@@ -228,18 +203,11 @@ export var BrowserTestUtils = {
 
     let promises, tab;
     try {
-      // If we're asked to force a new process, replace the normal process
-      // selector with one that always asks for a new process.
-      // If DEFAULT_PROCESSSELECTOR_CID is null, we're in non-e10s mode and we
-      // should skip this.
-      if (options.forceNewProcess && DEFAULT_PROCESSSELECTOR_CID) {
+      // If we're asked to force a new process, set the pref to disable process
+      // re-use while we insert this new tab.
+      if (options.forceNewProcess) {
         Services.ppmm.releaseCachedProcesses();
-        registrar.registerFactory(
-          OUR_PROCESSSELECTOR_CID,
-          "",
-          PROCESSSELECTOR_CONTRACTID,
-          null
-        );
+        Services.prefs.setBoolPref(DISABLE_CONTENT_PROCESS_REUSE_PREF, true);
       }
 
       promises = [
@@ -263,14 +231,9 @@ export var BrowserTestUtils = {
         promises.push(BrowserTestUtils.browserStopped(tab.linkedBrowser));
       }
     } finally {
-      // Restore the original process selector, if needed.
-      if (options.forceNewProcess && DEFAULT_PROCESSSELECTOR_CID) {
-        registrar.registerFactory(
-          DEFAULT_PROCESSSELECTOR_CID,
-          "",
-          PROCESSSELECTOR_CONTRACTID,
-          null
-        );
+      // Clear the pref once we're done, if needed.
+      if (options.forceNewProcess) {
+        Services.prefs.clearUserPref(DISABLE_CONTENT_PROCESS_REUSE_PREF);
       }
     }
     return Promise.all(promises).then(() => {
@@ -282,6 +245,17 @@ export var BrowserTestUtils = {
       );
       return tab;
     });
+  },
+
+  showOnlyTheseTabs(tabbrowser, tabs) {
+    for (let tab of tabs) {
+      tabbrowser.showTab(tab);
+    }
+    for (let tab of tabbrowser.tabs) {
+      if (!tabs.includes(tab)) {
+        tabbrowser.hideTab(tab);
+      }
+    }
   },
 
   /**
@@ -1193,19 +1167,31 @@ export var BrowserTestUtils = {
    * @resolves When the SessionStore information is updated.
    */
   waitForSessionStoreUpdate(tab) {
-    return new Promise(resolve => {
-      let browser = tab.linkedBrowser;
-      let flushTopic = "sessionstore-browser-shutdown-flush";
-      let observer = subject => {
-        if (subject === browser) {
-          Services.obs.removeObserver(observer, flushTopic);
-          // Wait for the next event tick to make sure other listeners are
-          // called.
-          TestUtils.executeSoon(() => resolve());
-        }
-      };
-      Services.obs.addObserver(observer, flushTopic);
-    });
+    let browser = tab.linkedBrowser;
+    return TestUtils.topicObserved(
+      "sessionstore-browser-shutdown-flush",
+      s => s === browser
+    );
+  },
+
+  /**
+   * @returns {Promise}
+   * @resolves When the locale has been changed.
+   */
+  enableRtlLocale() {
+    let localeChanged = TestUtils.topicObserved("intl:app-locales-changed");
+    Services.prefs.setStringPref("intl.l10n.pseudo", "bidi");
+    return localeChanged;
+  },
+
+  /**
+   * @returns {Promise}
+   * @resolves When the locale has been changed.
+   */
+  disableRtlLocale() {
+    let localeChanged = TestUtils.topicObserved("intl:app-locales-changed");
+    Services.prefs.setStringPref("intl.l10n.pseudo", "");
+    return localeChanged;
   },
 
   /**
@@ -1916,27 +1902,40 @@ export var BrowserTestUtils = {
    *
    * @param {tab} tab
    *        The tab that will be reloaded.
-   * @param {Boolean} [includeSubFrames = false]
+   * @param {Object} [options]
+   *        Options for the reload.
+   * @param {Boolean} options.includeSubFrames = false [optional]
    *        A boolean indicating if loads from subframes should be included
    *        when waiting for the frame to reload.
+   * @param {Boolean} options.bypassCache = false [optional]
+   *        A boolean indicating if loads should bypass the cache.
+   *        If bypassCache is true, this skips some steps that normally happen
+   *        when a user reloads a tab.
    * @returns {Promise}
    * @resolves When the tab finishes reloading.
    */
-  reloadTab(tab, includeSubFrames = false) {
+  reloadTab(tab, options = {}) {
     const finished = BrowserTestUtils.browserLoaded(
       tab.linkedBrowser,
-      includeSubFrames
+      !!options.includeSubFrames
     );
-    tab.ownerGlobal.gBrowser.reloadTab(tab);
+    if (options.bypassCache) {
+      tab.linkedBrowser.reloadWithFlags(
+        Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_CACHE
+      );
+    } else {
+      tab.ownerGlobal.gBrowser.reloadTab(tab);
+    }
     return finished;
   },
 
   /**
    * Create enough tabs to cause a tab overflow in the given window.
-   * @param {Function} registerCleanupFunction
+   * @param {Function|null} registerCleanupFunction
    *    The test framework doesn't keep its cleanup stuff anywhere accessible,
    *    so the first argument is a reference to your cleanup registration
-   *    function, allowing us to clean up after you if necessary.
+   *    function, allowing us to clean up after you if necessary. This can be
+   *    null if you are using a temporary window for the test.
    * @param {Window} win
    *    The window where the tabs need to be overflowed.
    * @param {object} params [optional]
@@ -1954,28 +1953,48 @@ export var BrowserTestUtils = {
     if (!params.hasOwnProperty("overflowTabFactor")) {
       params.overflowTabFactor = 1.1;
     }
-    let index = params.overflowAtStart ? 0 : undefined;
     let { gBrowser } = win;
+    let overflowDirection = gBrowser.tabContainer.verticalMode
+      ? "height"
+      : "width";
+    let tabIndex = params.overflowAtStart ? 0 : undefined;
     let arrowScrollbox = gBrowser.tabContainer.arrowScrollbox;
+    if (arrowScrollbox.hasAttribute("overflowing")) {
+      return;
+    }
+    let promises = [];
+    promises.push(
+      BrowserTestUtils.waitForEvent(
+        arrowScrollbox,
+        "overflow",
+        false,
+        e => e.target == arrowScrollbox
+      )
+    );
     const originalSmoothScroll = arrowScrollbox.smoothScroll;
     arrowScrollbox.smoothScroll = false;
-    registerCleanupFunction(() => {
-      arrowScrollbox.smoothScroll = originalSmoothScroll;
-    });
-
-    let width = ele => ele.getBoundingClientRect().width;
-    let tabMinWidth = parseInt(
-      win.getComputedStyle(gBrowser.selectedTab).minWidth
-    );
-    let tabCountForOverflow = Math.ceil(
-      (width(arrowScrollbox) / tabMinWidth) * params.overflowTabFactor
-    );
-    while (gBrowser.tabs.length < tabCountForOverflow) {
-      BrowserTestUtils.addTab(gBrowser, "about:blank", {
-        skipAnimation: true,
-        index,
+    if (registerCleanupFunction) {
+      registerCleanupFunction(() => {
+        arrowScrollbox.smoothScroll = originalSmoothScroll;
       });
     }
+
+    let size = ele => ele.getBoundingClientRect()[overflowDirection];
+    let tabMinSize = gBrowser.tabContainer.verticalMode
+      ? size(gBrowser.selectedTab)
+      : parseInt(win.getComputedStyle(gBrowser.selectedTab).minWidth);
+    let tabCountForOverflow = Math.ceil(
+      (size(arrowScrollbox) / tabMinSize) * params.overflowTabFactor
+    );
+    while (gBrowser.tabs.length < tabCountForOverflow) {
+      promises.push(
+        BrowserTestUtils.addTab(gBrowser, "about:blank", {
+          skipAnimation: true,
+          tabIndex,
+        })
+      );
+    }
+    await Promise.all(promises);
   },
 
   /**
@@ -1995,7 +2014,7 @@ export var BrowserTestUtils = {
    *        top level context if not supplied.
    * @param (object?) options
    *        An object with any of the following fields:
-   *          crashType: "CRASH_INVALID_POINTER_DEREF" | "CRASH_OOM"
+   *          crashType: "CRASH_INVALID_POINTER_DEREF" | "CRASH_OOM" | "CRASH_SYSCALL"
    *            The type of crash. If unspecified, default to "CRASH_INVALID_POINTER_DEREF"
    *          asyncCrash: bool
    *            If specified and `true`, cause the crash asynchronously.
@@ -2664,9 +2683,6 @@ export var BrowserTestUtils = {
     if (!params.triggeringPrincipal) {
       params.triggeringPrincipal =
         Services.scriptSecurityManager.getSystemPrincipal();
-    }
-    if (!params.allowInheritPrincipal) {
-      params.allowInheritPrincipal = true;
     }
     if (beforeLoadFunc) {
       let window = tabbrowser.ownerGlobal;

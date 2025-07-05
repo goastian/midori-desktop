@@ -11,13 +11,25 @@ import android.util.Base64
 import android.view.KeyEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.filters.MediumTest
-import org.hamcrest.Matchers.* // ktlint-disable no-wildcard-imports
+import org.hamcrest.Matchers.closeTo
+import org.hamcrest.Matchers.containsString
+import org.hamcrest.Matchers.endsWith
+import org.hamcrest.Matchers.equalTo
+import org.hamcrest.Matchers.greaterThan
+import org.hamcrest.Matchers.isEmptyOrNullString
+import org.hamcrest.Matchers.not
+import org.hamcrest.Matchers.notNullValue
+import org.hamcrest.Matchers.nullValue
+import org.hamcrest.Matchers.startsWith
 import org.json.JSONObject
 import org.junit.Assume.assumeThat
 import org.junit.Ignore
 import org.junit.Test
 import org.junit.runner.RunWith
-import org.mozilla.geckoview.* // ktlint-disable no-wildcard-imports
+import org.mozilla.geckoview.AllowOrDeny
+import org.mozilla.geckoview.ContentBlocking
+import org.mozilla.geckoview.GeckoResult
+import org.mozilla.geckoview.GeckoRuntimeSettings
 import org.mozilla.geckoview.GeckoSession
 import org.mozilla.geckoview.GeckoSession.ContentDelegate
 import org.mozilla.geckoview.GeckoSession.HistoryDelegate
@@ -27,8 +39,16 @@ import org.mozilla.geckoview.GeckoSession.NavigationDelegate.LoadRequest
 import org.mozilla.geckoview.GeckoSession.PermissionDelegate
 import org.mozilla.geckoview.GeckoSession.ProgressDelegate
 import org.mozilla.geckoview.GeckoSession.TextInputDelegate
+import org.mozilla.geckoview.GeckoSessionSettings
+import org.mozilla.geckoview.WebExtension
+import org.mozilla.geckoview.WebExtensionController
+import org.mozilla.geckoview.WebRequestError
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule
-import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.* // ktlint-disable no-wildcard-imports
+import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.AssertCalled
+import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.NullDelegate
+import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.RejectedPromiseException
+import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.Setting
+import org.mozilla.geckoview.test.rule.GeckoSessionTestRule.WithDisplay
 import org.mozilla.geckoview.test.util.UiThreadUtils
 import java.io.ByteArrayOutputStream
 import java.util.concurrent.ThreadLocalRandom
@@ -695,8 +715,11 @@ class NavigationDelegateTest : BaseSessionTest() {
     }
 
     @Test fun loadHSTSBadCert() {
-        val httpsFirstPref = "dom.security.https_first"
-        assertThat("https pref should be false", sessionRule.getPrefs(httpsFirstPref)[0] as Boolean, equalTo(false))
+        sessionRule.setPrefsUntilTestEnd(
+            mapOf(
+                "dom.security.https_first" to false,
+            ),
+        )
 
         // load secure url with hsts header
         val uri = "https://example.com/tests/junit/hsts_header.sjs"
@@ -780,8 +803,7 @@ class NavigationDelegateTest : BaseSessionTest() {
     }
 
     @Setting(key = Setting.Key.USE_TRACKING_PROTECTION, value = "true")
-    @Ignore
-    // TODO: Bug 1564373
+    @Ignore // Bug 1564373
     @Test
     fun trackingProtection() {
         val category = ContentBlocking.AntiTracking.TEST
@@ -1264,6 +1286,57 @@ class NavigationDelegateTest : BaseSessionTest() {
             userAgent,
             containsString(vrSubStr),
         )
+    }
+
+    @Test fun desktopModeRFP() {
+        mainSession.loadUri("https://example.com")
+        sessionRule.waitForPageStop()
+
+        val majorVersion = BuildConfig.MOZILLA_VERSION.split(".")[0]
+
+        val rfpUADesktopString = "Mozilla/5.0 (X11; Linux x86_64; rv:$majorVersion.0) Gecko/20100101 Firefox/$majorVersion.0"
+
+        sessionRule.runtime.settings.setFingerprintingProtection(true)
+        sessionRule.runtime.settings.setFingerprintingProtectionOverrides("-AllTargets,+HttpUserAgent")
+
+        mainSession.settings.userAgentMode = GeckoSessionSettings.USER_AGENT_MODE_DESKTOP
+        mainSession.reload()
+        mainSession.waitForPageStop()
+
+        assertThat(
+            "User agent should be set to $rfpUADesktopString",
+            getUserAgent(),
+            equalTo(rfpUADesktopString),
+        )
+
+        var userAgent = sessionRule.waitForResult(mainSession.userAgent)
+        assertThat(
+            "User agent should be reported as $rfpUADesktopString",
+            userAgent,
+            containsString(rfpUADesktopString),
+        )
+
+        val rfpUAMobileString = "Mozilla/5.0 (Android 10; Mobile; rv:$majorVersion.0) Gecko/$majorVersion.0 Firefox/$majorVersion.0"
+
+        mainSession.settings.userAgentMode = GeckoSessionSettings.USER_AGENT_MODE_MOBILE
+        mainSession.reload()
+        mainSession.waitForPageStop()
+
+        assertThat(
+            "User agent should be set to $rfpUAMobileString",
+            getUserAgent(),
+            equalTo(rfpUAMobileString),
+        )
+
+        userAgent = sessionRule.waitForResult(mainSession.userAgent)
+        assertThat(
+            "User agent should be reported as $rfpUAMobileString",
+            userAgent,
+            containsString(rfpUAMobileString),
+        )
+
+        sessionRule.runtime.settings.setFingerprintingProtection(false)
+        sessionRule.runtime.settings.setFingerprintingProtectionOverrides("")
     }
 
     private fun getUserAgent(session: GeckoSession = mainSession): String {
@@ -1771,6 +1844,9 @@ class NavigationDelegateTest : BaseSessionTest() {
 
         mainSession.loadUri("$TEST_ENDPOINT$HELLO2_HTML_PATH")
         sessionRule.waitForPageStop()
+
+        // disabled for frequent failures - on Bug 1934356
+        assumeThat(sessionRule.env.isX86, equalTo(false))
 
         sessionRule.forCallbacksDuringWait(object : NavigationDelegate {
             @AssertCalled(count = 1)
@@ -2586,12 +2662,17 @@ class NavigationDelegateTest : BaseSessionTest() {
 
         sessionRule.delegateUntilTestEnd(object : WebExtensionController.PromptDelegate {
             @AssertCalled
-            override fun onInstallPrompt(
+            override fun onInstallPromptRequest(
                 extension: WebExtension,
                 permissions: Array<String>,
                 origins: Array<String>,
-            ): GeckoResult<AllowOrDeny> {
-                return GeckoResult.allow()
+            ): GeckoResult<WebExtension.PermissionPromptResponse>? {
+                return GeckoResult.fromValue(
+                    WebExtension.PermissionPromptResponse(
+                        true, // isPermissionsGranted
+                        false, // isPrivateModeGranted
+                    ),
+                )
             }
         })
 
@@ -2636,14 +2717,10 @@ class NavigationDelegateTest : BaseSessionTest() {
 
     @Test
     fun mainProcessSwitching() {
-        processSwitchingTest("about:config")
+        processSwitchingTest("about:about")
     }
 
     private fun processSwitchingTest(url: String) {
-        val settings = sessionRule.runtime.settings
-        val aboutConfigEnabled = settings.aboutConfigEnabled
-        settings.aboutConfigEnabled = true
-
         var currentUrl: String? = null
         mainSession.delegateUntilTestEnd(object : NavigationDelegate {
             override fun onLocationChange(
@@ -2717,8 +2794,6 @@ class NavigationDelegateTest : BaseSessionTest() {
             mainSession.active,
             equalTo(true),
         )
-
-        settings.aboutConfigEnabled = aboutConfigEnabled
     }
 
     @Test fun setLocationHash() {
@@ -2778,14 +2853,6 @@ class NavigationDelegateTest : BaseSessionTest() {
     }
 
     @Test fun purgeHistory() {
-        // TODO: Bug 1884334
-        val geckoPrefs = sessionRule.getPrefs(
-            "fission.disableSessionHistoryInParent",
-        )
-        assumeThat(geckoPrefs[0] as Boolean, equalTo(true))
-        // TODO: Bug 1837551
-        assumeThat(sessionRule.env.isFission, equalTo(false))
-
         mainSession.loadUri("$TEST_ENDPOINT$HELLO_HTML_PATH")
         sessionRule.waitUntilCalled(object : HistoryDelegate, NavigationDelegate {
             @AssertCalled(count = 1)
@@ -3163,9 +3230,6 @@ class NavigationDelegateTest : BaseSessionTest() {
     }
 
     @Test fun goBackFromHistory() {
-        // TODO: Bug 1837551
-        assumeThat(sessionRule.env.isFission, equalTo(false))
-
         mainSession.loadTestPath(HELLO_HTML_PATH)
 
         mainSession.waitUntilCalled(object : HistoryDelegate, ContentDelegate {
@@ -3234,5 +3298,38 @@ class NavigationDelegateTest : BaseSessionTest() {
                 assertThat("Page loaded successfully", success, equalTo(true))
             }
         })
+    }
+
+    @Test
+    fun textDirectiveUserActivation() {
+        sessionRule.setPrefsUntilTestEnd(
+            mapOf(
+                "dom.text_fragments.enabled" to true,
+            ),
+        )
+
+        val session0 = sessionRule.createOpenSession()
+        session0.load(
+            Loader()
+                .uri(createTestUrl(HELLO_HTML_PATH)),
+        )
+        session0.waitForPageStop()
+
+        for (activation in listOf(false, true)) {
+            val session = sessionRule.createOpenSession()
+            session.load(
+                Loader()
+                    .uri(createTestUrl(TRANSLATIONS_ES + "#:~:text=moverse"))
+                    .referrer(session0)
+                    .textDirectiveUserActivation(activation),
+            )
+            session.waitForPageStop()
+
+            if (activation) {
+                assertThat("Scroll offset isn't 0", session.evaluateJS("window.scrollY") as Double, not(equalTo(0.0)))
+            } else {
+                assertThat("Scroll offset is 0", session.evaluateJS("window.scrollY") as Double, equalTo(0.0))
+            }
+        }
     }
 }

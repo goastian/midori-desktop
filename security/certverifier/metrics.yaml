@@ -31,20 +31,57 @@ cert_verifier:
       - revoked_in_filter
       - revoked_in_stash
 
-  cert_trust_evaluation_time:
-    type: timing_distribution
-    time_unit: nanosecond
+  crlite_vs_ocsp_result:
+    type: labeled_counter
     description: >
-      Measures how long we take to evaluate the trust status of a certificate.
+      The OCSP result when CRLite claims a certificate is revoked.
     data_sensitivity:
       - technical
     bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1888420
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1675655
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908549
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1888420
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1675655
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1758827
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1817102
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1846898
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1876443
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908549
     notification_emails:
       - jschanck@mozilla.com
-    expires: 132
+    expires: 143
+    labels:
+      - CRLiteRevOCSPFail
+      - CRLiteRevOCSPOk
+      - CRLiteRevOCSPRev
+      - CRLiteRevOCSPUnk
+      - CRLiteRevOCSPSoft
+
+  cert_revocation_mechanisms:
+    type: labeled_counter
+    description: >
+      Which revocation checking mechanisms were used in a TLS handshake?
+    data_sensitivity:
+      - technical
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1794450
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908549
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1794450
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1817101
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1846897
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1876442
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1908549
+    notification_emails:
+      - jschanck@mozilla.com
+    expires: never
+    labels:
+      - CRLite
+      - StapledOCSP
+      - CachedOCSP
+      - OCSP
+      - OneCRL
+      - ShortValidity
 
   trust_obj_count:
     type: quantity
@@ -54,9 +91,60 @@ cert_verifier:
       - interaction
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1890795
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1912179
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1890795
     notification_emails:
       - jschanck@mozilla.com
-    expires: 132
+    expires: 144
     unit: trust objects
+
+cert_signature_cache:
+  hits:
+    type: rate
+    description: >
+      How often a certificate signature to be verified is in the cache already.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1918279
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1918279
+    notification_emails:
+      - dkeeler@mozilla.com
+    expires: never
+    denominator_metric: cert_signature_cache.total
+  total:
+    type: counter
+    description: >
+      How many certificate signature verifications are performed.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1918279
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1918279
+    notification_emails:
+      - dkeeler@mozilla.com
+    expires: never
+
+cert_trust_cache:
+  hits:
+    type: rate
+    description: >
+      How often a certificate's trust is in the cache already.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922074
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922074
+    notification_emails:
+      - dkeeler@mozilla.com
+    expires: never
+    denominator_metric: cert_trust_cache.total
+  total:
+    type: counter
+    description: >
+      How many certificate trust lookups are performed.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922074
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922074
+    notification_emails:
+      - dkeeler@mozilla.com
+    expires: never

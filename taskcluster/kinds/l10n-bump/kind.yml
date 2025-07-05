@@ -5,33 +5,34 @@
 loader: taskgraph.loader.transform:loader
 
 transforms:
-    - gecko_taskgraph.transforms.release_version_bump:transforms
+    - gecko_taskgraph.transforms.resolve_landoscript_keyed_by:transforms
     - gecko_taskgraph.transforms.task:transforms
 
 task-defaults:
-    worker-type: tree
+    worker-type: lando
     worker:
-        implementation: treescript
-        tags: []
-        bump: false
+        implementation: landoscript
         dontbuild:
             by-project:
                 mozilla-beta: false
                 default: true
         ignore-closed-tree:
             by-project:
-                autoland: true
-                default: false
-        push:
+                mozilla-beta: false
+                default: true
+        lando-repo:
             by-project:
-                mozilla-(central|beta): true
-                autoland: true
-                default: false
-        source-repo:
-            by-release-type:
-                beta: https://hg.mozilla.org/releases/mozilla-beta
-                nightly: https://hg.mozilla.org/mozilla-central
-                default: https://hg.mozilla.org/integration/autoland
+                mozilla-central: main
+                mozilla-beta: firefox-beta
+                mozilla-release: firefox-release
+                mozilla-esr140: firefox-esr140
+                autoland: firefox-autoland
+                # change this if you want to test esr bumps against other
+                # branches on try; there's rarely a need though.
+                try: staging-firefox-autoland
+                # set a default to avoid failing tgdiff tests on other branches
+                # even though this doesn't run there
+                default: ''
         l10n-bump-info:
             by-release-type:
                 # XXX whenever the `beta` config changes, make sure to make
@@ -39,7 +40,6 @@ task-defaults:
                 beta:
                     - name: Firefox l10n changesets
                       path: browser/locales/l10n-changesets.json
-                      version-path: browser/config/version.txt
                       l10n-repo-url: https://github.com/mozilla-l10n/firefox-l10n
                       l10n-repo-target-branch: main
                       ignore-config:
@@ -51,6 +51,7 @@ task-defaults:
                               - linux-devedition
                               - linux64
                               - linux64-devedition
+                              - linux64-aarch64-devedition
                               - linux64-aarch64
                               - win32
                               - win32-devedition
@@ -68,6 +69,7 @@ task-defaults:
                                           "linux64",
                                           "linux64-aarch64",
                                           "linux64-devedition",
+                                          "linux64-aarch64-devedition",
                                           "macosx64",
                                           "macosx64-devedition",
                                           "win32",
@@ -84,7 +86,6 @@ task-defaults:
                       path: mobile/locales/l10n-changesets.json
                       l10n-repo-url: https://github.com/mozilla-l10n/firefox-l10n
                       l10n-repo-target-branch: main
-                      version-path: mobile/android/version.txt
                       platform-configs:
                           [
                               {
@@ -102,7 +103,6 @@ task-defaults:
                       path: browser/locales/l10n-changesets.json
                       l10n-repo-url: https://github.com/mozilla-l10n/firefox-l10n
                       l10n-repo-target-branch: main
-                      version-path: browser/config/version.txt
                       ignore-config:
                           ja:
                               - macosx64
@@ -113,6 +113,7 @@ task-defaults:
                               - linux64
                               - linux64-aarch64
                               - linux64-devedition
+                              - linux64-aarch64-devedition
                               - win32
                               - win32-devedition
                               - win64
@@ -129,6 +130,7 @@ task-defaults:
                                           "linux64",
                                           "linux64-aarch64",
                                           "linux64-devedition",
+                                          "linux64-aarch64-devedition",
                                           "macosx64",
                                           "macosx64-devedition",
                                           "win32",
@@ -145,7 +147,6 @@ task-defaults:
                       path: mobile/locales/l10n-changesets.json
                       l10n-repo-url: https://github.com/mozilla-l10n/firefox-l10n
                       l10n-repo-target-branch: main
-                      version-path: mobile/android/version.txt
                       platform-configs:
                           [
                               {

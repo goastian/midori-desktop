@@ -117,14 +117,14 @@ def parse_print_failure_results(results):
 def load_results_file(filename):
     ret = None
     try:
-        f = open(filename, "r")
+        f = open(filename)
         try:
             ret = JUnitXml.fromfile(f)
         except xml.etree.ElementTree.ParseError as e:
             print(f"Error parsing {filename} file: {e}")
         finally:
             f.close()
-    except IOError as e:
+    except OSError as e:
         print(e)
 
     return ret

@@ -14,9 +14,9 @@
 #include "nsICacheEntry.h"  // for nsICacheEntryMetaDataVisitor
 #include "nsIFile.h"
 #include "mozilla/ScopeExit.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/DebugOnly.h"
 #include "mozilla/IntegerPrintfMacros.h"
+#include "mozilla/glean/NetwerkMetrics.h"
 #include "prnetdb.h"
 
 namespace mozilla::net {
@@ -354,6 +354,12 @@ nsresult CacheFileMetadata::SyncReadMetadata(nsIFile* aFile) {
   return NS_OK;
 }
 
+void CacheFileMetadata::HandleCorruptMetaData() const {
+  if (mHandle) {
+    CacheFileIOManager::DoomFile(mHandle, nullptr);
+  }
+}
+
 const char* CacheFileMetadata::GetElement(const char* aKey) {
   const char* data = mBuf;
   const char* limit = mBuf + mElementsSize;
@@ -361,19 +367,20 @@ const char* CacheFileMetadata::GetElement(const char* aKey) {
   while (data != limit) {
     size_t maxLen = limit - data;
     size_t keyLen = strnlen(data, maxLen);
-    MOZ_RELEASE_ASSERT(keyLen != maxLen,
-                       "Metadata elements corrupted. Key "
-                       "isn't null terminated!");
-    MOZ_RELEASE_ASSERT(keyLen + 1 != maxLen,
-                       "Metadata elements corrupted. "
-                       "There is no value for the key!");
+
+    if (keyLen == maxLen ||      // Key isn't null terminated!
+        keyLen + 1 == maxLen) {  // There is no value for the key!
+      HandleCorruptMetaData();
+      return nullptr;
+    }
 
     const char* value = data + keyLen + 1;
     maxLen = limit - value;
     size_t valueLen = strnlen(value, maxLen);
-    MOZ_RELEASE_ASSERT(valueLen != maxLen,
-                       "Metadata elements corrupted. Value "
-                       "isn't null terminated!");
+    if (valueLen == maxLen) {  // Value isn't null terminated
+      HandleCorruptMetaData();
+      return nullptr;
+    }
 
     if (strcmp(data, aKey) == 0) {
       LOG(("CacheFileMetadata::GetElement() - Key found [this=%p, key=%s]",
@@ -635,13 +642,16 @@ nsresult CacheFileMetadata::OnDataRead(CacheFileHandle* aHandle, char* aBuf,
     return NS_OK;
   }
 
+#ifndef ANDROID
+  mozilla::TimeStamp readEnd = mozilla::TimeStamp::Now();
   if (mFirstRead) {
-    Telemetry::AccumulateTimeDelta(
-        Telemetry::NETWORK_CACHE_METADATA_FIRST_READ_TIME_MS, mReadStart);
+    mozilla::glean::networking::cache_metadata_first_read_time
+        .AccumulateRawDuration(readEnd - mReadStart);
   } else {
-    Telemetry::AccumulateTimeDelta(
-        Telemetry::NETWORK_CACHE_METADATA_SECOND_READ_TIME_MS, mReadStart);
+    mozilla::glean::networking::cache_metadata_second_read_time
+        .AccumulateRawDuration(readEnd - mReadStart);
   }
+#endif
 
   // check whether we have read all necessary data
   uint32_t realOffset =
@@ -726,8 +736,9 @@ nsresult CacheFileMetadata::OnDataRead(CacheFileHandle* aHandle, char* aBuf,
     return NS_OK;
   }
 
-  Telemetry::Accumulate(Telemetry::NETWORK_CACHE_METADATA_SIZE_2,
-                        size - realOffset);
+#ifndef ANDROID
+  mozilla::glean::networking::cache_metadata_size.Accumulate(size - realOffset);
+#endif
 
   // We have all data according to offset information at the end of the entry.
   // Try to parse it.

@@ -43,8 +43,8 @@ sslBuffer_Grow(sslBuffer *b, unsigned int newLen)
     /* If buf is non-NULL, space must be non-zero;
      * if buf is NULL, space must be zero. */
     PORT_Assert((b->buf && b->space) || (!b->buf && !b->space));
-    newLen = PR_MAX(newLen, b->len + 1024);
     if (newLen > b->space) {
+        newLen = PR_MAX(newLen, b->space + 2048);
         unsigned char *newBuf;
         if (b->buf) {
             newBuf = (unsigned char *)PORT_Realloc(b->buf, newLen);
@@ -405,7 +405,7 @@ ssl3_MaybeUpdateHashWithSavedRecord(sslSocket *ss)
     size_t offset = 0;
 
     /* the first clause checks the version that was received in ServerHello:
-     * only if it's DTLS1.3, we remove the necessary fields. 
+     * only if it's DTLS1.3, we remove the necessary fields.
      * the second clause checks if we send 0rtt (see TestTls13ZeroRttDowngrade).
      */
     if ((ss->version == ss->ssl3.cwSpec->version || ss->ssl3.hs.zeroRttState == ssl_0rtt_sent)) {

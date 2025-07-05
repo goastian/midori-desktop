@@ -27,11 +27,19 @@ class OnboardingTelemetryRecorder {
     }
 
     /**
+     * Records "onboarding_started" telemetry event.
+     */
+    fun onOnboardingStarted() {
+        Onboarding.started.record()
+    }
+
+    /**
      * Records impression events for a given [OnboardingPageUiData.Type].
      * @param sequenceId The identifier of the onboarding sequence shown to the user.
      * @param pageType The page type for which the impression occurred.
      * @param sequencePosition The sequence position of the page for which the impression occurred.
      */
+    @Suppress("LongMethod")
     fun onImpression(
         sequenceId: String,
         pageType: OnboardingPageUiData.Type,
@@ -74,6 +82,49 @@ class OnboardingTelemetryRecorder {
             OnboardingPageUiData.Type.NOTIFICATION_PERMISSION -> {
                 Onboarding.turnOnNotificationsCard.record(
                     Onboarding.TurnOnNotificationsCardExtra(
+                        action = ACTION_IMPRESSION,
+                        elementType = ET_ONBOARDING_CARD,
+                        sequenceId = sequenceId,
+                        sequencePosition = sequencePosition,
+                    ),
+                )
+            }
+
+            OnboardingPageUiData.Type.TOOLBAR_PLACEMENT -> {
+                Onboarding.toolbarPlacementCard.record(
+                    Onboarding.ToolbarPlacementCardExtra(
+                        action = ACTION_IMPRESSION,
+                        elementType = ET_ONBOARDING_CARD,
+                        sequenceId = sequenceId,
+                        sequencePosition = sequencePosition,
+                    ),
+                )
+            }
+
+            OnboardingPageUiData.Type.THEME_SELECTION -> {
+                Onboarding.themeSelectionCard.record(
+                    Onboarding.ThemeSelectionCardExtra(
+                        action = ACTION_IMPRESSION,
+                        elementType = ET_ONBOARDING_CARD,
+                        sequenceId = sequenceId,
+                        sequencePosition = sequencePosition,
+                    ),
+                )
+            }
+
+            OnboardingPageUiData.Type.TERMS_OF_SERVICE -> {
+                Onboarding.termsOfServiceCard.record(
+                    Onboarding.TermsOfServiceCardExtra(
+                        action = ACTION_IMPRESSION,
+                        elementType = ET_ONBOARDING_CARD,
+                        sequenceId = sequenceId,
+                        sequencePosition = sequencePosition,
+                    ),
+                )
+            }
+            OnboardingPageUiData.Type.MARKETING_DATA -> {
+                Onboarding.marketingDataCardViewed.record(
+                    Onboarding.MarketingDataCardViewedExtra(
                         action = ACTION_IMPRESSION,
                         elementType = ET_ONBOARDING_CARD,
                         sequenceId = sequenceId,
@@ -213,6 +264,41 @@ class OnboardingTelemetryRecorder {
     }
 
     /**
+     * Records select toolbar placement click event.
+     * @param sequenceId The identifier of the onboarding sequence shown to the user.
+     * @param sequencePosition The sequence position of the page for which the impression occurred.
+     * @param toolbarPlacement The toolbar placement option chosen by the user.
+     */
+    fun onSelectToolbarPlacementClick(sequenceId: String, sequencePosition: String, toolbarPlacement: String) {
+        Onboarding.selectToolbarPlacement.record(
+            Onboarding.SelectToolbarPlacementExtra(
+                action = ACTION_CLICK,
+                elementType = ET_PRIMARY_BUTTON,
+                sequenceId = sequenceId,
+                sequencePosition = sequencePosition,
+                toolbarPlacement = toolbarPlacement,
+            ),
+        )
+    }
+
+    /**
+     * Records select theme click event.
+     * @param themeOption The selected theme option ("dark", "light", or "system").
+     * @param sequenceId The identifier of the onboarding sequence shown to the user.
+     * @param sequencePosition The sequence position of the page for which the impression occurred.
+     */
+    fun onSelectThemeClick(themeOption: String, sequenceId: String, sequencePosition: String) {
+        Onboarding.selectTheme.record(
+            Onboarding.SelectThemeExtra(
+                action = ACTION_CLICK,
+                themeOption = themeOption,
+                sequenceId = sequenceId,
+                sequencePosition = sequencePosition,
+            ),
+        )
+    }
+
+    /**
      * Records privacy policy link text click event.
      * @param sequenceId The identifier of the onboarding sequence shown to the user.
      * @param sequencePosition The sequence position of the page on which the link click event occurred.
@@ -225,6 +311,59 @@ class OnboardingTelemetryRecorder {
                 sequenceId = sequenceId,
                 sequencePosition = sequencePosition,
             ),
+        )
+    }
+
+    /**
+     * Records when the terms of service link is clicked.
+     */
+    fun onTermsOfServiceLinkClick() {
+        Onboarding.termsOfServiceLinkClicked.record()
+    }
+
+    /**
+     * Records when the privacy notice link clicked.
+     */
+    fun onTermsOfServicePrivacyNoticeLinkClick() {
+        Onboarding.termsOfServicePrivacyNoticeLinkClicked.record()
+    }
+
+    /**
+     * Records when the manage privacy preferences link clicked.
+     */
+    fun onTermsOfServiceManagePrivacyPreferencesLinkClick() {
+        Onboarding.termsOfServiceManageLinkClicked.record()
+    }
+
+    /**
+     * Records when the accept terms button clicked.
+     */
+    fun onTermsOfServiceManagerAcceptTermsButtonClick() {
+        Onboarding.termsOfServiceAccepted.record()
+    }
+
+    /**
+     * Records the marketing data card continue button click event
+     * @param optIn If the user chose to opt in to marketing data collection
+     */
+    fun onMarketingDataContinueClicked(optIn: Boolean) {
+        Onboarding.marketingDataContinueClicked.record(
+            Onboarding.MarketingDataContinueClickedExtra(optIn = optIn),
+        )
+    }
+
+    /**
+     * Records when the marketing data learn more link clicked.
+     */
+    fun onMarketingDataLearnMoreClick() = Onboarding.marketingDataLearnMore.record()
+
+    /**
+     * Records the marketing data opt-in toggle event.
+     * @param optIn True if the user chose to opt in to marketing data collection.
+     */
+    fun onMarketingDataOptInToggled(optIn: Boolean) {
+        Onboarding.marketingDataOptInToggled.record(
+            Onboarding.MarketingDataOptInToggledExtra(optIn = optIn),
         )
     }
 

@@ -2133,6 +2133,8 @@ PK11_PubDerive(SECKEYPrivateKey *privKey, SECKEYPublicKey *pubKey,
         case rsaOaepKey:
         case kyberKey:
         case nullKey:
+        case edKey:
+        case ecMontKey:
             PORT_SetError(SEC_ERROR_BAD_KEY);
             break;
         case dsaKey:
@@ -2218,9 +2220,6 @@ PK11_PubDerive(SECKEYPrivateKey *privKey, SECKEYPublicKey *pubKey,
                 return symKey;
             PORT_SetError(PK11_MapError(crv));
         } break;
-        case edKey:
-            PORT_SetError(SEC_ERROR_BAD_KEY);
-            break;
         case ecKey: {
             CK_BBOOL cktrue = CK_TRUE;
             CK_OBJECT_CLASS keyClass = CKO_SECRET_KEY;
@@ -2330,6 +2329,7 @@ pk11_ECGetPubkeyEncoding(const SECKEYPublicKey *pubKey)
     if (rv == SECSuccess) {
         SECOidTag tag = SECOID_FindOIDTag(&oid);
         switch (tag) {
+            case SEC_OID_X25519:
             case SEC_OID_CURVE25519:
                 encoding = ECPoint_XOnly;
                 break;
@@ -2386,7 +2386,7 @@ pk11_PubDeriveECKeyWithKDF(
     CK_ATTRIBUTE *attrs = keyTemplate;
     CK_ECDH1_DERIVE_PARAMS *mechParams = NULL;
 
-    if (pubKey->keyType != ecKey) {
+    if (pubKey->keyType != ecKey && pubKey->keyType != ecMontKey) {
         PORT_SetError(SEC_ERROR_BAD_KEY);
         return NULL;
     }
@@ -2458,6 +2458,7 @@ pk11_PubDeriveECKeyWithKDF(
                 default:
                     PORT_AssertNotReached("Invalid CKD");
                     PORT_SetError(SEC_ERROR_INVALID_ALGORITHM);
+                    PK11_FreeSymKey(symKey);
                     return NULL;
             }
         }
@@ -2599,6 +2600,7 @@ PK11_PubDeriveWithKDF(SECKEYPrivateKey *privKey, SECKEYPublicKey *pubKey,
             return PK11_PubDerive(privKey, pubKey, isSender, randomA, randomB,
                                   derive, target, operation, keySize, wincx);
         case ecKey:
+        case ecMontKey:
             return pk11_PubDeriveECKeyWithKDF(privKey, pubKey, isSender,
                                               randomA, randomB, derive, target,
                                               operation, keySize,
@@ -3083,6 +3085,8 @@ pk11_KyberCiphertextLength(SECKEYKyberPublicKey *pubKey)
     switch (pubKey->params) {
         case params_kyber768_round3:
         case params_kyber768_round3_test_mode:
+        case params_ml_kem768:
+        case params_ml_kem768_test_mode:
             return KYBER768_CIPHERTEXT_BYTES;
         default:
             // unreachable
@@ -3135,16 +3139,18 @@ PK11_Encapsulate(SECKEYPublicKey *pubKey, CK_MECHANISM_TYPE target, PK11AttrFlag
     *outCiphertext = NULL;
 
     CK_MECHANISM_TYPE kemType;
-    switch (pubKey->keyType) {
-        case kyberKey:
+    CK_NSS_KEM_PARAMETER_SET_TYPE kemParameterSet = PK11_ReadULongAttribute(slot, pubKey->pkcs11ID, CKA_NSS_PARAMETER_SET);
+    switch (kemParameterSet) {
+        case CKP_NSS_KYBER_768_ROUND3:
             kemType = CKM_NSS_KYBER;
             break;
+        case CKP_NSS_ML_KEM_768:
+            kemType = CKM_NSS_ML_KEM;
+            break;
         default:
-            PORT_SetError(SEC_ERROR_LIBRARY_FAILURE);
+            PORT_SetError(SEC_ERROR_INVALID_KEY);
             return SECFailure;
     }
-
-    CK_NSS_KEM_PARAMETER_SET_TYPE kemParameterSet = PK11_ReadULongAttribute(slot, pubKey->pkcs11ID, CKA_NSS_PARAMETER_SET);
     CK_MECHANISM mech = { kemType, &kemParameterSet, sizeof(kemParameterSet) };
 
     sharedSecret = pk11_CreateSymKey(slot, target, PR_TRUE, PR_TRUE, NULL);
@@ -3238,16 +3244,18 @@ PK11_Decapsulate(SECKEYPrivateKey *privKey, const SECItem *ciphertext, CK_MECHAN
     *outKey = NULL;
 
     CK_MECHANISM_TYPE kemType;
-    switch (privKey->keyType) {
-        case kyberKey:
+    CK_NSS_KEM_PARAMETER_SET_TYPE kemParameterSet = PK11_ReadULongAttribute(slot, privKey->pkcs11ID, CKA_NSS_PARAMETER_SET);
+    switch (kemParameterSet) {
+        case CKP_NSS_KYBER_768_ROUND3:
             kemType = CKM_NSS_KYBER;
             break;
+        case CKP_NSS_ML_KEM_768:
+            kemType = CKM_NSS_ML_KEM;
+            break;
         default:
-            PORT_SetError(SEC_ERROR_LIBRARY_FAILURE);
+            PORT_SetError(SEC_ERROR_INVALID_KEY);
             return SECFailure;
     }
-
-    CK_NSS_KEM_PARAMETER_SET_TYPE kemParameterSet = PK11_ReadULongAttribute(slot, privKey->pkcs11ID, CKA_NSS_PARAMETER_SET);
     CK_MECHANISM mech = { kemType, &kemParameterSet, sizeof(kemParameterSet) };
 
     sharedSecret = pk11_CreateSymKey(slot, target, PR_TRUE, PR_TRUE, NULL);

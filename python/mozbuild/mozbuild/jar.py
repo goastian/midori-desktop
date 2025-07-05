@@ -17,7 +17,6 @@ import sys
 from time import localtime
 
 import mozpack.path as mozpath
-from MozZipFile import ZipFile
 
 from mozbuild.action.buildlist import addEntriesToListFile
 from mozbuild.preprocessor import Preprocessor
@@ -31,7 +30,7 @@ if sys.platform == "win32":
 __all__ = ["JarMaker"]
 
 
-class ZipEntry(object):
+class ZipEntry:
     """Helper class for jar output.
 
     This class defines a simple file-like object for a zipfile.ZipEntry
@@ -63,7 +62,7 @@ def getModTime(aPath):
     return localtime(mtime)
 
 
-class JarManifestEntry(object):
+class JarManifestEntry:
     def __init__(self, output, source, is_locale=False, preprocess=False):
         self.output = output
         self.source = source
@@ -71,7 +70,7 @@ class JarManifestEntry(object):
         self.preprocess = preprocess
 
 
-class JarInfo(object):
+class JarInfo:
     def __init__(self, base_or_jarinfo, name=None):
         if name is None:
             assert isinstance(base_or_jarinfo, JarInfo)
@@ -94,7 +93,7 @@ class DeprecatedJarManifest(Exception):
     pass
 
 
-class JarManifestParser(object):
+class JarManifestParser:
     ignore = re.compile(r"\s*(#.*)?$")
     jarline = re.compile(
         r"""
@@ -198,7 +197,7 @@ class JarManifestParser(object):
         return iter(self._jars)
 
 
-class JarMaker(object):
+class JarMaker:
     """JarMaker reads jar.mn files and process those into jar files or
     flat directories, along with chrome.manifest files.
     """
@@ -296,9 +295,7 @@ class JarMaker(object):
                 register,
             )
             if jarname != "chrome":
-                addEntriesToListFile(
-                    chromeManifest, ["manifest {0}.manifest".format(jarname)]
-                )
+                addEntriesToListFile(chromeManifest, [f"manifest {jarname}.manifest"])
         if self.useChromeManifest:
             chromebase = os.path.dirname(jarname) + "/"
             self.updateManifest(
@@ -402,11 +399,9 @@ class JarMaker(object):
         if self.outputFormat == "jar":
             # jar
             jarfilepath = jarfile + ".jar"
-            try:
-                os.makedirs(os.path.dirname(jarfilepath))
-            except OSError as error:
-                if error.errno != errno.EEXIST:
-                    raise
+            os.makedirs(os.path.dirname(jarfilepath), exist_ok=True)
+            from MozZipFile import ZipFile
+
             jf = ZipFile(jarfilepath, "a", lock=True)
             outHelper = self.OutputHelper_jar(jf)
         else:
@@ -504,7 +499,7 @@ class JarMaker(object):
 
         if e.preprocess:
             outf = outHelper.getOutput(out, mode="w")
-            inf = io.open(realsrc, encoding="utf-8")
+            inf = open(realsrc, encoding="utf-8")
             pp = self.pp.clone()
             if src[-4:] == ".css":
                 pp.setMarker("%")
@@ -532,7 +527,7 @@ class JarMaker(object):
             outf.close()
             inf.close()
 
-    class OutputHelper_jar(object):
+    class OutputHelper_jar:
         """Provide getDestModTime and getOutput for a given jarfile."""
 
         def __init__(self, jarfile):
@@ -548,7 +543,7 @@ class JarMaker(object):
         def getOutput(self, name, mode="wb"):
             return ZipEntry(name, self.jarfile)
 
-    class OutputHelper_flat(object):
+    class OutputHelper_flat:
         """Provide getDestModTime and getOutput for a given flat
         output directory. The helper method ensureDirFor is used by
         the symlink subclass.
@@ -570,19 +565,16 @@ class JarMaker(object):
                 if e.errno != errno.ENOENT:
                     raise
             if "b" in mode:
-                return io.open(out, mode)
+                return open(out, mode)
             else:
-                return io.open(out, mode, encoding="utf-8", newline="\n")
+                return open(out, mode, encoding="utf-8", newline="\n")
 
         def ensureDirFor(self, name):
             out = os.path.join(self.basepath, name)
             outdir = os.path.dirname(out)
             if not os.path.isdir(outdir):
-                try:
-                    os.makedirs(outdir)
-                except OSError as error:
-                    if error.errno != errno.EEXIST:
-                        raise
+                os.makedirs(outdir, exist_ok=True)
+
             return out
 
     class OutputHelper_symlink(OutputHelper_flat):

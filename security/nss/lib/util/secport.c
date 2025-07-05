@@ -31,7 +31,7 @@
 #include "prthread.h"
 #endif /* THREADMARK */
 
-#if defined(XP_UNIX) || defined(XP_OS2)
+#if defined(XP_UNIX)
 #include <stdlib.h>
 #else
 #include "wtypes.h"
@@ -209,6 +209,44 @@ PORT_GetError(void)
     return (PR_GetError());
 }
 
+void
+PORT_SafeZero(void *p, size_t n)
+{
+    /* there are cases where the compiler optimizes away our attempt to clear
+     * out our stack variables. There are multiple solutions for this problem,
+     * but they aren't universally accepted on all platforms. This attempts
+     * to select the best solution available given our os, compilier, and
+     * libc */
+#ifdef __STDC_LIB_EXT1__
+    /* if the os implements C11 annex K, use memset_s */
+    memset_s(p, n, 0, n);
+#else
+    /* _DEFAULT_SORUCE  == BSD source in GCC based environments
+     * if other environmens support explicit_bzero, their defines
+     * should be added here */
+#if (defined(_DEFAULT_SOURCE) || defined(_BSD_SOURCE)) && (__GLIBC__ > 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ >= 25))
+    explicit_bzero(p, n);
+#else
+#ifdef XP_WIN
+    /* windows has a secure zero funtion */
+    SecureZeroMemory(p, n);
+#else
+    /* if the os doesn't support one of the above, but does support
+     * memset_explicit, you can add the definition for memset with the
+     * appropriate define check here */
+    /* define an explicitly implementated Safe zero if the OS
+     * doesn't provide one */
+    if (p != NULL) {
+        volatile unsigned char *__vl = (unsigned char *)p;
+        size_t __nl = n;
+        while (__nl--)
+            *__vl++ = 0;
+    }
+#endif /* no windows SecureZeroMemory */
+#endif /* no explicit_bzero */
+#endif /* no memset_s */
+}
+
 /********************* Arena code follows *****************************
  * ArenaPools are like heaps.  The memory in them consists of large blocks,
  * called arenas, which are allocated from the/a system heap.  Inside an
@@ -303,23 +341,23 @@ PORT_ArenaAlloc(PLArenaPool *arena, size_t size)
     } else
         /* Is it one of ours?  Assume so and check the magic */
         if (ARENAPOOL_MAGIC == pool->magic) {
-        PZ_Lock(pool->lock);
+            PZ_Lock(pool->lock);
 #ifdef THREADMARK
-        /* Most likely one of ours.  Is there a thread id? */
-        if (pool->marking_thread &&
-            pool->marking_thread != PR_GetCurrentThread()) {
-            /* Another thread holds a mark in this arena */
+            /* Most likely one of ours.  Is there a thread id? */
+            if (pool->marking_thread &&
+                pool->marking_thread != PR_GetCurrentThread()) {
+                /* Another thread holds a mark in this arena */
+                PZ_Unlock(pool->lock);
+                PORT_SetError(SEC_ERROR_NO_MEMORY);
+                PORT_Assert(0);
+                return NULL;
+            } /* tid != null */
+#endif        /* THREADMARK */
+            PL_ARENA_ALLOCATE(p, arena, size);
             PZ_Unlock(pool->lock);
-            PORT_SetError(SEC_ERROR_NO_MEMORY);
-            PORT_Assert(0);
-            return NULL;
-        } /* tid != null */
-#endif    /* THREADMARK */
-        PL_ARENA_ALLOCATE(p, arena, size);
-        PZ_Unlock(pool->lock);
-    } else {
-        PL_ARENA_ALLOCATE(p, arena, size);
-    }
+        } else {
+            PL_ARENA_ALLOCATE(p, arena, size);
+        }
 
     if (!p) {
         PORT_SetError(SEC_ERROR_NO_MEMORY);

@@ -4,6 +4,7 @@
 
 package org.mozilla.fenix.experimentintegration
 
+import androidx.test.platform.app.InstrumentationRegistry
 import org.junit.After
 import org.junit.Before
 import org.junit.Rule
@@ -14,13 +15,11 @@ import org.mozilla.fenix.helpers.TestHelper
 import org.mozilla.fenix.ui.robots.homeScreen
 
 class GenericExperimentIntegrationTest {
-    private val experimentName = "Viewpoint"
+    private val experimentName = InstrumentationRegistry.getArguments().getString("EXP_NAME", "Viewpoint")
 
     @get:Rule
     val activityTestRule = HomeActivityTestRule(
-        isJumpBackInCFREnabled = false,
         isPWAsPromptEnabled = false,
-        isTCPCFREnabled = false,
     )
 
     @Before
@@ -45,7 +44,27 @@ class GenericExperimentIntegrationTest {
             clickStudiesOption()
             verifyStudiesToggle(true)
             clickStudiesToggle()
-            clickStudiesDialogOkButton()
+        }
+    }
+
+    @Test
+    fun verifyStudiesAreDisabled() {
+        homeScreen {
+        }.openThreeDotMenu {
+        }.openSettings {
+        }.openSettingsSubMenuDataCollection {
+            clickStudiesOption()
+            verifyStudiesToggle(false)
+        }
+    }
+
+    @Test
+    fun testExperimentEnrolled() {
+        homeScreen {
+        }.openThreeDotMenu {
+        }.openSettings {
+        }.openExperimentsMenu {
+            verifyExperimentEnrolled(experimentName)
         }
     }
 

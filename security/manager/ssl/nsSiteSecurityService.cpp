@@ -9,7 +9,8 @@
 #include "mozilla/Base64.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/Logging.h"
-#include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs_network.h"
+#include "mozilla/StaticPrefs_test.h"
 #include "mozilla/Tokenizer.h"
 #include "mozilla/dom/PContent.h"
 #include "mozilla/dom/ToJSValue.h"
@@ -22,7 +23,6 @@
 #include "nsPromiseFlatString.h"
 #include "nsReadableUtils.h"
 #include "nsSecurityHeaderParser.h"
-#include "nsThreadUtils.h"
 #include "nsVariant.h"
 #include "nsXULAppAPI.h"
 #include "prnetdb.h"
@@ -167,28 +167,13 @@ void SiteHSTSState::ToString(nsCString& aString) {
   aString.AppendInt(static_cast<uint32_t>(mHSTSIncludeSubdomains));
 }
 
-nsSiteSecurityService::nsSiteSecurityService()
-    : mUsePreloadList(true), mPreloadListTimeOffset(0), mDafsa(kDafsa) {}
+nsSiteSecurityService::nsSiteSecurityService() : mDafsa(kDafsa) {}
 
 nsSiteSecurityService::~nsSiteSecurityService() = default;
 
-NS_IMPL_ISUPPORTS(nsSiteSecurityService, nsIObserver, nsISiteSecurityService)
+NS_IMPL_ISUPPORTS(nsSiteSecurityService, nsISiteSecurityService)
 
 nsresult nsSiteSecurityService::Init() {
-  // Don't access Preferences off the main thread.
-  if (!NS_IsMainThread()) {
-    MOZ_ASSERT_UNREACHABLE("nsSiteSecurityService initialized off main thread");
-    return NS_ERROR_NOT_SAME_THREAD;
-  }
-
-  mUsePreloadList = mozilla::Preferences::GetBool(
-      "network.stricttransportsecurity.preloadlist", true);
-  mozilla::Preferences::AddStrongObserver(
-      this, "network.stricttransportsecurity.preloadlist");
-  mPreloadListTimeOffset =
-      mozilla::Preferences::GetInt("test.currentTimeOffsetSeconds", 0);
-  mozilla::Preferences::AddStrongObserver(this,
-                                          "test.currentTimeOffsetSeconds");
   nsCOMPtr<nsIDataStorageManager> dataStorageManager(
       do_GetService("@mozilla.org/security/datastoragemanager;1"));
   if (!dataStorageManager) {
@@ -321,7 +306,7 @@ nsresult nsSiteSecurityService::SetHSTSState(
   nsAutoCString stateString;
   siteState.ToString(stateString);
   SSSLOG(("SSS: setting state for %s", hostname.get()));
-  bool isPrivate = aOriginAttributes.mPrivateBrowsingId > 0;
+  bool isPrivate = aOriginAttributes.IsPrivateBrowsing();
   nsIDataStorage::DataType storageType =
       isPrivate ? nsIDataStorage::DataType::Private
                 : nsIDataStorage::DataType::Persistent;
@@ -364,7 +349,7 @@ nsresult nsSiteSecurityService::SetHSTSState(
 // using the preloaded information.
 nsresult nsSiteSecurityService::MarkHostAsNotHSTS(
     const nsAutoCString& aHost, const OriginAttributes& aOriginAttributes) {
-  bool isPrivate = aOriginAttributes.mPrivateBrowsingId > 0;
+  bool isPrivate = aOriginAttributes.IsPrivateBrowsing();
   nsIDataStorage::DataType storageType =
       isPrivate ? nsIDataStorage::DataType::Private
                 : nsIDataStorage::DataType::Persistent;
@@ -492,7 +477,7 @@ nsresult nsSiteSecurityService::ResetStateInternal(
 
 void nsSiteSecurityService::ResetStateForExactDomain(
     const nsCString& aHostname, const OriginAttributes& aOriginAttributes) {
-  bool isPrivate = aOriginAttributes.mPrivateBrowsingId > 0;
+  bool isPrivate = aOriginAttributes.IsPrivateBrowsing();
   nsIDataStorage::DataType storageType =
       isPrivate ? nsIDataStorage::DataType::Private
                 : nsIDataStorage::DataType::Persistent;
@@ -764,8 +749,11 @@ bool nsSiteSecurityService::GetPreloadStatus(const nsACString& aHost,
   const int kIncludeSubdomains = 1;
   bool found = false;
 
-  PRTime currentTime = PR_Now() + (mPreloadListTimeOffset * PR_USEC_PER_SEC);
-  if (mUsePreloadList && currentTime < gPreloadListExpirationTime) {
+  PRTime currentTime =
+      PR_Now() +
+      (StaticPrefs::test_currentTimeOffsetSeconds() * (PRTime)PR_USEC_PER_SEC);
+  if (StaticPrefs::network_stricttransportsecurity_preloadlist() &&
+      currentTime < gPreloadListExpirationTime) {
     int result = mDafsa.Lookup(aHost);
     found = (result != mozilla::Dafsa::kKeyNotFound);
     if (found && aIncludeSubdomains) {
@@ -864,7 +852,7 @@ nsresult nsSiteSecurityService::HostMatchesHSTSEntry(
   // Additionally, if it is a knockout entry, we want to stop looking for data
   // on the host, because the knockout entry indicates "we have no information
   // regarding the security status of this host".
-  bool isPrivate = aOriginAttributes.mPrivateBrowsingId > 0;
+  bool isPrivate = aOriginAttributes.IsPrivateBrowsing();
   nsIDataStorage::DataType storageType =
       isPrivate ? nsIDataStorage::DataType::Private
                 : nsIDataStorage::DataType::Persistent;
@@ -991,26 +979,3 @@ nsresult nsSiteSecurityService::IsSecureHost(
 
 NS_IMETHODIMP
 nsSiteSecurityService::ClearAll() { return mSiteStateStorage->Clear(); }
-
-//------------------------------------------------------------
-// nsSiteSecurityService::nsIObserver
-//------------------------------------------------------------
-
-NS_IMETHODIMP
-nsSiteSecurityService::Observe(nsISupports* /*subject*/, const char* topic,
-                               const char16_t* /*data*/) {
-  // Don't access Preferences off the main thread.
-  if (!NS_IsMainThread()) {
-    MOZ_ASSERT_UNREACHABLE("Preferences accessed off main thread");
-    return NS_ERROR_NOT_SAME_THREAD;
-  }
-
-  if (strcmp(topic, NS_PREFBRANCH_PREFCHANGE_TOPIC_ID) == 0) {
-    mUsePreloadList = mozilla::Preferences::GetBool(
-        "network.stricttransportsecurity.preloadlist", true);
-    mPreloadListTimeOffset =
-        mozilla::Preferences::GetInt("test.currentTimeOffsetSeconds", 0);
-  }
-
-  return NS_OK;
-}

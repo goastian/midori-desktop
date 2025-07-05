@@ -11,28 +11,22 @@ import mozilla.components.service.nimbus.messaging.Message
 import mozilla.components.service.pocket.PocketStory
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
 import org.mozilla.fenix.components.appstate.AppState
+import org.mozilla.fenix.components.appstate.setup.checklist.ChecklistItem
 import org.mozilla.fenix.home.bookmarks.Bookmark
 import org.mozilla.fenix.home.bookmarks.controller.BookmarksController
-import org.mozilla.fenix.home.bookmarks.interactor.BookmarksInteractor
+import org.mozilla.fenix.home.interactor.HomepageInteractor
 import org.mozilla.fenix.home.pocket.PocketRecommendedStoriesCategory
-import org.mozilla.fenix.home.pocket.PocketStoriesController
-import org.mozilla.fenix.home.pocket.PocketStoriesInteractor
+import org.mozilla.fenix.home.pocket.controller.PocketStoriesController
 import org.mozilla.fenix.home.privatebrowsing.controller.PrivateBrowsingController
-import org.mozilla.fenix.home.privatebrowsing.interactor.PrivateBrowsingInteractor
 import org.mozilla.fenix.home.recentsyncedtabs.RecentSyncedTab
 import org.mozilla.fenix.home.recentsyncedtabs.controller.RecentSyncedTabController
-import org.mozilla.fenix.home.recentsyncedtabs.interactor.RecentSyncedTabInteractor
 import org.mozilla.fenix.home.recenttabs.RecentTab
 import org.mozilla.fenix.home.recenttabs.controller.RecentTabController
-import org.mozilla.fenix.home.recenttabs.interactor.RecentTabInteractor
 import org.mozilla.fenix.home.recentvisits.RecentlyVisitedItem.RecentHistoryGroup
 import org.mozilla.fenix.home.recentvisits.RecentlyVisitedItem.RecentHistoryHighlight
 import org.mozilla.fenix.home.recentvisits.controller.RecentVisitsController
-import org.mozilla.fenix.home.recentvisits.interactor.RecentVisitsInteractor
 import org.mozilla.fenix.home.toolbar.ToolbarController
-import org.mozilla.fenix.home.toolbar.ToolbarInteractor
 import org.mozilla.fenix.search.toolbar.SearchSelectorController
-import org.mozilla.fenix.search.toolbar.SearchSelectorInteractor
 import org.mozilla.fenix.search.toolbar.SearchSelectorMenu
 import org.mozilla.fenix.wallpapers.WallpaperState
 
@@ -149,11 +143,11 @@ interface TopSiteInteractor {
     fun onOpenInPrivateTabClicked(topSite: TopSite)
 
     /**
-     * Opens a dialog to rename the given top site. Called when an user clicks on the "Rename" top site menu item.
+     * Opens a dialog to edit the given top site. Called when an user clicks on the "Edit" top site menu item.
      *
-     * @param topSite The top site that will be renamed.
+     * @param topSite The top site that will be edited.
      */
-    fun onRenameTopSiteClicked(topSite: TopSite)
+    fun onEditTopSiteClicked(topSite: TopSite)
 
     /**
      * Removes the given top site. Called when an user clicks on the "Remove" top site menu item.
@@ -169,6 +163,14 @@ interface TopSiteInteractor {
      * @param position The position of the top site.
      */
     fun onSelectTopSite(topSite: TopSite, position: Int)
+
+    /**
+     * Called when a user sees a provided top site.
+     *
+     * @param topSite The provided top site that was seen by the user.
+     * @param position The position of the top site.
+     */
+    fun onTopSiteImpression(topSite: TopSite.Provided, position: Int)
 
     /**
      * Navigates to the Homepage Settings. Called when an user clicks on the "Settings" top site
@@ -218,6 +220,21 @@ interface WallpaperInteractor {
 }
 
 /**
+ * Interface for setup checklist feature related actions.
+ */
+interface SetupChecklistInteractor {
+    /**
+     * Gets invoked when the user clicks a check list item.
+     */
+    fun onChecklistItemClicked(item: ChecklistItem)
+
+    /**
+     * Invoked when the remove button is clicked.
+     */
+    fun onRemoveChecklistButtonClicked()
+}
+
+/**
  * Interactor for the Home screen. Provides implementations for the CollectionInteractor,
  * OnboardingInteractor, TopSiteInteractor, TabSessionInteractor, ToolbarInteractor,
  * ExperimentCardInteractor, RecentTabInteractor, RecentBookmarksInteractor
@@ -234,20 +251,7 @@ class SessionControlInteractor(
     private val privateBrowsingController: PrivateBrowsingController,
     private val searchSelectorController: SearchSelectorController,
     private val toolbarController: ToolbarController,
-) : CollectionInteractor,
-    TopSiteInteractor,
-    TabSessionInteractor,
-    ToolbarInteractor,
-    MessageCardInteractor,
-    RecentTabInteractor,
-    RecentSyncedTabInteractor,
-    BookmarksInteractor,
-    RecentVisitsInteractor,
-    CustomizeHomeIteractor,
-    PocketStoriesInteractor,
-    PrivateBrowsingInteractor,
-    SearchSelectorInteractor,
-    WallpaperInteractor {
+) : HomepageInteractor {
 
     override fun onCollectionAddTabTapped(collection: TabCollection) {
         controller.handleCollectionAddTabTapped(collection)
@@ -277,8 +281,8 @@ class SessionControlInteractor(
         controller.handleOpenInPrivateTabClicked(topSite)
     }
 
-    override fun onRenameTopSiteClicked(topSite: TopSite) {
-        controller.handleRenameTopSiteClicked(topSite)
+    override fun onEditTopSiteClicked(topSite: TopSite) {
+        controller.handleEditTopSiteClicked(topSite)
     }
 
     override fun onRemoveTopSiteClicked(topSite: TopSite) {
@@ -291,6 +295,10 @@ class SessionControlInteractor(
 
     override fun onSelectTopSite(topSite: TopSite, position: Int) {
         controller.handleSelectTopSite(topSite, position)
+    }
+
+    override fun onTopSiteImpression(topSite: TopSite.Provided, position: Int) {
+        controller.handleTopSiteImpression(topSite, position)
     }
 
     override fun onSettingsClicked() {
@@ -307,6 +315,14 @@ class SessionControlInteractor(
 
     override fun showWallpapersOnboardingDialog(state: WallpaperState): Boolean {
         return controller.handleShowWallpapersOnboardingDialog(state)
+    }
+
+    override fun onChecklistItemClicked(item: ChecklistItem) {
+        controller.onChecklistItemClicked(item)
+    }
+
+    override fun onRemoveChecklistButtonClicked() {
+        controller.onRemoveChecklistButtonClicked()
     }
 
     override fun onToggleCollectionExpanded(collection: TabCollection, expand: Boolean) {
@@ -403,7 +419,7 @@ class SessionControlInteractor(
         controller.handleCustomizeHomeTapped()
     }
 
-    override fun onStoryShown(storyShown: PocketStory, storyPosition: Pair<Int, Int>) {
+    override fun onStoryShown(storyShown: PocketStory, storyPosition: Triple<Int, Int, Int>) {
         pocketStoriesController.handleStoryShown(storyShown, storyPosition)
     }
 
@@ -415,7 +431,7 @@ class SessionControlInteractor(
         pocketStoriesController.handleCategoryClick(categoryClicked)
     }
 
-    override fun onStoryClicked(storyClicked: PocketStory, storyPosition: Pair<Int, Int>) {
+    override fun onStoryClicked(storyClicked: PocketStory, storyPosition: Triple<Int, Int, Int>) {
         pocketStoriesController.handleStoryClicked(storyClicked, storyPosition)
     }
 

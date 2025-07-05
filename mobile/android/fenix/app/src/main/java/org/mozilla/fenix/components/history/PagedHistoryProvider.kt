@@ -13,7 +13,7 @@ import mozilla.components.concept.storage.VisitType
 import mozilla.components.support.ktx.kotlin.tryGetHostFromUrl
 import org.mozilla.fenix.library.history.History
 import org.mozilla.fenix.library.history.HistoryItemTimeGroup
-import org.mozilla.fenix.utils.Settings.Companion.SEARCH_GROUP_MINIMUM_SITES
+import org.mozilla.fenix.utils.Settings.Companion.searchGroupMinimumSites
 
 private const val BUFFER_TIME = 15000 // 15 seconds in ms
 
@@ -104,7 +104,7 @@ class DefaultPagedHistoryProvider(
      * All types of visits that aren't redirects. This is used for fetching only redirecting visits
      * from the store so that we can filter them out.
      */
-    private val notRedirectTypes = VisitType.values().filterNot {
+    private val notRedirectTypes = VisitType.entries.filterNot {
         it == VisitType.REDIRECT_PERMANENT || it == VisitType.REDIRECT_TEMPORARY
     }
 
@@ -130,7 +130,7 @@ class DefaultPagedHistoryProvider(
                     )
                 }
                 .filter {
-                    it.items.size >= SEARCH_GROUP_MINIMUM_SITES
+                    it.items.size >= searchGroupMinimumSites
                 }
                 .toList()
         }

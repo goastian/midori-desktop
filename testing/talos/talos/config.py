@@ -29,7 +29,6 @@ DEFAULTS = dict(
     basetest=dict(
         cycles=1,
         profile_path="${talos}/base_profile",
-        responsiveness=False,
         gecko_profile=False,
         gecko_profile_interval=1,
         gecko_profile_entries=100000,
@@ -231,6 +230,9 @@ def setup_pdfpaint_test(config, test_instance):
 
     pdf_files = set()
     for pdf_info in test_manifest:
+        if not pdf_info.get("talos", True):
+            # Skip pdfs that are not meant to be tested
+            continue
         if pdf_info.get("password", None) is not None:
             # PDFs that require passwords cause timeouts
             continue
@@ -279,7 +281,7 @@ def get_test_host(manifest_line):
 
 def build_manifest(config, is_multidomain, manifestName):
     # read manifest lines
-    with open(manifestName, "r") as fHandle:
+    with open(manifestName) as fHandle:
         manifestLines = fHandle.readlines()
 
     # write modified manifest lines

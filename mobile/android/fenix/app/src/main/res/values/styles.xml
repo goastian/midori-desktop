@@ -21,6 +21,8 @@
         <item name="android:windowAnimationStyle">@style/WindowAnimationTransition</item>
         <item name="android:progressBarStyleHorizontal">@style/progressBarStyleHorizontal</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">?attr/layer1</item>
+        <item name="android:windowTranslucentNavigation">false</item>
         <item name="android:windowBackground">@color/fx_mobile_layer_color_1</item>
         <item name="android:colorEdgeEffect">@color/accent_normal_theme</item>
         <item name="android:colorAccent">@color/fx_mobile_text_color_primary</item>
@@ -58,6 +60,8 @@
         <!-- Action -->
         <!-- Primary button, Snackbar, Floating action button, Chip selected -->
         <item name="actionPrimary">@color/fx_mobile_action_color_primary</item>
+        <!-- Primary button in a disabled state -->
+        <item name="actionPrimaryDisabled">@color/fx_mobile_action_color_primary_disabled</item>
 
         <!-- Text -->
         <!-- Primary text -->
@@ -74,6 +78,8 @@
         <item name="textOnColorPrimary">@color/fx_mobile_text_color_oncolor_primary</item>
         <!-- Action Primary text -->
         <item name="textActionPrimary">@color/fx_mobile_text_color_action_primary</item>
+        <!-- Action Primary disabled text -->
+        <item name="textActionPrimaryDisabled">@color/fx_mobile_text_color_action_primary_disabled</item>
 
         <!-- Icon -->
         <!-- Secondary icon -->
@@ -202,7 +208,7 @@
 
     <style name="DialogButtonStyleDark" parent="Widget.MaterialComponents.Button.TextButton.Dialog">
         <item name="android:background">@drawable/ripple_button_dark</item>
-        <item name="android:textColor">?accentHighContrast</item>
+        <item name="android:textColor">?accentUsedOnDarkBackground</item>
         <item name="android:textFontWeight" tools:ignore="NewApi">@integer/font_weight_medium</item>
         <item name="android:fontWeight" tools:ignore="NewApi">@integer/font_weight_medium</item>    </style>
 
@@ -254,6 +260,8 @@
         <!-- Action -->
         <!-- Primary button, Snackbar, Floating action button, Chip selected -->
         <item name="actionPrimary">@color/fx_mobile_private_action_color_primary</item>
+        <!-- Primary button in a disabled state -->
+        <item name="actionPrimaryDisabled">@color/fx_mobile_private_action_color_primary_disabled</item>
 
         <!-- Text -->
         <!-- Primary text -->
@@ -270,6 +278,8 @@
         <item name="textOnColorPrimary">@color/fx_mobile_private_text_color_oncolor_primary</item>
         <!-- Action Primary text -->
         <item name="textActionPrimary">@color/fx_mobile_private_text_color_action_primary</item>
+        <!-- Action Primary disabled text -->
+        <item name="textActionPrimaryDisabled">@color/fx_mobile_private_text_color_action_primary_disabled</item>
 
         <!-- Icon -->
         <!-- Secondary icon -->
@@ -346,7 +356,7 @@
     </style>
 
     <!-- Fade animation for theme switching -->
-    <style name="WindowAnimationTransition">
+    <style name="WindowAnimationTransition" parent="android:Animation.Activity">
         <item name="android:windowEnterAnimation">@anim/fade_in</item>
         <item name="android:windowExitAnimation">@anim/fade_out</item>
     </style>
@@ -685,11 +695,6 @@
         <item name="cornerSize">@dimen/top_sites_favicon_corner_size</item>
     </style>
 
-    <style name="TabTrayFab" parent="Widget.MaterialComponents.ExtendedFloatingActionButton">
-        <item name="elevation">90dp</item>
-        <item name="android:stateListAnimator">@null</item>
-    </style>
-
     <style name="SearchDialogStyle">
         <item name="android:windowAnimationStyle">@null</item>
         <item name="android:textAppearance">@style/TextAppearance.AppCompat</item>
@@ -703,8 +708,13 @@
         <item name="windowActionBar">false</item>
         <item name="android:windowFullscreen">false</item>
         <item name="android:windowContentOverlay">@null</item>
-        <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowTranslucentNavigation">true</item>
+        <item name="android:navigationBarColor">?attr/layer1</item>
+        <item name="android:windowTranslucentNavigation">false</item>
+        <item name="android:statusBarColor">?attr/layer1</item>
+    </style>
+
+    <style name="SearchDialogStyleTabStrip" parent="SearchDialogStyle">
+        <item name="android:statusBarColor">?attr/layer3</item>
     </style>
 
     <style name="SearchSelectorIconStyle">
