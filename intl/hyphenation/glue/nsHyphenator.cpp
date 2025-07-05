@@ -7,7 +7,10 @@
 
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/Omnijar.h"
+#include "mozilla/ipc/SharedMemoryHandle.h"
+#include "mozilla/ipc/SharedMemoryMapping.h"
 #include "nsContentUtils.h"
+#include "nsEscape.h"
 #include "nsIChannel.h"
 #include "nsIFile.h"
 #include "nsIFileURL.h"
@@ -32,7 +35,7 @@ void DefaultDelete<const CompiledData>::operator()(
   mapped_hyph_free_compiled_data(const_cast<CompiledData*>(aData));
 }
 
-static const void* GetItemPtrFromJarURI(nsIJARURI* aJAR, uint32_t* aLength) {
+static const uint8_t* GetItemPtrFromJarURI(nsIJARURI* aJAR, uint32_t* aLength) {
   // Try to get the jarfile's nsZipArchive, find the relevant item, and return
   // a pointer to its data provided it is stored uncompressed.
   nsCOMPtr<nsIURI> jarFile;
@@ -66,64 +69,52 @@ static const void* GetItemPtrFromJarURI(nsIJARURI* aJAR, uint32_t* aLength) {
   return nullptr;
 }
 
-static UniquePtr<base::SharedMemory> GetHyphDictFromParent(nsIURI* aURI,
-                                                           uint32_t* aLength) {
+static ipc::ReadOnlySharedMemoryMapping GetHyphDictFromParent(nsIURI* aURI) {
   MOZ_ASSERT(!XRE_IsParentProcess());
-  base::SharedMemoryHandle handle = base::SharedMemory::NULLHandle();
-  uint32_t size;
+  ipc::ReadOnlySharedMemoryHandle handle;
   MOZ_ASSERT(aURI);
-  if (!dom::ContentChild::GetSingleton()->SendGetHyphDict(aURI, &handle,
-                                                          &size)) {
+  if (!dom::ContentChild::GetSingleton()->SendGetHyphDict(aURI, &handle)) {
     return nullptr;
   }
-  UniquePtr<base::SharedMemory> shm = MakeUnique<base::SharedMemory>();
-  if (!shm->IsHandleValid(handle)) {
+  if (!handle.IsValid()) {
     return nullptr;
   }
-  if (!shm->SetHandle(std::move(handle), true)) {
+  auto map = handle.Map();
+  if (!map) {
     return nullptr;
   }
-  if (!shm->Map(size)) {
+  if (!map.Address()) {
     return nullptr;
   }
-  char* addr = static_cast<char*>(shm->memory());
-  if (!addr) {
-    return nullptr;
-  }
-  *aLength = size;
-  return shm;
+  return map;
 }
 
-static UniquePtr<base::SharedMemory> CopyToShmem(const CompiledData* aData) {
+static ipc::ReadOnlySharedMemoryHandle CopyToShmem(const CompiledData* aData) {
   MOZ_ASSERT(XRE_IsParentProcess());
 
   // The shm-related calls here are not expected to fail, but if they do,
   // we'll just return null (as if the resource was unavailable) and proceed
   // without hyphenation.
   uint32_t size = mapped_hyph_compiled_data_size(aData);
-  UniquePtr<base::SharedMemory> shm = MakeUnique<base::SharedMemory>();
-  if (!shm->CreateFreezeable(size)) {
+  auto handle = ipc::shared_memory::CreateFreezable(size);
+  if (!handle) {
     return nullptr;
   }
-  if (!shm->Map(size)) {
+  auto map = std::move(handle).Map();
+  if (!map) {
     return nullptr;
   }
-  char* buffer = static_cast<char*>(shm->memory());
+  char* buffer = map.DataAs<char>();
   if (!buffer) {
     return nullptr;
   }
 
   memcpy(buffer, mapped_hyph_compiled_data_ptr(aData), size);
-  if (!shm->Freeze()) {
-    return nullptr;
-  }
-
-  return shm;
+  return std::move(map).Freeze();
 }
 
-static UniquePtr<base::SharedMemory> LoadFromURI(nsIURI* aURI,
-                                                 uint32_t* aLength,
-                                                 bool aPrecompiled) {
+static ipc::ReadOnlySharedMemoryHandle LoadFromURI(nsIURI* aURI,
+                                                   bool aPrecompiled) {
   MOZ_ASSERT(XRE_IsParentProcess());
   nsCOMPtr<nsIChannel> channel;
   if (NS_FAILED(NS_NewChannel(
@@ -146,14 +137,15 @@ static UniquePtr<base::SharedMemory> LoadFromURI(nsIURI* aURI,
   }
 
   if (aPrecompiled) {
-    UniquePtr<base::SharedMemory> shm = MakeUnique<base::SharedMemory>();
-    if (!shm->CreateFreezeable(available)) {
+    auto handle = ipc::shared_memory::CreateFreezable(available);
+    if (!handle) {
       return nullptr;
     }
-    if (!shm->Map(available)) {
+    auto map = std::move(handle).Map();
+    if (!map) {
       return nullptr;
     }
-    char* buffer = static_cast<char*>(shm->memory());
+    char* buffer = map.DataAs<char>();
     if (!buffer) {
       return nullptr;
     }
@@ -169,12 +161,7 @@ static UniquePtr<base::SharedMemory> LoadFromURI(nsIURI* aURI,
       return nullptr;
     }
 
-    if (!shm->Freeze()) {
-      return nullptr;
-    }
-
-    *aLength = bytesRead;
-    return shm;
+    return std::move(map).Freeze();
   }
 
   // Read from the URI into a temporary buffer, compile it, then copy the
@@ -189,7 +176,6 @@ static UniquePtr<base::SharedMemory> LoadFromURI(nsIURI* aURI,
   UniquePtr<const CompiledData> data(mapped_hyph_compile_buffer(
       reinterpret_cast<const uint8_t*>(buffer.get()), bytesRead, false));
   if (data) {
-    *aLength = mapped_hyph_compiled_data_size(data.get());
     return CopyToShmem(data.get());
   }
 
@@ -197,8 +183,7 @@ static UniquePtr<base::SharedMemory> LoadFromURI(nsIURI* aURI,
 }
 
 nsHyphenator::nsHyphenator(nsIURI* aURI, bool aHyphenateCapitalized)
-    : mDict(static_cast<const void*>(nullptr)),
-      mDictSize(0),
+    : mDict(Span<const uint8_t>()),
       mHyphenateCapitalized(aHyphenateCapitalized) {
   // Files with extension ".hyf" are expected to be precompiled mapped_hyph
   // tables; we also support uncompiled ".dic" files, but they are more
@@ -211,13 +196,11 @@ nsHyphenator::nsHyphenator(nsIURI* aURI, bool aHyphenateCapitalized)
   // them a compiled version of the resource, so that we only pay the cost of
   // compilation once per language per session.
   if (!precompiled && !XRE_IsParentProcess()) {
-    uint32_t length;
-    UniquePtr<base::SharedMemory> shm = GetHyphDictFromParent(aURI, &length);
+    auto shm = GetHyphDictFromParent(aURI);
     if (shm) {
       // We don't need to validate mDict because the parent process
       // will have done so.
-      mDictSize = length;
-      mDict = AsVariant(std::move(shm));
+      mDict.emplace<ipc::ReadOnlySharedMemoryMapping>(std::move(shm));
     }
     return;
   }
@@ -227,15 +210,13 @@ nsHyphenator::nsHyphenator(nsIURI* aURI, bool aHyphenateCapitalized)
     // This gives us a raw pointer into the omnijar's data (if uncompressed);
     // we do not own it and must not attempt to free it!
     uint32_t length;
-    const void* ptr = GetItemPtrFromJarURI(jar, &length);
+    const uint8_t* ptr = GetItemPtrFromJarURI(jar, &length);
     if (ptr) {
       if (precompiled) {
         // The data should be directly usable by mapped_hyph; validate that it
         // looks correct, and save the pointer.
-        if (mapped_hyph_is_valid_hyphenator(static_cast<const uint8_t*>(ptr),
-                                            length)) {
-          mDictSize = length;
-          mDict = AsVariant(ptr);
+        if (mapped_hyph_is_valid_hyphenator(ptr, length)) {
+          mDict.emplace<Span<const uint8_t>>(ptr, length);
           return;
         }
       } else {
@@ -243,13 +224,12 @@ nsHyphenator::nsHyphenator(nsIURI* aURI, bool aHyphenateCapitalized)
         // We then move it to shared memory so we can expose it to content
         // processes.
         MOZ_ASSERT(XRE_IsParentProcess());
-        UniquePtr<const CompiledData> data(mapped_hyph_compile_buffer(
-            static_cast<const uint8_t*>(ptr), length, false));
+        UniquePtr<const CompiledData> data(
+            mapped_hyph_compile_buffer(ptr, length, false));
         if (data) {
-          UniquePtr<base::SharedMemory> shm = CopyToShmem(data.get());
+          auto shm = CopyToShmem(data.get());
           if (shm) {
-            mDictSize = mapped_hyph_compiled_data_size(data.get());
-            mDict = AsVariant(std::move(shm));
+            mDict.emplace<ipc::ReadOnlySharedMemoryHandle>(std::move(shm));
             return;
           }
         }
@@ -260,21 +240,17 @@ nsHyphenator::nsHyphenator(nsIURI* aURI, bool aHyphenateCapitalized)
       // buffer; if we're a child, send a request to the parent for the
       // shared-memory copy (which it will load if not already available).
       if (XRE_IsParentProcess()) {
-        UniquePtr<base::SharedMemory> shm =
-            LoadFromURI(aURI, &length, precompiled);
+        auto shm = LoadFromURI(aURI, precompiled);
         if (shm) {
-          mDictSize = length;
-          mDict = AsVariant(std::move(shm));
+          mDict.emplace<ipc::ReadOnlySharedMemoryHandle>(std::move(shm));
           return;
         }
       } else {
-        UniquePtr<base::SharedMemory> shm =
-            GetHyphDictFromParent(aURI, &length);
+        auto shm = GetHyphDictFromParent(aURI);
         if (shm) {
           // We don't need to validate mDict because the parent process
           // will have done so.
-          mDictSize = length;
-          mDict = AsVariant(std::move(shm));
+          mDict.emplace<ipc::ReadOnlySharedMemoryMapping>(std::move(shm));
           return;
         }
       }
@@ -284,7 +260,7 @@ nsHyphenator::nsHyphenator(nsIURI* aURI, bool aHyphenateCapitalized)
   // We get file:// URIs when running an unpackaged build; they could also
   // occur if we support adding hyphenation dictionaries by putting files in
   // a directory of the profile, for example.
-  if (net::SchemeIsFile(aURI)) {
+  if (aURI->SchemeIs("file")) {
     // Ask the Rust lib to mmap the file. In this case our mDictSize field
     // remains zero; mDict is not a pointer to the raw data but an opaque
     // reference to a Rust object, and can only be freed by passing it to
@@ -299,6 +275,9 @@ nsHyphenator::nsHyphenator(nsIURI* aURI, bool aHyphenateCapitalized)
       path.Cut(0, 1);
     }
 #endif
+    // In case of %-escaped spaces or other "special" chars in the path,
+    // we need the unescaped version to pass to mapped_hyph_load_dictionary.
+    NS_UnescapeURL(path);
     if (precompiled) {
       // If the file is compiled, we can just map it directly.
       UniquePtr<const HyphDic> dic(mapped_hyph_load_dictionary(path.get()));
@@ -315,10 +294,9 @@ nsHyphenator::nsHyphenator(nsIURI* aURI, bool aHyphenateCapitalized)
       UniquePtr<const CompiledData> data(
           mapped_hyph_compile_file(path.get(), false));
       if (data) {
-        UniquePtr<base::SharedMemory> shm = CopyToShmem(data.get());
+        auto shm = CopyToShmem(data.get());
         if (shm) {
-          mDictSize = mapped_hyph_compiled_data_size(data.get());
-          mDict = AsVariant(std::move(shm));
+          mDict.emplace<ipc::ReadOnlySharedMemoryHandle>(std::move(shm));
           return;
         }
       }
@@ -336,8 +314,9 @@ nsHyphenator::nsHyphenator(nsIURI* aURI, bool aHyphenateCapitalized)
 
 bool nsHyphenator::IsValid() {
   return mDict.match(
-      [](const void*& ptr) { return ptr != nullptr; },
-      [](UniquePtr<base::SharedMemory>& shm) { return shm != nullptr; },
+      [](Span<const uint8_t>& span) { return !span.IsEmpty(); },
+      [](ipc::ReadOnlySharedMemoryHandle& shm) { return shm.IsValid(); },
+      [](ipc::ReadOnlySharedMemoryMapping& shm) { return shm.IsValid(); },
       [](UniquePtr<const HyphDic>& hyph) { return hyph != nullptr; });
 }
 
@@ -444,16 +423,21 @@ void nsHyphenator::HyphenateWord(const nsAString& aString, uint32_t aStart,
   AutoTArray<uint8_t, 200> hyphenValues;
   hyphenValues.SetLength(utf8.Length());
   int32_t result = mDict.match(
-      [&](const void*& ptr) {
+      [&](Span<const uint8_t>& span) {
         return mapped_hyph_find_hyphen_values_raw(
-            static_cast<const uint8_t*>(ptr), mDictSize, utf8.BeginReading(),
-            utf8.Length(), hyphenValues.Elements(), hyphenValues.Length());
+            span.data(), span.size(), utf8.BeginReading(), utf8.Length(),
+            hyphenValues.Elements(), hyphenValues.Length());
       },
-      [&](UniquePtr<base::SharedMemory>& shm) {
+      [&](ipc::ReadOnlySharedMemoryHandle& shm) {
+        // Only the parent process can have a handle stored. We should never
+        // get to this point with just a handle.
+        MOZ_ASSERT_UNREACHABLE("Unexpected HyphenateWord with only a handle");
+        return 0;
+      },
+      [&](ipc::ReadOnlySharedMemoryMapping& shm) {
         return mapped_hyph_find_hyphen_values_raw(
-            static_cast<const uint8_t*>(shm->memory()), mDictSize,
-            utf8.BeginReading(), utf8.Length(), hyphenValues.Elements(),
-            hyphenValues.Length());
+            shm.DataAs<uint8_t>(), shm.Size(), utf8.BeginReading(),
+            utf8.Length(), hyphenValues.Elements(), hyphenValues.Length());
       },
       [&](UniquePtr<const HyphDic>& hyph) {
         return mapped_hyph_find_hyphen_values_dic(
@@ -489,14 +473,11 @@ void nsHyphenator::HyphenateWord(const nsAString& aString, uint32_t aStart,
   }
 }
 
-void nsHyphenator::CloneHandle(base::SharedMemoryHandle* aOutHandle,
-                               uint32_t* aOutSize) {
-  // If the resource is invalid, or if we fail to share it to the child
-  // process, we'll just bail out and continue without hyphenation; no need
-  // for this to be a fatal error.
-  if (!mDict.is<UniquePtr<base::SharedMemory>>()) {
-    return;
+ipc::ReadOnlySharedMemoryHandle nsHyphenator::CloneHandle() {
+  MOZ_ASSERT(XRE_IsParentProcess());
+
+  if (mDict.is<ipc::ReadOnlySharedMemoryHandle>()) {
+    return mDict.as<ipc::ReadOnlySharedMemoryHandle>().Clone();
   }
-  *aOutHandle = mDict.as<UniquePtr<base::SharedMemory>>()->CloneHandle();
-  *aOutSize = mDictSize;
+  return nullptr;
 }

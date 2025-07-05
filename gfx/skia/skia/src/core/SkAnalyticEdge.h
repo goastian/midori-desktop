@@ -20,18 +20,11 @@ struct SkPoint;
 
 struct SkAnalyticEdge {
     // Similar to SkEdge, the conic edges will be converted to quadratic edges
-    enum Type {
-        kLine_Type,
-        kQuad_Type,
-        kCubic_Type
-    };
+    using Type = SkEdge::Type;
+    using Winding = SkEdge::Winding;
 
     SkAnalyticEdge* fNext;
     SkAnalyticEdge* fPrev;
-
-    // During aaa_walk_edges, if this edge is a left edge,
-    // then fRiteE is its corresponding right edge. Otherwise it's nullptr.
-    SkAnalyticEdge* fRiteE;
 
     SkFixed fX;
     SkFixed fDX;
@@ -42,21 +35,17 @@ struct SkAnalyticEdge {
     SkFixed fDY;            // abs(1/fDX); may be SK_MaxS32 when fDX is close to 0.
                             // fDY is only used for blitting trapezoids.
 
-    SkFixed fSavedX;        // For deferred blitting
-    SkFixed fSavedY;        // For deferred blitting
-    SkFixed fSavedDY;       // For deferred blitting
-
-    Type    fEdgeType;      // Remembers the *initial* edge type
+    Type fEdgeType;          // Remembers the *initial* edge type
 
     int8_t  fCurveCount;    // only used by kQuad(+) and kCubic(-)
     uint8_t fCurveShift;    // appled to all Dx/DDx/DDDx except for fCubicDShift exception
     uint8_t fCubicDShift;   // applied to fCDx and fCDy only in cubic
-    int8_t  fWinding;       // 1 or -1
+    Winding fWinding;
 
-    static const int kDefaultAccuracy = 2; // default accuracy for snapping
+    static constexpr int kDefaultAccuracy = 2;  // default accuracy for snapping
 
     static inline SkFixed SnapY(SkFixed y) {
-        const int accuracy = kDefaultAccuracy;
+        constexpr int accuracy = kDefaultAccuracy;
         // This approach is safer than left shift, round, then right shift
         return ((unsigned)y + (SK_Fixed1 >> (accuracy + 1))) >> (16 - accuracy) << (16 - accuracy);
     }
@@ -81,12 +70,6 @@ struct SkAnalyticEdge {
         fX += fDX >> yShift;
     }
 
-    inline void saveXY(SkFixed x, SkFixed y, SkFixed dY) {
-        fSavedX = x;
-        fSavedY = y;
-        fSavedDY = dY;
-    }
-
     bool setLine(const SkPoint& p0, const SkPoint& p1);
     bool updateLine(SkFixed ax, SkFixed ay, SkFixed bx, SkFixed by, SkFixed slope);
 
@@ -96,8 +79,12 @@ struct SkAnalyticEdge {
 #ifdef SK_DEBUG
     void dump() const {
         SkDebugf("edge: upperY:%d lowerY:%d y:%g x:%g dx:%g w:%d\n",
-                 fUpperY, fLowerY, SkFixedToFloat(fY), SkFixedToFloat(fX),
-                 SkFixedToFloat(fDX), fWinding);
+                 fUpperY,
+                 fLowerY,
+                 SkFixedToFloat(fY),
+                 SkFixedToFloat(fX),
+                 SkFixedToFloat(fDX),
+                 static_cast<int8_t>(fWinding));
     }
 
     void validate() const {
@@ -106,7 +93,7 @@ struct SkAnalyticEdge {
          SkASSERT(fNext->fPrev == this);
 
          SkASSERT(fUpperY < fLowerY);
-         SkASSERT(SkAbs32(fWinding) == 1);
+         SkASSERT(fWinding == Winding::kCW || fWinding == Winding::kCCW);
     }
 #endif
 };

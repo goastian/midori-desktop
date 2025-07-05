@@ -485,16 +485,6 @@ nsDocShellTreeOwner::GetPersistence(bool* aPersistPosition, bool* aPersistSize,
 }
 
 NS_IMETHODIMP
-nsDocShellTreeOwner::GetTabCount(uint32_t* aResult) {
-  if (mTreeOwner) {
-    return mTreeOwner->GetTabCount(aResult);
-  }
-
-  *aResult = 0;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 nsDocShellTreeOwner::GetHasPrimaryContent(bool* aResult) {
   *aResult = mPrimaryRemoteTab || mPrimaryContentShell;
   return NS_OK;
@@ -505,8 +495,7 @@ nsDocShellTreeOwner::GetHasPrimaryContent(bool* aResult) {
 //*****************************************************************************
 
 NS_IMETHODIMP
-nsDocShellTreeOwner::InitWindow(nativeWindow aParentNativeWindow,
-                                nsIWidget* aParentWidget, int32_t aX,
+nsDocShellTreeOwner::InitWindow(nsIWidget* aParentWidget, int32_t aX,
                                 int32_t aY, int32_t aCX, int32_t aCY) {
   return NS_ERROR_NULL_POINTER;
 }
@@ -620,20 +609,6 @@ nsDocShellTreeOwner::GetParentWidget(nsIWidget** aParentWidget) {
 
 NS_IMETHODIMP
 nsDocShellTreeOwner::SetParentWidget(nsIWidget* aParentWidget) {
-  return NS_ERROR_NULL_POINTER;
-}
-
-NS_IMETHODIMP
-nsDocShellTreeOwner::GetParentNativeWindow(nativeWindow* aParentNativeWindow) {
-  nsCOMPtr<nsIBaseWindow> ownerWin = GetOwnerWin();
-  if (ownerWin) {
-    return ownerWin->GetParentNativeWindow(aParentNativeWindow);
-  }
-  return NS_ERROR_NULL_POINTER;
-}
-
-NS_IMETHODIMP
-nsDocShellTreeOwner::SetParentNativeWindow(nativeWindow aParentNativeWindow) {
   return NS_ERROR_NULL_POINTER;
 }
 
@@ -1146,7 +1121,8 @@ nsresult ChromeTooltipListener::MouseMove(Event* aMouseEvent) {
   // within the timer callback. On win32, we'll get a MouseMove event even when
   // a popup goes away -- even when the mouse doesn't change position! To get
   // around this, we make sure the mouse has really moved before proceeding.
-  CSSIntPoint newMouseClientPoint = mouseEvent->ClientPoint();
+  const CSSIntPoint newMouseClientPoint =
+      RoundedToInt(mouseEvent->ClientPoint());
   if (mMouseClientPoint == newMouseClientPoint) {
     return NS_OK;
   }

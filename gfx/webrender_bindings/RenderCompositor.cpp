@@ -40,9 +40,12 @@ namespace mozilla::wr {
 void wr_compositor_add_surface(void* aCompositor, wr::NativeSurfaceId aId,
                                const wr::CompositorSurfaceTransform* aTransform,
                                wr::DeviceIntRect aClipRect,
-                               wr::ImageRendering aImageRendering) {
+                               wr::ImageRendering aImageRendering,
+                               wr::DeviceIntRect aRoundedClipRect,
+                               wr::ClipRadius aRoundedClipRadius) {
   RenderCompositor* compositor = static_cast<RenderCompositor*>(aCompositor);
-  compositor->AddSurface(aId, *aTransform, aClipRect, aImageRendering);
+  compositor->AddSurface(aId, *aTransform, aClipRect, aImageRendering,
+                         aRoundedClipRect, aRoundedClipRadius);
 }
 
 void wr_compositor_begin_frame(void* aCompositor) {
@@ -72,6 +75,20 @@ void wr_compositor_create_external_surface(void* aCompositor,
   compositor->CreateExternalSurface(aId, aIsOpaque);
 }
 
+void wr_compositor_create_swapchain_surface(void* aCompositor,
+                                            wr::NativeSurfaceId aId,
+                                            wr::DeviceIntSize aSize,
+                                            bool aIsOpaque) {
+  RenderCompositor* compositor = static_cast<RenderCompositor*>(aCompositor);
+  compositor->CreateSwapChainSurface(aId, aSize, aIsOpaque);
+}
+
+void wr_compositor_resize_swapchain(void* aCompositor, wr::NativeSurfaceId aId,
+                                    wr::DeviceIntSize aSize) {
+  RenderCompositor* compositor = static_cast<RenderCompositor*>(aCompositor);
+  compositor->ResizeSwapChainSurface(aId, aSize);
+}
+
 void wr_compositor_create_backdrop_surface(void* aCompositor,
                                            wr::NativeSurfaceId aId,
                                            wr::ColorF aColor) {
@@ -89,6 +106,17 @@ void wr_compositor_destroy_tile(void* aCompositor, wr::NativeSurfaceId aId,
                                 int32_t aX, int32_t aY) {
   RenderCompositor* compositor = static_cast<RenderCompositor*>(aCompositor);
   compositor->DestroyTile(aId, aX, aY);
+}
+
+void wr_compositor_bind_swapchain(void* aCompositor, wr::NativeSurfaceId aId) {
+  RenderCompositor* compositor = static_cast<RenderCompositor*>(aCompositor);
+  compositor->BindSwapChain(aId);
+}
+
+void wr_compositor_present_swapchain(void* aCompositor,
+                                     wr::NativeSurfaceId aId) {
+  RenderCompositor* compositor = static_cast<RenderCompositor*>(aCompositor);
+  compositor->PresentSwapChain(aId);
 }
 
 void wr_compositor_destroy_surface(void* aCompositor, NativeSurfaceId aId) {
@@ -135,6 +163,12 @@ void wr_compositor_get_window_visibility(void* aCompositor,
   compositor->GetWindowVisibility(aVisibility);
 }
 
+void wr_compositor_get_window_properties(void* aCompositor,
+                                         WindowProperties* aProperties) {
+  RenderCompositor* compositor = static_cast<RenderCompositor*>(aCompositor);
+  compositor->GetWindowProperties(aProperties);
+}
+
 void wr_compositor_unbind(void* aCompositor) {
   RenderCompositor* compositor = static_cast<RenderCompositor*>(aCompositor);
   compositor->Unbind();
@@ -174,7 +208,10 @@ UniquePtr<RenderCompositor> RenderCompositor::Create(
       return RenderCompositorNativeSWGL::Create(aWidget, aError);
     }
 #elif defined(MOZ_WAYLAND)
-    if (gfx::gfxVars::UseWebRenderCompositor()) {
+    // Some widgets on Wayland (D&D popups for instance) can't use native
+    // compositor due to system limitations.
+    if (gfx::gfxVars::UseWebRenderCompositor() &&
+        aWidget->GetCompositorOptions().AllowNativeCompositor()) {
       return RenderCompositorNativeSWGL::Create(aWidget, aError);
     }
 #endif
@@ -200,7 +237,8 @@ UniquePtr<RenderCompositor> RenderCompositor::Create(
 #endif
 
 #if defined(MOZ_WAYLAND)
-  if (gfx::gfxVars::UseWebRenderCompositor()) {
+  if (gfx::gfxVars::UseWebRenderCompositor() &&
+      aWidget->GetCompositorOptions().AllowNativeCompositor()) {
     return RenderCompositorNativeOGL::Create(aWidget, aError);
   }
 #endif
@@ -247,9 +285,12 @@ void RenderCompositor::GetWindowVisibility(WindowVisibility* aVisibility) {
   if (!widget) {
     return;
   }
-  aVisibility->size_mode = ToWrWindowSizeMode(widget->GetWindowSizeMode());
   aVisibility->is_fully_occluded = widget->GetWindowIsFullyOccluded();
 #endif
+}
+
+void RenderCompositor::GetWindowProperties(WindowProperties* aProperties) {
+  aProperties->is_opaque = true;
 }
 
 gfx::DeviceResetReason RenderCompositor::IsContextLost(bool aForce) {

@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 chr{
     Countries{
         001{"ᎡᎶᎯ"}
@@ -299,7 +299,6 @@ chr{
         ZZ{"ᏄᏬᎵᏍᏛᎾ ᎤᏔᏂᏗᎦᏙᎯ"}
     }
     Countries%short{
-        GB{"UK"}
         HK{"ᎰᏂᎩ ᎪᏂᎩ"}
         MO{"ᎹᎧᎣ"}
         PS{"ᏆᎴᏍᏗᏂ"}

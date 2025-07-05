@@ -462,7 +462,7 @@ BufferTextureHost::BufferTextureHost(const BufferDescriptor& aDesc,
     case BufferDescriptor::TYCbCrDescriptor: {
       const YCbCrDescriptor& ycbcr = mDescriptor.get_YCbCrDescriptor();
       mSize = ycbcr.display().Size();
-      mFormat = gfx::SurfaceFormat::YUV;
+      mFormat = gfx::SurfaceFormat::YUV420;
       break;
     }
     case BufferDescriptor::TRGBDescriptor: {
@@ -512,7 +512,7 @@ void BufferTextureHost::CreateRenderTexture(
 }
 
 uint32_t BufferTextureHost::NumSubTextures() {
-  if (GetFormat() == gfx::SurfaceFormat::YUV) {
+  if (GetFormat() == gfx::SurfaceFormat::YUV420) {
     return 3;
   }
 
@@ -536,14 +536,15 @@ void BufferTextureHost::PushResourceUpdates(
                                           wr::ImageBufferKind::TextureRect)
                                     : wr::ExternalImageType::Buffer();
 
-  if (GetFormat() != gfx::SurfaceFormat::YUV) {
+  if (GetFormat() != gfx::SurfaceFormat::YUV420) {
     MOZ_ASSERT(aImageKeys.length() == 1);
 
     wr::ImageDescriptor descriptor(
         GetSize(),
         ImageDataSerializer::ComputeRGBStride(GetFormat(), GetSize().width),
         GetFormat());
-    (aResources.*method)(aImageKeys[0], descriptor, aExtID, imageType, 0);
+    (aResources.*method)(aImageKeys[0], descriptor, aExtID, imageType, 0,
+                         /* aNormalizedUvs */ false);
   } else {
     MOZ_ASSERT(aImageKeys.length() == 3);
 
@@ -555,9 +556,12 @@ void BufferTextureHost::PushResourceUpdates(
     wr::ImageDescriptor cbcrDescriptor(
         cbcrSize, desc.cbCrStride(),
         SurfaceFormatForColorDepth(desc.colorDepth()));
-    (aResources.*method)(aImageKeys[0], yDescriptor, aExtID, imageType, 0);
-    (aResources.*method)(aImageKeys[1], cbcrDescriptor, aExtID, imageType, 1);
-    (aResources.*method)(aImageKeys[2], cbcrDescriptor, aExtID, imageType, 2);
+    (aResources.*method)(aImageKeys[0], yDescriptor, aExtID, imageType, 0,
+                         /* aNormalizedUvs */ false);
+    (aResources.*method)(aImageKeys[1], cbcrDescriptor, aExtID, imageType, 1,
+                         /* aNormalizedUvs */ false);
+    (aResources.*method)(aImageKeys[2], cbcrDescriptor, aExtID, imageType, 2,
+                         /* aNormalizedUvs */ false);
   }
 }
 
@@ -572,7 +576,7 @@ void BufferTextureHost::PushDisplayItems(wr::DisplayListBuilder& aBuilder,
       aFlags.contains(PushDisplayItemFlag::PREFER_COMPOSITOR_SURFACE);
   bool useExternalSurface =
       aFlags.contains(PushDisplayItemFlag::SUPPORTS_EXTERNAL_BUFFER_TEXTURES);
-  if (GetFormat() != gfx::SurfaceFormat::YUV) {
+  if (GetFormat() != gfx::SurfaceFormat::YUV420) {
     MOZ_ASSERT(aImageKeys.length() == 1);
     aBuilder.PushImage(aBounds, aClip, true, false, aFilter, aImageKeys[0],
                        !(mFlags & TextureFlags::NON_PREMULTIPLIED),
@@ -631,7 +635,7 @@ void BufferTextureHost::UnbindTextureSource() {
 gfx::SurfaceFormat BufferTextureHost::GetFormat() const { return mFormat; }
 
 gfx::YUVColorSpace BufferTextureHost::GetYUVColorSpace() const {
-  if (mFormat == gfx::SurfaceFormat::YUV) {
+  if (mFormat == gfx::SurfaceFormat::YUV420) {
     const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
     return desc.yUVColorSpace();
   }
@@ -639,7 +643,7 @@ gfx::YUVColorSpace BufferTextureHost::GetYUVColorSpace() const {
 }
 
 gfx::ColorDepth BufferTextureHost::GetColorDepth() const {
-  if (mFormat == gfx::SurfaceFormat::YUV) {
+  if (mFormat == gfx::SurfaceFormat::YUV420) {
     const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
     return desc.colorDepth();
   }
@@ -647,7 +651,7 @@ gfx::ColorDepth BufferTextureHost::GetColorDepth() const {
 }
 
 gfx::ColorRange BufferTextureHost::GetColorRange() const {
-  if (mFormat == gfx::SurfaceFormat::YUV) {
+  if (mFormat == gfx::SurfaceFormat::YUV420) {
     const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
     return desc.colorRange();
   }
@@ -655,7 +659,7 @@ gfx::ColorRange BufferTextureHost::GetColorRange() const {
 }
 
 gfx::ChromaSubsampling BufferTextureHost::GetChromaSubsampling() const {
-  if (mFormat == gfx::SurfaceFormat::YUV) {
+  if (mFormat == gfx::SurfaceFormat::YUV420) {
     const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
     return desc.chromaSubsampling();
   }
@@ -663,7 +667,7 @@ gfx::ChromaSubsampling BufferTextureHost::GetChromaSubsampling() const {
 }
 
 uint8_t* BufferTextureHost::GetYChannel() {
-  if (mFormat == gfx::SurfaceFormat::YUV) {
+  if (mFormat == gfx::SurfaceFormat::YUV420) {
     const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
     return ImageDataSerializer::GetYChannel(GetBuffer(), desc);
   }
@@ -671,7 +675,7 @@ uint8_t* BufferTextureHost::GetYChannel() {
 }
 
 uint8_t* BufferTextureHost::GetCbChannel() {
-  if (mFormat == gfx::SurfaceFormat::YUV) {
+  if (mFormat == gfx::SurfaceFormat::YUV420) {
     const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
     return ImageDataSerializer::GetCbChannel(GetBuffer(), desc);
   }
@@ -679,7 +683,7 @@ uint8_t* BufferTextureHost::GetCbChannel() {
 }
 
 uint8_t* BufferTextureHost::GetCrChannel() {
-  if (mFormat == gfx::SurfaceFormat::YUV) {
+  if (mFormat == gfx::SurfaceFormat::YUV420) {
     const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
     return ImageDataSerializer::GetCrChannel(GetBuffer(), desc);
   }
@@ -687,7 +691,7 @@ uint8_t* BufferTextureHost::GetCrChannel() {
 }
 
 int32_t BufferTextureHost::GetYStride() const {
-  if (mFormat == gfx::SurfaceFormat::YUV) {
+  if (mFormat == gfx::SurfaceFormat::YUV420) {
     const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
     return desc.yStride();
   }
@@ -695,7 +699,7 @@ int32_t BufferTextureHost::GetYStride() const {
 }
 
 int32_t BufferTextureHost::GetCbCrStride() const {
-  if (mFormat == gfx::SurfaceFormat::YUV) {
+  if (mFormat == gfx::SurfaceFormat::YUV420) {
     const YCbCrDescriptor& desc = mDescriptor.get_YCbCrDescriptor();
     return desc.cbCrStride();
   }
@@ -708,7 +712,8 @@ already_AddRefed<gfx::DataSourceSurface> BufferTextureHost::GetAsSurface(
   if (mFormat == gfx::SurfaceFormat::UNKNOWN) {
     NS_WARNING("BufferTextureHost: unsupported format!");
     return nullptr;
-  } else if (mFormat == gfx::SurfaceFormat::YUV) {
+  }
+  if (mFormat == gfx::SurfaceFormat::YUV420) {
     result = ImageDataSerializer::DataSourceSurfaceFromYCbCrDescriptor(
         GetBuffer(), mDescriptor.get_YCbCrDescriptor(), aSurface);
     if (NS_WARN_IF(!result)) {

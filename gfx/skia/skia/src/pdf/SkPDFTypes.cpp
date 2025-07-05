@@ -7,16 +7,22 @@
 
 #include "src/pdf/SkPDFTypes.h"
 
-#include "include/core/SkData.h"
 #include "include/core/SkExecutor.h"
 #include "include/core/SkStream.h"
+#include "include/core/SkString.h"
+#include "include/docs/SkPDFDocument.h"
+#include "include/private/base/SkDebug.h"
 #include "include/private/base/SkTo.h"
+#include "src/base/SkUTF.h"
+#include "src/base/SkUtils.h"
 #include "src/core/SkStreamPriv.h"
 #include "src/pdf/SkDeflate.h"
 #include "src/pdf/SkPDFDocumentPriv.h"
 #include "src/pdf/SkPDFUnion.h"
 #include "src/pdf/SkPDFUtils.h"
 
+#include <cstring>
+#include <functional>
 #include <new>
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -305,7 +311,7 @@ SkPDFUnion SkPDFUnion::ColorComponent(uint8_t value) {
 }
 
 SkPDFUnion SkPDFUnion::ColorComponentF(float value) {
-    return SkPDFUnion(Type::kColorComponentF, SkFloatToScalar(value));
+    return SkPDFUnion(Type::kColorComponentF, value);
 }
 
 SkPDFUnion SkPDFUnion::Bool(bool value) {
@@ -383,6 +389,14 @@ void SkPDFArray::emitObject(SkWStream* stream) const {
         }
     }
     stream->writeText("]");
+}
+
+void SkPDFOptionalArray::emitObject(SkWStream* stream) const {
+    if (this->size() == 1) {
+        this->values()[0].emitObject(stream);
+    } else {
+        this->SkPDFArray::emitObject(stream);
+    }
 }
 
 void SkPDFArray::append(SkPDFUnion&& value) {
@@ -555,17 +569,6 @@ static void serialize_stream(SkPDFDict* origDict,
         SkDeflateWStream deflateWStream(&compressedData,SkToInt(doc->metadata().fCompressionLevel));
         SkStreamCopy(&deflateWStream, stream);
         deflateWStream.finalize();
-        #ifdef SK_PDF_BASE85_BINARY
-        {
-            SkPDFUtils::Base85Encode(compressedData.detachAsStream(), &compressedData);
-            tmp = compressedData.detachAsStream();
-            stream = tmp.get();
-            auto filters = SkPDFMakeArray();
-            filters->appendName("ASCII85Decode");
-            filters->appendName("FlateDecode");
-            dict.insertObject("Filter", std::move(filters));
-        }
-        #else
         if (stream->getLength() > compressedData.bytesWritten() + kMinimumSavings) {
             tmp = compressedData.detachAsStream();
             stream = tmp.get();
@@ -573,7 +576,6 @@ static void serialize_stream(SkPDFDict* origDict,
         } else {
             SkAssertResult(stream->rewind());
         }
-        #endif
 
     }
     dict.insertInt("Length", stream->getLength());

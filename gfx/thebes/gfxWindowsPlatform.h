@@ -103,24 +103,6 @@ class gfxWindowsPlatform final : public gfxPlatform {
   virtual already_AddRefed<gfxASurface> CreateOffscreenSurface(
       const IntSize& aSize, gfxImageFormat aFormat) override;
 
-  enum RenderMode {
-    /* Use GDI and windows surfaces */
-    RENDER_GDI = 0,
-
-    /* Use 32bpp image surfaces and call StretchDIBits */
-    RENDER_IMAGE_STRETCH32,
-
-    /* Use 32bpp image surfaces, and do 32->24 conversion before calling
-       StretchDIBits */
-    RENDER_IMAGE_STRETCH24,
-
-    /* Use Direct2D rendering */
-    RENDER_DIRECT2D,
-
-    /* max */
-    RENDER_MODE_MAX
-  };
-
   bool IsDirect2DBackend();
 
   /**
@@ -139,7 +121,7 @@ class gfxWindowsPlatform final : public gfxPlatform {
   void VerifyD2DDevice(bool aAttemptForce);
 
   void GetCommonFallbackFonts(uint32_t aCh, Script aRunScript,
-                              eFontPresentation aPresentation,
+                              FontPresentation aPresentation,
                               nsTArray<const char*>& aFontList) override;
 
   bool CanUseHardwareVideoDecoding() override;
@@ -210,8 +192,6 @@ class gfxWindowsPlatform final : public gfxPlatform {
   void BuildContentDeviceData(mozilla::gfx::ContentDeviceData* aOut) override;
 
   BackendPrefsData GetBackendPrefs() const override;
-
-  RenderMode mRenderMode;
 
  private:
   void Init();

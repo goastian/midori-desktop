@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 kk{
     Countries{
         001{"әлем"}
@@ -297,6 +297,9 @@ kk{
         ZM{"Замбия"}
         ZW{"Зимбабве"}
         ZZ{"Белгісіз аймақ"}
+    }
+    Countries%chagos{
+        IO{"Чагос архипелагі"}
     }
     Countries%short{
         HK{"Сянган"}

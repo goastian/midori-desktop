@@ -7,10 +7,7 @@
 #define _NS_DEVICECONTEXT_H_
 
 #include <stdint.h>                   // for uint32_t
-#include <sys/types.h>                // for int32_t
 #include "gfxTypes.h"                 // for gfxFloat
-#include "gfxFont.h"                  // for gfxFont::Orientation
-#include "mozilla/Assertions.h"       // for MOZ_ASSERT_HELPER2
 #include "mozilla/RefPtr.h"           // for RefPtr
 #include "nsCOMPtr.h"                 // for nsCOMPtr
 #include "nsCoord.h"                  // for nscoord
@@ -21,8 +18,7 @@
 #include "mozilla/AppUnits.h"         // for AppUnits
 #include "nsFontMetrics.h"            // for nsFontMetrics::Params
 #include "mozilla/gfx/Point.h"        // for IntSize
-#include "mozilla/gfx/PrintTarget.h"  // for PrintTarget::PageDoneCallback
-#include "mozilla/gfx/PrintPromise.h"
+#include "mozilla/gfx/PrintPromise.h" // for PrintEndDocumentPromise
 
 class gfxContext;
 class gfxTextPerfMetrics;
@@ -45,6 +41,9 @@ enum class ScreenOrientation : uint32_t;
 namespace widget {
 class Screen;
 }  // namespace widget
+namespace gfx {
+class PrintTarget;
+}
 }  // namespace mozilla
 
 class nsDeviceContext final {
@@ -155,37 +154,26 @@ class nsDeviceContext final {
   bool GetScreenIsHDR();
 
   /**
-   * Get the size of the displayable area of the output device
-   * in app units.
-   * @param aWidth out parameter for width
-   * @param aHeight out parameter for height
-   * @return error status
+   * Get the size of the displayable area of the output device in app units.
    */
-  nsresult GetDeviceSurfaceDimensions(nscoord& aWidth, nscoord& aHeight);
+  nsSize GetDeviceSurfaceDimensions();
 
   /**
    * Get the size of the content area of the output device in app
    * units.  This corresponds on a screen device, for instance, to
    * the entire screen.
-   * @param aRect out parameter for full rect. Position (x,y) will
-   *              be (0,0) or relative to the primary monitor if
-   *              this is not the primary.
-   * @return error status
    */
-  nsresult GetRect(nsRect& aRect);
+  nsRect GetRect();
 
   /**
    * Get the size of the content area of the output device in app
    * units.  This corresponds on a screen device, for instance, to
    * the area reported by GetDeviceSurfaceDimensions, minus the
    * taskbar (Windows) or menubar (Macintosh).
-   * @param aRect out parameter for client rect. Position (x,y) will
-   *              be (0,0) adjusted for any upper/left non-client
-   *              space if present or relative to the primary
-   *              monitor if this is not the primary.
-   * @return error status
+   * Position (x,y) will be (0,0) adjusted for any upper/left non-client space
+   * if present or relative to the primary monitor if this is not the primary.
    */
-  nsresult GetClientRect(nsRect& aRect);
+  nsRect GetClientRect();
 
   /**
    * Returns true if we're currently between BeginDocument() and
@@ -289,8 +277,9 @@ class nsDeviceContext final {
       bool aWantReferenceContext);
 
   void SetDPI();
-  void ComputeClientRectUsingScreen(nsRect* outRect);
-  void ComputeFullAreaUsingScreen(nsRect* outRect);
+
+  // Determines which screen intersects the largest area of the given surface,
+  // or returns the primary screen.
   already_AddRefed<mozilla::widget::Screen> FindScreen();
 
   // Return false if the surface is not right

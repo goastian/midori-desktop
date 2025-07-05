@@ -20,7 +20,7 @@ class RasterImage;
 //////////////////////////////////////////////////////////////////////
 // nsGIFDecoder2 Definition
 
-class nsGIFDecoder2 : public Decoder {
+class nsGIFDecoder2 final : public Decoder {
  public:
   ~nsGIFDecoder2();
 
@@ -29,9 +29,10 @@ class nsGIFDecoder2 : public Decoder {
  protected:
   LexerResult DoDecode(SourceBufferIterator& aIterator,
                        IResumable* aOnResume) override;
+  nsresult FinishWithErrorInternal() override;
   nsresult FinishInternal() override;
 
-  Maybe<Telemetry::HistogramID> SpeedHistogram() const override;
+  Maybe<glean::impl::MemoryDistributionMetric> SpeedMetric() const override;
 
  private:
   friend class DecoderFactory;
@@ -98,7 +99,6 @@ class nsGIFDecoder2 : public Decoder {
     NETSCAPE_EXTENSION_SUB_BLOCK,
     NETSCAPE_EXTENSION_DATA,
     IMAGE_DESCRIPTOR,
-    FINISH_IMAGE_DESCRIPTOR,
     LOCAL_COLOR_TABLE,
     FINISHED_LOCAL_COLOR_TABLE,
     IMAGE_DATA_BLOCK,
@@ -106,6 +106,7 @@ class nsGIFDecoder2 : public Decoder {
     LZW_DATA,
     SKIP_LZW_DATA,
     FINISHED_LZW_DATA,
+    FINISH_END_IMAGE_FRAME,
     SKIP_SUB_BLOCKS,
     SKIP_DATA_THEN_SKIP_SUB_BLOCKS,
     FINISHED_SKIPPING_DATA

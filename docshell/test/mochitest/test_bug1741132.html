@@ -11,8 +11,8 @@
 
     SimpleTest.waitForExplicitFinish();
 
-    function runTest() {
-      let bc = new BroadcastChannel("bug1741132");
+    async function runTest() {
+      let bc = SpecialPowers.wrap(BroadcastChannel).unpartitionedTestingChannel("bug1741132");
 
       // Setting the pref to 0 should evict all content viewers.
       let load = SpecialPowers.pushPrefEnv({

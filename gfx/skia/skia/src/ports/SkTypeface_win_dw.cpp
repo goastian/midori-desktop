@@ -36,6 +36,68 @@
 
 using namespace skia_private;
 
+SkFontStyle DWriteFontTypeface::GetStyle(IDWriteFont* font, IDWriteFontFace* fontFace) {
+    int weight = font->GetWeight();
+    int width = font->GetStretch();
+    SkFontStyle::Slant slant = SkFontStyle::kUpright_Slant;
+    switch (font->GetStyle()) {
+        case DWRITE_FONT_STYLE_NORMAL: slant = SkFontStyle::kUpright_Slant; break;
+        case DWRITE_FONT_STYLE_OBLIQUE: slant = SkFontStyle::kOblique_Slant; break;
+        case DWRITE_FONT_STYLE_ITALIC: slant = SkFontStyle::kItalic_Slant; break;
+        default: SkASSERT(false); break;
+    }
+
+#if defined(NTDDI_WIN10_RS3) && NTDDI_VERSION >= NTDDI_WIN10_RS3
+    [&weight, &width, &slant, fontFace]() -> void {
+        SkTScopedComPtr<IDWriteFontFace5> fontFace5;
+        if (FAILED(fontFace->QueryInterface(&fontFace5))) {
+            return;
+        }
+        if (!fontFace5->HasVariations()) {
+            return;
+        }
+
+        UINT32 fontAxisCount = fontFace5->GetFontAxisValueCount();
+        SkTScopedComPtr<IDWriteFontResource> fontResource;
+        HRV(fontFace5->GetFontResource(&fontResource));
+
+        AutoSTMalloc<8, DWRITE_FONT_AXIS_VALUE> fontAxisValue(fontAxisCount);
+        HRV(fontFace5->GetFontAxisValues(fontAxisValue.get(), fontAxisCount));
+        for (UINT32 axisIndex = 0; axisIndex < fontAxisCount; ++axisIndex) {
+            if (fontAxisValue[axisIndex].axisTag == DWRITE_FONT_AXIS_TAG_WEIGHT) {
+               weight = fontAxisValue[axisIndex].value;
+            }
+            if (fontAxisValue[axisIndex].axisTag == DWRITE_FONT_AXIS_TAG_WIDTH) {
+                SkScalar wdthValue = fontAxisValue[axisIndex].value;
+                width = SkFontDescriptor::SkFontStyleWidthForWidthAxisValue(wdthValue);
+            }
+            if (fontAxisValue[axisIndex].axisTag == DWRITE_FONT_AXIS_TAG_SLANT &&
+                slant != SkFontStyle::kItalic_Slant)
+            {
+                if (fontAxisValue[axisIndex].value == 0) {
+                    slant = SkFontStyle::kUpright_Slant;
+                } else {
+                    slant = SkFontStyle::kOblique_Slant;
+                }
+            }
+        }
+    }();
+#endif
+    return SkFontStyle(weight, width, slant);
+}
+
+sk_sp<DWriteFontTypeface> DWriteFontTypeface::Make(
+    IDWriteFactory* factory,
+    IDWriteFontFace* fontFace,
+    IDWriteFont* font,
+    IDWriteFontFamily* fontFamily,
+    sk_sp<Loaders> loaders,
+    const SkFontArguments::Palette& palette)
+{
+    return sk_sp<DWriteFontTypeface>(new DWriteFontTypeface(
+        GetStyle(font, fontFace), factory, fontFace, font, fontFamily, std::move(loaders), palette));
+}
+
 HRESULT DWriteFontTypeface::initializePalette() {
     if (!fIsColorFont) {
         return S_OK;
@@ -133,11 +195,11 @@ DWriteFontTypeface::DWriteFontTypeface(const SkFontStyle& style,
     if (!SUCCEEDED(fDWriteFontFace->QueryInterface(&fDWriteFontFace4))) {
         SkASSERT_RELEASE(nullptr == fDWriteFontFace4.get());
     }
-#if DWRITE_CORE || (defined(NTDDI_WIN11_ZN) && NTDDI_VERSION >= NTDDI_WIN11_ZN)
+#if !SK_DISABLE_DIRECTWRITE_COLRv1 && (DWRITE_CORE || (defined(NTDDI_WIN11_ZN) && NTDDI_VERSION >= NTDDI_WIN11_ZN))
     if (!SUCCEEDED(fDWriteFontFace->QueryInterface(&fDWriteFontFace7))) {
         SkASSERT_RELEASE(nullptr == fDWriteFontFace7/*.get()*/);
     }
-#endif
+#endif  // !SK_DISABLE_DIRECTWRITE_COLRv1 && (DWRITE_CORE || (defined(NTDDI_WIN11_ZN) && NTDDI_VERSION >= NTDDI_WIN11_ZN))
     if (!SUCCEEDED(fFactory->QueryInterface(&fFactory2))) {
         SkASSERT_RELEASE(nullptr == fFactory2.get());
     }
@@ -151,11 +213,11 @@ DWriteFontTypeface::DWriteFontTypeface(const SkFontStyle& style,
 }
 
 DWriteFontTypeface::~DWriteFontTypeface() {
-#if DWRITE_CORE || (defined(NTDDI_WIN11_ZN) && NTDDI_VERSION >= NTDDI_WIN11_ZN)
+#if !SK_DISABLE_DIRECTWRITE_COLRv1 && (DWRITE_CORE || (defined(NTDDI_WIN11_ZN) && NTDDI_VERSION >= NTDDI_WIN11_ZN))
     if (fDWriteFontFace7) {
         fDWriteFontFace7->Release();
     }
-#endif
+#endif  // !SK_DISABLE_DIRECTWRITE_COLRv1 && (DWRITE_CORE || (defined(NTDDI_WIN11_ZN) && NTDDI_VERSION >= NTDDI_WIN11_ZN))
 }
 
 DWriteFontTypeface::Loaders::~Loaders() {
@@ -197,6 +259,50 @@ bool DWriteFontTypeface::onGetPostScriptName(SkString* skPostScriptName) const {
         *skPostScriptName = localSkPostScriptName;
     }
     return true;
+}
+
+int DWriteFontTypeface::onGetResourceName(SkString* resourceName) const {
+    UINT32 numFiles = 0;
+    HRZM(fDWriteFontFace->GetFiles(&numFiles, nullptr),
+         "Could not get number of font files.");
+    if (numFiles < 1 || !resourceName) {
+        return numFiles;
+    }
+
+    auto fontFiles = std::make_unique<SkTScopedComPtr<IDWriteFontFile>[]>(numFiles);
+    HR_GENERAL(fDWriteFontFace->GetFiles(&numFiles, &fontFiles[0]),
+               "Could not get font files.", numFiles);
+
+    IDWriteFontFile* fontFile = fontFiles[0].get();
+    const void* fontFileKey;
+    UINT32 fontFileKeySize;
+    HR_GENERAL(fontFile->GetReferenceKey(&fontFileKey, &fontFileKeySize),
+               "Could not get font file reference key.", numFiles);
+
+    SkTScopedComPtr<IDWriteFontFileLoader> fontFileLoader;
+    HR_GENERAL(fontFile->GetLoader(&fontFileLoader),
+               "Could not get font file loader.", numFiles);
+
+    SkTScopedComPtr<IDWriteLocalFontFileLoader> localFontFileLoader;
+    HR_GENERAL(fontFileLoader->QueryInterface(&localFontFileLoader),
+               nullptr, numFiles);
+
+    UINT32 fontFilePathLen;
+    HR_GENERAL(localFontFileLoader->GetFilePathLengthFromKey(fontFileKey, fontFileKeySize,
+                                                             &fontFilePathLen),
+               "Could not get file path length.", numFiles);
+
+    SkSMallocWCHAR fontFilePath(static_cast<size_t>(fontFilePathLen)+1);
+    HR_GENERAL(localFontFileLoader->GetFilePathFromKey(fontFileKey, fontFileKeySize,
+                                                       fontFilePath, fontFilePathLen+1),
+               "Could not get file path.", numFiles);
+
+    SkString localResourceName;
+    HR_GENERAL(sk_wchar_to_skstring(fontFilePath.get(), fontFilePathLen, &localResourceName),
+               nullptr, numFiles);
+    *resourceName = std::move(localResourceName);
+
+    return numFiles;
 }
 
 void DWriteFontTypeface::onGetFontDescriptor(SkFontDescriptor* desc,
@@ -545,10 +651,12 @@ std::unique_ptr<SkScalerContext> DWriteFontTypeface::onCreateScalerContext(
     const SkScalerContextEffects& effects, const SkDescriptor* desc) const
 {
     return std::make_unique<SkScalerContext_DW>(
-            sk_ref_sp(const_cast<DWriteFontTypeface*>(this)), effects, desc);
+            *const_cast<DWriteFontTypeface*>(this), effects, desc);
 }
 
 void DWriteFontTypeface::onFilterRec(SkScalerContextRec* rec) const {
+    rec->useStrokeForFakeBold();
+
     if (rec->fFlags & SkScalerContext::kLCD_Vertical_Flag) {
         rec->fMaskFormat = SkMask::kA8_Format;
         rec->fFlags |= SkScalerContext::kGenA8FromLCD_Flag;
@@ -573,8 +681,6 @@ void DWriteFontTypeface::onFilterRec(SkScalerContextRec* rec) const {
         if (SUCCEEDED(factory->CreateRenderingParams(&defaultRenderingParams))) {
             float gamma = defaultRenderingParams->GetGamma();
             rec->setDeviceGamma(gamma);
-            rec->setPaintGamma(gamma);
-
             rec->setContrast(defaultRenderingParams->GetEnhancedContrast());
         }
     }
@@ -582,7 +688,6 @@ void DWriteFontTypeface::onFilterRec(SkScalerContextRec* rec) const {
     rec->setContrast(fContrast);
 
     rec->setDeviceGamma(fGamma);
-    rec->setPaintGamma(fGamma);
 #endif
 }
 
@@ -668,17 +773,21 @@ std::unique_ptr<SkAdvancedTypefaceMetrics> DWriteFontTypeface::onGetAdvancedMetr
     }
 
     DWRITE_FONT_FACE_TYPE fontType = fDWriteFontFace->GetType();
-    if (fontType != DWRITE_FONT_FACE_TYPE_TRUETYPE &&
-        fontType != DWRITE_FONT_FACE_TYPE_CFF &&
-        fontType != DWRITE_FONT_FACE_TYPE_TRUETYPE_COLLECTION &&
-        fontType != DWRITE_FONT_FACE_TYPE_OPENTYPE_COLLECTION)
+    if (fontType == DWRITE_FONT_FACE_TYPE_TRUETYPE ||
+        fontType == DWRITE_FONT_FACE_TYPE_TRUETYPE_COLLECTION)
     {
+        info->fType = SkAdvancedTypefaceMetrics::kTrueType_Font;
+    } else if (fontType == DWRITE_FONT_FACE_TYPE_CFF ||
+               fontType == DWRITE_FONT_FACE_TYPE_OPENTYPE_COLLECTION)
+    {
+        info->fType = SkAdvancedTypefaceMetrics::kCFF_Font;
+    } else {
         return info;
     }
 
-    // Simulated fonts aren't really TrueType fonts.
-    if (fDWriteFontFace->GetSimulations() == DWRITE_FONT_SIMULATIONS_NONE) {
-        info->fType = SkAdvancedTypefaceMetrics::kTrueType_Font;
+    // Simulated fonts aren't really OpenType fonts.
+    if (fDWriteFontFace->GetSimulations() != DWRITE_FONT_SIMULATIONS_NONE) {
+        info->fType = SkAdvancedTypefaceMetrics::kOther_Font;
     }
 
     AutoTDWriteTable<SkOTTableHead> headTable(fDWriteFontFace.get());

@@ -1,5 +1,5 @@
 const isSimulator = [
-  "arm-simulator", "arm64-simulator", "mips32-simulator", "mips64-simulator"
+  "arm-simulator", "arm64-simulator", "mips64-simulator"
 ].some(config => getBuildConfiguration(config));
 
 // This test often times out on debug simulators due to the extreme slowdown.
@@ -2068,8 +2068,7 @@ function copyTempDouble(ptr) {
         }[name.substr(name.lastIndexOf('.')+1)];
       },getUserMedia:function (func) {
         if(!window.getUserMedia) {
-          window.getUserMedia = navigator['getUserMedia'] ||
-                                navigator['mozGetUserMedia'];
+          window.getUserMedia = navigator.mediaDevices.getUserMedia;
         }
         window.getUserMedia(func);
       },getMovementX:function (event) {

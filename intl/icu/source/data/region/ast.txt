@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 ast{
     Countries{
         001{"Mundu"}
@@ -145,7 +145,6 @@ ast{
         IL{"Israel"}
         IM{"Islla de Man"}
         IN{"India"}
-        IO{"Territoriu Británicu del Océanu Índicu"}
         IQ{"Iraq"}
         IR{"Irán"}
         IS{"Islandia"}

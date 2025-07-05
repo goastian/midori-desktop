@@ -73,6 +73,11 @@ using namespace mozilla::net;
 
 namespace {
 
+// This exists so that [Assert]IsOnBackgroundThread() can continue to work
+// during shutdown. We can rely on TLS being 0 initialized, so only the
+// background thread itself needs to ever set this flag.
+static MOZ_THREAD_LOCAL(bool) sTLSIsOnBackgroundThread;
+
 class ChildImpl;
 
 // -----------------------------------------------------------------------------
@@ -122,10 +127,6 @@ class ParentImpl final : public BackgroundParentImpl {
   // This is only modified on the main thread.
   static StaticRefPtr<nsITimer> sShutdownTimer;
 
-  // This exists so that that [Assert]IsOnBackgroundThread() can continue to
-  // work during shutdown.
-  static Atomic<PRThread*> sBackgroundPRThread;
-
   // Maintains a count of live actors so that the background thread can be shut
   // down when it is no longer needed.
   // May be incremented on either the background thread (by an existing actor)
@@ -157,8 +158,15 @@ class ParentImpl final : public BackgroundParentImpl {
   bool mActorDestroyed;
 
  public:
+  static already_AddRefed<nsISerialEventTarget> GetBackgroundThread() {
+    AssertIsInMainProcess();
+    THREADSAFETY_ASSERT(NS_IsMainThread() || IsOnBackgroundThread());
+    return do_AddRef(sBackgroundThread);
+  }
+
   static bool IsOnBackgroundThread() {
-    return PR_GetCurrentThread() == sBackgroundPRThread;
+    MOZ_ASSERT(sTLSIsOnBackgroundThread.initialized());
+    return sTLSIsOnBackgroundThread.get();
   }
 
   static void AssertIsOnBackgroundThread() {
@@ -340,7 +348,8 @@ class ChildImpl final : public BackgroundChildImpl {
       Endpoint<PBackgroundStarterParent> parent;
       Endpoint<PBackgroundStarterChild> child;
       MOZ_ALWAYS_SUCCEEDS(PBackgroundStarter::CreateEndpoints(
-          aActor->OtherPid(), base::GetCurrentProcId(), &parent, &child));
+          aActor->OtherEndpointProcInfo(), EndpointProcInfo::Current(), &parent,
+          &child));
       MOZ_ALWAYS_TRUE(aActor->SendInitBackground(std::move(parent)));
 
       InitStarter(std::move(child));
@@ -349,14 +358,14 @@ class ChildImpl final : public BackgroundChildImpl {
     void InitStarter(Endpoint<PBackgroundStarterChild>&& aEndpoint) {
       AssertIsOnMainThread();
 
-      base::ProcessId otherPid = aEndpoint.OtherPid();
+      EndpointProcInfo otherProcInfo = aEndpoint.OtherEndpointProcInfo();
 
       nsCOMPtr<nsISerialEventTarget> taskQueue;
       MOZ_ALWAYS_SUCCEEDS(NS_CreateBackgroundTaskQueue(
           "PBackgroundStarter Queue", getter_AddRefs(taskQueue)));
 
       RefPtr<BackgroundStarterChild> starter =
-          new BackgroundStarterChild(otherPid, taskQueue);
+          new BackgroundStarterChild(otherProcInfo, taskQueue);
 
       taskQueue->Dispatch(NS_NewRunnableFunction(
           "PBackgroundStarterChild Init",
@@ -453,8 +462,9 @@ class ChildImpl final : public BackgroundChildImpl {
       Endpoint<PBackgroundParent> parent;
       Endpoint<PBackgroundChild> child;
       nsresult rv;
-      rv = PBackground::CreateEndpoints(
-          starter->mOtherPid, base::GetCurrentProcId(), &parent, &child);
+      rv = PBackground::CreateEndpoints(starter->mOtherProcInfo,
+                                        EndpointProcInfo::Current(), &parent,
+                                        &child);
       if (NS_FAILED(rv)) {
         NS_WARNING("Failed to create top level actor!");
         return nullptr;
@@ -646,6 +656,11 @@ void AssertIsOnBackgroundThread() { ParentImpl::AssertIsOnBackgroundThread(); }
 // -----------------------------------------------------------------------------
 
 // static
+already_AddRefed<nsISerialEventTarget> BackgroundParent::GetBackgroundThread() {
+  return ParentImpl::GetBackgroundThread();
+}
+
+// static
 bool BackgroundParent::IsOtherProcessActor(
     PBackgroundParent* aBackgroundActor) {
   return ParentImpl::IsOtherProcessActor(aBackgroundActor);
@@ -721,8 +736,6 @@ nsTArray<IToplevelProtocol*>* ParentImpl::sLiveActorsForBackgroundThread;
 
 StaticRefPtr<nsITimer> ParentImpl::sShutdownTimer;
 
-Atomic<PRThread*> ParentImpl::sBackgroundPRThread;
-
 Atomic<uint64_t> ParentImpl::sLiveActorCount;
 
 bool ParentImpl::sShutdownObserverRegistered = false;
@@ -733,7 +746,8 @@ bool ParentImpl::sShutdownHasStarted = false;
 // ChildImpl Static Members
 // -----------------------------------------------------------------------------
 
-ChildImpl::ThreadInfoWrapper ChildImpl::sParentAndContentProcessThreadInfo;
+MOZ_RUNINIT ChildImpl::ThreadInfoWrapper
+    ChildImpl::sParentAndContentProcessThreadInfo;
 
 bool ChildImpl::sShutdownHasStarted = false;
 
@@ -885,11 +899,8 @@ bool ParentImpl::CreateBackgroundThread() {
           "IPDL Background", getter_AddRefs(thread),
           NS_NewRunnableFunction(
               "Background::ParentImpl::CreateBackgroundThreadRunnable", []() {
-                DebugOnly<PRThread*> oldBackgroundThread =
-                    sBackgroundPRThread.exchange(PR_GetCurrentThread());
-
-                MOZ_ASSERT_IF(oldBackgroundThread,
-                              PR_GetCurrentThread() != oldBackgroundThread);
+                MOZ_ASSERT(sTLSIsOnBackgroundThread.initialized());
+                sTLSIsOnBackgroundThread.set(true);
               })))) {
     NS_WARNING("NS_NewNamedThread failed!");
     return false;
@@ -945,16 +956,7 @@ void ParentImpl::ShutdownBackgroundThread() {
       MOZ_ALWAYS_SUCCEEDS(shutdownTimer->Cancel());
     }
 
-    // Dispatch this runnable to unregister the PR thread from the profiler.
-    MOZ_ALWAYS_SUCCEEDS(thread->Dispatch(NS_NewRunnableFunction(
-        "Background::ParentImpl::ShutdownBackgroundThreadRunnable", []() {
-          // It is possible that another background thread was created while
-          // this thread was shutting down. In that case we can't assert
-          // anything about sBackgroundPRThread and we should not modify it
-          // here.
-          sBackgroundPRThread.compareExchange(PR_GetCurrentThread(), nullptr);
-        })));
-
+    // Shutdown will process all remaining events.
     MOZ_ALWAYS_SUCCEEDS(thread->Shutdown());
   }
 }
@@ -1139,6 +1141,8 @@ void ChildImpl::Startup() {
 
   sParentAndContentProcessThreadInfo.Startup();
 
+  sTLSIsOnBackgroundThread.infallibleInit();
+
   nsCOMPtr<nsIObserverService> observerService = services::GetObserverService();
   MOZ_RELEASE_ASSERT(observerService);
 
@@ -1154,7 +1158,8 @@ void ChildImpl::Startup() {
     Endpoint<PBackgroundStarterParent> parent;
     Endpoint<PBackgroundStarterChild> child;
     MOZ_ALWAYS_SUCCEEDS(PBackgroundStarter::CreateEndpoints(
-        base::GetCurrentProcId(), base::GetCurrentProcId(), &parent, &child));
+        EndpointProcInfo::Current(), EndpointProcInfo::Current(), &parent,
+        &child));
 
     MOZ_ALWAYS_TRUE(ParentImpl::AllocStarter(nullptr, std::move(parent),
                                              /* aCrossProcess */ false));

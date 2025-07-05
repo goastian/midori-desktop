@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 mk{
     Countries{
         001{"Свет"}
@@ -297,6 +297,9 @@ mk{
         ZM{"Замбија"}
         ZW{"Зимбабве"}
         ZZ{"Непознат регион"}
+    }
+    Countries%chagos{
+        IO{"Архипелаг Чагос"}
     }
     Countries%short{
         GB{"ОК"}

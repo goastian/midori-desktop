@@ -753,7 +753,6 @@ process type:
 ``VR``                        VR process
 ``RDD``                       Remote Data Decoder (RDD) process
 ``Socket``                    Socket/Networking process
-``RemoteSandboxBroker``       Remote Sandbox Broker process
 ``ForkServer``                Fork Server process
 ``Utility``                   Utility process
 ============================= =================================================
@@ -1410,8 +1409,7 @@ the way it sounds.  For example:
     bool MyPreexistingActorParent::MakeMyActor() {
         Endpoint<PMyActorParent> parentEnd;
         Endpoint<PMyActorChild> childEnd;
-        if (NS_WARN_IF(NS_FAILED(PMyActor::CreateEndpoints(
-              base::GetCurrentProcId(), OtherPid(), &parentEnd, &childEnd)))) {
+        if (NS_WARN_IF(NS_FAILED(PMyActor::CreateEndpoints(&parentEnd, &childEnd)))) {
             // ... handle failure ...
             return false;
         }

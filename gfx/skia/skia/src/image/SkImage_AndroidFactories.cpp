@@ -25,11 +25,12 @@
 #include "include/core/SkSize.h"
 #include "include/core/SkSurface.h"
 #include "include/gpu/GpuTypes.h"
-#include "include/gpu/GrBackendSurface.h"
-#include "include/gpu/GrContextThreadSafeProxy.h"
-#include "include/gpu/GrDirectContext.h"
-#include "include/gpu/GrRecordingContext.h"
-#include "include/gpu/GrTypes.h"
+#include "include/gpu/ganesh/GrBackendSurface.h"
+#include "include/gpu/ganesh/GrContextThreadSafeProxy.h"
+#include "include/gpu/ganesh/GrDirectContext.h"
+#include "include/gpu/ganesh/GrExternalTextureGenerator.h"
+#include "include/gpu/ganesh/GrRecordingContext.h"
+#include "include/gpu/ganesh/GrTypes.h"
 #include "include/gpu/ganesh/SkImageGanesh.h"
 #include "include/private/base/SkAssert.h"
 #include "include/private/gpu/ganesh/GrImageContext.h"
@@ -46,6 +47,7 @@
 #include "src/gpu/ganesh/GrColorSpaceXform.h"
 #include "src/gpu/ganesh/GrContextThreadSafeProxyPriv.h"
 #include "src/gpu/ganesh/GrDirectContextPriv.h"
+#include "src/gpu/ganesh/GrDrawingManager.h"
 #include "src/gpu/ganesh/GrFragmentProcessor.h"
 #include "src/gpu/ganesh/GrGpu.h"
 #include "src/gpu/ganesh/GrGpuResourcePriv.h"
@@ -76,7 +78,7 @@ namespace SkImages {
 sk_sp<SkImage> DeferredFromAHardwareBuffer(AHardwareBuffer* graphicBuffer, SkAlphaType at) {
     auto gen = GrAHardwareBufferImageGenerator::Make(graphicBuffer, at, nullptr,
                                                      kTopLeft_GrSurfaceOrigin);
-    return DeferredFromGenerator(std::move(gen));
+    return DeferredFromTextureGenerator(std::move(gen));
 }
 
 sk_sp<SkImage> DeferredFromAHardwareBuffer(AHardwareBuffer* graphicBuffer,
@@ -84,7 +86,7 @@ sk_sp<SkImage> DeferredFromAHardwareBuffer(AHardwareBuffer* graphicBuffer,
                                            sk_sp<SkColorSpace> cs,
                                            GrSurfaceOrigin surfaceOrigin) {
     auto gen = GrAHardwareBufferImageGenerator::Make(graphicBuffer, at, cs, surfaceOrigin);
-    return DeferredFromGenerator(std::move(gen));
+    return DeferredFromTextureGenerator(std::move(gen));
 }
 
 sk_sp<SkImage> TextureFromAHardwareBufferWithData(GrDirectContext* dContext,

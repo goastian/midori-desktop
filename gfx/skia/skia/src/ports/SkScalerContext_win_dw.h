@@ -26,7 +26,7 @@ struct DWRITE_PAINT_ELEMENT;
 
 class SkScalerContext_DW : public SkScalerContext {
 public:
-    SkScalerContext_DW(sk_sp<DWriteFontTypeface>,
+    SkScalerContext_DW(DWriteFontTypeface&,
                        const SkScalerContextEffects&,
                        const SkDescriptor*);
     ~SkScalerContext_DW() override;
@@ -34,7 +34,7 @@ public:
 protected:
     GlyphMetrics generateMetrics(const SkGlyph&, SkArenaAlloc*) override;
     void generateImage(const SkGlyph&, void* imageBuffer) override;
-    bool generatePath(const SkGlyph&, SkPath*) override;
+    bool generatePath(const SkGlyph&, SkPath*, bool*) override;
     sk_sp<SkDrawable> generateDrawable(const SkGlyph&) override;
     void generateFontMetrics(SkFontMetrics*) override;
 

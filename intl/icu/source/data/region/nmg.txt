@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 nmg{
     Countries{
         AD{"Andɔ́ra"}
@@ -93,7 +93,6 @@ nmg{
         IE{"Irland"}
         IL{"Äsrɛl"}
         IN{"India"}
-        IO{"Nlambɔ́ ngɛlɛn ma yí maŋ ntsiɛh"}
         IQ{"Irak"}
         IR{"Iran"}
         IS{"Island"}

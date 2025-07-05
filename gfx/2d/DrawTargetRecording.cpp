@@ -17,6 +17,7 @@
 #include "mozilla/layers/CanvasDrawEventRecorder.h"
 #include "mozilla/layers/RecordedCanvasEventImpl.h"
 #include "mozilla/layers/SourceSurfaceSharedData.h"
+#include "mozilla/layers/TextureRecorded.h"
 #include "mozilla/UniquePtr.h"
 #include "nsXULAppAPI.h"  // for XRE_IsContentProcess()
 #include "RecordingTypes.h"
@@ -194,14 +195,14 @@ class FilterNodeRecording : public FilterNode {
 };
 
 DrawTargetRecording::DrawTargetRecording(
-    layers::CanvasDrawEventRecorder* aRecorder, int64_t aTextureId,
+    layers::CanvasDrawEventRecorder* aRecorder,
     const layers::RemoteTextureOwnerId& aTextureOwnerId, DrawTarget* aDT,
     const IntSize& aSize)
     : mRecorder(static_cast<DrawEventRecorderPrivate*>(aRecorder)),
       mFinalDT(aDT),
       mRect(IntPoint(0, 0), aSize) {
   RecordEventSkipFlushTransform(layers::RecordedCanvasDrawTargetCreation(
-      this, aTextureId, aTextureOwnerId, mFinalDT->GetBackendType(), aSize,
+      this, aTextureOwnerId, mFinalDT->GetBackendType(), aSize,
       mFinalDT->GetFormat()));
   mFormat = mFinalDT->GetFormat();
   DrawTarget::SetPermitSubpixelAA(IsOpaque(mFormat));
@@ -470,7 +471,11 @@ void DrawTargetRecording::DrawShadow(const Path* aPath, const Pattern& aPattern,
                                      aStrokeOptions));
 }
 
-void DrawTargetRecording::MarkChanged() { mIsDirty = true; }
+void DrawTargetRecording::MarkChanged() {
+  if (mTextureData) {
+    mTextureData->DrawTargetWillChange();
+  }
+}
 
 already_AddRefed<SourceSurface> DrawTargetRecording::Snapshot() {
   RefPtr<SourceSurface> retSurf =
@@ -479,6 +484,24 @@ already_AddRefed<SourceSurface> DrawTargetRecording::Snapshot() {
   RecordEventSelfSkipFlushTransform(RecordedSnapshot(ReferencePtr(retSurf)));
 
   return retSurf.forget();
+}
+
+already_AddRefed<SourceSurface>
+DrawTargetRecording::CreateExternalSourceSurface(const IntSize& aSize,
+                                                 SurfaceFormat aFormat) {
+  RefPtr<SourceSurface> retSurf =
+      new SourceSurfaceRecording(aSize, aFormat, mRecorder);
+
+  return retSurf.forget();
+}
+
+already_AddRefed<SourceSurface> DrawTargetRecording::SnapshotExternalCanvas(
+    nsICanvasRenderingContextInternal* aCanvas,
+    mozilla::ipc::IProtocol* aActor) {
+  if (RefPtr<layers::CanvasChild> canvasChild = mRecorder->GetCanvasChild()) {
+    return canvasChild->SnapshotExternalCanvas(this, aCanvas, aActor);
+  }
+  return nullptr;
 }
 
 already_AddRefed<SourceSurface> DrawTargetRecording::IntoLuminanceSource(
@@ -633,6 +656,11 @@ void DrawTargetRecording::PushClipRect(const Rect& aRect) {
 
 void DrawTargetRecording::PopClip() {
   RecordEventSelfSkipFlushTransform(RecordedPopClip());
+}
+
+bool DrawTargetRecording::RemoveAllClips() {
+  RecordEventSelfSkipFlushTransform(RecordedRemoveAllClips());
+  return true;
 }
 
 void DrawTargetRecording::PushLayer(bool aOpaque, Float aOpacity,

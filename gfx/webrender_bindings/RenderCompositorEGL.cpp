@@ -88,11 +88,11 @@ bool RenderCompositorEGL::BeginFrame() {
         << "We don't have EGLSurface to draw into. Called too early?";
     return false;
   }
-#ifdef MOZ_WIDGET_GTK
+#ifdef MOZ_WAYLAND
   if (mWidget->AsGTK()) {
     if (!mWidget->AsGTK()->SetEGLNativeWindowSize(GetBufferSize())) {
-      // It's possible that GtkWidget is hidden on Wayland; e.g. maybe it's
-      // just been closed. So, we can't draw into it right now.
+      // Wayland only check we have correct window size to avoid
+      // rendering artifacts.
       return false;
     }
   }
@@ -123,7 +123,7 @@ RenderedFrameId RenderCompositorEGL::EndFrame(
   if (sync) {
     int fenceFd = egl->fDupNativeFenceFDANDROID(sync);
     if (fenceFd >= 0) {
-      mReleaseFenceFd = ipc::FileDescriptor(UniqueFileHandle(fenceFd));
+      mReleaseFence = new layers::FenceFileHandle(UniqueFileHandle(fenceFd));
     }
     egl->fDestroySync(sync);
     sync = nullptr;
@@ -140,11 +140,11 @@ RenderedFrameId RenderCompositorEGL::EndFrame(
     gfx::IntRegion bufferInvalid;
     const auto bufferSize = GetBufferSize();
     for (const DeviceIntRect& rect : aDirtyRects) {
-      const auto left = std::max(0, std::min(bufferSize.width, rect.min.x));
-      const auto top = std::max(0, std::min(bufferSize.height, rect.min.y));
+      const auto left = std::clamp(rect.min.x, 0, bufferSize.width);
+      const auto top = std::clamp(rect.min.y, 0, bufferSize.height);
 
-      const auto right = std::min(bufferSize.width, std::max(0, rect.max.x));
-      const auto bottom = std::min(bufferSize.height, std::max(0, rect.max.y));
+      const auto right = std::clamp(rect.max.x, 0, bufferSize.width);
+      const auto bottom = std::clamp(rect.max.y, 0, bufferSize.height);
 
       const auto width = right - left;
       const auto height = bottom - top;
@@ -159,7 +159,7 @@ RenderedFrameId RenderCompositorEGL::EndFrame(
   // Rendering on Wayland has to be atomic (buffer attach + commit) and
   // wayland surface is also used by main thread so lock it before
   // we paint at SwapBuffers().
-  UniquePtr<MozContainerSurfaceLock> lock;
+  UniquePtr<widget::WaylandSurfaceLock> lock;
   if (auto* gtkWidget = mWidget->AsGTK()) {
     lock = gtkWidget->LockSurface();
   }
@@ -259,13 +259,12 @@ void RenderCompositorEGL::DestroyEGLSurface() {
   }
 }
 
-ipc::FileDescriptor RenderCompositorEGL::GetAndResetReleaseFence() {
+RefPtr<layers::Fence> RenderCompositorEGL::GetAndResetReleaseFence() {
 #ifdef MOZ_WIDGET_ANDROID
-  MOZ_ASSERT(!layers::AndroidHardwareBufferApi::Get() ||
-             mReleaseFenceFd.IsValid());
-  return std::move(mReleaseFenceFd);
+  MOZ_ASSERT(!layers::AndroidHardwareBufferApi::Get() || mReleaseFence);
+  return mReleaseFence.forget();
 #else
-  return ipc::FileDescriptor();
+  return nullptr;
 #endif
 }
 
@@ -305,15 +304,11 @@ void RenderCompositorEGL::SetBufferDamageRegion(const wr::DeviceIntRect* aRects,
     rects.reserve(4 * aNumRects);
     const auto bufferSize = GetBufferSize();
     for (size_t i = 0; i < aNumRects; i++) {
-      const auto left =
-          std::max(0, std::min(bufferSize.width, aRects[i].min.x));
-      const auto top =
-          std::max(0, std::min(bufferSize.height, aRects[i].min.y));
+      const auto left = std::clamp(aRects[i].min.x, 0, bufferSize.width);
+      const auto top = std::clamp(aRects[i].min.y, 0, bufferSize.height);
 
-      const auto right =
-          std::min(bufferSize.width, std::max(0, aRects[i].max.x));
-      const auto bottom =
-          std::min(bufferSize.height, std::max(0, aRects[i].max.y));
+      const auto right = std::clamp(aRects[i].max.x, 0, bufferSize.width);
+      const auto bottom = std::clamp(aRects[i].max.y, 0, bufferSize.height);
 
       const auto width = right - left;
       const auto height = bottom - top;

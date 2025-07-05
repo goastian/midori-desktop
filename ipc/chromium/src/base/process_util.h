@@ -33,21 +33,11 @@
 #include "base/process.h"
 
 #include "mozilla/UniquePtr.h"
+#include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/Result.h"
 #include "mozilla/ResultVariant.h"
 
 #include "mozilla/ipc/LaunchError.h"
-
-#if defined(MOZ_ENABLE_FORKSERVER)
-#  include "nsStringFwd.h"
-#  include "mozilla/ipc/FileDescriptorShuffle.h"
-
-namespace mozilla {
-namespace ipc {
-class FileDescriptor;
-}
-}  // namespace mozilla
-#endif
 
 #if defined(XP_DARWIN)
 struct kinfo_proc;
@@ -159,20 +149,16 @@ struct LaunchOptions {
   file_handle_mapping_vector fds_to_remap;
 #endif
 
-#if defined(MOZ_ENABLE_FORKSERVER)
-  bool use_forkserver = false;
-#endif
-
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
   // These fields are used by the sandboxing code in SandboxLaunch.cpp.
   // It's not ideal to have them here, but trying to abstract them makes
   // it harder to serialize LaunchOptions for the fork server.
   //
   // (fork_flags holds extra flags for the clone() syscall, and
-  // sandbox_chroot indicates whether the child process will be given
-  // the ability to chroot() itself to an empty directory.)
+  // sandbox_chroot_server, if set, is used internally by the sandbox
+  // to chroot() the process to an empty directory.)
   int fork_flags = 0;
-  bool sandbox_chroot = false;
+  mozilla::UniqueFileHandle sandbox_chroot_server;
 #endif
 
 #ifdef XP_DARWIN
@@ -224,75 +210,36 @@ Result<Ok, LaunchError> LaunchApp(const std::vector<std::string>& argv,
 EnvironmentArray BuildEnvironmentArray(const environment_map& env_vars_to_set);
 #endif
 
-#if defined(MOZ_ENABLE_FORKSERVER)
-/**
- * Create and initialize a new process as a content process.
- *
- * This class is used only by the fork server.
- * To create a new content process, two steps are
- *  - calling |ForkProcess()| to create a new process, and
- *  - calling |InitAppProcess()| in the new process, the child
- *    process, to initialize it for running WEB content later.
- *
- * The fork server can clean up it's resources in-between the first
- * and second step, that is why two steps.
- */
-class AppProcessBuilder {
- public:
-  AppProcessBuilder();
-  // This function will fork a new process for use as a
-  // content processes.
-  bool ForkProcess(const std::vector<std::string>& argv,
-                   LaunchOptions&& options, ProcessHandle* process_handle);
-  // This function will be called in the child process to initializes
-  // the environment of the content process.  It should be called
-  // after the message loop of the main thread, to make sure the fork
-  // server is destroyed properly in the child process.
-  //
-  // The message loop may allocate resources like file descriptors.
-  // If this function is called before the end of the loop, the
-  // reosurces may be destroyed while the loop is still alive.
-  void InitAppProcess(int* argcp, char*** argvp);
-
- private:
-  void ReplaceArguments(int* argcp, char*** argvp);
-
-  mozilla::ipc::FileDescriptorShuffle shuffle_;
-  std::vector<std::string> argv_;
-};
-
-void InitForkServerProcess();
-
-/**
- * Make a FD not being closed when create a new content process.
- *
- * AppProcessBuilder would close most unrelated FDs for new content
- * processes.  You may want to reserve some of FDs to keep using them
- * in content processes.
- */
-void RegisterForkServerNoCloseFD(int aFd);
-#endif
-
 // Attempts to kill the process identified by the given process
 // entry structure, giving it the specified exit code.
 // Returns true if this is successful, false otherwise.
 bool KillProcess(ProcessHandle process, int exit_code);
 
 #ifdef XP_UNIX
-// Returns whether the given process has exited.  If it returns true,
-// the process status has been consumed and `IsProcessDead` should not
-// be called again on the same process (like `waitpid`).
+enum class BlockingWait { No, Yes };
+enum class ProcessStatus { Running, Exited, Killed, Error };
+
+// Checks whether the given process has exited; returns a
+// `ProcessStatus` indicating whether the process is still running,
+// exited normally, was killed by a signal, or whether an error was
+// encountered (e.g., if the given process isn't a direct child of
+// this process).  In the `Exited` and `Killed` cases, the dead
+// process is collected (like `waitpid`) and the pid is freed for
+// potential reuse by another process.
 //
-// In various error cases (e.g., the process doesn't exist or isn't a
-// child of this process) it will also return true to indicate that
-// the caller should give up and not try again.
+// The value returned in `*info_out` depends on the process status:
+// * for `Running`, it's always set to 0
+// * for `Exited`, the value passed to `exit()`
+// * for `Killed`, the signal number
+// * for `Error`, the error code (like `errno`)
 //
-// If the `blocking` parameter is set to true, this function will try
+// If the `blocking` parameter is set to `Yes`, this function will try
 // to block the calling thread indefinitely until the process exits.
 // This may not be possible (if the child is also being debugged by
 // the parent process, e.g. due to the crash reporter), in which case
-// it will return false and the caller will need to wait and retry.
-bool IsProcessDead(ProcessHandle handle, bool blocking = false);
+// it will return `Running` and the caller will need to wait and retry.
+ProcessStatus WaitForProcess(ProcessHandle handle, BlockingWait blocking,
+                             int* info_out);
 #endif
 
 }  // namespace base
@@ -320,11 +267,6 @@ class EnvironmentLog {
 
   DISALLOW_EVIL_CONSTRUCTORS(EnvironmentLog);
 };
-
-#if defined(MOZ_ENABLE_FORKSERVER)
-typedef std::tuple<nsCString, nsCString> EnvVar;
-typedef std::tuple<mozilla::ipc::FileDescriptor, int> FdMapping;
-#endif
 
 }  // namespace mozilla
 

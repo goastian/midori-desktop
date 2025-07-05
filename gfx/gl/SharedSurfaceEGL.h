@@ -19,6 +19,7 @@
 namespace mozilla {
 namespace gl {
 
+class EglDisplay;
 class GLLibraryEGL;
 
 // -
@@ -27,6 +28,7 @@ class GLLibraryEGL;
 class SharedSurface_EGLImage final : public SharedSurface {
   mutable Mutex mMutex MOZ_UNANNOTATED;
   EGLSync mSync = 0;
+  const std::weak_ptr<EglDisplay> mEglDisplay;
 
  public:
   const EGLImage mImage;
@@ -49,7 +51,7 @@ class SharedSurface_EGLImage final : public SharedSurface {
   virtual void ProducerReleaseImpl() override;
 
   virtual void ProducerReadAcquireImpl() override;
-  virtual void ProducerReadReleaseImpl() override{};
+  virtual void ProducerReadReleaseImpl() override {};
 
   Maybe<layers::SurfaceDescriptor> ToSurfaceDescriptor() override;
 };

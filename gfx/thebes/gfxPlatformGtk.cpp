@@ -68,7 +68,7 @@
 #  include "mozilla/widget/nsWaylandDisplay.h"
 #endif
 #ifdef MOZ_WIDGET_GTK
-#  include "mozilla/widget/DMABufLibWrapper.h"
+#  include "mozilla/widget/DMABufDevice.h"
 #  include "mozilla/StaticPrefs_widget.h"
 #endif
 
@@ -83,12 +83,6 @@ using namespace mozilla::unicode;
 using namespace mozilla::widget;
 
 static FT_Library gPlatformFTLibrary = nullptr;
-static int32_t sDPI;
-
-static void screen_resolution_changed(GdkScreen* aScreen, GParamSpec* aPspec,
-                                      gpointer aClosure) {
-  sDPI = 0;
-}
 
 #if defined(MOZ_X11)
 // TODO(aosmond): The envvar is deprecated. We should remove it once EGL is the
@@ -127,12 +121,6 @@ gfxPlatformGtk::gfxPlatformGtk() {
   gPlatformFTLibrary = Factory::NewFTLibrary();
   MOZ_RELEASE_ASSERT(gPlatformFTLibrary);
   Factory::SetFTLibrary(gPlatformFTLibrary);
-
-  GdkScreen* gdkScreen = gdk_screen_get_default();
-  if (gdkScreen) {
-    g_signal_connect(gdkScreen, "notify::resolution",
-                     G_CALLBACK(screen_resolution_changed), nullptr);
-  }
 
   // Bug 1714483: Force disable FXAA Antialiasing on NV drivers. This is a
   // temporary workaround for a driver bug.
@@ -239,6 +227,8 @@ void gfxPlatformGtk::InitDmabufConfig() {
       feature.ForceDisable(FeatureStatus::Failed, "Failed to configure",
                            failureId);
     }
+    // Make sure we have DMABuf formats available.
+    Unused << GetGlobalDMABufFormats();
   }
 }
 
@@ -320,20 +310,19 @@ void gfxPlatformGtk::InitWebRenderConfig() {
   }
 
   FeatureState& feature = gfxConfig::GetFeature(Feature::WEBRENDER_COMPOSITOR);
-#ifdef RELEASE_OR_BETA
-  feature.ForceDisable(FeatureStatus::Blocked,
-                       "Cannot be enabled in release or beta",
-                       "FEATURE_FAILURE_DISABLE_RELEASE_OR_BETA"_ns);
-#else
+  // HDR requires compositor to work
+#if defined(MOZ_WAYLAND)
   if (feature.IsEnabled()) {
-    if (!IsWaylandDisplay()) {
+    if (!StaticPrefs::gfx_wayland_hdr_AtStartup()) {
+      feature.ForceDisable(FeatureStatus::Unavailable, "HDR mode is disabled",
+                           "FEATURE_FAILURE_NO_HDR"_ns);
+
+    } else if (!IsWaylandDisplay()) {
       feature.ForceDisable(FeatureStatus::Unavailable,
                            "Wayland support missing",
                            "FEATURE_FAILURE_NO_WAYLAND"_ns);
-    }
-#  ifdef MOZ_WAYLAND
-    else if (gfxConfig::IsEnabled(Feature::WEBRENDER) &&
-             !gfxConfig::IsEnabled(Feature::DMABUF)) {
+    } else if (gfxConfig::IsEnabled(Feature::WEBRENDER) &&
+               !gfxConfig::IsEnabled(Feature::DMABUF)) {
       // We use zwp_linux_dmabuf_v1 and GBM directly to manage FBOs. In theory
       // this is also possible vie EGLstreams, but we don't bother to implement
       // it as recent NVidia drivers support GBM and DMABuf as well.
@@ -345,9 +334,11 @@ void gfxPlatformGtk::InitWebRenderConfig() {
                            "Requires wp_viewporter protocol support",
                            "FEATURE_FAILURE_REQUIRES_WPVIEWPORTER"_ns);
     }
-#  endif  // MOZ_WAYLAND
   }
-#endif    // RELEASE_OR_BETA
+#else  // MOZ_WAYLAND
+  feature.ForceDisable(FeatureStatus::Unavailable, "Not available on X11",
+                       "FEATURE_FAILURE_NO_WAYLAND"_ns);
+#endif
 
   gfxVars::SetUseWebRenderCompositor(feature.IsEnabled());
 }
@@ -424,7 +415,7 @@ static const char kFontNotoSansSymbols[] = "Noto Sans Symbols";
 static const char kFontNotoSansSymbols2[] = "Noto Sans Symbols2";
 
 void gfxPlatformGtk::GetCommonFallbackFonts(uint32_t aCh, Script aRunScript,
-                                            eFontPresentation aPresentation,
+                                            FontPresentation aPresentation,
                                             nsTArray<const char*>& aFontList) {
   if (PrefersColor(aPresentation)) {
     aFontList.AppendElement(kFontTwemojiMozilla);
@@ -457,50 +448,6 @@ void gfxPlatformGtk::ReadSystemFontList(
 
 bool gfxPlatformGtk::CreatePlatformFontList() {
   return gfxPlatformFontList::Initialize(new gfxFcPlatformFontList);
-}
-
-int32_t gfxPlatformGtk::GetFontScaleDPI() {
-  MOZ_ASSERT(XRE_IsParentProcess(),
-             "You can access this via LookAndFeel if you need it in child "
-             "processes");
-  if (MOZ_LIKELY(sDPI != 0)) {
-    return sDPI;
-  }
-  GdkScreen* screen = gdk_screen_get_default();
-  // Ensure settings in config files are processed.
-  gtk_settings_get_for_screen(screen);
-  int32_t dpi = int32_t(round(gdk_screen_get_resolution(screen)));
-  if (dpi <= 0) {
-    // Fall back to something reasonable
-    dpi = 96;
-  }
-  sDPI = dpi;
-  return dpi;
-}
-
-double gfxPlatformGtk::GetFontScaleFactor() {
-  // Integer scale factors work well with GTK window scaling, image scaling, and
-  // pixel alignment, but there is a range where 1 is too small and 2 is too
-  // big.
-  //
-  // An additional step of 1.5 is added because this is common scale on WINNT
-  // and at this ratio the advantages of larger rendering outweigh the
-  // disadvantages from scaling and pixel mis-alignment.
-  //
-  // A similar step for 1.25 is added as well, because this is the scale that
-  // "Large text" settings use in gnome, and it seems worth to allow, especially
-  // on already-hidpi environments.
-  int32_t dpi = GetFontScaleDPI();
-  if (dpi < 120) {
-    return 1.0;
-  }
-  if (dpi < 132) {
-    return 1.25;
-  }
-  if (dpi < 168) {
-    return 1.5;
-  }
-  return round(dpi / 96.0);
 }
 
 gfxImageFormat gfxPlatformGtk::GetOffscreenFormat() {

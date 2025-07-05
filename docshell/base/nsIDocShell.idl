@@ -106,7 +106,7 @@ interface nsIDocShell : nsIDocShellTreeItem
    * Do either a history.pushState() or history.replaceState() operation,
    * depending on the value of aReplace.
    */
-  [implicit_jscontext]
+  [implicit_jscontext, can_run_script]
   void addState(in jsval aData, in AString aTitle,
                 in AString aURL, in boolean aReplace);
 
@@ -398,7 +398,7 @@ interface nsIDocShell : nsIDocShellTreeItem
   /**
    * Keeps track of the previous nsISHEntry index and the current
    * nsISHEntry index at the time that the doc shell begins to load.
-   * Used for ContentViewer eviction.
+   * Used for DocumentViewer eviction.
    */
   readonly attribute long previousEntryIndex;
   readonly attribute long loadedEntryIndex;

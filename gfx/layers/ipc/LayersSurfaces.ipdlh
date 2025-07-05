@@ -17,21 +17,24 @@ using mozilla::gfx::ChromaSubsampling from "mozilla/gfx/Types.h";
 using mozilla::gfx::ColorDepth from "mozilla/gfx/Types.h";
 using mozilla::gfx::ColorRange from "mozilla/gfx/Types.h";
 using mozilla::gfx::ColorSpace2 from "mozilla/gfx/Types.h";
+using mozilla::gfx::TransferFunction from "mozilla/gfx/Types.h";
 using mozilla::gfx::SurfaceFormat from "mozilla/gfx/Types.h";
 using mozilla::gfx::IntRect from "mozilla/gfx/Rect.h";
 using mozilla::gfx::IntSize from "mozilla/gfx/Point.h";
 using mozilla::gfx::Matrix4x4 from "mozilla/gfx/Matrix.h";
-using mozilla::gfx::FenceInfo from "mozilla/gfx/FileHandleWrapper.h";
 [RefCounted] using mozilla::gfx::FileHandleWrapper from "mozilla/gfx/FileHandleWrapper.h";
-[MoveOnly] using mozilla::ipc::SharedMemoryBasic::Handle from "mozilla/ipc/SharedMemoryBasic.h";
 using gfxImageFormat from "gfxTypes.h";
 using mozilla::layers::MaybeVideoBridgeSource from "mozilla/layers/VideoBridgeUtils.h";
 using mozilla::layers::RemoteTextureId from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::RemoteTextureOwnerId from "mozilla/layers/LayersTypes.h";
+[RefCounted] using mozilla::layers::GpuFence from "mozilla/layers/GpuFence.h";
 using mozilla::layers::GpuProcessTextureId from "mozilla/layers/LayersTypes.h";
-using mozilla::layers::GpuProcessQueryId from "mozilla/layers/LayersTypes.h";
+using mozilla::layers::CompositeProcessFencesHolderId from "mozilla/layers/LayersTypes.h";
 using mozilla::wr::ExternalImageSource from "mozilla/webrender/WebRenderTypes.h";
 using mozilla::wr::ExternalImageId from "mozilla/webrender/WebRenderTypes.h";
+using mozilla::layers::SurfaceDescriptorRemoteDecoderId from "mozilla/layers/LayersTypes.h";
+using mozilla::ipc::ActorId from "mozilla/ipc/ProtocolUtils.h";
+[MoveOnly] using mozilla::ipc::ReadOnlySharedMemoryHandle from "mozilla/ipc/SharedMemoryHandle.h";
 
 namespace mozilla {
 namespace layers {
@@ -45,8 +48,7 @@ namespace layers {
   ColorSpace2 colorSpace;
   ColorRange colorRange;
   bool hasKeyedMutex;
-  FenceInfo? fenceInfo;
-  GpuProcessQueryId? gpuProcessQueryId;
+  CompositeProcessFencesHolderId? fencesHolderId;
 };
 
 [Comparable] struct SurfaceDescriptorDXGIYCbCr {
@@ -59,19 +61,22 @@ namespace layers {
   ColorDepth colorDepth;
   YUVColorSpace yUVColorSpace;
   ColorRange colorRange;
+  CompositeProcessFencesHolderId fencesHolderId;
 };
 
 [Comparable] struct SurfaceDescriptorMacIOSurface {
   uint32_t surfaceId;
   bool isOpaque;
   YUVColorSpace yUVColorSpace;
+  nullable GpuFence gpuFence;
 };
 
 [Comparable] struct SurfaceDescriptorDMABuf {
   uint32_t bufferType;
+  uint32_t fourccFormat;
   uint64_t[] modifier;
   uint32_t flags;
-  FileDescriptor[] fds;
+  FileHandleWrapper[] fds;
   uint32_t[] width;
   uint32_t[] height;
   uint32_t[] widthAligned;
@@ -81,9 +86,13 @@ namespace layers {
   uint32_t[] offsets;
   YUVColorSpace yUVColorSpace;
   ColorRange colorRange;
-  FileDescriptor[] fence;
+  ColorSpace2 colorPrimaries;
+  TransferFunction transferFunction;
+  FileHandleWrapper[] fence;
   uint32_t uid;
+  uint32_t pid;
   FileDescriptor[] refCount;
+  nullable FileHandleWrapper semaphoreFd;
 };
 
 [Comparable] struct SurfaceTextureDescriptor {
@@ -135,6 +144,7 @@ namespace layers {
   uint64_t handle;
   RemoteDecoderVideoSubDescriptor subdesc;
   MaybeVideoBridgeSource source;
+  SurfaceDescriptorRemoteDecoderId id;
 };
 
 [Comparable] union SurfaceDescriptorGPUVideo {
@@ -177,12 +187,12 @@ namespace layers {
   MemoryOrShmem data;
 };
 
-[Comparable] struct SurfaceDescriptorShared
+struct SurfaceDescriptorShared
 {
   IntSize size;
   int32_t stride;
   SurfaceFormat format;
-  Handle handle;
+  ReadOnlySharedMemoryHandle handle;
 };
 
 [Comparable] struct SurfaceDescriptorExternalImage
@@ -194,6 +204,12 @@ namespace layers {
 [Comparable] struct SurfaceDescriptorRemoteTexture {
   RemoteTextureId textureId;
   RemoteTextureOwnerId ownerId;
+};
+
+[Comparable] struct SurfaceDescriptorCanvasSurface {
+  uint32_t managerId;
+  ActorId canvasId;
+  uintptr_t surfaceId;
 };
 
 [Comparable] union SurfaceDescriptor {
@@ -210,6 +226,7 @@ namespace layers {
   SurfaceDescriptorRemoteTexture;
   SurfaceDescriptorDcompSurface;
   SurfaceDescriptorExternalImage;
+  SurfaceDescriptorCanvasSurface;
   null_t;
 };
 

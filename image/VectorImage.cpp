@@ -430,15 +430,24 @@ bool VectorImage::ShouldAnimate() {
   return ImageResource::ShouldAnimate() && mIsFullyLoaded && mHaveAnimations;
 }
 
-NS_IMETHODIMP_(void)
-VectorImage::SetAnimationStartTime(const TimeStamp& aTime) {
-  // We don't care about animation start time.
+// Helper for GetWidth/GetHeight:
+// If the given LengthPercentage is just a Length, this function converts it to
+// CSS pixels and clamps it to be nonnegative, and returns the result.
+// Otherwise, this function returns Nothing().
+static Maybe<int32_t> ClampedPxLengthOrNothing(
+    const LengthPercentage& aLenPct) {
+  if (!aLenPct.IsLength()) {
+    return Nothing();
+  }
+  auto lenInPx = SVGUtils::ClampToInt(aLenPct.AsLength().ToCSSPixels());
+  return Some(std::max(0, lenInPx));
 }
 
 //------------------------------------------------------------------------------
 // imgIContainer methods
 
 //******************************************************************************
+
 NS_IMETHODIMP
 VectorImage::GetWidth(int32_t* aWidth) {
   if (mError || !mIsFullyLoaded) {
@@ -450,84 +459,23 @@ VectorImage::GetWidth(int32_t* aWidth) {
   }
 
   SVGSVGElement* rootElem = mSVGDocumentWrapper->GetRootSVGElem();
-  MOZ_ASSERT(rootElem,
-             "Should have a root SVG elem, since we finished "
-             "loading without errors");
-  LengthPercentage rootElemWidth = rootElem->GetIntrinsicWidth();
-
-  if (!rootElemWidth.IsLength()) {
+  if (MOZ_UNLIKELY(!rootElem)) {
+    // Unlikely to reach this code; we should have a root SVG elem, since we
+    // finished loading without errors. But we can sometimes get here during
+    // shutdown (as part of gathering a memory report) if the internal SVG
+    // document has already been torn down by a shutdown listener.
     *aWidth = 0;
     return NS_ERROR_FAILURE;
   }
 
-  *aWidth = SVGUtils::ClampToInt(rootElemWidth.AsLength().ToCSSPixels());
+  auto widthFromSVG = ClampedPxLengthOrNothing(rootElem->GetIntrinsicWidth());
+  if (!widthFromSVG) {
+    *aWidth = 0;
+    return NS_ERROR_FAILURE;
+  }
+
+  *aWidth = *widthFromSVG;
   return NS_OK;
-}
-
-//******************************************************************************
-nsresult VectorImage::GetNativeSizes(nsTArray<IntSize>& aNativeSizes) {
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
-
-//******************************************************************************
-size_t VectorImage::GetNativeSizesLength() { return 0; }
-
-//******************************************************************************
-NS_IMETHODIMP_(void)
-VectorImage::RequestRefresh(const TimeStamp& aTime) {
-  if (HadRecentRefresh(aTime)) {
-    return;
-  }
-
-  Document* doc = mSVGDocumentWrapper->GetDocument();
-  if (!doc) {
-    // We are racing between shutdown and a refresh.
-    return;
-  }
-
-  EvaluateAnimation();
-
-  mSVGDocumentWrapper->TickRefreshDriver();
-
-  if (mHasPendingInvalidation) {
-    SendInvalidationNotifications();
-  }
-}
-
-void VectorImage::SendInvalidationNotifications() {
-  // Animated images don't send out invalidation notifications as soon as
-  // they're generated. Instead, InvalidateObserversOnNextRefreshDriverTick
-  // records that there are pending invalidations and then returns immediately.
-  // The notifications are actually sent from RequestRefresh(). We send these
-  // notifications there to ensure that there is actually a document observing
-  // us. Otherwise, the notifications are just wasted effort.
-  //
-  // Non-animated images post an event to call this method from
-  // InvalidateObserversOnNextRefreshDriverTick, because RequestRefresh is never
-  // called for them. Ordinarily this isn't needed, since we send out
-  // invalidation notifications in OnSVGDocumentLoaded, but in rare cases the
-  // SVG document may not be 100% ready to render at that time. In those cases
-  // we would miss the subsequent invalidations if we didn't send out the
-  // notifications indirectly in |InvalidateObservers...|.
-
-  mHasPendingInvalidation = false;
-
-  if (SurfaceCache::InvalidateImage(ImageKey(this))) {
-    // If we had any surface providers in the cache, make sure we handle future
-    // invalidations.
-    MOZ_ASSERT(mRenderingObserver, "Should have a rendering observer by now");
-    mRenderingObserver->ResumeHonoringInvalidations();
-  }
-
-  if (mProgressTracker) {
-    mProgressTracker->SyncNotifyProgress(FLAG_FRAME_COMPLETE,
-                                         GetMaxSizedIntRect());
-  }
-}
-
-NS_IMETHODIMP_(IntRect)
-VectorImage::GetImageSpaceInvalidationRect(const IntRect& aRect) {
-  return aRect;
 }
 
 //******************************************************************************
@@ -542,23 +490,46 @@ VectorImage::GetHeight(int32_t* aHeight) {
   }
 
   SVGSVGElement* rootElem = mSVGDocumentWrapper->GetRootSVGElem();
-  MOZ_ASSERT(rootElem,
-             "Should have a root SVG elem, since we finished "
-             "loading without errors");
-  LengthPercentage rootElemHeight = rootElem->GetIntrinsicHeight();
-
-  if (!rootElemHeight.IsLength()) {
+  if (MOZ_UNLIKELY(!rootElem)) {
+    // Unlikely to reach this code; we should have a root SVG elem, since we
+    // finished loading without errors. But we can sometimes get here during
+    // shutdown (as part of gathering a memory report) if the internal SVG
+    // document has already been torn down by a shutdown listener.
+    *aHeight = 0;
+    return NS_ERROR_FAILURE;
+  }
+  auto heightFromSVG = ClampedPxLengthOrNothing(rootElem->GetIntrinsicHeight());
+  if (!heightFromSVG) {
     *aHeight = 0;
     return NS_ERROR_FAILURE;
   }
 
-  *aHeight = SVGUtils::ClampToInt(rootElemHeight.AsLength().ToCSSPixels());
+  *aHeight = *heightFromSVG;
   return NS_OK;
 }
 
 //******************************************************************************
 NS_IMETHODIMP
-VectorImage::GetIntrinsicSize(nsSize* aSize) {
+VectorImage::GetIntrinsicSize(ImageIntrinsicSize* aIntrinsicSize) {
+  if (mError || !mIsFullyLoaded) {
+    return NS_ERROR_FAILURE;
+  }
+  SVGSVGElement* rootElem = mSVGDocumentWrapper->GetRootSVGElem();
+  if (MOZ_UNLIKELY(!rootElem)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  aIntrinsicSize->mWidth =
+      ClampedPxLengthOrNothing(rootElem->GetIntrinsicWidth());
+  aIntrinsicSize->mHeight =
+      ClampedPxLengthOrNothing(rootElem->GetIntrinsicHeight());
+
+  return NS_OK;
+}
+
+//******************************************************************************
+NS_IMETHODIMP
+VectorImage::GetIntrinsicSizeInAppUnits(nsSize* aSize) {
   if (mError || !mIsFullyLoaded) {
     return NS_ERROR_FAILURE;
   }
@@ -580,24 +551,36 @@ VectorImage::GetIntrinsicSize(nsSize* aSize) {
 }
 
 //******************************************************************************
-Maybe<AspectRatio> VectorImage::GetIntrinsicRatio() {
+AspectRatio VectorImage::GetIntrinsicRatio() {
   if (mError || !mIsFullyLoaded) {
-    return Nothing();
+    return {};
   }
-
   nsIFrame* rootFrame = mSVGDocumentWrapper->GetRootLayoutFrame();
   if (!rootFrame) {
-    return Nothing();
+    return {};
   }
-
-  return Some(rootFrame->GetIntrinsicRatio());
+  return rootFrame->GetIntrinsicRatio();
 }
 
-NS_IMETHODIMP_(Orientation)
-VectorImage::GetOrientation() { return Orientation(); }
+nsresult VectorImage::GetHotspotX(int32_t* aX) {
+  return Image::GetHotspotX(aX);
+}
 
-NS_IMETHODIMP_(Resolution)
-VectorImage::GetResolution() { return {}; }
+nsresult VectorImage::GetHotspotY(int32_t* aY) {
+  return Image::GetHotspotY(aY);
+}
+
+nsIntSize VectorImage::OptimalImageSizeForDest(const gfxSize& aDest,
+                                               uint32_t aWhichFrame,
+                                               SamplingFilter aSamplingFilter,
+                                               uint32_t aFlags) {
+  MOZ_ASSERT(aDest.width >= 0 || ceil(aDest.width) <= INT32_MAX ||
+                 aDest.height >= 0 || ceil(aDest.height) <= INT32_MAX,
+             "Unexpected destination size");
+
+  // We can rescale SVGs freely, so just return the provided destination size.
+  return nsIntSize::Ceil(aDest.width, aDest.height);
+}
 
 //******************************************************************************
 NS_IMETHODIMP
@@ -605,15 +588,6 @@ VectorImage::GetType(uint16_t* aType) {
   NS_ENSURE_ARG_POINTER(aType);
 
   *aType = imgIContainer::TYPE_VECTOR;
-  return NS_OK;
-}
-
-//******************************************************************************
-NS_IMETHODIMP
-VectorImage::GetProviderId(uint32_t* aId) {
-  NS_ENSURE_ARG_POINTER(aId);
-
-  *aId = ImageResource::GetImageProviderId();
   return NS_OK;
 }
 
@@ -629,23 +603,12 @@ VectorImage::GetAnimated(bool* aAnimated) {
 }
 
 //******************************************************************************
-int32_t VectorImage::GetFirstFrameDelay() {
-  if (mError) {
-    return -1;
-  }
+NS_IMETHODIMP
+VectorImage::GetProviderId(uint32_t* aId) {
+  NS_ENSURE_ARG_POINTER(aId);
 
-  if (!mSVGDocumentWrapper->IsAnimated()) {
-    return -1;
-  }
-
-  // We don't really have a frame delay, so just pretend that we constantly
-  // need updates.
-  return 0;
-}
-
-NS_IMETHODIMP_(bool)
-VectorImage::WillDrawOpaqueNow() {
-  return false;  // In general, SVG content is not opaque.
+  *aId = ImageResource::GetImageProviderId();
+  return NS_OK;
 }
 
 //******************************************************************************
@@ -731,6 +694,16 @@ VectorImage::GetFrameAtSize(const IntSize& aSize, uint32_t aWhichFrame,
 
   SendFrameComplete(didCache, params.flags);
   return surface.forget();
+}
+
+NS_IMETHODIMP_(bool)
+VectorImage::WillDrawOpaqueNow() {
+  return false;  // In general, SVG content is not opaque.
+}
+
+bool VectorImage::HasDecodedPixels() {
+  MOZ_ASSERT_UNREACHABLE("calling VectorImage::HasDecodedPixels");
+  return mIsFullyLoaded;
 }
 
 NS_IMETHODIMP_(bool)
@@ -923,36 +896,6 @@ VectorImage::GetImageProvider(WindowRenderer* aRenderer,
   return ImgDrawResult::SUCCESS;
 }
 
-bool VectorImage::MaybeRestrictSVGContext(SVGImageContext& aSVGContext,
-                                          uint32_t aFlags) {
-  bool overridePAR = (aFlags & FLAG_FORCE_PRESERVEASPECTRATIO_NONE);
-
-  bool haveContextPaint = aSVGContext.GetContextPaint();
-  bool blockContextPaint =
-      haveContextPaint && !SVGContextPaint::IsAllowedForImageFromURI(mURI);
-
-  if (overridePAR || blockContextPaint) {
-    if (overridePAR) {
-      // The SVGImageContext must take account of the preserveAspectRatio
-      // override:
-      MOZ_ASSERT(!aSVGContext.GetPreserveAspectRatio(),
-                 "FLAG_FORCE_PRESERVEASPECTRATIO_NONE is not expected if a "
-                 "preserveAspectRatio override is supplied");
-      Maybe<SVGPreserveAspectRatio> aspectRatio = Some(SVGPreserveAspectRatio(
-          SVG_PRESERVEASPECTRATIO_NONE, SVG_MEETORSLICE_UNKNOWN));
-      aSVGContext.SetPreserveAspectRatio(aspectRatio);
-    }
-
-    if (blockContextPaint) {
-      // The SVGImageContext must not include context paint if the image is
-      // not allowed to use it:
-      aSVGContext.ClearContextPaint();
-    }
-  }
-
-  return haveContextPaint && !blockContextPaint;
-}
-
 //******************************************************************************
 NS_IMETHODIMP_(ImgDrawResult)
 VectorImage::Draw(gfxContext* aContext, const nsIntSize& aSize,
@@ -1040,6 +983,254 @@ VectorImage::Draw(gfxContext* aContext, const nsIntSize& aSize,
   Show(drawable, params);
   SendFrameComplete(didCache, params.flags);
   return ImgDrawResult::SUCCESS;
+}
+
+NS_IMETHODIMP
+VectorImage::StartDecoding(uint32_t aFlags, uint32_t aWhichFrame) {
+  // Nothing to do for SVG images
+  return NS_OK;
+}
+
+bool VectorImage::StartDecodingWithResult(uint32_t aFlags,
+                                          uint32_t aWhichFrame) {
+  // SVG images are ready to draw when they are loaded
+  return mIsFullyLoaded;
+}
+
+imgIContainer::DecodeResult VectorImage::RequestDecodeWithResult(
+    uint32_t aFlags, uint32_t aWhichFrame) {
+  // SVG images are ready to draw when they are loaded and don't have an error.
+
+  if (mError) {
+    return imgIContainer::DECODE_REQUEST_FAILED;
+  }
+
+  if (!mIsFullyLoaded) {
+    return imgIContainer::DECODE_REQUESTED;
+  }
+
+  return imgIContainer::DECODE_SURFACE_AVAILABLE;
+}
+
+NS_IMETHODIMP
+VectorImage::RequestDecodeForSize(const nsIntSize& aSize, uint32_t aFlags,
+                                  uint32_t aWhichFrame) {
+  // Nothing to do for SVG images, though in theory we could rasterize to the
+  // provided size ahead of time if we supported off-main-thread SVG
+  // rasterization...
+  return NS_OK;
+}
+
+//******************************************************************************
+
+NS_IMETHODIMP
+VectorImage::LockImage() {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (mError) {
+    return NS_ERROR_FAILURE;
+  }
+
+  mLockCount++;
+
+  if (mLockCount == 1) {
+    // Lock this image's surfaces in the SurfaceCache.
+    SurfaceCache::LockImage(ImageKey(this));
+  }
+
+  return NS_OK;
+}
+
+//******************************************************************************
+
+NS_IMETHODIMP
+VectorImage::UnlockImage() {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (mError) {
+    return NS_ERROR_FAILURE;
+  }
+
+  if (mLockCount == 0) {
+    MOZ_ASSERT_UNREACHABLE("Calling UnlockImage with a zero lock count");
+    return NS_ERROR_ABORT;
+  }
+
+  mLockCount--;
+
+  if (mLockCount == 0) {
+    // Unlock this image's surfaces in the SurfaceCache.
+    SurfaceCache::UnlockImage(ImageKey(this));
+  }
+
+  return NS_OK;
+}
+
+//******************************************************************************
+
+NS_IMETHODIMP
+VectorImage::RequestDiscard() {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (mDiscardable && mLockCount == 0) {
+    SurfaceCache::RemoveImage(ImageKey(this));
+    mProgressTracker->OnDiscard();
+  }
+
+  return NS_OK;
+}
+
+//******************************************************************************
+NS_IMETHODIMP_(void)
+VectorImage::RequestRefresh(const TimeStamp& aTime) {
+  if (HadRecentRefresh(aTime)) {
+    return;
+  }
+
+  Document* doc = mSVGDocumentWrapper->GetDocument();
+  if (!doc) {
+    // We are racing between shutdown and a refresh.
+    return;
+  }
+
+  EvaluateAnimation();
+
+  mSVGDocumentWrapper->TickRefreshDriver();
+
+  if (mHasPendingInvalidation) {
+    SendInvalidationNotifications();
+  }
+}
+
+//******************************************************************************
+NS_IMETHODIMP
+VectorImage::ResetAnimation() {
+  if (mError) {
+    return NS_ERROR_FAILURE;
+  }
+
+  if (!mIsFullyLoaded || !mHaveAnimations) {
+    return NS_OK;  // There are no animations to be reset.
+  }
+
+  mSVGDocumentWrapper->ResetAnimation();
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP_(float)
+VectorImage::GetFrameIndex(uint32_t aWhichFrame) {
+  MOZ_ASSERT(aWhichFrame <= FRAME_MAX_VALUE, "Invalid argument");
+  return aWhichFrame == FRAME_FIRST
+             ? 0.0f
+             : mSVGDocumentWrapper->GetCurrentTimeAsFloat();
+}
+
+NS_IMETHODIMP_(Orientation)
+VectorImage::GetOrientation() { return Orientation(); }
+
+NS_IMETHODIMP_(Resolution)
+VectorImage::GetResolution() { return {}; }
+
+//******************************************************************************
+int32_t VectorImage::GetFirstFrameDelay() {
+  if (mError) {
+    return -1;
+  }
+
+  if (!mSVGDocumentWrapper->IsAnimated()) {
+    return -1;
+  }
+
+  // We don't really have a frame delay, so just pretend that we constantly
+  // need updates.
+  return 0;
+}
+
+NS_IMETHODIMP_(void)
+VectorImage::SetAnimationStartTime(const TimeStamp& aTime) {
+  // We don't care about animation start time.
+}
+
+NS_IMETHODIMP_(IntRect)
+VectorImage::GetImageSpaceInvalidationRect(const IntRect& aRect) {
+  return aRect;
+}
+
+already_AddRefed<imgIContainer> VectorImage::Unwrap() {
+  nsCOMPtr<imgIContainer> self(this);
+  return self.forget();
+}
+
+void VectorImage::PropagateUseCounters(Document* aReferencingDocument) {
+  if (Document* doc = mSVGDocumentWrapper->GetDocument()) {
+    doc->PropagateImageUseCounters(aReferencingDocument);
+  }
+}
+
+void VectorImage::MediaFeatureValuesChangedAllDocuments(
+    const MediaFeatureChange& aChange) {
+  if (!mSVGDocumentWrapper) {
+    return;
+  }
+
+  // Don't bother if the document hasn't loaded yet.
+  if (!mIsFullyLoaded) {
+    return;
+  }
+
+  if (Document* doc = mSVGDocumentWrapper->GetDocument()) {
+    if (RefPtr<nsPresContext> presContext = doc->GetPresContext()) {
+      presContext->MediaFeatureValuesChanged(
+          aChange, MediaFeatureChangePropagation::All);
+      // Media feature value changes don't happen in the middle of layout,
+      // so we don't need to call InvalidateObserversOnNextRefreshDriverTick
+      // to invalidate asynchronously.
+      if (presContext->FlushPendingMediaFeatureValuesChanged()) {
+        // NOTE(emilio): SendInvalidationNotifications flushes layout via
+        // VectorImage::CreateSurface -> FlushImageTransformInvalidation.
+        SendInvalidationNotifications();
+      }
+    }
+  }
+}
+
+//******************************************************************************
+nsresult VectorImage::GetNativeSizes(nsTArray<IntSize>& aNativeSizes) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+//******************************************************************************
+size_t VectorImage::GetNativeSizesLength() { return 0; }
+
+bool VectorImage::MaybeRestrictSVGContext(SVGImageContext& aSVGContext,
+                                          uint32_t aFlags) {
+  bool overridePAR = (aFlags & FLAG_FORCE_PRESERVEASPECTRATIO_NONE);
+
+  bool haveContextPaint = aSVGContext.GetContextPaint();
+  bool blockContextPaint =
+      haveContextPaint && !SVGContextPaint::IsAllowedForImageFromURI(mURI);
+
+  if (overridePAR || blockContextPaint) {
+    if (overridePAR) {
+      // The SVGImageContext must take account of the preserveAspectRatio
+      // override:
+      MOZ_ASSERT(!aSVGContext.GetPreserveAspectRatio(),
+                 "FLAG_FORCE_PRESERVEASPECTRATIO_NONE is not expected if a "
+                 "preserveAspectRatio override is supplied");
+      Maybe<SVGPreserveAspectRatio> aspectRatio = Some(SVGPreserveAspectRatio(
+          SVG_PRESERVEASPECTRATIO_NONE, SVG_MEETORSLICE_UNKNOWN));
+      aSVGContext.SetPreserveAspectRatio(aspectRatio);
+    }
+
+    if (blockContextPaint) {
+      // The SVGImageContext must not include context paint if the image is
+      // not allowed to use it:
+      aSVGContext.ClearContextPaint();
+    }
+  }
+
+  return haveContextPaint && !blockContextPaint;
 }
 
 already_AddRefed<gfxDrawable> VectorImage::CreateSVGDrawable(
@@ -1246,136 +1437,12 @@ void VectorImage::RecoverFromLossOfSurfaces() {
   SurfaceCache::RemoveImage(ImageKey(this));
 }
 
-NS_IMETHODIMP
-VectorImage::StartDecoding(uint32_t aFlags, uint32_t aWhichFrame) {
-  // Nothing to do for SVG images
-  return NS_OK;
-}
-
-bool VectorImage::StartDecodingWithResult(uint32_t aFlags,
-                                          uint32_t aWhichFrame) {
-  // SVG images are ready to draw when they are loaded
-  return mIsFullyLoaded;
-}
-
-bool VectorImage::HasDecodedPixels() {
-  MOZ_ASSERT_UNREACHABLE("calling VectorImage::HasDecodedPixels");
-  return mIsFullyLoaded;
-}
-
-imgIContainer::DecodeResult VectorImage::RequestDecodeWithResult(
-    uint32_t aFlags, uint32_t aWhichFrame) {
-  // SVG images are ready to draw when they are loaded and don't have an error.
-
-  if (mError) {
-    return imgIContainer::DECODE_REQUEST_FAILED;
-  }
-
-  if (!mIsFullyLoaded) {
-    return imgIContainer::DECODE_REQUESTED;
-  }
-
-  return imgIContainer::DECODE_SURFACE_AVAILABLE;
-}
-
-NS_IMETHODIMP
-VectorImage::RequestDecodeForSize(const nsIntSize& aSize, uint32_t aFlags,
-                                  uint32_t aWhichFrame) {
-  // Nothing to do for SVG images, though in theory we could rasterize to the
-  // provided size ahead of time if we supported off-main-thread SVG
-  // rasterization...
-  return NS_OK;
-}
-
-//******************************************************************************
-
-NS_IMETHODIMP
-VectorImage::LockImage() {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  if (mError) {
-    return NS_ERROR_FAILURE;
-  }
-
-  mLockCount++;
-
-  if (mLockCount == 1) {
-    // Lock this image's surfaces in the SurfaceCache.
-    SurfaceCache::LockImage(ImageKey(this));
-  }
-
-  return NS_OK;
-}
-
-//******************************************************************************
-
-NS_IMETHODIMP
-VectorImage::UnlockImage() {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  if (mError) {
-    return NS_ERROR_FAILURE;
-  }
-
-  if (mLockCount == 0) {
-    MOZ_ASSERT_UNREACHABLE("Calling UnlockImage with a zero lock count");
-    return NS_ERROR_ABORT;
-  }
-
-  mLockCount--;
-
-  if (mLockCount == 0) {
-    // Unlock this image's surfaces in the SurfaceCache.
-    SurfaceCache::UnlockImage(ImageKey(this));
-  }
-
-  return NS_OK;
-}
-
-//******************************************************************************
-
-NS_IMETHODIMP
-VectorImage::RequestDiscard() {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  if (mDiscardable && mLockCount == 0) {
-    SurfaceCache::RemoveImage(ImageKey(this));
-    mProgressTracker->OnDiscard();
-  }
-
-  return NS_OK;
-}
-
 void VectorImage::OnSurfaceDiscarded(const SurfaceKey& aSurfaceKey) {
   MOZ_ASSERT(mProgressTracker);
 
   NS_DispatchToMainThread(NewRunnableMethod("ProgressTracker::OnDiscard",
                                             mProgressTracker,
                                             &ProgressTracker::OnDiscard));
-}
-
-//******************************************************************************
-NS_IMETHODIMP
-VectorImage::ResetAnimation() {
-  if (mError) {
-    return NS_ERROR_FAILURE;
-  }
-
-  if (!mIsFullyLoaded || !mHaveAnimations) {
-    return NS_OK;  // There are no animations to be reset.
-  }
-
-  mSVGDocumentWrapper->ResetAnimation();
-
-  return NS_OK;
-}
-
-NS_IMETHODIMP_(float)
-VectorImage::GetFrameIndex(uint32_t aWhichFrame) {
-  MOZ_ASSERT(aWhichFrame <= FRAME_MAX_VALUE, "Invalid argument");
-  return aWhichFrame == FRAME_FIRST
-             ? 0.0f
-             : mSVGDocumentWrapper->GetCurrentTimeAsFloat();
 }
 
 //------------------------------------------------------------------------------
@@ -1445,6 +1512,37 @@ void VectorImage::CancelAllListeners() {
   if (mLoadEventListener) {
     mLoadEventListener->Cancel();
     mLoadEventListener = nullptr;
+  }
+}
+
+void VectorImage::SendInvalidationNotifications() {
+  // Animated images don't send out invalidation notifications as soon as
+  // they're generated. Instead, InvalidateObserversOnNextRefreshDriverTick
+  // records that there are pending invalidations and then returns immediately.
+  // The notifications are actually sent from RequestRefresh(). We send these
+  // notifications there to ensure that there is actually a document observing
+  // us. Otherwise, the notifications are just wasted effort.
+  //
+  // Non-animated images post an event to call this method from
+  // InvalidateObserversOnNextRefreshDriverTick, because RequestRefresh is never
+  // called for them. Ordinarily this isn't needed, since we send out
+  // invalidation notifications in OnSVGDocumentLoaded, but in rare cases the
+  // SVG document may not be 100% ready to render at that time. In those cases
+  // we would miss the subsequent invalidations if we didn't send out the
+  // notifications indirectly in |InvalidateObservers...|.
+
+  mHasPendingInvalidation = false;
+
+  if (SurfaceCache::InvalidateImage(ImageKey(this))) {
+    // If we had any surface providers in the cache, make sure we handle future
+    // invalidations.
+    MOZ_ASSERT(mRenderingObserver, "Should have a rendering observer by now");
+    mRenderingObserver->ResumeHonoringInvalidations();
+  }
+
+  if (mProgressTracker) {
+    mProgressTracker->SyncNotifyProgress(FLAG_FRAME_COMPLETE,
+                                         GetMaxSizedIntRect());
   }
 }
 
@@ -1565,64 +1663,6 @@ void VectorImage::InvalidateObserversOnNextRefreshDriverTick() {
       [=]() -> void { self->SendInvalidationNotifications(); }));
   eventTarget->Dispatch(CreateRenderBlockingRunnable(ev.forget()),
                         NS_DISPATCH_NORMAL);
-}
-
-void VectorImage::PropagateUseCounters(Document* aReferencingDocument) {
-  if (Document* doc = mSVGDocumentWrapper->GetDocument()) {
-    doc->PropagateImageUseCounters(aReferencingDocument);
-  }
-}
-
-nsIntSize VectorImage::OptimalImageSizeForDest(const gfxSize& aDest,
-                                               uint32_t aWhichFrame,
-                                               SamplingFilter aSamplingFilter,
-                                               uint32_t aFlags) {
-  MOZ_ASSERT(aDest.width >= 0 || ceil(aDest.width) <= INT32_MAX ||
-                 aDest.height >= 0 || ceil(aDest.height) <= INT32_MAX,
-             "Unexpected destination size");
-
-  // We can rescale SVGs freely, so just return the provided destination size.
-  return nsIntSize::Ceil(aDest.width, aDest.height);
-}
-
-already_AddRefed<imgIContainer> VectorImage::Unwrap() {
-  nsCOMPtr<imgIContainer> self(this);
-  return self.forget();
-}
-
-void VectorImage::MediaFeatureValuesChangedAllDocuments(
-    const MediaFeatureChange& aChange) {
-  if (!mSVGDocumentWrapper) {
-    return;
-  }
-
-  // Don't bother if the document hasn't loaded yet.
-  if (!mIsFullyLoaded) {
-    return;
-  }
-
-  if (Document* doc = mSVGDocumentWrapper->GetDocument()) {
-    if (RefPtr<nsPresContext> presContext = doc->GetPresContext()) {
-      presContext->MediaFeatureValuesChanged(
-          aChange, MediaFeatureChangePropagation::All);
-      // Media feature value changes don't happen in the middle of layout,
-      // so we don't need to call InvalidateObserversOnNextRefreshDriverTick
-      // to invalidate asynchronously.
-      if (presContext->FlushPendingMediaFeatureValuesChanged()) {
-        // NOTE(emilio): SendInvalidationNotifications flushes layout via
-        // VectorImage::CreateSurface -> FlushImageTransformInvalidation.
-        SendInvalidationNotifications();
-      }
-    }
-  }
-}
-
-nsresult VectorImage::GetHotspotX(int32_t* aX) {
-  return Image::GetHotspotX(aX);
-}
-
-nsresult VectorImage::GetHotspotY(int32_t* aY) {
-  return Image::GetHotspotY(aY);
 }
 
 void VectorImage::ReportDocumentUseCounters() {

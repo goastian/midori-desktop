@@ -49,6 +49,7 @@ using mozilla::ParentLayerRect from "Units.h";
 using mozilla::LayoutDeviceIntRect from "Units.h";
 using mozilla::LayoutDevicePoint from "Units.h";
 using mozilla::LayoutDeviceRect from "Units.h";
+using mozilla::layers::ClearImagesType from "ImageContainer.h";
 using mozilla::layers::ScaleMode from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::EventRegionsOverride from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::DiagnosticTypes from "mozilla/layers/CompositorTypes.h";
@@ -240,6 +241,8 @@ struct Animation {
   Animatable baseStyle;
   // An optional data specific for transform like properies.
   TransformData? transformData;
+  // This indicates that a transition whose start value should be replaced.
+  uint64_t? replacedTransitionId;
   // If this is present, the animation is driven by a ScrollTimeline, and
   // this structure contains information about that timeline.
   ScrollTimelineOptions? scrollTimelineOptions;
@@ -274,6 +277,13 @@ union ReadLockDescriptor {
  */
 struct OpRemoveTexture {
   PTexture texture;
+};
+
+/**
+ * Tells the CompositableHost to clear Images
+ */
+struct OpClearImages {
+  ClearImagesType type;
 };
 
 struct TimedTexture {
@@ -319,6 +329,8 @@ struct OpNotifyNotUsed {
 
 union CompositableOperationDetail {
   OpRemoveTexture;
+
+  OpClearImages;
 
   OpUseTexture;
 

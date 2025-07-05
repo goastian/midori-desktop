@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 si{
     Countries{
         001{"ලෝකය"}
@@ -297,6 +297,9 @@ si{
         ZM{"සැම්බියාව"}
         ZW{"සිම්බාබ්වේ"}
         ZZ{"හඳුනා නොගත් කළාපය"}
+    }
+    Countries%chagos{
+        IO{"චාගෝස් දූපත් සමූහය"}
     }
     Countries%short{
         GB{"එ.රා"}

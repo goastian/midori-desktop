@@ -10,10 +10,13 @@
 #include <functional>
 #include <vector>
 
+#include "mozilla/GeckoArgs.h"
 #include "mozilla/ipc/FileDescriptor.h"
-#include "base/shared_memory.h"
+#include "mozilla/ipc/SharedMemoryHandle.h"
+#include "mozilla/ipc/SharedMemoryMapping.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/RefPtr.h"
 #include "nsXULAppAPI.h"
 
 namespace mozilla {
@@ -34,22 +37,21 @@ class SharedPreferenceSerializer final {
   bool SerializeToSharedMemory(const GeckoProcessType aDestinationProcessType,
                                const nsACString& aDestinationRemoteType);
 
-  size_t GetPrefMapSize() const { return mPrefMapSize; }
-  size_t GetPrefsLength() const { return mPrefsLength; }
+  const ReadOnlySharedMemoryHandle& GetPrefsHandle() const {
+    return mPrefsHandle;
+  }
 
-  const UniqueFileHandle& GetPrefsHandle() const { return mPrefsHandle; }
-
-  const UniqueFileHandle& GetPrefMapHandle() const { return mPrefMapHandle; }
+  const ReadOnlySharedMemoryHandle& GetPrefMapHandle() const {
+    return mPrefMapHandle;
+  }
 
   void AddSharedPrefCmdLineArgs(GeckoChildProcessHost& procHost,
-                                std::vector<std::string>& aExtraOpts) const;
+                                geckoargs::ChildProcessArgs& aExtraOpts) const;
 
  private:
   DISALLOW_COPY_AND_ASSIGN(SharedPreferenceSerializer);
-  size_t mPrefMapSize;
-  size_t mPrefsLength;
-  UniqueFileHandle mPrefMapHandle;
-  UniqueFileHandle mPrefsHandle;
+  ReadOnlySharedMemoryHandle mPrefMapHandle;
+  ReadOnlySharedMemoryHandle mPrefsHandle;
 };
 
 class SharedPreferenceDeserializer final {
@@ -57,35 +59,23 @@ class SharedPreferenceDeserializer final {
   SharedPreferenceDeserializer();
   ~SharedPreferenceDeserializer();
 
-  bool DeserializeFromSharedMemory(uint64_t aPrefsHandle,
-                                   uint64_t aPrefMapHandle, uint64_t aPrefsLen,
-                                   uint64_t aPrefMapSize);
-
-  const FileDescriptor& GetPrefMapHandle() const;
+  bool DeserializeFromSharedMemory(ReadOnlySharedMemoryHandle&& aPrefsHandle,
+                                   ReadOnlySharedMemoryHandle&& aPrefMapHandle);
 
  private:
   DISALLOW_COPY_AND_ASSIGN(SharedPreferenceDeserializer);
-  Maybe<FileDescriptor> mPrefMapHandle;
-  Maybe<size_t> mPrefsLen;
-  Maybe<size_t> mPrefMapSize;
-  base::SharedMemory mShmem;
+  ReadOnlySharedMemoryHandle mPrefMapHandle;
+  ReadOnlySharedMemoryMapping mShmem;
 };
-
-#if defined(ANDROID) || defined(XP_IOS)
-// Android/iOS doesn't use -prefsHandle or -prefMapHandle. It gets those FDs
-// another way.
-void SetPrefsFd(int aFd);
-void SetPrefMapFd(int aFd);
-#endif
 
 // Generate command line argument to spawn a child process. If the shared memory
 // is not properly initialized, this would be a no-op.
 void ExportSharedJSInit(GeckoChildProcessHost& procHost,
-                        std::vector<std::string>& aExtraOpts);
+                        geckoargs::ChildProcessArgs& aExtraOpts);
 
 // Initialize the content used by the JS engine during the initialization of a
 // JS::Runtime.
-bool ImportSharedJSInit(uint64_t aJsInitHandle, uint64_t aJsInitLen);
+bool ImportSharedJSInit(ReadOnlySharedMemoryHandle&& aJsInitHandle);
 
 }  // namespace ipc
 }  // namespace mozilla

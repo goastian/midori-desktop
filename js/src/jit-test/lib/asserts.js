@@ -45,45 +45,55 @@ if (typeof assertNoWarning === 'undefined') {
                 print("assertNoWarning: " + msg);
             }
 
-            throw Error("assertNoWarning: Unexpected warning when calling: " + f);
+            throw Error(`assertNoWarning: Unexpected warning "${warning.message}" when calling: ` + f);
         }
     };
 }
 
 if (typeof assertErrorMessage === 'undefined') {
-    var assertErrorMessage = function assertErrorMessage(f, ctor, test) {
-        try {
-            f();
-        } catch (e) {
-            // Propagate non-specific OOM errors, we never test for these with
-            // assertErrorMessage, as there is no meaningful ctor.
-            if (e === "out of memory")
-                throw e;
-            if (!(e instanceof ctor))
-                throw new Error("Assertion failed: expected exception " + ctor.name + ", got " + e);
-            if (typeof test == "string") {
-                if (test != e.message)
-                    throw new Error("Assertion failed: expected " + test + ", got " + e.message);
-            } else {
-                if (!test.test(e.message))
-                    throw new Error("Assertion failed: expected " + test.toString() + ", got " + e.message);
-            }
-            return;
+  var assertErrorMessage = function assertErrorMessage(f, ctor, test, message) {
+    try {
+      f();
+    } catch (e) {
+      // Propagate non-specific OOM errors, we never test for these with
+      // assertErrorMessage, as there is no meaningful ctor.
+      if (e === "out of memory") {
+        throw e;
+      }
+      if (!(e instanceof ctor)) {
+        throw new Error((message ? `${message}: ` : "") + `assertion failed: expected exception ${ctor.name}, got ${e}`);
+      }
+      if (typeof test == "string") {
+        if (test == e.message) {
+          return;
         }
-        throw new Error("Assertion failed: expected exception " + ctor.name + ", no exception thrown");
-    };
+        throw new Error((message ? `${message}: ` : "") + `assertion failed: expected message "${test}", got "${e.message}"`);
+      }
+      if (test instanceof RegExp) {
+        if (test.test(e.message)) {
+          return;
+        }
+        throw new Error((message ? `${message}: ` : "") + `assertion failed: expected message ${test.toString()}, got "${e.message}"`);
+      }
+      if (!test) {
+        throw new Error((message ? `${message}: ` : "") + `assertErrorMessage requires an error message`);
+      }
+      throw new Error((message ? `${message}: ` : "") + `unknown failure in assertErrorMessage: ${e}`);
+    }
+    throw new Error((message ? `${message}: ` : "") + `assertion failed: expected exception ${ctor.name}, no exception thrown`);
+  };
 }
 
 if (typeof assertTypeErrorMessage === 'undefined') {
-    var assertTypeErrorMessage = function assertTypeErrorMessage(f, test) {
-      assertErrorMessage(f, TypeError, test);
-    };
+  var assertTypeErrorMessage = function assertTypeErrorMessage(f, test) {
+    assertErrorMessage(f, TypeError, test);
+  };
 }
 
 if (typeof assertRangeErrorMessage === 'undefined') {
-    var assertRangeErrorMessage = function assertRangeErrorMessage(f, test) {
-      assertErrorMessage(f, RangeError, test);
-    };
+  var assertRangeErrorMessage = function assertRangeErrorMessage(f, test) {
+    assertErrorMessage(f, RangeError, test);
+  };
 }
 
 if (typeof assertArrayEq === 'undefined') {
@@ -92,5 +102,71 @@ if (typeof assertArrayEq === 'undefined') {
     for (var i = 0; i < a.length; i++) {
       assertEq(a[i], b[i]);
     }
+  };
+}
+
+if (typeof assertSuppressionChain === 'undefined' && typeof globalThis.SuppressedError !== 'undefined') {
+
+  function errorChainVerificationHelper(err, suppressions, verifier) {
+    let i = 0;
+    while (err instanceof SuppressedError) {
+      assertEq(verifier(err.error, suppressions[i]), true);
+      err = err.suppressed;
+      i++;
+    }
+    assertEq(verifier(err, suppressions[i]), true);
+    assertEq(i, suppressions.length - 1);
+  }
+
+  var assertSuppressionChain = function assertSuppressionChain(fn, suppressions) {
+    let caught = false;
+    try {
+      fn();
+    } catch (err) {
+      caught = true;
+      errorChainVerificationHelper(err, suppressions, function(err, suppression) {
+        return err === suppression;
+      });
+    } finally {
+      assertEq(caught, true);
+    }
+  }
+
+  var assertSuppressionChainAsync = function assertSuppressionChainAsync(f, suppressions) {
+    let thenCalled = false;
+    let catchCalled = false;
+    let e = null;
+    f().then(() => { thenCalled = true; }, err => { catchCalled = true; e = err; });
+    drainJobQueue();
+    assertEq(thenCalled, false);
+    assertEq(catchCalled, true);
+    assertSuppressionChain(() => { throw e; }, suppressions);
+  };
+
+  var assertSuppressionChainErrorMessages = function assertSuppressionChainErrorMessages(fn, suppressions) {
+    let caught = false;
+    try {
+      fn();
+    } catch (err) {
+      caught = true;
+      errorChainVerificationHelper(err, suppressions, function(err, suppression) {
+        return err instanceof suppression.ctor && err.message === suppression.message;
+      });
+    } finally {
+      assertEq(caught, true);
+    }
+  }
+}
+
+if (typeof assertThrowsInstanceOfAsync === 'undefined') {
+  var assertThrowsInstanceOfAsync = function assertThrowsInstanceOfAsync(f, ctor, message) {
+    let thenCalled = false;
+    let catchCalled = false;
+    let e = null;
+    f().then(() => { thenCalled = true; }, err => { catchCalled = true; e = err; });
+    drainJobQueue();
+    assertEq(thenCalled, false);
+    assertEq(catchCalled, true);
+    assertThrowsInstanceOf(() => { throw e; }, ctor, message);
   };
 }

@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 rn{
     Countries{
         AD{"Andora"}
@@ -93,7 +93,6 @@ rn{
         IE{"Irilandi"}
         IL{"Isiraheli"}
         IN{"Ubuhindi"}
-        IO{"Intara y’Ubwongereza yo mu birwa by’Abahindi"}
         IQ{"Iraki"}
         IR{"Irani"}
         IS{"Ayisilandi"}

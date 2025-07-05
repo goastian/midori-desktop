@@ -39,7 +39,7 @@
 #include "vm/JSContext-inl.h"
 
 static JSContext* gCx = nullptr;
-static std::string gFuzzModuleName;
+MOZ_RUNINIT static std::string gFuzzModuleName;
 
 static void CrashOnPendingException() {
   if (JS_IsExceptionPending(gCx)) {
@@ -131,6 +131,18 @@ int js::shell::FuzzJSRuntimeFuzz(const uint8_t* buf, size_t size) {
     // a timeout as triggered by the `timeout` shell function.
     return 1;
   }
+
+  if (gCx->isThrowingOutOfMemory()) {
+    // If the target is throwing out of memory, try to recover and indicate
+    // to the fuzzer that we don't want to keep this sample as it usually
+    // slows down execution.
+    gCx->recoverFromOutOfMemory();
+    return 1;
+  }
+
+  // Also make sure to reset this flag, as the fuzzing implementation might
+  // use it to discard differential test results in the next run.
+  gCx->runtime()->hadOutOfMemory = false;
 
   // The fuzzing module is required to handle any exceptions
   CrashOnPendingException();

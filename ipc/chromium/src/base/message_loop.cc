@@ -8,7 +8,6 @@
 
 #include <algorithm>
 
-#include "base/compiler_specific.h"
 #include "base/logging.h"
 #include "base/message_pump_default.h"
 #include "base/string_util.h"
@@ -715,11 +714,6 @@ bool MessageLoopForIO::WatchFileDescriptor(int fd, bool persistent, Mode mode,
   return pump_libevent()->WatchFileDescriptor(
       fd, persistent, static_cast<base::MessagePumpLibevent::Mode>(mode),
       controller, delegate);
-}
-
-bool MessageLoopForIO::CatchSignal(int sig, SignalEvent* sigevent,
-                                   SignalWatcher* delegate) {
-  return pump_libevent()->CatchSignal(sig, sigevent, delegate);
 }
 
 #endif

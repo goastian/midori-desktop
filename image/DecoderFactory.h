@@ -12,6 +12,7 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/NotNull.h"
 #include "mozilla/gfx/2D.h"
+#include "mozilla/image/ImageUtils.h"
 #include "nsCOMPtr.h"
 #include "Orientation.h"
 #include "SurfaceFlags.h"
@@ -24,24 +25,6 @@ class nsICODecoder;
 class RasterImage;
 class SourceBuffer;
 class SourceBufferIterator;
-
-/**
- * The type of decoder; this is usually determined from a MIME type using
- * DecoderFactory::GetDecoderType().
- */
-enum class DecoderType {
-  PNG,
-  GIF,
-  JPEG,
-  BMP,
-  BMP_CLIPBOARD,
-  ICO,
-  ICON,
-  WEBP,
-  AVIF,
-  JXL,
-  UNKNOWN
-};
 
 class DecoderFactory {
  public:
@@ -119,6 +102,15 @@ class DecoderFactory {
   static already_AddRefed<Decoder> CloneAnimationDecoder(Decoder* aDecoder);
 
   /**
+   * Creates and initializes a metadata decoder for an anonymous image, cloned
+   * from the given decoder.
+   *
+   * @param aDecoder Decoder to clone.
+   */
+  static already_AddRefed<Decoder> CloneAnonymousMetadataDecoder(
+      Decoder* aDecoder, const Maybe<DecoderFlags>& aDecoderFlags = Nothing());
+
+  /**
    * Creates and initializes a metadata decoder of type @aType. This decoder
    * will only decode the image's header, extracting metadata like the size of
    * the image. No actual image data will be decoded and no surfaces will be
@@ -190,9 +182,11 @@ class DecoderFactory {
    * @param aType Which type of decoder to create - JPEG, PNG, etc.
    * @param aSourceBuffer The SourceBuffer which the decoder will read its data
    *                      from.
+   * @param aDecoderFlags Flags specifying the behavior of this decoder.
    */
   static already_AddRefed<Decoder> CreateAnonymousMetadataDecoder(
-      DecoderType aType, NotNull<SourceBuffer*> aSourceBuffer);
+      DecoderType aType, NotNull<SourceBuffer*> aSourceBuffer,
+      DecoderFlags aDecoderFlags);
 
  private:
   virtual ~DecoderFactory() = 0;

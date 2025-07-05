@@ -422,13 +422,25 @@ instances for all debuggee scripts.
 
 * `line`
 
-  The script must at least partially cover the given source line. If this
-  property is present, the `url` property must be present as well.
+  The script must at least partially overlap the given source line. If this
+  property is present, the `url`, `source`, or `displayURL` property must be present as well.
+
+* `start` and `end`
+
+  These properties define a target range of source that the script must at least partially overlap. Their value must be an object with a `line` property and an optional, 1-based `column` property. The script must at least partially overlap the range [`start.line`, `end.line`] to be included in the results.
+
+  If the `start.column` property is provided, the target range's start line only includes the columns [`start.column`, Infinity). If the `end.column` property is provided, the target range's end line only includes the [1, `end.column`] columns.
+
+  Example <i>query</i>: `{ start: { line: 7, column: 11 }, end: { line: 13, column: 5} }`
+
+  If these properties are present, they take precedence over `line`.
+
+  These properties must be present together. If they are present, the `url`, `source`, or `displayURL` property must be present as well.
 
 * `innermost`
 
   If this property is present and true, the script must be the innermost
-  script covering the given source location; scripts of enclosing code are
+  script overlapping the target source range; scripts of enclosing code are
   omitted.
 
 * `global`
@@ -467,12 +479,19 @@ The *query* object may have the following properties:
 
 * `class`
 
-  If present, only return objects whose internal `[[Class]]`'s name
-  matches the given string. Note that in some cases, the prototype object
-  for a given constructor has the same `[[Class]]` as the instances that
-  refer to it, but cannot itself be used as a valid instance of the
-  class. Code gathering objects by class name may need to examine them
+  If present with a string value, only return objects whose internal
+  `[[Class]]`'s name matches the given string. Note that in some cases,
+  the prototype object for a given constructor has the same `[[Class]]` as
+  the instances that refer to it, but cannot itself be used as a valid instance
+  of the class. Code gathering objects by class name may need to examine them
   further before trying to use them.
+
+  If present with a [`Debugger.Object`][object] value, only return objects
+  which has given object as constructor or prototype in the prototype chain.
+  Note that objects with dynamic prototype (e.g. `Proxy`) cannot be matched with
+  this query, given accessing the prototype for such object can have some
+  side effects. Also note that, currently an object with `null` prototype
+  cannot be matched with this query.
 
 All properties of *query* are optional. Passing an empty object returns all
 objects in debuggee globals.
@@ -574,4 +593,3 @@ The functions described below are not called with a `this` value.
 [vf]: Debugger.Frame.md#visible-frames
 [tracking-allocs]: Debugger.Memory.md#trackingallocationsites
 [frame]: Debugger.Frame.md
-[object]: Debugger.Object.md

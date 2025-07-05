@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 lv{
     Countries{
         001{"pasaule"}
@@ -297,6 +297,9 @@ lv{
         ZM{"Zambija"}
         ZW{"Zimbabve"}
         ZZ{"nezināms reģions"}
+    }
+    Countries%chagos{
+        IO{"Čagosu arhipelāgs"}
     }
     Countries%short{
         HK{"Honkonga"}

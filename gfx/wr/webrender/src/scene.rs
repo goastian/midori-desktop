@@ -5,12 +5,13 @@
 use api::{BuiltDisplayList, DisplayListWithCache, ColorF, DynamicProperties, Epoch, FontRenderMode};
 use api::{PipelineId, PropertyBinding, PropertyBindingId, PropertyValue, MixBlendMode, StackingContext};
 use api::units::*;
+use api::channel::Sender;
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use crate::render_api::MemoryReport;
 use crate::composite::CompositorKind;
 use crate::clip::{ClipStore, ClipTree};
 use crate::spatial_tree::SpatialTree;
-use crate::frame_builder::{FrameBuilderConfig};
+use crate::frame_builder::FrameBuilderConfig;
 use crate::hit_test::{HitTester, HitTestingScene, HitTestingSceneStats};
 use crate::internal_types::FastHashMap;
 use crate::picture::SurfaceInfo;
@@ -278,12 +279,19 @@ pub struct BuiltScene {
     pub config: FrameBuilderConfig,
     pub hit_testing_scene: Arc<HitTestingScene>,
     pub tile_cache_config: TileCacheConfig,
+    pub snapshot_pictures: Vec<PictureIndex>,
     pub tile_cache_pictures: Vec<PictureIndex>,
     pub picture_graph: PictureGraph,
     pub num_plane_splitters: usize,
     pub prim_instances: Vec<PrimitiveInstance>,
     pub surfaces: Vec<SurfaceInfo>,
     pub clip_tree: ClipTree,
+
+    /// Deallocating memory outside of the thread that allocated it causes lock
+    /// contention in jemalloc. To avoid this we send the built scene back to
+    /// the scene builder thread when we don't need it anymore, and in the process,
+    /// also reuse some allocations.
+    pub recycler_tx: Option<Sender<BuiltScene>>,
 }
 
 impl BuiltScene {
@@ -296,12 +304,14 @@ impl BuiltScene {
             clip_store: ClipStore::new(),
             hit_testing_scene: Arc::new(HitTestingScene::new(&HitTestingSceneStats::empty())),
             tile_cache_config: TileCacheConfig::new(0),
+            snapshot_pictures: Vec::new(),
             tile_cache_pictures: Vec::new(),
             picture_graph: PictureGraph::new(),
             num_plane_splitters: 0,
             prim_instances: Vec::new(),
             surfaces: Vec::new(),
             clip_tree: ClipTree::new(),
+            recycler_tx: None,
             config: FrameBuilderConfig {
                 default_font_render_mode: FontRenderMode::Mono,
                 dual_source_blending_is_supported: false,
@@ -323,6 +333,14 @@ impl BuiltScene {
                 low_quality_pinch_zoom: false,
                 max_shared_surface_size: 2048,
             },
+        }
+    }
+
+    /// Send the scene back to the scene builder thread so that recycling/deallocations
+    /// can happen there.
+    pub fn recycle(mut self) {
+        if let Some(tx) = self.recycler_tx.take() {
+            let _ = tx.send(self);
         }
     }
 

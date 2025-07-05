@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 su{
     Languages{
         de{"Jérman"}
@@ -67,10 +67,5 @@ su{
         language{"Basa: {0}"}
         script{"Skrip: {0}"}
         territory{"Daérah: {0}"}
-    }
-    localeDisplayPattern{
-        keyTypePattern{"{0}: {1}"}
-        pattern{"{0} ({1})"}
-        separator{"{0}, {1}"}
     }
 }

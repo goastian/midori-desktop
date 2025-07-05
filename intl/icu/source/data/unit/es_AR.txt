@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 es_AR{
     %%Parent{"es_419"}
     units{
@@ -41,23 +41,12 @@ es_AR{
     unitsNarrow{
         duration{
             second{
-                dnam{"seg."}
                 one{"{0}seg."}
                 other{"{0}seg."}
             }
             year{
                 one{"{0}a."}
                 other{"{0}a."}
-            }
-        }
-        electric{
-            volt{
-                dnam{"voltios"}
-            }
-        }
-        power{
-            watt{
-                dnam{"vatios"}
             }
         }
     }

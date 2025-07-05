@@ -122,9 +122,8 @@ static inline void BoxBlurRow(const uint8_t* aInput, uint8_t* aOutput,
   // loops if we are in bound, we instead compute the points at which
   // we will move out of bounds of the row on the left side (splitLeft)
   // and right side (splitRight).
-  int32_t splitLeft = std::min(std::max(aLeftLobe, aStart), aEnd);
-  int32_t splitRight =
-      std::min(std::max(aWidth - (boxSize - aLeftLobe), aStart), aEnd);
+  int32_t splitLeft = std::clamp(aLeftLobe, aStart, aEnd);
+  int32_t splitRight = std::clamp(aWidth - (boxSize - aLeftLobe), aStart, aEnd);
   // If the filter window is actually large than the size of the row,
   // there will be a middle area of overlap where the leftmost and rightmost
   // pixel of the filter will both be outside the row. In this case, we need
@@ -317,7 +316,7 @@ static void BoxBlur(uint8_t* aData, const int32_t aLobes[3][2], int32_t aWidth,
     // Make sure not to overwrite the skip rect by only outputting to the
     // destination before and after the skip rect, if requested.
     int32_t skipStart =
-        inSkipRectY ? std::min(std::max(aSkipRect.X(), 0), aWidth) : aWidth;
+        inSkipRectY ? std::clamp(aSkipRect.X(), 0, aWidth) : aWidth;
     int32_t skipEnd = std::max(skipStart, aSkipRect.XMost());
     if (skipStart > 0) {
       BoxBlurRow<false, aTranspose>(tmpRow2, aData, aLobes[2][0], aLobes[2][1],
@@ -885,8 +884,8 @@ void AlphaBoxBlur::BoxBlur_C(uint8_t* aData, int32_t aLeftLobe,
  *   http://www.w3.org/TR/SVG11/filters.html#feGaussianBlurElement
  *   https://bugzilla.mozilla.org/show_bug.cgi?id=590039#c19
  */
-static const Float GAUSSIAN_SCALE_FACTOR =
-    Float((3 * sqrt(2 * M_PI) / 4) * 1.5);
+constexpr double sqrt_2_PI = 0x1.40d931ff62705p+1;  // sqrt is not constexpr
+static constexpr Float GAUSSIAN_SCALE_FACTOR = Float((3 * sqrt_2_PI / 4) * 1.5);
 
 IntSize AlphaBoxBlur::CalculateBlurRadius(const Point& aStd) {
   IntSize size(

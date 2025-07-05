@@ -21,6 +21,7 @@
 #include "vm/PlainObject.h"
 
 #include "gc/StableCellHasher-inl.h"
+#include "vm/JSContext-inl.h"
 #include "vm/JSObject-inl.h"
 
 using namespace js;
@@ -53,15 +54,38 @@ static const JSClass TestProxyClasses[] = {
     PROXY_CLASS_DEF("TestProxy", JSCLASS_HAS_RESERVED_SLOTS(2)),
     PROXY_CLASS_DEF("TestProxy", JSCLASS_HAS_RESERVED_SLOTS(7)),
     PROXY_CLASS_DEF("TestProxy", JSCLASS_HAS_RESERVED_SLOTS(8)),
-    PROXY_CLASS_DEF("TestProxy", JSCLASS_HAS_RESERVED_SLOTS(14 /* Max */))};
+    PROXY_CLASS_DEF("TestProxy", JSCLASS_HAS_RESERVED_SLOTS(14 /* Max */)),
+};
+
+static void TestDOMObject_finalize(JS::GCContext* gcx, JSObject* obj) {
+  // Dummy finalize method so we can swap with background finalized object.
+}
+
+static const JSClassOps TestDOMObjectClassOps = {
+    nullptr,  // addProperty
+    nullptr,  // delProperty
+    nullptr,  // enumerate
+    nullptr,  // newEnumerate
+    nullptr,  // resolve
+    nullptr,  // mayResolve
+    TestDOMObject_finalize,
+    nullptr,  // call
+    nullptr,  // construct
+    nullptr,
+};
+
+#define DEFINE_TEST_DOM_CLASS(Slots)                                \
+  {"TestDOMObject",                                                 \
+   JSCLASS_IS_DOMJSCLASS | JSCLASS_HAS_RESERVED_SLOTS(Slots) |      \
+       JSCLASS_BACKGROUND_FINALIZE | JSCLASS_SKIP_NURSERY_FINALIZE, \
+   &TestDOMObjectClassOps}
 
 static const JSClass TestDOMClasses[] = {
-    {"TestDOMObject", JSCLASS_IS_DOMJSCLASS | JSCLASS_HAS_RESERVED_SLOTS(0)},
-    {"TestDOMObject", JSCLASS_IS_DOMJSCLASS | JSCLASS_HAS_RESERVED_SLOTS(1)},
-    {"TestDOMObject", JSCLASS_IS_DOMJSCLASS | JSCLASS_HAS_RESERVED_SLOTS(2)},
-    {"TestDOMObject", JSCLASS_IS_DOMJSCLASS | JSCLASS_HAS_RESERVED_SLOTS(7)},
-    {"TestDOMObject", JSCLASS_IS_DOMJSCLASS | JSCLASS_HAS_RESERVED_SLOTS(8)},
-    {"TestDOMObject", JSCLASS_IS_DOMJSCLASS | JSCLASS_HAS_RESERVED_SLOTS(20)}};
+    DEFINE_TEST_DOM_CLASS(0), DEFINE_TEST_DOM_CLASS(1),
+    DEFINE_TEST_DOM_CLASS(2), DEFINE_TEST_DOM_CLASS(7),
+    DEFINE_TEST_DOM_CLASS(8), DEFINE_TEST_DOM_CLASS(20)};
+
+#undef DEFINE_TEST_DOM_CLASS
 
 static const uint32_t TestPropertyCounts[] = {0, 1, 2, 7, 8, 20};
 
@@ -127,6 +151,9 @@ BEGIN_TEST(testObjectSwap) {
 
         CHECK(CheckUniqueIds(obj1, config1.hasUniqueId, uid1, obj2,
                              config2.hasUniqueId, uid2));
+
+        // Check we can promote swapped nursery objects.
+        cx->minorGC(JS::GCReason::API);
       }
 
       if (Verbose) {

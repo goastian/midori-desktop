@@ -43,6 +43,8 @@ struct ReferencePtr {
   MOZ_IMPLICIT ReferencePtr(const RefPtr<T>& aPtr)
       : mLongPtr(uint64_t(aPtr.get())) {}
 
+  explicit ReferencePtr(uintptr_t aLongPtr) : mLongPtr(uint64_t(aLongPtr)) {}
+
   ReferencePtr& operator=(const void* aLongPtr) {
     mLongPtr = uint64_t(aLongPtr);
     return *this;
@@ -55,6 +57,8 @@ struct ReferencePtr {
   }
 
   operator void*() const { return (void*)mLongPtr; }
+
+  explicit operator uintptr_t() const { return uintptr_t(mLongPtr); }
 
   uint64_t mLongPtr;
 };
@@ -155,7 +159,9 @@ class Translator {
     mDependentSurfaces = aDependentSurfaces;
   }
 
-  DrawTarget* GetCurrentDrawTarget() const { return mCurrentDT; }
+  DrawTarget* GetCurrentDrawTarget() const {
+    return mCurrentDT && mCurrentDT->IsValid() ? mCurrentDT : nullptr;
+  }
 
   nsRefPtrHashtable<nsUint64HashKey, RecordedDependentSurface>*
       mDependentSurfaces = nullptr;
@@ -233,7 +239,7 @@ struct MemWriter {
 
 // An istream like class for reading from memory
 struct MemReader {
-  constexpr MemReader(char* aData, size_t aLen)
+  constexpr MemReader(const char* aData, size_t aLen)
       : mData(aData), mEnd(aData + aLen) {}
   void read(char* s, std::streamsize n) {
     if (n <= (mEnd - mData)) {
@@ -249,8 +255,8 @@ struct MemReader {
   bool good() { return !eof(); }
   void SetIsBad() { mData = mEnd + 1; }
 
-  char* mData;
-  char* mEnd;
+  const char* mData;
+  const char* mEnd;
 };
 
 class ContiguousBuffer {
@@ -388,6 +394,7 @@ class RecordedEvent {
     PUSHCLIP,
     PUSHCLIPRECT,
     POPCLIP,
+    REMOVEALLCLIPS,
     FILL,
     FILLCIRCLE,
     FILLGLYPHS,

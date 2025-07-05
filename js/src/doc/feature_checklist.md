@@ -17,7 +17,8 @@ work directly top-down)
 -  ☐ Land feature disabled by pref.
 -  ☐ Import the test262 test cases for the feature, or enable them if they're
   already imported.  (See `js/src/test/Readme.txt` for guidance)
--  ☐ Contact `fuzzing@mozilla.org` to arrange fuzzing for the feature.
+-  ☐ Add the `fuzzing:needed` label to the proposal epic in the FFXP project in JIRA to request fuzzing for the feature.
+    -  ☐ If the feature introduces a new syntax, it may require a lot of work in the fuzzing engine to support it. Notify the fuzzing team early with the details.
 -  ☐ Add shell option to `js/src/shell/fuzz-flags.txt`. This signals to other
   fuzzers as well that the feature is ready for fuzzing.
 -  ☐ Send an Intent to Ship Email to `dev-platform`.  This is also part of the
@@ -27,9 +28,9 @@ work directly top-down)
     -  ☐ Double check for any code that is currently `NIGHTLY_BUILD` that should now be built unconditionally, e.g. in `js/src/vm/JSObject.cpp`.
          You may want to run a [central as beta simulation](https://wiki.mozilla.org/Sheriffing/How_To/Beta_simulations#TRUNK_AS_EARLY_BETA)
          to make sure you've caught any lingering `NIGHTLY_BUILD` parts.
-    -  ☐ Update `	js/xpconnect/tests/chrome/test_xrayToJS.xhtml` for any changes to existing global objects.
+    -  ☐ Update `js/xpconnect/tests/chrome/test_xrayToJS.xhtml` for any changes to existing global objects. This is a mochitest, you need to run `mach test js/xpconnect/tests/chrome/test_xrayToJS.xhtml`.
     -  ☐ For new globals, the following tests also need updates:
-          `dom/serviceworkers/test/test_serviceworker_interfaces.js`, `tests/mochitest/general/test_interfaces.js`, and `dom/workers/test/test_worker_interfaces.js`
+          `dom/serviceworkers/test/test_serviceworker_interfaces.js`, `tests/mochitest/general/test_interfaces.js`, and `dom/workers/test/test_worker_interfaces.js`. These are mochitests, you need to run, e.g. `mach test dom/serviceworkers/test/test_serviceworker_interfaces.html`.
 -  ☐ Open a followup bug to later remove the preference.
 
 

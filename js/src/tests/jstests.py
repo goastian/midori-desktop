@@ -54,7 +54,7 @@ def changedir(dirname):
         os.chdir(pwd)
 
 
-class PathOptions(object):
+class PathOptions:
     def __init__(self, location, requested_paths, excluded_paths):
         self.requested_paths = requested_paths
         self.excluded_files, self.excluded_dirs = PathOptions._split_files_and_dirs(
@@ -466,7 +466,7 @@ def parse_args():
     # excluded tests set.
     if options.exclude_file:
         for filename in options.exclude_file:
-            with open(filename, "r") as fp:
+            with open(filename) as fp:
                 for line in fp:
                     if line.startswith("#"):
                         continue
@@ -482,7 +482,7 @@ def parse_args():
             options.show_output = True
         try:
             options.output_fp = open(options.output_file, "w")
-        except IOError as ex:
+        except OSError as ex:
             raise SystemExit("Failed to open output file: " + str(ex))
 
     # Hide the progress bar if it will get in the way of other output.
@@ -608,6 +608,9 @@ def load_wpt_tests(xul_tester, requested_paths, excluded_paths, update_manifest=
         os.path.join(here, "testharnessreport.js"),
     ]
 
+    pref_prefix = "javascript.options."
+    recognized_prefs = set(["wasm_js_string_builtins", "wasm_js_promise_integration"])
+
     def resolve(test_path, script):
         if script.startswith("/"):
             return os.path.join(wpt, script[1:])
@@ -622,19 +625,32 @@ def load_wpt_tests(xul_tester, requested_paths, excluded_paths, update_manifest=
 
         # We must create at least one test with the default options, along with
         # one test for each option given in a test-also annotation.
-        options = [None]
+        variants = [None]
+        flags = []
         for m in test.itermeta():
+            # Search for prefs to enable that we recognize
+            for pref in m.prefs:
+                pref_value = m.prefs[pref]
+                if not pref.startswith(pref_prefix):
+                    continue
+                short_pref = pref.replace(pref_prefix, "")
+                if not short_pref in recognized_prefs:
+                    continue
+                flags.append("--setpref=" + short_pref + "=" + pref_value)
+
             if m.has_key("test-also"):  # NOQA: W601
-                options += m.get("test-also").split()
-        for option in options:
+                variants += m.get("test-also").split()
+        for variant in variants:
             test_case = RefTestCase(
                 wpt,
                 test_path,
                 extra_helper_paths=extra_helper_paths_for_test[:],
                 wpt=test,
             )
-            if option:
-                test_case.options.append(option)
+            if variant:
+                test_case.options.append(variant)
+            for flag in flags:
+                test_case.options.append(flag)
             tests.append(test_case)
     return tests
 
@@ -772,7 +788,7 @@ def main():
                 " debugger can only run one"
             )
             for tc in test_gen:
-                print("    {}".format(tc.path))
+                print(f"    {tc.path}")
             return 2
 
         with changedir(test_dir), change_env(
@@ -862,7 +878,7 @@ def run_test_remote(test, device, prefix, tempdir, options):
         returncode = e.adb_process.exitcode
         re_ignore = re.compile(r"error: (closed|device .* not found)")
         if returncode == 1 and re_ignore.search(out):
-            print("Skipping {} due to ignorable adb error {}".format(test.path, out))
+            print(f"Skipping {test.path} due to ignorable adb error {out}")
             test.skip_if_cond = "true"
             returncode = test.SKIPPED_EXIT_STATUS
 

@@ -17,7 +17,6 @@
 #include "mozilla/TimeStamp.h"      // for TimeStamp
 #include "mozilla/gfx/Point.h"      // for IntSize
 #include "mozilla/ipc/ProtocolUtils.h"
-#include "mozilla/ipc/SharedMemory.h"
 #include "mozilla/layers/CompositorController.h"
 #include "mozilla/layers/CompositorVsyncSchedulerOwner.h"
 #include "mozilla/layers/FocusTarget.h"
@@ -335,7 +334,8 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
                               TimeStamp& aCompositeStart,
                               TimeStamp& aRenderStart, TimeStamp& aCompositeEnd,
                               wr::RendererStats* aStats = nullptr);
-  void NotifyDidSceneBuild(RefPtr<const wr::WebRenderPipelineInfo> aInfo);
+  void ScheduleFrameAfterSceneBuild(
+      RefPtr<const wr::WebRenderPipelineInfo> aInfo);
   RefPtr<AsyncImagePipelineManager> GetAsyncImagePipelineManager() const;
 
   PCompositorWidgetParent* AllocPCompositorWidgetParent(
@@ -416,6 +416,12 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
    * the compositor thread.
    */
   static LayerTreeState* GetIndirectShadowTree(LayersId aId);
+
+  /**
+   * If a shadow tree exists for the given id |aId|, return true.  Otherwise
+   * return false.
+   */
+  static bool HasIndirectShadowTree(LayersId aId);
 
   /**
    * Lookup the indirect shadow tree for |aId|, call the function object and
@@ -510,6 +516,12 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
   void FlushPendingWrTransactionEventsWithWait();
 
  private:
+  /**
+   * Lookup the indirect shadow tree for |aId| and return it if it
+   * exists.  Otherwise null is returned.
+   */
+  static LayerTreeState* GetIndirectShadowTreeInternal(LayersId aId);
+
   void Initialize();
 
   /**

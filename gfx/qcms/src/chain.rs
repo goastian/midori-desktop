@@ -23,7 +23,7 @@ use crate::{
     iccread::LAB_SIGNATURE,
     iccread::RGB_SIGNATURE,
     iccread::XYZ_SIGNATURE,
-    iccread::{lutType, lutmABType, Profile, CMYK_SIGNATURE},
+    iccread::{curveType, lutType, lutmABType, Profile, CMYK_SIGNATURE},
     matrix::Matrix,
     s15Fixed16Number_to_float,
     transform_util::clamp_float,
@@ -43,33 +43,49 @@ fn lerp(a: f32, b: f32, t: f32) -> f32 {
 }
 
 fn build_lut_matrix(lut: &lutType) -> Matrix {
-    let mut result: Matrix = Matrix { m: [[0.; 3]; 3] };
-    result.m[0][0] = s15Fixed16Number_to_float(lut.e00);
-    result.m[0][1] = s15Fixed16Number_to_float(lut.e01);
-    result.m[0][2] = s15Fixed16Number_to_float(lut.e02);
-    result.m[1][0] = s15Fixed16Number_to_float(lut.e10);
-    result.m[1][1] = s15Fixed16Number_to_float(lut.e11);
-    result.m[1][2] = s15Fixed16Number_to_float(lut.e12);
-    result.m[2][0] = s15Fixed16Number_to_float(lut.e20);
-    result.m[2][1] = s15Fixed16Number_to_float(lut.e21);
-    result.m[2][2] = s15Fixed16Number_to_float(lut.e22);
-    result
+    Matrix {
+        m: [
+            [
+                s15Fixed16Number_to_float(lut.e00),
+                s15Fixed16Number_to_float(lut.e01),
+                s15Fixed16Number_to_float(lut.e02),
+            ],
+            [
+                s15Fixed16Number_to_float(lut.e10),
+                s15Fixed16Number_to_float(lut.e11),
+                s15Fixed16Number_to_float(lut.e12),
+            ],
+            [
+                s15Fixed16Number_to_float(lut.e20),
+                s15Fixed16Number_to_float(lut.e21),
+                s15Fixed16Number_to_float(lut.e22),
+            ],
+        ],
+    }
 }
+
 fn build_mAB_matrix(lut: &lutmABType) -> Matrix {
-    let mut result: Matrix = Matrix { m: [[0.; 3]; 3] };
-
-    result.m[0][0] = s15Fixed16Number_to_float(lut.e00);
-    result.m[0][1] = s15Fixed16Number_to_float(lut.e01);
-    result.m[0][2] = s15Fixed16Number_to_float(lut.e02);
-    result.m[1][0] = s15Fixed16Number_to_float(lut.e10);
-    result.m[1][1] = s15Fixed16Number_to_float(lut.e11);
-    result.m[1][2] = s15Fixed16Number_to_float(lut.e12);
-    result.m[2][0] = s15Fixed16Number_to_float(lut.e20);
-    result.m[2][1] = s15Fixed16Number_to_float(lut.e21);
-    result.m[2][2] = s15Fixed16Number_to_float(lut.e22);
-
-    result
+    Matrix {
+        m: [
+            [
+                s15Fixed16Number_to_float(lut.e00),
+                s15Fixed16Number_to_float(lut.e01),
+                s15Fixed16Number_to_float(lut.e02),
+            ],
+            [
+                s15Fixed16Number_to_float(lut.e10),
+                s15Fixed16Number_to_float(lut.e11),
+                s15Fixed16Number_to_float(lut.e12),
+            ],
+            [
+                s15Fixed16Number_to_float(lut.e20),
+                s15Fixed16Number_to_float(lut.e21),
+                s15Fixed16Number_to_float(lut.e22),
+            ],
+        ],
+    }
 }
+
 //Based on lcms cmsLab2XYZ
 fn f(t: f32) -> f32 {
     if t <= 24. / 116. * (24. / 116.) * (24. / 116.) {
@@ -86,25 +102,25 @@ fn f_1(t: f32) -> f32 {
     }
 }
 
+// lcms: D50 XYZ values
+const WHITE_POINT_X: f32 = 0.9642;
+const WHITE_POINT_Y: f32 = 1.0;
+const WHITE_POINT_Z: f32 = 0.8249;
+
 #[allow(clippy::upper_case_acronyms)]
 struct LABtoXYZ;
 impl ModularTransform for LABtoXYZ {
     fn transform(&self, src: &[f32], dest: &mut [f32]) {
-        // lcms: D50 XYZ values
-        let WhitePointX: f32 = 0.9642;
-        let WhitePointY: f32 = 1.0;
-        let WhitePointZ: f32 = 0.8249;
-
         for (dest, src) in dest.chunks_exact_mut(3).zip(src.chunks_exact(3)) {
-            let device_L: f32 = src[0] * 100.0;
-            let device_a: f32 = src[1] * 255.0 - 128.0;
-            let device_b: f32 = src[2] * 255.0 - 128.0;
+            let device_L = src[0] * 100.0;
+            let device_a = src[1] * 255.0 - 128.0;
+            let device_b = src[2] * 255.0 - 128.0;
 
-            let y: f32 = (device_L + 16.0) / 116.0;
+            let y = (device_L + 16.0) / 116.0;
 
-            let X = f_1(y + 0.002 * device_a) * WhitePointX;
-            let Y = f_1(y) * WhitePointY;
-            let Z = f_1(y - 0.005 * device_b) * WhitePointZ;
+            let X = f_1(y + 0.002 * device_a) * WHITE_POINT_X;
+            let Y = f_1(y) * WHITE_POINT_Y;
+            let Z = f_1(y - 0.005 * device_b) * WHITE_POINT_Z;
 
             dest[0] = (X as f64 / (1.0f64 + 32767.0f64 / 32768.0f64)) as f32;
             dest[1] = (Y as f64 / (1.0f64 + 32767.0f64 / 32768.0f64)) as f32;
@@ -118,25 +134,21 @@ struct XYZtoLAB;
 impl ModularTransform for XYZtoLAB {
     //Based on lcms cmsXYZ2Lab
     fn transform(&self, src: &[f32], dest: &mut [f32]) {
-        // lcms: D50 XYZ values
-        let WhitePointX: f32 = 0.9642;
-        let WhitePointY: f32 = 1.0;
-        let WhitePointZ: f32 = 0.8249;
         for (dest, src) in dest.chunks_exact_mut(3).zip(src.chunks_exact(3)) {
-            let device_x: f32 =
-                (src[0] as f64 * (1.0f64 + 32767.0f64 / 32768.0f64) / WhitePointX as f64) as f32;
-            let device_y: f32 =
-                (src[1] as f64 * (1.0f64 + 32767.0f64 / 32768.0f64) / WhitePointY as f64) as f32;
-            let device_z: f32 =
-                (src[2] as f64 * (1.0f64 + 32767.0f64 / 32768.0f64) / WhitePointZ as f64) as f32;
+            let device_x =
+                (src[0] as f64 * (1.0f64 + 32767.0f64 / 32768.0f64) / WHITE_POINT_X as f64) as f32;
+            let device_y =
+                (src[1] as f64 * (1.0f64 + 32767.0f64 / 32768.0f64) / WHITE_POINT_Y as f64) as f32;
+            let device_z =
+                (src[2] as f64 * (1.0f64 + 32767.0f64 / 32768.0f64) / WHITE_POINT_Z as f64) as f32;
 
             let fx = f(device_x);
             let fy = f(device_y);
             let fz = f(device_z);
 
-            let L: f32 = 116.0 * fy - 16.0;
-            let a: f32 = 500.0 * (fx - fy);
-            let b: f32 = 200.0 * (fy - fz);
+            let L = 116.0 * fy - 16.0;
+            let a = 500.0 * (fx - fy);
+            let b = 200.0 * (fy - fz);
 
             dest[0] = L / 100.0;
             dest[1] = (a + 128.0) / 255.0;
@@ -144,61 +156,62 @@ impl ModularTransform for XYZtoLAB {
         }
     }
 }
-#[derive(Default)]
+
 struct ClutOnly {
-    clut: Option<Vec<f32>>,
-    grid_size: u16,
+    clut: Box<[f32]>,
+    grid_size: u8,
 }
+
 impl ModularTransform for ClutOnly {
     fn transform(&self, src: &[f32], dest: &mut [f32]) {
-        let xy_len: i32 = 1;
-        let x_len: i32 = self.grid_size as i32;
-        let len: i32 = x_len * x_len;
+        let xy_len = 1;
+        let x_len = self.grid_size as i32;
+        let len = x_len * x_len;
 
-        let r_table = &self.clut.as_ref().unwrap()[0..];
-        let g_table = &self.clut.as_ref().unwrap()[1..];
-        let b_table = &self.clut.as_ref().unwrap()[2..];
+        let r_table = &self.clut[0..];
+        let g_table = &self.clut[1..];
+        let b_table = &self.clut[2..];
 
         let CLU = |table: &[f32], x, y, z| table[((x * len + y * x_len + z * xy_len) * 3) as usize];
 
         for (dest, src) in dest.chunks_exact_mut(3).zip(src.chunks_exact(3)) {
             debug_assert!(self.grid_size as i32 >= 1);
-            let linear_r: f32 = src[0];
-            let linear_g: f32 = src[1];
-            let linear_b: f32 = src[2];
-            let x: i32 = (linear_r * (self.grid_size as i32 - 1) as f32).floor() as i32;
-            let y: i32 = (linear_g * (self.grid_size as i32 - 1) as f32).floor() as i32;
-            let z: i32 = (linear_b * (self.grid_size as i32 - 1) as f32).floor() as i32;
-            let x_n: i32 = (linear_r * (self.grid_size as i32 - 1) as f32).ceil() as i32;
-            let y_n: i32 = (linear_g * (self.grid_size as i32 - 1) as f32).ceil() as i32;
-            let z_n: i32 = (linear_b * (self.grid_size as i32 - 1) as f32).ceil() as i32;
-            let x_d: f32 = linear_r * (self.grid_size as i32 - 1) as f32 - x as f32;
-            let y_d: f32 = linear_g * (self.grid_size as i32 - 1) as f32 - y as f32;
-            let z_d: f32 = linear_b * (self.grid_size as i32 - 1) as f32 - z as f32;
+            let linear_r = src[0];
+            let linear_g = src[1];
+            let linear_b = src[2];
+            let x = (linear_r * (self.grid_size as i32 - 1) as f32).floor() as i32;
+            let y = (linear_g * (self.grid_size as i32 - 1) as f32).floor() as i32;
+            let z = (linear_b * (self.grid_size as i32 - 1) as f32).floor() as i32;
+            let x_n = (linear_r * (self.grid_size as i32 - 1) as f32).ceil() as i32;
+            let y_n = (linear_g * (self.grid_size as i32 - 1) as f32).ceil() as i32;
+            let z_n = (linear_b * (self.grid_size as i32 - 1) as f32).ceil() as i32;
+            let x_d = linear_r * (self.grid_size as i32 - 1) as f32 - x as f32;
+            let y_d = linear_g * (self.grid_size as i32 - 1) as f32 - y as f32;
+            let z_d = linear_b * (self.grid_size as i32 - 1) as f32 - z as f32;
 
-            let r_x1: f32 = lerp(CLU(r_table, x, y, z), CLU(r_table, x_n, y, z), x_d);
-            let r_x2: f32 = lerp(CLU(r_table, x, y_n, z), CLU(r_table, x_n, y_n, z), x_d);
-            let r_y1: f32 = lerp(r_x1, r_x2, y_d);
-            let r_x3: f32 = lerp(CLU(r_table, x, y, z_n), CLU(r_table, x_n, y, z_n), x_d);
-            let r_x4: f32 = lerp(CLU(r_table, x, y_n, z_n), CLU(r_table, x_n, y_n, z_n), x_d);
-            let r_y2: f32 = lerp(r_x3, r_x4, y_d);
-            let clut_r: f32 = lerp(r_y1, r_y2, z_d);
+            let r_x1 = lerp(CLU(r_table, x, y, z), CLU(r_table, x_n, y, z), x_d);
+            let r_x2 = lerp(CLU(r_table, x, y_n, z), CLU(r_table, x_n, y_n, z), x_d);
+            let r_y1 = lerp(r_x1, r_x2, y_d);
+            let r_x3 = lerp(CLU(r_table, x, y, z_n), CLU(r_table, x_n, y, z_n), x_d);
+            let r_x4 = lerp(CLU(r_table, x, y_n, z_n), CLU(r_table, x_n, y_n, z_n), x_d);
+            let r_y2 = lerp(r_x3, r_x4, y_d);
+            let clut_r = lerp(r_y1, r_y2, z_d);
 
-            let g_x1: f32 = lerp(CLU(g_table, x, y, z), CLU(g_table, x_n, y, z), x_d);
-            let g_x2: f32 = lerp(CLU(g_table, x, y_n, z), CLU(g_table, x_n, y_n, z), x_d);
-            let g_y1: f32 = lerp(g_x1, g_x2, y_d);
-            let g_x3: f32 = lerp(CLU(g_table, x, y, z_n), CLU(g_table, x_n, y, z_n), x_d);
-            let g_x4: f32 = lerp(CLU(g_table, x, y_n, z_n), CLU(g_table, x_n, y_n, z_n), x_d);
-            let g_y2: f32 = lerp(g_x3, g_x4, y_d);
-            let clut_g: f32 = lerp(g_y1, g_y2, z_d);
+            let g_x1 = lerp(CLU(g_table, x, y, z), CLU(g_table, x_n, y, z), x_d);
+            let g_x2 = lerp(CLU(g_table, x, y_n, z), CLU(g_table, x_n, y_n, z), x_d);
+            let g_y1 = lerp(g_x1, g_x2, y_d);
+            let g_x3 = lerp(CLU(g_table, x, y, z_n), CLU(g_table, x_n, y, z_n), x_d);
+            let g_x4 = lerp(CLU(g_table, x, y_n, z_n), CLU(g_table, x_n, y_n, z_n), x_d);
+            let g_y2 = lerp(g_x3, g_x4, y_d);
+            let clut_g = lerp(g_y1, g_y2, z_d);
 
-            let b_x1: f32 = lerp(CLU(b_table, x, y, z), CLU(b_table, x_n, y, z), x_d);
-            let b_x2: f32 = lerp(CLU(b_table, x, y_n, z), CLU(b_table, x_n, y_n, z), x_d);
-            let b_y1: f32 = lerp(b_x1, b_x2, y_d);
-            let b_x3: f32 = lerp(CLU(b_table, x, y, z_n), CLU(b_table, x_n, y, z_n), x_d);
-            let b_x4: f32 = lerp(CLU(b_table, x, y_n, z_n), CLU(b_table, x_n, y_n, z_n), x_d);
-            let b_y2: f32 = lerp(b_x3, b_x4, y_d);
-            let clut_b: f32 = lerp(b_y1, b_y2, z_d);
+            let b_x1 = lerp(CLU(b_table, x, y, z), CLU(b_table, x_n, y, z), x_d);
+            let b_x2 = lerp(CLU(b_table, x, y_n, z), CLU(b_table, x_n, y_n, z), x_d);
+            let b_y1 = lerp(b_x1, b_x2, y_d);
+            let b_x3 = lerp(CLU(b_table, x, y, z_n), CLU(b_table, x_n, y, z_n), x_d);
+            let b_x4 = lerp(CLU(b_table, x, y_n, z_n), CLU(b_table, x_n, y_n, z_n), x_d);
+            let b_y2 = lerp(b_x3, b_x4, y_d);
+            let clut_b = lerp(b_y1, b_y2, z_d);
 
             dest[0] = clamp_float(clut_r);
             dest[1] = clamp_float(clut_g);
@@ -210,14 +223,14 @@ impl ModularTransform for ClutOnly {
 struct Clut3x3 {
     input_clut_table: [Option<Vec<f32>>; 3],
     clut: Option<Vec<f32>>,
-    grid_size: u16,
+    grid_size: u8,
     output_clut_table: [Option<Vec<f32>>; 3],
 }
 impl ModularTransform for Clut3x3 {
     fn transform(&self, src: &[f32], dest: &mut [f32]) {
-        let xy_len: i32 = 1;
-        let x_len: i32 = self.grid_size as i32;
-        let len: i32 = x_len * x_len;
+        let xy_len = 1;
+        let x_len = self.grid_size as i32;
+        let len = x_len * x_len;
 
         let r_table = &self.clut.as_ref().unwrap()[0..];
         let g_table = &self.clut.as_ref().unwrap()[1..];
@@ -229,50 +242,50 @@ impl ModularTransform for Clut3x3 {
         let input_clut_table_b = self.input_clut_table[2].as_ref().unwrap();
         for (dest, src) in dest.chunks_exact_mut(3).zip(src.chunks_exact(3)) {
             debug_assert!(self.grid_size as i32 >= 1);
-            let device_r: f32 = src[0];
-            let device_g: f32 = src[1];
-            let device_b: f32 = src[2];
-            let linear_r: f32 = lut_interp_linear_float(device_r, &input_clut_table_r);
-            let linear_g: f32 = lut_interp_linear_float(device_g, &input_clut_table_g);
-            let linear_b: f32 = lut_interp_linear_float(device_b, &input_clut_table_b);
-            let x: i32 = (linear_r * (self.grid_size as i32 - 1) as f32).floor() as i32;
-            let y: i32 = (linear_g * (self.grid_size as i32 - 1) as f32).floor() as i32;
-            let z: i32 = (linear_b * (self.grid_size as i32 - 1) as f32).floor() as i32;
-            let x_n: i32 = (linear_r * (self.grid_size as i32 - 1) as f32).ceil() as i32;
-            let y_n: i32 = (linear_g * (self.grid_size as i32 - 1) as f32).ceil() as i32;
-            let z_n: i32 = (linear_b * (self.grid_size as i32 - 1) as f32).ceil() as i32;
-            let x_d: f32 = linear_r * (self.grid_size as i32 - 1) as f32 - x as f32;
-            let y_d: f32 = linear_g * (self.grid_size as i32 - 1) as f32 - y as f32;
-            let z_d: f32 = linear_b * (self.grid_size as i32 - 1) as f32 - z as f32;
+            let device_r = src[0];
+            let device_g = src[1];
+            let device_b = src[2];
+            let linear_r = lut_interp_linear_float(device_r, &input_clut_table_r);
+            let linear_g = lut_interp_linear_float(device_g, &input_clut_table_g);
+            let linear_b = lut_interp_linear_float(device_b, &input_clut_table_b);
+            let x = (linear_r * (self.grid_size as i32 - 1) as f32).floor() as i32;
+            let y = (linear_g * (self.grid_size as i32 - 1) as f32).floor() as i32;
+            let z = (linear_b * (self.grid_size as i32 - 1) as f32).floor() as i32;
+            let x_n = (linear_r * (self.grid_size as i32 - 1) as f32).ceil() as i32;
+            let y_n = (linear_g * (self.grid_size as i32 - 1) as f32).ceil() as i32;
+            let z_n = (linear_b * (self.grid_size as i32 - 1) as f32).ceil() as i32;
+            let x_d = linear_r * (self.grid_size as i32 - 1) as f32 - x as f32;
+            let y_d = linear_g * (self.grid_size as i32 - 1) as f32 - y as f32;
+            let z_d = linear_b * (self.grid_size as i32 - 1) as f32 - z as f32;
 
-            let r_x1: f32 = lerp(CLU(r_table, x, y, z), CLU(r_table, x_n, y, z), x_d);
-            let r_x2: f32 = lerp(CLU(r_table, x, y_n, z), CLU(r_table, x_n, y_n, z), x_d);
-            let r_y1: f32 = lerp(r_x1, r_x2, y_d);
-            let r_x3: f32 = lerp(CLU(r_table, x, y, z_n), CLU(r_table, x_n, y, z_n), x_d);
-            let r_x4: f32 = lerp(CLU(r_table, x, y_n, z_n), CLU(r_table, x_n, y_n, z_n), x_d);
-            let r_y2: f32 = lerp(r_x3, r_x4, y_d);
-            let clut_r: f32 = lerp(r_y1, r_y2, z_d);
+            let r_x1 = lerp(CLU(r_table, x, y, z), CLU(r_table, x_n, y, z), x_d);
+            let r_x2 = lerp(CLU(r_table, x, y_n, z), CLU(r_table, x_n, y_n, z), x_d);
+            let r_y1 = lerp(r_x1, r_x2, y_d);
+            let r_x3 = lerp(CLU(r_table, x, y, z_n), CLU(r_table, x_n, y, z_n), x_d);
+            let r_x4 = lerp(CLU(r_table, x, y_n, z_n), CLU(r_table, x_n, y_n, z_n), x_d);
+            let r_y2 = lerp(r_x3, r_x4, y_d);
+            let clut_r = lerp(r_y1, r_y2, z_d);
 
-            let g_x1: f32 = lerp(CLU(g_table, x, y, z), CLU(g_table, x_n, y, z), x_d);
-            let g_x2: f32 = lerp(CLU(g_table, x, y_n, z), CLU(g_table, x_n, y_n, z), x_d);
-            let g_y1: f32 = lerp(g_x1, g_x2, y_d);
-            let g_x3: f32 = lerp(CLU(g_table, x, y, z_n), CLU(g_table, x_n, y, z_n), x_d);
-            let g_x4: f32 = lerp(CLU(g_table, x, y_n, z_n), CLU(g_table, x_n, y_n, z_n), x_d);
-            let g_y2: f32 = lerp(g_x3, g_x4, y_d);
-            let clut_g: f32 = lerp(g_y1, g_y2, z_d);
+            let g_x1 = lerp(CLU(g_table, x, y, z), CLU(g_table, x_n, y, z), x_d);
+            let g_x2 = lerp(CLU(g_table, x, y_n, z), CLU(g_table, x_n, y_n, z), x_d);
+            let g_y1 = lerp(g_x1, g_x2, y_d);
+            let g_x3 = lerp(CLU(g_table, x, y, z_n), CLU(g_table, x_n, y, z_n), x_d);
+            let g_x4 = lerp(CLU(g_table, x, y_n, z_n), CLU(g_table, x_n, y_n, z_n), x_d);
+            let g_y2 = lerp(g_x3, g_x4, y_d);
+            let clut_g = lerp(g_y1, g_y2, z_d);
 
-            let b_x1: f32 = lerp(CLU(b_table, x, y, z), CLU(b_table, x_n, y, z), x_d);
-            let b_x2: f32 = lerp(CLU(b_table, x, y_n, z), CLU(b_table, x_n, y_n, z), x_d);
-            let b_y1: f32 = lerp(b_x1, b_x2, y_d);
-            let b_x3: f32 = lerp(CLU(b_table, x, y, z_n), CLU(b_table, x_n, y, z_n), x_d);
-            let b_x4: f32 = lerp(CLU(b_table, x, y_n, z_n), CLU(b_table, x_n, y_n, z_n), x_d);
-            let b_y2: f32 = lerp(b_x3, b_x4, y_d);
-            let clut_b: f32 = lerp(b_y1, b_y2, z_d);
-            let pcs_r: f32 =
+            let b_x1 = lerp(CLU(b_table, x, y, z), CLU(b_table, x_n, y, z), x_d);
+            let b_x2 = lerp(CLU(b_table, x, y_n, z), CLU(b_table, x_n, y_n, z), x_d);
+            let b_y1 = lerp(b_x1, b_x2, y_d);
+            let b_x3 = lerp(CLU(b_table, x, y, z_n), CLU(b_table, x_n, y, z_n), x_d);
+            let b_x4 = lerp(CLU(b_table, x, y_n, z_n), CLU(b_table, x_n, y_n, z_n), x_d);
+            let b_y2 = lerp(b_x3, b_x4, y_d);
+            let clut_b = lerp(b_y1, b_y2, z_d);
+            let pcs_r =
                 lut_interp_linear_float(clut_r, &self.output_clut_table[0].as_ref().unwrap());
-            let pcs_g: f32 =
+            let pcs_g =
                 lut_interp_linear_float(clut_g, &self.output_clut_table[1].as_ref().unwrap());
-            let pcs_b: f32 =
+            let pcs_b =
                 lut_interp_linear_float(clut_b, &self.output_clut_table[2].as_ref().unwrap());
             dest[0] = clamp_float(pcs_r);
             dest[1] = clamp_float(pcs_g);
@@ -284,14 +297,14 @@ impl ModularTransform for Clut3x3 {
 struct Clut4x3 {
     input_clut_table: [Option<Vec<f32>>; 4],
     clut: Option<Vec<f32>>,
-    grid_size: u16,
+    grid_size: u8,
     output_clut_table: [Option<Vec<f32>>; 3],
 }
 impl ModularTransform for Clut4x3 {
     fn transform(&self, src: &[f32], dest: &mut [f32]) {
-        let z_stride: i32 = self.grid_size as i32;
-        let y_stride: i32 = z_stride * z_stride;
-        let x_stride: i32 = z_stride * z_stride * z_stride;
+        let z_stride = self.grid_size as i32;
+        let y_stride = z_stride * z_stride;
+        let x_stride = z_stride * z_stride * z_stride;
 
         let r_tbl = &self.clut.as_ref().unwrap()[0..];
         let g_tbl = &self.clut.as_ref().unwrap()[1..];
@@ -307,25 +320,25 @@ impl ModularTransform for Clut4x3 {
         let input_clut_table_3 = self.input_clut_table[3].as_ref().unwrap();
         for (dest, src) in dest.chunks_exact_mut(3).zip(src.chunks_exact(4)) {
             debug_assert!(self.grid_size as i32 >= 1);
-            let linear_x: f32 = lut_interp_linear_float(src[0], &input_clut_table_0);
-            let linear_y: f32 = lut_interp_linear_float(src[1], &input_clut_table_1);
-            let linear_z: f32 = lut_interp_linear_float(src[2], &input_clut_table_2);
-            let linear_w: f32 = lut_interp_linear_float(src[3], &input_clut_table_3);
+            let linear_x = lut_interp_linear_float(src[0], &input_clut_table_0);
+            let linear_y = lut_interp_linear_float(src[1], &input_clut_table_1);
+            let linear_z = lut_interp_linear_float(src[2], &input_clut_table_2);
+            let linear_w = lut_interp_linear_float(src[3], &input_clut_table_3);
 
-            let x: i32 = (linear_x * (self.grid_size as i32 - 1) as f32).floor() as i32;
-            let y: i32 = (linear_y * (self.grid_size as i32 - 1) as f32).floor() as i32;
-            let z: i32 = (linear_z * (self.grid_size as i32 - 1) as f32).floor() as i32;
-            let w: i32 = (linear_w * (self.grid_size as i32 - 1) as f32).floor() as i32;
+            let x = (linear_x * (self.grid_size as i32 - 1) as f32).floor() as i32;
+            let y = (linear_y * (self.grid_size as i32 - 1) as f32).floor() as i32;
+            let z = (linear_z * (self.grid_size as i32 - 1) as f32).floor() as i32;
+            let w = (linear_w * (self.grid_size as i32 - 1) as f32).floor() as i32;
 
-            let x_n: i32 = (linear_x * (self.grid_size as i32 - 1) as f32).ceil() as i32;
-            let y_n: i32 = (linear_y * (self.grid_size as i32 - 1) as f32).ceil() as i32;
-            let z_n: i32 = (linear_z * (self.grid_size as i32 - 1) as f32).ceil() as i32;
-            let w_n: i32 = (linear_w * (self.grid_size as i32 - 1) as f32).ceil() as i32;
+            let x_n = (linear_x * (self.grid_size as i32 - 1) as f32).ceil() as i32;
+            let y_n = (linear_y * (self.grid_size as i32 - 1) as f32).ceil() as i32;
+            let z_n = (linear_z * (self.grid_size as i32 - 1) as f32).ceil() as i32;
+            let w_n = (linear_w * (self.grid_size as i32 - 1) as f32).ceil() as i32;
 
-            let x_d: f32 = linear_x * (self.grid_size as i32 - 1) as f32 - x as f32;
-            let y_d: f32 = linear_y * (self.grid_size as i32 - 1) as f32 - y as f32;
-            let z_d: f32 = linear_z * (self.grid_size as i32 - 1) as f32 - z as f32;
-            let w_d: f32 = linear_w * (self.grid_size as i32 - 1) as f32 - w as f32;
+            let x_d = linear_x * (self.grid_size as i32 - 1) as f32 - x as f32;
+            let y_d = linear_y * (self.grid_size as i32 - 1) as f32 - y as f32;
+            let z_d = linear_z * (self.grid_size as i32 - 1) as f32 - z as f32;
+            let w_d = linear_w * (self.grid_size as i32 - 1) as f32 - w as f32;
 
             let quadlinear = |tbl| {
                 let CLU = |x, y, z, w| CLU(tbl, x, y, z, w);
@@ -488,26 +501,39 @@ static void qcms_transform_module_tetra_clut(struct qcms_modular_transform *tran
     }
 }
 */
-#[derive(Default)]
+
 struct GammaTable {
-    input_clut_table: [Option<Vec<f32>>; 3],
+    input_clut_table: [[f32; 256]; 3],
 }
+
+impl GammaTable {
+    pub fn from_curves(curve: [&curveType; 3]) -> Box<Self> {
+        Box::new(Self {
+            input_clut_table: [
+                build_input_gamma_table(curve[0]),
+                build_input_gamma_table(curve[1]),
+                build_input_gamma_table(curve[2]),
+            ],
+        })
+    }
+}
+
 impl ModularTransform for GammaTable {
     fn transform(&self, src: &[f32], dest: &mut [f32]) {
         let mut out_r: f32;
         let mut out_g: f32;
         let mut out_b: f32;
-        let input_clut_table_r = self.input_clut_table[0].as_ref().unwrap();
-        let input_clut_table_g = self.input_clut_table[1].as_ref().unwrap();
-        let input_clut_table_b = self.input_clut_table[2].as_ref().unwrap();
+        let input_clut_table_r = &self.input_clut_table[0];
+        let input_clut_table_g = &self.input_clut_table[1];
+        let input_clut_table_b = &self.input_clut_table[2];
 
         for (dest, src) in dest.chunks_exact_mut(3).zip(src.chunks_exact(3)) {
-            let in_r: f32 = src[0];
-            let in_g: f32 = src[1];
-            let in_b: f32 = src[2];
-            out_r = lut_interp_linear_float(in_r, input_clut_table_r);
-            out_g = lut_interp_linear_float(in_g, input_clut_table_g);
-            out_b = lut_interp_linear_float(in_b, input_clut_table_b);
+            let in_r = src[0];
+            let in_g = src[1];
+            let in_b = src[2];
+            out_r = lut_interp_linear_float(in_r, &input_clut_table_r[..]);
+            out_g = lut_interp_linear_float(in_g, &input_clut_table_g[..]);
+            out_b = lut_interp_linear_float(in_b, &input_clut_table_b[..]);
 
             dest[0] = clamp_float(out_r);
             dest[1] = clamp_float(out_g);
@@ -527,9 +553,9 @@ impl ModularTransform for GammaLut {
         let mut out_g: f32;
         let mut out_b: f32;
         for (dest, src) in dest.chunks_exact_mut(3).zip(src.chunks_exact(3)) {
-            let in_r: f32 = src[0];
-            let in_g: f32 = src[1];
-            let in_b: f32 = src[2];
+            let in_r = src[0];
+            let in_g = src[1];
+            let in_b = src[2];
             out_r = lut_interp_linear(in_r as f64, &self.output_gamma_lut_r.as_ref().unwrap());
             out_g = lut_interp_linear(in_g as f64, &self.output_gamma_lut_g.as_ref().unwrap());
             out_b = lut_interp_linear(in_b as f64, &self.output_gamma_lut_b.as_ref().unwrap());
@@ -561,43 +587,41 @@ impl ModularTransform for MatrixTranslate {
         mat.m[1][2] = self.matrix.m[2][1];
         mat.m[2][2] = self.matrix.m[2][2];
         for (dest, src) in dest.chunks_exact_mut(3).zip(src.chunks_exact(3)) {
-            let in_r: f32 = src[0];
-            let in_g: f32 = src[1];
-            let in_b: f32 = src[2];
-            let out_r: f32 = mat.m[0][0] * in_r + mat.m[1][0] * in_g + mat.m[2][0] * in_b + self.tx;
-            let out_g: f32 = mat.m[0][1] * in_r + mat.m[1][1] * in_g + mat.m[2][1] * in_b + self.ty;
-            let out_b: f32 = mat.m[0][2] * in_r + mat.m[1][2] * in_g + mat.m[2][2] * in_b + self.tz;
+            let in_r = src[0];
+            let in_g = src[1];
+            let in_b = src[2];
+            let out_r = mat.m[0][0] * in_r + mat.m[1][0] * in_g + mat.m[2][0] * in_b + self.tx;
+            let out_g = mat.m[0][1] * in_r + mat.m[1][1] * in_g + mat.m[2][1] * in_b + self.ty;
+            let out_b = mat.m[0][2] * in_r + mat.m[1][2] * in_g + mat.m[2][2] * in_b + self.tz;
             dest[0] = clamp_float(out_r);
             dest[1] = clamp_float(out_g);
             dest[2] = clamp_float(out_b);
         }
     }
 }
-#[derive(Default)]
+
 struct MatrixTransform {
     matrix: Matrix,
 }
+
 impl ModularTransform for MatrixTransform {
     fn transform(&self, src: &[f32], dest: &mut [f32]) {
-        let mut mat: Matrix = Matrix { m: [[0.; 3]; 3] };
         /* store the results in column major mode
          * this makes doing the multiplication with sse easier */
-        mat.m[0][0] = self.matrix.m[0][0];
-        mat.m[1][0] = self.matrix.m[0][1];
-        mat.m[2][0] = self.matrix.m[0][2];
-        mat.m[0][1] = self.matrix.m[1][0];
-        mat.m[1][1] = self.matrix.m[1][1];
-        mat.m[2][1] = self.matrix.m[1][2];
-        mat.m[0][2] = self.matrix.m[2][0];
-        mat.m[1][2] = self.matrix.m[2][1];
-        mat.m[2][2] = self.matrix.m[2][2];
+        let mat = Matrix {
+            m: [
+                [self.matrix.m[0][0], self.matrix.m[1][0], self.matrix.m[2][0]],
+                [self.matrix.m[0][1], self.matrix.m[1][1], self.matrix.m[2][1]],
+                [self.matrix.m[0][2], self.matrix.m[1][2], self.matrix.m[2][2]],
+            ],
+        };
         for (dest, src) in dest.chunks_exact_mut(3).zip(src.chunks_exact(3)) {
-            let in_r: f32 = src[0];
-            let in_g: f32 = src[1];
-            let in_b: f32 = src[2];
-            let out_r: f32 = mat.m[0][0] * in_r + mat.m[1][0] * in_g + mat.m[2][0] * in_b;
-            let out_g: f32 = mat.m[0][1] * in_r + mat.m[1][1] * in_g + mat.m[2][1] * in_b;
-            let out_b: f32 = mat.m[0][2] * in_r + mat.m[1][2] * in_g + mat.m[2][2] * in_b;
+            let in_r = src[0];
+            let in_g = src[1];
+            let in_b = src[2];
+            let out_r = mat.m[0][0] * in_r + mat.m[1][0] * in_g + mat.m[2][0] * in_b;
+            let out_g = mat.m[0][1] * in_r + mat.m[1][1] * in_g + mat.m[2][1] * in_b;
+            let out_b = mat.m[0][2] * in_r + mat.m[1][2] * in_g + mat.m[2][2] * in_b;
             dest[0] = clamp_float(out_r);
             dest[1] = clamp_float(out_g);
             dest[2] = clamp_float(out_b);
@@ -608,49 +632,43 @@ impl ModularTransform for MatrixTransform {
 fn modular_transform_create_mAB(lut: &lutmABType) -> Option<Vec<Box<dyn ModularTransform>>> {
     let mut transforms: Vec<Box<dyn ModularTransform>> = Vec::new();
     if lut.a_curves[0].is_some() {
-        let clut_length: usize;
         // If the A curve is present this also implies the
         // presence of a CLUT.
-        lut.clut_table.as_ref()?;
+        let clut_table = lut.clut_table.as_deref()?;
 
         // Prepare A curve.
-        let mut transform = Box::new(GammaTable::default());
-        transform.input_clut_table[0] = build_input_gamma_table(lut.a_curves[0].as_deref())
-            .map(|x| (x as Box<[f32]>).into_vec());
-        transform.input_clut_table[1] = build_input_gamma_table(lut.a_curves[1].as_deref())
-            .map(|x| (x as Box<[f32]>).into_vec());
-        transform.input_clut_table[2] = build_input_gamma_table(lut.a_curves[2].as_deref())
-            .map(|x| (x as Box<[f32]>).into_vec());
 
-        if lut.num_grid_points[0] as i32 != lut.num_grid_points[1] as i32
-            || lut.num_grid_points[1] as i32 != lut.num_grid_points[2] as i32
+        if lut.num_grid_points[0] != lut.num_grid_points[1]
+            || lut.num_grid_points[1] != lut.num_grid_points[2]
         {
             //XXX: We don't currently support clut that are not squared!
             return None;
         }
-        transforms.push(transform);
+        transforms.push(GammaTable::from_curves([
+            lut.a_curves[0].as_deref()?,
+            lut.a_curves[1].as_deref()?,
+            lut.a_curves[2].as_deref()?,
+        ]));
+
+        let clut_length = (lut.num_grid_points[0] as usize).pow(3) * 3;
+        assert_eq!(clut_length, clut_table.len());
 
         // Prepare CLUT
-        let mut transform = Box::new(ClutOnly::default());
-        clut_length = (lut.num_grid_points[0] as usize).pow(3) * 3;
-        assert_eq!(clut_length, lut.clut_table.as_ref().unwrap().len());
-        transform.clut = lut.clut_table.clone();
-        transform.grid_size = lut.num_grid_points[0] as u16;
-        transforms.push(transform);
+        transforms.push(Box::new(ClutOnly {
+            clut: clut_table.into(),
+            grid_size: lut.num_grid_points[0],
+        }));
     }
 
     if lut.m_curves[0].is_some() {
         // M curve imples the presence of a Matrix
 
         // Prepare M curve
-        let mut transform = Box::new(GammaTable::default());
-        transform.input_clut_table[0] = build_input_gamma_table(lut.m_curves[0].as_deref())
-            .map(|x| (x as Box<[f32]>).into_vec());
-        transform.input_clut_table[1] = build_input_gamma_table(lut.m_curves[1].as_deref())
-            .map(|x| (x as Box<[f32]>).into_vec());
-        transform.input_clut_table[2] = build_input_gamma_table(lut.m_curves[2].as_deref())
-            .map(|x| (x as Box<[f32]>).into_vec());
-        transforms.push(transform);
+        transforms.push(GammaTable::from_curves([
+            lut.m_curves[0].as_deref()?,
+            lut.m_curves[1].as_deref()?,
+            lut.m_curves[2].as_deref()?,
+        ]));
 
         // Prepare Matrix
         let mut transform = Box::new(MatrixTranslate::default());
@@ -663,14 +681,11 @@ fn modular_transform_create_mAB(lut: &lutmABType) -> Option<Vec<Box<dyn ModularT
 
     if lut.b_curves[0].is_some() {
         // Prepare B curve
-        let mut transform = Box::new(GammaTable::default());
-        transform.input_clut_table[0] = build_input_gamma_table(lut.b_curves[0].as_deref())
-            .map(|x| (x as Box<[f32]>).into_vec());
-        transform.input_clut_table[1] = build_input_gamma_table(lut.b_curves[1].as_deref())
-            .map(|x| (x as Box<[f32]>).into_vec());
-        transform.input_clut_table[2] = build_input_gamma_table(lut.b_curves[2].as_deref())
-            .map(|x| (x as Box<[f32]>).into_vec());
-        transforms.push(transform);
+        transforms.push(GammaTable::from_curves([
+            lut.b_curves[0].as_deref()?,
+            lut.b_curves[1].as_deref()?,
+            lut.b_curves[2].as_deref()?,
+        ]));
     } else {
         // B curve is mandatory
         return None;
@@ -688,11 +703,9 @@ fn modular_transform_create_lut(lut: &lutType) -> Option<Vec<Box<dyn ModularTran
     let mut transforms: Vec<Box<dyn ModularTransform>> = Vec::new();
 
     let clut_length: usize;
-    let mut transform = Box::new(MatrixTransform::default());
-
-    transform.matrix = build_lut_matrix(lut);
-    if true {
-        transforms.push(transform);
+    transforms.push(Box::new(MatrixTransform {
+        matrix: build_lut_matrix(lut),
+    }));
 
         // Prepare input curves
         let mut transform = Box::new(Clut3x3::default());
@@ -713,7 +726,7 @@ fn modular_transform_create_lut(lut: &lutType) -> Option<Vec<Box<dyn ModularTran
         assert_eq!(clut_length, lut.clut_table.len());
         transform.clut = Some(lut.clut_table.clone());
 
-        transform.grid_size = lut.num_clut_grid_points as u16;
+        transform.grid_size = lut.num_clut_grid_points;
         // Prepare output curves
         transform.output_clut_table[0] =
             Some(lut.output_table[0..lut.num_output_table_entries as usize].to_vec());
@@ -729,8 +742,6 @@ fn modular_transform_create_lut(lut: &lutType) -> Option<Vec<Box<dyn ModularTran
         );
         transforms.push(transform);
         return Some(transforms);
-    }
-    None
 }
 
 fn modular_transform_create_lut4x3(lut: &lutType) -> Vec<Box<dyn ModularTransform>> {
@@ -764,7 +775,7 @@ fn modular_transform_create_lut4x3(lut: &lutType) -> Vec<Box<dyn ModularTransfor
     assert_eq!(clut_length, lut.clut_table.len());
     transform.clut = Some(lut.clut_table.clone());
 
-    transform.grid_size = lut.num_clut_grid_points as u16;
+    transform.grid_size = lut.num_clut_grid_points;
     // Prepare output curves
     transform.output_clut_table[0] =
         Some(lut.output_table[0..lut.num_output_table_entries as usize].to_vec());
@@ -807,40 +818,29 @@ fn modular_transform_create_input(input: &Profile) -> Option<Vec<Box<dyn Modular
             return None;
         }
     } else {
-        let mut transform = Box::new(GammaTable::default());
-        transform.input_clut_table[0] =
-            build_input_gamma_table(input.redTRC.as_deref()).map(|x| (x as Box<[f32]>).into_vec());
-        transform.input_clut_table[1] = build_input_gamma_table(input.greenTRC.as_deref())
-            .map(|x| (x as Box<[f32]>).into_vec());
-        transform.input_clut_table[2] =
-            build_input_gamma_table(input.blueTRC.as_deref()).map(|x| (x as Box<[f32]>).into_vec());
-        if transform.input_clut_table[0].is_none()
-            || transform.input_clut_table[1].is_none()
-            || transform.input_clut_table[2].is_none()
-        {
-            return None;
-        } else {
-            transforms.push(transform);
+        transforms.push(GammaTable::from_curves([
+            input.redTRC.as_deref()?,
+            input.greenTRC.as_deref()?,
+            input.blueTRC.as_deref()?,
+        ]));
 
-            let mut transform = Box::new(MatrixTransform::default());
-            transform.matrix.m[0][0] = 1. / 1.999_969_5;
-            transform.matrix.m[0][1] = 0.0;
-            transform.matrix.m[0][2] = 0.0;
-            transform.matrix.m[1][0] = 0.0;
-            transform.matrix.m[1][1] = 1. / 1.999_969_5;
-            transform.matrix.m[1][2] = 0.0;
-            transform.matrix.m[2][0] = 0.0;
-            transform.matrix.m[2][1] = 0.0;
-            transform.matrix.m[2][2] = 1. / 1.999_969_5;
-            transforms.push(transform);
+        transforms.push(Box::new(MatrixTransform {
+            matrix: Matrix {
+                m: [
+                    [1. / 1.999_969_5, 0.0, 0.0],
+                    [0.0, 1. / 1.999_969_5, 0.0],
+                    [0.0, 0.0, 1. / 1.999_969_5],
+                ],
+            },
+        }));
 
-            let mut transform = Box::new(MatrixTransform::default());
-            transform.matrix = build_colorant_matrix(input);
-            transforms.push(transform);
-        }
+        transforms.push(Box::new(MatrixTransform {
+            matrix: build_colorant_matrix(input),
+        }));
     }
     Some(transforms)
 }
+
 fn modular_transform_create_output(out: &Profile) -> Option<Vec<Box<dyn ModularTransform>>> {
     let mut transforms = Vec::new();
     if let Some(B2A0) = &out.B2A0 {
@@ -866,21 +866,19 @@ fn modular_transform_create_output(out: &Profile) -> Option<Vec<Box<dyn ModularT
     } else if let (Some(redTRC), Some(greenTRC), Some(blueTRC)) =
         (&out.redTRC, &out.greenTRC, &out.blueTRC)
     {
-        let mut transform = Box::new(MatrixTransform::default());
-        transform.matrix = build_colorant_matrix(out).invert()?;
-        transforms.push(transform);
+        transforms.push(Box::new(MatrixTransform {
+            matrix: build_colorant_matrix(out).invert()?,
+        }));
 
-        let mut transform = Box::new(MatrixTransform::default());
-        transform.matrix.m[0][0] = 1.999_969_5;
-        transform.matrix.m[0][1] = 0.0;
-        transform.matrix.m[0][2] = 0.0;
-        transform.matrix.m[1][0] = 0.0;
-        transform.matrix.m[1][1] = 1.999_969_5;
-        transform.matrix.m[1][2] = 0.0;
-        transform.matrix.m[2][0] = 0.0;
-        transform.matrix.m[2][1] = 0.0;
-        transform.matrix.m[2][2] = 1.999_969_5;
-        transforms.push(transform);
+        transforms.push(Box::new(MatrixTransform {
+            matrix: Matrix {
+                m: [
+                    [1.999_969_5, 0.0, 0.0],
+                    [0.0, 1.999_969_5, 0.0],
+                    [0.0, 0.0, 1.999_969_5],
+                ],
+            },
+        }));
 
         let mut transform = Box::new(GammaLut::default());
         transform.output_gamma_lut_r = Some(build_output_lut(redTRC)?);

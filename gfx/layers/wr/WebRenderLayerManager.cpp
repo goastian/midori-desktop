@@ -331,7 +331,7 @@ bool WebRenderLayerManager::EndEmptyTransaction(EndTransactionFlags aFlags) {
 void WebRenderLayerManager::EndTransactionWithoutLayer(
     nsDisplayList* aDisplayList, nsDisplayListBuilder* aDisplayListBuilder,
     WrFiltersHolder&& aFilters, WebRenderBackgroundData* aBackground,
-    const double aGeckoDLBuildTime) {
+    const double aGeckoDLBuildTime, bool aRenderOffscreen) {
   AUTO_PROFILER_TRACING_MARKER("Paint", "WrDisplayList", GRAPHICS);
 
   auto clearTarget = MakeScopeExit([&] { mTarget = nullptr; });
@@ -383,7 +383,7 @@ void WebRenderLayerManager::EndTransactionWithoutLayer(
 
   if (AsyncPanZoomEnabled()) {
     if (mIsFirstPaint) {
-      mScrollData.SetIsFirstPaint();
+      mScrollData.SetIsFirstPaint(true);
       mIsFirstPaint = false;
     }
     mScrollData.SetPaintSequenceNumber(mPaintSequenceNumber);
@@ -460,7 +460,7 @@ void WebRenderLayerManager::EndTransactionWithoutLayer(
                                  duration);
     bool ret = WrBridge()->EndTransaction(
         std::move(dlData), mLatestTransactionId, containsSVGGroup,
-        mTransactionIdAllocator->GetVsyncId(),
+        mTransactionIdAllocator->GetVsyncId(), aRenderOffscreen,
         mTransactionIdAllocator->GetVsyncStart(), refreshStart,
         mTransactionStart, mURL);
     if (!ret) {
@@ -804,6 +804,13 @@ WebRenderLayerManager::ClearPendingScrollInfoUpdate() {
       mPendingScrollUpdates.Keys().cend());
   mPendingScrollUpdates.Clear();
   return scrollIds;
+}
+
+bool WebRenderLayerManager::AddPendingScrollUpdateForNextTransaction(
+    ScrollableLayerGuid::ViewID aScrollId,
+    const ScrollPositionUpdate& aUpdateInfo) {
+  mPendingScrollUpdates.LookupOrInsert(aScrollId).AppendElement(aUpdateInfo);
+  return true;
 }
 
 }  // namespace layers

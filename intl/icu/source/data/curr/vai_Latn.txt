@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 vai_Latn{
     %%Parent{"root"}
     Currencies{
@@ -168,9 +168,13 @@ vai_Latn{
             "SHP",
             "Siŋ Hɛlina Pɔɔ̃",
         }
+        SLE{
+            "SLE",
+            "Liyɔɔ̀",
+        }
         SLL{
             "SLL",
-            "Liyɔɔ̀",
+            "Liyɔɔ̀ (1964—2022)",
         }
         SOS{
             "SOS",

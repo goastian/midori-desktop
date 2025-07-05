@@ -5,6 +5,7 @@
 
 #include "DecoderFactory.h"
 
+#include "ImageUtils.h"
 #include "nsMimeTypes.h"
 #include "mozilla/RefPtr.h"
 
@@ -57,6 +58,8 @@ DecoderType DecoderFactory::GetDecoderType(const char* aMimeType) {
     type = DecoderType::JPEG;
   } else if (!strcmp(aMimeType, IMAGE_JPG)) {
     type = DecoderType::JPEG;
+  } else if (!strcmp(aMimeType, IMAGE_JPEG_PDF)) {
+    type = DecoderType::JPEG_PDF;
 
     // BMP
   } else if (!strcmp(aMimeType, IMAGE_BMP)) {
@@ -131,10 +134,12 @@ already_AddRefed<Decoder> DecoderFactory::GetDecoder(DecoderType aType,
       decoder = new nsGIFDecoder2(aImage);
       break;
     case DecoderType::JPEG:
+    case DecoderType::JPEG_PDF:
       // If we have all the data we don't want to waste cpu time doing
       // a progressive decode.
       decoder = new nsJPEGDecoder(
-          aImage, aIsRedecode ? Decoder::SEQUENTIAL : Decoder::PROGRESSIVE);
+          aImage, aIsRedecode ? Decoder::SEQUENTIAL : Decoder::PROGRESSIVE,
+          aType == DecoderType::JPEG_PDF);
       break;
     case DecoderType::BMP:
       decoder = new nsBMPDecoder(aImage);
@@ -175,6 +180,11 @@ nsresult DecoderFactory::CreateDecoder(
     const IntSize& aOutputSize, DecoderFlags aDecoderFlags,
     SurfaceFlags aSurfaceFlags, IDecodingTask** aOutTask) {
   if (aType == DecoderType::UNKNOWN) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  // Only can use COUNT_FRAMES with metadata decoders.
+  if (NS_WARN_IF(bool(aDecoderFlags & DecoderFlags::COUNT_FRAMES))) {
     return NS_ERROR_INVALID_ARG;
   }
 
@@ -233,14 +243,13 @@ nsresult DecoderFactory::CreateAnimationDecoder(
     return NS_ERROR_INVALID_ARG;
   }
 
+  // Only can use COUNT_FRAMES with metadata decoders.
+  if (NS_WARN_IF(bool(aDecoderFlags & DecoderFlags::COUNT_FRAMES))) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
   MOZ_ASSERT(aType == DecoderType::GIF || aType == DecoderType::PNG ||
-                 aType == DecoderType::WEBP || aType == DecoderType::AVIF  ||
-                 aType == DecoderType::JXL,
-#ifdef MOZ_JXL
-                 || aType == DecoderType::JXL,
-#else
-             ,
-#endif
+                 aType == DecoderType::WEBP || aType == DecoderType::AVIF,
              "Calling CreateAnimationDecoder for non-animating DecoderType");
 
   // Create an anonymous decoder. Interaction with the SurfaceCache and the
@@ -295,15 +304,7 @@ already_AddRefed<Decoder> DecoderFactory::CloneAnimationDecoder(
   // rediscover it is animated).
   DecoderType type = aDecoder->GetType();
   MOZ_ASSERT(type == DecoderType::GIF || type == DecoderType::PNG ||
-                 type == DecoderType::WEBP || type == DecoderType::AVIF  ||
-                 type == DecoderType::JXL,
-
-#ifdef MOZ_JXL
-                 || type == DecoderType::JXL,
-#else
-             ,
-#endif
-
+                 type == DecoderType::WEBP || type == DecoderType::AVIF,
              "Calling CloneAnimationDecoder for non-animating DecoderType");
 
   RefPtr<Decoder> decoder = GetDecoder(type, nullptr, /* aIsRedecode = */ true);
@@ -315,6 +316,32 @@ already_AddRefed<Decoder> DecoderFactory::CloneAnimationDecoder(
   decoder->SetDecoderFlags(aDecoder->GetDecoderFlags());
   decoder->SetSurfaceFlags(aDecoder->GetSurfaceFlags());
   decoder->SetFrameRecycler(aDecoder->GetFrameRecycler());
+
+  if (NS_FAILED(decoder->Init())) {
+    return nullptr;
+  }
+
+  return decoder.forget();
+}
+
+/* static */
+already_AddRefed<Decoder> DecoderFactory::CloneAnonymousMetadataDecoder(
+    Decoder* aDecoder, const Maybe<DecoderFlags>& aDecoderFlags) {
+  MOZ_ASSERT(aDecoder);
+
+  DecoderType type = aDecoder->GetType();
+  RefPtr<Decoder> decoder =
+      GetDecoder(type, nullptr, /* aIsRedecode = */ false);
+  MOZ_ASSERT(decoder, "Should have a decoder now");
+
+  // Initialize the decoder.
+  decoder->SetMetadataDecode(true);
+  decoder->SetIterator(aDecoder->GetSourceBuffer()->Iterator());
+  if (aDecoderFlags) {
+    decoder->SetDecoderFlags(*aDecoderFlags);
+  } else {
+    decoder->SetDecoderFlags(aDecoder->GetDecoderFlags());
+  }
 
   if (NS_FAILED(decoder->Init())) {
     return nullptr;
@@ -405,6 +432,11 @@ already_AddRefed<Decoder> DecoderFactory::CreateAnonymousDecoder(
     return nullptr;
   }
 
+  // Only can use COUNT_FRAMES with metadata decoders.
+  if (NS_WARN_IF(bool(aDecoderFlags & DecoderFlags::COUNT_FRAMES))) {
+    return nullptr;
+  }
+
   RefPtr<Decoder> decoder =
       GetDecoder(aType, /* aImage = */ nullptr, /* aIsRedecode = */ false);
   MOZ_ASSERT(decoder, "Should have a decoder now");
@@ -434,7 +466,8 @@ already_AddRefed<Decoder> DecoderFactory::CreateAnonymousDecoder(
 
 /* static */
 already_AddRefed<Decoder> DecoderFactory::CreateAnonymousMetadataDecoder(
-    DecoderType aType, NotNull<SourceBuffer*> aSourceBuffer) {
+    DecoderType aType, NotNull<SourceBuffer*> aSourceBuffer,
+    DecoderFlags aDecoderFlags) {
   if (aType == DecoderType::UNKNOWN) {
     return nullptr;
   }
@@ -446,7 +479,7 @@ already_AddRefed<Decoder> DecoderFactory::CreateAnonymousMetadataDecoder(
   // Initialize the decoder.
   decoder->SetMetadataDecode(true);
   decoder->SetIterator(aSourceBuffer->Iterator());
-  decoder->SetDecoderFlags(DecoderFlags::FIRST_FRAME_ONLY);
+  decoder->SetDecoderFlags(aDecoderFlags);
 
   if (NS_FAILED(decoder->Init())) {
     return nullptr;

@@ -1,5 +1,3 @@
-// |jit-test| --setpref=wasm_tail_calls=true; --setpref=wasm_gc=true; skip-if: !wasmGcEnabled() || !wasmTailCallsEnabled()
-
 // Tests if instance registers were restored properly when call_ref is used
 // with tail calls.
 var t = wasmEvalText(`(module

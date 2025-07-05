@@ -329,6 +329,11 @@ void ImageContainer::SetCurrentImageInternal(
     OwningImage* img = newImages.AppendElement();
     img->mImage = aImages[i].mImage;
     img->mTimeStamp = aImages[i].mTimeStamp;
+    img->mProcessingDuration = aImages[i].mProcessingDuration;
+    img->mMediaTime = aImages[i].mMediaTime;
+    img->mWebrtcCaptureTime = aImages[i].mWebrtcCaptureTime;
+    img->mWebrtcReceiveTime = aImages[i].mWebrtcReceiveTime;
+    img->mRtpTimestamp = aImages[i].mRtpTimestamp;
     img->mFrameID = aImages[i].mFrameID;
     img->mProducerID = aImages[i].mProducerID;
     for (const auto& oldImg : mCurrentImages) {
@@ -366,17 +371,22 @@ void ImageContainer::SetCurrentImages(const nsTArray<NonOwningImage>& aImages) {
   SetCurrentImageInternal(aImages);
 }
 
-void ImageContainer::ClearAllImages() {
+void ImageContainer::ClearImagesInHost(ClearImagesType aType) {
+  MOZ_ASSERT(mIsAsync);
+  if (!mIsAsync) {
+    return;
+  }
+
   mRecursiveMutex.Lock();
   if (mImageClient) {
     RefPtr<ImageClient> imageClient = mImageClient;
     mRecursiveMutex.Unlock();
 
-    // Let ImageClient release all TextureClients. This doesn't return
-    // until ImageBridge has called ClearCurrentImageFromImageBridge.
+    // Let ImageClient clear Images(TextureClients). This doesn't return
+    // until ImageBridge has called ImageClient::ClearImagesInHost.
     if (RefPtr<ImageBridgeChild> imageBridge =
             ImageBridgeChild::GetSingleton()) {
-      imageBridge->FlushAllImages(imageClient, this);
+      imageBridge->ClearImagesInHost(imageClient, this, aType);
     }
     return;
   }
@@ -650,6 +660,42 @@ Maybe<PlanarYCbCrData> PlanarYCbCrData::From(
   return Some(yuvData);
 }
 
+Maybe<PlanarYCbCrData> PlanarYCbCrData::From(
+    const VideoData::YCbCrBuffer& yuvDesc) {
+  constexpr int YPlane = 0;
+  constexpr int CbPlane = 1;
+  constexpr int CrPlane = 2;
+
+  PlanarYCbCrData yuvData;
+  yuvData.mYStride = yuvDesc.mPlanes[YPlane].mStride;
+  yuvData.mCbCrStride = yuvDesc.mPlanes[CbPlane].mStride;
+  yuvData.mYSkip = yuvDesc.mPlanes[YPlane].mSkip;
+  yuvData.mCbSkip = yuvDesc.mPlanes[CbPlane].mSkip;
+  yuvData.mCrSkip = yuvDesc.mPlanes[CrPlane].mSkip;
+  yuvData.mPictureRect = gfx::IntRect(0, 0, yuvDesc.mPlanes[YPlane].mWidth,
+                                      yuvDesc.mPlanes[YPlane].mHeight);
+  yuvData.mColorDepth = yuvDesc.mColorDepth;
+  yuvData.mYUVColorSpace = yuvDesc.mYUVColorSpace;
+  yuvData.mColorRange = yuvDesc.mColorRange;
+  yuvData.mChromaSubsampling = yuvDesc.mChromaSubsampling;
+  yuvData.mYChannel = yuvDesc.mPlanes[YPlane].mData;
+  yuvData.mCbChannel = yuvDesc.mPlanes[CbPlane].mData;
+  yuvData.mCrChannel = yuvDesc.mPlanes[CrPlane].mData;
+
+  if (yuvData.mYSkip || yuvData.mCbSkip || yuvData.mCrSkip ||
+      yuvData.mYStride < 0 || yuvData.mCbCrStride < 0 || !yuvData.mYChannel ||
+      !yuvData.mCbChannel || !yuvData.mCrChannel) {
+    gfxCriticalError() << "Unusual PlanarYCbCrData: " << yuvData.mYSkip << ","
+                       << yuvData.mCbSkip << "," << yuvData.mCrSkip << ","
+                       << yuvData.mYStride << "," << yuvData.mCbCrStride << ", "
+                       << yuvData.mYChannel << "," << yuvData.mCbChannel << ","
+                       << yuvData.mCrChannel;
+    return {};
+  }
+
+  return Some(yuvData);
+}
+
 // -
 
 PlanarYCbCrImage::PlanarYCbCrImage()
@@ -689,8 +735,9 @@ nsresult PlanarYCbCrImage::BuildSurfaceDescriptorBuffer(
       }
     }
 
-    gfx::ConvertYCbCrToRGB(mData, format, size, buffer, stride);
-    return NS_OK;
+    rv = gfx::ConvertYCbCrToRGB(mData, format, size, buffer, stride);
+    MOZ_ASSERT(NS_SUCCEEDED(rv), "Failed to convert YUV into RGB data");
+    return rv;
   }
 
   auto ySize = pdata->YDataSize();
@@ -878,8 +925,11 @@ already_AddRefed<gfx::SourceSurface> PlanarYCbCrImage::GetAsSourceSurface() {
     return nullptr;
   }
 
-  gfx::ConvertYCbCrToRGB(mData, format, size, mapping.GetData(),
-                         mapping.GetStride());
+  if (NS_WARN_IF(NS_FAILED(gfx::ConvertYCbCrToRGB(
+          mData, format, size, mapping.GetData(), mapping.GetStride())))) {
+    MOZ_ASSERT_UNREACHABLE("Failed to convert YUV into RGB data");
+    return nullptr;
+  }
 
   mSourceSurface = surface;
 
@@ -957,8 +1007,11 @@ already_AddRefed<SourceSurface> NVImage::GetAsSourceSurface() {
     return nullptr;
   }
 
-  gfx::ConvertYCbCrToRGB(aData, format, size, mapping.GetData(),
-                         mapping.GetStride());
+  if (NS_WARN_IF(NS_FAILED(gfx::ConvertYCbCrToRGB(
+          aData, format, size, mapping.GetData(), mapping.GetStride())))) {
+    MOZ_ASSERT_UNREACHABLE("Failed to convert YUV into RGB data");
+    return nullptr;
+  }
 
   mSourceSurface = surface;
 
@@ -1025,7 +1078,11 @@ nsresult NVImage::BuildSurfaceDescriptorBuffer(
   }
 
   if (!mSourceSurface) {
-    gfx::ConvertYCbCrToRGB(aData, format, size, output, stride);
+    rv = gfx::ConvertYCbCrToRGB(aData, format, size, output, stride);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      MOZ_ASSERT_UNREACHABLE("Failed to convert YUV into RGB data");
+      return rv;
+    }
     return NS_OK;
   }
 
@@ -1048,7 +1105,7 @@ uint32_t NVImage::GetBufferSize() const { return mBufferSize; }
 
 NVImage* NVImage::AsNVImage() { return this; };
 
-bool NVImage::SetData(const Data& aData) {
+nsresult NVImage::SetData(const Data& aData) {
   MOZ_ASSERT(aData.mCbSkip == 1 && aData.mCrSkip == 1);
   MOZ_ASSERT((int)std::abs(aData.mCbChannel - aData.mCrChannel) == 1);
 
@@ -1058,14 +1115,16 @@ bool NVImage::SetData(const Data& aData) {
       CheckedInt<uint32_t>(aData.YDataSize().height) * aData.mYStride +
       CheckedInt<uint32_t>(aData.CbCrDataSize().height) * aData.mCbCrStride;
 
-  if (!checkedSize.isValid()) return false;
+  if (!checkedSize.isValid()) {
+    return NS_ERROR_INVALID_ARG;
+  }
 
   const auto size = checkedSize.value();
 
   // Allocate a new buffer.
   mBuffer = AllocateBuffer(size);
   if (!mBuffer) {
-    return false;
+    return NS_ERROR_OUT_OF_MEMORY;
   }
 
   // Update mBufferSize.
@@ -1084,7 +1143,7 @@ bool NVImage::SetData(const Data& aData) {
   // This copies the y-channel and the interleaving CbCr-channel.
   memcpy(mData.mYChannel, aData.mYChannel, mBufferSize);
 
-  return true;
+  return NS_OK;
 }
 
 const NVImage::Data* NVImage::GetData() const { return &mData; }

@@ -24,6 +24,7 @@
 #include "nsSHistory.h"
 
 #include "mozilla/Logging.h"
+#include "mozilla/dom/nsCSPUtils.h"
 #include "nsIReferrerInfo.h"
 
 extern mozilla::LazyLogModule gPageCacheLog;
@@ -510,7 +511,9 @@ nsSHEntry::GetCsp(nsIContentSecurityPolicy** aCsp) {
 
 NS_IMETHODIMP
 nsSHEntry::SetCsp(nsIContentSecurityPolicy* aCsp) {
-  mShared->mCsp = aCsp;
+  if (CSP_ShouldURIInheritCSP(mURI)) {
+    mShared->mCsp = aCsp;
+  }
   return NS_OK;
 }
 
@@ -948,7 +951,9 @@ nsSHEntry::CreateLoadInfo(nsDocShellLoadState** aLoadState) {
 
   loadState->SetFirstParty(true);
 
-  loadState->SetHasValidUserGestureActivation(GetHasUserActivation());
+  const bool hasUserActivation = GetHasUserActivation();
+  loadState->SetHasValidUserGestureActivation(hasUserActivation);
+  loadState->SetTextDirectiveUserActivation(hasUserActivation);
 
   loadState->SetSHEntry(this);
 

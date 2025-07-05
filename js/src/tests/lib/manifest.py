@@ -2,14 +2,11 @@
 #
 # This includes classes for representing and parsing JS manifests.
 
-import io
 import os
 import posixpath
 import re
 import sys
 from subprocess import PIPE, Popen
-
-import six
 
 from .remote import init_device
 from .tests import RefTestCase
@@ -73,14 +70,14 @@ class XULInfo:
         if path is None:
             print(
                 "Can't find config/autoconf.mk on a directory containing"
-                " the JS shell (searched from {})".format(jsdir)
+                f" the JS shell (searched from {jsdir})"
             )
             sys.exit(1)
 
         # Read the values.
         val_re = re.compile(r"(TARGET_XPCOM_ABI|OS_TARGET|MOZ_DEBUG)\s*=\s*(.*)")
         kw = {"isdebug": False}
-        for line in io.open(path, encoding="utf-8"):
+        for line in open(path, encoding="utf-8"):
             m = val_re.match(line)
             if m:
                 key, val = m.groups()
@@ -138,7 +135,7 @@ class XULInfoTester:
                 "-e",
                 self.js_prologue,
                 "-e",
-                "print(!!({}))".format(cond),
+                f"print(!!({cond}))",
             ]
         )
         cmd = ADBDevice._escape_command_line(cmd)
@@ -160,8 +157,8 @@ class XULInfoTester:
             ans = False
         else:
             raise Exception(
-                "Failed to test XUL condition {!r};"
-                " output was {!r}, stderr was {!r}".format(cond, out, err)
+                f"Failed to test XUL condition {cond!r};"
+                f" output was {out!r}, stderr was {err!r}"
             )
         self.cache[cond] = ans
         return ans
@@ -183,7 +180,7 @@ class XULInfoTester:
                     "-e",
                     self.js_prologue,
                     "-e",
-                    "print(!!({}))".format(cond),
+                    f"print(!!({cond}))",
                 ]
             )
             p = Popen(
@@ -196,8 +193,8 @@ class XULInfoTester:
                 ans = False
             else:
                 raise Exception(
-                    "Failed to test XUL condition {!r};"
-                    " output was {!r}, stderr was {!r}".format(cond, out, err)
+                    f"Failed to test XUL condition {cond!r};"
+                    f" output was {out!r}, stderr was {err!r}"
                 )
             self.cache[cond] = ans
         return ans
@@ -281,7 +278,7 @@ def _parse_one(testcase, terms, xul_tester):
             testcase.is_async = True
             pos += 1
         else:
-            print('warning: invalid manifest line element "{}"'.format(parts[pos]))
+            print(f'warning: invalid manifest line element "{parts[pos]}"')
             pos += 1
 
 
@@ -374,7 +371,7 @@ def _emit_manifest_at(location, relative, test_gen, depth):
             "url-prefix {}jsreftest.html?test={}/".format("../" * depth, relative)
         ] + manifest
 
-    fp = io.open(filename, "w", encoding="utf-8", newline="\n")
+    fp = open(filename, "w", encoding="utf-8", newline="\n")
     try:
         fp.write("\n".join(manifest) + "\n")
     finally:
@@ -468,10 +465,7 @@ def _parse_test_header(fullpath, testcase, xul_tester):
     This looks a bit weird.  The reason is that it needs to be efficient, since
     it has to be done on every test
     """
-    if six.PY3:
-        fp = open(fullpath, encoding="utf-8")
-    else:
-        fp = open(fullpath)
+    fp = open(fullpath, encoding="utf-8")
     try:
         buf = fp.read(512)
     finally:
@@ -510,7 +504,7 @@ def _parse_external_manifest(filename, relpath):
 
     entries = []
 
-    with io.open(filename, "r", encoding="utf-8") as fp:
+    with open(filename, encoding="utf-8") as fp:
         manifest_re = re.compile(
             r"^\s*(?P<terms>.*)\s+(?P<type>include|script)\s+(?P<path>\S+)$"
         )
@@ -524,10 +518,7 @@ def _parse_external_manifest(filename, relpath):
             if not matches:
                 matches = include_re.match(line)
                 if not matches:
-                    print(
-                        "warning: unrecognized line in jstests.list:"
-                        " {0}".format(line)
-                    )
+                    print("warning: unrecognized line in jstests.list:" f" {line}")
                     continue
 
                 include_file = matches.group("path")

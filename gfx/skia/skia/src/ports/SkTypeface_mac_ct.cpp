@@ -89,6 +89,7 @@ SkString SkCFTypeIDDescription(CFTypeID id) {
 template<typename CF> CFTypeID SkCFGetTypeID();
 #define SK_GETCFTYPEID(cf) \
 template<> CFTypeID SkCFGetTypeID<cf##Ref>() { return cf##GetTypeID(); }
+SK_GETCFTYPEID(CFArray);
 SK_GETCFTYPEID(CFBoolean);
 SK_GETCFTYPEID(CFDictionary);
 SK_GETCFTYPEID(CFNumber);
@@ -420,11 +421,10 @@ static void get_plane_glyph_map(const uint8_t* bits,
             CGGlyph glyphs[2] = {0, 0};
             if (CTFontGetGlyphsForCharacters(ctFont, utf16, glyphs, count)) {
                 SkASSERT(glyphs[1] == 0);
-                SkASSERT(glyphs[0] < glyphCount);
                 // CTFontCopyCharacterSet and CTFontGetGlyphsForCharacters seem to add 'support'
                 // for characters 0x9, 0xA, and 0xD mapping them to the glyph for character 0x20?
                 // Prefer mappings to codepoints at or above 0x20.
-                if (glyphToUnicode[glyphs[0]] < 0x20) {
+                if (glyphs[0] < glyphCount && glyphToUnicode[glyphs[0]] < 0x20) {
                     glyphToUnicode[glyphs[0]] = codepoint;
                 }
             }
@@ -522,13 +522,14 @@ std::unique_ptr<SkAdvancedTypefaceMetrics> SkTypeface_Mac::onGetAdvancedMetrics(
     constexpr SkFontTableTag glyf = SkSetFourByteTag('g','l','y','f');
     constexpr SkFontTableTag loca = SkSetFourByteTag('l','o','c','a');
     constexpr SkFontTableTag CFF  = SkSetFourByteTag('C','F','F',' ');
-    if (!((this->getTableSize(glyf) && this->getTableSize(loca)) ||
-           this->getTableSize(CFF)))
-    {
+    if (this->getTableSize(glyf) && this->getTableSize(loca)) {
+        info->fType = SkAdvancedTypefaceMetrics::kTrueType_Font;
+    } else if (this->getTableSize(CFF)) {
+        info->fType = SkAdvancedTypefaceMetrics::kCFF_Font;
+    } else {
         return info;
     }
 
-    info->fType = SkAdvancedTypefaceMetrics::kTrueType_Font;
     CTFontSymbolicTraits symbolicTraits = CTFontGetSymbolicTraits(ctFont.get());
     if (symbolicTraits & kCTFontMonoSpaceTrait) {
         info->fStyle |= SkAdvancedTypefaceMetrics::kFixedPitch_Style;
@@ -728,6 +729,16 @@ bool SkTypeface_Mac::onGlyphMaskNeedsCurrentColor() const {
 
 CFArrayRef SkTypeface_Mac::getVariationAxes() const {
     fInitVariationAxes([this]{
+        // Prefer kCTFontVariationAxesAttribute, faster since it doesn't localize axis names.
+        SkUniqueCFRef<CTFontDescriptorRef> desc(CTFontCopyFontDescriptor(fFontRef.get()));
+        SkUniqueCFRef<CFTypeRef> cf(
+                CTFontDescriptorCopyAttribute(desc.get(), kCTFontVariationAxesAttribute));
+        CFArrayRef array;
+        if (cf && SkCFDynamicCast(cf.get(), &array, "Axes")) {
+            fVariationAxes.reset(array);
+            cf.release();
+            return;
+        }
         fVariationAxes.reset(CTFontCopyVariationAxes(fFontRef.get()));
     });
     return fVariationAxes.get();
@@ -878,11 +889,12 @@ sk_sp<SkData> SkTypeface_Mac::onCopyTableData(SkFontTableTag tag) const {
 std::unique_ptr<SkScalerContext> SkTypeface_Mac::onCreateScalerContext(
     const SkScalerContextEffects& effects, const SkDescriptor* desc) const
 {
-    return std::make_unique<SkScalerContext_Mac>(
-            sk_ref_sp(const_cast<SkTypeface_Mac*>(this)), effects, desc);
+    return std::make_unique<SkScalerContext_Mac>(*const_cast<SkTypeface_Mac*>(this), effects, desc);
 }
 
 void SkTypeface_Mac::onFilterRec(SkScalerContextRec* rec) const {
+    rec->useStrokeForFakeBold();
+
     if (rec->fFlags & SkScalerContext::kLCD_BGROrder_Flag ||
         rec->fFlags & SkScalerContext::kLCD_Vertical_Flag)
     {
@@ -951,21 +963,6 @@ void SkTypeface_Mac::onFilterRec(SkScalerContextRec* rec) const {
         rec->fMaskFormat = SkMask::kARGB32_Format;
     }
 
-    // Smoothing will be used if the format is either LCD or if there is hinting.
-    // In those cases, we need to choose the proper dilation mask based on the color.
-    if (rec->fMaskFormat == SkMask::kLCD16_Format ||
-        (rec->fMaskFormat == SkMask::kA8_Format && rec->getHinting() != SkFontHinting::kNone)) {
-        SkColor color = rec->getLuminanceColor();
-        int r = SkColorGetR(color);
-        int g = SkColorGetG(color);
-        int b = SkColorGetB(color);
-        // Choose whether to draw using a light-on-dark mask based on observed
-        // color/luminance thresholds that CoreText uses.
-        if (r >= 85 && g >= 85 && b >= 85 && r + g + b >= 2 * 255) {
-            rec->fFlags |= SkScalerContext::kLightOnDark_Flag;
-        }
-    }
-
     // Unhinted A8 masks (those not derived from LCD masks) must respect SK_GAMMA_APPLY_TO_A8.
     // All other masks can use regular gamma.
     if (SkMask::kA8_Format == rec->fMaskFormat && SkFontHinting::kNone == rec->getHinting()) {
@@ -974,7 +971,6 @@ void SkTypeface_Mac::onFilterRec(SkScalerContextRec* rec) const {
         rec->ignorePreBlend();
 #endif
     } else {
-#ifndef SK_IGNORE_MAC_BLENDING_MATCH_FIX
         SkColor color = rec->getLuminanceColor();
         if (smoothBehavior == SkCTFontSmoothBehavior::some) {
             // CoreGraphics smoothed text without subpixel coverage blitting goes from a gamma of
@@ -992,7 +988,6 @@ void SkTypeface_Mac::onFilterRec(SkScalerContextRec* rec) const {
                                   SkColorGetB(color) * 3/4);
         }
         rec->setLuminanceColor(color);
-#endif
 
         // CoreGraphics dialates smoothed text to provide contrast.
         rec->setContrast(0);

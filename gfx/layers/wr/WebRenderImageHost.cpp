@@ -48,9 +48,11 @@ WebRenderImageHost::~WebRenderImageHost() {
 }
 
 void WebRenderImageHost::OnReleased() {
+  ImageComposite::ClearImages();
   if (!mPendingRemoteTextureWrappers.empty()) {
     mPendingRemoteTextureWrappers.clear();
   }
+  SetCurrentTextureHost(nullptr);
 }
 
 void WebRenderImageHost::UseTextureHost(
@@ -250,13 +252,32 @@ void WebRenderImageHost::UseRemoteTexture() {
 }
 
 void WebRenderImageHost::CleanupResources() {
-  ClearImages();
+  ImageComposite::ClearImages();
   SetCurrentTextureHost(nullptr);
 }
 
 void WebRenderImageHost::RemoveTextureHost(TextureHost* aTexture) {
-  CompositableHost::RemoveTextureHost(aTexture);
   RemoveImagesWithTextureHost(aTexture);
+}
+
+void WebRenderImageHost::ClearImages(ClearImagesType aType) {
+  ImageComposite::ClearImages();
+  if (aType == ClearImagesType::All) {
+    if (!mPendingRemoteTextureWrappers.empty()) {
+      mPendingRemoteTextureWrappers.clear();
+    }
+    SetCurrentTextureHost(nullptr);
+
+    if (GetAsyncRef()) {
+      for (const auto& it : mWrBridges) {
+        RefPtr<WebRenderBridgeParent> wrBridge = it.second->WrBridge();
+        if (wrBridge && wrBridge->CompositorScheduler()) {
+          wrBridge->CompositorScheduler()->ScheduleComposition(
+              wr::RenderReasons::ASYNC_IMAGE);
+        }
+      }
+    }
+  }
 }
 
 TimeStamp WebRenderImageHost::GetCompositionTime() const {
@@ -323,7 +344,7 @@ TextureHost* WebRenderImageHost::GetAsTextureHostForComposite(
         StaticPrefs::gfx_video_convert_yuv_to_nv12_image_host_win() &&
         identifier.mSupportsD3D11NV12 &&
         KnowsCompositor::SupportsD3D11(identifier) &&
-        texture->GetFormat() == gfx::SurfaceFormat::YUV;
+        texture->GetFormat() == gfx::SurfaceFormat::YUV420;
     if (tryConvertToNV12) {
       PROFILER_MARKER_TEXT("WebRenderImageHost", GRAPHICS, {},
                            "Try ConvertToNV12"_ns);
@@ -339,7 +360,7 @@ TextureHost* WebRenderImageHost::GetAsTextureHostForComposite(
       }
     } else if (profiler_thread_is_being_profiled_for_markers() &&
                StaticPrefs::gfx_video_convert_yuv_to_nv12_image_host_win() &&
-               texture->GetFormat() == gfx::SurfaceFormat::YUV) {
+               texture->GetFormat() == gfx::SurfaceFormat::YUV420) {
       nsPrintfCString str("No ConvertToNV12 D3D11 %d NV12 %d",
                           KnowsCompositor::SupportsD3D11(identifier),
                           identifier.mSupportsD3D11NV12);

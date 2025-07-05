@@ -7,7 +7,7 @@
 #include <math.h>                // for floor, ceil
 #include <algorithm>             // for max
 #include "gfxContext.h"          // for gfxContext
-#include "gfxFontConstants.h"    // for NS_FONT_SYNTHESIS_*
+#include "gfxFontConstants.h"    // for NS_FONT_{SUB,SUPER}SCRIPT_OFFSET_RATIO
 #include "gfxPlatform.h"         // for gfxPlatform
 #include "gfxPoint.h"            // for gfxPoint
 #include "gfxRect.h"             // for gfxRect
@@ -120,6 +120,9 @@ nsFontMetrics::nsFontMetrics(const nsFont& aFont, const Params& aParams,
       mP2A(aContext->DeviceContext()->AppUnitsPerDevPixel()),
       mOrientation(aParams.orientation),
       mExplicitLanguage(aParams.explicitLanguage),
+#ifdef XP_WIN
+      mAllowForceGDIClassic(aParams.allowForceGDIClassic),
+#endif
       mTextRunRTL(false),
       mVertical(false),
       mTextOrientation(mozilla::StyleTextOrientation::Mixed) {
@@ -127,8 +130,11 @@ nsFontMetrics::nsFontMetrics(const nsFont& aFont, const Params& aParams,
                      gfxFloat(aFont.size.ToAppUnits()) / mP2A, aFont.sizeAdjust,
                      aFont.family.is_system_font,
                      aContext->DeviceContext()->IsPrinterContext(),
+#ifdef XP_WIN
+                     mAllowForceGDIClassic,
+#endif
                      aFont.synthesisWeight == StyleFontSynthesis::Auto,
-                     aFont.synthesisStyle == StyleFontSynthesis::Auto,
+                     aFont.synthesisStyle,
                      aFont.synthesisSmallCaps == StyleFontSynthesis::Auto,
                      aFont.synthesisPosition == StyleFontSynthesis::Auto,
                      aFont.languageOverride);

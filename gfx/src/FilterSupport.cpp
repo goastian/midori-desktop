@@ -934,9 +934,9 @@ static already_AddRefed<FilterNode> FilterNodeFromPrimitiveDescription(
         static const float allZero[4] = {0, 0, 0, 0};
         filter = mDT->CreateFilter(FilterType::ARITHMETIC_COMBINE);
         // All-zero coefficients sometimes occur in junk filters.
-        if (!filter || (coefficients.Length() == ArrayLength(allZero) &&
+        if (!filter || (coefficients.Length() == std::size(allZero) &&
                         ArrayEqual(coefficients.Elements(), allZero,
-                                   ArrayLength(allZero)))) {
+                                   std::size(allZero)))) {
           return nullptr;
         }
         filter->SetAttribute(ATT_ARITHMETIC_COMBINE_COEFFICIENTS,
@@ -1391,9 +1391,10 @@ static nsIntRegion ResultChangeRegionForPrimitive(
 
     nsIntRegion operator()(const MorphologyAttributes& aMorphology) {
       Size radii = aMorphology.mRadii;
-      int32_t rx = clamped(int32_t(ceil(radii.width)), 0, kMorphologyMaxRadius);
+      int32_t rx =
+          std::clamp(int32_t(ceil(radii.width)), 0, kMorphologyMaxRadius);
       int32_t ry =
-          clamped(int32_t(ceil(radii.height)), 0, kMorphologyMaxRadius);
+          std::clamp(int32_t(ceil(radii.height)), 0, kMorphologyMaxRadius);
       return mInputChangeRegions[0].Inflated(nsIntMargin(ry, rx, ry, rx));
     }
 
@@ -1601,9 +1602,10 @@ nsIntRegion FilterSupport::PostFilterExtentsForPrimitive(
         return mInputExtents[0];
       }
       Size radii = aMorphology.mRadii;
-      int32_t rx = clamped(int32_t(ceil(radii.width)), 0, kMorphologyMaxRadius);
+      int32_t rx =
+          std::clamp(int32_t(ceil(radii.width)), 0, kMorphologyMaxRadius);
       int32_t ry =
-          clamped(int32_t(ceil(radii.height)), 0, kMorphologyMaxRadius);
+          std::clamp(int32_t(ceil(radii.height)), 0, kMorphologyMaxRadius);
       return mInputExtents[0].Inflated(nsIntMargin(ry, rx, ry, rx));
     }
 
@@ -1771,9 +1773,10 @@ static nsIntRegion SourceNeededRegionForPrimitive(
 
     nsIntRegion operator()(const MorphologyAttributes& aMorphology) {
       Size radii = aMorphology.mRadii;
-      int32_t rx = clamped(int32_t(ceil(radii.width)), 0, kMorphologyMaxRadius);
+      int32_t rx =
+          std::clamp(int32_t(ceil(radii.width)), 0, kMorphologyMaxRadius);
       int32_t ry =
-          clamped(int32_t(ceil(radii.height)), 0, kMorphologyMaxRadius);
+          std::clamp(int32_t(ceil(radii.height)), 0, kMorphologyMaxRadius);
       return mResultNeededRegion.Inflated(nsIntMargin(ry, rx, ry, rx));
     }
 

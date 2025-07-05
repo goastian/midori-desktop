@@ -54,6 +54,26 @@ impl BlobImageKey {
     }
 }
 
+/// An opaque identifier describing a snapshot image registered with WebRender.
+/// This is used as a handle to reference snapshot images, and can be used as an
+/// image in display items.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize, PeekPoke)]
+pub struct SnapshotImageKey(pub ImageKey);
+
+impl SnapshotImageKey {
+    /// Interpret this snapshot image as an image for a display item.
+    pub fn as_image(self) -> ImageKey {
+        self.0
+    }
+}
+
+impl Default for SnapshotImageKey {
+    fn default() -> Self {
+        SnapshotImageKey(ImageKey::DUMMY)
+    }
+}
+
 /// An arbitrary identifier for an external image provided by the
 /// application. It must be a unique identifier for each external
 /// image.
@@ -74,8 +94,9 @@ pub enum ExternalImageSource<'a> {
 /// The data that an external client should provide about
 /// an external image. For instance, if providing video frames,
 /// the application could call wr.render() whenever a new
-/// video frame is ready. Note that the UV coords are supplied
-/// in texel-space!
+/// video frame is ready. Note that the UV coords are either normalized or
+/// unnormalized depending on the value of normalized_uvs in the corresponding
+/// ExternalImageData.
 pub struct ExternalImage<'a> {
     /// UV coordinates for the image.
     pub uv: TexelRect,
@@ -144,6 +165,8 @@ pub struct ExternalImageData {
     pub channel_index: u8,
     /// Storage format identifier.
     pub image_type: ExternalImageType,
+    /// Whether UV coordinates used with this image are normalized.
+    pub normalized_uvs: bool,
 }
 
 /// Specifies the format of a series of pixels, in driver terms.
@@ -191,9 +214,10 @@ impl ImageFormat {
 
 /// Specifies the color depth of an image. Currently only used for YUV images.
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, MallocSizeOf, PartialEq, Serialize, PeekPoke)]
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, Hash, MallocSizeOf, PartialEq, Serialize, PeekPoke)]
 pub enum ColorDepth {
     /// 8 bits image (most common)
+    #[default]
     Color8,
     /// 10 bits image
     Color10,
@@ -201,12 +225,6 @@ pub enum ColorDepth {
     Color12,
     /// 16 bits image
     Color16,
-}
-
-impl Default for ColorDepth {
-    fn default() -> Self {
-        ColorDepth::Color8
-    }
 }
 
 impl ColorDepth {
@@ -421,7 +439,8 @@ pub trait AsyncBlobImageRasterizer : Send {
     fn rasterize(
         &mut self,
         requests: &[BlobImageParams],
-        low_priority: bool
+        low_priority: bool,
+        tile_pool: &mut crate::BlobTilePool,
     ) -> Vec<(BlobImageRequest, BlobImageResult)>;
 }
 

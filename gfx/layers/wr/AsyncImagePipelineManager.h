@@ -10,8 +10,8 @@
 #include <vector>
 
 #include "CompositableHost.h"
+#include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/gfx/Point.h"
-#include "mozilla/ipc/FileDescriptor.h"
 #include "mozilla/layers/RemoteTextureMap.h"
 #include "mozilla/layers/TextureHost.h"
 #include "mozilla/Maybe.h"
@@ -23,6 +23,7 @@ namespace mozilla {
 
 namespace wr {
 class DisplayListBuilder;
+class RenderTextureHostUsageInfo;
 class WebRenderAPI;
 class WebRenderPipelineInfo;
 }  // namespace wr
@@ -31,6 +32,7 @@ namespace layers {
 
 class CompositableHost;
 class CompositorVsyncScheduler;
+class Fence;
 class WebRenderImageHost;
 class WebRenderTextureHost;
 
@@ -70,7 +72,7 @@ class AsyncImagePipelineManager final {
   void NotifyPipelinesUpdated(RefPtr<const wr::WebRenderPipelineInfo> aInfo,
                               wr::RenderedFrameId aLatestFrameId,
                               wr::RenderedFrameId aLastCompletedFrameId,
-                              ipc::FileDescriptor&& aFenceFd);
+                              RefPtr<Fence>&& aFence);
 
   // This is run on the compositor thread to process mRenderSubmittedUpdates. We
   // make this public because we need to invoke it from other places.
@@ -196,7 +198,8 @@ class AsyncImagePipelineManager final {
 
   struct AsyncImagePipeline {
     AsyncImagePipeline(wr::PipelineId aPipelineId,
-                       layers::WebRenderBackend aBackend);
+                       layers::WebRenderBackend aBackend,
+                       WebRenderImageHost* aImageHost);
     void Update(const LayoutDeviceRect& aScBounds, wr::WrRotation aRotation,
                 const wr::ImageRendering& aFilter,
                 const wr::MixBlendMode& aMixBlendMode) {
@@ -216,10 +219,11 @@ class AsyncImagePipelineManager final {
     wr::WrRotation mRotation;
     wr::ImageRendering mFilter;
     wr::MixBlendMode mMixBlendMode;
-    RefPtr<WebRenderImageHost> mImageHost;
+    const RefPtr<WebRenderImageHost> mImageHost;
     CompositableTextureHostRef mCurrentTexture;
     nsTArray<wr::ImageKey> mKeys;
     wr::DisplayListBuilder mDLBuilder;
+    bool mVideoOverlayDisabled = false;
   };
 
   void ApplyAsyncImageForPipeline(const wr::Epoch& aEpoch,
@@ -274,10 +278,11 @@ class AsyncImagePipelineManager final {
 
   struct WebRenderPipelineInfoHolder {
     WebRenderPipelineInfoHolder(RefPtr<const wr::WebRenderPipelineInfo>&& aInfo,
-                                ipc::FileDescriptor&& aFenceFd);
+                                RefPtr<Fence>&& aFence);
     ~WebRenderPipelineInfoHolder();
+    WebRenderPipelineInfoHolder(WebRenderPipelineInfoHolder&&) = default;
     RefPtr<const wr::WebRenderPipelineInfo> mInfo;
-    ipc::FileDescriptor mFenceFd;
+    RefPtr<Fence> mFence;
   };
 
   std::vector<std::pair<wr::RenderedFrameId, WebRenderPipelineInfoHolder>>
@@ -288,7 +293,7 @@ class AsyncImagePipelineManager final {
   std::vector<std::pair<wr::RenderedFrameId,
                         std::vector<UniquePtr<ForwardingTextureHost>>>>
       mTexturesInUseByGPU;
-  ipc::FileDescriptor mReleaseFenceFd;
+  RefPtr<Fence> mReleaseFence;
 };
 
 }  // namespace layers

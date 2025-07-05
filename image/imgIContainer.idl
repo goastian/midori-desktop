@@ -21,9 +21,12 @@ webidl Document;
 #include "limits.h"
 
 class gfxContext;
+class nsIFrame;
 
 namespace mozilla {
-struct AspectRatio;
+class TimeStamp;
+class SVGImageContext;
+struct MediaFeatureChange;
 
 namespace gfx {
 class SourceSurface;
@@ -33,31 +36,41 @@ class WindowRenderer;
 namespace layers {
 class ImageContainer;
 }
-}
 
-class nsIFrame;
-
-namespace mozilla {
-class TimeStamp;
-class SVGImageContext;
-struct MediaFeatureChange;
-}
-
-namespace mozilla {
 namespace image {
-
 class ImageRegion;
 class ImageIntRegion;
 class WebRenderImageProvider;
 struct Orientation;
 struct Resolution;
 
+/**
+ * This represents an image's intrinsic size, in units of pixels (the same
+ * units as our 'width' and 'height' attributes).  Both components are
+ * optional, because an image (particularly a vector image) may lack an
+ * intrinsic width and/or height.
+ *
+ * We use signed types for the components, but the values are expected to be
+ * nonnegative; any negative values should be considered an error. (Zero is
+ * valid, though.)
+ *
+ * Note that this is similar to a gfx::IntSize, except for the use of Maybe<>
+ * to reflect that the components are optional.  This is also similar to
+ * nsIFrame.h's mozilla::IntrinsicSize class, with the difference being pixel
+ * units here vs. nscoord units there.
+ */
+struct ImageIntrinsicSize {
+  Maybe<int32_t> mWidth;
+  Maybe<int32_t> mHeight;
+};
+
 }
 }
 
 %}
 
-native MaybeAspectRatio(mozilla::Maybe<mozilla::AspectRatio>);
+native AspectRatio(mozilla::AspectRatio);
+native ImageIntrinsicSize(mozilla::image::ImageIntrinsicSize);
 native ImgDrawResult(mozilla::image::ImgDrawResult);
 [ptr] native gfxContext(gfxContext);
 [ref] native gfxMatrix(gfxMatrix);
@@ -108,17 +121,36 @@ interface imgIContainer : nsISupports
   readonly attribute int32_t height;
 
   /**
+   * The intrinsic size of this image in pixels.  The values and units here are
+   * the same as those that the 'width' and 'height' attributes (declared
+   * above) would return.
+   *
+   * If an image lacks an intrinsic width and/or height, then that component
+   * will be Nothing() in the returned value. (This is different from the
+   * 'width' and 'height' attributes; they treat this case as an error, for
+   * historical reasons, but we can handle it more elegantly here.)
+   *
+   * In case of any error, an exception will be thrown.
+   */
+  [noscript] readonly attribute ImageIntrinsicSize intrinsicSize;
+
+  /**
    * The intrinsic size of this image in appunits. If the image has no intrinsic
    * size in a dimension, -1 will be returned for that dimension. In the case of
    * any error, an exception will be thrown.
+   *
+   * XXXdholbert maybe this should use the actual IntrinsicSize type (defined
+   * in nsIFrame.h, specifically for replaced elements like images, also
+   * using nscoord units but with Maybe<> to represent sizes being missing)?
    */
-  [noscript] readonly attribute nsSize intrinsicSize;
+  [noscript] readonly attribute nsSize intrinsicSizeInAppUnits;
 
   /**
-   * The (dimensionless) intrinsic ratio of this image. In the case of any
-   * error, Nothing() will be returned.
+   * The (dimensionless) intrinsic ratio of this image. Might return a
+   * degenerate ratio (one that returns 'false' when coerced to a bool)
+   * if the image is in an error state, or there's no ratio.
    */
-  [notxpcom, nostdcall] readonly attribute MaybeAspectRatio intrinsicRatio;
+  [notxpcom, nostdcall] readonly attribute AspectRatio intrinsicRatio;
 
   /**
    * The x coordinate of the image's hotspot, or 0 if there is no hotspot.

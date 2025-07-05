@@ -18,7 +18,6 @@
 #include "mozilla/GfxMessageUtils.h"
 #include "mozilla/layers/FocusTarget.h"
 #include "mozilla/layers/ScrollbarData.h"
-#include "mozilla/layers/WebRenderMessageUtils.h"
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "mozilla/HashTable.h"
 #include "mozilla/Maybe.h"
@@ -269,7 +268,7 @@ class WebRenderScrollData {
   Maybe<size_t> HasMetadataFor(
       const ScrollableLayerGuid::ViewID& aScrollId) const;
 
-  void SetIsFirstPaint();
+  void SetIsFirstPaint(bool aValue);
   bool IsFirstPaint() const;
   void SetPaintSequenceNumber(uint32_t aPaintSequenceNumber);
   uint32_t GetPaintSequenceNumber() const;
@@ -280,7 +279,9 @@ class WebRenderScrollData {
   // that we can handle all scroll position updates in the proper order.
   void PrependUpdates(const WebRenderScrollData& aPreviousData);
 
-  void SetWasUpdateSkipped() { mWasUpdateSkipped = true; }
+  void SetWasUpdateSkipped(bool aWasUpdateSkipped) {
+    mWasUpdateSkipped = aWasUpdateSkipped;
+  }
   bool GetWasUpdateSkipped() const { return mWasUpdateSkipped; }
 
   friend struct IPC::ParamTraits<WebRenderScrollData>;

@@ -8,7 +8,11 @@
 #define nsDocShellLoadState_h__
 
 #include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/NavigationBinding.h"
 #include "mozilla/dom/SessionHistoryEntry.h"
+#include "mozilla/dom/UserNavigationInvolvement.h"
+
+#include "nsILoadInfo.h"
 
 // Helper Classes
 #include "mozilla/Maybe.h"
@@ -30,6 +34,7 @@ class OriginAttributes;
 template <typename, class>
 class UniquePtr;
 namespace dom {
+class FormData;
 class DocShellLoadStateInit;
 }  // namespace dom
 }  // namespace mozilla
@@ -158,6 +163,10 @@ class nsDocShellLoadState final {
 
   void SetOriginalFrameSrc(bool aOriginalFrameSrc);
 
+  bool ShouldCheckForRecursion() const;
+
+  void SetShouldCheckForRecursion(bool aShouldCheckForRecursion);
+
   bool IsFormSubmission() const;
 
   void SetIsFormSubmission(bool aIsFormSubmission);
@@ -165,6 +174,11 @@ class nsDocShellLoadState final {
   uint32_t LoadType() const;
 
   void SetLoadType(uint32_t aLoadType);
+
+  mozilla::dom::UserNavigationInvolvement UserNavigationInvolvement() const;
+
+  void SetUserNavigationInvolvement(
+      mozilla::dom::UserNavigationInvolvement aUserNavigationInvolvement);
 
   nsISHEntry* SHEntry() const;
 
@@ -258,6 +272,10 @@ class nsDocShellLoadState final {
 
   void SetHasValidUserGestureActivation(bool HasValidUserGestureActivation);
 
+  void SetTextDirectiveUserActivation(bool aTextDirectiveUserActivation);
+
+  bool GetTextDirectiveUserActivation();
+
   const nsCString& TypeHint() const;
 
   void SetTypeHint(const nsCString& aTypeHint);
@@ -331,11 +349,22 @@ class nsDocShellLoadState final {
 
   void SetRemoteTypeOverride(const nsCString& aRemoteTypeOverride);
 
-  void SetWasSchemelessInput(bool aWasSchemelessInput) {
-    mWasSchemelessInput = aWasSchemelessInput;
+  void SetSchemelessInput(nsILoadInfo::SchemelessInputType aSchemelessInput) {
+    mSchemelessInput = aSchemelessInput;
   }
 
-  bool GetWasSchemelessInput() { return mWasSchemelessInput; }
+  nsILoadInfo::SchemelessInputType GetSchemelessInput() {
+    return mSchemelessInput;
+  }
+
+  void SetHttpsUpgradeTelemetry(
+      nsILoadInfo::HTTPSUpgradeTelemetryType aHttpsUpgradeTelemetry) {
+    mHttpsUpgradeTelemetry = aHttpsUpgradeTelemetry;
+  }
+
+  nsILoadInfo::HTTPSUpgradeTelemetryType GetHttpsUpgradeTelemetry() {
+    return mHttpsUpgradeTelemetry;
+  }
 
   // Determine the remote type of the process which should be considered
   // responsible for this load for the purposes of security checks.
@@ -380,6 +409,23 @@ class nsDocShellLoadState final {
   void ClearLoadIsFromSessionHistory();
 
   void MaybeStripTrackerQueryStrings(mozilla::dom::BrowsingContext* aContext);
+
+  // This is used as the parameter for https://html.spec.whatwg.org/#navigate
+  void SetSourceElement(mozilla::dom::Element* aElement);
+  already_AddRefed<mozilla::dom::Element> GetSourceElement() const;
+
+  // This is used as the parameter for https://html.spec.whatwg.org/#navigate,
+  // but it's currently missing. See bug 1966674
+  nsIStructuredCloneContainer* GetNavigationAPIState() const;
+  void SetNavigationAPIState(nsIStructuredCloneContainer* aNavigationAPIState);
+
+  // This is used as the parameter for https://html.spec.whatwg.org/#navigate
+  mozilla::dom::NavigationType GetNavigationType() const;
+
+  // This is used as the parameter for https://html.spec.whatwg.org/#navigate
+  // It should only ever be set if the method is POST.
+  mozilla::dom::FormData* GetFormDataEntryList();
+  void SetFormDataEntryList(mozilla::dom::FormData* aFormDataEntryList);
 
  protected:
   // Destructor can't be defaulted or inlined, as header doesn't have all type
@@ -497,6 +543,12 @@ class nsDocShellLoadState final {
   // element loading its original src (or srcdoc) attribute.
   bool mOriginalFrameSrc;
 
+  // If this attribute is true, this load corresponds to a frame, object, or
+  // embed element that needs a recursion check when loading it's src (or data).
+  // Unlike mOriginalFrameSrc, this attribute will always be set regardless
+  // whether we've loaded the src already.
+  bool mShouldCheckForRecursion;
+
   // If this attribute is true, then the load was initiated by a
   // form submission.
   bool mIsFormSubmission;
@@ -504,6 +556,10 @@ class nsDocShellLoadState final {
   // Contains a load type as specified by the nsDocShellLoadTypes::load*
   // constants
   uint32_t mLoadType;
+
+  // https://html.spec.whatwg.org/#user-navigation-involvement
+  mozilla::dom::UserNavigationInvolvement mUserNavigationInvolvement =
+      mozilla::dom::UserNavigationInvolvement::None;
 
   // Active Session History entry (if loading from SH)
   nsCOMPtr<nsISHEntry> mSHEntry;
@@ -548,6 +604,11 @@ class nsDocShellLoadState final {
 
   // Is this load triggered by a user gesture?
   bool mHasValidUserGestureActivation;
+
+  // True if a text directive can be scrolled to. This is true either if the
+  // load is triggered by a user, or the document has an unconsumed activation
+  // (eg. client redirect).
+  bool mTextDirectiveUserActivation = false;
 
   // Whether this load can steal the focus from the source browsing context.
   bool mAllowFocusMove;
@@ -609,8 +670,19 @@ class nsDocShellLoadState final {
   // Remote type of the process which originally requested the load.
   nsCString mTriggeringRemoteType;
 
-  // if the to-be-loaded address had it protocol added through a fixup
-  bool mWasSchemelessInput = false;
+  // if the address had an intentional protocol
+  nsILoadInfo::SchemelessInputType mSchemelessInput =
+      nsILoadInfo::SchemelessInputTypeUnset;
+
+  // Solely for the use of collecting Telemetry for HTTPS upgrades.
+  nsILoadInfo::HTTPSUpgradeTelemetryType mHttpsUpgradeTelemetry =
+      nsILoadInfo::NOT_INITIALIZED;
+
+  nsWeakPtr mSourceElement;
+
+  nsCOMPtr<nsIStructuredCloneContainer> mNavigationAPIState;
+
+  RefPtr<mozilla::dom::FormData> mFormDataEntryList;
 };
 
 #endif /* nsDocShellLoadState_h__ */

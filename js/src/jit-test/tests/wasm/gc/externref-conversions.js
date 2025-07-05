@@ -1,5 +1,3 @@
-// |jit-test| skip-if: !wasmGcEnabled()
-
 // Output type is non-nullable if the input type is non-nullable
 wasmValidateText(`(module
 	(func (param externref) (result anyref)
@@ -53,6 +51,9 @@ let {roundtripThroughAny} = wasmEvalText(`(module
 for (let value of WasmExternrefValues) {
 	assertEq(value, roundtripThroughAny(value));
 }
+
+assertEq(MaxI31refValue*100, roundtripThroughAny(MaxI31refValue*100));
+assertEq(MinI31refValue*100, roundtripThroughAny(MinI31refValue*100));
 
 // Can round trip GC objects through externref and get the same thing back
 let {testStruct, testArray} = wasmEvalText(`(module

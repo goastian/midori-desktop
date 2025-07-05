@@ -23,8 +23,6 @@ UNIFIED_SOURCES += [
     "src/base/thread.cc",
     "src/base/time.cc",
     "src/base/timer.cc",
-    "src/chrome/common/child_process.cc",
-    "src/chrome/common/child_thread.cc",
     "src/chrome/common/chrome_switches.cc",
     "src/chrome/common/ipc_channel_utils.cc",
     "src/chrome/common/ipc_message.cc",
@@ -47,7 +45,6 @@ if CONFIG["TARGET_KERNEL"] == "WINNT":
         "src/base/object_watcher.cc",
         "src/base/platform_thread_win.cc",
         "src/base/process_util_win.cc",
-        "src/base/shared_memory_win.cc",
         "src/base/sys_string_conversions_win.cc",
         "src/base/thread_local_win.cc",
         "src/base/time_win.cc",
@@ -67,13 +64,20 @@ if CONFIG["TARGET_KERNEL"] != "WINNT":
         "src/base/message_pump_libevent.cc",
         "src/base/platform_thread_posix.cc",
         "src/base/process_util_posix.cc",
-        "src/base/shared_memory_posix.cc",
         "src/base/string16.cc",
         "src/base/thread_local_posix.cc",
         "src/base/waitable_event_posix.cc",
         "src/chrome/common/ipc_channel_posix.cc",
-        "src/chrome/common/process_watcher_posix_sigchld.cc",
     ]
+
+    if CONFIG["TARGET_OS"] in ("Android", "iOS"):
+        UNIFIED_SOURCES += [
+            "src/chrome/common/process_watcher_dummy.cc",
+        ]
+    else:
+        UNIFIED_SOURCES += [
+            "src/chrome/common/process_watcher_posix_sigchld.cc",
+        ]
 
 if CONFIG["TARGET_KERNEL"] == "Darwin":
     UNIFIED_SOURCES += [

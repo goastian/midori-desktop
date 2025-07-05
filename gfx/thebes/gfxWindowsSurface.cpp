@@ -15,8 +15,7 @@
 
 #include "nsString.h"
 
-gfxWindowsSurface::gfxWindowsSurface(HDC dc, uint32_t flags)
-    : mOwnsDC(false), mDC(dc), mWnd(nullptr) {
+gfxWindowsSurface::gfxWindowsSurface(HDC dc, uint32_t flags) : mDC(dc) {
   InitWithDC(flags);
 }
 
@@ -25,10 +24,11 @@ void gfxWindowsSurface::MakeInvalid(mozilla::gfx::IntSize& size) {
 }
 
 gfxWindowsSurface::gfxWindowsSurface(const mozilla::gfx::IntSize& realSize,
-                                     gfxImageFormat imageFormat)
-    : mOwnsDC(false), mWnd(nullptr) {
+                                     gfxImageFormat imageFormat) {
   mozilla::gfx::IntSize size(realSize);
-  if (!mozilla::gfx::Factory::CheckSurfaceSize(size)) MakeInvalid(size);
+  if (!mozilla::gfx::Factory::CheckSurfaceSize(size)) {
+    MakeInvalid(size);
+  }
 
   cairo_format_t cformat = GfxFormatToCairoFormat(imageFormat);
   cairo_surface_t* surf =
@@ -39,17 +39,13 @@ gfxWindowsSurface::gfxWindowsSurface(const mozilla::gfx::IntSize& realSize,
   if (CairoStatus() == CAIRO_STATUS_SUCCESS) {
     mDC = cairo_win32_surface_get_dc(CairoSurface());
     RecordMemoryUsed(size.width * size.height * 4 + sizeof(gfxWindowsSurface));
-  } else {
-    mDC = nullptr;
   }
 }
 
-gfxWindowsSurface::gfxWindowsSurface(cairo_surface_t* csurf)
-    : mOwnsDC(false), mWnd(nullptr) {
-  if (cairo_surface_status(csurf) == 0)
+gfxWindowsSurface::gfxWindowsSurface(cairo_surface_t* csurf) {
+  if (cairo_surface_status(csurf) == 0) {
     mDC = cairo_win32_surface_get_dc(csurf);
-  else
-    mDC = nullptr;
+  }
 
   MOZ_ASSERT(cairo_surface_get_type(csurf) !=
              CAIRO_SURFACE_TYPE_WIN32_PRINTING);
@@ -65,14 +61,7 @@ void gfxWindowsSurface::InitWithDC(uint32_t flags) {
   }
 }
 
-gfxWindowsSurface::~gfxWindowsSurface() {
-  if (mOwnsDC) {
-    if (mWnd)
-      ::ReleaseDC(mWnd, mDC);
-    else
-      ::DeleteDC(mDC);
-  }
-}
+gfxWindowsSurface::~gfxWindowsSurface() = default;
 
 HDC gfxWindowsSurface::GetDC() {
   return cairo_win32_surface_get_dc(CairoSurface());
@@ -91,7 +80,9 @@ already_AddRefed<gfxImageSurface> gfxWindowsSurface::GetAsImageSurface() {
       "CairoSurface() shouldn't be nullptr when mSurfaceValid is TRUE!");
 
   cairo_surface_t* isurf = cairo_win32_surface_get_image(CairoSurface());
-  if (!isurf) return nullptr;
+  if (!isurf) {
+    return nullptr;
+  }
 
   RefPtr<gfxImageSurface> result =
       gfxASurface::Wrap(isurf).downcast<gfxImageSurface>();

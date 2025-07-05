@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 brx{
     Keys{
         calendar{"केलेण्डार/फान्जामुथि"}
@@ -830,7 +830,6 @@ brx{
         territory{"ओनसोल: {0}"}
     }
     localeDisplayPattern{
-        pattern{"{0} ({1})"}
         separator{"{0},{1}"}
     }
 }

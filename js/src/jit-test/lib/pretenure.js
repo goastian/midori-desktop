@@ -6,7 +6,7 @@ const is64bit = getBuildConfiguration("pointer-byte-size") === 8;
 const nurseryCount = is64bit ? 25000 : 50000;
 
 // Count of objects that will exceed the tenured heap collection threshold.
-const tenuredCount = is64bit ? 300000 : 600000;
+const tenuredCount = is64bit ? 400000 : 800000;
 
 function setupPretenureTest() {
   // The test requires that baseline is enabled and is not bypassed with
@@ -20,6 +20,8 @@ function setupPretenureTest() {
 
   // Disable zeal modes that will interfere with this test.
   gczeal(0);
+
+  setJitCompilerOption("offthread-compilation.enable", 0)
 
   // Restrict nursery size so we can fill it quicker, and ensure it is resized.
   let size = 1024 * 1024;
@@ -41,7 +43,10 @@ function setupPretenureTest() {
   // Force a nursery collection to apply size parameters.
   let o = {};
 
-  gc();
+  // Run a full (all-zones) shrinking GC. The heap size after this GC is
+  // significant because it affects the number of major GCs triggered by the
+  // tests.
+  gc(undefined, 'shrinking');
 }
 
 function allocateObjects(count, longLived) {

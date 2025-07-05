@@ -106,7 +106,7 @@ class WaylandOffscreenGLSurface {
   struct wl_egl_window* mEGLWindow = nullptr;
 };
 
-static nsTHashMap<nsPtrHashKey<void>, WaylandOffscreenGLSurface*>
+MOZ_RUNINIT static nsTHashMap<nsPtrHashKey<void>, WaylandOffscreenGLSurface*>
     sWaylandOffscreenGLSurfaces;
 
 void DeleteWaylandOffscreenGLSurface(EGLSurface surface) {
@@ -228,7 +228,7 @@ already_AddRefed<GLContext> GLContextEGLFactory::CreateImpl(
     gfxCriticalNote << "Failed[3] to load EGL library: " << failureId.get();
     return nullptr;
   }
-  const auto egl = lib->CreateDisplay(true, &failureId);
+  const auto egl = lib->CreateDisplay(true, false, &failureId);
   if (!egl) {
     gfxCriticalNote << "Failed[3] to create EGL library  display: "
                     << failureId.get();
@@ -881,7 +881,7 @@ bool CreateConfig(EglDisplay& aEgl, EGLConfig* aConfig, int32_t aDepth,
                   bool aEnableDepthBuffer, bool aUseGles, bool aAllowFallback) {
   EGLConfig configs[64];
   std::vector<EGLint> attribs;
-  EGLint ncfg = ArrayLength(configs);
+  EGLint ncfg = std::size(configs);
 
   switch (aDepth) {
     case 16:
@@ -1242,7 +1242,11 @@ void GLContextEGL::DestroySurface(EglDisplay& aEgl, const EGLSurface aSurface) {
 /*static*/
 already_AddRefed<GLContext> GLContextProviderEGL::CreateHeadless(
     const GLContextCreateDesc& desc, nsACString* const out_failureId) {
-  const auto display = DefaultEglDisplay(out_failureId);
+  bool useSoftwareDisplay =
+      static_cast<bool>(desc.flags & CreateContextFlags::FORBID_HARDWARE);
+  const auto display = useSoftwareDisplay
+                           ? CreateSoftwareEglDisplay(out_failureId)
+                           : DefaultEglDisplay(out_failureId);
   if (!display) {
     return nullptr;
   }

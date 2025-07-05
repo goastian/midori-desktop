@@ -9,9 +9,10 @@
 
 #ifndef SK_USE_DRAWING_MIPMAP_DOWNSAMPLER
 
-#include "include/private/SkColorData.h"
+#include "include/private/base/SkFloatingPoint.h"
 #include "src/base/SkHalf.h"
 #include "src/base/SkVx.h"
+#include "src/core/SkColorData.h"
 #include "src/core/SkMipmap.h"
 
 namespace {
@@ -580,6 +581,7 @@ std::unique_ptr<SkMipmapDownSampler> SkMipmap::MakeDownSampler(const SkPixmap& r
         case kRGB_101010x_SkColorType:  // TODO: use 1010102?
         case kBGR_101010x_SkColorType:  // TODO: use 1010102?
         case kBGR_101010x_XR_SkColorType:  // TODO: use 1010102?
+        case kRGB_F16F16F16x_SkColorType:  // TODO: use F16?
         case kBGRA_10101010_XR_SkColorType:
         case kRGBA_10x6_SkColorType:
         case kRGBA_F32_SkColorType:

@@ -15,7 +15,9 @@ use api::{NotificationRequest, Checkpoint, QualitySettings};
 use api::{FramePublishId, PrimitiveKeyKind, RenderReasons};
 use api::units::*;
 use api::channel::{single_msg_channel, Sender, Receiver};
+use crate::bump_allocator::ChunkPool;
 use crate::AsyncPropertySampler;
+use crate::box_shadow::BoxShadow;
 #[cfg(any(feature = "capture", feature = "replay"))]
 use crate::render_api::CaptureBits;
 #[cfg(feature = "replay")]
@@ -27,16 +29,16 @@ use crate::filterdata::FilterDataIntern;
 use crate::capture::CaptureConfig;
 use crate::composite::{CompositorKind, CompositeDescriptor};
 use crate::frame_builder::{FrameBuilder, FrameBuilderConfig, FrameScratchBuffer};
-use glyph_rasterizer::{FontInstance};
+use glyph_rasterizer::FontInstance;
 use crate::gpu_cache::GpuCache;
 use crate::hit_test::{HitTest, HitTester, SharedHitTester};
 use crate::intern::DataStore;
 #[cfg(any(feature = "capture", feature = "replay"))]
-use crate::internal_types::{DebugOutput};
-use crate::internal_types::{FastHashMap, RenderedDocument, ResultMsg, FrameId, FrameStamp};
+use crate::internal_types::DebugOutput;
+use crate::internal_types::{FastHashMap, FrameId, FrameMemory, FrameStamp, RenderedDocument, ResultMsg};
 use malloc_size_of::{MallocSizeOf, MallocSizeOfOps};
 use crate::picture::{PictureScratchBuffer, SliceId, TileCacheInstance, TileCacheParams, SurfaceInfo, RasterConfig};
-use crate::picture::{PicturePrimitive};
+use crate::picture::PicturePrimitive;
 use crate::prim_store::{PrimitiveScratchBuffer, PrimitiveInstance};
 use crate::prim_store::{PrimitiveInstanceKind, PrimTemplateCommonData};
 use crate::prim_store::interned::*;
@@ -285,6 +287,10 @@ impl DataStores {
                 let prim_data = &self.backdrop_render[data_handle];
                 &prim_data.common
             }
+            PrimitiveInstanceKind::BoxShadow { data_handle, .. } => {
+                let prim_data = &self.box_shadow[data_handle];
+                &prim_data.common
+            }
         }
     }
 }
@@ -509,7 +515,9 @@ impl Document {
         debug_flags: DebugFlags,
         tile_caches: &mut FastHashMap<SliceId, Box<TileCacheInstance>>,
         frame_stats: Option<FullFrameStats>,
+        present: bool,
         render_reasons: RenderReasons,
+        frame_memory: FrameMemory,
     ) -> RenderedDocument {
         let frame_build_start_time = precise_time_ns();
 
@@ -522,6 +530,7 @@ impl Document {
         let frame = {
             let frame = self.frame_builder.build(
                 &mut self.scene,
+                present,
                 resource_cache,
                 gpu_cache,
                 &mut self.rg_builder,
@@ -538,7 +547,8 @@ impl Document {
                 // Consume the minimap data. If APZ wants a minimap rendered
                 // on the next frame, it will add new entries to the minimap
                 // data during sampling.
-                mem::take(&mut self.minimap_data)
+                mem::take(&mut self.minimap_data),
+                frame_memory,
             );
 
             frame
@@ -552,6 +562,7 @@ impl Document {
         let frame_build_time_ms =
             profiler::ns_to_ms(precise_time_ns() - frame_build_start_time);
         self.profile.set(profiler::FRAME_BUILDING_TIME, frame_build_time_ms);
+        self.profile.start_time(profiler::FRAME_SEND_TIME);
 
         let frame_stats = frame_stats.map(|mut stats| {
             stats.frame_build_time += frame_build_time_ms;
@@ -661,7 +672,10 @@ impl Document {
             resource_cache,
         );
 
-        self.scene = built_scene;
+
+        let old_scene = std::mem::replace(&mut self.scene, built_scene);
+        old_scene.recycle();
+
         self.scratch.recycle(recycler);
     }
 }
@@ -702,6 +716,7 @@ pub struct RenderBackend {
 
     gpu_cache: GpuCache,
     resource_cache: ResourceCache,
+    chunk_pool: Arc<ChunkPool>,
 
     frame_config: FrameBuilderConfig,
     default_compositor_kind: CompositorKind,
@@ -738,6 +753,7 @@ impl RenderBackend {
         result_tx: Sender<ResultMsg>,
         scene_tx: Sender<SceneBuilderRequest>,
         resource_cache: ResourceCache,
+        chunk_pool: Arc<ChunkPool>,
         notifier: Box<dyn RenderNotifier>,
         frame_config: FrameBuilderConfig,
         sampler: Option<Box<dyn AsyncPropertySampler + Send>>,
@@ -751,6 +767,7 @@ impl RenderBackend {
             scene_tx,
             resource_cache,
             gpu_cache: GpuCache::new(),
+            chunk_pool,
             frame_config,
             default_compositor_kind : frame_config.compositor_kind,
             documents: FastHashMap::default(),
@@ -944,6 +961,7 @@ impl RenderBackend {
                 txn.frame_ops.take(),
                 txn.notifications.take(),
                 txn.render_frame,
+                txn.present,
                 RenderReasons::SCENE,
                 None,
                 txn.invalidate_rendered_frame,
@@ -1005,6 +1023,8 @@ impl RenderBackend {
                 };
                 self.result_tx.send(msg).unwrap();
                 self.notifier.wake_up(false);
+
+                self.chunk_pool.purge_all_chunks();
             }
             ApiMsg::ReportMemory(tx) => {
                 self.report_memory(tx);
@@ -1142,6 +1162,12 @@ impl RenderBackend {
                 return self.process_scene_builder_result(msg, frame_counter);
             }
         }
+
+        // Now that we are likely out of the critical path, purge a few chunks
+        // from the pool. The underlying deallocation can be expensive, especially
+        // with build configurations where all of the memory is zeroed, so we
+        // spread the load over potentially many iterations of the event loop.
+        self.chunk_pool.purge_chunks(2, 3);
 
         RenderBackendStatus::Continue
     }
@@ -1286,6 +1312,7 @@ impl RenderBackend {
                 txn.frame_ops.take(),
                 txn.notifications.take(),
                 txn.generate_frame.as_bool(),
+                txn.generate_frame.present(),
                 txn.render_reasons,
                 txn.generate_frame.id(),
                 txn.invalidate_rendered_frame,
@@ -1325,6 +1352,7 @@ impl RenderBackend {
                     Vec::default(),
                     Vec::default(),
                     false,
+                    false,
                     RenderReasons::empty(),
                     None,
                     false,
@@ -1347,6 +1375,7 @@ impl RenderBackend {
         mut frame_ops: Vec<FrameMsg>,
         mut notifications: Vec<NotificationRequest>,
         mut render_frame: bool,
+        mut present: bool,
         render_reasons: RenderReasons,
         generated_frame_id: Option<u64>,
         invalidate_rendered_frame: bool,
@@ -1354,6 +1383,8 @@ impl RenderBackend {
         has_built_scene: bool,
         start_time: Option<u64>
     ) -> bool {
+        let update_doc_start = precise_time_ns();
+
         let requested_frame = render_frame;
 
         let requires_frame_build = self.requires_frame_build();
@@ -1423,6 +1454,14 @@ impl RenderBackend {
         }
 
         if build_frame {
+            if !requested_frame {
+                // When we don't request a frame, present defaults to false. If for some
+                // reason we did not request the frame but must render it anyway, set
+                // present to true (it was false as a byproduct of expecting we wouldn't
+                // produce the frame but we did not explicitly opt out of it).
+                present = true;
+            }
+
             if start_time.is_some() {
               Telemetry::record_time_to_frame_build(Duration::from_nanos(precise_time_ns() - start_time.unwrap()));
             }
@@ -1436,13 +1475,17 @@ impl RenderBackend {
 
                 let frame_stats = doc.frame_stats.take();
 
+                let frame_memory = FrameMemory::new(self.chunk_pool.clone());
+
                 let rendered_document = doc.build_frame(
                     &mut self.resource_cache,
                     &mut self.gpu_cache,
                     self.debug_flags,
                     &mut self.tile_caches,
                     frame_stats,
+                    present,
                     render_reasons,
+                    frame_memory,
                 );
 
                 debug!("generated frame for document {:?} with {} passes",
@@ -1503,6 +1546,9 @@ impl RenderBackend {
                 None => {},
             }
 
+            let update_doc_time = profiler::ns_to_ms(precise_time_ns() - update_doc_start);
+            rendered_document.profile.set(profiler::UPDATE_DOCUMENT_TIME, update_doc_time);
+
             let msg = ResultMsg::PublishPipelineInfo(doc.updated_pipeline_info());
             self.result_tx.send(msg).unwrap();
 
@@ -1544,7 +1590,12 @@ impl RenderBackend {
             } else if render_frame {
                 doc.rendered_frame_is_valid = true;
             }
-            self.notifier.new_frame_ready(document_id, scroll, render_frame, self.frame_publish_id);
+            let params = api::FrameReadyParams {
+                present,
+                render: render_frame,
+                scrolled: scroll,
+            };
+            self.notifier.new_frame_ready(document_id, self.frame_publish_id, &params);
         }
 
         if !doc.hit_tester_is_valid {
@@ -1637,14 +1688,16 @@ impl RenderBackend {
             if config.bits.contains(CaptureBits::FRAME) {
                 // Temporarily force invalidation otherwise the render task graph dump is empty.
                 let force_invalidation = std::mem::replace(&mut doc.scene.config.force_invalidation, true);
-
+                let frame_memory = FrameMemory::new(self.chunk_pool.clone());
                 let rendered_document = doc.build_frame(
                     &mut self.resource_cache,
                     &mut self.gpu_cache,
                     self.debug_flags,
                     &mut self.tile_caches,
                     None,
+                    true,
                     RenderReasons::empty(),
+                    frame_memory,
                 );
 
                 doc.scene.config.force_invalidation = force_invalidation;
@@ -1926,7 +1979,12 @@ impl RenderBackend {
                     );
                     self.result_tx.send(msg_publish).unwrap();
 
-                    self.notifier.new_frame_ready(id, false, true, self.frame_publish_id);
+                    let params = api::FrameReadyParams {
+                        present: true,
+                        render: true,
+                        scrolled: false,
+                    };
+                    self.notifier.new_frame_ready(id, self.frame_publish_id, &params);
 
                     // We deserialized the state of the frame so we don't want to build
                     // it (but we do want to update the scene builder's state)

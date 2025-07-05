@@ -11,16 +11,12 @@
 #include "Units.h"
 
 // Must be kept in sync with xpcom/rust/xpcom/src/interfaces/nonidl.rs
-#define NS_ISCROLLOBSERVER_IID                       \
-  {                                                  \
-    0xaa5026eb, 0x2f88, 0x4026, {                    \
-      0xa4, 0x6b, 0xf4, 0x59, 0x6b, 0x4e, 0xdf, 0x00 \
-    }                                                \
-  }
+#define NS_ISCROLLOBSERVER_IID \
+  {0xaa5026eb, 0x2f88, 0x4026, {0xa4, 0x6b, 0xf4, 0x59, 0x6b, 0x4e, 0xdf, 0x00}}
 
 class nsIScrollObserver : public nsISupports {
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_ISCROLLOBSERVER_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_ISCROLLOBSERVER_IID)
 
   /**
    * Called when the scroll position of some element has changed.
@@ -31,15 +27,13 @@ class nsIScrollObserver : public nsISupports {
    * Called when an async panning/zooming transform has started being applied
    * and passed the scroll offset
    */
-  MOZ_CAN_RUN_SCRIPT virtual void AsyncPanZoomStarted(){};
+  MOZ_CAN_RUN_SCRIPT virtual void AsyncPanZoomStarted() {};
 
   /**
    * Called when an async panning/zooming transform is no longer applied
    * and passed the scroll offset
    */
-  MOZ_CAN_RUN_SCRIPT virtual void AsyncPanZoomStopped(){};
+  MOZ_CAN_RUN_SCRIPT virtual void AsyncPanZoomStopped() {};
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(nsIScrollObserver, NS_ISCROLLOBSERVER_IID)
 
 #endif /* nsIScrollObserver_h___ */

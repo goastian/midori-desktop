@@ -66,21 +66,37 @@ for (let [name, enabled, test] of releasedFeaturesMaybeDisabledAnyway) {
 let releasedFeatures = [
   ['threads', wasmThreadsEnabled(), `(module (memory 1 1 shared))`],
   [
-    'tail-calls',
-    wasmTailCallsEnabled(),
-    `(module (func) (func (return_call 0)))`
-  ],
-  ['gc', wasmGcEnabled(), `(module (type (struct)))`],
-  [
     'multi-memory',
     wasmMultiMemoryEnabled(),
     `(module (memory 0) (memory 0))`,
   ],
+  [
+    'exnref',
+    wasmExnRefEnabled(),
+    `(module (func try_table end))`
+  ],
+  [
+    'memory64',
+    wasmMemory64Enabled(),
+    `(module (memory i64 0))`,
+  ],
+  [
+    'js-string-builtins',
+    wasmJSStringBuiltinsEnabled(),
+    `(module
+      (import "wasm:js-string" "concat"
+        (func
+          (param externref externref)
+          (result (ref extern)))
+      )
+    )`,
+    {builtins: ['js-string']}
+  ]
 ];
 
-for (let [name, enabled, test] of releasedFeatures) {
+for (let [name, enabled, test, options] of releasedFeatures) {
   if (release_or_beta) {
     assertEq(enabled, true, `${name} must be enabled on release and beta`);
-    wasmEvalText(test);
+    wasmEvalText(test, {}, options);
   }
 }

@@ -24,11 +24,11 @@
 #include "include/core/SkSurfaceProps.h"
 #include "include/core/SkTypes.h"
 #include "include/core/SkVertices.h"
-#include "include/private/SkColorData.h"
 #include "include/private/base/SkFloatingPoint.h"
 #include "include/private/base/SkTo.h"
 #include "src/base/SkArenaAlloc.h"
 #include "src/core/SkBlenderBase.h"
+#include "src/core/SkColorData.h"
 #include "src/core/SkConvertPixels.h"
 #include "src/core/SkCoreBlitters.h"
 #include "src/core/SkDraw.h"
@@ -335,7 +335,7 @@ void SkDraw::drawVertices(const SkVertices* vertices,
         dev3 = outerAlloc.makeArray<SkPoint3>(vertexCount);
         fCTM->mapHomogeneousPoints(dev3, info.positions(), vertexCount);
         // similar to the bounds check for 2d points (below)
-        if (!SkScalarsAreFinite((const SkScalar*)dev3, vertexCount * 3)) {
+        if (!SkIsFinite((const SkScalar*)dev3, vertexCount * 3)) {
             return;
         }
     } else {

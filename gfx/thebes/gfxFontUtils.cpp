@@ -587,6 +587,31 @@ typedef struct Format14Cmap {
   VarSelectorRecord varSelectorRecords[1];
 } Format14Cmap;
 
+typedef struct DefUVSTable {
+  AutoSwap_PRUint32 numUnicodeValueRanges;
+
+  typedef struct {
+    AutoSwap_PRUint24 startUnicodeValue;
+    uint8_t additionalCount;
+  } UnicodeRange;
+
+  UnicodeRange ranges[1];
+} DefUVSTable;
+
+typedef struct UnicodeRangeComparator {
+  explicit UnicodeRangeComparator(uint32_t aTarget) : mTarget(aTarget) {}
+  int operator()(std::pair<uint32_t, uint32_t> aVal) const {
+    if (mTarget < aVal.first) {
+      return -1;
+    }
+    if (mTarget > aVal.second) {
+      return 1;
+    }
+    return 0;
+  }
+  const uint32_t mTarget;
+} UnicodeRangeComparator;
+
 typedef struct NonDefUVSTable {
   AutoSwap_PRUint32 numUVSMappings;
 
@@ -746,6 +771,16 @@ struct Format14CmapWrapper {
   }
 };
 
+struct DefUVSTableWrapper {
+  const DefUVSTable& mTable;
+  explicit DefUVSTableWrapper(const DefUVSTable& table) : mTable(table) {}
+  std::pair<uint32_t, uint32_t> operator[](size_t index) const {
+    const auto& range = mTable.ranges[index];
+    return std::make_pair(range.startUnicodeValue,
+                          range.startUnicodeValue + range.additionalCount);
+  }
+};
+
 struct NonDefUVSTableWrapper {
   const NonDefUVSTable& mTable;
   explicit NonDefUVSTableWrapper(const NonDefUVSTable& table) : mTable(table) {}
@@ -782,6 +817,35 @@ uint16_t gfxFontUtils::MapUVSToGlyphFormat14(const uint8_t* aBuf, uint32_t aCh,
   }
 
   return 0;
+}
+
+bool gfxFontUtils::IsDefaultUVSSequence(const uint8_t* aBuf, uint32_t aCh,
+                                        uint32_t aVS) {
+  using mozilla::BinarySearch;
+  const Format14Cmap* cmap14 = reinterpret_cast<const Format14Cmap*>(aBuf);
+
+  size_t index;
+  if (!BinarySearch(Format14CmapWrapper(*cmap14), 0,
+                    cmap14->numVarSelectorRecords, aVS, &index)) {
+    return false;
+  }
+
+  const uint32_t defUVSOffset =
+      cmap14->varSelectorRecords[index].defaultUVSOffset;
+  if (!defUVSOffset) {
+    return false;
+  }
+
+  const DefUVSTable* table =
+      reinterpret_cast<const DefUVSTable*>(aBuf + defUVSOffset);
+
+  if (BinarySearchIf(DefUVSTableWrapper(*table), 0,
+                     table->numUnicodeValueRanges, UnicodeRangeComparator(aCh),
+                     &index)) {
+    return true;
+  }
+
+  return false;
 }
 
 uint32_t gfxFontUtils::MapCharToGlyph(const uint8_t* aCmapBuf,
@@ -1026,7 +1090,7 @@ nsresult gfxFontUtils::RenameFont(const nsAString& aName,
                                            NAME_ID_POSTSCRIPT};
 
   // calculate new name table size
-  uint16_t nameCount = ArrayLength(neededNameIDs);
+  uint16_t nameCount = std::size(neededNameIDs);
 
   // leave room for null-terminator
   uint32_t nameStrLength = (aName.Length() + 1) * sizeof(char16_t);
@@ -1294,7 +1358,7 @@ nsresult gfxFontUtils::ReadCanonicalName(const char* aNameData,
 // on the first search.
 
 const uint16_t ANY = 0xffff;
-const gfxFontUtils::MacFontNameCharsetMapping
+MOZ_RUNINIT const gfxFontUtils::MacFontNameCharsetMapping
     gfxFontUtils::gMacFontNameCharsets[] = {
         {ENCODING_ID_MAC_ROMAN, LANG_ID_MAC_ENGLISH, MACINTOSH_ENCODING},
         {ENCODING_ID_MAC_ROMAN, LANG_ID_MAC_ICELANDIC, X_USER_DEFINED_ENCODING},
@@ -1325,14 +1389,14 @@ const gfxFontUtils::MacFontNameCharsetMapping
          GB18030_ENCODING},
         {ENCODING_ID_MAC_SIMP_CHINESE, ANY, GB18030_ENCODING}};
 
-const Encoding* gfxFontUtils::gISOFontNameCharsets[] = {
+MOZ_RUNINIT const Encoding* gfxFontUtils::gISOFontNameCharsets[] = {
     /* 0 */ WINDOWS_1252_ENCODING, /* US-ASCII */
     /* 1 */ nullptr, /* spec says "ISO 10646" but does not specify encoding
                         form! */
     /* 2 */ WINDOWS_1252_ENCODING /* ISO-8859-1 */
 };
 
-const Encoding* gfxFontUtils::gMSFontNameCharsets[] = {
+MOZ_RUNINIT const Encoding* gfxFontUtils::gMSFontNameCharsets[] = {
     /* [0] ENCODING_ID_MICROSOFT_SYMBOL */ UTF_16BE_ENCODING,
     /* [1] ENCODING_ID_MICROSOFT_UNICODEBMP */ UTF_16BE_ENCODING,
     /* [2] ENCODING_ID_MICROSOFT_SHIFTJIS */ SHIFT_JIS_ENCODING,
@@ -1380,7 +1444,7 @@ const Encoding* gfxFontUtils::GetCharsetForFontName(uint16_t aPlatform,
       for (uint32_t i = 0; i < 2; ++i) {
         size_t idx;
         if (BinarySearchIf(gMacFontNameCharsets, 0,
-                           ArrayLength(gMacFontNameCharsets),
+                           std::size(gMacFontNameCharsets),
                            MacCharsetMappingComparator(searchValue), &idx)) {
           return gMacFontNameCharsets[idx].mEncoding;
         }
@@ -1391,13 +1455,13 @@ const Encoding* gfxFontUtils::GetCharsetForFontName(uint16_t aPlatform,
     } break;
 
     case PLATFORM_ID_ISO:
-      if (aScript < ArrayLength(gISOFontNameCharsets)) {
+      if (aScript < std::size(gISOFontNameCharsets)) {
         return gISOFontNameCharsets[aScript];
       }
       break;
 
     case PLATFORM_ID_MICROSOFT:
-      if (aScript < ArrayLength(gMSFontNameCharsets)) {
+      if (aScript < std::size(gMSFontNameCharsets)) {
         return gMSFontNameCharsets[aScript];
       }
       break;

@@ -14,10 +14,12 @@
 #include "mozilla/intl/AppDateTimeFormat.h"
 #include "mozilla/intl/Locale.h"
 #include "mozilla/intl/OSPreferences.h"
+#include "nsContentUtils.h"
 #include "nsDirectoryService.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsIObserverService.h"
 #include "nsStringEnumerator.h"
+#include "nsRFPService.h"
 #include "nsXULAppAPI.h"
 #include "nsZipArchive.h"
 #ifdef XP_WIN
@@ -408,10 +410,10 @@ LocaleService::GetDefaultLocale(nsACString& aRetVal) {
   // time), so we cache the result the first time we're called.
   if (mDefaultLocale.IsEmpty()) {
     nsAutoCString locale;
-    // Try to get the package locale from update.locale in omnijar. If the
-    // update.locale file is not found, item.len will remain 0 and we'll
+    // Try to get the package locale from default.locale in omnijar. If the
+    // default.locale file is not found, item.len will remain 0 and we'll
     // just use our hard-coded default below.
-    GetGREFileContents("update.locale", &locale);
+    GetGREFileContents("default.locale", &locale);
     locale.Trim(" \t\n\r");
 #ifdef MOZ_UPDATER
     // This should never be empty.
@@ -421,7 +423,7 @@ LocaleService::GetDefaultLocale(nsACString& aRetVal) {
       mDefaultLocale.Assign(locale);
     }
 
-    // Hard-coded fallback to allow us to survive even if update.locale was
+    // Hard-coded fallback to allow us to survive even if default.locale was
     // missing/broken in some way.
     if (mDefaultLocale.IsEmpty()) {
       GetLastFallbackLocale(mDefaultLocale);
@@ -528,8 +530,9 @@ LocaleService::GetRegionalPrefsLocales(nsTArray<nsCString>& aRetVal) {
 
 NS_IMETHODIMP
 LocaleService::GetWebExposedLocales(nsTArray<nsCString>& aRetVal) {
-  if (StaticPrefs::privacy_spoof_english() == 2) {
-    aRetVal = nsTArray<nsCString>({"en-US"_ns});
+  if (nsContentUtils::ShouldResistFingerprinting("No context",
+                                                 RFPTarget::JSLocale)) {
+    aRetVal = nsTArray<nsCString>({nsRFPService::GetSpoofedJSLocale()});
     return NS_OK;
   }
 

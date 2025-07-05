@@ -211,7 +211,8 @@ RefPtr<TextureHost> TextureHostWrapperD3D11::CreateFromBufferTexture(
   }
 
   auto* bufferTexture = aTextureHost->AsBufferTextureHost();
-  if (!bufferTexture || bufferTexture->GetFormat() != gfx::SurfaceFormat::YUV) {
+  if (!bufferTexture ||
+      bufferTexture->GetFormat() != gfx::SurfaceFormat::YUV420) {
     MOZ_ASSERT_UNREACHABLE("unexpected to be called");
     return nullptr;
   }
@@ -256,8 +257,7 @@ RefPtr<TextureHost> TextureHostWrapperD3D11::CreateFromBufferTexture(
   auto descD3D10 = SurfaceDescriptorD3D10(
       nullptr, Some(id),
       /* arrayIndex */ 0, gfx::SurfaceFormat::NV12, size, colorSpace,
-      colorRange, /* hasKeyedMutex */ false, /* fenceInfo */ Nothing(),
-      /* gpuProcessQueryId */ Nothing());
+      colorRange, /* hasKeyedMutex */ false, /* fencesHolderId */ Nothing());
 
   RefPtr<DXGITextureHostD3D11> textureHostD3D11 =
       new DXGITextureHostD3D11(flags, descD3D10);

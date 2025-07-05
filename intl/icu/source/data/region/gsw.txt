@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 gsw{
     Countries{
         001{"Wält"}
@@ -137,7 +137,6 @@ gsw{
         IL{"Israel"}
         IM{"Insle vo Män"}
         IN{"Indie"}
-        IO{"Britischs Territoorium im Indische Oozean"}
         IQ{"Iraak"}
         IR{"Iraan"}
         IS{"Iisland"}

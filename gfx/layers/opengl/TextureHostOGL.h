@@ -541,11 +541,11 @@ class AndroidHardwareBufferTextureHost : public TextureHost {
                         const Range<wr::ImageKey>& aImageKeys,
                         PushDisplayItemFlagSet aFlags) override;
 
-  void SetAcquireFence(mozilla::ipc::FileDescriptor&& aFenceFd) override;
+  void SetAcquireFence(UniqueFileHandle&& aFenceFd) override;
 
-  void SetReleaseFence(mozilla::ipc::FileDescriptor&& aFenceFd) override;
+  void SetReleaseFence(UniqueFileHandle&& aFenceFd) override;
 
-  mozilla::ipc::FileDescriptor GetAndResetReleaseFence() override;
+  UniqueFileHandle GetAndResetReleaseFence() override;
 
   AndroidHardwareBuffer* GetAndroidHardwareBuffer() const override {
     return mAndroidHardwareBuffer;
@@ -642,6 +642,8 @@ class EGLImageTextureHost final : public TextureHost {
                         const wr::LayoutRect& aClip, wr::ImageRendering aFilter,
                         const Range<wr::ImageKey>& aImageKeys,
                         PushDisplayItemFlagSet aFlags) override;
+
+  bool SupportsExternalCompositing(WebRenderBackend aBackend) override;
 
  protected:
   const EGLImage mImage;

@@ -12,7 +12,6 @@
 #include <sstream>
 
 #include "base/command_line.h"
-#include "base/compiler_specific.h"
 #include "base/logging.h"
 #include "base/process.h"
 #include "base/process_util.h"
@@ -29,6 +28,34 @@
 #include "nsThreadUtils.h"
 
 using namespace mozilla::ipc;
+
+namespace {
+
+// This logic is borrowed from Chromium's `base/win/win_util.h`. It allows us
+// to distinguish pseudo-handle values, such as returned by GetCurrentProcess()
+// (-1), GetCurrentThread() (-2), and potentially more. The code there claims
+// that fuzzers have found issues up until -12 with DuplicateHandle.
+//
+// https://source.chromium.org/chromium/chromium/src/+/36dbbf38697dd1e23ef8944bb9e57f6e0b3d41ec:base/win/win_util.h
+inline bool IsPseudoHandle(HANDLE handle) {
+  auto handleValue = static_cast<int32_t>(reinterpret_cast<uintptr_t>(handle));
+  return -12 <= handleValue && handleValue < 0;
+}
+
+// A real handle is a handle that is not a pseudo-handle. Always preferably use
+// this variant over ::DuplicateHandle. Only use stock ::DuplicateHandle if you
+// explicitly need the ability to duplicate a pseudo-handle.
+inline bool DuplicateRealHandle(HANDLE source_process, HANDLE source_handle,
+                                HANDLE target_process, LPHANDLE target_handle,
+                                DWORD desired_access, BOOL inherit_handle,
+                                DWORD options) {
+  MOZ_RELEASE_ASSERT(!IsPseudoHandle(source_handle));
+  return static_cast<bool>(::DuplicateHandle(
+      source_process, source_handle, target_process, target_handle,
+      desired_access, inherit_handle, options));
+}
+
+}  // namespace
 
 namespace IPC {
 //------------------------------------------------------------------------------
@@ -49,8 +76,8 @@ Channel::ChannelImpl::ChannelImpl(ChannelHandle pipe, Mode mode,
                                   base::ProcessId other_pid)
     : chan_cap_("ChannelImpl::SendMutex",
                 MessageLoopForIO::current()->SerialEventTarget()),
-      ALLOW_THIS_IN_INITIALIZER_LIST(input_state_(this)),
-      ALLOW_THIS_IN_INITIALIZER_LIST(output_state_(this)),
+      input_state_(this),
+      output_state_(this),
       other_pid_(other_pid) {
   Init(mode);
 
@@ -80,7 +107,7 @@ void Channel::ChannelImpl::Init(Mode mode) {
 }
 
 void Channel::ChannelImpl::OutputQueuePush(mozilla::UniquePtr<Message> msg) {
-  chan_cap_.NoteSendMutex();
+  chan_cap_.NoteLockHeld();
 
   mozilla::LogIPCMessage::LogDispatchWithPid(msg.get(), other_pid_);
 
@@ -138,7 +165,7 @@ void Channel::ChannelImpl::CloseLocked() {
 
 bool Channel::ChannelImpl::Send(mozilla::UniquePtr<Message> message) {
   mozilla::MutexAutoLock lock(SendMutex());
-  chan_cap_.NoteSendMutex();
+  chan_cap_.NoteLockHeld();
 
 #ifdef IPC_MESSAGE_DEBUG_EXTRA
   DLOG(INFO) << "sending message @" << message.get() << " on channel @" << this
@@ -235,7 +262,7 @@ void Channel::ChannelImpl::SetOtherPid(base::ProcessId other_pid) {
 
 bool Channel::ChannelImpl::ProcessIncomingMessages(
     MessageLoopForIO::IOContext* context, DWORD bytes_read, bool was_pending) {
-  chan_cap_.NoteOnIOThread();
+  chan_cap_.NoteOnTarget();
 
   DCHECK(!input_state_.is_pending);
 
@@ -378,7 +405,7 @@ bool Channel::ChannelImpl::ProcessIncomingMessages(
 bool Channel::ChannelImpl::ProcessOutgoingMessages(
     MessageLoopForIO::IOContext* context, DWORD bytes_written,
     bool was_pending) {
-  chan_cap_.NoteSendMutex();
+  chan_cap_.NoteLockHeld();
 
   DCHECK(!output_state_.is_pending);
   DCHECK(!waiting_connect_);  // Why are we trying to send messages if there's
@@ -473,7 +500,7 @@ void Channel::ChannelImpl::OnIOCompleted(MessageLoopForIO::IOContext* context,
   RefPtr<ChannelImpl> was_pending;
 
   IOThread().AssertOnCurrentThread();
-  chan_cap_.NoteOnIOThread();
+  chan_cap_.NoteOnTarget();
 
   bool ok;
   if (context == &input_state_.context) {
@@ -566,7 +593,7 @@ static HANDLE Uint32ToHandle(uint32_t h) {
 }
 
 bool Channel::ChannelImpl::AcceptHandles(Message& msg) {
-  chan_cap_.NoteOnIOThread();
+  chan_cap_.NoteOnTarget();
 
   MOZ_ASSERT(msg.num_handles() == 0);
 
@@ -595,7 +622,7 @@ bool Channel::ChannelImpl::AcceptHandles(Message& msg) {
   nsTArray<mozilla::UniqueFileHandle> handles(num_handles);
   for (uint32_t handleValue : payload) {
     HANDLE ipc_handle = Uint32ToHandle(handleValue);
-    if (!ipc_handle || ipc_handle == INVALID_HANDLE_VALUE) {
+    if (!ipc_handle || IsPseudoHandle(ipc_handle)) {
       CHROMIUM_LOG(ERROR)
           << "Attempt to accept invalid or null handle from process "
           << other_pid_ << " for message " << msg.name() << " in AcceptHandles";
@@ -613,9 +640,10 @@ bool Channel::ChannelImpl::AcceptHandles(Message& msg) {
         CHROMIUM_LOG(ERROR) << "other_process_ is invalid in AcceptHandles";
         return false;
       }
-      if (!::DuplicateHandle(other_process_, ipc_handle, GetCurrentProcess(),
-                             getter_Transfers(local_handle), 0, FALSE,
-                             DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE)) {
+      if (!DuplicateRealHandle(
+              other_process_, ipc_handle, GetCurrentProcess(),
+              getter_Transfers(local_handle), 0, FALSE,
+              DUPLICATE_SAME_ACCESS | DUPLICATE_CLOSE_SOURCE)) {
         DWORD err = GetLastError();
         // Don't log out a scary looking error if this failed due to the target
         // process terminating.
@@ -646,7 +674,7 @@ bool Channel::ChannelImpl::AcceptHandles(Message& msg) {
 }
 
 bool Channel::ChannelImpl::TransferHandles(Message& msg) {
-  chan_cap_.NoteSendMutex();
+  chan_cap_.NoteLockHeld();
 
   MOZ_ASSERT(msg.header()->num_handles == 0);
 
@@ -688,9 +716,9 @@ bool Channel::ChannelImpl::TransferHandles(Message& msg) {
         CHROMIUM_LOG(ERROR) << "other_process_ is invalid in TransferHandles";
         return false;
       }
-      if (!::DuplicateHandle(GetCurrentProcess(), local_handle.get(),
-                             other_process_, &ipc_handle, 0, FALSE,
-                             DUPLICATE_SAME_ACCESS)) {
+      if (!DuplicateRealHandle(GetCurrentProcess(), local_handle.get(),
+                               other_process_, &ipc_handle, 0, FALSE,
+                               DUPLICATE_SAME_ACCESS)) {
         DWORD err = GetLastError();
         // Don't log out a scary looking error if this failed due to the target
         // process terminating.
@@ -754,16 +782,6 @@ void Channel::SetOtherPid(base::ProcessId other_pid) {
 }
 
 bool Channel::IsClosed() const { return channel_impl_->IsClosed(); }
-
-HANDLE Channel::GetClientChannelHandle() {
-  // Read the switch from the command line which passed the initial handle for
-  // this process, and convert it back into a HANDLE.
-  std::wstring switchValue = CommandLine::ForCurrentProcess()->GetSwitchValue(
-      switches::kProcessChannelID);
-
-  uint32_t handleInt = std::stoul(switchValue);
-  return Uint32ToHandle(handleInt);
-}
 
 // static
 bool Channel::CreateRawPipe(ChannelHandle* server, ChannelHandle* client) {

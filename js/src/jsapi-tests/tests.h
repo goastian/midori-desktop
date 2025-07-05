@@ -343,8 +343,11 @@ class JSAPIRuntimeTest : public JSAPITest {
   }
 
   static const JSClass* basicGlobalClass() {
-    static const JSClass c = {"global", JSCLASS_GLOBAL_FLAGS,
-                              &JS::DefaultGlobalClassOps};
+    static const JSClass c = {
+        "global",
+        JSCLASS_GLOBAL_FLAGS,
+        &JS::DefaultGlobalClassOps,
+    };
     return &c;
   }
 
@@ -438,13 +441,13 @@ class JSAPIFrontendTest : public JSAPITest {
 
 #define BEGIN_REUSABLE_TEST(testname)   \
   BEGIN_TEST_WITH_ATTRIBUTES_AND_EXTRA( \
-      testname, , cls_##testname()      \
-      : JSAPIRuntimeTest() { reuseGlobal = true; })
+      testname, ,                       \
+      cls_##testname() : JSAPIRuntimeTest() { reuseGlobal = true; })
 
 #define END_TEST(testname) \
   }                        \
   ;                        \
-  static cls_##testname cls_##testname##_instance;
+  MOZ_RUNINIT static cls_##testname cls_##testname##_instance;
 
 /*
  * A "fixture" is a subclass of JSAPIRuntimeTest that holds common definitions
@@ -463,7 +466,7 @@ class JSAPIFrontendTest : public JSAPITest {
 #define END_FIXTURE_TEST(fixture, testname) \
   }                                         \
   ;                                         \
-  static cls_##testname cls_##testname##_instance;
+  MOZ_RUNINIT static cls_##testname cls_##testname##_instance;
 
 /*
  * A class for creating and managing one temporary file.

@@ -9,6 +9,7 @@
 
 #include "mozilla/layers/TextureHostOGL.h"
 #include "RenderTextureHost.h"
+#include "RenderTextureHostSWGL.h"
 #include "mozilla/widget/DMABufSurface.h"
 
 namespace mozilla {
@@ -19,10 +20,12 @@ class SurfaceDescriptorDMABuf;
 
 namespace wr {
 
-class RenderDMABUFTextureHost final : public RenderTextureHost {
+class RenderDMABUFTextureHost final : public RenderTextureHostSWGL {
  public:
   explicit RenderDMABUFTextureHost(DMABufSurface* aSurface);
 
+  RenderDMABUFTextureHost* AsRenderDMABUFTextureHost() override { return this; }
+  gfx::IntSize GetSize(uint8_t aChannelIndex) const;
   wr::WrExternalImage Lock(uint8_t aChannelIndex, gl::GLContext* aGL) override;
   void Unlock() override;
   void ClearCachedResources() override;
@@ -31,6 +34,19 @@ class RenderDMABUFTextureHost final : public RenderTextureHost {
     return mSurface->GetWidth() * mSurface->GetHeight() *
            BytesPerPixel(mSurface->GetFormat());
   }
+  RefPtr<DMABufSurface> GetSurface() { return mSurface; }
+
+  // RenderTextureHostSWGL
+  gfx::SurfaceFormat GetFormat() const override {
+    return mSurface->GetFormat();
+  }
+  gfx::ColorDepth GetColorDepth() const override {
+    return gfx::ColorDepth::COLOR_8;
+  }
+  size_t GetPlaneCount() const override { return mSurface->GetTextureCount(); };
+  bool MapPlane(RenderCompositor* aCompositor, uint8_t aChannelIndex,
+                PlaneInfo& aPlaneInfo) override;
+  void UnmapPlanes() override;
 
  private:
   virtual ~RenderDMABUFTextureHost();
@@ -38,6 +54,7 @@ class RenderDMABUFTextureHost final : public RenderTextureHost {
 
   RefPtr<DMABufSurface> mSurface;
   RefPtr<gl::GLContext> mGL;
+  RefPtr<gfx::DataSourceSurface> mReadback;
 };
 
 }  // namespace wr

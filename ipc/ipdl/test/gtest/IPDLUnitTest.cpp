@@ -7,10 +7,10 @@
 #include "gtest/gtest.h"
 
 #include "mozilla/_ipdltest/IPDLUnitTest.h"
-#include "mozilla/ipc/IOThreadChild.h"
 #include "mozilla/ipc/NodeController.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/ipc/ProcessChild.h"
+#include "mozilla/ipc/ProcessUtils.h"
 #include "mozilla/SpinEventLoopUntil.h"
 #include "nsDebugImpl.h"
 #include "nsThreadManager.h"
@@ -25,7 +25,8 @@
 
 namespace mozilla::_ipdltest {
 
-static std::unordered_map<std::string_view, ipc::IToplevelProtocol* (*)()>
+MOZ_RUNINIT static std::unordered_map<std::string_view,
+                                      ipc::IToplevelProtocol* (*)()>
     sAllocChildActorRegistry;
 
 const char* RegisterAllocChildActor(const char* aName,
@@ -45,7 +46,7 @@ already_AddRefed<IPDLUnitTestParent> IPDLUnitTestParent::CreateCrossProcess() {
   parent->mSubprocess =
       new ipc::GeckoChildProcessHost(GeckoProcessType_IPDLUnitTest);
 
-  std::vector<std::string> extraArgs;
+  geckoargs::ChildProcessArgs extraArgs;
 
   auto prefSerializer = MakeUnique<ipc::SharedPreferenceSerializer>();
   if (!prefSerializer->SerializeToSharedMemory(GeckoProcessType_IPDLUnitTest,
@@ -56,7 +57,7 @@ already_AddRefed<IPDLUnitTestParent> IPDLUnitTestParent::CreateCrossProcess() {
   }
   prefSerializer->AddSharedPrefCmdLineArgs(*parent->mSubprocess, extraArgs);
 
-  if (!parent->mSubprocess->SyncLaunch(extraArgs)) {
+  if (!parent->mSubprocess->SyncLaunch(std::move(extraArgs))) {
     ADD_FAILURE() << "Subprocess launch failed";
     return nullptr;
   }
@@ -108,7 +109,8 @@ bool IPDLUnitTestParent::Start(const char* aName,
     ADD_FAILURE() << "IPDLUnitTestParent::SendStart failed";
     return false;
   }
-  if (!aActor->Open(std::move(parentPort), channelId, OtherPid())) {
+  if (!aActor->Open(std::move(parentPort), channelId,
+                    OtherEndpointProcInfo())) {
     ADD_FAILURE() << "Unable to open parent actor";
     return false;
   }
@@ -176,7 +178,8 @@ ipc::IPCResult IPDLUnitTestChild::RecvStart(const nsCString& aName,
   mojo::core::ports::PortRef port = aPort.Port();
 
   RefPtr<IToplevelProtocol> child = allocChildActor();
-  if (!child->Open(std::move(aPort), aMessageChannelId, OtherPid())) {
+  if (!child->Open(std::move(aPort), aMessageChannelId,
+                   OtherEndpointProcInfo())) {
     ADD_FAILURE() << "Unable to open child actor";
     return IPC_FAIL(this, "Unable to open child actor");
   }
@@ -293,14 +296,15 @@ class IPDLUnitTestProcessChild : public ipc::ProcessChild {
 
 // Defined in nsEmbedFunctions.cpp
 extern UniquePtr<ipc::ProcessChild> (*gMakeIPDLUnitTestProcessChild)(
-    base::ProcessId, const nsID&);
+    IPC::Channel::ChannelHandle, base::ProcessId, const nsID&);
 
 // Initialize gMakeIPDLUnitTestProcessChild in a static constructor.
-int _childProcessEntryPointStaticConstructor = ([] {
+MOZ_RUNINIT int _childProcessEntryPointStaticConstructor = ([] {
   gMakeIPDLUnitTestProcessChild =
-      [](base::ProcessId aParentPid,
+      [](IPC::Channel::ChannelHandle aClientChannel, base::ProcessId aParentPid,
          const nsID& aMessageChannelId) -> UniquePtr<ipc::ProcessChild> {
-    return MakeUnique<IPDLUnitTestProcessChild>(aParentPid, aMessageChannelId);
+    return MakeUnique<IPDLUnitTestProcessChild>(std::move(aClientChannel),
+                                                aParentPid, aMessageChannelId);
   };
   return 0;
 })();

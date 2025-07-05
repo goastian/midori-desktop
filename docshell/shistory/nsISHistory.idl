@@ -124,12 +124,13 @@ interface nsISHistory: nsISupports
    */
   void removeSHistoryListener(in nsISHistoryListener aListener);
 
+  [can_run_script]
   void reloadCurrentEntry();
 
   /**
    * Load the entry at the particular index.
    */
-  [noscript]
+  [noscript, can_run_script]
   void gotoIndex(in long aIndex, in boolean aUserActivation);
 
   /**
@@ -268,7 +269,7 @@ interface nsISHistory: nsISupports
   [noscript, notxpcom]
   void RemoveFrameEntries(in nsISHEntry aEntry);
 
-  void reload(in unsigned long aReloadFlags);
+  [can_run_script] void reload(in unsigned long aReloadFlags);
 
   [notxpcom] void EnsureCorrectEntryAtCurrIndex(in nsISHEntry aEntry);
 
@@ -286,5 +287,9 @@ interface nsISHistory: nsISupports
   [noscript] void AddChildSHEntryHelper(in nsISHEntry aCloneRef, in nsISHEntry aNewEntry,
                                         in BrowsingContext aRootBC, in boolean aCloneChildren);
 
-  [noscript, notxpcom] boolean isEmptyOrHasEntriesForSingleTopLevelPage();
+  /**
+   * Determine if we can navigate back in history from the entry at aIndex
+   * to an entry that has user interaction.
+   */
+  boolean canGoBackFromEntryAtIndex(in long aIndex);
 };

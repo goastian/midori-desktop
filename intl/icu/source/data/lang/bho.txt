@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 bho{
     Languages{
         bho{"भोजपुरी"}
@@ -13,9 +13,5 @@ bho{
         language{"भाषा: {0}"}
         script{"देवनागरी: {0}"}
         territory{"इलाका: {0}"}
-    }
-    localeDisplayPattern{
-        pattern{"{0} ({1})"}
-        separator{"{0}, {1}"}
     }
 }

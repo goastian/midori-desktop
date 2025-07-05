@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 nl{
     Countries{
         001{"wereld"}
@@ -85,6 +85,7 @@ nl{
         CN{"China"}
         CO{"Colombia"}
         CP{"Clipperton"}
+        CQ{"Sark"}
         CR{"Costa Rica"}
         CU{"Cuba"}
         CV{"Kaapverdië"}
@@ -298,6 +299,9 @@ nl{
         ZW{"Zimbabwe"}
         ZZ{"onbekend gebied"}
     }
+    Countries%chagos{
+        IO{"Chagoseilanden"}
+    }
     Countries%short{
         GB{"VK"}
         HK{"Hongkong"}
@@ -315,5 +319,6 @@ nl{
         NZ{"Aotearoa Nieuw-Zeeland"}
         SZ{"Swaziland"}
         TL{"Democratische Republiek Oost-Timor"}
+        TR{"Türkiye"}
     }
 }

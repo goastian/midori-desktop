@@ -8,37 +8,50 @@ extern crate webrender_build;
 
 use std::collections::HashSet;
 use std::fmt::Write;
-use webrender_build::shader::{ShaderFeatureFlags, get_shader_features};
+use webrender_build::shader::{get_shader_features, ShaderFeatureFlags};
 
 // Shader key is in "name feature,feature" format.
 // File name needs to be formatted as "name_feature_feature".
 fn shader_file(shader_key: &str) -> String {
-    shader_key.replace(' ', "_").replace(',', "_")
+    shader_key.replace([' ', ','], "_")
 }
 
 fn write_load_shader(shader_keys: &[String]) {
     let mut load_shader = String::new();
     for s in shader_keys {
-        let _ = write!(load_shader, "#include \"{}.h\"\n", shader_file(s));
+        let _ = writeln!(load_shader, "#include \"{}.h\"", shader_file(s));
     }
     load_shader.push_str("ProgramLoader load_shader(const char* name) {\n");
     for s in shader_keys {
-        let _ = write!(load_shader, "  if (!strcmp(name, \"{}\")) {{ return {}_program::loader; }}\n",
-                       s, shader_file(s));
+        let _ = writeln!(
+            load_shader,
+            "  if (!strcmp(name, \"{}\")) {{ return {}_program::loader; }}",
+            s,
+            shader_file(s)
+        );
     }
     load_shader.push_str("  return nullptr;\n}\n");
-    std::fs::write(std::env::var("OUT_DIR").unwrap() + "/load_shader.h", load_shader).unwrap();
+    std::fs::write(
+        std::env::var("OUT_DIR").unwrap() + "/load_shader.h",
+        load_shader,
+    )
+    .unwrap();
 }
 
-fn process_imports(shader_dir: &str, shader: &str, included: &mut HashSet<String>, output: &mut String) {
+fn process_imports(
+    shader_dir: &str,
+    shader: &str,
+    included: &mut HashSet<String>,
+    output: &mut String,
+) {
     if !included.insert(shader.into()) {
         return;
     }
     println!("cargo:rerun-if-changed={}/{}.glsl", shader_dir, shader);
     let source = std::fs::read_to_string(format!("{}/{}.glsl", shader_dir, shader)).unwrap();
     for line in source.lines() {
-        if line.starts_with("#include ") {
-            let imports = line["#include ".len() ..].split(',');
+        if let Some(imports) = line.strip_prefix("#include ") {
+            let imports = imports.split(',');
             for import in imports {
                 process_imports(shader_dir, import, included, output);
             }
@@ -51,16 +64,23 @@ fn process_imports(shader_dir: &str, shader: &str, included: &mut HashSet<String
     }
 }
 
-fn translate_shader(shader_key: &str, shader_dir: &str) {
+fn translate_shader(
+    shader_key: &str,
+    shader_dir: &str,
+    suppressed_env_vars: &mut Option<Vec<EnvVarGuard>>,
+) {
     let mut imported = String::from("#define SWGL 1\n#define __VERSION__ 150\n");
-    let _ = write!(imported, "#define WR_MAX_VERTEX_TEXTURE_WIDTH {}U\n",
-                   webrender_build::MAX_VERTEX_TEXTURE_WIDTH);
+    let _ = writeln!(
+        imported,
+        "#define WR_MAX_VERTEX_TEXTURE_WIDTH {}U",
+        webrender_build::MAX_VERTEX_TEXTURE_WIDTH
+    );
 
     let (basename, features) =
         shader_key.split_at(shader_key.find(' ').unwrap_or(shader_key.len()));
     if !features.is_empty() {
         for feature in features.trim().split(',') {
-            let _ = write!(imported, "#define WR_FEATURE_{}\n", feature);
+            let _ = writeln!(imported, "#define WR_FEATURE_{}", feature);
         }
     }
 
@@ -72,12 +92,33 @@ fn translate_shader(shader_key: &str, shader_dir: &str) {
     let imp_name = format!("{}/{}.c", out_dir, shader);
     std::fs::write(&imp_name, imported).unwrap();
 
+    // We need to ensure that the C preprocessor does not pull compiler flags from the host or
+    // target environment. Set all `CFLAGS` or `CXXFLAGS` env. vars. to empty to work around this.
+    let _ = suppressed_env_vars.get_or_insert_with(|| {
+        let mut env_vars = Vec::new();
+        for (key, value) in std::env::vars_os() {
+            if let Some(key_utf8) = key.to_str() {
+                if ["CFLAGS", "CXXFLAGS"]
+                    .iter()
+                    .any(|opt_name| key_utf8.contains(opt_name))
+                {
+                    std::env::set_var(&key, "");
+                    env_vars.push(EnvVarGuard {
+                        key,
+                        old_value: Some(value),
+                    });
+                }
+            }
+        }
+        env_vars
+    });
+
     let mut build = cc::Build::new();
     build.no_default_flags(true);
     if let Ok(tool) = build.try_get_compiler() {
         if tool.is_like_msvc() {
             build.flag("/EP");
-            if tool.path().to_str().map_or(false, |p| p.contains("clang")) {
+            if tool.path().to_str().is_some_and(|p| p.contains("clang")) {
                 build.flag("/clang:-undef");
             } else {
                 build.flag("/u");
@@ -86,13 +127,10 @@ fn translate_shader(shader_key: &str, shader_dir: &str) {
             build.flag("-xc").flag("-P").flag("-undef");
         }
     }
-    // Use SWGLPP target to avoid pulling CFLAGS/CXXFLAGS.
-    build.target("SWGLPP");
     build.file(&imp_name);
-    let vs = build.clone()
-        .define("WR_VERTEX_SHADER", Some("1"))
-        .expand();
-    let fs = build.clone()
+    let vs = build.clone().define("WR_VERTEX_SHADER", Some("1")).expand();
+    let fs = build
+        .clone()
         .define("WR_FRAGMENT_SHADER", Some("1"))
         .expand();
     let vs_name = format!("{}/{}.vert", out_dir, shader);
@@ -100,11 +138,7 @@ fn translate_shader(shader_key: &str, shader_dir: &str) {
     std::fs::write(&vs_name, vs).unwrap();
     std::fs::write(&fs_name, fs).unwrap();
 
-    let args = vec![
-        "glsl_to_cxx".to_string(),
-        vs_name,
-        fs_name,
-    ];
+    let args = vec!["glsl_to_cxx".to_string(), vs_name, fs_name];
     let result = glsl_to_cxx::translate(&mut args.into_iter());
     std::fs::write(format!("{}/{}.h", out_dir, shader), result).unwrap();
 }
@@ -112,34 +146,28 @@ fn translate_shader(shader_key: &str, shader_dir: &str) {
 fn main() {
     let shader_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap() + "/../webrender/res";
 
-    let shader_flags =
-        ShaderFeatureFlags::GL |
-        ShaderFeatureFlags::DUAL_SOURCE_BLENDING |
-        ShaderFeatureFlags::ADVANCED_BLEND_EQUATION |
-        ShaderFeatureFlags::DEBUG;
+    let shader_flags = ShaderFeatureFlags::GL
+        | ShaderFeatureFlags::DUAL_SOURCE_BLENDING
+        | ShaderFeatureFlags::ADVANCED_BLEND_EQUATION
+        | ShaderFeatureFlags::DEBUG;
     let mut shaders: Vec<String> = Vec::new();
     for (name, features) in get_shader_features(shader_flags) {
         shaders.extend(features.iter().map(|f| {
-            if f.is_empty() { name.to_owned() } else { format!("{} {}", name, f) }
+            if f.is_empty() {
+                name.to_owned()
+            } else {
+                format!("{} {}", name, f)
+            }
         }));
     }
 
     shaders.sort();
 
-    // We need to ensure that the C preprocessor does not pull compiler flags from
-    // the host or target environment. Set up a SWGLPP target with empty flags to
-    // work around this.
-    if let Ok(target) = std::env::var("TARGET") {
-        if let Ok(cc) = std::env::var(format!("CC_{}", target))
-                        .or(std::env::var(format!("CC_{}", target.replace("-", "_")))) {
-            std::env::set_var("CC_SWGLPP", cc);
-        }
-    }
-    std::env::set_var("CFLAGS_SWGLPP", "");
-
+    let mut suppressed_env_vars = None;
     for shader in &shaders {
-        translate_shader(shader, &shader_dir);
+        translate_shader(shader, &shader_dir, &mut suppressed_env_vars);
     }
+    drop(suppressed_env_vars); // Restore env. vars. for further compilation.
 
     write_load_shader(&shaders);
 
@@ -158,16 +186,18 @@ fn main() {
 
     if let Ok(tool) = build.try_get_compiler() {
         if tool.is_like_msvc() {
-            build.flag("/std:c++17")
-                 .flag("/EHs-")
-                 .flag("/GR-")
-                 .flag("/UMOZILLA_CONFIG_H");
+            build
+                .flag("/std:c++17")
+                .flag("/EHs-")
+                .flag("/GR-")
+                .flag("/UMOZILLA_CONFIG_H");
         } else {
-            build.flag("-std=c++17")
-                 .flag("-fno-exceptions")
-                 .flag("-fno-rtti")
-                 .flag("-fno-math-errno")
-                 .flag("-UMOZILLA_CONFIG_H");
+            build
+                .flag("-std=c++17")
+                .flag("-fno-exceptions")
+                .flag("-fno-rtti")
+                .flag("-fno-math-errno")
+                .flag("-UMOZILLA_CONFIG_H");
         }
         // SWGL relies heavily on inlining for performance so override -Oz with -O2
         if tool.args().contains(&"-Oz".into()) {
@@ -183,23 +213,42 @@ fn main() {
         // probably explicitly use reciprocal instructions and avoid the refinement step.
         // Also, allow checks for non-finite values which fast-math may disable.
         if tool.is_like_msvc() {
-            build.flag("/fp:fast")
-                 .flag("-Xclang")
-                 .flag("-mrecip=none")
-                 .flag("/clang:-fno-finite-math-only");
+            build
+                .flag("/fp:fast")
+                .flag("-Xclang")
+                .flag("-mrecip=none")
+                .flag("/clang:-fno-finite-math-only");
         } else if tool.is_like_clang() {
             // gcc only supports -mrecip=none on some targets so to keep
             // things simple we don't use -ffast-math with gcc at all
-            build.flag("-ffast-math")
-                 .flag("-mrecip=none")
-                 .flag("-fno-finite-math-only");
+            build
+                .flag("-ffast-math")
+                .flag("-mrecip=none")
+                .flag("-fno-finite-math-only");
         }
     }
 
-    build.file("src/gl.cc")
+    build
+        .file("src/gl.cc")
         .define("_GLIBCXX_USE_CXX11_ABI", Some("0"))
         .include(shader_dir)
         .include("src")
         .include(std::env::var("OUT_DIR").unwrap())
         .compile("gl_cc");
+}
+
+struct EnvVarGuard {
+    key: std::ffi::OsString,
+    old_value: Option<std::ffi::OsString>,
+}
+
+impl Drop for EnvVarGuard {
+    fn drop(&mut self) {
+        let Self { key, old_value } = &*self;
+        if let Some(old_value) = old_value.as_ref() {
+            std::env::set_var(key, old_value);
+        } else {
+            std::env::remove_var(key);
+        }
+    }
 }

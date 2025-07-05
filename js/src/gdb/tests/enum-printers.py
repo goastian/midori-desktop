@@ -5,7 +5,7 @@ import mozilla.prettyprinters
 
 
 @mozilla.prettyprinters.pretty_printer("unscoped_no_storage")
-class my_typedef(object):
+class UnscopedNoStoragePrinter:
     def __init__(self, value, cache):
         pass
 
@@ -14,7 +14,7 @@ class my_typedef(object):
 
 
 @mozilla.prettyprinters.pretty_printer("unscoped_with_storage")
-class my_typedef(object):
+class UnscopedWithStoragePrinter:
     def __init__(self, value, cache):
         pass
 
@@ -23,7 +23,7 @@ class my_typedef(object):
 
 
 @mozilla.prettyprinters.pretty_printer("scoped_no_storage")
-class my_typedef(object):
+class ScopedNoStoragePrinter:
     def __init__(self, value, cache):
         pass
 
@@ -32,7 +32,7 @@ class my_typedef(object):
 
 
 @mozilla.prettyprinters.pretty_printer("scoped_with_storage")
-class my_typedef(object):
+class ScopedWithStoragePrinter:
     def __init__(self, value, cache):
         pass
 

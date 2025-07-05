@@ -16,6 +16,7 @@
 #  include "mozilla/gfx/gfxVars.h"
 #  include "mozilla/ipc/UtilityProcessManager.h"
 #  include "mozilla/layers/PVideoBridge.h"
+#  include "mozilla/layers/VideoBridgeParent.h"
 #  include "mozilla/layers/VideoBridgeUtils.h"
 #endif
 
@@ -61,7 +62,7 @@ nsresult UtilityAudioDecoderChild::BindToUtilityProcess(
   Endpoint<PUtilityAudioDecoderChild> utilityAudioDecoderChildEnd;
   Endpoint<PUtilityAudioDecoderParent> utilityAudioDecoderParentEnd;
   nsresult rv = PUtilityAudioDecoder::CreateEndpoints(
-      aUtilityParent->OtherPid(), base::GetCurrentProcId(),
+      aUtilityParent->OtherEndpointProcInfo(), EndpointProcInfo::Current(),
       &utilityAudioDecoderParentEnd, &utilityAudioDecoderChildEnd);
 
   if (NS_FAILED(rv)) {
@@ -162,6 +163,9 @@ void UtilityAudioDecoderChild::OnCompositorUnexpectedShutdown() {
 
 bool UtilityAudioDecoderChild::CreateVideoBridge() {
   MOZ_ASSERT(NS_IsMainThread());
+  ipc::Endpoint<layers::PVideoBridgeParent> parentPipe;
+  ipc::Endpoint<layers::PVideoBridgeChild> childPipe;
+
   MOZ_ASSERT(mSandbox == SandboxingKind::MF_MEDIA_ENGINE_CDM);
 
   // Creating or already created, avoiding reinit a bridge.
@@ -170,40 +174,43 @@ bool UtilityAudioDecoderChild::CreateVideoBridge() {
   }
   mHasCreatedVideoBridge = State::Creating;
 
+  gfx::GPUProcessManager* gpuManager = gfx::GPUProcessManager::Get();
+  ipc::EndpointProcInfo gpuProcessInfo = gpuManager
+                                             ? gpuManager->GPUEndpointProcInfo()
+                                             : ipc::EndpointProcInfo::Invalid();
+
   // Build content device data first; this ensure that the GPU process is fully
   // ready.
   gfx::ContentDeviceData contentDeviceData;
   gfxPlatform::GetPlatform()->BuildContentDeviceData(&contentDeviceData);
 
-  gfx::GPUProcessManager* gpuManager = gfx::GPUProcessManager::Get();
-  if (!gpuManager) {
-    NS_WARNING("Failed to get a gpu mananger!");
-    return false;
-  }
-
   // The child end is the producer of video frames; the parent end is the
   // consumer.
-  base::ProcessId childPid = UtilityProcessManager::GetSingleton()
-                                 ->GetProcessParent(mSandbox)
-                                 ->OtherPid();
-  base::ProcessId parentPid = gpuManager->GPUProcessPid();
-  if (parentPid == base::kInvalidProcessId) {
-    NS_WARNING("GPU process Id is invald!");
-    return false;
-  }
+  EndpointProcInfo childInfo = UtilityProcessManager::GetSingleton()
+                                   ->GetProcessParent(mSandbox)
+                                   ->OtherEndpointProcInfo();
+  EndpointProcInfo parentInfo =
+      gpuProcessInfo != ipc::EndpointProcInfo::Invalid()
+          ? gpuProcessInfo
+          : ipc::EndpointProcInfo::Current();
 
-  ipc::Endpoint<layers::PVideoBridgeParent> parentPipe;
-  ipc::Endpoint<layers::PVideoBridgeChild> childPipe;
-  nsresult rv = layers::PVideoBridge::CreateEndpoints(parentPid, childPid,
+  nsresult rv = layers::PVideoBridge::CreateEndpoints(parentInfo, childInfo,
                                                       &parentPipe, &childPipe);
   if (NS_FAILED(rv)) {
     NS_WARNING("Failed to create endpoints for video bridge!");
     return false;
   }
 
-  gpuManager->InitVideoBridge(
-      std::move(parentPipe),
-      layers::VideoBridgeSource::MFMediaEngineCDMProcess);
+  if (gpuProcessInfo != ipc::EndpointProcInfo::Invalid()) {
+    gpuManager->InitVideoBridge(
+        std::move(parentPipe),
+        layers::VideoBridgeSource::MFMediaEngineCDMProcess);
+  } else {
+    layers::VideoBridgeParent::Open(
+        std::move(parentPipe),
+        layers::VideoBridgeSource::MFMediaEngineCDMProcess);
+  }
+
   SendInitVideoBridge(std::move(childPipe), contentDeviceData);
   return true;
 }
@@ -225,14 +232,14 @@ void UtilityAudioDecoderChild::GetKeySystemCapabilities(
             for (const auto& scheme : v.encryptionSchemes()) {
               EME_LOG("  capabilities: video=%s, scheme=%s",
                       NS_ConvertUTF16toUTF8(v.contentType()).get(),
-                      CryptoSchemeToString(scheme));
+                      EnumValueToString(scheme));
             }
           }
           for (const auto& a : capabilities.audioCapabilities()) {
             for (const auto& scheme : a.encryptionSchemes()) {
               EME_LOG("  capabilities: audio=%s, scheme=%s",
                       NS_ConvertUTF16toUTF8(a.contentType()).get(),
-                      CryptoSchemeToString(scheme));
+                      EnumValueToString(scheme));
             }
           }
           auto* info = cdmInfo.AppendElement(fallible);
@@ -249,6 +256,9 @@ void UtilityAudioDecoderChild::GetKeySystemCapabilities(
               DoesKeySystemSupportClearLead(info->mKeySystemName);
           if (capabilities.isHDCP22Compatible()) {
             info->mIsHDCP22Compatible = *capabilities.isHDCP22Compatible();
+          }
+          if (capabilities.isHardwareDecryption()) {
+            info->mIsHardwareDecryption = true;
           }
         }
         promise->MaybeResolve(cdmInfo);

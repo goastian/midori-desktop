@@ -9,7 +9,6 @@
 #include "mojo/core/ports/event.h"
 #include "mojo/core/ports/node.h"
 #include "mozilla/ipc/MessageChannel.h"
-#include "mozilla/ipc/BrowserProcessSubThread.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/ipc/NodeController.h"
 #include "chrome/common/ipc_channel.h"
@@ -86,7 +85,7 @@ PortLink::PortLink(MessageChannel* aChan, ScopedPort aPort)
   if (aChan->mIsSameThreadChannel) {
     aChan->mWorkerThread->Dispatch(openRunnable.forget());
   } else {
-    XRE_GetIOMessageLoop()->PostTask(openRunnable.forget());
+    XRE_GetAsyncIOEventTarget()->Dispatch(openRunnable.forget());
   }
 }
 

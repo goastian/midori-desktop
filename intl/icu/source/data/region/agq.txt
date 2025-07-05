@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 agq{
     Countries{
         AD{"Àndolà"}
@@ -93,7 +93,6 @@ agq{
         IE{"Aelɨ̀lân"}
         IL{"Ezɨ̀lɛ̂"}
         IN{"Endìa"}
-        IO{"Dɨŋò kɨ dzughùnstòʔ kɨ Endìa kɨ Bɨ̀letì kò"}
         IQ{"Èlâkɨ̀"}
         IR{"Èlân"}
         IS{"Aesɨ̀lân"}

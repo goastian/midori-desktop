@@ -240,6 +240,16 @@ public:
     }
 
     /**
+     * Whether the encoded input uses 16 or more bits per component.
+     */
+    bool hasHighBitDepthEncodedData() const {
+        // API design note: We don't return `bitsPerComponent` because it may be
+        // misleading in some cases - see https://crbug.com/359350061#comment4
+        // for more details.
+        return this->getEncodedInfo().bitsPerComponent() >= 16;
+    }
+
+    /**
      *  Returns the image orientation stored in the EXIF data.
      *  If there is no EXIF data, or if we cannot read the EXIF data, returns kTopLeft.
      */
@@ -401,6 +411,9 @@ public:
      *
      *  If a scanline decode is in progress, scanline mode will end, requiring the client to call
      *  startScanlineDecode() in order to return to decoding scanlines.
+     *
+     *  For certain codecs, reading into a smaller bitmap than the original dimensions may not
+     *  produce correct results (e.g. animated webp).
      *
      *  @return Result kSuccess, or another value explaining the type of failure.
      */
@@ -637,6 +650,12 @@ public:
      *  Return the number of frames in the image.
      *
      *  May require reading through the stream.
+     *
+     *  Note that some codecs may be unable to gather `FrameInfo` for all frames
+     *  in case of `kIncompleteInput`.  For such codecs `getFrameCount` may
+     *  initially report a low frame count.  After the underlying `SkStream`
+     *  provides additional data, then calling `getFrameCount` again may return
+     *  an updated, increased frame count.
      */
     int getFrameCount() {
         return this->onGetFrameCount();
@@ -648,11 +667,6 @@ public:
     // - Options::fPriorFrame set to this value means no (relevant) prior frame
     //   is residing in dst's memory.
     static constexpr int kNoFrame = -1;
-
-    // This transitional definition was added in August 2018, and will eventually be removed.
-#ifdef SK_LEGACY_SKCODEC_NONE_ENUM
-    static constexpr int kNone = kNoFrame;
-#endif
 
     /**
      *  Information about individual frames in a multi-framed image.
@@ -770,11 +784,45 @@ public:
      *
      *  As such, future decoding calls may require a rewind.
      *
-     *  For still (non-animated) image codecs, this will return 0.
+     *  `getRepetitionCount` will return `0` in two cases:
+     *  1. Still (non-animated) images.
+     *  2. Animated images that only play the animation once (i.e. that don't
+     *     repeat the animation)
+     *  `isAnimated` can be used to disambiguate between these two cases.
      */
     int getRepetitionCount() {
         return this->onGetRepetitionCount();
     }
+
+    /**
+     * `isAnimated` returns whether the full input is expected to contain an
+     * animated image (i.e. more than 1 image frame).  This can be used to
+     * disambiguate the meaning of `getRepetitionCount` returning `0` (see
+     * `getRepetitionCount`'s doc comment for more details).
+     *
+     * Note that in some codecs `getFrameCount()` only returns the number of
+     * frames for which all the metadata has been already successfully decoded.
+     * Therefore for a partial input `isAnimated()` may return "yes", even
+     * though `getFrameCount()` may temporarily return `1` until more of the
+     * input is available.
+     *
+     * When handling partial input, some codecs may not know until later (e.g.
+     * until encountering additional image frames) whether the given image has
+     * more than one frame.  Such codecs may initially return
+     * `IsAnimated::kUnknown` and only later give a definitive "yes" or "no"
+     * answer.  GIF format is one example where this may happen.
+     *
+     * Other codecs may be able to decode the information from the metadata
+     * present before the first image frame.  Such codecs should be able to give
+     * a definitive "yes" or "no" answer as soon as they are constructed.  PNG
+     * format is one example where this happens.
+     */
+    enum class IsAnimated {
+        kYes,
+        kNo,
+        kUnknown,
+    };
+    IsAnimated isAnimated() { return this->onIsAnimated(); }
 
     // Register a decoder at runtime by passing two function pointers:
     //    - peek() to return true if the span of bytes appears to be your encoded format;
@@ -800,6 +848,11 @@ protected:
         return fSrcXformFormat;
     }
 
+    virtual bool onGetGainmapCodec(SkGainmapInfo*, std::unique_ptr<SkCodec>*) { return false; }
+    virtual bool onGetGainmapInfo(SkGainmapInfo*) { return false; }
+
+    // TODO(issues.skia.org/363544350): This API only works for JPEG images. Remove this API once
+    // it is no longer used.
     virtual bool onGetGainmapInfo(SkGainmapInfo*, std::unique_ptr<SkStream>*) { return false; }
 
     virtual SkISize onGetScaledDimensions(float /*desiredScale*/) const {
@@ -916,6 +969,10 @@ protected:
 
     virtual int onGetRepetitionCount() {
         return 0;
+    }
+
+    virtual IsAnimated onIsAnimated() {
+        return IsAnimated::kNo;
     }
 
 private:
@@ -1038,8 +1095,9 @@ private:
     friend class PNGCodecGM;    // for fillIncompleteImage
     friend class SkSampledCodec;
     friend class SkIcoCodec;
-    friend class SkAndroidCodec; // for fEncodedInfo
-    friend class SkPDFBitmap; // for fEncodedInfo
+    friend class SkPngCodec;     // for onGetGainmapCodec
+    friend class SkAndroidCodec;  // for handleFrameIndex
+    friend class SkCodecPriv;     // for fEncodedInfo
 };
 
 namespace SkCodecs {

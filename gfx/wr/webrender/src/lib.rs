@@ -132,6 +132,8 @@ mod image_tiling;
 mod image_source;
 mod rectangle_occlusion;
 mod picture_textures;
+mod frame_allocator;
+mod bump_allocator;
 
 ///
 pub mod intern;
@@ -164,20 +166,21 @@ pub extern crate api;
 extern crate webrender_build;
 
 #[doc(hidden)]
+pub use crate::composite::{LayerCompositor, CompositorInputConfig, CompositorSurfaceUsage, ClipRadius};
 pub use crate::composite::{CompositorConfig, Compositor, CompositorCapabilities, CompositorSurfaceTransform};
 pub use crate::composite::{NativeSurfaceId, NativeTileId, NativeSurfaceInfo, PartialPresentCompositor};
-pub use crate::composite::{MappableCompositor, MappedTileInfo, SWGLCompositeSurfaceInfo, WindowVisibility};
+pub use crate::composite::{MappableCompositor, MappedTileInfo, SWGLCompositeSurfaceInfo, WindowVisibility, WindowProperties};
 pub use crate::device::{UploadMethod, VertexUsageHint, get_gl_target, get_unoptimized_shader_source};
-pub use crate::device::{ProgramBinary, ProgramCache, ProgramCacheObserver, FormatDesc};
+pub use crate::device::{ProgramBinary, ProgramCache, ProgramCacheObserver, FormatDesc, ShaderError};
 pub use crate::device::Device;
 pub use crate::profiler::{ProfilerHooks, set_profiler_hooks};
 pub use crate::renderer::{
     CpuProfile, DebugFlags, GpuProfile, GraphicsApi,
-    GraphicsApiInfo, PipelineInfo, Renderer, RendererError, RenderResults,
+    GraphicsApiInfo, PendingShadersToPrecache, PipelineInfo, Renderer, RendererError, RenderResults,
     RendererStats, Shaders, SharedShaders, ShaderPrecacheFlags,
     MAX_VERTEX_TEXTURE_WIDTH,
 };
-pub use crate::renderer::init::{WebRenderOptions, create_webrender_instance, AsyncPropertySampler, SceneBuilderHooks, ONE_TIME_USAGE_HINT};
+pub use crate::renderer::init::{WebRenderOptions, create_webrender_instance, AsyncPropertySampler, SceneBuilderHooks, RenderBackendHooks, ONE_TIME_USAGE_HINT};
 pub use crate::hit_test::SharedHitTester;
 pub use crate::internal_types::FastHashMap;
 pub use crate::screen_capture::{AsyncScreenshotHandle, RecordedFrameHandle};
@@ -191,6 +194,7 @@ pub use crate::intern::ItemUid;
 pub use crate::render_api::*;
 pub use crate::tile_cache::{PictureCacheDebugInfo, DirtyTileDebugInfo, TileDebugInfo, SliceDebugInfo};
 pub use glyph_rasterizer;
+pub use bump_allocator::ChunkPool;
 
 #[cfg(feature = "sw_compositor")]
 pub use crate::compositor::sw_compositor;

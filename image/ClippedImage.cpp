@@ -18,6 +18,7 @@
 #include "gfxUtils.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/SVGImageContext.h"
+#include "nsPresContext.h"
 
 #include "mozilla/gfx/2D.h"
 
@@ -196,21 +197,32 @@ ClippedImage::GetHeight(int32_t* aHeight) {
 }
 
 NS_IMETHODIMP
-ClippedImage::GetIntrinsicSize(nsSize* aSize) {
+ClippedImage::GetIntrinsicSize(ImageIntrinsicSize* aIntrinsicSize) {
   if (!ShouldClip()) {
-    return InnerImage()->GetIntrinsicSize(aSize);
+    return InnerImage()->GetIntrinsicSize(aIntrinsicSize);
   }
 
-  *aSize = nsSize(mClip.Width(), mClip.Height());
+  aIntrinsicSize->mWidth = Some(mClip.Width());
+  aIntrinsicSize->mHeight = Some(mClip.Height());
   return NS_OK;
 }
 
-Maybe<AspectRatio> ClippedImage::GetIntrinsicRatio() {
+NS_IMETHODIMP
+ClippedImage::GetIntrinsicSizeInAppUnits(nsSize* aSize) {
+  if (!ShouldClip()) {
+    return InnerImage()->GetIntrinsicSizeInAppUnits(aSize);
+  }
+
+  *aSize = nsSize(nsPresContext::CSSPixelsToAppUnits(mClip.Width()),
+                  nsPresContext::CSSPixelsToAppUnits(mClip.Height()));
+  return NS_OK;
+}
+
+AspectRatio ClippedImage::GetIntrinsicRatio() {
   if (!ShouldClip()) {
     return InnerImage()->GetIntrinsicRatio();
   }
-
-  return Some(AspectRatio::FromSize(mClip.Width(), mClip.Height()));
+  return AspectRatio::FromSize(mClip.Width(), mClip.Height());
 }
 
 NS_IMETHODIMP_(already_AddRefed<SourceSurface>)

@@ -7,6 +7,7 @@
 #ifndef MOZILLA_GFX_RENDERCOMPOSITOR_NATIVE_H
 #define MOZILLA_GFX_RENDERCOMPOSITOR_NATIVE_H
 
+#include <deque>
 #include <unordered_map>
 
 #include "GLTypes.h"
@@ -18,6 +19,7 @@
 namespace mozilla {
 
 namespace layers {
+class GpuFence;
 class NativeLayerRootSnapshotter;
 class NativeLayerRoot;
 class NativeLayer;
@@ -73,7 +75,9 @@ class RenderCompositorNative : public RenderCompositor {
   void AddSurface(wr::NativeSurfaceId aId,
                   const wr::CompositorSurfaceTransform& aTransform,
                   wr::DeviceIntRect aClipRect,
-                  wr::ImageRendering aImageRendering) override;
+                  wr::ImageRendering aImageRendering,
+                  wr::DeviceIntRect aRoundedClipRect,
+                  wr::ClipRadius aClipRadius) override;
 
   struct TileKey {
     TileKey(int32_t aX, int32_t aY) : mX(aX), mY(aY) {}
@@ -140,6 +144,7 @@ class RenderCompositorNative : public RenderCompositor {
   gfx::IntRect mVisibleBounds;
   std::unordered_map<wr::NativeSurfaceId, Surface, SurfaceIdHashFn> mSurfaces;
   TimeStamp mBeginFrameTimeStamp;
+  std::deque<RefPtr<layers::GpuFence>> mPendingGpuFeces;
 };
 
 static inline bool operator==(const RenderCompositorNative::TileKey& a0,
@@ -176,9 +181,18 @@ class RenderCompositorNativeOGL : public RenderCompositorNative {
 
   RefPtr<gl::GLContext> mGL;
 
+  struct BackPressureFences {
+    explicit BackPressureFences(
+        std::deque<RefPtr<layers::GpuFence>>&& aGpuFeces)
+        : mGpuFeces(std::move(aGpuFeces)) {}
+
+    GLsync mSync = nullptr;
+    std::deque<RefPtr<layers::GpuFence>> mGpuFeces;
+  };
+
   // Used to apply back-pressure in WaitForGPU().
-  GLsync mPreviousFrameDoneSync = nullptr;
-  GLsync mThisFrameDoneSync = nullptr;
+  UniquePtr<BackPressureFences> mPreviousFrameDoneFences;
+  UniquePtr<BackPressureFences> mThisFrameDoneFences;
 };
 
 // RenderCompositorNativeSWGL is a NativeLayer compositor that only

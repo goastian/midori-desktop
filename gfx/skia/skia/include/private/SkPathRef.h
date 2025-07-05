@@ -8,6 +8,7 @@
 #ifndef SkPathRef_DEFINED
 #define SkPathRef_DEFINED
 
+#include "include/core/SkArc.h"
 #include "include/core/SkPoint.h"
 #include "include/core/SkRect.h"
 #include "include/core/SkRefCnt.h"
@@ -15,6 +16,7 @@
 #include "include/core/SkTypes.h"
 #include "include/private/SkIDChangeListener.h"
 #include "include/private/base/SkDebug.h"
+#include "include/private/base/SkSpan_impl.h"
 #include "include/private/base/SkTArray.h"
 #include "include/private/base/SkTo.h"
 
@@ -22,19 +24,9 @@
 #include <cstddef>
 #include <cstdint>
 #include <tuple>
-#include <utility>
 
 class SkMatrix;
 class SkRRect;
-
-// These are computed from a stream of verbs
-struct SkPathVerbAnalysis {
-    bool     valid;
-    int      points, weights;
-    unsigned segmentMask;
-};
-SkPathVerbAnalysis sk_path_analyze_verbs(const uint8_t verbs[], int count);
-
 
 /**
  * Holds the path verbs and points. It is versioned by a generation ID. None of its public methods
@@ -63,13 +55,14 @@ public:
         kGeneral,
         kOval,
         kRRect,
+        kArc,
     };
 
-    SkPathRef(PointsArray points, VerbsArray verbs, ConicWeightsArray weights,
-              unsigned segmentMask)
-        : fPoints(std::move(points))
-        , fVerbs(std::move(verbs))
-        , fConicWeights(std::move(weights))
+    SkPathRef(SkSpan<const SkPoint> points, SkSpan<const uint8_t> verbs,
+              SkSpan<const SkScalar> weights, unsigned segmentMask)
+        : fPoints(points)
+        , fVerbs(verbs)
+        , fConicWeights(weights)
     {
         fBoundsIsDirty = true;    // this also invalidates fIsFinite
         fGenerationID = 0;        // recompute
@@ -78,6 +71,9 @@ public:
         // The next two values don't matter unless fType is kOval or kRRect
         fRRectOrOvalIsCCW = false;
         fRRectOrOvalStartIdx = 0xAC;
+        fArcOval.setEmpty();
+        fArcStartAngle = fArcSweepAngle = 0.0f;
+        fArcType = SkArc::Type::kArc;
         SkDEBUGCODE(fEditorsAttached.store(0);)
 
         this->computeBounds();  // do this now, before we worry about multiple owners/threads
@@ -158,6 +154,10 @@ public:
 
         void setIsRRect(bool isCCW, unsigned start) {
             fPathRef->setIsRRect(isCCW, start);
+        }
+
+        void setIsArc(const SkArc& arc) {
+            fPathRef->setIsArc(arc);
         }
 
         void setBounds(const SkRect& rect) { fPathRef->setBounds(rect); }
@@ -248,6 +248,16 @@ public:
     }
 
     bool isRRect(SkRRect* rrect, bool* isCCW, unsigned* start) const;
+
+    bool isArc(SkArc* arc) const {
+        if (fType == PathType::kArc) {
+            if (arc) {
+                *arc = SkArc::Make(fArcOval, fArcStartAngle, fArcSweepAngle, fArcType);
+            }
+        }
+
+        return fType == PathType::kArc;
+    }
 
     bool hasComputedBounds() const {
         return !fBoundsIsDirty;
@@ -365,6 +375,9 @@ private:
         // The next two values don't matter unless fType is kOval or kRRect
         fRRectOrOvalIsCCW = false;
         fRRectOrOvalStartIdx = 0xAC;
+        fArcOval.setEmpty();
+        fArcStartAngle = fArcSweepAngle = 0.0f;
+        fArcType = SkArc::Type::kArc;
         if (numPoints > 0) {
             fPoints.reserve_exact(numPoints);
         }
@@ -497,6 +510,14 @@ private:
         fRRectOrOvalStartIdx = SkToU8(start);
     }
 
+    void setIsArc(const SkArc& arc) {
+        fType = PathType::kArc;
+        fArcOval = arc.fOval;
+        fArcStartAngle = arc.fStartAngle;
+        fArcSweepAngle = arc.fSweepAngle;
+        fArcType = arc.fType;
+    }
+
     // called only by the editor. Note that this is not a const function.
     SkPoint* getWritablePoints() {
         SkDEBUGCODE(this->validate();)
@@ -511,33 +532,38 @@ private:
 
     void callGenIDChangeListeners();
 
-    enum {
-        kMinSize = 256,
-    };
-
-    mutable SkRect   fBounds;
-
     PointsArray fPoints;
     VerbsArray fVerbs;
     ConicWeightsArray fConicWeights;
+
+    mutable SkRect   fBounds;
+    SkRect           fArcOval;
 
     enum {
         kEmptyGenID = 1, // GenID reserved for path ref with zero points and zero verbs.
     };
     mutable uint32_t    fGenerationID;
-    SkDEBUGCODE(std::atomic<int> fEditorsAttached;) // assert only one editor in use at any time.
-
     SkIDChangeListener::List fGenIDChangeListeners;
 
-    mutable uint8_t  fBoundsIsDirty;
-    mutable bool     fIsFinite;    // only meaningful if bounds are valid
+    SkDEBUGCODE(std::atomic<int> fEditorsAttached;) // assert only one editor in use at any time.
+
+    SkScalar    fArcStartAngle;
+    SkScalar    fArcSweepAngle;
 
     PathType fType;
+
+    mutable uint8_t  fBoundsIsDirty;
+
+    uint8_t  fRRectOrOvalStartIdx;
+    uint8_t  fSegmentMask;
+    // If the path is an arc, these four variables store that information.
+    // We should just store an SkArc, but alignment would cost us 8 more bytes.
+    SkArc::Type fArcType;
+
+    mutable bool     fIsFinite;    // only meaningful if bounds are valid
     // Both the circle and rrect special cases have a notion of direction and starting point
     // The next two variables store that information for either.
     bool     fRRectOrOvalIsCCW;
-    uint8_t  fRRectOrOvalStartIdx;
-    uint8_t  fSegmentMask;
 
     friend class PathRefTest_Private;
     friend class ForceIsRRect_Private; // unit test isRRect

@@ -49,7 +49,6 @@ SizeOfFramePrefix = {
     "FrameType::BaselineStub": "BaselineStubFrameLayout",
     "FrameType::CppToJSJit": "JitFrameLayout",
     "FrameType::WasmToJSJit": "JitFrameLayout",
-    "FrameType::JSJitToWasm": "JitFrameLayout",
     "FrameType::Rectifier": "RectifierFrameLayout",
     "FrameType::IonAccessorIC": "IonAccessorICFrameLayout",
     "FrameType::IonICCall": "IonICCallFrameLayout",
@@ -60,7 +59,7 @@ SizeOfFramePrefix = {
 
 # We cannot have semi-colon as identifier names, so use a colon instead,
 # and forward the name resolution to the type cache class.
-class UnwinderTypeCacheFrameType(object):
+class UnwinderTypeCacheFrameType:
     def __init__(self, tc):
         self.tc = tc
 
@@ -145,7 +144,7 @@ class UnwinderTypeCache(TypeCache):
             self.frame_class_types[enumval] = class_type.pointer()
 
 
-class FrameSymbol(object):
+class FrameSymbol:
     "A symbol/value pair as expected from gdb frame decorators."
 
     def __init__(self, sym, val):
@@ -254,7 +253,7 @@ class JitFrameDecorator(FrameDecorator):
         return result
 
 
-class SpiderMonkeyFrameFilter(object):
+class SpiderMonkeyFrameFilter:
     "A frame filter for SpiderMonkey."
 
     # |state_holder| is either None, or an instance of
@@ -281,7 +280,7 @@ class SpiderMonkeyFrameFilter(object):
         return imap(self.maybe_wrap_frame, frame_iter)
 
 
-class SpiderMonkeyFrameId(object):
+class SpiderMonkeyFrameId:
     "A frame id class, as specified by the gdb unwinder API."
 
     def __init__(self, sp, pc):
@@ -289,7 +288,7 @@ class SpiderMonkeyFrameId(object):
         self.pc = pc
 
 
-class UnwinderState(object):
+class UnwinderState:
     """This holds all the state needed during a given unwind.  Each time a
     new unwind is done, a new instance of this class is created.  It
     keeps track of all the state needed to unwind JIT frames.  Note that

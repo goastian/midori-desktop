@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 es{
     Countries{
         001{"Mundo"}
@@ -297,6 +297,9 @@ es{
         ZM{"Zambia"}
         ZW{"Zimbabue"}
         ZZ{"Región desconocida"}
+    }
+    Countries%chagos{
+        IO{"Archipiélago de Chagos"}
     }
     Countries%short{
         GB{"RU"}

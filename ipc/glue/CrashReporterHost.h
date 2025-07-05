@@ -17,8 +17,11 @@
 #include "mozilla/ipc/GeckoChildProcessHost.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 
-namespace mozilla {
-namespace ipc {
+namespace CrashReporter {
+class CrashReporterInitArgs;
+}
+
+namespace mozilla::ipc {
 
 // This is the newer replacement for CrashReporterParent. It is created in
 // response to a InitCrashReporter message on a top-level actor. When the
@@ -28,17 +31,18 @@ class CrashReporterHost {
   typedef CrashReporter::AnnotationTable AnnotationTable;
 
  public:
-  CrashReporterHost(GeckoProcessType aProcessType,
-                    CrashReporter::ThreadId aThreadId);
+  CrashReporterHost(GeckoProcessType aProcessType, base::ProcessId aPid,
+                    const CrashReporter::CrashReporterInitArgs& aInitArgs);
+  ~CrashReporterHost();
 
   // Helper function for generating a crash report for a process that probably
   // crashed (i.e., had an AbnormalShutdown in ActorDestroy). Returns true if
   // the process has a minidump attached and we were able to generate a report.
-  bool GenerateCrashReport(base::ProcessId aPid);
+  bool GenerateCrashReport();
 
   // Given an existing minidump for a crashed child process, take ownership of
   // it from IPDL. After this, FinalizeCrashReport may be called.
-  RefPtr<nsIFile> TakeCrashedChildMinidump(base::ProcessId aPid);
+  RefPtr<nsIFile> TakeCrashedChildMinidump();
 
   // Replace the stored minidump with a new one. After this,
   // FinalizeCrashReport may be called.
@@ -97,6 +101,8 @@ class CrashReporterHost {
   const nsCString& AdditionalMinidumps() const {
     return mExtraAnnotations[CrashReporter::Annotation::additional_minidumps];
   }
+  // Get the process type string.
+  const char* ProcessType() const;
 
   // This is a static helper function to notify the crash service that a
   // crash has occurred and record the crash with telemetry. This can be called
@@ -117,6 +123,7 @@ class CrashReporterHost {
 
  private:
   GeckoProcessType mProcessType;
+  base::ProcessId mPid;
   CrashReporter::ThreadId mThreadId;
   time_t mStartTime;
   AnnotationTable mExtraAnnotations;
@@ -124,7 +131,6 @@ class CrashReporterHost {
   bool mFinalized;
 };
 
-}  // namespace ipc
-}  // namespace mozilla
+}  // namespace mozilla::ipc
 
 #endif  // mozilla_ipc_CrashReporterHost_h

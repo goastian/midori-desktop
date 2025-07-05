@@ -48,10 +48,10 @@ using namespace js::jit;
 
 // Convert the content of each macro list to a single and unique format which is
 // (Name, Type).
-#define ABIFUN_TO_ALLFUN(Fun) (#Fun, decltype(&::Fun))
+#define ABIFUN_TO_ALLFUN(Fun) (#Fun, decltype(&Fun))
 #define ABIFUN_AND_SIG_TO_ALLFUN(Fun, Sig) (#Fun " as " #Sig, Sig)
 #define ABISIG_TO_ALLFUN(Sig) ("(none) as " #Sig, Sig)
-#define VMFUN_TO_ALLFUN(Name, Fun, Pop...) (#Fun, decltype(&::Fun))
+#define VMFUN_TO_ALLFUN(Name, Fun, Pop...) (#Fun, decltype(&Fun))
 
 #define APPLY(A, B) A B
 
@@ -655,9 +655,6 @@ class JitABICall final : public JSAPIRuntimeTest, public DefineCheckArgs<Sig> {
 #elif defined(JS_CODEGEN_ARM64)
     Register base = r8;
     regs.take(base);
-#elif defined(JS_CODEGEN_MIPS32)
-    Register base = t1;
-    regs.take(base);
 #elif defined(JS_CODEGEN_MIPS64)
     Register base = t1;
     regs.take(base);
@@ -695,9 +692,10 @@ class JitABICall final : public JSAPIRuntimeTest, public DefineCheckArgs<Sig> {
 
 // For each VMFunction and ABIFunction, create an instance of a JitABICall
 // class to register a jsapi-tests test case.
-#define TEST_INSTANCE(Name, Sig)                                             \
-  static JitABICall<Sig> MOZ_CONCAT(MOZ_CONCAT(cls_jitabicall, __COUNTER__), \
-                                    _instance)("JIT ABI for " Name);
+#define TEST_INSTANCE(Name, Sig)                 \
+  MOZ_RUNINIT static JitABICall<Sig> MOZ_CONCAT( \
+      MOZ_CONCAT(cls_jitabicall, __COUNTER__),   \
+      _instance)("JIT ABI for " Name);
 #define TEST_INSTANCE_ABIFUN_TO_ALLFUN(...) \
   APPLY(TEST_INSTANCE, ABIFUN_TO_ALLFUN(__VA_ARGS__))
 #define TEST_INSTANCE_ABIFUN_AND_SIG_TO_ALLFUN(...) \

@@ -330,6 +330,20 @@ public:
      */
     sk_sp<SkImage> makeImageSnapshot(const SkIRect& bounds);
 
+    /** Returns an SkImage capturing the current SkSurface contents. However, the contents of the
+        SkImage are only valid as long as no other writes to the SkSurface occur. If writes to the
+        original SkSurface happen then contents of the SkImage are undefined. However, continued use
+        of the SkImage should not cause crashes or similar fatal behavior.
+
+        This API is useful for cases where the client either immediately destroys the SkSurface
+        after the SkImage is created or knows they will destroy the SkImage before writing to the
+        SkSurface again.
+
+        This API can be more performant than makeImageSnapshot as it never does an internal copy
+        of the data assuming the user frees either the SkImage or SkSurface as described above.
+     */
+    sk_sp<SkImage> makeTemporaryImage();
+
     /** Draws SkSurface contents to canvas, with its top-left corner at (x, y).
 
         If SkPaint paint is not nullptr, apply SkColorFilter, alpha, SkImageFilter, and SkBlendMode.
@@ -370,7 +384,9 @@ public:
         Copies each readable pixel intersecting both rectangles, without scaling,
         converting to dst.colorType() and dst.alphaType() if required.
 
-        Pixels are readable when SkSurface is raster, or backed by a GPU.
+        Pixels are readable when SkSurface is raster, or backed by a Ganesh GPU backend. Graphite
+        has deprecated this API in favor of the equivalent asynchronous API on
+        skgpu::graphite::Context (with an optional explicit synchonization).
 
         The destination pixel storage must be allocated by the caller.
 
@@ -401,7 +417,9 @@ public:
         Copies each readable pixel intersecting both rectangles, without scaling,
         converting to dstInfo.colorType() and dstInfo.alphaType() if required.
 
-        Pixels are readable when SkSurface is raster, or backed by a GPU.
+        Pixels are readable when SkSurface is raster, or backed by a Ganesh GPU backend. Graphite
+        has deprecated this API in favor of the equivalent asynchronous API on
+        skgpu::graphite::Context (with an optional explicit synchonization).
 
         The destination pixel storage must be allocated by the caller.
 
@@ -433,7 +451,9 @@ public:
         Copies each readable pixel intersecting both rectangles, without scaling,
         converting to bitmap.colorType() and bitmap.alphaType() if required.
 
-        Pixels are readable when SkSurface is raster, or backed by a GPU.
+        Pixels are readable when SkSurface is raster, or backed by a Ganesh GPU backend. Graphite
+        has deprecated this API in favor of the equivalent asynchronous API on
+        skgpu::graphite::Context (with an optional explicit synchonization).
 
         The destination pixel storage must be allocated by the caller.
 
@@ -477,9 +497,12 @@ public:
     /** Makes surface pixel data available to caller, possibly asynchronously. It can also rescale
         the surface pixels.
 
-        Currently asynchronous reads are only supported on the GPU backend and only when the
+        Currently asynchronous reads are only supported in the Ganesh GPU backend and only when the
         underlying 3D API supports transfer buffers and CPU/GPU synchronization primitives. In all
         other cases this operates synchronously.
+
+        For the Graphite backend this API has been deprecated in favor of the equivalent API
+        on skgpu::graphite::Context.
 
         Data is read from the source sub-rectangle, is optionally converted to a linear gamma, is
         rescaled to the size indicated by 'info', is then converted to the color space, color type,

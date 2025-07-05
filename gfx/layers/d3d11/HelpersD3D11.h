@@ -9,7 +9,6 @@
 
 #include <d3d11.h>
 #include <array>
-#include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
 
 namespace mozilla {
@@ -38,7 +37,10 @@ static inline bool WaitForFrameGPUQuery(ID3D11Device* aDevice,
   TimeStamp start = TimeStamp::Now();
   bool success = true;
   while (aContext->GetData(aQuery, aOut, sizeof(*aOut), 0) != S_OK) {
-    if (aDevice->GetDeviceRemovedReason() != S_OK) {
+    HRESULT hr = aDevice->GetDeviceRemovedReason();
+    if (hr != S_OK) {
+      gfxCriticalNoteOnce << "WaitForFrameGPUQuery device removed: "
+                          << gfx::hexa(hr);
       return false;
     }
     if (TimeStamp::Now() - start > TimeDuration::FromSeconds(2)) {
@@ -47,7 +49,6 @@ static inline bool WaitForFrameGPUQuery(ID3D11Device* aDevice,
     }
     Sleep(0);
   }
-  Telemetry::AccumulateTimeDelta(Telemetry::GPU_WAIT_TIME_MS, start);
   return success;
 }
 

@@ -50,7 +50,7 @@ bool VRProcessParent::Launch() {
 
   mLaunchPhase = LaunchPhase::Waiting;
 
-  std::vector<std::string> extraArgs;
+  geckoargs::ChildProcessArgs extraArgs;
   ProcessChild::AddPlatformBuildID(extraArgs);
 
   mPrefSerializer = MakeUnique<ipc::SharedPreferenceSerializer>();
@@ -60,7 +60,7 @@ bool VRProcessParent::Launch() {
   }
   mPrefSerializer->AddSharedPrefCmdLineArgs(*this, extraArgs);
 
-  if (!GeckoChildProcessHost::AsyncLaunch(extraArgs)) {
+  if (!GeckoChildProcessHost::AsyncLaunch(std::move(extraArgs))) {
     mLaunchPhase = LaunchPhase::Complete;
     mPrefSerializer = nullptr;
     return false;
@@ -174,7 +174,7 @@ bool VRProcessParent::InitAfterConnect(bool aSucceeded) {
     Endpoint<PVRGPUChild> vrGPUBridge;
     VRProcessManager* vpm = VRProcessManager::Get();
     DebugOnly<bool> opened =
-        vpm->CreateGPUBridges(gpuChild->OtherPid(), &vrGPUBridge);
+        vpm->CreateGPUBridges(gpuChild->OtherEndpointProcInfo(), &vrGPUBridge);
     MOZ_ASSERT(opened);
 
     Unused << gpuChild->SendInitVR(std::move(vrGPUBridge));
@@ -233,8 +233,6 @@ void VRProcessParent::OnChannelClosed() {
   VRChild::Destroy(std::move(mVRChild));
   MOZ_ASSERT(!mVRChild);
 }
-
-base::ProcessId VRProcessParent::OtherPid() { return mVRChild->OtherPid(); }
 
 bool VRProcessParent::IsConnected() const { return !!mVRChild; }
 

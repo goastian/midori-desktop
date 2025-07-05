@@ -20,8 +20,6 @@
 // OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 // WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
-use std::convert::TryInto;
-
 use crate::{
     iccread::{curveType, Profile},
     s15Fixed16Number_to_float,
@@ -36,7 +34,7 @@ fn u8Fixed8Number_to_float(x: u16) -> f32 {
     // 0x0000 = 0.
     // 0x0100 = 1.
     // 0xffff = 255  + 255/256
-    (x as i32 as f64 / 256.0f64) as f32
+    (x as i32 as f64 / 256.0) as f32
 }
 #[inline]
 pub fn clamp_float(a: f32) -> f32 {
@@ -64,12 +62,17 @@ pub fn clamp_float(a: f32) -> f32 {
 //XXX: is the above a good restriction to have?
 // the output range of this functions is 0..1
 pub fn lut_interp_linear(mut input_value: f64, table: &[u16]) -> f32 {
+    if table.is_empty() {
+        return input_value as f32;
+    }
+
     input_value *= (table.len() - 1) as f64;
 
     let upper: i32 = input_value.ceil() as i32;
     let lower: i32 = input_value.floor() as i32;
-    let value: f32 = ((table[upper as usize] as f64) * (1. - (upper as f64 - input_value))
-        + (table[lower as usize] as f64 * (upper as f64 - input_value)))
+    let value: f32 = ((table[(upper as usize).min(table.len() - 1)] as f64)
+        * (1. - (upper as f64 - input_value))
+        + (table[(lower as usize).min(table.len() - 1)] as f64 * (upper as f64 - input_value)))
         as f32;
     /* scale the value */
     value * (1.0 / 65535.0)
@@ -122,53 +125,51 @@ pub fn lut_interp_linear_float(mut value: f32, table: &[f32]) -> f32 {
     /* scale the value */
     value
 }
-fn compute_curve_gamma_table_type1(gamma: u16) -> Box<[f32; 256]> {
-    let mut gamma_table = Vec::with_capacity(256);
+
+fn compute_curve_gamma_table_type1(gamma_table: &mut [f32; 256], gamma: u16) {
     let gamma_float: f32 = u8Fixed8Number_to_float(gamma);
-    for i in 0..256 {
+    for (i, g) in gamma_table.iter_mut().enumerate() {
         // 0..1^(0..255 + 255/256) will always be between 0 and 1
-        gamma_table.push((i as f64 / 255.0f64).powf(gamma_float as f64) as f32);
+        *g = (i as f64 / 255.0).powf(gamma_float as f64) as f32;
     }
-    gamma_table.into_boxed_slice().try_into().unwrap()
-}
-fn compute_curve_gamma_table_type2(table: &[u16]) -> Box<[f32; 256]> {
-    let mut gamma_table = Vec::with_capacity(256);
-    for i in 0..256 {
-        gamma_table.push(lut_interp_linear(i as f64 / 255.0f64, table));
-    }
-    gamma_table.into_boxed_slice().try_into().unwrap()
-}
-fn compute_curve_gamma_table_type_parametric(params: &[f32]) -> Box<[f32; 256]> {
-    let params = Param::new(params);
-    let mut gamma_table = Vec::with_capacity(256);
-    for i in 0..256 {
-        let X = i as f32 / 255.;
-        gamma_table.push(clamp_float(params.eval(X)));
-    }
-    gamma_table.into_boxed_slice().try_into().unwrap()
 }
 
-fn compute_curve_gamma_table_type0() -> Box<[f32; 256]> {
-    let mut gamma_table = Vec::with_capacity(256);
-    for i in 0..256 {
-        gamma_table.push((i as f64 / 255.0f64) as f32);
+fn compute_curve_gamma_table_type2(gamma_table: &mut [f32; 256], table: &[u16]) {
+    for (i, g) in gamma_table.iter_mut().enumerate() {
+        *g = lut_interp_linear(i as f64 / 255.0, table);
     }
-    gamma_table.into_boxed_slice().try_into().unwrap()
 }
-pub(crate) fn build_input_gamma_table(TRC: Option<&curveType>) -> Option<Box<[f32; 256]>> {
-    let TRC = match TRC {
-        Some(TRC) => TRC,
-        None => return None,
-    };
-    Some(match TRC {
-        curveType::Parametric(params) => compute_curve_gamma_table_type_parametric(params),
+
+fn compute_curve_gamma_table_type_parametric(gamma_table: &mut [f32; 256], params: &[f32]) {
+    let params = Param::new(params);
+    for (i, g) in gamma_table.iter_mut().enumerate() {
+        let X = i as f32 / 255.;
+        *g = clamp_float(params.eval(X));
+    }
+}
+
+fn compute_curve_gamma_table_type0(gamma_table: &mut [f32; 256]) {
+    for (i, g) in gamma_table.iter_mut().enumerate() {
+        *g = (i as f64 / 255.0) as f32;
+    }
+}
+
+#[inline(always)]
+pub(crate) fn build_input_gamma_table(TRC: &curveType) -> [f32; 256] {
+    let mut gamma_table = [0.; 256];
+    match TRC {
+        curveType::Parametric(params) => {
+            compute_curve_gamma_table_type_parametric(&mut gamma_table, params)
+        }
         curveType::Curve(data) => match data.len() {
-            0 => compute_curve_gamma_table_type0(),
-            1 => compute_curve_gamma_table_type1(data[0]),
-            _ => compute_curve_gamma_table_type2(data),
+            0 => compute_curve_gamma_table_type0(&mut gamma_table),
+            1 => compute_curve_gamma_table_type1(&mut gamma_table, data[0]),
+            _ => compute_curve_gamma_table_type2(&mut gamma_table, data),
         },
-    })
+    };
+    gamma_table
 }
+
 pub fn build_colorant_matrix(p: &Profile) -> Matrix {
     let mut result: Matrix = Matrix { m: [[0.; 3]; 3] };
     result.m[0][0] = s15Fixed16Number_to_float(p.redColorant.X);
@@ -402,7 +403,7 @@ pub fn lut_inverse_interp16(Value: u16, LutTable: &[u16]) -> uint16_fract_t {
     // Get surrounding nodes
     debug_assert!(x >= 1);
 
-    let val2: f64 = (length - 1) as f64 * ((x - 1) as f64 / 65535.0f64);
+    let val2: f64 = (length - 1) as f64 * ((x - 1) as f64 / 65535.0);
     let cell0: i32 = val2.floor() as i32;
     let cell1: i32 = val2.ceil() as i32;
     if cell0 == cell1 {
@@ -410,19 +411,19 @@ pub fn lut_inverse_interp16(Value: u16, LutTable: &[u16]) -> uint16_fract_t {
     }
 
     let y0: f64 = LutTable[cell0 as usize] as f64;
-    let x0: f64 = 65535.0f64 * cell0 as f64 / (length - 1) as f64;
+    let x0: f64 = 65535.0 * cell0 as f64 / (length - 1) as f64;
     let y1: f64 = LutTable[cell1 as usize] as f64;
-    let x1: f64 = 65535.0f64 * cell1 as f64 / (length - 1) as f64;
+    let x1: f64 = 65535.0 * cell1 as f64 / (length - 1) as f64;
     let a: f64 = (y1 - y0) / (x1 - x0);
     let b: f64 = y0 - a * x0;
     if a.abs() < 0.01f64 {
         return x as uint16_fract_t;
     }
     let f: f64 = (Value as i32 as f64 - b) / a;
-    if f < 0.0f64 {
+    if f < 0.0 {
         return 0u16;
     }
-    if f >= 65535.0f64 {
+    if f >= 65535.0 {
         return 0xffffu16;
     }
     (f + 0.5f64).floor() as uint16_fract_t
@@ -445,7 +446,7 @@ fn invert_lut(table: &[u16], out_length: usize) -> Vec<u16> {
      * and attempting to lookup a value for each entry using lut_inverse_interp16 */
     let mut output = Vec::with_capacity(out_length);
     for i in 0..out_length {
-        let x: f64 = i as f64 * 65535.0f64 / (out_length - 1) as f64;
+        let x: f64 = i as f64 * 65535.0 / (out_length - 1) as f64;
         let input: uint16_fract_t = (x + 0.5f64).floor() as uint16_fract_t;
         output.push(lut_inverse_interp16(input, table));
     }
@@ -477,7 +478,8 @@ pub(crate) fn compute_precache(trc: &curveType, output: &mut [u8; PRECACHE_OUTPU
             let mut gamma_table_uint: [u16; 256] = [0; 256];
 
             let mut inverted_size: usize = 256;
-            let gamma_table = compute_curve_gamma_table_type_parametric(params);
+            let mut gamma_table = [0.; 256];
+            compute_curve_gamma_table_type_parametric(&mut gamma_table, params);
             let mut i: u16 = 0u16;
             while (i as i32) < 256 {
                 gamma_table_uint[i as usize] = (gamma_table[i as usize] * 65535f32) as u16;
@@ -516,7 +518,7 @@ pub(crate) fn compute_precache(trc: &curveType, output: &mut [u8; PRECACHE_OUTPU
 fn build_linear_table(length: usize) -> Vec<u16> {
     let mut output = Vec::with_capacity(length);
     for i in 0..length {
-        let x: f64 = i as f64 * 65535.0f64 / (length - 1) as f64;
+        let x: f64 = i as f64 * 65535.0 / (length - 1) as f64;
         let input: uint16_fract_t = (x + 0.5f64).floor() as uint16_fract_t;
         output.push(input);
     }
@@ -527,7 +529,7 @@ fn build_pow_table(gamma: f32, length: usize) -> Vec<u16> {
     for i in 0..length {
         let mut x: f64 = i as f64 / (length - 1) as f64;
         x = x.powf(gamma as f64);
-        let result: uint16_fract_t = (x * 65535.0f64 + 0.5f64).floor() as uint16_fract_t;
+        let result: uint16_fract_t = (x * 65535.0 + 0.5f64).floor() as uint16_fract_t;
         output.push(result);
     }
     output

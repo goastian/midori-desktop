@@ -68,6 +68,14 @@ class WebRenderTextureHost : public TextureHost {
     return mWrappedTextureHost->AsBufferTextureHost();
   }
 
+  DXGITextureHostD3D11* AsDXGITextureHostD3D11() override {
+    return mWrappedTextureHost->AsDXGITextureHostD3D11();
+  }
+
+  DXGIYCbCrTextureHostD3D11* AsDXGIYCbCrTextureHostD3D11() override {
+    return mWrappedTextureHost->AsDXGIYCbCrTextureHostD3D11();
+  }
+
   bool IsWrappingSurfaceTextureHost() override;
 
   virtual void PrepareForUse() override;
@@ -93,11 +101,11 @@ class WebRenderTextureHost : public TextureHost {
 
   bool SupportsExternalCompositing(WebRenderBackend aBackend) override;
 
-  void SetAcquireFence(mozilla::ipc::FileDescriptor&& aFenceFd) override;
+  void SetAcquireFence(UniqueFileHandle&& aFenceFd) override;
 
-  void SetReleaseFence(mozilla::ipc::FileDescriptor&& aFenceFd) override;
+  void SetReleaseFence(UniqueFileHandle&& aFenceFd) override;
 
-  mozilla::ipc::FileDescriptor GetAndResetReleaseFence() override;
+  UniqueFileHandle GetAndResetReleaseFence() override;
 
   AndroidHardwareBuffer* GetAndroidHardwareBuffer() const override;
 

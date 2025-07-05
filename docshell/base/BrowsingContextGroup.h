@@ -7,6 +7,7 @@
 #ifndef mozilla_dom_BrowsingContextGroup_h
 #define mozilla_dom_BrowsingContextGroup_h
 
+#include "mozilla/PrincipalHashKey.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/FunctionRef.h"
 #include "nsRefPtrHashtable.h"
@@ -29,6 +30,18 @@ class BrowsingContext;
 class WindowContext;
 class ContentParent;
 class DocGroup;
+
+struct DocGroupKey {
+  nsCString mKey;
+  bool mOriginKeyed = false;
+
+  bool operator==(const DocGroupKey& aOther) const {
+    return mKey == aOther.mKey && mOriginKeyed == aOther.mOriginKeyed;
+  };
+  PLDHashNumber Hash() const {
+    return mozilla::HashGeneric(mozilla::HashString(mKey), mOriginKeyed);
+  }
+};
 
 // A BrowsingContextGroup represents the Unit of Related Browsing Contexts in
 // the standard.
@@ -157,8 +170,7 @@ class BrowsingContextGroup final : public nsWrapperCache {
   void GetDocGroups(nsTArray<DocGroup*>& aDocGroups);
 
   // Called by Document when a Document needs to be added to a DocGroup.
-  already_AddRefed<DocGroup> AddDocument(const nsACString& aKey,
-                                         Document* aDocument);
+  already_AddRefed<DocGroup> AddDocument(Document* aDocument);
 
   // Called by Document when a Document needs to be removed from a DocGroup.
   // aDocGroup should be from aDocument. This is done to avoid the assert
@@ -200,10 +212,32 @@ class BrowsingContextGroup final : public nsWrapperCache {
   // process.
   bool IsPotentiallyCrossOriginIsolated();
 
+  void NotifyFocusedOrActiveBrowsingContextToProcess(ContentParent* aProcess);
+
   static void GetAllGroups(nsTArray<RefPtr<BrowsingContextGroup>>& aGroups);
 
   void IncInputEventSuspensionLevel();
   void DecInputEventSuspensionLevel();
+
+  // As documents are loaded, whether or not each origin is origin-keyed is
+  // recorded within the BrowsingContextGroup. This in turn controls whether
+  // document.domain can be used, as well as the options available to us for
+  // process isolation.
+  // The relevant subset of this mapping is mirrored to content processes, to be
+  // used when determining DocGroup keying.
+  void SetUseOriginAgentClusterFromNetwork(nsIPrincipal* aPrincipal,
+                                           bool aUseOriginAgentCluster);
+  void SetUseOriginAgentClusterFromIPC(nsIPrincipal* aPrincipal,
+                                       bool aUseOriginAgentCluster);
+  Maybe<bool> UsesOriginAgentCluster(nsIPrincipal* aPrincipal);
+
+  // Ensures that the given principal will return `Some(...)` from
+  // `UsesOriginAgentCluster` going forward, setting it to a default value if no
+  // value is set.
+  // As the map can only be modified in the parent process, this method will
+  // crash if there is no CrossOriginIsolatedStatus for the principal when
+  // called in a content process.
+  void EnsureUsesOriginAgentClusterInitialized(nsIPrincipal* aPrincipal);
 
   void ChildDestroy();
 
@@ -250,7 +284,7 @@ class BrowsingContextGroup final : public nsWrapperCache {
   // but we still keep strong pointers. When all Documents are removed
   // from DocGroup (by the BrowsingContextGroup), the DocGroup is
   // removed from here.
-  nsRefPtrHashtable<nsCStringHashKey, DocGroup> mDocGroups;
+  nsRefPtrHashtable<nsGenericHashKey<DocGroupKey>, DocGroup> mDocGroups;
 
   // The content process which will host documents in this BrowsingContextGroup
   // which need to be loaded with a given remote type.
@@ -259,6 +293,12 @@ class BrowsingContextGroup final : public nsWrapperCache {
   // host process may not yet be subscribed, and a subscriber need not be a host
   // process.
   nsRefPtrHashtable<nsCStringHashKey, ContentParent> mHosts;
+
+  // Whether or not a given http(s) origin uses origin or siteOrigin-keyed
+  // DocGroups/AgentClusters. Only contains entries for http(s) origins.
+  //
+  // https://html.spec.whatwg.org/#historical-agent-cluster-key-map
+  nsTHashMap<PrincipalHashKey, bool> mUseOriginAgentCluster;
 
   nsTHashSet<nsRefPtrHashKey<ContentParent>> mSubscribers;
 

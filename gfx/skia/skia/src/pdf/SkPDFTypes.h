@@ -8,30 +8,32 @@
 #ifndef SkPDFTypes_DEFINED
 #define SkPDFTypes_DEFINED
 
-#include "include/core/SkRefCnt.h"
 #include "include/core/SkScalar.h"
+#include "include/core/SkSpan.h"
 #include "include/core/SkTypes.h"
-#include "include/private/base/SkTo.h"
-#include "src/core/SkTHash.h"
+#include "src/pdf/SkPDFUnion.h"
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
-#include <new>
-#include <type_traits>
 #include <utility>
 #include <vector>
-#include <memory>
 
-class SkData;
-class SkPDFArray;
-
-class SkPDFDict;
 class SkPDFDocument;
-class SkPDFObject;
-class SkPDFUnion;
 class SkStreamAsset;
 class SkString;
 class SkWStream;
-struct SkPDFObjectSerializer;
+
+#ifndef SK_PDF_MASK_QUALITY
+    // If MASK_QUALITY is in [0,100], will be used for JpegEncoder.
+    // Otherwise, just encode masks losslessly.
+    #define SK_PDF_MASK_QUALITY 50
+    // Since these masks are used for blurry shadows, we shouldn't need
+    // high quality.  Raise this value if your shadows have visible JPEG
+    // artifacts.
+    // If SkJpegEncoder::Encode fails, we will fall back to the lossless
+    // encoding.
+#endif
 
 struct SkPDFIndirectReference {
     int fValue = -1;
@@ -79,7 +81,7 @@ private:
 
     An array object in a PDF.
 */
-class SkPDFArray final : public SkPDFObject {
+class SkPDFArray : public SkPDFObject {
 public:
     /** Create a PDF array. Maximum length is 8191.
      */
@@ -114,6 +116,9 @@ public:
     void appendObject(std::unique_ptr<SkPDFObject>&&);
     void appendRef(SkPDFIndirectReference);
 
+protected:
+    SkSpan<const SkPDFUnion> values() const { return SkSpan(fValues); }
+
 private:
     std::vector<SkPDFUnion> fValues;
     void append(SkPDFUnion&& value);
@@ -138,6 +143,15 @@ static inline std::unique_ptr<SkPDFArray> SkPDFMakeArray(Args... args) {
     SkPDFArray_Append(ret.get(), args...);
     return ret;
 }
+
+/** \class SkPDFOptionalArray
+ *
+ *  An SkPDFArray which may be emitted as a non-array if it contains a single entry.
+ *  Search the specification for "or an array" for where this can be used.
+ */
+class SkPDFOptionalArray final : public SkPDFArray {
+    void emitObject(SkWStream* stream) const override;
+};
 
 /** \class SkPDFDict
 
@@ -199,12 +213,6 @@ static inline std::unique_ptr<SkPDFDict> SkPDFMakeDict(const char* type = nullpt
 enum class SkPDFSteamCompressionEnabled : bool {
     No = false,
     Yes = true,
-    Default =
-#ifdef SK_PDF_LESS_COMPRESSION
-        No,
-#else
-        Yes,
-#endif
 };
 
 // Exposed for unit testing.
@@ -215,5 +223,5 @@ SkPDFIndirectReference SkPDFStreamOut(
     std::unique_ptr<SkPDFDict> dict,
     std::unique_ptr<SkStreamAsset> stream,
     SkPDFDocument* doc,
-    SkPDFSteamCompressionEnabled compress = SkPDFSteamCompressionEnabled::Default);
+    SkPDFSteamCompressionEnabled compress = SkPDFSteamCompressionEnabled::Yes);
 #endif

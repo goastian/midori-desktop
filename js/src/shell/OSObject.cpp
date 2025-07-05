@@ -19,7 +19,7 @@
 #  include <process.h>
 #  include <string.h>
 #  include <wchar.h>
-#  include <windows.h>
+#  include "util/WindowsWrapper.h"
 #elif __wasi__
 #  include <dirent.h>
 #  include <sys/types.h>
@@ -47,7 +47,7 @@
 #include "shell/jsshell.h"
 #include "shell/StringUtils.h"
 #include "util/GetPidProvider.h"  // getpid()
-#include "util/StringBuffer.h"
+#include "util/StringBuilder.h"
 #include "util/Text.h"
 #include "util/WindowsWrapper.h"
 #include "vm/JSObject.h"
@@ -120,6 +120,7 @@ static UniqueChars DirectoryName(JSContext* cx, const char* path) {
   char dirName[PATH_MAX + 1];
   strncpy(dirName, narrowPath.get(), PATH_MAX);
   if (dirName[PATH_MAX - 1] != '\0') {
+    JS_ReportErrorASCII(cx, "Path is too long");
     return nullptr;
   }
 
@@ -194,11 +195,10 @@ JSString* ResolvePath(JSContext* cx, HandleString filenameStr,
   JS::AutoFilename scriptFilename;
   if (resolveMode == ScriptRelative) {
     // Get the currently executing script's name.
-    if (!DescribeScriptedCaller(cx, &scriptFilename)) {
-      return nullptr;
-    }
 
-    if (!scriptFilename.get()) {
+    if (!DescribeScriptedCaller(&scriptFilename, cx) || !scriptFilename.get()) {
+      JS_ReportErrorASCII(
+          cx, "cannot resolve path due to hidden or unscripted caller");
       return nullptr;
     }
 
@@ -459,7 +459,7 @@ static bool ListDir(JSContext* cx, unsigned argc, Value* vp,
 
   UniqueChars pathname = JS_EncodeStringToUTF8(cx, str);
   if (!pathname) {
-    JS_ReportErrorASCII(cx, "os.file.listDir cannot convert path to Latin1");
+    JS_ReportErrorASCII(cx, "os.file.listDir cannot convert path to UTF8");
     return false;
   }
 
@@ -479,8 +479,8 @@ static bool ListDir(JSContext* cx, unsigned argc, Value* vp,
   {
     DIR* dir = opendir(pathname.get());
     if (!dir) {
-      JS_ReportErrorASCII(cx, "os.file.listDir is unable to open: %s",
-                          pathname.get());
+      JS_ReportErrorUTF8(cx, "os.file.listDir is unable to open: %s",
+                         pathname.get());
       return false;
     }
     auto close = mozilla::MakeScopeExit([&] {
@@ -507,6 +507,11 @@ static bool ListDir(JSContext* cx, unsigned argc, Value* vp,
 
     WIN32_FIND_DATAA FindFileData;
     HANDLE hFind = FindFirstFileA(pattern.begin(), &FindFileData);
+    if (hFind == INVALID_HANDLE_VALUE) {
+      JS_ReportErrorUTF8(cx, "os.file.listDir is unable to open: %s",
+                         pathname.get());
+      return false;
+    }
     auto close = mozilla::MakeScopeExit([&] {
       if (!FindClose(hFind)) {
         MOZ_CRASH("Could not close Find");
@@ -681,7 +686,8 @@ const JSClass FileObject::class_ = {
     "File",
     JSCLASS_HAS_RESERVED_SLOTS(FileObject::NUM_SLOTS) |
         JSCLASS_FOREGROUND_FINALIZE,
-    &FileObjectClassOps};
+    &FileObjectClassOps,
+};
 
 static FileObject* redirect(JSContext* cx, HandleString relFilename,
                             RCFile** globalFile) {
@@ -898,7 +904,7 @@ static bool ospath_join(JSContext* cx, unsigned argc, Value* vp) {
     }
 
     if (IsAbsolutePath(str)) {
-      MOZ_ALWAYS_TRUE(buffer.resize(0));
+      buffer.clear();
     } else if (i != 0) {
       UniqueChars path = JS_EncodeStringToUTF8(cx, str);
       if (!path) {
@@ -994,14 +1000,14 @@ UniqueChars SystemErrorMessage(JSContext* cx, int errnum) {
 #if defined(XP_WIN)
   wchar_t buffer[200];
   const wchar_t* errstr = buffer;
-  if (_wcserror_s(buffer, mozilla::ArrayLength(buffer), errnum) != 0) {
+  if (_wcserror_s(buffer, std::size(buffer), errnum) != 0) {
     errstr = L"unknown error";
   }
   return JS::EncodeWideToUtf8(cx, errstr);
 #else
   char buffer[200];
-  const char* errstr = strerror_message(
-      strerror_r(errno, buffer, mozilla::ArrayLength(buffer)), buffer);
+  const char* errstr =
+      strerror_message(strerror_r(errno, buffer, std::size(buffer)), buffer);
   if (!errstr) {
     errstr = "unknown error";
   }

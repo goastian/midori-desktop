@@ -15,6 +15,7 @@ use std::os::raw::c_void;
 use std::sync::Arc;
 use std::mem::replace;
 
+use crate::internal_types::FrameVec;
 
 // Matches the definition of SK_ScalarNearlyZero in Skia.
 const NEARLY_ZERO: f32 = 1.0 / 4096.0;
@@ -108,7 +109,6 @@ impl<T> VecHelper<T> for Vec<T> {
         replace(self, Vec::with_capacity(len + 8))
     }
 }
-
 
 // Represents an optimized transform where there is only
 // a scale and translation (which are guaranteed to maintain
@@ -346,6 +346,13 @@ impl ScaleOffset {
         Vector2D::new(
             vector.x * self.scale.x,
             vector.y * self.scale.y,
+        )
+    }
+
+    pub fn map_size<F, T>(&self, size: &Size2D<f32, F>) -> Size2D<f32, T> {
+        Size2D::new(
+            size.width * self.scale.x,
+            size.height * self.scale.y,
         )
     }
 
@@ -675,6 +682,17 @@ pub fn extract_inner_rect_safe<U>(
     // value of `k==1.0` is used for extraction of the corner rectangles
     // see `SEGMENT_CORNER_*` in `clip_shared.glsl`
     extract_inner_rect_impl(rect, radii, 1.0)
+}
+
+/// Return an aligned rectangle that is inside the clip region and doesn't intersect
+/// any of the bounding rectangles of the rounded corners, with a specific k factor
+/// to control how much of the rounded corner is included.
+pub fn extract_inner_rect_k<U>(
+    rect: &Box2D<f32, U>,
+    radii: &BorderRadius,
+    k: f32,
+) -> Option<Box2D<f32, U>> {
+    extract_inner_rect_impl(rect, radii, k)
 }
 
 #[cfg(test)]
@@ -1366,7 +1384,7 @@ impl Preallocator {
     }
 
     /// Record the size of a vector to preallocate it the next frame.
-    pub fn record_vec<T>(&mut self, vec: &Vec<T>) {
+    pub fn record_vec<T>(&mut self, vec: &[T]) {
         let len = vec.len();
         if len > self.size {
             self.size = len;
@@ -1387,6 +1405,18 @@ impl Preallocator {
     /// The preallocated amount depends on the length recorded in the last
     /// record_vec call.
     pub fn preallocate_vec<T>(&self, vec: &mut Vec<T>) {
+        let len = vec.len();
+        let cap = self.preallocation_size();
+        if len < cap {
+            vec.reserve(cap - len);
+        }
+    }
+
+    /// Preallocate vector storage.
+    ///
+    /// The preallocated amount depends on the length recorded in the last
+    /// record_vec call.
+    pub fn preallocate_framevec<T>(&self, vec: &mut FrameVec<T>) {
         let len = vec.len();
         let cap = self.preallocation_size();
         if len < cap {

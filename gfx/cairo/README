@@ -8,7 +8,7 @@ http://www.cairographics.org/.
 VERSIONS:
 
   cairo (1.18.0)
-  pixman (0.43.4)
+  pixman (0.44.2)
 
 ==== Local cairo patches ====
 
@@ -50,18 +50,16 @@ VERSIONS:
 
 cff-font-creation.patch: make cairo_cff_font_t allocation consistent
 
+27-windows-sdk-26100.patch: fix build bustage with Windows SDK 26100
+
+28-win32-vertical-glyph-advance-direction.patch: fix sign of glyph y-advance for ExtTextOut
+
 ==== pixman patches ====
 
 pixman-armasm.patch: add an ifdef guard around pixman-config.h include
-
-pixman-clangcl.patch: clang-cl compilation fix
 
 pixman-export.patch: make sure pixman symbols are not exported in libxul
 
 pixman-interp.patch: use lower quality interpolation by default on mobile
 
-pixman-intrin.patch: include intrin.h on Windows to fix bustage
-
 pixman-rename.patch: include pixman-rename.h for renaming of external symbols
-
-pixman-neon.patch: fix for a build failure with clang on armhf linux

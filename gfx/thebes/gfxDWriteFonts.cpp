@@ -162,7 +162,7 @@ void gfxDWriteFont::SystemTextQualityChanged() {
   // flush cached stuff that depended on the old setting, and force
   // reflow everywhere to ensure we are using correct glyph metrics.
   gfxPlatform::FlushFontAndWordCaches();
-  gfxPlatform::ForceGlobalReflow(gfxPlatform::NeedsReframe::No);
+  gfxPlatform::ForceGlobalReflow(gfxPlatform::GlobalReflowFlags::None);
 }
 
 mozilla::Atomic<bool> gfxDWriteFont::sForceGDIClassicEnabled{true};
@@ -685,7 +685,7 @@ int32_t gfxDWriteFont::GetGlyphWidth(uint16_t aGID) {
 }
 
 bool gfxDWriteFont::GetForceGDIClassic() const {
-  return sForceGDIClassicEnabled &&
+  return sForceGDIClassicEnabled && mStyle.allowForceGDIClassic &&
          static_cast<gfxDWriteFontEntry*>(mFontEntry.get())
              ->GetForceGDIClassic() &&
          GetAdjustedSize() <= gfxDWriteFontList::PlatformFontList()

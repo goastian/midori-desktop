@@ -184,8 +184,7 @@ template <typename Iterator, typename Node, typename PostAction>
 auto ForEachNodePostOrder(Node aRoot, const PostAction& aPostAction)
     -> std::enable_if_t<std::is_same_v<decltype(aPostAction(aRoot)), void>,
                         void> {
-  ForEachNode<Iterator>(
-      aRoot, [](Node aNode) {}, aPostAction);
+  ForEachNode<Iterator>(aRoot, [](Node aNode) {}, aPostAction);
 }
 
 /*

@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 ksb{
     Currencies{
         AED{
@@ -175,9 +175,13 @@ ksb{
             "SHP",
             "pauni ya Santahelena",
         }
+        SLE{
+            "SLE",
+            "leoni",
+        }
         SLL{
             "SLL",
-            "leoni",
+            "leoni (1964—2022)",
         }
         SOS{
             "SOS",

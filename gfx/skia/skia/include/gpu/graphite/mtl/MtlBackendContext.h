@@ -8,7 +8,10 @@
 #ifndef skgpu_graphite_MtlBackendContext_DEFINED
 #define skgpu_graphite_MtlBackendContext_DEFINED
 
-#include "include/gpu/graphite/mtl/MtlGraphiteTypes.h"
+#include "include/ports/SkCFObject.h"
+#include "include/private/base/SkAPI.h"
+
+#import <CoreFoundation/CoreFoundation.h>
 
 namespace skgpu::graphite {
 
@@ -19,6 +22,10 @@ struct SK_API MtlBackendContext {
     sk_cfp<CFTypeRef> fDevice;
     sk_cfp<CFTypeRef> fQueue;
 };
+
+namespace ContextFactory {
+SK_API std::unique_ptr<Context> MakeMetal(const MtlBackendContext&, const ContextOptions&);
+} // namespace ContextFactory
 
 } // namespace skgpu::graphite
 

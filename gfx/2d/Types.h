@@ -73,15 +73,27 @@ enum class SurfaceFormat : int8_t {
   R16G16,
 
   // These ones are their own special cases.
-  YUV,
-  NV12,    // YUV 4:2:0 image with a plane of 8 bit Y samples followed by
-           // an interleaved U/V plane containing 8 bit 2x2 subsampled
-           // colour difference samples.
-  P016,    // Similar to NV12, but with 16 bits plane values
-  P010,    // Identical to P016 but the 6 least significant bits are 0.
-           // With DXGI in theory entirely compatible, however practice has
-           // shown that it's not the case.
-  YUV422,  // Single plane YUV 4:2:2 interleaved as Y`0 Cb Y`1 Cr.
+  YUV420,     // Sometimes called YU12. 3 planes of 8 bit Y, then Cb, then Cr.
+              // 4:2:0 chroma subsampling.
+  YUV420P10,  // YUV420 but with 16 bit plane values where the 6 most
+              // significant bits are 0 (so it's 10-bit format).
+  YUV422P10,  // 3 planes like YUV420, but with 4:2:2 chroma subampling and
+              // 16 bit plane values where the 6 least significant bits are 0.
+  NV12,       // 2 planes. YUV 4:2:0 image with a plane of 8 bit Y samples
+              // followed by an interleaved U/V plane containing 8 bit 2x2
+              // subsampled colour difference samples.
+  P016,       // Similar to NV12, but with 16 bits plane values
+  P010,       // Identical to P016 but the 6 least significant bits are 0.
+              // With DXGI in theory entirely compatible, however practice has
+              // shown that it's not the case.
+  NV16,       // Similar to NV12, but with 4:2:2 chroma subsampling. Technically
+              // 8 bit, but we only use it for 10 bit, and it's really only here
+              // to support the macOS bi-planar 422 formats.
+  YUY2,       // Sometimes called YUYV. Single plane / packed YUV 4:2:2 8 bit
+              // samples interleaved as Y`0 Cb Y`1 Cr. Since 4 pixels require
+              // 64 bits, this can also be considered a 16bpp format, but each
+              // component is only 8 bits. We sometimes pack RGBA data into
+              // this format.
   HSV,
   Lab,
   Depth,
@@ -147,11 +159,14 @@ inline std::optional<SurfaceFormatInfo> Info(const SurfaceFormat aFormat) {
       info.hasAlpha = true;
       break;
 
-    case SurfaceFormat::YUV:
+    case SurfaceFormat::YUV420:
+    case SurfaceFormat::YUV420P10:
+    case SurfaceFormat::YUV422P10:
     case SurfaceFormat::NV12:
     case SurfaceFormat::P016:
     case SurfaceFormat::P010:
-    case SurfaceFormat::YUV422:
+    case SurfaceFormat::NV16:
+    case SurfaceFormat::YUY2:
       info.hasColor = true;
       info.hasAlpha = false;
       info.isYuv = true;
@@ -202,11 +217,14 @@ inline std::optional<SurfaceFormatInfo> Info(const SurfaceFormat aFormat) {
       info.bytesPerPixel = 3 * sizeof(float);
       break;
 
-    case SurfaceFormat::YUV:
+    case SurfaceFormat::YUV420:
+    case SurfaceFormat::YUV420P10:
+    case SurfaceFormat::YUV422P10:
     case SurfaceFormat::NV12:
     case SurfaceFormat::P016:
     case SurfaceFormat::P010:
-    case SurfaceFormat::YUV422:
+    case SurfaceFormat::NV16:
+    case SurfaceFormat::YUY2:
     case SurfaceFormat::UNKNOWN:
       break;  // No bytesPerPixel per se.
   }
@@ -296,11 +314,11 @@ inline bool IsOpaque(SurfaceFormat aFormat) {
     case SurfaceFormat::HSV:
     case SurfaceFormat::Lab:
     case SurfaceFormat::Depth:
-    case SurfaceFormat::YUV:
+    case SurfaceFormat::YUV420:
     case SurfaceFormat::NV12:
     case SurfaceFormat::P010:
     case SurfaceFormat::P016:
-    case SurfaceFormat::YUV422:
+    case SurfaceFormat::YUY2:
       return true;
     default:
       return false;
@@ -940,10 +958,11 @@ struct sRGBColor {
 /* Color is stored in non-premultiplied form in device color space */
 struct DeviceColor {
  public:
-  DeviceColor() : r(0.0f), g(0.0f), b(0.0f), a(0.0f) {}
-  DeviceColor(Float aR, Float aG, Float aB, Float aA)
+  constexpr DeviceColor() : r(0.0f), g(0.0f), b(0.0f), a(0.0f) {}
+  constexpr DeviceColor(Float aR, Float aG, Float aB, Float aA)
       : r(aR), g(aG), b(aB), a(aA) {}
-  DeviceColor(Float aR, Float aG, Float aB) : r(aR), g(aG), b(aB), a(1.0f) {}
+  constexpr DeviceColor(Float aR, Float aG, Float aB)
+      : r(aR), g(aG), b(aB), a(1.0f) {}
 
   /* The following Mask* variants are helpers used to make it clear when a
    * particular color is being used for masking purposes. These masks should

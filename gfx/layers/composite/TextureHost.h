@@ -17,8 +17,7 @@
 #include "mozilla/gfx/Matrix.h"
 #include "mozilla/gfx/Point.h"  // for IntSize, IntPoint
 #include "mozilla/gfx/Rect.h"
-#include "mozilla/gfx/Types.h"  // for SurfaceFormat, etc
-#include "mozilla/ipc/FileDescriptor.h"
+#include "mozilla/gfx/Types.h"               // for SurfaceFormat, etc
 #include "mozilla/layers/CompositorTypes.h"  // for TextureFlags, etc
 #include "mozilla/layers/LayersTypes.h"      // for LayerRenderState, etc
 #include "mozilla/layers/LayersMessages.h"
@@ -26,7 +25,8 @@
 #include "mozilla/layers/TextureSourceProvider.h"
 #include "mozilla/mozalloc.h"  // for operator delete
 #include "mozilla/Range.h"
-#include "mozilla/UniquePtr.h"  // for UniquePtr
+#include "mozilla/UniquePtr.h"            // for UniquePtr
+#include "mozilla/UniquePtrExtensions.h"  // for UniqueFileHandle
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "nsCOMPtr.h"         // for already_AddRefed
 #include "nsDebug.h"          // for NS_WARNING
@@ -62,6 +62,8 @@ class Compositor;
 class CompositableParentManager;
 class ReadLockDescriptor;
 class CompositorBridgeParent;
+class DXGITextureHostD3D11;
+class DXGIYCbCrTextureHostD3D11;
 class SurfaceDescriptor;
 class HostIPCAllocator;
 class ISurfaceAllocator;
@@ -623,6 +625,12 @@ class TextureHost : public AtomicRefCountedWithFinalize<TextureHost> {
     return nullptr;
   }
 
+  virtual DXGITextureHostD3D11* AsDXGITextureHostD3D11() { return nullptr; }
+
+  virtual DXGIYCbCrTextureHostD3D11* AsDXGIYCbCrTextureHostD3D11() {
+    return nullptr;
+  }
+
   virtual bool IsWrappingSurfaceTextureHost() { return false; }
 
   // Create the corresponding RenderTextureHost type of this texture, and
@@ -667,6 +675,9 @@ class TextureHost : public AtomicRefCountedWithFinalize<TextureHost> {
     // Passed in the RenderCompositor supports BufferTextureHosts
     // being used directly as external compositor surfaces.
     SUPPORTS_EXTERNAL_BUFFER_TEXTURES,
+
+    // Passed if the caller wants to disable external compositing of TextureHost
+    EXTERNAL_COMPOSITING_DISABLED,
   };
   using PushDisplayItemFlagSet = EnumSet<PushDisplayItemFlag>;
 
@@ -689,12 +700,12 @@ class TextureHost : public AtomicRefCountedWithFinalize<TextureHost> {
 
   virtual bool NeedsYFlip() const;
 
-  virtual void SetAcquireFence(mozilla::ipc::FileDescriptor&& aFenceFd) {}
+  virtual void SetAcquireFence(UniqueFileHandle&& aFenceFd) {}
 
-  virtual void SetReleaseFence(mozilla::ipc::FileDescriptor&& aFenceFd) {}
+  virtual void SetReleaseFence(UniqueFileHandle&& aFenceFd) {}
 
-  virtual mozilla::ipc::FileDescriptor GetAndResetReleaseFence() {
-    return mozilla::ipc::FileDescriptor();
+  virtual UniqueFileHandle GetAndResetReleaseFence() {
+    return UniqueFileHandle();
   }
 
   virtual AndroidHardwareBuffer* GetAndroidHardwareBuffer() const {

@@ -90,6 +90,12 @@ static const FeatureInfo sFeatureInfoArr[] = {
      GLESVersion::ES3,
      GLContext::ARB_copy_buffer,
      {GLContext::Extensions_End}},
+    {"depth_clamp",
+     GLVersion::GL3_2,
+     GLESVersion::NONE,
+     GLContext::Extension_None,
+     {GLContext::ARB_depth_clamp, GLContext::EXT_depth_clamp,
+      GLContext::Extensions_End}},
     {"depth_texture",
      GLVersion::GL2,
      GLESVersion::ES3,
@@ -526,7 +532,7 @@ static const FeatureInfo sFeatureInfoArr[] = {
       GLContext::Extensions_End}}};
 
 static inline const FeatureInfo& GetFeatureInfo(GLFeature feature) {
-  static_assert(MOZ_ARRAY_LENGTH(sFeatureInfoArr) == size_t(GLFeature::EnumMax),
+  static_assert(std::size(sFeatureInfoArr) == size_t(GLFeature::EnumMax),
                 "Mismatched lengths for sFeatureInfoInfos and GLFeature enums");
 
   MOZ_ASSERT(feature < GLFeature::EnumMax,

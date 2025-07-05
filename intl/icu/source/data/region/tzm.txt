@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 tzm{
     Countries{
         AD{"Anḍurra"}
@@ -93,7 +93,6 @@ tzm{
         IE{"Irlanḍa"}
         IL{"Israeil"}
         IN{"Hind"}
-        IO{"Amur n Agaraw Uhindi Ubṛiṭani"}
         IQ{"Ɛiraq"}
         IR{"Iran"}
         IS{"Islanḍa"}

@@ -21,28 +21,27 @@ namespace mozilla {
 namespace layers {
 
 struct ShmemAndHandle {
-  RefPtr<ipc::SharedMemoryBasic> shmem;
-  Handle handle;
+  ipc::SharedMemoryMapping shmem;
+  ipc::MutableSharedMemoryHandle handle;
 };
 
 static Maybe<ShmemAndHandle> CreateAndMapShmem(size_t aSize) {
-  auto shmem = MakeRefPtr<ipc::SharedMemoryBasic>();
-  if (!shmem->Create(aSize) || !shmem->Map(aSize)) {
+  auto handle = ipc::shared_memory::Create(aSize);
+  if (!handle) {
+    return Nothing();
+  }
+  auto mapping = handle.Map();
+  if (!mapping) {
     return Nothing();
   }
 
-  auto shmemHandle = shmem->TakeHandle();
-  if (!shmemHandle) {
-    return Nothing();
-  }
-
-  return Some(ShmemAndHandle{shmem.forget(), std::move(shmemHandle)});
+  return Some(ShmemAndHandle{std::move(mapping), std::move(handle)});
 }
 
 CanvasDrawEventRecorder::CanvasDrawEventRecorder(
     dom::ThreadSafeWorkerRef* aWorkerRef)
     : mWorkerRef(aWorkerRef), mIsOnWorker(!!aWorkerRef) {
-  mDefaultBufferSize = ipc::SharedMemory::PageAlignedSize(
+  mDefaultBufferSize = ipc::shared_memory::PageAlignedSize(
       StaticPrefs::gfx_canvas_remote_default_buffer_size());
   mMaxDefaultBuffers = StaticPrefs::gfx_canvas_remote_max_default_buffers();
   mMaxSpinCount = StaticPrefs::gfx_canvas_remote_max_spin_count();
@@ -66,7 +65,7 @@ bool CanvasDrawEventRecorder::Init(TextureType aTextureType,
     return false;
   }
 
-  mHeader = static_cast<Header*>(header->shmem->memory());
+  mHeader = header->shmem.DataAs<Header>();
   mHeader->eventCount = 0;
   mHeader->writerWaitCount = 0;
   mHeader->writerState = State::Processing;
@@ -76,20 +75,20 @@ bool CanvasDrawEventRecorder::Init(TextureType aTextureType,
   // We always keep at least two buffers. This means that when we
   // have to add a new buffer, there is at least a full buffer that requires
   // translating while the handle is sent over.
-  AutoTArray<Handle, 2> bufferHandles;
+  AutoTArray<ipc::ReadOnlySharedMemoryHandle, 2> bufferHandles;
   auto buffer = CreateAndMapShmem(mDefaultBufferSize);
   if (NS_WARN_IF(buffer.isNothing())) {
     return false;
   }
   mCurrentBuffer = CanvasBuffer(std::move(buffer->shmem));
-  bufferHandles.AppendElement(std::move(buffer->handle));
+  bufferHandles.AppendElement(std::move(buffer->handle).ToReadOnly());
 
   buffer = CreateAndMapShmem(mDefaultBufferSize);
   if (NS_WARN_IF(buffer.isNothing())) {
     return false;
   }
-  mRecycledBuffers.emplace(buffer->shmem.forget(), 0);
-  bufferHandles.AppendElement(std::move(buffer->handle));
+  mRecycledBuffers.emplace(std::move(buffer->shmem), 0);
+  bufferHandles.AppendElement(std::move(buffer->handle).ToReadOnly());
 
   mWriterSemaphore.reset(CrossProcessSemaphore::Create("CanvasRecorder", 0));
   auto writerSem = mWriterSemaphore->CloneHandle();
@@ -107,13 +106,13 @@ bool CanvasDrawEventRecorder::Init(TextureType aTextureType,
 
   if (!mHelpers->InitTranslator(aTextureType, aWebglTextureType, aBackendType,
                                 std::move(header->handle),
-                                std::move(bufferHandles), mDefaultBufferSize,
-                                std::move(readerSem), std::move(writerSem))) {
+                                std::move(bufferHandles), std::move(readerSem),
+                                std::move(writerSem))) {
     return false;
   }
 
   mTextureType = aTextureType;
-  mHeaderShmem = header->shmem;
+  mHeaderShmem = std::move(header->shmem);
   return true;
 }
 
@@ -246,7 +245,7 @@ gfx::ContiguousBuffer& CanvasDrawEventRecorder::GetContiguousBuffer(
   }
 
   size_t bufferSize = std::max(mDefaultBufferSize,
-                               ipc::SharedMemory::PageAlignedSize(aSize + 1));
+                               ipc::shared_memory::PageAlignedSize(aSize + 1));
   auto newBuffer = CreateAndMapShmem(bufferSize);
   if (NS_WARN_IF(newBuffer.isNothing())) {
     mHeader->writerState = State::Failed;
@@ -254,7 +253,7 @@ gfx::ContiguousBuffer& CanvasDrawEventRecorder::GetContiguousBuffer(
     return mCurrentBuffer;
   }
 
-  if (!mHelpers->AddBuffer(std::move(newBuffer->handle), bufferSize)) {
+  if (!mHelpers->AddBuffer(std::move(newBuffer->handle).ToReadOnly())) {
     mHeader->writerState = State::Failed;
     mCurrentBuffer = CanvasBuffer();
     return mCurrentBuffer;
@@ -362,11 +361,10 @@ void CanvasDrawEventRecorder::QueueProcessPendingDeletionsLocked(
     return;
   }
 
-  class ProcessPendingRunnable final : public dom::WorkerThreadRunnable {
+  class ProcessPendingRunnable final : public dom::MainThreadWorkerRunnable {
    public:
-    ProcessPendingRunnable(dom::WorkerPrivate* aWorkerPrivate,
-                           RefPtr<CanvasDrawEventRecorder>&& aRecorder)
-        : dom::WorkerThreadRunnable("ProcessPendingRunnable"),
+    explicit ProcessPendingRunnable(RefPtr<CanvasDrawEventRecorder>&& aRecorder)
+        : dom::MainThreadWorkerRunnable("ProcessPendingRunnable"),
           mRecorder(std::move(aRecorder)) {}
 
     bool WorkerRun(JSContext*, dom::WorkerPrivate*) override {
@@ -379,8 +377,7 @@ void CanvasDrawEventRecorder::QueueProcessPendingDeletionsLocked(
     RefPtr<CanvasDrawEventRecorder> mRecorder;
   };
 
-  auto task = MakeRefPtr<ProcessPendingRunnable>(mWorkerRef->Private(),
-                                                 std::move(aRecorder));
+  auto task = MakeRefPtr<ProcessPendingRunnable>(std::move(aRecorder));
   if (NS_WARN_IF(!task->Dispatch(mWorkerRef->Private()))) {
     MOZ_CRASH("ProcessPendingRunnable leaked!");
   }

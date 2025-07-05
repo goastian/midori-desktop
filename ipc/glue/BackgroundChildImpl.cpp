@@ -19,6 +19,7 @@
 #include "mozilla/dom/PBackgroundLSRequestChild.h"
 #include "mozilla/dom/PBackgroundLSSimpleRequestChild.h"
 #include "mozilla/dom/PBackgroundSDBConnectionChild.h"
+#include "mozilla/dom/CookieStoreChild.h"
 #include "mozilla/dom/PFileSystemRequestChild.h"
 #include "mozilla/dom/EndpointForReportChild.h"
 #include "mozilla/dom/PVsync.h"
@@ -27,7 +28,6 @@
 #include "mozilla/dom/indexedDB/PBackgroundIndexedDBUtilsChild.h"
 #include "mozilla/dom/indexedDB/ThreadLocal.h"
 #include "mozilla/dom/quota/PQuotaChild.h"
-#include "mozilla/dom/RemoteWorkerChild.h"
 #include "mozilla/dom/RemoteWorkerControllerChild.h"
 #include "mozilla/dom/RemoteWorkerServiceChild.h"
 #include "mozilla/dom/ServiceWorkerChild.h"
@@ -39,7 +39,6 @@
 #include "mozilla/ipc/PBackgroundTestChild.h"
 #include "mozilla/net/PUDPSocketChild.h"
 #include "mozilla/dom/network/UDPSocketChild.h"
-#include "mozilla/dom/WebAuthnTransactionChild.h"
 #include "mozilla/dom/MIDIPortChild.h"
 #include "mozilla/dom/MIDIManagerChild.h"
 #include "nsID.h"
@@ -69,16 +68,12 @@ namespace mozilla::ipc {
 using mozilla::dom::UDPSocketChild;
 using mozilla::net::PUDPSocketChild;
 
-using mozilla::dom::PRemoteWorkerChild;
 using mozilla::dom::PServiceWorkerChild;
 using mozilla::dom::PServiceWorkerContainerChild;
 using mozilla::dom::PServiceWorkerRegistrationChild;
-using mozilla::dom::RemoteWorkerChild;
 using mozilla::dom::StorageDBChild;
 using mozilla::dom::cache::PCacheChild;
 using mozilla::dom::cache::PCacheStreamControlChild;
-
-using mozilla::dom::WebAuthnTransactionChild;
 
 using mozilla::dom::PMIDIManagerChild;
 using mozilla::dom::PMIDIPortChild;
@@ -129,7 +124,6 @@ void BackgroundChildImpl::ProcessingError(Result aCode, const char* aReason) {
       HANDLE_CASE(MsgNotAllowed);
       HANDLE_CASE(MsgPayloadError);
       HANDLE_CASE(MsgProcessingError);
-      HANDLE_CASE(MsgRouteError);
       HANDLE_CASE(MsgValueError);
 
 #undef HANDLE_CASE
@@ -252,18 +246,6 @@ bool BackgroundChildImpl::DeallocPBackgroundStorageChild(
   return true;
 }
 
-already_AddRefed<PRemoteWorkerChild>
-BackgroundChildImpl::AllocPRemoteWorkerChild(const RemoteWorkerData& aData) {
-  return MakeAndAddRef<RemoteWorkerChild>(aData);
-}
-
-IPCResult BackgroundChildImpl::RecvPRemoteWorkerConstructor(
-    PRemoteWorkerChild* aActor, const RemoteWorkerData& aData) {
-  dom::RemoteWorkerChild* actor = static_cast<dom::RemoteWorkerChild*>(aActor);
-  actor->ExecWorker(aData);
-  return IPC_OK();
-}
-
 dom::PSharedWorkerChild* BackgroundChildImpl::AllocPSharedWorkerChild(
     const dom::RemoteWorkerData& aData, const uint64_t& aWindowID,
     const dom::MessagePortIdentifier& aPortIdentifier) {
@@ -334,6 +316,26 @@ bool BackgroundChildImpl::DeallocPBroadcastChannelChild(
   return true;
 }
 
+// -----------------------------------------------------------------------------
+// CookieStore API
+// -----------------------------------------------------------------------------
+
+dom::PCookieStoreChild* BackgroundChildImpl::AllocPCookieStoreChild() {
+  RefPtr<dom::CookieStoreChild> child = new dom::CookieStoreChild();
+  return child.forget().take();
+}
+
+bool BackgroundChildImpl::DeallocPCookieStoreChild(PCookieStoreChild* aActor) {
+  RefPtr<dom::CookieStoreChild> child =
+      dont_AddRef(static_cast<dom::CookieStoreChild*>(aActor));
+  MOZ_ASSERT(child);
+  return true;
+}
+
+// -----------------------------------------------------------------------------
+// Camera API
+// -----------------------------------------------------------------------------
+
 camera::PCamerasChild* BackgroundChildImpl::AllocPCamerasChild() {
 #ifdef MOZ_WEBRTC
   RefPtr<camera::CamerasChild> agent = new camera::CamerasChild();
@@ -400,20 +402,6 @@ bool BackgroundChildImpl::DeallocPMessagePortChild(PMessagePortChild* aActor) {
   RefPtr<dom::MessagePortChild> child =
       dont_AddRef(static_cast<dom::MessagePortChild*>(aActor));
   MOZ_ASSERT(child);
-  return true;
-}
-
-dom::PWebAuthnTransactionChild*
-BackgroundChildImpl::AllocPWebAuthnTransactionChild() {
-  MOZ_CRASH("PWebAuthnTransaction actor should be manually constructed!");
-  return nullptr;
-}
-
-bool BackgroundChildImpl::DeallocPWebAuthnTransactionChild(
-    PWebAuthnTransactionChild* aActor) {
-  MOZ_ASSERT(aActor);
-  RefPtr<dom::WebAuthnTransactionChild> child =
-      dont_AddRef(static_cast<dom::WebAuthnTransactionChild*>(aActor));
   return true;
 }
 

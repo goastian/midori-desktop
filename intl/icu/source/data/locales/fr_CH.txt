@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 fr_CH{
     NumberElements{
         latn{
@@ -136,14 +136,6 @@ fr_CH{
                         morning1{"du mat."}
                         night1{"du mat."}
                         noon{"midi"}
-                    }
-                }
-                stand-alone{
-                    abbreviated{
-                        midnight{"min."}
-                    }
-                    narrow{
-                        midnight{"min."}
                     }
                 }
             }

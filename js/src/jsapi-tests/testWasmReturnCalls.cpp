@@ -15,12 +15,12 @@
 using namespace js;
 using namespace js::jit;
 
-#if defined(ENABLE_WASM_TAIL_CALLS) && !defined(JS_CODEGEN_NONE)
+#ifndef JS_CODEGEN_NONE
 
 // Check if wasmMarkCallAsSlow produces the byte sequence that can
 // wasmCheckSlowCallsite detect.
 BEGIN_TEST(testWasmCheckSlowCallMarkerHit) {
-  js::LifoAlloc lifo(4096);
+  js::LifoAlloc lifo(4096, js::MallocArena);
   TempAllocator alloc(&lifo);
   JitContext jc(cx);
   StackMacroAssembler masm(cx, alloc);
@@ -58,7 +58,7 @@ END_TEST(testWasmCheckSlowCallMarkerHit)
 
 // Check if wasmCheckSlowCallsite does not detect non-marked slow calls.
 BEGIN_TEST(testWasmCheckSlowCallMarkerMiss) {
-  js::LifoAlloc lifo(4096);
+  js::LifoAlloc lifo(4096, js::MallocArena);
   TempAllocator alloc(&lifo);
   JitContext jc(cx);
   StackMacroAssembler masm(cx, alloc);
@@ -94,4 +94,4 @@ BEGIN_TEST(testWasmCheckSlowCallMarkerMiss) {
 }
 END_TEST(testWasmCheckSlowCallMarkerMiss)
 
-#endif  // ENABLE_WASM_TAIL_CALLS
+#endif

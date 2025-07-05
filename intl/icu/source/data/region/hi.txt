@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 hi{
     Countries{
         001{"विश्व"}
@@ -297,6 +297,9 @@ hi{
         ZM{"ज़ाम्बिया"}
         ZW{"ज़िम्बाब्वे"}
         ZZ{"अज्ञात क्षेत्र"}
+    }
+    Countries%chagos{
+        IO{"चागोस द्वीपसमूह"}
     }
     Countries%short{
         GB{"यू॰के॰"}

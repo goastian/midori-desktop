@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 sq{
     Countries{
         001{"Bota"}
@@ -297,6 +297,9 @@ sq{
         ZM{"Zambi"}
         ZW{"Zimbabve"}
         ZZ{"I panjohur"}
+    }
+    Countries%chagos{
+        IO{"Arkipelagu i Çagosit"}
     }
     Countries%short{
         GB{"MB"}

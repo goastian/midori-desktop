@@ -31,6 +31,9 @@
 #include "mozilla/StaticPrefs_image.h"
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/StoragePrincipalHelper.h"
+#include "mozilla/Maybe.h"
+#include "mozilla/SharedSubResourceCache.h"
+#include "mozilla/dom/CacheExpirationTime.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/FetchPriority.h"
 #include "mozilla/dom/nsMixedContentBlocker.h"
@@ -724,10 +727,13 @@ static bool ShouldLoadCachedImage(imgRequest* aImgRequest,
     loadingPrincipal = NullPrincipal::CreateWithoutOriginAttributes();
   }
 
-  nsCOMPtr<nsILoadInfo> secCheckLoadInfo = new LoadInfo(
+  Result<RefPtr<LoadInfo>, nsresult> maybeLoadInfo = LoadInfo::Create(
       loadingPrincipal, aTriggeringPrincipal, aLoadingDocument,
       nsILoadInfo::SEC_ONLY_FOR_EXPLICIT_CONTENTSEC_CHECK, aPolicyType);
-
+  if (NS_WARN_IF(maybeLoadInfo.isErr())) {
+    return false;
+  }
+  RefPtr<LoadInfo> secCheckLoadInfo = maybeLoadInfo.unwrap();
   secCheckLoadInfo->SetSendCSPViolationEvents(aSendCSPViolationReports);
 
   int16_t decision = nsIContentPolicy::REJECT_REQUEST;
@@ -835,6 +841,10 @@ static void AdjustPriorityForImages(nsIChannel* aChannel,
     }
 
     supportsPriority->AdjustPriority(priority);
+  }
+
+  if (nsCOMPtr<nsIClassOfService> cos = do_QueryInterface(aChannel)) {
+    cos->SetFetchPriorityDOM(aFetchPriority);
   }
 }
 
@@ -1001,7 +1011,7 @@ imgCacheEntry::imgCacheEntry(imgLoader* loader, imgRequest* request,
       mDataSize(0),
       mTouchedTime(SecondsFromPRTime(PR_Now())),
       mLoadTime(SecondsFromPRTime(PR_Now())),
-      mExpiryTime(0),
+      mExpiryTime(CacheExpirationTime::Never()),
       mMustValidate(false),
       // We start off as evicted so we don't try to update the cache.
       // PutIntoCache will set this to false.
@@ -1366,18 +1376,122 @@ imgLoader::Observe(nsISupports* aSubject, const char* aTopic,
 }
 
 NS_IMETHODIMP
-imgLoader::ClearCache(bool chrome) {
+imgLoader::ClearCache(JS::Handle<JS::Value> aChrome) {
+  nsresult rv = NS_OK;
+
+  Maybe<bool> chrome =
+      aChrome.isBoolean() ? Some(aChrome.toBoolean()) : Nothing();
   if (XRE_IsParentProcess()) {
     bool privateLoader = this == gPrivateBrowsingLoader;
-    for (auto* cp : ContentParent::AllProcesses(ContentParent::eLive)) {
-      Unused << cp->SendClearImageCache(privateLoader, chrome);
+    rv = ClearCache(Some(privateLoader), chrome, Nothing(), Nothing(),
+                    Nothing());
+
+    if (this == gNormalLoader || this == gPrivateBrowsingLoader) {
+      return rv;
     }
+
+    // NOTE: There can be other loaders created with
+    //       Cc["@mozilla.org/image/loader;1"].createInstance(Ci.imgILoader).
+    //       If ClearCache is called on them, the above static ClearCache
+    //       doesn't handle it, and ClearImageCache needs to be called on
+    //       the current instance.
+    //       The favicon handling and some tests can create such loaders.
   }
+
   ClearOptions options;
   if (chrome) {
-    options += ClearOption::ChromeOnly;
+    if (*chrome) {
+      options += ClearOption::ChromeOnly;
+    } else {
+      options += ClearOption::ContentOnly;
+    }
   }
-  return ClearImageCache(options);
+  nsresult rv2 = ClearImageCache(options);
+
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  return rv2;
+}
+
+/*static */
+nsresult imgLoader::ClearCache(
+    mozilla::Maybe<bool> aPrivateLoader /* = mozilla::Nothing() */,
+    mozilla::Maybe<bool> aChrome /* = mozilla::Nothing() */,
+    const mozilla::Maybe<nsCOMPtr<nsIPrincipal>>&
+        aPrincipal /* = mozilla::Nothing() */,
+    const mozilla::Maybe<nsCString>& aSchemelessSite /* = mozilla::Nothing() */,
+    const mozilla::Maybe<mozilla::OriginAttributesPattern>&
+        aPattern /* = mozilla::Nothing() */,
+    const mozilla::Maybe<nsCString>& aURL /* = mozilla::Nothing() */) {
+  if (XRE_IsParentProcess()) {
+    for (auto* cp : ContentParent::AllProcesses(ContentParent::eLive)) {
+      Unused << cp->SendClearImageCache(aPrivateLoader, aChrome, aPrincipal,
+                                        aSchemelessSite, aPattern, aURL);
+    }
+  }
+
+  if (aPrincipal) {
+    imgLoader* loader;
+    if ((*aPrincipal)->OriginAttributesRef().IsPrivateBrowsing()) {
+      loader = imgLoader::PrivateBrowsingLoader();
+    } else {
+      loader = imgLoader::NormalLoader();
+    }
+
+    loader->RemoveEntriesInternal(aPrincipal, Nothing(), Nothing(), Nothing());
+    return NS_OK;
+  }
+
+  if (aSchemelessSite) {
+    if (!aPrivateLoader || !*aPrivateLoader) {
+      nsresult rv = imgLoader::NormalLoader()->RemoveEntriesInternal(
+          Nothing(), aSchemelessSite, aPattern, Nothing());
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
+    if (!aPrivateLoader || *aPrivateLoader) {
+      nsresult rv = imgLoader::PrivateBrowsingLoader()->RemoveEntriesInternal(
+          Nothing(), aSchemelessSite, aPattern, Nothing());
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
+    return NS_OK;
+  }
+
+  if (aURL) {
+    nsCOMPtr<nsIURI> uri;
+    nsresult rv = NS_NewURI(getter_AddRefs(uri), *aURL);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    if (!aPrivateLoader || !*aPrivateLoader) {
+      nsresult rv = imgLoader::NormalLoader()->RemoveEntry(uri, nullptr);
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
+    if (!aPrivateLoader || *aPrivateLoader) {
+      nsresult rv =
+          imgLoader::PrivateBrowsingLoader()->RemoveEntry(uri, nullptr);
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
+    return NS_OK;
+  }
+
+  ClearOptions options;
+  if (aChrome) {
+    if (*aChrome) {
+      options += ClearOption::ChromeOnly;
+    } else {
+      options += ClearOption::ContentOnly;
+    }
+  }
+
+  if (!aPrivateLoader || !*aPrivateLoader) {
+    nsresult rv = imgLoader::NormalLoader()->ClearImageCache(options);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+  if (!aPrivateLoader || *aPrivateLoader) {
+    nsresult rv = imgLoader::PrivateBrowsingLoader()->ClearImageCache(options);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -1386,103 +1500,50 @@ imgLoader::RemoveEntriesFromPrincipalInAllProcesses(nsIPrincipal* aPrincipal) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  for (auto* cp : ContentParent::AllProcesses(ContentParent::eLive)) {
-    Unused << cp->SendClearImageCacheFromPrincipal(aPrincipal);
-  }
-
-  imgLoader* loader;
-  if (aPrincipal->OriginAttributesRef().mPrivateBrowsingId ==
-      nsIScriptSecurityManager::DEFAULT_PRIVATE_BROWSING_ID) {
-    loader = imgLoader::NormalLoader();
-  } else {
-    loader = imgLoader::PrivateBrowsingLoader();
-  }
-
-  return loader->RemoveEntriesInternal(aPrincipal, nullptr);
+  nsCOMPtr<nsIPrincipal> principal = aPrincipal;
+  return ClearCache(Nothing(), Nothing(), Some(principal));
 }
 
 NS_IMETHODIMP
-imgLoader::RemoveEntriesFromBaseDomainInAllProcesses(
-    const nsACString& aBaseDomain) {
+imgLoader::RemoveEntriesFromSiteInAllProcesses(
+    const nsACString& aSchemelessSite,
+    JS::Handle<JS::Value> aOriginAttributesPattern, JSContext* aCx) {
   if (!XRE_IsParentProcess()) {
     return NS_ERROR_NOT_AVAILABLE;
   }
 
-  for (auto* cp : ContentParent::AllProcesses(ContentParent::eLive)) {
-    Unused << cp->SendClearImageCacheFromBaseDomain(aBaseDomain);
-  }
-
-  return RemoveEntriesInternal(nullptr, &aBaseDomain);
-}
-
-nsresult imgLoader::RemoveEntriesInternal(nsIPrincipal* aPrincipal,
-                                          const nsACString* aBaseDomain) {
-  // Can only clear by either principal or base domain.
-  if ((!aPrincipal && !aBaseDomain) || (aPrincipal && aBaseDomain)) {
+  OriginAttributesPattern pattern;
+  if (!aOriginAttributesPattern.isObject() ||
+      !pattern.Init(aCx, aOriginAttributesPattern)) {
     return NS_ERROR_INVALID_ARG;
   }
 
-  nsCOMPtr<nsIEffectiveTLDService> tldService;
+  return ClearCache(Nothing(), Nothing(), Nothing(),
+                    Some(nsCString(aSchemelessSite)), Some(pattern));
+}
+
+nsresult imgLoader::RemoveEntriesInternal(
+    const Maybe<nsCOMPtr<nsIPrincipal>>& aPrincipal,
+    const Maybe<nsCString>& aSchemelessSite,
+    const Maybe<OriginAttributesPattern>& aPattern,
+    const mozilla::Maybe<nsCString>& aURL) {
+  // Can only clear by either principal or site + pattern.
+  if ((!aPrincipal && !aSchemelessSite && !aURL) ||
+      (aPrincipal && aSchemelessSite) || (aPrincipal && aURL) ||
+      (aSchemelessSite && aURL) ||
+      aSchemelessSite.isSome() != aPattern.isSome()) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
   AutoTArray<RefPtr<imgCacheEntry>, 128> entriesToBeRemoved;
 
   // For base domain we only clear the non-chrome cache.
   for (const auto& entry : mCache) {
     const auto& key = entry.GetKey();
 
-    const bool shouldRemove = [&] {
-      if (aPrincipal) {
-        nsCOMPtr<nsIPrincipal> keyPrincipal =
-            BasePrincipal::CreateContentPrincipal(key.URI(),
-                                                  key.OriginAttributesRef());
-        return keyPrincipal->Equals(aPrincipal);
-      }
-
-      if (!aBaseDomain) {
-        return false;
-      }
-      // Clear by baseDomain.
-      nsAutoCString host;
-      nsresult rv = key.URI()->GetHost(host);
-      if (NS_FAILED(rv) || host.IsEmpty()) {
-        return false;
-      }
-
-      if (!tldService) {
-        tldService = do_GetService(NS_EFFECTIVETLDSERVICE_CONTRACTID);
-      }
-      if (NS_WARN_IF(!tldService)) {
-        return false;
-      }
-
-      bool hasRootDomain = false;
-      rv = tldService->HasRootDomain(host, *aBaseDomain, &hasRootDomain);
-      if (NS_SUCCEEDED(rv) && hasRootDomain) {
-        return true;
-      }
-
-      // If we don't get a direct base domain match, also check for cache of
-      // third parties partitioned under aBaseDomain.
-
-      // The isolation key is either just the base domain, or an origin suffix
-      // which contains the partitionKey holding the baseDomain.
-
-      if (key.IsolationKeyRef().Equals(*aBaseDomain)) {
-        return true;
-      }
-
-      // The isolation key does not match the given base domain. It may be an
-      // origin suffix. Parse it into origin attributes.
-      OriginAttributes attrs;
-      if (!attrs.PopulateFromSuffix(key.IsolationKeyRef())) {
-        // Key is not an origin suffix.
-        return false;
-      }
-
-      return StoragePrincipalHelper::PartitionKeyHasBaseDomain(
-          attrs.mPartitionKey, *aBaseDomain);
-    }();
-
-    if (shouldRemove) {
+    if (SharedSubResourceCacheUtils::ShouldClearEntry(
+            key.URI(), key.LoaderPrincipal(), key.PartitionPrincipal(),
+            Nothing(), aPrincipal, aSchemelessSite, aPattern, aURL)) {
       entriesToBeRemoved.AppendElement(entry.GetData());
     }
   }
@@ -1507,12 +1568,8 @@ imgLoader::RemoveEntry(nsIURI* aURI, Document* aDoc) {
   if (!aURI) {
     return NS_OK;
   }
-  OriginAttributes attrs;
-  if (aDoc) {
-    attrs = aDoc->NodePrincipal()->OriginAttributesRef();
-  }
   for (auto corsMode : AllCORSModes()) {
-    ImageCacheKey key(aURI, corsMode, attrs, aDoc);
+    ImageCacheKey key(aURI, corsMode, aDoc);
     RemoveFromCache(key);
   }
   return NS_OK;
@@ -1523,16 +1580,8 @@ imgLoader::FindEntryProperties(nsIURI* uri, Document* aDoc,
                                nsIProperties** _retval) {
   *_retval = nullptr;
 
-  OriginAttributes attrs;
-  if (aDoc) {
-    nsCOMPtr<nsIPrincipal> principal = aDoc->NodePrincipal();
-    if (principal) {
-      attrs = principal->OriginAttributesRef();
-    }
-  }
-
   for (auto corsMode : AllCORSModes()) {
-    ImageCacheKey key(uri, corsMode, attrs, aDoc);
+    ImageCacheKey key(uri, corsMode, aDoc);
     RefPtr<imgCacheEntry> entry;
     if (!mCache.Get(key, getter_AddRefs(entry)) || !entry) {
       continue;
@@ -1863,7 +1912,7 @@ void imgLoader::NotifyObserversForCachedImage(
 
   nsCOMPtr<nsIObserverService> obsService = services::GetObserverService();
 
-  if (!obsService->HasObservers("http-on-image-cache-response")) {
+  if (!obsService->HasObservers("http-on-resource-cache-response")) {
     return;
   }
 
@@ -1882,13 +1931,13 @@ void imgLoader::NotifyObserversForCachedImage(
 
   RefPtr<HttpBaseChannel> httpBaseChannel = do_QueryObject(newChannel);
   if (httpBaseChannel) {
-    httpBaseChannel->SetDummyChannelForImageCache();
+    httpBaseChannel->SetDummyChannelForCachedResource();
     newChannel->SetContentType(nsDependentCString(request->GetMimeType()));
     RefPtr<mozilla::image::Image> image = request->GetImage();
     if (image) {
       newChannel->SetContentLength(aEntry->GetDataSize());
     }
-    obsService->NotifyObservers(newChannel, "http-on-image-cache-response",
+    obsService->NotifyObservers(newChannel, "http-on-resource-cache-response",
                                 nullptr);
   }
 }
@@ -1907,8 +1956,7 @@ bool imgLoader::ValidateEntry(
   // If the expiration time is zero, then the request has not gotten far enough
   // to know when it will expire, or we know it will never expire (see
   // nsContentUtils::GetSubresourceCacheValidationInfo).
-  uint32_t expiryTime = aEntry->GetExpiryTime();
-  bool hasExpired = expiryTime && expiryTime <= SecondsFromPRTime(PR_Now());
+  bool hasExpired = aEntry->GetExpiryTime().IsExpired();
 
   // Special treatment for file URLs - aEntry has expired if file has changed
   if (nsCOMPtr<nsIFileURL> fileUrl = do_QueryInterface(aURI)) {
@@ -2107,11 +2155,19 @@ bool imgLoader::RemoveFromCache(imgCacheEntry* entry, QueueState aQueueState) {
 
 nsresult imgLoader::ClearImageCache(ClearOptions aOptions) {
   const bool chromeOnly = aOptions.contains(ClearOption::ChromeOnly);
+  const bool contentOnly = aOptions.contains(ClearOption::ContentOnly);
   const auto ShouldRemove = [&](imgCacheEntry* aEntry) {
-    if (chromeOnly) {
-      // TODO: Consider also removing "resource://" etc?
+    if (chromeOnly || contentOnly) {
       RefPtr<imgRequest> request = aEntry->GetRequest();
-      if (!request || !request->CacheKey().URI()->SchemeIs("chrome")) {
+      if (!request) {
+        return false;
+      }
+      nsIURI* uri = request->CacheKey().URI();
+      bool isChrome = uri->SchemeIs("chrome") || uri->SchemeIs("resource");
+      if (chromeOnly && !isChrome) {
+        return false;
+      }
+      if (contentOnly && isChrome) {
         return false;
       }
     }
@@ -2135,7 +2191,7 @@ nsresult imgLoader::ClearImageCache(ClearOptions aOptions) {
       }
     }
 
-    MOZ_ASSERT(chromeOnly || mCacheQueue.GetNumElements() == 0);
+    MOZ_ASSERT(chromeOnly || contentOnly || mCacheQueue.GetNumElements() == 0);
     return NS_OK;
   }
 
@@ -2152,7 +2208,7 @@ nsresult imgLoader::ClearImageCache(ClearOptions aOptions) {
       return NS_ERROR_FAILURE;
     }
   }
-  MOZ_ASSERT(chromeOnly || mCache.IsEmpty());
+  MOZ_ASSERT(chromeOnly || contentOnly || mCache.IsEmpty());
   return NS_OK;
 }
 
@@ -2220,8 +2276,7 @@ static void MakeRequestStaticIfNeeded(
 bool imgLoader::IsImageAvailable(nsIURI* aURI,
                                  nsIPrincipal* aTriggeringPrincipal,
                                  CORSMode aCORSMode, Document* aDocument) {
-  ImageCacheKey key(aURI, aCORSMode,
-                    aTriggeringPrincipal->OriginAttributesRef(), aDocument);
+  ImageCacheKey key(aURI, aCORSMode, aDocument);
   RefPtr<imgCacheEntry> entry;
   if (!mCache.Get(key, getter_AddRefs(entry)) || !entry) {
     return false;
@@ -2277,7 +2332,7 @@ nsresult imgLoader::LoadImage(
   bool isPrivate = false;
 
   if (aLoadingDocument) {
-    isPrivate = nsContentUtils::IsInPrivateBrowsing(aLoadingDocument);
+    isPrivate = aLoadingDocument->IsInPrivateBrowsing();
   } else if (aLoadGroup) {
     isPrivate = nsContentUtils::IsInPrivateBrowsing(aLoadGroup);
   }
@@ -2391,11 +2446,7 @@ nsresult imgLoader::LoadImage(
   // XXX For now ignore aCacheKey. We will need it in the future
   // for correctly dealing with image load requests that are a result
   // of post data.
-  OriginAttributes attrs;
-  if (aTriggeringPrincipal) {
-    attrs = aTriggeringPrincipal->OriginAttributesRef();
-  }
-  ImageCacheKey key(aURI, corsmode, attrs, aLoadingDocument);
+  ImageCacheKey key(aURI, corsmode, aLoadingDocument);
   if (mCache.Get(key, getter_AddRefs(entry)) && entry) {
     bool newChannelCreated = false;
     if (ValidateEntry(entry, aURI, aInitialDocumentURI, aReferrerInfo,
@@ -2632,11 +2683,9 @@ nsresult imgLoader::LoadImageWithChannel(nsIChannel* channel,
   NS_ENSURE_TRUE(channel, NS_ERROR_FAILURE);
   nsCOMPtr<nsILoadInfo> loadInfo = channel->LoadInfo();
 
-  OriginAttributes attrs = loadInfo->GetOriginAttributes();
-
   // TODO: Get a meaningful cors mode from the caller probably?
   const auto corsMode = CORS_NONE;
-  ImageCacheKey key(uri, corsMode, attrs, aLoadingDocument);
+  ImageCacheKey key(uri, corsMode, aLoadingDocument);
 
   nsLoadFlags requestFlags = nsIRequest::LOAD_NORMAL;
   channel->GetLoadFlags(&requestFlags);
@@ -2747,8 +2796,7 @@ nsresult imgLoader::LoadImageWithChannel(nsIChannel* channel,
     // constructed above with the *current URI* and not the *original URI*. I'm
     // pretty sure this is a bug, and it's preventing us from ever getting a
     // cache hit in LoadImageWithChannel when redirects are involved.
-    ImageCacheKey originalURIKey(originalURI, corsMode, attrs,
-                                 aLoadingDocument);
+    ImageCacheKey originalURIKey(originalURI, corsMode, aLoadingDocument);
 
     // Default to doing a principal check because we don't know who
     // started that load and whether their principal ended up being
@@ -2804,7 +2852,7 @@ bool imgLoader::SupportImageWithMimeType(const nsACString& aMimeType,
   ToLowerCase(mimeType);
 
   if (aAccept == AcceptedMimeTypes::IMAGES_AND_DOCUMENTS &&
-      mimeType.EqualsLiteral("image/svg+xml")) {
+      mimeType.EqualsLiteral(IMAGE_SVG_XML)) {
     return true;
   }
 

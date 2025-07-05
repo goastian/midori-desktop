@@ -27,7 +27,6 @@
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/ipc/Endpoint.h"
 #include "mozilla/mozalloc.h"  // for operator new, etc
-#include "mozilla/Telemetry.h"
 #include "gfxConfig.h"
 #include "nsDebug.h"          // for NS_WARNING
 #include "nsISupportsImpl.h"  // for MOZ_COUNT_CTOR, etc
@@ -79,6 +78,7 @@ CompositorBridgeChild::CompositorBridgeChild(CompositorManagerChild* aManager)
       mCanSend(false),
       mActorDestroyed(false),
       mPaused(false),
+      mForceSyncFlushRendering(false),
       mThread(NS_GetCurrentThread()),
       mProcessToken(0),
       mSectionAllocator(nullptr) {
@@ -353,6 +353,22 @@ bool CompositorBridgeChild::SendFlushRendering(
     return false;
   }
   return PCompositorBridgeChild::SendFlushRendering(aReasons);
+}
+
+bool CompositorBridgeChild::SendFlushRenderingAsync(
+    const wr::RenderReasons& aReasons) {
+  if (mForceSyncFlushRendering) {
+    return SendFlushRendering(aReasons);
+  }
+  if (!mCanSend) {
+    return false;
+  }
+  return PCompositorBridgeChild::SendFlushRenderingAsync(aReasons);
+}
+
+void CompositorBridgeChild::SetForceSyncFlushRendering(
+    bool aForceSyncFlushRendering) {
+  mForceSyncFlushRendering = aForceSyncFlushRendering;
 }
 
 bool CompositorBridgeChild::SendStartFrameTimeRecording(

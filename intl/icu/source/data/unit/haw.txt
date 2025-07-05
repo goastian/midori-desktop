@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 haw{
     units{
         duration{
@@ -36,10 +36,6 @@ haw{
     }
     unitsNarrow{
         temperature{
-            celsius{
-                one{"{0}°C"}
-                other{"{0}°C"}
-            }
             fahrenheit{
                 one{"{0}°"}
                 other{"{0}°"}

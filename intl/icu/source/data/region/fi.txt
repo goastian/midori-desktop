@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 fi{
     Countries{
         001{"maailma"}
@@ -85,6 +85,7 @@ fi{
         CN{"Kiina"}
         CO{"Kolumbia"}
         CP{"Clippertoninsaari"}
+        CQ{"Sark"}
         CR{"Costa Rica"}
         CU{"Kuuba"}
         CV{"Kap Verde"}
@@ -242,7 +243,7 @@ fi{
         SG{"Singapore"}
         SH{"Saint Helena"}
         SI{"Slovenia"}
-        SJ{"Svalbard ja Jan Mayen"}
+        SJ{"Huippuvuoret ja Jan Mayen"}
         SK{"Slovakia"}
         SL{"Sierra Leone"}
         SM{"San Marino"}
@@ -297,6 +298,9 @@ fi{
         ZM{"Sambia"}
         ZW{"Zimbabwe"}
         ZZ{"tuntematon alue"}
+    }
+    Countries%chagos{
+        IO{"Chagossaaret"}
     }
     Countries%short{
         GB{"Britannia"}

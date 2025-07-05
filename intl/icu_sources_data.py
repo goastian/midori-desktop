@@ -11,13 +11,13 @@
 # copy of ICU has been updated.
 
 import glob
-import multiprocessing
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
 
+from mozbuild.util import cpu_count
 from mozpack import path as mozpath
 
 # The following files have been determined to be dead/unused by a
@@ -46,7 +46,6 @@ UNUSED_SOURCES = set(
         "intl/icu/source/common/unorm.cpp",
         "intl/icu/source/common/usc_impl.cpp",
         "intl/icu/source/common/ustr_wcs.cpp",
-        "intl/icu/source/common/util_props.cpp",
         "intl/icu/source/i18n/anytrans.cpp",
         "intl/icu/source/i18n/brktrans.cpp",
         "intl/icu/source/i18n/casetrn.cpp",
@@ -242,6 +241,8 @@ def update_data_file(topsrcdir):
                 + "-DUCONFIG_NO_TRANSLITERATION "
                 + "-DUCONFIG_NO_REGULAR_EXPRESSIONS "
                 + "-DUCONFIG_NO_BREAK_ITERATION "
+                + "-DUCONFIG_NO_IDNA "
+                + "-DUCONFIG_NO_MF2 "
                 + "-DU_CHARSET_IS_UTF8 "
             )
         }
@@ -277,7 +278,7 @@ def update_data_file(topsrcdir):
     print("Running ICU make...")
     if not try_run(
         "icu-make",
-        ["make", "--jobs=%d" % multiprocessing.cpu_count(), "--output-sync"],
+        ["make", "--jobs=%d" % cpu_count(), "--output-sync"],
         cwd=objdir,
     ):
         return False

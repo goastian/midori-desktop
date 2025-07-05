@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 lu{
     Countries{
         AD{"Andore"}
@@ -93,7 +93,6 @@ lu{
         IE{"Irelande"}
         IL{"Isirayele"}
         IN{"Inde"}
-        IO{"Lutanda lwa Angeletele ku mbu wa Indiya"}
         IQ{"Iraki"}
         IR{"Ira"}
         IS{"Isilande"}

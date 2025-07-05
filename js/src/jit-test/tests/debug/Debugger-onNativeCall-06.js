@@ -16,22 +16,41 @@ gdbg.executeInGlobal(`
 // Built-in native function.
 [1, 2, 3].map(Array.prototype.push, Array.prototype);
 
+// Built-in native function with non-optimized species lookup in 'map'.
+var arr = [1, 2, 3];
+Object.setPrototypeOf(arr, Object.create(Array.prototype));
+arr.map(Array.prototype.push, Array.prototype);
+
 // Self-hosted function.
 [1, 2, 3].map(String.prototype.padStart, "");
 
 // Other native function.
 [1, 2, 3].map(dateNow);
-
-// Self-hosted function called internally.
-"abc".match(/a./);
 `);
 assertEqArray(rv, [
-  "map", "get [Symbol.species]", "push", "push", "push",
-  "map", "get [Symbol.species]", "padStart", "padStart", "padStart",
-  "map", "get [Symbol.species]", "dateNow", "dateNow", "dateNow",
-  "match", "[Symbol.match]",
+  "map", "push", "push", "push",
+  "create", "setPrototypeOf", "map", "get [Symbol.species]", "push", "push", "push",
+  "map", "padStart", "padStart", "padStart",
+  "map", "dateNow", "dateNow", "dateNow",
 ]);
+rv = [];
+gdbg.executeInGlobal(`
+  // Optimized 'match' (no callContentFunction).
+  var re = /a./;
+  "abc".match(re);
 
+  // Non-optimized 'match'. This calls RegExp.prototype[@@match] and getters on
+  // RegExp.prototype.
+  Object.setPrototypeOf(re, Object.create(RegExp.prototype));
+  "abc".match(re);
+`);
+assertEqArray(rv, [
+  "match",
+  "create", "setPrototypeOf",
+  "match", "[Symbol.match]",
+  "get flags", "get hasIndices", "get global", "get ignoreCase", "get multiline",
+  "get dotAll", "get unicode", "get unicodeSets", "get sticky",
+]);
 rv = [];
 gdbg.executeInGlobal(`
 // Nested getters called internally inside self-hosted.

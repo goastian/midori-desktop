@@ -8,7 +8,7 @@
 
 #include "libyuv.h"
 #include "mozilla/layers/CompositorThread.h"
-#include "mozilla/layers/D3D11TextureIMFSampleImage.h"
+#include "mozilla/layers/D3D11ZeroCopyTextureImage.h"
 #include "mozilla/layers/HelpersD3D11.h"
 #include "mozilla/layers/TextureHostWrapperD3D11.h"
 #include "mozilla/ProfilerMarkers.h"
@@ -47,14 +47,17 @@ GpuProcessD3D11TextureMap::~GpuProcessD3D11TextureMap() {}
 void GpuProcessD3D11TextureMap::Register(
     GpuProcessTextureId aTextureId, ID3D11Texture2D* aTexture,
     uint32_t aArrayIndex, const gfx::IntSize& aSize,
-    RefPtr<IMFSampleUsageInfo> aUsageInfo) {
+    RefPtr<ZeroCopyUsageInfo> aUsageInfo,
+    RefPtr<gfx::FileHandleWrapper> aSharedHandle) {
   MonitorAutoLock lock(mMonitor);
-  Register(lock, aTextureId, aTexture, aArrayIndex, aSize, aUsageInfo);
+  Register(lock, aTextureId, aTexture, aArrayIndex, aSize, aUsageInfo,
+           aSharedHandle);
 }
 void GpuProcessD3D11TextureMap::Register(
     const MonitorAutoLock& aProofOfLock, GpuProcessTextureId aTextureId,
     ID3D11Texture2D* aTexture, uint32_t aArrayIndex, const gfx::IntSize& aSize,
-    RefPtr<IMFSampleUsageInfo> aUsageInfo) {
+    RefPtr<ZeroCopyUsageInfo> aUsageInfo,
+    RefPtr<gfx::FileHandleWrapper> aSharedHandle) {
   MOZ_RELEASE_ASSERT(aTexture);
 
   auto it = mD3D11TexturesById.find(aTextureId);
@@ -63,7 +66,8 @@ void GpuProcessD3D11TextureMap::Register(
     return;
   }
   mD3D11TexturesById.emplace(
-      aTextureId, TextureHolder(aTexture, aArrayIndex, aSize, aUsageInfo));
+      aTextureId,
+      TextureHolder(aTexture, aArrayIndex, aSize, aUsageInfo, aSharedHandle));
 }
 
 void GpuProcessD3D11TextureMap::Unregister(GpuProcessTextureId aTextureId) {
@@ -88,7 +92,7 @@ RefPtr<ID3D11Texture2D> GpuProcessD3D11TextureMap::GetTexture(
   return it->second.mTexture;
 }
 
-Maybe<HANDLE> GpuProcessD3D11TextureMap::GetSharedHandleOfCopiedTexture(
+Maybe<HANDLE> GpuProcessD3D11TextureMap::GetSharedHandle(
     GpuProcessTextureId aTextureId) {
   TextureHolder holder;
   {
@@ -97,6 +101,10 @@ Maybe<HANDLE> GpuProcessD3D11TextureMap::GetSharedHandleOfCopiedTexture(
     auto it = mD3D11TexturesById.find(aTextureId);
     if (it == mD3D11TexturesById.end()) {
       return Nothing();
+    }
+
+    if (it->second.mSharedHandle) {
+      return Some(it->second.mSharedHandle->GetHandle());
     }
 
     if (it->second.mCopiedTextureSharedHandle) {
@@ -187,9 +195,9 @@ Maybe<HANDLE> GpuProcessD3D11TextureMap::GetSharedHandleOfCopiedTexture(
     }
 
     // Disable no video copy for future decoded video frames. Since
-    // GetSharedHandleOfCopiedTexture() is slow.
-    if (it->second.mIMFSampleUsageInfo) {
-      it->second.mIMFSampleUsageInfo->DisableZeroCopyNV12Texture();
+    // Get SharedHandle of copied Texture() is slow.
+    if (it->second.mZeroCopyUsageInfo) {
+      it->second.mZeroCopyUsageInfo->DisableZeroCopyNV12Texture();
     }
 
     it->second.mCopiedTexture = copiedTexture;
@@ -286,7 +294,7 @@ void GpuProcessD3D11TextureMap::HandleInTextureUpdateThread() {
     if (texture) {
       auto size = textureHolder->mWrappedTextureHost->GetSize();
       Register(lock, textureHolder->mTextureId, texture, /* aArrayIndex */ 0,
-               size, /* aUsageInfo */ nullptr);
+               size, /* aUsageInfo */ nullptr, /* aSharedHandle */ nullptr);
     }
     mWaitingTextures.erase(textureHolder->mTextureId);
     MOZ_ASSERT(mWaitingTextures.size() == mWaitingTextureQueue.size());
@@ -385,11 +393,13 @@ RefPtr<ID3D11Texture2D> GpuProcessD3D11TextureMap::UpdateTextureData(
 
 GpuProcessD3D11TextureMap::TextureHolder::TextureHolder(
     ID3D11Texture2D* aTexture, uint32_t aArrayIndex, const gfx::IntSize& aSize,
-    RefPtr<IMFSampleUsageInfo> aUsageInfo)
+    RefPtr<ZeroCopyUsageInfo> aUsageInfo,
+    RefPtr<gfx::FileHandleWrapper> aSharedHandle)
     : mTexture(aTexture),
       mArrayIndex(aArrayIndex),
       mSize(aSize),
-      mIMFSampleUsageInfo(aUsageInfo) {}
+      mZeroCopyUsageInfo(aUsageInfo),
+      mSharedHandle(aSharedHandle) {}
 
 GpuProcessD3D11TextureMap::UpdatingTextureHolder::UpdatingTextureHolder(
     const GpuProcessTextureId aTextureId, TextureHost* aTextureHost,

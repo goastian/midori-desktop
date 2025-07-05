@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 ksh{
     Countries{
         001{"de Ääd"}
@@ -144,7 +144,6 @@ ksh{
         IL{"Ißraäl"}
         IM{"de Ensel Män"}
         IN{"Indije"}
-        IO{"Brettesche Besezunge em indesche Oozejahn"}
         IQ{"Irak"}
         IR{"Persije"}
         IS{"Ißland"}

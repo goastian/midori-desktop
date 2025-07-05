@@ -11,13 +11,14 @@
 #include "mozilla/dom/WorkerRef.h"
 #include "mozilla/dom/WorkerRunnable.h"
 #include "mozilla/gfx/CanvasManagerChild.h"
+#include "mozilla/layers/PersistentBufferProvider.h"
 
 using namespace mozilla::dom;
 
 namespace mozilla::gfx {
 
 StaticMutex CanvasShutdownManager::sManagersMutex;
-std::set<CanvasShutdownManager*> CanvasShutdownManager::sManagers;
+MOZ_RUNINIT std::set<CanvasShutdownManager*> CanvasShutdownManager::sManagers;
 
 // The owning thread will tell us to close when it is shutdown, either via
 // CanvasShutdownManager::Shutdown for the main thread, or via a shutdown
@@ -135,6 +136,31 @@ void CanvasShutdownManager::OnRemoteCanvasRestored() {
   }
 }
 
+void CanvasShutdownManager::OnRemoteCanvasReset(
+    const nsTArray<layers::RemoteTextureOwnerId>& aOwnerIds) {
+  if (aOwnerIds.IsEmpty()) {
+    return;
+  }
+
+  for (const auto& canvas : mActiveCanvas) {
+    auto* bufferProvider = canvas->GetBufferProvider();
+    if (!bufferProvider) {
+      continue;
+    }
+
+    Maybe<layers::RemoteTextureOwnerId> ownerId =
+        bufferProvider->GetRemoteTextureOwnerId();
+    if (!ownerId) {
+      continue;
+    }
+
+    if (aOwnerIds.Contains(*ownerId)) {
+      canvas->OnRemoteCanvasLost();
+      canvas->OnRemoteCanvasRestored();
+    }
+  }
+}
+
 /* static */ void CanvasShutdownManager::MaybeRestoreRemoteCanvas() {
   // Calling Get will recreate the CanvasManagerChild, which in turn will
   // cause us to call OnRemoteCanvasRestore upon success.
@@ -148,10 +174,10 @@ void CanvasShutdownManager::OnRemoteCanvasRestored() {
 /* static */ void CanvasShutdownManager::OnCompositorManagerRestored() {
   MOZ_ASSERT(NS_IsMainThread());
 
-  class RestoreRunnable final : public WorkerThreadRunnable {
+  class RestoreRunnable final : public MainThreadWorkerRunnable {
    public:
-    explicit RestoreRunnable(WorkerPrivate* aWorkerPrivate)
-        : WorkerThreadRunnable("CanvasShutdownManager::RestoreRunnable") {}
+    RestoreRunnable()
+        : MainThreadWorkerRunnable("CanvasShutdownManager::RestoreRunnable") {}
 
     bool WorkerRun(JSContext*, WorkerPrivate*) override {
       MaybeRestoreRemoteCanvas();
@@ -168,7 +194,7 @@ void CanvasShutdownManager::OnRemoteCanvasRestored() {
   StaticMutexAutoLock lock(sManagersMutex);
   for (const auto& manager : sManagers) {
     if (manager->mWorkerRef) {
-      auto task = MakeRefPtr<RestoreRunnable>(manager->mWorkerRef->Private());
+      auto task = MakeRefPtr<RestoreRunnable>();
       task->Dispatch(manager->mWorkerRef->Private());
     }
   }

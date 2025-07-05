@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 bas{
     Countries{
         AD{"Àŋdɔ̂r"}
@@ -91,7 +91,6 @@ bas{
         IE{"Ìrlând"}
         IL{"Isràɛ̂l"}
         IN{"Indìà"}
-        IO{"Bìtèk bi Ŋgisì i Tūyɛ Īndìà"}
         IQ{"Ìrâk"}
         IR{"Ìrâŋ"}
         IS{"Ìslandìà"}

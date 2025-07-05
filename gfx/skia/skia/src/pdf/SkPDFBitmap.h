@@ -8,12 +8,13 @@
 #define SkPDFBitmap_DEFINED
 
 #include "include/core/SkData.h"
+#include "include/core/SkRefCnt.h"
 #include "src/core/SkChecksum.h"
 
-class SkCodec;
+#include <cstdint>
+
 class SkImage;
 class SkPDFDocument;
-struct SkEncodedInfo;
 struct SkPDFIndirectReference;
 
 /**
@@ -23,11 +24,6 @@ struct SkPDFIndirectReference;
 SkPDFIndirectReference SkPDFSerializeImage(const SkImage* img,
                                            SkPDFDocument* doc,
                                            int encodingQuality = 101);
-
-class SkPDFBitmap {
-public:
-    static const SkEncodedInfo& GetEncodedInfo(SkCodec&);
-};
 
 struct SkPDFIccProfileKey {
     sk_sp<SkData> fData;

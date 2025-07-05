@@ -44,7 +44,7 @@ already_AddRefed<nsAtom> ICUUtils::LanguageTagIterForContent::GetNext() {
     mCurrentFallbackIndex = 2;
     // Else take the app's locale (or en-US, if spoof English applies):
     if (mContent->OwnerDoc()->ShouldResistFingerprinting(RFPTarget::JSLocale)) {
-      return NS_Atomize("en-US");
+      return NS_Atomize(nsRFPService::GetSpoofedJSLocale());
     }
     nsAutoCString appLocale;
     LocaleService::GetInstance()->GetAppLocaleAsBCP47(appLocale);
@@ -87,6 +87,9 @@ bool ICUUtils::LocalizeNumber(double aValue,
     auto& formatter = sCache->LookupOrInsertWith(langTag, [&] {
       nsAutoCString tag;
       langTag->ToUTF8String(tag);
+      if (tag.FindChar('\0') != kNotFound) {
+        return UniquePtr<intl::NumberFormat>();
+      }
       return intl::NumberFormat::TryCreate(tag, options).unwrapOr(nullptr);
     });
     if (!formatter) {
@@ -122,8 +125,11 @@ double ICUUtils::ParseNumber(const nsAString& aValue,
     auto& parser = sCache->LookupOrInsertWith(langTag, [&] {
       nsAutoCString tag;
       langTag->ToUTF8String(tag);
+      if (tag.FindChar('\0') != kNotFound) {
+        return UniquePtr<intl::NumberParser>();
+      }
       return intl::NumberParser::TryCreate(
-                 tag.get(), StaticPrefs::dom_forms_number_grouping())
+                 tag, StaticPrefs::dom_forms_number_grouping())
           .unwrapOr(nullptr);
     });
     if (!parser) {

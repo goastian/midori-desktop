@@ -43,6 +43,13 @@ interface nsIWebNavigation : nsISupports
   readonly attribute boolean canGoBack;
 
   /**
+   * Indicates if the object can go back.  If true this indicates that
+   * there is back session history available for navigation, ignoring
+   * whether or not the history has been interacted with by the user.
+   */
+  readonly attribute boolean canGoBackIgnoringUserInteraction;
+
+  /**
    * Indicates if the object can go forward.  If true this indicates that
    * there is forward session history available for navigation
    */
@@ -70,6 +77,7 @@ interface nsIWebNavigation : nsISupports
    *        Indicates that the call was unexpected at this time, which implies
    *        that canGoBack is false.
    */
+  [can_run_script]
   void goBack([optional] in boolean aRequireUserInteraction, [optional] in boolean aUserActivation);
 
   /**
@@ -94,6 +102,7 @@ interface nsIWebNavigation : nsISupports
    *        Indicates that the call was unexpected at this time, which implies
    *        that canGoForward is false.
    */
+  [can_run_script]
   void goForward([optional] in boolean aRequireUserInteraction, [optional] in boolean aUserActivation);
 
   /**
@@ -107,6 +116,7 @@ interface nsIWebNavigation : nsISupports
    *        Indicates that the call was unexpected at this time, which implies
    *        that session history entry at the given index does not exist.
    */
+  [can_run_script]
   void gotoIndex(in long index, [optional] in boolean aUserActivation);
 
   /****************************************************************************

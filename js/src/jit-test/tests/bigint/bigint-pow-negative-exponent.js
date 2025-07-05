@@ -1,5 +1,4 @@
-// Fallible BigInt exponentiation should have a resume point and its alias set
-// should record that exceptions can be thrown.
+// Fallible BigInt exponentiation should bail out when the power is negative.
 function resumeAfterException(t) {
   for (var i = 0; i < 2; i++) {
     try {

@@ -91,7 +91,7 @@ UtilityProcessHost::~UtilityProcessHost() {
 #endif
 }
 
-bool UtilityProcessHost::Launch(StringVector aExtraOpts) {
+bool UtilityProcessHost::Launch(geckoargs::ChildProcessArgs aExtraOpts) {
   MOZ_ASSERT(NS_IsMainThread());
 
   MOZ_ASSERT(mLaunchPhase == LaunchPhase::Unlaunched);
@@ -110,13 +110,9 @@ bool UtilityProcessHost::Launch(StringVector aExtraOpts) {
   EnsureWidevineL1PathForSandbox(aExtraOpts);
 #endif
 
-#if defined(MOZ_WMF_CDM) && defined(MOZ_SANDBOX)
-  EnanbleMFCDMTelemetryEventIfNeeded();
-#endif
-
   mLaunchPhase = LaunchPhase::Waiting;
 
-  if (!GeckoChildProcessHost::AsyncLaunch(aExtraOpts)) {
+  if (!GeckoChildProcessHost::AsyncLaunch(std::move(aExtraOpts))) {
     NS_WARNING("UtilityProcess AsyncLaunch failed, aborting.");
     mLaunchPhase = LaunchPhase::Complete;
     mPrefSerializer = nullptr;
@@ -277,11 +273,15 @@ void UtilityProcessHost::Shutdown() {
   DestroyProcess();
 }
 
-void UtilityProcessHost::OnChannelClosed() {
+void UtilityProcessHost::OnChannelClosed(
+    IProtocol::ActorDestroyReason aReason) {
   MOZ_ASSERT(NS_IsMainThread());
   LOGD("[%p] UtilityProcessHost::OnChannelClosed", this);
 
-  RejectPromise(LaunchError("UtilityProcessHost::OnChannelClosed"));
+  // `aReason` was not originally passed into this function; a value of 0 for
+  // the `why` in telemetry means it's from an older build with no info
+  RejectPromise(
+      LaunchError("UtilityProcessHost::OnChannelClosed", 1 + (long)aReason));
 
   if (!mShutdownRequested && mListener) {
     // This is an unclean shutdown. Notify our listener that we're going away.
@@ -361,7 +361,7 @@ MacSandboxType UtilityProcessHost::GetMacSandboxType() {
 
 #ifdef MOZ_WMF_CDM_LPAC_SANDBOX
 void UtilityProcessHost::EnsureWidevineL1PathForSandbox(
-    StringVector& aExtraOpts) {
+    geckoargs::ChildProcessArgs& aExtraOpts) {
   if (mSandbox != SandboxingKind::MF_MEDIA_ENGINE_CDM) {
     return;
   }
@@ -408,19 +408,6 @@ void UtilityProcessHost::EnsureWidevineL1PathForSandbox(
 
 #  undef WMF_LOG
 
-#endif
-
-#if defined(MOZ_WMF_CDM) && defined(MOZ_SANDBOX)
-void UtilityProcessHost::EnanbleMFCDMTelemetryEventIfNeeded() const {
-  if (mSandbox != SandboxingKind::MF_MEDIA_ENGINE_CDM) {
-    return;
-  }
-  static bool sTelemetryEventEnabled = false;
-  if (!sTelemetryEventEnabled) {
-    sTelemetryEventEnabled = true;
-    Telemetry::SetEventRecordingEnabled("mfcdm"_ns, true);
-  }
-}
 #endif
 
 }  // namespace mozilla::ipc

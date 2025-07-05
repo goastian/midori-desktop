@@ -10,20 +10,15 @@
 #include <cstdint>
 #include <iterator>
 #include <map>
-#include <unordered_map>
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <vector>
 #include "ErrorList.h"
-#include "base/basictypes.h"
-#include "base/compiler_specific.h"
 #include "base/logging.h"
 #include "base/pickle.h"
-#include "base/string_util.h"
 #include "chrome/common/ipc_message.h"
 #include "mozilla/CheckedInt.h"
-#include "mozilla/IntegerRange.h"
+#include "mozilla/ipc/SharedMemoryMapping.h"
 
 #if defined(XP_WIN)
 #  include <windows.h>
@@ -38,13 +33,25 @@ namespace mozilla::ipc {
 class IProtocol;
 template <typename P>
 struct IPDLParamTraits;
-class SharedMemory;
+namespace shared_memory {
+class Cursor;
+}
 
 // Implemented in ProtocolUtils.cpp
 MOZ_NEVER_INLINE void PickleFatalError(const char* aMsg, IProtocol* aActor);
 }  // namespace mozilla::ipc
 
 namespace IPC {
+
+/**
+ * This constant determines the threshold size (in bytes) for deciding whether
+ * shared memory should be used during serialization/deserialization handled
+ * by the MessageBufferWriter class.
+ *
+ * NOTE: Even above this threshold, if MessageBufferWriter fails to allocate a
+ * shared memory region, it may still fall-back to sending the message inline.
+ */
+constexpr uint32_t kMessageBufferShmemThreshold = 64 * 1024;  // 64 KB
 
 /**
  * Context used to serialize into an IPC::Message. Provides relevant context
@@ -473,7 +480,7 @@ inline constexpr auto ParamTraitsReadUsesOutParam()
 }  // namespace detail
 
 template <typename P>
-inline bool WARN_UNUSED_RESULT ReadParam(MessageReader* reader, P* p) {
+[[nodiscard]] inline bool ReadParam(MessageReader* reader, P* p) {
   if constexpr (!detail::ParamTraitsReadUsesOutParam<P>()) {
     auto maybe = ParamTraits<P>::Read(reader);
     if (maybe) {
@@ -487,7 +494,7 @@ inline bool WARN_UNUSED_RESULT ReadParam(MessageReader* reader, P* p) {
 }
 
 template <typename P>
-inline ReadResult<P> WARN_UNUSED_RESULT ReadParam(MessageReader* reader) {
+[[nodiscard]] inline ReadResult<P> ReadParam(MessageReader* reader) {
   if constexpr (!detail::ParamTraitsReadUsesOutParam<P>()) {
     return ParamTraits<P>::Read(reader);
   } else {
@@ -524,8 +531,7 @@ class MOZ_STACK_CLASS MessageBufferWriter {
 
  private:
   MessageWriter* writer_;
-  RefPtr<mozilla::ipc::SharedMemory> shmem_;
-  char* buffer_ = nullptr;
+  mozilla::UniquePtr<mozilla::ipc::shared_memory::Cursor> shmem_cursor_;
   uint32_t remaining_ = 0;
 };
 
@@ -556,8 +562,7 @@ class MOZ_STACK_CLASS MessageBufferReader {
 
  private:
   MessageReader* reader_;
-  RefPtr<mozilla::ipc::SharedMemory> shmem_;
-  const char* buffer_ = nullptr;
+  mozilla::UniquePtr<mozilla::ipc::shared_memory::Cursor> shmem_cursor_;
   uint32_t remaining_ = 0;
 };
 
@@ -679,8 +684,7 @@ bool ReadSequenceParamImpl(MessageReader* reader, mozilla::Maybe<I>&& data,
  * If the type satisfies kUseWriteBytes, output iterators are not supported.
  */
 template <typename P, typename F>
-bool WARN_UNUSED_RESULT ReadSequenceParam(MessageReader* reader,
-                                          F&& allocator) {
+[[nodiscard]] bool ReadSequenceParam(MessageReader* reader, F&& allocator) {
   uint32_t length = 0;
   if (!reader->ReadUInt32(&length)) {
     reader->FatalError("failed to read byte length in ReadSequenceParam");

@@ -9,6 +9,7 @@
 #define SkTHash_DEFINED
 
 #include "include/core/SkTypes.h"
+#include "src/base/SkMathPriv.h"
 #include "src/core/SkChecksum.h"
 
 #include <initializer_list>
@@ -26,6 +27,10 @@ namespace skia_private {
 // Traits must have:
 //   - static K GetKey(T)
 //   - static uint32_t Hash(K)
+// Traits may also define (both required if either is defined):
+//   - static bool ShouldGrow(int count, int capacity)
+//   - static bool ShouldShrink(int count, int capacity)
+// , which specify the max/min load factor of the table.
 // If the key is large and stored inside T, you may want to make K a const&.
 // Similarly, if T is large you might want it to be a pointer.
 template <typename T, typename K, typename Traits = T>
@@ -73,6 +78,17 @@ public:
     // Approximately how many bytes of memory do we use beyond sizeof(*this)?
     size_t approxBytesUsed() const { return fCapacity * sizeof(Slot); }
 
+    // Exchange two hash tables.
+    void swap(THashTable& that) {
+        std::swap(fCount, that.fCount);
+        std::swap(fCapacity, that.fCapacity);
+        std::swap(fSlots, that.fSlots);
+    }
+
+    void swap(THashTable&& that) {
+        *this = std::move(that);
+    }
+
     // !!!!!!!!!!!!!!!!!                 CAUTION                   !!!!!!!!!!!!!!!!!
     // set(), find() and foreach() all allow mutable access to table entries.
     // If you change an entry so that it no longer has the same key, all hell
@@ -86,7 +102,13 @@ public:
     // Copy val into the hash table, returning a pointer to the copy now in the table.
     // If there already is an entry in the table with the same key, we overwrite it.
     T* set(T val) {
-        if (4 * fCount >= 3 * fCapacity) {
+        bool shouldGrow = false;
+        if constexpr (HasShouldGrow<Traits>::value) {
+            shouldGrow = Traits::ShouldGrow(fCount, fCapacity);
+        } else {
+            shouldGrow = (4 * fCount >= 3 * fCapacity);
+        }
+        if (shouldGrow) {
             this->resize(fCapacity > 0 ? fCapacity * 2 : 4);
         }
         return this->uncheckedSet(std::move(val));
@@ -130,11 +152,19 @@ public:
                 return false;
             }
             if (hash == s.fHash && key == Traits::GetKey(*s)) {
-               this->removeSlot(index);
-               if (4 * fCount <= fCapacity && fCapacity > 4) {
-                   this->resize(fCapacity / 2);
-               }
-               return true;
+                this->removeSlot(index);
+                if (fCapacity > 4) {
+                    bool shouldShrink = false;
+                    if constexpr (HasShouldShrink<Traits>::value) {
+                        shouldShrink = Traits::ShouldShrink(fCount, fCapacity);
+                    } else {
+                        shouldShrink = (4 * fCount <= fCapacity);
+                    }
+                    if (shouldShrink) {
+                        this->resize(fCapacity / 2);
+                    }
+                }
+                return true;
             }
             index = this->next(index);
         }
@@ -150,7 +180,12 @@ public:
     // Hash tables will automatically resize themselves when set() and remove() are called, but
     // resize() can be called to manually grow capacity before a bulk insertion.
     void resize(int capacity) {
+        // We must have enough capacity to hold every key.
         SkASSERT(capacity >= fCount);
+        // `capacity` must be a power of two, because we use `hash & (capacity-1)` to look up keys
+        // in the table (since this is faster than a modulo).
+        SkASSERT((capacity & (capacity - 1)) == 0);
+
         int oldCapacity = fCapacity;
         SkDEBUGCODE(int oldCount = fCount);
 
@@ -166,6 +201,29 @@ public:
             }
         }
         SkASSERT(fCount == oldCount);
+    }
+
+    // Reserve extra capacity. This only grows capacity; requests to shrink are ignored.
+    // We assume that the passed-in value represents the number of items that the caller wants to
+    // store in the table. The passed-in value is adjusted to honor the following rules:
+    // - Hash tables must have a power-of-two capacity.
+    // - Hash tables grow when they exceed 3/4 capacity, not when they are full.
+    void reserve(int n) {
+        int newCapacity = SkNextPow2(n);
+
+        bool shouldGrow = false;
+        if constexpr (HasShouldGrow<Traits>::value) {
+            shouldGrow = Traits::ShouldGrow(n, newCapacity);
+        } else {
+            shouldGrow = (n * 4 > newCapacity * 3);
+        }
+        if (shouldGrow) {
+            newCapacity *= 2;
+        }
+
+        if (newCapacity > fCapacity) {
+            this->resize(newCapacity);
+        }
     }
 
     // Call fn on every entry in the table.  You may mutate the entries, but be very careful.
@@ -241,6 +299,27 @@ public:
     };
 
 private:
+    template <typename U, typename = void> struct HasShouldGrow : std::false_type {};
+    template <typename U, typename = void> struct HasShouldShrink : std::false_type {};
+
+    template <typename U>
+    struct HasShouldGrow<
+            U,
+            std::void_t<decltype(U::ShouldGrow(std::declval<int>(), std::declval<int>()))>>
+            : std::true_type {
+        static_assert(HasShouldShrink<U>::value,
+                      "The traits class must also provide ShouldShrink() method.");
+    };
+
+    template <typename U>
+    struct HasShouldShrink<
+            U,
+            std::void_t<decltype(U::ShouldShrink(std::declval<int>(), std::declval<int>()))>>
+            : std::true_type {
+        static_assert(HasShouldGrow<U>::value,
+                      "The traits class must also provide ShouldGrow() method.");
+    };
+
     // Finds the first non-empty slot for an iterator.
     int firstPopulatedSlot() const {
         for (int i = 0; i < fCapacity; i++) {
@@ -447,7 +526,9 @@ public:
     };
 
     THashMap(std::initializer_list<Pair> pairs) {
-        fTable.resize(pairs.size() * 5 / 3);
+        int capacity = pairs.size() >= 4 ? SkNextPow2(pairs.size() * 4 / 3)
+                                         : 4;
+        fTable.resize(capacity);
         for (const Pair& p : pairs) {
             fTable.set(p);
         }
@@ -464,6 +545,13 @@ public:
 
     // Approximately how many bytes of memory do we use beyond sizeof(*this)?
     size_t approxBytesUsed() const { return fTable.approxBytesUsed(); }
+
+    // Reserve extra capacity.
+    void reserve(int n) { fTable.reserve(n); }
+
+    // Exchange two hash maps.
+    void swap(THashMap& that) { fTable.swap(that.fTable); }
+    void swap(THashMap&& that) { fTable.swap(std::move(that.fTable)); }
 
     // N.B. The pointers returned by set() and find() are valid only until the next call to set().
 
@@ -551,7 +639,9 @@ public:
 
     // Construct with an initializer list of Ts.
     THashSet(std::initializer_list<T> vals) {
-        fTable.resize(vals.size() * 5 / 3);
+        int capacity = vals.size() >= 4 ? SkNextPow2(vals.size() * 4 / 3)
+                                        : 4;
+        fTable.resize(capacity);
         for (const T& val : vals) {
             fTable.set(val);
         }
@@ -568,6 +658,13 @@ public:
 
     // Approximately how many bytes of memory do we use beyond sizeof(*this)?
     size_t approxBytesUsed() const { return fTable.approxBytesUsed(); }
+
+    // Reserve extra capacity.
+    void reserve(int n) { fTable.reserve(n); }
+
+    // Exchange two hash sets.
+    void swap(THashSet& that) { fTable.swap(that.fTable); }
+    void swap(THashSet&& that) { fTable.swap(std::move(that.fTable)); }
 
     // Copy an item into the set.
     void add(T item) { fTable.set(std::move(item)); }

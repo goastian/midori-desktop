@@ -10,10 +10,10 @@
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "mozilla/dom/SyncedContextInlines.h"
 #include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/CloseWatcherManager.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/UserActivationIPCUtils.h"
 #include "mozilla/PermissionDelegateIPCUtils.h"
-#include "mozilla/RFPTargetIPCUtils.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/ClearOnShutdown.h"
@@ -21,6 +21,7 @@
 #include "nsIScriptError.h"
 #include "nsIWebProgressListener.h"
 #include "nsIXULRuntime.h"
+#include "nsRFPTargetSetIDL.h"
 #include "nsRefPtrHashtable.h"
 #include "nsContentUtils.h"
 
@@ -77,6 +78,19 @@ bool WindowContext::IsInBFCache() {
   return TopWindowContext()->GetWindowStateSaved();
 }
 
+already_AddRefed<nsIRFPTargetSetIDL>
+WindowContext::GetOverriddenFingerprintingSettingsWebIDL() const {
+  Maybe<RFPTargetSet> overriddenFingerprintingSettings =
+      GetOverriddenFingerprintingSettings();
+  if (overriddenFingerprintingSettings.isNothing()) {
+    return nullptr;
+  }
+
+  nsCOMPtr<nsIRFPTargetSetIDL> protections =
+      new nsRFPTargetSetIDL(overriddenFingerprintingSettings.ref());
+  return protections.forget();
+}
+
 nsGlobalWindowInner* WindowContext::GetInnerWindow() const {
   return mWindowGlobalChild ? mWindowGlobalChild->GetWindowGlobal() : nullptr;
 }
@@ -123,6 +137,8 @@ void WindowContext::AppendChildBrowsingContext(
                         "Mismatched groups?");
   MOZ_DIAGNOSTIC_ASSERT(!mChildren.Contains(aBrowsingContext));
 
+  ClearLightDOMChildren();
+
   mChildren.AppendElement(aBrowsingContext);
   if (!aBrowsingContext->IsEmbedderTypeObjectOrEmbed()) {
     mNonSyntheticChildren.AppendElement(aBrowsingContext);
@@ -139,6 +155,7 @@ void WindowContext::RemoveChildBrowsingContext(
     BrowsingContext* aBrowsingContext) {
   MOZ_DIAGNOSTIC_ASSERT(Group() == aBrowsingContext->Group(),
                         "Mismatched groups?");
+  ClearLightDOMChildren();
 
   mChildren.RemoveElement(aBrowsingContext);
   mNonSyntheticChildren.RemoveElement(aBrowsingContext);
@@ -161,6 +178,36 @@ void WindowContext::UpdateChildSynthetic(BrowsingContext* aBrowsingContext,
       mNonSyntheticChildren.AppendElement(aBrowsingContext);
     }
   }
+}
+
+void WindowContext::ClearLightDOMChildren() {
+  mNonSyntheticLightDOMChildren.reset();
+}
+
+void WindowContext::EnsureLightDOMChildren() {
+  if (mNonSyntheticLightDOMChildren.isSome()) {
+    return;
+  }
+  mNonSyntheticLightDOMChildren.emplace();
+
+  for (const RefPtr<BrowsingContext>& bc : mNonSyntheticChildren) {
+    if (Element* el = bc->GetEmbedderElement(); el && el->IsInShadowTree()) {
+      continue;
+    }
+    mNonSyntheticLightDOMChildren->AppendElement(bc);
+  }
+}
+
+BrowsingContext* WindowContext::NonSyntheticLightDOMChildAt(uint32_t aIndex) {
+  EnsureLightDOMChildren();
+  return aIndex < mNonSyntheticLightDOMChildren->Length()
+             ? mNonSyntheticLightDOMChildren->ElementAt(aIndex).get()
+             : nullptr;
+}
+
+uint32_t WindowContext::NonSyntheticLightDOMChildrenCount() {
+  EnsureLightDOMChildren();
+  return mNonSyntheticLightDOMChildren->Length();
 }
 
 void WindowContext::SendCommitTransaction(ContentParent* aParent,
@@ -188,12 +235,6 @@ bool WindowContext::CheckOnlyOwningProcessCanSet(ContentParent* aSource) {
 }
 
 bool WindowContext::CanSet(FieldIndex<IDX_IsSecure>, const bool& aIsSecure,
-                           ContentParent* aSource) {
-  return CheckOnlyOwningProcessCanSet(aSource);
-}
-
-bool WindowContext::CanSet(FieldIndex<IDX_AllowMixedContent>,
-                           const bool& aAllowMixedContent,
                            ContentParent* aSource) {
   return CheckOnlyOwningProcessCanSet(aSource);
 }
@@ -240,7 +281,7 @@ bool WindowContext::CanSet(FieldIndex<IDX_ShouldResistFingerprinting>,
 }
 
 bool WindowContext::CanSet(FieldIndex<IDX_OverriddenFingerprintingSettings>,
-                           const Maybe<RFPTarget>& aValue,
+                           const Maybe<RFPTargetSet>& aValue,
                            ContentParent* aSource) {
   return CheckOnlyOwningProcessCanSet(aSource);
 }
@@ -363,7 +404,7 @@ void WindowContext::DidSet(FieldIndex<IDX_SHEntryHasUserInteraction>,
 }
 
 void WindowContext::DidSet(FieldIndex<IDX_UserActivationStateAndModifiers>) {
-  MOZ_ASSERT_IF(!IsInProcess(), mUserGestureStart.IsNull());
+  MOZ_ASSERT_IF(!IsInProcess(), mLastActivationTimestamp.IsNull());
   USER_ACTIVATION_LOG("Set user gesture activation 0x%02" PRIu8
                       " for %s browsing context 0x%08" PRIx64,
                       GetUserActivationStateAndModifiers(),
@@ -373,9 +414,9 @@ void WindowContext::DidSet(FieldIndex<IDX_UserActivationStateAndModifiers>) {
         "Set user gesture start time for %s browsing context 0x%08" PRIx64,
         XRE_IsParentProcess() ? "Parent" : "Child", Id());
     if (GetUserActivationState() == UserActivation::State::FullActivated) {
-      mUserGestureStart = TimeStamp::Now();
+      mLastActivationTimestamp = TimeStamp::Now();
     } else if (GetUserActivationState() == UserActivation::State::None) {
-      mUserGestureStart = TimeStamp();
+      mLastActivationTimestamp = TimeStamp();
     }
   }
 }
@@ -487,6 +528,9 @@ void WindowContext::NotifyUserGestureActivation(
   UserActivation::StateAndModifiers stateAndModifiers;
   stateAndModifiers.SetState(UserActivation::State::FullActivated);
   stateAndModifiers.SetModifiers(aModifiers);
+  if (auto* innerWindow = GetInnerWindow()) {
+    innerWindow->EnsureCloseWatcherManager()->NotifyUserInteraction();
+  }
   Unused << SetUserActivationStateAndModifiers(stateAndModifiers.GetRawData());
 }
 
@@ -502,45 +546,68 @@ bool WindowContext::HasBeenUserGestureActivated() {
 
 const TimeStamp& WindowContext::GetUserGestureStart() const {
   MOZ_ASSERT(IsInProcess());
-  return mUserGestureStart;
+  return mLastActivationTimestamp;
 }
 
+// https://html.spec.whatwg.org/#transient-activation
 bool WindowContext::HasValidTransientUserGestureActivation() {
   MOZ_ASSERT(IsInProcess());
 
   if (GetUserActivationState() != UserActivation::State::FullActivated) {
-    // mUserGestureStart should be null if the document hasn't ever been
+    // mLastActivationTimestamp should be null if the document hasn't ever been
     // activated by user gesture
     MOZ_ASSERT_IF(GetUserActivationState() == UserActivation::State::None,
-                  mUserGestureStart.IsNull());
+                  mLastActivationTimestamp.IsNull());
     return false;
   }
 
-  MOZ_ASSERT(!mUserGestureStart.IsNull(),
-             "mUserGestureStart shouldn't be null if the document has ever "
-             "been activated by user gesture");
+  MOZ_ASSERT(
+      !mLastActivationTimestamp.IsNull(),
+      "mLastActivationTimestamp shouldn't be null if the document has ever "
+      "been activated by user gesture");
+
   TimeDuration timeout = TimeDuration::FromMilliseconds(
       StaticPrefs::dom_user_activation_transient_timeout());
 
+  // "When the current high resolution time given W is greater than or equal to
+  // the last activation timestamp in W, and less than the last activation
+  // timestamp in W plus the transient activation duration, then W is said to
+  // have transient activation."
   return timeout <= TimeDuration() ||
-         (TimeStamp::Now() - mUserGestureStart) <= timeout;
+         (TimeStamp::Now() - mLastActivationTimestamp) <= timeout;
 }
 
+// https://html.spec.whatwg.org/#consume-user-activation
 bool WindowContext::ConsumeTransientUserGestureActivation() {
   MOZ_ASSERT(IsInProcess());
   MOZ_ASSERT(IsCurrent());
+
+  // 1. If W's navigable is null, then return.
 
   if (!HasValidTransientUserGestureActivation()) {
     return false;
   }
 
+  // 2. Let top be W's navigable's top-level traversable.
   BrowsingContext* top = mBrowsingContext->Top();
+
+  // 3. Let navigables be the inclusive descendant navigables of top's active
+  // document.
   top->PreOrderWalk([&](BrowsingContext* aBrowsingContext) {
+    // 4. Let windows be the list of Window objects constructed by taking the
+    // active window of each item in navigables.
     WindowContext* windowContext = aBrowsingContext->GetCurrentWindowContext();
+
+    // 5. For each window in windows, if window's last activation timestamp is
+    // not positive infinity, then set window's last activation timestamp to
+    // negative infinity.
     if (windowContext && windowContext->GetUserActivationState() ==
                              UserActivation::State::FullActivated) {
       auto stateAndModifiers = UserActivation::StateAndModifiers(
           GetUserActivationStateAndModifiers());
+      // Setting UserActivationStateAndModifiers will trigger
+      // DidSet(FieldIndex<IDX_UserActivationStateAndModifiers>),
+      // which in turn updates mLastActivationTimestamp.
       stateAndModifiers.SetState(UserActivation::State::HasBeenActivated);
       Unused << windowContext->SetUserActivationStateAndModifiers(
           stateAndModifiers.GetRawData());
@@ -548,6 +615,37 @@ bool WindowContext::ConsumeTransientUserGestureActivation() {
   });
 
   return true;
+}
+
+// https://html.spec.whatwg.org/multipage/interaction.html#history-action-activation
+bool WindowContext::HasValidHistoryActivation() const {
+  MOZ_ASSERT(IsInProcess());
+  return mHistoryActivation != mLastActivationTimestamp;
+}
+
+// https://html.spec.whatwg.org/multipage/interaction.html#consume-history-action-user-activation
+// Step 1-2
+void WindowContext::ConsumeHistoryActivation() {
+  MOZ_ASSERT(IsInProcess());
+
+  // 1. If W's navigable is null, then return.
+
+  // 2. Let top be W's navigable's top-level traversable.
+  RefPtr<BrowsingContext> top = mBrowsingContext->Top();
+
+  // Consuming a history activation must happen across all child processes,
+  // including for example cross-origin iframes. As such we need to send an
+  // message over the IPC boundary to ensure out of processes contexts also
+  // consume their activations.
+  MOZ_ASSERT(XRE_IsContentProcess());
+  ContentChild::GetSingleton()->SendConsumeHistoryActivation(top);
+
+  // Update the local process children immediately.
+  top->ConsumeHistoryActivation();
+}
+
+void WindowContext::UpdateLastHistoryActivation() {
+  mHistoryActivation = mLastActivationTimestamp;
 }
 
 bool WindowContext::GetTransientUserGestureActivationModifiers(
@@ -633,6 +731,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(WindowContext)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mBrowsingContext)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mChildren)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mNonSyntheticChildren)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mNonSyntheticLightDOMChildren);
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
@@ -640,6 +739,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(WindowContext)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mBrowsingContext)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mChildren)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mNonSyntheticChildren)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mNonSyntheticLightDOMChildren)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 }  // namespace dom

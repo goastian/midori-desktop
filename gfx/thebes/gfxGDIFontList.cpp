@@ -29,7 +29,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/StaticPrefs_gfx.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/GfxMetrics.h"
 
 #include <usp10.h>
 
@@ -411,7 +411,7 @@ int CALLBACK GDIFontFamily::FamilyAddStylesProc(
   }
 
   // Some fonts claim to support things > 900, but we don't so clamp the sizes
-  logFont.lfWeight = clamped(logFont.lfWeight, LONG(100), LONG(900));
+  logFont.lfWeight = std::clamp(logFont.lfWeight, LONG(100), LONG(900));
 
   gfxWindowsFontType feType =
       GDIFontEntry::DetermineFontType(metrics, fontType);
@@ -511,11 +511,8 @@ void GDIFontFamily::FindStyleVariationsLocked(FontInfoData* aFontInfoData) {
 gfxGDIFontList::gfxGDIFontList() : mFontSubstitutes(32) {
 #ifdef MOZ_BUNDLED_FONTS
   if (StaticPrefs::gfx_bundled_fonts_activate_AtStartup() != 0) {
-    TimeStamp start = TimeStamp::Now();
+    auto timer = glean::fontlist::bundledfonts_activate.Measure();
     ActivateBundledFonts();
-    TimeStamp end = TimeStamp::Now();
-    Telemetry::Accumulate(Telemetry::FONTLIST_BUNDLEDFONTS_ACTIVATE,
-                          (end - start).ToMilliseconds());
   }
 #endif
 }
@@ -543,7 +540,7 @@ nsresult gfxGDIFontList::GetFontSubstitutes() {
 
   for (i = 0, rv = ERROR_SUCCESS; rv != ERROR_NO_MORE_ITEMS; i++) {
     aliasName[0] = 0;
-    lenAlias = ArrayLength(aliasName);
+    lenAlias = std::size(aliasName);
     actualName[0] = 0;
     lenActual = sizeof(actualName);
     rv = RegEnumValueW(hKey, i, aliasName, &lenAlias, nullptr, &valueType,
@@ -595,7 +592,7 @@ nsresult gfxGDIFontList::GetFontSubstitutes() {
 }
 
 nsresult gfxGDIFontList::InitFontListForPlatform() {
-  Telemetry::AutoTimer<Telemetry::GDI_INITFONTLIST_TOTAL> timer;
+  auto timer = glean::fontlist::gdi_init_total.Measure();
 
   mFontSubstitutes.Clear();
   mNonExistingFonts.Clear();

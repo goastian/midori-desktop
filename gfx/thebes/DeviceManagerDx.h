@@ -76,6 +76,7 @@ class DeviceManagerDx final {
   unsigned GetCompositorFeatureLevel() const;
   bool TextureSharingWorks();
   bool IsWARP();
+  bool IsWARPLocked() MOZ_REQUIRES(mDeviceLock);
   bool CanUseNV12();
   bool CanUseP010();
   bool CanUseP016();
@@ -121,7 +122,6 @@ class DeviceManagerDx final {
   bool ExportDeviceInfo(D3D11DeviceStatus* aOut);
 
   void ResetDevices();
-  void InitializeDirectDraw();
 
   // Reset and reacquire the devices if a reset has happened.
   // Returns whether a reset occurred not whether reacquiring
@@ -215,9 +215,6 @@ class DeviceManagerDx final {
   RefPtr<Runnable> mUpdateMonitorInfoRunnable MOZ_GUARDED_BY(mDeviceLock);
   Maybe<bool> mSystemHdrEnabled MOZ_GUARDED_BY(mDeviceLock);
   std::set<HMONITOR> mHdrMonitors MOZ_GUARDED_BY(mDeviceLock);
-
-  nsModuleHandle mDirectDrawDLL;
-  RefPtr<IDirectDraw7> mDirectDraw;
 };
 
 }  // namespace gfx

@@ -78,6 +78,8 @@ support-files = [
   "file_backforward_restore_scroll.html^headers^",
 ]
 
+["browser_backforward_text_fragment_restore_urlbar.js"]
+
 ["browser_backforward_userinteraction.js"]
 support-files = ["dummy_iframe_page.html"]
 skip-if = ["os == 'linux' && bits == 64 && !debug"] # Bug 1607713
@@ -88,8 +90,14 @@ skip-if = ["os == 'linux' && bits == 64 && !debug"] # Bug 1607713
 
 ["browser_badCertDomainFixup.js"]
 
+["browser_bfcache_after_auxiliary.js"]
+
 ["browser_bfcache_copycommand.js"]
-skip-if = ["os == 'linux' && bits == 64"] # Bug 1730593
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'", # Bug 1730593
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt && a11y_checks && swgl", # Bug 1730593
+  "win11_2009", # Bug 1775931
+]
 
 ["browser_browsingContext-01.js"]
 https_first_disabled = true
@@ -144,10 +152,20 @@ https_first_disabled = true
 ["browser_bug388121-2.js"]
 
 ["browser_bug420605.js"]
-skip-if = ["verify"]
+skip-if = [
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt", # Bug 1775923
+  "verify",
+]
 
 ["browser_bug422543.js"]
 https_first_disabled = true
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && asan", # Bug 1933429
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && tsan", # Bug 1933429
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug", # Bug 1933429
+  "os == 'win' && os_version == '11.2009' && processor == 'x86_64' && asan", # Bug 1933429
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && asan", # Bug 1933429
+]
 
 ["browser_bug441169.js"]
 
@@ -260,6 +278,8 @@ support-files = [
   "file_csp_uir_dummy.html",
 ]
 
+["browser_current_entry_always_in_history_menu.js"]
+
 ["browser_dataURI_unique_opaque_origin.js"]
 https_first_disabled = true
 
@@ -273,6 +293,8 @@ skip-if = ["os == 'mac'"]
 
 ["browser_history_triggeringprincipal_viewsource.js"]
 https_first_disabled = true
+
+["browser_initial_entry_without_interaction.js"]
 
 ["browser_isInitialDocument.js"]
 https_first_disabled = true
@@ -305,11 +327,18 @@ support-files = ["overlink_test.html"]
 
 ["browser_platform_emulation.js"]
 
+["browser_replace_state_during_navigation.js"]
+support-files = ["file_replace_state_during_navigation.html"]
+
+["browser_replace_state_during_navigation_from_first_page.js"]
+support-files = ["file_replace_state_during_navigation.html"]
+
 ["browser_search_notification.js"]
 
 ["browser_tab_replace_while_loading.js"]
 skip-if = [
-  "os == 'linux' && bits == 64 && os_version == '18.04'", # Bug 1604237
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'", # Bug 1604237
+  "os == 'linux'&& os_version == '24.04' && processor == 'x86_64' && display == 'x11' && tsan", # Bug 1604237
   "os == 'win'", # Bug 1671794
 ]
 

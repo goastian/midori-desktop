@@ -56,8 +56,8 @@ nsresult OrientedImage::GetNativeSizes(nsTArray<IntSize>& aNativeSizes) {
 }
 
 NS_IMETHODIMP
-OrientedImage::GetIntrinsicSize(nsSize* aSize) {
-  nsresult rv = InnerImage()->GetIntrinsicSize(aSize);
+OrientedImage::GetIntrinsicSizeInAppUnits(nsSize* aSize) {
+  nsresult rv = InnerImage()->GetIntrinsicSizeInAppUnits(aSize);
 
   if (mOrientation.SwapsWidthAndHeight()) {
     swap(aSize->width, aSize->height);
@@ -66,10 +66,10 @@ OrientedImage::GetIntrinsicSize(nsSize* aSize) {
   return rv;
 }
 
-Maybe<AspectRatio> OrientedImage::GetIntrinsicRatio() {
-  Maybe<AspectRatio> ratio = InnerImage()->GetIntrinsicRatio();
+AspectRatio OrientedImage::GetIntrinsicRatio() {
+  AspectRatio ratio = InnerImage()->GetIntrinsicRatio();
   if (ratio && mOrientation.SwapsWidthAndHeight()) {
-    ratio = Some(ratio->Inverted());
+    ratio = ratio.Inverted();
   }
   return ratio;
 }

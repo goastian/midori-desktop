@@ -52,14 +52,6 @@ void RenderTextureHostWrapper::Unlock() {
   }
 }
 
-std::pair<gfx::Point, gfx::Point> RenderTextureHostWrapper::GetUvCoords(
-    gfx::IntSize aTextureSize) const {
-  if (mTextureHost) {
-    return mTextureHost->GetUvCoords(aTextureSize);
-  }
-  return RenderTextureHost::GetUvCoords(aTextureSize);
-}
-
 void RenderTextureHostWrapper::ClearCachedResources() {
   if (mTextureHost) {
     mTextureHost->ClearCachedResources();
@@ -88,6 +80,14 @@ void RenderTextureHostWrapper::NotifyNotUsed() {
 }
 
 bool RenderTextureHostWrapper::SyncObjectNeeded() { return false; }
+
+RefPtr<layers::TextureSource> RenderTextureHostWrapper::CreateTextureSource(
+    layers::TextureSourceProvider* aProvider) {
+  if (!mTextureHost) {
+    return nullptr;
+  }
+  return mTextureHost->CreateTextureSource(aProvider);
+}
 
 RenderMacIOSurfaceTextureHost*
 RenderTextureHostWrapper::AsRenderMacIOSurfaceTextureHost() {
@@ -127,6 +127,13 @@ RenderTextureHostSWGL* RenderTextureHostWrapper::AsRenderTextureHostSWGL() {
   return mTextureHost->AsRenderTextureHostSWGL();
 }
 
+RenderDMABUFTextureHost* RenderTextureHostWrapper::AsRenderDMABUFTextureHost() {
+  if (!mTextureHost) {
+    return nullptr;
+  }
+  return mTextureHost->AsRenderDMABUFTextureHost();
+}
+
 RenderAndroidHardwareBufferTextureHost*
 RenderTextureHostWrapper::AsRenderAndroidHardwareBufferTextureHost() {
   if (!mTextureHost) {
@@ -141,6 +148,14 @@ RenderTextureHostWrapper::AsRenderAndroidSurfaceTextureHost() {
     return nullptr;
   }
   return mTextureHost->AsRenderAndroidSurfaceTextureHost();
+}
+
+RenderEGLImageTextureHost*
+RenderTextureHostWrapper::AsRenderEGLImageTextureHost() {
+  if (!mTextureHost) {
+    return nullptr;
+  }
+  return mTextureHost->AsRenderEGLImageTextureHost();
 }
 
 RenderTextureHostSWGL* RenderTextureHostWrapper::EnsureRenderTextureHostSWGL()
@@ -163,6 +178,25 @@ bool RenderTextureHostWrapper::IsSoftwareDecodedVideo() {
     return false;
   }
   return mTextureHost->IsSoftwareDecodedVideo();
+}
+
+RefPtr<RenderTextureHostUsageInfo>
+RenderTextureHostWrapper::GetOrMergeUsageInfo(
+    const MutexAutoLock& aProofOfMapLock,
+    RefPtr<RenderTextureHostUsageInfo> aUsageInfo) {
+  if (!mTextureHost) {
+    return nullptr;
+  }
+  return mTextureHost->GetOrMergeUsageInfo(aProofOfMapLock, aUsageInfo);
+}
+
+RefPtr<RenderTextureHostUsageInfo>
+RenderTextureHostWrapper::GetTextureHostUsageInfo(
+    const MutexAutoLock& aProofOfMapLock) {
+  if (!mTextureHost) {
+    return nullptr;
+  }
+  return mTextureHost->GetTextureHostUsageInfo(aProofOfMapLock);
 }
 
 size_t RenderTextureHostWrapper::GetPlaneCount() const {

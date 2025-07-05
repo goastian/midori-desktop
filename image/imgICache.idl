@@ -34,10 +34,14 @@ interface imgICache : nsISupports
   /**
    * Evict images from the cache.
    *
-   * @param chrome If TRUE,  evict only chrome images.
-   *               If FALSE, evict everything except chrome images.
+   * @param chrome If passed and TRUE,  evict only chrome images.
+   *               If passed and FALSE, evict everything except chrome images.
+   *               If not passed, evict all images.
+   *
+   * NOTE: Given that XPIDL doesn't support "was-not-passed" state for boolean,
+   *       the chrome parameter uses jsval instead of boolean.
    */
-  void clearCache(in boolean chrome);
+  void clearCache([optional] in jsval chrome);
 
   /**
    * Evict images from the cache.
@@ -62,14 +66,15 @@ interface imgICache : nsISupports
   void removeEntriesFromPrincipalInAllProcesses(in nsIPrincipal aPrincipal);
 
   /**
-   * Evict images from the non-chrome cache which match the the given base
-   * domain. Matching cache entries will be cleared across all origin attributes
+   * Evict images from the non-chrome cache which match the the given site
+   * Matching cache entries will be cleared across all origin attributes
    * and all processes.
    *
-   * @param aBaseDomain base domain to delete cache entries for.
+   * @param aSchemelessSite site (exlcuding scheme) to delete cache entries for.
    * @throws NS_ERROR_NOT_AVAILABLE if not called in the parent process.
    */
-  void removeEntriesFromBaseDomainInAllProcesses(in ACString aBaseDomain);
+  [implicit_jscontext]
+  void removeEntriesFromSiteInAllProcesses(in ACString aBaseDomain, in jsval OriginAttributesPattern);
 
   /**
    * Find Properties

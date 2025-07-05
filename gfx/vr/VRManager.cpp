@@ -19,7 +19,6 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs_dom.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/Unused.h"
 #include "nsIObserverService.h"
 
@@ -861,7 +860,7 @@ void VRManager::StopAllHaptics() {
   if (mState != VRManagerState::Active) {
     return;
   }
-  for (size_t i = 0; i < mozilla::ArrayLength(mBrowserState.hapticState); i++) {
+  for (size_t i = 0; i < std::size(mBrowserState.hapticState); i++) {
     ClearHapticSlot(i);
   }
   PushState();
@@ -886,7 +885,7 @@ void VRManager::VibrateHaptic(GamepadHandle aGamepadHandle,
   TimeStamp now = TimeStamp::Now();
   size_t bestSlotIndex = 0;
   // Default to an empty slot, or the slot holding the oldest haptic pulse
-  for (size_t i = 0; i < mozilla::ArrayLength(mBrowserState.hapticState); i++) {
+  for (size_t i = 0; i < std::size(mBrowserState.hapticState); i++) {
     const VRHapticState& state = mBrowserState.hapticState[i];
     if (state.inputFrameID == 0) {
       // Unused slot, use it
@@ -900,7 +899,7 @@ void VRManager::VibrateHaptic(GamepadHandle aGamepadHandle,
     }
   }
   // Override the last pulse on the same actuator if present.
-  for (size_t i = 0; i < mozilla::ArrayLength(mBrowserState.hapticState); i++) {
+  for (size_t i = 0; i < std::size(mBrowserState.hapticState); i++) {
     const VRHapticState& state = mBrowserState.hapticState[i];
     if (state.inputFrameID == 0) {
       // This is an empty slot -- no match
@@ -949,7 +948,7 @@ void VRManager::StopVibrateHaptic(GamepadHandle aGamepadHandle) {
       kVRControllerMaxCount * mDisplayInfo.mDisplayID;
   uint32_t controllerIndex = aGamepadHandle.GetValue() - controllerBaseIndex;
 
-  for (size_t i = 0; i < mozilla::ArrayLength(mBrowserState.hapticState); i++) {
+  for (size_t i = 0; i < std::size(mBrowserState.hapticState); i++) {
     VRHapticState& state = mBrowserState.hapticState[i];
     if (state.controllerIndex == controllerIndex) {
       memset(&state, 0, sizeof(VRHapticState));
@@ -1198,7 +1197,7 @@ void VRManager::UpdateHaptics(double aDeltaTime) {
   }
   bool bNeedPush = false;
   // Check for any haptic pulses that have ended and clear them
-  for (size_t i = 0; i < mozilla::ArrayLength(mBrowserState.hapticState); i++) {
+  for (size_t i = 0; i < std::size(mBrowserState.hapticState); i++) {
     const VRHapticState& state = mBrowserState.hapticState[i];
     if (state.inputFrameID == 0) {
       // Nothing in this slot
@@ -1217,7 +1216,7 @@ void VRManager::UpdateHaptics(double aDeltaTime) {
 }
 
 void VRManager::ClearHapticSlot(size_t aSlot) {
-  MOZ_ASSERT(aSlot < mozilla::ArrayLength(mBrowserState.hapticState));
+  MOZ_ASSERT(aSlot < std::size(mBrowserState.hapticState));
   memset(&mBrowserState.hapticState[aSlot], 0, sizeof(VRHapticState));
   mHapticPulseRemaining[aSlot] = 0.0f;
   if (aSlot < mHapticPromises.Length() && mHapticPromises[aSlot]) {
@@ -1240,8 +1239,6 @@ void VRManager::StartPresentation() {
   if (mBrowserState.presentationActive) {
     return;
   }
-  mTelemetry.Clear();
-  mTelemetry.mPresentationStart = TimeStamp::Now();
 
   // Indicate that we are ready to start immersive mode
   mBrowserState.presentationActive = true;
@@ -1249,11 +1246,6 @@ void VRManager::StartPresentation() {
   PushState();
 
   mDisplayInfo.mDisplayState.lastSubmittedFrameId = 0;
-  if (mDisplayInfo.mDisplayState.reportsDroppedFrames) {
-    mTelemetry.mLastDroppedFrameCount =
-        mDisplayInfo.mDisplayState.droppedFrameCount;
-  }
-
   mLastSubmittedFrameId = 0;
   mLastStartedFrame = 0;
 }
@@ -1269,39 +1261,9 @@ void VRManager::StopPresentation() {
   // Indicate that we have stopped immersive mode
   mBrowserState.presentationActive = false;
   memset(mBrowserState.layerState, 0,
-         sizeof(VRLayerState) * mozilla::ArrayLength(mBrowserState.layerState));
+         sizeof(VRLayerState) * std::size(mBrowserState.layerState));
 
   PushState(true);
-
-  Telemetry::HistogramID timeSpentID = Telemetry::HistogramCount;
-  Telemetry::HistogramID droppedFramesID = Telemetry::HistogramCount;
-  int viewIn = 0;
-
-  if (mDisplayInfo.mDisplayState.eightCC ==
-      GFX_VR_EIGHTCC('O', 'c', 'u', 'l', 'u', 's', ' ', 'D')) {
-    // Oculus Desktop API
-    timeSpentID = Telemetry::WEBVR_TIME_SPENT_VIEWING_IN_OCULUS;
-    droppedFramesID = Telemetry::WEBVR_DROPPED_FRAMES_IN_OCULUS;
-    viewIn = 1;
-  } else if (mDisplayInfo.mDisplayState.eightCC ==
-             GFX_VR_EIGHTCC('O', 'p', 'e', 'n', 'V', 'R', ' ', ' ')) {
-    // OpenVR API
-    timeSpentID = Telemetry::WEBVR_TIME_SPENT_VIEWING_IN_OPENVR;
-    droppedFramesID = Telemetry::WEBVR_DROPPED_FRAMES_IN_OPENVR;
-    viewIn = 2;
-  }
-
-  if (viewIn) {
-    const TimeDuration duration =
-        TimeStamp::Now() - mTelemetry.mPresentationStart;
-    Telemetry::Accumulate(Telemetry::WEBVR_USERS_VIEW_IN, viewIn);
-    Telemetry::Accumulate(timeSpentID, duration.ToMilliseconds());
-    const uint32_t droppedFramesPerSec =
-        (uint32_t)((double)(mDisplayInfo.mDisplayState.droppedFrameCount -
-                            mTelemetry.mLastDroppedFrameCount) /
-                   duration.ToSeconds());
-    Telemetry::Accumulate(droppedFramesID, droppedFramesPerSec);
-  }
 }
 
 bool VRManager::IsPresenting() {

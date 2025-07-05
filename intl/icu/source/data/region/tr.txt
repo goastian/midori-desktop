@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 tr{
     Countries{
         001{"Dünya"}
@@ -87,7 +87,7 @@ tr{
         CP{"Clipperton Adası"}
         CR{"Kosta Rika"}
         CU{"Küba"}
-        CV{"Cape Verde"}
+        CV{"Cabo Verde"}
         CW{"Curaçao"}
         CX{"Christmas Adası"}
         CY{"Kıbrıs"}
@@ -297,6 +297,9 @@ tr{
         ZM{"Zambiya"}
         ZW{"Zimbabve"}
         ZZ{"Bilinmeyen Bölge"}
+    }
+    Countries%chagos{
+        IO{"Chagos Takımadaları"}
     }
     Countries%short{
         GB{"BK"}

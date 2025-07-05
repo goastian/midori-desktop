@@ -3,22 +3,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/CheckedInt.h"
-#include "mozilla/intl/UnicodeProperties.h"
 #include "mozilla/intl/WordBreaker.h"
+
+#include "ICU4XDataProvider.h"
+#include "ICU4XWordBreakIteratorUtf16.hpp"
+#include "ICU4XWordSegmenter.hpp"
+#include "mozilla/CheckedInt.h"
+#include "mozilla/intl/ICU4XGeckoDataProvider.h"
+#include "mozilla/intl/UnicodeProperties.h"
+#include "mozilla/StaticPrefs_intl.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "nsComplexBreaker.h"
 #include "nsTArray.h"
+#include "nsUnicharUtils.h"
 #include "nsUnicodeProperties.h"
-
-#if defined(MOZ_ICU4X) && defined(JS_HAS_INTL_API)
-#  include "ICU4XDataProvider.h"
-#  include "ICU4XWordBreakIteratorUtf16.hpp"
-#  include "ICU4XWordSegmenter.hpp"
-#  include "mozilla/intl/ICU4XGeckoDataProvider.h"
-#  include "mozilla/StaticPrefs_intl.h"
-#  include "nsUnicharUtils.h"
-#endif
 
 using mozilla::intl::Script;
 using mozilla::intl::UnicodeProperties;
@@ -41,21 +39,6 @@ using mozilla::unicode::GetGenCategory;
 #define IS_HIRAGANA(c) ((0x3040 <= (c)) && ((c) <= 0x309F))
 #define IS_HALFWIDTHKATAKANA(c) ((0xFF60 <= (c)) && ((c) <= 0xFF9F))
 
-// Return true if aChar belongs to a SEAsian script that is written without
-// word spaces, so we need to use the "complex breaker" to find possible word
-// boundaries. (https://en.wikipedia.org/wiki/Scriptio_continua)
-// (How well this works depends on the level of platform support for finding
-// possible line breaks - or possible word boundaries - in the particular
-// script. Thai, at least, works pretty well on the major desktop OSes. If
-// the script is not supported by the platform, we just won't find any useful
-// boundaries.)
-static bool IsScriptioContinua(char16_t aChar) {
-  Script sc = UnicodeProperties::GetScriptCode(aChar);
-  return sc == Script::THAI || sc == Script::MYANMAR || sc == Script::KHMER ||
-         sc == Script::JAVANESE || sc == Script::BALINESE ||
-         sc == Script::SUNDANESE || sc == Script::LAO;
-}
-
 /* static */
 WordBreaker::WordBreakClass WordBreaker::GetClass(char16_t c) {
   // begin of the hack
@@ -77,7 +60,7 @@ WordBreaker::WordBreakClass WordBreaker::GetClass(char16_t c) {
     if (GetGenCategory(c) == nsUGenCategory::kPunctuation) {
       return kWbClassPunct;
     }
-    if (IsScriptioContinua(c)) {
+    if (UnicodeProperties::IsScriptioContinua(c)) {
       return kWbClassScriptioContinua;
     }
     return kWbClassAlphaLetter;
@@ -97,7 +80,7 @@ WordBreaker::WordBreakClass WordBreaker::GetClass(char16_t c) {
   if (GetGenCategory(c) == nsUGenCategory::kPunctuation) {
     return kWbClassPunct;
   }
-  if (IsScriptioContinua(c)) {
+  if (UnicodeProperties::IsScriptioContinua(c)) {
     return kWbClassScriptioContinua;
   }
   return kWbClassAlphaLetter;
@@ -114,15 +97,13 @@ WordRange WordBreaker::FindWord(const nsAString& aText, uint32_t aPos,
 
   WordRange range{0, len.value()};
 
-#if defined(MOZ_ICU4X) && defined(JS_HAS_INTL_API)
   if (StaticPrefs::intl_icu4x_segmenter_enabled()) {
     auto result =
         capi::ICU4XWordSegmenter_create_auto(mozilla::intl::GetDataProvider());
     MOZ_ASSERT(result.is_ok);
     ICU4XWordSegmenter segmenter(result.ok);
-    ICU4XWordBreakIteratorUtf16 iterator =
-        segmenter.segment_utf16(diplomat::span<const uint16_t>(
-            (const uint16_t*)aText.BeginReading(), aText.Length()));
+    ICU4XWordBreakIteratorUtf16 iterator = segmenter.segment_utf16(
+        std::u16string_view(aText.BeginReading(), aText.Length()));
 
     uint32_t previousPos = 0;
     while (true) {
@@ -164,7 +145,6 @@ WordRange WordBreaker::FindWord(const nsAString& aText, uint32_t aPos,
 
     return range;
   }
-#endif
 
   WordBreakClass c = GetClass(aText[aPos]);
 

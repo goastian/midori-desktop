@@ -53,9 +53,9 @@ class UtilityProcessHost final : public mozilla::ipc::GeckoChildProcessHost {
   // to LaunchPromise() which will return a promise that will be resolved once
   // the Utility process has launched and a channel has been established.
   //
-  // @param aExtraOpts (StringVector)
+  // @param aExtraOpts (geckoargs::ChildProcessArgs)
   //        Extra options to pass to the subprocess.
-  bool Launch(StringVector aExtraOpts);
+  bool Launch(geckoargs::ChildProcessArgs aExtraOpts);
 
   using LaunchPromiseType = MozPromise<Ok, LaunchError, false>;
   // Return a promise that will be resolved once the process has completed its
@@ -100,7 +100,7 @@ class UtilityProcessHost final : public mozilla::ipc::GeckoChildProcessHost {
 
   // Called on the main thread when the mUtilityProcessParent actor is shutting
   // down.
-  void OnChannelClosed();
+  void OnChannelClosed(IProtocol::ActorDestroyReason aReason);
 
   // Kill the remote process, triggering IPC shutdown.
   void KillHard(const char* aReason);
@@ -135,7 +135,7 @@ class UtilityProcessHost final : public mozilla::ipc::GeckoChildProcessHost {
   void RejectPromise(LaunchError);
 
 #if defined(MOZ_WMF_CDM) && defined(MOZ_SANDBOX) && !defined(MOZ_ASAN)
-  void EnsureWidevineL1PathForSandbox(StringVector& aExtraOpts);
+  void EnsureWidevineL1PathForSandbox(geckoargs::ChildProcessArgs& aExtraOpts);
 #endif
 
 #if defined(MOZ_WMF_CDM) && defined(MOZ_SANDBOX)
@@ -157,7 +157,7 @@ class UtilityProcessHost final : public mozilla::ipc::GeckoChildProcessHost {
   bool mLaunchCompleted = false;
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
-  UniquePtr<SandboxBroker> mSandboxBroker{};
+  RefPtr<SandboxBroker> mSandboxBroker{};
 #endif
 };
 

@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 lg{
     Currencies{
         AED{
@@ -175,9 +175,13 @@ lg{
             "SHP",
             "Pawundi ey’eSenti Herena",
         }
+        SLE{
+            "SLE",
+            "Lewone",
+        }
         SLL{
             "SLL",
-            "Lewone",
+            "Lewone (1964—2022)",
         }
         SOS{
             "SOS",

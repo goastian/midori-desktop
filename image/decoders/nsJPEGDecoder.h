@@ -59,7 +59,7 @@ class nsJPEGDecoder : public Decoder {
                        IResumable* aOnResume) override;
   nsresult FinishInternal() override;
 
-  Maybe<Telemetry::HistogramID> SpeedHistogram() const override;
+  Maybe<glean::impl::MemoryDistributionMetric> SpeedMetric() const override;
 
  protected:
   EXIFData ReadExifData() const;
@@ -69,7 +69,8 @@ class nsJPEGDecoder : public Decoder {
   friend class DecoderFactory;
 
   // Decoders should only be instantiated via DecoderFactory.
-  nsJPEGDecoder(RasterImage* aImage, Decoder::DecodeStyle aDecodeStyle);
+  nsJPEGDecoder(RasterImage* aImage, Decoder::DecodeStyle aDecodeStyle,
+                bool aIsPDF = false);
 
   enum class State { JPEG_DATA, FINISHED_JPEG_DATA };
 
@@ -104,6 +105,7 @@ class nsJPEGDecoder : public Decoder {
   bool mReading;
 
   const Decoder::DecodeStyle mDecodeStyle;
+  bool mIsPDF;
 
   SurfacePipe mPipe;
 };

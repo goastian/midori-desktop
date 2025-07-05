@@ -8,6 +8,9 @@
 #define GFX_IMAGETYPES_H
 
 #include <stdint.h>  // for uint32_t
+#include "mozilla/Maybe.h"
+#include "mozilla/TimeStamp.h"
+#include "mozilla/Variant.h"
 
 namespace mozilla {
 
@@ -72,20 +75,15 @@ enum class ImageFormat {
   D3D11_SHARE_HANDLE_TEXTURE,
 
   /**
-   * A wrapper of ID3D11Texture2D of IMFSample.
+   * A wrapper of ID3D11Texture2D for zero copy hw video decoding.
    * Expected to be used in GPU process.
    */
-  D3D11_TEXTURE_IMF_SAMPLE,
+  D3D11_TEXTURE_ZERO_COPY,
 
   /**
    * A wrapper around a drawable TextureClient.
    */
   TEXTURE_WRAPPER,
-
-  /**
-   * A D3D11 backed YUV image.
-   */
-  D3D11_YCBCR_IMAGE,
 
   /**
    * An opaque handle that refers to an Image stored in the GPU
@@ -117,11 +115,19 @@ enum class StereoMode {
 
 namespace layers {
 
-typedef uint32_t ContainerFrameID;
+using ContainerFrameID = uint32_t;
 constexpr ContainerFrameID kContainerFrameID_Invalid = 0;
 
-typedef uint32_t ContainerProducerID;
+using ContainerProducerID = uint32_t;
 constexpr ContainerProducerID kContainerProducerID_Invalid = 0;
+
+// int64_t represents a WebRTC NTP timestamp.
+using ContainerCaptureTime = Variant<Nothing, TimeStamp, int64_t>;
+
+// int64_t represents a WebRTC Realtime timestamp.
+using ContainerReceiveTime = Maybe<int64_t>;
+
+using ContainerRtpTimestamp = Maybe<uint32_t>;
 
 }  // namespace layers
 

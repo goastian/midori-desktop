@@ -170,6 +170,19 @@ void brush_vs(
     float perspective_interpolate = (brush_flags & BRUSH_FLAG_PERSPECTIVE_INTERPOLATION) != 0 ? 1.0 : 0.0;
     v_perspective.x = perspective_interpolate;
 
+    // We deliberately only support the normalized UVs flag when *not* using
+    // repetition, as the presence of this code resulted in a miscompilation
+    // in the repetition variant on some devices, causing incorrect rendering
+    // even when the flag is unset. Perhaps due to the excessive number of
+    // branches in the repetition code, and this one broke the camel's back?
+    // See bug 1932416 and bug 1929799.
+#ifndef WR_FEATURE_REPETITION
+    vec2 uv_scale = mix(vec2(1.0), texture_size,
+                        bvec2((brush_flags & BRUSH_FLAG_NORMALIZED_UVS) != 0));
+    uv0 *= uv_scale;
+    uv1 *= uv_scale;
+#endif
+
     // Handle case where the UV coords are inverted (e.g. from an
     // external image).
     vec2 min_uv = min(uv0, uv1);

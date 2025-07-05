@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 he{
     Countries{
         001{"העולם"}
@@ -297,6 +297,9 @@ he{
         ZM{"זמביה"}
         ZW{"זימבבואה"}
         ZZ{"אזור לא ידוע"}
+    }
+    Countries%chagos{
+        IO{"ארכיפלג צ׳גוס"}
     }
     Countries%short{
         HK{"הונג קונג"}

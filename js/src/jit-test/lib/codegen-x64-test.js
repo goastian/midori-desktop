@@ -22,6 +22,9 @@
 //  no_suffix: by default, the required pattern must be immediately followed
 //             by `x64_suffix`, and this is checked.  Setting this to true skips
 //             the check.
+//  baseline: by default, the output to be tested is expected to be produced
+//            at the tier "ion".  Setting this to true changes the expected
+//            tier to "baseline".
 //  memory: if present, add a memory of length given by this property
 //  log: for debugging -- print the disassembly, then the preprocessed pattern
 
@@ -33,8 +36,12 @@ var RIPR = `0x${HEXES}`;
 // RIP-relative address in the binary encoding
 var RIPRADDR = `${HEX}{2} ${HEX}{2} ${HEX}{2} ${HEX}{2}`;
 
-// End of prologue
-var x64_prefix = `48 89 e5                  mov %rsp, %rbp`
+// End of prologue. The move from r14 to rbp is writing the callee's wasm
+// instance into the frame for debug checks -- see WasmFrame.h.
+var x64_prefix = `
+48 89 e5                  mov %rsp, %rbp(
+4c 89 75 .0               movq %r14, (0x10|0x30)\\(%rbp\\))?
+`
 
 // Start of epilogue
 var x64_suffix = `5d                        pop %rbp`;
@@ -151,7 +158,9 @@ function codegenTestX64_adhoc(module_text, export_name, expected, options = {}) 
     let ins = wasmEvalText(module_text, {}, options.features);
     if (options.instanceBox)
         options.instanceBox.value = ins;
-    let output = wasmDis(ins.exports[export_name], {tier:"ion", asString:true});
+    let tierTxt = options.baseline ? "baseline" : "ion";
+    let output = wasmDis(ins.exports[export_name],
+                         {tier:tierTxt, asString:true});
     if (!options.no_prefix)
         expected = x64_prefix + '\n' + expected;
     if (!options.no_suffix)
@@ -165,9 +174,12 @@ function codegenTestX64_adhoc(module_text, export_name, expected, options = {}) 
         print(module_text);
         print("Actual output:")
         print(output);
-        print("Expected output (easy-to-read and fully-regex'd):")
+        print("Expected output (as text):")
         print(expected_pretty);
+        print("");
+        print("Expected output (as regex):")
         print(expected);
+        print("");
     }
     assertEq(success, true);
 }

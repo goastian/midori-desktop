@@ -20,7 +20,6 @@
 #include "include/core/SkRefCnt.h"
 #include "include/core/SkRegion.h"
 #include "include/core/SkSamplingOptions.h"
-#include "include/core/SkScalar.h"
 #include "include/core/SkShader.h"
 #include "include/core/SkSize.h"
 #include "include/core/SkSurfaceProps.h"
@@ -34,7 +33,7 @@
 #include <cstdint>
 #include <utility>
 
-class SkBitmap;
+struct SkArc;
 class SkColorSpace;
 class SkMesh;
 struct SkDrawShadowRec;
@@ -72,7 +71,7 @@ class Device;
 class Recorder;
 }
 namespace sktext::gpu {
-class SDFTControl;
+class SubRunControl;
 class Slug;
 }
 
@@ -80,7 +79,7 @@ struct SkStrikeDeviceInfo {
     const SkSurfaceProps fSurfaceProps;
     const SkScalerContextFlags fScalerContextFlags;
     // This is a pointer so this can be compiled without SK_GPU_SUPPORT.
-    const sktext::gpu::SDFTControl* const fSDFTControl;
+    const sktext::gpu::SubRunControl* const fSubRunControl;
 };
 
 /**
@@ -206,7 +205,7 @@ public:
      * that device is drawn to the root device, the net effect will be that this device's contents
      * have been transformed by the global CTM.
      */
-    SkMatrix getRelativeTransform(const SkDevice&) const;
+    SkM44 getRelativeTransform(const SkDevice&) const;
 
     void setLocalToDevice(const SkM44& localToDevice) {
         fLocalToDevice = localToDevice;
@@ -275,7 +274,7 @@ public:
     // dedicated fast-paths for blurs on [r]rects and text).
     virtual bool useDrawCoverageMaskForMaskFilters() const { return false; }
 
-    // SkCanvas uses NoPixelsDevice when onCreateDevice fails; but then it needs to be able to
+    // SkCanvas uses NoPixelsDevice when createDevice fails; but then it needs to be able to
     // inspect a layer's device to know if calling drawDevice() later is allowed.
     virtual bool isNoPixelsDevice() const { return false; }
 
@@ -342,8 +341,7 @@ public:
     virtual void drawOval(const SkRect& oval,
                           const SkPaint& paint) = 0;
     /** By the time this is called we know that abs(sweepAngle) is in the range [0, 360). */
-    virtual void drawArc(const SkRect& oval, SkScalar startAngle,
-                         SkScalar sweepAngle, bool useCenter, const SkPaint& paint);
+    virtual void drawArc(const SkArc& arc, const SkPaint& paint);
     virtual void drawRRect(const SkRRect& rr,
                            const SkPaint& paint) = 0;
 
@@ -359,7 +357,7 @@ public:
      */
     virtual void drawPath(const SkPath& path,
                           const SkPaint& paint,
-                          bool pathIsMutable = false) = 0;
+                          bool pathIsMutable) = 0;
 
     virtual void drawImageRect(const SkImage*, const SkRect* src, const SkRect& dst,
                                const SkSamplingOptions&, const SkPaint&,
@@ -429,7 +427,7 @@ public:
 
     /**
      * The SkDevice passed will be an SkDevice which was returned by a call to
-     * onCreateDevice on this device with kNeverTile_TileExpectation.
+     * createDevice on this device with kNeverTile_TileExpectation.
      *
      * The default implementation calls snapSpecial() and drawSpecial() with the relative transform
      * from the input device to this device. The provided SkPaint cannot have a mask filter or
@@ -486,11 +484,6 @@ public:
                            const SkImageFilter*, const SkSamplingOptions&, const SkPaint&);
 
 protected:
-    // DEPRECATED: Can be deleted once SkCanvas::onDrawImage() uses skif::FilterResult so don't
-    // bother re-arranging.
-    virtual sk_sp<SkSpecialImage> makeSpecial(const SkBitmap&);
-    virtual sk_sp<SkSpecialImage> makeSpecial(const SkImage*);
-
     // Configure the device's coordinate spaces, specifying both how its device image maps back to
     // the global space (via 'deviceToGlobal') and the initial CTM of the device (via
     // 'localToDevice', i.e. what geometry drawn into this device will be transformed with).
@@ -644,11 +637,11 @@ private:
 
 class SkAutoDeviceTransformRestore : SkNoncopyable {
 public:
-    SkAutoDeviceTransformRestore(SkDevice* device, const SkMatrix& localToDevice)
+    SkAutoDeviceTransformRestore(SkDevice* device, const SkM44& localToDevice)
         : fDevice(device)
         , fPrevLocalToDevice(device->localToDevice())
     {
-        fDevice->setLocalToDevice(SkM44(localToDevice));
+        fDevice->setLocalToDevice(localToDevice);
     }
     ~SkAutoDeviceTransformRestore() {
         fDevice->setLocalToDevice(fPrevLocalToDevice);

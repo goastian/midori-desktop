@@ -25,7 +25,6 @@ paint:
       - gfx-telemetry-alerts@mozilla.com
       - mwoodrow@mozilla.com
     expires: never
-    telemetry_mirror: PAINT_BUILD_DISPLAYLIST_TIME
 
 gpu_process:
   feature_status:
@@ -91,6 +90,51 @@ gpu_process:
       - jnicol@mozilla.com
     expires: never
 
+  launch_time:
+    type: timing_distribution
+    description: >
+      GPU process launch time in milliseconds
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram GPU_PROCESS_LAUNCH_TIME_MS_2.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1297790
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1317796
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1297790
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1317796
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - rhunt@mozilla.com
+      - dbolter@mozilla.com
+    expires: never
+    telemetry_mirror: GPU_PROCESS_LAUNCH_TIME_MS_2
+
+  initialization_time:
+    type: timing_distribution
+    description: >
+      GPU process initialization (excluding XPCOM and fork time) time in
+      milliseconds
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram GPU_PROCESS_INITIALIZATION_TIME_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1324095
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1324095
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - rhunt@mozilla.com
+      - dbolter@mozilla.com
+    expires: never
+    telemetry_mirror: GPU_PROCESS_INITIALIZATION_TIME_MS
+
 wr:
   gpu_wait_time:
     type: timing_distribution
@@ -107,7 +151,7 @@ wr:
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
     expires: never
-    telemetry_mirror: WR_GPU_WAIT_TIME
+
   rasterize_glyphs_time:
     type: timing_distribution
     description: >
@@ -122,7 +166,7 @@ wr:
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
     expires: never
-    telemetry_mirror: WR_RASTERIZE_GLYPHS_TIME
+
   rasterize_blobs_time:
     type: timing_distribution
     description: >
@@ -137,7 +181,7 @@ wr:
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
     expires: never
-    telemetry_mirror: WR_RASTERIZE_BLOBS_TIME
+
   renderer_time:
     type: timing_distribution
     description: >
@@ -152,7 +196,7 @@ wr:
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
     expires: never
-    telemetry_mirror: WR_RENDERER_TIME
+
   renderer_time_no_sc:
     type: timing_distribution
     description: >
@@ -168,7 +212,7 @@ wr:
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
     expires: never
-    telemetry_mirror: WR_RENDERER_TIME_NO_SC_MS
+
   framebuild_time:
     type: timing_distribution
     description: >
@@ -186,7 +230,7 @@ wr:
       - gfx-telemetry-alerts@mozilla.com
       - jmuizelaar@mozilla.com
     expires: never
-    telemetry_mirror: WR_FRAMEBUILD_TIME
+
   scenebuild_time:
     type: timing_distribution
     description: >
@@ -202,7 +246,24 @@ wr:
       - gfx-telemetry-alerts@mozilla.com
       - jmuizelaar@mozilla.com
     expires: never
-    telemetry_mirror: WR_SCENEBUILD_TIME
+
+  shaderload_time:
+    type: timing_distribution
+    description: >
+      Time spent blocking on the shader compilation for LazilyCompiled shaders
+      created with ASYNC_COMPILE or FULL_COMPILE.
+    time_unit: microsecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1954566
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1954566
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - jmuizelaar@mozilla.com
+    expires: never
+
   sceneswap_time:
     type: timing_distribution
     description: >
@@ -218,7 +279,7 @@ wr:
       - gfx-telemetry-alerts@mozilla.com
       - jmuizelaar@mozilla.com
     expires: never
-    telemetry_mirror: WR_SCENESWAP_TIME
+
   texture_cache_update_time:
     type: timing_distribution
     description: >
@@ -233,7 +294,7 @@ wr:
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
     expires: never
-    telemetry_mirror: WR_TEXTURE_CACHE_UPDATE_TIME
+
   time_to_frame_build:
     type: timing_distribution
     description: >
@@ -249,7 +310,7 @@ wr:
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
     expires: never
-    telemetry_mirror: WR_TIME_TO_FRAME_BUILD_MS
+
   time_to_render_start:
     type: timing_distribution
     description: >
@@ -265,7 +326,6 @@ wr:
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
     expires: never
-    telemetry_mirror: WR_TIME_TO_RENDER_START_MS
 
 gfx:
   composite_time:
@@ -312,6 +372,273 @@ gfx:
       - perf-telemetry-alerts@mozilla.com
     expires: never
 
+  skipped_composites:
+    type: counter
+    description: >
+      Number of skipped composites, happening when rendering is too slow
+      to keep up with content.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar gfx.skipped_composites.
+    bugs:
+      - https://bugzil.la/1797975
+    data_reviews:
+      - https://bugzil.la/1797975
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - perf-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: GFX_SKIPPED_COMPOSITES
+
+  os_compositor:
+    type: boolean
+    description: >
+      Boolean indicating whether the os compositor is being used by
+      WebRender. Only collected in the first subsession.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar gfx.os_compositor.
+    bugs:
+      - https://bugzil.la/1623492
+    data_reviews:
+      - https://bugzil.la/1623492
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - jmuizelaar@mozilla.com
+    expires: never
+    telemetry_mirror: GFX_OS_COMPOSITOR
+
+  linux_window_protocol:
+    type: string
+    description: >
+      Windowing protocol on Linux. Can be Wayland, WaylandDRM, XWayland,
+      or X11
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar gfx.linux_window_protocol.
+    bugs:
+      - https://bugzil.la/1645732
+    data_reviews:
+      - https://bugzil.la/1645732
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - aosmond@mozilla.com
+      - mkaply@mozilla.com
+    expires: never
+    telemetry_mirror: GFX_LINUX_WINDOW_PROTOCOL
+
+  supports_hdr:
+    type: boolean
+    description: >
+      Does the hardware support accurate display of HDR content
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar gfx.supports_hdr.
+    bugs:
+      - https://bugzil.la/1798067
+    data_reviews:
+      - https://bugzil.la/1798067
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - bwerth@mozilla.com
+    expires: never
+    telemetry_mirror: GFX_SUPPORTS_HDR
+
+  composite_swap_time:
+    type: custom_distribution
+    description: >
+      Time to do swap/present/commit in 100 microseconds
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram COMPOSITE_SWAP_TIME.
+    range_min: 1
+    range_max: 1000
+    bucket_count: 50
+    histogram_type: exponential
+    unit: 100 microseconds
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1612511
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1612511
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - jmuizelaar@mozilla.com
+    expires: never
+    telemetry_mirror: COMPOSITE_SWAP_TIME
+
+  composite_frame_roundtrip_time:
+    type: timing_distribution
+    description: >
+      Time from vsync to finishing a composite in milliseconds.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram COMPOSITE_FRAME_ROUNDTRIP_TIME.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - rhunt@mozilla.com
+    expires: never
+    telemetry_mirror: COMPOSITE_FRAME_ROUNDTRIP_TIME
+
+  device_reset_reason:
+    type: custom_distribution
+    description: >
+      GPU Device Reset Reason (ok, hung, removed, reset, internal error, invalid
+      call, out of memory)
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram DEVICE_RESET_REASON.
+    range_min: 0
+    range_max: 10
+    bucket_count: 11
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1135408
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1529352
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1135408
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1529352
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - rhunt@mozilla.com
+    expires: never
+    telemetry_mirror: DEVICE_RESET_REASON
+
+  forced_device_reset_reason:
+    type: custom_distribution
+    description: >
+      GPU Forced Device Reset Reason (OpenSharedHandle)
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram FORCED_DEVICE_RESET_REASON.
+    range_min: 0
+    range_max: 50
+    bucket_count: 51
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1235407
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1235407
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - rhunt@mozilla.com
+    expires: never
+    telemetry_mirror: FORCED_DEVICE_RESET_REASON
+
+  graphics_driver_startup_test:
+    type: custom_distribution
+    description: >
+      Reports whether or not graphics drivers crashed during startup.
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram GRAPHICS_DRIVER_STARTUP_TEST.
+    range_min: 0
+    range_max: 20
+    bucket_count: 21
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - rhunt@mozilla.com
+    expires: never
+    telemetry_mirror: GRAPHICS_DRIVER_STARTUP_TEST
+
+  content_failed_to_acquire_device:
+    type: custom_distribution
+    description: >
+      Failed to create a gfx content device. 0=content d3d11, 1=image d3d11,
+      2=d2d1.
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram GFX_CONTENT_FAILED_TO_ACQUIRE_DEVICE.
+    range_min: 0
+    range_max: 6
+    bucket_count: 7
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - rhunt@mozilla.com
+    expires: never
+    telemetry_mirror: GFX_CONTENT_FAILED_TO_ACQUIRE_DEVICE
+
+  crash:
+    type: custom_distribution
+    description: >
+      Graphics Crash Reason (...)
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram GFX_CRASH.
+    range_min: 0
+    range_max: 100
+    bucket_count: 101
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - rhunt@mozilla.com
+    expires: never
+    telemetry_mirror: GFX_CRASH
+
+  macos_video_low_power:
+    type: labeled_counter
+    description: >
+      MacOS video low power state achieved when enqueueing a video frame.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      categorical histogram GFX_MACOS_VIDEO_LOW_POWER.
+    labels:
+      - NotVideo
+      - LowPower
+      - FailMultipleVideo
+      - FailWindowed
+      - FailOverlaid
+      - FailBacking
+      - FailMacOSVersion
+      - FailPref
+      - FailSurface
+      - FailEnqueue
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1737682
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1737682
+    notification_emails:
+      - bwerth@mozilla.com
+    expires: never
+    telemetry_mirror: h#GFX_MACOS_VIDEO_LOW_POWER
+
+  sanity_test:
+    type: custom_distribution
+    description: >
+      Reports results from the graphics sanity test to track which drivers are
+      having problems (0=TEST_PASSED, 1=TEST_FAILED_RENDER, 2=TEST_FAILED_VIDEO,
+      3=TEST_CRASHED)
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram GRAPHICS_SANITY_TEST.
+    range_min: 0
+    range_max: 20
+    bucket_count: 21
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - rhunt@mozilla.com
+    expires: never
+    telemetry_mirror: GRAPHICS_SANITY_TEST
+
 gfx.display:
   count:
     description: >
@@ -332,6 +659,7 @@ gfx.display:
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
     expires: never
+
   primary_width:
     description: >
       Width of the primary display, takes device rotation into account.
@@ -351,6 +679,7 @@ gfx.display:
     notification_emails:
       - gfx-telemetry-alerts@mozilla.com
     expires: never
+
   primary_height:
     description: >
       Height of the primary display, takes device rotation into account.
@@ -371,6 +700,26 @@ gfx.display:
       - gfx-telemetry-alerts@mozilla.com
     expires: never
 
+  scaling:
+    type: custom_distribution
+    description: >
+      Scaling percentage for the display where the first window is opened
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram DISPLAY_SCALING.
+    range_min: 1
+    range_max: 500
+    bucket_count: 100
+    histogram_type: linear
+    unit: percentage
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1121966
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1121966
+    notification_emails:
+      - perf-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: DISPLAY_SCALING
 
 gfx.checkerboard:
   duration:
@@ -737,6 +1086,130 @@ gfx.content:
       - jmuizelaar@mozilla.com
     expires: never
 
+  small_paint_phase_weight_partial:
+    type: labeled_custom_distribution
+    description: >
+      Percentages of times for phases in a normal content paint relative to the
+      time spent in the entire normal paint. ("dl" = Display list, "wrdl" =
+      WebRender display list, "sb" = Scene building, "fb" = Frame building)
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram CONTENT_SMALL_PAINT_PHASE_WEIGHT_PARTIAL.
+    range_min: 1
+    range_max: 100
+    bucket_count: 12
+    histogram_type: linear
+    unit: percent
+    labels:
+      - dl
+      - wrdl
+      - sb
+      - fb
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1430897
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1518134
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1430897
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1518134
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - mmynttinen@mozilla.com
+    expires: never
+    telemetry_mirror: CONTENT_SMALL_PAINT_PHASE_WEIGHT_PARTIAL
+
+  large_paint_phase_weight_partial:
+    type: labeled_custom_distribution
+    description: >
+      Percentages of times for phases in an expensive content paint relative to
+      the time spent in the entire expensive paint. ("dl" = Display list, "wrdl"
+      = WebRender display list, "sb" = Scene building, "fb" = Frame building)
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram CONTENT_LARGE_PAINT_PHASE_WEIGHT_PARTIAL.
+    range_min: 1
+    range_max: 100
+    bucket_count: 12
+    histogram_type: linear
+    unit: percent
+    labels:
+      - dl
+      - wrdl
+      - sb
+      - fb
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1309442
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1518134
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1309442
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1518134
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - mmynttinen@mozilla.com
+    expires: never
+    telemetry_mirror: CONTENT_LARGE_PAINT_PHASE_WEIGHT_PARTIAL
+
+  small_paint_phase_weight_full:
+    type: labeled_custom_distribution
+    description: >
+      Percentages of times for phases in a normal content paint relative to the
+      time spent in the entire normal paint. ("dl" = Display list, "wrdl" =
+      WebRender display list, "sb" = Scene building, "fb" = Frame building)
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram CONTENT_SMALL_PAINT_PHASE_WEIGHT_FULL.
+    range_min: 1
+    range_max: 100
+    bucket_count: 12
+    histogram_type: linear
+    unit: percent
+    labels:
+      - dl
+      - wrdl
+      - sb
+      - fb
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1430897
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1518134
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1430897
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1518134
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - mmynttinen@mozilla.com
+    expires: never
+    telemetry_mirror: CONTENT_SMALL_PAINT_PHASE_WEIGHT_FULL
+
+  large_paint_phase_weight_full:
+    type: labeled_custom_distribution
+    description: >
+      Percentages of times for phases in an expensive content paint relative to
+      the time spent in the entire expensive paint. ("dl" = Display list, "wrdl"
+      = WebRender display list, "sb" = Scene building, "fb" = Frame building)
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram CONTENT_LARGE_PAINT_PHASE_WEIGHT_FULL.
+    range_min: 1
+    range_max: 100
+    bucket_count: 12
+    histogram_type: linear
+    unit: percent
+    labels:
+      - dl
+      - wrdl
+      - sb
+      - fb
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1309442
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1518134
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1309442
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1518134
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - mmynttinen@mozilla.com
+    expires: never
+    telemetry_mirror: CONTENT_LARGE_PAINT_PHASE_WEIGHT_FULL
+
 gfx.adapter.primary:
   description:
     description: >
@@ -948,3 +1421,475 @@ performance.interaction:
       - perf-telemetry-alerts@mozilla.com
       - sefeng@mozilla.com
     expires: never
+
+gfx.hdr:
+  windows_display_colorspace_bitfield:
+    type: quantity
+    description: >
+      A bitfield representation of the available DXGI color spaces of the
+      connected displays on Windows. See (https://docs.microsoft.com/en-
+      us/windows/desktop/api/dxgicommon/ne-dxgicommon-
+      dxgi_color_space_type) for definitions of color spaces. Each N'th
+      bit of this scalar indicates whether the DXGI color space with index
+      'N' is available on at least one connected monitor.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar gfx.hdr.windows_display_colorspace_bitfield.
+    bugs:
+      - https://bugzil.la/1514840
+      - https://bugzil.la/1690597
+    data_reviews:
+      - https://bugzil.la/1514840
+      - https://bugzil.la/1690597
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+      - jmuizelaaar@mozilla.com
+    expires: never
+    unit: bitfield
+    telemetry_mirror: GFX_HDR_WINDOWS_DISPLAY_COLORSPACE_BITFIELD
+    no_lint:
+      - UNIT_IN_NAME
+
+fontlist:
+  initotherfamilynames:
+    type: timing_distribution
+    description: >
+      Time(ms) spent on reading other family names from all fonts
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FONTLIST_INITOTHERFAMILYNAMES.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FONTLIST_INITOTHERFAMILYNAMES
+
+  initotherfamilynames_no_deferring:
+    type: timing_distribution
+    description: >
+      Time(ms) spent on reading other family names from all fonts for no timeout
+      case
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FONTLIST_INITOTHERFAMILYNAMES_NO_DEFERRING.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FONTLIST_INITOTHERFAMILYNAMES_NO_DEFERRING
+
+  initfacenamelists:
+    type: timing_distribution
+    description: >
+      Time(ms) spent on reading family names from all fonts
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FONTLIST_INITFACENAMELISTS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FONTLIST_INITFACENAMELISTS
+
+  bundledfonts_activate:
+    type: timing_distribution
+    description: >
+      Time(ms) spent activating additional fonts bundled with the product
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FONTLIST_BUNDLEDFONTS_ACTIVATE.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1696162
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1696162
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FONTLIST_BUNDLEDFONTS_ACTIVATE
+
+  dwritefont_delayedinit_total:
+    type: timing_distribution
+    description: >
+      gfxDWriteFontList::DelayedInitFontList Total (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram DWRITEFONT_DELAYEDINITFONTLIST_TOTAL.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: DWRITEFONT_DELAYEDINITFONTLIST_TOTAL
+
+  dwritefont_delayedinit_count:
+    type: custom_distribution
+    description: >
+      gfxDWriteFontList::DelayedInitFontList Font Family Count
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram DWRITEFONT_DELAYEDINITFONTLIST_COUNT.
+    range_min: 1
+    range_max: 10000
+    bucket_count: 10
+    histogram_type: exponential
+    unit: font family count
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: DWRITEFONT_DELAYEDINITFONTLIST_COUNT
+
+  dwritefont_delayedinit_collect:
+    type: timing_distribution
+    description: >
+      gfxDWriteFontList::DelayedInitFontList GetSystemFontCollection (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram DWRITEFONT_DELAYEDINITFONTLIST_COLLECT.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: DWRITEFONT_DELAYEDINITFONTLIST_COLLECT
+
+  dwritefont_init_problem:
+    type: custom_distribution
+    description: >
+      DirectWrite system fontlist initialization problem (1=GDI interop,
+      2=system font collection, 3=no fonts)
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram DWRITEFONT_INIT_PROBLEM.
+    range_min: 0
+    range_max: 8
+    bucket_count: 9
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: DWRITEFONT_INIT_PROBLEM
+
+  system_font_fallback:
+    type: timing_distribution
+    description: >
+      System font fallback (us)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram SYSTEM_FONT_FALLBACK.
+    time_unit: microsecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: SYSTEM_FONT_FALLBACK
+
+  system_font_fallback_first:
+    type: timing_distribution
+    description: >
+      System font fallback, first call (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram SYSTEM_FONT_FALLBACK_FIRST.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: SYSTEM_FONT_FALLBACK_FIRST
+
+  font_cache_hit:
+    type: labeled_counter
+    description: >
+      font cache hit
+
+      This metric was generated to correspond to the Legacy Telemetry boolean
+      histogram FONT_CACHE_HIT.
+    labels:
+      - "false"
+      - "true"
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: h#FONT_CACHE_HIT
+
+  bad_fallback_font:
+    type: labeled_counter
+    description: >
+      system fallback font can't be used
+
+      This metric was generated to correspond to the Legacy Telemetry boolean
+      histogram BAD_FALLBACK_FONT.
+    labels:
+      - "false"
+      - "true"
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: h#BAD_FALLBACK_FONT
+
+  gdi_init_total:
+    type: timing_distribution
+    description: >
+      gfxGDIFontList::InitFontList Total (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram GDI_INITFONTLIST_TOTAL.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: GDI_INITFONTLIST_TOTAL
+
+  mac_init_total:
+    type: timing_distribution
+    description: >
+      gfxMacPlatformFontList::InitFontList Total (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram MAC_INITFONTLIST_TOTAL.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: MAC_INITFONTLIST_TOTAL
+
+apz_zoom:
+  activity:
+    type: labeled_counter
+    description: >
+      Whether non-RDM page had user-triggered zooming activity
+
+      This metric was generated to correspond to the Legacy Telemetry boolean
+      histogram APZ_ZOOM_ACTIVITY.
+    labels:
+      - "false"
+      - "true"
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1627708
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1672576
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1627708
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1672576
+    notification_emails:
+      - botond@mozilla.com
+    expires: never
+    telemetry_mirror: h#APZ_ZOOM_ACTIVITY
+
+  pinchsource:
+    type: custom_distribution
+    description: >
+      Input device that triggered the zoom gesture
+      (InputData::PinchGestureSource)
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram APZ_ZOOM_PINCHSOURCE.
+    range_min: 0
+    range_max: 5
+    bucket_count: 6
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1627708
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1672576
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1627708
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1672576
+    notification_emails:
+      - botond@mozilla.com
+    expires: never
+    telemetry_mirror: APZ_ZOOM_PINCHSOURCE
+
+webfont:
+  download_time:
+    type: timing_distribution
+    description: >
+      Time to download a webfont (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram WEBFONT_DOWNLOAD_TIME.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - jkew@mozilla.com
+    expires: never
+    telemetry_mirror: WEBFONT_DOWNLOAD_TIME
+
+  fonttype:
+    type: custom_distribution
+    description: >
+      Font format type (woff/woff2/ttf/...)
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram WEBFONT_FONTTYPE.
+    range_min: 0
+    range_max: 10
+    bucket_count: 11
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - jkew@mozilla.com
+    expires: never
+    telemetry_mirror: WEBFONT_FONTTYPE
+
+  srctype:
+    type: custom_distribution
+    description: >
+      Font src type loaded (1 = local, 2 = url, 3 = data)
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram WEBFONT_SRCTYPE.
+    range_min: 0
+    range_max: 5
+    bucket_count: 6
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - jkew@mozilla.com
+    expires: never
+    telemetry_mirror: WEBFONT_SRCTYPE
+
+  per_page:
+    type: counter
+    description: >
+      Number of fonts loaded at page load
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram WEBFONT_PER_PAGE.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - jkew@mozilla.com
+    expires: never
+    telemetry_mirror: h#WEBFONT_PER_PAGE
+
+  size_per_page:
+    type: memory_distribution
+    description: >
+      Size of all fonts loaded at page load (kb)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram WEBFONT_SIZE_PER_PAGE.
+    memory_unit: kilobyte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - jkew@mozilla.com
+    expires: never
+    telemetry_mirror: WEBFONT_SIZE_PER_PAGE
+
+  size:
+    type: memory_distribution
+    description: >
+      Size of font loaded (kb)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram WEBFONT_SIZE.
+    memory_unit: kilobyte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - jkew@mozilla.com
+    expires: never
+    telemetry_mirror: WEBFONT_SIZE
+
+  compression_woff:
+    type: custom_distribution
+    description: >
+      Compression ratio of WOFF data (%)
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram WEBFONT_COMPRESSION_WOFF.
+    range_min: 0
+    range_max: 50
+    bucket_count: 51
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - jkew@mozilla.com
+    expires: never
+    telemetry_mirror: WEBFONT_COMPRESSION_WOFF
+
+  compression_woff2:
+    type: custom_distribution
+    description: >
+      Compression ratio of WOFF2 data (%)
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram WEBFONT_COMPRESSION_WOFF2.
+    range_min: 0
+    range_max: 50
+    bucket_count: 51
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - jkew@mozilla.com
+    expires: never
+    telemetry_mirror: WEBFONT_COMPRESSION_WOFF2

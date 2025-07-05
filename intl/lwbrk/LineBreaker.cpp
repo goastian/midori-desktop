@@ -5,30 +5,29 @@
 
 #include "mozilla/intl/LineBreaker.h"
 
+#include "ICU4XDataProvider.h"
+#include "ICU4XLineBreakIteratorLatin1.hpp"
+#include "ICU4XLineBreakIteratorUtf16.hpp"
+#include "ICU4XLineSegmenter.h"
 #include "jisx4051class.h"
+#include "LineBreakCache.h"
 #include "nsComplexBreaker.h"
 #include "nsTArray.h"
 #include "nsUnicodeProperties.h"
+#include "nsThreadUtils.h"
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/CheckedInt.h"
+#include "mozilla/ClearOnShutdown.h"
+#include "mozilla/intl/ICU4XGeckoDataProvider.h"
 #include "mozilla/intl/Segmenter.h"
 #include "mozilla/intl/UnicodeProperties.h"
+#include "mozilla/StaticPrefs_intl.h"
 
-#if defined(MOZ_ICU4X) && defined(JS_HAS_INTL_API)
-#  include "ICU4XDataProvider.h"
-#  include "ICU4XLineBreakIteratorLatin1.hpp"
-#  include "ICU4XLineBreakIteratorUtf16.hpp"
-#  include "ICU4XLineSegmenter.h"
-#  include "mozilla/CheckedInt.h"
-#  include "mozilla/ClearOnShutdown.h"
-#  include "mozilla/intl/ICU4XGeckoDataProvider.h"
-#  include "mozilla/StaticPrefs_intl.h"
-#  include "nsThreadUtils.h"
+#include <mutex>
 
-#  include <mutex>
-#endif
-
-using namespace mozilla::unicode;
+using namespace mozilla;
 using namespace mozilla::intl;
+using namespace mozilla::unicode;
 
 /*
 
@@ -448,13 +447,19 @@ static int8_t GetClass(uint32_t u, LineBreakRule aLevel,
       /* REGIONAL_INDICATOR = 39,           [RI] */ CLASS_CHARACTER,
       /* E_BASE = 40,                       [EB] */ CLASS_BREAKABLE,
       /* E_MODIFIER = 41,                   [EM] */ CLASS_CHARACTER,
-      /* ZWJ = 42,                          [ZWJ]*/ CLASS_CHARACTER};
+      /* ZWJ = 42,                          [ZWJ]*/ CLASS_CHARACTER,
+      /* AKSARA = 43,                       [AK] */ CLASS_CHARACTER,
+      /* AKSARA_PREBASE = 44,               [AP] */ CLASS_CHARACTER,
+      /* AKSARA_START = 45,                 [AS] */ CLASS_CHARACTER,
+      /* VIRAMA_FINAL = 46,                 [VF] */ CLASS_CHARACTER,
+      /* VIRAMA = 47,                       [VI] */ CLASS_CHARACTER,
+  };
 
-  static_assert(U_LB_COUNT == mozilla::ArrayLength(sUnicodeLineBreakToClass),
+  static_assert(U_LB_COUNT == std::size(sUnicodeLineBreakToClass),
                 "Gecko vs ICU LineBreak class mismatch");
 
   auto cls = GetLineBreakClass(u);
-  MOZ_ASSERT(cls < mozilla::ArrayLength(sUnicodeLineBreakToClass));
+  MOZ_ASSERT(cls < std::size(sUnicodeLineBreakToClass));
 
   // Overrides based on rules for the different line-break values given in
   // https://drafts.csswg.org/css-text-3/#line-break-property
@@ -992,7 +997,6 @@ static bool SuppressBreakForKeepAll(uint32_t aPrev, uint32_t aCh) {
          affectedByKeepAll(GetLineBreakClass(aCh));
 }
 
-#if defined(MOZ_ICU4X) && defined(JS_HAS_INTL_API)
 static capi::ICU4XLineBreakStrictness ConvertLineBreakRuleToICU4X(
     LineBreakRule aLevel) {
   switch (aLevel) {
@@ -1086,12 +1090,10 @@ static capi::ICU4XLineSegmenter* GetLineSegmenter(bool aUseDefault,
   MOZ_ASSERT(result.is_ok);
   return result.ok;
 }
-#endif
 
 void LineBreaker::ComputeBreakPositions(
     const char16_t* aChars, uint32_t aLength, WordBreakRule aWordBreak,
     LineBreakRule aLevel, bool aIsChineseOrJapanese, uint8_t* aBreakBefore) {
-#if defined(MOZ_ICU4X) && defined(JS_HAS_INTL_API)
   if (StaticPrefs::intl_icu4x_segmenter_enabled()) {
     if (aLength == 1) {
       // Although UAX#14 LB2 rule requires never breaking at the start of text
@@ -1102,34 +1104,74 @@ void LineBreaker::ComputeBreakPositions(
       return;
     }
 
+    // We only cache line-breaks if we think the text is likely to hit the slow
+    // (LSTM) codepath in icu_segmenter. To avoid scanning the entire text just
+    // to make that decision, we probe every /kStride/ characters.
+    bool useCache = [=]() {
+      const uint32_t kStride = 8;
+      for (uint32_t i = 0; i < aLength; i += kStride) {
+        if (intl::UnicodeProperties::IsScriptioContinua(aChars[i])) {
+          return true;
+        }
+      }
+      return false;
+    }();
+    Maybe<LineBreakCache::Entry> entry;
+    if (useCache) {
+      LineBreakCache::KeyType key{aChars, aLength, aWordBreak, aLevel,
+                                  aIsChineseOrJapanese};
+      entry.emplace(LineBreakCache::Cache()->Lookup(key));
+      if (*entry) {
+        auto& breakBefore = entry->Data().mBreaks;
+        LineBreakCache::CopyAndFill(breakBefore, aBreakBefore,
+                                    aBreakBefore + aLength);
+        return;
+      }
+    }
+
     memset(aBreakBefore, 0, aLength);
 
     CheckedInt<int32_t> length = aLength;
-    if (!length.isValid()) {
-      return;
-    }
+    if (length.isValid()) {
+      const bool useDefault =
+          UseDefaultLineSegmenter(aWordBreak, aLevel, aIsChineseOrJapanese);
+      capi::ICU4XLineSegmenter* lineSegmenter = GetLineSegmenter(
+          useDefault, aWordBreak, aLevel, aIsChineseOrJapanese);
+      ICU4XLineBreakIteratorUtf16 iterator(
+          capi::ICU4XLineSegmenter_segment_utf16(lineSegmenter, aChars,
+                                                 aLength));
 
-    const bool useDefault =
-        UseDefaultLineSegmenter(aWordBreak, aLevel, aIsChineseOrJapanese);
-    capi::ICU4XLineSegmenter* lineSegmenter =
-        GetLineSegmenter(useDefault, aWordBreak, aLevel, aIsChineseOrJapanese);
-    ICU4XLineBreakIteratorUtf16 iterator(capi::ICU4XLineSegmenter_segment_utf16(
-        lineSegmenter, (const uint16_t*)aChars, aLength));
-
-    while (true) {
-      const int32_t nextPos = iterator.next();
-      if (nextPos < 0 || nextPos >= length.value()) {
-        break;
+      while (true) {
+        const int32_t nextPos = iterator.next();
+        if (nextPos < 0 || nextPos >= length.value()) {
+          break;
+        }
+        aBreakBefore[nextPos] = 1;
       }
-      aBreakBefore[nextPos] = 1;
+
+      if (!useDefault) {
+        capi::ICU4XLineSegmenter_destroy(lineSegmenter);
+      }
     }
 
-    if (!useDefault) {
-      capi::ICU4XLineSegmenter_destroy(lineSegmenter);
+    if (useCache) {
+      // As a very simple memory saving measure we trim off trailing elements
+      // that are false before caching.
+      auto* afterLastTrue = aBreakBefore + aLength;
+      while (!*(afterLastTrue - 1)) {
+        if (--afterLastTrue == aBreakBefore) {
+          break;
+        }
+      }
+
+      entry->Set(LineBreakCache::EntryType{
+          nsString(aChars, aLength),
+          nsTArray<uint8_t>(aBreakBefore, afterLastTrue - aBreakBefore),
+          aWordBreak, aLevel, aIsChineseOrJapanese});
     }
+
     return;
   }
-#endif
 
   uint32_t cur;
   int8_t lastClass = CLASS_NONE;
@@ -1260,7 +1302,6 @@ void LineBreaker::ComputeBreakPositions(const uint8_t* aChars, uint32_t aLength,
                                         LineBreakRule aLevel,
                                         bool aIsChineseOrJapanese,
                                         uint8_t* aBreakBefore) {
-#if defined(MOZ_ICU4X) && defined(JS_HAS_INTL_API)
   if (StaticPrefs::intl_icu4x_segmenter_enabled()) {
     if (aLength == 1) {
       // Although UAX#14 LB2 rule requires never breaking at the start of text
@@ -1299,7 +1340,6 @@ void LineBreaker::ComputeBreakPositions(const uint8_t* aChars, uint32_t aLength,
     }
     return;
   }
-#endif
 
   uint32_t cur;
   int8_t lastClass = CLASS_NONE;

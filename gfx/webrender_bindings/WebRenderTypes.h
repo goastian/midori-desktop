@@ -27,7 +27,7 @@
 namespace mozilla {
 
 enum class StyleBorderStyle : uint8_t;
-enum class StyleBorderImageRepeat : uint8_t;
+enum class StyleBorderImageRepeatKeyword : uint8_t;
 enum class StyleImageRendering : uint8_t;
 
 namespace ipc {
@@ -566,7 +566,7 @@ static inline wr::LayoutSideOffsets ToLayoutSideOffsets(float top, float right,
   return offset;
 }
 
-wr::RepeatMode ToRepeatMode(StyleBorderImageRepeat);
+wr::RepeatMode ToRepeatMode(StyleBorderImageRepeatKeyword);
 
 template <class S, class T>
 static inline wr::WrTransformProperty ToWrTransformProperty(
@@ -883,24 +883,8 @@ static inline wr::WrColorRange ToWrColorRange(gfx::ColorRange aColorRange) {
 static inline wr::SyntheticItalics DegreesToSyntheticItalics(float aDegrees) {
   wr::SyntheticItalics synthetic_italics;
   synthetic_italics.angle =
-      int16_t(std::min(std::max(aDegrees, -89.0f), 89.0f) * 256.0f);
+      int16_t(std::clamp(aDegrees, -89.0f, 89.0f) * 256.0f);
   return synthetic_italics;
-}
-
-static inline wr::WindowSizeMode ToWrWindowSizeMode(nsSizeMode aSizeMode) {
-  switch (aSizeMode) {
-    case nsSizeMode_Normal:
-      return wr::WindowSizeMode::Normal;
-    case nsSizeMode_Minimized:
-      return wr::WindowSizeMode::Minimized;
-    case nsSizeMode_Maximized:
-      return wr::WindowSizeMode::Maximized;
-    case nsSizeMode_Fullscreen:
-      return wr::WindowSizeMode::Fullscreen;
-    default:
-      MOZ_ASSERT_UNREACHABLE("Tried to convert invalid size mode.");
-      return wr::WindowSizeMode::Invalid;
-  }
 }
 
 static inline wr::APZScrollGeneration ToWrAPZScrollGeneration(

@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 asa{
     Countries{
         AD{"Andora"}
@@ -92,7 +92,6 @@ asa{
         IE{"Ayalandi"}
         IL{"Ithraeli"}
         IN{"India"}
-        IO{"Ieneo la Uingeredha katika Bahari Hindi"}
         IQ{"Iraki"}
         IR{"Uajemi"}
         IS{"Aithlandi"}

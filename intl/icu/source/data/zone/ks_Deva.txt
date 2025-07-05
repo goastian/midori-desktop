@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 ks_Deva{
     %%Parent{"root"}
     zoneStrings{
@@ -51,14 +51,12 @@ ks_Deva{
             ls{"मगरीबी यूरपी स्टैन्डर्ड वख"}
         }
         "meta:GMT"{
-            ls{"ग्रीनविच मीन वख"}
+            ls{"ग्रीनविच ओसत वख"}
         }
-        fallbackFormat{"{1} ({0})"}
         gmtFormat{"जी एम टी {0}"}
         gmtZeroFormat{"जी एम टी"}
-        hourFormat{"+HH:mm;-HH:mm"}
         regionFormat{"{0} वख"}
         regionFormatDaylight{"{0} डे लाइट वख"}
-        regionFormatStandard{"{0} स्टैन्डर्ड वख"}
+        regionFormatStandard{"{0} मयॉरी वख"}
     }
 }

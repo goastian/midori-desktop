@@ -87,12 +87,17 @@ class WebRenderLayerManager final : public WindowRenderer {
                                   nsDisplayListBuilder* aDisplayListBuilder,
                                   WrFiltersHolder&& aFilters,
                                   WebRenderBackgroundData* aBackground,
-                                  const double aGeckoDLBuildTime);
+                                  const double aGeckoDLBuildTime,
+                                  bool aRenderOffscreen);
 
   LayersBackend GetBackendType() override { return LayersBackend::LAYERS_WR; }
   void GetBackendName(nsAString& name) override;
 
   bool NeedsWidgetInvalidation() override { return false; }
+
+  bool AddPendingScrollUpdateForNextTransaction(
+      ScrollableLayerGuid::ViewID aScrollId,
+      const ScrollPositionUpdate& aUpdateInfo) override;
 
   void DidComposite(TransactionId aTransactionId,
                     const mozilla::TimeStamp& aCompositeStart,
@@ -174,8 +179,8 @@ class WebRenderLayerManager final : public WindowRenderer {
 
   void GetFrameUniformity(FrameUniformityData* aOutData) override;
 
-  void RegisterPayloads(const nsTArray<CompositionPayload>& aPayload) {
-    mPayload.AppendElements(aPayload);
+  void RegisterPayloads(nsTArray<CompositionPayload>&& aPayloads) {
+    mPayload.AppendElements(std::move(aPayloads));
     MOZ_ASSERT(mPayload.Length() < 10000);
   }
 

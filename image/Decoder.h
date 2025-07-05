@@ -8,6 +8,7 @@
 
 #include "FrameAnimator.h"
 #include "RasterImage.h"
+#include "mozilla/glean/ImageDecodersMetrics.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/NotNull.h"
 #include "mozilla/RefPtr.h"
@@ -24,10 +25,6 @@
 enum class CMSMode : int32_t;
 
 namespace mozilla {
-
-namespace Telemetry {
-enum HistogramID : uint32_t;
-}  // namespace Telemetry
 
 namespace image {
 
@@ -56,10 +53,10 @@ struct DecoderFinalStatus final {
 };
 
 struct DecoderTelemetry final {
-  DecoderTelemetry(const Maybe<Telemetry::HistogramID>& aSpeedHistogram,
-                   size_t aBytesDecoded, uint32_t aChunkCount,
-                   TimeDuration aDecodeTime)
-      : mSpeedHistogram(aSpeedHistogram),
+  DecoderTelemetry(
+      const Maybe<glean::impl::MemoryDistributionMetric>& aSpeedMetric,
+      size_t aBytesDecoded, uint32_t aChunkCount, TimeDuration aDecodeTime)
+      : mSpeedMetric(aSpeedMetric),
         mBytesDecoded(aBytesDecoded),
         mChunkCount(aChunkCount),
         mDecodeTime(aDecodeTime) {}
@@ -74,7 +71,7 @@ struct DecoderTelemetry final {
 
   /// The per-image-format telemetry ID for recording our decoder's speed, or
   /// Nothing() if we don't record speed telemetry for this kind of decoder.
-  const Maybe<Telemetry::HistogramID> mSpeedHistogram;
+  const Maybe<glean::impl::MemoryDistributionMetric> mSpeedMetric;
 
   /// The number of bytes of input our decoder processed.
   const size_t mBytesDecoded;
@@ -198,6 +195,13 @@ class Decoder {
   bool IsMetadataDecode() const { return mMetadataDecode; }
 
   /**
+   * Should we return how many frames we expect are in the animation.
+   */
+  bool WantsFrameCount() const {
+    return bool(mDecoderFlags & DecoderFlags::COUNT_FRAMES);
+  }
+
+  /**
    * Sets the output size of this decoder. If this is smaller than the intrinsic
    * size of the image, we'll downscale it while decoding. For memory usage
    * reasons, upscaling is forbidden and will trigger assertions in debug
@@ -300,7 +304,7 @@ class Decoder {
   /// useless?
   bool GetDecodeDone() const {
     return mReachedTerminalState || mDecodeDone ||
-           (mMetadataDecode && HasSize()) || HasError();
+           (mMetadataDecode && HasSize() && !WantsFrameCount()) || HasError();
   }
 
   /// Are we in the middle of a frame right now? Used for assertions only.
@@ -474,7 +478,7 @@ class Decoder {
    * speed, or Nothing() if we don't record speed telemetry for this kind of
    * decoder.
    */
-  virtual Maybe<Telemetry::HistogramID> SpeedHistogram() const {
+  virtual Maybe<glean::impl::MemoryDistributionMetric> SpeedMetric() const {
     return Nothing();
   }
 
@@ -505,6 +509,10 @@ class Decoder {
   //                 we advance to the next frame.
   void PostIsAnimated(FrameTimeout aFirstFrameTimeout);
 
+  // Called by decoders if they determine the expected frame count.
+  // @param aFrameCount The expected frame count.
+  void PostFrameCount(uint32_t aFrameCount);
+
   // Called by decoders when they end a frame. Informs the image, sends
   // notifications, and does internal book-keeping.
   // Specify whether this frame is opaque as an optimization.
@@ -527,15 +535,16 @@ class Decoder {
       const OrientedIntRect& aRect,
       const Maybe<OrientedIntRect>& aRectAtOutputSize = Nothing());
 
+  // For animated images, specify the loop count. -1 means loop forever, 0
+  // means a single iteration, stopping on the last frame.
+  void PostLoopCount(int32_t aLoopCount);
+
   // Called by the decoders when they have successfully decoded the image. This
   // may occur as the result of the decoder getting to the appropriate point in
   // the stream, or by us calling FinishInternal().
   //
   // May not be called mid-frame.
-  //
-  // For animated images, specify the loop count. -1 means loop forever, 0
-  // means a single iteration, stopping on the last frame.
-  void PostDecodeDone(int32_t aLoopCount = 0);
+  void PostDecodeDone();
 
   /**
    * Allocates a new frame, making it our current frame if successful.
@@ -571,6 +580,8 @@ class Decoder {
       RawAccessFrameRef&& aPreviousFrame);
 
  protected:
+  static uint8_t ChooseTransferCharacteristics(uint8_t aTC);
+
   /// Color management profile from the ICCP chunk in the image.
   qcms_profile* mInProfile;
 

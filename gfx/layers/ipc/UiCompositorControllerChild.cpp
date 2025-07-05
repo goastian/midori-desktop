@@ -212,7 +212,7 @@ void UiCompositorControllerChild::ProcessingError(Result aCode,
 }
 
 void UiCompositorControllerChild::HandleFatalError(const char* aMsg) {
-  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aMsg, OtherPid());
+  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aMsg, OtherChildID());
 }
 
 mozilla::ipc::IPCResult
@@ -227,13 +227,12 @@ UiCompositorControllerChild::RecvToolbarAnimatorMessageFromCompositor(
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult UiCompositorControllerChild::RecvRootFrameMetrics(
-    const ScreenPoint& aScrollOffset, const CSSToScreenScale& aZoom) {
-#if defined(MOZ_WIDGET_ANDROID)
+mozilla::ipc::IPCResult
+UiCompositorControllerChild::RecvNotifyCompositorScrollUpdate(
+    const CompositorScrollUpdate& aUpdate) {
   if (mWidget) {
-    mWidget->UpdateRootFrameMetrics(aScrollOffset, aZoom);
+    mWidget->NotifyCompositorScrollUpdate(aUpdate);
   }
-#endif  // defined(MOZ_WIDGET_ANDROID)
 
   return IPC_OK();
 }

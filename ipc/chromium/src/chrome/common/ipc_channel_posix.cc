@@ -59,40 +59,8 @@ using namespace mozilla::ipc;
 
 namespace IPC {
 
-// IPC channels on Windows use named pipes (CreateNamedPipe()) with
-// channel ids as the pipe names.  Channels on POSIX use anonymous
-// Unix domain sockets created via socketpair() as pipes.  These don't
-// quite line up.
-//
-// When creating a child subprocess, the parent side of the fork
-// arranges it such that the initial control channel ends up on the
-// magic file descriptor gClientChannelFd in the child.  Future
-// connections (file descriptors) can then be passed via that
-// connection via sendmsg().
-//
-// On Android, child processes are created as a service instead of
-// forking the parent process. The Android Binder service is used to
-// transport the IPC channel file descriptor to the child process.
-// So rather than re-mapping the file descriptor to a known value,
-// the received channel file descriptor is set by calling
-// SetClientChannelFd before gecko has been initialized and started
-// in the child process.
-
 //------------------------------------------------------------------------------
 namespace {
-
-// This is the file descriptor number that a client process expects to find its
-// IPC socket.
-static int gClientChannelFd =
-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
-    // On android/ios the fd is set at the time of child creation.
-    -1
-#else
-    3
-#endif  // defined(MOZ_WIDGET_ANDROID)
-    ;
-
-//------------------------------------------------------------------------------
 
 bool ErrorIsBrokenPipe(int err) { return err == EPIPE || err == ECONNRESET; }
 
@@ -134,12 +102,6 @@ static inline ssize_t corrected_sendmsg(int socket,
 
 }  // namespace
 //------------------------------------------------------------------------------
-
-#if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
-void Channel::SetClientChannelFd(int fd) { gClientChannelFd = fd; }
-#endif  // defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
-
-int Channel::GetClientChannelHandle() { return gClientChannelFd; }
 
 Channel::ChannelImpl::ChannelImpl(ChannelHandle pipe, Mode mode,
                                   base::ProcessId other_pid)
@@ -259,7 +221,7 @@ void Channel::ChannelImpl::SetOtherPid(base::ProcessId other_pid) {
 }
 
 bool Channel::ChannelImpl::ProcessIncomingMessages() {
-  chan_cap_.NoteOnIOThread();
+  chan_cap_.NoteOnTarget();
 
   struct msghdr msg = {0};
   struct iovec iov;
@@ -548,7 +510,7 @@ bool Channel::ChannelImpl::ProcessIncomingMessages() {
 
 bool Channel::ChannelImpl::ProcessOutgoingMessages() {
   // NOTE: This method may be called on threads other than `IOThread()`.
-  chan_cap_.NoteSendMutex();
+  chan_cap_.NoteLockHeld();
 
   DCHECK(!waiting_connect_);  // Why are we trying to send messages if there's
                               // no connection?
@@ -576,7 +538,7 @@ bool Channel::ChannelImpl::ProcessOutgoingMessages() {
 
       if (msg->attached_handles_.Length() >
           IPC::Message::MAX_DESCRIPTORS_PER_MESSAGE) {
-        MOZ_DIAGNOSTIC_ASSERT(false, "Too many file descriptors!");
+        MOZ_DIAGNOSTIC_CRASH("Too many file descriptors!");
         CHROMIUM_LOG(FATAL) << "Too many file descriptors!";
         // This should not be reached.
         return false;
@@ -598,7 +560,7 @@ bool Channel::ChannelImpl::ProcessOutgoingMessages() {
     }
 
     if (partial_write_->iter_.Done()) {
-      MOZ_DIAGNOSTIC_ASSERT(false, "partial_write_->iter_ should not be done");
+      MOZ_DIAGNOSTIC_CRASH("partial_write_->iter_ should not be done");
       // report a send error to our caller, which will close the channel.
       return false;
     }
@@ -772,7 +734,7 @@ bool Channel::ChannelImpl::ProcessOutgoingMessages() {
 bool Channel::ChannelImpl::Send(mozilla::UniquePtr<Message> message) {
   // NOTE: This method may be called on threads other than `IOThread()`.
   mozilla::MutexAutoLock lock(SendMutex());
-  chan_cap_.NoteSendMutex();
+  chan_cap_.NoteLockHeld();
 
 #ifdef IPC_MESSAGE_DEBUG_EXTRA
   DLOG(INFO) << "sending message @" << message.get() << " on channel @" << this
@@ -806,7 +768,7 @@ bool Channel::ChannelImpl::Send(mozilla::UniquePtr<Message> message) {
 // Called by libevent when we can read from th pipe without blocking.
 void Channel::ChannelImpl::OnFileCanReadWithoutBlocking(int fd) {
   IOThread().AssertOnCurrentThread();
-  chan_cap_.NoteOnIOThread();
+  chan_cap_.NoteOnTarget();
 
   if (!waiting_connect_ && fd == pipe_ && pipe_ != -1) {
     if (!ProcessIncomingMessages()) {
@@ -836,7 +798,7 @@ void Channel::ChannelImpl::CloseDescriptors(uint32_t pending_fd_id) {
 #endif
 
 void Channel::ChannelImpl::OutputQueuePush(mozilla::UniquePtr<Message> msg) {
-  chan_cap_.NoteSendMutex();
+  chan_cap_.NoteLockHeld();
 
   mozilla::LogIPCMessage::LogDispatchWithPid(msg.get(), other_pid_);
 
@@ -1072,7 +1034,7 @@ static mozilla::Maybe<mach_port_name_t> BrokerTransferSendRight(
 // Process footer information attached to the message, and acquire owning
 // references to any transferred mach ports. See comment above for details.
 bool Channel::ChannelImpl::AcceptMachPorts(Message& msg) {
-  chan_cap_.NoteOnIOThread();
+  chan_cap_.NoteOnTarget();
 
   uint32_t num_send_rights = msg.header()->num_send_rights;
   if (num_send_rights == 0) {

@@ -33,6 +33,11 @@ assertErrorMessage(() => wasmEval(toU8([magic0, magic1, magic2, magic3, ver0, ve
 var o = wasmEval(toU8(moduleHeaderThen()));
 assertEq(Object.getOwnPropertyNames(o).length, 0);
 
+// shared array buffer is not supported as a buffer source for compilation
+if (globalThis.SharedArrayBuffer) {
+  assertErrorMessage(() => wasmEval(toSharedU8(moduleHeaderThen())), TypeError, /first argument must be an ArrayBuffer/);
+}
+
 // unfinished known sections
 assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(typeId))), CompileError, sectionError("type"));
 assertErrorMessage(() => wasmEval(toU8(moduleHeaderThen(importId))), CompileError, sectionError("import"));
@@ -90,30 +95,30 @@ wasmEval(moduleWithSections([v2vSigSection, declSection([0]), bodySection([v2vBo
 assertErrorMessage(() => wasmEval(moduleWithSections([v2vSigSection, declSection([0]), bodySection([v2vBody.concat(v2vBody)])])), CompileError, /byte size mismatch in code section/);
 
 assertThrowsInstanceOf(() => wasmEval(moduleWithSections([v2vSigSection, {name: importId, body:[]}])), CompileError);
-assertErrorMessage(() => wasmEval(moduleWithSections([importSection([{sigIndex:0, module:"a", func:"b"}])])), CompileError, /signature index out of range/);
-assertErrorMessage(() => wasmEval(moduleWithSections([v2vSigSection, importSection([{sigIndex:1, module:"a", func:"b"}])])), CompileError, /signature index out of range/);
+assertErrorMessage(() => wasmEval(moduleWithSections([importSection([{module:"a", item:"b", funcTypeIndex:0}])])), CompileError, /signature index out of range/);
+assertErrorMessage(() => wasmEval(moduleWithSections([v2vSigSection, importSection([{module:"a", item:"b", funcTypeIndex:1}])])), CompileError, /signature index out of range/);
 wasmEval(moduleWithSections([v2vSigSection, importSection([])]));
-wasmEval(moduleWithSections([v2vSigSection, importSection([{sigIndex:0, module:"a", func:""}])]), {a:{"":()=>{}}});
+wasmEval(moduleWithSections([v2vSigSection, importSection([{module:"a", item:"", funcTypeIndex:0}])]), {a:{"":()=>{}}});
 
 wasmEval(moduleWithSections([
     v2vSigSection,
-    importSection([{sigIndex:0, module:"a", func:""}]),
+    importSection([{module:"a", item:"", funcTypeIndex:0}]),
     declSection([0]),
     bodySection([v2vBody])
 ]), {a:{"":()=>{}}});
 
 assertErrorMessage(() => wasmEval(moduleWithSections([ dataSection([{offset:1, elems:[]}]) ])), CompileError, /data segment requires a memory section/);
 
-wasmEval(moduleWithSections([tableSection(0)]));
+wasmEval(moduleWithSections([defaultTableSection(0)]));
 wasmEval(moduleWithSections([elemSection([])]));
-wasmEval(moduleWithSections([tableSection(0), elemSection([])]));
-wasmEval(moduleWithSections([tableSection(1), elemSection([{offset:1, elems:[]}])]));
-assertErrorMessage(() => wasmEval(moduleWithSections([tableSection(1), elemSection([{offset:0, elems:[0]}])])), CompileError, /element index out of range/);
-wasmEval(moduleWithSections([v2vSigSection, declSection([0]), tableSection(1), elemSection([{offset:0, elems:[0]}]), bodySection([v2vBody])]));
-wasmEval(moduleWithSections([v2vSigSection, declSection([0]), tableSection(2), elemSection([{offset:0, elems:[0,0]}]), bodySection([v2vBody])]));
-assertErrorMessage(() => wasmEval(moduleWithSections([v2vSigSection, declSection([0]), tableSection(2), elemSection([{offset:0, elems:[0,1]}]), bodySection([v2vBody])])), CompileError, /element index out of range/);
-wasmEval(moduleWithSections([v2vSigSection, declSection([0,0,0]), tableSection(4), elemSection([{offset:0, elems:[0,1,0,2]}]), bodySection([v2vBody, v2vBody, v2vBody])]));
-wasmEval(moduleWithSections([sigSection([v2vSig,i2vSig]), declSection([0,0,1]), tableSection(3), elemSection([{offset:0,elems:[0,1,2]}]), bodySection([v2vBody, v2vBody, v2vBody])]));
+wasmEval(moduleWithSections([defaultTableSection(0), elemSection([])]));
+wasmEval(moduleWithSections([defaultTableSection(1), elemSection([{offset:1, elems:[]}])]));
+assertErrorMessage(() => wasmEval(moduleWithSections([defaultTableSection(1), elemSection([{offset:0, elems:[0]}])])), CompileError, /element index out of range/);
+wasmEval(moduleWithSections([v2vSigSection, declSection([0]), defaultTableSection(1), elemSection([{offset:0, elems:[0]}]), bodySection([v2vBody])]));
+wasmEval(moduleWithSections([v2vSigSection, declSection([0]), defaultTableSection(2), elemSection([{offset:0, elems:[0,0]}]), bodySection([v2vBody])]));
+assertErrorMessage(() => wasmEval(moduleWithSections([v2vSigSection, declSection([0]), defaultTableSection(2), elemSection([{offset:0, elems:[0,1]}]), bodySection([v2vBody])])), CompileError, /element index out of range/);
+wasmEval(moduleWithSections([v2vSigSection, declSection([0,0,0]), defaultTableSection(4), elemSection([{offset:0, elems:[0,1,0,2]}]), bodySection([v2vBody, v2vBody, v2vBody])]));
+wasmEval(moduleWithSections([sigSection([v2vSig,i2vSig]), declSection([0,0,1]), defaultTableSection(3), elemSection([{offset:0,elems:[0,1,2]}]), bodySection([v2vBody, v2vBody, v2vBody])]));
 
 wasmEval(moduleWithSections([tableSection0()]));
 
@@ -148,6 +153,9 @@ var tooBigNameSection = {
     body: [...string(nameName), ...varU32(Math.pow(2, 31))] // declare 2**31 functions.
 };
 wasmEval(moduleWithSections([tooBigNameSection]));
+
+// Custom sections must have valid UTF-8 names
+assertErrorMessage(() => wasmEval(toU8([0,97,115,109,1,0,0,0,0,3,2,254,255,])), CompileError, /failed to start custom section/);
 
 // Skip custom sections before any expected section
 var customDefSec = customSection("wee", 42, 13);
@@ -249,22 +257,19 @@ function checkIllegalPrefixed(prefix, opcode) {
 
 // Illegal GcPrefix opcodes
 
-let reservedGc = {};
-if (wasmGcEnabled()) {
-    reservedGc = {
-      // Structure operations
-      0x00: true, 0x01: true, 0x02: true, 0x03: true, 0x04: true, 0x05: true,
-      // Array operations
-      0x06: true, 0x07: true, 0x08: true, 0x09: true, 0x0a: true, 0x0b: true,
-      0x0c: true, 0x0d: true, 0x0e: true, 0x0f: true, 0x10: true, 0x11: true,
-      0x12: true, 0x13: true,
-      // Ref operations
-      0x14: true, 0x15: true, 0x16: true, 0x17: true, 0x18: true, 0x19: true,
-      0x1a: true, 0x1b: true,
-      // i31 operations
-      0x1c: true, 0x1d: true, 0x1e: true,
-    };
-}
+let reservedGc = {
+    // Structure operations
+    0x00: true, 0x01: true, 0x02: true, 0x03: true, 0x04: true, 0x05: true,
+    // Array operations
+    0x06: true, 0x07: true, 0x08: true, 0x09: true, 0x0a: true, 0x0b: true,
+    0x0c: true, 0x0d: true, 0x0e: true, 0x0f: true, 0x10: true, 0x11: true,
+    0x12: true, 0x13: true,
+    // Ref operations
+    0x14: true, 0x15: true, 0x16: true, 0x17: true, 0x18: true, 0x19: true,
+    0x1a: true, 0x1b: true,
+    // i31 operations
+    0x1c: true, 0x1d: true, 0x1e: true,
+};
 for (let i = 0; i < 256; i++) {
     if (reservedGc.hasOwnProperty(i)) {
         continue;
@@ -340,7 +345,7 @@ for (let prefix of [ThreadPrefix, MiscPrefix, SimdPrefix, MozPrefix]) {
 function runStackTraceTest(moduleName, funcNames, expectedName) {
     var sections = [
         sigSection([v2vSig]),
-        importSection([{sigIndex:0, module:"env", func:"callback"}]),
+        importSection([{module:"env", item:"callback", funcTypeIndex:0}]),
         declSection([0]),
         exportSection([{funcIndex:1, name: "run"}]),
         bodySection([funcBody({locals: [], body: [CallCode, varU32(0)]})]),

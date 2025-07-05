@@ -34,13 +34,13 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_media.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/dom/MemoryReportRequest.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/CanvasRenderThread.h"
 #include "mozilla/gfx/gfxVars.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/GfxMetrics.h"
+#include "mozilla/glean/GleanTestsTestMetrics.h"
 #include "mozilla/image/ImageMemoryReporter.h"
 #include "mozilla/ipc/CrashReporterClient.h"
 #include "mozilla/ipc/ProcessChild.h"
@@ -74,8 +74,8 @@
 #  include "gfxWindowsPlatform.h"
 #  include "mozilla/WindowsVersion.h"
 #  include "mozilla/gfx/DeviceManagerDx.h"
+#  include "mozilla/layers/CompositeProcessD3D11FencesHolderMap.h"
 #  include "mozilla/layers/GpuProcessD3D11TextureMap.h"
-#  include "mozilla/layers/GpuProcessD3D11QueryMap.h"
 #  include "mozilla/layers/TextureD3D11.h"
 #  include "mozilla/widget/WinCompositorWindowThread.h"
 #  include "MediaCodecsSupport.h"
@@ -115,7 +115,7 @@ static media::MediaCodecsSupported GetFullMediaCodecSupport(
     WMFDecoderModule::Init(WMFDecoderModule::Config::ForceEnableHEVC);
   }
   auto disableHEVCIfNeeded = MakeScopeExit([]() {
-    if (StaticPrefs::media_wmf_hevc_enabled() != 1) {
+    if (!StaticPrefs::media_hevc_enabled()) {
       WMFDecoderModule::DisableForceEnableHEVC();
     }
   });
@@ -215,8 +215,8 @@ bool GPUParent::Init(mozilla::ipc::UntypedEndpoint&& aEndpoint,
 #if defined(XP_WIN)
   gfxWindowsPlatform::InitMemoryReportersForGPUProcess();
   DeviceManagerDx::Init();
+  CompositeProcessD3D11FencesHolderMap::Init();
   GpuProcessD3D11TextureMap::Init();
-  GpuProcessD3D11QueryMap::Init();
   auto rv = wmf::MediaFoundationInitializer::HasInitialized();
   if (!rv) {
     NS_WARNING("Failed to init Media Foundation in the GPU process");
@@ -413,6 +413,10 @@ mozilla::ipc::IPCResult GPUParent::RecvInit(
   gfx::CanvasRenderThread::Start();
   image::ImageMemoryReporter::InitForWebRender();
 
+  // Since gfxPlatform::Init is never called for the GPU process, ensure that
+  // common memory reporters get registered here instead.
+  gfxPlatform::InitMemoryReportersForGPUProcess();
+
   VRManager::ManagerInit();
   // Send a message to the UI process that we're done.
   GPUDeviceData data;
@@ -434,8 +438,8 @@ mozilla::ipc::IPCResult GPUParent::RecvInit(
           }),
       nsIEventTarget::DISPATCH_NORMAL));
 
-  Telemetry::AccumulateTimeDelta(Telemetry::GPU_PROCESS_INITIALIZATION_TIME_MS,
-                                 mLaunchTime);
+  glean::gpu_process::initialization_time.AccumulateRawDuration(
+      TimeStamp::Now() - mLaunchTime);
   return IPC_OK();
 }
 
@@ -801,8 +805,8 @@ void GPUParent::ActorDestroy(ActorDestroyReason aWhy) {
 #endif
 
 #if defined(XP_WIN)
-        GpuProcessD3D11QueryMap::Shutdown();
         GpuProcessD3D11TextureMap::Shutdown();
+        CompositeProcessD3D11FencesHolderMap::Shutdown();
         DeviceManagerDx::Shutdown();
 #endif
         LayerTreeOwnerTracker::Shutdown();

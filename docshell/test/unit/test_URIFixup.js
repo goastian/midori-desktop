@@ -74,6 +74,11 @@ var data = [
     fixed: "whatever://this/is/a/test.html",
   },
   {
+    // Valid should not be changed.
+    wrong: "whatever://user:pass@example.com/test.html",
+    fixed: "whatever://user:pass@example.com/test.html",
+  },
+  {
     // Spaces before @ are valid if it appears after the domain.
     wrong: "example.com/ @test.com",
     fixed: "http://example.com/%20@test.com",
@@ -110,7 +115,7 @@ add_task(async function setup() {
   // Force search service to fail, so we do not have any engines that can
   // interfere with this test.
   // Search engine integration is tested in test_URIFixup_search.js.
-  Services.search.wrappedJSObject.errorToThrowInTest = "Settings";
+  Services.search.wrappedJSObject.errorToThrowInTest.type = "Settings";
 
   // When search service fails, we want the promise rejection to be uncaught
   // so we can continue running the test.

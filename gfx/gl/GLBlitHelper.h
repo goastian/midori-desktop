@@ -23,6 +23,7 @@
 #include "mozilla/ipc/IPCTypes.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Maybe.h"
+#include "mozilla/gfx/MatrixFwd.h"
 #include "mozilla/gfx/Point.h"
 #include "mozilla/gfx/Rect.h"
 #include "mozilla/gfx/Types.h"
@@ -61,8 +62,7 @@ class SurfaceDescriptorBuffer;
 
 #ifdef XP_WIN
 class D3D11ShareHandleImage;
-class D3D11TextureIMFSampleImage;
-class D3D11YCbCrImage;
+class D3D11ZeroCopyTextureImage;
 class SurfaceDescriptorD3D10;
 class SurfaceDescriptorDXGIYCbCr;
 #endif
@@ -124,6 +124,7 @@ Mat3 SubRectMat3(float x, float y, float w, float h);
 Mat3 SubRectMat3(const gfx::IntRect& subrect, const gfx::IntSize& size);
 Mat3 SubRectMat3(const gfx::IntRect& bigSubrect, const gfx::IntSize& smallSize,
                  const gfx::IntSize& divisors);
+Mat3 MatrixToMat3(const gfx::Matrix& aMatrix);
 
 class DrawBlitProg final {
   const GLBlitHelper& mParent;
@@ -199,6 +200,9 @@ class GLBlitHelper final {
   gfx::IntSize mYuvUploads_UVSize = {0, 0};
 
  public:
+  static std::optional<color::ColorProfileDesc> ToColorProfileDesc(
+      gfx::ColorSpace2);
+
   struct ColorLutKey : DeriveCmpOpMembers<ColorLutKey> {
     std::variant<gfx::ColorSpace2, gfx::YUVRangedColorSpace> src;
     gfx::ColorSpace2 dst;
@@ -246,6 +250,8 @@ class GLBlitHelper final {
             OriginPos destOrigin) const;
   bool BlitImage(layers::DMABUFSurfaceImage* srcImage,
                  const gfx::IntSize& destSize, OriginPos destOrigin) const;
+  bool BlitYCbCrImageToDMABuf(const layers::PlanarYCbCrData& yuvData,
+                              DMABufSurface* surface);
 #endif
 
   explicit GLBlitHelper(GLContext* gl);
@@ -294,9 +300,7 @@ class GLBlitHelper final {
   // GLBlitHelperD3D.cpp:
   bool BlitImage(layers::D3D11ShareHandleImage* srcImage,
                  const gfx::IntSize& destSize, OriginPos destOrigin) const;
-  bool BlitImage(layers::D3D11TextureIMFSampleImage* srcImage,
-                 const gfx::IntSize& destSize, OriginPos destOrigin) const;
-  bool BlitImage(layers::D3D11YCbCrImage* srcImage,
+  bool BlitImage(layers::D3D11ZeroCopyTextureImage* srcImage,
                  const gfx::IntSize& destSize, OriginPos destOrigin) const;
 
   bool BlitDescriptor(const layers::SurfaceDescriptorD3D10& desc,

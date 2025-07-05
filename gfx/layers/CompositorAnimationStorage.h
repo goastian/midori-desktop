@@ -24,20 +24,25 @@ class Animation;
 class CompositorBridgeParent;
 class OMTAController;
 
-typedef nsTArray<layers::Animation> AnimationArray;
+using AnimationArray = nsTArray<layers::Animation>;
+using SampledAnimationArray = AutoTArray<RefPtr<StyleAnimationValue>, 1>;
 
 struct AnimationTransform {
-  /*
-   * This transform is calculated from sampleanimation in device pixel
-   * and used for layers (i.e. non WebRender)
-   */
-  gfx::Matrix4x4 mTransformInDevSpace;
   /*
    * This transform is calculated from frame used for WebRender and used by
    * getOMTAStyle() for OMTA testing.
    */
   gfx::Matrix4x4 mFrameTransform;
   TransformData mData;
+
+  /*
+   * Store the previous sampled transform-like animation values.
+   * It's unfortunate we have to keep the previous sampled animation value for
+   * replacing the running transition, because we can not re-create the
+   * AnimationValues from the matrix.
+   * Note: We expect the length is one in most cases.
+   */
+  SampledAnimationArray mAnimationValues;
 };
 
 struct AnimatedValue final {
@@ -54,24 +59,27 @@ struct AnimatedValue final {
     return mValue.is<T>();
   }
 
-  AnimatedValue(const gfx::Matrix4x4& aTransformInDevSpace,
-                const gfx::Matrix4x4& aFrameTransform,
-                const TransformData& aData)
-      : mValue(AsVariant(AnimationTransform{aTransformInDevSpace,
-                                            aFrameTransform, aData})) {}
+  AnimatedValue(const gfx::Matrix4x4& aFrameTransform,
+                const TransformData& aData, SampledAnimationArray&& aValue)
+      : mValue(AsVariant(
+            AnimationTransform{aFrameTransform, aData, std::move(aValue)})) {}
 
   explicit AnimatedValue(const float& aValue) : mValue(AsVariant(aValue)) {}
 
   explicit AnimatedValue(nscolor aValue) : mValue(AsVariant(aValue)) {}
 
+  // Note: Only transforms need to store the sampled AnimationValue because it's
+  // impossible to re-create the AnimationValue from the matrix.
   void SetTransform(const gfx::Matrix4x4& aFrameTransform,
-                    const TransformData& aData) {
+                    const TransformData& aData,
+                    SampledAnimationArray&& aValue) {
     MOZ_ASSERT(mValue.is<AnimationTransform>());
     AnimationTransform& previous = mValue.as<AnimationTransform>();
     previous.mFrameTransform = aFrameTransform;
     if (previous.mData != aData) {
       previous.mData = aData;
     }
+    previous.mAnimationValues = std::move(aValue);
   }
   void SetOpacity(float aOpacity) {
     MOZ_ASSERT(mValue.is<float>());
@@ -81,6 +89,8 @@ struct AnimatedValue final {
     MOZ_ASSERT(mValue.is<nscolor>());
     mValue.as<nscolor>() = aColor;
   }
+
+  already_AddRefed<StyleAnimationValue> AsAnimationValue(nsCSSPropertyID) const;
 
  private:
   AnimatedValueType mValue;
@@ -128,7 +138,8 @@ class CompositorAnimationStorage final {
    * Set the animations based on the unique id
    */
   void SetAnimations(uint64_t aId, const LayersId& aLayersId,
-                     const AnimationArray& aAnimations);
+                     const AnimationArray& aAnimations,
+                     const TimeStamp& aPreviousSampleTime);
 
   /**
    * Sample animation based the given timestamps and store them in this
@@ -153,13 +164,13 @@ class CompositorAnimationStorage final {
    */
   void ClearById(const uint64_t& aId);
 
- private:
-  ~CompositorAnimationStorage() = default;
-
   /**
    * Return the animated value if a given id can map to its animated value
    */
   AnimatedValue* GetAnimatedValue(const uint64_t& aId) const;
+
+ private:
+  ~CompositorAnimationStorage() = default;
 
   /**
    * Set the animation transform based on the unique id and also
@@ -170,7 +181,8 @@ class CompositorAnimationStorage final {
    */
   void SetAnimatedValue(uint64_t aId, AnimatedValue* aPreviousValue,
                         const gfx::Matrix4x4& aFrameTransform,
-                        const TransformData& aData);
+                        const TransformData& aData,
+                        SampledAnimationArray&& aValue);
 
   /**
    * Similar to above but for opacity.
@@ -193,7 +205,7 @@ class CompositorAnimationStorage final {
   void StoreAnimatedValue(
       nsCSSPropertyID aProperty, uint64_t aId,
       const std::unique_ptr<AnimationStorageData>& aAnimationStorageData,
-      const AutoTArray<RefPtr<StyleAnimationValue>, 1>& aAnimationValues,
+      SampledAnimationArray&& aAnimationValues,
       const MutexAutoLock& aProofOfMapLock,
       const RefPtr<APZSampler>& aApzSampler, AnimatedValue* aAnimatedValueEntry,
       JankedAnimationMap& aJankedAnimationMap);

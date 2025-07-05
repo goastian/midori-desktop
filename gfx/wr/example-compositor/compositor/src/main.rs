@@ -209,7 +209,7 @@ impl RenderNotifier for Notifier {
 
     fn wake_up(&self, _composite_needed: bool) {}
 
-    fn new_frame_ready(&self, _: DocumentId, _scrolled: bool, _composite_needed: bool, _: FramePublishId) {
+    fn new_frame_ready(&self, _: DocumentId, _: FramePublishId, _params: &FrameReadyParams) {
         self.tx.send(()).ok();
     }
 }
@@ -487,7 +487,7 @@ fn main() {
         txn.set_display_list(current_epoch, root_builder.end());
     }
 
-    txn.generate_frame(0, RenderReasons::empty());
+    txn.generate_frame(0, true, RenderReasons::empty());
     api.send_transaction(document_id, txn);
 
     // Tick the compositor (in this sample, we don't block on UI events)
@@ -531,7 +531,7 @@ fn main() {
                 }
             }
 
-            txn.generate_frame(0, RenderReasons::empty());
+            txn.generate_frame(0, true, RenderReasons::empty());
             api.send_transaction(document_id, txn);
             current_epoch.0 += 1;
             time += 0.001;

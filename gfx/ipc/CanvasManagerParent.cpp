@@ -23,7 +23,7 @@
 
 namespace mozilla::gfx {
 
-CanvasManagerParent::ManagerSet CanvasManagerParent::sManagers;
+MOZ_RUNINIT CanvasManagerParent::ManagerSet CanvasManagerParent::sManagers;
 
 /* static */ void CanvasManagerParent::Init(
     Endpoint<PCanvasManagerParent>&& aEndpoint,
@@ -137,7 +137,7 @@ already_AddRefed<dom::PWebGLParent> CanvasManagerParent::AllocPWebGLParent() {
     MOZ_ASSERT_UNREACHABLE("AllocPWebGLParent without remote WebGL");
     return nullptr;
   }
-  return MakeAndAddRef<dom::WebGLParent>(mContentId);
+  return MakeAndAddRef<dom::WebGLParent>(mSharedSurfacesHolder, mContentId);
 }
 
 already_AddRefed<webgpu::PWebGPUParent>
@@ -178,8 +178,9 @@ CanvasManagerParent::AllocPCanvasParent() {
 }
 
 mozilla::ipc::IPCResult CanvasManagerParent::RecvGetSnapshot(
-    const uint32_t& aManagerId, const int32_t& aProtocolId,
+    const uint32_t& aManagerId, const ActorId& aProtocolId,
     const Maybe<RemoteTextureOwnerId>& aOwnerId,
+    const Maybe<RawId>& aCommandEncoderId,
     webgl::FrontBufferSnapshotIpc* aResult) {
   if (!aManagerId) {
     return IPC_FAIL(this, "invalid id");
@@ -217,13 +218,18 @@ mozilla::ipc::IPCResult CanvasManagerParent::RecvGetSnapshot(
       if (aOwnerId.isNothing()) {
         return IPC_FAIL(this, "invalid OwnerId");
       }
-      mozilla::ipc::IPCResult rv =
-          webgpu->GetFrontBufferSnapshot(this, *aOwnerId, buffer.shmem, size);
+      if (aCommandEncoderId.isNothing()) {
+        return IPC_FAIL(this, "invalid CommandEncoderId");
+      }
+      uint32_t stride = 0;
+      mozilla::ipc::IPCResult rv = webgpu->GetFrontBufferSnapshot(
+          this, *aOwnerId, *aCommandEncoderId, buffer.shmem, size, stride);
       if (!rv) {
         return rv;
       }
       buffer.surfSize.x = static_cast<uint32_t>(size.width);
       buffer.surfSize.y = static_cast<uint32_t>(size.height);
+      buffer.byteStride = stride;
     } break;
     default:
       return IPC_FAIL(this, "unsupported protocol");
@@ -231,6 +237,37 @@ mozilla::ipc::IPCResult CanvasManagerParent::RecvGetSnapshot(
 
   *aResult = std::move(buffer);
   return IPC_OK();
+}
+
+/* static */ mozilla::ipc::IProtocol* CanvasManagerParent::GetCanvasActor(
+    dom::ContentParentId aContentId, uint32_t aManagerId, ActorId aCanvasId) {
+  IProtocol* actor = nullptr;
+  for (CanvasManagerParent* i : sManagers) {
+    if (i->mContentId == aContentId && i->mId == aManagerId) {
+      actor = i->Lookup(aCanvasId);
+      break;
+    }
+  }
+  return actor;
+}
+
+/* static */ already_AddRefed<DataSourceSurface>
+CanvasManagerParent::GetCanvasSurface(dom::ContentParentId aContentId,
+                                      uint32_t aManagerId, ActorId aCanvasId,
+                                      uintptr_t aSurfaceId) {
+  IProtocol* actor = GetCanvasActor(aContentId, aManagerId, aCanvasId);
+  if (!actor) {
+    return nullptr;
+  }
+  switch (actor->GetProtocolId()) {
+    case ProtocolId::PCanvasMsgStart:
+      return static_cast<layers::CanvasTranslator*>(actor)->WaitForSurface(
+          aSurfaceId);
+    default:
+      MOZ_ASSERT_UNREACHABLE("Unsupported protocol");
+      break;
+  }
+  return nullptr;
 }
 
 }  // namespace mozilla::gfx

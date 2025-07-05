@@ -120,8 +120,8 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
       const bool& aContainsSVGGroup, const VsyncId& aVsyncId,
       const TimeStamp& aVsyncStartTime, const TimeStamp& aRefreshStartTime,
       const TimeStamp& aTxnStartTime, const nsACString& aTxnURL,
-      const TimeStamp& aFwdTime,
-      nsTArray<CompositionPayload>&& aPayloads) override;
+      const TimeStamp& aFwdTime, nsTArray<CompositionPayload>&& aPayloads,
+      const bool& aRenderOffscreen) override;
   mozilla::ipc::IPCResult RecvEmptyTransaction(
       const FocusTarget& aFocusTarget,
       Maybe<TransactionData>&& aTransactionData,
@@ -236,6 +236,10 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
     return MatchesNamespace(wr::AsImageKey(aBlobKey));
   }
 
+  bool MatchesNamespace(const wr::SnapshotImageKey& aSnapshotKey) const {
+    return MatchesNamespace(wr::AsImageKey(aSnapshotKey));
+  }
+
   bool MatchesNamespace(const wr::FontKey& aFontKey) const {
     return aFontKey.mNamespace == mIdNamespace;
   }
@@ -244,7 +248,7 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
     return aFontKey.mNamespace == mIdNamespace;
   }
 
-  void FlushRendering(wr::RenderReasons aReasons, bool aBlocking = true);
+  void FlushRendering(wr::RenderReasons aReasons, bool aBlocking);
 
   /**
    * Schedule generating WebRender frame definitely at next composite timing.
@@ -275,7 +279,8 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
    */
   void ScheduleForcedGenerateFrame(wr::RenderReasons aReasons);
 
-  void NotifyDidSceneBuild(RefPtr<const wr::WebRenderPipelineInfo> aInfo);
+  void ScheduleFrameAfterSceneBuild(
+      RefPtr<const wr::WebRenderPipelineInfo> aInfo);
 
   wr::Epoch UpdateWebRender(
       CompositorVsyncScheduler* aScheduler, RefPtr<wr::WebRenderAPI>&& aApi,
@@ -323,7 +328,8 @@ class WebRenderBridgeParent final : public PWebRenderBridgeParent,
 
   bool ProcessDisplayListData(DisplayListData& aDisplayList, wr::Epoch aWrEpoch,
                               const TimeStamp& aTxnStartTime,
-                              bool aValidTransaction);
+                              bool aValidTransaction, bool aRenderOffscreen,
+                              const VsyncId& aVsyncId);
 
   bool SetDisplayList(const LayoutDeviceRect& aRect, ipc::ByteBuf&& aDLItems,
                       ipc::ByteBuf&& aDLCache, ipc::ByteBuf&& aSpatialTreeDL,

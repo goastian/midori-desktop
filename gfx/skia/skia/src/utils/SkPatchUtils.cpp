@@ -17,13 +17,13 @@
 #include "include/core/SkSize.h"
 #include "include/core/SkTypes.h"
 #include "include/core/SkVertices.h"
-#include "include/private/SkColorData.h"
 #include "include/private/base/SkFloatingPoint.h"
 #include "include/private/base/SkMath.h"
 #include "include/private/base/SkTPin.h"
 #include "include/private/base/SkTo.h"
 #include "src/base/SkArenaAlloc.h"
 #include "src/base/SkVx.h"
+#include "src/core/SkColorData.h"
 #include "src/core/SkColorSpacePriv.h"
 #include "src/core/SkConvertPixels.h"
 #include "src/core/SkGeometry.h"
@@ -159,7 +159,7 @@ static SkScalar approx_arc_length(const SkPoint points[], int count) {
     for (int i = 0; i < count - 1; i++) {
         arcLength += SkPoint::Distance(points[i], points[i + 1]);
     }
-    return SkScalarIsFinite(arcLength) ? arcLength : -1;
+    return SkIsFinite(arcLength) ? arcLength : -1;
 }
 
 static SkScalar bilerp(SkScalar tx, SkScalar ty, SkScalar c00, SkScalar c10, SkScalar c01,

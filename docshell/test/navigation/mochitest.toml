@@ -86,9 +86,12 @@ support-files = [
   "frame_5_out_of_6.html",
   "frame_6_out_of_6.html",
   "frame_recursive.html",
+  "frame_recursive_dynamic.html",
+  "frame_recursive_target.html",
   "object_recursive_load.html",
   "file_nested_srcdoc.html",
 ]
+prefs=["privacy.restrict3rdpartystorage.heuristic.window_open=false"]
 
 ["test_aboutblank_change_process.html"]
 
@@ -104,7 +107,6 @@ support-files = [
 ]
 skip-if = [
   "http3",
-  "http2",
 ]
 
 ["test_bug13871.html"]
@@ -122,6 +124,9 @@ skip-if = [
 ["test_bug278916.html"]
 
 ["test_bug279495.html"]
+skip-if = [
+  "os == 'android' && debug && processor == 'x86_64'", # Bug 1781600
+]
 
 ["test_bug344861.html"]
 skip-if = ["os == 'android'"]

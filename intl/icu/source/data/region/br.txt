@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 br{
     Countries{
         001{"Bed"}
@@ -146,7 +146,6 @@ br{
         IL{"Israel"}
         IM{"Enez Vanav"}
         IN{"India"}
-        IO{"Tiriad breizhveurat Meurvor Indez"}
         IQ{"Iraq"}
         IR{"Iran"}
         IS{"Island"}

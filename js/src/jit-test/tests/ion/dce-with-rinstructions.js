@@ -352,6 +352,15 @@ function rdiv_number(i) {
     return i;
 }
 
+var uceFault_div_double = eval(`(${uceFault})`.replace('uceFault', 'uceFault_div_double'));
+function rdiv_double(i) {
+    var x = 1 / i;
+    if (uceFault_div_double(i) || uceFault_div_double(i))
+        assertEq(x, 0.010101010101010102  /* = 1 / 99 */);
+    assertRecoveredOnBailout(x, true);
+    return i;
+}
+
 var uceFault_div_float = eval(`(${uceFault})`.replace('uceFault', 'uceFault_div_float'));
 function rdiv_float(i) {
     var t = Math.fround(1/3);
@@ -413,6 +422,27 @@ function rnot_object(i) {
         assertEq(x, true /* = !undefined = !document.all = !createIsHTMLDDA() */);
     assertRecoveredOnBailout(x, true);
     return i;
+}
+
+let uceFault_not_bigint_intptr = eval(`(${uceFault})`.replace('uceFault', 'uceFault_not_bigint_intptr'));
+function rnot_bigint_intptr(i) {
+    var y = BigInt(i) + 1n;
+    var x = !y;
+    if (uceFault_not_bigint_intptr(i) || uceFault_not_bigint_intptr(i))
+        assertEq(x, false /* = !100n */);
+    assertRecoveredOnBailout(x, true);
+    return y;
+}
+
+let uceFault_not_bigint_int64 = eval(`(${uceFault})`.replace('uceFault', 'uceFault_not_bigint_int64'));
+function rnot_bigint_int64(i) {
+    var ta = new BigInt64Array(1);
+    var y = ta[0];
+    var x = !y;
+    if (uceFault_not_bigint_int64(i) || uceFault_not_bigint_int64(i))
+        assertEq(x, true /* = !0n */);
+    assertRecoveredOnBailout(x, true);
+    return y;
 }
 
 var uceFault_compare_number_eq = eval(`(${uceFault})`.replace('uceFault', 'uceFault_compare_number_eq'));
@@ -560,8 +590,8 @@ function rcompare_string_ge(i) {
 }
 
 var uceFault_compare_bigint_eq = eval(`(${uceFault})`.replace('uceFault', 'uceFault_compare_bigint_eq'));
-function rcompare_bigint_eq(i) {
-    var x = BigInt(i) == 99n;
+function rcompare_bigint_eq(i, bi) {
+    var x = bi == 99n;
     if (uceFault_compare_bigint_eq(i) || uceFault_compare_bigint_eq(i))
         assertEq(x, true);
     assertRecoveredOnBailout(x, true);
@@ -569,8 +599,8 @@ function rcompare_bigint_eq(i) {
 }
 
 var uceFault_compare_bigint_stricteq = eval(`(${uceFault})`.replace('uceFault', 'uceFault_compare_bigint_stricteq'));
-function rcompare_bigint_stricteq(i) {
-    var x = BigInt(i) === 99n;
+function rcompare_bigint_stricteq(i, bi) {
+    var x = bi === 99n;
     if (uceFault_compare_bigint_stricteq(i) || uceFault_compare_bigint_stricteq(i))
         assertEq(x, true);
     assertRecoveredOnBailout(x, true);
@@ -578,8 +608,8 @@ function rcompare_bigint_stricteq(i) {
 }
 
 var uceFault_compare_bigint_ne = eval(`(${uceFault})`.replace('uceFault', 'uceFault_compare_bigint_ne'));
-function rcompare_bigint_ne(i) {
-    var x = BigInt(i) != 99n;
+function rcompare_bigint_ne(i, bi) {
+    var x = bi != 99n;
     if (uceFault_compare_bigint_ne(i) || uceFault_compare_bigint_ne(i))
         assertEq(x, false);
     assertRecoveredOnBailout(x, true);
@@ -587,8 +617,8 @@ function rcompare_bigint_ne(i) {
 }
 
 var uceFault_compare_bigint_strictne = eval(`(${uceFault})`.replace('uceFault', 'uceFault_compare_bigint_strictne'));
-function rcompare_bigint_strictne(i) {
-    var x = BigInt(i) !== 99n;
+function rcompare_bigint_strictne(i, bi) {
+    var x = bi !== 99n;
     if (uceFault_compare_bigint_strictne(i) || uceFault_compare_bigint_strictne(i))
         assertEq(x, false);
     assertRecoveredOnBailout(x, true);
@@ -596,8 +626,8 @@ function rcompare_bigint_strictne(i) {
 }
 
 var uceFault_compare_bigint_lt = eval(`(${uceFault})`.replace('uceFault', 'uceFault_compare_bigint_lt'));
-function rcompare_bigint_lt(i) {
-    var x = BigInt(i) < 99n;
+function rcompare_bigint_lt(i, bi) {
+    var x = bi < 99n;
     if (uceFault_compare_bigint_lt(i) || uceFault_compare_bigint_lt(i))
         assertEq(x, false);
     assertRecoveredOnBailout(x, true);
@@ -605,8 +635,8 @@ function rcompare_bigint_lt(i) {
 }
 
 var uceFault_compare_bigint_le = eval(`(${uceFault})`.replace('uceFault', 'uceFault_compare_bigint_le'));
-function rcompare_bigint_le(i) {
-    var x = BigInt(i) <= 99n;
+function rcompare_bigint_le(i, bi) {
+    var x = bi <= 99n;
     if (uceFault_compare_bigint_le(i) || uceFault_compare_bigint_le(i))
         assertEq(x, true);
     assertRecoveredOnBailout(x, true);
@@ -614,8 +644,8 @@ function rcompare_bigint_le(i) {
 }
 
 var uceFault_compare_bigint_gt = eval(`(${uceFault})`.replace('uceFault', 'uceFault_compare_bigint_gt'));
-function rcompare_bigint_gt(i) {
-    var x = BigInt(i) > 99n;
+function rcompare_bigint_gt(i, bi) {
+    var x = bi > 99n;
     if (uceFault_compare_bigint_gt(i) || uceFault_compare_bigint_gt(i))
         assertEq(x, false);
     assertRecoveredOnBailout(x, true);
@@ -623,8 +653,8 @@ function rcompare_bigint_gt(i) {
 }
 
 var uceFault_compare_bigint_ge = eval(`(${uceFault})`.replace('uceFault', 'uceFault_compare_bigint_ge'));
-function rcompare_bigint_ge(i) {
-    var x = BigInt(i) >= 99n;
+function rcompare_bigint_ge(i, bi) {
+    var x = bi >= 99n;
     if (uceFault_compare_bigint_ge(i) || uceFault_compare_bigint_ge(i))
         assertEq(x, true);
     assertRecoveredOnBailout(x, true);
@@ -1453,6 +1483,27 @@ function rtofloat32_object(i) {
     return i;
 }
 
+var uceFault_tofloat16_number = eval(`(${uceFault})`.replace('uceFault', 'uceFault_tofloat16_number'));
+function rtofloat16_number(i) {
+    var x = Math.f16round(i + 0.22);
+    if (uceFault_tofloat16_number(i) || uceFault_tofloat16_number(i))
+        assertEq(x, Math.f16round(99.22));
+    assertRecoveredOnBailout(x, true);
+    return i;
+}
+
+var uceFault_tofloat16_object = eval(`(${uceFault})`.replace('uceFault', 'uceFault_tofloat16_object'));
+function rtofloat16_object(i) {
+    var t = i + 0.22;
+    var o = { valueOf: function () { return t; } };
+    var x = Math.f16round(o);
+    t = 1000.22;
+    if (uceFault_tofloat16_object(i) || uceFault_tofloat16_object(i))
+        assertEq(x, Math.f16round(99.22));
+    assertRecoveredOnBailout(x, false);
+    return i;
+}
+
 var uceFault_trunc_to_int32_number = eval(`(${uceFault})`.replace('uceFault', 'uceFault_trunc_to_int32_number'));
 function rtrunc_to_int32_number(i) {
     var x = (i + 0.12) | 0;
@@ -1842,9 +1893,9 @@ function rbigintmod(i) {
 
 let uceFault_pow_bigint = eval(`(${uceFault})`.replace('uceFault', 'uceFault_pow_bigint'));
 function rbigintpow(i) {
-    var x = i ** 2n;
+    var x = i ** 5n;
     if (uceFault_pow_bigint(i) || uceFault_pow_bigint(i))
-        assertEq(x, 9801n  /* = 99 ** 2 */);
+        assertEq(x, 9509900499n  /* = 99 ** 5 */);
     assertRecoveredOnBailout(x, true);
     return i;
 }
@@ -1950,10 +2001,19 @@ function rbigintasuint(i) {
     return i;
 }
 
+let uceFault_int32tobigint = eval(`(${uceFault})`.replace('uceFault', 'uceFault_int32tobigint'));
+function rint32tobigint(i) {
+    var x = BigInt(i);
+    if (uceFault_int32tobigint(i) || uceFault_int32tobigint(i))
+        assertEq(x, 99n);
+    assertRecoveredOnBailout(x, true);
+    return i;
+}
+
 let uceFault_nantozero_nan = eval(`(${uceFault})`.replace('uceFault', 'uceFault_nantozero_nan'));
 function rnantozero_nan(i) {
     // Note: |x| must be Double-typed.
-    var x = (i + 0.5) * NaN;
+    var x = NaN ** (i + 0.5);
     var y = x ? x : +0;
     if (uceFault_nantozero_nan(i) || uceFault_nantozero_nan(i))
         assertEq(y, +0);
@@ -2038,12 +2098,15 @@ for (j = 100 - max; j < 100; j++) {
     rimul_overflow(i);
     rimul_object(i);
     rdiv_number(i);
+    rdiv_double(i);
     rdiv_float(i);
     rdiv_object(i);
     rmod_number(i);
     rmod_object(i);
     rnot_number(i);
     rnot_object(i);
+    rnot_bigint_intptr(i);
+    rnot_bigint_int64(i);
     rcompare_number_eq(i);
     rcompare_number_stricteq(i);
     rcompare_number_ne(i);
@@ -2060,14 +2123,14 @@ for (j = 100 - max; j < 100; j++) {
     rcompare_string_le(i);
     rcompare_string_gt(i);
     rcompare_string_ge(i);
-    rcompare_bigint_eq(i);
-    rcompare_bigint_stricteq(i);
-    rcompare_bigint_ne(i);
-    rcompare_bigint_stricteq(i);
-    rcompare_bigint_lt(i);
-    rcompare_bigint_le(i);
-    rcompare_bigint_gt(i);
-    rcompare_bigint_ge(i);
+    rcompare_bigint_eq(i, BigInt(i));
+    rcompare_bigint_stricteq(i, BigInt(i));
+    rcompare_bigint_ne(i, BigInt(i));
+    rcompare_bigint_stricteq(i, BigInt(i));
+    rcompare_bigint_lt(i, BigInt(i));
+    rcompare_bigint_le(i, BigInt(i));
+    rcompare_bigint_gt(i, BigInt(i));
+    rcompare_bigint_ge(i, BigInt(i));
     rconcat_string(i);
     rconcat_number(i);
     rstring_length(i);
@@ -2148,6 +2211,8 @@ for (j = 100 - max; j < 100; j++) {
     rtodouble_number(i);
     rtofloat32_number(i);
     rtofloat32_object(i);
+    rtofloat16_number(i);
+    rtofloat16_object(i);
     rtrunc_to_int32_number(i);
     rtrunc_to_int32_object(i);
     if (!warp) {
@@ -2201,6 +2266,7 @@ for (j = 100 - max; j < 100; j++) {
     rbigintrsh(BigInt(i));
     rbigintasint(BigInt(i));
     rbigintasuint(BigInt(i));
+    rint32tobigint(i);
     rnantozero_nan(i);
     rnantozero_poszero(i);
     rnantozero_negzero(i);

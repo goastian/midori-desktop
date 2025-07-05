@@ -205,18 +205,12 @@ void UiCompositorControllerParent::NotifyFirstPaint() {
   ToolbarAnimatorMessageFromCompositor(FIRST_PAINT);
 }
 
-void UiCompositorControllerParent::NotifyUpdateScreenMetrics(
-    const GeckoViewMetrics& aMetrics) {
-#if defined(MOZ_WIDGET_ANDROID)
-  // TODO: Need to handle different x-and y-scales.
-  CSSToScreenScale scale = ViewTargetAs<ScreenPixel>(
-      aMetrics.mZoom, PixelCastJustification::ScreenIsParentLayerForRoot);
-  ScreenPoint scrollOffset = aMetrics.mVisualScrollOffset * scale;
-  CompositorThread()->Dispatch(NewRunnableMethod<ScreenPoint, CSSToScreenScale>(
-      "UiCompositorControllerParent::SendRootFrameMetrics", this,
-      &UiCompositorControllerParent::SendRootFrameMetrics, scrollOffset,
-      scale));
-#endif
+void UiCompositorControllerParent::NotifyCompositorScrollUpdate(
+    const CompositorScrollUpdate& aUpdate) {
+  CompositorThread()->Dispatch(NewRunnableMethod<CompositorScrollUpdate>(
+      "UiCompositorControllerParent::SendNotifyCompositorScrollUpdate", this,
+      &UiCompositorControllerParent::SendNotifyCompositorScrollUpdate,
+      aUpdate));
 }
 
 UiCompositorControllerParent::UiCompositorControllerParent(
@@ -239,7 +233,7 @@ void UiCompositorControllerParent::InitializeForSameProcess() {
   // This function is called by UiCompositorControllerChild in the main thread.
   // So dispatch to the compositor thread to Initialize.
   if (!CompositorThreadHolder::IsInCompositorThread()) {
-    SetOtherProcessId(base::GetCurrentProcId());
+    SetOtherEndpointProcInfo(ipc::EndpointProcInfo::Current());
     SynchronousTask task(
         "UiCompositorControllerParent::InitializeForSameProcess");
 

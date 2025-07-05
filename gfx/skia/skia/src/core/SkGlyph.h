@@ -131,7 +131,7 @@ struct SkPackedGlyphID {
 
     SkString shortDump() const {
         SkString str;
-        str.appendf("0x%x|%1d|%1d", this->glyphID(),
+        str.appendf("0x%x|%1u|%1u", this->glyphID(),
                                     this->subPixelField(kSubPixelX),
                                     this->subPixelField(kSubPixelY));
         return str;
@@ -372,6 +372,15 @@ public:
     static uint32_t Hash(SkPackedGlyphID packedID) {
         return packedID.hash();
     }
+    static bool ShouldGrow(int count, int capacity) {
+        // Having the 50% load factor results in performance improvements and significantly reduces
+        // the average number of probes on the Speedometer3 Editor-TipTap benchmark.
+        return 2 * count >= capacity;
+    }
+    static bool ShouldShrink(int count, int capacity) {
+        // Use 1/6 as the minimal load.
+        return 6 * count <= capacity;
+    }
 
 private:
     void setAction(skglyph::ActionType actionType, skglyph::GlyphAction action) {
@@ -415,11 +424,11 @@ public:
     static std::optional<SkGlyph> MakeFromBuffer(SkReadBuffer&);
     // SkGlyph() is used for testing.
     constexpr SkGlyph() : SkGlyph{SkPackedGlyphID()} { }
-    SkGlyph(const SkGlyph&);
-    SkGlyph& operator=(const SkGlyph&);
-    SkGlyph(SkGlyph&&);
-    SkGlyph& operator=(SkGlyph&&);
-    ~SkGlyph();
+    SkGlyph(const SkGlyph&) = default;
+    SkGlyph& operator=(const SkGlyph&) = default;
+    SkGlyph(SkGlyph&&) = default;
+    SkGlyph& operator=(SkGlyph&&) = default;
+    ~SkGlyph() = default;
     constexpr explicit SkGlyph(SkPackedGlyphID id) : fID{id} { }
 
     SkVector advanceVector() const { return SkVector{fAdvanceX, fAdvanceY}; }
@@ -480,7 +489,7 @@ public:
     // Returns true if this is the first time you called setPath()
     // and there actually is a path; call path() to get it.
     bool setPath(SkArenaAlloc* alloc, SkScalerContext* scalerContext);
-    bool setPath(SkArenaAlloc* alloc, const SkPath* path, bool hairline);
+    bool setPath(SkArenaAlloc* alloc, const SkPath* path, bool hairline, bool modified);
 
     // Returns true if that path has been set.
     bool setPathHasBeenCalled() const { return fPathData != nullptr; }
@@ -489,6 +498,7 @@ public:
     // path was previously set.
     const SkPath* path() const;
     bool pathIsHairline() const;
+    bool pathIsModified() const;
 
     bool setDrawable(SkArenaAlloc* alloc, SkScalerContext* scalerContext);
     bool setDrawable(SkArenaAlloc* alloc, sk_sp<SkDrawable> drawable);
@@ -582,6 +592,12 @@ private:
         // The fPath is a dev-path, so sidecar the paths hairline status.
         // This allows the user to avoid filling paths which should not be filled.
         bool       fHairline{false};
+        // This is set if the path is significantly different from what a reasonable interpreter of
+        // the underlying font data would produce. This is set if any non-identity matrix, stroke,
+        // path effect, emboldening, etc is applied.
+        // This allows Document implementations to know if a glyph should be drawn out of the font
+        // data or needs to be embedded differently.
+        bool       fModified{false};
     };
 
     struct DrawableData {
@@ -598,7 +614,7 @@ private:
     }
 
     // path == nullptr indicates that there is no path.
-    void installPath(SkArenaAlloc* alloc, const SkPath* path, bool hairline);
+    void installPath(SkArenaAlloc* alloc, const SkPath* path, bool hairline, bool modified);
 
     // drawable == nullptr indicates that there is no path.
     void installDrawable(SkArenaAlloc* alloc, sk_sp<SkDrawable> drawable);

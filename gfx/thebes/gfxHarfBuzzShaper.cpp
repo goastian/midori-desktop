@@ -212,33 +212,42 @@ hb_codepoint_t gfxHarfBuzzShaper::GetVariationGlyph(
   uint32_t length;
   const uint8_t* data = (const uint8_t*)hb_blob_get_data(mCmapTable, &length);
 
+  uint32_t ch = 0;
   if (mUVSTableOffset) {
     hb_codepoint_t gid = gfxFontUtils::MapUVSToGlyphFormat14(
         data + mUVSTableOffset, unicode, variation_selector);
     if (gid) {
       return gid;
     }
+    // If <unicode, variation_selector> is a "default UVS sequence" for this
+    // font, we'll return the result of looking up the bare unicode codepoint.
+    if (gfxFontUtils::IsDefaultUVSSequence(data + mUVSTableOffset, unicode,
+                                           variation_selector)) {
+      ch = unicode;
+    }
+  }
+  if (!ch) {
+    ch = gfxFontUtils::GetUVSFallback(unicode, variation_selector);
+  }
+  if (!ch) {
+    return 0;
   }
 
-  uint32_t compat = gfxFontUtils::GetUVSFallback(unicode, variation_selector);
-  if (compat) {
-    switch (mCmapFormat) {
-      case 4:
-        if (compat < UNICODE_BMP_LIMIT) {
-          return gfxFontUtils::MapCharToGlyphFormat4(
-              data + mSubtableOffset, length - mSubtableOffset, compat);
-        }
-        break;
-      case 10:
-        return gfxFontUtils::MapCharToGlyphFormat10(data + mSubtableOffset,
-                                                    compat);
-        break;
-      case 12:
-      case 13:
-        return gfxFontUtils::MapCharToGlyphFormat12or13(data + mSubtableOffset,
-                                                        compat);
-        break;
-    }
+  switch (mCmapFormat) {
+    case 4:
+      if (ch < UNICODE_BMP_LIMIT) {
+        return gfxFontUtils::MapCharToGlyphFormat4(
+            data + mSubtableOffset, length - mSubtableOffset, ch);
+      }
+      break;
+    case 10:
+      return gfxFontUtils::MapCharToGlyphFormat10(data + mSubtableOffset, ch);
+      break;
+    case 12:
+    case 13:
+      return gfxFontUtils::MapCharToGlyphFormat12or13(data + mSubtableOffset,
+                                                      ch);
+      break;
   }
 
   return 0;
@@ -288,7 +297,7 @@ hb_codepoint_t gfxHarfBuzzShaper::GetVerticalPresentationForm(
       {0xff5d, 0xfe38}   // FULLWIDTH RIGHT CURLY BRACKET
   };
   const uint16_t* charPair = static_cast<const uint16_t*>(
-      bsearch(&aUnicode, sVerticalForms, ArrayLength(sVerticalForms),
+      bsearch(&aUnicode, sVerticalForms, std::size(sVerticalForms),
               sizeof(sVerticalForms[0]), VertFormsGlyphCompare));
   return charPair ? charPair[1] : 0;
 }
@@ -377,6 +386,11 @@ hb_position_t gfxHarfBuzzShaper::GetGlyphHAdvanceUncached(
                "font is lacking metrics, we shouldn't be here");
 
   if (glyph >= uint32_t(mNumLongHMetrics)) {
+    if (glyph >= mNumGlyphs) {
+      // Return 0 for out-of-range glyph ID. In particular, AAT shaping uses
+      // GID 0xFFFF to represent a deleted glyph.
+      return 0;
+    }
     glyph = mNumLongHMetrics - 1;
   }
 
@@ -566,12 +580,10 @@ void gfxHarfBuzzShaper::GetGlyphVOrigin(hb_codepoint_t aGlyph,
   if (mVmtxTable) {
     bool emptyGlyf;
     const Glyf* glyf = FindGlyf(aGlyph, &emptyGlyf);
-    if (glyf) {
-      if (emptyGlyf) {
-        *aY = 0;
-        return;
-      }
-
+    // If we didn't find any 'glyf' data, fall through to the default below;
+    // note that the glyph might still actually render (via SVG or COLR data),
+    // so we need to provide a reasonable origin.
+    if (glyf && !emptyGlyf) {
       const ::GlyphMetrics* metrics = reinterpret_cast<const ::GlyphMetrics*>(
           hb_blob_get_data(mVmtxTable, nullptr));
       int16_t lsb;
@@ -1200,7 +1212,7 @@ static void AddOpenTypeFeature(uint32_t aTag, uint32_t aValue, void* aUserArg) {
 static hb_font_funcs_t* sHBFontFuncs = nullptr;
 static hb_font_funcs_t* sNominalGlyphFunc = nullptr;
 static hb_unicode_funcs_t* sHBUnicodeFuncs = nullptr;
-static const hb_script_t sMathScript =
+MOZ_RUNINIT static const hb_script_t sMathScript =
     hb_ot_tag_to_script(HB_TAG('m', 'a', 't', 'h'));
 
 bool gfxHarfBuzzShaper::Initialize() {
@@ -1272,6 +1284,13 @@ bool gfxHarfBuzzShaper::Initialize() {
     if (mCmapFormat <= 0) {
       return false;
     }
+  }
+
+  gfxFontEntry::AutoTable maxpTable(entry, TRUETYPE_TAG('m', 'a', 'x', 'p'));
+  if (maxpTable && hb_blob_get_length(maxpTable) >= sizeof(MaxpTableHeader)) {
+    const MaxpTableHeader* maxp = reinterpret_cast<const MaxpTableHeader*>(
+        hb_blob_get_data(maxpTable, nullptr));
+    mNumGlyphs = uint16_t(maxp->numGlyphs);
   }
 
   // We don't need to take the cache lock here, as we're just initializing the
@@ -1397,22 +1416,13 @@ void gfxHarfBuzzShaper::InitializeVertical() {
         hb_blob_get_data(vheaTable, &len));
     if (len >= sizeof(MetricsHeader)) {
       mNumLongVMetrics = vhea->numOfLongMetrics;
-      gfxFontEntry::AutoTable maxpTable(entry,
-                                        TRUETYPE_TAG('m', 'a', 'x', 'p'));
-      int numGlyphs = -1;  // invalid if we fail to read 'maxp'
-      if (maxpTable &&
-          hb_blob_get_length(maxpTable) >= sizeof(MaxpTableHeader)) {
-        const MaxpTableHeader* maxp = reinterpret_cast<const MaxpTableHeader*>(
-            hb_blob_get_data(maxpTable, nullptr));
-        numGlyphs = uint16_t(maxp->numGlyphs);
-      }
-      if (mNumLongVMetrics > 0 && mNumLongVMetrics <= numGlyphs &&
+      if (mNumLongVMetrics > 0 && mNumLongVMetrics <= int32_t(mNumGlyphs) &&
           int16_t(vhea->metricDataFormat) == 0) {
         mVmtxTable = entry->GetFontTable(TRUETYPE_TAG('v', 'm', 't', 'x'));
         if (mVmtxTable &&
             hb_blob_get_length(mVmtxTable) <
                 mNumLongVMetrics * sizeof(LongMetric) +
-                    (numGlyphs - mNumLongVMetrics) * sizeof(int16_t)) {
+                    (mNumGlyphs - mNumLongVMetrics) * sizeof(int16_t)) {
           // metrics table is not large enough for the claimed
           // number of entries: invalid, do not use.
           hb_blob_destroy(mVmtxTable);

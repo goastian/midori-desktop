@@ -44,6 +44,7 @@ avif:
       - item_loc_not_found
       - no_item_data_box
       - no_samples
+      - ConvertYCbCr_failure
       - uncategorized
     description: >
       Decode result of AVIF image.
@@ -437,3 +438,224 @@ avif:
     notification_emails:
       - media-alerts@mozilla.com
     expires: never
+
+  dav1d_get_picture_return_value:
+    type: event
+    description: >
+      Return value from dav1d_get_picture
+      This event was generated to correspond to the Legacy Telemetry event
+      avif.dav1d_get_picture#return_value.
+    bugs:
+      - https://bugzil.la/1690406
+    data_reviews:
+      - https://bugzil.la/1690406
+    notification_emails:
+      - media-alerts@mozilla.com
+    expires: never
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+          The `Dav1dResult` returned from `dav1d_get_picture(...)`.
+        type: string
+    telemetry_mirror: Avif_Dav1dGetPicture_ReturnValue
+
+  major_brand:
+    type: labeled_counter
+    description: >
+      AVIF major brand
+
+      This metric was generated to correspond to the Legacy Telemetry
+      categorical histogram AVIF_MAJOR_BRAND.
+    labels:
+      - avif
+      - avis
+      - other
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1745608
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1745608
+    notification_emails:
+      - media-alerts@mozilla.com
+    expires: never
+
+  sequence:
+    type: labeled_counter
+    description: >
+      AVIF image sequence
+
+      This metric was generated to correspond to the Legacy Telemetry
+      categorical histogram AVIF_SEQUENCE.
+    labels:
+      - present
+      - absent
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1745608
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1745608
+    notification_emails:
+      - media-alerts@mozilla.com
+    expires: never
+
+image_decode:
+  time:
+    type: timing_distribution
+    description: >
+      Time spent decoding an image (us)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram IMAGE_DECODE_TIME.
+    time_unit: microsecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: IMAGE_DECODE_TIME
+
+  on_draw_latency:
+    type: timing_distribution
+    description: >
+      Time from starting a decode to it showing up on the screen (us)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram IMAGE_DECODE_ON_DRAW_LATENCY.
+    time_unit: microsecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: IMAGE_DECODE_ON_DRAW_LATENCY
+
+  chunks:
+    type: custom_distribution
+    description: >
+      Number of chunks per decode attempt
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram IMAGE_DECODE_CHUNKS.
+    range_min: 1
+    range_max: 500
+    bucket_count: 50
+    histogram_type: exponential
+    unit: decode chunks
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: IMAGE_DECODE_CHUNKS
+
+  count:
+    type: custom_distribution
+    description: >
+      Decode count
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram IMAGE_DECODE_COUNT.
+    range_min: 1
+    range_max: 500
+    bucket_count: 50
+    histogram_type: exponential
+    unit: decode count
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: IMAGE_DECODE_COUNT
+
+  speed_jpeg:
+    type: memory_distribution
+    description: >
+      JPEG image decode speed (Kbytes/sec)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram IMAGE_DECODE_SPEED_JPEG.
+    memory_unit: kilobyte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: IMAGE_DECODE_SPEED_JPEG
+
+  speed_gif:
+    type: memory_distribution
+    description: >
+      GIF image decode speed (Kbytes/sec)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram IMAGE_DECODE_SPEED_GIF.
+    memory_unit: kilobyte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: IMAGE_DECODE_SPEED_GIF
+
+  speed_png:
+    type: memory_distribution
+    description: >
+      PNG image decode speed (Kbytes/sec)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram IMAGE_DECODE_SPEED_PNG.
+    memory_unit: kilobyte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935420
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: IMAGE_DECODE_SPEED_PNG
+
+  speed_webp:
+    type: memory_distribution
+    description: >
+      WebP image decode speed (Kbytes/sec)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram IMAGE_DECODE_SPEED_WEBP.
+    memory_unit: kilobyte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1294490
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1294490
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: IMAGE_DECODE_SPEED_WEBP
+
+  speed_avif:
+    type: memory_distribution
+    description: >
+      AVIF image decode speed (Kbytes/sec)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram IMAGE_DECODE_SPEED_AVIF.
+    memory_unit: kilobyte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1294490
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1294490
+    notification_emails:
+      - gfx-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: IMAGE_DECODE_SPEED_AVIF

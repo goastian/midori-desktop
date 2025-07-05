@@ -36,13 +36,10 @@ class gfxPlatformGtk final : public gfxPlatform {
                        nsTArray<nsString>& aListOfFonts) override;
 
   void GetCommonFallbackFonts(uint32_t aCh, Script aRunScript,
-                              eFontPresentation aPresentation,
+                              FontPresentation aPresentation,
                               nsTArray<const char*>& aFontList) override;
 
   bool CreatePlatformFontList() override;
-
-  static int32_t GetFontScaleDPI();
-  static double GetFontScaleFactor();
 
   gfxImageFormat GetOffscreenFormat() override;
 

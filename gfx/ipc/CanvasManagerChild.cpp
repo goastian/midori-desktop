@@ -112,13 +112,15 @@ void CanvasManagerChild::Destroy() {
   ipc::Endpoint<PCanvasManagerParent> parentEndpoint;
   ipc::Endpoint<PCanvasManagerChild> childEndpoint;
 
-  auto compositorPid = CompositorManagerChild::GetOtherPid();
-  if (NS_WARN_IF(!compositorPid)) {
+  ipc::EndpointProcInfo compositorInfo =
+      CompositorManagerChild::GetCompositorProcInfo();
+  if (NS_WARN_IF(compositorInfo == ipc::EndpointProcInfo::Invalid())) {
     return nullptr;
   }
 
   nsresult rv = PCanvasManager::CreateEndpoints(
-      compositorPid, base::GetCurrentProcId(), &parentEndpoint, &childEndpoint);
+      compositorInfo, ipc::EndpointProcInfo::Current(), &parentEndpoint,
+      &childEndpoint);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return nullptr;
   }
@@ -227,15 +229,17 @@ layers::ActiveResourceTracker* CanvasManagerChild::GetActiveResourceTracker() {
 }
 
 already_AddRefed<DataSourceSurface> CanvasManagerChild::GetSnapshot(
-    uint32_t aManagerId, int32_t aProtocolId,
-    const Maybe<RemoteTextureOwnerId>& aOwnerId, SurfaceFormat aFormat,
+    uint32_t aManagerId, ActorId aProtocolId,
+    const Maybe<RemoteTextureOwnerId>& aOwnerId,
+    const Maybe<RawId>& aCommandEncoderId, SurfaceFormat aFormat,
     bool aPremultiply, bool aYFlip) {
   if (!CanSend()) {
     return nullptr;
   }
 
   webgl::FrontBufferSnapshotIpc res;
-  if (!SendGetSnapshot(aManagerId, aProtocolId, aOwnerId, &res)) {
+  if (!SendGetSnapshot(aManagerId, aProtocolId, aOwnerId, aCommandEncoderId,
+                       &res)) {
     return nullptr;
   }
 
@@ -251,7 +255,7 @@ already_AddRefed<DataSourceSurface> CanvasManagerChild::GetSnapshot(
   }
 
   IntSize size(res.surfSize.x, res.surfSize.y);
-  CheckedInt32 stride = CheckedInt32(size.width) * sizeof(uint32_t);
+  CheckedInt32 stride = CheckedInt32(res.byteStride);
   if (!stride.isValid()) {
     return nullptr;
   }

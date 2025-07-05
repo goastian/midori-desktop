@@ -88,8 +88,7 @@ protected:
     std::unique_ptr<SkScalerContext> onCreateScalerContext(
         const SkScalerContextEffects& effects, const SkDescriptor* desc) const override
     {
-        return SkScalerContext::MakeEmpty(
-                sk_ref_sp(const_cast<SkEmptyTypeface*>(this)), effects, desc);
+        return SkScalerContext::MakeEmpty(*const_cast<SkEmptyTypeface*>(this), effects, desc);
     }
     void onFilterRec(SkScalerContextRec*) const override { }
     std::unique_ptr<SkAdvancedTypefaceMetrics> onGetAdvancedMetrics() const override {
@@ -253,7 +252,10 @@ sk_sp<SkTypeface> SkTypeface::MakeDeserialize(SkStream* stream, sk_sp<SkFontMgr>
 
         [[maybe_unused]] FactoryId id = desc.getFactoryId();
         SkDEBUGF("Could not find factory %c%c%c%c for %s.\n",
-                 (id >> 24) & 0xFF, (id >> 16) & 0xFF, (id >> 8) & 0xFF, (id >> 0) & 0xFF,
+                 (char)((id >> 24) & 0xFF),
+                 (char)((id >> 16) & 0xFF),
+                 (char)((id >> 8) & 0xFF),
+                 (char)((id >> 0) & 0xFF),
                  desc.getFamilyName());
 
         if (lastResortMgr) {
@@ -351,6 +353,13 @@ std::unique_ptr<SkScalerContext> SkTypeface::createScalerContext(
     return scalerContext;
 }
 
+std::unique_ptr<SkScalerContext> SkTypeface::onCreateScalerContextAsProxyTypeface
+        (const SkScalerContextEffects&,
+         const SkDescriptor*,
+         SkTypeface*) const {
+    SK_ABORT("Not implemented.");
+}
+
 void SkTypeface::unicharsToGlyphs(const SkUnichar uni[], int count, SkGlyphID glyphs[]) const {
     if (count > 0 && glyphs && uni) {
         this->onCharsToGlyphs(uni, count, glyphs);
@@ -435,7 +444,7 @@ int SkTypeface::getUnitsPerEm() const {
     return this->onGetUPEM();
 }
 
-bool SkTypeface::getKerningPairAdjustments(const uint16_t glyphs[], int count,
+bool SkTypeface::getKerningPairAdjustments(const SkGlyphID glyphs[], int count,
                                            int32_t adjustments[]) const {
     SkASSERT(count >= 0);
     // check for the only legal way to pass a nullptr.. everything is 0
@@ -460,6 +469,38 @@ void SkTypeface::getFamilyName(SkString* name) const {
 
 bool SkTypeface::getPostScriptName(SkString* name) const {
     return this->onGetPostScriptName(name);
+}
+
+int SkTypeface::getResourceName(SkString* resourceName) const {
+    return this->onGetResourceName(resourceName);
+}
+
+int SkTypeface::onGetResourceName(SkString* resourceName) const {
+    return 0;
+}
+
+SkFontStyle SkTypeface::fontStyle() const {
+    return this->onGetFontStyle();
+}
+
+SkFontStyle SkTypeface::onGetFontStyle() const {
+    return fStyle;
+}
+
+bool SkTypeface::isBold() const {
+    return this->onGetFontStyle().weight() >= SkFontStyle::kSemiBold_Weight;
+}
+
+bool SkTypeface::isItalic() const {
+    return this->onGetFontStyle().slant() != SkFontStyle::kUpright_Slant;
+}
+
+bool SkTypeface::isFixedPitch() const {
+    return this->onGetFixedPitch();
+}
+
+bool SkTypeface::onGetFixedPitch() const {
+    return fIsFixedPitch;
 }
 
 void SkTypeface::getGlyphToUnicodeMap(SkUnichar* dst) const {
@@ -490,7 +531,7 @@ std::unique_ptr<SkAdvancedTypefaceMetrics> SkTypeface::getAdvancedMetrics() cons
     return result;
 }
 
-bool SkTypeface::onGetKerningPairAdjustments(const uint16_t glyphs[], int count,
+bool SkTypeface::onGetKerningPairAdjustments(const SkGlyphID glyphs[], int count,
                                              int32_t adjustments[]) const {
     return false;
 }

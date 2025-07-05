@@ -86,8 +86,10 @@ class CrashChannel final : public nsBaseChannel {
  */
 static const RedirEntry kRedirMap[] = {
     {"about", "chrome://global/content/aboutAbout.html", 0},
+#ifndef MOZ_WIDGET_ANDROID
     {"addons", "chrome://mozapps/content/extensions/aboutaddons.html",
      nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI},
+#endif
     {"buildconfig", "chrome://global/content/buildconfig.html",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::IS_SECURE_CHROME_UI},
@@ -99,7 +101,8 @@ static const RedirEntry kRedirMap[] = {
      nsIAboutModule::IS_SECURE_CHROME_UI},
 #else
     {"config", "chrome://geckoview/content/config.xhtml",
-     nsIAboutModule::IS_SECURE_CHROME_UI},
+     nsIAboutModule::IS_SECURE_CHROME_UI |
+         nsIAboutModule::HIDE_FROM_ABOUTABOUT},
 #endif
 #ifdef MOZ_CRASHREPORTER
     {"crashes", "chrome://global/content/crashes.html",
@@ -114,14 +117,24 @@ static const RedirEntry kRedirMap[] = {
          nsIAboutModule::HIDE_FROM_ABOUTABOUT | nsIAboutModule::ALLOW_SCRIPT |
          nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
          nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS},
+#ifdef MOZ_WIDGET_ANDROID
+    {"home", "about:blank",
+     nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
+         nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS |
+         nsIAboutModule::URI_MUST_LOAD_IN_CHILD},
+#endif
     {"httpsonlyerror", "chrome://global/content/httpsonlyerror/errorpage.html",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::URI_CAN_LOAD_IN_CHILD | nsIAboutModule::ALLOW_SCRIPT |
          nsIAboutModule::HIDE_FROM_ABOUTABOUT},
+#if defined(NIGHTLY_BUILD)
+    {"inference", "chrome://global/content/aboutInference.html",
+     nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::IS_SECURE_CHROME_UI},
+#endif
     {"license", "chrome://global/content/license.html",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::IS_SECURE_CHROME_UI},
-    {"logging", "chrome://global/content/aboutLogging.html",
+    {"logging", "chrome://global/content/aboutLogging/aboutLogging.html",
      nsIAboutModule::ALLOW_SCRIPT},
     {"logo", "chrome://branding/content/about.png",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
@@ -208,7 +221,7 @@ static const RedirEntry kRedirMap[] = {
          nsIAboutModule::URI_MUST_LOAD_IN_CHILD},
     {"crashgpu", "about:blank", nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"crashextensions", "about:blank", nsIAboutModule::HIDE_FROM_ABOUTABOUT}};
-static const int kRedirTotal = mozilla::ArrayLength(kRedirMap);
+static const int kRedirTotal = std::size(kRedirMap);
 
 NS_IMETHODIMP
 nsAboutRedirector::NewChannel(nsIURI* aURI, nsILoadInfo* aLoadInfo,

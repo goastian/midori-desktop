@@ -25,8 +25,8 @@ void VideoBridgeChild::StartupForGPUProcess() {
   ipc::Endpoint<PVideoBridgeParent> parentPipe;
   ipc::Endpoint<PVideoBridgeChild> childPipe;
 
-  PVideoBridge::CreateEndpoints(base::GetCurrentProcId(),
-                                base::GetCurrentProcId(), &parentPipe,
+  PVideoBridge::CreateEndpoints(ipc::EndpointProcInfo::Current(),
+                                ipc::EndpointProcInfo::Current(), &parentPipe,
                                 &childPipe);
 
   VideoBridgeChild::Open(std::move(childPipe));
@@ -176,7 +176,7 @@ bool VideoBridgeChild::IsSameProcess() const {
 }
 
 void VideoBridgeChild::HandleFatalError(const char* aMsg) {
-  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aMsg, OtherPid());
+  dom::ContentChild::FatalErrorIfNotUsingGPUProcess(aMsg, OtherChildID());
 }
 
 mozilla::ipc::IPCResult VideoBridgeChild::RecvPing(PingResolver&& aResolver) {

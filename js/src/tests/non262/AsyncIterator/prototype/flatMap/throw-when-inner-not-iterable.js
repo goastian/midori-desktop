@@ -4,7 +4,7 @@
 //
 /*---
 esid: pending
-description: %AsyncIterator.prototype%.flatMap closes the iterator and throws when mapped isn't iterable.
+description: "%AsyncIterator.prototype%.flatMap closes the iterator and throws when mapped isn't iterable."
 info: >
   Iterator Helpers proposal 2.1.6.7
   1. Repeat,
@@ -56,7 +56,6 @@ const nonIterables = [
     const mapped = iter.flatMap(x => value);
 
     assertEq(iter.closed, false);
-    console.log("here!");
     try {
       await mapped.next();
       assertEq(true, false, 'Expected reject');

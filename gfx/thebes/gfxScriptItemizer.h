@@ -51,30 +51,42 @@
 #define GFX_SCRIPTITEMIZER_H
 
 #include <stdint.h>
+#include "mozilla/Attributes.h"
 #include "mozilla/intl/UnicodeScriptCodes.h"
 
 #define PAREN_STACK_DEPTH 32
 
 class gfxScriptItemizer {
  public:
-  typedef mozilla::intl::Script Script;
+  using Script = mozilla::intl::Script;
 
-  gfxScriptItemizer(const char16_t* src, uint32_t length);
+  gfxScriptItemizer() = default;
+  gfxScriptItemizer(const gfxScriptItemizer& aOther) = delete;
+  gfxScriptItemizer(gfxScriptItemizer&& aOther) = delete;
 
-  void SetText(const char16_t* src, uint32_t length);
-
-  bool Next(uint32_t& aRunStart, uint32_t& aRunLimit, Script& aRunScript);
-
- protected:
-  void reset() {
-    scriptStart = 0;
-    scriptLimit = 0;
-    scriptCode = Script::INVALID;
-    parenSP = -1;
-    pushCount = 0;
-    fixupCount = 0;
+  void SetText(const char16_t* aText, uint32_t aLength) {
+    textPtr._2b = aText;
+    textLength = aLength;
+    textIs8bit = false;
   }
 
+  void SetText(const unsigned char* aText, uint32_t aLength) {
+    textPtr._1b = aText;
+    textLength = aLength;
+    textIs8bit = true;
+  }
+
+  struct Run {
+    uint32_t mOffset = 0;
+    uint32_t mLength = 0;
+    Script mScript = Script::COMMON;
+
+    MOZ_IMPLICIT operator bool() const { return mLength > 0; }
+  };
+
+  Run Next();
+
+ protected:
   void push(uint32_t endPairChar, Script newScriptCode);
   void pop();
   void fixup(Script newScriptCode);
@@ -84,17 +96,21 @@ class gfxScriptItemizer {
     Script scriptCode;
   };
 
-  const char16_t* textPtr;
+  union {
+    const char16_t* _2b;
+    const unsigned char* _1b;
+  } textPtr;
   uint32_t textLength;
+  bool textIs8bit;
 
-  uint32_t scriptStart;
-  uint32_t scriptLimit;
-  Script scriptCode;
+  uint32_t scriptStart = 0;
+  uint32_t scriptLimit = 0;
+  Script scriptCode = Script::INVALID;
 
   struct ParenStackEntry parenStack[PAREN_STACK_DEPTH];
-  uint32_t parenSP;
-  uint32_t pushCount;
-  uint32_t fixupCount;
+  uint32_t parenSP = -1;
+  uint32_t pushCount = 0;
+  uint32_t fixupCount = 0;
 };
 
 #endif /* GFX_SCRIPTITEMIZER_H */

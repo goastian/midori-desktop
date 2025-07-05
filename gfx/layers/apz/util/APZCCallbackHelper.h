@@ -25,6 +25,8 @@ class nsCOMPtr;
 
 namespace mozilla {
 
+enum class PreventDefaultResult : uint8_t { No, ByContent, ByChrome };
+
 class PresShell;
 class ScrollContainerFrame;
 enum class PreventDefaultResult : uint8_t;
@@ -95,6 +97,10 @@ class APZCCallbackHelper {
      given presShell. */
   static void InitializeRootDisplayport(PresShell* aPresShell);
 
+  /* Similar to above InitializeRootDisplayport but for an nsIFrame.
+     The nsIFrame needs to be a popup menu frame. */
+  static void InitializeRootDisplayport(nsIFrame* aFrame);
+
   /* Get the pres context associated with the document enclosing |aContent|. */
   static nsPresContext* GetPresContextForContent(nsIContent* aContent);
 
@@ -116,16 +122,14 @@ class APZCCallbackHelper {
       Modifiers aModifiers, int32_t aClickCount,
       PrecedingPointerDown aPrecedingPointerDownState, nsIWidget* aWidget);
 
-  /* Dispatch a mouse event with the given parameters.
-   * Return whether or not any listeners have called preventDefault on the
-   * event.
-   * This is a lightweight wrapper around nsContentUtils::SendMouseEvent()
-   * and as such expects |aPoint| to be in layout coordinates. */
+  /*
+   * Synthesize a contextmenu event with the given parameters, and dispatch it
+   * via the given widget.
+   */
   MOZ_CAN_RUN_SCRIPT
-  static PreventDefaultResult DispatchMouseEvent(
-      PresShell* aPresShell, const nsString& aType, const CSSPoint& aPoint,
-      int32_t aButton, int32_t aClickCount, int32_t aModifiers,
-      unsigned short aInputSourceArg, uint32_t aPointerId);
+  static PreventDefaultResult DispatchSynthesizedContextmenuEvent(
+      const LayoutDevicePoint& aRefPoint, Modifiers aModifiers,
+      nsIWidget* aWidget);
 
   /* Fire a single-tap event at the given point. The event is dispatched
    * via the given widget. */
@@ -200,6 +204,10 @@ class APZCCallbackHelper {
 };
 
 }  // namespace layers
+
+std::ostream& operator<<(std::ostream& aOut,
+                         const PreventDefaultResult aPreventDefaultResult);
+
 }  // namespace mozilla
 
 #endif /* mozilla_layers_APZCCallbackHelper_h */

@@ -26,7 +26,6 @@
 #include "mozilla/gfx/Logging.h"             // for gfxDebug
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/ipc/CrossProcessSemaphore.h"
-#include "mozilla/ipc/SharedMemory.h"  // for SharedMemory, etc
 #include "mozilla/layers/CanvasRenderer.h"
 #include "mozilla/layers/CompositableForwarder.h"
 #include "mozilla/layers/ISurfaceAllocator.h"
@@ -51,8 +50,6 @@
 #ifdef MOZ_WIDGET_GTK
 #  include <gtk/gtkx.h>
 #  include "gfxPlatformGtk.h"
-#  include "mozilla/layers/DMABUFTextureClientOGL.h"
-#  include "mozilla/widget/DMABufLibWrapper.h"
 #endif
 #ifdef MOZ_WAYLAND
 #  include "mozilla/widget/nsWaylandDisplay.h"
@@ -302,23 +299,16 @@ static TextureType ChooseTextureType(gfx::SurfaceFormat aFormat,
   }
 #endif
 
-#ifdef MOZ_WIDGET_GTK
-  if ((layersBackend == LayersBackend::LAYERS_WR &&
-       !aKnowsCompositor->UsingSoftwareWebRender()) &&
-      widget::DMABufDevice::IsDMABufTexturesEnabled() &&
-      aFormat != SurfaceFormat::A8) {
-    return TextureType::DMABUF;
-  }
-#endif
-
 #ifdef XP_MACOSX
-  if (StaticPrefs::gfx_use_iosurface_textures_AtStartup()) {
+  if (StaticPrefs::gfx_use_iosurface_textures_AtStartup() &&
+      !aKnowsCompositor->UsingSoftwareWebRender()) {
     return TextureType::MacIOSurface;
   }
 #endif
 
 #ifdef MOZ_WIDGET_ANDROID
-  if (StaticPrefs::gfx_use_surfacetexture_textures_AtStartup()) {
+  if (StaticPrefs::gfx_use_surfacetexture_textures_AtStartup() &&
+      !aKnowsCompositor->UsingSoftwareWebRender()) {
     return TextureType::AndroidNativeWindow;
   }
 #endif
@@ -342,11 +332,6 @@ TextureData* TextureData::Create(TextureType aTextureType,
 #ifdef XP_WIN
     case TextureType::D3D11:
       return D3D11TextureData::Create(aSize, aFormat, aAllocFlags);
-#endif
-
-#ifdef MOZ_WIDGET_GTK
-    case TextureType::DMABUF:
-      return DMABUFTextureData::Create(aSize, aFormat, aBackendType);
 #endif
 
 #ifdef XP_MACOSX
@@ -375,9 +360,13 @@ TextureData* TextureData::Create(TextureForwarder* aAllocator,
   if (aAllocFlags & ALLOC_FORCE_REMOTE) {
     RefPtr<CanvasChild> canvasChild = aAllocator->GetCanvasChild();
     if (canvasChild) {
-      return new RecordedTextureData(canvasChild.forget(), aSize, aFormat,
-                                     textureType,
-                                     layers::TexTypeForWebgl(aKnowsCompositor));
+      TextureType webglTextureType =
+          TexTypeForWebgl(aKnowsCompositor, /* aIsWebglOop */ true);
+      if (canvasChild->EnsureRecorder(aSize, aFormat, textureType,
+                                      webglTextureType)) {
+        return new RecordedTextureData(canvasChild.forget(), aSize, aFormat,
+                                       textureType, webglTextureType);
+      }
     }
     // If we must be remote, but there is no canvas child, then falling back
     // is not possible.
@@ -1489,6 +1478,7 @@ already_AddRefed<TextureClient> TextureClient::CreateForRawBufferAccess(
                            aMoz2DBackend == gfx::BackendType::DIRECT2D1_1,
                        "Unsupported TextureClient backend type");
 
+  // For future changes, check aAllocFlags aAllocFlags & ALLOC_DO_NOT_ACCELERATE
   TextureData* texData = BufferTextureData::Create(
       aSize, aFormat, gfx::BackendType::SKIA, aLayersBackend, aTextureFlags,
       aAllocFlags, aAllocator);
@@ -1608,8 +1598,9 @@ void TextureClient::GetSurfaceDescriptorRemoteDecoder(
   MOZ_RELEASE_ASSERT(mData);
   mData->GetSubDescriptor(&subDesc);
 
-  *aOutDesc =
-      SurfaceDescriptorRemoteDecoder(handle, std::move(subDesc), Nothing());
+  *aOutDesc = SurfaceDescriptorRemoteDecoder(
+      handle, std::move(subDesc), Nothing(),
+      SurfaceDescriptorRemoteDecoderId::GetNext());
 }
 
 class MemoryTextureReadLock : public NonBlockingTextureReadLock {
@@ -1760,8 +1751,8 @@ already_AddRefed<TextureReadLock> TextureReadLock::Deserialize(
       return nullptr;
     }
     default: {
-      // Invalid descriptor.
-      MOZ_DIAGNOSTIC_ASSERT(false);
+      MOZ_DIAGNOSTIC_CRASH(
+          "Invalid descriptor in TextureReadLock::Deserialize");
     }
   }
   return nullptr;
@@ -1923,7 +1914,7 @@ bool UpdateYCbCrTextureClient(TextureClient* aTexture,
                               const PlanarYCbCrData& aData) {
   MOZ_ASSERT(aTexture);
   MOZ_ASSERT(aTexture->IsLocked());
-  MOZ_ASSERT(aTexture->GetFormat() == gfx::SurfaceFormat::YUV,
+  MOZ_ASSERT(aTexture->GetFormat() == gfx::SurfaceFormat::YUV420,
              "This textureClient can only use YCbCr data");
   MOZ_ASSERT(!aTexture->IsImmutable());
   MOZ_ASSERT(aTexture->IsValid());

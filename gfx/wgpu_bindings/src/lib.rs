@@ -19,9 +19,7 @@ use nsstring::nsACString;
 
 type RawString = *const std::os::raw::c_char;
 
-//TODO: figure out why 'a and 'b have to be different here
-//TODO: remove this
-fn cow_label<'a, 'b>(raw: &'a RawString) -> Option<Cow<'b, str>> {
+fn cow_label(raw: &RawString) -> Option<Cow<'_, str>> {
     if raw.is_null() {
         None
     } else {
@@ -31,7 +29,7 @@ fn cow_label<'a, 'b>(raw: &'a RawString) -> Option<Cow<'b, str>> {
 }
 
 // Hides the repeated boilerplate of turning a `Option<&nsACString>` into a `Option<Cow<str>`.
-pub fn wgpu_string(gecko_string: Option<&nsACString>) -> Option<Cow<str>> {
+pub fn wgpu_string(gecko_string: Option<&nsACString>) -> Option<Cow<'_, str>> {
     gecko_string.map(|s| s.to_utf8())
 }
 
@@ -98,7 +96,7 @@ impl ByteBuf {
 pub struct AdapterInformation<S> {
     id: id::AdapterId,
     limits: wgt::Limits,
-    features: wgt::Features,
+    features: wgt::FeaturesWebGPU,
     name: S,
     vendor: u32,
     device: u32,
@@ -106,12 +104,13 @@ pub struct AdapterInformation<S> {
     driver: S,
     driver_info: S,
     backend: wgt::Backend,
+    support_use_external_texture_in_swap_chain: bool,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
 struct ImplicitLayout<'a> {
     pipeline: id::PipelineLayoutId,
-    bind_groups: Cow<'a, [Option<id::BindGroupLayoutId>]>,
+    bind_groups: Cow<'a, [id::BindGroupLayoutId]>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -154,6 +153,7 @@ enum DeviceAction<'a> {
         wgc::command::RenderBundleDescriptor<'a>,
     ),
     CreateRenderBundleError(id::RenderBundleId, wgc::Label<'a>),
+    CreateQuerySet(id::QuerySetId, wgc::resource::QuerySetDescriptor<'a>),
     CreateCommandEncoder(
         id::CommandEncoderId,
         wgt::CommandEncoderDescriptor<wgc::Label<'a>>,
@@ -171,8 +171,8 @@ enum QueueWriteAction {
         offset: wgt::BufferAddress,
     },
     Texture {
-        dst: wgt::ImageCopyTexture<id::TextureId>,
-        layout: wgt::ImageDataLayout,
+        dst: wgt::TexelCopyTextureInfo<id::TextureId>,
+        layout: wgt::TexelCopyBufferLayout,
         size: wgt::Extent3d,
     },
 }
@@ -211,15 +211,15 @@ impl DropAction {
 }
 
 #[repr(C)]
-pub struct ImageDataLayout<'a> {
+pub struct TexelCopyBufferLayout<'a> {
     pub offset: wgt::BufferAddress,
     pub bytes_per_row: Option<&'a u32>,
     pub rows_per_image: Option<&'a u32>,
 }
 
-impl<'a> ImageDataLayout<'a> {
-    fn into_wgt(&self) -> wgt::ImageDataLayout {
-        wgt::ImageDataLayout {
+impl<'a> TexelCopyBufferLayout<'a> {
+    fn into_wgt(&self) -> wgt::TexelCopyBufferLayout {
+        wgt::TexelCopyBufferLayout {
             offset: self.offset,
             bytes_per_row: self.bytes_per_row.map(|bpr| *bpr),
             rows_per_image: self.rows_per_image.map(|rpi| *rpi),

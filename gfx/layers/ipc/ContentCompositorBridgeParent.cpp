@@ -27,11 +27,10 @@
 #include "mozilla/mozalloc.h"  // for operator new, etc
 #include "nsDebug.h"           // for NS_ASSERTION, etc
 #include "nsTArray.h"          // for nsTArray
-#include "nsXULAppAPI.h"       // for XRE_GetIOMessageLoop
+#include "nsXULAppAPI.h"       // for XRE_GetAsyncIOEventTarget
 #include "mozilla/Unused.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPtr.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/BaseProfilerMarkerTypes.h"
 #include "GeckoProfiler.h"
 
@@ -376,7 +375,7 @@ void ContentCompositorBridgeParent::SetConfirmedTargetAPZC(
 void ContentCompositorBridgeParent::DeferredDestroy() { mSelfRef = nullptr; }
 
 ContentCompositorBridgeParent::~ContentCompositorBridgeParent() {
-  MOZ_ASSERT(XRE_GetIOMessageLoop());
+  MOZ_ASSERT(XRE_GetAsyncIOEventTarget());
 }
 
 PTextureParent* ContentCompositorBridgeParent::AllocPTextureParent(

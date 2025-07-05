@@ -15,6 +15,7 @@
 #include "mozilla/UniquePtr.h"
 #include "mozilla/WeakPtr.h"
 #include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/NavigationBinding.h"
 #include "mozilla/dom/WindowProxyHolder.h"
 #include "nsCOMPtr.h"
 #include "nsCharsetSource.h"
@@ -48,6 +49,7 @@ namespace dom {
 class ClientInfo;
 class ClientSource;
 class EventTarget;
+enum class NavigationHistoryBehavior : uint8_t;
 class SessionHistoryInfo;
 struct LoadingSessionHistoryInfo;
 struct Wireframe;
@@ -89,6 +91,8 @@ enum eCharsetReloadState {
   eCharsetReloadRequested,
   eCharsetReloadStopOrigional
 };
+
+struct SameDocumentNavigationState;
 
 class nsDocShell final : public nsDocLoader,
                          public nsIDocShell,
@@ -217,7 +221,6 @@ class nsDocShell final : public nsDocLoader,
    * file
    * @param aPostDataStream the POST data to send
    * @param aHeadersDataStream ??? (only used for plugins)
-   * @param aIsTrusted false if the triggerer is an untrusted DOM event.
    * @param aTriggeringPrincipal, if not passed explicitly we fall back to
    *        the document's principal.
    * @param aCsp, the CSP to be used for the load, that is the CSP of the
@@ -226,11 +229,13 @@ class nsDocShell final : public nsDocLoader,
    *        aCsp was not passed explicitly we fall back to using
    *        aContent's document's CSP if that document holds any.
    */
+  MOZ_CAN_RUN_SCRIPT
   nsresult OnLinkClick(nsIContent* aContent, nsIURI* aURI,
                        const nsAString& aTargetSpec, const nsAString& aFileName,
                        nsIInputStream* aPostDataStream,
                        nsIInputStream* aHeadersDataStream,
-                       bool aIsUserTriggered, bool aIsTrusted,
+                       bool aIsUserTriggered,
+                       mozilla::dom::UserNavigationInvolvement aUserInvolvement,
                        nsIPrincipal* aTriggeringPrincipal,
                        nsIContentSecurityPolicy* aCsp);
   /**
@@ -384,6 +389,8 @@ class nsDocShell final : public nsDocLoader,
     return mozilla::dom::WindowProxyHolder(mBrowsingContext);
   }
 
+  nsPIDOMWindowInner* GetActiveWindow();
+
   /**
    * Loads the given URI. See comments on nsDocShellLoadState members for more
    * information on information used.
@@ -443,7 +450,7 @@ class nsDocShell final : public nsDocLoader,
       bool aIsTopFrame, bool aAllowKeywordFixup, bool aUsePrivateBrowsing,
       bool aNotifyKeywordSearchLoading = false,
       nsIInputStream** aNewPostData = nullptr,
-      bool* outWasSchemelessInput = nullptr);
+      nsILoadInfo::SchemelessInputType* outSchemelessInput = nullptr);
 
   static already_AddRefed<nsIURI> MaybeFixBadCertDomainErrorURI(
       nsIChannel* aChannel, nsIURI* aUrl);
@@ -491,6 +498,8 @@ class nsDocShell final : public nsDocLoader,
   static uint32_t ComputeURILoaderFlags(
       mozilla::dom::BrowsingContext* aBrowsingContext, uint32_t aLoadType,
       bool aIsDocumentLoad = true);
+
+  mozilla::dom::SessionHistoryInfo* GetActiveSessionHistoryInfo() const;
 
   void SetLoadingSessionHistoryInfo(
       const mozilla::dom::LoadingSessionHistoryInfo& aLoadingInfo,
@@ -1032,16 +1041,6 @@ class nsDocShell final : public nsDocLoader,
   // embedder element, for both in-process and OOP embedders.
   void UnblockEmbedderLoadEventForFailure(bool aFireFrameErrorEvent = false);
 
-  struct SameDocumentNavigationState {
-    nsAutoCString mCurrentHash;
-    nsAutoCString mNewHash;
-    bool mCurrentURIHasRef = false;
-    bool mNewURIHasRef = false;
-    bool mSameExceptHashes = false;
-    bool mSecureUpgradeURI = false;
-    bool mHistoryNavBetweenSameDoc = false;
-  };
-
   // Check to see if we're loading a prior history entry or doing a fragment
   // navigation in the same document.
   // NOTE: In case we are doing a fragment navigation, and HTTPS-Only/ -First
@@ -1120,8 +1119,7 @@ class nsDocShell final : public nsDocLoader,
    * URI.
    * @param aNewURI the new URI.
    * @param aData The serialized state data.  May be null.
-   * @param aTitle The new title.  May be empty.
-   * @param aReplace whether this should replace the exising SHEntry.
+   * @param aHistoryHandling how to handle updating the history entries.
    *
    * Arguments we need internally because deriving them from the
    * others is a bit complicated:
@@ -1129,13 +1127,25 @@ class nsDocShell final : public nsDocLoader,
    * @param aCurrentURI the current URI we're working with.  Might be null.
    * @param aEqualURIs whether the two URIs involved are equal.
    */
-  nsresult UpdateURLAndHistory(mozilla::dom::Document* aDocument,
-                               nsIURI* aNewURI,
-                               nsIStructuredCloneContainer* aData,
-                               const nsAString& aTitle, bool aReplace,
-                               nsIURI* aCurrentURI, bool aEqualURIs);
+  nsresult UpdateURLAndHistory(
+      mozilla::dom::Document* aDocument, nsIURI* aNewURI,
+      nsIStructuredCloneContainer* aData,
+      mozilla::dom::NavigationHistoryBehavior aHistoryHandling,
+      nsIURI* aCurrentURI, bool aEqualURIs);
+
+  bool IsSameDocumentAsActiveEntry(
+      const mozilla::dom::SessionHistoryInfo& aSHInfo);
+
+  MOZ_CAN_RUN_SCRIPT nsresult
+  ReloadNavigable(JSContext* aCx, uint32_t aReloadFlags,
+                  nsIStructuredCloneContainer* aNavigationAPIState = nullptr,
+                  mozilla::dom::UserNavigationInvolvement aUserInvolvement =
+                      mozilla::dom::UserNavigationInvolvement::None);
 
  private:
+  MOZ_CAN_RUN_SCRIPT
+  void InformNavigationAPIAboutAbortingNavigation(JSContext* aCx);
+
   void SetCurrentURIInternal(nsIURI* aURI);
 
   // data members
@@ -1171,7 +1181,7 @@ class nsDocShell final : public nsDocLoader,
   nsWeakPtr mBrowserChild;
 
   // Dimensions of the docshell
-  nsIntRect mBounds;
+  mozilla::LayoutDeviceIntRect mBounds;
 
   /**
    * Content-Type Hint of the most-recently initiated load. Used for

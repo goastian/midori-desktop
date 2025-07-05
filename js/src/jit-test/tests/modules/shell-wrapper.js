@@ -1,3 +1,4 @@
+// |jit-test| --enable-import-attributes
 // Test shell ModuleObject wrapper's accessors and methods
 
 load(libdir + "asserts.js");
@@ -30,17 +31,13 @@ assertEq(a.namespace.v, 10);
 testGetter(a, "namespace");
 
 // ==== status getter ====
-const MODULE_STATUS_UNLINKED = 0;
-const MODULE_STATUS_LINKED = 2;
-const MODULE_STATUS_EVALUATED = 5;
-
 const c = registerModule('c', parseModule(`
 `));
-assertEq(c.status, MODULE_STATUS_UNLINKED);
+assertEq(c.status, "Unlinked");
 moduleLink(c);
-assertEq(c.status, MODULE_STATUS_LINKED);
+assertEq(c.status, "Linked");
 moduleEvaluate(c);
-assertEq(c.status, MODULE_STATUS_EVALUATED);
+assertEq(c.status, "Evaluated");
 testGetter(c, "status");
 
 // ==== evaluationError getter ====
@@ -59,13 +56,46 @@ import a from 'b';
 `);
 assertEq(e.requestedModules.length, 1);
 assertEq(e.requestedModules[0].moduleRequest.specifier, 'b');
+assertEq(e.requestedModules[0].moduleRequest.moduleType, 'js');
 assertEq(e.requestedModules[0].lineNumber, 2);
 assertEq(e.requestedModules[0].columnNumber, 15);
 testGetter(e, "requestedModules");
 testGetter(e.requestedModules[0], "moduleRequest");
 testGetter(e.requestedModules[0].moduleRequest, "specifier");
+testGetter(e.requestedModules[0].moduleRequest, "moduleType");
 testGetter(e.requestedModules[0], "lineNumber");
 testGetter(e.requestedModules[0], "columnNumber");
+
+if (getRealmConfiguration("importAttributes")) {
+  const e1 = parseModule(`
+import a from 'b' with {type: 'json'};
+`);
+  assertEq(e1.requestedModules.length, 1);
+  assertEq(e1.requestedModules[0].moduleRequest.specifier, 'b');
+  assertEq(e1.requestedModules[0].moduleRequest.moduleType, 'json');
+  assertEq(e1.requestedModules[0].moduleRequest.firstUnsupportedAttributeKey, null);
+  assertEq(e1.requestedModules[0].lineNumber, 2);
+  assertEq(e1.requestedModules[0].columnNumber, 15);
+  testGetter(e1, "requestedModules");
+  testGetter(e1.requestedModules[0], "moduleRequest");
+  testGetter(e1.requestedModules[0].moduleRequest, "specifier");
+  testGetter(e1.requestedModules[0].moduleRequest, "moduleType");
+  testGetter(e1.requestedModules[0], "lineNumber");
+  testGetter(e1.requestedModules[0], "columnNumber");
+
+  const e2 = parseModule(`
+import a from 'b' with {type: 'cpp', foo: 'bar'};
+`);
+  assertEq(e2.requestedModules.length, 1);
+  assertEq(e2.requestedModules[0].moduleRequest.specifier, 'b');
+  assertEq(e2.requestedModules[0].moduleRequest.moduleType, 'unknown');
+  assertEq(e2.requestedModules[0].moduleRequest.firstUnsupportedAttributeKey, 'foo');
+  testGetter(e2, "requestedModules");
+  testGetter(e2.requestedModules[0], "moduleRequest");
+  testGetter(e2.requestedModules[0].moduleRequest, "specifier");
+  testGetter(e2.requestedModules[0].moduleRequest, "moduleType");
+  testGetter(e2.requestedModules[0].moduleRequest, "firstUnsupportedAttributeKey");
+}
 
 // ==== importEntries getter ====
 const f = parseModule(`

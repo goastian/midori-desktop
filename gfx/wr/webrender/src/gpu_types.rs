@@ -4,19 +4,20 @@
 
 use api::{AlphaType, PremultipliedColorF, YuvFormat, YuvRangedColorSpace};
 use api::units::*;
-use crate::composite::CompositeFeatures;
+use crate::composite::{CompositeFeatures, CompositorClip};
 use crate::segment::EdgeAaSegmentMask;
 use crate::spatial_tree::{SpatialTree, SpatialNodeIndex};
 use crate::gpu_cache::{GpuCacheAddress, GpuDataRequest};
-use crate::internal_types::FastHashMap;
+use crate::internal_types::{FastHashMap, FrameVec, FrameMemory};
 use crate::prim_store::ClipData;
 use crate::render_task::RenderTaskAddress;
 use crate::render_task_graph::RenderTaskId;
 use crate::renderer::{ShaderColorMode, GpuBufferAddress};
 use std::i32;
-use crate::util::{TransformedRectKind, MatrixHelpers};
+use crate::util::{MatrixHelpers, TransformedRectKind};
 use glyph_rasterizer::SubpixelDirection;
 use crate::util::{ScaleOffset, pack_as_float};
+
 
 // Contains type that must exactly match the same structures declared in GLSL.
 
@@ -112,6 +113,8 @@ pub struct BlurInstance {
     pub task_address: RenderTaskAddress,
     pub src_task_address: RenderTaskAddress,
     pub blur_direction: i32,
+    pub blur_std_deviation: f32,
+    pub blur_region: DeviceSize,
 }
 
 #[derive(Clone, Debug)]
@@ -121,6 +124,21 @@ pub struct BlurInstance {
 pub struct ScalingInstance {
     pub target_rect: DeviceRect,
     pub source_rect: DeviceRect,
+    source_rect_type: f32,
+}
+
+impl ScalingInstance {
+    pub fn new(target_rect: DeviceRect, source_rect: DeviceRect, source_rect_normalized: bool) -> Self {
+        let source_rect_type = match source_rect_normalized {
+            true => UV_TYPE_NORMALIZED,
+            false => UV_TYPE_UNNORMALIZED,
+        };
+        Self {
+            target_rect,
+            source_rect,
+            source_rect_type: pack_as_float(source_rect_type),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -237,9 +255,10 @@ pub struct PrimitiveInstanceData {
     data: [i32; 4],
 }
 
-/// Specifies that an RGB CompositeInstance's UV coordinates are normalized.
+// Keep these in sync with the correspondong #defines in shared.glsl
+/// Specifies that an RGB CompositeInstance or ScalingInstance's UV coordinates are normalized.
 const UV_TYPE_NORMALIZED: u32 = 0;
-/// Specifies that an RGB CompositeInstance's UV coordinates are not normalized.
+/// Specifies that an RGB CompositeInstance or ScalingInstance's UV coordinates are not normalized.
 const UV_TYPE_UNNORMALIZED: u32 = 1;
 
 /// A GPU-friendly representation of the `ScaleOffset` type
@@ -288,6 +307,10 @@ pub struct CompositeInstance {
 
     // Whether to flip the x and y axis respectively, where 0.0 is no-flip and 1.0 is flip.
     flip: (f32, f32),
+
+    // Optional rounded rect clip to apply during compositing
+    rounded_clip_rect: DeviceRect,
+    rounded_clip_radii: [f32; 4],
 }
 
 impl CompositeInstance {
@@ -296,8 +319,12 @@ impl CompositeInstance {
         clip_rect: DeviceRect,
         color: PremultipliedColorF,
         flip: (bool, bool),
+        clip: Option<&CompositorClip>,
     ) -> Self {
         let uv = TexelRect::new(0.0, 0.0, 1.0, 1.0);
+
+        let (rounded_clip_rect, rounded_clip_radii) = Self::vertex_clip_params(clip, rect);
+
         CompositeInstance {
             rect,
             clip_rect,
@@ -308,6 +335,8 @@ impl CompositeInstance {
             yuv_channel_bit_depth: 0.0,
             uv_rects: [uv, uv, uv],
             flip: (flip.0.into(), flip.1.into()),
+            rounded_clip_rect,
+            rounded_clip_radii,
         }
     }
 
@@ -316,18 +345,28 @@ impl CompositeInstance {
         clip_rect: DeviceRect,
         color: PremultipliedColorF,
         uv_rect: TexelRect,
+        normalized_uvs: bool,
         flip: (bool, bool),
+        clip: Option<&CompositorClip>,
     ) -> Self {
+        let (rounded_clip_rect, rounded_clip_radii) = Self::vertex_clip_params(clip, rect);
+
+        let uv_type = match normalized_uvs {
+            true => UV_TYPE_NORMALIZED,
+            false => UV_TYPE_UNNORMALIZED,
+        };
         CompositeInstance {
             rect,
             clip_rect,
             color,
             _padding: 0.0,
-            color_space_or_uv_type: pack_as_float(UV_TYPE_UNNORMALIZED),
+            color_space_or_uv_type: pack_as_float(uv_type),
             yuv_format: 0.0,
             yuv_channel_bit_depth: 0.0,
             uv_rects: [uv_rect, uv_rect, uv_rect],
             flip: (flip.0.into(), flip.1.into()),
+            rounded_clip_rect,
+            rounded_clip_radii,
         }
     }
 
@@ -339,7 +378,11 @@ impl CompositeInstance {
         yuv_channel_bit_depth: u32,
         uv_rects: [TexelRect; 3],
         flip: (bool, bool),
+        clip: Option<&CompositorClip>,
     ) -> Self {
+
+        let (rounded_clip_rect, rounded_clip_radii) = Self::vertex_clip_params(clip, rect);
+
         CompositeInstance {
             rect,
             clip_rect,
@@ -350,6 +393,8 @@ impl CompositeInstance {
             yuv_channel_bit_depth: pack_as_float(yuv_channel_bit_depth),
             uv_rects,
             flip: (flip.0.into(), flip.1.into()),
+            rounded_clip_rect,
+            rounded_clip_radii,
         }
     }
 
@@ -370,7 +415,47 @@ impl CompositeInstance {
             features |= CompositeFeatures::NO_COLOR_MODULATION
         }
 
+        // If all the clip radii are <= 0.0, then we don't need clip masking
+        if self.rounded_clip_radii.iter().all(|r| *r <= 0.0) {
+            features |= CompositeFeatures::NO_CLIP_MASK
+        }
+
         features
+    }
+
+    // Returns the CompositeFeatures that can be used to composite
+    // this YUV instance.
+    pub fn get_yuv_features(&self) -> CompositeFeatures {
+        let mut features = CompositeFeatures::empty();
+
+        // If all the clip radii are <= 0.0, then we don't need clip masking
+        if self.rounded_clip_radii.iter().all(|r| *r <= 0.0) {
+            features |= CompositeFeatures::NO_CLIP_MASK
+        }
+
+        features
+    }
+
+    fn vertex_clip_params(
+        clip: Option<&CompositorClip>,
+        default_rect: DeviceRect,
+    ) -> (DeviceRect, [f32; 4]) {
+        match clip {
+            Some(clip) => {
+                (
+                    clip.rect.cast_unit(),
+                    [
+                        clip.radius.top_left.width,
+                        clip.radius.bottom_left.width,
+                        clip.radius.top_right.width,
+                        clip.radius.bottom_right.width,
+                    ],
+                )
+            }
+            None => {
+                (default_rect, [0.0; 4])
+            }
+        }
     }
 }
 
@@ -393,16 +478,16 @@ pub struct PrimitiveHeaderIndex(pub i32);
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct PrimitiveHeaders {
     // The integer-type headers for a primitive.
-    pub headers_int: Vec<PrimitiveHeaderI>,
+    pub headers_int: FrameVec<PrimitiveHeaderI>,
     // The float-type headers for a primitive.
-    pub headers_float: Vec<PrimitiveHeaderF>,
+    pub headers_float: FrameVec<PrimitiveHeaderF>,
 }
 
 impl PrimitiveHeaders {
-    pub fn new() -> PrimitiveHeaders {
+    pub fn new(memory: &FrameMemory) -> PrimitiveHeaders {
         PrimitiveHeaders {
-            headers_int: Vec::new(),
-            headers_float: Vec::new(),
+            headers_int: memory.new_vec(),
+            headers_float: memory.new_vec(),
         }
     }
 
@@ -638,6 +723,8 @@ bitflags! {
         /// Whether to force the anti-aliasing when the primitive
         /// is axis-aligned.
         const FORCE_AA = 1024;
+        /// Specifies UV coordinates are normalized
+        const NORMALIZED_UVS = 2048;
     }
 }
 
@@ -778,7 +865,7 @@ struct RelativeTransformKey {
 //           specifying a coordinate system that the transform
 //           should be relative to.
 pub struct TransformPalette {
-    transforms: Vec<TransformData>,
+    transforms: FrameVec<TransformData>,
     metadata: Vec<TransformMetadata>,
     map: FastHashMap<RelativeTransformKey, usize>,
 }
@@ -786,10 +873,11 @@ pub struct TransformPalette {
 impl TransformPalette {
     pub fn new(
         count: usize,
+        memory: &FrameMemory,
     ) -> Self {
         let _ = VECS_PER_TRANSFORM;
 
-        let mut transforms = Vec::with_capacity(count);
+        let mut transforms = memory.new_vec_with_capacity(count);
         let mut metadata = Vec::with_capacity(count);
 
         transforms.push(TransformData::invalid());
@@ -802,7 +890,7 @@ impl TransformPalette {
         }
     }
 
-    pub fn finish(self) -> Vec<TransformData> {
+    pub fn finish(self) -> FrameVec<TransformData> {
         self.transforms
     }
 
@@ -947,7 +1035,7 @@ impl ImageSource {
 // node in the transform palette.
 fn register_transform(
     metadatas: &mut Vec<TransformMetadata>,
-    transforms: &mut Vec<TransformData>,
+    transforms: &mut FrameVec<TransformData>,
     transform: LayoutToPictureTransform,
 ) -> usize {
     // TODO: refactor the calling code to not even try

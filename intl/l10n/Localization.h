@@ -46,11 +46,6 @@ namespace intl {
     const nsTArray<nsCString>& aErrors, ErrorResult& aRv,
     nsIGlobalObject* aGlobal) {
   if (!aErrors.IsEmpty()) {
-    if (xpc::IsInAutomation()) {
-      aRv.ThrowInvalidStateError(aErrors.ElementAt(0));
-      return true;
-    }
-
 #if defined(NIGHTLY_BUILD) || defined(MOZ_DEV_EDITION) || defined(DEBUG)
     dom::Document* doc = nullptr;
     if (aGlobal) {
@@ -67,6 +62,11 @@ namespace intl {
       printf_stderr("%s\n", error.get());
     }
 #endif
+
+    if (xpc::IsInAutomation()) {
+      aRv.ThrowInvalidStateError(aErrors.ElementAt(0));
+      return true;
+    }
   }
 
   return false;
@@ -94,6 +94,9 @@ class Localization : public nsIObserver,
       ErrorResult& aRv);
   static already_AddRefed<Localization> Create(
       const nsTArray<nsCString>& aResourceIds, bool aIsSync);
+  static already_AddRefed<Localization> Create(
+      const nsTArray<nsCString>& aResourceIds, bool aIsSync,
+      const nsTArray<nsCString>& aLocales);
   static already_AddRefed<Localization> Create(
       const nsTArray<ffi::GeckoResourceId>& aResourceIds, bool aIsSync);
 
@@ -142,6 +145,8 @@ class Localization : public nsIObserver,
 
  protected:
   Localization(const nsTArray<nsCString>& aResIds, bool aIsSync);
+  Localization(const nsTArray<nsCString>& aResIds, bool aIsSync,
+               const nsTArray<nsCString>& aLocales);
   Localization(const nsTArray<ffi::GeckoResourceId>& aResIds, bool aIsSync);
   Localization(nsIGlobalObject* aGlobal, bool aIsSync);
 

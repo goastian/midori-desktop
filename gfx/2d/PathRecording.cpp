@@ -11,6 +11,26 @@
 namespace mozilla {
 namespace gfx {
 
+inline Maybe<float> PathOps::ArcParams::GetRadius() const {
+  // Do a quick check for a uniform scale and/or translation transform. In the
+  // worst case scenario, failing just causes a fallback to ArcToBezier.
+  if (transform._11 == transform._22 && transform._12 == 0.0f &&
+      transform._21 == 0.0f && transform._11 > 0.0f) {
+    return Some(transform._11);
+  }
+  return Nothing();
+}
+
+inline void PathOps::ArcParams::ToSink(PathSink& aPathSink,
+                                       bool aAntiClockwise) const {
+  if (Maybe<float> radius = GetRadius()) {
+    aPathSink.Arc(GetOrigin(), *radius, startAngle, endAngle, aAntiClockwise);
+  } else {
+    ArcToBezier(&aPathSink, Point(), Size(1.0f, 1.0f), startAngle, endAngle,
+                aAntiClockwise, 0.0f, transform);
+  }
+}
+
 #define NEXT_PARAMS(_type)                                        \
   const _type params = *reinterpret_cast<const _type*>(nextByte); \
   nextByte += sizeof(_type);
@@ -46,10 +66,10 @@ bool PathOps::StreamToSink(PathSink& aPathSink) const {
         aPathSink.QuadraticBezierTo(params.p1, params.p2);
         break;
       }
-      case OpType::OP_ARC: {
+      case OpType::OP_ARC_CW:
+      case OpType::OP_ARC_CCW: {
         NEXT_PARAMS(ArcParams)
-        aPathSink.Arc(params.origin, params.radius, params.startAngle,
-                      params.endAngle, params.antiClockwise);
+        params.ToSink(aPathSink, opType == OpType::OP_ARC_CCW);
         break;
       }
       case OpType::OP_CLOSE:
@@ -108,10 +128,10 @@ bool PathOps::CheckedStreamToSink(PathSink& aPathSink) const {
         aPathSink.QuadraticBezierTo(params.p1, params.p2);
         break;
       }
-      case OpType::OP_ARC: {
+      case OpType::OP_ARC_CW:
+      case OpType::OP_ARC_CCW: {
         CHECKED_NEXT_PARAMS(ArcParams)
-        aPathSink.Arc(params.origin, params.radius, params.startAngle,
-                      params.endAngle, params.antiClockwise);
+        params.ToSink(aPathSink, opType == OpType::OP_ARC_CCW);
         break;
       }
       case OpType::OP_CLOSE:
@@ -128,6 +148,7 @@ bool PathOps::CheckedStreamToSink(PathSink& aPathSink) const {
 
 PathOps PathOps::TransformedCopy(const Matrix& aTransform) const {
   PathOps newPathOps;
+  newPathOps.mPathData.reserve(mPathData.size());
   const uint8_t* nextByte = mPathData.data();
   const uint8_t* end = nextByte + mPathData.size();
   while (nextByte < end) {
@@ -157,11 +178,11 @@ PathOps PathOps::TransformedCopy(const Matrix& aTransform) const {
                                      aTransform.TransformPoint(params.p2));
         break;
       }
-      case OpType::OP_ARC: {
+      case OpType::OP_ARC_CW:
+      case OpType::OP_ARC_CCW: {
         NEXT_PARAMS(ArcParams)
-        ArcToBezier(&newPathOps, params.origin,
-                    gfx::Size(params.radius, params.radius), params.startAngle,
-                    params.endAngle, params.antiClockwise, 0.0f, aTransform);
+        newPathOps.Arc(params.transform * aTransform, params.startAngle,
+                       params.endAngle, opType == OpType::OP_ARC_CCW);
         break;
       }
       case OpType::OP_CLOSE:
@@ -175,6 +196,54 @@ PathOps PathOps::TransformedCopy(const Matrix& aTransform) const {
   return newPathOps;
 }
 
+#define MODIFY_NEXT_PARAMS(_type)                      \
+  _type& params = *reinterpret_cast<_type*>(nextByte); \
+  nextByte += sizeof(_type);
+
+void PathOps::TransformInPlace(const Matrix& aTransform) {
+  uint8_t* nextByte = mPathData.data();
+  uint8_t* end = nextByte + mPathData.size();
+  while (nextByte < end) {
+    const OpType opType = *reinterpret_cast<const OpType*>(nextByte);
+    nextByte += sizeof(OpType);
+    switch (opType) {
+      case OpType::OP_MOVETO: {
+        MODIFY_NEXT_PARAMS(Point)
+        params = aTransform.TransformPoint(params);
+        break;
+      }
+      case OpType::OP_LINETO: {
+        MODIFY_NEXT_PARAMS(Point)
+        params = aTransform.TransformPoint(params);
+        break;
+      }
+      case OpType::OP_BEZIERTO: {
+        MODIFY_NEXT_PARAMS(ThreePoints)
+        params.p1 = aTransform.TransformPoint(params.p1);
+        params.p2 = aTransform.TransformPoint(params.p2);
+        params.p3 = aTransform.TransformPoint(params.p3);
+        break;
+      }
+      case OpType::OP_QUADRATICBEZIERTO: {
+        MODIFY_NEXT_PARAMS(TwoPoints)
+        params.p1 = aTransform.TransformPoint(params.p1);
+        params.p2 = aTransform.TransformPoint(params.p2);
+        break;
+      }
+      case OpType::OP_ARC_CW:
+      case OpType::OP_ARC_CCW: {
+        MODIFY_NEXT_PARAMS(ArcParams)
+        params.transform *= aTransform;
+        break;
+      }
+      case OpType::OP_CLOSE:
+        break;
+      default:
+        MOZ_CRASH("We control mOpTypes, so this should never happen.");
+    }
+  }
+}
+
 Maybe<Circle> PathOps::AsCircle() const {
   if (mPathData.empty()) {
     return Nothing();
@@ -184,21 +253,23 @@ Maybe<Circle> PathOps::AsCircle() const {
   const uint8_t* end = nextByte + mPathData.size();
   const OpType opType = *reinterpret_cast<const OpType*>(nextByte);
   nextByte += sizeof(OpType);
-  if (opType == OpType::OP_ARC) {
+  if (opType == OpType::OP_ARC_CW || opType == OpType::OP_ARC_CCW) {
     NEXT_PARAMS(ArcParams)
     if (fabs(fabs(params.startAngle - params.endAngle) - 2 * M_PI) < 1e-6) {
-      // we have a full circle
-      if (nextByte < end) {
-        const OpType nextOpType = *reinterpret_cast<const OpType*>(nextByte);
-        nextByte += sizeof(OpType);
-        if (nextOpType == OpType::OP_CLOSE) {
-          if (nextByte == end) {
-            return Some(Circle{params.origin, params.radius, true});
+      if (Maybe<float> radius = params.GetRadius()) {
+        // we have a full circle
+        if (nextByte < end) {
+          const OpType nextOpType = *reinterpret_cast<const OpType*>(nextByte);
+          nextByte += sizeof(OpType);
+          if (nextOpType == OpType::OP_CLOSE) {
+            if (nextByte == end) {
+              return Some(Circle{params.GetOrigin(), *radius, true});
+            }
           }
+        } else {
+          // the circle wasn't closed
+          return Some(Circle{params.GetOrigin(), *radius, false});
         }
-      } else {
-        // the circle wasn't closed
-        return Some(Circle{params.origin, params.radius, false});
       }
     }
   }
@@ -270,7 +341,8 @@ size_t PathOps::NumberOfOps() const {
       case OpType::OP_QUADRATICBEZIERTO:
         nextByte += sizeof(TwoPoints);
         break;
-      case OpType::OP_ARC:
+      case OpType::OP_ARC_CW:
+      case OpType::OP_ARC_CCW:
         nextByte += sizeof(ArcParams);
         break;
       case OpType::OP_CLOSE:
@@ -389,6 +461,24 @@ already_AddRefed<PathBuilder> PathRecording::TransformedCopyToBuilder(
     const Matrix& aTransform, FillRule aFillRule) const {
   RefPtr<PathBuilderRecording> recording = new PathBuilderRecording(
       mBackendType, mPathOps.TransformedCopy(aTransform), aFillRule);
+  recording->SetCurrentPoint(aTransform.TransformPoint(mCurrentPoint));
+  recording->SetBeginPoint(aTransform.TransformPoint(mBeginPoint));
+  return recording.forget();
+}
+
+already_AddRefed<PathBuilder> PathRecording::MoveToBuilder(FillRule aFillRule) {
+  RefPtr<PathBuilderRecording> recording =
+      new PathBuilderRecording(mBackendType, std::move(mPathOps), aFillRule);
+  recording->SetCurrentPoint(mCurrentPoint);
+  recording->SetBeginPoint(mBeginPoint);
+  return recording.forget();
+}
+
+already_AddRefed<PathBuilder> PathRecording::TransformedMoveToBuilder(
+    const Matrix& aTransform, FillRule aFillRule) {
+  mPathOps.TransformInPlace(aTransform);
+  RefPtr<PathBuilderRecording> recording =
+      new PathBuilderRecording(mBackendType, std::move(mPathOps), aFillRule);
   recording->SetCurrentPoint(aTransform.TransformPoint(mCurrentPoint));
   recording->SetBeginPoint(aTransform.TransformPoint(mBeginPoint));
   return recording.forget();

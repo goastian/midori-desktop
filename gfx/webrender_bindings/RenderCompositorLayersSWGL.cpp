@@ -283,7 +283,8 @@ void RenderCompositorLayersSWGL::AttachExternalImage(
                      image->AsRenderDXGIYCbCrTextureHost());
 #elif defined(ANDROID)
   MOZ_RELEASE_ASSERT(image->AsRenderAndroidHardwareBufferTextureHost() ||
-                     image->AsRenderAndroidSurfaceTextureHost());
+                     image->AsRenderAndroidSurfaceTextureHost() ||
+                     image->AsRenderEGLImageTextureHost());
 #endif
 
   auto surfaceCursor = mSurfaces.find(aId);
@@ -306,7 +307,8 @@ gfx::SamplingFilter RenderCompositorLayersSWGL::ToSamplingFilter(
 
 void RenderCompositorLayersSWGL::AddSurface(
     wr::NativeSurfaceId aId, const wr::CompositorSurfaceTransform& aTransform,
-    wr::DeviceIntRect aClipRect, wr::ImageRendering aImageRendering) {
+    wr::DeviceIntRect aClipRect, wr::ImageRendering aImageRendering,
+    wr::DeviceIntRect aRoundedClipRect, wr::ClipRadius aClipRadius) {
   float sx = aTransform.scale.x;
   float sy = aTransform.scale.y;
   float tx = aTransform.offset.x;

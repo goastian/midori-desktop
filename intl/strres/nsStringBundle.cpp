@@ -5,7 +5,6 @@
 
 #include "nsStringBundle.h"
 
-#include "netCore.h"
 #include "nsID.h"
 #include "nsString.h"
 #include "nsIStringBundle.h"
@@ -26,7 +25,7 @@
 #include "nsQueryObject.h"
 #include "nsSimpleEnumerator.h"
 #include "nsStringStream.h"
-#include "mozilla/dom/txXSLTMsgsURL.h"
+#include "mozilla/ipc/SharedMemoryHandle.h"
 #include "mozilla/BinarySearch.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/ResultExtensions.h"
@@ -84,7 +83,7 @@ static const char kContentBundles[][52] = {
 static bool IsContentBundle(const nsCString& aUrl) {
   size_t index;
   return BinarySearchIf(
-      kContentBundles, 0, MOZ_ARRAY_LENGTH(kContentBundles),
+      kContentBundles, 0, std::size(kContentBundles),
       [&](const char* aElem) {
         return Compare(aUrl, nsDependentCString(aElem));
       },
@@ -93,12 +92,8 @@ static bool IsContentBundle(const nsCString& aUrl) {
 
 namespace {
 
-#define STRINGBUNDLEPROXY_IID                        \
-  {                                                  \
-    0x537cf21b, 0x99fc, 0x4002, {                    \
-      0x9e, 0xec, 0x97, 0xbe, 0x4d, 0xe0, 0xb3, 0xdc \
-    }                                                \
-  }
+#define STRINGBUNDLEPROXY_IID \
+  {0x537cf21b, 0x99fc, 0x4002, {0x9e, 0xec, 0x97, 0xbe, 0x4d, 0xe0, 0xb3, 0xdc}}
 
 /**
  * A simple proxy class for a string bundle instance which will be replaced by
@@ -116,7 +111,7 @@ namespace {
 class StringBundleProxy : public nsIStringBundle {
   NS_DECL_THREADSAFE_ISUPPORTS
 
-  NS_DECLARE_STATIC_IID_ACCESSOR(STRINGBUNDLEPROXY_IID)
+  NS_INLINE_DECL_STATIC_IID(STRINGBUNDLEPROXY_IID)
 
   explicit StringBundleProxy(already_AddRefed<nsIStringBundle> aTarget)
       : mMutex("StringBundleProxy::mMutex"), mTarget(aTarget) {}
@@ -182,16 +177,10 @@ class StringBundleProxy : public nsIStringBundle {
   }
 };
 
-NS_DEFINE_STATIC_IID_ACCESSOR(StringBundleProxy, STRINGBUNDLEPROXY_IID)
-
 NS_IMPL_ISUPPORTS(StringBundleProxy, nsIStringBundle, StringBundleProxy)
 
-#define SHAREDSTRINGBUNDLE_IID                       \
-  {                                                  \
-    0x7a8df5f7, 0x9e50, 0x44f6, {                    \
-      0xbf, 0x89, 0xc7, 0xad, 0x6c, 0x17, 0xf8, 0x5f \
-    }                                                \
-  }
+#define SHAREDSTRINGBUNDLE_IID \
+  {0x7a8df5f7, 0x9e50, 0x44f6, {0xbf, 0x89, 0xc7, 0xad, 0x6c, 0x17, 0xf8, 0x5f}}
 
 /**
  * A string bundle backed by a read-only, shared memory buffer. This should
@@ -209,30 +198,30 @@ class SharedStringBundle final : public nsStringBundleBase {
    * called in child processes, for bundles initially created in the parent
    * process.
    */
-  void SetMapFile(const FileDescriptor& aFile, size_t aSize);
+  void SetMapFile(mozilla::ipc::ReadOnlySharedMemoryHandle&& aHandle);
 
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECLARE_STATIC_IID_ACCESSOR(SHAREDSTRINGBUNDLE_IID)
+  NS_INLINE_DECL_STATIC_IID(SHAREDSTRINGBUNDLE_IID)
 
   nsresult LoadProperties() override;
 
   /**
    * Returns a copy of the file descriptor pointing to the shared memory
-   * key-values tore for this string bundle. This should only be called in the
+   * key-value store for this string bundle. This should only be called in the
    * parent process, and may be used to send shared string bundles to child
    * processes.
    */
-  FileDescriptor CloneFileDescriptor() const {
+  mozilla::ipc::ReadOnlySharedMemoryHandle CloneHandle() const {
     MOZ_ASSERT(XRE_IsParentProcess());
-    if (mMapFile.isSome()) {
-      return mMapFile.ref();
+    if (mMapHandle.isSome()) {
+      return mMapHandle.ref().Clone();
     }
-    return mStringMap->CloneFileDescriptor();
+    return mStringMap->CloneHandle();
   }
 
   size_t MapSize() const {
-    if (mMapFile.isSome()) {
-      return mMapSize;
+    if (mMapHandle.isSome()) {
+      return mMapHandle->Size();
     }
     if (mStringMap) {
       return mStringMap->MapSize();
@@ -240,15 +229,14 @@ class SharedStringBundle final : public nsStringBundleBase {
     return 0;
   }
 
-  bool Initialized() const { return mStringMap || mMapFile.isSome(); }
+  bool Initialized() const { return mStringMap || mMapHandle.isSome(); }
 
   StringBundleDescriptor GetDescriptor() const {
     MOZ_ASSERT(Initialized());
 
     StringBundleDescriptor descriptor;
     descriptor.bundleURL() = BundleURL();
-    descriptor.mapFile() = CloneFileDescriptor();
-    descriptor.mapSize() = MapSize();
+    descriptor.mapHandle() = CloneHandle();
     return descriptor;
   }
 
@@ -273,11 +261,8 @@ class SharedStringBundle final : public nsStringBundleBase {
  private:
   RefPtr<SharedStringMap> mStringMap;
 
-  Maybe<FileDescriptor> mMapFile;
-  size_t mMapSize;
+  Maybe<mozilla::ipc::ReadOnlySharedMemoryHandle> mMapHandle;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(SharedStringBundle, SHAREDSTRINGBUNDLE_IID)
 
 class StringMapEnumerator final : public nsSimpleEnumerator {
  public:
@@ -521,9 +506,8 @@ nsresult nsStringBundle::LoadProperties() {
 nsresult SharedStringBundle::LoadProperties() {
   if (mStringMap) return NS_OK;
 
-  if (mMapFile.isSome()) {
-    mStringMap = new SharedStringMap(mMapFile.ref(), mMapSize);
-    mMapFile.reset();
+  if (mMapHandle.isSome()) {
+    mStringMap = new SharedStringMap(mMapHandle.extract());
     return NS_OK;
   }
 
@@ -576,11 +560,11 @@ nsresult SharedStringBundle::LoadProperties() {
   return NS_OK;
 }
 
-void SharedStringBundle::SetMapFile(const FileDescriptor& aFile, size_t aSize) {
+void SharedStringBundle::SetMapFile(
+    mozilla::ipc::ReadOnlySharedMemoryHandle&& aHandle) {
   MOZ_ASSERT(XRE_IsContentProcess());
   mStringMap = nullptr;
-  mMapFile.emplace(aFile);
-  mMapSize = aSize;
+  mMapHandle.emplace(std::move(aHandle));
 }
 
 NS_IMETHODIMP
@@ -827,8 +811,8 @@ void nsStringBundleService::SendContentBundles(ContentParent* aContentParent) {
 }
 
 void nsStringBundleService::RegisterContentBundle(
-    const nsACString& aBundleURL, const FileDescriptor& aMapFile,
-    size_t aMapSize) {
+    const nsACString& aBundleURL,
+    mozilla::ipc::ReadOnlySharedMemoryHandle&& aMapHandle) {
   RefPtr<StringBundleProxy> proxy;
 
   bundleCacheEntry_t* cacheEntry = mBundleMap.Get(aBundleURL);
@@ -846,7 +830,7 @@ void nsStringBundleService::RegisterContentBundle(
 
   auto bundle = MakeBundleRefPtr<SharedStringBundle>(
       PromiseFlatCString(aBundleURL).get());
-  bundle->SetMapFile(aMapFile, aMapSize);
+  bundle->SetMapFile(std::move(aMapHandle));
 
   if (proxy) {
     proxy->Retarget(bundle);
@@ -856,8 +840,9 @@ void nsStringBundleService::RegisterContentBundle(
   mSharedBundles.insertBack(cacheEntry);
 }
 
-void nsStringBundleService::getStringBundle(const char* aURLSpec,
-                                            nsIStringBundle** aResult) {
+NS_IMETHODIMP
+nsStringBundleService::CreateBundle(const char* aURLSpec,
+                                    nsIStringBundle** aResult) {
   nsDependentCString key(aURLSpec);
   bundleCacheEntry_t* cacheEntry = mBundleMap.Get(key);
 
@@ -909,6 +894,8 @@ void nsStringBundleService::getStringBundle(const char* aURLSpec,
   // finally, return the value
   *aResult = cacheEntry->mBundle;
   NS_ADDREF(*aResult);
+
+  return NS_OK;
 }
 
 UniquePtr<bundleCacheEntry_t> nsStringBundleService::evictOneEntry() {
@@ -941,86 +928,4 @@ bundleCacheEntry_t* nsStringBundleService::insertIntoCache(
   mBundleMap.InsertOrUpdate(cacheEntry->mHashKey, cacheEntry.get());
 
   return cacheEntry.release();
-}
-
-NS_IMETHODIMP
-nsStringBundleService::CreateBundle(const char* aURLSpec,
-                                    nsIStringBundle** aResult) {
-  getStringBundle(aURLSpec, aResult);
-  return NS_OK;
-}
-
-#define GLOBAL_PROPERTIES "chrome://global/locale/global-strres.properties"
-
-nsresult nsStringBundleService::FormatWithBundle(
-    nsIStringBundle* bundle, nsresult aStatus,
-    const nsTArray<nsString>& argArray, nsAString& result) {
-  nsresult rv;
-
-  // try looking up the error message with the int key:
-  uint16_t code = NS_ERROR_GET_CODE(aStatus);
-  rv = bundle->FormatStringFromID(code, argArray, result);
-
-  // If the int key fails, try looking up the default error message. E.g. print:
-  //   An unknown error has occurred (0x804B0003).
-  if (NS_FAILED(rv)) {
-    AutoTArray<nsString, 1> otherArgArray;
-    otherArgArray.AppendElement()->AppendInt(static_cast<uint32_t>(aStatus),
-                                             16);
-    uint16_t code = NS_ERROR_GET_CODE(NS_ERROR_FAILURE);
-    rv = bundle->FormatStringFromID(code, otherArgArray, result);
-  }
-
-  return rv;
-}
-
-NS_IMETHODIMP
-nsStringBundleService::FormatStatusMessage(nsresult aStatus,
-                                           const char16_t* aStatusArg,
-                                           nsAString& result) {
-  uint32_t i, argCount = 0;
-  nsCOMPtr<nsIStringBundle> bundle;
-
-  // XXX hack for mailnews who has already formatted their messages:
-  if (aStatus == NS_OK && aStatusArg) {
-    result.Assign(aStatusArg);
-    return NS_OK;
-  }
-
-  if (aStatus == NS_OK) {
-    return NS_ERROR_FAILURE;  // no message to format
-  }
-
-  // format the arguments:
-  const nsDependentString args(aStatusArg);
-  argCount = args.CountChar(char16_t('\n')) + 1;
-  NS_ENSURE_ARG(argCount <= 10);  // enforce 10-parameter limit
-  AutoTArray<nsString, 10> argArray;
-
-  // convert the aStatusArg into an nsString array
-  if (argCount == 1) {
-    argArray.AppendElement(aStatusArg);
-  } else if (argCount > 1) {
-    int32_t offset = 0;
-    for (i = 0; i < argCount; i++) {
-      int32_t pos = args.FindChar('\n', offset);
-      if (pos == -1) pos = args.Length();
-      argArray.AppendElement(Substring(args, offset, pos - offset));
-      offset = pos + 1;
-    }
-  }
-
-  switch (NS_ERROR_GET_MODULE(aStatus)) {
-    case NS_ERROR_MODULE_XSLT:
-      getStringBundle(XSLT_MSGS_URL, getter_AddRefs(bundle));
-      break;
-    case NS_ERROR_MODULE_NETWORK:
-      getStringBundle(NECKO_MSGS_URL, getter_AddRefs(bundle));
-      break;
-    default:
-      getStringBundle(GLOBAL_PROPERTIES, getter_AddRefs(bundle));
-      break;
-  }
-
-  return FormatWithBundle(bundle, aStatus, argArray, result);
 }

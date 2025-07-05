@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 dz{
     Countries{
         001{"འཛམ་གླིང༌"}
@@ -144,7 +144,6 @@ dz{
         IL{"ཨིས་ར་ཡེལ"}
         IM{"ཨ་ཡུལ་ ཨོཕ་ མཱན"}
         IN{"རྒྱ་གར"}
-        IO{"བྲི་ཊིཤ་རྒྱ་གར་གྱི་རྒྱ་མཚོ་ས་ཁོངས"}
         IQ{"ཨི་རཱཀ"}
         IR{"ཨི་རཱན"}
         IS{"ཨཱའིས་ལེནཌ"}

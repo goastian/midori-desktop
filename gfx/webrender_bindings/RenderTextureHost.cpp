@@ -7,6 +7,10 @@
 #include "RenderTextureHost.h"
 
 #include "GLContext.h"
+#include "mozilla/layers/CompositorThread.h"
+#include "mozilla/layers/TextureHost.h"
+#include "mozilla/ProfilerMarkers.h"
+#include "mozilla/webrender/RenderThread.h"
 #include "RenderThread.h"
 
 namespace mozilla {
@@ -21,6 +25,63 @@ void ActivateBindAndTexParameteri(gl::GLContext* aGL, GLenum aActiveTexture,
                       LOCAL_GL_LINEAR);
   aGL->fTexParameteri(aBindTarget, LOCAL_GL_TEXTURE_MAG_FILTER,
                       LOCAL_GL_LINEAR);
+}
+
+void RenderTextureHostUsageInfo::OnVideoPresent(int aFrameId,
+                                                uint32_t aDurationMs) {
+  MOZ_ASSERT(RenderThread::IsInRenderThread());
+
+  const auto maxPresentWaitDurationMs = 2;
+  const auto maxSlowPresentCount = 5;
+
+  mVideoPresentFrameId = aFrameId;
+
+  if (aDurationMs < maxPresentWaitDurationMs) {
+    mSlowPresentCount = 0;
+    return;
+  }
+
+  mSlowPresentCount++;
+
+  if (mSlowPresentCount <= maxSlowPresentCount) {
+    return;
+  }
+
+  DisableVideoOverlay();
+
+  gfxCriticalNoteOnce << "Video swapchain present is slow";
+
+  nsPrintfCString marker("Video swapchain present is slow");
+  PROFILER_MARKER_TEXT("DisableOverlay", GRAPHICS, {}, marker);
+}
+
+void RenderTextureHostUsageInfo::OnCompositorEndFrame(int aFrameId,
+                                                      uint32_t aDurationMs) {
+  MOZ_ASSERT(RenderThread::IsInRenderThread());
+
+  const auto maxCommitWaitDurationMs = 20;
+  const auto maxSlowCommitCount = 5;
+
+  // Check if video was presented in current frame.
+  if (mVideoPresentFrameId != aFrameId) {
+    return;
+  }
+
+  if (aDurationMs < maxCommitWaitDurationMs) {
+    mSlowCommitCount = 0;
+    return;
+  }
+
+  mSlowCommitCount++;
+
+  if (mSlowCommitCount <= maxSlowCommitCount) {
+    return;
+  }
+
+  gfxCriticalNoteOnce << "Video swapchain is slow";
+
+  nsPrintfCString marker("Video swapchain is slow");
+  PROFILER_MARKER_TEXT("DisableOverlay", GRAPHICS, {}, marker);
 }
 
 RenderTextureHost::RenderTextureHost() : mIsFromDRMSource(false) {
@@ -43,15 +104,67 @@ wr::WrExternalImage RenderTextureHost::LockSWGL(uint8_t aChannelIndex,
   return InvalidToWrExternalImage();
 }
 
-std::pair<gfx::Point, gfx::Point> RenderTextureHost::GetUvCoords(
-    gfx::IntSize aTextureSize) const {
-  return std::make_pair(gfx::Point(0.0, 0.0),
-                        gfx::Point(static_cast<float>(aTextureSize.width),
-                                   static_cast<float>(aTextureSize.height)));
+RefPtr<layers::TextureSource> RenderTextureHost::CreateTextureSource(
+    layers::TextureSourceProvider* aProvider) {
+  return nullptr;
 }
 
 void RenderTextureHost::Destroy() {
   MOZ_ASSERT_UNREACHABLE("unexpected to be called");
+}
+
+RefPtr<RenderTextureHostUsageInfo> RenderTextureHost::GetOrMergeUsageInfo(
+    const MutexAutoLock& aProofOfMapLock,
+    RefPtr<RenderTextureHostUsageInfo> aUsageInfo) {
+  MOZ_ASSERT(layers::CompositorThreadHolder::IsInCompositorThread());
+
+  if (mRenderTextureHostUsageInfo && aUsageInfo) {
+    if (mRenderTextureHostUsageInfo == aUsageInfo) {
+      return mRenderTextureHostUsageInfo;
+    }
+
+    // Merge 2 RenderTextureHostUsageInfos to one RenderTextureHostUsageInfo.
+
+    const bool overlayDisabled =
+        mRenderTextureHostUsageInfo->VideoOverlayDisabled() ||
+        aUsageInfo->VideoOverlayDisabled();
+
+    // If mRenderTextureHostUsageInfo and aUsageInfo are different objects, keep
+    // the older one.
+    RefPtr<RenderTextureHostUsageInfo> usageInfo = [&]() {
+      if (aUsageInfo->mCreationTimeStamp <
+          mRenderTextureHostUsageInfo->mCreationTimeStamp) {
+        return aUsageInfo;
+      }
+      return mRenderTextureHostUsageInfo;
+    }();
+
+    // Merge info.
+    if (overlayDisabled) {
+      usageInfo->DisableVideoOverlay();
+    }
+    mRenderTextureHostUsageInfo = usageInfo;
+  } else if (aUsageInfo && !mRenderTextureHostUsageInfo) {
+    mRenderTextureHostUsageInfo = aUsageInfo;
+  }
+
+  if (!mRenderTextureHostUsageInfo) {
+    MOZ_ASSERT(!aUsageInfo);
+    mRenderTextureHostUsageInfo = new RenderTextureHostUsageInfo;
+  }
+
+  MOZ_ASSERT(mRenderTextureHostUsageInfo);
+  MOZ_ASSERT_IF(aUsageInfo && aUsageInfo->VideoOverlayDisabled(),
+                mRenderTextureHostUsageInfo->VideoOverlayDisabled());
+
+  return mRenderTextureHostUsageInfo;
+}
+
+RefPtr<RenderTextureHostUsageInfo> RenderTextureHost::GetTextureHostUsageInfo(
+    const MutexAutoLock& aProofOfMapLock) {
+  MOZ_ASSERT(RenderThread::IsInRenderThread());
+
+  return mRenderTextureHostUsageInfo;
 }
 
 }  // namespace wr

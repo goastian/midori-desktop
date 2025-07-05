@@ -10,8 +10,10 @@
 #include "GLConsts.h"
 #include "GLTypes.h"
 #include "nsISupportsImpl.h"
+#include "mozilla/Atomics.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/layers/LayersSurfaces.h"
+#include "mozilla/layers/OverlayInfo.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/webrender/webrender_ffi.h"
 #include "mozilla/webrender/WebRenderTypes.h"
@@ -21,9 +23,14 @@ namespace mozilla {
 namespace gl {
 class GLContext;
 }
+namespace layers {
+class TextureSource;
+class TextureSourceProvider;
+}  // namespace layers
 
 namespace wr {
 
+class RenderEGLImageTextureHost;
 class RenderAndroidHardwareBufferTextureHost;
 class RenderAndroidSurfaceTextureHost;
 class RenderCompositor;
@@ -34,9 +41,38 @@ class RenderMacIOSurfaceTextureHost;
 class RenderBufferTextureHost;
 class RenderTextureHostSWGL;
 class RenderTextureHostWrapper;
+class RenderDMABUFTextureHost;
 
 void ActivateBindAndTexParameteri(gl::GLContext* aGL, GLenum aActiveTexture,
                                   GLenum aBindTarget, GLuint aBindTexture);
+
+// RenderTextureHostUsageInfo holds information about how the RenderTextureHost
+// is used. It is used by AsyncImagePipelineManager to determine how to render
+// TextureHost.
+class RenderTextureHostUsageInfo final {
+ public:
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(RenderTextureHostUsageInfo)
+
+  RenderTextureHostUsageInfo() : mCreationTimeStamp(TimeStamp::Now()) {}
+
+  bool VideoOverlayDisabled() { return mVideoOverlayDisabled; }
+  void DisableVideoOverlay() { mVideoOverlayDisabled = true; }
+
+  void OnVideoPresent(int aFrameId, uint32_t aDurationMs);
+  void OnCompositorEndFrame(int aFrameId, uint32_t aDurationMs);
+
+  const TimeStamp mCreationTimeStamp;
+
+ protected:
+  ~RenderTextureHostUsageInfo() = default;
+
+  // RenderTextureHost prefers to disable video overlay.
+  Atomic<bool> mVideoOverlayDisabled{false};
+
+  int mVideoPresentFrameId = 0;
+  int mSlowPresentCount = 0;
+  int mSlowCommitCount = 0;
+};
 
 class RenderTextureHost {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(RenderTextureHost)
@@ -60,6 +96,9 @@ class RenderTextureHost {
                                        RenderCompositor* aCompositor);
 
   virtual void UnlockSWGL() {}
+
+  virtual RefPtr<layers::TextureSource> CreateTextureSource(
+      layers::TextureSourceProvider* aProvider);
 
   virtual void ClearCachedResources() {}
 
@@ -95,6 +134,10 @@ class RenderTextureHost {
     return nullptr;
   }
 
+  virtual RenderEGLImageTextureHost* AsRenderEGLImageTextureHost() {
+    return nullptr;
+  }
+
   virtual RenderAndroidHardwareBufferTextureHost*
   AsRenderAndroidHardwareBufferTextureHost() {
     return nullptr;
@@ -110,6 +153,10 @@ class RenderTextureHost {
     return nullptr;
   }
 
+  virtual RenderDMABUFTextureHost* AsRenderDMABUFTextureHost() {
+    return nullptr;
+  }
+
   virtual void Destroy();
 
   virtual void SetIsSoftwareDecodedVideo() {
@@ -120,17 +167,23 @@ class RenderTextureHost {
     return false;
   }
 
+  // Get RenderTextureHostUsageInfo of the RenderTextureHost.
+  // If mRenderTextureHostUsageInfo and aUsageInfo are different, merge them to
+  // one RenderTextureHostUsageInfo.
+  virtual RefPtr<RenderTextureHostUsageInfo> GetOrMergeUsageInfo(
+      const MutexAutoLock& aProofOfMapLock,
+      RefPtr<RenderTextureHostUsageInfo> aUsageInfo);
+
+  virtual RefPtr<RenderTextureHostUsageInfo> GetTextureHostUsageInfo(
+      const MutexAutoLock& aProofOfMapLock);
+
  protected:
   virtual ~RenderTextureHost();
 
-  // Returns the UV coordinates to be used when sampling the texture, in pixels.
-  // For most implementations these will be (0, 0) and (size.x, size.y), but
-  // some texture types (such as RenderAndroidSurfaceTextureHost) require an
-  // additional transform to be applied to the coordinates.
-  virtual std::pair<gfx::Point, gfx::Point> GetUvCoords(
-      gfx::IntSize aTextureSize) const;
-
   bool mIsFromDRMSource;
+
+  // protected by RenderThread::mRenderTextureMapLock
+  RefPtr<RenderTextureHostUsageInfo> mRenderTextureHostUsageInfo;
 
   friend class RenderTextureHostWrapper;
 };

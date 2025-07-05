@@ -43,7 +43,8 @@ var innerHTML =
 // eslint-disable-next-line no-useless-concat
 + `script></head>`
 ;
-var bc_multipart = new BroadcastChannel("bug660404_multipart");
+
+var bc_multipart = SpecialPowers.wrap(BroadcastChannel).unpartitionedTestingChannel("bug660404_multipart");
 bc_multipart.onmessage = (msgEvent) => {
     var msg = msgEvent.data;
     var command = msg.command;
@@ -54,7 +55,7 @@ bc_multipart.onmessage = (msgEvent) => {
       SimpleTest.finish();
     }
 }
-var bc = new BroadcastChannel("bug660404");
+var bc = SpecialPowers.wrap(BroadcastChannel).unpartitionedTestingChannel("bug660404");
 bc.onmessage = (msgEvent) => {
     var msg = msgEvent.data;
     var command = msg.command;
@@ -63,7 +64,6 @@ bc.onmessage = (msgEvent) => {
       bc.close();
     }
 }
-
 // If Fission is disabled, the pref is no-op.
 SpecialPowers.pushPrefEnv({set: [["fission.bfcacheInParent", true]]}, () => {
   // Have to open a new window, since there's no bfcache in subframes

@@ -7,6 +7,7 @@
 #ifndef mozilla_layers_CanvasTranslator_h
 #define mozilla_layers_CanvasTranslator_h
 
+#include <deque>
 #include <unordered_map>
 #include <vector>
 
@@ -14,13 +15,16 @@
 #include "mozilla/gfx/InlineTranslator.h"
 #include "mozilla/gfx/RecordedEvent.h"
 #include "CanvasChild.h"
+#include "mozilla/ipc/SharedMemoryHandle.h"
 #include "mozilla/layers/CanvasDrawEventRecorder.h"
 #include "mozilla/layers/LayersSurfaces.h"
 #include "mozilla/layers/PCanvasParent.h"
 #include "mozilla/layers/RemoteTextureMap.h"
 #include "mozilla/ipc/CrossProcessSemaphore.h"
+#include "mozilla/ipc/SharedMemoryMapping.h"
 #include "mozilla/Monitor.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/Variant.h"
 
 namespace mozilla {
 
@@ -28,6 +32,7 @@ using EventType = gfx::RecordedEvent::EventType;
 class TaskQueue;
 
 namespace gfx {
+class DataSourceSurfaceWrapper;
 class DrawTargetWebgl;
 class SharedContextWebgl;
 }  // namespace gfx
@@ -37,6 +42,7 @@ namespace layers {
 class SharedSurfacesHolder;
 class TextureData;
 class TextureHost;
+class VideoProcessorD3D11;
 
 class CanvasTranslator final : public gfx::InlineTranslator,
                                public PCanvasParent {
@@ -78,14 +84,13 @@ class CanvasTranslator final : public gfx::InlineTranslator,
    * @param aReaderSem reading blocked semaphore for the CanvasEventRingBuffer
    * @param aWriterSem writing blocked semaphore for the CanvasEventRingBuffer
    */
-  ipc::IPCResult RecvInitTranslator(TextureType aTextureType,
-                                    TextureType aWebglTextureType,
-                                    gfx::BackendType aBackendType,
-                                    Handle&& aReadHandle,
-                                    nsTArray<Handle>&& aBufferHandles,
-                                    uint64_t aBufferSize,
-                                    CrossProcessSemaphoreHandle&& aReaderSem,
-                                    CrossProcessSemaphoreHandle&& aWriterSem);
+  ipc::IPCResult RecvInitTranslator(
+      TextureType aTextureType, TextureType aWebglTextureType,
+      gfx::BackendType aBackendType,
+      ipc::MutableSharedMemoryHandle&& aReadHandle,
+      nsTArray<ipc::ReadOnlySharedMemoryHandle>&& aBufferHandles,
+      CrossProcessSemaphoreHandle&& aReaderSem,
+      CrossProcessSemaphoreHandle&& aWriterSem);
 
   /**
    * Restart the translation from a Stopped state.
@@ -96,15 +101,17 @@ class CanvasTranslator final : public gfx::InlineTranslator,
    * Adds a new buffer to be translated. The current buffer will be recycled if
    * it is of the default size. The translation will then be restarted.
    */
-  ipc::IPCResult RecvAddBuffer(Handle&& aBufferHandle, uint64_t aBufferSize);
+  ipc::IPCResult RecvAddBuffer(ipc::ReadOnlySharedMemoryHandle&& aBufferHandle);
 
   /**
    * Sets the shared memory to be used for readback.
    */
-  ipc::IPCResult RecvSetDataSurfaceBuffer(Handle&& aBufferHandle,
-                                          uint64_t aBufferSize);
+  ipc::IPCResult RecvSetDataSurfaceBuffer(
+      ipc::MutableSharedMemoryHandle&& aBufferHandle);
 
   ipc::IPCResult RecvClearCachedResources();
+
+  ipc::IPCResult RecvDropFreeBuffersWhenDormant();
 
   void ActorDestroy(ActorDestroyReason why) final;
 
@@ -114,8 +121,10 @@ class CanvasTranslator final : public gfx::InlineTranslator,
    * Translates events until no more are available or the end of a transaction
    * If this returns false the caller of this is responsible for re-calling
    * this function.
+   * @returns true if next HandleCanvasTranslatorEvents() needs to call
+   * TranslateRecording().
    */
-  void TranslateRecording();
+  bool TranslateRecording();
 
   /**
    * Marks the beginning of rendering for a transaction. While in a transaction
@@ -141,21 +150,24 @@ class CanvasTranslator final : public gfx::InlineTranslator,
   void DeviceChangeAcknowledged();
 
   /**
+   * Marks that device reset processing in the writing process has finished.
+   */
+  void DeviceResetAcknowledged();
+
+  /**
    * Used during playback of events to create DrawTargets. For the
    * CanvasTranslator this means creating TextureDatas and getting the
    * DrawTargets from those.
    *
    * @param aRefPtr the key to store the created DrawTarget against
-   * @param aTextureId texture ID for this DrawTarget
    * @param aTextureOwnerId texture owner ID for this DrawTarget
    * @param aSize the size of the DrawTarget
    * @param aFormat the surface format for the DrawTarget
    * @returns the new DrawTarget
    */
   already_AddRefed<gfx::DrawTarget> CreateDrawTarget(
-      gfx::ReferencePtr aRefPtr, int64_t aTextureId,
-      RemoteTextureOwnerId aTextureOwnerId, const gfx::IntSize& aSize,
-      gfx::SurfaceFormat aFormat);
+      gfx::ReferencePtr aRefPtr, RemoteTextureOwnerId aTextureOwnerId,
+      const gfx::IntSize& aSize, gfx::SurfaceFormat aFormat);
 
   already_AddRefed<gfx::DrawTarget> CreateDrawTarget(
       gfx::ReferencePtr aRefPtr, const gfx::IntSize& aSize,
@@ -170,21 +182,47 @@ class CanvasTranslator final : public gfx::InlineTranslator,
   void PauseTranslation();
 
   /**
+   * Wait for a given sync-id to be encountered before resume translation.
+   */
+  void AwaitTranslationSync(uint64_t aSyncId);
+
+  /**
+   * Signal that translation should resume if waiting on the given sync-id.
+   */
+  void SyncTranslation(uint64_t aSyncId);
+
+  /**
+   * Snapshot an external canvas and label it for later lookup under a sync-id.
+   */
+  mozilla::ipc::IPCResult RecvSnapshotExternalCanvas(uint64_t aSyncId,
+                                                     uint32_t aManagerId,
+                                                     ActorId aCanvasId);
+
+  /**
+   * Resolves the given sync-id from the recording stream to a snapshot from
+   * an external canvas that was received from an IPDL message.
+   */
+  already_AddRefed<gfx::SourceSurface> LookupExternalSnapshot(uint64_t aSyncId);
+
+  /**
    * Removes the texture and other objects associated with a texture ID.
    *
-   * @param aTextureId the texture ID to remove
+   * @param aTextureOwnerId the texture ID to remove
    */
-  void RemoveTexture(int64_t aTextureId, RemoteTextureTxnType aTxnType = 0,
+  void RemoveTexture(const RemoteTextureOwnerId aTextureOwnerId,
+                     RemoteTextureTxnType aTxnType = 0,
                      RemoteTextureTxnId aTxnId = 0);
 
-  bool LockTexture(int64_t aTextureId, OpenMode aMode,
+  bool LockTexture(const RemoteTextureOwnerId aTextureOwnerId, OpenMode aMode,
                    bool aInvalidContents = false);
-  bool UnlockTexture(int64_t aTextureId);
+  bool UnlockTexture(const RemoteTextureOwnerId aTextureOwnerId);
 
-  bool PresentTexture(int64_t aTextureId, RemoteTextureId aId);
+  bool PresentTexture(const RemoteTextureOwnerId aTextureOwnerId,
+                      RemoteTextureId aId);
 
-  bool PushRemoteTexture(int64_t aTextureId, TextureData* aData,
-                         RemoteTextureId aId, RemoteTextureOwnerId aOwnerId);
+  bool PushRemoteTexture(const RemoteTextureOwnerId aTextureOwnerId,
+                         TextureData* aData, RemoteTextureId aId,
+                         RemoteTextureOwnerId aOwnerId);
 
   /**
    * Overriden to remove any DataSourceSurfaces associated with the RefPtr.
@@ -270,7 +308,7 @@ class CanvasTranslator final : public gfx::InlineTranslator,
   UniquePtr<gfx::DataSourceSurface::ScopedMap> GetPreparedMap(
       gfx::ReferencePtr aSurface);
 
-  void PrepareShmem(int64_t aTextureId);
+  void PrepareShmem(const RemoteTextureOwnerId aTextureOwnerId);
 
   void RecycleBuffer();
 
@@ -278,14 +316,117 @@ class CanvasTranslator final : public gfx::InlineTranslator,
 
   void GetDataSurface(uint64_t aSurfaceRef);
 
+  /**
+   * Wait for a canvas to produce the designated surface. If necessary,
+   * this may flush out canvas commands to ensure the surface is created.
+   * This should only be called from within the canvas task queue thread
+   * so that it can force event processing to occur if necessary.
+   */
+  already_AddRefed<gfx::DataSourceSurface> WaitForSurface(uintptr_t aId);
+
   static void Shutdown();
+
+  void AddExportSurface(gfx::ReferencePtr aRefPtr,
+                        gfx::SourceSurface* aSurface) {
+    mExportSurfaces.InsertOrUpdate(aRefPtr, RefPtr{aSurface});
+  }
+
+  void RemoveExportSurface(gfx::ReferencePtr aRefPtr) {
+    mExportSurfaces.Remove(aRefPtr);
+  }
+
+  gfx::SourceSurface* LookupExportSurface(gfx::ReferencePtr aRefPtr) {
+    return mExportSurfaces.GetWeak(aRefPtr);
+  }
 
  private:
   ~CanvasTranslator();
 
-  void AddBuffer(Handle&& aBufferHandle, size_t aBufferSize);
+  class CanvasTranslatorEvent {
+   public:
+    enum class Tag {
+      TranslateRecording,
+      AddBuffer,
+      SetDataSurfaceBuffer,
+      ClearCachedResources,
+      DropFreeBuffersWhenDormant,
+    };
+    const Tag mTag;
 
-  void SetDataSurfaceBuffer(Handle&& aBufferHandle, size_t aBufferSize);
+   private:
+    Variant<ipc::ReadOnlySharedMemoryHandle, ipc::MutableSharedMemoryHandle>
+        mBufferHandle;
+
+   public:
+    explicit CanvasTranslatorEvent(const Tag aTag)
+        : mTag(aTag), mBufferHandle(ipc::ReadOnlySharedMemoryHandle()) {
+      MOZ_ASSERT(mTag == Tag::TranslateRecording ||
+                 mTag == Tag::ClearCachedResources ||
+                 mTag == Tag::DropFreeBuffersWhenDormant);
+    }
+    CanvasTranslatorEvent(const Tag aTag,
+                          ipc::ReadOnlySharedMemoryHandle&& aBufferHandle)
+        : mTag(aTag), mBufferHandle(std::move(aBufferHandle)) {
+      MOZ_ASSERT(mTag == Tag::AddBuffer);
+    }
+    CanvasTranslatorEvent(const Tag aTag,
+                          ipc::MutableSharedMemoryHandle&& aBufferHandle)
+        : mTag(aTag), mBufferHandle(std::move(aBufferHandle)) {
+      MOZ_ASSERT(mTag == Tag::SetDataSurfaceBuffer);
+    }
+
+    static UniquePtr<CanvasTranslatorEvent> TranslateRecording() {
+      return MakeUnique<CanvasTranslatorEvent>(Tag::TranslateRecording);
+    }
+
+    static UniquePtr<CanvasTranslatorEvent> AddBuffer(
+        ipc::ReadOnlySharedMemoryHandle&& aBufferHandle) {
+      return MakeUnique<CanvasTranslatorEvent>(Tag::AddBuffer,
+                                               std::move(aBufferHandle));
+    }
+
+    static UniquePtr<CanvasTranslatorEvent> SetDataSurfaceBuffer(
+        ipc::MutableSharedMemoryHandle&& aBufferHandle) {
+      return MakeUnique<CanvasTranslatorEvent>(Tag::SetDataSurfaceBuffer,
+                                               std::move(aBufferHandle));
+    }
+
+    static UniquePtr<CanvasTranslatorEvent> ClearCachedResources() {
+      return MakeUnique<CanvasTranslatorEvent>(Tag::ClearCachedResources);
+    }
+
+    static UniquePtr<CanvasTranslatorEvent> DropFreeBuffersWhenDormant() {
+      return MakeUnique<CanvasTranslatorEvent>(Tag::DropFreeBuffersWhenDormant);
+    }
+
+    ipc::ReadOnlySharedMemoryHandle TakeBufferHandle() {
+      if (mTag == Tag::AddBuffer) {
+        return std::move(mBufferHandle).as<ipc::ReadOnlySharedMemoryHandle>();
+      }
+      MOZ_ASSERT_UNREACHABLE("unexpected to be called");
+      return nullptr;
+    }
+
+    ipc::MutableSharedMemoryHandle TakeDataSurfaceBufferHandle() {
+      if (mTag == Tag::SetDataSurfaceBuffer) {
+        return std::move(mBufferHandle).as<ipc::MutableSharedMemoryHandle>();
+      }
+      MOZ_ASSERT_UNREACHABLE("unexpected to be called");
+      return nullptr;
+    }
+  };
+
+  /*
+   * @returns true if next HandleCanvasTranslatorEvents() needs to call
+   * TranslateRecording().
+   */
+  bool AddBuffer(ipc::ReadOnlySharedMemoryHandle&& aBufferHandle);
+
+  /*
+   * @returns true if next HandleCanvasTranslatorEvents() needs to call
+   * TranslateRecording().
+   */
+  bool SetDataSurfaceBuffer(ipc::MutableSharedMemoryHandle&& aBufferHandle);
 
   bool ReadNextEvent(EventType& aEventType);
 
@@ -297,7 +438,7 @@ class CanvasTranslator final : public gfx::InlineTranslator,
 
   void Deactivate();
 
-  bool TryDrawTargetWebglFallback(int64_t aTextureId,
+  bool TryDrawTargetWebglFallback(const RemoteTextureOwnerId aTextureOwnerId,
                                   gfx::DrawTargetWebgl* aWebgl);
   void ForceDrawTargetWebglFallback();
 
@@ -314,9 +455,8 @@ class CanvasTranslator final : public gfx::InlineTranslator,
                                                     gfx::SurfaceFormat aFormat);
 
   already_AddRefed<gfx::DrawTarget> CreateFallbackDrawTarget(
-      gfx::ReferencePtr aRefPtr, int64_t aTextureId,
-      RemoteTextureOwnerId aTextureOwnerId, const gfx::IntSize& aSize,
-      gfx::SurfaceFormat aFormat);
+      gfx::ReferencePtr aRefPtr, RemoteTextureOwnerId aTextureOwnerId,
+      const gfx::IntSize& aSize, gfx::SurfaceFormat aFormat);
 
   void ClearTextureInfo();
 
@@ -326,21 +466,38 @@ class CanvasTranslator final : public gfx::InlineTranslator,
   bool CheckForFreshCanvasDevice(int aLineNumber);
   void NotifyDeviceChanged();
 
+  void NotifyDeviceReset(const RemoteTextureOwnerIdSet& aIds);
   bool EnsureSharedContextWebgl();
-  gfx::DrawTargetWebgl* GetDrawTargetWebgl(int64_t aTextureId,
-                                           bool aCheckForFallback = true) const;
-  void NotifyRequiresRefresh(int64_t aTextureId, bool aDispatch = true);
-  void CacheSnapshotShmem(int64_t aTextureId, bool aDispatch = true);
+  gfx::DrawTargetWebgl* GetDrawTargetWebgl(
+      const RemoteTextureOwnerId aTextureOwnerId,
+      bool aCheckForFallback = true) const;
+  void NotifyRequiresRefresh(const RemoteTextureOwnerId aTextureOwnerId,
+                             bool aDispatch = true);
+  void CacheSnapshotShmem(const RemoteTextureOwnerId aTextureOwnerId,
+                          bool aDispatch = true);
+
+  void CacheDataSnapshots();
 
   void ClearCachedResources();
 
+  void DropFreeBuffersWhenDormant();
+
   already_AddRefed<gfx::DataSourceSurface>
-  GetRecycledDataSurfaceForSurfaceDescriptor(TextureHost* aTextureHost);
+  MaybeRecycleDataSurfaceForSurfaceDescriptor(
+      TextureHost* aTextureHost,
+      const SurfaceDescriptorRemoteDecoder& aSurfaceDescriptor);
+
+  bool UsePendingCanvasTranslatorEvents();
+  void PostCanvasTranslatorEvents(const MutexAutoLock& aProofOfLock);
+  void HandleCanvasTranslatorEvents();
+
+  void NotifyTextureDestruction(const RemoteTextureOwnerId aTextureOwnerId);
 
   const RefPtr<TaskQueue> mTranslationTaskQueue;
   const RefPtr<SharedSurfacesHolder> mSharedSurfacesHolder;
 #if defined(XP_WIN)
   RefPtr<ID3D11Device> mDevice;
+  DataMutex<RefPtr<VideoProcessorD3D11>> mVideoProcessorD3D11;
 #endif
   static StaticRefPtr<gfx::SharedContextWebgl> sSharedContext;
   RefPtr<gfx::SharedContextWebgl> mSharedContext;
@@ -353,20 +510,41 @@ class CanvasTranslator final : public gfx::InlineTranslator,
   using State = CanvasDrawEventRecorder::State;
   using Header = CanvasDrawEventRecorder::Header;
 
-  RefPtr<ipc::SharedMemoryBasic> mHeaderShmem;
+  ipc::SharedMemoryMapping mHeaderShmem;
   Header* mHeader = nullptr;
+  // Limit event processing to stop at the designated checkpoint, rather than
+  // proceed beyond it. This also forces processing to continue, even when it
+  // would normally have been interrupted, so long as not error is produced and
+  // so long as the checkpoint has not yet been reached.
+  int64_t mFlushCheckpoint = 0;
+
+  // The sync-id that the translator is awaiting and must be encountered before
+  // it is ready to resume translation.
+  uint64_t mAwaitSyncId = 0;
+  // The last sync-id that was actually encountered.
+  uint64_t mLastSyncId = 0;
+  // A table of external canvas snapshots associated with a given sync-id.
+  nsRefPtrHashtable<nsUint64HashKey, gfx::SourceSurface> mExternalSnapshots;
+
+  // Signal that translation should pause because it is still awaiting a sync-id
+  // that has not been encountered yet.
+  bool PauseUntilSync() const { return mAwaitSyncId > mLastSyncId; }
 
   struct CanvasShmem {
-    RefPtr<ipc::SharedMemoryBasic> shmem;
-    auto Size() { return shmem->Size(); }
+    ipc::ReadOnlySharedMemoryMapping shmem;
+    bool IsValid() const { return shmem.IsValid(); }
+    auto Size() { return shmem ? shmem.Size() : 0; }
     gfx::MemReader CreateMemReader() {
-      return {static_cast<char*>(shmem->memory()), Size()};
+      if (!shmem) {
+        return {nullptr, 0};
+      }
+      return {shmem.DataAs<char>(), Size()};
     }
   };
   std::queue<CanvasShmem> mCanvasShmems;
   CanvasShmem mCurrentShmem;
   gfx::MemReader mCurrentMemReader{0, 0};
-  RefPtr<ipc::SharedMemoryBasic> mDataSurfaceShmem;
+  ipc::SharedMemoryMapping mDataSurfaceShmem;
   UniquePtr<CrossProcessSemaphore> mWriterSemaphore;
   UniquePtr<CrossProcessSemaphore> mReaderSemaphore;
   TextureType mTextureType = TextureType::Unknown;
@@ -382,7 +560,6 @@ class CanvasTranslator final : public gfx::InlineTranslator,
     gfx::ReferencePtr mRefPtr;
     UniquePtr<TextureData> mTextureData;
     RefPtr<gfx::DrawTarget> mDrawTarget;
-    RemoteTextureOwnerId mRemoteTextureOwnerId;
     bool mNotifiedRequiresRefresh = false;
     // Ref-count of how active uses of the DT. Avoids deletion when locked.
     int32_t mLocked = 1;
@@ -391,7 +568,9 @@ class CanvasTranslator final : public gfx::InlineTranslator,
     gfx::DrawTargetWebgl* GetDrawTargetWebgl(
         bool aCheckForFallback = true) const;
   };
-  std::unordered_map<int64_t, TextureInfo> mTextureInfo;
+  std::unordered_map<RemoteTextureOwnerId, TextureInfo,
+                     RemoteTextureOwnerId::HashFn>
+      mTextureInfo;
   nsRefPtrHashtable<nsPtrHashKey<void>, gfx::DataSourceSurface> mDataSurfaces;
   gfx::ReferencePtr mMappedSurface;
   UniquePtr<gfx::DataSourceSurface::ScopedMap> mPreparedMap;
@@ -400,7 +579,17 @@ class CanvasTranslator final : public gfx::InlineTranslator,
   Atomic<bool> mIPDLClosed{false};
   bool mIsInTransaction = false;
   bool mDeviceResetInProgress = false;
+
   RefPtr<gfx::DataSourceSurface> mUsedDataSurfaceForSurfaceDescriptor;
+  RefPtr<gfx::DataSourceSurfaceWrapper> mUsedWrapperForSurfaceDescriptor;
+  Maybe<SurfaceDescriptorRemoteDecoder>
+      mUsedSurfaceDescriptorForSurfaceDescriptor;
+
+  Mutex mCanvasTranslatorEventsLock;
+  RefPtr<nsIRunnable> mCanvasTranslatorEventsRunnable;
+  std::deque<UniquePtr<CanvasTranslatorEvent>> mPendingCanvasTranslatorEvents;
+
+  nsRefPtrHashtable<nsPtrHashKey<void>, gfx::SourceSurface> mExportSurfaces;
 };
 
 }  // namespace layers

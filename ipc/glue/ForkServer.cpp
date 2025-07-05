@@ -6,19 +6,24 @@
 
 #include "mozilla/ipc/ForkServer.h"
 
+#include "base/eintr_wrapper.h"
 #include "chrome/common/chrome_switches.h"
 #include "ipc/IPCMessageUtilsSpecializations.h"
 #include "mozilla/BlockingResourceBase.h"
+#include "mozilla/GeckoArgs.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Omnijar.h"
+#include "mozilla/ProcessType.h"
 #include "mozilla/ipc/FileDescriptor.h"
 #include "mozilla/ipc/IPDLParamTraits.h"
+#include "mozilla/ipc/ProcessUtils.h"
 #include "mozilla/ipc/ProtocolMessageUtils.h"
 #include "mozilla/ipc/SetProcessTitle.h"
 #include "nsTraceRefcnt.h"
 
 #include <fcntl.h>
 #include <string.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
@@ -32,16 +37,33 @@ namespace ipc {
 
 LazyLogModule gForkServiceLog("ForkService");
 
-ForkServer::ForkServer() {}
+static int gSignalPipe = -1;
+static void HandleSigChld(int aSignal) {
+  MOZ_ASSERT(aSignal == SIGCHLD);
+  const char msg = 0;
+  HANDLE_EINTR(write(gSignalPipe, &msg, 1));
+}
 
-/**
- * Prepare an environment for running a fork server.
- */
-void ForkServer::InitProcess(int* aArgc, char*** aArgv) {
-  base::InitForkServerProcess();
+ForkServer::ForkServer(int* aArgc, char*** aArgv) : mArgc(aArgc), mArgv(aArgv) {
+  SetThisProcessName("forkserver");
 
-  mTcver = MakeUnique<MiniTransceiver>(kClientPipeFd,
+  Maybe<UniqueFileHandle> ipcHandle = geckoargs::sIPCHandle.Get(*aArgc, *aArgv);
+  if (!ipcHandle) {
+    MOZ_CRASH("forkserver missing ipcHandle argument");
+  }
+
+  // Hold our IPC FD while our MiniTransceiver is alive.
+  mIpcFd = ipcHandle.extract();
+  mTcver = MakeUnique<MiniTransceiver>(mIpcFd.get(),
                                        DataBufferClear::AfterReceiving);
+
+  auto signalPipe = geckoargs::sSignalPipe.Get(*aArgc, *aArgv);
+  if (signalPipe) {
+    gSignalPipe = signalPipe->release();
+    signal(SIGCHLD, HandleSigChld);
+  } else {
+    signal(SIGCHLD, SIG_IGN);
+  }
 }
 
 /**
@@ -64,70 +86,23 @@ bool ForkServer::HandleMessages() {
       break;
     }
 
-    OnMessageReceived(std::move(msg));
-
-    if (mAppProcBuilder) {
-      // New process - child
-      return false;
+    switch (msg->type()) {
+      case Msg_ForkNewSubprocess__ID:
+        if (HandleForkNewSubprocess(std::move(msg))) {
+          // New process - child
+          return false;
+        }
+        break;
+      case Msg_WaitPid__ID:
+        HandleWaitPid(std::move(msg));
+        break;
+      default:
+        MOZ_LOG(gForkServiceLog, LogLevel::Verbose,
+                ("unknown message type %d\n", msg->type()));
     }
   }
   // Stop the server
   return true;
-}
-
-inline void CleanCString(nsCString& str) {
-  char* data;
-  int sz = str.GetMutableData(&data);
-
-  memset(data, ' ', sz);
-}
-
-inline void CleanString(std::string& str) {
-  const char deadbeef[] =
-      "\xde\xad\xbe\xef\xde\xad\xbe\xef\xde\xad\xbe\xef\xde\xad\xbe\xef"
-      "\xde\xad\xbe\xef\xde\xad\xbe\xef\xde\xad\xbe\xef\xde\xad\xbe\xef";
-  int pos = 0;
-  size_t sz = str.size();
-  while (sz > 0) {
-    int toclean = std::min(sz, sizeof(deadbeef) - 1);
-    str.replace(pos, toclean, deadbeef);
-    sz -= toclean;
-    pos += toclean;
-  }
-}
-
-inline void PrepareArguments(std::vector<std::string>& aArgv,
-                             nsTArray<nsCString>& aArgvArray) {
-  for (auto& elt : aArgvArray) {
-    aArgv.push_back(elt.get());
-    CleanCString(elt);
-  }
-}
-
-// Prepare aOptions->env_map
-inline void PrepareEnv(base::LaunchOptions* aOptions,
-                       nsTArray<EnvVar>& aEnvMap) {
-  for (auto& elt : aEnvMap) {
-    nsCString& var = std::get<0>(elt);
-    nsCString& val = std::get<1>(elt);
-    aOptions->env_map[var.get()] = val.get();
-    CleanCString(var);
-    CleanCString(val);
-  }
-}
-
-// Prepare aOptions->fds_to_remap
-inline void PrepareFdsRemap(base::LaunchOptions* aOptions,
-                            nsTArray<FdMapping>& aFdsRemap) {
-  MOZ_LOG(gForkServiceLog, LogLevel::Verbose, ("fds mapping:"));
-  for (auto& elt : aFdsRemap) {
-    // FDs are duplicated here.
-    int fd = std::get<0>(elt).ClonePlatformHandle().release();
-    std::pair<int, int> fdmap(fd, std::get<1>(elt));
-    aOptions->fds_to_remap.push_back(fdmap);
-    MOZ_LOG(gForkServiceLog, LogLevel::Verbose,
-            ("\t%d => %d", fdmap.first, fdmap.second));
-  }
 }
 
 template <class P>
@@ -139,60 +114,103 @@ static void ReadParamInfallible(IPC::MessageReader* aReader, P* aResult,
 }
 
 /**
- * Parse a Message to get a list of arguments and fill a LaunchOptions.
+ * Parse a Message to obtain a `LaunchOptions` and the attached fd
+ * that the child will use to receive its `SubprocessExecInfo`.
  */
-inline bool ParseForkNewSubprocess(IPC::Message& aMsg,
-                                   std::vector<std::string>& aArgv,
+static bool ParseForkNewSubprocess(IPC::Message& aMsg,
+                                   UniqueFileHandle* aExecFd,
                                    base::LaunchOptions* aOptions) {
-  if (aMsg.type() != Msg_ForkNewSubprocess__ID) {
-    MOZ_LOG(gForkServiceLog, LogLevel::Verbose,
-            ("unknown message type %d\n", aMsg.type()));
-    return false;
-  }
-
+  // The type was already checked in HandleMessages
+  MOZ_ASSERT(aMsg.type() == Msg_ForkNewSubprocess__ID);
   IPC::MessageReader reader(aMsg);
-  nsTArray<nsCString> argv_array;
-  nsTArray<EnvVar> env_map;
-  nsTArray<FdMapping> fds_remap;
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
   ReadParamInfallible(&reader, &aOptions->fork_flags,
                       "Error deserializing 'int'");
-  ReadParamInfallible(&reader, &aOptions->sandbox_chroot,
-                      "Error deserializing 'bool'");
+  ReadParamInfallible(&reader, &aOptions->sandbox_chroot_server,
+                      "Error deserializing 'UniqueFileHandle'");
 #endif
-  ReadParamInfallible(&reader, &argv_array,
-                      "Error deserializing 'nsCString[]'");
-  ReadParamInfallible(&reader, &env_map, "Error deserializing 'EnvVar[]'");
-  ReadParamInfallible(&reader, &fds_remap, "Error deserializing 'FdMapping[]'");
+  ReadParamInfallible(&reader, aExecFd,
+                      "Error deserializing 'UniqueFileHandle'");
   reader.EndRead();
-
-  PrepareArguments(aArgv, argv_array);
-  PrepareEnv(aOptions, env_map);
-  PrepareFdsRemap(aOptions, fds_remap);
 
   return true;
 }
 
-inline void SanitizeBuffers(IPC::Message& aMsg, std::vector<std::string>& aArgv,
-                            base::LaunchOptions& aOptions) {
-  // Clean all buffers in the message to make sure content processes
-  // not peeking others.
-  auto& blist = aMsg.Buffers();
-  for (auto itr = blist.Iter(); !itr.Done();
-       itr.Advance(blist, itr.RemainingInSegment())) {
-    memset(itr.Data(), 0, itr.RemainingInSegment());
+/**
+ * Parse a `Message`, in the forked child process, to get the argument
+ * and environment strings.
+ */
+static bool ParseSubprocessExecInfo(IPC::Message& aMsg,
+                                    geckoargs::ChildProcessArgs* aArgs,
+                                    base::environment_map* aEnv) {
+  if (aMsg.type() != Msg_SubprocessExecInfo__ID) {
+    MOZ_LOG(gForkServiceLog, LogLevel::Verbose,
+            ("unknown message type %d (!= %d)\n", aMsg.type(),
+             Msg_SubprocessExecInfo__ID));
+    return false;
   }
 
-  // clean all data string made from the message.
-  for (auto& var : aOptions.env_map) {
-    // Do it anyway since it is not going to be used anymore.
-    CleanString(*const_cast<std::string*>(&var.first));
-    CleanString(var.second);
+  IPC::MessageReader reader(aMsg);
+
+  ReadParamInfallible(&reader, aEnv, "Error deserializing 'env_map'");
+  ReadParamInfallible(&reader, &aArgs->mArgs, "Error deserializing 'mArgs'");
+  ReadParamInfallible(&reader, &aArgs->mFiles, "Error deserializing 'mFiles'");
+  reader.EndRead();
+
+  return true;
+}
+
+// Run in the forked child process. Receives a message on `aExecFd` containing
+// the new process configuration, and updates the environment, command line, and
+// passed file handles to reflect the new process.
+static void ForkedChildProcessInit(int aExecFd, int* aArgc, char*** aArgv) {
+  // Remove the fork-server-specific SIGCHLD handler.
+  signal(SIGCHLD, SIG_DFL);
+  // This process is currently single-threaded, so the fd used by the
+  // signal handler can be safely closed once the handler is removed.
+  if (gSignalPipe >= 0) {
+    close(gSignalPipe);
+    gSignalPipe = -1;
   }
-  for (auto& arg : aArgv) {
-    CleanString(arg);
+
+  // Content process
+  MiniTransceiver execTcver(aExecFd);
+  UniquePtr<IPC::Message> execMsg;
+  if (!execTcver.Recv(execMsg)) {
+    // Crashing here isn't great, because the crash reporter isn't
+    // set up, but we don't have a lot of options currently.  Also,
+    // receive probably won't fail unless the parent also crashes.
+    printf_stderr("ForkServer: SubprocessExecInfo receive error\n");
+    MOZ_CRASH();
   }
+
+  geckoargs::ChildProcessArgs args;
+  base::environment_map env;
+  if (!ParseSubprocessExecInfo(*execMsg, &args, &env)) {
+    printf_stderr("ForkServer: SubprocessExecInfo parse error\n");
+    MOZ_CRASH();
+  }
+
+  // Set environment variables as specified in env_map.
+  for (auto& elt : env) {
+    setenv(elt.first.c_str(), elt.second.c_str(), 1);
+  }
+
+  // Initialize passed file handles.
+  geckoargs::SetPassedFileHandles(std::move(args.mFiles));
+
+  // Change argc & argv of main() with the arguments passing
+  // through IPC.
+  char** argv = new char*[args.mArgs.size() + 1];
+  char** p = argv;
+  for (auto& elt : args.mArgs) {
+    *p++ = strdup(elt.c_str());
+  }
+  *p = nullptr;
+  *aArgv = argv;
+  *aArgc = args.mArgs.size();
+  mozilla::SetProcessTitle(args.mArgs);
 }
 
 /**
@@ -202,38 +220,88 @@ inline void SanitizeBuffers(IPC::Message& aMsg, std::vector<std::string>& aArgv,
  * It will return in both the fork server process and the new content
  * process.  |mAppProcBuilder| is null for the fork server.
  */
-void ForkServer::OnMessageReceived(UniquePtr<IPC::Message> message) {
-  std::vector<std::string> argv;
+bool ForkServer::HandleForkNewSubprocess(UniquePtr<IPC::Message> aMessage) {
+  UniqueFileHandle execFd;
   base::LaunchOptions options;
-  if (!ParseForkNewSubprocess(*message, argv, &options)) {
-    return;
+  if (!ParseForkNewSubprocess(*aMessage, &execFd, &options)) {
+    return false;
   }
 
-  base::ProcessHandle child_pid = -1;
-  mAppProcBuilder = MakeUnique<base::AppProcessBuilder>();
-  if (!mAppProcBuilder->ForkProcess(argv, std::move(options), &child_pid)) {
-    MOZ_CRASH("fail to fork");
-  }
-  MOZ_ASSERT(child_pid >= 0);
+#if defined(MOZ_MEMORY) && defined(DEBUG)
+  jemalloc_stats_t stats;
+  jemalloc_stats(&stats);
+  MOZ_ASSERT(stats.narenas == 1,
+             "ForkServer before fork()/clone() should have a single arena.");
+#endif
 
-  if (child_pid == 0) {
-    // Content process
-    return;
+#if defined(XP_LINUX) && defined(MOZ_SANDBOX)
+  mozilla::SandboxLaunch launcher;
+  if (!launcher.Prepare(&options)) {
+    MOZ_CRASH("SandboxLaunch::Prepare failed");
+  }
+#else
+  struct {
+    pid_t Fork() { return fork(); }
+  } launcher;
+#endif
+
+  // Avoid any contents of buffered stdout/stderr being sent by forked
+  // children.
+  fflush(stdout);
+  fflush(stderr);
+
+  pid_t pid = launcher.Fork();
+  if (pid < 0) {
+    MOZ_CRASH("failed to fork");
+  }
+
+  // NOTE: After this point, if pid == 0, we're in the newly forked child
+  // process.
+
+  if (pid == 0) {
+    // Re-configure to a child process, and return to our caller.
+    ForkedChildProcessInit(execFd.get(), mArgc, mArgv);
+    return true;
   }
 
   // Fork server process
 
-  mAppProcBuilder = nullptr;
-
   IPC::Message reply(MSG_ROUTING_CONTROL, Reply_ForkNewSubprocess__ID);
   IPC::MessageWriter writer(reply);
-  WriteIPDLParam(&writer, nullptr, child_pid);
+  WriteIPDLParam(&writer, nullptr, pid);
   mTcver->SendInfallible(reply, "failed to send a reply message");
 
-  // Without this, the content processes that is forked later are
-  // able to read the content of buffers even the buffers have been
-  // released.
-  SanitizeBuffers(*message, argv, options);
+  return false;
+}
+
+void ForkServer::HandleWaitPid(UniquePtr<IPC::Message> aMessage) {
+  MOZ_ASSERT(aMessage->type() == Msg_WaitPid__ID);
+  IPC::MessageReader reader(*aMessage);
+
+  pid_t pid;
+  bool block;
+  ReadParamInfallible(&reader, &pid, "Error deserializing 'pid_t'");
+  ReadParamInfallible(&reader, &block, "Error deserializing 'bool'");
+
+  // It's safe to use plain waitpid here (and not the waitid/WNOWAIT
+  // contraption used in the parent process) because this process is
+  // single-threaded so there's no possibility of another thread
+  // trying to ptrace the same child process.
+  int status;
+  pid_t rv = HANDLE_EINTR(waitpid(pid, &status, block ? 0 : WNOHANG));
+  // Three possibilities here:
+  //  Terminated: rv > 0; return {false, status}
+  //     Running: rv = 0; return {true, 0}
+  //       Error: rv < 0; return {true, errno}
+  bool isErr = rv <= 0;
+  int err = rv < 0 ? errno : 0;
+  MOZ_ASSERT(isErr || rv == pid);
+
+  IPC::Message reply(MSG_ROUTING_CONTROL, Reply_WaitPid__ID);
+  IPC::MessageWriter writer(reply);
+  WriteParam(&writer, isErr);
+  WriteParam(&writer, isErr ? err : status);
+  mTcver->SendInfallible(reply, "failed to send a reply message");
 }
 
 /**
@@ -248,6 +316,8 @@ void ForkServer::OnMessageReceived(UniquePtr<IPC::Message> message) {
  * arguments from the chrome process.
  */
 bool ForkServer::RunForkServer(int* aArgc, char*** aArgv) {
+  MOZ_ASSERT(XRE_IsForkServerProcess(), "fork server process only");
+
 #ifdef DEBUG
   if (getenv("MOZ_FORKSERVER_WAIT_GDB")) {
     printf(
@@ -263,10 +333,8 @@ bool ForkServer::RunForkServer(int* aArgc, char*** aArgv) {
 
   // Do this before NS_LogInit() to avoid log files taking lower
   // FDs.
-  ForkServer forkserver;
-  forkserver.InitProcess(aArgc, aArgv);
+  ForkServer forkserver(aArgc, aArgv);
 
-  XRE_SetProcessType("forkserver");
   NS_LogInit();
   mozilla::LogModule::Init(0, nullptr);
   ForkServerPreload(*aArgc, *aArgv);
@@ -298,16 +366,30 @@ bool ForkServer::RunForkServer(int* aArgc, char*** aArgv) {
 #endif
   NS_LogTerm();
 
-  MOZ_ASSERT(forkserver.mAppProcBuilder);
-  // |messageloop| has been destroyed.  So, we can intialized the
-  // process safely.  Message loops may allocates some file
-  // descriptors.  If it is destroyed later, it may mess up this
-  // content process by closing wrong file descriptors.
-  forkserver.mAppProcBuilder->InitAppProcess(aArgc, aArgv);
-  forkserver.mAppProcBuilder.reset();
+  nsTraceRefcnt::CloseLogFilesAfterFork();
+
+  // Update our GeckoProcessType and GeckoChildID, removing the arguments.
+  if (*aArgc < 2) {
+    MOZ_CRASH("forked process missing process type and childid arguments");
+  }
+  SetGeckoProcessType((*aArgv)[--*aArgc]);
+  SetGeckoChildID((*aArgv)[--*aArgc]);
+  MOZ_ASSERT(!XRE_IsForkServerProcess(),
+             "fork server created another fork server?");
+
+  // This is now a child process, and it may even be a Content process.
+  // It is required that the PRNG at least is re-initialized so the same state
+  // is not shared accross all child processes, and in case of a Content process
+  // it is also required that the small allocation are not being randomized ;
+  // failing to do so will lead to performance regressions, e.g. as in
+  // bug 1912262.
+#if defined(MOZ_MEMORY)
+  jemalloc_reset_small_alloc_randomization(
+      /* aRandomizeSmall */ !XRE_IsContentProcess());
+#endif
 
   // Open log files again with right names and the new PID.
-  nsTraceRefcnt::ResetLogFiles((*aArgv)[*aArgc - 1]);
+  nsTraceRefcnt::ReopenLogFilesAfterFork(XRE_GetProcessTypeString());
 
   return false;
 }

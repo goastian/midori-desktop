@@ -1,4 +1,4 @@
-/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
+/* -*- tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*-
  * vim: sw=2 ts=8 et : */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -9,9 +9,12 @@ include "mozilla/layers/LayersMessageUtils.h";
 include "mozilla/layers/CanvasTranslator.h";
 
 [MoveOnly] using mozilla::CrossProcessSemaphoreHandle from "mozilla/ipc/CrossProcessSemaphore.h";
+using mozilla::layers::RemoteTextureOwnerId from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::TextureType from "mozilla/layers/LayersTypes.h";
-[MoveOnly] using mozilla::ipc::SharedMemoryBasic::Handle from "mozilla/ipc/SharedMemoryBasic.h";
 using mozilla::gfx::BackendType from "mozilla/gfx/Types.h";
+using mozilla::ipc::ActorId from "mozilla/ipc/ProtocolUtils.h";
+[MoveOnly] using mozilla::ipc::ReadOnlySharedMemoryHandle from "mozilla/ipc/SharedMemoryHandle.h";
+[MoveOnly] using mozilla::ipc::MutableSharedMemoryHandle from "mozilla/ipc/SharedMemoryHandle.h";
 
 namespace mozilla {
 namespace layers {
@@ -33,8 +36,8 @@ parent:
    * are handles for the semaphores to handle waiting on either side.
    */
   async InitTranslator(TextureType aTextureType, TextureType aWebglTextureType,
-                       BackendType aBackendType, Handle aHeaderHandle,
-                       Handle[] aBufferHandles, uint64_t aBufferSize,
+                       BackendType aBackendType, MutableSharedMemoryHandle aHeaderHandle,
+                       ReadOnlySharedMemoryHandle[] aBufferHandles,
                        CrossProcessSemaphoreHandle aReaderSem,
                        CrossProcessSemaphoreHandle aWriterSem);
 
@@ -47,17 +50,27 @@ parent:
    * Adds a new buffer to be translated. The current buffer will be recycled if
    * it is of the default size. The translation will then be restarted.
    */
-  async AddBuffer(Handle aBufferHandle, uint64_t aBufferSize);
+  async AddBuffer(ReadOnlySharedMemoryHandle aBufferHandle);
 
   /**
    * Sets the shared memory to be used for readback.
    */
-  async SetDataSurfaceBuffer(Handle aBufferHandle, uint64_t aBufferSize);
+  async SetDataSurfaceBuffer(MutableSharedMemoryHandle aBufferHandle);
 
   /**
    * Notify CanvasTranslator it is about to be minimized.
    */
   async ClearCachedResources();
+
+  /**
+   * Notify CanvasTranslator when it is dormant.
+   */
+  async DropFreeBuffersWhenDormant();
+
+  /**
+   * Snapshot an external canvas and label it for later lookup under a sync-id.
+   */
+  async SnapshotExternalCanvas(uint64_t aSyncId, uint32_t aManagerId, ActorId aCanvasId);
 
   async __delete__();
 
@@ -66,6 +79,11 @@ child:
    * Notify that the canvas device used by the translator has changed.
    */
   async NotifyDeviceChanged();
+
+  /**
+   * Notify that the canvas device used by the translator has been reset.
+   */
+  async NotifyDeviceReset(RemoteTextureOwnerId[] aOwners);
 
   /**
    * Deactivate remote canvas, which will cause fall back to software.
@@ -81,12 +99,14 @@ child:
   /**
    * Notify that a remote accelerated canvas requires a fallback refresh.
    */
-  async NotifyRequiresRefresh(int64_t aTextureId);
+  async NotifyRequiresRefresh(RemoteTextureOwnerId aTextureOwnerId);
 
   /**
    * Cache the shmem of the framebuffer for snapshotting.
    */
-  async SnapshotShmem(int64_t aTextureId, Handle aShmemHandle, uint32_t aShmemSize) returns (bool aSuccess);
+  async SnapshotShmem(RemoteTextureOwnerId aTextureOwnerId, ReadOnlySharedMemoryHandle aShmemHandle) returns (bool aSuccess);
+
+  async NotifyTextureDestruction(RemoteTextureOwnerId aTextureOwnerId);
 };
 
 } // layers

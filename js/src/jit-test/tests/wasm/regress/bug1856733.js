@@ -1,5 +1,3 @@
-// |jit-test| --setpref=wasm_gc=true; skip-if: !wasmGcEnabled()
-
 // Validates if imported globals are accounted for in init expressions.
 
 var ins = wasmEvalText(`(module
@@ -16,7 +14,7 @@ assertEq(ins.exports.test2(), 2);
 wasmFailValidateText(`(module
     (import "" "d" (global $g0 (mut i32)))
     (global $g (mut i32)  (global.get $g0))
-)`, /must reference a global immutable import/);
+)`, /must reference a previously-defined immutable global/);
 
 wasmFailValidateText(`(module
     (import "" "d" (global $g0 i32))

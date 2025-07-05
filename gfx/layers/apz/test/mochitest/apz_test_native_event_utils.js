@@ -782,7 +782,16 @@ async function synthesizeNativeTouch(
     target: aTarget,
   });
   var utils = utilsForTarget(aTarget);
-  utils.sendNativeTouchPoint(aTouchId, aType, pt.x, pt.y, 1, 90, aObserver);
+  utils.sendNativeTouchPoint(
+    aTouchId,
+    aType,
+    pt.x,
+    pt.y,
+    1,
+    90,
+    aObserver,
+    aTarget instanceof Element ? aTarget : null
+  );
   return true;
 }
 
@@ -794,11 +803,21 @@ function sendBasicNativePointerInput(
   aX,
   aY,
   aObserver,
+  aElement,
   { pressure = 1, twist = 0, tiltX = 0, tiltY = 0, button = 0 } = {}
 ) {
   switch (aPointerType) {
     case "touch":
-      utils.sendNativeTouchPoint(aId, aState, aX, aY, pressure, 90, aObserver);
+      utils.sendNativeTouchPoint(
+        aId,
+        aState,
+        aX,
+        aY,
+        pressure,
+        90,
+        aObserver,
+        aElement
+      );
       break;
     case "pen":
       utils.sendNativePenInput(
@@ -811,7 +830,8 @@ function sendBasicNativePointerInput(
         tiltX,
         tiltY,
         button,
-        aObserver
+        aObserver,
+        aElement
       );
       break;
     default:
@@ -842,6 +862,7 @@ async function promiseNativePointerInput(
       pt.x,
       pt.y,
       resolve,
+      aTarget instanceof Element ? aTarget : null,
       options
     );
   });
@@ -942,6 +963,7 @@ async function synthesizeNativePointerSequences(
             currentPositions[j].x,
             currentPositions[j].y,
             observer,
+            aTarget instanceof Element ? aTarget : null,
             options
           );
           currentPositions[j] = null;
@@ -955,6 +977,7 @@ async function synthesizeNativePointerSequences(
           aPositions[i][j].x,
           aPositions[i][j].y,
           null,
+          aTarget instanceof Element ? aTarget : null,
           options
         );
         currentPositions[j] = aPositions[i][j];
@@ -1547,8 +1570,7 @@ function promiseTopic(aTopic) {
         SpecialPowers.Services.obs.removeObserver(observer, topic);
         reject(ex);
       }
-    },
-    aTopic);
+    }, aTopic);
   });
 }
 
@@ -1916,7 +1938,7 @@ async function closeContextMenu() {
 // scroll animation is slowed down so the test can perform other actions
 // while it's still in progress.
 function getSmoothScrollPrefs(aInputType, aMsdPhysics) {
-  let result = [["apz.test.logging_enabled", true]];
+  let result = [];
   // Some callers just want the default and don't pass in aMsdPhysics.
   if (aMsdPhysics !== undefined) {
     result.push(["general.smoothScroll.msdPhysics.enabled", aMsdPhysics]);
@@ -1972,7 +1994,10 @@ function buildRelativeScrollSmoothnessVariants(aInputType, aScrollMethods) {
   for (let scrollMethod of aScrollMethods) {
     subtests.push({
       file: `helper_relative_scroll_smoothness.html?input-type=${aInputType}&scroll-method=${scrollMethod}&strict=true`,
-      prefs: getSmoothScrollPrefs(aInputType, /* Bezier physics */ false),
+      prefs: [
+        ["apz.test.logging_enabled", true],
+        ...getSmoothScrollPrefs(aInputType, /* Bezier physics */ false),
+      ],
     });
     // For MSD physics, run the test with strict=false. The shape of the
     // animation curve is highly timing dependent, and we can't guarantee
@@ -1980,8 +2005,27 @@ function buildRelativeScrollSmoothnessVariants(aInputType, aScrollMethods) {
     // arrives.
     subtests.push({
       file: `helper_relative_scroll_smoothness.html?input-type=${aInputType}&scroll-method=${scrollMethod}&strict=false`,
-      prefs: getSmoothScrollPrefs(aInputType, /* MSD physics */ true),
+      prefs: [
+        ["apz.test.logging_enabled", true],
+        ...getSmoothScrollPrefs(aInputType, /* MSD physics */ true),
+      ],
     });
   }
   return subtests;
+}
+
+// Right now this is only meaningful on Linux.
+async function getWindowProtocol() {
+  if (getPlatform() != "linux") {
+    return "";
+  }
+
+  return await SpecialPowers.spawnChrome([], () => {
+    try {
+      return Cc["@mozilla.org/gfx/info;1"].getService(Ci.nsIGfxInfo)
+        .windowProtocol;
+    } catch {
+      return "";
+    }
+  });
 }

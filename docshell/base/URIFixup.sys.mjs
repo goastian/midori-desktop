@@ -43,13 +43,6 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIFileProtocolHandler"
 );
 
-XPCOMUtils.defineLazyServiceGetter(
-  lazy,
-  "handlerService",
-  "@mozilla.org/uriloader/handler-service;1",
-  "nsIHandlerService"
-);
-
 XPCOMUtils.defineLazyPreferenceGetter(
   lazy,
   "fixupSchemeTypos",
@@ -91,6 +84,8 @@ const {
 } = Ci.nsIURIFixup;
 
 const COMMON_PROTOCOLS = ["http", "https", "file"];
+
+const HTTPISH = new Set(["http", "https"]);
 
 // Regex used to identify user:password tokens in url strings.
 // This is not a strict valid characters check, because we try to fixup this
@@ -159,13 +154,6 @@ ChromeUtils.defineLazyGetter(
   "IPv6LikeRegex",
   () =>
     /^(?:[a-z+.-]+:\/*(?!\/))?\[(?:[0-9a-f]{0,4}:){0,7}[0-9a-f]{0,4}\]?(?::\d+|\/)?/i
-);
-
-// Regex used to detect spaces in URL credentials.
-ChromeUtils.defineLazyGetter(
-  lazy,
-  "DetectSpaceInCredentialsRegex",
-  () => /^[^/]*\s[^/]*@/
 );
 
 // Cache of known domains.
@@ -254,16 +242,7 @@ ChromeUtils.defineLazyGetter(lazy, "knownSuffixes", () => {
   return suffixes;
 });
 
-export function URIFixup() {
-  // There are cases that nsIExternalProtocolService.externalProtocolHandlerExists() does
-  // not work well and returns always true due to flatpak. In this case, in order to
-  // fallback to nsIHandlerService.exits(), we test whether can trust
-  // nsIExternalProtocolService here.
-  this._trustExternalProtocolService =
-    !lazy.externalProtocolService.externalProtocolHandlerExists(
-      `__dummy${Date.now()}__`
-    );
-}
+export function URIFixup() {}
 
 URIFixup.prototype = {
   get FIXUP_FLAG_NONE() {
@@ -338,9 +317,9 @@ URIFixup.prototype = {
       (!lazy.possiblyHostPortRegex.test(uriString) &&
         !lazy.userPasswordRegex.test(uriString))
     ) {
-      // Just try to create an URL out of it.
+      // Just try to create a URL out of it.
       try {
-        info.fixedURI = Services.io.newURI(uriString);
+        info.fixedURI = makeURIWithFixedLocalHosts(uriString, fixupFlags);
       } catch (ex) {
         if (ex.result != Cr.NS_ERROR_MALFORMED_URI) {
           throw ex;
@@ -384,19 +363,29 @@ URIFixup.prototype = {
       uriString = uriString.replace(/^:?\/\//, "");
     }
 
+    let detectSpaceInCredentials = val => {
+      // Only search the first 512 chars for performance reasons.
+      let firstChars = val.slice(0, 512);
+      if (!firstChars.includes("@")) {
+        return false;
+      }
+      let credentials = firstChars.split("@")[0];
+      return !credentials.includes("/") && /\s/.test(credentials);
+    };
+
     // Avoid fixing up content that looks like tab-separated values.
     // Assume that 1 tab is accidental, but more than 1 implies this is
     // supposed to be tab-separated content.
     if (
       !isCommonProtocol &&
       lazy.maxOneTabRegex.test(uriString) &&
-      !lazy.DetectSpaceInCredentialsRegex.test(untrimmedURIString)
+      !detectSpaceInCredentials(untrimmedURIString)
     ) {
-      let uriWithProtocol = fixupURIProtocol(uriString);
+      let uriWithProtocol = fixupURIProtocol(uriString, fixupFlags);
       if (uriWithProtocol) {
         info.fixedURI = uriWithProtocol;
         info.fixupChangedProtocol = true;
-        info.wasSchemelessInput = true;
+        info.schemelessInput = Ci.nsILoadInfo.SchemelessInputTypeSchemeless;
         maybeSetAlternateFixedURI(info, fixupFlags);
         info.preferredURI = info.fixedURI;
         // Check if it's a forced visit. The user can enforce a visit by
@@ -421,9 +410,9 @@ URIFixup.prototype = {
     // Memoize the public suffix check, since it may be expensive and should
     // only run once when necessary.
     let suffixInfo;
-    function checkSuffix(info) {
+    function checkSuffix(i) {
       if (!suffixInfo) {
-        suffixInfo = checkAndFixPublicSuffix(info);
+        suffixInfo = checkAndFixPublicSuffix(i);
       }
       return suffixInfo;
     }
@@ -526,7 +515,7 @@ URIFixup.prototype = {
       !submission ||
       // For security reasons (avoid redirecting to file, data, or other unsafe
       // protocols) we only allow fixup to http/https search engines.
-      !submission.uri.scheme.startsWith("http")
+      !HTTPISH.has(submission.uri.scheme)
     ) {
       throw new Components.Exception(
         "Invalid search submission uri",
@@ -558,7 +547,7 @@ URIFixup.prototype = {
       FIXUP_FLAG_FIX_SCHEME_TYPOS
     );
 
-    if (scheme != "http" && scheme != "https") {
+    if (!HTTPISH.has(scheme)) {
       throw new Components.Exception(
         "Scheme should be either http or https",
         Cr.NS_ERROR_FAILURE
@@ -569,7 +558,7 @@ URIFixup.prototype = {
     info.fixedURI = Services.io.newURI(fixedSchemeUriString);
 
     let host = info.fixedURI.host;
-    if (host != "http" && host != "https" && host != "localhost") {
+    if (!HTTPISH.has(host) && host != "localhost") {
       let modifiedHostname = maybeAddPrefixAndSuffix(host);
       updateHostAndScheme(info, modifiedHostname);
       info.preferredURI = info.fixedURI;
@@ -640,19 +629,13 @@ URIFixup.prototype = {
   isDomainKnown,
 
   _isKnownExternalProtocol(scheme) {
-    if (this._trustExternalProtocolService) {
-      return lazy.externalProtocolService.externalProtocolHandlerExists(scheme);
-    }
-
-    try {
-      // nsIExternalProtocolService.getProtocolHandlerInfo() on Android throws
-      // error due to not implemented.
-      return lazy.handlerService.exists(
-        lazy.externalProtocolService.getProtocolHandlerInfo(scheme)
-      );
-    } catch (e) {
+    if (AppConstants.platform == "android") {
+      // On Android, externalProtocolHandlerExists ~always returns true (see
+      // nsOSHelperAppService::OSProtocolHandlerExists). For now, this
+      // preserves behavior from before bug 1966666.
       return false;
     }
+    return lazy.externalProtocolService.externalProtocolHandlerExists(scheme);
   },
 
   classID: Components.ID("{c6cf88b7-452e-47eb-bdc9-86e3561648ef}"),
@@ -699,11 +682,11 @@ URIFixupInfo.prototype = {
     return this._keywordAsSent || "";
   },
 
-  set wasSchemelessInput(changed) {
-    this._wasSchemelessInput = changed;
+  set schemelessInput(changed) {
+    this._schemelessInput = changed;
   },
-  get wasSchemelessInput() {
-    return !!this._wasSchemelessInput;
+  get schemelessInput() {
+    return this._schemelessInput ?? Ci.nsILoadInfo.SchemelessInputTypeUnset;
   },
 
   set fixupChangedProtocol(changed) {
@@ -791,10 +774,17 @@ function isDomainKnown(asciiHost) {
 function checkAndFixPublicSuffix(info) {
   let uri = info.fixedURI;
   let asciiHost = uri?.asciiHost;
+
+  // If the original input ends in a "。" character (U+3002), we consider the
+  // input a search query if there is no valid suffix.
+  // While the "。" character is equivalent to a period in domains, it's more
+  // commonly used to terminate search phrases. We're preserving the historical
+  // behavior of the ascii period for now, as that may be more commonly expected
+  // by technical users.
   if (
     !asciiHost ||
     !asciiHost.includes(".") ||
-    asciiHost.endsWith(".") ||
+    (asciiHost.endsWith(".") && !info.originalInput.endsWith("。")) ||
     isDomainKnown(asciiHost)
   ) {
     return { suffix: "", hasUnknownSuffix: false };
@@ -898,7 +888,7 @@ function maybeSetAlternateFixedURI(info, fixupFlags) {
   // Don't create an alternate uri for localhost, because it would be confusing.
   // Ditto for 'http' and 'https' as these are frequently the result of typos, e.g.
   // 'https//foo' (note missing : ).
-  if (oldHost == "localhost" || oldHost == "http" || oldHost == "https") {
+  if (oldHost == "localhost" || HTTPISH.has(oldHost)) {
     return false;
   }
 
@@ -962,20 +952,52 @@ function fileURIFixup(uriString) {
  *    user:pass@no-scheme.com
  *
  * @param {string} uriString The string to fixup.
+ * @param {Number} fixupFlags The fixup flags to use.
  * @returns {nsIURI} an nsIURI built adding the default protocol to the string,
  *          or null if fixing was not possible.
  */
-function fixupURIProtocol(uriString) {
-  let schemePos = uriString.indexOf("://");
-  if (schemePos == -1 || schemePos > uriString.search(/[:\/]/)) {
+function fixupURIProtocol(uriString, fixupFlags) {
+  // The longest URI scheme on the IANA list is 36 chars + 3 for ://
+  let schemeChars = uriString.slice(0, 39);
+
+  let schemePos = schemeChars.indexOf("://");
+  if (schemePos == -1 || schemePos > schemeChars.search(/[:\/]/)) {
     uriString = "http://" + uriString;
   }
   try {
-    return Services.io.newURI(uriString);
+    return makeURIWithFixedLocalHosts(uriString, fixupFlags);
   } catch (ex) {
     // We generated an invalid uri.
   }
   return null;
+}
+
+/**
+ * A thin wrapper around `newURI` that fixes up the host if it's
+ * 0.0.0.0 or ::, which are no longer valid. Aims to facilitate
+ * user typos and/or "broken" links output by commandline tools.
+ *
+ * @param {string} uriString The string to make into a URI.
+ * @param {Number} fixupFlags The fixup flags to use.
+ * @throws NS_ERROR_MALFORMED_URI if the uri is invalid.
+ */
+function makeURIWithFixedLocalHosts(uriString, fixupFlags) {
+  let uri = Services.io.newURI(uriString);
+
+  // We only want to fix up 0.0.0.0 if the URL came from the user, either
+  // from the address bar or as a commandline argument (ie clicking links
+  // in other applications, terminal, etc.). We can't use
+  // FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP for this as that isn't normally allowed
+  // for external links, and the other flags are sometimes used for
+  // web-provided content. So we cheat and use the scheme typo flag.
+  if (fixupFlags & FIXUP_FLAG_FIX_SCHEME_TYPOS && HTTPISH.has(uri.scheme)) {
+    if (uri.host == "0.0.0.0") {
+      uri = uri.mutate().setHost("127.0.0.1").finalize();
+    } else if (uri.host == "::") {
+      uri = uri.mutate().setHost("[::1]").finalize();
+    }
+  }
+  return uri;
 }
 
 /**

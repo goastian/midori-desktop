@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 bm{
     Countries{
         AD{"Andɔr"}
@@ -93,7 +93,6 @@ bm{
         IE{"Irilandi"}
         IL{"Isirayeli"}
         IN{"Ɛndujamana"}
-        IO{"Angilɛ ka ɛndu dugukolo"}
         IQ{"Iraki"}
         IR{"Iraŋ"}
         IS{"Isilandi"}

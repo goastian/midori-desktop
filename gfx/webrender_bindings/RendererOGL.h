@@ -7,7 +7,7 @@
 #ifndef MOZILLA_LAYERS_RENDEREROGL_H
 #define MOZILLA_LAYERS_RENDEREROGL_H
 
-#include "mozilla/ipc/FileDescriptor.h"
+#include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/layers/CompositorTypes.h"
 #include "mozilla/gfx/Point.h"
 #include "mozilla/webrender/RenderThread.h"
@@ -27,6 +27,7 @@ class GLContext;
 
 namespace layers {
 class CompositorBridgeParent;
+class Fence;
 class SyncObjectHost;
 }  // namespace layers
 
@@ -64,13 +65,15 @@ class RendererOGL {
   RenderedFrameId UpdateAndRender(const Maybe<gfx::IntSize>& aReadbackSize,
                                   const Maybe<wr::ImageFormat>& aReadbackFormat,
                                   const Maybe<Range<uint8_t>>& aReadbackBuffer,
-                                  bool* aNeedsYFlip, RendererStats* aOutStats);
+                                  bool* aNeedsYFlip,
+                                  const wr::FrameReadyParams& aFrameParams,
+                                  RendererStats* aOutStats);
 
   /// This can be called on the render thread only.
   void WaitForGPU();
 
   /// This can be called on the render thread only.
-  ipc::FileDescriptor GetAndResetReleaseFence();
+  RefPtr<layers::Fence> GetAndResetReleaseFence();
 
   /// This can be called on the render thread only.
   RenderedFrameId GetLastCompletedFrameId();

@@ -39,19 +39,6 @@ struct SkScalerContextRec;
 interface IDWriteFontFace4;
 interface IDWriteFontFace7;
 
-static SkFontStyle get_style(IDWriteFont* font) {
-    int weight = font->GetWeight();
-    int width = font->GetStretch();
-    SkFontStyle::Slant slant = SkFontStyle::kUpright_Slant;
-    switch (font->GetStyle()) {
-        case DWRITE_FONT_STYLE_NORMAL: slant = SkFontStyle::kUpright_Slant; break;
-        case DWRITE_FONT_STYLE_OBLIQUE: slant = SkFontStyle::kOblique_Slant; break;
-        case DWRITE_FONT_STYLE_ITALIC: slant = SkFontStyle::kItalic_Slant; break;
-        default: SkASSERT(false); break;
-    }
-    return SkFontStyle(weight, width, slant);
-}
-
 class DWriteFontTypeface : public SkTypeface {
 public:
     struct Loaders : public SkNVRefCnt<Loaders> {
@@ -97,6 +84,7 @@ public:
     SkTScopedComPtr<IDWriteFontFace1> fDWriteFontFace1;
     SkTScopedComPtr<IDWriteFontFace2> fDWriteFontFace2;
     SkTScopedComPtr<IDWriteFontFace4> fDWriteFontFace4;
+#if !SK_DISABLE_DIRECTWRITE_COLRv1 && (DWRITE_CORE || (defined(NTDDI_WIN11_ZN) && NTDDI_VERSION >= NTDDI_WIN11_ZN))
     // Once WDK 10.0.25357.0 or newer is required to build, fDWriteFontFace7 can be a smart pointer.
     // If a smart pointer is used then ~DWriteFontTypeface must call the smart pointer's destructor,
     // which must include code to Release the IDWriteFontFace7, but there may be no IDWriteFontFace7
@@ -106,6 +94,7 @@ public:
     // NTDDI_VERSION shenanigains, otherwise this defintition could just be ifdef'ed.
     //SkTScopedComPtr<IDWriteFontFace7> fDWriteFontFace7;
     IDWriteFontFace7* fDWriteFontFace7 = nullptr;
+#endif  // !SK_DISABLE_DIRECTWRITE_COLRv1 && (DWRITE_CORE || (defined(NTDDI_WIN11_ZN) && NTDDI_VERSION >= NTDDI_WIN11_ZN))
     bool fIsColorFont;
 
     std::unique_ptr<SkFontArguments::Palette::Override> fRequestedPaletteEntryOverrides;
@@ -115,17 +104,14 @@ public:
     std::unique_ptr<SkColor[]> fPalette;
     std::unique_ptr<DWRITE_COLOR_F[]> fDWPalette;
 
+    static SkFontStyle GetStyle(IDWriteFont* font, IDWriteFontFace* fontFace);
     static sk_sp<DWriteFontTypeface> Make(
         IDWriteFactory* factory,
         IDWriteFontFace* fontFace,
         IDWriteFont* font,
         IDWriteFontFamily* fontFamily,
         sk_sp<Loaders> loaders,
-        const SkFontArguments::Palette& palette)
-    {
-        return sk_sp<DWriteFontTypeface>(new DWriteFontTypeface(
-            get_style(font), factory, fontFace, font, fontFamily, std::move(loaders), palette));
-    }
+        const SkFontArguments::Palette& palette);
 
     static DWriteFontTypeface* Create(IDWriteFactory* factory,
                                       IDWriteFontFace* fontFace,
@@ -171,6 +157,7 @@ protected:
     int onGetUPEM() const override;
     void onGetFamilyName(SkString* familyName) const override;
     bool onGetPostScriptName(SkString*) const override;
+    int onGetResourceName(SkString*) const override;
     SkTypeface::LocalizedStrings* onCreateFamilyNameIterator() const override;
     bool onGlyphMaskNeedsCurrentColor() const override;
     int onGetVariationDesignPosition(SkFontArguments::VariationPosition::Coordinate coordinates[],

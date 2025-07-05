@@ -23,7 +23,7 @@ option(
     env="MOZ_APP_NAME",
     nargs=1,
     help="Used for e.g. the binary program file name. If not set, "
-    "defaults to a lowercase form of MOZ_APP_BASENAME.",
+    "defaults to a lowercase form of MOZ_APP_BASENAME",
 )
 
 
@@ -38,33 +38,12 @@ def moz_app_name(value, js_standalone, moz_app_basename):
 
 set_config("MOZ_APP_NAME", moz_app_name)
 
-# SmooshMonkey (new frontend)
-# ==================================================
-
-# Define here in order to use the option from bindgen.configure.
-option(
-    "--enable-smoosh",
-    default=False,
-    help="Enable SmooshMonkey (new JS engine frontend)",
-)
-
-
-@depends("--enable-smoosh")
-def enable_smoosh(value):
-    if value:
-        return True
-
-
-set_config("JS_ENABLE_SMOOSH", enable_smoosh)
-set_define("JS_ENABLE_SMOOSH", enable_smoosh)
-
 include("../build/moz.configure/nspr.configure", when="--enable-compile-environment")
 include("../build/moz.configure/rust.configure", when="--enable-compile-environment")
 include("../build/moz.configure/bindgen.configure", when="--enable-compile-environment")
 
 set_config("JS_STANDALONE", js_standalone)
 set_define("JS_STANDALONE", js_standalone)
-add_old_configure_assignment("JS_STANDALONE", js_standalone)
 option(
     "--enable-js-shell", default=js_standalone, help="{Build|Do not build} the JS shell"
 )
@@ -136,25 +115,6 @@ def static_js(value):
 
 set_define("MOZ_STATIC_JS", static_js)
 
-
-# Enable records and tuples
-# ===================================================
-option(
-    "--enable-record-tuple",
-    default=False,
-    help="Enable records and tuples (and disables JIT)",
-)
-
-
-@depends("--enable-record-tuple")
-def enable_record_tuple(value):
-    if value:
-        return True
-
-
-set_config("ENABLE_RECORD_TUPLE", enable_record_tuple)
-set_define("ENABLE_RECORD_TUPLE", enable_record_tuple)
-
 # Enable decorators
 # ===================================================
 option(
@@ -177,8 +137,8 @@ set_define("ENABLE_DECORATORS", enable_decorators)
 # ===================================================
 option(
     "--enable-explicit-resource-management",
-    default=False,
-    help="Enable explicit resource management",
+    default=milestone.is_nightly,
+    help="{Enable|Disable} explicit resource management",
 )
 
 
@@ -192,24 +152,12 @@ set_config("ENABLE_EXPLICIT_RESOURCE_MANAGEMENT", enable_explicit_resource_manag
 set_define("ENABLE_EXPLICIT_RESOURCE_MANAGEMENT", enable_explicit_resource_management)
 
 
-# Enable JSON.parse with source
-# ===================================================
-@depends(milestone.is_nightly)
-def enable_json_parse_with_source(is_nightly):
-    if is_nightly:
-        return True
-
-
-set_config("ENABLE_JSON_PARSE_WITH_SOURCE", enable_json_parse_with_source)
-set_define("ENABLE_JSON_PARSE_WITH_SOURCE", enable_json_parse_with_source)
-
-
 # Portable Baseline Intepreter
 # =======================================================
 option(
     "--enable-portable-baseline-interp",
     default=False,
-    help="{Enable|Disable} the portable baseline interpreter.",
+    help="{Enable|Disable} the portable baseline interpreter",
 )
 set_define(
     "ENABLE_PORTABLE_BASELINE_INTERP",
@@ -224,7 +172,7 @@ set_config(
 option(
     "--enable-portable-baseline-interp-force",
     default=False,
-    help="{Enable|Disable} forcing use of the portable baseline interpreter.",
+    help="{Enable|Disable} forcing use of the portable baseline interpreter",
 )
 
 set_define(
@@ -236,33 +184,66 @@ set_config(
     depends_if("--enable-portable-baseline-interp-force")(lambda _: True),
 )
 
+# Enable ahead-of-time-known preloaded IC bodies.
+option(
+    "--enable-aot-ics",
+    default=False,
+    help="{Enable|Disable} including ahead-of-time corpus of CacheIR IC bodies",
+)
+
+set_define(
+    "ENABLE_JS_AOT_ICS",
+    depends_if("--enable-aot-ics")(lambda _: True),
+)
+set_config(
+    "ENABLE_JS_AOT_ICS",
+    depends_if("--enable-aot-ics")(lambda _: True),
+)
+
+# Force-on the option for AOT ICs.
+option(
+    "--enable-aot-ics-force",
+    default=False,
+    help="{Enable|Disable} forcing the AOT ICs option on without additional configuration",
+)
+
+set_define(
+    "ENABLE_JS_AOT_ICS_FORCE",
+    depends_if("--enable-aot-ics-force")(lambda _: True),
+)
+set_config(
+    "ENABLE_JS_AOT_ICS_FORCE",
+    depends_if("--enable-aot-ics-force")(lambda _: True),
+)
+
+# Enforce AOT ICs (testing only): abort if a new IC (not in AOT corpus) is encountered.
+option(
+    "--enable-aot-ics-enforce",
+    default=False,
+    help="{Enable|Disable} enforcing that only AOT IC corpus is used, crashing otherwise (TEST ONLY)",
+)
+
+set_define(
+    "ENABLE_JS_AOT_ICS_ENFORCE",
+    depends_if("--enable-aot-ics-enforce")(lambda _: True),
+)
+set_config(
+    "ENABLE_JS_AOT_ICS_ENFORCE",
+    depends_if("--enable-aot-ics-enforce")(lambda _: True),
+)
+
 
 # JIT support
 # =======================================================
-@depends(
-    target,
-    "--enable-record-tuple",
-    "--enable-portable-baseline-interp",
-    "--enable-explicit-resource-management",
-)
-def jit_default(
-    target,
-    enable_record_tuple,
-    enable_portable_baseline_interp,
-    enable_explicit_resource_management,
-):
-    if enable_record_tuple:
-        return False
+@depends(target, "--enable-portable-baseline-interp")
+def jit_default(target, enable_portable_baseline_interp):
     if enable_portable_baseline_interp:
-        return False
-    if enable_explicit_resource_management:
         return False
     if target.cpu in (
         "x86",
         "x86_64",
         "arm",
         "aarch64",
-        "mips32",
         "mips64",
         "loongarch64",
     ):
@@ -285,7 +266,7 @@ def report_deprecated(value):
 # =======================================================
 option(
     "--enable-simulator",
-    choices=("arm", "arm64", "mips32", "mips64", "loong64", "riscv64"),
+    choices=("arm", "arm64", "mips64", "loong64", "riscv64"),
     nargs=1,
     help="Enable a JIT code simulator for the specified architecture",
 )
@@ -298,7 +279,7 @@ def simulator(jit_enabled, simulator_enabled, target):
 
     sim_cpu = simulator_enabled[0]
 
-    if sim_cpu in ("arm", "mips32"):
+    if sim_cpu in ("arm"):
         if target.cpu != "x86":
             die("The %s simulator only works on x86." % sim_cpu)
 
@@ -312,14 +293,12 @@ def simulator(jit_enabled, simulator_enabled, target):
 set_config("JS_SIMULATOR", depends_if(simulator)(lambda x: True))
 set_config("JS_SIMULATOR_ARM", simulator.arm)
 set_config("JS_SIMULATOR_ARM64", simulator.arm64)
-set_config("JS_SIMULATOR_MIPS32", simulator.mips32)
 set_config("JS_SIMULATOR_MIPS64", simulator.mips64)
 set_config("JS_SIMULATOR_LOONG64", simulator.loong64)
 set_config("JS_SIMULATOR_RISCV64", simulator.riscv64)
 set_define("JS_SIMULATOR", depends_if(simulator)(lambda x: True))
 set_define("JS_SIMULATOR_ARM", simulator.arm)
 set_define("JS_SIMULATOR_ARM64", simulator.arm64)
-set_define("JS_SIMULATOR_MIPS32", simulator.mips32)
 set_define("JS_SIMULATOR_MIPS64", simulator.mips64)
 set_define("JS_SIMULATOR_LOONG64", simulator.loong64)
 set_define("JS_SIMULATOR_RISCV64", simulator.riscv64)
@@ -348,7 +327,6 @@ def jit_codegen(jit_enabled, simulator, target):
 set_config("JS_CODEGEN_NONE", jit_codegen.none)
 set_config("JS_CODEGEN_ARM", jit_codegen.arm)
 set_config("JS_CODEGEN_ARM64", jit_codegen.arm64)
-set_config("JS_CODEGEN_MIPS32", jit_codegen.mips32)
 set_config("JS_CODEGEN_MIPS64", jit_codegen.mips64)
 set_config("JS_CODEGEN_LOONG64", jit_codegen.loong64)
 set_config("JS_CODEGEN_RISCV64", jit_codegen.riscv64)
@@ -359,7 +337,6 @@ set_config("JS_CODEGEN_WASM32", jit_codegen.wasm32)
 set_define("JS_CODEGEN_NONE", jit_codegen.none)
 set_define("JS_CODEGEN_ARM", jit_codegen.arm)
 set_define("JS_CODEGEN_ARM64", jit_codegen.arm64)
-set_define("JS_CODEGEN_MIPS32", jit_codegen.mips32)
 set_define("JS_CODEGEN_MIPS64", jit_codegen.mips64)
 set_define("JS_CODEGEN_LOONG64", jit_codegen.loong64)
 set_define("JS_CODEGEN_RISCV64", jit_codegen.riscv64)
@@ -387,7 +364,7 @@ def instruments(value, target):
 
 set_config("MOZ_INSTRUMENTS", instruments)
 set_define("MOZ_INSTRUMENTS", instruments)
-add_old_configure_assignment("MOZ_INSTRUMENTS", instruments)
+
 imply_option("--enable-profiling", instruments, reason="--enable-instruments")
 
 option("--enable-callgrind", env="MOZ_CALLGRIND", help="Enable callgrind profiling")
@@ -443,6 +420,30 @@ set_define("MOZ_PROFILING", profiling)
 imply_option("--enable-vtune", imply_vtune, reason="--enable-profiling")
 
 
+@depends(milestone)
+def enable_execution_tracing(milestone):
+    return milestone.is_nightly
+
+
+option(
+    "--enable-execution-tracing",
+    env="MOZ_EXECUTION_TRACING",
+    default=enable_execution_tracing,
+    help="{Set|Do not set} compile flags necessary for running the JS "
+    "execution tracer",
+)
+
+
+@depends("--enable-execution-tracing")
+def execution_tracing(value):
+    if value:
+        return True
+
+
+set_config("MOZ_EXECUTION_TRACING", execution_tracing)
+set_define("MOZ_EXECUTION_TRACING", execution_tracing)
+
+
 option("--enable-vtune", env="MOZ_VTUNE", help="Enable VTune profiling")
 
 
@@ -490,15 +491,25 @@ option(
 set_define("JS_OOM_BREAKPOINT", depends_if("--enable-oom-breakpoint")(lambda _: True))
 
 
-option("--enable-perf", env="JS_ION_PERF", help="Enable Linux perf integration")
+# Enable perf jitdump integration for nightly.
+# The following must be true for jitdump to be enabled:
+#   (a) --disable-jitdump was not provided.
+#   (b) target is Linux or Mac
+#   (c) milestone is a nightly build
+# =======================================================
+option(
+    "--enable-jitdump",
+    default=milestone.is_nightly,
+    help="{Enable|Disable} perf jitdump integration",
+)
 
 
-@depends("--enable-perf", target)
-def ion_perf(value, target):
-    is_linux = target.kernel == "Linux"
-    is_mac = target.kernel == "Darwin" and target.os == "OSX"
-
-    if value and (is_linux or is_mac):
+@depends("--enable-jitdump", target)
+def ion_perf(enable_jitdump, target):
+    is_linux_or_mac = target.kernel == "Linux" or (
+        target.kernel == "Darwin" and target.os == "OSX"
+    )
+    if enable_jitdump and is_linux_or_mac:
         return True
 
 
@@ -576,48 +587,13 @@ set_define("JS_DISASM_ARM64", jit_disasm_arm64)
 option(
     "--enable-masm-verbose",
     default=depends(when=moz_debug)(lambda: True),
-    help="{Enable|Disable} MacroAssembler verbosity of generated code.",
+    help="{Enable|Disable} MacroAssembler verbosity of generated code",
 )
 set_define("JS_MASM_VERBOSE", depends_if("--enable-masm-verbose")(lambda _: True))
 set_config("JS_MASM_VERBOSE", depends_if("--enable-masm-verbose")(lambda _: True))
 
 # Architecture feature flags
 # =======================================================
-
-
-# Apple silicon does not seem to have any way to query the OS for the JSCVT
-# flag stored in the ID_AA64ISAR1_EL1 system register. In the mean time, we
-# hard code the value of the JSCVT flag which guards the implementation of
-# FJCVTZS instruction as part of ARMv8.3-JSConv.
-@depends(target)
-def is_apple_silicon(target):
-    return target.kernel == "Darwin" and target.cpu == "aarch64"
-
-
-option(
-    "--enable-arm64-fjcvtzs",
-    default=is_apple_silicon,
-    help="{Enable|Disable} static use of FJCVTZS instruction on Aarch64 targets.",
-)
-
-
-# The "ARM Architecture Reference Manual" for ARMv8 defines the JSCVT flag as
-# being a 4 bit integer (D12.2.52) and it can be manipulated using >= operator
-# (D12.1.4).
-#
-# The FJCVTZS instruction is implemented if ID_AA64ISAR1_EL1.JSCVT >= 1.
-@depends("--enable-arm64-fjcvtzs", target, simulator)
-def aarch64_jscvt(fjcvtzs, target, simulator):
-    if target.cpu == "aarch64" and fjcvtzs:
-        return 1
-
-    if simulator and getattr(simulator, "arm64", False) and fjcvtzs:
-        return 1
-
-    return 0
-
-
-set_define("MOZ_AARCH64_JSCVT", aarch64_jscvt)
 
 
 @depends(target)
@@ -656,27 +632,11 @@ def ctypes_and_compile_environment(ctypes, compile_environment):
 
 include("ffi.configure", when=ctypes_and_compile_environment)
 
-
-# Enable pipeline operator
-# ===================================================
-option("--enable-pipeline-operator", default=False, help="Enable pipeline operator")
-
-
-@depends("--enable-pipeline-operator")
-def enable_pipeline_operator(value):
-    if value:
-        return True
-
-
-set_config("ENABLE_PIPELINE_OPERATOR", enable_pipeline_operator)
-set_define("ENABLE_PIPELINE_OPERATOR", enable_pipeline_operator)
-
-
 # SIMD acceleration for encoding_rs
 # ==============================================================
 
 option(
-    "--enable-rust-simd", env="MOZ_RUST_SIMD", help="Enable explicit SIMD in Rust code."
+    "--enable-rust-simd", env="MOZ_RUST_SIMD", help="Enable explicit SIMD in Rust code"
 )
 
 
@@ -727,89 +687,31 @@ set_define(
 option(
     "--wasm-no-experimental",
     default=False,
-    help="Force disable all wasm experimental features for testing.",
+    help="Force disable all wasm experimental features for testing",
 )
 
-# Support for WebAssembly tail-calls.
-# ===========================
-
-
-@depends(target)
-def default_wasm_tail_calls(target):
-    if target.cpu in ("x86", "x86_64", "arm", "aarch64", "loongarch64", "mips64"):
-        return True
-
-
-option(
-    "--enable-wasm-tail-calls",
-    default=default_wasm_tail_calls,
-    help="{Enable|Disable} WebAssembly tail-calls",
-)
-
-
-@depends("--enable-wasm-tail-calls", target)
-def wasm_tail_calls(value, target):
-    if not value:
-        return
-
-    if target.cpu in ("x86", "x86_64", "arm", "aarch64", "loongarch64", "mips64"):
-        return True
-
-    die(
-        "--enable-wasm-tail-calls only possible when targeting the x86_64/x86/arm64/arm/loongarch64/mips64 jits"
-    )
-
-
-set_config("ENABLE_WASM_TAIL_CALLS", wasm_tail_calls)
-set_define("ENABLE_WASM_TAIL_CALLS", wasm_tail_calls)
-
-# Support for WebAssembly GC.
-# ===========================
-
-
-option("--disable-wasm-gc", default=True, help="{Enable|Disable} WebAssembly GC")
-
-
-@depends("--disable-wasm-gc")
-def wasm_gc(value):
-    if not value:
-        return
-    return True
-
-
-set_config("ENABLE_WASM_GC", wasm_gc)
-set_define("ENABLE_WASM_GC", wasm_gc)
 
 # Support for JS PI spec.
 # ===========================
 
 
 @depends(
-    milestone.is_nightly,
     "--enable-jit",
     "--enable-simulator",
-    "--enable-wasm-gc",
-    "--enable-wasm-tail-calls",
     target,
 )
 def default_wasm_jspi(
-    is_nightly,
     jit_enabled,
     simulator,
-    gc,
-    tail_calls,
     target,
 ):
-    if not jit_enabled or simulator:
+    if not jit_enabled:
         return
 
-    if not gc or not tail_calls:
-        return
+    if simulator:
+        return simulator[0] == "arm64" or simulator[0] == "arm"
 
-    if not is_nightly:
-        return
-
-    if target.cpu in ("x86_64", "aarch64"):
+    if target.cpu in ("x86_64", "x86", "aarch64", "arm", "loongarch64"):
         return True
 
 
@@ -824,31 +726,25 @@ option(
     "--enable-wasm-jspi",
     "--enable-jit",
     "--enable-simulator",
-    "--enable-wasm-gc",
-    "--enable-wasm-tail-calls",
     "--wasm-no-experimental",
     target,
 )
-def wasm_jspi(value, jit_enabled, simulator, gc, tail_calls, no_experimental, target):
+def wasm_jspi(value, jit_enabled, simulator, no_experimental, target):
     if no_experimental or not value:
         return
 
     if not jit_enabled:
         die("--enable-wasm-jspi requires --enable-jit")
 
-    if not gc:
-        die("--enable-wasm-jspi requires --enable-wasm-gc")
+    if simulator and not (simulator[0] == "arm64" or simulator[0] == "arm"):
+        die("--enable-wasm-jspi is only supported for arm64/arm simulators")
 
-    if not tail_calls:
-        die("--enable-wasm-jspi requires --enable-wasm-tail-calls")
-
-    if simulator:
-        die("--enable-wasm-jspi is not supported for simulators")
-
-    if target.cpu in ("x86_64", "aarch64"):
+    if target.cpu in ("x86_64", "x86", "aarch64", "arm", "loongarch64"):
         return True
 
-    die("--enable-wasm-jspi only possible when targeting the x86_64/arm64 jits")
+    die(
+        "--enable-wasm-jspi only possible when targeting the x86_64/x86/arm64/arm/loongarch64 jits"
+    )
 
 
 set_config("ENABLE_WASM_JSPI", wasm_jspi)
@@ -865,9 +761,9 @@ option(
 )
 
 
-@depends("--disable-wasm-js-string-builtins", "--wasm-no-experimental")
-def wasm_js_string_builtins(value, no_experimental):
-    if no_experimental or not value:
+@depends("--disable-wasm-js-string-builtins")
+def wasm_js_string_builtins(value):
+    if not value:
         return
 
     return True
@@ -1093,16 +989,12 @@ set_define("ENABLE_WASM_MOZ_INTGEMM", wasm_moz_intgemm)
 # ===========================
 
 
-@depends(milestone.is_nightly, "--enable-simulator", target)
-def default_wasm_memory64(is_nightly, simulator, target):
+@depends(target)
+def default_wasm_memory64(target):
     if target.cpu == "mips32":
         return
 
-    if simulator and simulator[0] == "mips32":
-        return
-
-    if is_nightly:
-        return True
+    return True
 
 
 option(
@@ -1112,18 +1004,13 @@ option(
 )
 
 
-@depends(
-    "--enable-wasm-memory64", "--enable-simulator", target, "--wasm-no-experimental"
-)
-def wasm_memory64(value, simulator, target, no_experimental):
-    if no_experimental or not value:
+@depends("--enable-wasm-memory64", target)
+def wasm_memory64(value, target):
+    if not value:
         return
 
     if target.cpu == "mips32":
         die("Memory64 is incompatible with MIPS32 target")
-
-    if simulator and simulator[0] == "mips32":
-        die("Memory64 is incompatible with MIPS32 simulator")
 
     return True
 
@@ -1305,7 +1192,9 @@ def enable_system_icu_option(enable_system_icu):
     return enable_system_icu
 
 
-system_icu = pkg_check_modules("MOZ_ICU", "icu-i18n >= 73.1", when="--with-system-icu")
+system_icu = pkg_check_modules(
+    "MOZ_ICU", "icu-uc icu-i18n >= 76.1", when="--with-system-icu"
+)
 
 
 @depends(enable_system_icu_option)
@@ -1314,7 +1203,7 @@ def in_tree_icu(system_icu):
 
 
 # Set MOZ_ICU_CFLAGS to an explicit empty value when --with-system-icu is *not* used,
-# for layout/style/extra-bindgen-flags
+# for use for bindgen through the mozbuild crate.
 set_config("MOZ_ICU_CFLAGS", [], when=in_tree_icu)
 
 set_config("MOZ_SYSTEM_ICU", True, when=system_icu)
@@ -1331,6 +1220,18 @@ def check_intl_api(enabled, js_standalone):
 
 set_config("JS_HAS_INTL_API", True, when="--with-intl-api")
 set_define("JS_HAS_INTL_API", True, when="--with-intl-api")
+
+option("--disable-icu4x", help="Disable using ICU4X")
+
+
+@depends("--enable-icu4x", "--with-intl-api")
+def check_icu4x(enabled, intl_enabled):
+    if not enabled and intl_enabled:
+        die("Can't use --disable-icu4x with --with-intl-api")
+
+
+set_config("MOZ_ICU4X", True, when="--enable-icu4x")
+set_define("MOZ_ICU4X", True, when="--enable-icu4x")
 
 
 @depends(build_environment, when="--with-intl-api")
@@ -1362,21 +1263,6 @@ set_define("U_USING_ICU_NAMESPACE", "0", when="--with-intl-api")
 set_define("U_STATIC_IMPLEMENTATION", True, when=depends(system_icu)(lambda x: not x))
 
 
-# ECMAScript Temporal API Support (uses ICU)
-# ======================================================
-
-option("--with-temporal-api", default=False, help="Enable ECMAScript Temporal API")
-
-set_config("JS_HAS_TEMPORAL_API", True, when="--with-temporal-api")
-set_define("JS_HAS_TEMPORAL_API", True, when="--with-temporal-api")
-
-
-@depends("--with-temporal-api", "--with-intl-api")
-def check_temporal_api(temporal_enabled, intl_enabled):
-    if temporal_enabled and not intl_enabled:
-        die("Can't use both --with-temporal-api and --without-intl-api")
-
-
 # Initial support for WebAssembly JS-API Type Reflections
 # =======================================================
 
@@ -1399,6 +1285,30 @@ set_config(
 set_define(
     "ENABLE_WASM_TYPE_REFLECTIONS",
     depends_if("--enable-wasm-type-reflections")(lambda x: True),
+)
+
+# Support for resizable ArrayBuffer in Wasm
+# =========================================
+
+
+@depends(milestone.is_nightly)
+def default_wasm_resizable_arraybuffer(is_nightly):
+    return is_nightly
+
+
+option(
+    "--enable-wasm-resizable-arraybuffer",
+    default=default_wasm_resizable_arraybuffer,
+    help="{Enable|Disable} resizable ArrayBuffer in WASM",
+)
+
+set_config(
+    "ENABLE_WASM_RESIZABLE_ARRAYBUFFER",
+    depends_if("--enable-wasm-resizable-arraybuffer")(lambda x: True),
+)
+set_define(
+    "ENABLE_WASM_RESIZABLE_ARRAYBUFFER",
+    depends_if("--enable-wasm-resizable-arraybuffer")(lambda x: True),
 )
 
 # Wasi configuration
@@ -1431,7 +1341,6 @@ set_config(
     ),
 )
 
-
 # Some platforms have HeapReg, some don't
 # =====================================================
 
@@ -1461,6 +1370,87 @@ with only_when(compile_environment):
             check_msg="for tm_zone and tm_gmtoff in struct tm",
         ),
     )
+
+
+# Optimization flags
+# ==============================================================
+@depends(
+    target,
+    c_compiler,
+    configured_moz_optimize_flags,
+    when="--enable-compile-environment",
+)
+@imports(_from="mozbuild.shellutil", _import="split")
+def moz_js_optimize_flags(target, compiler, configured_moz_optimize_flags):
+    if configured_moz_optimize_flags:
+        return configured_moz_optimize_flags
+
+    if target.kernel in ("Darwin", "Linux"):
+        flags = ["-O3"]
+        if target.os == "Android" and compiler.type == "gcc":
+            flags += ["-fno-reorder-functions"]
+        return flags
+    elif target.kernel == "WINNT":
+        return ["-O2"]
+    else:
+        return ["-O"]
+
+
+set_config("MOZ_JS_OPTIMIZE_FLAGS", moz_js_optimize_flags, when=~js_build)
+set_config("MOZ_OPTIMIZE_FLAGS", moz_js_optimize_flags, when=js_build)
+
+
+# link executables against mozglue
+# ==============================================================
+@depends(
+    target_is_android | target_is_windows | target_is_darwin,
+    js_standalone & ~depends(when="--enable-jemalloc")(True),
+)
+def moz_glue_in_program(is_excluded_target, is_js_without_jemalloc):
+    return not is_excluded_target and not is_js_without_jemalloc
+
+
+set_define("MOZ_GLUE_IN_PROGRAM", True, when=moz_glue_in_program)
+set_config("MOZ_GLUE_IN_PROGRAM", True, when=moz_glue_in_program)
+
+
+# JavaScript shell
+# ==============================================================
+@depends(milestone.symbolversion, js_standalone)
+def js_library_name(symbolversion, js_standalone):
+    if js_standalone:
+        return f"mozjs-{symbolversion}"
+    else:
+        return "mozjs"
+
+
+set_config("JS_LIBRARY_NAME", js_library_name)
+
+
+@depends(nspr_config.libs, nspr_pkg.libs, instruments)
+def js_config_libs(nspr_libs, nspr_pkg_libs, instruments):
+    libs = []
+    if nspr_libs:
+        libs += nspr_libs
+    if nspr_pkg_libs:
+        libs += nspr_pkg_libs
+    if instruments:
+        libs += ["-framework", "CoreFoundation"]
+    return libs
+
+
+set_config("JS_CONFIG_LIBS", js_config_libs)
+
+
+@depends(js_library_name, c_compiler, "--libdir", when=compile_environment)
+def js_config_moz_js_libs(js_library_name, compiler, libdir):
+    if compiler.type == "clang-cl":
+        return [f"{libdir[0]}/{js_library_name}.lib"]
+    else:
+        return [f"-L{libdir[0]}", f"-l{js_library_name}"]
+
+
+set_config("JS_CONFIG_MOZ_JS_LIBS", js_config_moz_js_libs)
 
 #
 # Checks for library functions

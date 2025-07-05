@@ -12,8 +12,8 @@
 
 #include "mozilla/BasePrincipal.h"
 #include "mozilla/Maybe.h"
-#include "mozilla/RefPtr.h"
 #include "PLDHashTable.h"
+#include "nsIDocShell.h"
 
 class nsIURI;
 
@@ -33,7 +33,7 @@ namespace image {
  */
 class ImageCacheKey final {
  public:
-  ImageCacheKey(nsIURI*, CORSMode, const OriginAttributes&, dom::Document*);
+  ImageCacheKey(nsIURI*, CORSMode, dom::Document*);
 
   ImageCacheKey(const ImageCacheKey& aOther);
   ImageCacheKey(ImageCacheKey&& aOther);
@@ -49,13 +49,10 @@ class ImageCacheKey final {
   /// A weak pointer to the URI.
   nsIURI* URI() const { return mURI; }
 
+  nsIPrincipal* PartitionPrincipal() const { return mPartitionPrincipal; }
+  nsIPrincipal* LoaderPrincipal() const { return mLoaderPrincipal; }
+
   CORSMode GetCORSMode() const { return mCORSMode; }
-
-  const OriginAttributes& OriginAttributesRef() const {
-    return mOriginAttributes;
-  }
-
-  const nsCString& IsolationKeyRef() const { return mIsolationKey; }
 
   /// A token indicating which service worker controlled document this entry
   /// belongs to, if any.
@@ -66,19 +63,19 @@ class ImageCacheKey final {
   // token for the key. All those exceptions are handled by this method.
   static void* GetSpecialCaseDocumentToken(dom::Document* aDocument);
 
-  // For anti-tracking we need to use an isolation key. It can be the suffix of
-  // the PatitionedPrincipal (see StoragePrincipalHelper.h) or the top-level
-  // document's base domain. This is handled by this method.
-  static nsCString GetIsolationKey(dom::Document* aDocument, nsIURI* aURI);
+  // The AppType of the docshell an image is loaded in can influence whether the
+  // image is allowed to load. The specific AppType is fetched by this method.
+  static nsIDocShell::AppType GetAppType(dom::Document* aDocument);
 
   void EnsureHash() const;
 
   nsCOMPtr<nsIURI> mURI;
-  const OriginAttributes mOriginAttributes;
   void* mControlledDocument;
-  nsCString mIsolationKey;
+  nsCOMPtr<nsIPrincipal> mLoaderPrincipal;
+  nsCOMPtr<nsIPrincipal> mPartitionPrincipal;
   mutable Maybe<PLDHashNumber> mHash;
   const CORSMode mCORSMode;
+  const nsIDocShell::AppType mAppType;
 };
 
 }  // namespace image

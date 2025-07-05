@@ -31,7 +31,7 @@ def assert_command(env_var, name):
     The command name comes from either environment variable or find_command.
     """
     if not name:
-        logging.error("{} command not found".format(env_var))
+        logging.error(f"{env_var} command not found")
         sys.exit(1)
 
 
@@ -63,9 +63,6 @@ assert_command("TAR", tar)
 rsync = os.environ.get("RSYNC", find_command(["rsync"]))
 assert_command("RSYNC", rsync)
 
-m4 = os.environ.get("M4", find_command(["m4"]))
-assert_command("M4", m4)
-
 awk = os.environ.get("AWK", find_command(["awk"]))
 assert_command("AWK", awk)
 
@@ -88,31 +85,29 @@ version = "{}-{}.{}.{}".format(
     mozjs_name, major_version, minor_version, patch_version or alpha or "0"
 )
 target_dir = staging_dir / version
-package_name = "{}.tar.xz".format(version)
+package_name = f"{version}.tar.xz"
 package_file = dist_dir / package_name
 tar_opts = ["-Jcf"]
 
 # Given there might be some external program that reads the following output,
 # use raw `print`, instead of logging.
 print("Environment:")
-print("    TAR = {}".format(tar))
-print("    RSYNC = {}".format(rsync))
-print("    M4 = {}".format(m4))
-print("    AWK = {}".format(awk))
-print("    STAGING = {}".format(staging_dir))
-print("    DIST = {}".format(dist_dir))
-print("    SRC_DIR = {}".format(src_dir))
-print("    MOZJS_NAME = {}".format(mozjs_name))
-print("    MOZJS_MAJOR_VERSION = {}".format(major_version))
-print("    MOZJS_MINOR_VERSION = {}".format(minor_version))
-print("    MOZJS_PATCH_VERSION = {}".format(patch_version))
-print("    MOZJS_ALPHA = {}".format(alpha))
+print(f"    TAR = {tar}")
+print(f"    RSYNC = {rsync}")
+print(f"    AWK = {awk}")
+print(f"    STAGING = {staging_dir}")
+print(f"    DIST = {dist_dir}")
+print(f"    SRC_DIR = {src_dir}")
+print(f"    MOZJS_NAME = {mozjs_name}")
+print(f"    MOZJS_MAJOR_VERSION = {major_version}")
+print(f"    MOZJS_MINOR_VERSION = {minor_version}")
+print(f"    MOZJS_PATCH_VERSION = {patch_version}")
+print(f"    MOZJS_ALPHA = {alpha}")
 print("")
 
 rsync_filter_list = """
 # Top-level config and build files
 
-+ /aclocal.m4
 + /client.mk
 + /configure.py
 + /LICENSE
@@ -122,8 +117,7 @@ rsync_filter_list = """
 + /moz.configure
 + /test.mozbuild
 + /.babel-eslint.rc.js
-+ /.eslintignore
-+ /.eslintrc.js
++ /.eslintrc*.js
 + /.flake8
 + /.gitignore
 + /.hgignore
@@ -181,6 +175,7 @@ rsync_filter_list = """
 
 + /.cargo/config.toml.in
 
++ /third_party/fmt/**
 + /third_party/function2/**
 - /third_party/python/gyp
 + /third_party/python/**
@@ -192,6 +187,7 @@ rsync_filter_list = """
 + /testing/mach_commands.py
 + /testing/moz.build
 + /testing/mozbase/**
++ /testing/mozharness/**
 + /testing/performance/**
 + /testing/test/**
 + /testing/web-platform/*.ini
@@ -271,7 +267,7 @@ ac_add_options --enable-optimize
 mk_add_options MOZ_OBJDIR=obj-opt
 """
 
-README_CONTENT = """\
+README_CONTENT = f"""\
 This directory contains SpiderMonkey {major_version}.
 
 This release is based on a revision of Mozilla {major_version}:
@@ -279,9 +275,7 @@ This release is based on a revision of Mozilla {major_version}:
 The changes in the patches/ directory were applied.
 
 See https://spidermonkey.dev/ for documentation, examples, and release notes.
-""".format(
-    major_version=major_version
-)
+"""
 
 
 def is_mozjs_cargo_member(line):
@@ -300,7 +294,7 @@ def is_mozjs_crates_io_local_patch(line):
 
 def clean():
     """Remove temporary directory and package file."""
-    logging.info("Cleaning {} and {} ...".format(package_file, target_dir))
+    logging.info(f"Cleaning {package_file} and {target_dir} ...")
     if package_file.exists():
         package_file.unlink()
     if target_dir.exists():
@@ -317,7 +311,7 @@ def assert_clean():
 
 def create_target_dir():
     if target_dir.exists():
-        logging.warning("dist tree {} already exists!".format(target_dir))
+        logging.warning(f"dist tree {target_dir} already exists!")
     else:
         target_dir.mkdir(parents=True)
 
@@ -331,8 +325,8 @@ def sync_files():
             "--prune-empty-dirs",
             "--quiet",
             "--recursive",
-            "{}/".format(topsrc_dir),
-            "{}/".format(target_dir),
+            f"{topsrc_dir}/",
+            f"{target_dir}/",
             "--filter=. -",
         ],
         stdin=subprocess.PIPE,
@@ -384,33 +378,6 @@ def copy_cargo_toml():
         f.write(content)
 
 
-def generate_configure():
-    """Generate configure files to avoid build dependency on autoconf-2.13"""
-
-    src_old_configure_in_file = topsrc_dir / "js" / "src" / "old-configure.in"
-    dest_old_configure_file = target_dir / "js" / "src" / "old-configure"
-
-    js_src_dir = topsrc_dir / "js" / "src"
-
-    env = os.environ.copy()
-    env["M4"] = m4
-    env["AWK"] = awk
-    env["AC_MACRODIR"] = topsrc_dir / "build" / "autoconf"
-
-    with dest_old_configure_file.open("w") as f:
-        subprocess.run(
-            [
-                "sh",
-                str(topsrc_dir / "build" / "autoconf" / "autoconf.sh"),
-                "--localdir={}".format(js_src_dir),
-                str(src_old_configure_in_file),
-            ],
-            stdout=f,
-            check=True,
-            env=env,
-        )
-
-
 def copy_file(filename, content):
     """Copy an existing file from the staging area, or create a new file
     with the given contents if it does not exist."""
@@ -448,12 +415,11 @@ def remove_python_cache():
 
 def stage():
     """Stage source tarball content."""
-    logging.info("Staging source tarball in {}...".format(target_dir))
+    logging.info(f"Staging source tarball in {target_dir}...")
 
     create_target_dir()
     sync_files()
     copy_cargo_toml()
-    generate_configure()
     copy_file("INSTALL", INSTALL_CONTENT)
     copy_file("README", README_CONTENT)
     copy_file("mozconfig", MOZCONFIG_DEBUG_CONTENT)
@@ -465,7 +431,7 @@ def stage():
 def create_tar():
     """Roll the tarball."""
 
-    logging.info("Packaging source tarball at {}...".format(package_file))
+    logging.info(f"Packaging source tarball at {package_file}...")
 
     subprocess.run(
         [str(tar)] + tar_opts + [str(package_file), "-C", str(staging_dir), version],

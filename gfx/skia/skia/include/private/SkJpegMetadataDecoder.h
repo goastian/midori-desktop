@@ -48,6 +48,11 @@ public:
     static std::unique_ptr<SkJpegMetadataDecoder> Make(std::vector<Segment> headerSegments);
 
     /**
+     * Create metadata for the specified encoded JPEG file. This may return nullptr.
+     */
+    static std::unique_ptr<SkJpegMetadataDecoder> Make(sk_sp<SkData> data);
+
+    /**
      * Return the Exif data attached to the image (if any) and nullptr otherwise. If |copyData| is
      * false, then the returned SkData may directly reference the data provided when this object was
      * created.
@@ -62,6 +67,13 @@ public:
     virtual sk_sp<SkData> getICCProfileData(bool copyData) const = 0;
 
     /**
+     * Return the ISO 21496-1 metadata, if any, and nullptr otherwise. If |copyData| is false,
+     * then the returned SkData may directly reference the data provided when this object was
+     * created.
+     */
+    virtual sk_sp<SkData> getISOGainmapMetadata(bool copyData) const = 0;
+
+    /**
      * Return true if there is a possibility that this image contains a gainmap image.
      */
     virtual bool mightHaveGainmapImage() const = 0;
@@ -74,6 +86,13 @@ public:
     virtual bool findGainmapImage(sk_sp<SkData> baseImageData,
                                   sk_sp<SkData>& outGainmapImagedata,
                                   SkGainmapInfo& outGainmapInfo) = 0;
+
+     /**
+      * Return the first JUMBF superbox, if any, and nullptr otherwise. If |copyData| is false,
+      * then the returned SkData may directly reference the data provided when this object was
+      * created.
+      */
+    virtual sk_sp<SkData> getJUMBFMetadata(bool copyData) const = 0;
 };
 
 #endif

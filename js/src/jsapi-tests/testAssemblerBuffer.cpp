@@ -42,7 +42,7 @@ END_TEST(testAssemblerBuffer_BufferOffset)
 
 BEGIN_TEST(testAssemblerBuffer_AssemblerBuffer) {
   using js::jit::BufferOffset;
-  typedef js::jit::AssemblerBuffer<5 * sizeof(uint32_t), uint32_t> AsmBuf;
+  using AsmBuf = js::jit::AssemblerBuffer<5 * sizeof(uint32_t), uint32_t>;
 
   AsmBuf ab;
   CHECK(ab.isAligned(16));
@@ -107,10 +107,10 @@ BEGIN_TEST(testAssemblerBuffer_AssemblerBuffer) {
 END_TEST(testAssemblerBuffer_AssemblerBuffer)
 
 BEGIN_TEST(testAssemblerBuffer_BranchDeadlineSet) {
-  typedef js::jit::BranchDeadlineSet<3> DLSet;
+  using DLSet = js::jit::BranchDeadlineSet<3>;
   using js::jit::BufferOffset;
 
-  js::LifoAlloc alloc(1024);
+  js::LifoAlloc alloc(1024, js::MallocArena);
   DLSet dls(alloc);
 
   CHECK(dls.empty());
@@ -217,13 +217,12 @@ namespace {
 
 struct TestAssembler;
 
-typedef js::jit::AssemblerBufferWithConstantPools<
+using AsmBufWithPool = js::jit::AssemblerBufferWithConstantPools<
     /* SliceSize */ 5 * sizeof(uint32_t),
     /* InstSize */ 4,
     /* Inst */ uint32_t,
     /* Asm */ TestAssembler,
-    /* NumShortBranchRanges */ 3>
-    AsmBufWithPool;
+    /* NumShortBranchRanges */ 3>;
 
 struct TestAssembler {
   // Mock instruction set:
@@ -520,7 +519,7 @@ END_TEST(testAssemblerBuffer_AssemblerBufferWithConstantPools_ShortBranch)
 BEGIN_TEST(testAssemblerBuffer_ARM64) {
   using namespace js::jit;
 
-  js::LifoAlloc lifo(4096);
+  js::LifoAlloc lifo(4096, js::MallocArena);
   TempAllocator alloc(&lifo);
   JitContext jc(cx);
   StackMacroAssembler masm(cx, alloc);

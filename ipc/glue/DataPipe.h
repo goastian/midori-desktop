@@ -7,12 +7,14 @@
 #ifndef mozilla_ipc_DataPipe_h
 #define mozilla_ipc_DataPipe_h
 
-#include "mozilla/ipc/SharedMemoryBasic.h"
+#include "mozilla/ipc/SharedMemoryHandle.h"
+#include "mozilla/ipc/SharedMemoryMapping.h"
 #include "mozilla/ipc/NodeController.h"
 #include "nsIAsyncInputStream.h"
 #include "nsIAsyncOutputStream.h"
 #include "nsIIPCSerializableInputStream.h"
 #include "nsISupports.h"
+#include <memory>
 
 namespace mozilla {
 namespace ipc {
@@ -30,7 +32,8 @@ class DataPipeBase {
  protected:
   explicit DataPipeBase(bool aReceiverSide, nsresult aError);
   DataPipeBase(bool aReceiverSide, ScopedPort aPort,
-               SharedMemoryBasic::Handle aShmemHandle, SharedMemory* aShmem,
+               MutableSharedMemoryHandle&& aShmemHandle,
+               const std::shared_ptr<SharedMemoryMapping>& aShmem,
                uint32_t aCapacity, nsresult aPeerStatus, uint32_t aOffset,
                uint32_t aAvailable);
 
@@ -78,18 +81,14 @@ bool DataPipeRead(IPC::MessageReader* aReader, RefPtr<T>* aResult);
 class DataPipeSender;
 class DataPipeReceiver;
 
-#define NS_DATAPIPESENDER_IID                        \
-  {                                                  \
-    0x6698ed77, 0x9fff, 0x425d, {                    \
-      0xb0, 0xa6, 0x1d, 0x30, 0x66, 0xee, 0xb8, 0x16 \
-    }                                                \
-  }
+#define NS_DATAPIPESENDER_IID \
+  {0x6698ed77, 0x9fff, 0x425d, {0xb0, 0xa6, 0x1d, 0x30, 0x66, 0xee, 0xb8, 0x16}}
 
 // Helper class for streaming data to another process.
 class DataPipeSender final : public nsIAsyncOutputStream,
                              public data_pipe_detail::DataPipeBase {
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_DATAPIPESENDER_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_DATAPIPESENDER_IID)
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIOUTPUTSTREAM
   NS_DECL_NSIASYNCOUTPUTSTREAM
@@ -103,9 +102,10 @@ class DataPipeSender final : public nsIAsyncOutputStream,
 
   explicit DataPipeSender(nsresult aError)
       : data_pipe_detail::DataPipeBase(/* aReceiverSide */ false, aError) {}
-  DataPipeSender(ScopedPort aPort, SharedMemoryBasic::Handle aShmemHandle,
-                 SharedMemory* aShmem, uint32_t aCapacity, nsresult aPeerStatus,
-                 uint32_t aOffset, uint32_t aAvailable)
+  DataPipeSender(ScopedPort aPort, MutableSharedMemoryHandle&& aShmemHandle,
+                 const std::shared_ptr<SharedMemoryMapping>& aShmem,
+                 uint32_t aCapacity, nsresult aPeerStatus, uint32_t aOffset,
+                 uint32_t aAvailable)
       : data_pipe_detail::DataPipeBase(
             /* aReceiverSide */ false, std::move(aPort),
             std::move(aShmemHandle), aShmem, aCapacity, aPeerStatus, aOffset,
@@ -114,21 +114,15 @@ class DataPipeSender final : public nsIAsyncOutputStream,
   ~DataPipeSender() = default;
 };
 
-NS_DEFINE_STATIC_IID_ACCESSOR(DataPipeSender, NS_DATAPIPESENDER_IID)
-
-#define NS_DATAPIPERECEIVER_IID                      \
-  {                                                  \
-    0x0a185f83, 0x499e, 0x450c, {                    \
-      0x95, 0x82, 0x27, 0x67, 0xad, 0x6d, 0x64, 0xb5 \
-    }                                                \
-  }
+#define NS_DATAPIPERECEIVER_IID \
+  {0x0a185f83, 0x499e, 0x450c, {0x95, 0x82, 0x27, 0x67, 0xad, 0x6d, 0x64, 0xb5}}
 
 // Helper class for streaming data from another process.
 class DataPipeReceiver final : public nsIAsyncInputStream,
                                public nsIIPCSerializableInputStream,
                                public data_pipe_detail::DataPipeBase {
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_DATAPIPERECEIVER_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_DATAPIPERECEIVER_IID)
   NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIINPUTSTREAM
   NS_DECL_NSIASYNCINPUTSTREAM
@@ -143,17 +137,16 @@ class DataPipeReceiver final : public nsIAsyncInputStream,
 
   explicit DataPipeReceiver(nsresult aError)
       : data_pipe_detail::DataPipeBase(/* aReceiverSide */ true, aError) {}
-  DataPipeReceiver(ScopedPort aPort, SharedMemoryBasic::Handle aShmemHandle,
-                   SharedMemory* aShmem, uint32_t aCapacity,
-                   nsresult aPeerStatus, uint32_t aOffset, uint32_t aAvailable)
+  DataPipeReceiver(ScopedPort aPort, MutableSharedMemoryHandle&& aShmemHandle,
+                   const std::shared_ptr<SharedMemoryMapping>& aShmem,
+                   uint32_t aCapacity, nsresult aPeerStatus, uint32_t aOffset,
+                   uint32_t aAvailable)
       : data_pipe_detail::DataPipeBase(
             /* aReceiverSide */ true, std::move(aPort), std::move(aShmemHandle),
             aShmem, aCapacity, aPeerStatus, aOffset, aAvailable) {}
 
   ~DataPipeReceiver() = default;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(DataPipeReceiver, NS_DATAPIPERECEIVER_IID)
 
 constexpr uint32_t kDefaultDataPipeCapacity = 64 * 1024;
 

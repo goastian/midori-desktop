@@ -7,11 +7,17 @@
 #define __FORKSERVICE_CHILD_H_
 
 #include "base/process_util.h"
+#include "mozilla/GeckoArgs.h"
 #include "nsIObserver.h"
 #include "nsString.h"
 #include "mozilla/ipc/MiniTransceiver.h"
 #include "mozilla/ipc/LaunchError.h"
+#include "mozilla/Mutex.h"
+#include "mozilla/RefPtr.h"
 #include "mozilla/Result.h"
+#include "mozilla/StaticMutex.h"
+#include "mozilla/StaticPtr.h"
+#include "mozilla/ThreadSafety.h"
 
 #include <sys/types.h>
 #include <poll.h>
@@ -28,34 +34,41 @@ class GeckoChildProcessHost;
  * process, this class send a message to the fork server through a
  * pipe and get the PID of the new process from the reply.
  */
-class ForkServiceChild {
+class ForkServiceChild final {
  public:
-  ForkServiceChild(int aFd, GeckoChildProcessHost* aProcess);
-  virtual ~ForkServiceChild();
-
-  struct Args {
-#if defined(XP_LINUX) && defined(MOZ_SANDBOX)
-    int mForkFlags = 0;
-    bool mChroot = false;
-#endif
-    nsTArray<nsCString> mArgv;
-    nsTArray<EnvVar> mEnv;
-    nsTArray<FdMapping> mFdsRemap;
-  };
-
+  NS_INLINE_DECL_THREADSAFE_REFCOUNTING(ForkServiceChild)
   /**
    * Ask the fork server to create a new process with given parameters.
    *
-   * The fork server uses |base::LaunchApp()| to create a new
-   * content process with the following parameters.
-   *
-   * \param aArgv assigns |argv| of the content process.
-   * \param aEnvMap sets |LaunchOptions::env_map|.
-   * \param aFdsRemap sets |LaunchOptions::fd_to_remap|.
-   * \param aPid returns the PID of the content process created.
-   * \return true if success.
+   * \param aArgs arguments with file attachments used in the content process.
+   * \param aOptions other options which will be used to create the process.
+   *                 Not all launch options are supported.
+   * \param aPid returns the PID of the content
+   * process created. \return true if success.
    */
-  Result<Ok, LaunchError> SendForkNewSubprocess(const Args& aArgs, pid_t* aPid);
+  Result<Ok, LaunchError> SendForkNewSubprocess(
+      geckoargs::ChildProcessArgs&& aArgs, base::LaunchOptions&& aOptions,
+      pid_t* aPid) MOZ_EXCLUDES(mMutex);
+
+  /**
+   * Contains a status value as from waitpid (for use with macros
+   * like WIFEXITED).
+   */
+  struct ProcStatus {
+    int status;
+  };
+
+  /**
+   * Ask the fork server to call waitpid on a child process.
+   *
+   * \param aPid The process ID of the child process.
+   * \param aBlock Whether to block until the child process exits;
+   *               use with caution.
+   *
+   * \return Ok(status) if the process exited; Err(0) if the process
+   *         is still running; and Err(errno) if there was an error.
+   */
+  Result<ProcStatus, int> SendWaitPid(pid_t aPid, bool aBlock);
 
   /**
    * Create a fork server process and the singleton of this class.
@@ -66,13 +79,12 @@ class ForkServiceChild {
    */
   static void StartForkServer();
   static void StopForkServer();
+
   /**
-   * Return the singleton.
+   * Return the singleton.  May return nullptr if the fork server is
+   * not running or in the process of being restarted.
    */
-  static ForkServiceChild* Get() {
-    auto child = sForkServiceChild.get();
-    return child == nullptr || child->mFailed ? nullptr : child;
-  }
+  static RefPtr<ForkServiceChild> Get();
 
   /**
    * Returns whether the fork server was ever active.  Thread-safe.
@@ -80,22 +92,26 @@ class ForkServiceChild {
   static bool WasUsed() { return sForkServiceUsed; }
 
  private:
-  // Called when a message is received.
-  void OnMessageReceived(UniquePtr<IPC::Message> message);
-  void OnError();
+  ForkServiceChild(int aFd, GeckoChildProcessHost* aProcess);
+  ~ForkServiceChild();
 
-  UniquePtr<MiniTransceiver> mTcver;
-  static UniquePtr<ForkServiceChild> sForkServiceChild;
+  void OnError() MOZ_REQUIRES(mMutex);
+
+  static StaticMutex sMutex;
+  static StaticRefPtr<ForkServiceChild> sSingleton MOZ_GUARDED_BY(sMutex);
   static Atomic<bool> sForkServiceUsed;
-  pid_t mRecvPid;
-  bool mFailed;  // The forkserver has crashed or disconnected.
+  Mutex mMutex;
+  UniquePtr<MiniTransceiver> mTcver MOZ_GUARDED_BY(mMutex);
+  bool mFailed MOZ_GUARDED_BY(mMutex);  // crashed or disconnected.
+  // mProcess is accessed only by the dtor so should be inherently
+  // thread-safe
   GeckoChildProcessHost* mProcess;
 };
 
 /**
  * Start a fork server at |xpcom-startup| from the chrome process.
  */
-class ForkServerLauncher : public nsIObserver {
+class ForkServerLauncher final : public nsIObserver {
  public:
   NS_DECL_ISUPPORTS
   NS_DECL_NSIOBSERVER
@@ -105,12 +121,12 @@ class ForkServerLauncher : public nsIObserver {
 
  private:
   friend class ForkServiceChild;
-  virtual ~ForkServerLauncher();
+  ~ForkServerLauncher();
 
   static void RestartForkServer();
 
-  static bool mHaveStartedClient;
-  static StaticRefPtr<ForkServerLauncher> mSingleton;
+  static bool sHaveStartedClient;
+  static StaticRefPtr<ForkServerLauncher> sSingleton;
 };
 
 }  // namespace ipc

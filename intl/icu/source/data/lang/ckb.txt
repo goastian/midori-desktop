@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 ckb{
     Languages{
         aa{"ئەفار"}
@@ -438,5 +438,8 @@ ckb{
     Scripts%stand-alone{
         Hans{"هانی ئاسانکراو"}
         Hant{"هانی دێرین"}
+    }
+    localeDisplayPattern{
+        separator{"{0}، {1}"}
     }
 }

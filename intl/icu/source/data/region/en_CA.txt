@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 en_CA{
     Countries{
         057{"Micronesian region"}
@@ -24,9 +24,6 @@ en_CA{
         VC{"Saint Vincent and the Grenadines"}
         VI{"US Virgin Islands"}
         WF{"Wallis and Futuna"}
-        XA{"pseudo-accents"}
-        XB{"pseudo-bidi"}
-        ZZ{"unknown region"}
     }
     Countries%short{
         MO{"Macau"}

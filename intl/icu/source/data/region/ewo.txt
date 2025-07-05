@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 ewo{
     Countries{
         AD{"Andór"}
@@ -93,7 +93,6 @@ ewo{
         IE{"Irəlándə"}
         IL{"Isəraɛ́l"}
         IN{"ɛ́ndə"}
-        IO{"ǹnam ɛngəlís yá Máŋ mə́ ɛ́ndə"}
         IQ{"Irág"}
         IR{"Irán"}
         IS{"Isəlándə"}

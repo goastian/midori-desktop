@@ -30,7 +30,7 @@ class CanonicalBrowsingContext;
 class BrowsingContextWebProgress final : public nsIWebProgress,
                                          public nsIWebProgressListener {
  public:
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS_FINAL
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(BrowsingContextWebProgress,
                                            nsIWebProgress)
   NS_DECL_NSIWEBPROGRESS
@@ -64,8 +64,12 @@ class BrowsingContextWebProgress final : public nsIWebProgress,
 
   already_AddRefed<BounceTrackingState> GetBounceTrackingState();
 
+  // Drops our reference to BounceTrackingState. This is used when the feature
+  // gets disabled.
+  void DropBounceTrackingState();
+
  private:
-  virtual ~BrowsingContextWebProgress();
+  ~BrowsingContextWebProgress();
 
   void UpdateAndNotifyListeners(
       uint32_t aFlag,

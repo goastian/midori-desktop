@@ -8,28 +8,41 @@
 #include "src/pdf/SkPDFBitmap.h"
 
 #include "include/codec/SkCodec.h"
-#include "include/codec/SkEncodedImageFormat.h"
-#include "include/codec/SkJpegDecoder.h"
+#include "include/codec/SkEncodedOrigin.h"
+#include "include/core/SkAlphaType.h"
 #include "include/core/SkBitmap.h"
+#include "include/core/SkColor.h"
+#include "include/core/SkColorSpace.h"
+#include "include/core/SkColorType.h"
 #include "include/core/SkData.h"
 #include "include/core/SkExecutor.h"
 #include "include/core/SkImage.h"
+#include "include/core/SkImageInfo.h"
+#include "include/core/SkPixmap.h"
+#include "include/core/SkSize.h"
 #include "include/core/SkStream.h"
+#include "include/docs/SkPDFDocument.h"
 #include "include/encode/SkICC.h"
-#include "include/encode/SkJpegEncoder.h"
-#include "include/private/SkColorData.h"
+#include "include/private/SkEncodedInfo.h"
+#include "include/private/base/SkAssert.h"
+#include "include/private/base/SkMutex.h"
 #include "include/private/base/SkTo.h"
-#include "src/core/SkImageInfoPriv.h"
+#include "modules/skcms/skcms.h"
+#include "src/codec/SkCodecPriv.h"
+#include "src/core/SkColorPriv.h"
+#include "src/core/SkTHash.h"
 #include "src/pdf/SkDeflate.h"
 #include "src/pdf/SkPDFDocumentPriv.h"
 #include "src/pdf/SkPDFTypes.h"
 #include "src/pdf/SkPDFUnion.h"
-#include "src/pdf/SkPDFUtils.h"
 
-
-/*static*/ const SkEncodedInfo& SkPDFBitmap::GetEncodedInfo(SkCodec& codec) {
-    return codec.getEncodedInfo();
-}
+#include <algorithm>
+#include <array>
+#include <cstring>
+#include <functional>
+#include <memory>
+#include <optional>
+#include <utility>
 
 namespace {
 
@@ -96,22 +109,11 @@ void emit_image_stream(SkPDFDocument* doc,
         pdfDict.insertRef("SMask", sMask);
     }
     pdfDict.insertInt("BitsPerComponent", 8);
-    #ifdef SK_PDF_BASE85_BINARY
-    auto filters = SkPDFMakeArray();
-    filters->appendName("ASCII85Decode");
-    switch (format) {
-        case SkPDFStreamFormat::DCT: filters->appendName("DCTDecode"); break;
-        case SkPDFStreamFormat::Flate: filters->appendName("FlateDecode"); break;
-        case SkPDFStreamFormat::Uncompressed: break;
-    }
-    pdfDict.insertObject("Filter", std::move(filters));
-    #else
     switch (format) {
         case SkPDFStreamFormat::DCT: pdfDict.insertName("Filter", "DCTDecode"); break;
         case SkPDFStreamFormat::Flate: pdfDict.insertName("Filter", "FlateDecode"); break;
         case SkPDFStreamFormat::Uncompressed: break;
     }
-    #endif
     if (format == SkPDFStreamFormat::DCT) {
         pdfDict.insertInt("ColorTransform", 0);
     }
@@ -157,9 +159,6 @@ void do_deflated_alpha(const SkPixmap& pm, SkPDFDocument* doc, SkPDFIndirectRefe
         deflateWStream->finalize();
     }
 
-    #ifdef SK_PDF_BASE85_BINARY
-    SkPDFUtils::Base85Encode(buffer.detachAsStream(), &buffer);
-    #endif
     int length = SkToInt(buffer.bytesWritten());
     emit_image_stream(doc, ref, [&buffer](SkWStream* stream) { buffer.writeToAndReset(stream); },
                       pm.info().dimensions(), SkPDFUnion::Name("DeviceGray"),
@@ -187,6 +186,14 @@ SkPDFUnion write_icc_profile(SkPDFDocument* doc, sk_sp<SkData>&& icc, int channe
     iccPDF->appendName("ICCBased");
     iccPDF->appendRef(iccStreamRef);
     return SkPDFUnion::Object(std::move(iccPDF));
+}
+
+bool icc_channel_mismatch(const skcms_ICCProfile* iccProfile, int expectedChannels) {
+    int iccChannels = -1;
+    if (iccProfile) {
+        iccChannels = skcms_GetInputChannelCount(iccProfile);
+    }
+    return 0 < iccChannels && expectedChannels != iccChannels;
 }
 
 void do_deflated_image(const SkPixmap& pm,
@@ -253,16 +260,15 @@ void do_deflated_image(const SkPixmap& pm,
         deflateWStream->finalize();
     }
 
-    if (pm.colorSpace() && channels != 1) {
+    if (pm.colorSpace()) {
         skcms_ICCProfile iccProfile;
         pm.colorSpace()->toProfile(&iccProfile);
-        sk_sp<SkData> iccData = SkWriteICCProfile(&iccProfile, "");
-        colorSpace = write_icc_profile(doc, std::move(iccData), channels);
+        if (!icc_channel_mismatch(&iccProfile, channels)) {
+            sk_sp<SkData> iccData = SkWriteICCProfile(&iccProfile, "");
+            colorSpace = write_icc_profile(doc, std::move(iccData), channels);
+        }
     }
 
-    #ifdef SK_PDF_BASE85_BINARY
-    SkPDFUtils::Base85Encode(buffer.detachAsStream(), &buffer);
-    #endif
     int length = SkToInt(buffer.bytesWritten());
     emit_image_stream(doc, ref, [&buffer](SkWStream* stream) { buffer.writeToAndReset(stream); },
                       pm.info().dimensions(), std::move(colorSpace), sMask, length, format);
@@ -273,19 +279,17 @@ void do_deflated_image(const SkPixmap& pm,
 
 bool do_jpeg(sk_sp<SkData> data, SkColorSpace* imageColorSpace, SkPDFDocument* doc, SkISize size,
              SkPDFIndirectReference ref) {
-#ifdef MOZ_SKIA
-    return false;
-#else
-    static constexpr const SkCodecs::Decoder decoders[] = {
-        SkJpegDecoder::Decoder(),
-    };
-    std::unique_ptr<SkCodec> codec = SkCodec::MakeFromData(data, decoders);
+    SkPDF::DecodeJpegCallback decodeJPEG = doc->metadata().jpegDecoder;
+    if (!decodeJPEG) {
+        return false;
+    }
+    std::unique_ptr<SkCodec> codec = decodeJPEG(data);
     if (!codec) {
         return false;
     }
 
     SkISize jpegSize = codec->dimensions();
-    const SkEncodedInfo& encodedInfo = SkPDFBitmap::GetEncodedInfo(*codec);
+    const SkEncodedInfo& encodedInfo = SkCodecPriv::GetEncodedInfo(codec.get());
     SkEncodedInfo::Color jpegColorType = encodedInfo.color();
     SkEncodedOrigin exifOrientation = codec->getOrigin();
 
@@ -296,24 +300,26 @@ bool do_jpeg(sk_sp<SkData> data, SkColorSpace* imageColorSpace, SkPDFDocument* d
             || kTopLeft_SkEncodedOrigin != exifOrientation) {
         return false;
     }
-    #ifdef SK_PDF_BASE85_BINARY
-    SkDynamicMemoryWStream buffer;
-    SkPDFUtils::Base85Encode(SkMemoryStream::MakeDirect(data->data(), data->size()), &buffer);
-    data = buffer.detachAsData();
-    #endif
 
     int channels = yuv ? 3 : 1;
     SkPDFUnion colorSpace = yuv ? SkPDFUnion::Name("DeviceRGB") : SkPDFUnion::Name("DeviceGray");
-    if (sk_sp<SkData> encodedIccProfileData = encodedInfo.profileData()) {
+
+    if (sk_sp<SkData> encodedIccProfileData = encodedInfo.profileData();
+        encodedIccProfileData && !icc_channel_mismatch(encodedInfo.profile(), channels))
+    {
         colorSpace = write_icc_profile(doc, std::move(encodedIccProfileData), channels);
-    } else if (const skcms_ICCProfile* codecIccProfile = codec->getICCProfile()) {
+    } else if (const skcms_ICCProfile* codecIccProfile = codec->getICCProfile();
+               codecIccProfile && !icc_channel_mismatch(codecIccProfile, channels))
+    {
         sk_sp<SkData> codecIccData = SkWriteICCProfile(codecIccProfile, "");
         colorSpace = write_icc_profile(doc, std::move(codecIccData), channels);
-    } else if (imageColorSpace && channels != 1) {
+    } else if (imageColorSpace) {
         skcms_ICCProfile imageIccProfile;
         imageColorSpace->toProfile(&imageIccProfile);
-        sk_sp<SkData> imageIccData = SkWriteICCProfile(&imageIccProfile, "");
-        colorSpace = write_icc_profile(doc, std::move(imageIccData), channels);
+        if (!icc_channel_mismatch(&imageIccProfile, channels)) {
+            sk_sp<SkData> imageIccData = SkWriteICCProfile(&imageIccProfile, "");
+            colorSpace = write_icc_profile(doc, std::move(imageIccData), channels);
+        }
     }
 
     emit_image_stream(doc, ref,
@@ -321,7 +327,6 @@ bool do_jpeg(sk_sp<SkData> data, SkColorSpace* imageColorSpace, SkPDFDocument* d
                       jpegSize, std::move(colorSpace),
                       SkPDFIndirectReference(), SkToInt(data->size()), SkPDFStreamFormat::DCT);
     return true;
-#endif
 }
 
 SkBitmap to_pixels(const SkImage* image) {
@@ -365,12 +370,12 @@ void serialize_image(const SkImage* img,
     }
     SkBitmap bm = to_pixels(img);
     const SkPixmap& pm = bm.pixmap();
+    SkPDF::EncodeJpegCallback encodeJPEG = doc->metadata().jpegEncoder;
+
     bool isOpaque = pm.isOpaque() || pm.computeIsOpaque();
-    if (encodingQuality <= 100 && isOpaque) {
-        SkJpegEncoder::Options jOpts;
-        jOpts.fQuality = encodingQuality;
+    if (encodeJPEG && encodingQuality <= 100 && isOpaque) {
         SkDynamicMemoryWStream stream;
-        if (SkJpegEncoder::Encode(&stream, pm, jOpts)) {
+        if (encodeJPEG(&stream, pm, encodingQuality)) {
             if (do_jpeg(stream.detachAsData(), pm.colorSpace(), doc, dimensions, ref)) {
                 return;
             }

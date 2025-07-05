@@ -14,11 +14,11 @@
 #include "include/core/SkSize.h"
 #include "include/core/SkString.h"
 #include "include/private/base/SkDebug.h"
-#include "include/private/base/SkFloatBits.h"
 #include "include/private/base/SkFloatingPoint.h"
 #include "include/private/base/SkMalloc.h"
 #include "include/private/base/SkMath.h"
 #include "include/private/base/SkTo.h"
+#include "src/base/SkFloatBits.h"
 #include "src/base/SkVx.h"
 #include "src/core/SkMatrixPriv.h"
 #include "src/core/SkMatrixUtils.h"
@@ -815,41 +815,53 @@ bool SkMatrix::invertNonIdentity(SkMatrix* inv) const {
 
     TypeMask mask = this->getType();
 
+    // Optimized invert for only scale and/or translation matrices.
     if (0 == (mask & ~(kScale_Mask | kTranslate_Mask))) {
-        bool invertible = true;
-        if (inv) {
-            if (mask & kScale_Mask) {
-                SkScalar invX = sk_ieee_float_divide(1.f, fMat[kMScaleX]);
-                SkScalar invY = sk_ieee_float_divide(1.f, fMat[kMScaleY]);
-                // Denormalized (non-zero) scale factors will overflow when inverted, in which case
-                // the inverse matrix would not be finite, so return false.
-                if (!SkScalarsAreFinite(invX, invY)) {
-                    return false;
-                }
+        if (mask & kScale_Mask) {
+            // Scale + (optional) Translate
+            SkScalar invSX = sk_ieee_float_divide(1.f, fMat[kMScaleX]);
+            SkScalar invSY = sk_ieee_float_divide(1.f, fMat[kMScaleY]);
+            // Denormalized (non-zero) scale factors will overflow when inverted, in which case
+            // the inverse matrix would not be finite, so return false.
+            if (!SkIsFinite(invSX, invSY)) {
+                return false;
+            }
+            SkScalar invTX = -fMat[kMTransX] * invSX;
+            SkScalar invTY = -fMat[kMTransY] * invSY;
+            // Make sure inverse translation didn't overflow/underflow after dividing by scale.
+            // Also catches cases where the original matrix's translation values are not finite.
+            if (!SkIsFinite(invTX, invTY)) {
+                return false;
+            }
 
-                // Must be careful when writing to inv, since it may be the
-                // same memory as this.
-
+            // Must be careful when writing to inv, since it may be the
+            // same memory as this.
+            if (inv) {
                 inv->fMat[kMSkewX] = inv->fMat[kMSkewY] =
                 inv->fMat[kMPersp0] = inv->fMat[kMPersp1] = 0;
 
-                inv->fMat[kMScaleX] = invX;
-                inv->fMat[kMScaleY] = invY;
+                inv->fMat[kMScaleX] = invSX;
+                inv->fMat[kMScaleY] = invSY;
                 inv->fMat[kMPersp2] = 1;
-                inv->fMat[kMTransX] = -fMat[kMTransX] * invX;
-                inv->fMat[kMTransY] = -fMat[kMTransY] * invY;
+                inv->fMat[kMTransX] = invTX;
+                inv->fMat[kMTransY] = invTY;
 
                 inv->setTypeMask(mask | kRectStaysRect_Mask);
-            } else {
-                // translate only
-                inv->setTranslate(-fMat[kMTransX], -fMat[kMTransY]);
             }
-        } else {    // inv is nullptr, just check if we're invertible
-            if (!fMat[kMScaleX] || !fMat[kMScaleY]) {
-                invertible = false;
-            }
+
+            return true;
         }
-        return invertible;
+
+        // Translate-only
+        if (!SkIsFinite(fMat[kMTransX], fMat[kMTransY])) {
+            // Translation components aren't finite, so inverse isn't possible
+            return false;
+        }
+
+        if (inv) {
+            inv->setTranslate(-fMat[kMTransX], -fMat[kMTransY]);
+        }
+        return true;
     }
 
     int    isPersp = mask & kPerspective_Mask;
@@ -1497,7 +1509,7 @@ template <MinMaxOrBoth MIN_MAX_OR_BOTH> bool get_scale_factor(SkMatrix::TypeMask
             results[1] = apluscdiv2 + x;
         }
     }
-    if (!SkScalarIsFinite(results[0])) {
+    if (!SkIsFinite(results[0])) {
         return false;
     }
     // Due to the floating point inaccuracy, there might be an error in a, b, c
@@ -1508,7 +1520,7 @@ template <MinMaxOrBoth MIN_MAX_OR_BOTH> bool get_scale_factor(SkMatrix::TypeMask
     }
     results[0] = SkScalarSqrt(results[0]);
     if (kBoth_MinMaxOrBoth == MIN_MAX_OR_BOTH) {
-        if (!SkScalarIsFinite(results[1])) {
+        if (!SkIsFinite(results[1])) {
             return false;
         }
         if (results[1] < 0) {
@@ -1563,7 +1575,7 @@ bool SkMatrix::decomposeScale(SkSize* scale, SkMatrix* remaining) const {
 
     const SkScalar sx = SkVector::Length(this->getScaleX(), this->getSkewY());
     const SkScalar sy = SkVector::Length(this->getSkewX(), this->getScaleY());
-    if (!SkScalarIsFinite(sx) || !SkScalarIsFinite(sy) ||
+    if (!SkIsFinite(sx, sy) ||
         SkScalarNearlyZero(sx) || SkScalarNearlyZero(sy)) {
         return false;
     }
@@ -1878,7 +1890,7 @@ SkScalar SkMatrixPriv::ComputeResScaleForStroking(const SkMatrix& matrix) {
     // Not sure how to handle perspective differently, so we just don't try (yet)
     SkScalar sx = SkPoint::Length(matrix[SkMatrix::kMScaleX], matrix[SkMatrix::kMSkewY]);
     SkScalar sy = SkPoint::Length(matrix[SkMatrix::kMSkewX],  matrix[SkMatrix::kMScaleY]);
-    if (SkScalarsAreFinite(sx, sy)) {
+    if (SkIsFinite(sx, sy)) {
         SkScalar scale = std::max(sx, sy);
         if (scale > 0) {
             return scale;

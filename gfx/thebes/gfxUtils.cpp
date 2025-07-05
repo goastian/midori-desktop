@@ -1058,7 +1058,7 @@ const gfx::DeviceColor& gfxUtils::GetColorForFrameNumber(
     uint32_t i = 0;
     colors[i++] = gfx::DeviceColor::FromABGR(0xffff0000);
     colors[i++] = gfx::DeviceColor::FromABGR(0xffcc00ff);
-    colors[i++] = gfx::DeviceColor::FromABGR(0xff0066cc);
+    colors[i++] = gfx::DeviceColor::FromABGR(0xff0000ee);
     colors[i++] = gfx::DeviceColor::FromABGR(0xff00ff00);
     colors[i++] = gfx::DeviceColor::FromABGR(0xff33ffff);
     colors[i++] = gfx::DeviceColor::FromABGR(0xffff0099);
@@ -1299,7 +1299,7 @@ const float kIdentityNarrowYCbCrToRGB_RowMajor[16] = {
 /* static */ const float* gfxUtils::YuvToRgbMatrix4x3RowMajor(
     gfx::YUVColorSpace aYUVColorSpace) {
 #define X(x) \
-  { x[0], x[1], x[2], 0.0f, x[4], x[5], x[6], 0.0f, x[8], x[9], x[10], 0.0f }
+  {x[0], x[1], x[2], 0.0f, x[4], x[5], x[6], 0.0f, x[8], x[9], x[10], 0.0f}
 
   static const float rec601[12] = X(kBT601NarrowYCbCrToRGB_RowMajor);
   static const float rec709[12] = X(kBT709NarrowYCbCrToRGB_RowMajor);
@@ -1324,8 +1324,7 @@ const float kIdentityNarrowYCbCrToRGB_RowMajor[16] = {
 
 /* static */ const float* gfxUtils::YuvToRgbMatrix3x3ColumnMajor(
     gfx::YUVColorSpace aYUVColorSpace) {
-#define X(x) \
-  { x[0], x[4], x[8], x[1], x[5], x[9], x[2], x[6], x[10] }
+#define X(x) {x[0], x[4], x[8], x[1], x[5], x[9], x[2], x[6], x[10]}
 
   static const float rec601[9] = X(kBT601NarrowYCbCrToRGB_RowMajor);
   static const float rec709[9] = X(kBT709NarrowYCbCrToRGB_RowMajor);
@@ -1350,11 +1349,9 @@ const float kIdentityNarrowYCbCrToRGB_RowMajor[16] = {
 
 /* static */ const float* gfxUtils::YuvToRgbMatrix4x4ColumnMajor(
     YUVColorSpace aYUVColorSpace) {
-#define X(x)                                                             \
-  {                                                                      \
-    x[0], x[4], x[8], x[12], x[1], x[5], x[9], x[13], x[2], x[6], x[10], \
-        x[14], x[3], x[7], x[11], x[15]                                  \
-  }
+#define X(x)                                           \
+  {x[0], x[4], x[8],  x[12], x[1], x[5], x[9],  x[13], \
+   x[2], x[6], x[10], x[14], x[3], x[7], x[11], x[15]}
 
   static const float rec601[16] = X(kBT601NarrowYCbCrToRGB_RowMajor);
   static const float rec709[16] = X(kBT709NarrowYCbCrToRGB_RowMajor);
@@ -1471,19 +1468,16 @@ void gfxUtils::WriteAsPNG(SourceSurface* aSurface, const char* aFile) {
 
   if (!file) {
     // Maybe the directory doesn't exist; try creating it, then fopen again.
-    nsresult rv = NS_ERROR_FAILURE;
-    nsCOMPtr<nsIFile> comFile = do_CreateInstance("@mozilla.org/file/local;1");
-    if (comFile) {
-      NS_ConvertUTF8toUTF16 utf16path((nsDependentCString(aFile)));
-      rv = comFile->InitWithPath(utf16path);
-      if (NS_SUCCEEDED(rv)) {
-        nsCOMPtr<nsIFile> dirPath;
-        comFile->GetParent(getter_AddRefs(dirPath));
-        if (dirPath) {
-          rv = dirPath->Create(nsIFile::DIRECTORY_TYPE, 0777);
-          if (NS_SUCCEEDED(rv) || rv == NS_ERROR_FILE_ALREADY_EXISTS) {
-            file = fopen(aFile, "wb");
-          }
+    nsCOMPtr<nsIFile> comFile;
+    nsresult rv = NS_NewNativeLocalFile(nsDependentCString(aFile),
+                                        getter_AddRefs(comFile));
+    if (NS_SUCCEEDED(rv)) {
+      nsCOMPtr<nsIFile> dirPath;
+      comFile->GetParent(getter_AddRefs(dirPath));
+      if (dirPath) {
+        rv = dirPath->Create(nsIFile::DIRECTORY_TYPE, 0777);
+        if (NS_SUCCEEDED(rv) || rv == NS_ERROR_FILE_ALREADY_EXISTS) {
+          file = fopen(aFile, "wb");
         }
       }
     }
@@ -1775,7 +1769,7 @@ bool gfxUtils::DumpDisplayList() {
           XRE_IsContentProcess());
 }
 
-FILE* gfxUtils::sDumpPaintFile = stderr;
+MOZ_GLOBINIT FILE* gfxUtils::sDumpPaintFile = stderr;
 
 namespace mozilla {
 namespace gfx {
@@ -1808,7 +1802,7 @@ sRGBColor ToSRGBColor(const StyleAbsoluteColor& aColor) {
   auto srgb = aColor.ToColorSpace(StyleColorSpace::Srgb);
 
   const auto ToComponent = [](float aF) -> float {
-    float component = std::min(std::max(0.0f, aF), 1.0f);
+    float component = std::clamp(aF, 0.0f, 1.0f);
     if (MOZ_UNLIKELY(!std::isfinite(component))) {
       return 0.0f;
     }

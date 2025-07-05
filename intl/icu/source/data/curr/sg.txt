@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 sg{
     Currencies{
         AED{
@@ -171,9 +171,13 @@ sg{
             "SHP",
             "pôndo tî Zûâ Sênt-Helêna",
         }
+        SLE{
+            "SLE",
+            "leône tî Sierâ-Leône",
+        }
         SLL{
             "SLL",
-            "leône tî Sierâ-Leône",
+            "leône tî Sierâ-Leône (1964—2022)",
         }
         SOS{
             "SOS",

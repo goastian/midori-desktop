@@ -1,6 +1,6 @@
 ﻿# © 2016 and later: Unicode, Inc. and others.
 # License & terms of use: http://www.unicode.org/copyright.html
-# Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+# Generated using tools/cldr/cldr-to-icu/
 #
 # File: gz_Ethi_Sarb.txt
 # Generated from CLDR
@@ -175,10 +175,8 @@ $wordBoundary = [^[:L:][:M:][:N:]] ;
 ፺ ↔ | 𐩿𐩲𐩲𐩲𐩲𐩾𐩿 ; # ETHIOPIC NUMBER NINETY
 ፻ ↔ | 𐩿𐩣𐩿 ; # ETHIOPIC NUMBER HUNDRED
 ፼ ↔ | 𐩿𐩲𐩱𐩿 ; # ETHIOPIC NUMBER TEN HUNDRED
-𐩿𐩿 → ; # This mark stripper isn't working, perhaps because the above
-# sequences require a → in place of ↔ . If it did work, the
-# the reverse conversions would break. Review the use case
-# with Musnad writing.
+::Null ;
+𐩿𐩿 → ;
 ########################################################################
 # Inverse Fiter : Musnad-Ethiopic
 ########################################################################

@@ -10,6 +10,7 @@
 #include "mozilla/StaticPrefs_gfx.h"
 #include "mozilla/layers/CompositableClient.h"
 #include "mozilla/layers/CompositorBridgeChild.h"
+#include "mozilla/layers/CompositorManagerChild.h"
 #include "mozilla/layers/ImageDataSerializer.h"
 #include "mozilla/layers/IpcResourceUpdateQueue.h"
 #include "mozilla/layers/StackingContextHelper.h"
@@ -105,7 +106,7 @@ void WebRenderBridgeChild::UpdateResources(
 bool WebRenderBridgeChild::EndTransaction(
     DisplayListData&& aDisplayListData, TransactionId aTransactionId,
     bool aContainsSVGGroup, const mozilla::VsyncId& aVsyncId,
-    const mozilla::TimeStamp& aVsyncStartTime,
+    bool aRenderOffscreen, const mozilla::TimeStamp& aVsyncStartTime,
     const mozilla::TimeStamp& aRefreshStartTime,
     const mozilla::TimeStamp& aTxnStartTime, const nsCString& aTxnURL) {
   MOZ_ASSERT(!mDestroyed);
@@ -125,7 +126,8 @@ bool WebRenderBridgeChild::EndTransaction(
   bool ret = this->SendSetDisplayList(
       std::move(aDisplayListData), mDestroyedActors, GetFwdTransactionId(),
       aTransactionId, aContainsSVGGroup, aVsyncId, aVsyncStartTime,
-      aRefreshStartTime, aTxnStartTime, aTxnURL, fwdTime, payloads);
+      aRefreshStartTime, aTxnStartTime, aTxnURL, fwdTime, payloads,
+      aRenderOffscreen);
 
   // With multiple render roots, we may not have sent all of our
   // mParentCommands, so go ahead and go through our mParentCommands and ensure
@@ -488,7 +490,7 @@ mozilla::ipc::IPCResult WebRenderBridgeChild::RecvWrReleasedImages(
 void WebRenderBridgeChild::BeginClearCachedResources() {
   mSentDisplayList = false;
   mIsInClearCachedResources = true;
-  // Clear display list and animtaions at parent side before clearing cached
+  // Clear display list and animations at parent side before clearing cached
   // resources on client side. It prevents to clear resources before clearing
   // display list at parent side.
   SendClearCachedResources();
@@ -580,6 +582,21 @@ void WebRenderBridgeChild::StartCaptureSequence(const nsCString& aPath,
 
 void WebRenderBridgeChild::StopCaptureSequence() {
   this->SendStopCaptureSequence();
+}
+
+bool WebRenderBridgeChild::SendEnsureConnected(
+    TextureFactoryIdentifier* textureFactoryIdentifier,
+    MaybeIdNamespace* maybeIdNamespace, nsCString* error) {
+  auto* manager = CompositorManagerChild::GetInstance();
+  if (XRE_IsParentProcess()) {
+    manager->SetSyncIPCStartTimeStamp();
+  }
+  auto ret = PWebRenderBridgeChild::SendEnsureConnected(
+      textureFactoryIdentifier, maybeIdNamespace, error);
+  if (XRE_IsParentProcess()) {
+    manager->ClearSyncIPCStartTimeStamp();
+  }
+  return ret;
 }
 
 }  // namespace layers

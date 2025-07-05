@@ -6,7 +6,7 @@ use api::units::*;
 use crate::command_buffer::{CommandBufferBuilderKind, CommandBufferList, CommandBufferBuilder, CommandBufferIndex};
 use crate::internal_types::FastHashMap;
 use crate::picture::{SurfaceInfo, SurfaceIndex, TileKey, SubSliceIndex, MAX_COMPOSITOR_SURFACES};
-use crate::prim_store::{PictureIndex};
+use crate::prim_store::PictureIndex;
 use crate::render_task_graph::{RenderTaskId, RenderTaskGraphBuilder};
 use crate::render_target::ResolveOp;
 use crate::render_task::{RenderTask, RenderTaskKind, RenderTaskLocation};
@@ -217,35 +217,39 @@ impl SurfaceBuilder {
         surface_index: SurfaceIndex,
         is_sub_graph: bool,
         clipping_rect: PictureRect,
-        descriptor: SurfaceDescriptor,
+        descriptor: Option<SurfaceDescriptor>,
         surfaces: &mut [SurfaceInfo],
         rg_builder: &RenderTaskGraphBuilder,
     ) {
         // Init the surface
         surfaces[surface_index.0].clipping_rect = clipping_rect;
 
-        let builder = match descriptor.kind {
-            SurfaceDescriptorKind::Tiled { tiles } => {
-                CommandBufferBuilder::new_tiled(
-                    tiles,
-                )
+        let builder = if let Some(descriptor) = descriptor {
+            match descriptor.kind {
+                SurfaceDescriptorKind::Tiled { tiles } => {
+                    CommandBufferBuilder::new_tiled(
+                        tiles,
+                    )
+                }
+                SurfaceDescriptorKind::Simple { render_task_id, dirty_rect, .. } => {
+                    CommandBufferBuilder::new_simple(
+                        render_task_id,
+                        is_sub_graph,
+                        None,
+                        dirty_rect,
+                    )
+                }
+                SurfaceDescriptorKind::Chained { render_task_id, root_task_id, dirty_rect, .. } => {
+                    CommandBufferBuilder::new_simple(
+                        render_task_id,
+                        is_sub_graph,
+                        Some(root_task_id),
+                        dirty_rect,
+                    )
+                }
             }
-            SurfaceDescriptorKind::Simple { render_task_id, dirty_rect, .. } => {
-                CommandBufferBuilder::new_simple(
-                    render_task_id,
-                    is_sub_graph,
-                    None,
-                    dirty_rect,
-                )
-            }
-            SurfaceDescriptorKind::Chained { render_task_id, root_task_id, dirty_rect, .. } => {
-                CommandBufferBuilder::new_simple(
-                    render_task_id,
-                    is_sub_graph,
-                    Some(root_task_id),
-                    dirty_rect,
-                )
-            }
+        } else {
+            CommandBufferBuilder::empty()
         };
 
         self.current_cmd_buffers.init(&builder, rg_builder);
@@ -321,6 +325,11 @@ impl SurfaceBuilder {
                 true
             }
         }
+    }
+
+    pub fn pop_empty_surface(&mut self) {
+        let builder = self.builder_stack.pop().unwrap();
+        assert!(!builder.establishes_sub_graph);
     }
 
     // Finish adding primitives and child tasks to a surface and pop it off the stack
@@ -566,12 +575,10 @@ impl SurfaceBuilder {
                             );
                         }
                         CommandBufferBuilderKind::Invalid => {
-                            unreachable!();
                         }
                     }
                 }
                 CommandBufferBuilderKind::Invalid => {
-                    unreachable!();
                 }
             }
         }

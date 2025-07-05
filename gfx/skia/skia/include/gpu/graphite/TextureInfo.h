@@ -11,160 +11,122 @@
 #include "include/core/SkString.h"
 #include "include/core/SkTextureCompressionType.h"
 #include "include/gpu/graphite/GraphiteTypes.h"
-
-#ifdef SK_DAWN
-#include "include/private/gpu/graphite/DawnTypesPriv.h"
-#endif
-
-#ifdef SK_METAL
-#include "include/private/gpu/graphite/MtlGraphiteTypesPriv.h"
-#endif
-
-#ifdef SK_VULKAN
-#include "include/private/gpu/graphite/VulkanGraphiteTypesPriv.h"
-#endif
+#include "include/private/base/SkAPI.h"
+#include "include/private/base/SkAnySubclass.h"
 
 struct SkISize;
 
 namespace skgpu::graphite {
 
+enum class TextureFormat : uint8_t;
+
+/**
+ * TextureInfo is a backend-agnostic wrapper around the properties of a texture, sans dimensions.
+ * It is designed this way to be compilable w/o bringing in a specific backend's build files, and
+ * without requiring heap allocations of virtual types.
+ */
 class SK_API TextureInfo {
+private:
+    class Data;
+    friend class MtlTextureInfo;
+    friend class DawnTextureInfo;
+    friend class VulkanTextureInfo;
+
+    // Size is the largest of the Data subclasses assuming a 64-bit compiler.
+    inline constexpr static size_t kMaxSubclassSize = 112;
+    using AnyTextureInfoData = SkAnySubclass<Data, kMaxSubclassSize>;
+
+    // Base properties for all backend-specific properties. Clients managing textures directly
+    // should use the public subclasses of Data directly, e.g. MtlTextureInfo/DawnTextureInfo.
+    //
+    // Each backend subclass must expose to TextureInfo[Priv]:
+    //   static constexpr BackendApi kBackend;
+    //   Protected isProtected() const;
+    //   TextureFormat viewFormat() const;
+    //   bool serialize(SkWStream*) const;
+    //   bool deserialize(SkStream*);
+    class Data {
+    public:
+        virtual ~Data() = default;
+
+        Data(uint32_t sampleCount, skgpu::Mipmapped mipmapped)
+                : fSampleCount(sampleCount)
+                , fMipmapped(mipmapped) {}
+
+        Data() = default;
+        Data(const Data&) = default;
+
+        Data& operator=(const Data&) = default;
+
+        // NOTE: These fields are accessible via the backend-specific subclasses.
+        uint32_t fSampleCount = 1;
+        Mipmapped fMipmapped = Mipmapped::kNo;
+
+    private:
+        friend class TextureInfo;
+        friend class TextureInfoPriv;
+
+        virtual SkString toBackendString() const = 0;
+
+        virtual void copyTo(AnyTextureInfoData&) const = 0;
+        // Passed in TextureInfo will have data of the same backend type and subclass, and
+        // base properties of Data have already been checked for equality/compatibility.
+        virtual bool isCompatible(const TextureInfo& that, bool requireExact) const = 0;
+    };
+
 public:
-    TextureInfo() {}
-#ifdef SK_DAWN
-    TextureInfo(const DawnTextureInfo& dawnInfo)
-            : fBackend(BackendApi::kDawn)
-            , fValid(true)
-            , fSampleCount(dawnInfo.fSampleCount)
-            , fMipmapped(dawnInfo.fMipmapped)
-            , fProtected(Protected::kNo)
-            , fDawnSpec(dawnInfo) {}
-#endif
+    TextureInfo() = default;
+    ~TextureInfo() = default;
 
-#ifdef SK_METAL
-    TextureInfo(const MtlTextureInfo& mtlInfo)
-            : fBackend(BackendApi::kMetal)
-            , fValid(true)
-            , fSampleCount(mtlInfo.fSampleCount)
-            , fMipmapped(mtlInfo.fMipmapped)
-            , fProtected(Protected::kNo)
-            , fMtlSpec(mtlInfo) {}
-#endif
-
-#ifdef SK_VULKAN
-    TextureInfo(const VulkanTextureInfo& vkInfo)
-            : fBackend(BackendApi::kVulkan)
-            , fValid(true)
-            , fSampleCount(vkInfo.fSampleCount)
-            , fMipmapped(vkInfo.fMipmapped)
-            , fProtected(Protected::kNo)
-            , fVkSpec(vkInfo) {
-        if (vkInfo.fFlags & VK_IMAGE_CREATE_PROTECTED_BIT) {
-            fProtected = Protected::kYes;
-        }
-    }
-#endif
-
-    ~TextureInfo() {}
-    TextureInfo(const TextureInfo&) = default;
+    TextureInfo(const TextureInfo&);
     TextureInfo& operator=(const TextureInfo&);
 
-    bool operator==(const TextureInfo&) const;
+    bool operator==(const TextureInfo& that) const {
+        return this->isCompatible(that, /*requireExact=*/true);
+    }
     bool operator!=(const TextureInfo& that) const { return !(*this == that); }
 
-    bool isValid() const { return fValid; }
-    BackendApi backend() const { return fBackend; }
+    bool isValid() const { return fData.has_value(); }
+    BackendApi backend() const {
+        SkASSERT(fData.has_value() || fBackend == BackendApi::kUnsupported);
+        return fBackend;
+    }
 
-    uint32_t numSamples() const { return fSampleCount; }
-    Mipmapped mipmapped() const { return fMipmapped; }
+    uint32_t numSamples() const { return fData.has_value() ? fData->fSampleCount : 1; }
+    Mipmapped mipmapped() const { return fData.has_value() ? fData->fMipmapped   : Mipmapped::kNo; }
     Protected isProtected() const { return fProtected; }
-    SkTextureCompressionType compressionType() const;
 
-#ifdef SK_DAWN
-    bool getDawnTextureInfo(DawnTextureInfo* info) const;
-#endif
-
-#ifdef SK_METAL
-    bool getMtlTextureInfo(MtlTextureInfo* info) const {
-        if (!this->isValid() || fBackend != BackendApi::kMetal) {
-            return false;
-        }
-        *info = MtlTextureSpecToTextureInfo(fMtlSpec, fSampleCount, fMipmapped);
-        return true;
+    // Return true if `that` describes a texture that is compatible with this info and can validly
+    // be used to fulfill a promise image that was created with this TextureInfo.
+    bool canBeFulfilledBy(const TextureInfo& that) const {
+        return this->isCompatible(that, /*requireExact=*/false);
     }
-#endif
 
-#ifdef SK_VULKAN
-    bool getVulkanTextureInfo(VulkanTextureInfo* info) const {
-        if (!this->isValid() || fBackend != BackendApi::kVulkan) {
-            return false;
-        }
-        *info = VulkanTextureSpecToTextureInfo(fVkSpec, fSampleCount, fMipmapped);
-        return true;
-    }
-#endif
-
-    bool isCompatible(const TextureInfo& that) const;
+    // Return a string containing the full description of this TextureInfo.
     SkString toString() const;
 
 private:
-    friend size_t ComputeSize(SkISize dimensions, const TextureInfo&);  // for bytesPerPixel
+    friend class TextureInfoPriv;
 
-    size_t bytesPerPixel() const;
-
-#ifdef SK_DAWN
-    friend class DawnCaps;
-    friend class DawnCommandBuffer;
-    friend class DawnComputePipeline;
-    friend class DawnGraphicsPipeline;
-    friend class DawnResourceProvider;
-    friend class DawnTexture;
-    const DawnTextureSpec& dawnTextureSpec() const {
-        SkASSERT(fValid && fBackend == BackendApi::kDawn);
-        return fDawnSpec;
+    template <typename BackendTextureData,
+              std::enable_if_t<std::is_base_of_v<Data, BackendTextureData>, bool> = true>
+    explicit TextureInfo(const BackendTextureData& data)
+            : fBackend(BackendTextureData::kBackend)
+            , fViewFormat(data.viewFormat())
+            , fProtected(data.isProtected()) {
+        fData.emplace<BackendTextureData>(data);
     }
-#endif
 
-#ifdef SK_METAL
-    friend class MtlCaps;
-    friend class MtlGraphicsPipeline;
-    friend class MtlTexture;
-    const MtlTextureSpec& mtlTextureSpec() const {
-        SkASSERT(fValid && fBackend == BackendApi::kMetal);
-        return fMtlSpec;
-    }
-#endif
+    bool isCompatible(const TextureInfo& that, bool requireExact) const;
 
-#ifdef SK_VULKAN
-    friend class VulkanCaps;
-    friend class VulkanTexture;
-    const VulkanTextureSpec& vulkanTextureSpec() const {
-        SkASSERT(fValid && fBackend == BackendApi::kVulkan);
-        return fVkSpec;
-    }
-#endif
+    skgpu::BackendApi  fBackend = BackendApi::kUnsupported;
+    AnyTextureInfoData fData;
 
-    BackendApi fBackend = BackendApi::kMock;
-    bool fValid = false;
-
-    uint32_t fSampleCount = 1;
-    Mipmapped fMipmapped = Mipmapped::kNo;
+    // Derived properties from the backend data, cached to avoid a virtual function call
+    TextureFormat fViewFormat;
     Protected fProtected = Protected::kNo;
-
-    union {
-#ifdef SK_DAWN
-        DawnTextureSpec fDawnSpec;
-#endif
-#ifdef SK_METAL
-        MtlTextureSpec fMtlSpec;
-#endif
-#ifdef SK_VULKAN
-        VulkanTextureSpec fVkSpec;
-#endif
-        void* fEnsureUnionNonEmpty;
-    };
 };
 
-}  // namespace skgpu::graphite
+} // namespace skgpu::graphite
 
-#endif  //skgpu_graphite_TextureInfo_DEFINED
+#endif // skgpu_graphite_TextureInfo_DEFINED

@@ -7,11 +7,10 @@ var { XPCOMUtils } = ChromeUtils.importESModule(
 );
 
 ChromeUtils.defineESModuleGetters(this, {
-  AddonTestUtils: "resource://testing-common/AddonTestUtils.sys.mjs",
   HttpServer: "resource://testing-common/httpd.sys.mjs",
   NetUtil: "resource://gre/modules/NetUtil.sys.mjs",
   SearchTestUtils: "resource://testing-common/SearchTestUtils.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
+  SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
   TestUtils: "resource://testing-common/TestUtils.sys.mjs",
 });
 
@@ -26,70 +25,12 @@ const kPostSearchEngineID = "test_urifixup_search_engine_post";
 const kPostSearchEngineURL = "https://www.example.org/";
 const kPostSearchEngineData = "q={searchTerms}";
 
-const SEARCH_CONFIG = [
-  {
-    appliesTo: [
-      {
-        included: {
-          everywhere: true,
-        },
-      },
-    ],
-    default: "yes",
-    webExtension: {
-      id: "fixup_search@search.mozilla.org",
-    },
-  },
-];
-
-const CONFIG_V2 = [
-  {
-    recordType: "engine",
-    identifier: "test_urifixup_search_engine_app_provided",
-    base: {
-      name: "test_urifixup_search_engine_app_provided",
-      urls: {
-        search: {
-          base: "https://www.example.org/",
-          searchTermParamName: "search",
-        },
-      },
-    },
-    variants: [
-      {
-        environment: { allRegionsAndLocales: true },
-      },
-    ],
-  },
-  {
-    recordType: "defaultEngines",
-    globalDefault: "test_urifixup_search_engine_app_provided",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
-  },
-];
+const CONFIG = [{ identifier: "test_urifixup_search_engine_app_provided" }];
 
 async function setupSearchService() {
   SearchTestUtils.init(this);
 
-  AddonTestUtils.init(this);
-  AddonTestUtils.overrideCertDB();
-  AddonTestUtils.createAppInfo(
-    "xpcshell@tests.mozilla.org",
-    "XPCShell",
-    "1",
-    "42"
-  );
-
-  await SearchTestUtils.useTestEngines(
-    ".",
-    null,
-    SearchUtils.newSearchConfigEnabled ? CONFIG_V2 : SEARCH_CONFIG
-  );
-  await AddonTestUtils.promiseStartupManager();
+  await SearchTestUtils.setRemoteSettingsConfig(CONFIG);
   await Services.search.init();
 }
 

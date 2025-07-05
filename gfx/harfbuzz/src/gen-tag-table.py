@@ -345,14 +345,18 @@ class OpenTypeRegistryParser (HTMLParser):
 		self.from_bcp_47_uninherited = None
 		# Whether the parser is in a <td> element
 		self._td = False
-		# Whether the parser is after a <br> element within the current <tr> element
-		self._br = False
+		# Whether the parser ignores the rest of the current <td> element
+		self._disengaged = False
 		# The text of the <td> elements of the current <tr> element.
 		self._current_tr = []
 
 	def handle_starttag (self, tag, attrs):
-		if tag == 'br':
-			self._br = True
+		if tag == 'a':
+			if self._current_tr and not self._disengaged:
+				self._current_tr[-1] = ''
+				self._disengaged = True
+		elif tag == 'br':
+			self._disengaged = True
 		elif tag == 'meta':
 			for attr, value in attrs:
 				if attr == 'name' and value == 'updated_at':
@@ -362,12 +366,13 @@ class OpenTypeRegistryParser (HTMLParser):
 			self._td = True
 			self._current_tr.append ('')
 		elif tag == 'tr':
-			self._br = False
+			self._disengaged = False
 			self._current_tr = []
 
 	def handle_endtag (self, tag):
 		if tag == 'td':
 			self._td = False
+			self._disengaged = False
 		elif tag == 'tr' and self._current_tr:
 			expect (2 <= len (self._current_tr) <= 3)
 			name = self._current_tr[0].strip ()
@@ -387,7 +392,7 @@ class OpenTypeRegistryParser (HTMLParser):
 			self.ranks[tag] = rank
 
 	def handle_data (self, data):
-		if self._td and not self._br:
+		if self._td and not self._disengaged:
 			self._current_tr[-1] += data
 
 	def handle_charref (self, name):
@@ -699,8 +704,6 @@ ot.add_language ('ber', 'BBR')
 ot.remove_language_ot ('PGR')
 ot.add_language ('el-polyton', 'PGR')
 
-bcp_47.macrolanguages['et'] = {'ekk'}
-
 bcp_47.names['flm'] = 'Falam Chin'
 bcp_47.scopes['flm'] = ' (retired code)'
 bcp_47.macrolanguages['flm'] = {'cfm'}
@@ -711,17 +714,12 @@ ot.add_language ('und-fonipa', 'IPPH')
 
 ot.add_language ('und-fonnapa', 'APPH')
 
-ot.remove_language_ot ('IRT')
 ot.add_language ('ga-Latg', 'IRT')
 
 ot.add_language ('hy-arevmda', 'HYE')
 
 ot.remove_language_ot ('KGE')
 ot.add_language ('und-Geok', 'KGE')
-
-bcp_47.macrolanguages['id'] = {'in'}
-
-bcp_47.macrolanguages['ijo'] = {'ijc'}
 
 ot.add_language ('kht', 'KHN')
 ot.names['KHN'] = ot.names['KHT'] + ' (Microsoft fonts)'
@@ -808,8 +806,6 @@ ot.add_language ('lzh', 'ZHT')
 ot.add_language ('lzh-Hans', 'ZHS')
 ot.add_language ('yue', 'ZHH')
 ot.add_language ('yue-Hans', 'ZHS')
-
-bcp_47.macrolanguages['zom'] = {'yos'}
 
 def rank_delta (bcp_47, ot):
 	"""Return a delta to apply to a BCP 47 tag's rank.
@@ -1188,7 +1184,11 @@ def verify_disambiguation_dict ():
 			if len (macrolanguages) != 1:
 				macrolanguages = list (t for t in primary_tags if 'retired code' not in bcp_47.scopes.get (t, ''))
 			if len (macrolanguages) != 1:
-				expect (ot_tag in disambiguation, 'ambiguous OT tag: %s %s' % (ot_tag, str (macrolanguages)))
+				macrolanguages = list (t for t in primary_tags if t.lower () == ISO_639_3_TO_1.get (ot_tag.lower (), ot_tag.lower ()))
+			if len (macrolanguages) != 1:
+				macrolanguages = list (t for t in primary_tags if '-' not in t)
+			if len (macrolanguages) != 1:
+				expect (ot_tag in disambiguation, 'ambiguous OT tag: %s %s' % (ot_tag, sorted (primary_tags)))
 				expect (disambiguation[ot_tag] in bcp_47_tags,
 						'%s is not a valid disambiguation for %s' % (disambiguation[ot_tag], ot_tag))
 			elif ot_tag not in disambiguation:

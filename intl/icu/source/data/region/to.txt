@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 to{
     Countries{
         001{"Māmani"}
@@ -298,6 +298,9 @@ to{
         ZW{"Simipapuei"}
         ZZ{"Potu fonua taʻeʻiloa pe hala"}
     }
+    Countries%chagos{
+        IO{"ʻOtu motu Sakōsi"}
+    }
     Countries%short{
         HK{"Hongi Kongi"}
         MO{"Makau"}
@@ -309,6 +312,7 @@ to{
         CG{"Kongo (Lepupelika)"}
         CZ{"Lepupelika Seki"}
         FK{"ʻOtumotu Malivina"}
+        NZ{"ʻAotealoa"}
         SZ{"Suasilani"}
     }
 }

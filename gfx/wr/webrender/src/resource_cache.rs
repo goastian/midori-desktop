@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{BlobImageRequest, RasterizedBlobImage, ImageFormat, ImageDescriptorFlags};
+use api::{BlobImageRequest, ImageDescriptorFlags, ImageFormat, RasterizedBlobImage};
 use api::{DebugFlags, FontInstanceKey, FontKey, FontTemplate, GlyphIndex};
 use api::{ExternalImageData, ExternalImageType, ExternalImageId, BlobImageResult};
 use api::{DirtyRect, GlyphDimensions, IdNamespace, DEFAULT_TILE_SIZE};
@@ -10,7 +10,10 @@ use api::{ColorF, ImageData, ImageDescriptor, ImageKey, ImageRendering, TileSize
 use api::{BlobImageHandler, BlobImageKey, VoidPtrToSizeFn};
 use api::units::*;
 use euclid::size2;
+use crate::render_target::RenderTargetKind;
+use crate::render_task::{RenderTaskLocation, StaticRenderTaskSurface};
 use crate::{render_api::{ClearCache, AddFont, ResourceUpdate, MemoryReport}, util::WeakTable};
+use crate::prim_store::image::AdjustedImageSource;
 use crate::image_tiling::{compute_tile_size, compute_tile_range};
 #[cfg(feature = "capture")]
 use crate::capture::ExternalCaptureImage;
@@ -113,6 +116,11 @@ pub enum CachedImageData {
     ///
     /// The commands are stored elsewhere and this variant is used as a placeholder.
     Blob,
+    /// A stacking context for which a snapshot has been requested.
+    ///
+    /// The snapshot is grabbed from GPU-side rasterized pixels so there is no
+    /// CPU-side data to store here.
+    Snapshot,
     /// An image owned by the embedding, and referenced by WebRender. This may
     /// take the form of a texture or a heap-allocated buffer.
     External(ExternalImageData),
@@ -137,6 +145,14 @@ impl CachedImageData {
         }
     }
 
+    #[inline]
+    pub fn is_snapshot(&self) -> bool {
+        match *self {
+            CachedImageData::Snapshot => true,
+            _ => false,
+        }
+    }
+
     /// Returns true if this variant of CachedImageData should go through the texture
     /// cache.
     #[inline]
@@ -148,6 +164,7 @@ impl CachedImageData {
             },
             CachedImageData::Blob => true,
             CachedImageData::Raw(_) => true,
+            CachedImageData::Snapshot => true,
         }
     }
 }
@@ -162,6 +179,7 @@ pub struct ImageProperties {
     // Potentially a subset of the image's total rectangle. This rectangle is what
     // we map to the (layout space) display item bounds.
     pub visible_rect: DeviceIntRect,
+    pub adjustment: AdjustedImageSource,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
@@ -190,6 +208,7 @@ struct ImageResource {
     /// This is used to express images that are virtually very large
     /// but with only a visible sub-set that is valid at a given time.
     visible_rect: DeviceIntRect,
+    adjustment: AdjustedImageSource,
     generation: ImageGeneration,
 }
 
@@ -408,9 +427,6 @@ struct Resources {
 // for internal font instances we should change the hash key accordingly.
 pub type GlyphDimensionsCache = FastHashMap<(FontInstanceKey, GlyphIndex), Option<GlyphDimensions>>;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub struct BlobImageRasterizerEpoch(usize);
-
 /// Internal information about allocated render targets in the pool
 struct RenderTarget {
     size: DeviceIntSize,
@@ -485,6 +501,23 @@ pub struct ResourceCache {
 
     /// A pool of render targets for use by the render task graph
     render_target_pool: Vec<RenderTarget>,
+
+    /// An empty (1x1 transparent) image used when a stacking context snapshot
+    /// is missing.
+    ///
+    /// For now it acts as a catch-all solution for cases where WebRender fails
+    /// to produce a texture cache item for a snapshotted tacking context.
+    /// These cases include:
+    /// - Empty stacking contexts.
+    /// - Stacking contexts that are more aggressively culled out than they
+    ///   should, for example when they are in a perspective transform that
+    ///   cannot be projected to screen space.
+    /// - Likely other cases we have not found yet.
+    /// Over time it would be better to handle each of these cases explicitly
+    /// and make it a hard error to fail to snapshot a stacking context.
+    fallback_handle: TextureCacheHandle,
+    debug_fallback_panic: bool,
+    debug_fallback_pink: bool,
 }
 
 impl ResourceCache {
@@ -522,6 +555,9 @@ impl ResourceCache {
             image_templates_memory: 0,
             font_templates_memory: 0,
             render_target_pool: Vec::new(),
+            fallback_handle: TextureCacheHandle::invalid(),
+            debug_fallback_panic: false,
+            debug_fallback_pink: false,
         }
     }
 
@@ -535,7 +571,7 @@ impl ResourceCache {
             ImageFormat::RGBA8,
         );
         let workers = Arc::new(ThreadPoolBuilder::new().build().unwrap());
-        let glyph_rasterizer = GlyphRasterizer::new(workers, true);
+        let glyph_rasterizer = GlyphRasterizer::new(workers, None, true);
         let cached_glyphs = GlyphCache::new();
         let fonts = SharedFontResources::new(IdNamespace(0));
         let picture_textures = PictureTextures::new(
@@ -576,41 +612,125 @@ impl ResourceCache {
                 // not make sense to tile them into smaller ones.
                 info.image_type == ExternalImageType::Buffer && size_check
             }
+            CachedImageData::Snapshot => false,
         }
     }
 
-    // Request the texture cache item for a cacheable render
-    // task. If the item is already cached, the texture cache
-    // handle will be returned. Otherwise, the user supplied
-    // closure will be invoked to generate the render task
-    // chain that is required to draw this task.
-    pub fn request_render_task<F>(
+    /// Request an optionally cacheable render task.
+    ///
+    /// If the render task cache key is None, the render task is
+    /// not cached.
+    /// Otherwise, if the item is already cached, the texture cache
+    /// handle will be returned. Otherwise, the user supplied
+    /// closure will be invoked to generate the render task
+    /// chain that is required to draw this task.
+    ///
+    /// This function takes care of adding the render task as a
+    /// dependency to its parent task or surface.
+    pub fn request_render_task(
         &mut self,
-        key: RenderTaskCacheKey,
+        key: Option<RenderTaskCacheKey>,
+        is_opaque: bool,
+        parent: RenderTaskParent,
         gpu_cache: &mut GpuCache,
         gpu_buffer_builder: &mut GpuBufferBuilderF,
         rg_builder: &mut RenderTaskGraphBuilder,
-        user_data: Option<[f32; 4]>,
-        is_opaque: bool,
-        parent: RenderTaskParent,
         surface_builder: &mut SurfaceBuilder,
-        f: F,
-    ) -> RenderTaskId
-    where
-        F: FnOnce(&mut RenderTaskGraphBuilder, &mut GpuBufferBuilderF) -> RenderTaskId,
-    {
+        f: &mut dyn FnMut(&mut RenderTaskGraphBuilder, &mut GpuBufferBuilderF, &mut GpuCache) -> RenderTaskId,
+    ) -> RenderTaskId {
         self.cached_render_tasks.request_render_task(
-            key,
+            key.clone(),
             &mut self.texture_cache,
+            is_opaque,
+            parent,
             gpu_cache,
             gpu_buffer_builder,
             rg_builder,
-            user_data,
-            is_opaque,
-            parent,
             surface_builder,
-            |render_graph, gpu_buffer_builder| Ok(f(render_graph, gpu_buffer_builder))
-        ).expect("Failed to request a render task from the resource cache!")
+            f
+        )
+    }
+
+    pub fn render_as_image(
+        &mut self,
+        image_key: ImageKey,
+        size: DeviceIntSize,
+        rg_builder: &mut RenderTaskGraphBuilder,
+        gpu_buffer_builder: &mut GpuBufferBuilderF,
+        gpu_cache: &mut GpuCache,
+        is_opaque: bool,
+        adjustment: &AdjustedImageSource,
+        f: &mut dyn FnMut(&mut RenderTaskGraphBuilder, &mut GpuBufferBuilderF, &mut GpuCache) -> RenderTaskId,
+    ) -> RenderTaskId {
+
+        let task_id = f(rg_builder, gpu_buffer_builder, gpu_cache);
+
+        let render_task = rg_builder.get_task_mut(task_id);
+
+        // Make sure to update the existing image info and texture cache handle
+        // instead of overwriting them if they already exist for this key.
+        let image_result = self.cached_images.entry(image_key).or_insert_with(|| {
+            ImageResult::UntiledAuto(CachedImageInfo {
+                texture_cache_handle: TextureCacheHandle::invalid(),
+                dirty_rect: ImageDirtyRect::All,
+                manual_eviction: true,
+            })
+        });
+
+        let ImageResult::UntiledAuto(ref mut info) = *image_result else {
+            unreachable!("Expected untiled image for snapshot");
+        };
+
+        let flags = if is_opaque {
+            ImageDescriptorFlags::IS_OPAQUE
+        } else {
+            ImageDescriptorFlags::empty()
+        };
+
+        let descriptor = ImageDescriptor::new(
+            size.width,
+            size.height,
+            self.texture_cache.shared_color_expected_format(),
+            flags,
+        );
+
+        // Allocate space in the texture cache, but don't supply
+        // and CPU-side data to be uploaded.
+        let user_data = [0.0; 4];
+        self.texture_cache.update(
+            &mut info.texture_cache_handle,
+            descriptor,
+            TextureFilter::Linear,
+            None,
+            user_data,
+            DirtyRect::All,
+            gpu_cache,
+            None,
+            render_task.uv_rect_kind(),
+            Eviction::Manual,
+            TargetShader::Default,
+        );
+
+        // Get the allocation details in the texture cache, and store
+        // this in the render task. The renderer will draw this task
+        // into the appropriate rect of the texture cache on this frame.
+        let (texture_id, uv_rect, _, _, _) =
+            self.texture_cache.get_cache_location(&info.texture_cache_handle);
+
+        render_task.location = RenderTaskLocation::Static {
+            surface: StaticRenderTaskSurface::TextureCache {
+                texture: texture_id,
+                target_kind: RenderTargetKind::Color,
+            },
+            rect: uv_rect.to_i32(),
+        };
+
+        self.resources.image_templates
+            .get_mut(image_key)
+            .unwrap()
+            .adjustment = *adjustment;
+
+        task_id
     }
 
     pub fn post_scene_building_update(
@@ -673,6 +793,26 @@ impl ResourceCache {
                     profile.set(profiler::IMAGE_TEMPLATES_MEM, bytes_to_mb(self.image_templates_memory));
                 }
                 ResourceUpdate::DeleteBlobImage(img) => {
+                    self.delete_image_template(img.as_image());
+                }
+                ResourceUpdate::AddSnapshotImage(img) => {
+                    let format = self.texture_cache.shared_color_expected_format();
+                    self.add_image_template(
+                        img.key.as_image(),
+                        ImageDescriptor {
+                            format,
+                            // We'll know about the size when creating the render task.
+                            size: DeviceIntSize::zero(),
+                            stride: None,
+                            offset: 0,
+                            flags: ImageDescriptorFlags::empty(),
+                        },
+                        CachedImageData::Snapshot,
+                        &DeviceIntRect::zero(),
+                        None,
+                    );
+                }
+                ResourceUpdate::DeleteSnapshotImage(img) => {
                     self.delete_image_template(img.as_image());
                 }
                 ResourceUpdate::DeleteFont(font) => {
@@ -816,6 +956,7 @@ impl ResourceCache {
             data,
             tiling,
             visible_rect: *visible_rect,
+            adjustment: AdjustedImageSource::new(),
             generation: ImageGeneration(0),
         };
 
@@ -885,8 +1026,15 @@ impl ResourceCache {
             data,
             tiling,
             visible_rect: descriptor.size.into(),
+            adjustment: AdjustedImageSource::new(),
             generation: ImageGeneration(image.generation.0 + 1),
         };
+    }
+
+    pub fn increment_image_generation(&mut self, key: ImageKey) {
+        if let Some(image) = self.resources.image_templates.get_mut(key) {
+            image.generation.0 += 1;
+        }
     }
 
     pub fn delete_image_template(&mut self, image_key: ImageKey) {
@@ -1217,7 +1365,22 @@ impl ResourceCache {
     pub fn get_cached_image(&self, request: ImageRequest) -> Result<CacheItem, ()> {
         debug_assert_eq!(self.state, State::QueryResources);
         let image_info = self.get_image_info(request)?;
-        Ok(self.get_texture_cache_item(&image_info.texture_cache_handle))
+
+        if let Ok(item) = self.get_texture_cache_item(&image_info.texture_cache_handle) {
+            // Common path.
+            return Ok(item);
+        }
+
+        if self.resources.image_templates
+            .get(request.key)
+            .map_or(false, |img| img.data.is_snapshot()) {
+            if self.debug_fallback_panic {
+                panic!("Missing snapshot image");
+            }
+            return self.get_texture_cache_item(&self.fallback_handle);
+        }
+
+        panic!("Requested image missing from the texture cache");
     }
 
     pub fn get_cached_render_task(
@@ -1239,8 +1402,12 @@ impl ResourceCache {
     }
 
     #[inline]
-    pub fn get_texture_cache_item(&self, handle: &TextureCacheHandle) -> CacheItem {
-        self.texture_cache.get(handle)
+    pub fn get_texture_cache_item(&self, handle: &TextureCacheHandle) -> Result<CacheItem, ()> {
+        if let Some(item) = self.texture_cache.try_get(handle) {
+            return Ok(item);
+        }
+
+        Err(())
     }
 
     pub fn get_image_properties(&self, image_key: ImageKey) -> Option<ImageProperties> {
@@ -1254,7 +1421,10 @@ impl ResourceCache {
                     ExternalImageType::Buffer => None,
                 },
                 // raw and blob image are all using resource_cache.
-                CachedImageData::Raw(..) | CachedImageData::Blob => None,
+                CachedImageData::Raw(..)
+                | CachedImageData::Blob
+                | CachedImageData::Snapshot
+                 => None,
             };
 
             ImageProperties {
@@ -1262,6 +1432,7 @@ impl ResourceCache {
                 external_image,
                 tiling: image_template.tiling,
                 visible_rect: image_template.visible_rect,
+                adjustment: image_template.adjustment,
             }
         })
     }
@@ -1281,9 +1452,11 @@ impl ResourceCache {
         self.cached_render_tasks.begin_frame(&mut self.texture_cache);
         self.current_frame_id = stamp.frame_id();
 
-        // pop the old frame and push a new one
-        self.deleted_blob_keys.pop_front();
-        self.deleted_blob_keys.push_back(Vec::new());
+        // Pop the old frame and push a new one.
+        // Recycle the allocation if any.
+        let mut v = self.deleted_blob_keys.pop_front().unwrap_or_else(Vec::new);
+        v.clear();
+        self.deleted_blob_keys.push_back(v);
 
         self.texture_cache.run_compaction(gpu_cache);
     }
@@ -1349,6 +1522,34 @@ impl ResourceCache {
 
     fn update_texture_cache(&mut self, gpu_cache: &mut GpuCache) {
         profile_scope!("update_texture_cache");
+
+        if self.fallback_handle == TextureCacheHandle::invalid() {
+            let fallback_color = if self.debug_fallback_pink {
+                vec![255, 0, 255, 255]
+            } else {
+                vec![0, 0, 0, 0]
+            };
+            self.texture_cache.update(
+                &mut self.fallback_handle,
+                ImageDescriptor {
+                    size: size2(1, 1),
+                    stride: None,
+                    format: ImageFormat::BGRA8,
+                    flags: ImageDescriptorFlags::empty(),
+                    offset: 0,
+                },
+                TextureFilter::Linear,
+                Some(CachedImageData::Raw(Arc::new(fallback_color))),
+                [0.0; 4],
+                DirtyRect::All,
+                gpu_cache,
+                None,
+                UvRectKind::Rect,
+                Eviction::Manual,
+                TargetShader::Default,
+            );
+        }
+
         for request in self.pending_image_requests.drain() {
             let image_template = self.resources.image_templates.get_mut(request.key).unwrap();
             debug_assert!(image_template.data.uses_texture_cache());
@@ -1356,7 +1557,11 @@ impl ResourceCache {
             let mut updates: SmallVec<[(CachedImageData, Option<DeviceIntRect>); 1]> = SmallVec::new();
 
             match image_template.data {
-                CachedImageData::Raw(..) | CachedImageData::External(..) => {
+                CachedImageData::Snapshot => {
+                    // The update is done in ResourceCache::render_as_image.
+                }
+                CachedImageData::Raw(..)
+                | CachedImageData::External(..) => {
                     // Safe to clone here since the Raw image data is an
                     // Arc, and the external image data is small.
                     updates.push((image_template.data.clone(), None));
@@ -1436,11 +1641,14 @@ impl ResourceCache {
                     }
                 };
 
-                let eviction = if image_template.data.is_blob() {
-                    entry.manual_eviction = true;
-                    Eviction::Manual
-                } else {
-                    Eviction::Auto
+                let eviction = match &image_template.data {
+                    CachedImageData::Blob | CachedImageData::Snapshot => {
+                        entry.manual_eviction = true;
+                        Eviction::Manual
+                    }
+                    _ => {
+                        Eviction::Auto
+                    }
                 };
 
                 //Note: at this point, the dirty rectangle is local to the descriptor space
@@ -1615,6 +1823,13 @@ impl ResourceCache {
         GLYPH_FLASHING.store(flags.contains(DebugFlags::GLYPH_FLASHING), std::sync::atomic::Ordering::Relaxed);
         self.texture_cache.set_debug_flags(flags);
         self.picture_textures.set_debug_flags(flags);
+        self.debug_fallback_panic = flags.contains(DebugFlags::MISSING_SNAPSHOT_PANIC);
+        let fallback_pink = flags.contains(DebugFlags::MISSING_SNAPSHOT_PINK);
+
+        if fallback_pink != self.debug_fallback_pink && self.fallback_handle != TextureCacheHandle::invalid() {
+            self.texture_cache.evict_handle(&self.fallback_handle);
+        }
+        self.debug_fallback_pink = fallback_pink;
     }
 
     pub fn clear(&mut self, what: ClearCache) {
@@ -1707,7 +1922,9 @@ impl ResourceCache {
         for (_, image) in self.resources.image_templates.images.iter() {
             report.images += match image.data {
                 CachedImageData::Raw(ref v) => unsafe { op(v.as_ptr() as *const c_void) },
-                CachedImageData::Blob | CachedImageData::External(..) => 0,
+                CachedImageData::Blob
+                | CachedImageData::External(..)
+                | CachedImageData::Snapshot => 0,
             }
         }
 
@@ -2050,6 +2267,9 @@ impl ResourceCache {
                         .unwrap();
                     other_paths.insert(key, short_path);
                 }
+                CachedImageData::Snapshot => {
+                    unimplemented!();
+                }
                 CachedImageData::External(ref ext) => {
                     let short_path = format!("externals/{}", external_images.len() + 1);
                     other_paths.insert(key, short_path.clone());
@@ -2280,6 +2500,7 @@ impl ResourceCache {
                 descriptor: template.descriptor,
                 tiling: template.tiling,
                 visible_rect: template.descriptor.size.into(),
+                adjustment: AdjustedImageSource::new(), // TODO(nical)
                 generation: template.generation,
             });
         }

@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 uk{
     Countries{
         001{"Світ"}
@@ -146,7 +146,7 @@ uk{
         IL{"Ізраїль"}
         IM{"Острів Мен"}
         IN{"Індія"}
-        IO{"Британська територія в Індійському Океані"}
+        IO{"Британська територія в Індійському океані"}
         IQ{"Ірак"}
         IR{"Іран"}
         IS{"Ісландія"}
@@ -297,6 +297,9 @@ uk{
         ZM{"Замбія"}
         ZW{"Зімбабве"}
         ZZ{"Невідомий регіон"}
+    }
+    Countries%chagos{
+        IO{"архіпелаг Чагос"}
     }
     Countries%short{
         HK{"Гонконг"}

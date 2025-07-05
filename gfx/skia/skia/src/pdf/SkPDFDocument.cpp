@@ -6,24 +6,52 @@
  */
 
 #include "include/docs/SkPDFDocument.h"
-#include "src/pdf/SkPDFDocumentPriv.h"
 
+#include "include/core/SkCanvas.h"
+#include "include/core/SkData.h"
+#include "include/core/SkImageInfo.h"
+#include "include/core/SkMatrix.h"
+#include "include/core/SkRect.h"
+#include "include/core/SkSize.h"
 #include "include/core/SkStream.h"
-#include "include/docs/SkPDFDocument.h"
+#include "include/core/SkTypeface.h"
+#include "include/core/SkTypes.h"
+#include "include/private/base/SkMutex.h"
+#include "include/private/base/SkPoint_impl.h"
+#include "include/private/base/SkSemaphore.h"
+#include "include/private/base/SkSpan_impl.h"
+#include "include/private/base/SkTemplates.h"
+#include "include/private/base/SkThreadAnnotations.h"
 #include "include/private/base/SkTo.h"
 #include "src/base/SkUTF.h"
+#include "src/core/SkAdvancedTypefaceMetrics.h"
+#include "src/core/SkTHash.h"
+#include "src/pdf/SkBitmapKey.h"
+#include "src/pdf/SkPDFBitmap.h"
 #include "src/pdf/SkPDFDevice.h"
+#include "src/pdf/SkPDFDocumentPriv.h"
 #include "src/pdf/SkPDFFont.h"
 #include "src/pdf/SkPDFGradientShader.h"
 #include "src/pdf/SkPDFGraphicState.h"
+#include "src/pdf/SkPDFMetadata.h"
 #include "src/pdf/SkPDFShader.h"
 #include "src/pdf/SkPDFTag.h"
+#include "src/pdf/SkPDFTypes.h"
 #include "src/pdf/SkPDFUtils.h"
+#include "src/pdf/SkUUID.h"
 
+#include <algorithm>
+#include <atomic>
+#include <cstddef>
+#include <new>
 #include <utility>
 
+#if defined(SK_CODEC_ENCODES_JPEG) && defined(SK_CODEC_DECODES_JPEG) && !defined(SK_DISABLE_LEGACY_PDF_JPEG)
+#include "include/docs/SkPDFJpegHelpers.h"
+#endif
+
 // For use in SkCanvas::drawAnnotation
-const char* SkPDFGetNodeIdKey() {
+const char* SkPDFGetElemIdKey() {
     static constexpr char key[] = "PDF_Node_Key";
     return key;
 }
@@ -140,7 +168,7 @@ static SkPDFIndirectReference generate_page_tree(
         std::vector<std::unique_ptr<SkPDFDict>> pages,
         const std::vector<SkPDFIndirectReference>& pageRefs) {
     // PDF wants a tree describing all the pages in the document.  We arbitrary
-    // choose 8 (kNodeSize) as the number of allowed children.  The internal
+    // choose 8 (kMaxNodeSize) as the number of allowed children.  The internal
     // nodes have type "Pages" with an array of children, a parent pointer, and
     // the number of leaves below the node as "Count."  The leaves are passed
     // into the method, have type "Page" and need a parent pointer. This method
@@ -207,20 +235,14 @@ static void reset_object(T* dst, Args&&... args) {
 
 ////////////////////////////////////////////////////////////////////////////////
 
-SkPDFDocument::SkPDFDocument(SkWStream* stream,
-                             SkPDF::Metadata metadata)
+SkPDFDocument::SkPDFDocument(SkWStream* stream, SkPDF::Metadata metadata)
     : SkDocument(stream)
-    , fMetadata(std::move(metadata)) {
-    constexpr float kDpiForRasterScaleOne = 72.0f;
-    if (fMetadata.fRasterDPI != kDpiForRasterScaleOne) {
-        fInverseRasterScale = kDpiForRasterScaleOne / fMetadata.fRasterDPI;
-        fRasterScale        = fMetadata.fRasterDPI / kDpiForRasterScaleOne;
-    }
-    if (fMetadata.fStructureElementTreeRoot) {
-        fTagTree.init(fMetadata.fStructureElementTreeRoot, fMetadata.fOutline);
-    }
-    fExecutor = fMetadata.fExecutor;
-}
+    , fMetadata(std::move(metadata))
+    , fRasterScale(fMetadata.fRasterDPI / SK_ScalarDefaultRasterDPI)
+    , fInverseRasterScale(SK_ScalarDefaultRasterDPI / fMetadata.fRasterDPI)
+    , fExecutor(fMetadata.fExecutor)
+    , fStructTree(fMetadata.fStructureElementTreeRoot, fMetadata.fOutline)
+{}
 
 SkPDFDocument::~SkPDFDocument() {
     // subclasses of SkDocument must call close() in their destructors.
@@ -270,7 +292,7 @@ SkCanvas* SkPDFDocument::onBeginPage(SkScalar width, SkScalar height) {
     // By scaling the page at the device level, we will create bitmap layer
     // devices at the rasterized scale, not the 72dpi scale.  Bitmap layer
     // devices are created when saveLayer is called with an ImageFilter;  see
-    // SkPDFDevice::onCreateDevice().
+    // SkPDFDevice::createDevice().
     SkISize pageSize = (SkSize{width, height} * fRasterScale).toRound();
     SkMatrix initialTransform;
     // Skia uses the top left as the origin but PDF natively has the origin at the
@@ -335,18 +357,16 @@ std::unique_ptr<SkPDFArray> SkPDFDocument::getAnnotations() {
             SkDEBUGFAIL("Unknown link type.");
         }
 
-        if (link->fNodeId) {
-            int structParentKey = createStructParentKeyForNodeId(link->fNodeId);
+        SkPDFIndirectReference annotationRef = this->reserveRef();
+        if (link->fElemId) {
+            int structParentKey = this->createStructParentKeyForElemId(link->fElemId, annotationRef);
             if (structParentKey != -1) {
                 annotation.insertInt("StructParent", structParentKey);
             }
         }
 
-        SkPDFIndirectReference annotationRef = emit(annotation);
+        this->emit(annotation, annotationRef);
         array->appendRef(annotationRef);
-        if (link->fNodeId) {
-            fTagTree.addNodeAnnotation(link->fNodeId, annotationRef, SkToUInt(this->currentPageIndex()));
-        }
     }
     return array;
 }
@@ -362,7 +382,6 @@ void SkPDFDocument::onEndPage() {
     std::unique_ptr<SkStreamAsset> pageContent = fPageDevice->content();
     auto resourceDict = fPageDevice->makeResourceDict();
     SkASSERT(!fPageRefs.empty());
-    fPageDevice = nullptr;
 
     page->insertObject("Resources", std::move(resourceDict));
     page->insertObject("MediaBox", SkPDFUtils::RectToArray(SkRect::MakeSize(mediaSize)));
@@ -376,7 +395,12 @@ void SkPDFDocument::onEndPage() {
     // The StructParents unique identifier for each page is just its
     // 0-based page index.
     page->insertInt("StructParents", SkToInt(this->currentPageIndex()));
+
+    // Tabs is PDF 1.5, but setting it checks an accessibility box.
+    page->insertName("Tabs", "S");
+
     fPages.emplace_back(std::move(page));
+    fPageDevice = nullptr;
 }
 
 void SkPDFDocument::onAbort() {
@@ -492,7 +516,7 @@ static sk_sp<SkData> SkSrgbIcm() {
         "\214\363\31\363\247\3644\364\302\365P\365\336\366m\366\373\367\212"
         "\370\31\370\250\3718\371\307\372W\372\347\373w\374\7\374\230\375)\375"
         "\272\376K\376\334\377m\377\377";
-    const size_t kProfileLength = 3212;
+    constexpr size_t kProfileLength = 3212;
     static_assert(kProfileLength == sizeof(kProfile) - 1, "");
     return SkData::MakeWithoutCopy(kProfile, kProfileLength);
 }
@@ -532,34 +556,37 @@ const SkMatrix& SkPDFDocument::currentPageTransform() const {
     return fPageDevice->initialTransform();
 }
 
-SkPDFTagTree::Mark SkPDFDocument::createMarkIdForNodeId(int nodeId, SkPoint p) {
+SkPDFStructTree::Mark SkPDFDocument::createMarkForElemId(int elemId) {
     // If the mark isn't on a page (like when emitting a Type3 glyph)
-    // return a temporary mark not attached to the tag tree, node id, or page.
+    // return a temporary mark not attached to the page or a structure element.
     if (!this->hasCurrentPage()) {
-        return SkPDFTagTree::Mark();
+        return SkPDFStructTree::Mark();
     }
-    return fTagTree.createMarkIdForNodeId(nodeId, SkToUInt(this->currentPageIndex()), p);
+    return fStructTree.createMarkForElemId(elemId, SkToUInt(this->currentPageIndex()));
 }
 
-void SkPDFDocument::addNodeTitle(int nodeId, SkSpan<const char> title) {
-    fTagTree.addNodeTitle(nodeId, std::move(title));
+void SkPDFDocument::addStructElemTitle(int elemId, SkSpan<const char> title) {
+    fStructTree.addStructElemTitle(elemId, std::move(title));
 }
 
-int SkPDFDocument::createStructParentKeyForNodeId(int nodeId) {
+int SkPDFDocument::createStructParentKeyForElemId(int elemId, SkPDFIndirectReference contentItem) {
     // Structure elements are tied to pages, so don't emit one if not on a page.
     if (!this->hasCurrentPage()) {
         return -1;
     }
-    return fTagTree.createStructParentKeyForNodeId(nodeId, SkToUInt(this->currentPageIndex()));
+    return fStructTree.createStructParentKeyForElemId(elemId, contentItem,
+                                                      SkToUInt(this->currentPageIndex()));
 }
 
 static std::vector<const SkPDFFont*> get_fonts(const SkPDFDocument& canon) {
     std::vector<const SkPDFFont*> fonts;
-    fonts.reserve(canon.fFontMap.count());
+    fonts.reserve(canon.fStrikes.count());
+    canon.fStrikes.foreach([&fonts](const sk_sp<SkPDFStrike>& strike) {
+        for (const auto& [unused, font] : strike->fFontMap) {
+            fonts.push_back(&font);
+        }
+    });
     // Sort so the output PDF is reproducible.
-    for (const auto& [unused, font] : canon.fFontMap) {
-        fonts.push_back(&font);
-    }
     std::sort(fonts.begin(), fonts.end(), [](const SkPDFFont* u, const SkPDFFont* v) {
         return u->indirectReference().fValue < v->indirectReference().fValue;
     });
@@ -606,14 +633,14 @@ void SkPDFDocument::onClose(SkWStream* stream) {
     }
 
     // Handle tagged PDFs.
-    if (SkPDFIndirectReference root = fTagTree.makeStructTreeRoot(this)) {
+    if (SkPDFIndirectReference root = fStructTree.emitStructTreeRoot(this)) {
         // In the document catalog, indicate that this PDF is tagged.
         auto markInfo = SkPDFMakeDict("MarkInfo");
         markInfo->insertBool("Marked", true);
         docCatalog->insertObject("MarkInfo", std::move(markInfo));
         docCatalog->insertRef("StructTreeRoot", root);
 
-        if (SkPDFIndirectReference outline = fTagTree.makeOutline(this)) {
+        if (SkPDFIndirectReference outline = fStructTree.makeOutline(this)) {
             docCatalog->insertRef("Outlines", outline);
         }
     }
@@ -627,7 +654,7 @@ void SkPDFDocument::onClose(SkWStream* stream) {
 
     SkString lang = fMetadata.fLang;
     if (lang.isEmpty()) {
-        lang = fTagTree.getRootLanguage();
+        lang = fStructTree.getRootLanguage();
     }
     if (!lang.isEmpty()) {
         docCatalog->insertTextString("Lang", lang);
@@ -660,9 +687,9 @@ void SkPDFDocument::waitForJobs() {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-void SkPDF::SetNodeId(SkCanvas* canvas, int nodeID) {
-    sk_sp<SkData> payload = SkData::MakeWithCopy(&nodeID, sizeof(nodeID));
-    const char* key = SkPDFGetNodeIdKey();
+void SkPDF::SetNodeId(SkCanvas* canvas, int elemId) {
+    sk_sp<SkData> payload = SkData::MakeWithCopy(&elemId, sizeof(elemId));
+    const char* key = SkPDFGetElemIdKey();
     canvas->drawAnnotation({0, 0, 0, 0}, key, payload.get());
 }
 
@@ -674,6 +701,20 @@ sk_sp<SkDocument> SkPDF::MakeDocument(SkWStream* stream, const SkPDF::Metadata& 
     if (meta.fEncodingQuality < 0) {
         meta.fEncodingQuality = 0;
     }
+#if defined(SK_CODEC_ENCODES_JPEG) && defined(SK_CODEC_DECODES_JPEG) && !defined(SK_DISABLE_LEGACY_PDF_JPEG)
+    if (!meta.jpegDecoder) {
+        meta.jpegDecoder = SkPDF::JPEG::Decode;
+    }
+    if (!meta.jpegEncoder) {
+        meta.jpegEncoder = SkPDF::JPEG::Encode;
+    }
+#else
+    if (!meta.jpegDecoder || !meta.jpegEncoder) {
+        if (!meta.allowNoJpegs) {
+            SK_ABORT("Must set both a jpegDecoder and jpegEncoder to create PDFs");
+        }
+    }
+#endif
     return stream ? sk_make_sp<SkPDFDocument>(stream, std::move(meta)) : nullptr;
 }
 

@@ -14,8 +14,6 @@
 #include "jxl/decode_cxx.h"
 #include "jxl/thread_parallel_runner_cxx.h"
 
-#include "mozilla/Telemetry.h"
-
 namespace mozilla::image {
 class RasterImage;
 
@@ -47,19 +45,7 @@ class nsJXLDecoder final : public Decoder {
   JxlThreadParallelRunnerPtr mParallelRunner;
   Vector<uint8_t> mBuffer;
   Vector<uint8_t> mOutBuffer;
-  JxlBasicInfo mInfo;
-  JxlPixelFormat mFormat;
-  JxlFrameHeader mFrameHeader;
-
-  bool mUsePipeTransform;
-  uint8_t mChannels;
-  uint8_t* mCMSLine;
-
-  uint32_t mNumFrames;
-  FrameTimeout mTimeout;
-  gfx::SurfaceFormat mSurfaceFormat;
-  SurfacePipe mPipe;
-  bool mContinue;
+  JxlBasicInfo mInfo{};
 };
 
 }  // namespace mozilla::image

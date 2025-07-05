@@ -92,7 +92,7 @@
 //! [segment.rs]: ../segment/index.html
 //!
 
-use api::{BorderRadius, ClipMode, ComplexClipRegion, ImageMask, ClipId, ClipChainId};
+use api::{BorderRadius, ClipMode, ImageMask, ClipId, ClipChainId};
 use api::{BoxShadowClipMode, FillRule, ImageKey, ImageRendering};
 use api::units::*;
 use crate::image_tiling::{self, Repetition};
@@ -112,7 +112,7 @@ use crate::render_task_graph::RenderTaskGraphBuilder;
 use crate::resource_cache::{ImageRequest, ResourceCache};
 use crate::scene_builder_thread::Interners;
 use crate::space::SpaceMapper;
-use crate::util::{clamp_to_scale_factor, MaxRect, extract_inner_rect_safe, project_rect, ScaleOffset};
+use crate::util::{clamp_to_scale_factor, extract_inner_rect_safe, project_rect, MatrixHelpers, MaxRect, ScaleOffset};
 use euclid::approxeq::ApproxEq;
 use std::{iter, ops, u32, mem};
 
@@ -185,6 +185,20 @@ impl ClipTree {
                 ClipNodeId::NONE,
             ],
         }
+    }
+
+    pub fn reset(&mut self) {
+        self.nodes.clear();
+        self.nodes.push(ClipTreeNode {
+            handle: ClipDataHandle::INVALID,
+            children: Vec::new(),
+            parent: ClipNodeId::NONE,
+        });
+
+        self.leaves.clear();
+
+        self.clip_root_stack.clear();
+        self.clip_root_stack.push(ClipNodeId::NONE);
     }
 
     /// Add a set of clips to the provided tree node id, reusing existing
@@ -272,6 +286,18 @@ impl ClipTree {
         assert!(id != ClipNodeId::NONE);
 
         &self.nodes[id.0 as usize]
+    }
+
+    pub fn get_parent(&self, id: ClipNodeId) -> Option<ClipNodeId> {
+        // Invalid ids point to the first item in the nodes vector which
+        // has an invalid id for the parent so we don't need to handle
+        // `id` being invalid separately.
+        let parent = self.nodes[id.0 as usize].parent;
+        if parent == ClipNodeId::NONE {
+            return None;
+        }
+
+        return Some(parent)
     }
 
     /// Retrieve a clip tree leaf by id
@@ -428,6 +454,24 @@ impl ClipTreeBuilder {
             tree: ClipTree::new(),
             clip_handles_buffer: Vec::new(),
         }
+    }
+
+    pub fn begin(&mut self) {
+        self.clip_map.clear();
+        self.clip_chain_map.clear();
+        self.clip_chains.clear();
+        self.clip_stack.clear();
+        self.clip_stack.push(ClipStackEntry {
+            clip_node_id: ClipNodeId::NONE,
+            last_clip_chain_cache: None,
+            seen_clips: FastHashSet::default(),
+        });
+        self.tree.reset();
+        self.clip_handles_buffer.clear();
+    }
+
+    pub fn recycle_tree(&mut self, tree: ClipTree) {
+        self.tree = tree;
     }
 
     /// Define a new rect clip
@@ -684,9 +728,20 @@ impl ClipTreeBuilder {
         false
     }
 
+    pub fn get_parent(&self, id: ClipNodeId) -> Option<ClipNodeId> {
+        self.tree.get_parent(id)
+    }
+
     /// Finalize building and return the clip-tree
-    pub fn finalize(self) -> ClipTree {
-        self.tree
+    pub fn finalize(&mut self) -> ClipTree {
+        // Note: After this, the builder's clip tree does not hold allocations and
+        // is not in valid state. `ClipTreeBuilder::begin()` must be called before
+        // building can happen again.
+        std::mem::replace(&mut self.tree, ClipTree {
+            nodes: Vec::new(),
+            leaves: Vec::new(),
+            clip_root_stack: Vec::new(),
+        })
     }
 
     /// Get a clip node by id
@@ -966,17 +1021,18 @@ impl ClipNodeRange {
 //TODO: merge with `CoordinateSpaceMapping`?
 #[derive(Debug, MallocSizeOf)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
-enum ClipSpaceConversion {
+pub enum ClipSpaceConversion {
     Local,
     ScaleOffset(ScaleOffset),
-    Transform(LayoutToWorldTransform),
+    Transform(LayoutToVisTransform),
 }
 
 impl ClipSpaceConversion {
     /// Construct a new clip space converter between two spatial nodes.
-    fn new(
+    pub fn new(
         prim_spatial_node_index: SpatialNodeIndex,
         clip_spatial_node_index: SpatialNodeIndex,
+        visibility_spatial_node_index: SpatialNodeIndex,
         spatial_tree: &SpatialTree,
     ) -> Self {
         //Note: this code is different from `get_relative_transform` in a way that we only try
@@ -993,9 +1049,10 @@ impl ClipSpaceConversion {
             ClipSpaceConversion::ScaleOffset(scale_offset)
         } else {
             ClipSpaceConversion::Transform(
-                spatial_tree
-                    .get_world_transform(clip_spatial_node_index)
-                    .into_transform()
+                spatial_tree.get_relative_transform(
+                    clip_spatial_node_index,
+                    visibility_spatial_node_index,
+                ).into_transform().cast_unit()
             )
         }
     }
@@ -1184,106 +1241,6 @@ impl ClipNode {
             }
         }
     }
-
-    /// Find the mask regions of a given clip node. For each mask region, map it in to the space defined
-    /// by `prim_spatial_node_index`, and invoke a closure with the local rect of that region. Returns
-    /// false for transformed clips (we can handle this case better in future).
-    pub fn get_local_mask_rects<F>(
-        &self,
-        prim_spatial_node_index: SpatialNodeIndex,
-        spatial_tree: &SpatialTree,
-        mut f: F,
-    ) -> bool where F: FnMut(LayoutRect) {
-        let conversion = ClipSpaceConversion::new(
-            prim_spatial_node_index,
-            self.item.spatial_node_index,
-            spatial_tree,
-        );
-
-        match self.item.kind {
-            ClipItemKind::Rectangle { mode, .. } => {
-                match conversion {
-                    ClipSpaceConversion::Local | ClipSpaceConversion::ScaleOffset(_) => {
-                        // These clips will be handled by the vertex shader, so no mask is needed
-                        // Ensure we don't see any ClipOut though - they should only arrive in
-                        // this code path when we start passing box-shadows through here.
-                        assert!(mode != ClipMode::ClipOut);
-                    }
-                    ClipSpaceConversion::Transform(..) => {
-                        // For now, we don't handle mask regions for complex transforms. Previously, we didn't
-                        // handle mask regions at all, so this is no worse than existing state. In future, we
-                        // should conservatively map these cases if we come across any content which shows
-                        // up as slow in this case.
-                        return false;
-                    }
-                }
-            }
-            ClipItemKind::RoundedRectangle { mode: ClipMode::Clip, rect, radius } => {
-                // Construct the mask regions for each corner
-
-                let mut top_left = LayoutRect::from_origin_and_size(
-                    LayoutPoint::new(rect.min.x, rect.min.y),
-                    LayoutSize::new(radius.top_left.width, radius.top_left.height),
-                );
-                let mut top_right = LayoutRect::from_origin_and_size(
-                    LayoutPoint::new(
-                        rect.max.x - radius.top_right.width,
-                        rect.min.y,
-                    ),
-                    LayoutSize::new(radius.top_right.width, radius.top_right.height),
-                );
-                let mut bottom_left = LayoutRect::from_origin_and_size(
-                    LayoutPoint::new(
-                        rect.min.x,
-                        rect.max.y - radius.bottom_left.height,
-                    ),
-                    LayoutSize::new(radius.bottom_left.width, radius.bottom_left.height),
-                );
-                let mut bottom_right = LayoutRect::from_origin_and_size(
-                    LayoutPoint::new(
-                        rect.max.x - radius.bottom_right.width,
-                        rect.max.y - radius.bottom_right.height,
-                    ),
-                    LayoutSize::new(radius.bottom_right.width, radius.bottom_right.height),
-                );
-
-                match conversion {
-                    ClipSpaceConversion::Local => {
-                        // No mapping necessary, same local space
-                    }
-                    ClipSpaceConversion::ScaleOffset(scale_offset) => {
-                        top_left = scale_offset.map_rect(&top_left);
-                        top_right = scale_offset.map_rect(&top_right);
-                        bottom_left = scale_offset.map_rect(&bottom_left);
-                        bottom_right = scale_offset.map_rect(&bottom_right);
-                    }
-                    ClipSpaceConversion::Transform(..) => {
-                        // For now, we don't handle mask regions for complex transforms. Previously, we didn't
-                        // handle mask regions at all, so this is no worse than existing state. In future, we
-                        // should conservatively map these cases if we come across any content which shows
-                        // up as slow in this case.
-                        return false;
-                    }
-                }
-
-                f(top_left);
-                f(top_right);
-                f(bottom_left);
-                f(bottom_right);
-            }
-            ClipItemKind::RoundedRectangle { mode: ClipMode::ClipOut, .. } => {
-                panic!("bug: old box-shadow clips unexpected in this path");
-            }
-            ClipItemKind::BoxShadow { .. } => {
-                panic!("bug: old box-shadow clips unexpected in this path");
-            }
-            ClipItemKind::Image { .. } => {
-                panic!("bug: image clips unexpected in this path");
-            }
-        }
-
-        true
-    }
 }
 
 #[derive(Default)]
@@ -1351,6 +1308,14 @@ impl ClipStore {
         }
     }
 
+    pub fn reset(&mut self) {
+        self.clip_node_instances.clear();
+        self.mask_tiles.clear();
+        self.active_clip_node_info.clear();
+        self.active_local_clip_rect = None;
+        self.active_pic_coverage_rect = PictureRect::max_rect();
+    }
+
     pub fn get_instance_from_range(
         &self,
         node_range: &ClipNodeRange,
@@ -1364,6 +1329,7 @@ impl ClipStore {
         &mut self,
         prim_spatial_node_index: SpatialNodeIndex,
         pic_spatial_node_index: SpatialNodeIndex,
+        visibility_spatial_node_index: SpatialNodeIndex,
         clip_leaf_id: ClipLeafId,
         spatial_tree: &SpatialTree,
         clip_data_store: &ClipDataStore,
@@ -1386,6 +1352,7 @@ impl ClipStore {
                 node.handle,
                 prim_spatial_node_index,
                 pic_spatial_node_index,
+                visibility_spatial_node_index,
                 &mut local_clip_rect,
                 &mut self.active_clip_node_info,
                 &mut self.active_pic_coverage_rect,
@@ -1406,6 +1373,7 @@ impl ClipStore {
         &mut self,
         prim_clip_chain: &ClipChainInstance,
         prim_spatial_node_index: SpatialNodeIndex,
+        visibility_spatial_node_index: SpatialNodeIndex,
         spatial_tree: &SpatialTree,
         clip_data_store: &ClipDataStore,
     ) {
@@ -1424,6 +1392,7 @@ impl ClipStore {
             let conversion = ClipSpaceConversion::new(
                 prim_spatial_node_index,
                 clip.item.spatial_node_index,
+                visibility_spatial_node_index,
                 spatial_tree,
             );
             self.active_clip_node_info.push(ClipNodeInfo {
@@ -1493,18 +1462,41 @@ impl ClipStore {
         Some(inner_rect)
     }
 
+    // Directly construct a clip node range, ready for rendering, from an interned clip handle.
+    // Typically useful for drawing specific clips on custom pattern / child render tasks that
+    // aren't primitives.
+    // TODO(gw): For now, we assume they are local clips only - in future we might want to support
+    //           non-local clips.
+    pub fn push_clip_instance(
+        &mut self,
+        handle: ClipDataHandle,
+    ) -> ClipNodeRange {
+        let first = self.clip_node_instances.len() as u32;
+
+        self.clip_node_instances.push(ClipNodeInstance {
+            handle,
+            flags: ClipNodeFlags::SAME_COORD_SYSTEM | ClipNodeFlags::SAME_SPATIAL_NODE,
+            visible_tiles: None,
+        });
+
+        ClipNodeRange {
+            first,
+            count: 1,
+        }
+    }
+
     /// The main interface external code uses. Given a local primitive, positioning
     /// information, and a clip chain id, build an optimized clip chain instance.
     pub fn build_clip_chain_instance(
         &mut self,
         local_prim_rect: LayoutRect,
         prim_to_pic_mapper: &SpaceMapper<LayoutPixel, PicturePixel>,
-        pic_to_world_mapper: &SpaceMapper<PicturePixel, WorldPixel>,
+        pic_to_vis_mapper: &SpaceMapper<PicturePixel, VisPixel>,
         spatial_tree: &SpatialTree,
         gpu_cache: &mut GpuCache,
         resource_cache: &mut ResourceCache,
         device_pixel_scale: DevicePixelScale,
-        world_rect: &WorldRect,
+        culling_rect: &VisRect,
         clip_data_store: &mut ClipDataStore,
         rg_builder: &mut RenderTaskGraphBuilder,
         request_resources: bool,
@@ -1517,7 +1509,7 @@ impl ClipStore {
 
         let local_bounding_rect = local_prim_rect.intersection(&local_clip_rect)?;
         let mut pic_coverage_rect = prim_to_pic_mapper.map(&local_bounding_rect)?;
-        let world_clip_rect = pic_to_world_mapper.map(&pic_coverage_rect)?;
+        let vis_clip_rect = pic_to_vis_mapper.map(&pic_coverage_rect)?;
 
         // Now, we've collected all the clip nodes that *potentially* affect this
         // primitive region, and reduced the size of the prim region as much as possible.
@@ -1545,8 +1537,8 @@ impl ClipStore {
                     has_non_local_clips = true;
                     node.item.kind.get_clip_result_complex(
                         transform,
-                        &world_clip_rect,
-                        world_rect,
+                        &vis_clip_rect,
+                        culling_rect,
                     )
                 }
             };
@@ -1650,20 +1642,9 @@ impl ClipStore {
     }
 }
 
-pub struct ComplexTranslateIter<I> {
-    source: I,
-    offset: LayoutVector2D,
-}
-
-impl<I: Iterator<Item = ComplexClipRegion>> Iterator for ComplexTranslateIter<I> {
-    type Item = ComplexClipRegion;
-    fn next(&mut self) -> Option<Self::Item> {
-        self.source
-            .next()
-            .map(|mut complex| {
-                complex.rect = complex.rect.translate(self.offset);
-                complex
-            })
+impl Default for ClipStore {
+    fn default() -> Self {
+        ClipStore::new()
     }
 }
 
@@ -1969,10 +1950,8 @@ impl ClipItemKind {
             ClipItemKind::BoxShadow { .. } => {
                 false
             }
-            ClipItemKind::RoundedRectangle { ref radius, .. } => {
-                // The rounded clip rect fast path shader can only work
-                // if the radii are uniform.
-                radius.is_uniform().is_some()
+            ClipItemKind::RoundedRectangle { ref rect, ref radius, .. } => {
+                radius.can_use_fast_path_in(rect)
             }
         }
     }
@@ -1996,11 +1975,11 @@ impl ClipItemKind {
 
     fn get_clip_result_complex(
         &self,
-        transform: &LayoutToWorldTransform,
-        prim_world_rect: &WorldRect,
-        world_rect: &WorldRect,
+        transform: &LayoutToVisTransform,
+        prim_rect: &VisRect,
+        culling_rect: &VisRect,
     ) -> ClipResult {
-        let visible_rect = match prim_world_rect.intersection(world_rect) {
+        let visible_rect = match prim_rect.intersection(culling_rect) {
             Some(rect) => rect,
             None => return ClipResult::Reject,
         };
@@ -2035,13 +2014,13 @@ impl ClipItemKind {
                 let outer_clip_rect = match project_rect(
                     transform,
                     &clip_rect,
-                    &world_rect,
+                    &culling_rect,
                 ) {
                     Some(outer_clip_rect) => outer_clip_rect,
                     None => return ClipResult::Partial,
                 };
 
-                match outer_clip_rect.intersection(prim_world_rect) {
+                match outer_clip_rect.intersection(prim_rect) {
                     Some(..) => {
                         ClipResult::Partial
                     }
@@ -2291,8 +2270,8 @@ pub fn polygon_contains_point(
 
 pub fn projected_rect_contains(
     source_rect: &LayoutRect,
-    transform: &LayoutToWorldTransform,
-    target_rect: &WorldRect,
+    transform: &LayoutToVisTransform,
+    target_rect: &VisRect,
 ) -> Option<()> {
     let points = [
         transform.transform_point2d(source_rect.top_left())?,
@@ -2332,6 +2311,7 @@ fn add_clip_node_to_current_chain(
     handle: ClipDataHandle,
     prim_spatial_node_index: SpatialNodeIndex,
     pic_spatial_node_index: SpatialNodeIndex,
+    visibility_spatial_node_index: SpatialNodeIndex,
     local_clip_rect: &mut LayoutRect,
     clip_node_info: &mut Vec<ClipNodeInfo>,
     pic_coverage_rect: &mut PictureRect,
@@ -2345,6 +2325,7 @@ fn add_clip_node_to_current_chain(
     let conversion = ClipSpaceConversion::new(
         prim_spatial_node_index,
         clip_node.item.spatial_node_index,
+        visibility_spatial_node_index,
         spatial_tree,
     );
 

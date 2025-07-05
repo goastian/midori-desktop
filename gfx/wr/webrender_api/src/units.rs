@@ -107,6 +107,21 @@ pub type WorldPoint3D = Point3D<f32, WorldPixel>;
 pub type WorldVector2D = Vector2D<f32, WorldPixel>;
 pub type WorldVector3D = Vector3D<f32, WorldPixel>;
 
+/// Geometry in the space in which we decided to perform visibility/clipping/invalidation
+/// calculations.
+/// This is intended to be a temporary type while transitioning some calculation from world
+/// to raster space.
+#[derive(Hash, Clone, Copy, Debug, Eq, MallocSizeOf, PartialEq, Ord, PartialOrd, Deserialize, Serialize, PeekPoke)]
+pub struct VisPixel;
+
+pub type VisRect = Box2D<f32, VisPixel>;
+
+/// TODO: Remove this once visibility rects have moved to raster space.
+pub fn vis_rect_as_world(r: VisRect) -> WorldRect {
+    r.cast_unit()
+}
+
+
 /// Offset in number of tiles.
 #[derive(Hash, Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub struct Tiles;
@@ -124,6 +139,7 @@ pub type LayoutToDeviceScale = Scale<f32, LayoutPixel, DevicePixel>;
 pub type LayoutTransform = Transform3D<f32, LayoutPixel, LayoutPixel>;
 pub type LayoutToWorldTransform = Transform3D<f32, LayoutPixel, WorldPixel>;
 pub type WorldToLayoutTransform = Transform3D<f32, WorldPixel, LayoutPixel>;
+pub type LayoutToVisTransform = Transform3D<f32, LayoutPixel, VisPixel>;
 
 pub type LayoutToPictureTransform = Transform3D<f32, LayoutPixel, PicturePixel>;
 pub type PictureToLayoutTransform = Transform3D<f32, PicturePixel, LayoutPixel>;
@@ -237,8 +253,8 @@ impl AuHelpers<LayoutPointAu> for LayoutPoint {
     }
 
     fn to_au(&self) -> LayoutPointAu {
-        let x = self.x.min(MAX_AU_FLOAT).max(-MAX_AU_FLOAT);
-        let y = self.y.min(MAX_AU_FLOAT).max(-MAX_AU_FLOAT);
+        let x = self.x.clamp(-MAX_AU_FLOAT, MAX_AU_FLOAT);
+        let y = self.y.clamp(-MAX_AU_FLOAT, MAX_AU_FLOAT);
 
         LayoutPointAu::new(
             Au::from_f32_px(x),

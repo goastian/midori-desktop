@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 naq{
     Currencies{
         AED{
@@ -175,9 +175,13 @@ naq{
             "SHP",
             "St Helena Ponds",
         }
+        SLE{
+            "SLE",
+            "Leone",
+        }
         SLL{
             "SLL",
-            "Leone",
+            "Leone (1964—2022)",
         }
         SOS{
             "SOS",

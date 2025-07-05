@@ -2,17 +2,18 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{AsyncBlobImageRasterizer, BlobImageResult, Parameter};
+use api::{AsyncBlobImageRasterizer, BlobImageResult, DebugFlags, Parameter};
 use api::{DocumentId, PipelineId, ExternalEvent, BlobImageRequest};
 use api::{NotificationRequest, Checkpoint, IdNamespace, QualitySettings};
 use api::{PrimitiveKeyKind, GlyphDimensionRequest, GlyphIndexRequest};
 use api::channel::{unbounded_channel, single_msg_channel, Receiver, Sender};
 use api::units::*;
 use crate::render_api::{ApiMsg, FrameMsg, SceneMsg, ResourceUpdate, TransactionMsg, MemoryReport};
+use crate::box_shadow::BoxShadow;
 #[cfg(feature = "capture")]
 use crate::capture::CaptureConfig;
 use crate::frame_builder::FrameBuilderConfig;
-use crate::scene_building::SceneBuilder;
+use crate::scene_building::{SceneBuilder, SceneRecycler};
 use crate::clip::{ClipIntern, PolygonIntern};
 use crate::filterdata::FilterDataIntern;
 use glyph_rasterizer::SharedFontResources;
@@ -29,7 +30,7 @@ use crate::prim_store::text_run::TextRun;
 use crate::profiler::{self, TransactionProfile};
 use crate::render_backend::SceneView;
 use crate::renderer::{FullFrameStats, PipelineInfo};
-use crate::scene::{Scene, BuiltScene, SceneStats};
+use crate::scene::{BuiltScene, Scene, SceneStats};
 use crate::spatial_tree::{SceneSpatialTree, SpatialTreeUpdates};
 use crate::telemetry::Telemetry;
 use crate::SceneBuilderHooks;
@@ -39,11 +40,11 @@ use crate::util::drain_filter;
 use std::thread;
 use std::time::Duration;
 
-fn rasterize_blobs(txn: &mut TransactionMsg, is_low_priority: bool) {
+fn rasterize_blobs(txn: &mut TransactionMsg, is_low_priority: bool, tile_pool: &mut api::BlobTilePool) {
     profile_scope!("rasterize_blobs");
 
     if let Some(ref mut rasterizer) = txn.blob_rasterizer {
-        let mut rasterized_blobs = rasterizer.rasterize(&txn.blob_requests, is_low_priority);
+        let mut rasterized_blobs = rasterizer.rasterize(&txn.blob_requests, is_low_priority, tile_pool);
         // try using the existing allocation if our current list is empty
         if txn.rasterized_blobs.is_empty() {
             txn.rasterized_blobs = rasterized_blobs;
@@ -68,6 +69,7 @@ pub struct BuiltTransaction {
     pub interner_updates: Option<InternerUpdates>,
     pub spatial_tree_updates: Option<SpatialTreeUpdates>,
     pub render_frame: bool,
+    pub present: bool,
     pub invalidate_rendered_frame: bool,
     pub profile: TransactionProfile,
     pub frame_stats: FullFrameStats,
@@ -99,6 +101,7 @@ pub enum SceneBuilderRequest {
     StopRenderBackend,
     ShutDown(Option<Sender<()>>),
     Flush(Sender<()>),
+    SetFlags(DebugFlags),
     SetFrameBuilderConfig(FrameBuilderConfig),
     SetParameter(Parameter),
     ReportMemory(Box<MemoryReport>, Sender<Box<MemoryReport>>),
@@ -240,6 +243,9 @@ pub struct SceneBuilderThread {
     removed_pipelines: FastHashSet<PipelineId>,
     #[cfg(feature = "capture")]
     capture_config: Option<CaptureConfig>,
+    debug_flags: DebugFlags,
+    recycler: SceneRecycler,
+    tile_pool: api::BlobTilePool,
 }
 
 pub struct SceneBuilderThreadChannels {
@@ -284,6 +290,10 @@ impl SceneBuilderThread {
             removed_pipelines: FastHashSet::default(),
             #[cfg(feature = "capture")]
             capture_config: None,
+            debug_flags: DebugFlags::default(),
+            recycler: SceneRecycler::new(),
+            // TODO: tile size is hard-coded here.
+            tile_pool: api::BlobTilePool::new(),
         }
     }
 
@@ -309,6 +319,9 @@ impl SceneBuilderThread {
                 Ok(SceneBuilderRequest::Flush(tx)) => {
                     self.send(SceneBuilderResult::FlushComplete(tx));
                 }
+                Ok(SceneBuilderRequest::SetFlags(debug_flags)) => {
+                    self.debug_flags = debug_flags;
+                }
                 Ok(SceneBuilderRequest::Transactions(txns)) => {
                     let built_txns : Vec<Box<BuiltTransaction>> = txns.into_iter()
                         .map(|txn| self.process_transaction(*txn))
@@ -319,6 +332,10 @@ impl SceneBuilderThread {
                         _ => {},
                     }
                     self.forward_built_transactions(built_txns);
+
+                    // Now that we off the critical path, do some memory bookkeeping.
+                    self.recycler.recycle_built_scene();
+                    self.tile_pool.cleanup();
                 }
                 Ok(SceneBuilderRequest::AddDocument(document_id, initial_size)) => {
                     let old = self.documents.insert(document_id, Document::new(
@@ -433,7 +450,9 @@ impl SceneBuilderThread {
                     &self.config,
                     &mut item.interners,
                     &mut item.spatial_tree,
+                    &mut self.recycler,
                     &SceneStats::empty(),
+                    self.debug_flags,
                 ));
 
                 interner_updates = Some(
@@ -459,6 +478,7 @@ impl SceneBuilderThread {
             let txns = vec![Box::new(BuiltTransaction {
                 document_id: item.document_id,
                 render_frame: item.build_frame,
+                present: true,
                 invalidate_rendered_frame: false,
                 built_scene,
                 view: item.view,
@@ -597,7 +617,9 @@ impl SceneBuilderThread {
                 &self.config,
                 &mut doc.interners,
                 &mut doc.spatial_tree,
+                &mut self.recycler,
                 &doc.stats,
+                self.debug_flags,
             );
 
             // Update the allocation stats for next scene
@@ -625,7 +647,7 @@ impl SceneBuilderThread {
             profile.start_time(profiler::BLOB_RASTERIZATION_TIME);
 
             let is_low_priority = false;
-            rasterize_blobs(&mut txn, is_low_priority);
+            rasterize_blobs(&mut txn, is_low_priority, &mut self.tile_pool);
 
             profile.end_time(profiler::BLOB_RASTERIZATION_TIME);
             Telemetry::record_rasterize_blobs_time(Duration::from_micros((profile.get(profiler::BLOB_RASTERIZATION_TIME).unwrap() * 1000.00) as u64));
@@ -644,6 +666,7 @@ impl SceneBuilderThread {
         Box::new(BuiltTransaction {
             document_id: txn.document_id,
             render_frame: txn.generate_frame.as_bool(),
+            present: txn.generate_frame.present(),
             invalidate_rendered_frame: txn.invalidate_rendered_frame,
             built_scene,
             view: doc.view,
@@ -703,6 +726,13 @@ impl SceneBuilderThread {
             Vec::new()
         };
 
+        // Unless a transaction generates a frame immediately, the compositor should
+        // schedule one whenever appropriate (probably at the next vsync) to present
+        // the changes in the scene.
+        let compositor_should_schedule_a_frame = !txns.iter().any(|txn| {
+            txn.render_frame
+        });
+
         #[cfg(feature = "capture")]
         match self.capture_config {
             Some(ref config) => self.send(SceneBuilderResult::CapturedTransactions(txns, config.clone(), result_tx)),
@@ -717,7 +747,8 @@ impl SceneBuilderThread {
             let swap_result = result_rx.unwrap().recv();
             Telemetry::stop_and_accumulate_sceneswap_time(timer_id);
             self.hooks.as_ref().unwrap().post_scene_swap(&document_ids,
-                                                         pipeline_info);
+                                                         pipeline_info,
+                                                         compositor_should_schedule_a_frame);
             // Once the hook is done, allow the RB thread to resume
             if let Ok(SceneSwapResult::Complete(resume_tx)) = swap_result {
                 resume_tx.send(()).ok();
@@ -755,6 +786,7 @@ impl SceneBuilderThread {
 pub struct LowPrioritySceneBuilderThread {
     pub rx: Receiver<SceneBuilderRequest>,
     pub tx: Sender<SceneBuilderRequest>,
+    pub tile_pool: api::BlobTilePool,
 }
 
 impl LowPrioritySceneBuilderThread {
@@ -766,6 +798,7 @@ impl LowPrioritySceneBuilderThread {
                         .map(|txn| self.process_transaction(txn))
                         .collect();
                     self.tx.send(SceneBuilderRequest::Transactions(txns)).unwrap();
+                    self.tile_pool.cleanup();
                 }
                 Ok(SceneBuilderRequest::ShutDown(sync)) => {
                     self.tx.send(SceneBuilderRequest::ShutDown(sync)).unwrap();
@@ -784,7 +817,7 @@ impl LowPrioritySceneBuilderThread {
     fn process_transaction(&mut self, mut txn: Box<TransactionMsg>) -> Box<TransactionMsg> {
         let is_low_priority = true;
         txn.profile.start_time(profiler::BLOB_RASTERIZATION_TIME);
-        rasterize_blobs(&mut txn, is_low_priority);
+        rasterize_blobs(&mut txn, is_low_priority, &mut self.tile_pool);
         txn.profile.end_time(profiler::BLOB_RASTERIZATION_TIME);
         Telemetry::record_rasterize_blobs_time(Duration::from_micros((txn.profile.get(profiler::BLOB_RASTERIZATION_TIME).unwrap() * 1000.00) as u64));
         txn.blob_requests = Vec::new();

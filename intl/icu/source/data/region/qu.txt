@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 qu{
     Countries{
         001{"Pacha"}
@@ -297,6 +297,9 @@ qu{
         ZM{"Zambia"}
         ZW{"Zimbabue"}
         ZZ{"Mana yachasqa Suyu"}
+    }
+    Countries%chagos{
+        IO{"Chagos Archipielago"}
     }
     Countries%short{
         HK{"Hong Kong"}

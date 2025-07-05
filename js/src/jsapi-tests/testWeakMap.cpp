@@ -230,7 +230,8 @@ JSObject* newKey() {
   static const JSClass keyClass = {
       "keyWithDelegate", JSCLASS_HAS_RESERVED_SLOTS(1),
       JS_NULL_CLASS_OPS, JS_NULL_CLASS_SPEC,
-      JS_NULL_CLASS_EXT, JS_NULL_OBJECT_OPS};
+      JS_NULL_CLASS_EXT, JS_NULL_OBJECT_OPS,
+  };
 
   JS::RootedObject key(cx, JS_NewObject(cx, &keyClass));
   if (!key) {
@@ -292,7 +293,8 @@ JSObject* newDelegate() {
       &delegateClassOps,
       JS_NULL_CLASS_SPEC,
       &delegateClassExtension,
-      JS_NULL_OBJECT_OPS};
+      JS_NULL_OBJECT_OPS,
+  };
 
   /* Create the global object. */
   JS::RealmOptions options;
@@ -309,7 +311,7 @@ JSObject* newDelegate() {
 
 void performIncrementalGC() {
   JSRuntime* rt = cx->runtime();
-  js::SliceBudget budget(js::WorkBudget(1000));
+  JS::SliceBudget budget(JS::WorkBudget(1000));
   rt->gc.startDebugGC(JS::GCOptions::Normal, budget);
 
   // Wait until we've started marking before finishing the GC

@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 th{
     Countries{
         001{"โลก"}
@@ -297,6 +297,9 @@ th{
         ZM{"แซมเบีย"}
         ZW{"ซิมบับเว"}
         ZZ{"ภูมิภาคที่ไม่รู้จัก"}
+    }
+    Countries%chagos{
+        IO{"หมู่เกาะชากอส"}
     }
     Countries%short{
         HK{"ฮ่องกง"}

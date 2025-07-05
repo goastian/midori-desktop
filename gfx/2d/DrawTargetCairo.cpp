@@ -1149,7 +1149,7 @@ void DrawTargetCairo::CopySurface(SourceSurface* aSurface,
     return;
   }
 
-  CopySurfaceInternal(surf, aSource, aDest);
+  CopySurfaceInternal(surf, aSource - aSurface->GetRect().TopLeft(), aDest);
   cairo_surface_destroy(surf);
 }
 
@@ -1548,6 +1548,8 @@ void DrawTargetCairo::PushClip(const Path* aPath) {
     path->SetPathOnContext(mContext);
   }
   cairo_clip_preserve(mContext);
+
+  ++mClipDepth;
 }
 
 void DrawTargetCairo::PushClipRect(const Rect& aRect) {
@@ -1562,9 +1564,15 @@ void DrawTargetCairo::PushClipRect(const Rect& aRect) {
                     aRect.Height());
   }
   cairo_clip_preserve(mContext);
+
+  ++mClipDepth;
 }
 
 void DrawTargetCairo::PopClip() {
+  if (NS_WARN_IF(mClipDepth <= 0)) {
+    return;
+  }
+
   // save/restore does not affect the path, so no need to call WillChange()
 
   // cairo_restore will restore the transform too and we don't want to do that
@@ -1575,6 +1583,15 @@ void DrawTargetCairo::PopClip() {
   cairo_restore(mContext);
 
   cairo_set_matrix(mContext, &mat);
+
+  --mClipDepth;
+}
+
+bool DrawTargetCairo::RemoveAllClips() {
+  while (mClipDepth > 0) {
+    PopClip();
+  }
+  return true;
 }
 
 void DrawTargetCairo::PushLayer(bool aOpaque, Float aOpacity,
@@ -1739,6 +1756,16 @@ already_AddRefed<DrawTarget> DrawTargetCairo::CreateSimilarDrawTarget(
       similar = cairo_win32_surface_create_with_dib(
           GfxFormatToCairoFormat(aFormat), aSize.width, aSize.height);
       break;
+#endif
+#ifdef CAIRO_HAS_QUARTZ_SURFACE
+    case CAIRO_SURFACE_TYPE_QUARTZ:
+      if (StaticPrefs::gfx_cairo_quartz_cg_layer_enabled()) {
+        similar = cairo_quartz_surface_create_cg_layer(
+            mSurface, GfxFormatToCairoContent(aFormat), aSize.width,
+            aSize.height);
+        break;
+      }
+      [[fallthrough]];
 #endif
     default:
       similar = cairo_surface_create_similar(mSurface,

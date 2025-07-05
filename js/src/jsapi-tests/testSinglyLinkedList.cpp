@@ -12,13 +12,13 @@
 
 using namespace js;
 
-struct IntElement {
+struct IntSinglyLinkedElement {
   int value;
-  IntElement* next = nullptr;
+  IntSinglyLinkedElement* next = nullptr;
 
-  explicit IntElement(int v) : value(v) {}
+  explicit IntSinglyLinkedElement(int v) : value(v) {}
 };
-using TestList = SinglyLinkedList<IntElement>;
+using TestList = SinglyLinkedList<IntSinglyLinkedElement>;
 
 BEGIN_TEST(testSinglyLinkedList) {
   // Test empty lists.
@@ -46,7 +46,7 @@ BEGIN_TEST(testSinglyLinkedList) {
 
   // Test popFront.
 
-  IntElement* e = list.popFront();
+  IntSinglyLinkedElement* e = list.popFront();
   CHECK(e->value == 1);
   js_delete(e);
   CHECK(list.first()->value == 2);
@@ -89,7 +89,7 @@ BEGIN_TEST(testSinglyLinkedList) {
 
   // Test release.
 
-  IntElement* head = list.release();
+  IntSinglyLinkedElement* head = list.release();
   CHECK(list.isEmpty());
   CHECK(head->value == 1);
   CHECK(head->next->value == 2);
@@ -108,12 +108,63 @@ BEGIN_TEST(testSinglyLinkedList) {
   CHECK((CheckList<1, 2, 3>(list)));
   CHECK(list2.isEmpty());
 
-  list2.pushBack(MakeElement(4));
-  list2.pushBack(MakeElement(5));
-  list2.pushBack(MakeElement(6));
+  TestList list3;
+  list3.pushBack(MakeElement(4));
+  list3.pushBack(MakeElement(5));
+  list3.pushBack(MakeElement(6));
+  list2.append(std::move(list3));
+  CHECK((CheckList<4, 5, 6>(list2)));
+  CHECK(list3.isEmpty());
+
   list.append(std::move(list2));
   CHECK((CheckList<1, 2, 3, 4, 5, 6>(list)));
   CHECK(list2.isEmpty());
+
+  // Test prepend.
+
+  CHECK(list2.isEmpty());
+  list.prepend(std::move(list2));
+  CHECK((CheckList<1, 2, 3, 4, 5, 6>(list)));
+  CHECK(list2.isEmpty());
+
+  CHECK(list3.isEmpty());
+  list3.pushBack(MakeElement(7));
+  list3.pushBack(MakeElement(8));
+  list3.pushBack(MakeElement(9));
+  list2.prepend(std::move(list3));
+  CHECK((CheckList<7, 8, 9>(list2)));
+  CHECK(list3.isEmpty());
+
+  list.prepend(std::move(list2));
+  CHECK((CheckList<7, 8, 9, 1, 2, 3, 4, 5, 6>(list)));
+  CHECK(list2.isEmpty());
+
+  // Test iterators.
+
+  TestList::Iterator iter;
+  CHECK(iter.done());
+
+  iter = list.iter();
+  CHECK(!iter.done());
+  CHECK(iter.get() == list.first());
+
+  iter = list.iterFrom(list.last());
+  CHECK(!iter.done());
+  CHECK(iter.get() == list.last());
+
+  // Test removeRange.
+
+  e = FindElement(list, 3);
+  CHECK(e);
+  list.removeRange(e, list.last());
+  CHECK((CheckList<7, 8, 9, 1, 2, 3>(list)));
+
+  e = FindElement(list, 8);
+  CHECK(e);
+  IntSinglyLinkedElement* f = FindElement(list, 2);
+  CHECK(f);
+  list.removeRange(e, f);
+  CHECK((CheckList<7, 8, 3>(list)));
 
   // Cleanup.
 
@@ -128,8 +179,8 @@ BEGIN_TEST(testSinglyLinkedList) {
   return true;
 }
 
-IntElement* MakeElement(int value) {
-  IntElement* element = js_new<IntElement>(value);
+IntSinglyLinkedElement* MakeElement(int value) {
+  IntSinglyLinkedElement* element = js_new<IntSinglyLinkedElement>(value);
   MOZ_RELEASE_ASSERT(element);
   return element;
 }
@@ -140,6 +191,16 @@ size_t CountList(const TestList& list) {
     i++;
   }
   return i;
+}
+
+IntSinglyLinkedElement* FindElement(const TestList& list, int value) {
+  for (auto iter = list.iter(); !iter.done(); iter.next()) {
+    if (iter->value == value) {
+      return iter.get();
+    }
+  }
+
+  return nullptr;
 }
 
 template <int... Values>

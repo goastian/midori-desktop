@@ -95,7 +95,7 @@ bool MacIOSurfaceImage::SetData(ImageContainer* aContainer,
     return false;
   }
 
-  if (surf->GetFormat() == SurfaceFormat::YUV422) {
+  if (surf->GetFormat() == SurfaceFormat::YUY2) {
     // If the CbCrSize's height is half of the YSize's height, then we'll
     // need to duplicate the CbCr data on every second row.
     size_t heightScale = ySize.height / cbcrSize.height;
@@ -208,6 +208,51 @@ bool MacIOSurfaceImage::SetData(ImageContainer* aContainer,
         rowCrSrc++;
       }
     }
+  } else if (surf->GetFormat() == SurfaceFormat::NV16) {
+    MOZ_ASSERT(aData.mColorDepth == ColorDepth::COLOR_10,
+               "Currently NV16 only supports 10-bit color.");
+    MOZ_ASSERT(ySize.height > 0);
+    auto dst = reinterpret_cast<uint16_t*>(surf->GetBaseAddressOfPlane(0));
+    size_t stride = surf->GetBytesPerRow(0) / 2;
+    for (size_t i = 0; i < (size_t)ySize.height; i++) {
+      auto rowSrc = reinterpret_cast<const uint16_t*>(aData.mYChannel +
+                                                      aData.mYStride * i);
+      auto rowDst = dst + stride * i;
+
+      for (const auto j : IntegerRange(ySize.width)) {
+        Unused << j;
+
+        *rowDst = safeShift10BitBy6(*rowSrc);
+        rowDst++;
+        rowSrc++;
+      }
+    }
+
+    // Copy and interleave the Cb and Cr channels.
+    MOZ_ASSERT(cbcrSize.height > 0);
+    MOZ_ASSERT(cbcrSize.height == ySize.height,
+               "4:2:2 CbCr should have same height as Y.");
+    dst = (uint16_t*)surf->GetBaseAddressOfPlane(1);
+    stride = surf->GetBytesPerRow(1) / 2;
+    for (size_t i = 0; i < (size_t)cbcrSize.height; i++) {
+      uint16_t* rowCbSrc =
+          (uint16_t*)(aData.mCbChannel + aData.mCbCrStride * i);
+      uint16_t* rowCrSrc =
+          (uint16_t*)(aData.mCrChannel + aData.mCbCrStride * i);
+      uint16_t* rowDst = dst + stride * i;
+
+      for (const auto j : IntegerRange(cbcrSize.width)) {
+        Unused << j;
+
+        *rowDst = safeShift10BitBy6(*rowCbSrc);
+        rowDst++;
+        rowCbSrc++;
+
+        *rowDst = safeShift10BitBy6(*rowCrSrc);
+        rowDst++;
+        rowCrSrc++;
+      }
+    }
   }
 
   surf->Unlock(false);
@@ -245,24 +290,45 @@ already_AddRefed<MacIOSurface> MacIOSurfaceRecycleAllocator::Allocate(
       continue;
     }
 
-#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
-    MOZ_DIAGNOSTIC_ASSERT(::IOSurfaceGetWidthOfPlane(surf.get(), 0) ==
-                          (size_t)aYSize.width);
-    MOZ_DIAGNOSTIC_ASSERT(::IOSurfaceGetHeightOfPlane(surf.get(), 0) ==
-                          (size_t)aYSize.height);
+#ifdef DEBUG
+    Maybe<OSType> pixelFormat = MacIOSurface::ChoosePixelFormat(
+        aChromaSubsampling, aColorRange, aColorDepth);
+    MOZ_ASSERT(pixelFormat.isSome());
+    MOZ_ASSERT(::IOSurfaceGetPixelFormat(surf.get()) == *pixelFormat);
+    MOZ_ASSERT(::IOSurfaceGetWidthOfPlane(surf.get(), 0) ==
+               (size_t)aYSize.width);
+    MOZ_ASSERT(::IOSurfaceGetHeightOfPlane(surf.get(), 0) ==
+               (size_t)aYSize.height);
+    if (*pixelFormat != kCVPixelFormatType_422YpCbCr8_yuvs &&
+        *pixelFormat != kCVPixelFormatType_422YpCbCr8FullRange) {
+      MOZ_ASSERT(::IOSurfaceGetWidthOfPlane(surf.get(), 1) ==
+                 (size_t)aCbCrSize.width);
+      MOZ_ASSERT(::IOSurfaceGetHeightOfPlane(surf.get(), 1) ==
+                 (size_t)aCbCrSize.height);
+    }
 #endif
 
     return MakeAndAddRef<MacIOSurface>(surf, false, aYUVColorSpace);
   }
 
+  // Time to decide if we are creating a single planar or bi-planar surface.
+  // We limit ourselves to macOS's single planar and bi-planar formats for
+  // simplicity reasons, possibly gaining some small memory or performance
+  // benefit relative to the tri-planar formats. We try and use as few
+  // planes as possible.
+  // 4:2:0 formats are always bi-planar, because there is no 4:2:0 single
+  // planar format.
+  // 4:2:2 formats with 8 bit color are single planar, otherwise bi-planar.
+
   RefPtr<MacIOSurface> result;
-  if (StaticPrefs::layers_iosurfaceimage_use_nv12_AtStartup()) {
-    result = MacIOSurface::CreateNV12OrP010Surface(
-        aYSize, aCbCrSize, aYUVColorSpace, aTransferFunction, aColorRange,
-        aColorDepth);
+  if (aChromaSubsampling == gfx::ChromaSubsampling::HALF_WIDTH &&
+      aColorDepth == gfx::ColorDepth::COLOR_8) {
+    result = MacIOSurface::CreateSinglePlanarSurface(
+        aYSize, aYUVColorSpace, aTransferFunction, aColorRange);
   } else {
-    result = MacIOSurface::CreateYUV422Surface(aYSize, aYUVColorSpace,
-                                               aColorRange);
+    result = MacIOSurface::CreateBiPlanarSurface(
+        aYSize, aCbCrSize, aChromaSubsampling, aYUVColorSpace,
+        aTransferFunction, aColorRange, aColorDepth);
   }
 
   if (result &&

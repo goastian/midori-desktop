@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 luo{
     Countries{
         AD{"Andorra"}
@@ -93,7 +93,6 @@ luo{
         IE{"Ireland"}
         IL{"Israel"}
         IN{"India"}
-        IO{"British Indian Ocean Territory"}
         IQ{"Iraq"}
         IR{"Iran"}
         IS{"Iceland"}

@@ -41,12 +41,12 @@ typedef uint32_t CGRGBPixel;
 
 class SkScalerContext_Mac : public SkScalerContext {
 public:
-    SkScalerContext_Mac(sk_sp<SkTypeface_Mac>, const SkScalerContextEffects&, const SkDescriptor*);
+    SkScalerContext_Mac(SkTypeface_Mac&, const SkScalerContextEffects&, const SkDescriptor*);
 
 protected:
     GlyphMetrics generateMetrics(const SkGlyph&, SkArenaAlloc*) override;
     void generateImage(const SkGlyph&, void*) override;
-    bool generatePath(const SkGlyph& glyph, SkPath* path) override;
+    bool generatePath(const SkGlyph& glyph, SkPath* path, bool* modified) override;
     void generateFontMetrics(SkFontMetrics*) override;
 
 private:
@@ -55,8 +55,7 @@ private:
         Offscreen(SkColor foregroundColor);
 
         CGRGBPixel* getCG(const SkScalerContext_Mac& context, const SkGlyph& glyph,
-                          CGGlyph glyphID, size_t* rowBytesPtr, bool generateA8FromLCD,
-                          bool lightOnDark);
+                          CGGlyph glyphID, size_t* rowBytesPtr, bool generateA8FromLCD);
 
     private:
         enum {

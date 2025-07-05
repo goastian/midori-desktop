@@ -16,7 +16,6 @@
 #include "include/core/SkString.h"
 #include "include/ports/SkTypeface_win.h"
 #include "src/ports/SkTypeface_win_dw.h"
-#include "include/private/SkColorData.h"
 #include "include/private/base/SkMacros.h"
 #include "include/private/base/SkOnce.h"
 #include "include/private/base/SkTDArray.h"
@@ -26,6 +25,7 @@
 #include "src/base/SkLeanWindows.h"
 #include "src/base/SkUTF.h"
 #include "src/core/SkAdvancedTypefaceMetrics.h"
+#include "src/core/SkColorData.h"
 #include "src/core/SkDescriptor.h"
 #include "src/core/SkFontDescriptor.h"
 #include "src/core/SkGlyph.h"
@@ -579,7 +579,7 @@ void* HDCOffscreen::draw(const SkGlyph& glyph, bool isBW, size_t* srcRBPtr) {
 
 class SkScalerContext_GDI : public SkScalerContext {
 public:
-    SkScalerContext_GDI(sk_sp<LogFontTypeface>,
+    SkScalerContext_GDI(LogFontTypeface&,
                         const SkScalerContextEffects&,
                         const SkDescriptor* desc);
     ~SkScalerContext_GDI() override;
@@ -591,7 +591,7 @@ public:
 protected:
     GlyphMetrics generateMetrics(const SkGlyph&, SkArenaAlloc*) override;
     void generateImage(const SkGlyph&, void* imageBuffer) override;
-    bool generatePath(const SkGlyph& glyph, SkPath* path) override;
+    bool generatePath(const SkGlyph& glyph, SkPath* path, bool* modified) override;
     void generateFontMetrics(SkFontMetrics*) override;
 
 private:
@@ -655,10 +655,10 @@ static BYTE compute_quality(const SkScalerContextRec& rec) {
     }
 }
 
-SkScalerContext_GDI::SkScalerContext_GDI(sk_sp<LogFontTypeface> rawTypeface,
+SkScalerContext_GDI::SkScalerContext_GDI(LogFontTypeface& rawTypeface,
                                          const SkScalerContextEffects& effects,
                                          const SkDescriptor* desc)
-        : SkScalerContext(std::move(rawTypeface), effects, desc)
+        : SkScalerContext(rawTypeface, effects, desc)
         , fDDC(nullptr)
         , fSavefont(nullptr)
         , fFont(nullptr)
@@ -992,7 +992,7 @@ void SkScalerContext_GDI::generateFontMetrics(SkFontMetrics* metrics) {
 static void build_power_table(uint8_t table[], float ee) {
     for (int i = 0; i < 256; i++) {
         float x = i / 255.f;
-        x = sk_float_pow(x, ee);
+        x = std::pow(x, ee);
         int xx = SkScalarRoundToInt(x * 255);
         table[i] = SkToU8(xx);
     }
@@ -1039,7 +1039,7 @@ static const uint8_t* getInverseGammaTableClearType() {
     return gTableClearType;
 }
 
-#include "include/private/SkColorData.h"
+#include "src/core/SkColorData.h"
 
 //Cannot assume that the input rgb is gray due to possible setting of kGenA8FromLCD_Flag.
 template<bool APPLY_PREBLEND>
@@ -1544,7 +1544,7 @@ DWORD SkScalerContext_GDI::getGDIGlyphPath(SkGlyphID glyph, UINT flags,
     return total_size;
 }
 
-bool SkScalerContext_GDI::generatePath(const SkGlyph& glyph, SkPath* path) {
+bool SkScalerContext_GDI::generatePath(const SkGlyph& glyph, SkPath* path, bool* modified) {
     SkASSERT(path);
     SkASSERT(fDDC);
 
@@ -2091,7 +2091,7 @@ std::unique_ptr<SkScalerContext> LogFontTypeface::onCreateScalerContext(
     const SkScalerContextEffects& effects, const SkDescriptor* desc) const
 {
     auto ctx = std::make_unique<SkScalerContext_GDI>(
-            sk_ref_sp(const_cast<LogFontTypeface*>(this)), effects, desc);
+            *const_cast<LogFontTypeface*>(this), effects, desc);
     if (ctx->isValid()) {
         return std::move(ctx);
     }
@@ -2099,16 +2099,18 @@ std::unique_ptr<SkScalerContext> LogFontTypeface::onCreateScalerContext(
     ctx.reset();
     SkStrikeCache::PurgeAll();
     ctx = std::make_unique<SkScalerContext_GDI>(
-            sk_ref_sp(const_cast<LogFontTypeface*>(this)), effects, desc);
+            *const_cast<LogFontTypeface*>(this), effects, desc);
     if (ctx->isValid()) {
         return std::move(ctx);
     }
 
     return SkScalerContext::MakeEmpty(
-            sk_ref_sp(const_cast<LogFontTypeface*>(this)), effects, desc);
+            *const_cast<LogFontTypeface*>(this), effects, desc);
 }
 
 void LogFontTypeface::onFilterRec(SkScalerContextRec* rec) const {
+    rec->useStrokeForFakeBold();
+
     if (rec->fFlags & SkScalerContext::kLCD_BGROrder_Flag ||
         rec->fFlags & SkScalerContext::kLCD_Vertical_Flag)
     {

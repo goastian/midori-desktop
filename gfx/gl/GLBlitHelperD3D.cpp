@@ -14,8 +14,9 @@
 #include "GPUVideoImage.h"
 #include "ScopedGLHelpers.h"
 
+#include "mozilla/layers/CompositeProcessD3D11FencesHolderMap.h"
 #include "mozilla/layers/D3D11ShareHandleImage.h"
-#include "mozilla/layers/D3D11TextureIMFSampleImage.h"
+#include "mozilla/layers/D3D11ZeroCopyTextureImage.h"
 #include "mozilla/layers/D3D11YCbCrImage.h"
 #include "mozilla/layers/GpuProcessD3D11TextureMap.h"
 #include "mozilla/layers/TextureD3D11.h"
@@ -200,7 +201,7 @@ bool GLBlitHelper::BlitImage(layers::D3D11ShareHandleImage* const srcImage,
 
 // -------------------------------------
 
-bool GLBlitHelper::BlitImage(layers::D3D11TextureIMFSampleImage* const srcImage,
+bool GLBlitHelper::BlitImage(layers::D3D11ZeroCopyTextureImage* const srcImage,
                              const gfx::IntSize& destSize,
                              const OriginPos destOrigin) const {
   const auto& data = srcImage->GetData();
@@ -214,26 +215,6 @@ bool GLBlitHelper::BlitImage(layers::D3D11TextureIMFSampleImage* const srcImage,
 
 // -------------------------------------
 
-bool GLBlitHelper::BlitImage(layers::D3D11YCbCrImage* const srcImage,
-                             const gfx::IntSize& destSize,
-                             const OriginPos destOrigin) const {
-  const auto& data = srcImage->GetData();
-  if (!data) return false;
-
-  const WindowsHandle handles[3] = {
-      (WindowsHandle)(data->mHandles[0] ? data->mHandles[0]->GetHandle()
-                                        : nullptr),
-      (WindowsHandle)(data->mHandles[1] ? data->mHandles[1]->GetHandle()
-                                        : nullptr),
-      (WindowsHandle)(data->mHandles[2] ? data->mHandles[2]->GetHandle()
-                                        : nullptr)};
-  return BlitAngleYCbCr(handles, srcImage->mPictureRect, srcImage->GetYSize(),
-                        srcImage->GetCbCrSize(), srcImage->mColorSpace,
-                        destSize, destOrigin);
-}
-
-// -------------------------------------
-
 bool GLBlitHelper::BlitDescriptor(const layers::SurfaceDescriptorD3D10& desc,
                                   const gfx::IntSize& destSize,
                                   const OriginPos destOrigin) const {
@@ -241,13 +222,14 @@ bool GLBlitHelper::BlitDescriptor(const layers::SurfaceDescriptorD3D10& desc,
   if (!d3d) return false;
 
   const auto& gpuProcessTextureId = desc.gpuProcessTextureId();
-  const auto& arrayIndex = desc.arrayIndex();
+  auto arrayIndex = desc.arrayIndex();
   const auto& format = desc.format();
   const auto& clipSize = desc.size();
 
   const auto srcOrigin = OriginPos::BottomLeft;
   const gfx::IntRect clipRect(0, 0, clipSize.width, clipSize.height);
   const auto colorSpace = desc.colorSpace();
+  const auto fencesHolderId = desc.fencesHolderId();
 
   if (format != gfx::SurfaceFormat::NV12 &&
       format != gfx::SurfaceFormat::P010 &&
@@ -262,9 +244,10 @@ bool GLBlitHelper::BlitDescriptor(const layers::SurfaceDescriptorD3D10& desc,
     auto* textureMap = layers::GpuProcessD3D11TextureMap::Get();
     if (textureMap) {
       Maybe<HANDLE> handle =
-          textureMap->GetSharedHandleOfCopiedTexture(gpuProcessTextureId.ref());
+          textureMap->GetSharedHandle(gpuProcessTextureId.ref());
       if (handle.isSome()) {
         tex = OpenSharedTexture(d3d, (WindowsHandle)handle.ref());
+        arrayIndex = 0;
       }
     }
   } else if (desc.handle()) {
@@ -274,6 +257,13 @@ bool GLBlitHelper::BlitDescriptor(const layers::SurfaceDescriptorD3D10& desc,
     MOZ_GL_ASSERT(mGL, false);  // Get a nullptr from OpenSharedResource1.
     return false;
   }
+
+  auto* fencesHolderMap = layers::CompositeProcessD3D11FencesHolderMap::Get();
+  MOZ_ASSERT(fencesHolderMap);
+  if (fencesHolderMap && fencesHolderId.isSome()) {
+    fencesHolderMap->WaitWriteFence(fencesHolderId.ref(), d3d);
+  }
+
   const RefPtr<ID3D11Texture2D> texList[2] = {tex, tex};
   const EGLAttrib postAttribs0[] = {LOCAL_EGL_NATIVE_BUFFER_PLANE_OFFSET_IMG, 0,
                                     LOCAL_EGL_D3D_TEXTURE_SUBRESOURCE_ID_ANGLE,

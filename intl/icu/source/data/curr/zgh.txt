@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 zgh{
     Currencies{
         AED{
@@ -171,9 +171,13 @@ zgh{
             "SHP",
             "ⴰⵊⵏⵉⵀ ⵏ ⵙⴰⵏⵜⵉⵍⵉⵏ",
         }
+        SLE{
+            "SLE",
+            "ⵍⵉⵢⵓⵏ",
+        }
         SLL{
             "SLL",
-            "ⵍⵉⵢⵓⵏ",
+            "ⵍⵉⵢⵓⵏ (1964—2022)",
         }
         SOS{
             "SOS",

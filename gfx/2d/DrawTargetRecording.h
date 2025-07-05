@@ -10,9 +10,18 @@
 #include "2D.h"
 #include "DrawEventRecorder.h"
 
+class nsICanvasRenderingContextInternal;
+
 namespace mozilla {
+
+namespace ipc {
+class IProtocol;
+}  // namespace ipc
+
 namespace layers {
+class CanvasChild;
 class CanvasDrawEventRecorder;
+class RecordedTextureData;
 struct RemoteTextureOwnerId;
 }  // namespace layers
 
@@ -24,7 +33,6 @@ class DrawTargetRecording final : public DrawTarget {
   DrawTargetRecording(DrawEventRecorder* aRecorder, DrawTarget* aDT,
                       IntRect aRect, bool aHasData = false);
   DrawTargetRecording(layers::CanvasDrawEventRecorder* aRecorder,
-                      int64_t aTextureId,
                       const layers::RemoteTextureOwnerId& aTextureOwnerId,
                       DrawTarget* aDT, const IntSize& aSize);
 
@@ -222,6 +230,9 @@ class DrawTargetRecording final : public DrawTarget {
    */
   virtual void PopClip() override;
 
+  /* Remove all applied clips. */
+  virtual bool RemoveAllClips() override;
+
   /**
    * Push a 'layer' to the DrawTarget, a layer is a temporary surface that all
    * drawing will be redirected to, this is used for example to support group
@@ -373,13 +384,32 @@ class DrawTargetRecording final : public DrawTarget {
     return mFinalDT->IsCurrentGroupOpaque();
   }
 
-  bool IsDirty() const { return mIsDirty; }
-
-  void MarkClean() { mIsDirty = false; }
-
   void SetOptimizeTransform(bool aOptimizeTransform) {
     mOptimizeTransform = aOptimizeTransform;
   }
+
+ protected:
+  friend class layers::RecordedTextureData;
+
+  void AttachTextureData(layers::RecordedTextureData* aTextureData) {
+    mTextureData = aTextureData;
+  }
+  void DetachTextureData(layers::RecordedTextureData*) {
+    mTextureData = nullptr;
+  }
+
+  layers::RecordedTextureData* mTextureData = nullptr;
+
+  friend class layers::CanvasChild;
+
+  already_AddRefed<SourceSurface> CreateExternalSourceSurface(
+      const IntSize& aSize, SurfaceFormat aFormat);
+
+  friend class ::nsICanvasRenderingContextInternal;
+
+  already_AddRefed<SourceSurface> SnapshotExternalCanvas(
+      nsICanvasRenderingContextInternal* aCanvas,
+      mozilla::ipc::IProtocol* aActor);
 
  private:
   /**
@@ -443,7 +473,6 @@ class DrawTargetRecording final : public DrawTarget {
   };
   std::vector<PushedLayer> mPushedLayers;
 
-  bool mIsDirty = false;
   bool mOptimizeTransform = false;
 
   // Last transform that was used in the recording.

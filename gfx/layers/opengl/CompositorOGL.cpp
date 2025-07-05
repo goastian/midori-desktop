@@ -422,7 +422,7 @@ bool CompositorOGL::Initialize(nsCString* const out_failureReason) {
     mGLContext->fGenFramebuffers(1, &testFBO);
     GLuint testTexture = 0;
 
-    for (uint32_t i = 0; i < ArrayLength(textureTargets); i++) {
+    for (uint32_t i = 0; i < std::size(textureTargets); i++) {
       GLenum target = textureTargets[i];
       if (!target) continue;
 
@@ -745,10 +745,11 @@ Maybe<IntRect> CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
     MakeCurrent(ForceMakeCurrent);
 
     mWidgetSize = LayoutDeviceIntSize::FromUnknownSize(rect.Size());
-#ifdef MOZ_WIDGET_GTK
+#ifdef MOZ_WAYLAND
     if (mWidget && mWidget->AsGTK()) {
+      // Wayland only check we have correct window size to avoid
+      // rendering artifacts.
       if (!mWidget->AsGTK()->SetEGLNativeWindowSize(mWidgetSize)) {
-        // We don't have correct window size to paint into.
         return Nothing();
       }
     }
@@ -802,8 +803,8 @@ Maybe<IntRect> CompositorOGL::BeginFrame(const nsIntRegion& aInvalidRegion,
   if (regionToClear.IsEmpty() &&
       mGLContext->IsSupported(GLFeature::invalidate_framebuffer)) {
     GLenum attachments[] = {LOCAL_GL_COLOR};
-    mGLContext->fInvalidateFramebuffer(
-        LOCAL_GL_FRAMEBUFFER, MOZ_ARRAY_LENGTH(attachments), attachments);
+    mGLContext->fInvalidateFramebuffer(LOCAL_GL_FRAMEBUFFER,
+                                       std::size(attachments), attachments);
   } else {
     clearBits |= LOCAL_GL_COLOR_BUFFER_BIT;
   }
@@ -1030,7 +1031,7 @@ ShaderConfigOGL CompositorOGL::GetShaderConfigFor(Effect* aEffect,
           source->GetFormat() == gfx::SurfaceFormat::R8G8B8A8 ||
               source->GetFormat() == gfx::SurfaceFormat::R8G8B8X8 ||
               source->GetFormat() == gfx::SurfaceFormat::R5G6B5_UINT16 ||
-              source->GetFormat() == gfx::SurfaceFormat::YUV422);
+              source->GetFormat() == gfx::SurfaceFormat::YUY2);
       config = ShaderConfigFromTargetAndFormat(source->GetTextureTarget(),
                                                source->GetFormat());
       if (!texturedEffect->mPremultiplied) {

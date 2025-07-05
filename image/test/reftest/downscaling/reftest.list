@@ -110,6 +110,12 @@ fuzzy(0-1,0-1024) == downscale-32px.html?.jpg downscale-32px-ref.html
 # Test downscaling a JPEG with orientation metadata.
 fuzzy(0-1,0-50) == downscale-orient.html downscale-orient-ref.html
 
+# be careful changing fuzzy, the bug this test is testing is if the shade of orange is too dark
+fuzzy(0-1,0-164) == 1919368-1.html 1919368-1-ref.html
+
+
+
+
 # RUN TESTS WITH DOWNSCALE-DURING-DECODE ENABLED:
 # ===============================================
 defaults pref(image.downscale-during-decode.enabled,true)
@@ -174,7 +180,7 @@ fuzzy(0-20,0-999) != downscale-2f.html?205,53,bottom about:blank
 
 # Skip on Android because it runs reftests via http, and moz-icon isn't
 # accessible from http/https origins anymore.
-fuzzy(0-53,0-6391) fuzzy-if(appleSilicon,0-20,0-11605) fuzzy-if(gtkWidget,18-19,5502-5568) skip-if(Android) == downscale-moz-icon-1.html downscale-moz-icon-1-ref.html # gtkWidget Bug 1592059
+fuzzy(0-53,0-6391) skip-if(Android) fuzzy-if(cocoaWidget&&/^14\.70$/.test(os_version)&&isDebugBuild,20-21,11511-12086) fuzzy-if(cocoaWidget&&/^14\.70$/.test(os_version)&&optimized&&!swgl,20-21,11511-12086) fuzzy-if(appleSilicon,0-20,0-11605) fuzzy-if(gtkWidget,18-19,5502-5568) == downscale-moz-icon-1.html downscale-moz-icon-1-ref.html # gtkWidget Bug 1592059, Bug 1934897
 
 == downscale-png.html?16,16,interlaced downscale-png.html?16,16,normal
 == downscale-png.html?24,24,interlaced downscale-png.html?24,24,normal
@@ -211,6 +217,9 @@ fuzzy(0-4,0-18) == downscale-orient.html downscale-orient-ref.html
 == huge-1.html?100x32768.jpg,100,32768 huge-1.html?100x100.jpg,100,32768
 == huge-1.html?32768x100.jpg,100,100 huge-1.html?100x100.jpg,100,100
 == huge-1.html?32768x100.jpg,32768,100 huge-1.html?100x100.jpg,32768,100
+
+# be careful changing fuzzy, the bug this test is testing is if the shade of orange is too dark
+fuzzy(0-1,0-164) == 1919368-1.html 1919368-1-ref.html
 
 # Only need to run these with downscaling on
 != 1421191-1.html about:blank

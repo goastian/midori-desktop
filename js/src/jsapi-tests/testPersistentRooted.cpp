@@ -36,9 +36,11 @@ static const JSClassOps BarkWhenTracedClassClassOps = {
     BarkWhenTracedClass::trace,     // trace
 };
 
-const JSClass BarkWhenTracedClass::class_ = {"BarkWhenTracedClass",
-                                             JSCLASS_FOREGROUND_FINALIZE,
-                                             &BarkWhenTracedClassClassOps};
+const JSClass BarkWhenTracedClass::class_ = {
+    "BarkWhenTracedClass",
+    JSCLASS_FOREGROUND_FINALIZE,
+    &BarkWhenTracedClassClassOps,
+};
 
 struct Kennel {
   PersistentRootedObject obj;
@@ -179,7 +181,7 @@ BEGIN_TEST(test_PersistentRootedAssign) {
 }
 END_TEST(test_PersistentRootedAssign)
 
-static PersistentRootedObject gGlobalRoot;
+MOZ_RUNINIT static PersistentRootedObject gGlobalRoot;
 
 // PersistentRooted instances can initialized in a separate step to allow for
 // global PersistentRooteds.

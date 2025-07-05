@@ -60,8 +60,8 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(ScriptLoadRequest)
 NS_IMPL_CYCLE_COLLECTION_CLASS(ScriptLoadRequest)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(ScriptLoadRequest)
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mFetchOptions, mCacheInfo, mLoadContext,
-                                  mLoadedScript)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mFetchOptions, mOriginPrincipal, mBaseURL,
+                                  mLoadedScript, mCacheInfo, mLoadContext)
   tmp->mScriptForBytecodeEncoding = nullptr;
   tmp->DropBytecodeCacheReferences();
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
@@ -110,10 +110,7 @@ void ScriptLoadRequest::Cancel() {
   }
 }
 
-void ScriptLoadRequest::DropBytecodeCacheReferences() {
-  mCacheInfo = nullptr;
-  DropJSObjects(this);
-}
+void ScriptLoadRequest::DropBytecodeCacheReferences() { mCacheInfo = nullptr; }
 
 bool ScriptLoadRequest::HasScriptLoadContext() const {
   return HasLoadContext() && mLoadContext->IsWindowContext();
@@ -124,6 +121,12 @@ bool ScriptLoadRequest::HasWorkerLoadContext() const {
 }
 
 mozilla::dom::ScriptLoadContext* ScriptLoadRequest::GetScriptLoadContext() {
+  MOZ_ASSERT(mLoadContext);
+  return mLoadContext->AsWindowContext();
+}
+
+const mozilla::dom::ScriptLoadContext* ScriptLoadRequest::GetScriptLoadContext()
+    const {
   MOZ_ASSERT(mLoadContext);
   return mLoadContext->AsWindowContext();
 }
@@ -151,6 +154,57 @@ ModuleLoadRequest* ScriptLoadRequest::AsModuleRequest() {
 const ModuleLoadRequest* ScriptLoadRequest::AsModuleRequest() const {
   MOZ_ASSERT(IsModuleRequest());
   return static_cast<const ModuleLoadRequest*>(this);
+}
+
+bool ScriptLoadRequest::IsCacheable() const {
+  if (HasScriptLoadContext() && GetScriptLoadContext()->mIsInline) {
+    return false;
+  }
+
+  return !mExpirationTime.IsExpired();
+}
+
+void ScriptLoadRequest::CacheEntryFound(LoadedScript* aLoadedScript) {
+  MOZ_ASSERT(IsCheckingCache());
+  MOZ_ASSERT(mURI);
+
+  MOZ_ASSERT(mFetchOptions->IsCompatible(aLoadedScript->GetFetchOptions()));
+
+  switch (mKind) {
+    case ScriptKind::eClassic:
+    case ScriptKind::eImportMap:
+      MOZ_ASSERT(aLoadedScript->IsClassicScript());
+
+      mLoadedScript = aLoadedScript;
+
+      // Classic scripts can be set ready once the script itself is ready.
+      mState = State::Ready;
+      break;
+    case ScriptKind::eModule:
+      // NOTE: The cache entry has "module" kind, but it's not ModuleScript
+      //       instance, given ModuleScript has GC pointers.
+      MOZ_ASSERT(aLoadedScript->IsModuleScript());
+
+      mLoadedScript = ModuleScript::FromCache(*aLoadedScript);
+
+#ifdef DEBUG
+      {
+        bool equals = false;
+        mURI->Equals(mLoadedScript->GetURI(), &equals);
+        MOZ_ASSERT(equals);
+      }
+#endif
+
+      mBaseURL = mLoadedScript->BaseURL();
+
+      // Modules need to wait for fetching dependencies before setting to
+      // Ready.  See also ModuleLoadRequest::DependenciesLoaded.
+      mState = State::Fetching;
+      break;
+    case ScriptKind::eEvent:
+      MOZ_ASSERT_UNREACHABLE("EventScripts are not using ScriptLoadRequest");
+      break;
+  }
 }
 
 void ScriptLoadRequest::NoCacheEntryFound() {
@@ -189,7 +243,7 @@ void ScriptLoadRequest::MarkScriptForBytecodeEncoding(JSScript* aScript) {
 
 static bool IsInternalURIScheme(nsIURI* uri) {
   return uri->SchemeIs("moz-extension") || uri->SchemeIs("resource") ||
-         uri->SchemeIs("chrome");
+         uri->SchemeIs("moz-src") || uri->SchemeIs("chrome");
 }
 
 void ScriptLoadRequest::SetBaseURLFromChannelAndOriginalURI(

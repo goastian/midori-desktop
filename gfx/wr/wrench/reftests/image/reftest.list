@@ -5,8 +5,8 @@
 skip_on(android,device) fuzzy(1,331264) == tile-repeat-prim-or-decompose.yaml tile-repeat-prim-or-decompose-ref.yaml
 platform(linux,mac) options(allow-mipmaps) == downscale.yaml downscale.png
 skip_on(android,device) fuzzy-if(platform(swgl),1,20) == segments.yaml segments.png
-platform(linux,mac) fuzzy(1,6105) == yuv.yaml yuv.png
-platform(linux,mac) fuzzy(1,6105) fuzzy-if(platform(swgl),1,205000) == yuv-clip.yaml yuv.png
+platform(linux,mac) fuzzy(1,6108) == yuv.yaml yuv.png
+platform(linux,mac) fuzzy(1,6108) fuzzy-if(platform(swgl),1,205000) == yuv-clip.yaml yuv.png
 skip_on(android,device) == tiled-clip-chain.yaml tiled-clip-chain-ref.yaml
 skip_on(android,device) == tiled-complex-clip.yaml tiled-complex-clip-ref.yaml
 platform(linux,mac) == texture-rect.yaml texture-rect-ref.yaml
@@ -17,3 +17,19 @@ fuzzy(1,160000) == image-alpha-stretch.yaml green-alpha-ref.yaml
 fuzzy(1,160000) == image-alpha-stretch-tile.yaml green-alpha-ref.yaml
 fuzzy(1,160000) == image-filter-stretch.yaml green-alpha-ref.yaml
 fuzzy(1,160000) == image-filter-stretch-tile.yaml green-alpha-ref.yaml
+== snapshot-area-01.yaml snapshot-area-01-ref.yaml
+== snapshot-offscreen.yaml snapshot-offscreen-ref.yaml
+== snapshot-huge.yaml snapshot-huge-ref.yaml
+== snapshot-dependency.yaml snapshot-dependency-ref.yaml
+== snapshot-detached.yaml snapshot-detached-ref.yaml
+== snapshot-filters-01.yaml snapshot-filters-01-ref.yaml
+== snapshot-filters-02.yaml snapshot-filters-02-ref.yaml
+fuzzy(3,3000) == snapshot-shadow.yaml snapshot-shadow-ref.yaml
+== snapshot-multiframe.yaml snapshot-multiframe-ref.yaml
+== snapshot-empty.yaml empty.yaml
+# TODO: At the moment snapshot-perspective-01.yaml renders incorrectly, so the
+# reftest acts more as a crash test. When bug 1941577 is fixed the reftest
+# reference should be updated to reflect that something needs to be rendered
+# instead of leaving the snapshot empty.
+== snapshot-perspective-01.yaml empty.yaml
+== snapshot-complex-clip.yaml snapshot-complex-clip-ref.yaml

@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 zh{
     Countries{
         001{"世界"}
@@ -297,6 +297,9 @@ zh{
         ZM{"赞比亚"}
         ZW{"津巴布韦"}
         ZZ{"未知地区"}
+    }
+    Countries%chagos{
+        IO{"查戈斯群岛"}
     }
     Countries%short{
         HK{"香港"}

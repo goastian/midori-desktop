@@ -74,15 +74,11 @@
 */
 //#define SK_R32_SHIFT    16
 
-/* Determines whether to build code that supports the Ganesh GPU backend. Some classes
-   that are not GPU-specific, such as SkShader subclasses, have optional code
-   that is used allows them to interact with this GPU backend. If you'd like to
-   include this code, include -DSK_GANESH in your cflags or uncomment below.
-   Defaults to not set (No Ganesh GPU backend).
-   This define affects the ABI of Skia, so make sure it matches the client which uses
-   the compiled version of Skia.
+/*  This controls how much space should be pre-allocated in an SkCanvas object
+    to store the SkMatrix and clip via calls to SkCanvas::save() (and balanced with
+    SkCanvas::restore()).
 */
-//#define SK_GANESH
+//#define SK_CANVAS_SAVE_RESTORE_PREALLOC_COUNT 32
 
 /* Skia makes use of histogram logging macros to trace the frequency of
    events. By default, Skia provides no-op versions of these macros.
@@ -90,9 +86,16 @@
    integrate with their histogram collection backend.
 */
 //#define SK_HISTOGRAM_BOOLEAN(name, sample)
-//#define SK_HISTOGRAM_ENUMERATION(name, sample, enum_size)
-//#define SK_HISTOGRAM_EXACT_LINEAR(name, sample, value_max)
+//#define SK_HISTOGRAM_ENUMERATION(name, sampleEnum, enumSize)
+//#define SK_HISTOGRAM_EXACT_LINEAR(name, sample, valueMax)
 //#define SK_HISTOGRAM_MEMORY_KB(name, sample)
+//#define SK_HISTOGRAM_CUSTOM_COUNTS(name, sample, countMin, countMax, bucketCount)
+//#define SK_HISTOGRAM_CUSTOM_MICROSECONDS_TIMES(name, sampleUSec, minUSec, maxUSec, bucketCount)
+
+/*
+ * Skia can provide extensive logging of Graphite Pipeline lifetimes.
+ */
+//#define SK_PIPELINE_LIFETIME_LOGGING
 
 // To use smaller but slower mipmap builder
 //#define SK_USE_DRAWING_MIPMAP_DOWNSAMPLER
@@ -140,9 +143,7 @@
 
 #define SK_USE_FREETYPE_EMBOLDEN
 
-#define SK_IGNORE_MAC_BLENDING_MATCH_FIX
-
-#define SK_DISABLE_LEGACY_IMAGE_READBUFFER
+#define SK_DISABLE_DIRECTWRITE_COLRv1 1
 
 #ifndef MOZ_IMPLICIT
 #  ifdef MOZ_CLANG_PLUGIN
@@ -151,5 +152,7 @@
 #    define MOZ_IMPLICIT
 #  endif
 #endif
+
+#define SK_DISABLE_LEGACY_IMAGE_READBUFFER
 
 #endif

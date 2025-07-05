@@ -163,7 +163,6 @@ private:
     M(Blend)              \
     M(CTM)                \
     M(Color)              \
-    M(Color4)             \
     M(ColorFilter)        \
     M(CoordClamp)         \
     M(Empty)              \
@@ -238,6 +237,7 @@ public:
      *      fPoint[1] and fRadius[1] are the center and radius of the 2nd circle
      *  Sweep:
      *      fPoint[0] is the center of the sweep.
+     *      fPoint[1] x is the scale, y is the bias
      */
     struct GradientInfo {
         int         fColorCount    = 0;        //!< In-out parameter, specifies passed size
@@ -422,7 +422,6 @@ inline const SkShaderBase* as_SB(const sk_sp<SkShader>& shader) {
 }
 
 void SkRegisterBlendShaderFlattenable();
-void SkRegisterColor4ShaderFlattenable();
 void SkRegisterColorShaderFlattenable();
 void SkRegisterCoordClampShaderFlattenable();
 void SkRegisterEmptyShaderFlattenable();

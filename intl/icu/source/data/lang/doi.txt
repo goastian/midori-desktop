@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 doi{
     Languages{
         de{"जर्मन"}
@@ -71,10 +71,5 @@ doi{
         language{"भाशा: {0}"}
         script{"लिपि: {0}"}
         territory{"खेत्तर: {0}"}
-    }
-    localeDisplayPattern{
-        keyTypePattern{"{0}: {1}"}
-        pattern{"{0} ({1})"}
-        separator{"{0}, {1}"}
     }
 }

@@ -85,7 +85,7 @@ END_TEST(testJitRValueAlloc_Double)
 BEGIN_TEST(testJitRValueAlloc_FloatReg) {
   RValueAllocation s;
   for (uint32_t i = 0; i < FloatRegisters::Total; i++) {
-    s = RValueAllocation::AnyFloat(FloatRegister::FromCode(i));
+    s = RValueAllocation::Float32(FloatRegister::FromCode(i));
     CHECK(s == Read(s));
   }
   return true;
@@ -95,7 +95,7 @@ END_TEST(testJitRValueAlloc_FloatReg)
 BEGIN_TEST(testJitRValueAlloc_FloatStack) {
   RValueAllocation s;
   for (auto i : Fibonacci{}) {
-    s = RValueAllocation::AnyFloat(i);
+    s = RValueAllocation::Float32(i);
     CHECK(s == Read(s));
   }
   return true;
@@ -254,3 +254,131 @@ BEGIN_TEST(testJitRValueAlloc_ConstantPool) {
   return true;
 }
 END_TEST(testJitRValueAlloc_ConstantPool)
+
+BEGIN_TEST(testJitRValueAlloc_Int64Cst) {
+  for (auto i : Fibonacci{}) {
+    for (auto j : Fibonacci{}) {
+      auto s = RValueAllocation::Int64Constant(i, j);
+      CHECK(s == Read(s));
+    }
+  }
+  return true;
+}
+END_TEST(testJitRValueAlloc_Int64Cst)
+
+#if defined(JS_NUNBOX32)
+BEGIN_TEST(testJitRValueAlloc_Int64RegReg) {
+  RValueAllocation s;
+  for (uint32_t i = 0; i < Registers::Total; i++) {
+    for (uint32_t j = 0; j < Registers::Total; j++) {
+      if (i == j) {
+        continue;
+      }
+      s = RValueAllocation::Int64(Register::FromCode(i), Register::FromCode(j));
+      MOZ_ASSERT(s == Read(s));
+      CHECK(s == Read(s));
+    }
+  }
+  return true;
+}
+END_TEST(testJitRValueAlloc_Int64RegReg)
+
+BEGIN_TEST(testJitRValueAlloc_Int64RegStack) {
+  RValueAllocation s;
+  for (uint32_t i = 0; i < Registers::Total; i++) {
+    for (auto j : Fibonacci{}) {
+      s = RValueAllocation::Int64(Register::FromCode(i), j);
+      CHECK(s == Read(s));
+    }
+  }
+  return true;
+}
+END_TEST(testJitRValueAlloc_Int64RegStack)
+
+BEGIN_TEST(testJitRValueAlloc_Int64StackReg) {
+  RValueAllocation s;
+  for (auto i : Fibonacci{}) {
+    for (uint32_t j = 0; j < Registers::Total; j++) {
+      s = RValueAllocation::Int64(i, Register::FromCode(j));
+      CHECK(s == Read(s));
+    }
+  }
+  return true;
+}
+END_TEST(testJitRValueAlloc_Int64StackReg)
+
+BEGIN_TEST(testJitRValueAlloc_Int64StackStack) {
+  RValueAllocation s;
+  for (auto i : Fibonacci{}) {
+    for (auto j : Fibonacci{}) {
+      s = RValueAllocation::Int64(i, j);
+      CHECK(s == Read(s));
+    }
+  }
+  return true;
+}
+END_TEST(testJitRValueAlloc_Int64StackStack)
+#else
+BEGIN_TEST(testJitRValueAlloc_Int64Reg) {
+  for (uint32_t i = 0; i < Registers::Total; i++) {
+    auto s = RValueAllocation::Int64(Register::FromCode(i));
+    CHECK(s == Read(s));
+  }
+  return true;
+}
+END_TEST(testJitRValueAlloc_Int64Reg)
+
+BEGIN_TEST(testJitRValueAlloc_Int64Stack) {
+  for (auto i : Fibonacci{}) {
+    auto s = RValueAllocation::Int64(i);
+    CHECK(s == Read(s));
+  }
+  return true;
+}
+END_TEST(testJitRValueAlloc_Int64Stack)
+#endif
+
+BEGIN_TEST(testJitRValueAlloc_IntPtrCst) {
+#if !defined(JS_64BIT)
+  for (auto i : Fibonacci{}) {
+    auto s = RValueAllocation::IntPtrConstant(i);
+    CHECK(s == Read(s));
+  }
+#else
+  for (auto i : Fibonacci{}) {
+    for (auto j : Fibonacci{}) {
+      auto s = RValueAllocation::IntPtrConstant(i, j);
+      CHECK(s == Read(s));
+    }
+  }
+#endif
+  return true;
+}
+END_TEST(testJitRValueAlloc_IntPtrCst)
+
+BEGIN_TEST(testJitRValueAlloc_IntPtrReg) {
+  for (uint32_t i = 0; i < Registers::Total; i++) {
+    auto s = RValueAllocation::IntPtr(Register::FromCode(i));
+    CHECK(s == Read(s));
+  }
+  return true;
+}
+END_TEST(testJitRValueAlloc_IntPtrReg)
+
+BEGIN_TEST(testJitRValueAlloc_IntPtrStack) {
+  for (auto i : Fibonacci{}) {
+    auto s = RValueAllocation::IntPtr(i);
+    CHECK(s == Read(s));
+  }
+  return true;
+}
+END_TEST(testJitRValueAlloc_IntPtrStack)
+
+BEGIN_TEST(testJitRValueAlloc_IntPtrInt32Stack) {
+  for (auto i : Fibonacci{}) {
+    auto s = RValueAllocation::IntPtrInt32(i);
+    CHECK(s == Read(s));
+  }
+  return true;
+}
+END_TEST(testJitRValueAlloc_IntPtrInt32Stack)

@@ -8,7 +8,7 @@
 
 namespace glsl {
 
-enum TextureFormat { RGBA32F, RGBA32I, RGBA8, R8, RG8, R16, RG16, YUV422 };
+enum TextureFormat { RGBA32F, RGBA32I, RGBA8, R8, RG8, R16, RG16, YUY2 };
 
 enum TextureFilter { NEAREST, LINEAR };
 
@@ -2020,6 +2020,14 @@ struct vec4 {
     z *= a;
     w *= a;
     return *this;
+  }
+
+  friend I32 operator==(const vec4& l, const vec4& r) {
+    return l.x == r.x && l.y == r.y && l.z == r.z && l.w == r.w;
+  }
+
+  friend I32 operator!=(const vec4& l, const vec4& r) {
+    return l.x != r.x || l.y != r.y || l.z != r.z || l.w != r.w;
   }
 
   Float x;

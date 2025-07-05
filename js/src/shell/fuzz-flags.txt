@@ -37,6 +37,7 @@
 --ion-range-analysis=off
 --ion-range-analysis=on
 --ion-regalloc=testbed
+--ion-regalloc=simple
 --ion-scalar-replacement=off
 --ion-scalar-replacement=on
 --ion-iterator-indices=off
@@ -59,6 +60,7 @@
 --monomorphic-inlining=default
 --monomorphic-inlining=always
 --monomorphic-inlining=never
+--disable-main-thread-denormals
 
 # GC-related
 # These 2 flags can cause the shell to slow down
@@ -75,6 +77,7 @@
 --wasm-compiler=baseline+optimizing
 --test-wasm-await-tier2
 --wasm-disable-huge-memory
+--setpref=wasm_js_string_builtins=true
 
 # CPU instruction set-related
 --no-sse3
@@ -97,5 +100,5 @@
 # Well-Formed Unicode Strings
 --enable-well-formed-unicode-strings
 
-# Resizable ArrayBuffers and Growable SharedArrayBuffers
---enable-arraybuffer-resizable
+# Atomics.waitAsync
+--set-pref=atomics_wait_async=true

@@ -143,6 +143,10 @@ void BrowsingContextWebProgress::UpdateAndNotifyListeners(
 }
 
 void BrowsingContextWebProgress::ContextDiscarded() {
+  if (mBounceTrackingState) {
+    mBounceTrackingState->OnBrowsingContextDiscarded();
+  }
+
   if (!mIsLoadingDocument) {
     return;
   }
@@ -176,6 +180,10 @@ BrowsingContextWebProgress::GetBounceTrackingState() {
                          "Failed to get BounceTrackingState.");
   }
   return do_AddRef(mBounceTrackingState);
+}
+
+void BrowsingContextWebProgress::DropBounceTrackingState() {
+  mBounceTrackingState = nullptr;
 }
 
 ////////////////////////////////////////////////////////////////////////////////

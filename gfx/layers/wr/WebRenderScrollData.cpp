@@ -349,7 +349,9 @@ Maybe<size_t> WebRenderScrollData::HasMetadataFor(
   return (ptr ? Some(ptr->value()) : Nothing());
 }
 
-void WebRenderScrollData::SetIsFirstPaint() { mIsFirstPaint = true; }
+void WebRenderScrollData::SetIsFirstPaint(bool aValue) {
+  mIsFirstPaint = aValue;
+}
 
 bool WebRenderScrollData::IsFirstPaint() const { return mIsFirstPaint; }
 

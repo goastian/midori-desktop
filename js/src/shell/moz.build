@@ -31,7 +31,7 @@ if CONFIG["FUZZING_INTERFACES"]:
     else:
         USE_LIBS += ["static:fuzzer-interface"]
 
-if CONFIG["FUZZING_JS_FUZZILLI"]:
+if CONFIG["FUZZING_JS_FUZZILLI"] and CONFIG["OS_ARCH"] == "Linux":
     OS_LIBS += ["rt"]
 
 DEFINES["EXPORT_JS_API"] = True
@@ -58,3 +58,9 @@ OBJDIR_FILES.js.src += ["!/dist/bin/js%s" % CONFIG["BIN_SUFFIX"]]
 if CONFIG["OS_ARCH"] == "WASI":
     LDFLAGS += ["-Wl,-z,stack-size=1048576", "-Wl,--stack-first"]
     OS_LIBS += ["wasi-emulated-process-clocks", "wasi-emulated-getpid"]
+
+# Make JS Shell builds run without LD_LIBRARY_PATH
+if CONFIG["OS_TARGET"] == "Android":
+    LDFLAGS += [
+        "-Wl,-rpath=$ORIGIN",
+    ]

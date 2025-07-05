@@ -24,7 +24,8 @@ namespace layers {
 
 StaticMonitor CompositorManagerParent::sMonitor;
 StaticRefPtr<CompositorManagerParent> CompositorManagerParent::sInstance;
-CompositorManagerParent::ManagerMap CompositorManagerParent::sManagers;
+MOZ_RUNINIT CompositorManagerParent::ManagerMap
+    CompositorManagerParent::sManagers;
 
 /* static */
 already_AddRefed<CompositorManagerParent>
@@ -46,7 +47,7 @@ CompositorManagerParent::CreateSameProcess(uint32_t aNamespace) {
   // on the main thread and complete before we return the manager handles.
   RefPtr<CompositorManagerParent> parent =
       new CompositorManagerParent(dom::ContentParentId(), aNamespace);
-  parent->SetOtherProcessId(base::GetCurrentProcId());
+  parent->SetOtherEndpointProcInfo(ipc::EndpointProcInfo::Current());
   return parent.forget();
 }
 

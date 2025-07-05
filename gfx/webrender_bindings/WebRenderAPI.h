@@ -132,7 +132,8 @@ class TransactionBuilder final {
 
   void ClearDisplayList(Epoch aEpoch, wr::WrPipelineId aPipeline);
 
-  void GenerateFrame(const VsyncId& aVsyncId, wr::RenderReasons aReasons);
+  void GenerateFrame(const VsyncId& aVsyncId, bool aPresent,
+                     wr::RenderReasons aReasons);
 
   void InvalidateRenderedFrame(wr::RenderReasons aReasons);
 
@@ -157,7 +158,7 @@ class TransactionBuilder final {
   void AddExternalImage(ImageKey key, const ImageDescriptor& aDescriptor,
                         ExternalImageId aExtID,
                         wr::ExternalImageType aImageType,
-                        uint8_t aChannelIndex = 0);
+                        uint8_t aChannelIndex = 0, bool aNormalizedUvs = false);
 
   void UpdateImageBuffer(wr::ImageKey aKey, const ImageDescriptor& aDescriptor,
                          wr::Vec<uint8_t>& aBytes);
@@ -171,14 +172,13 @@ class TransactionBuilder final {
   void UpdateExternalImage(ImageKey aKey, const ImageDescriptor& aDescriptor,
                            ExternalImageId aExtID,
                            wr::ExternalImageType aImageType,
-                           uint8_t aChannelIndex = 0);
+                           uint8_t aChannelIndex = 0,
+                           bool aNormalizedUvs = false);
 
-  void UpdateExternalImageWithDirtyRect(ImageKey aKey,
-                                        const ImageDescriptor& aDescriptor,
-                                        ExternalImageId aExtID,
-                                        wr::ExternalImageType aImageType,
-                                        const wr::DeviceIntRect& aDirtyRect,
-                                        uint8_t aChannelIndex = 0);
+  void UpdateExternalImageWithDirtyRect(
+      ImageKey aKey, const ImageDescriptor& aDescriptor, ExternalImageId aExtID,
+      wr::ExternalImageType aImageType, const wr::DeviceIntRect& aDirtyRect,
+      uint8_t aChannelIndex = 0, bool aNormalizedUvs = false);
 
   void SetBlobImageVisibleArea(BlobImageKey aKey,
                                const wr::DeviceIntRect& aArea);
@@ -186,6 +186,10 @@ class TransactionBuilder final {
   void DeleteImage(wr::ImageKey aKey);
 
   void DeleteBlobImage(wr::BlobImageKey aKey);
+
+  void AddSnapshotImage(wr::SnapshotImageKey aKey);
+
+  void DeleteSnapshotImage(wr::SnapshotImageKey aKey);
 
   void AddRawFont(wr::FontKey aKey, wr::Vec<uint8_t>& aBytes, uint32_t aIndex);
 
@@ -281,6 +285,7 @@ class WebRenderAPI final {
   void SetBatchingLookback(uint32_t aCount);
   void SetBool(wr::BoolParameter, bool value);
   void SetInt(wr::IntParameter, int32_t value);
+  void SetFloat(wr::FloatParameter, float value);
 
   void SetClearColor(const gfx::DeviceColor& aColor);
   void SetProfilerUI(const nsACString& aUIString);
@@ -532,6 +537,7 @@ struct MOZ_STACK_CLASS StackingContextParams : public WrStackingContextParams {
             nullptr,
             nullptr,
             nullptr,
+            nullptr,
             wr::TransformStyle::Flat,
             wr::WrReferenceFrameKind::Transform,
             false,
@@ -711,6 +717,14 @@ class DisplayListBuilder final {
                      bool aPreferCompositorSurface = false,
                      bool aSupportsExternalCompositing = false);
 
+  void PushNV16Image(const wr::LayoutRect& aBounds, const wr::LayoutRect& aClip,
+                     bool aIsBackfaceVisible, wr::ImageKey aImageChannel0,
+                     wr::ImageKey aImageChannel1, wr::WrColorDepth aColorDepth,
+                     wr::WrYuvColorSpace aColorSpace,
+                     wr::WrColorRange aColorRange, wr::ImageRendering aFilter,
+                     bool aPreferCompositorSurface = false,
+                     bool aSupportsExternalCompositing = false);
+
   void PushYCbCrInterleavedImage(
       const wr::LayoutRect& aBounds, const wr::LayoutRect& aClip,
       bool aIsBackfaceVisible, wr::ImageKey aImageChannel0,
@@ -778,6 +792,8 @@ class DisplayListBuilder final {
                      const float& aSpreadRadius,
                      const wr::BorderRadius& aBorderRadius,
                      const wr::BoxShadowClipMode& aClipMode);
+
+  void PushDebug(uint32_t aVal);
 
   /**
    * Notifies the DisplayListBuilder that it can group together WR display items

@@ -9,9 +9,12 @@
 
 #include "mozilla/gfx/RecordedEvent.h"
 #include "mozilla/ipc/CrossProcessSemaphore.h"
+#include "mozilla/ipc/SharedMemoryMapping.h"
 #include "mozilla/layers/PCanvasChild.h"
 #include "mozilla/layers/SourceSurfaceSharedData.h"
 #include "mozilla/WeakPtr.h"
+
+class nsICanvasRenderingContextInternal;
 
 namespace mozilla {
 
@@ -46,22 +49,31 @@ class CanvasChild final : public PCanvasChild, public SupportsWeakPtr {
 
   ipc::IPCResult RecvNotifyDeviceChanged();
 
+  ipc::IPCResult RecvNotifyDeviceReset(
+      const nsTArray<RemoteTextureOwnerId>& aOwnerIds);
+
   ipc::IPCResult RecvDeactivate();
 
   ipc::IPCResult RecvBlockCanvas();
 
-  ipc::IPCResult RecvNotifyRequiresRefresh(int64_t aTextureId);
+  ipc::IPCResult RecvNotifyRequiresRefresh(
+      const RemoteTextureOwnerId aTextureOwnerId);
 
-  ipc::IPCResult RecvSnapshotShmem(int64_t aTextureId, Handle&& aShmemHandle,
-                                   uint32_t aShmemSize,
-                                   SnapshotShmemResolver&& aResolve);
+  ipc::IPCResult RecvSnapshotShmem(
+      const RemoteTextureOwnerId aTextureOwnerId,
+      ipc::ReadOnlySharedMemoryHandle&& aShmemHandle,
+      SnapshotShmemResolver&& aResolve);
+
+  ipc::IPCResult RecvNotifyTextureDestruction(
+      const RemoteTextureOwnerId aTextureOwnerId);
 
   /**
    * Ensures that the DrawEventRecorder has been created.
    *
    * @params aTextureType the TextureType to create in the CanvasTranslator.
+   * @returns true if the recorder was successfully created
    */
-  void EnsureRecorder(gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
+  bool EnsureRecorder(gfx::IntSize aSize, gfx::SurfaceFormat aFormat,
                       TextureType aTextureType, TextureType aWebglTextureType);
 
   /**
@@ -96,14 +108,14 @@ class CanvasChild final : public PCanvasChild, public SupportsWeakPtr {
 
   /**
    * Create a DrawTargetRecording for a canvas texture.
-   * @param aTextureId the id of the new texture
+   * @param aTextureOwnerId the id of the new texture
    * @param aSize size for the DrawTarget
    * @param aFormat SurfaceFormat for the DrawTarget
    * @returns newly created DrawTargetRecording
    */
   already_AddRefed<gfx::DrawTargetRecording> CreateDrawTarget(
-      int64_t aTextureId, const RemoteTextureOwnerId& aTextureOwnerId,
-      gfx::IntSize aSize, gfx::SurfaceFormat aFormat);
+      const RemoteTextureOwnerId& aTextureOwnerId, gfx::IntSize aSize,
+      gfx::SurfaceFormat aFormat);
 
   /**
    * Record an event for processing by the CanvasParent's CanvasTranslator.
@@ -117,11 +129,12 @@ class CanvasChild final : public PCanvasChild, public SupportsWeakPtr {
    * Wrap the given surface, so that we can provide a DataSourceSurface if
    * required.
    * @param aSurface the SourceSurface to wrap
-   * @param aTextureId the texture id of the source TextureData
+   * @param aTextureOwnerId the texture id of the source TextureData
    * @returns a SourceSurface that can provide a DataSourceSurface if required
    */
   already_AddRefed<gfx::SourceSurface> WrapSurface(
-      const RefPtr<gfx::SourceSurface>& aSurface, int64_t aTextureId);
+      const RefPtr<gfx::SourceSurface>& aSurface,
+      const RemoteTextureOwnerId aTextureOwnerId);
 
   /**
    * The DrawTargetRecording backing the surface has not been modified since the
@@ -138,7 +151,7 @@ class CanvasChild final : public PCanvasChild, public SupportsWeakPtr {
   /**
    * Get DataSourceSurface from the translated equivalent version of aSurface in
    * the GPU process.
-   * @param aTextureId the source TextureData to read from
+   * @param aTextureOwnerId the source TextureData to read from
    * @param aSurface the SourceSurface in this process for which we need a
    *                 DataSourceSurface
    * @param aDetached whether the surface is old
@@ -147,15 +160,18 @@ class CanvasChild final : public PCanvasChild, public SupportsWeakPtr {
    *          GPU process
    */
   already_AddRefed<gfx::DataSourceSurface> GetDataSurface(
-      int64_t aTextureId, const gfx::SourceSurface* aSurface, bool aDetached,
-      bool& aMayInvalidate);
+      const RemoteTextureOwnerId aTextureOwnerId,
+      const gfx::SourceSurface* aSurface, bool aDetached, bool& aMayInvalidate);
 
-  bool RequiresRefresh(int64_t aTextureId) const;
-
-  void CleanupTexture(int64_t aTextureId);
+  bool RequiresRefresh(const RemoteTextureOwnerId aTextureOwnerId) const;
 
   void ReturnDataSurfaceShmem(
-      already_AddRefed<ipc::SharedMemoryBasic> aDataSurfaceShmem);
+      std::shared_ptr<ipc::ReadOnlySharedMemoryMapping>&& aDataSurfaceShmem);
+
+  already_AddRefed<gfx::SourceSurface> SnapshotExternalCanvas(
+      gfx::DrawTargetRecording* aTarget,
+      nsICanvasRenderingContextInternal* aCanvas,
+      mozilla::ipc::IProtocol* aActor);
 
  protected:
   void ActorDestroy(ActorDestroyReason aWhy) final;
@@ -178,18 +194,21 @@ class CanvasChild final : public PCanvasChild, public SupportsWeakPtr {
   RefPtr<dom::ThreadSafeWorkerRef> mWorkerRef;
   RefPtr<CanvasDrawEventRecorder> mRecorder;
 
-  RefPtr<ipc::SharedMemoryBasic> mDataSurfaceShmem;
+  std::shared_ptr<ipc::ReadOnlySharedMemoryMapping> mDataSurfaceShmem;
   bool mDataSurfaceShmemAvailable = false;
   int64_t mLastWriteLockCheckpoint = 0;
   uint32_t mTransactionsSinceGetDataSurface = kCacheDataSurfaceThreshold;
   struct TextureInfo {
-    RefPtr<mozilla::ipc::SharedMemoryBasic> mSnapshotShmem;
+    std::shared_ptr<mozilla::ipc::ReadOnlySharedMemoryMapping> mSnapshotShmem;
     bool mRequiresRefresh = false;
   };
-  std::unordered_map<int64_t, TextureInfo> mTextureInfo;
+  std::unordered_map<RemoteTextureOwnerId, TextureInfo,
+                     RemoteTextureOwnerId::HashFn>
+      mTextureInfo;
   bool mIsInTransaction = false;
   bool mDormant = false;
   bool mBlocked = false;
+  uint64_t mLastSyncId = 0;
 };
 
 }  // namespace layers

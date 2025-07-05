@@ -6,6 +6,7 @@
  */
 #include "src/pathops/SkPathOpsCubic.h"
 
+#include "include/private/base/SkFloatingPoint.h"
 #include "include/private/base/SkTPin.h"
 #include "include/private/base/SkTo.h"
 #include "src/base/SkTSort.h"
@@ -374,8 +375,6 @@ int SkDCubic::searchRoots(double extremeTs[6], int extrema, double axisIntercept
 
 // cubic roots
 
-static const double PI = 3.141592653589793;
-
 // from SkGeometry.cpp (and Numeric Solutions, 5.6)
 // // TODO(skbug.com/14063) Deduplicate with SkCubics::RootsValidT
 int SkDCubic::RootsValidT(double A, double B, double C, double D, double t[3]) {
@@ -474,11 +473,11 @@ int SkDCubic::RootsReal(double A, double B, double C, double D, double s[3]) {
         r = neg2RootQ * cos(theta / 3) - adiv3;
         *roots++ = r;
 
-        r = neg2RootQ * cos((theta + 2 * PI) / 3) - adiv3;
+        r = neg2RootQ * cos((theta + 2 * SK_DoublePI) / 3) - adiv3;
         if (!AlmostDequalUlps(s[0], r)) {
             *roots++ = r;
         }
-        r = neg2RootQ * cos((theta - 2 * PI) / 3) - adiv3;
+        r = neg2RootQ * cos((theta - 2 * SK_DoublePI) / 3) - adiv3;
         if (!AlmostDequalUlps(s[0], r) && (roots - s == 1 || !AlmostDequalUlps(s[1], r))) {
             *roots++ = r;
         }
@@ -728,7 +727,7 @@ bool SkDCubic::toFloatPoints(SkPoint* pts) const {
             cubic[index] = 0;
         }
     }
-    return SkScalarsAreFinite(&pts->fX, kPointCount * 2);
+    return SkIsFinite(&pts->fX, kPointCount * 2);
 }
 
 double SkDCubic::top(const SkDCubic& dCurve, double startT, double endT, SkDPoint*topPt) const {

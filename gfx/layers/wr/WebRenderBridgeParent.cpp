@@ -6,6 +6,7 @@
 
 #include "mozilla/layers/WebRenderBridgeParent.h"
 
+#include "mozmemory.h"
 #include "CompositableHost.h"
 #include "gfxEnv.h"
 #include "gfxPlatform.h"
@@ -22,7 +23,7 @@
 #include "mozilla/UniquePtr.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/GPUParent.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/GfxMetrics.h"
 #include "mozilla/layers/AnimationHelper.h"
 #include "mozilla/layers/APZSampler.h"
 #include "mozilla/layers/APZUpdater.h"
@@ -43,7 +44,6 @@
 #include "mozilla/layers/WebRenderImageHost.h"
 #include "mozilla/layers/WebRenderTextureHost.h"
 #include "mozilla/ProfilerMarkerTypes.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Unused.h"
 #include "mozilla/webrender/RenderTextureHostSWGL.h"
@@ -157,6 +157,58 @@ void gfx_wr_clear_crash_annotation(mozilla::wr::CrashAnnotation aAnnotation) {
 namespace mozilla::layers {
 
 using namespace mozilla::gfx;
+
+#ifdef MOZ_MEMORY
+static bool sAllocAsjustmentTaskCancelled = false;
+static bool sIncreasedDirtyPageThreshold = false;
+
+static void ResetDirtyPageModifier();
+
+static void ScheduleResetMaxDirtyPageModifier() {
+  NS_DelayedDispatchToCurrentThread(
+      NewRunnableFunction("ResetDirtyPageModifier", &ResetDirtyPageModifier),
+      100  // In ms.
+  );
+}
+
+static void NeedIncreasedMaxDirtyPageModifier() {
+  if (sIncreasedDirtyPageThreshold) {
+    sAllocAsjustmentTaskCancelled = true;
+    return;
+  }
+
+  moz_set_max_dirty_page_modifier(3);
+  sIncreasedDirtyPageThreshold = true;
+
+  ScheduleResetMaxDirtyPageModifier();
+}
+
+static void ResetDirtyPageModifier() {
+  if (!sIncreasedDirtyPageThreshold) {
+    return;
+  }
+
+  if (sAllocAsjustmentTaskCancelled) {
+    sAllocAsjustmentTaskCancelled = false;
+    ScheduleResetMaxDirtyPageModifier();
+    return;
+  }
+
+  moz_set_max_dirty_page_modifier(0);
+
+  wr::RenderThread* renderThread = wr::RenderThread::Get();
+  if (renderThread) {
+    renderThread->NotifyIdle();
+  }
+
+  jemalloc_free_excess_dirty_pages();
+
+  sIncreasedDirtyPageThreshold = false;
+}
+#else
+// Don't bother doing anything of the memory allocator doesn't support this.
+static void NeedIncreasedMaxDirtyPageModifier() {}
+#endif
 
 LazyLogModule gWebRenderBridgeParentLog("WebRenderBridgeParent");
 #define LOG(...) \
@@ -557,6 +609,24 @@ bool WebRenderBridgeParent::UpdateResources(
                                          wr::ToDeviceIntRect(op.area()));
         break;
       }
+      case OpUpdateResource::TOpAddSnapshotImage: {
+        const auto& op = cmd.get_OpAddSnapshotImage();
+        if (!MatchesNamespace(wr::AsImageKey(op.key()))) {
+          MOZ_ASSERT_UNREACHABLE("Stale snapshot image key (add)!");
+          break;
+        }
+        aUpdates.AddSnapshotImage(op.key());
+        break;
+      }
+      case OpUpdateResource::TOpDeleteSnapshotImage: {
+        const auto& op = cmd.get_OpDeleteSnapshotImage();
+        if (!MatchesNamespace(wr::AsImageKey(op.key()))) {
+          MOZ_ASSERT_UNREACHABLE("Stale snapshot image key (remove)!");
+          break;
+        }
+        aUpdates.DeleteSnapshotImage(op.key());
+        break;
+      }
       case OpUpdateResource::TOpAddSharedExternalImage: {
         const auto& op = cmd.get_OpAddSharedExternalImage();
         // gfxCriticalNote is called on error
@@ -843,7 +913,8 @@ bool WebRenderBridgeParent::UpdateSharedExternalImage(
   wr::ImageDescriptor descriptor(surfaceSize, dSurf->Stride(),
                                  dSurf->GetFormat());
   aResources.UpdateExternalImageWithDirtyRect(
-      aKey, descriptor, aExtId, imageType, wr::ToDeviceIntRect(aDirtyRect), 0);
+      aKey, descriptor, aExtId, imageType, wr::ToDeviceIntRect(aDirtyRect), 0,
+      /* aNormalizedUvs */ false);
 
   return true;
 }
@@ -1090,11 +1161,6 @@ bool WebRenderBridgeParent::SetDisplayList(
   wr::Vec<uint8_t> dlSpatialTreeData(std::move(aSpatialTreeDL));
 
   if (IsRootWebRenderBridgeParent()) {
-#ifdef MOZ_WIDGET_GTK
-    if (mWidget->AsGTK()) {
-      mWidget->AsGTK()->RemoteLayoutSizeUpdated(aRect);
-    }
-#endif
     LayoutDeviceIntSize widgetSize = mWidget->GetClientSize();
     LayoutDeviceIntRect rect =
         LayoutDeviceIntRect(LayoutDeviceIntPoint(), widgetSize);
@@ -1110,6 +1176,8 @@ bool WebRenderBridgeParent::SetDisplayList(
                                                 this, aWrEpoch, aTxnStartTime));
   }
 
+  NeedIncreasedMaxDirtyPageModifier();
+
   mApi->SendTransaction(aTxn);
 
   // We will schedule generating a frame after the scene
@@ -1119,7 +1187,8 @@ bool WebRenderBridgeParent::SetDisplayList(
 
 bool WebRenderBridgeParent::ProcessDisplayListData(
     DisplayListData& aDisplayList, wr::Epoch aWrEpoch,
-    const TimeStamp& aTxnStartTime, bool aValidTransaction) {
+    const TimeStamp& aTxnStartTime, bool aValidTransaction,
+    bool aRenderOffscreen, const VsyncId& aVsyncId) {
   wr::TransactionBuilder txn(mApi, /* aUseSceneBuilderThread */ true,
                              mRemoteTextureTxnScheduler, mFwdTransactionId);
   Maybe<wr::AutoTransactionSender> sender;
@@ -1144,6 +1213,13 @@ bool WebRenderBridgeParent::ProcessDisplayListData(
   // be in the updater queue at the time that the scene swap completes.
   if (aDisplayList.mScrollData) {
     UpdateAPZScrollData(aWrEpoch, std::move(aDisplayList.mScrollData.ref()));
+  }
+
+  if (aRenderOffscreen) {
+    TimeStamp start = TimeStamp::Now();
+    txn.GenerateFrame(aVsyncId, false, wr::RenderReasons::SNAPSHOT);
+    wr::RenderThread::Get()->IncPendingFrameCount(mApi->GetId(), aVsyncId,
+                                                  start);
   }
 
   txn.SetLowPriority(!IsRootWebRenderBridgeParent());
@@ -1173,7 +1249,8 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSetDisplayList(
     const bool& aContainsSVGGroup, const VsyncId& aVsyncId,
     const TimeStamp& aVsyncStartTime, const TimeStamp& aRefreshStartTime,
     const TimeStamp& aTxnStartTime, const nsACString& aTxnURL,
-    const TimeStamp& aFwdTime, nsTArray<CompositionPayload>&& aPayloads) {
+    const TimeStamp& aFwdTime, nsTArray<CompositionPayload>&& aPayloads,
+    const bool& aRenderOffscreen) {
   if (mDestroyed) {
     for (const auto& op : aToDestroy) {
       DestroyActor(op);
@@ -1213,8 +1290,9 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSetDisplayList(
   }
 
   bool validTransaction = aDisplayList.mIdNamespace == mIdNamespace;
-  bool success = ProcessDisplayListData(aDisplayList, wrEpoch, aTxnStartTime,
-                                        validTransaction);
+  bool success =
+      ProcessDisplayListData(aDisplayList, wrEpoch, aTxnStartTime,
+                             validTransaction, aRenderOffscreen, aVsyncId);
 
   if (!IsRootWebRenderBridgeParent()) {
     aPayloads.AppendElement(
@@ -1284,6 +1362,7 @@ bool WebRenderBridgeParent::ProcessEmptyTransactionUpdates(
     // There are resource updates, then we update Epoch of transaction.
     txn.UpdateEpoch(mPipelineId, mWrEpoch);
     *aScheduleComposite = true;
+    NeedIncreasedMaxDirtyPageModifier();
   } else {
     // If TransactionBuilder does not have resource updates nor display list,
     // ScheduleGenerateFrame is not triggered via SceneBuilder and there is no
@@ -1426,6 +1505,7 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvParentCommands(
   wr::TransactionBuilder txn(mApi);
   txn.SetLowPriority(!IsRootWebRenderBridgeParent());
   bool success = ProcessWebRenderParentCommands(aCommands, txn);
+  NeedIncreasedMaxDirtyPageModifier();
   mApi->SendTransaction(txn);
 
   if (!success) {
@@ -1642,6 +1722,8 @@ void WebRenderBridgeParent::UpdateParameters() {
   mApi->SetBatchingLookback(count);
   mApi->SetInt(wr::IntParameter::BatchedUploadThreshold,
                gfxVars::WebRenderBatchedUploadThreshold());
+  uint32_t slow_cpu_frame = gfxVars::WebRenderSlowCpuFrameThreshold();
+  mApi->SetFloat(wr::FloatParameter::SlowCpuFrameThreshold, slow_cpu_frame);
 
   mBlobTileSize = gfxVars::WebRenderBlobTileSize();
 }
@@ -2292,7 +2374,7 @@ void WebRenderBridgeParent::CompositeToTarget(VsyncId aId,
                          MarkerInnerWindowId(innerWindowId),
                          "Too many pending frames");
 
-    Telemetry::ScalarAdd(Telemetry::ScalarID::GFX_SKIPPED_COMPOSITES, 1);
+    glean::gfx::skipped_composites.Add(1);
 
     return;
   }
@@ -2388,8 +2470,10 @@ void WebRenderBridgeParent::MaybeGenerateFrame(VsyncId aId,
   mApi->SetFrameStartTime(startTime);
 #endif
 
-  fastTxn.GenerateFrame(aId, aReasons);
+  fastTxn.GenerateFrame(aId, true, aReasons);
   wr::RenderThread::Get()->IncPendingFrameCount(mApi->GetId(), aId, start);
+
+  NeedIncreasedMaxDirtyPageModifier();
 
   mApi->SendTransaction(fastTxn);
 
@@ -2442,7 +2526,7 @@ void WebRenderBridgeParent::NotifySceneBuiltForEpoch(
   }
 }
 
-void WebRenderBridgeParent::NotifyDidSceneBuild(
+void WebRenderBridgeParent::ScheduleFrameAfterSceneBuild(
     RefPtr<const wr::WebRenderPipelineInfo> aInfo) {
   MOZ_ASSERT(IsRootWebRenderBridgeParent());
   if (!mCompositorScheduler) {
@@ -2489,18 +2573,6 @@ void WebRenderBridgeParent::NotifyDidSceneBuild(
                     wr::RenderReasons::SCENE, nullptr, nullptr);
 }
 
-static Telemetry::HistogramID GetHistogramId(const bool aIsLargePaint,
-                                             const bool aIsFullDisplayList) {
-  const Telemetry::HistogramID histogramIds[] = {
-      Telemetry::CONTENT_SMALL_PAINT_PHASE_WEIGHT_PARTIAL,
-      Telemetry::CONTENT_LARGE_PAINT_PHASE_WEIGHT_PARTIAL,
-      Telemetry::CONTENT_SMALL_PAINT_PHASE_WEIGHT_FULL,
-      Telemetry::CONTENT_LARGE_PAINT_PHASE_WEIGHT_FULL,
-  };
-
-  return histogramIds[(aIsFullDisplayList * 2) + aIsLargePaint];
-}
-
 static void RecordPaintPhaseTelemetry(wr::RendererStats* aStats) {
   if (!aStats || !aStats->full_paint) {
     return;
@@ -2526,8 +2598,23 @@ static void RecordPaintPhaseTelemetry(wr::RendererStats* aStats) {
 
   auto RecordKey = [&](const nsCString& aKey, const double aTimeMs) -> void {
     const auto val = static_cast<uint32_t>(AsPercentage(aTimeMs));
-    const auto histogramId = GetHistogramId(isLargePaint, isFullDisplayList);
-    Telemetry::Accumulate(histogramId, aKey, val);
+    if (isFullDisplayList) {
+      if (isLargePaint) {
+        glean::gfx_content::large_paint_phase_weight_full.Get(aKey)
+            .AccumulateSingleSample(val);
+      } else {
+        glean::gfx_content::small_paint_phase_weight_full.Get(aKey)
+            .AccumulateSingleSample(val);
+      }
+    } else {
+      if (isLargePaint) {
+        glean::gfx_content::large_paint_phase_weight_partial.Get(aKey)
+            .AccumulateSingleSample(val);
+      } else {
+        glean::gfx_content::small_paint_phase_weight_partial.Get(aKey)
+            .AccumulateSingleSample(val);
+      }
+    }
   };
 
   RecordKey("dl"_ns, geckoDL);

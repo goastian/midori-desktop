@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 hi_Latn{
     %%Parent{"en_IN"}
     Keys{
@@ -18,6 +18,7 @@ hi_Latn{
     }
     Languages{
         af{"Afreeki"}
+        bgc{"Hariyaanvi"}
         bn{"Bangla"}
         bo{"Tibbati"}
         ckb{"Kurdish, Sorani"}
@@ -25,6 +26,7 @@ hi_Latn{
         fa{"Faarsi"}
         ff{"Fulah"}
         lah{"Lahnda"}
+        mic{"Mi'kmaq"}
         mus{"Muscogee"}
         nan{"Min Nan"}
         nb{"Norwegian Bokmal"}
@@ -41,9 +43,6 @@ hi_Latn{
         Talu{"Naya Tai Lue"}
     }
     Types{
-        calendar{
-            islamic-civil{"Islamic Civil Calendar (tabular, civil epoch)"}
-        }
         colAlternate{
             non-ignorable{"Symbols ko sort karein"}
             shifted{"Symbols ko ignore karte hue sort karein"}
@@ -79,7 +78,6 @@ hi_Latn{
         collation{
             compat{"Compatibility ke liye, picchla sort order"}
             dictionary{"Dictionary kaa sort order"}
-            reformed{"Reform kiya gaya Sort Order"}
             searchjl{"Hangul initial consonant se search karein"}
         }
         d0{

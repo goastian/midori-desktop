@@ -2,13 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{BlobImageHandler, ColorF, IdNamespace, DocumentId, CrashAnnotator};
+use api::{BlobImageHandler, ColorF, CrashAnnotator, DocumentId, IdNamespace};
 use api::{VoidPtrToSizeFn, FontRenderMode, ImageFormat};
 use api::{RenderNotifier, ImageBufferKind};
 use api::units::*;
 use api::channel::unbounded_channel;
 pub use api::DebugFlags;
 
+use crate::bump_allocator::ChunkPool;
 use crate::render_api::{RenderApiSender, FrameMsg};
 use crate::composite::{CompositorKind, CompositorConfig};
 use crate::device::{
@@ -16,7 +17,7 @@ use crate::device::{
 };
 use crate::frame_builder::FrameBuilderConfig;
 use crate::glyph_cache::GlyphCache;
-use glyph_rasterizer::{GlyphRasterizer, SharedFontResources};
+use glyph_rasterizer::{GlyphRasterThread, GlyphRasterizer, SharedFontResources};
 use crate::gpu_types::PrimitiveInstanceData;
 use crate::internal_types::{FastHashMap, FastHashSet, FrameId};
 use crate::picture;
@@ -75,7 +76,7 @@ pub trait SceneBuilderHooks {
     /// This is called after each scene swap occurs. The PipelineInfo contains
     /// the updated epochs and pipelines removed in the new scene compared to
     /// the old scene.
-    fn post_scene_swap(&self, document_id: &Vec<DocumentId>, info: PipelineInfo);
+    fn post_scene_swap(&self, document_id: &Vec<DocumentId>, info: PipelineInfo, schedule_frame: bool);
     /// This is called after a resource update operation on the scene builder
     /// thread, in the case where resource updates were applied without a scene
     /// build.
@@ -111,6 +112,10 @@ pub trait AsyncPropertySampler {
     fn deregister(&self);
 }
 
+pub trait RenderBackendHooks {
+    fn init_thread(&self);
+}
+
 pub struct WebRenderOptions {
     pub resource_override_path: Option<PathBuf>,
     /// Whether to use shaders that have been optimized at build time.
@@ -130,6 +135,11 @@ pub struct WebRenderOptions {
     pub upload_pbo_default_size: usize,
     pub batched_upload_threshold: i32,
     pub workers: Option<Arc<ThreadPool>>,
+    /// A pool of large memory chunks used by the per-frame allocators.
+    /// Providing the pool here makes it possible to share a single pool for
+    /// all WebRender instances.
+    pub chunk_pool: Option<Arc<ChunkPool>>,
+    pub dedicated_glyph_raster_thread: Option<GlyphRasterThread>,
     pub enable_multithreading: bool,
     pub blob_image_handler: Option<Box<dyn BlobImageHandler>>,
     pub crash_annotator: Option<Box<dyn CrashAnnotator>>,
@@ -139,6 +149,7 @@ pub struct WebRenderOptions {
     pub debug_flags: DebugFlags,
     pub renderer_id: Option<u64>,
     pub scene_builder_hooks: Option<Box<dyn SceneBuilderHooks + Send>>,
+    pub render_backend_hooks: Option<Box<dyn RenderBackendHooks + Send>>,
     pub sampler: Option<Box<dyn AsyncPropertySampler + Send>>,
     pub support_low_priority_transactions: bool,
     pub namespace_alloc_by_client: bool,
@@ -228,6 +239,8 @@ impl Default for WebRenderOptions {
             upload_pbo_default_size: 512 * 512 * 4,
             batched_upload_threshold: 512 * 512,
             workers: None,
+            chunk_pool: None,
+            dedicated_glyph_raster_thread: None,
             enable_multithreading: true,
             blob_image_handler: None,
             crash_annotator: None,
@@ -236,6 +249,7 @@ impl Default for WebRenderOptions {
             renderer_id: None,
             cached_programs: None,
             scene_builder_hooks: None,
+            render_backend_hooks: None,
             sampler: None,
             support_low_priority_transactions: false,
             namespace_alloc_by_client: false,
@@ -303,6 +317,15 @@ pub fn create_webrender_instance(
 
     HAS_BEEN_INITIALIZED.store(true, Ordering::SeqCst);
 
+    // For now, we assume that native OS compositors are top-left origin. If that doesn't
+    // turn out to be the case, we can add a query method on `LayerCompositor`.
+    match options.compositor_config {
+        CompositorConfig::Draw { .. } | CompositorConfig::Native { .. } => {}
+        CompositorConfig::Layer { .. } => {
+            options.surface_origin_is_top_left = true;
+        }
+    }
+
     let (api_tx, api_rx) = unbounded_channel();
     let (result_tx, result_rx) = unbounded_channel();
     let gl_type = gl.get_type();
@@ -368,7 +391,14 @@ pub fn create_webrender_instance(
 
     let shaders = match shaders {
         Some(shaders) => Rc::clone(shaders),
-        None => Rc::new(RefCell::new(Shaders::new(&mut device, gl_type, &options)?)),
+        None => {
+            let mut shaders = Shaders::new(&mut device, gl_type, &options)?;
+            if options.precache_flags.intersects(ShaderPrecacheFlags::ASYNC_COMPILE | ShaderPrecacheFlags::FULL_COMPILE) {
+                let mut pending_shaders = shaders.precache_all(options.precache_flags);
+                while shaders.resume_precache(&mut device, &mut pending_shaders)? {}
+            }
+            Rc::new(RefCell::new(shaders))
+        }
     };
 
     let dither_matrix_texture = if options.enable_dithering {
@@ -513,6 +543,10 @@ pub fn create_webrender_instance(
                 capabilities,
             }
         }
+        CompositorConfig::Layer { .. } => {
+            CompositorKind::Layer {
+            }
+        }
     };
 
     let config = FrameBuilderConfig {
@@ -576,7 +610,12 @@ pub fn create_webrender_instance(
     let rb_thread_name = format!("WRRenderBackend#{}", options.renderer_id.unwrap_or(0));
     let scene_thread_name = format!("WRSceneBuilder#{}", options.renderer_id.unwrap_or(0));
     let lp_scene_thread_name = format!("WRSceneBuilderLP#{}", options.renderer_id.unwrap_or(0));
-    let glyph_rasterizer = GlyphRasterizer::new(workers, device.get_capabilities().supports_r8_texture_upload);
+
+    let glyph_rasterizer = GlyphRasterizer::new(
+        workers,
+        options.dedicated_glyph_raster_thread,
+        device.get_capabilities().supports_r8_texture_upload,
+    );
 
     let (scene_builder_channels, scene_tx) =
         SceneBuilderThreadChannels::new(api_tx.clone());
@@ -604,6 +643,7 @@ pub fn create_webrender_instance(
         let lp_builder = LowPrioritySceneBuilderThread {
             rx: low_priority_scene_rx,
             tx: scene_tx.clone(),
+            tile_pool: api::BlobTilePool::new(),
         };
 
         thread::Builder::new().name(lp_scene_thread_name.clone()).spawn(move || {
@@ -637,10 +677,19 @@ pub fn create_webrender_instance(
         TextureFilter::Nearest
     };
 
+    let render_backend_hooks = options.render_backend_hooks.take();
+
+    let chunk_pool = options.chunk_pool.take().unwrap_or_else(|| {
+        Arc::new(ChunkPool::new())
+    });
+
     let rb_scene_tx = scene_tx.clone();
     let rb_fonts = fonts.clone();
     let enable_multithreading = options.enable_multithreading;
     thread::Builder::new().name(rb_thread_name.clone()).spawn(move || {
+        if let Some(hooks) = render_backend_hooks {
+            hooks.init_thread();
+        }
         register_thread_with_profiler(rb_thread_name.clone());
         profiler::register_thread(&rb_thread_name);
 
@@ -675,6 +724,7 @@ pub fn create_webrender_instance(
             result_tx,
             rb_scene_tx,
             resource_cache,
+            chunk_pool,
             backend_notifier,
             config,
             sampler,

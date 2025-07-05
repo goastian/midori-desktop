@@ -70,6 +70,12 @@ RemoteTextureOwnerId RemoteTextureOwnerId::GetNext() {
 }
 
 /* static */
+SurfaceDescriptorRemoteDecoderId SurfaceDescriptorRemoteDecoderId::GetNext() {
+  static std::atomic<uint64_t> sCounter = 0;
+  return SurfaceDescriptorRemoteDecoderId{++sCounter};
+}
+
+/* static */
 GpuProcessTextureId GpuProcessTextureId::GetNext() {
   if (!XRE_IsGPUProcess()) {
     MOZ_ASSERT_UNREACHABLE("unexpected to be called");
@@ -81,14 +87,14 @@ GpuProcessTextureId GpuProcessTextureId::GetNext() {
 }
 
 /* static */
-GpuProcessQueryId GpuProcessQueryId::GetNext() {
+CompositeProcessFencesHolderId CompositeProcessFencesHolderId::GetNext() {
   if (!XRE_IsGPUProcess()) {
     MOZ_ASSERT_UNREACHABLE("unexpected to be called");
-    return GpuProcessQueryId{};
+    return CompositeProcessFencesHolderId{};
   }
 
   static std::atomic<uint64_t> sCounter = 0;
-  return GpuProcessQueryId{++sCounter};
+  return CompositeProcessFencesHolderId{++sCounter};
 }
 
 std::ostream& operator<<(std::ostream& os, ScrollDirection aDirection) {

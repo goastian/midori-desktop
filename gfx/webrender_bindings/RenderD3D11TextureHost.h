@@ -27,12 +27,12 @@ namespace wr {
 class RenderDXGITextureHost final : public RenderTextureHostSWGL {
  public:
   RenderDXGITextureHost(
-      RefPtr<gfx::FileHandleWrapper> aHandle,
-      Maybe<layers::GpuProcessTextureId>& aGpuProcessTextureId,
-      uint32_t aArrayIndex, gfx::SurfaceFormat aFormat, gfx::ColorSpace2,
-      gfx::ColorRange aColorRange, gfx::IntSize aSize, bool aHasKeyedMutex,
-      gfx::FenceInfo& aAcquireFenceInfo,
-      Maybe<layers::GpuProcessQueryId>& aGpuProcessQueryId);
+      const RefPtr<gfx::FileHandleWrapper> aHandle,
+      const Maybe<layers::GpuProcessTextureId>& aGpuProcessTextureId,
+      const uint32_t aArrayIndex, const gfx::SurfaceFormat aFormat,
+      const gfx::ColorSpace2 aColorSpace, const gfx::ColorRange aColorRange,
+      const gfx::IntSize aSize, const bool aHasKeyedMutex,
+      const Maybe<layers::CompositeProcessFencesHolderId>& aFencesHolderId);
 
   wr::WrExternalImage Lock(uint8_t aChannelIndex, gl::GLContext* aGL) override;
   void Unlock() override;
@@ -91,8 +91,6 @@ class RenderDXGITextureHost final : public RenderTextureHostSWGL {
   void SetIsSoftwareDecodedVideo() override { mIsSoftwareDecodedVideo = true; }
   bool IsSoftwareDecodedVideo() override { return mIsSoftwareDecodedVideo; }
 
-  RefPtr<ID3D11Query> GetQuery();
-
  private:
   virtual ~RenderDXGITextureHost();
 
@@ -103,11 +101,10 @@ class RenderDXGITextureHost final : public RenderTextureHostSWGL {
 
   RefPtr<gl::GLContext> mGL;
 
-  RefPtr<gfx::FileHandleWrapper> mHandle;
-  Maybe<layers::GpuProcessTextureId> mGpuProcessTextureId;
-  Maybe<layers::GpuProcessQueryId> mGpuProcessQueryId;
+  const RefPtr<gfx::FileHandleWrapper> mHandle;
+  const Maybe<layers::GpuProcessTextureId> mGpuProcessTextureId;
   RefPtr<ID3D11Texture2D> mTexture;
-  uint32_t mArrayIndex = 0;
+  const uint32_t mArrayIndex;
   RefPtr<IDXGIKeyedMutex> mKeyedMutex;
 
   // Temporary state between MapPlane and UnmapPlanes.
@@ -124,15 +121,13 @@ class RenderDXGITextureHost final : public RenderTextureHostSWGL {
 
   bool mIsSoftwareDecodedVideo = false;
 
-  RefPtr<layers::FenceD3D11> mAcquireFence;
-
  public:
   const gfx::SurfaceFormat mFormat;
   const gfx::ColorSpace2 mColorSpace;
   const gfx::ColorRange mColorRange;
   const gfx::IntSize mSize;
   const bool mHasKeyedMutex;
-  const gfx::FenceInfo mAcquireFenceInfo;
+  const Maybe<layers::CompositeProcessFencesHolderId> mFencesHolderId;
 
  private:
   bool mLocked;
@@ -142,8 +137,10 @@ class RenderDXGIYCbCrTextureHost final : public RenderTextureHostSWGL {
  public:
   explicit RenderDXGIYCbCrTextureHost(
       RefPtr<gfx::FileHandleWrapper> (&aHandles)[3],
-      gfx::YUVColorSpace aYUVColorSpace, gfx::ColorDepth aColorDepth,
-      gfx::ColorRange aColorRange, gfx::IntSize aSizeY, gfx::IntSize aSizeCbCr);
+      const gfx::YUVColorSpace aYUVColorSpace,
+      const gfx::ColorDepth aColorDepth, const gfx::ColorRange aColorRange,
+      const gfx::IntSize aSizeY, const gfx::IntSize aSizeCbCr,
+      const layers::CompositeProcessFencesHolderId aFencesHolderId);
 
   RenderDXGIYCbCrTextureHost* AsRenderDXGIYCbCrTextureHost() override {
     return this;
@@ -162,7 +159,7 @@ class RenderDXGIYCbCrTextureHost final : public RenderTextureHostSWGL {
 
   // RenderTextureHostSWGL
   gfx::SurfaceFormat GetFormat() const override {
-    return gfx::SurfaceFormat::YUV;
+    return gfx::SurfaceFormat::YUV420;
   }
   gfx::ColorDepth GetColorDepth() const override { return mColorDepth; }
   size_t GetPlaneCount() const override { return 3; }
@@ -203,7 +200,7 @@ class RenderDXGIYCbCrTextureHost final : public RenderTextureHostSWGL {
 
   RefPtr<gfx::FileHandleWrapper> mHandles[3];
   RefPtr<ID3D11Texture2D> mTextures[3];
-  RefPtr<IDXGIKeyedMutex> mKeyedMutexs[3];
+  RefPtr<ID3D11Device> mDevice;
 
   EGLSurface mSurfaces[3];
   EGLStreamKHR mStreams[3];
@@ -215,13 +212,14 @@ class RenderDXGIYCbCrTextureHost final : public RenderTextureHostSWGL {
   RefPtr<ID3D11DeviceContext> mDeviceContext;
   RefPtr<ID3D11Texture2D> mCpuTexture[3];
 
-  gfx::YUVColorSpace mYUVColorSpace;
-  gfx::ColorDepth mColorDepth;
-  gfx::ColorRange mColorRange;
-  gfx::IntSize mSizeY;
-  gfx::IntSize mSizeCbCr;
+  const gfx::YUVColorSpace mYUVColorSpace;
+  const gfx::ColorDepth mColorDepth;
+  const gfx::ColorRange mColorRange;
+  const gfx::IntSize mSizeY;
+  const gfx::IntSize mSizeCbCr;
+  const layers::CompositeProcessFencesHolderId mFencesHolderId;
 
-  bool mLocked;
+  bool mLocked = false;
 };
 
 }  // namespace wr

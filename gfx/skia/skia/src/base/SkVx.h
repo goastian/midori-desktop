@@ -41,8 +41,12 @@
 #endif
 
 #if SKVX_USE_SIMD
-    #if SK_CPU_SSE_LEVEL >= SK_CPU_SSE_LEVEL_SSE1
+    #if SK_CPU_SSE_LEVEL >= SK_CPU_SSE_LEVEL_AVX
         #include <immintrin.h>
+    #elif SK_CPU_SSE_LEVEL >= SK_CPU_SSE_LEVEL_SSE41
+        #include <smmintrin.h>
+    #elif SK_CPU_SSE_LEVEL >= SK_CPU_SSE_LEVEL_SSE1
+        #include <xmmintrin.h>
     #elif defined(SK_ARM_HAS_NEON)
         #include <arm_neon.h>
     #elif defined(__wasm_simd128__)
@@ -680,14 +684,12 @@ template <typename Fn, typename... Args, size_t... I>
 SI auto map(std::index_sequence<I...>,
             Fn&& fn, const Args&... args) -> skvx::Vec<sizeof...(I), decltype(fn(args[0]...))> {
     auto lane = [&](size_t i)
-#if defined(__clang__)
     // CFI, specifically -fsanitize=cfi-icall, seems to give a false positive here,
     // with errors like "control flow integrity check for type 'float (float)
     // noexcept' failed during indirect function call... note: sqrtf.cfi_jt defined
     // here".  But we can be quite sure fn is the right type: it's all inferred!
     // So, stifle CFI in this function.
-    __attribute__((no_sanitize("cfi")))
-#endif
+    SK_NO_SANITIZE_CFI
     { return fn(args[static_cast<int>(i)]...); };
 
     return { lane(I)... };
@@ -896,6 +898,7 @@ public:
     }
 
     uint32_t half() const { return fHalf; }
+    uint32_t divisorFactor() const { return fDivisorFactor; }
 
 private:
     const uint32_t fDivisorFactor;
@@ -1003,7 +1006,7 @@ SIN Vec<N, double> normalize(const Vec<N, double>& v) {
 SINT bool isfinite(const Vec<N, T>& v) {
     // Multiply all values together with 0. If they were all finite, the output is
     // 0 (also finite). If any were not, we'll get nan.
-    return std::isfinite(dot(v, Vec<N, T>(0)));
+    return SkIsFinite(dot(v, Vec<N, T>(0)));
 }
 
 // De-interleaving load of 4 vectors.

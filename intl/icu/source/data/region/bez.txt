@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 bez{
     Countries{
         AD{"Huandola"}
@@ -93,7 +93,6 @@ bez{
         IE{"Huayalandi"}
         IL{"Huislaheli"}
         IN{"Huindia"}
-        IO{"Ulubali lwa Hubahari ya Hindi lwa Huingereza"}
         IQ{"Huilaki"}
         IR{"Huuajemi"}
         IS{"Huaislandi"}

@@ -38,8 +38,7 @@ class APZCTreeManagerTester : public APZCTesterBase {
   }
 
   virtual void TearDown() {
-    while (mcc->RunThroughDelayedTasks())
-      ;
+    while (mcc->RunThroughDelayedTasks());
     manager->ClearTree();
     manager->ClearContentController();
 
@@ -82,8 +81,7 @@ class APZCTreeManagerTester : public APZCTesterBase {
   // A convenience wrapper for manager->UpdateHitTestingTree().
   void UpdateHitTestingTree(uint32_t aPaintSequenceNumber = 0) {
     manager->UpdateHitTestingTree(WebRenderScrollDataWrapper{*updater, &layers},
-                                  /* is first paint = */ false, LayersId{0},
-                                  aPaintSequenceNumber);
+                                  LayersId{0}, aPaintSequenceNumber);
   }
 
   void CreateScrollData(const char* aTreeShape,
@@ -103,8 +101,16 @@ class APZCTreeManagerTester : public APZCTesterBase {
   void QueueMockHitResult(ScrollableLayerGuid::ViewID aScrollId,
                           gfx::CompositorHitTestInfo aHitInfo =
                               gfx::CompositorHitTestFlags::eVisibleToHitTest) {
+    QueueMockHitResult(ScrollableLayerGuid(LayersId{0}, 0, aScrollId),
+                       aHitInfo);
+  }
+
+  // This overload allows customizing the LayersId as well.
+  void QueueMockHitResult(ScrollableLayerGuid aGuid,
+                          gfx::CompositorHitTestInfo aHitInfo =
+                              gfx::CompositorHitTestFlags::eVisibleToHitTest) {
     MOZ_ASSERT(mMockHitTester);
-    mMockHitTester->QueueHitResult(aScrollId, aHitInfo);
+    mMockHitTester->QueueHitResult(aGuid, aHitInfo);
   }
 
   RefPtr<TestAPZCTreeManager> manager;

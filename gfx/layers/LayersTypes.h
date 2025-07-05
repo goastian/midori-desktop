@@ -174,8 +174,6 @@ enum class TextureType : int8_t {
   Last
 };
 
-enum class BufferMode : int8_t { BUFFER_NONE, BUFFERED };
-
 enum class DrawRegionClip : int8_t { DRAW, NONE };
 
 enum class SurfaceMode : int8_t {
@@ -394,6 +392,43 @@ struct RemoteTextureOwnerId {
   };
 };
 
+struct SurfaceDescriptorRemoteDecoderId {
+  uint64_t mId = 0;
+
+  auto MutTiedFields() { return std::tie(mId); }
+
+  static SurfaceDescriptorRemoteDecoderId GetNext();
+
+  bool IsValid() const { return mId != 0; }
+
+  // Allow explicit cast to a uint64_t for now
+  explicit operator uint64_t() const { return mId; }
+
+  // Implement some operators so this class can be used as a key in
+  // stdlib classes.
+  bool operator<(const SurfaceDescriptorRemoteDecoderId& aOther) const {
+    return mId < aOther.mId;
+  }
+
+  bool operator==(const SurfaceDescriptorRemoteDecoderId& aOther) const {
+    return mId == aOther.mId;
+  }
+
+  bool operator!=(const SurfaceDescriptorRemoteDecoderId& aOther) const {
+    return !(*this == aOther);
+  }
+
+  // Helper struct that allow this class to be used as a key in
+  // std::unordered_map like so:
+  //   std::unordered_map<SurfaceDescriptorRemoteDecoderId, ValueType,
+  //   SurfaceDescriptorRemoteDecoderId::HashFn> myMap;
+  struct HashFn {
+    std::size_t operator()(const SurfaceDescriptorRemoteDecoderId aKey) const {
+      return std::hash<uint64_t>{}(aKey.mId);
+    }
+  };
+};
+
 typedef uint32_t RemoteTextureTxnType;
 typedef uint64_t RemoteTextureTxnId;
 
@@ -427,22 +462,22 @@ struct GpuProcessTextureId {
   };
 };
 
-// QueryId allocated in GPU process
-struct GpuProcessQueryId {
+// FencesHolderId allocated in GPU process
+struct CompositeProcessFencesHolderId {
   uint64_t mId = 0;
 
-  static GpuProcessQueryId GetNext();
+  static CompositeProcessFencesHolderId GetNext();
 
   bool IsValid() const { return mId != 0; }
 
   // Allow explicit cast to a uint64_t for now
   explicit operator uint64_t() const { return mId; }
 
-  bool operator==(const GpuProcessQueryId& aOther) const {
+  bool operator==(const CompositeProcessFencesHolderId& aOther) const {
     return mId == aOther.mId;
   }
 
-  bool operator!=(const GpuProcessQueryId& aOther) const {
+  bool operator!=(const CompositeProcessFencesHolderId& aOther) const {
     return !(*this == aOther);
   }
 
@@ -451,7 +486,7 @@ struct GpuProcessQueryId {
   //   std::unordered_map<GpuProcessQueryId, ValueType,
   //   GpuProcessQueryId::HashFn> myMap;
   struct HashFn {
-    std::size_t operator()(const GpuProcessQueryId aKey) const {
+    std::size_t operator()(const CompositeProcessFencesHolderId aKey) const {
       return std::hash<uint64_t>{}(aKey.mId);
     }
   };

@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 ms{
     Countries{
         001{"Dunia"}
@@ -297,6 +297,9 @@ ms{
         ZM{"Zambia"}
         ZW{"Zimbabwe"}
         ZZ{"Wilayah Tidak Diketahui"}
+    }
+    Countries%chagos{
+        IO{"Kepulauan Chagos"}
     }
     Countries%short{
         GB{"UK"}

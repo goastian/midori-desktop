@@ -6,7 +6,6 @@
 // from https://docs.microsoft.com/en-us/typography/fonts/windows_10_font_list
 // TODO: check whether we need to list legacy styled family names like "... Light".
 static const char* kBaseFonts[] = {
-  "AlternateGothic2 BT",
   "Arial",
   "Arial Black",
   "Bahnschrift",
@@ -28,7 +27,6 @@ static const char* kBaseFonts[] = {
   "Gabriola",
   "Gadugi",
   "Georgia",
-  "HoloLens MDL2 Assets",
   "Impact",
   "Javanese Text",
   "Leelawadee UI",
@@ -78,6 +76,7 @@ static const char* kBaseFonts[] = {
   "Segoe UI Symbol",
   "SimSun",
   "SimSun-ExtB",
+  "SimSun-ExtG",
   "Sitka Banner",
   "Sitka Display",
   "Sitka Heading",
@@ -166,6 +165,16 @@ static const char* kLangPackFonts[] = {
   "MS Mincho",  // Japanese Supplemental Fonts
   "MS PMincho",  // Japanese Supplemental Fonts
   "Narkisim",  // Hebrew Supplemental Fonts
+  "Noto Sans HK",  // Chinese (Traditional, Hong Kong) Supplemental Fonts
+  "Noto Sans JP",  // Japanese Supplemental Fonts
+  "Noto Sans KR",  // Korean Supplemental Fonts
+  "Noto Sans SC",  // Chinese (Simplified) Supplemental Fonts
+  "Noto Sans TC",  // Chinese (Traditional) Supplemental Fonts
+  "Noto Serif HK",  // Chinese (Traditional, Hong Kong) Supplemental Fonts
+  "Noto Serif JP",  // Japanese Supplemental Fonts
+  "Noto Serif KR",  // Korean Supplemental Fonts
+  "Noto Serif SC",  // Chinese (Simplified) Supplemental Fonts
+  "Noto Serif TC",  // Chinese (Traditional) Supplemental Fonts
   "Nyala",  // Ethiopic Supplemental Fonts
   "Plantagenet Cherokee",  // Cherokee Supplemental Fonts
   "PMingLiU",  // Chinese (Traditional) Supplemental Fonts

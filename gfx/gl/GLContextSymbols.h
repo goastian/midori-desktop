@@ -459,6 +459,60 @@ struct GLContextSymbols final {
 
   // provoking_vertex
   void(GLAPIENTRY* fProvokingVertex)(GLenum);
+
+  // GL_EXT_semaphore
+  void(GLAPIENTRY* fDeleteSemaphoresEXT)(GLsizei, const GLuint*);
+  void(GLAPIENTRY* fGenSemaphoresEXT)(GLsizei, GLuint*);
+  void(GLAPIENTRY* fGetSemaphoreParameterui64vEXT)(GLuint, GLenum, GLuint64*);
+  realGLboolean(GLAPIENTRY* fIsSemaphoreEXT)(GLuint);
+  void(GLAPIENTRY* fSemaphoreParameterui64vEXT)(GLuint, GLenum,
+                                                const GLuint64*);
+  void(GLAPIENTRY* fSignalSemaphoreEXT)(GLuint, GLuint, const GLuint*, GLuint,
+                                        const GLuint*, const GLenum*);
+  void(GLAPIENTRY* fWaitSemaphoreEXT)(GLuint, GLuint, const GLuint*, GLuint,
+                                      const GLuint*, const GLenum*);
+
+  // GL_EXT_semaphore_fd
+  void(GLAPIENTRY* fImportSemaphoreFdEXT)(GLuint, GLenum, GLint);
+
+  // EXT_memory_object
+  void(GLAPIENTRY* fGetUnsignedBytevEXT)(GLenum, GLubyte*);
+  void(GLAPIENTRY* fGetUnsignedBytei_vEXT)(GLenum, GLuint, GLubyte*);
+  void(GLAPIENTRY* fDeleteMemoryObjectsEXT)(GLsizei, const GLuint*);
+  void(GLAPIENTRY* fIsMemoryObjectEXT)(GLuint);
+  void(GLAPIENTRY* fCreateMemoryObjectsEXT)(GLsizei, GLuint*);
+  void(GLAPIENTRY* fMemoryObjectParameterivEXT)(GLuint, GLenum, const GLint*);
+  void(GLAPIENTRY* fGetMemoryObjectParameterivEXT)(GLuint, GLenum, GLint*);
+  void(GLAPIENTRY* fTexStorageMem2DEXT)(GLenum, GLsizei, GLenum, GLsizei,
+                                        GLsizei, GLuint, GLuint64);
+  void(GLAPIENTRY* fTexStorageMem2DMultisampleEXT)(GLenum, GLsizei, GLenum,
+                                                   GLsizei, GLsizei,
+                                                   realGLboolean, GLuint,
+                                                   GLuint64);
+  void(GLAPIENTRY* fTexStorageMem3DEXT)(GLenum, GLsizei, GLenum, GLsizei,
+                                        GLsizei, GLsizei, GLuint, GLuint64);
+  void(GLAPIENTRY* fTexStorageMem3DMultisampleEXT)(GLenum, GLsizei, GLenum,
+                                                   GLsizei, GLsizei, GLsizei,
+                                                   realGLboolean, GLuint,
+                                                   GLuint64);
+  void(GLAPIENTRY* fBufferStorageMemEXT)(GLenum, GLsizeiptr, GLuint, GLuint64);
+  void(GLAPIENTRY* fTextureStorageMem2DEXT)(GLuint, GLsizei, GLenum, GLsizei,
+                                            GLsizei, GLuint, GLuint64);
+  void(GLAPIENTRY* fTextureStorageMem2DMultisampleEXT)(GLuint, GLsizei, GLenum,
+                                                       GLsizei, GLsizei,
+                                                       realGLboolean, GLuint,
+                                                       GLuint64);
+  void(GLAPIENTRY* fTextureStorageMem3DEXT)(GLuint, GLsizei, GLenum, GLsizei,
+                                            GLsizei, GLsizei, GLuint, GLuint64);
+  void(GLAPIENTRY* fTextureStorageMem3DMultisampleEXT)(GLuint, GLsizei, GLenum,
+                                                       GLsizei, GLsizei,
+                                                       GLsizei, realGLboolean,
+                                                       GLuint, GLuint64);
+  void(GLAPIENTRY* fNamedBufferStorageMemEXT)(GLuint, GLsizeiptr, GLuint,
+                                              GLuint64);
+
+  // EXT_memory_object_fd
+  void(GLAPIENTRY* fImportMemoryFdEXT)(GLuint, GLuint64, GLenum, GLint);
 };
 
 }  // namespace gl

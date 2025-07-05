@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 ug{
     Countries{
         001{"دۇنيا"}
@@ -144,7 +144,6 @@ ug{
         IL{"ئىسرائىلىيە"}
         IM{"مان ئارىلى"}
         IN{"ھىندىستان"}
-        IO{"ئەنگلىيەگە قاراشلىق ھىندى ئوكيان تېررىتورىيەسى"}
         IQ{"ئىراق"}
         IR{"ئىران"}
         IS{"ئىسلاندىيە"}

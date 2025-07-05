@@ -51,7 +51,6 @@ mailing address.
 #include "gfxPlatform.h"
 #include "qcms.h"
 #include <algorithm>
-#include "mozilla/Telemetry.h"
 
 using namespace mozilla::gfx;
 
@@ -103,18 +102,41 @@ nsGIFDecoder2::nsGIFDecoder2(RasterImage* aImage)
 
 nsGIFDecoder2::~nsGIFDecoder2() { free(mGIFStruct.local_colormap); }
 
-nsresult nsGIFDecoder2::FinishInternal() {
-  MOZ_ASSERT(!HasError(), "Shouldn't call FinishInternal after error!");
-
-  // If the GIF got cut off, handle it anyway
-  if (!IsMetadataDecode() && mGIFOpen) {
-    if (mCurrentFrameIndex == mGIFStruct.images_decoded) {
-      EndImageFrame();
+nsresult nsGIFDecoder2::FinishWithErrorInternal() {
+  if (mGIFOpen) {
+    if (WantsFrameCount()) {
+      PostFrameCount(mGIFStruct.images_decoded);
     }
-    PostDecodeDone(mGIFStruct.loop_count);
+    PostLoopCount(mGIFStruct.loop_count);
     mGIFOpen = false;
   }
 
+  return Decoder::FinishWithErrorInternal();
+}
+
+nsresult nsGIFDecoder2::FinishInternal() {
+  MOZ_ASSERT(!HasError(), "Shouldn't call FinishInternal after error!");
+
+  if (!mGIFOpen) {
+    return NS_OK;
+  }
+
+  PostLoopCount(mGIFStruct.loop_count);
+
+  // If the GIF got cut off, handle it anyway
+  if (mCurrentFrameIndex == mGIFStruct.images_decoded) {
+    EndImageFrame();
+  }
+
+  if (WantsFrameCount()) {
+    PostFrameCount(mGIFStruct.images_decoded);
+  }
+
+  if (!IsMetadataDecode()) {
+    PostDecodeDone();
+  }
+
+  mGIFOpen = false;
   return NS_OK;
 }
 
@@ -188,6 +210,14 @@ nsresult nsGIFDecoder2::BeginImageFrame(const OrientedIntRect& aFrameRect,
                                         uint16_t aDepth, bool aIsInterlaced) {
   MOZ_ASSERT(HasSize());
 
+  // If we are just counting frames for a metadata decode, there is no actual
+  // decoding done. We are just iterating over the blocks to find when a frame
+  // begins and ends.
+  if (WantsFrameCount()) {
+    mCurrentFrameIndex = mGIFStruct.images_decoded;
+    return NS_OK;
+  }
+
   bool hasTransparency = CheckForTransparency(aFrameRect);
 
   // Make sure there's no animation if we're downscaling.
@@ -235,6 +265,19 @@ nsresult nsGIFDecoder2::BeginImageFrame(const OrientedIntRect& aFrameRect,
 
 //******************************************************************************
 void nsGIFDecoder2::EndImageFrame() {
+  if (WantsFrameCount()) {
+    mGIFStruct.pixels_remaining = 0;
+    mGIFStruct.images_decoded++;
+    mGIFStruct.delay_time = 0;
+    mColormap = nullptr;
+    mColormapSize = 0;
+    mCurrentFrameIndex = -1;
+
+    // Keep updating the count every time we find a frame.
+    PostFrameCount(mGIFStruct.images_decoded);
+    return;
+  }
+
   Opacity opacity = Opacity::SOME_TRANSPARENCY;
 
   if (mGIFStruct.images_decoded == 0) {
@@ -424,7 +467,9 @@ std::tuple<int32_t, Maybe<WriteState>> nsGIFDecoder2::YieldPixels(
 /// Expand the colormap from RGB to Packed ARGB as needed by Cairo.
 /// And apply any LCMS transformation.
 void nsGIFDecoder2::ConvertColormap(uint32_t* aColormap, uint32_t aColors) {
-  if (!aColors) {
+  // If we are just counting frames for a metadata decode, there is no need to
+  // prep the colormap.
+  if (!aColors || WantsFrameCount()) {
     return;
   }
 
@@ -472,8 +517,6 @@ LexerResult nsGIFDecoder2::DoDecode(SourceBufferIterator& aIterator,
             return ReadNetscapeExtensionData(aData);
           case State::IMAGE_DESCRIPTOR:
             return ReadImageDescriptor(aData);
-          case State::FINISH_IMAGE_DESCRIPTOR:
-            return FinishImageDescriptor(aData);
           case State::LOCAL_COLOR_TABLE:
             return ReadLocalColorTable(aData, aLength);
           case State::FINISHED_LOCAL_COLOR_TABLE:
@@ -489,6 +532,8 @@ LexerResult nsGIFDecoder2::DoDecode(SourceBufferIterator& aIterator,
           case State::FINISHED_LZW_DATA:
             return Transition::To(State::IMAGE_DATA_SUB_BLOCK,
                                   SUB_BLOCK_HEADER_LEN);
+          case State::FINISH_END_IMAGE_FRAME:
+            return Transition::To(State::BLOCK_HEADER, BLOCK_HEADER_LEN);
           case State::SKIP_SUB_BLOCKS:
             return SkipSubBlocks(aData);
           case State::SKIP_DATA_THEN_SKIP_SUB_BLOCKS:
@@ -764,9 +809,7 @@ LexerTransition<nsGIFDecoder2::State> nsGIFDecoder2::ReadImageDescriptor(
   }
 
   MOZ_ASSERT(Size() == OutputSize(), "Downscaling an animated image?");
-
-  // Yield to allow access to the previous frame before we start a new one.
-  return Transition::ToAfterYield(State::FINISH_IMAGE_DESCRIPTOR);
+  return FinishImageDescriptor(aData);
 }
 
 LexerTransition<nsGIFDecoder2::State> nsGIFDecoder2::FinishImageDescriptor(
@@ -799,8 +842,8 @@ LexerTransition<nsGIFDecoder2::State> nsGIFDecoder2::FinishImageDescriptor(
       return Transition::TerminateFailure();
     }
 
-    // If we're doing a metadata decode, we're done.
-    if (IsMetadataDecode()) {
+    // If we're doing a metadata decode without the frame count, we're done.
+    if (IsMetadataDecode() && !WantsFrameCount()) {
       CheckForTransparency(frameRect);
       FinishInternal();
       return Transition::TerminateSuccess();
@@ -915,9 +958,13 @@ LexerTransition<nsGIFDecoder2::State> nsGIFDecoder2::FinishImageDescriptor(
 
 LexerTransition<nsGIFDecoder2::State> nsGIFDecoder2::ReadLocalColorTable(
     const char* aData, size_t aLength) {
-  uint8_t* dest = reinterpret_cast<uint8_t*>(mColormap) + mColorTablePos;
-  memcpy(dest, aData, aLength);
-  mColorTablePos += aLength;
+  // If we are just counting frames for a metadata decode, there is no need to
+  // prep the colormap.
+  if (!WantsFrameCount()) {
+    uint8_t* dest = reinterpret_cast<uint8_t*>(mColormap) + mColorTablePos;
+    memcpy(dest, aData, aLength);
+    mColorTablePos += aLength;
+  }
   return Transition::ContinueUnbuffered(State::LOCAL_COLOR_TABLE);
 }
 
@@ -969,9 +1016,12 @@ LexerTransition<nsGIFDecoder2::State> nsGIFDecoder2::ReadImageDataSubBlock(
     const char* aData) {
   const uint8_t subBlockLength = aData[0];
   if (subBlockLength == 0) {
-    // We hit the block terminator.
+    // We hit the block terminator. Yield if we are decoding multiple frames.
     EndImageFrame();
-    return Transition::To(State::BLOCK_HEADER, BLOCK_HEADER_LEN);
+    if (IsFirstFrameDecode()) {
+      return Transition::To(State::BLOCK_HEADER, BLOCK_HEADER_LEN);
+    }
+    return Transition::ToAfterYield(State::FINISH_END_IMAGE_FRAME);
   }
 
   if (mGIFStruct.pixels_remaining == 0) {
@@ -999,6 +1049,12 @@ LexerTransition<nsGIFDecoder2::State> nsGIFDecoder2::ReadImageDataSubBlock(
 
 LexerTransition<nsGIFDecoder2::State> nsGIFDecoder2::ReadLZWData(
     const char* aData, size_t aLength) {
+  // If we are just counting frames for a metadata decode, there is no need to
+  // do the actual decode.
+  if (WantsFrameCount()) {
+    return Transition::ContinueUnbuffered(State::LZW_DATA);
+  }
+
   const uint8_t* data = reinterpret_cast<const uint8_t*>(aData);
   size_t length = aLength;
 
@@ -1068,8 +1124,9 @@ LexerTransition<nsGIFDecoder2::State> nsGIFDecoder2::SkipSubBlocks(
                                   nextSubBlockLength);
 }
 
-Maybe<Telemetry::HistogramID> nsGIFDecoder2::SpeedHistogram() const {
-  return Some(Telemetry::IMAGE_DECODE_SPEED_GIF);
+Maybe<glean::impl::MemoryDistributionMetric> nsGIFDecoder2::SpeedMetric()
+    const {
+  return Some(glean::image_decode::speed_gif);
 }
 
 }  // namespace image

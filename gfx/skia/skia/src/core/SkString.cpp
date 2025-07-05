@@ -8,6 +8,7 @@
 #include "include/core/SkString.h"
 
 #include "include/private/base/SkDebug.h"
+#include "include/private/base/SkFloatingPoint.h"
 #include "include/private/base/SkMalloc.h"
 #include "include/private/base/SkTPin.h"
 #include "include/private/base/SkTo.h"
@@ -73,7 +74,7 @@ bool SkStrEndsWith(const char string[], const char suffixStr[]) {
             !strncmp(string + strLen - suffixLen, suffixStr, suffixLen);
 }
 
-bool SkStrEndsWith(const char string[], const char suffixChar) {
+bool SkStrEndsWith(const char string[], char suffixChar) {
     SkASSERT(string);
     size_t  strLen = strlen(string);
     if (0 == strLen) {
@@ -163,11 +164,11 @@ char* SkStrAppendS64(char string[], int64_t dec, int minDigits) {
 char* SkStrAppendScalar(char string[], SkScalar value) {
     // Handle infinity and NaN ourselves to ensure consistent cross-platform results.
     // (e.g.: `inf` versus `1.#INF00`, `nan` versus `-nan` for high-bit-set NaNs)
-    if (SkScalarIsNaN(value)) {
+    if (SkIsNaN(value)) {
         strcpy(string, "nan");
         return string + 3;
     }
-    if (!SkScalarIsFinite(value)) {
+    if (!SkIsFinite(value)) {
         if (value > 0) {
             strcpy(string, "inf");
             return string + 3;

@@ -1,14 +1,9 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 sv_FI{
     NumberElements{
         latn{
-            symbols{
-                timeSeparator{"."}
-            }
-        }
-        olck{
             symbols{
                 timeSeparator{"."}
             }
@@ -41,14 +36,6 @@ sv_FI{
             }
             quarters{
                 format{
-                    abbreviated{
-                        "Q1",
-                        "Q2",
-                        "Q3",
-                        "Q4",
-                    }
-                }
-                stand-alone{
                     abbreviated{
                         "Q1",
                         "Q2",

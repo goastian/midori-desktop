@@ -9,13 +9,14 @@
 #include <d3d11.h>
 #include <d3d11_3.h>
 #include <d3d11_4.h>
+#include <dxgi1_6.h>
 
 #include "mozilla/gfx/Logging.h"
 
 namespace mozilla {
 namespace layers {
 
-RefPtr<ID3D11Device> mDevice;
+MOZ_RUNINIT RefPtr<ID3D11Device> mDevice;
 
 /* static */
 RefPtr<FenceD3D11> FenceD3D11::Create(ID3D11Device* aDevice) {
@@ -36,7 +37,7 @@ RefPtr<FenceD3D11> FenceD3D11::Create(ID3D11Device* aDevice) {
   RefPtr<ID3D11Fence> fenceD3D11;
   d3d11_5->CreateFence(0, D3D11_FENCE_FLAG_SHARED,
                        IID_PPV_ARGS((ID3D11Fence**)getter_AddRefs(fenceD3D11)));
-  if (FAILED(hr)) {
+  if (FAILED(hr) || !fenceD3D11) {
     gfxCriticalNoteOnce << "Fence creation failed: " << gfx::hexa(hr);
     return nullptr;
   }
@@ -52,47 +53,96 @@ RefPtr<FenceD3D11> FenceD3D11::Create(ID3D11Device* aDevice) {
 
   RefPtr<gfx::FileHandleWrapper> handle =
       new gfx::FileHandleWrapper(UniqueFileHandle(sharedHandle));
-  RefPtr<FenceD3D11> fence = new FenceD3D11(handle);
-  fence->mDevice = aDevice;
-  fence->mSignalFence = fenceD3D11;
-
+  RefPtr<FenceD3D11> fence =
+      new FenceD3D11(OwnsFence::Yes, aDevice, fenceD3D11, handle);
   return fence;
 }
 
 /* static */
 RefPtr<FenceD3D11> FenceD3D11::CreateFromHandle(
-    RefPtr<gfx::FileHandleWrapper> aHandle) {
+    RefPtr<gfx::FileHandleWrapper> aHandle,
+    const RefPtr<ID3D11Device> aDevice) {
+  MOZ_ASSERT(aHandle);
+
+  if (!aHandle) {
+    return nullptr;
+  }
   // Opening shared handle is deferred.
-  return new FenceD3D11(aHandle);
+  return new FenceD3D11(OwnsFence::No, aDevice, /* aSignalFence */ nullptr,
+                        aHandle);
 }
 
 /* static */
 bool FenceD3D11::IsSupported(ID3D11Device* aDevice) {
+  MOZ_ASSERT(aDevice);
+
+  if (!aDevice) {
+    return false;
+  }
   RefPtr<ID3D11Device5> d3d11_5;
-  auto hr =
-      aDevice->QueryInterface(__uuidof(ID3D11Device5), getter_AddRefs(d3d11_5));
+  auto hr = aDevice->QueryInterface((ID3D11Device5**)getter_AddRefs(d3d11_5));
   if (FAILED(hr)) {
     return false;
   }
-  return true;
+
+  // Check for IDXGIAdapter4:
+  RefPtr<IDXGIDevice> dxgiDevice;
+  aDevice->QueryInterface((IDXGIDevice**)getter_AddRefs(dxgiDevice));
+  if (FAILED(hr)) {
+    return false;
+  }
+
+  RefPtr<IDXGIAdapter> dxgiAdapter;
+  hr = dxgiDevice->GetAdapter(getter_AddRefs(dxgiAdapter));
+  if (FAILED(hr)) {
+    return false;
+  }
+
+  RefPtr<IDXGIAdapter4> dxgiAdapter4;
+  dxgiAdapter->QueryInterface((IDXGIAdapter4**)getter_AddRefs(dxgiAdapter4));
+  if (FAILED(hr)) {
+    gfxCriticalNoteOnce << "Failed to get IDXGIAdapter4: " << gfx::hexa(hr);
+    return false;
+  }
+
+  DXGI_ADAPTER_DESC3 adapterDesc;
+  hr = dxgiAdapter4->GetDesc3(&adapterDesc);
+  if (FAILED(hr)) {
+    return false;
+  }
+
+  // The adapter must support monitored fences.
+  return adapterDesc.Flags & DXGI_ADAPTER_FLAG3_SUPPORT_MONITORED_FENCES;
 }
 
-FenceD3D11::FenceD3D11(RefPtr<gfx::FileHandleWrapper>& aHandle)
-    : mHandle(aHandle) {
+FenceD3D11::FenceD3D11(const OwnsFence aOwnsFence,
+                       const RefPtr<ID3D11Device> aDevice,
+                       const RefPtr<ID3D11Fence> aSignalFence,
+                       const RefPtr<gfx::FileHandleWrapper>& aHandle)
+    : mOwnsFence(aOwnsFence),
+      mDevice(aDevice),
+      mSignalFence(aSignalFence),
+      mHandle(aHandle) {
   MOZ_ASSERT(mHandle);
+  MOZ_ASSERT_IF(mOwnsFence == OwnsFence::Yes, mDevice);
+  MOZ_ASSERT_IF(mOwnsFence == OwnsFence::Yes, mSignalFence);
+  MOZ_ASSERT_IF(mOwnsFence == OwnsFence::No, !mSignalFence);
 }
 
 FenceD3D11::~FenceD3D11() {}
 
-gfx::FenceInfo FenceD3D11::GetFenceInfo() const {
-  return gfx::FenceInfo(mHandle, mFenceValue);
+RefPtr<FenceD3D11> FenceD3D11::CloneFromHandle() {
+  RefPtr<FenceD3D11> fence = FenceD3D11::CreateFromHandle(mHandle, mDevice);
+  if (fence) {
+    fence->Update(mFenceValue);
+  }
+  return fence;
 }
 
 bool FenceD3D11::IncrementAndSignal() {
-  MOZ_ASSERT(mDevice);
-  MOZ_ASSERT(mSignalFence);
+  MOZ_ASSERT(mOwnsFence == OwnsFence::Yes);
 
-  if (!mDevice || !mSignalFence) {
+  if (mOwnsFence != OwnsFence::Yes) {
     return false;
   }
 
@@ -118,8 +168,11 @@ bool FenceD3D11::IncrementAndSignal() {
 }
 
 void FenceD3D11::Update(uint64_t aFenceValue) {
-  MOZ_ASSERT(!mDevice);
-  MOZ_ASSERT(!mSignalFence);
+  MOZ_ASSERT(mOwnsFence == OwnsFence::No);
+
+  if (mOwnsFence != OwnsFence::No) {
+    return;
+  }
 
   if (mFenceValue > aFenceValue) {
     MOZ_ASSERT_UNREACHABLE("unexpected to be called");

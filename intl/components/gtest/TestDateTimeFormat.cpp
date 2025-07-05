@@ -59,7 +59,7 @@ TEST(IntlDateTimeFormat, Style_ar_utf8)
   DateTimeFormat::StyleBag style;
   style.time = Some(DateTimeFormat::Style::Medium);
 
-  auto dtFormat = testStyle("ar", style);
+  auto dtFormat = testStyle("ar-EG", style);
   TestBuffer<char> buffer;
   dtFormat->TryFormat(DATE, buffer).unwrap();
 
@@ -71,7 +71,7 @@ TEST(IntlDateTimeFormat, Style_ar_utf16)
   DateTimeFormat::StyleBag style;
   style.time = Some(DateTimeFormat::Style::Medium);
 
-  auto dtFormat = testStyle("ar", style);
+  auto dtFormat = testStyle("ar-EG", style);
   TestBuffer<char16_t> buffer;
   dtFormat->TryFormat(DATE, buffer).unwrap();
 
@@ -567,13 +567,12 @@ TEST(IntlDateTimeFormat, TryFormatToParts)
 
 TEST(IntlDateTimeFormat, SetStartTimeIfGregorian)
 {
+  using namespace std::literals;
+
   DateTimeFormat::StyleBag style{};
   style.date = Some(DateTimeFormat::Style::Long);
 
   auto timeZone = Some(MakeStringSpan(u"UTC"));
-
-  // Beginning of ECMAScript time.
-  constexpr double StartOfTime = -8.64e15;
 
   // Gregorian change date defaults to October 15, 1582 in ICU. Test with a date
   // before the default change date, in this case January 1, 1582.
@@ -595,27 +594,98 @@ TEST(IntlDateTimeFormat, SetStartTimeIfGregorian)
                         MakeStringSpan(locale), style, gen.get(), timeZone)
                         .unwrap();
 
+    const char* Jan01_1582;
+    const char* Jan01_1583;
+    if (locale == "en-US-u-ca-iso8601"sv) {
+      Jan01_1582 = "1582 January 1";
+      Jan01_1583 = "1583 January 1";
+    } else {
+      Jan01_1582 = "January 1, 1582";
+      Jan01_1583 = "January 1, 1583";
+    }
+
     TestBuffer<char> buffer;
 
-    // Before the default Gregorian change date, so interpreted in the Julian
-    // calendar, which is December 22, 1581.
+    // Before the default Gregorian change date, but not interpreted in the
+    // Julian calendar, which is December 22, 1581. Instead interpreted in
+    // proleptic Gregorian calendar at January 1, 1582.
     dtFormat->TryFormat(FirstJanuary1582, buffer).unwrap();
-    ASSERT_TRUE(buffer.verboseMatches("December 22, 1581"));
+    ASSERT_TRUE(buffer.verboseMatches(Jan01_1582));
 
     // After default Gregorian change date, so January 1, 1583.
     dtFormat->TryFormat(FirstJanuary1582 + oneYear, buffer).unwrap();
-    ASSERT_TRUE(buffer.verboseMatches("January 1, 1583"));
+    ASSERT_TRUE(buffer.verboseMatches(Jan01_1583));
+  }
+}
 
-    // Adjust the start time to use a proleptic Gregorian calendar.
-    dtFormat->SetStartTimeIfGregorian(StartOfTime);
+TEST(IntlDateTimeFormat, GetTimeSeparator)
+{
+  struct TestData {
+    const char* locale;
+    const char* numberingSystem;
+    const char16_t* expected;
+  } testData[] = {
+      {"root", "latn", u":"},
+      {"root", "arab", u":"},
+      {"root", "thai", u":"},
+      {"root", "arabext", u"٫"},
 
-    // Now interpreted in proleptic Gregorian calendar at January 1, 1582.
-    dtFormat->TryFormat(FirstJanuary1582, buffer).unwrap();
-    ASSERT_TRUE(buffer.verboseMatches("January 1, 1582"));
+      // English uses the same data as the root locale.
+      {"en", "latn", u":"},
+      {"en", "arab", u":"},
+      {"en", "thai", u":"},
+      {"en", "arabext", u"٫"},
 
-    // Still January 1, 1583.
-    dtFormat->TryFormat(FirstJanuary1582 + oneYear, buffer).unwrap();
-    ASSERT_TRUE(buffer.verboseMatches("January 1, 1583"));
+      // Spanish uses the same data as the root locale.
+      {"es", "latn", u":"},
+      {"es", "arab", u":"},
+      {"es", "thai", u":"},
+      {"es", "arabext", u"٫"},
+
+      // German (Austria) uses the same data as the root locale.
+      {"de-AT", "latn", u":"},
+      {"de-AT", "arab", u":"},
+      {"de-AT", "thai", u":"},
+      {"de-AT", "arabext", u"٫"},
+
+      // Danish has a different time separator for "latn".
+      {"da", "latn", u"."},
+      {"da", "arab", u":"},
+      {"da", "thai", u"."},
+      {"da", "arabext", u"٫"},
+
+      // Same time separator as Danish.
+      {"en-DK", "latn", u"."},
+      {"en-DK", "arab", u":"},
+      {"en-DK", "thai", u"."},
+      {"en-DK", "arabext", u"٫"},
+
+      // Norwegian overrides time separators for "arab" and "arabext".
+      {"no", "latn", u":"},
+      {"no", "arab", u"."},
+      {"no", "thai", u":"},
+      {"no", "arabext", u"."},
+
+      // Parent locale of Bokmål is Norwegian.
+      {"nb", "latn", u":"},
+      {"nb", "arab", u"."},
+      {"nb", "thai", u":"},
+      {"nb", "arabext", u"."},
+
+      // Farsi overrides the time separator for "arabext".
+      {"fa", "latn", u":"},
+      {"fa", "arab", u":"},
+      {"fa", "thai", u":"},
+      {"fa", "arabext", u":"},
+  };
+
+  for (const auto& data : testData) {
+    TestBuffer<char16_t> timeSeparator;
+    auto timeSeparatorResult = DateTimeFormat::GetTimeSeparator(
+        MakeStringSpan(data.locale), MakeStringSpan(data.numberingSystem),
+        timeSeparator);
+    ASSERT_TRUE(timeSeparatorResult.isOk());
+    ASSERT_TRUE(timeSeparator.verboseMatches(data.expected));
   }
 }
 }  // namespace mozilla::intl

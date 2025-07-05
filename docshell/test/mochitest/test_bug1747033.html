@@ -8,8 +8,8 @@
   <script>
     SimpleTest.waitForExplicitFinish();
 
-    function runTest() {
-      let bc = new BroadcastChannel("bug1747033");
+    async function runTest() {
+      let bc = SpecialPowers.wrap(BroadcastChannel).unpartitionedTestingChannel("bug1747033");
       new Promise(resolve => {
         bc.addEventListener("message", ({ data: { historyLength } }) => {
           is(historyLength, 1, "Correct length for first normal load.");

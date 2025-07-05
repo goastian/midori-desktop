@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 es_DO{
     %%Parent{"es_419"}
     units{
@@ -30,16 +30,6 @@ es_DO{
             month{
                 one{"{0}m."}
                 other{"{0}m."}
-            }
-        }
-        electric{
-            volt{
-                dnam{"voltios"}
-            }
-        }
-        power{
-            watt{
-                dnam{"vatios"}
             }
         }
     }

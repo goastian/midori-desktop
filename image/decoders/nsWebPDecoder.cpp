@@ -390,6 +390,12 @@ LexerResult nsWebPDecoder::ReadHeader(WebPDemuxer* aDemuxer, bool aIsComplete) {
   }
 
   if (flags & WebPFeatureFlags::ANIMATION_FLAG) {
+    // The demuxer only knows how many frames it will have once it has the
+    // complete buffer.
+    if (WantsFrameCount() && !aIsComplete) {
+      return LexerResult(Yield::NEED_MORE_DATA);
+    }
+
     // A metadata decode expects to get the correct first frame timeout which
     // sadly is not provided by the normal WebP header parsing.
     WebPIterator iter;
@@ -400,6 +406,16 @@ LexerResult nsWebPDecoder::ReadHeader(WebPDemuxer* aDemuxer, bool aIsComplete) {
 
     PostIsAnimated(FrameTimeout::FromRawMilliseconds(iter.duration));
     WebPDemuxReleaseIterator(&iter);
+
+    uint32_t loopCount = WebPDemuxGetI(aDemuxer, WEBP_FF_LOOP_COUNT);
+    if (loopCount > INT32_MAX) {
+      loopCount = INT32_MAX;
+    }
+
+    MOZ_LOG(sWebPLog, LogLevel::Debug,
+            ("[this=%p] nsWebPDecoder::ReadHeader -- loop count %u\n", this,
+             loopCount));
+    PostLoopCount(static_cast<int32_t>(loopCount) - 1);
   } else {
     // Single frames don't need a demuxer to be created.
     mNeedDemuxer = false;
@@ -412,6 +428,11 @@ LexerResult nsWebPDecoder::ReadHeader(WebPDemuxer* aDemuxer, bool aIsComplete) {
   }
 
   PostSize(width, height);
+
+  if (WantsFrameCount()) {
+    uint32_t frameCount = WebPDemuxGetI(aDemuxer, WEBP_FF_FRAME_COUNT);
+    PostFrameCount(frameCount);
+  }
 
   bool alpha = flags & WebPFeatureFlags::ALPHA_FLAG;
   if (alpha) {
@@ -591,20 +612,16 @@ LexerResult nsWebPDecoder::ReadMultiple(WebPDemuxer* aDemuxer,
     if (!complete && !IsFirstFrameDecode()) {
       rv = LexerResult(Yield::OUTPUT_AVAILABLE);
     } else {
-      uint32_t loopCount = WebPDemuxGetI(aDemuxer, WEBP_FF_LOOP_COUNT);
-
-      MOZ_LOG(sWebPLog, LogLevel::Debug,
-              ("[this=%p] nsWebPDecoder::ReadMultiple -- loop count %u\n", this,
-               loopCount));
-      PostDecodeDone(loopCount - 1);
+      PostDecodeDone();
     }
   }
 
   return rv;
 }
 
-Maybe<Telemetry::HistogramID> nsWebPDecoder::SpeedHistogram() const {
-  return Some(Telemetry::IMAGE_DECODE_SPEED_WEBP);
+Maybe<glean::impl::MemoryDistributionMetric> nsWebPDecoder::SpeedMetric()
+    const {
+  return Some(glean::image_decode::speed_webp);
 }
 
 }  // namespace image

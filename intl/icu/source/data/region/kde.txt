@@ -1,6 +1,6 @@
 ﻿// © 2016 and later: Unicode, Inc. and others.
 // License & terms of use: http://www.unicode.org/copyright.html
-// Generated using tools/cldr/cldr-to-icu/build-icu-data.xml
+// Generated using tools/cldr/cldr-to-icu/
 kde{
     Countries{
         AD{"Andola"}
@@ -93,7 +93,6 @@ kde{
         IE{"Ayalandi"}
         IL{"Islaeli"}
         IN{"India"}
-        IO{"Lieneo lyaki Nngalesa Nbahali ya Hindi"}
         IQ{"Ilaki"}
         IR{"Uadyemi"}
         IS{"Aislandi"}
