@@ -64,6 +64,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/StaticPrefs_browser.h"
+#include "mozilla/StaticPrefs_middlemouse.h"
 #include "mozilla/StaticPrefs_full_screen_api.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Storage.h"
@@ -362,12 +363,12 @@ static SizeSpec CalcSizeSpec(const WindowFeatures&, bool aHasChromeParent,
 
 NS_IMETHODIMP
 nsWindowWatcher::OpenWindow2(
-    mozIDOMWindowProxy* aParent, const nsACString& aUrl,
-    const nsACString& aName, const nsACString& aFeatures,
-    const UserActivation::Modifiers& aModifiers, bool aCalledFromScript,
-    bool aDialog, bool aNavigate, nsISupports* aArguments, bool aIsPopupSpam,
-    bool aForceNoOpener, bool aForceNoReferrer, PrintKind aPrintKind,
-    nsDocShellLoadState* aLoadState, BrowsingContext** aResult) {
+    mozIDOMWindowProxy* aParent, nsIURI* aUri, const nsACString& aName,
+    const nsACString& aFeatures, const UserActivation::Modifiers& aModifiers,
+    bool aCalledFromScript, bool aDialog, bool aNavigate, nsIArray* aArguments,
+    bool aIsPopupSpam, bool aForceNoOpener, bool aForceNoReferrer,
+    PrintKind aPrintKind, nsDocShellLoadState* aLoadState,
+    BrowsingContext** aResult) {
   nsCOMPtr<nsIArray> argv = ConvertArgsToArray(aArguments);
 
   uint32_t argc = 0;
@@ -383,7 +384,7 @@ nsWindowWatcher::OpenWindow2(
     dialog = argc > 0;
   }
 
-  return OpenWindowInternal(aParent, aUrl, aName, aFeatures, aModifiers,
+  return OpenWindowInternal(aParent, aUri, aName, aFeatures, aModifiers,
                             aCalledFromScript, dialog, aNavigate, argv,
                             aIsPopupSpam, aForceNoOpener, aForceNoReferrer,
                             aPrintKind, aLoadState, aResult);
@@ -482,6 +483,10 @@ nsWindowWatcher::OpenWindowWithRemoteTab(
     const UserActivation::Modifiers& aModifiers, bool aCalledFromJS,
     float aOpenerFullZoom, nsIOpenWindowInfo* aOpenWindowInfo,
     nsIRemoteTab** aResult) {
+#ifdef MOZ_GECKOVIEW
+  MOZ_ASSERT(false, "GeckoView should use nsIBrowserDOMWindow instead");
+  return NS_ERROR_NOT_IMPLEMENTED;
+#else
   MOZ_ASSERT(XRE_IsParentProcess());
   MOZ_ASSERT(mWindowCreator);
 
@@ -598,7 +603,6 @@ nsWindowWatcher::OpenWindowWithRemoteTab(
   MOZ_ASSERT(chromeContext->UseRemoteTabs());
 
   MaybeDisablePersistence(sizeSpec, chromeTreeOwner);
-
   SizeOpenedWindow(chromeTreeOwner, parentWindowOuter, false, sizeSpec);
 
   nsCOMPtr<nsIRemoteTab> newBrowserParent;
@@ -609,6 +613,7 @@ nsWindowWatcher::OpenWindowWithRemoteTab(
 
   newBrowserParent.forget(aResult);
   return NS_OK;
+#endif
 }
 
 nsresult nsWindowWatcher::OpenWindowInternal(
@@ -619,7 +624,41 @@ nsresult nsWindowWatcher::OpenWindowInternal(
     bool aIsPopupSpam, bool aForceNoOpener, bool aForceNoReferrer,
     PrintKind aPrintKind, nsDocShellLoadState* aLoadState,
     BrowsingContext** aResult) {
+  NS_ENSURE_ARG_POINTER(aResult);
+  *aResult = nullptr;
+
+  nsCOMPtr<nsIURI> uriToLoad;
+  if (!aUrl.IsVoid()) {
+    nsresult rv = URIfromURL(aUrl, aParent, getter_AddRefs(uriToLoad));
+    if (NS_FAILED(rv)) {
+      return rv;
+    }
+  }
+
+  RefPtr<nsDocShellLoadState> loadState = aLoadState;
+  if (!loadState && uriToLoad && aNavigate) {
+    loadState = CreateLoadState(
+        uriToLoad, aParent ? nsPIDOMWindowOuter::From(aParent) : nullptr);
+  }
+
+  return nsWindowWatcher::OpenWindowInternal(
+      aParent, uriToLoad, aName, aFeatures, aModifiers, aCalledFromJS, aDialog,
+      aNavigate, aArgv, aIsPopupSpam, aForceNoOpener, aForceNoReferrer,
+      aPrintKind, loadState, aResult);
+}
+
+nsresult nsWindowWatcher::OpenWindowInternal(
+    mozIDOMWindowProxy* aParent, nsIURI* aUri, const nsACString& aName,
+    const nsACString& aFeatures,
+    const mozilla::dom::UserActivation::Modifiers& aModifiers,
+    bool aCalledFromJS, bool aDialog, bool aNavigate, nsIArray* aArgv,
+    bool aIsPopupSpam, bool aForceNoOpener, bool aForceNoReferrer,
+    PrintKind aPrintKind, nsDocShellLoadState* aLoadState,
+    BrowsingContext** aResult) {
   MOZ_ASSERT_IF(aForceNoReferrer, aForceNoOpener);
+  // XXXedgar aNavigate is now used for a sanity check only. We could consider
+  // removing it at some point.
+  MOZ_DIAGNOSTIC_ASSERT((aUri && aNavigate) == !!aLoadState);
 
   nsresult rv = NS_OK;
   bool isNewToplevelWindow = false;
@@ -629,8 +668,7 @@ nsresult nsWindowWatcher::OpenWindowInternal(
   bool uriToLoadIsChrome = false;
 
   uint32_t chromeFlags;
-  nsAutoString name;           // string version of aName
-  nsCOMPtr<nsIURI> uriToLoad;  // from aUrl, if any
+  nsAutoString name;  // string version of aName
   nsCOMPtr<nsIDocShellTreeOwner>
       parentTreeOwner;               // from the parent window, if any
   RefPtr<BrowsingContext> targetBC;  // from the new window
@@ -650,15 +688,16 @@ nsresult nsWindowWatcher::OpenWindowInternal(
     parentTreeOwner = parentOuterWin->GetTreeOwner();
   }
 
-  // We expect BrowserParent to have provided us the absolute URI of the window
-  // we're to open, so there's no need to call URIfromURL (or more importantly,
-  // to check for a chrome URI, which cannot be opened from a remote tab).
-  if (!aUrl.IsVoid()) {
-    rv = URIfromURL(aUrl, aParent, getter_AddRefs(uriToLoad));
-    if (NS_FAILED(rv)) {
-      return rv;
+  if (aUri) {
+    uriToLoadIsChrome = aUri->SchemeIs("chrome");
+
+    if (aLoadState) {
+      bool equal = false;
+      aUri->Equals(aLoadState->URI(), &equal);
+      MOZ_DIAGNOSTIC_ASSERT(
+          equal,
+          "aLoadState should contain the same URI passed to this function.");
     }
-    uriToLoadIsChrome = uriToLoad->SchemeIs("chrome");
   }
 
   bool nameSpecified = false;
@@ -947,11 +986,10 @@ nsresult nsWindowWatcher::OpenWindowInternal(
 
       nsCOMPtr<nsIWindowProvider> provider = do_GetInterface(parentTreeOwner);
       if (provider) {
-        rv = provider->ProvideWindow(openWindowInfo, chromeFlags, aCalledFromJS,
-                                     uriToLoad, name, featuresStr, aModifiers,
-                                     aForceNoOpener, aForceNoReferrer,
-                                     isPopupRequested, aLoadState, &windowIsNew,
-                                     getter_AddRefs(targetBC));
+        rv = provider->ProvideWindow(
+            openWindowInfo, chromeFlags, aCalledFromJS, aUri, name, featuresStr,
+            aModifiers, aForceNoOpener, aForceNoReferrer, isPopupRequested,
+            aLoadState, &windowIsNew, getter_AddRefs(targetBC));
 
         if (NS_SUCCEEDED(rv) && targetBC) {
           nsCOMPtr<nsIDocShell> newDocShell = targetBC->GetDocShell();
@@ -1165,6 +1203,7 @@ nsresult nsWindowWatcher::OpenWindowInternal(
     nsCOMPtr<nsIDocShellTreeOwner> newTreeOwner;
     targetDocShell->GetTreeOwner(getter_AddRefs(newTreeOwner));
     MaybeDisablePersistence(sizeSpec, newTreeOwner);
+    SizeOpenedWindow(newTreeOwner, aParent, isCallerChrome, sizeSpec);
   }
 
   if (aDialog && aArgv) {
@@ -1276,39 +1315,19 @@ nsresult nsWindowWatcher::OpenWindowInternal(
       targetBC->UseRemoteSubframes() ==
       !!(chromeFlags & nsIWebBrowserChrome::CHROME_FISSION_WINDOW));
 
-  RefPtr<nsDocShellLoadState> loadState = aLoadState;
-  if (uriToLoad && loadState) {
-    // If a URI was passed to this function, open that, not what was passed in
-    // the original LoadState. See Bug 1515433.
-    loadState->SetURI(uriToLoad);
-  } else if (uriToLoad && aNavigate && !loadState) {
-    RefPtr<WindowContext> context =
-        parentInnerWin ? parentInnerWin->GetWindowContext() : nullptr;
-    loadState = new nsDocShellLoadState(uriToLoad);
-
-    loadState->SetSourceBrowsingContext(parentBC);
-    loadState->SetAllowFocusMove(true);
-    loadState->SetHasValidUserGestureActivation(
-        context && context->HasValidTransientUserGestureActivation());
-    if (parentBC) {
-      loadState->SetTriggeringSandboxFlags(parentBC->GetSandboxFlags());
-    }
-
-    if (parentInnerWin) {
-      loadState->SetTriggeringWindowId(parentInnerWin->WindowID());
-      loadState->SetTriggeringStorageAccess(
-          parentInnerWin->UsingStorageAccess());
-    }
-
-    if (subjectPrincipal) {
-      loadState->SetTriggeringPrincipal(subjectPrincipal);
-    }
+  if (aLoadState) {
+    // TriggeringPrincipal and ReferrerInfo are set up here because we
+    // rely on the `jsapiChromeGuard` set above to get proper value.
+    // Ideally, aLoadState should contain that value when passed in.
+    if (!aLoadState->TriggeringPrincipal()) {
+      aLoadState->SetTriggeringPrincipal(subjectPrincipal);
 #ifndef ANDROID
-    MOZ_ASSERT(subjectPrincipal,
-               "nsWindowWatcher: triggeringPrincipal required");
+      MOZ_ASSERT(subjectPrincipal,
+                 "nsWindowWatcher: triggeringPrincipal required");
 #endif
+    }
 
-    if (!aForceNoReferrer) {
+    if (!aLoadState->GetReferrerInfo() && !aForceNoReferrer) {
       /* use the URL from the *extant* document, if any. The usual accessor
          GetDocument will synchronously create an about:blank document if
          it has no better answer, and we only care about a real document.
@@ -1321,16 +1340,16 @@ nsresult nsWindowWatcher::OpenWindowInternal(
       }
       if (doc) {
         auto referrerInfo = MakeRefPtr<ReferrerInfo>(*doc);
-        loadState->SetReferrerInfo(referrerInfo);
+        aLoadState->SetReferrerInfo(referrerInfo);
       }
     }
-  }
 
-  if (loadState && cx) {
-    nsGlobalWindowInner* win = xpc::CurrentWindowOrNull(cx);
-    if (win) {
-      nsCOMPtr<nsIContentSecurityPolicy> csp = win->GetCsp();
-      loadState->SetCsp(csp);
+    if (cx) {
+      nsGlobalWindowInner* win = xpc::CurrentWindowOrNull(cx);
+      if (win) {
+        nsCOMPtr<nsIContentSecurityPolicy> csp = win->GetCsp();
+        aLoadState->SetCsp(csp);
+      }
     }
   }
 
@@ -1359,10 +1378,10 @@ nsresult nsWindowWatcher::OpenWindowInternal(
     if (obsSvc) {
       RefPtr<nsHashPropertyBag> props = new nsHashPropertyBag();
 
-      if (uriToLoad) {
+      if (aUri) {
         // The url notified in the webNavigation.onCreatedNavigationTarget
         // event.
-        props->SetPropertyAsACString(u"url"_ns, uriToLoad->GetSpecOrDefault());
+        props->SetPropertyAsACString(u"url"_ns, aUri->GetSpecOrDefault());
       }
 
       props->SetPropertyAsInterface(u"sourceTabDocShell"_ns, parentDocShell);
@@ -1375,7 +1394,7 @@ nsresult nsWindowWatcher::OpenWindowInternal(
     }
   }
 
-  if (uriToLoad && aNavigate) {
+  if (aLoadState) {
     uint32_t loadFlags = nsIWebNavigation::LOAD_FLAGS_NONE;
     if (windowIsNew) {
       loadFlags |= nsIWebNavigation::LOAD_FLAGS_FIRST_LOAD;
@@ -1392,17 +1411,11 @@ nsresult nsWindowWatcher::OpenWindowInternal(
         loadFlags |= nsIWebNavigation::LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
       }
     }
-    loadState->SetLoadFlags(loadFlags);
-    loadState->SetFirstParty(true);
+    aLoadState->SetLoadFlags(loadFlags);
+    aLoadState->SetFirstParty(true);
 
     // Should this pay attention to errors returned by LoadURI?
-    targetBC->LoadURI(loadState);
-  }
-
-  if (isNewToplevelWindow) {
-    nsCOMPtr<nsIDocShellTreeOwner> newTreeOwner;
-    targetDocShell->GetTreeOwner(getter_AddRefs(newTreeOwner));
-    SizeOpenedWindow(newTreeOwner, aParent, isCallerChrome, sizeSpec);
+    targetBC->LoadURI(aLoadState);
   }
 
   if (windowIsModal) {
@@ -1795,7 +1808,9 @@ nsresult nsWindowWatcher::URIfromURL(const nsACString& aURL,
     }
   }
 
-  // build and return the absolute URI
+  // Build and return the absolute URI.
+  // XXXedgar should we use the characterSet of the document to build the
+  // absolute URI?
   return NS_NewURI(aURI, aURL, nullptr, baseURI);
 }
 
@@ -1998,14 +2013,6 @@ uint32_t nsWindowWatcher::CalculateChromeFlagsForSystem(
   /* Finally, once all the above normal chrome has been divined, deal
      with the features that are more operating hints than appearance
      instructions. (Note modality implies dependence.) */
-
-  if (aFeatures.GetBoolWithDefault("alwayslowered", false) ||
-      aFeatures.GetBoolWithDefault("z-lock", false)) {
-    chromeFlags |= nsIWebBrowserChrome::CHROME_WINDOW_LOWERED;
-  } else if (aFeatures.GetBoolWithDefault("alwaysraised", false)) {
-    chromeFlags |= nsIWebBrowserChrome::CHROME_WINDOW_RAISED;
-  }
-
   if (aFeatures.GetBoolWithDefault("suppressanimation", false)) {
     chromeFlags |= nsIWebBrowserChrome::CHROME_SUPPRESS_ANIMATION;
   }
@@ -2052,6 +2059,39 @@ uint32_t nsWindowWatcher::CalculateChromeFlagsForSystem(
 // public static
 bool nsWindowWatcher::HaveSpecifiedSize(const WindowFeatures& features) {
   return CalcSizeSpec(features, false, CSSToDesktopScale()).SizeSpecified();
+}
+
+/* static */
+already_AddRefed<nsDocShellLoadState> nsWindowWatcher::CreateLoadState(
+    nsIURI* aUri, nsPIDOMWindowOuter* aParent) {
+  MOZ_ASSERT(aUri);
+
+  RefPtr<nsDocShellLoadState> loadState = new nsDocShellLoadState(aUri);
+  loadState->SetAllowFocusMove(true);
+
+  if (aParent) {
+    if (nsCOMPtr<nsPIDOMWindowInner> parentInnerWin =
+            aParent->GetCurrentInnerWindow()) {
+      loadState->SetTriggeringWindowId(parentInnerWin->WindowID());
+      loadState->SetTriggeringStorageAccess(
+          parentInnerWin->UsingStorageAccess());
+    }
+
+    if (RefPtr<BrowsingContext> parentBC = aParent->GetBrowsingContext()) {
+      loadState->SetSourceBrowsingContext(parentBC);
+      loadState->SetTriggeringSandboxFlags(parentBC->GetSandboxFlags());
+    }
+
+    if (RefPtr<Document> parentDoc = aParent->GetDoc()) {
+      loadState->SetHasValidUserGestureActivation(
+          parentDoc->HasValidTransientUserGestureActivation());
+      loadState->SetTextDirectiveUserActivation(
+          parentDoc->ConsumeTextDirectiveUserActivation() ||
+          loadState->HasValidUserGestureActivation());
+    }
+  }
+
+  return loadState.forget();
 }
 
 // static
@@ -2189,7 +2229,7 @@ SizeSpec CalcSizeSpec(const WindowFeatures& aFeatures, bool aHasChromeParent,
   }
 
   // NOTE: The value is handled only on chrome-priv code.
-  // See nsWindowWatcher::SizeOpenedWindow.
+  // See SizeOpenedWindow.
   result.mLockAspectRatio =
       aFeatures.GetBoolWithDefault("lockaspectratio", false);
   return result;
@@ -2454,25 +2494,46 @@ bool nsWindowWatcher::IsWindowOpenLocationModified(
     const mozilla::dom::UserActivation::Modifiers& aModifiers,
     int32_t* aLocation) {
   // Perform the subset of BrowserUtils.whereToOpenLink in
-  // toolkit/modules/BrowserUtils.sys.mjs
+  // toolkit/modules/BrowserUtils.sys.mjs for modifier key handling, and
+  // URILoadingHelper.openLinkIn in browser/modules/URILoadingHelper.sys.mjs
+  // for loadInBackground pref handling.
 #ifdef XP_MACOSX
   bool metaKey = aModifiers.IsMeta();
 #else
   bool metaKey = aModifiers.IsControl();
 #endif
   bool shiftKey = aModifiers.IsShift();
-  if (metaKey) {
+
+  bool middleMouse = aModifiers.IsMiddleMouse();
+  bool middleUsesTabs = StaticPrefs::browser_tabs_opentabfor_middleclick();
+
+  if (metaKey || (middleMouse && middleUsesTabs)) {
+    bool loadInBackground = StaticPrefs::browser_tabs_loadInBackground();
     if (shiftKey) {
-      *aLocation = nsIBrowserDOMWindow::OPEN_NEWTAB;
-      return true;
+      loadInBackground = !loadInBackground;
     }
-    *aLocation = nsIBrowserDOMWindow::OPEN_NEWTAB_BACKGROUND;
+    if (loadInBackground) {
+      *aLocation = nsIBrowserDOMWindow::OPEN_NEWTAB_BACKGROUND;
+    } else {
+      *aLocation = nsIBrowserDOMWindow::OPEN_NEWTAB_FOREGROUND;
+    }
     return true;
   }
-  if (shiftKey) {
+
+#ifndef MOZ_GECKOVIEW
+  // GeckoView doesn't support new window.
+  bool middleUsesNewWindow = StaticPrefs::middlemouse_openNewWindow();
+  if (shiftKey || (middleMouse && !middleUsesTabs && middleUsesNewWindow)) {
     *aLocation = nsIBrowserDOMWindow::OPEN_NEWWINDOW;
     return true;
   }
+#endif
+
+  // If both middleUsesTabs and middleUsesNewWindow are false, it means the
+  // middle-click is used for different purpose, such as paste or scroll.
+  // Webpage still can trigger `window.open` for the user activation, and in
+  // that case use the `window.open`'s `features` parameter and other prefs to
+  // decide where to open.
 
   return false;
 }
@@ -2513,10 +2574,18 @@ int32_t nsWindowWatcher::GetWindowOpenLocation(
 
   if (containerPref != nsIBrowserDOMWindow::OPEN_NEWTAB &&
       containerPref != nsIBrowserDOMWindow::OPEN_CURRENTWINDOW) {
+#ifdef MOZ_GECKOVIEW
+    // GeckoView doesn't support new window. Just open a new tab.
+    return nsIBrowserDOMWindow::OPEN_NEWTAB;
+#else
     // Just open a window normally
     return nsIBrowserDOMWindow::OPEN_NEWWINDOW;
+#endif
   }
 
+#ifndef MOZ_GECKOVIEW
+  // GeckoView doesn't support new window, so don't check the preference for
+  // restriction.
   if (aCalledFromJS) {
     /* Now check our restriction pref.  The restriction pref is a power-user's
        fine-tuning pref. values:
@@ -2555,6 +2624,7 @@ int32_t nsWindowWatcher::GetWindowOpenLocation(
       }
     }
   }
+#endif
 
   return containerPref;
 }

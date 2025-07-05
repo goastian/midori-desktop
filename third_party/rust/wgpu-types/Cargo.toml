@@ -11,12 +11,19 @@
 
 [package]
 edition = "2021"
-rust-version = "1.74"
+rust-version = "1.82.0"
 name = "wgpu-types"
-version = "0.20.0"
+version = "25.0.0"
 authors = ["gfx-rs developers"]
-description = "WebGPU types"
+build = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = "Common types and utilities for wgpu, the cross-platform, safe, pure-rust graphics API"
 homepage = "https://wgpu.rs/"
+readme = false
 keywords = ["graphics"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/gfx-rs/wgpu"
@@ -34,35 +41,86 @@ targets = [
     "wasm32-unknown-unknown",
 ]
 
-[lib]
+[features]
+counters = []
+default = ["std"]
+fragile-send-sync-non-atomic-wasm = []
+serde = [
+    "dep:serde",
+    "bitflags/serde",
+]
+std = [
+    "js-sys/std",
+    "web-sys/std",
+    "thiserror/std",
+]
+strict_asserts = []
+trace = ["std"]
 
-[dependencies]
-bitflags = "2"
+[lib]
+name = "wgpu_types"
+path = "src/lib.rs"
+
+[dependencies.bitflags]
+version = "2.9"
+features = ["serde"]
+
+[dependencies.bytemuck]
+version = "1.22"
+features = [
+    "extern_crate_alloc",
+    "min_const_generics",
+    "derive",
+]
+
+[dependencies.log]
+version = "0.4.21"
 
 [dependencies.serde]
-version = "1"
-features = ["serde_derive"]
+version = "1.0.219"
+features = [
+    "alloc",
+    "derive",
+]
 optional = true
+default-features = false
 
-[dev-dependencies]
-serde_json = "1.0.116"
+[dependencies.thiserror]
+version = "2.0.3"
+optional = true
+default-features = false
 
 [dev-dependencies.serde]
-version = "1"
-features = ["serde_derive"]
+version = "1.0.219"
+features = ["derive"]
+default-features = false
 
-[features]
-fragile-send-sync-non-atomic-wasm = []
-strict_asserts = []
+[dev-dependencies.serde_json]
+version = "1.0.118"
 
-[target."cfg(target_arch = \"wasm32\")".dependencies]
-js-sys = "0.3.69"
+[target.'cfg(target_arch = "wasm32")'.dependencies.js-sys]
+version = "0.3.77"
+default-features = false
 
-[target."cfg(target_arch = \"wasm32\")".dependencies.web-sys]
-version = "0.3.69"
+[target.'cfg(target_arch = "wasm32")'.dependencies.web-sys]
+version = "0.3.77"
 features = [
     "ImageBitmap",
+    "ImageData",
+    "HtmlImageElement",
     "HtmlVideoElement",
     "HtmlCanvasElement",
     "OffscreenCanvas",
+    "VideoFrame",
 ]
+default-features = false
+
+[lints.clippy]
+alloc_instead_of_core = "warn"
+std_instead_of_alloc = "warn"
+std_instead_of_core = "warn"
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+priority = 0
+check-cfg = ["cfg(web_sys_unstable_apis)"]

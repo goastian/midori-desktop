@@ -1,0 +1,206 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+@import './normalize';
+@import './variables';
+@import './theme';
+@import './icons';
+@import './mixins';
+
+:root {
+  font-size: var(--font-size-root);
+  height: 100%;
+
+  &[lwt-newtab-brighttext] {
+    -moz-osx-font-smoothing: grayscale;
+  }
+}
+
+body,
+#root {
+  min-height: 100vh;
+}
+
+#root {
+  position: relative;
+}
+
+body {
+  background-color: var(--newtab-background-color);
+  font-family: system-ui;
+  font-size: var(--font-size-root);
+
+  // rules for HNT wallpapers
+  background-repeat: no-repeat;
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-image:
+    var(--newtab-wallpaper, ''),
+    linear-gradient(to right, var(--newtab-wallpaper-color, ''), var(--newtab-wallpaper-color, ''));
+}
+
+.no-scroll {
+  overflow: hidden;
+}
+
+h1,
+h2 {
+  font-weight: normal;
+}
+
+.inner-border {
+  border: $border-secondary;
+  border-radius: var(--border-radius-small);
+  height: 100%;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: 100%;
+  z-index: 100;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.show-on-init {
+  opacity: 0;
+  transition: opacity 0.2s ease-in;
+
+  &.on {
+    animation: fadeIn 0.2s;
+    opacity: 1;
+  }
+}
+
+.actions {
+  border-top: $border-secondary;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  margin: 0;
+  padding: 15px 25px 0;
+}
+
+// Default button (grey)
+.button,
+.actions button {
+  background-color: var(--newtab-button-secondary-color);
+  border: $border-primary;
+  border-radius: var(--border-radius-small);
+  color: inherit;
+  cursor: pointer;
+  margin-bottom: 15px;
+  padding: 10px 30px;
+  white-space: nowrap;
+
+  &:hover:not(.dismiss),
+  &:focus:not(.dismiss) {
+    box-shadow: $shadow-primary;
+    transition: box-shadow 150ms;
+  }
+
+  &.dismiss {
+    background-color: transparent;
+    border: 0;
+    padding: 0;
+    text-decoration: underline;
+  }
+
+  // Blue button
+  &.primary,
+  &.done {
+    background-color: var(--newtab-primary-action-background);
+    border: solid 1px var(--newtab-primary-action-background);
+    color: var(--newtab-primary-element-text-color);
+    margin-inline-start: auto;
+  }
+}
+
+input {
+  &[type='text'],
+  &[type='search'] {
+    border-radius: var(--border-radius-small);
+  }
+}
+
+// These styles are needed for -webkit-line-clamp to work correctly, so reuse
+// this class name while separately setting a clamp value via CSS or JS.
+.clamp {
+  -webkit-box-orient: vertical;
+  display: -webkit-box;
+  overflow: hidden;
+  word-break: break-word;
+}
+
+// Components
+// stylelint-disable no-invalid-position-at-import-rule
+@import '../components/A11yLinkButton/A11yLinkButton';
+@import '../components/Base/Base';
+@import '../components/ErrorBoundary/ErrorBoundary';
+@import '../components/Logo/Logo';
+@import '../components/TopSites/TopSites';
+@import '../components/Sections/Sections';
+@import '../components/Search/Search';
+@import '../components/ContextMenu/ContextMenu';
+@import '../components/ConfirmDialog/ConfirmDialog';
+@import '../components/CustomizeMenu/CustomizeMenu';
+@import '../components/WallpaperCategories/WallpaperCategories';
+@import '../components/Weather/Weather';
+@import '../components/DownloadModalToggle/DownloadModalToggle';
+@import '../components/Card/Card';
+@import '../components/CollapsibleSection/CollapsibleSection';
+@import '../components/DiscoveryStreamAdmin/DiscoveryStreamAdmin';
+@import '../components/PocketLoggedInCta/PocketLoggedInCta';
+@import '../components/MoreRecommendations/MoreRecommendations';
+@import '../components/DiscoveryStreamBase/DiscoveryStreamBase';
+@import '../components/ModalOverlay/ModalOverlay';
+@import '../components/Notifications/Notifications';
+
+// Discovery Stream Components
+@import '../components/DiscoveryStreamComponents/CardGrid/CardGrid';
+@import '../components/DiscoveryStreamComponents/CardSections/CardSections';
+@import '../components/DiscoveryStreamComponents/CollectionCardGrid/CollectionCardGrid';
+@import '../components/DiscoveryStreamComponents/Highlights/Highlights';
+@import '../components/DiscoveryStreamComponents/HorizontalRule/HorizontalRule';
+@import '../components/DiscoveryStreamComponents/Navigation/Navigation';
+@import '../components/DiscoveryStreamComponents/SectionTitle/SectionTitle';
+@import '../components/DiscoveryStreamComponents/TopSites/TopSites';
+@import '../components/DiscoveryStreamComponents/DSLinkMenu/DSLinkMenu';
+@import '../components/DiscoveryStreamComponents/DSCard/DSCard';
+@import '../components/DiscoveryStreamComponents/DSContextFooter/DSContextFooter';
+@import '../components/DiscoveryStreamComponents/DSImage/DSImage';
+@import '../components/DiscoveryStreamComponents/DSDismiss/DSDismiss';
+@import '../components/DiscoveryStreamComponents/DSMessage/DSMessage';
+@import '../components/DiscoveryStreamImpressionStats/ImpressionStats';
+@import '../components/DiscoveryStreamComponents/DSEmptyState/DSEmptyState';
+@import '../components/DiscoveryStreamComponents/DSTextPromo/DSTextPromo';
+@import '../components/DiscoveryStreamComponents/DSThumbsUpDownButtons/DSThumbsUpDownButtons';
+@import '../components/DiscoveryStreamComponents/DSSignup/DSSignup';
+@import '../components/DiscoveryStreamComponents/DSPrivacyModal/DSPrivacyModal';
+@import '../components/DiscoveryStreamComponents/PrivacyLink/PrivacyLink';
+@import '../components/DiscoveryStreamComponents/TopicsWidget/TopicsWidget';
+@import '../components/DiscoveryStreamComponents/FeatureHighlight/FeatureHighlight';
+@import '../components/DiscoveryStreamComponents/FeatureHighlight/DownloadMobilePromoHighlight';
+@import '../components/DiscoveryStreamComponents/FeatureHighlight/SponsoredContentHighlight';
+@import '../components/DiscoveryStreamComponents/FeatureHighlight/WallpaperFeatureHighlight';
+@import '../components/DiscoveryStreamComponents/TopicSelection/TopicSelection';
+@import '../components/DiscoveryStreamComponents/ListFeed/ListFeed';
+@import '../components/DiscoveryStreamComponents/AdBanner/AdBanner';
+@import '../components/DiscoveryStreamComponents/AdBannerContextMenu/AdBannerContextMenu';
+@import '../components/DiscoveryStreamComponents/SectionContextMenu/SectionContextMenu';
+@import '../components/DiscoveryStreamComponents/InterestPicker/InterestPicker';
+@import '../components/DiscoveryStreamComponents/ReportContent/ReportContent';
+@import '../components/DiscoveryStreamComponents/PersonalizedCard/PersonalizedCard';
+
+// stylelint-enable no-invalid-position-at-import-rule

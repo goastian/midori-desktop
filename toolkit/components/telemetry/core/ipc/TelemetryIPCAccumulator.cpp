@@ -91,6 +91,8 @@ void DoArmIPCTimerMainThread(const StaticMutexAutoLock& lock) {
         nsITimer::TYPE_ONE_SHOT_LOW_PRIORITY,
         "TelemetryIPCAccumulator::IPCTimerFired");
     gIPCTimerArmed = true;
+    PROFILER_MARKER_UNTYPED("IPC Accumulator", TELEMETRY,
+                            mozilla::MarkerTiming::IntervalStart());
   }
 }
 
@@ -203,9 +205,9 @@ void TelemetryIPCAccumulator::RecordChildKeyedScalarAction(
     DispatchIPCTimerFired();
   }
   // Store the action. The ProcessID will be determined by the receiver.
-  gChildKeyedScalarsActions->AppendElement(
-      KeyedScalarAction{aId, aDynamic, aAction, NS_ConvertUTF16toUTF8(aKey),
-                        Some(aValue), Telemetry::ProcessID::Count});
+  gChildKeyedScalarsActions->AppendElement(KeyedScalarAction{
+      {aId, aDynamic, aAction, Some(aValue), Telemetry::ProcessID::Count},
+      NS_ConvertUTF16toUTF8(aKey)});
   ArmIPCTimer(locker);
 }
 
@@ -327,6 +329,8 @@ void TelemetryIPCAccumulator::IPCTimerFired(nsITimer* aTimer, void* aClosure) {
       break;
   }
 
+  PROFILER_MARKER_UNTYPED("IPC Accumulator", TELEMETRY,
+                          mozilla::MarkerTiming::IntervalEnd());
   gIPCTimerArmed = false;
 }
 

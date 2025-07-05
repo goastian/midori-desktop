@@ -5,39 +5,63 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 /// Extension traits that are shared across multiple render targets
 use crate::Config;
 use extend::ext;
-use uniffi_bindgen::interface::{Function, Method, Object};
+use uniffi_bindgen::interface::{Callable, Constructor, Function, Method, Object};
 
-/// Check if a JS function should be async.
-///
-/// `uniffi-bindgen-gecko-js` has special async handling.  Many non-async Rust functions end up
-/// being async in js
-fn is_js_async(config: &Config, spec: &str) -> bool {
-    if config.receiver_thread.main.contains(spec) {
-        false
-    } else if config.receiver_thread.worker.contains(spec) {
-        true
+/// How should we call a Rust function from JS?
+pub enum CallStyle {
+    /// Sync Rust function
+    Sync,
+    /// Async Rust function
+    Async,
+    /// Sync Rust function, wrapped to be async
+    AsyncWrapper,
+}
+
+impl CallStyle {
+    /// Is the JS version of this function async?
+    pub fn is_js_async(&self) -> bool {
+        matches!(self, Self::Async | Self::AsyncWrapper)
+    }
+}
+
+fn call_style(callable: impl Callable, config: &Config, spec: &str) -> CallStyle {
+    if callable.is_async() {
+        CallStyle::Async
+    } else if config.async_wrappers.enable && !config.async_wrappers.main_thread.contains(spec) {
+        CallStyle::AsyncWrapper
     } else {
-        match &config.receiver_thread.default {
-            Some(t) => t != "main",
-            _ => true,
-        }
+        CallStyle::Sync
+    }
+}
+
+/// Map Rust crate names to UniFFI namespaces.
+pub fn crate_name_to_namespace(crate_name: &str) -> &str {
+    // TODO: remove this hack, we should be able to calculate this by walking the CI data.
+    match crate_name {
+        "uniffi_geometry" => "geometry",
+        "uniffi_sprites" => "sprites",
+        s => s,
     }
 }
 
 #[ext]
 pub impl Function {
-    fn is_js_async(&self, config: &Config) -> bool {
-        is_js_async(config, self.name())
+    fn call_style(&self, config: &Config) -> CallStyle {
+        call_style(self, config, self.name())
     }
 }
 
 #[ext]
 pub impl Object {
-    fn is_constructor_async(&self, config: &Config) -> bool {
-        is_js_async(config, self.name())
+    fn call_style_for_constructor(&self, cons: &Constructor, config: &Config) -> CallStyle {
+        call_style(cons, config, &format!("{}.{}", self.name(), cons.name()))
     }
 
-    fn is_method_async(&self, method: &Method, config: &Config) -> bool {
-        is_js_async(config, &format!("{}.{}", self.name(), method.name()))
+    fn call_style_for_method(&self, method: &Method, config: &Config) -> CallStyle {
+        call_style(
+            method,
+            config,
+            &format!("{}.{}", self.name(), method.name()),
+        )
     }
 }

@@ -81,7 +81,7 @@ class MOZ_CAPABILITY("mutex") TraceLogMutex
   }
 };
 
-static TraceLogMutex gTraceLog;
+MOZ_RUNINIT static TraceLogMutex gTraceLog;
 
 class MOZ_RAII AutoTraceLogLock {
  public:
@@ -547,9 +547,6 @@ static bool InitLog(const EnvCharType* aEnvVar, const char* aMsg,
 #endif
     if (stream) {
       MozillaRegisterDebugFD(fileno(stream));
-#ifdef MOZ_ENABLE_FORKSERVER
-      base::RegisterForkServerNoCloseFD(fileno(stream));
-#endif
       *aResult = stream;
       fprintf(stderr,
               "### " ENVVAR_PRINTF " defined -- logging %s to " ENVVAR_PRINTF
@@ -810,6 +807,11 @@ static void WalkTheStackSavingLocations(std::vector<void*>& aLocations,
 EXPORT_XPCOM_API(void)
 NS_LogInit() {
   NS_SetMainThread();
+
+#if defined(NS_BUILD_REFCNT_LOGGING)
+  mozilla::detail::RefCountLogger::SetLeakCheckingFunctions(NS_LogAddRef,
+                                                            NS_LogRelease);
+#endif
 
   // FIXME: This is called multiple times, we should probably not allow that.
   if (++gInitCount) {
@@ -1208,13 +1210,19 @@ void nsTraceRefcnt::StartLoggingClass(const char* aClass) {
 }
 
 #ifdef MOZ_ENABLE_FORKSERVER
-void nsTraceRefcnt::ResetLogFiles(const char* aProcType) {
-  AutoRestore<LoggingType> saveLogging(gLogging);
+void nsTraceRefcnt::CloseLogFilesAfterFork() {
+  // Disable logging, and close our log files. We can't have open file
+  // descriptors on the fork server during the FileDescriptorShuffle
+  // (bug 1909125).
   gLogging = NoLogging;
 
   ClearLogs(true);
+}
 
+void nsTraceRefcnt::ReopenLogFilesAfterFork(const char* aProcType) {
   // Create log files with the correct process type in the name.
+  // This will re-initialize gLogging after it was cleared in
+  // CloseLogFilesAfterFork.
   DoInitTraceLog(aProcType);
 }
 #endif

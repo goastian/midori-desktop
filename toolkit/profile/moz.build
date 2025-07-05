@@ -4,12 +4,12 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-MOCHITEST_CHROME_MANIFESTS += ["test/chrome.toml"]
+MOCHITEST_CHROME_MANIFESTS += ["test/chrome/chrome.toml"]
 
-XPCSHELL_TESTS_MANIFESTS += ["xpcshell/xpcshell.toml"]
+XPCSHELL_TESTS_MANIFESTS += ["test/xpcshell/xpcshell.toml"]
 
 if CONFIG["ENABLE_TESTS"]:
-    DIRS += ["gtest"]
+    DIRS += ["test/gtest"]
 
 XPIDL_SOURCES += [
     "nsIProfileMigrator.idl",
@@ -18,7 +18,13 @@ XPIDL_SOURCES += [
     "nsIToolkitProfileService.idl",
 ]
 
+MOZ_SRC_FILES += [
+    "ProfilesDatastoreService.sys.mjs",
+]
+
 XPIDL_MODULE = "toolkitprofile"
+
+EXPORTS += ["nsProfileLock.h"]
 
 UNIFIED_SOURCES += ["nsProfileLock.cpp"]
 
@@ -33,6 +39,9 @@ UNIFIED_SOURCES += ["nsToolkitProfileService.cpp"]
 LOCAL_INCLUDES += [
     "../xre",
 ]
+
+if CONFIG["MOZ_HAS_REMOTE"]:
+    LOCAL_INCLUDES += ["../components/remote"]
 
 FINAL_LIBRARY = "xul"
 

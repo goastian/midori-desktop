@@ -29,6 +29,7 @@
 #include "MozContainer.h"
 #include "WidgetUtilsGtk.h"
 
+#include "gfxPlatform.h"
 #include "nsFilePicker.h"
 
 #undef LOG
@@ -46,8 +47,8 @@ using namespace mozilla;
 using mozilla::dom::Promise;
 
 #define MAX_PREVIEW_SIZE 180
-// bug 1184009
-#define MAX_PREVIEW_SOURCE_SIZE 4096
+// bug 1935858
+#define MAX_PREVIEW_SOURCE_SIZE 8192
 
 nsIFile* nsFilePicker::mPrevDisplayDirectory = nullptr;
 
@@ -137,7 +138,7 @@ static void UpdateFilePreviewWidget(GtkFileChooser* file_chooser,
   // nice
   gint x_padding =
       (MAX_PREVIEW_SIZE + 6 - gdk_pixbuf_get_width(preview_pixbuf)) / 2;
-  gtk_misc_set_padding(GTK_MISC(preview_widget), x_padding, 0);
+  g_object_set(preview_widget, "padding", x_padding, 0, nullptr);
 
   gtk_image_set_from_pixbuf(preview_widget, preview_pixbuf);
   g_object_unref(preview_pixbuf);
@@ -171,10 +172,8 @@ static nsAutoCString MakeCaseInsensitiveShellGlob(const char* aPattern) {
 NS_IMPL_ISUPPORTS(nsFilePicker, nsIFilePicker)
 
 nsFilePicker::nsFilePicker()
-    : mSelectedType(0), mAllowURLs(false), mFileChooserDelegate(nullptr) {
-  mUseNativeFileChooser =
-      widget::ShouldUsePortal(widget::PortalKind::FilePicker);
-}
+    : mUseNativeFileChooser(
+          widget::ShouldUsePortal(widget::PortalKind::FilePicker)) {}
 
 nsFilePicker::~nsFilePicker() = default;
 
@@ -182,7 +181,7 @@ void ReadMultipleFiles(gpointer filename, gpointer array) {
   nsCOMPtr<nsIFile> localfile;
   nsresult rv =
       NS_NewNativeLocalFile(nsDependentCString(static_cast<char*>(filename)),
-                            false, getter_AddRefs(localfile));
+                            getter_AddRefs(localfile));
   if (NS_SUCCEEDED(rv)) {
     nsCOMArray<nsIFile>& files = *static_cast<nsCOMArray<nsIFile>*>(array);
     files.AppendObject(localfile);
@@ -368,7 +367,9 @@ nsFilePicker::GetFile(nsIFile** aFile) {
   *aFile = nullptr;
   nsCOMPtr<nsIURI> uri;
   nsresult rv = GetFileURL(getter_AddRefs(uri));
-  if (!uri) return rv;
+  if (!uri) {
+    return rv;
+  }
 
   nsCOMPtr<nsIFileURL> fileURL(do_QueryInterface(uri, &rv));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -398,27 +399,20 @@ nsFilePicker::GetFiles(nsISimpleEnumerator** aFiles) {
   return NS_ERROR_FAILURE;
 }
 
-nsresult nsFilePicker::Show(nsIFilePicker::ResultCode* aReturn) {
-  NS_ENSURE_ARG_POINTER(aReturn);
-
-  nsresult rv = Open(nullptr);
-  if (NS_FAILED(rv)) return rv;
-
-  while (mFileChooser) {
-    g_main_context_iteration(nullptr, TRUE);
-  }
-
-  *aReturn = mResult;
-  return NS_OK;
-}
-
 NS_IMETHODIMP
 nsFilePicker::Open(nsIFilePickerShownCallback* aCallback) {
   // Can't show two dialogs concurrently with the same filepicker
-  if (mFileChooser) return NS_ERROR_NOT_AVAILABLE;
+  if (mFileChooser) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
 
   if (MaybeBlockFilePicker(aCallback)) {
     return NS_OK;
+  }
+
+  // Don't attempt to open a real file-picker in headless mode.
+  if (gfxPlatform::IsHeadless()) {
+    return NS_ERROR_NOT_AVAILABLE;
   }
 
   NS_ConvertUTF16toUTF8 title(mTitle);
@@ -574,16 +568,6 @@ nsFilePicker::Open(nsIFilePickerShownCallback* aCallback) {
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsFilePicker::Close() {
-  if (mFileChooser) {
-    // Call ourself as done.
-    Done(mFileChooser, GTK_RESPONSE_CLOSE);
-  }
-
-  return NS_OK;
-}
-
 /* static */
 void nsFilePicker::OnResponse(void* file_chooser, gint response_id,
                               gpointer user_data) {
@@ -655,7 +639,9 @@ void nsFilePicker::Done(void* file_chooser, gint response) {
         if (file) {
           bool exists = false;
           file->Exists(&exists);
-          if (exists) result = nsIFilePicker::returnReplace;
+          if (exists) {
+            result = nsIFilePicker::returnReplace;
+          }
         }
       } else if (mMode == nsIFilePicker::modeOpen) {
         if (WarnForNonReadableFile(file_chooser)) {
@@ -706,8 +692,6 @@ void nsFilePicker::Done(void* file_chooser, gint response) {
   if (mCallback) {
     mCallback->Done(result);
     mCallback = nullptr;
-  } else {
-    mResult = result;
   }
   NS_RELEASE_THIS();
 }
@@ -724,16 +708,12 @@ void* nsFilePicker::GtkFileChooserNew(const gchar* title, GtkWindow* parent,
     return (*sGtkFileChooserNativeNewPtr)(title, parent, action, accept_label,
                                           nullptr);
   }
-  if (accept_label == nullptr) {
-    accept_label = (action == GTK_FILE_CHOOSER_ACTION_SAVE) ? GTK_STOCK_SAVE
-                                                            : GTK_STOCK_OPEN;
+  if (!accept_label) {
+    accept_label = (action == GTK_FILE_CHOOSER_ACTION_SAVE) ? "_Save" : "_Open";
   }
-  GtkWidget* file_chooser = gtk_file_chooser_dialog_new(
-      title, parent, action, GTK_STOCK_CANCEL, GTK_RESPONSE_CANCEL,
-      accept_label, GTK_RESPONSE_ACCEPT, nullptr);
-  gtk_dialog_set_alternative_button_order(
-      GTK_DIALOG(file_chooser), GTK_RESPONSE_ACCEPT, GTK_RESPONSE_CANCEL, -1);
-  return file_chooser;
+  return gtk_file_chooser_dialog_new(title, parent, action, "_Cancel",
+                                     GTK_RESPONSE_CANCEL, accept_label,
+                                     GTK_RESPONSE_ACCEPT, nullptr);
 }
 
 void nsFilePicker::GtkFileChooserShow(void* file_chooser) {

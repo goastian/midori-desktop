@@ -6,6 +6,10 @@
 const TEST_ORIGIN = "https://itisatracker.org";
 const TEST_BASE_DOMAIN = "itisatracker.org";
 
+let bounceTrackingProtection = Cc[
+  "@mozilla.org/bounce-tracking-protection;1"
+].getService(Ci.nsIBounceTrackingProtection);
+
 async function runPurgeTest(expectPurge) {
   ok(!SiteDataTestUtils.hasCookies(TEST_ORIGIN), "No cookies initially.");
 
@@ -86,7 +90,12 @@ add_setup(async function () {
 
 add_task(async function test_purge_in_regular_mode() {
   await SpecialPowers.pushPrefEnv({
-    set: [["privacy.bounceTrackingProtection.enableDryRunMode", false]],
+    set: [
+      [
+        "privacy.bounceTrackingProtection.mode",
+        Ci.nsIBounceTrackingProtection.MODE_ENABLED,
+      ],
+    ],
   });
 
   await runPurgeTest(true);
@@ -94,7 +103,12 @@ add_task(async function test_purge_in_regular_mode() {
 
 add_task(async function test_purge_in_dry_run_mode() {
   await SpecialPowers.pushPrefEnv({
-    set: [["privacy.bounceTrackingProtection.enableDryRunMode", true]],
+    set: [
+      [
+        "privacy.bounceTrackingProtection.mode",
+        Ci.nsIBounceTrackingProtection.MODE_ENABLED_DRY_RUN,
+      ],
+    ],
   });
 
   await runPurgeTest(false);

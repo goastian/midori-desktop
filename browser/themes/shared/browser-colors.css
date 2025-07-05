@@ -1,0 +1,154 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+:root {
+  --toolbox-bgcolor: -moz-headerbar;
+  --toolbox-textcolor: -moz-headerbartext;
+  --toolbox-bgcolor-inactive: -moz-headerbarinactive;
+  --toolbox-textcolor-inactive: -moz-headerbarinactivetext;
+
+  &:where([customtitlebar]) {
+    --toolbox-bgcolor: ActiveCaption;
+    --toolbox-textcolor: CaptionText;
+    --toolbox-bgcolor-inactive: InactiveCaption;
+    --toolbox-textcolor-inactive: InactiveCaptionText;
+  }
+
+  --sidebar-background-color: -moz-sidebar;
+  --sidebar-text-color: -moz-sidebartext;
+  --sidebar-border-color: -moz-sidebarborder;
+
+  --tabs-navbar-separator-color: ThreeDShadow;
+  --tabs-navbar-separator-style: solid;
+
+  --short-notification-background: #0250bb;
+  --short-notification-gradient: #9059ff;
+  --warning-icon-bgcolor: light-dark(#ffa436, #ffbd4f);
+
+  --urlbar-box-bgcolor: var(--button-background-color-hover);
+  --urlbar-box-focus-bgcolor: var(--button-background-color);
+  --urlbar-box-hover-bgcolor: var(--button-background-color-hover);
+  --urlbar-box-active-bgcolor: var(--button-background-color-active);
+  --urlbar-box-text-color: inherit;
+  --urlbar-box-hover-text-color: var(--urlbar-box-text-color);
+  --urlbar-icon-fill-opacity: 0.9;
+  @media (prefers-contrast) {
+    --urlbar-icon-fill-opacity: 1;
+    --sidebar-border-color: var(--border-color-card);
+  }
+
+  --content-area-shadow: var(--box-shadow-card);
+  --chrome-content-separator-color: var(--border-color-card);
+
+  /* stylelint-disable-next-line media-query-no-invalid */
+  @media not -moz-pref("sidebar.revamp") {
+    &:not([lwtheme]) {
+      --chrome-content-separator-color: ThreeDShadow;
+    }
+  }
+
+  &[lwtheme] {
+    --link-color: light-dark(var(--color-blue-60), var(--color-cyan-30));
+    --link-color-hover: light-dark(var(--color-blue-70), var(--color-cyan-20));
+    --link-color-active: light-dark(var(--color-blue-80), var(--color-cyan-10));
+    --tabs-navbar-separator-color: light-dark(rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.3));
+    --attention-dot-color: light-dark(#2ac3a2, #54ffbd);
+
+    --toolbox-bgcolor: var(--lwt-accent-color);
+    --toolbox-bgcolor-inactive: var(--lwt-accent-color-inactive, var(--lwt-accent-color));
+    --toolbox-textcolor: var(--lwt-text-color, currentColor);
+    --toolbox-textcolor-inactive: var(--lwt-text-color, currentColor);
+
+    @media not (prefers-contrast) {
+      --focus-outline-color: light-dark(#0061e0, #00ddff);
+    }
+  }
+
+  @media (prefers-color-scheme: dark) {
+    /* Increase the contrast of urlbar boxes in dark mode.
+       In practice these are bumped-up --button(-hover)-bgcolor rules */
+    --urlbar-box-bgcolor: color-mix(in srgb, currentColor 16%, transparent);
+    --urlbar-box-focus-bgcolor: color-mix(in srgb, currentColor 16%, transparent);
+    --urlbar-box-hover-bgcolor: color-mix(in srgb, currentColor 22%, transparent);
+  }
+}
+
+/**
+ * We intentionally do not use the custom colors on linux or macOS with system
+ * theme enabled, instead choosing to fall back to system colors and
+ * transparencies in order to look more native.
+ */
+/* stylelint-disable-next-line media-query-no-invalid */
+@media not ((prefers-contrast) or -moz-pref("browser.theme.native-theme")) {
+  :root:not([lwtheme]) {
+    --color-accent-primary: light-dark(rgb(0, 97, 224), rgb(0, 221, 255));
+    --button-text-color-primary: light-dark(rgb(251, 251, 254), rgb(43, 42, 51));
+    --button-background-color: light-dark(rgba(207, 207, 216, 0.33), rgba(0, 0, 0, 0.33));
+    --button-background-color-hover: light-dark(rgba(207, 207, 216, 0.66), rgba(207, 207, 216, 0.2));
+    --button-background-color-active: light-dark(rgb(207, 207, 216), rgba(207, 207, 216, 0.4));
+    --button-text-color: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
+
+    --arrowpanel-background: light-dark(white, rgb(66, 65, 77));
+    --arrowpanel-color: light-dark(black, rgb(251, 251, 254));
+    --arrowpanel-border-color: light-dark(rgb(240, 240, 244), rgb(82, 82, 94));
+
+    --arrowpanel-dimmed: light-dark(color-mix(in srgb, currentColor 12%, transparent), color-mix(in srgb, currentColor 17%, transparent));
+    --arrowpanel-dimmed-further: light-dark(color-mix(in srgb, currentColor 20%, transparent), color-mix(in srgb, currentColor 14%, transparent));
+
+    --input-color: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
+    --input-bgcolor: light-dark(rgb(255, 255, 255), #42414d);
+
+    --tab-selected-bgcolor: light-dark(rgb(255, 255, 255), rgba(106, 106, 120, 0.7));
+    --tab-selected-textcolor: light-dark(rgb(21, 20, 26), rgb(255, 255, 255));
+    --tabs-navbar-separator-style: none;
+
+    /* stylelint-disable-next-line media-query-no-invalid */
+    @media not ((-moz-windows-mica) or ((-moz-windows-accent-color-in-titlebar) and -moz-pref("browser.theme.windows.accent-color-in-tabs.enabled"))) {
+      --toolbox-bgcolor: light-dark(rgb(234, 234, 237), rgb(28, 27, 34));
+      --toolbox-textcolor: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
+      --toolbox-bgcolor-inactive: var(--toolbox-bgcolor);
+      --toolbox-textcolor-inactive: var(--toolbox-textcolor);
+      &:where([customtitlebar]) {
+        --toolbox-bgcolor-inactive: light-dark(rgb(235, 235, 239), rgb(31, 30, 37));
+      }
+    }
+
+    --toolbar-color: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
+    --toolbar-bgcolor: light-dark(#f9f9fb, rgb(43, 42, 51));
+
+    --toolbarbutton-icon-fill: light-dark(rgb(91, 91, 102), rgb(251, 251, 254));
+    --toolbarbutton-icon-fill-attention: light-dark(rgb(0, 97, 224), rgb(0, 221, 255));
+    --toolbarbutton-icon-fill-attention-text: light-dark(rgb(240, 240, 244), rgb(28, 27, 34));
+
+    --toolbar-field-border-color: transparent;
+    --toolbar-field-background-color: light-dark(rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.3));
+    --toolbar-field-color: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
+    --toolbar-field-focus-background-color: light-dark(white, rgb(66, 65, 77));
+    --toolbar-field-focus-color: light-dark(black, rgb(251, 251, 254));
+
+    --urlbarView-action-color: light-dark(rgb(91, 91, 102), rgb(191, 191, 201));
+    --urlbarView-separator-color: light-dark(rgb(240, 240, 244), rgb(82, 82, 94));
+    --urlbarView-highlight-background: light-dark(#e0e0e6, rgb(43, 42, 51));
+    --urlbarView-highlight-color: light-dark(rgb(21, 20, 26), rgb(251, 251, 254));
+    --urlbarView-hover-background: light-dark(rgb(240, 240, 244), var(--arrowpanel-dimmed));
+
+    --urlbar-box-bgcolor: light-dark(white, rgb(66, 65, 77));
+    --urlbar-icon-fill-opacity: 0.72;
+    @media (prefers-color-scheme: dark) {
+      --urlbar-icon-fill-opacity: 1;
+    }
+
+    /* stylelint-disable-next-line media-query-no-invalid */
+    @media not -moz-pref("sidebar.revamp") {
+      --chrome-content-separator-color: light-dark(rgb(204, 204, 204), hsl(240, 5%, 5%));
+    }
+
+    --link-color: light-dark(rgb(0, 97, 224), rgb(0, 221, 255));
+    --attention-dot-color: light-dark(#2ac3a2, #54ffbd);
+
+    --sidebar-background-color: light-dark(white, rgb(28, 27, 34));
+    --sidebar-text-color: light-dark(rgb(21, 20, 26), rgb(249, 249, 250));
+    --sidebar-border-color: var(--border-color-card);
+  }
+}

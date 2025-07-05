@@ -10,11 +10,13 @@
 #include "base/process_util.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Omnijar.h"
-#include "nsDirectoryServiceDefs.h"
-#include "nsCOMPtr.h"
 #include "nsComponentManagerUtils.h"
+#include "nsCOMPtr.h"
+#include "nsDirectoryServiceDefs.h"
 #include "nsIFile.h"
+#include "nsReadableUtils.h"
 #include "nsServiceManagerUtils.h"
+#include "nsString.h"
 #include "nsThreadUtils.h"
 #include "nsXULAppAPI.h"
 #include "prenv.h"
@@ -96,7 +98,8 @@ bool nsMacUtilsImpl::GetAppPath(nsCString& aAppPath) {
   nsAutoCString::const_iterator start, end;
   appBinaryPath.BeginReading(start);
   appBinaryPath.EndReading(end);
-  if (RFindInReadable(pattern, start, end)) {
+  if (RFindInReadable(pattern, start, end,
+                      nsCaseInsensitiveCStringComparator)) {
     end = start;
     appBinaryPath.BeginReading(start);
 
@@ -104,7 +107,8 @@ bool nsMacUtilsImpl::GetAppPath(nsCString& aAppPath) {
     // by searching backwards once more. The child executable resides
     // in Firefox.app/Contents/MacOS/plugin-container/Contents/MacOS.
     if (!XRE_IsParentProcess()) {
-      if (RFindInReadable(pattern, start, end)) {
+      if (RFindInReadable(pattern, start, end,
+                          nsCaseInsensitiveCStringComparator)) {
         end = start;
         appBinaryPath.BeginReading(start);
       } else {
@@ -118,8 +122,7 @@ bool nsMacUtilsImpl::GetAppPath(nsCString& aAppPath) {
   }
 
   nsCOMPtr<nsIFile> app;
-  nsresult rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(appPath), true,
-                                getter_AddRefs(app));
+  nsresult rv = NS_NewNativeLocalFile(appPath, getter_AddRefs(app));
   if (NS_FAILED(rv)) {
     return false;
   }
@@ -166,10 +169,8 @@ nsresult nsMacUtilsImpl::GetBloatLogDir(nsCString& aDirectoryPath) {
 nsresult nsMacUtilsImpl::GetDirectoryPath(const char* aPath,
                                           nsCString& aDirectoryPath) {
   nsresult rv = NS_OK;
-  nsCOMPtr<nsIFile> file = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  rv = file->InitWithNativePath(nsDependentCString(aPath));
+  nsCOMPtr<nsIFile> file;
+  rv = NS_NewNativeLocalFile(nsDependentCString(aPath), getter_AddRefs(file));
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIFile> directoryFile;
@@ -322,8 +323,7 @@ static nsresult GetDirFromBundlePlist(const nsAString& aKey, nsIFile** aDir) {
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIFile> dir;
-  rv = NS_NewLocalFile(NS_ConvertUTF8toUTF16(dirPath), false,
-                       getter_AddRefs(dir));
+  rv = NS_NewNativeLocalFile(dirPath, getter_AddRefs(dir));
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = dir->Normalize();

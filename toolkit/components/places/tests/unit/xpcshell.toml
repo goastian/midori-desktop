@@ -64,9 +64,19 @@ skip-if = ["os == 'linux'"] # Bug 821781
 
 ["test_PlacesDBUtils_removeOldCorruptDBs.js"]
 
+["test_PlacesObservers_counts.js"]
+
 ["test_PlacesQuery_history.js"]
 
+["test_PlacesSemanticHistoryDatabase.js"]
+run-if = ["buildapp == 'browser'"]
+
+["test_PlacesSemanticHistoryManager.js"]
+run-if = ["buildapp == 'browser'"]
+
 ["test_PlacesUtils_isRootItem.js"]
+
+["test_PlacesUtils_unwrapNodes.js"]
 
 ["test_PlacesUtils_unwrapNodes_place.js"]
 
@@ -106,6 +116,12 @@ skip-if = ["os == 'linux'"] # Bug 821781
 
 ["test_frecency_decay.js"]
 
+["test_frecency_interactions.js"]
+prefs = ["places.frecency.pages.alternative.featureGate=true"]
+
+["test_frecency_interactions_trigger_recalc.js"]
+prefs = ["places.frecency.pages.alternative.featureGate=true"]
+
 ["test_frecency_observers.js"]
 
 ["test_frecency_origins_alternative.js"]
@@ -113,7 +129,10 @@ skip-if = ["os == 'linux'"] # Bug 821781
 ["test_frecency_origins_recalc.js"]
 prefs = ["places.frecency.origins.alternative.featureGate=true"]
 
-["test_frecency_pages_alternative.js"]
+["test_frecency_pages_alternative_disabled.js"]
+prefs = ["places.frecency.pages.alternative.featureGate=false"]
+
+["test_frecency_pages_alternative_enabled.js"]
 prefs = ["places.frecency.pages.alternative.featureGate=true"]
 
 ["test_frecency_pages_recalc_alt.js"]
@@ -178,8 +197,6 @@ prefs = ["places.frecency.pages.alternative.featureGate=true"]
 ["test_origins_parsing.js"]
 
 ["test_pageGuid_bookmarkGuid.js"]
-
-["test_PlacesObservers_counts.js"]
 
 ["test_placeURIs.js"]
 

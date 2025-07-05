@@ -3,6 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/GlobalTeardownObserver.h"
 #include "mozilla/WeakPtr.h"
 #include "nsComponentManagerUtils.h"
 #include "nsCycleCollectionParticipant.h"
@@ -27,11 +28,10 @@ class Selection;
 }  // namespace dom
 }  // namespace mozilla
 
-#define TYPEAHEADFIND_NOTFOUND_WAV_URL "chrome://global/content/notfound.wav"
-
 class nsTypeAheadFind : public nsITypeAheadFind,
                         public nsIObserver,
-                        public nsSupportsWeakReference {
+                        public nsSupportsWeakReference,
+                        public mozilla::GlobalTeardownObserver {
  public:
   nsTypeAheadFind();
 
@@ -47,7 +47,6 @@ class nsTypeAheadFind : public nsITypeAheadFind,
   nsresult PrefsReset();
 
   void SaveFind();
-  void PlayNotFoundSound();
   nsresult GetWebBrowserFind(nsIDocShell* aDocShell,
                              nsIWebBrowserFind** aWebBrowserFind);
 
@@ -79,26 +78,23 @@ class nsTypeAheadFind : public nsITypeAheadFind,
   // Get the document we should search on.
   already_AddRefed<mozilla::dom::Document> GetDocument();
 
+  void DisconnectFromOwner() override;
   void ReleaseStrongMemberVariables();
+  void ReleaseFoundResultsAndDisconnect();
+  void SetCurrentWindow(nsPIDOMWindowInner* aWindow);
 
   // Current find state
   nsString mTypeAheadBuffer;
-  nsCString mNotFoundSoundURL;
 
   // PRBools are used instead of PRPackedBools because the address of the
   // boolean variable is getting passed into a method.
   bool mStartLinksOnlyPref;
-  bool mCaretBrowsingOn;
   bool mDidAddObservers;
   nsCOMPtr<mozilla::dom::Element>
       mFoundLink;  // Most recent elem found, if a link
   nsCOMPtr<mozilla::dom::Element>
       mFoundEditable;           // Most recent elem found, if editable
   RefPtr<nsRange> mFoundRange;  // Most recent range found
-  nsCOMPtr<nsPIDOMWindowInner> mCurrentWindow;
-  // mLastFindLength is the character length of the last find string.  It is
-  // used for disabling the "not found" sound when using backspace or delete
-  uint32_t mLastFindLength;
 
   // where selection was when user started the find
   RefPtr<nsRange> mStartFindRange;

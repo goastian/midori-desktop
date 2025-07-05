@@ -376,9 +376,8 @@ SubDialog.prototype = {
     let { contentDocument } = this._frame;
     // Provide the ability for the dialog to know that it is loaded in a frame
     // rather than as a top-level window.
-    for (let dialog of contentDocument.querySelectorAll("dialog")) {
-      dialog.setAttribute("subdialog", "true");
-    }
+    contentDocument.documentElement.toggleAttribute("subdialog", true);
+
     // Sub-dialogs loaded in a chrome window should use the system font size so
     // that the user has a way to increase or decrease it via system settings.
     // Sub-dialogs loaded in the content area, on the other hand, can be zoomed
@@ -556,11 +555,6 @@ SubDialog.prototype = {
       boxHorizontalBorder + frameHorizontalMargin
     }px + ${frameMinWidth})`;
 
-    // Temporary fix to allow parent chrome to collapse properly to min width.
-    // See Bug 1658722.
-    if (this._window.isChromeWindow) {
-      boxMinWidth = `min(80vw, ${boxMinWidth})`;
-    }
     this._box.style.minWidth = boxMinWidth;
   },
 
@@ -604,16 +598,11 @@ SubDialog.prototype = {
       if (sizeTo == "limitheight") {
         this._overlay.style.setProperty("--doc-height-px", getDocHeight());
         contentPane?.classList.add("sizeDetermined");
-      } else {
-        if (docEl.style.maxHeight) {
-          this._box.style.setProperty(
-            "--box-max-height-requested",
-            this._emToPx(docEl.style.maxHeight)
-          );
-        }
-        // Inform the CSS of the toolbar height so the bottom padding can be
-        // correctly calculated.
-        this._box.style.setProperty("--box-top-px", `${boxRect.top}px`);
+      } else if (docEl.style.maxHeight) {
+        this._box.style.setProperty(
+          "--box-max-height-requested",
+          this._emToPx(docEl.style.maxHeight)
+        );
       }
       return;
     }

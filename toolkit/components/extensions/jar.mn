@@ -16,7 +16,9 @@ toolkit.jar:
     content/extensions/parent/ext-captivePortal.js (parent/ext-captivePortal.js)
 #endif
     content/extensions/parent/ext-contentScripts.js (parent/ext-contentScripts.js)
+#ifndef ANDROID
     content/extensions/parent/ext-contextualIdentities.js (parent/ext-contextualIdentities.js)
+#endif
     content/extensions/parent/ext-clipboard.js (parent/ext-clipboard.js)
     content/extensions/parent/ext-cookies.js (parent/ext-cookies.js)
     content/extensions/parent/ext-declarativeNetRequest.js (parent/ext-declarativeNetRequest.js)
@@ -45,6 +47,7 @@ toolkit.jar:
     content/extensions/parent/ext-telemetry.js (parent/ext-telemetry.js)
     content/extensions/parent/ext-theme.js (parent/ext-theme.js)
     content/extensions/parent/ext-toolkit.js (parent/ext-toolkit.js)
+    content/extensions/parent/ext-trial-ml.js (parent/ext-trial-ml.js)
     content/extensions/parent/ext-userScripts.js (parent/ext-userScripts.js)
     content/extensions/parent/ext-webRequest.js (parent/ext-webRequest.js)
     content/extensions/parent/ext-webNavigation.js (parent/ext-webNavigation.js)

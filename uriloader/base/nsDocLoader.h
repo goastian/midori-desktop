@@ -24,6 +24,7 @@
 #include "nsCOMPtr.h"
 #include "PLDHashTable.h"
 #include "nsCycleCollectionParticipant.h"
+#include "mozilla/intl/Localization.h"
 
 #include "mozilla/LinkedList.h"
 #include "mozilla/UniquePtr.h"
@@ -38,12 +39,12 @@ class BrowsingContext;
  * nsDocLoader implementation...
  ****************************************************************************/
 
-#define NS_THIS_DOCLOADER_IMPL_CID                   \
-  { /* b4ec8387-98aa-4c08-93b6-6d23069c06f2 */       \
-    0xb4ec8387, 0x98aa, 0x4c08, {                    \
-      0x93, 0xb6, 0x6d, 0x23, 0x06, 0x9c, 0x06, 0xf2 \
-    }                                                \
-  }
+#define NS_THIS_DOCLOADER_IMPL_CID            \
+  {/* b4ec8387-98aa-4c08-93b6-6d23069c06f2 */ \
+   0xb4ec8387,                                \
+   0x98aa,                                    \
+   0x4c08,                                    \
+   {0x93, 0xb6, 0x6d, 0x23, 0x06, 0x9c, 0x06, 0xf2}}
 
 class nsDocLoader : public nsIDocumentLoader,
                     public nsIRequestObserver,
@@ -54,7 +55,7 @@ class nsDocLoader : public nsIDocumentLoader,
                     public nsIChannelEventSink,
                     public nsISupportsPriority {
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_THIS_DOCLOADER_IMPL_CID)
+  NS_INLINE_DECL_STATIC_IID(NS_THIS_DOCLOADER_IMPL_CID)
 
   nsDocLoader() : nsDocLoader(false) {}
 
@@ -331,6 +332,11 @@ class nsDocLoader : public nsIDocumentLoader,
    */
   bool mDocumentOpenedButNotLoaded;
 
+  /**
+   * This flag indicates that the loader is loading javascipt URI.
+   */
+  bool mIsLoadingJavascriptURI = false;
+
   bool mNotifyAboutBackgroundRequests;
 
   static const PLDHashTableOps sRequestInfoHashOps;
@@ -360,11 +366,15 @@ class nsDocLoader : public nsIDocumentLoader,
    * load event yet.
    */
   bool IsBlockingLoadEvent() const {
-    return mIsLoadingDocument || mDocumentOpenedButNotLoaded;
+    return mIsLoadingDocument || mDocumentOpenedButNotLoaded ||
+           mIsLoadingJavascriptURI;
   }
-};
 
-NS_DEFINE_STATIC_IID_ACCESSOR(nsDocLoader, NS_THIS_DOCLOADER_IMPL_CID)
+  RefPtr<mozilla::intl::Localization> mL10n;
+  static mozilla::Maybe<nsLiteralCString> StatusCodeToL10nId(nsresult aStatus);
+  nsresult FormatStatusMessage(nsresult aStatus, const nsAString& aHost,
+                               nsAString& aRetVal);
+};
 
 static inline nsISupports* ToSupports(nsDocLoader* aDocLoader) {
   return static_cast<nsIDocumentLoader*>(aDocLoader);

@@ -6,6 +6,10 @@
 
 "use strict";
 
+ChromeUtils.defineESModuleGetters(this, {
+  ExtensionUserScripts: "resource://gre/modules/ExtensionUserScripts.sys.mjs",
+});
+
 var { ExtensionUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/ExtensionUtils.sys.mjs"
 );
@@ -14,6 +18,7 @@ var { ExtensionError } = ExtensionUtils;
 
 /**
  * Represents (in the main browser process) a user script.
+ * (legacy MV2-only userScripts API)
  *
  * @param {UserScriptOptions} details
  *        The options object related to the user script
@@ -83,6 +88,107 @@ this.userScripts = class extends ExtensionAPI {
   }
 
   getAPI(context) {
+    const { extension } = context;
+    if (extension.manifestVersion == 2) {
+      return this.getLegacyMV2API(context);
+    }
+
+    function ensureIdsValidAndUnique(publicScriptIds) {
+      let seen = new Set();
+      for (let id of publicScriptIds) {
+        if (!id.length || id.startsWith("_")) {
+          throw new ExtensionError("Invalid id for RegisteredUserScript.");
+        }
+        if (seen.has(id)) {
+          throw new ExtensionError(`Duplicate script id: ${id}`);
+        }
+        seen.add(id);
+      }
+    }
+
+    function ensureValidWorldId(worldId) {
+      if (worldId && (worldId.startsWith("_") || worldId.length > 256)) {
+        // worldId "" is the default world.
+        // worldId starting with "_" are reserved.
+        // worldId length is capped. Limit is consistent with Chrome.
+        throw new ExtensionError(`Invalid worldId: ${worldId}`);
+      }
+    }
+
+    if (!extension.userScriptsManager) {
+      // extension.userScriptsManager is initialized by initExtension() at
+      // extension startup when the extension has the "userScripts" permission.
+      // When we get here, it means that "userScripts" was requested after
+      // startup, and we need to initialize it here.
+      ExtensionUserScripts.initExtension(extension);
+    }
+
+    const usm = extension.userScriptsManager;
+
+    return {
+      userScripts: {
+        register: async scripts => {
+          ensureIdsValidAndUnique(scripts.map(s => s.id));
+          scripts.forEach(s => ensureValidWorldId(s.worldId));
+
+          return usm.runWriteTask(async () => {
+            await usm.registerNewScripts(scripts);
+          });
+        },
+
+        update: async scripts => {
+          ensureIdsValidAndUnique(scripts.map(s => s.id));
+          scripts.forEach(s => ensureValidWorldId(s.worldId));
+
+          return usm.runWriteTask(async () => {
+            await usm.updateScripts(scripts);
+          });
+        },
+
+        unregister: async filter => {
+          let ids = filter?.ids;
+          if (ids) {
+            ensureIdsValidAndUnique(ids);
+          }
+          return usm.runWriteTask(async () => {
+            await usm.unregisterScripts(ids);
+          });
+        },
+
+        getScripts: async filter => {
+          let ids = filter?.ids;
+          if (ids) {
+            ensureIdsValidAndUnique(ids);
+          }
+          return usm.runReadTask(async () => {
+            return usm.getScripts(ids);
+          });
+        },
+
+        configureWorld: async properties => {
+          ensureValidWorldId(properties.worldId);
+          return usm.runWriteTask(async () => {
+            await usm.configureWorld(properties);
+          });
+        },
+
+        resetWorldConfiguration: async worldId => {
+          ensureValidWorldId(worldId);
+          return usm.runWriteTask(async () => {
+            await usm.resetWorldConfiguration(worldId);
+          });
+        },
+
+        getWorldConfigurations: async () => {
+          return usm.runReadTask(async () => {
+            return usm.getWorldConfigurations();
+          });
+        },
+      },
+    };
+  }
+
+  getLegacyMV2API(context) {
     const { extension } = context;
 
     // Set of the scriptIds registered from this context.

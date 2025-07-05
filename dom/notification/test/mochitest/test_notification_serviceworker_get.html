@@ -1,0 +1,95 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <title>ServiceWorkerRegistration.getNotifications() on main thread and worker thread.</title>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="MockAlertsService.js"></script>
+  <script src="NotificationTest.js"></script>
+  <script src="/tests/SimpleTest/GleanTest.js"></script>
+  <link rel="stylesheet" href="/tests/SimpleTest/test.css" />
+</head>
+<body>
+<p id="display"></p>
+<div id="content" style="display: none"></div>
+<pre id="test"></pre>
+<script type="text/javascript">
+
+  SimpleTest.requestFlakyTimeout("untriaged");
+
+  function testFrame(src) {
+    return new Promise(resolve => {
+      var iframe = document.createElement("iframe");
+      iframe.src = src;
+      window.callback = function(result) {
+        iframe.src = "about:blank";
+        document.body.removeChild(iframe);
+        iframe = null;
+        SpecialPowers.exactGC(function() {
+          resolve(result);
+        });
+      };
+      document.body.appendChild(iframe);
+    });
+  }
+
+  function registerSW() {
+    return testFrame('notification/register.html').then(function() {
+      ok(true, "Registered service worker.");
+    });
+  }
+
+  async function unregisterSW() {
+    const reg = await navigator.serviceWorker.getRegistration("./notification/");
+    await reg.unregister();
+  }
+
+  async function testDismiss() {
+    await GleanTest.testResetFOG();
+
+    // Dismissed persistent notifications should be removed from the
+    // notification list.
+    const reg = await navigator.serviceWorker.getRegistration("./notification/");
+    await reg.showNotification("This is a notification that will be closed", { tag: "dismiss" });
+    const showCount = await GleanTest.webNotification.showOrigin.first_party.testGetValue();
+    is(showCount, 1, "Notification first party show attempt counter should increment once.");
+
+    const notifications = await reg.getNotifications();
+    is(notifications.length, 1, "There should be one visible notification");
+    is(notifications[0].tag, "dismiss", "Tag should match");
+
+    // Simulate dismissing the notification by using the alerts service
+    // directly, instead of `Notification#close`.
+    const ids = await MockAlertsService.getNotificationIds();
+    is(ids.length, 1, "Only one notification registered in the service");
+
+    await MockAlertsService.closeNotification(ids[0]);
+
+    // Make sure dismissed notifications are no longer retrieved.
+    is((await reg.getNotifications()).length, 0, "There should be no more stored notifications");
+  }
+
+  function testGetWorker() {
+    todo(false, "navigator.serviceWorker is not available on workers yet");
+    return Promise.resolve();
+  }
+
+  SimpleTest.waitForExplicitFinish();
+
+  SpecialPowers.pushPrefEnv({"set": [
+    ["dom.serviceWorkers.exemptFromPerDomainMax", true],
+    ["dom.serviceWorkers.enabled", true],
+    ["dom.serviceWorkers.testing.enabled", true],
+  ]}, function() {
+    registerSW()
+      .then(NotificationTest.allowNotifications)
+      .then(() => MockAlertsService.register())
+      .then(testGetWorker)
+      .then(testDismiss)
+      .then(unregisterSW)
+      .then(function() {
+        SimpleTest.finish();
+      });
+  });
+</script>
+</body>
+</html>

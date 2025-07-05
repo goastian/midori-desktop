@@ -8,34 +8,92 @@ import "./moz-checkbox.mjs";
 export default {
   title: "UI Widgets/Checkbox",
   component: "moz-checkbox",
+  argTypes: {
+    l10nId: {
+      options: [
+        "moz-checkbox-label",
+        "moz-checkbox-label-description",
+        "moz-checkbox-long-label",
+      ],
+      control: { type: "select" },
+    },
+  },
   parameters: {
     status: "in-development",
     handles: ["click", "input", "change"],
     fluent: `
 moz-checkbox-label =
   .label = The label of the checkbox
+moz-checkbox-label-description =
+  .label = The label of the checkbox
+  .description = This is a description
+moz-checkbox-long-label =
+  .label = Lorem ipsum dolor sit amet, consectetur adipiscing elit. Vestibulum libero enim, luctus eu ante a, maximus imperdiet mi. Suspendisse sodales, nisi et commodo malesuada, lectus.
     `,
   },
 };
 
-const Template = ({ l10nId, checked, label, disabled, iconSrc }) => html`
-  <moz-checkbox
-    ?checked=${checked}
-    .label=${label}
-    data-l10n-id=${ifDefined(l10nId)}
-    data-l10n-attrs="label"
-    .iconSrc=${iconSrc}
-    ?disabled=${disabled}
-  ></moz-checkbox>
-`;
+const Template = ({
+  l10nId,
+  checked,
+  label,
+  disabled,
+  iconSrc,
+  description,
+  hasSlottedDescription,
+  accesskey,
+  supportPage,
+  hasSlottedSupportLink,
+  nestedFields,
+}) => {
+  let checkboxTemplate = html`
+    <moz-checkbox
+      ?checked=${checked}
+      label=${ifDefined(label)}
+      description=${ifDefined(description)}
+      data-l10n-id=${ifDefined(l10nId)}
+      .iconSrc=${iconSrc}
+      ?disabled=${disabled}
+      accesskey=${ifDefined(accesskey)}
+      support-page=${ifDefined(supportPage)}
+    >
+      ${hasSlottedDescription
+        ? html`<div slot="description">test slot text</div>`
+        : ""}
+      ${hasSlottedSupportLink
+        ? html`<a slot="support-link" href="www.example.com">Click me!</a>`
+        : ""}
+      ${nestedFields
+        ? html`<moz-checkbox slot="nested" data-l10n-id=${ifDefined(l10nId)}>
+            </moz-checkbox>
+            <moz-checkbox slot="nested" data-l10n-id=${ifDefined(l10nId)}>
+              <moz-checkbox slot="nested" data-l10n-id=${ifDefined(l10nId)}>
+              </moz-checkbox>
+            </moz-checkbox> `
+        : ""}
+    </moz-checkbox>
+  `;
+  return nestedFields
+    ? html`<moz-fieldset label="Checkbox with nested fields"
+        >${checkboxTemplate}</moz-fieldset
+      >`
+    : checkboxTemplate;
+};
 
 export const Default = Template.bind({});
 Default.args = {
+  name: "example-moz-checkbox",
+  value: "example-value",
   l10nId: "moz-checkbox-label",
   checked: false,
-  label: "",
   disabled: false,
   iconSrc: "",
+  description: "",
+  label: "",
+  accesskey: "",
+  supportPage: "",
+  hasSlottedSupportLink: false,
+  nestedFields: false,
 };
 
 export const WithIcon = Template.bind({});
@@ -54,4 +112,40 @@ export const Disabled = Template.bind({});
 Disabled.args = {
   ...Default.args,
   disabled: true,
+};
+
+export const WithDescription = Template.bind({});
+WithDescription.args = {
+  ...Default.args,
+  l10nId: "moz-checkbox-label-description",
+};
+
+export const WithSlottedDescription = Template.bind({});
+WithSlottedDescription.args = {
+  ...Default.args,
+  hasSlottedDescription: true,
+};
+
+export const WithAccesskey = Template.bind({});
+WithAccesskey.args = {
+  ...Default.args,
+  accesskey: "c",
+};
+
+export const WithSupportLink = Template.bind({});
+WithSupportLink.args = {
+  ...Default.args,
+  supportPage: "test",
+};
+
+export const WithSlottedSupportLink = Template.bind({});
+WithSlottedSupportLink.args = {
+  ...Default.args,
+  hasSlottedSupportLink: true,
+};
+
+export const WithNestedFields = Template.bind({});
+WithNestedFields.args = {
+  ...Default.args,
+  nestedFields: true,
 };

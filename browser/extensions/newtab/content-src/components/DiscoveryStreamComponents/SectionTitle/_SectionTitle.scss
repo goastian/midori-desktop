@@ -1,0 +1,16 @@
+.ds-section-title {
+  text-align: center;
+  margin-top: 24px;
+
+  .title {
+    color: var(--newtab-text-primary-color);
+    font-size: var(--font-size-xxlarge);
+    font-weight: normal;
+  }
+
+  .subtitle {
+    font-size: inherit;
+    color: var(--newtab-text-secondary-color);
+    margin-top: 4px;
+  }
+}

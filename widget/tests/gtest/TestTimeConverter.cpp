@@ -97,11 +97,12 @@ using TimeConverter = SystemTimeConverter<GTestTime, MockTimeStamp>;
 // Checks the expectation that the TimeStamp `ts` is exactly `ms` milliseconds
 // after the baseline timestamp. This is a macro so gtest still gives us useful
 // line numbers for failures.
-#define EXPECT_TS(ts, ms) \
-  EXPECT_EQ((ts)-MockTimeStamp::Baseline(), TimeDuration::FromMilliseconds(ms))
+#define EXPECT_TS(ts, ms)                     \
+  EXPECT_EQ((ts) - MockTimeStamp::Baseline(), \
+            TimeDuration::FromMilliseconds(ms))
 
 #define EXPECT_TS_FUZZY(ts, ms) \
-  EXPECT_DOUBLE_EQ(((ts)-MockTimeStamp::Baseline()).ToMilliseconds(), ms)
+  EXPECT_DOUBLE_EQ(((ts) - MockTimeStamp::Baseline()).ToMilliseconds(), ms)
 
 TEST(TimeConverter, SanityCheck)
 {
@@ -262,4 +263,36 @@ TEST(TimeConverter, FractionalMillisBug1626734)
   // EXPECT_TS checks above, but fixing this assertion is the end result that
   // we wanted in bug 1626734 so it feels appropriate to recheck it explicitly.
   EXPECT_TRUE(ts <= ts2);
+}
+
+TEST(TimeConverter, UnderflowWrapBaseline)
+{
+  MockTimeStamp::Init();
+
+  // Our SystemTimeConverter for 32-bit event times.
+  TimeConverter converter;
+
+  // First call: set a reference time of 300, which also sets the reference
+  // TimeStamp to baseline (0ms offset).
+  MockCurrentTimeGetter<GTestTime> timeGetter(300);
+  TimeStamp ts = converter.GetTimeStampFromSystemTime(300, timeGetter);
+  // Confirm we anchored at baseline + 0ms:
+  EXPECT_TS(ts, 0);
+
+  // Advance "TimeStamp::Now()" by 200ms => Now() = baseline + 200ms.
+  MockTimeStamp::Advance(200);
+
+  // Now request a TimeStamp for an event time of 299 (1 less than our reference
+  // of 300). With the old buggy code, 299 - 300 underflows to 0xFFFFFFFF in
+  // 32-bit arithmetic, leading to an incorrect final timestamp that is
+  // negative. In the fixed code, we treat that difference as signed (-1),
+  // realize it's negative, and do the "isNewer" branch properly.
+  {
+    UnusedCurrentTimeGetter<GTestTime> unused;
+    TimeStamp ts2 = converter.GetTimeStampFromSystemTime(299, unused);
+
+    // Ensure it's not backward in time.
+    ASSERT_GE(ts2, MockTimeStamp::Baseline())
+        << "Should not go behind the baseline!";
+  }
 }

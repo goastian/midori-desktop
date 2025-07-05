@@ -1,0 +1,671 @@
+// Type sizes
+$header-font-size: var(--font-size-large);
+$header-line-height: normal;
+$excerpt-font-size: var(--font-size-small);
+$excerpt-line-height: normal;
+$ds-card-image-gradient-fade: rgba(0, 0, 0, 0%);
+$ds-card-image-gradient-solid: rgba(0, 0, 0, 100%);
+
+.ds-card {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  // Bug 1914571: Reset the z-index threshold for topic labels
+  z-index: auto;
+
+  &.placeholder {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-small);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 15%);
+    border-radius: var(--border-radius-medium);
+    position: relative;
+    overflow: hidden;
+
+    .placeholder-fill {
+      background: var(--newtab-button-active-background);
+      border-radius: var(--border-radius-small);
+    }
+
+    .placeholder-image {
+      width: 100%;
+      height: 140px;
+      border-radius: var(--border-radius-medium) var(--border-radius-medium) 0 0;
+    }
+
+    .placeholder-label {
+      width: 40%;
+      height: var(--size-item-small);
+      margin-bottom: var(--space-small);
+      margin-inline: var(--space-large);
+    }
+
+    .placeholder-header {
+      width: 80%;
+      height: 20px;
+      margin-inline: var(--space-large);
+    }
+
+    .placeholder-description {
+      height: 60px;
+      margin-inline: var(--space-large);
+      margin-block-end: var(--space-large);
+    }
+  }
+
+  &.placeholder-seen {
+    &::before {
+      content: '';
+      display: block;
+      position: absolute;
+      top: 0;
+      inset-inline-start: -100%;
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(
+        90deg,
+        rgba(255, 255, 255, 0%) 0%,
+        var(--newtab-background-color-secondary) 50%,
+        rgba(255, 255, 255, 0%) 100%
+      );
+      z-index: 2;
+
+      @media (prefers-reduced-motion: no-preference) {
+        animation: loading 1.5s infinite;
+      }
+    }
+
+    @keyframes loading {
+      0% {
+        inset-inline-start: -100%;
+      }
+
+      // We apply the same frame from 50-100% to account for a delay in a repeating animation.
+      50%,
+      100% {
+        inset-inline-start: 100%;
+      }
+    }
+  }
+
+  .img-wrapper {
+    width: 100%;
+    position: relative;
+  }
+
+  .card-stp-button-hover-background {
+    opacity: 0;
+    width: 100%;
+    position: absolute;
+    top: 0;
+    transition: opacity;
+    transition-duration: 0s;
+    padding-block-start: 50%;
+    pointer-events: none;
+    background: $black-40;
+    border-radius: var(--border-radius-medium) var(--border-radius-medium) 0 0;
+
+    .card-stp-button-position-wrapper {
+      position: absolute;
+      inset-inline-end: 10px;
+      inset-block-start: 10px;
+      display: flex;
+      justify-content: end;
+      align-items: center;
+    }
+
+    .context-menu-position-container {
+      position: relative;
+    }
+
+    .context-menu {
+      margin-inline-start: 18.5px;
+      inset-inline-start: auto;
+      position: absolute;
+      top: 20.25px;
+    }
+
+    button,
+    .context-menu {
+      pointer-events: auto;
+    }
+
+    button {
+      cursor: pointer;
+    }
+  }
+
+  // Override note: The colors set here are intentionally static
+  // due to transparency issues over images.
+  .context-menu-button {
+    position: static;
+    transition: none;
+    border-radius: var(--border-radius-small);
+    background-color: var(--newtab-button-static-background);
+
+    &:hover {
+      background-color: var(--newtab-button-static-hover-background);
+
+      &:active {
+        background-color: var(--newtab-button-static-active-background);
+      }
+    }
+
+    &:focus-visible {
+      outline: 2px solid var(--newtab-button-focus-border);
+      background-color: var(--newtab-button-static-focus-background);
+    }
+  }
+
+  &.last-item {
+    .card-stp-button-hover-background {
+      .context-menu {
+        margin-inline-start: auto;
+        margin-inline-end: 18.5px;
+      }
+    }
+  }
+
+  // Note: `.ds-card .active,:focus-within,:hover` is also utilized by DSThumbsUpDownButtons
+  // The active class is added when the context menu is open.
+  &.active,
+  &:focus-within,
+  &:hover {
+    .card-stp-button-hover-background {
+      display: block;
+      opacity: 1;
+      transition-duration: 0.3s;
+
+      .context-menu-button {
+        opacity: 1;
+        transform: scale(1);
+      }
+    }
+
+    h3 {
+      color: var(--newtab-primary-action-background);
+    }
+  }
+
+  &:active {
+    h3 {
+      color: var(--newtab-primary-element-active-color);
+    }
+  }
+
+  .img {
+    aspect-ratio: 2/1;
+
+    img {
+      border-radius: var(--border-radius-small);
+      box-shadow: $shadow-image-inset;
+    }
+  }
+
+  .ds-card-link {
+    display: flex;
+    flex-direction: column;
+    align-items: initial;
+    text-decoration: none;
+    grid-template-columns: auto 1fr;
+    gap: inherit;
+    flex-grow: 1;
+
+    &:focus {
+      @include ds-focus;
+
+      transition: none;
+    }
+  }
+
+  .ds-card-topic {
+    position: absolute;
+    z-index: 1;
+    background: light-dark(#F0F0F4, var(--newtab-background-color-secondary));
+    border-radius: var(--border-radius-small);
+    color: var(--newtab-text-primary-color);
+    padding: var(--space-small);
+    margin: var(--space-small);
+    font-size: var(--font-size-small);
+  }
+
+  .meta {
+    display: flex;
+    justify-content: space-between;
+    flex-direction: column;
+    padding: 12px 16px;
+    flex-grow: 1;
+
+    .info-wrap {
+      flex-grow: 1;
+    }
+
+    .title {
+      // show only 3 lines of copy
+      @include limit-visible-lines(3, $header-line-height, $header-font-size);
+
+      margin-block: 0;
+      font-weight: var(--font-weight-bold);
+    }
+
+    .excerpt {
+      // show only 3 lines of copy
+      @include limit-visible-lines(3, $excerpt-line-height, $excerpt-font-size);
+    }
+
+    .source-wrapper {
+      display: flex;
+      margin-block-end: var(--space-xxsmall);
+      align-items: center;
+
+      img {
+        border-radius: var(--border-radius-small);
+        margin-inline-end: var(--space-small);
+      }
+    }
+
+    .source {
+      -webkit-line-clamp: 1;
+      font-size: var(--font-size-small);
+      color: var(--newtab-text-secondary-color);
+
+      span {
+        display: inline-block;
+      }
+    }
+
+    .new-sponsored-label {
+      font-size: var(--font-size-small);
+      margin-bottom: 2px;
+    }
+  }
+
+  &.ds-card-title-lines-2 .meta .title {
+    // show only 2 lines of copy
+    @include limit-visible-lines(2, $header-line-height, $header-font-size);
+  }
+
+  &.ds-card-title-lines-1 .meta .title {
+    // show only 1 line of copy
+    @include limit-visible-lines(1, $header-line-height, $header-font-size);
+  }
+
+  &.ds-card-desc-lines-2 .meta .excerpt {
+    // show only 2 lines of copy
+    @include limit-visible-lines(2, $excerpt-line-height, $excerpt-font-size);
+  }
+
+  &.ds-card-desc-lines-1 .meta .excerpt {
+    // show only 1 line of copy
+    @include limit-visible-lines(1, $excerpt-line-height, $excerpt-font-size);
+  }
+
+  &.ds-card-compact-image .img {
+    padding-top: 47%;
+  }
+
+  &.ds-card-image-gradient {
+    img {
+      mask-image: linear-gradient(
+        to top,
+        $ds-card-image-gradient-fade,
+        $ds-card-image-gradient-solid 40px
+      );
+    }
+
+    .meta {
+      padding: 3px 15px 11px;
+    }
+  }
+
+  &.ds-card-cta-button.variant-a,
+  &.ds-card-cta-button.variant-b {
+    .img {
+      padding-top: 52.4%;
+    }
+
+    .story-sponsored-label {
+      margin: var(--space-small) 0 0;
+    }
+
+    .source {
+      text-decoration: underline;
+    }
+
+    .story-footer {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0 var(--space-small);
+      margin-top: 0;
+    }
+
+    .story-cta-button {
+      cursor: inherit;
+      background: var(--button-background-color);
+      border-radius: var(--border-radius-small);
+      border: none;
+      padding: var(--space-xsmall) 16px;
+      font-size: var(--font-size-small);
+      font-weight: var(--font-weight-bold);
+      min-height: var(--size-item-large);
+      min-width: 97px;
+      color: var(--newtab-text-primary-color);
+      margin-top: var(--space-small);
+
+      &:hover {
+        background: var(--button-background-color-hover);
+      }
+    }
+
+    .cta-header {
+      background: var(--button-background-color);
+      font-size: var(--font-size-root);
+      font-weight: var(--font-weight-bold);
+      text-align: end;
+      padding: var(--space-xsmall) 16px;
+      color: var(--newtab-text-primary-color);
+      min-height: var(--size-item-large);
+    }
+  }
+
+  h3 {
+    font-size: $header-font-size;
+    color: var(--newtab-text-primary-color);
+  }
+
+  p {
+    font-size: $excerpt-font-size;
+    color: var(--newtab-text-primary-color);
+    margin: 0;
+  }
+}
+
+// Class is applied to .ds-card element
+// See _CardSections.scss for large and small card style mixins
+.sections-card-ui {
+  // Loading Animation
+  &.placeholder {
+    box-shadow: 0 2px 6px #15141A24;
+    border-radius: var(--border-radius-large);
+  }
+
+  .ds-card-grid & {
+    background: var(--newtab-background-card);
+
+    &:not(.placeholder) {
+      box-shadow: 0 1px 2px 0 rgba(58, 57, 68, 20%);
+      border-radius: var(--border-radius-large);
+
+      &.active,
+      &:focus-within,
+      &:hover {
+        box-shadow: 0 2px 14px 0 var(--newtab-section-card-box-shadow-color);
+      }
+
+      .img-wrapper > .ds-image.img > img {
+        border-radius: var(--border-radius-large) var(--border-radius-large) 0 0;
+      }
+    }
+
+    .meta {
+      padding: var(--space-large);
+
+      .title {
+        // show only 3 lines of copy
+        -webkit-line-clamp: 3;
+        font-size: var(--font-size-root);
+        margin-bottom: var(--space-small);
+        font-weight: var(--font-weight-bold);
+      }
+
+      .excerpt {
+        // show only 3 lines of copy
+        -webkit-line-clamp: 3;
+        font-size: var(--font-size-small);
+      }
+
+      .source {
+        -webkit-line-clamp: 1;
+        color: var(--newtab-text-secondary-text);
+        font-size: var(--font-size-small);
+      }
+
+      // Sponsored by text
+      .story-footer {
+        justify-content: flex-start;
+        display: grid;
+        height: 28px;
+        align-content: center;
+        margin-top: var(--space-small);
+      }
+
+      .story-footer .story-sponsored-label {
+        color: var(--newtab-text-secondary-text);
+      }
+
+      .story-sponsored-label {
+        line-height: unset;
+        font-size: var(--font-size-small);
+      }
+    }
+
+    .sections-card-footer {
+      margin-block-start: var(--space-small);
+      position: relative;
+      min-height: 28px;
+    }
+
+    .ds-card-topic {
+      display: grid;
+      align-content: center;
+      height: 28px;
+      font-size: var(--font-size-small);
+      color: var(--newtab-text-topic-label-color);
+      margin: initial;
+      padding: initial;
+      background-color: initial;
+    }
+
+    .card-stp-button-hover-background {
+      border-radius: var(--border-radius-large) var(--border-radius-large) 0 0;
+      background-color: transparent;
+    }
+
+    .ds-card-link:focus {
+      border-radius: var(--border-radius-large);
+    }
+  }
+}
+
+.ds-card-grid,
+.ds-section-grid {
+  // Intentionally duplicated classname to increase
+  // specificity to override .sections-card-ui styles
+  .ds-card.ds-spoc-rectangle.ds-spoc-rectangle {
+    box-shadow: none;
+    background: none;
+
+    .ds-image {
+      padding-block-start: 83.4%;
+    }
+
+    .card-stp-button-hover-background {
+      padding-block-start: 83.4%;
+    }
+
+    .img-wrapper .ds-image img {
+      border-radius: var(--border-radius-medium);
+    }
+
+    .meta {
+      padding-inline: 0;
+      padding-block: var(--space-medium);
+
+      .title {
+        // Contrast fix for users who have wallpapers set
+        @include wallpaper-contrast-fix;
+
+        text-transform: uppercase;
+        font-size: var(--font-size-small);
+        font-weight: normal;
+        color: var(--newtab-contextual-text-secondary-color);
+      }
+
+      .excerpt {
+        display: none;
+      }
+    }
+
+    .card-stp-button-hover-background {
+      border-radius: var(--border-radius-medium);
+    }
+
+    &.sections-card-ui {
+      .img-wrapper .ds-image img {
+        border-radius: var(--border-radius-large);
+      }
+    }
+
+    &.sections-card-ui:hover {
+      box-shadow: none;
+
+      .img-wrapper .ds-image img {
+        box-shadow: 0 2px 14px 0 var(--newtab-section-card-box-shadow-color);
+      }
+    }
+
+    &.refined-cards {
+      .img-wrapper .ds-image img {
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+      }
+
+      .meta {
+        z-index: 10;
+        padding: var(--space-small) var(--space-large);
+        padding-block-end: 0;
+
+      }
+
+      .info-wrap {
+        margin-block-start: auto;
+      }
+
+      .title {
+        text-transform: none;
+      }
+
+      .sections-card-footer {
+        display: none;
+      }
+
+      .card-stp-button-position-wrapper {
+        z-index: 10;
+        top: 0;
+        position: absolute;
+
+      }
+
+      .card-stp-button-position-wrapper .context-menu-position-container {
+        align-self: flex-start;
+        padding-block-start: var(--space-medium);
+      }
+    }
+  }
+
+}
+
+.ds-card-grid .refined-cards {
+  .meta {
+    color: var(--newtab-text-primary-color);
+    padding: var(--space-small) var(--space-large);
+
+    .excerpt {
+      display: none;
+    }
+  }
+
+  .sections-card-footer {
+    display: flex;
+    justify-content: space-between;
+    pointer-events: none;
+    max-width: 230px;
+    margin-block-start: var(--space-xsmall);
+
+    .source-wrapper {
+      margin-block-end: 0;
+      margin-inline-end: var(--space-xxsmall);
+      max-width: 175px;
+    }
+
+    .card-stp-thumbs-buttons-wrapper {
+      position: static;
+      inset-block-start: 0;
+      transform: translateY(0);
+      margin-block-start: 0;
+
+      .card-stp-thumbs-buttons {
+        pointer-events: auto;
+      }
+    }
+  }
+
+  &:has(.story-footer .story-sponsored-label) {
+    .sections-card-footer {
+      display: none;
+    }
+
+    .card-stp-button-position-wrapper {
+      inset-block-end: var(--space-small);
+    }
+  }
+
+  .story-footer {
+    margin-block: 0 var(--space-xsmall);
+  }
+
+  .card-stp-button-hover-background {
+    height: 100%;
+    padding-block-start: 0;
+    background: transparent;
+
+    .card-stp-button-position-wrapper {
+      inset-block-start: unset;
+      // this value needs to equal the current padding of the card
+      inset-block-end: var(--space-medium);
+      inset-inline-end: var(--space-large);
+    }
+  }
+
+  &:hover,
+  &.active {
+    h3 {
+      color: var(--color-accent-primary);
+    }
+
+    .context-menu-button {
+      background-color: transparent;
+    }
+
+    .context-menu-button:hover {
+      background-color: var(--newtab-button-static-hover-background);
+
+      &:active {
+        background-color: var(--newtab-button-static-active-background);
+      }
+    }
+
+    .context-menu-button:focus-visible {
+      outline: 2px solid var(--newtab-button-focus-border);
+      background-color: var(--newtab-button-static-focus-background);
+    }
+  }
+
+  .sections-card-footer {
+    .source {
+      display: block;
+    }
+  }
+}

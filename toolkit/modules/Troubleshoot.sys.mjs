@@ -14,7 +14,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
 // We use a list of prefs for display to make sure we only show prefs that
 // are useful for support and won't compromise the user's privacy.  Note that
 // entries are *prefixes*: for example, "accessibility." applies to all prefs
-// under the "accessibility.*" branch.
+// under the "accessibility.*" branch.  To exclude entries, add them to
+// PREF_REGEXES_NOT_TO_DISPLAY or PREFS_UNIMPORTANT_LOCKED.
 const PREFS_FOR_DISPLAY = [
   "accessibility.",
   "apz.",
@@ -40,6 +41,7 @@ const PREFS_FOR_DISPLAY = [
   "browser.places.",
   "browser.privatebrowsing.",
   "browser.search.context.loadInBackground",
+  "browser.search.lastSettingsCorruptTime",
   "browser.search.log",
   "browser.search.openintab",
   "browser.search.param",
@@ -56,6 +58,7 @@ const PREFS_FOR_DISPLAY = [
   "browser.zoom.",
   "doh-rollout.",
   "dom.",
+  "extensions.backgroundServiceWorker.enabled",
   "extensions.checkCompatibility",
   "extensions.eventPages.enabled",
   "extensions.formautofill.",
@@ -132,10 +135,11 @@ PREFS_GETTERS[Ci.nsIPrefBranch.PREF_BOOL] = (prefs, name) =>
   prefs.getBoolPref(name);
 
 // List of unimportant locked prefs (won't be shown on the troubleshooting
-// session)
+// session). You only need to add prefs here if they are matched by
+// PREFS_FOR_DISPLAY yet not by PREF_REGEXES_NOT_TO_DISPLAY.
 const PREFS_UNIMPORTANT_LOCKED = [
   "dom.postMessage.sharedArrayBuffer.bypassCOOP_COEP.insecure.enabled",
-  "extensions.backgroundServiceWorkerEnabled.enabled",
+  "extensions.backgroundServiceWorker.enabled",
   "privacy.restrict3rdpartystorage.url_decorations",
 ];
 
@@ -257,9 +261,19 @@ var dataProviders = {
 
     try {
       // Windows - Get info about attached pointing devices
-      data.pointingDevices = Services.sysinfo
-        .getProperty("pointingDevices")
-        .split(",");
+      data.pointingDevices = [];
+      if (Services.sysinfo.getProperty("hasMouse")) {
+        data.pointingDevices.push("pointing-device-mouse");
+      }
+      if (Services.sysinfo.getProperty("hasTouch")) {
+        data.pointingDevices.push("pointing-device-touchscreen");
+      }
+      if (Services.sysinfo.getProperty("hasPen")) {
+        data.pointingDevices.push("pointing-device-pen-digitizer");
+      }
+      if (!data.pointingDevices.length) {
+        data.pointingDevices.push("pointing-device-none");
+      }
     } catch (e) {}
 
     data.numTotalWindows = 0;
@@ -324,7 +338,6 @@ var dataProviders = {
       "sitepermission",
       "theme",
     ]);
-    addons = addons.filter(e => !e.isSystem);
     addons.sort(function (a, b) {
       if (a.isActive != b.isActive) {
         return b.isActive ? 1 : -1;
@@ -346,7 +359,7 @@ var dataProviders = {
       }
       return 0;
     });
-    let props = ["name", "type", "version", "isActive", "id"];
+    let props = ["name", "type", "version", "isActive", "id", "locationName"];
     done(
       addons.map(function (ext) {
         return props.reduce(function (extData, prop) {
@@ -375,33 +388,6 @@ var dataProviders = {
     }
 
     done(data);
-  },
-
-  features: async function features(done) {
-    let features = await AddonManager.getAddonsByTypes(["extension"]);
-    features = features.filter(f => f.isSystem);
-    features.sort(function (a, b) {
-      // In some unfortunate cases addon names can be null.
-      let aname = a.name || null;
-      let bname = b.name || null;
-      let lc = aname.localeCompare(bname);
-      if (lc != 0) {
-        return lc;
-      }
-      if (a.version != b.version) {
-        return a.version > b.version ? 1 : -1;
-      }
-      return 0;
-    });
-    let props = ["name", "version", "id"];
-    done(
-      features.map(function (f) {
-        return props.reduce(function (fData, prop) {
-          fData[prop] = f[prop];
-          return fData;
-        }, {});
-      })
-    );
   },
 
   processes: async function processes(done) {
@@ -465,27 +451,6 @@ var dataProviders = {
     };
 
     done(data);
-  },
-
-  async experimentalFeatures(done) {
-    if (AppConstants.MOZ_BUILD_APP != "browser") {
-      done();
-      return;
-    }
-    let { FeatureGate } = ChromeUtils.importESModule(
-      "resource://featuregates/FeatureGate.sys.mjs"
-    );
-
-    let gates = await FeatureGate.all();
-    done(
-      gates.map(gate => {
-        return [
-          gate.title,
-          gate.preference,
-          Services.prefs.getBoolPref(gate.preference),
-        ];
-      })
-    );
   },
 
   async legacyUserStylesheets(done) {
@@ -575,26 +540,26 @@ var dataProviders = {
       // a string in some cases and an object in others, return an object always.
       let msg = { key: "" };
       try {
-        var status = gfxInfo.getFeatureStatus(feature);
+        var status = gfxInfo.getFeatureStatusStr(feature);
       } catch (e) {}
       switch (status) {
-        case Ci.nsIGfxInfo.FEATURE_BLOCKED_DEVICE:
-        case Ci.nsIGfxInfo.FEATURE_DISCOURAGED:
+        case "BLOCKED_DEVICE":
+        case "DISCOURAGED":
           msg = { key: "blocked-gfx-card" };
           break;
-        case Ci.nsIGfxInfo.FEATURE_BLOCKED_OS_VERSION:
+        case "BLOCKED_OS_VERSION":
           msg = { key: "blocked-os-version" };
           break;
-        case Ci.nsIGfxInfo.FEATURE_BLOCKED_DRIVER_VERSION:
+        case "BLOCKED_DRIVER_VERSION":
           try {
             var driverVersion =
-              gfxInfo.getFeatureSuggestedDriverVersion(feature);
+              gfxInfo.getFeatureSuggestedDriverVersionStr(feature);
           } catch (e) {}
           msg = driverVersion
             ? { key: "try-newer-driver", args: { driverVersion } }
             : { key: "blocked-driver" };
           break;
-        case Ci.nsIGfxInfo.FEATURE_BLOCKED_MISMATCHED_VERSION:
+        case "BLOCKED_MISMATCHED_VERSION":
           msg = { key: "blocked-mismatched-version" };
           break;
       }
@@ -646,9 +611,7 @@ var dataProviders = {
 
     if (!data.numAcceleratedWindows && gfxInfo) {
       let win = AppConstants.platform == "win";
-      let feature = win
-        ? gfxInfo.FEATURE_DIRECT3D_9_LAYERS
-        : gfxInfo.FEATURE_OPENGL_LAYERS;
+      let feature = win ? "DIRECT3D_9_LAYERS" : "OPENGL_LAYERS";
       data.numAcceleratedWindowsMessage = statusMsgForFeature(feature);
     }
 
@@ -695,9 +658,7 @@ var dataProviders = {
       }
 
       if ("direct2DEnabled" in data && !data.direct2DEnabled) {
-        data.direct2DEnabledMessage = statusMsgForFeature(
-          Ci.nsIGfxInfo.FEATURE_DIRECT2D
-        );
+        data.direct2DEnabledMessage = statusMsgForFeature("DIRECT2D");
       }
     }
 
@@ -846,13 +807,13 @@ var dataProviders = {
 
       desc.isFallbackAdapter = adapter.isFallbackAdapter;
 
-      const adapterInfo = await adapter.requestAdapterInfo();
+      const adapterInfo = adapter.info;
       // We can't directly enumerate properties of instances of `GPUAdapterInfo`s, so use the prototype instead.
       const adapterInfoObj = {};
       for (const k of Object.keys(Object.getPrototypeOf(adapterInfo)).sort()) {
         adapterInfoObj[k] = adapterInfo[k];
       }
-      desc[`requestAdapterInfo()`] = adapterInfoObj;
+      desc.info = adapterInfoObj;
 
       desc.features = Array.from(adapter.features).sort();
 
@@ -1041,8 +1002,8 @@ var dataProviders = {
       ChromeUtils.importESModule(
         "resource://normandy/lib/PreferenceRollouts.sys.mjs"
       );
-    const { ExperimentManager } = ChromeUtils.importESModule(
-      "resource://nimbus/lib/ExperimentManager.sys.mjs"
+    const { ExperimentAPI } = ChromeUtils.importESModule(
+      "resource://nimbus/ExperimentAPI.sys.mjs"
     );
 
     // Get Normandy data in parallel, and sort each group by slug.
@@ -1057,12 +1018,12 @@ var dataProviders = {
         NormandyAddonStudies.getAllActive(),
         NormandyPreferenceRollouts.getAllActive(),
         NormandyPreferenceStudies.getAllActive(),
-        ExperimentManager.store
+        ExperimentAPI.manager.store
           .ready()
-          .then(() => ExperimentManager.store.getAllActiveExperiments()),
-        ExperimentManager.store
+          .then(() => ExperimentAPI.manager.store.getAllActiveExperiments()),
+        ExperimentAPI.manager.store
           .ready()
-          .then(() => ExperimentManager.store.getAllActiveRollouts()),
+          .then(() => ExperimentAPI.manager.store.getAllActiveRollouts()),
       ].map(promise =>
         promise
           .catch(error => {

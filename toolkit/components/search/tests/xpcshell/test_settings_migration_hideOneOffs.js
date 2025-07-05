@@ -27,13 +27,16 @@ async function loadSettingsFile(settingsFile) {
  * Test reading from search.json.mozlz4
  */
 add_setup(async function () {
-  await SearchTestUtils.useTestEngines("data1");
-  await AddonTestUtils.promiseStartupManager();
+  SearchTestUtils.setRemoteSettingsConfig([
+    { identifier: "engine1" },
+    { identifier: "engine2" },
+  ]);
+  await SearchTestUtils.initXPCShellAddonManager();
   await Services.search.init();
 });
 
 add_task(async function test_migration_from_pre_ids() {
-  await loadSettingsFile("data/search-legacy.json");
+  await loadSettingsFile("settings/v1-metadata-migration.json");
 
   Services.prefs.setStringPref("browser.search.hiddenOneOffs", "engine1");
 

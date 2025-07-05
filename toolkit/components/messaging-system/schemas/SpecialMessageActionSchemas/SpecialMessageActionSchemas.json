@@ -211,6 +211,22 @@
           "type": "object",
           "properties": {
             "data": {
+              "type": "string",
+              "description": "Id of the pane to open, e.g., viewHistorySidebar"
+            },
+            "type": {
+              "type": "string",
+              "enum": ["OPEN_SIDEBAR"]
+            }
+          },
+          "required": ["data", "type"],
+          "additionalProperties": false,
+          "description": "Opens a sidebar pane"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
               "type": "object",
               "properties": {
                 "args": {
@@ -354,6 +370,18 @@
           "required": ["type"],
           "additionalProperties": false,
           "description": "Pin the app to taskbar"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["PIN_FIREFOX_TO_START_MENU"]
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": false,
+          "description": "Pin the app to Windows Start Menu"
         },
         {
           "type": "object",
@@ -513,10 +541,10 @@
                       "type": "string"
                     },
                     "value": {
-                      "type": ["boolean", "string", "number", "null"]
+                      "type": ["boolean", "string", "number", "null", "object"]
                     }
                   },
-                  "description": "An object representing a pref containing a name and a value."
+                  "description": "An object representing a pref containing a name and a value. The value can be an object with the property `timestamp` with a truthy value to set the pref to a string of the current time in ms."
                 }
               },
               "required": ["pref"],
@@ -535,13 +563,22 @@
           "type": "object",
           "properties": {
             "data": {
-              "actions": {
-                "type": "array",
-                "items": {
-                  "type": "object",
-                  "description": "A special message action definition"
+              "type": "object",
+              "properties": {
+                "orderedExecution": {
+                  "type": "boolean",
+                  "description": "Optional - if true, actions will execute sequentially"
+                },
+                "actions": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "description": "A special message action definition"
+                  }
                 }
-              }
+              },
+              "required": ["actions"],
+              "additionalProperties": false
             },
             "type": {
               "type": "string",
@@ -593,6 +630,123 @@
           "required": ["type"],
           "additionalProperties": false,
           "description": "Focuses the urlbar in the window the message was displayed in"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "type": "object",
+              "properties": {
+                "shouldHideDialog": {
+                  "type": "boolean",
+                  "description": "Whether or not the bookmarks dialog should be visible"
+                },
+                "shouldHideConfirmationHint": {
+                  "type": "boolean",
+                  "description": "Whether or not the bookmarks confirmation hint should be visible"
+                }
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": ["BOOKMARK_CURRENT_TAB"]
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": false,
+          "description": "Bookmarks the tab that was selected when the message was displayed"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "visibility": {
+                "type": "string",
+                "description": "The visibility of the bookmarks toolbar",
+                "enum": ["always", "never", "newtab"]
+              }
+            },
+            "type": {
+              "type": "string",
+              "enum": ["SET_BOOKMARKS_TOOLBAR_VISIBILITY"]
+            }
+          },
+          "required": ["data", "type"],
+          "additionalProperties": false,
+          "description": "Sets the visibility of the bookmarks toolbar"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["DATAREPORTING_NOTIFY_DATA_POLICY_INTERACTED"]
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": false,
+          "description": "Notify Firefox that the notification policy was interacted with."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["CREATE_NEW_SELECTABLE_PROFILE"]
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": false,
+          "description": "Creates a new user profile using SelectableProfileService and launches it in a new instance"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["SUBMIT_ONBOARDING_OPT_OUT_PING"]
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": false,
+          "description": "Submit an `onboarding-opt-out` Glean ping.  Should only be used during preonboarding."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "data": {
+              "type": "object",
+              "properties": {
+                "engineName": {
+                  "type": "string",
+                  "description": "The name of the search engine to restrict to. Can be left empty to use source restriction instead."
+                },
+                "source": {
+                  "type": "integer",
+                  "description": "A result source to restrict to. One of the values in UrlbarUtils.RESULT_SOURCE.",
+                  "default": 3
+                },
+                "entry": {
+                  "type": "string",
+                  "description": "How search mode was entered. This is recorded in event telemetry. One of the values in UrlbarUtils.SEARCH_MODE_ENTRY.",
+                  "default": "other"
+                },
+                "isPreview": {
+                  "type": "boolean",
+                  "description": "If true, we will preview search mode. Search mode preview does not record telemetry and has slightly different UI behavior. The preview is exited in favor of full search mode when a query is executed. False should be passed if the caller needs to enter search mode but expects it will not be interacted with right away.",
+                  "default": true
+                }
+              },
+              "additionalProperties": true
+            },
+            "type": {
+              "type": "string",
+              "enum": ["SET_SEARCH_MODE"]
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": true,
+          "description": "Sets search mode for a specific browser instance and focuses the urlbar."
         }
       ]
     }

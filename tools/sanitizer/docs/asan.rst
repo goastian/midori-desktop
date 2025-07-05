@@ -23,12 +23,12 @@ Address Sanitizer is to download a continuous integration asan build of
 mozilla-central (updated at least daily):
 
 -  mozilla-central optimized builds:
-   `linux <https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.v2.mozilla-central.latest.firefox.linux64-asan-opt/artifacts/public/build/target.tar.bz2>`__
+   `linux <https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.v2.mozilla-central.latest.firefox.linux64-asan-opt/artifacts/public/build/target.tar.xz>`__
    \|
    `windows <https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.v2.mozilla-central.latest.firefox.win64-asan-opt/artifacts/public/build/target.zip>`__
    (recommended for testing)
 -  mozilla-central debug builds:
-   `linux <https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.v2.mozilla-central.latest.firefox.linux64-asan-debug/artifacts/public/build/target.tar.bz2>`__
+   `linux <https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.v2.mozilla-central.latest.firefox.linux64-asan-debug/artifacts/public/build/target.tar.xz>`__
    \|
    `windows <https://firefox-ci-tc.services.mozilla.com/api/index/v1/task/gecko.v2.mozilla-central.latest.firefox.win64-asan-debug/artifacts/public/build/target.zip>`__
    (recommended for debugging if the optimized builds don't do the job)
@@ -130,7 +130,7 @@ Getting the source
 ^^^^^^^^^^^^^^^^^^
 
 Using that or any later revision, all you need to do is to :ref:`get yourself
-a clone of mozilla-central <Mercurial overview>`.
+a clone of mozilla-central <Firefox Contributors' Quick Reference>`.
 
 Adjusting the build configuration
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -153,18 +153,14 @@ content in your mozilla-central directory:
    ac_add_options --disable-elf-hack
 
    # Keep symbols to symbolize ASan traces later
-   export MOZ_DEBUG_SYMBOLS=1
-   ac_add_options --enable-debug-symbols
    ac_add_options --disable-install-strip
 
    # Settings for an opt build (preferred)
    # The -gline-tables-only ensures that all the necessary debug information for ASan
    # is present, but the rest is stripped so the resulting binaries are smaller.
-   ac_add_options --enable-optimize="-O2 -gline-tables-only"
-   ac_add_options --disable-debug
+   ac_add_options --enable-debug-symbols=-gline-tables-only
 
    # Settings for a debug+opt build
-   #ac_add_options --enable-optimize
    #ac_add_options --enable-debug
 
    # MacOSX only: Uncomment and adjust this path to match your SDK

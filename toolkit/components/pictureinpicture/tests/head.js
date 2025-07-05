@@ -873,7 +873,9 @@ async function promiseFullscreenEntered(window, asyncFn) {
   await entered;
 
   await BrowserTestUtils.waitForCondition(() => {
-    return !TelemetryStopwatch.running("FULLSCREEN_CHANGE_MS");
+    return !gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor(
+      "DOMFullscreen"
+    ).timerId;
   });
 
   if (AppConstants.platform == "macosx") {
@@ -907,7 +909,9 @@ async function promiseFullscreenExited(window, asyncFn) {
   await exited;
 
   await BrowserTestUtils.waitForCondition(() => {
-    return !TelemetryStopwatch.running("FULLSCREEN_CHANGE_MS");
+    return !gBrowser.selectedBrowser.browsingContext.currentWindowGlobal.getActor(
+      "DOMFullscreen"
+    ).timerId;
   });
 
   if (AppConstants.platform == "macosx") {
@@ -1150,4 +1154,17 @@ async function waitForTelemeryEvents(filter, length, process) {
     200,
     100
   );
+}
+
+/**
+ * Asserts that no Picture-in-Picture player windows are currently open.
+ */
+function assertNoPiPWindowsOpen() {
+  for (let win of Services.wm.getEnumerator(WINDOW_TYPE)) {
+    if (!win.closed) {
+      Assert.ok(false, "Found a Picture-in-Picture window unexpectedly.");
+      return;
+    }
+  }
+  Assert.ok(true, "Found no open Picture-in-Picture player windows.");
 }

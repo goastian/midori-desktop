@@ -1,0 +1,46 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=916893
+-->
+<head>
+  <title>Bug 1114554 - Test ServiceWorkerGlobalScope.notificationclick event.</title>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/dom/notification/test/mochitest/MockAlertsService.js"></script>
+  <script src="/tests/dom/notification/test/mochitest/NotificationTest.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
+</head>
+<body>
+<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=1114554">Bug 1114554</a>
+<p id="display"></p>
+<div id="content" style="display: none">
+</div>
+<pre id="test">
+</pre>
+<script src="/tests/dom/serviceworkers/test/utils.js"></script>
+<script>
+  SimpleTest.requestFlakyTimeout("Mock alert service dispatches show and click events.");
+
+  add_task(() => setupServiceWorker("notificationclick.js", "notificationclick.html"));
+
+  add_task(async function click() {
+    await MockAlertsService.enableAutoClick();
+
+    const args = { data: { complex: ["jsval", 5] } };
+    const event = await testFrame("notificationclick.html", args);
+    isDeeply(event.notification.data, args.data, "Got notificationclick event with the correct data.")
+    is(event.action, "", "Got notificationclick event with an empty action.");
+    is(event.notification.actions.length, 0, "Got notificationclick event with an empty action list.");
+  });
+
+  add_task(async function clickWithAction() {
+    await MockAlertsService.enableAutoClick("foo");
+
+    const args = { actions: [{ action: "foo", title: "bar" }] };
+    const event = await testFrame("notificationclick.html", args);
+    is(event.action, "foo", "Got notificationclick event with the correct action.");
+    isDeeply(event.notification.actions, args.actions, "Got notificationclick event with a correct action list");
+  });
+</script>
+</body>
+</html>

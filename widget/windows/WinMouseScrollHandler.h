@@ -32,7 +32,6 @@ class MouseScrollHandler {
   static void Initialize();
   static void Shutdown();
 
-  static bool NeedsMessage(UINT aMsg);
   static bool ProcessMessage(nsWindow* aWidget, UINT msg, WPARAM wParam,
                              LPARAM lParam, MSGResult& aResult);
 
@@ -45,20 +44,9 @@ class MouseScrollHandler {
       uint32_t aNativeMessage, int32_t aDelta, uint32_t aModifierFlags,
       uint32_t aAdditionalFlags);
 
-  /**
-   * IsWaitingInternalMessage() returns true if MouseScrollHandler posted
-   * an internal message for a native mouse wheel message and has not
-   * received it. Otherwise, false.
-   */
-  static bool IsWaitingInternalMessage() {
-    return sInstance && sInstance->mIsWaitingInternalMessage;
-  }
-
  private:
   MouseScrollHandler();
   ~MouseScrollHandler();
-
-  bool mIsWaitingInternalMessage;
 
   static void MaybeLogKeyState();
 
@@ -76,7 +64,7 @@ class MouseScrollHandler {
    * Note that some devices need some hack for the modifier key state.
    * This method does it automatically.
    *
-   * @param aMessage    Handling message.
+   * @param aMessage    Message being handled.
    */
   static ModifierKeyState GetModifierKeyState(UINT aMessage);
 
@@ -89,76 +77,79 @@ class MouseScrollHandler {
   static POINTS GetCurrentMessagePos();
 
   /**
-   * ProcessNativeMouseWheelMessage() processes WM_MOUSEWHEEL and
-   * WM_MOUSEHWHEEL.  Additionally, processes WM_VSCROLL and WM_HSCROLL if they
-   * should be processed as mouse wheel message.
-   * This method posts MOZ_WM_MOUSEVWHEEL, MOZ_WM_MOUSEHWHEEL,
-   * MOZ_WM_VSCROLL or MOZ_WM_HSCROLL if we need to dispatch mouse scroll
-   * events.  That avoids deadlock with plugin process.
+   * ProcessMouseMessage() processes mousewheel and scroll messages, dispatching
+   * to other handlers as needed while dealing with common tasks.
    *
-   * @param aWidget     A window which receives the message.
-   * @param aMessage    WM_MOUSEWHEEL, WM_MOUSEHWHEEL, WM_VSCROLL or
-   *                    WM_HSCROLL.
+   * @param aMessage    WM_MOUSEWHEEL, WM_MOUSEHWHEEL, WM_VSCROLL or WM_HSCROLL.
    * @param aWParam     The wParam value of the message.
    * @param aLParam     The lParam value of the message.
    */
-  void ProcessNativeMouseWheelMessage(nsWindow* aWidget, UINT aMessage,
-                                      WPARAM aWParam, LPARAM aLParam);
+  bool ProcessMouseMessage(UINT msg, WPARAM wParam, LPARAM lParam,
+                           MSGResult& aResult);
 
   /**
-   * ProcessNativeScrollMessage() processes WM_VSCROLL and WM_HSCROLL.
-   * This method just call ProcessMouseWheelMessage() if the message should be
-   * processed as mouse wheel message.  Otherwise, dispatches a content
-   * command event.
+   * HandleMouseWheelMessage() processes WM_MOUSEWHEEL or WM_MOUSEHWHEEL.
    *
-   * @param aWidget     A window which receives the message.
+   * @param aWidget     The window which should process the wheel message.
+   * @param aMessage    WM_MOUSEWHEEL or WM_MOUSEHWHEEL.
+   * @param aWParam     The wParam value of the message.
+   * @param aLParam     The lParam value of the message.
+   * @return            TRUE if the message is processed.  Otherwise, FALSE.
+   */
+  bool HandleMouseWheelMessage(nsWindow* aWidget, UINT aMessage, WPARAM aWParam,
+                               LPARAM aLParam);
+
+  /**
+   * HandleScrollMessageAsMouseWheelMessage() processes WM_VSCROLL or WM_HSCROLL
+   * when the user wants them to emulate a mouse-wheel message's behavior
+   * (_i.e._, when `mousewheel.emulate_at_wm_scroll` is true).
+   *
+   * @param aWidget     The window which should process the scroll message.
    * @param aMessage    WM_VSCROLL or WM_HSCROLL.
    * @param aWParam     The wParam value of the message.
    * @param aLParam     The lParam value of the message.
    * @return            TRUE if the message is processed.  Otherwise, FALSE.
    */
-  bool ProcessNativeScrollMessage(nsWindow* aWidget, UINT aMessage,
-                                  WPARAM aWParam, LPARAM aLParam);
-
-  /**
-   * HandleMouseWheelMessage() processes MOZ_WM_MOUSEVWHEEL and
-   * MOZ_WM_MOUSEHWHEEL which are posted when one of our windows received
-   * WM_MOUSEWHEEL or WM_MOUSEHWHEEL for avoiding deadlock with OOPP.
-   *
-   * @param aWidget     A window which receives the wheel message.
-   * @param aMessage    MOZ_WM_MOUSEWHEEL or MOZ_WM_MOUSEHWHEEL.
-   * @param aWParam     The wParam value of the original message.
-   * @param aLParam     The lParam value of the original message.
-   */
-  void HandleMouseWheelMessage(nsWindow* aWidget, UINT aMessage, WPARAM aWParam,
-                               LPARAM aLParam);
-
-  /**
-   * HandleScrollMessageAsMouseWheelMessage() processes the MOZ_WM_VSCROLL and
-   * MOZ_WM_HSCROLL which are posted when one of mouse windows received
-   * WM_VSCROLL or WM_HSCROLL and user wants them to emulate mouse wheel
-   * message's behavior.
-   *
-   * @param aWidget     A window which receives the scroll message.
-   * @param aMessage    MOZ_WM_VSCROLL or MOZ_WM_HSCROLL.
-   * @param aWParam     The wParam value of the original message.
-   * @param aLParam     The lParam value of the original message.
-   */
-  void HandleScrollMessageAsMouseWheelMessage(nsWindow* aWidget, UINT aMessage,
+  bool HandleScrollMessageAsMouseWheelMessage(nsWindow* aWidget, UINT aMessage,
                                               WPARAM aWParam, LPARAM aLParam);
 
   /**
-   * ComputeMessagePos() computes the cursor position when the message was
-   * added to the queue.
+   * HandleScrollMessageAsItself() processes the WM_VSCROLL and WM_HSCROLL when
+   * the user does _not_ want them to emulate a mouse-wheel message's behavior
+   * (_i.e._, when `mousewheel.emulate_at_wm_scroll` is false).
    *
-   * @param aMessage    Handling message.
-   * @param aWParam     Handling message's wParam.
-   * @param aLParam     Handling message's lParam.
-   * @return            Mouse cursor position when the message is added to
-   *                    the queue or current cursor position if the result of
-   *                    ::GetMessagePos() is broken.
+   * @param aWidget     The window which should process the scroll message.
+   * @param aMessage    WM_VSCROLL or WM_HSCROLL.
+   * @param aWParam     The wParam value of the message.
+   * @param aLParam     The lParam value of the message.
+   * @return            TRUE if the message is processed.  Otherwise, FALSE.
+   */
+  bool HandleScrollMessageAsItself(nsWindow* aWidget, UINT aMessage,
+                                   WPARAM aWParam, LPARAM aLParam);
+
+  /**
+   * ComputeMessagePos() abstracts over ::GetMessagePos(), which is known to
+   * yield bad data under some mouse drivers (particularly Logitech's SetPoint).
+   *
+   * @param aMessage    Current message.
+   * @param aWParam     Current message's wParam.
+   * @param aLParam     Current message's lParam.
+   * @return            Mouse cursor position.
    */
   POINT ComputeMessagePos(UINT aMessage, WPARAM aWParam, LPARAM aLParam);
+
+  /**
+   * FindTargetWindow() finds the nsWindow which needs to process the current
+   * scroll event. (This is the window underneath the cursor -- which is not
+   * necessarily the window whose event queue it came in on!)
+   *
+   * @param aMessage    Current message.
+   * @param aWParam     Current message's wParam.
+   * @param aLParam     Current message's lParam.
+   * @return            The relevant nsWindow, or nullptr if no appropriate
+   *                    window could be identified.
+   */
+  nsWindow* FindTargetWindow(UINT aMessage, WPARAM aWParam, LPARAM aLParam);
 
   class EventInfo {
    public:
@@ -357,67 +348,10 @@ class MouseScrollHandler {
 
   UserPrefs mUserPrefs;
 
-  class SynthesizingEvent {
-   public:
-    SynthesizingEvent()
-        : mWnd(nullptr),
-          mMessage(0),
-          mWParam(0),
-          mLParam(0),
-          mStatus(NOT_SYNTHESIZING) {}
-
-    ~SynthesizingEvent() {}
-
-    static bool IsSynthesizing();
-
-    nsresult Synthesize(const POINTS& aCursorPoint, HWND aWnd, UINT aMessage,
-                        WPARAM aWParam, LPARAM aLParam,
-                        const BYTE (&aKeyStates)[256]);
-
-    void NativeMessageReceived(nsWindow* aWidget, UINT aMessage, WPARAM aWParam,
-                               LPARAM aLParam);
-
-    void NotifyNativeMessageHandlingFinished();
-    void NotifyInternalMessageHandlingFinished();
-
-    const POINTS& GetCursorPoint() const { return mCursorPoint; }
-
-   private:
-    POINTS mCursorPoint;
-    HWND mWnd;
-    UINT mMessage;
-    WPARAM mWParam;
-    LPARAM mLParam;
-    BYTE mKeyState[256];
-    BYTE mOriginalKeyState[256];
-
-    enum Status {
-      NOT_SYNTHESIZING,
-      SENDING_MESSAGE,
-      NATIVE_MESSAGE_RECEIVED,
-      INTERNAL_MESSAGE_POSTED,
-    };
-    Status mStatus;
-
-    const char* GetStatusName() {
-      switch (mStatus) {
-        case NOT_SYNTHESIZING:
-          return "NOT_SYNTHESIZING";
-        case SENDING_MESSAGE:
-          return "SENDING_MESSAGE";
-        case NATIVE_MESSAGE_RECEIVED:
-          return "NATIVE_MESSAGE_RECEIVED";
-        case INTERNAL_MESSAGE_POSTED:
-          return "INTERNAL_MESSAGE_POSTED";
-        default:
-          return "Unknown";
-      }
-    }
-
-    void Finish();
-  };  // SynthesizingEvent
-
-  SynthesizingEvent* mSynthesizingEvent;
+  // only used in tests
+  class SynthesizingEvent;
+  UniquePtr<SynthesizingEvent> mSynthesizingEvent;
+  static SynthesizingEvent* GetActiveSynthEvent();
 
  public:
   class Device {

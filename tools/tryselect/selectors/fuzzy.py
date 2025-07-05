@@ -47,8 +47,11 @@ class FuzzyParser(BaseTryParser):
             {
                 "action": "store_true",
                 "default": False,
-                "help": "Force running fzf interactively even when using presets or "
-                "queries with -q/--query.",
+                "help": "Run fzf interactively, even if --preset or --query is used. "
+                "Tasks selected interactively will be unioned with tasks selected "
+                "by the --preset/--query flags. If -x/--and is also specified, tasks "
+                "selected interactively will instead be intersected with tasks "
+                "selected by --preset/--query.",
             },
         ],
         [
@@ -88,7 +91,7 @@ class FuzzyParser(BaseTryParser):
             },
         ],
         [
-            ["--disable-target-task-filter"],
+            ["--disable-target-task-filter", "--all-tasks"],
             {
                 "action": "store_true",
                 "default": False,
@@ -118,6 +121,8 @@ class FuzzyParser(BaseTryParser):
         "gecko-profile",
         "new-test-config",
         "path",
+        "target-tasks-method",
+        "test-tag",
         "pernosco",
         "rebuild",
         "routes",
@@ -137,11 +142,13 @@ def run(
     dry_run=False,
     message="{msg}",
     test_paths=None,
+    test_tag=None,
     exact=False,
     closed_tree=False,
     show_estimates=False,
     disable_target_task_filter=False,
     push_to_lando=False,
+    push_to_vcs=False,
     show_chunk_numbers=False,
     new_test_config=False,
 ):
@@ -153,8 +160,16 @@ def run(
 
     push = not stage_changes and not dry_run
     check_working_directory(push)
+
+    target_tasks_method = None
+    if try_config_params and "target_tasks_method" in try_config_params:
+        target_tasks_method = try_config_params.pop("target_tasks_method")
+
     tg = generate_tasks(
-        parameters, full=full, disable_target_task_filter=disable_target_task_filter
+        parameters,
+        full=full,
+        disable_target_task_filter=disable_target_task_filter,
+        target_tasks_method=target_tasks_method,
     )
     all_tasks = tg.tasks
 
@@ -187,8 +202,8 @@ def run(
         if not all_tasks:
             return 1
 
-    if test_paths:
-        all_tasks = filter_tasks_by_paths(all_tasks, test_paths)
+    if test_paths or test_tag:
+        all_tasks = filter_tasks_by_paths(all_tasks, test_paths, tag=test_tag)
         if not all_tasks:
             return 1
 
@@ -208,18 +223,14 @@ def run(
         base_cmd.extend(
             [
                 "--preview",
-                '{} {} -g {} -s -c {} -t "{{+f}}"'.format(
-                    str(PurePath(sys.executable)), PREVIEW_SCRIPT, dep_cache, cache_dir
-                ),
+                f'{str(PurePath(sys.executable))} {PREVIEW_SCRIPT} -g {dep_cache} -s -c {cache_dir} -t "{{+f}}"',
             ]
         )
     else:
         base_cmd.extend(
             [
                 "--preview",
-                '{} {} -t "{{+f}}"'.format(
-                    str(PurePath(sys.executable)), PREVIEW_SCRIPT
-                ),
+                f'{str(PurePath(sys.executable))} {PREVIEW_SCRIPT} -t "{{+f}}"',
             ]
         )
 
@@ -271,7 +282,7 @@ def run(
 
     # build commit message
     msg = "Fuzzy"
-    args = ["query={}".format(q) for q in queries]
+    args = [f"query={q}" for q in queries]
     if test_paths:
         args.append("paths={}".format(":".join(test_paths)))
     if args:
@@ -286,4 +297,5 @@ def run(
         dry_run=dry_run,
         closed_tree=closed_tree,
         push_to_lando=push_to_lando,
+        push_to_vcs=push_to_vcs,
     )

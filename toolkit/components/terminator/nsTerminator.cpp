@@ -47,9 +47,7 @@
 #include "mozilla/SpinEventLoopUntil.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
-#include "mozilla/Telemetry.h"
 
-#include "mozilla/dom/IOUtils.h"
 #include "mozilla/dom/workerinternals/RuntimeService.h"
 
 // Normally, the number of milliseconds that AsyncShutdown waits until
@@ -209,7 +207,7 @@ void RunWatchdog(void* arg) {
     // the observer that triggers UpdateHeartbeat was not called
     // at all or in the expected order on some step. This should
     // give us always the last known ShutdownStep.
-    for (int i = ArrayLength(sShutdownSteps) - 1; i >= 0; --i) {
+    for (int i = std::size(sShutdownSteps) - 1; i >= 0; --i) {
       if (sShutdownSteps[i].mTicks > -1) {
         lastPhase = sShutdownSteps[i].mPhase;
         break;

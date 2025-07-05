@@ -68,8 +68,11 @@ nsProfileLock::nsProfileLock(nsProfileLock& src) { *this = src; }
 nsProfileLock& nsProfileLock::operator=(nsProfileLock& rhs) {
   Unlock();
 
+  mLockFile = rhs.mLockFile;
+  rhs.mLockFile = nullptr;
   mHaveLock = rhs.mHaveLock;
   rhs.mHaveLock = false;
+  mReplacedLockTime = rhs.mReplacedLockTime;
 
 #if defined(XP_WIN)
   mLockFileHandle = rhs.mLockFileHandle;
@@ -454,7 +457,7 @@ nsresult nsProfileLock::Lock(nsIFile* aProfileDir,
   rv = lockFile->Clone(getter_AddRefs(mLockFile));
   if (NS_FAILED(rv)) return rv;
 
-#if defined(XP_MACOSX)
+#if defined(XP_DARWIN)
   // First, try locking using fcntl. It is more reliable on
   // a local machine, but may not be supported by an NFS server.
 
@@ -531,7 +534,12 @@ nsresult nsProfileLock::Lock(nsIFile* aProfileDir,
 nsresult nsProfileLock::Unlock(bool aFatalSignal) {
   nsresult rv = NS_OK;
 
+#pragma GCC diagnostic push
+/* Bug 1952241: Ignore uninitialized warning for mHaveLock.
+   Seems to be a false positive with gcc */
+#pragma GCC diagnostic ignored "-Wuninitialized"
   if (mHaveLock) {
+#pragma GCC diagnostic pop
 #if defined(XP_WIN)
     if (mLockFileHandle != INVALID_HANDLE_VALUE) {
       CloseHandle(mLockFileHandle);

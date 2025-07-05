@@ -10,259 +10,57 @@
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
-  NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
-  TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.sys.mjs",
+  AppProvidedSearchEngine:
+    "moz-src:///toolkit/components/search/AppProvidedSearchEngine.sys.mjs",
 });
 
 const BASE_CONFIG = [
   {
-    webExtension: {
-      id: "engine@search.mozilla.org",
-      name: "Test search engine",
-      search_url: "https://www.google.com/search",
-      params: [
-        {
-          name: "q",
-          value: "{searchTerms}",
+    identifier: "originalDefault",
+    base: {
+      name: "Original Default",
+      urls: {
+        search: {
+          base: "https://example.com/search",
+          searchTermParamName: "q",
         },
-        {
-          name: "channel",
-          condition: "purpose",
-          purpose: "contextmenu",
-          value: "rcs",
-        },
-        {
-          name: "channel",
-          condition: "purpose",
-          purpose: "keyword",
-          value: "fflb",
-        },
-      ],
-      suggest_url:
-        "https://suggestqueries.google.com/complete/search?output=firefox&client=firefox&q={searchTerms}",
+      },
     },
-    appliesTo: [{ included: { everywhere: true } }],
-    default: "yes",
   },
 ];
 
-const BASE_CONFIG_V2 = [
-  {
-    recordType: "engine",
-    identifier: "engine",
-    base: {
-      name: "Test search engine",
-      urls: {
-        search: {
-          base: "https://www.google.com/search",
-          params: [
-            {
-              name: "channel",
-              searchAccessPoint: {
-                addressbar: "fflb",
-                contextmenu: "rcs",
-              },
-            },
-          ],
-          searchTermParamName: "q",
-        },
-        suggestions: {
-          base: "https://suggestqueries.google.com/complete/search?output=firefox&client=firefox",
-          searchTermParamName: "q",
-        },
-      },
-    },
-    variants: [
-      {
-        environment: { allRegionsAndLocales: true },
-      },
-    ],
-  },
-  {
-    recordType: "defaultEngines",
-    globalDefault: "engine",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
-  },
-];
 const MAIN_CONFIG = [
   {
-    webExtension: {
-      id: "engine@search.mozilla.org",
-      name: "Test search engine",
-      search_url: "https://www.google.com/search",
-      params: [
-        {
-          name: "q",
-          value: "{searchTerms}",
-        },
-        {
-          name: "channel",
-          condition: "purpose",
-          purpose: "contextmenu",
-          value: "rcs",
-        },
-        {
-          name: "channel",
-          condition: "purpose",
-          purpose: "keyword",
-          value: "fflb",
-        },
-      ],
-      suggest_url:
-        "https://suggestqueries.google.com/complete/search?output=firefox&client=firefox&q={searchTerms}",
-    },
-    appliesTo: [{ included: { everywhere: true } }],
-    default: "no",
-  },
-  {
-    webExtension: {
-      id: "engine-chromeicon@search.mozilla.org",
-      name: "engine-chromeicon",
-      search_url: "https://www.google.com/search",
-      params: [
-        {
-          name: "q",
-          value: "{searchTerms}",
-        },
-      ],
-    },
-    appliesTo: [{ included: { everywhere: true } }],
-    default: "yes-if-no-other",
-  },
-  {
-    webExtension: {
-      id: "engine-fr@search.mozilla.org",
-      name: "Test search engine (fr)",
-      search_url: "https://www.google.fr/search",
-      params: [
-        {
-          name: "q",
-          value: "{searchTerms}",
-        },
-        {
-          name: "ie",
-          value: "iso-8859-1",
-        },
-        {
-          name: "oe",
-          value: "iso-8859-1",
-        },
-      ],
-    },
-    appliesTo: [
-      { included: { everywhere: true } },
-      {
-        included: { locales: { matches: ["fr"] } },
-        excluded: { regions: ["DE"] },
-        default: "yes",
-      },
-    ],
-    default: "no",
-  },
-  {
-    webExtension: {
-      id: "engine-pref@search.mozilla.org",
-      name: "engine-pref",
-      search_url: "https://www.google.com/search",
-      params: [
-        {
-          name: "q",
-          value: "{searchTerms}",
-        },
-        {
-          name: "code",
-          condition: "pref",
-          pref: "code",
-        },
-        {
-          name: "test",
-          condition: "pref",
-          pref: "test",
-        },
-      ],
-    },
-    appliesTo: [
-      { included: { everywhere: true } },
-      { included: { regions: ["DE"] }, default: "yes" },
-    ],
-    default: "no",
-  },
-  {
-    webExtension: {
-      id: "engine2@search.mozilla.org",
-      name: "A second test engine",
-      search_url: "https://duckduckgo.com/?q={searchTerms}",
-    },
-    appliesTo: [
-      { included: { everywhere: true } },
-      { included: { everywhere: true }, experiment: "test1", default: "yes" },
-    ],
-    default: "no",
-  },
-];
-
-const MAIN_CONFIG_V2 = [
-  {
-    recordType: "engine",
-    identifier: "engine",
+    identifier: "originalDefault",
     base: {
-      name: "Test search engine",
+      name: "Original Default",
       urls: {
         search: {
-          base: "https://www.google.com/search",
-          params: [
-            {
-              name: "channel",
-              searchAccessPoint: {
-                addressbar: "fflb",
-                contextmenu: "rcs",
-              },
-            },
-          ],
-          searchTermParamName: "q",
-        },
-        suggestions: {
-          base: "https://suggestqueries.google.com/complete/search?output=firefox&client=firefox",
+          base: "https://www.example.com/search",
           searchTermParamName: "q",
         },
       },
     },
-    variants: [
-      {
-        environment: { allRegionsAndLocales: true },
-      },
-    ],
   },
   {
-    recordType: "engine",
-    identifier: "engine-chromeicon",
+    identifier: "newDefault",
     base: {
-      name: "engine-chromeicon",
+      name: "New Default",
       urls: {
         search: {
-          base: "https://www.google.com/search",
+          base: "https://www.example.com/new",
           searchTermParamName: "q",
         },
       },
     },
-    variants: [
-      {
-        environment: { allRegionsAndLocales: true },
-      },
-    ],
   },
   {
-    recordType: "engine",
-    identifier: "engine-fr",
+    identifier: "defaultInLocaleFRNotRegionDE",
     base: {
-      name: "Test search engine (fr)",
+      name: "Default in Locale FR and not Region DE",
       urls: {
         search: {
-          base: "https://www.google.fr/search",
+          base: "https://www.example.com/fr",
           params: [
             {
               name: "ie",
@@ -277,20 +75,14 @@ const MAIN_CONFIG_V2 = [
         },
       },
     },
-    variants: [
-      {
-        environment: { allRegionsAndLocales: true },
-      },
-    ],
   },
   {
-    recordType: "engine",
-    identifier: "engine-pref",
+    identifier: "defaultInRegionDE",
     base: {
-      name: "engine-pref",
+      name: "Default in Region DE",
       urls: {
         search: {
-          base: "https://www.google.com/search",
+          base: "https://www.example.org/de",
           params: [
             {
               name: "code",
@@ -305,96 +97,99 @@ const MAIN_CONFIG_V2 = [
         },
       },
     },
-    variants: [
-      {
-        environment: { allRegionsAndLocales: true },
-      },
-    ],
   },
   {
-    recordType: "engine",
-    identifier: "engine2",
+    identifier: "defaultForExperiment",
     base: {
-      name: "A second test engine",
+      name: "Default for Experiment",
       urls: {
         search: {
-          base: "https://duckduckgo.com/",
+          base: "https://www.example.org/experiment",
           searchTermParamName: "q",
         },
       },
     },
-    variants: [
-      {
-        environment: { allRegionsAndLocales: true },
-      },
-    ],
   },
   {
-    recordType: "defaultEngines",
-    globalDefault: "engine-chromeicon",
+    globalDefault: "newDefault",
     specificDefaults: [
       {
-        default: "engine-fr",
+        default: "defaultInLocaleFRNotRegionDE",
         environment: { excludedRegions: ["DE"], locales: ["fr"] },
       },
       {
-        default: "engine-pref",
+        default: "defaultInRegionDE",
         environment: { regions: ["DE"] },
       },
       {
-        default: "engine2",
+        default: "defaultForExperiment",
         environment: { experiment: "test1" },
       },
     ],
   },
+];
+
+const CONFIG_WITH_MODIFIED_CLASSIFICATION = [
   {
-    recordType: "engineOrders",
-    orders: [],
+    identifier: "originalDefault",
+    base: {
+      name: "Original Default",
+      urls: {
+        search: {
+          base: "https://example.com/search",
+          searchTermParamName: "q",
+        },
+      },
+      classification: "unknown",
+    },
+  },
+];
+
+const CONFIG_WITH_MODIFIED_NAME = [
+  {
+    identifier: "originalDefault",
+    base: {
+      name: "Modified Engine Name",
+      urls: {
+        search: {
+          base: "https://example.com/search",
+          searchTermParamName: "q",
+        },
+      },
+      classification: "general",
+    },
   },
 ];
 
 const testSearchEngine = {
-  id: "engine",
-  name: "Test search engine",
-  loadPath: SearchUtils.newSearchConfigEnabled
-    ? "[app]engine@search.mozilla.org"
-    : "[addon]engine@search.mozilla.org",
-  submissionURL: "https://www.google.com/search?q=",
+  id: "originalDefault",
+  name: "Original Default",
+  loadPath: "[app]originalDefault",
+  submissionURL: "https://www.example.com/search?q=",
 };
-const testChromeIconEngine = {
-  id: "engine-chromeicon",
-  name: "engine-chromeicon",
-  loadPath: SearchUtils.newSearchConfigEnabled
-    ? "[app]engine-chromeicon@search.mozilla.org"
-    : "[addon]engine-chromeicon@search.mozilla.org",
-
-  submissionURL: "https://www.google.com/search?q=",
+const testNewDefaultEngine = {
+  id: "newDefault",
+  name: "New Default",
+  loadPath: "[app]newDefault",
+  submissionURL: "https://www.example.com/new?q=",
 };
-const testFrEngine = {
-  id: "engine-fr",
-  name: "Test search engine (fr)",
-  loadPath: SearchUtils.newSearchConfigEnabled
-    ? "[app]engine-fr@search.mozilla.org"
-    : "[addon]engine-fr@search.mozilla.org",
-  submissionURL: SearchUtils.newSearchConfigEnabled
-    ? "https://www.google.fr/search?ie=iso-8859-1&oe=iso-8859-1&q="
-    : "https://www.google.fr/search?q=&ie=iso-8859-1&oe=iso-8859-1",
+const testDefaultInLocaleFRNotRegionDEEngine = {
+  id: "defaultInLocaleFRNotRegionDE",
+  name: "Default in Locale FR and not Region DE",
+  loadPath: "[app]defaultInLocaleFRNotRegionDE",
+  submissionURL: "https://www.example.com/fr?ie=iso-8859-1&oe=iso-8859-1&q=",
 };
 const testPrefEngine = {
-  id: "engine-pref",
-  name: "engine-pref",
-  loadPath: SearchUtils.newSearchConfigEnabled
-    ? "[app]engine-pref@search.mozilla.org"
-    : "[addon]engine-pref@search.mozilla.org",
-  submissionURL: "https://www.google.com/search?q=",
+  id: "defaultInRegionDE",
+  name: "Default in Region DE",
+  loadPath: "[app]defaultInRegionDE",
+  submissionURL: "https://www.example.org/de?q=",
 };
-const testEngine2 = {
-  id: "engine2",
-  name: "A second test engine",
-  loadPath: SearchUtils.newSearchConfigEnabled
-    ? "[app]engine2@search.mozilla.org"
-    : "[addon]engine2@search.mozilla.org",
-  submissionURL: "https://duckduckgo.com/?q=",
+const testDefaultForExperiment = {
+  id: "defaultForExperiment",
+  name: "Default for Experiment",
+  loadPath: "[app]defaultForExperiment",
+  submissionURL: "https://www.example.org/experiment?q=",
 };
 
 function clearTelemetry() {
@@ -409,47 +204,6 @@ async function checkTelemetry(
   checkPrivate = false,
   additionalEventsExpected = false
 ) {
-  // TODO Bug 1876178 - Improve engine change telemetry.
-  // When we reload engines due to a config change, we update the engines as
-  // they may have changed, we don't track if any attribute has actually changed
-  // from previous, and so we send out an update regardless. This is why in
-  // this test we test for the additional `engine-update` event that's recorded.
-  // In future, we should be more specific about when to record the event and
-  // so only one event is captured and not two.
-  let additionalEvent = [
-    {
-      object: checkPrivate ? "change_private" : "change_default",
-      value: "engine-update",
-      extra: {
-        prev_id: prevEngine?.id ?? "",
-        new_id: prevEngine?.id ?? "",
-        new_name: prevEngine?.name ?? "",
-        new_load_path: prevEngine?.loadPath ?? "",
-        // Telemetry has a limit of 80 characters.
-        new_sub_url: prevEngine?.submissionURL.slice(0, 80) ?? "",
-      },
-    },
-  ];
-
-  TelemetryTestUtils.assertEvents(
-    [
-      ...(additionalEventsExpected ? additionalEvent : []),
-      {
-        object: checkPrivate ? "change_private" : "change_default",
-        value: source,
-        extra: {
-          prev_id: prevEngine?.id ?? "",
-          new_id: newEngine?.id ?? "",
-          new_name: newEngine?.name ?? "",
-          new_load_path: newEngine?.loadPath ?? "",
-          // Telemetry has a limit of 80 characters.
-          new_sub_url: newEngine?.submissionURL.slice(0, 80) ?? "",
-        },
-      },
-    ],
-    { category: "search", method: "engine" }
-  );
-
   let snapshot;
   if (checkPrivate) {
     snapshot = await Glean.searchEnginePrivate.changed.testGetValue();
@@ -457,6 +211,8 @@ async function checkTelemetry(
     snapshot = await Glean.searchEngineDefault.changed.testGetValue();
   }
 
+  // additionalEventsExpected should be true whenever we expect something
+  // stored in AppProvidedSearchEngine.#prevEngineInfo to have changed.
   if (additionalEventsExpected) {
     delete snapshot[0].timestamp;
     Assert.deepEqual(
@@ -467,7 +223,7 @@ async function checkTelemetry(
           : "search.engine.default",
         name: "changed",
         extra: {
-          change_source: "engine-update",
+          change_reason: "engine-update",
           previous_engine_id: prevEngine?.id ?? "",
           new_engine_id: prevEngine?.id ?? "",
           new_display_name: prevEngine?.name ?? "",
@@ -489,7 +245,7 @@ async function checkTelemetry(
         : "search.engine.default",
       name: "changed",
       extra: {
-        change_source: source,
+        change_reason: source,
         previous_engine_id: prevEngine?.id ?? "",
         new_engine_id: newEngine?.id ?? "",
         new_display_name: newEngine?.name ?? "",
@@ -501,8 +257,6 @@ async function checkTelemetry(
   );
 }
 
-let getVariableStub;
-
 add_setup(async () => {
   Region._setHomeRegion("US", false);
   Services.locale.availableLocales = [
@@ -512,42 +266,30 @@ add_setup(async () => {
   ];
   Services.locale.requestedLocales = ["en"];
 
-  sinon.spy(NimbusFeatures.searchConfiguration, "onUpdate");
-  sinon.stub(NimbusFeatures.searchConfiguration, "ready").resolves();
-  getVariableStub = sinon.stub(
-    NimbusFeatures.searchConfiguration,
-    "getVariable"
-  );
-  getVariableStub.returns(null);
-
-  SearchTestUtils.useMockIdleService();
   Services.fog.initializeFOG();
   sinon.stub(
     Services.search.wrappedJSObject,
     "_showRemovalOfSearchEngineNotificationBox"
   );
 
-  await SearchTestUtils.useTestEngines(
-    "data",
-    null,
-    SearchUtils.newSearchConfigEnabled ? BASE_CONFIG_V2 : BASE_CONFIG
-  );
-  await AddonTestUtils.promiseStartupManager();
+  SearchTestUtils.setRemoteSettingsConfig(BASE_CONFIG);
 
   await Services.search.init();
+
+  registerCleanupFunction(async () => {
+    sinon.restore();
+  });
 });
 
 add_task(async function test_configuration_changes_default() {
   clearTelemetry();
 
-  await SearchTestUtils.updateRemoteSettingsConfig(
-    SearchUtils.newSearchConfigEnabled ? MAIN_CONFIG_V2 : MAIN_CONFIG
-  );
+  await SearchTestUtils.updateRemoteSettingsConfig(MAIN_CONFIG);
 
   await checkTelemetry(
     "config",
     testSearchEngine,
-    testChromeIconEngine,
+    testNewDefaultEngine,
     false,
     true
   );
@@ -558,20 +300,21 @@ add_task(async function test_experiment_changes_default() {
 
   let reloadObserved =
     SearchTestUtils.promiseSearchNotification("engines-reloaded");
-  getVariableStub.callsFake(name => (name == "experiment" ? "test1" : null));
-  NimbusFeatures.searchConfiguration.onUpdate.firstCall.args[0]();
+  Services.prefs.setStringPref("browser.search.experiment", "test1");
   await reloadObserved;
 
   await checkTelemetry(
     "experiment",
-    testChromeIconEngine,
-    testEngine2,
-    false,
-    true
+    testNewDefaultEngine,
+    testDefaultForExperiment,
+    false
   );
 
-  // Reset the stub so that we are no longer in an experiment.
-  getVariableStub.returns(null);
+  // Clear the pref so that we are no longer in an experiment.
+  reloadObserved =
+    SearchTestUtils.promiseSearchNotification("engines-reloaded");
+  Services.prefs.clearUserPref("browser.search.experiment");
+  await reloadObserved;
 });
 
 add_task(async function test_locale_changes_default() {
@@ -582,7 +325,12 @@ add_task(async function test_locale_changes_default() {
   Services.locale.requestedLocales = ["fr"];
   await reloadObserved;
 
-  await checkTelemetry("locale", testEngine2, testFrEngine, false, true);
+  await checkTelemetry(
+    "locale",
+    testNewDefaultEngine,
+    testDefaultInLocaleFRNotRegionDEEngine,
+    false
+  );
 });
 
 add_task(async function test_region_changes_default() {
@@ -593,7 +341,12 @@ add_task(async function test_region_changes_default() {
   Region._setHomeRegion("DE", true);
   await reloadObserved;
 
-  await checkTelemetry("region", testFrEngine, testPrefEngine, false, true);
+  await checkTelemetry(
+    "region",
+    testDefaultInLocaleFRNotRegionDEEngine,
+    testPrefEngine,
+    false
+  );
 });
 
 add_task(async function test_user_changes_separate_private_pref() {
@@ -607,7 +360,7 @@ add_task(async function test_user_changes_separate_private_pref() {
   );
 
   await Services.search.setDefaultPrivate(
-    Services.search.getEngineByName("engine-chromeicon"),
+    Services.search.getEngineById("newDefault"),
     Ci.nsISearchService.CHANGE_REASON_UNKNOWN
   );
 
@@ -629,12 +382,10 @@ add_task(async function test_user_changes_separate_private_pref() {
     false
   );
 
-  await checkTelemetry("user_private_split", testChromeIconEngine, null, true);
-
-  getVariableStub.returns(null);
+  await checkTelemetry("user_private_split", testNewDefaultEngine, null, true);
 });
 
-add_task(async function test_experiment_with_separate_default_notifies() {
+add_task(async function test_ui_enabled_with_separate_default_notifies() {
   Services.prefs.setBoolPref(
     SearchUtils.BROWSER_SEARCH_PREF + "separatePrivateDefault.ui.enabled",
     false
@@ -646,20 +397,43 @@ add_task(async function test_experiment_with_separate_default_notifies() {
 
   clearTelemetry();
 
-  getVariableStub.callsFake(name =>
-    name == "seperatePrivateDefaultUIEnabled" ? true : null
+  let defaultChanged = SearchTestUtils.promiseSearchNotification(
+    SearchUtils.MODIFIED_TYPE.DEFAULT_PRIVATE,
+    SearchUtils.TOPIC_ENGINE_MODIFIED
   );
-  NimbusFeatures.searchConfiguration.onUpdate.firstCall.args[0]();
 
-  await checkTelemetry("experiment", null, testChromeIconEngine, true);
+  Services.prefs.setBoolPref(
+    SearchUtils.BROWSER_SEARCH_PREF + "separatePrivateDefault.ui.enabled",
+    true
+  );
+  await defaultChanged;
+
+  await checkTelemetry(
+    "user_private_pref_enabled",
+    null,
+    testNewDefaultEngine,
+    true
+  );
 
   clearTelemetry();
 
-  // Reset the stub so that we are no longer in an experiment.
-  getVariableStub.returns(null);
-  NimbusFeatures.searchConfiguration.onUpdate.firstCall.args[0]();
+  // Reset the pref so that we are no longer in an experiment.
+  defaultChanged = SearchTestUtils.promiseSearchNotification(
+    SearchUtils.MODIFIED_TYPE.DEFAULT_PRIVATE,
+    SearchUtils.TOPIC_ENGINE_MODIFIED
+  );
+  Services.prefs.setBoolPref(
+    SearchUtils.BROWSER_SEARCH_PREF + "separatePrivateDefault.ui.enabled",
+    false
+  );
+  await defaultChanged;
 
-  await checkTelemetry("experiment", testChromeIconEngine, null, true);
+  await checkTelemetry(
+    "user_private_pref_enabled",
+    testNewDefaultEngine,
+    null,
+    true
+  );
 });
 
 add_task(async function test_default_engine_update() {
@@ -713,3 +487,78 @@ add_task(async function test_default_engine_update() {
   await checkTelemetry("engine-update", defaultEngineData, defaultEngineData);
   await extension.unload();
 });
+
+add_task(async function test_only_notify_on_relevant_engine_property_change() {
+  clearTelemetry();
+  await SearchTestUtils.updateRemoteSettingsConfig(BASE_CONFIG);
+
+  // Since SearchUtils.notifyAction can be called for multiple different search
+  // engine topics, `resetPrevEngineInfo` is a better way to track
+  // notifications in this case.
+  let notificationSpy = sinon.spy(
+    AppProvidedSearchEngine.prototype,
+    "_resetPrevEngineInfo"
+  );
+
+  // Change an engine property that is not stored in
+  // AppProvidedSearchEngine.#prevEngineInfo.
+  let reloadObserved =
+    SearchTestUtils.promiseSearchNotification("engines-reloaded");
+  await SearchTestUtils.updateRemoteSettingsConfig(
+    CONFIG_WITH_MODIFIED_CLASSIFICATION
+  );
+  await reloadObserved;
+
+  Assert.equal(
+    notificationSpy.callCount,
+    0,
+    "Should not have sent a notification"
+  );
+
+  notificationSpy.restore();
+});
+
+add_task(
+  async function test_multiple_updates_only_notify_on_relevant_engine_property_change() {
+    clearTelemetry();
+    await SearchTestUtils.updateRemoteSettingsConfig(BASE_CONFIG);
+
+    // Since SearchUtils.notifyAction can be called for multiple different search
+    // engine topics, `resetPrevEngineInfo` is a better way to track
+    // notifications in this case.
+    let notificationSpy = sinon.spy(
+      AppProvidedSearchEngine.prototype,
+      "_resetPrevEngineInfo"
+    );
+
+    // Change an engine property that is not stored in
+    // AppProvidedSearchEngine.#prevEngineInfo.
+    let reloadObserved1 =
+      SearchTestUtils.promiseSearchNotification("engines-reloaded");
+    await SearchTestUtils.updateRemoteSettingsConfig(
+      CONFIG_WITH_MODIFIED_CLASSIFICATION
+    );
+    await reloadObserved1;
+
+    Assert.equal(
+      notificationSpy.callCount,
+      0,
+      "Should not have sent a notification"
+    );
+
+    // Now change an engine property that is stored in
+    // AppProvidedSearchEngine.#prevEngineInfo.
+    let reloadObserved2 =
+      SearchTestUtils.promiseSearchNotification("engines-reloaded");
+    await SearchTestUtils.updateRemoteSettingsConfig(CONFIG_WITH_MODIFIED_NAME);
+    await reloadObserved2;
+
+    Assert.equal(
+      notificationSpy.callCount,
+      1,
+      "Should have sent a notification"
+    );
+
+    notificationSpy.restore();
+  }
+);

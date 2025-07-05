@@ -1,15 +1,29 @@
 [DEFAULT]
-run-if = ["nightly_build"] # Bug 1890946 - enable the inference engine in release
+prefs = ["browser.ml.modelHubRootUrl='chrome://mochitests/content/browser/toolkit/components/ml/tests/browser/data'"]
 support-files = [
   "head.js",
+  "shared-head.js",
   "data/**/*.*"
 ]
 
 ["browser_ml_cache.js"]
-lineno = "7"
+
+["browser_ml_cluster_algos.js"]
+
+["browser_ml_embeddings_generator.js"]
 
 ["browser_ml_engine.js"]
-lineno = "10"
+
+["browser_ml_engine_process.js"]
+
+["browser_ml_nlp_utils.js"]
+
+["browser_ml_opfs.js"]
+
+["browser_ml_pipeline.js"]
+
+["browser_ml_privatebrowsing.js"]
+
+["browser_ml_telemetry.js"]
 
 ["browser_ml_utils.js"]
-lineno = "13"

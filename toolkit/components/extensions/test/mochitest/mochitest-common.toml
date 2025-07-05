@@ -60,19 +60,20 @@ support-files = [
   "file_with_same_origin_frame.html",
   "head.js",
   "head_cookies.js",
-  "head_notifications.js",
+  "!/dom/notification/test/mochitest/MockAlertsService.js",
   "head_unlimitedStorage.js",
   "head_webrequest.js",
   "hsts.sjs",
   "mochitest_console.js",
   "oauth.html",
   "redirect_auto.sjs",
+  "redirect_to.sjs",
   "redirection.sjs",
   "return_headers.sjs",
   "serviceWorker.js",
   "slow_response.sjs",
   "webrequest_worker.js",
-  "!/dom/tests/mochitest/geolocation/network_geolocation.sjs",
+  "!/dom/geolocation/test/mochitest/network_geolocation.sjs",
   "!/toolkit/components/passwordmgr/test/authenticate.sjs",
   "file_redirect_data_uri.html",
   "file_redirect_cors_bypass.html",
@@ -94,8 +95,8 @@ prefs = [
 ["test_ext_activityLog.html"]
 skip-if = [
   "os == 'android'", # Bug 1845604: test case uses tabHide permission which is not available on Android
-  "tsan",  # Times out on TSan, bug 1612707
-  "xorigin",  # Inconsistent pass/fail in opt and debug
+  "tsan", #  Times out on TSan, bug 1612707
+  "xorigin", #  Inconsistent pass/fail in opt and debug
   "http3",
   "http2",
 ]
@@ -104,7 +105,7 @@ skip-if = [
 skip-if = [
   "os == 'android'", # Bug 1845607
   "tsan", # Bug 1612707: times out on TSan
-  "display == 'wayland' && os_version == '22.04'",  # Bug 1857067
+  "display == 'wayland' && os_version == '22.04'", #  Bug 1857067
 ]
 
 ["test_ext_background_canvas.html"]
@@ -151,7 +152,7 @@ skip-if = [
 
 ["test_ext_browsingData_serviceWorkers.html"]
 skip-if = [
-  "condprof",  #  "Wait for 2 service workers to be registered - timed out after 50 tries."
+  "condprof", #   "Wait for 2 service workers to be registered - timed out after 50 tries."
   "http3",
   "http2",
 ]
@@ -185,17 +186,17 @@ skip-if = [
 ["test_ext_contentscript_blob.html"]
 
 ["test_ext_contentscript_cache.html"]
-skip-if = [
-  "os == 'linux' && debug",
-  "os == 'android' && debug", # bug 1348241
-]
 fail-if = ["xorigin"] # TypeError: can't access property "staticScripts", ext is undefined - Should not throw any errors
+skip-if = [
+  "os == 'android' && debug", # bug 1348241
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && http2", # Bug 1927732
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug && http3", # Bug 1927732
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug && http2", # Bug 1927732
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && debug && http3", # Bug 1927732
+]
 
 ["test_ext_contentscript_canvas.html"]
-skip-if = [
-  "os == 'android'", # Bug 1617062
-  "verify && debug && os == 'linux'",
-]
+skip-if = ["os == 'android'"] # Bug 1617062
 
 ["test_ext_contentscript_data_url.html"]
 
@@ -233,7 +234,7 @@ skip-if = [
 skip-if = [
   "os == 'android'", # Bug 1845615
   "tsan", # Times out on TSan intermittently, bug 1615184;
-  "condprof",  #: "one tabId returned for store - Expected: 1, Actual: 3"
+  "condprof", # : "one tabId returned for store - Expected: 1, Actual: 3"
   "http3",
   "http2",
 ]
@@ -292,13 +293,19 @@ skip-if = ["os == 'android'"] # Bug 1336194 (GeckoView doesn't yet account for g
 
 ["test_ext_identity.html"]
 skip-if = [
-  "win11_2009 && !debug && socketprocess_networking",  # Bug 1777016
+  "win11_2009 && !debug && socketprocess_networking", #  Bug 1777016
   "os == 'android'", # Bug 1475887 (API not supported on android yet)
   "tsan", # Bug 1612707
 ]
 
 ["test_ext_idle.html"]
-skip-if = ["tsan"] # Times out on TSan, bug 1612707
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && asan", # Bug 1918637
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && ccov", # Bug 1918637
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug", # Bug 1918637
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && opt && condprof", # Bug 1927732
+  "tsan", # Times out on TSan, bug 1612707
+]
 
 ["test_ext_inIncognitoContext_window.html"]
 skip-if = ["os == 'android'"] # Bug 1513544 (GeckoView is missing the windows API and ability to open private tabs)
@@ -307,8 +314,7 @@ skip-if = ["os == 'android'"] # Bug 1513544 (GeckoView is missing the windows AP
 
 ["test_ext_new_tab_processType.html"]
 skip-if = [
-  "verify && debug && (os == 'linux' || os == 'mac')",
-  "condprof",  #: Page URL should match - got "https://example.com/tests/toolkit/components/extensions/test/mochitest/file_serviceWorker.html", expected "https://example.com/"
+  "condprof", # : Page URL should match - got "https://example.com/tests/toolkit/components/extensions/test/mochitest/file_serviceWorker.html", expected "https://example.com/"
   "http3",
   "http2",
 ]
@@ -348,10 +354,6 @@ skip-if = [
 ["test_ext_runtime_connect_iframe.html"]
 
 ["test_ext_runtime_connect_twoway.html"]
-skip-if = [
-  "http3",
-  "http2",
-]
 
 ["test_ext_runtime_disconnect.html"]
 skip-if = [
@@ -448,16 +450,8 @@ scheme = "https"
 ["test_ext_storage_smoke_test.html"]
 
 ["test_ext_streamfilter_multiple.html"]
-skip-if = [
-  "!debug", # Bug 1628642
-  "os == 'linux'", # Bug 1628642
-]
 
 ["test_ext_streamfilter_processswitch.html"]
-skip-if = [
-  "http3",
-  "http2",
-]
 
 ["test_ext_subframes_privileges.html"]
 
@@ -476,6 +470,8 @@ skip-if = [
   "http3",
   "http2",
 ]
+
+["test_ext_tabs_groupId.html"]
 
 ["test_ext_tabs_permissions.html"]
 skip-if = [
@@ -503,10 +499,7 @@ skip-if = [
 skip-if = ["os == 'android'"] # bug 1397615, bug 1513544
 
 ["test_ext_web_accessible_resources.html"]
-skip-if = [
-  "os == 'android' && debug", # bug 1397615
-  "os  == 'linux' && bits == 64", # bug 1618231
-]
+skip-if = ["os == 'android' && debug"] # bug 1397615
 
 ["test_ext_webnavigation.html"]
 skip-if = [
@@ -518,7 +511,6 @@ skip-if = [
 ["test_ext_webnavigation_filters.html"]
 skip-if = [
   "os == 'android' && debug",
-  "verify && (os == 'linux' || os == 'mac')", # bug 1397615
   "http3",
   "http2",
 ]
@@ -547,10 +539,9 @@ skip-if = [
 
 ["test_ext_webrequest_basic.html"]
 skip-if = [
-  "os == 'android' && debug",  # bug 1397615
-  "tsan",  # bug 1612707
-  "xorigin",  # JavaScript Error: "SecurityError: Permission denied to access property "wrappedJSObject" on cross-origin object" {file: "http://mochi.false-test:8888/tests/SimpleTest/TestRunner.js" line: 157}]
-  "os == 'linux' && bits == 64 && !debug && asan", # Bug 1633189
+  "os == 'android' && debug", #  bug 1397615
+  "tsan", #  bug 1612707
+  "xorigin", #  JavaScript Error: "SecurityError: Permission denied to access property "wrappedJSObject" on cross-origin object" {file: "http://mochi.false-test:8888/tests/SimpleTest/TestRunner.js" line: 157}]
   "http3",
   "http2",
 ]
@@ -566,7 +557,6 @@ skip-if = [
 skip-if = [
   "os == 'android' && debug", # bug 1452348
   "tsan", # tsan: bug 1612707
-  "os == 'linux' && bits == 64 && !debug && xorigin", # Bug 1756023
 ]
 
 ["test_ext_webrequest_frameId.html"]

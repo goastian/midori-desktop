@@ -15,15 +15,14 @@
 
 add_setup(async function () {
   useHttpServer();
-  await AddonTestUtils.promiseStartupManager();
 });
 
 add_task(async function test_save_sorted_engines() {
   let engine1 = await SearchTestUtils.installOpenSearchEngine({
-    url: `${gDataUrl}engine.xml`,
+    url: `${gHttpURL}/opensearch/generic1.xml`,
   });
   let engine2 = await SearchTestUtils.installOpenSearchEngine({
-    url: `${gDataUrl}engine2.xml`,
+    url: `${gHttpURL}/opensearch/generic2.xml`,
   });
   await promiseAfterSettings();
 

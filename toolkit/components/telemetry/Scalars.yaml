@@ -164,7 +164,7 @@ installation.firstSeen:
       value "NotFoundError" if file not found or other values
       depending on the failure reason.
     keyed: false
-    expires: "134"
+    expires: "152"
     kind: string
     notification_emails:
       - rtestard@mozilla.com
@@ -173,7 +173,7 @@ installation.firstSeen:
     products:
       - 'firefox'
     record_in_processes:
-      - 'all'
+      - 'main'
     record_into_store:
       - 'new-profile'
 
@@ -184,7 +184,7 @@ installation.firstSeen:
       The type of installer used to install Firefox.
       The value is one of "stub", "full", or "msix"
     keyed: false
-    expires: "134"
+    expires: "152"
     kind: string
     notification_emails:
       - rtestard@mozilla.com
@@ -193,7 +193,7 @@ installation.firstSeen:
     products:
       - 'firefox'
     record_in_processes:
-      - 'all'
+      - 'main'
     record_into_store:
       - 'new-profile'
 
@@ -204,7 +204,7 @@ installation.firstSeen:
       The application version installed by the installer
       (not necessarily the current version)
     keyed: false
-    expires: "134"
+    expires: "152"
     kind: string
     notification_emails:
       - rtestard@mozilla.com
@@ -213,7 +213,7 @@ installation.firstSeen:
     products:
       - 'firefox'
     record_in_processes:
-      - 'all'
+      - 'main'
     record_into_store:
       - 'new-profile'
 
@@ -223,7 +223,7 @@ installation.firstSeen:
     description: >
       Whether the installer is running from an elevated admin user
     keyed: false
-    expires: "134"
+    expires: "152"
     kind: boolean
     notification_emails:
       - rtestard@mozilla.com
@@ -232,7 +232,7 @@ installation.firstSeen:
     products:
       - 'firefox'
     record_in_processes:
-      - 'all'
+      - 'main'
     record_into_store:
       - 'new-profile'
 
@@ -242,7 +242,7 @@ installation.firstSeen:
     description: >
       'Whether there was already an install in this location'
     keyed: false
-    expires: "134"
+    expires: "152"
     kind: boolean
     notification_emails:
       - rtestard@mozilla.com
@@ -251,7 +251,7 @@ installation.firstSeen:
     products:
       - 'firefox'
     record_in_processes:
-      - 'all'
+      - 'main'
     record_into_store:
       - 'new-profile'
 
@@ -261,7 +261,7 @@ installation.firstSeen:
     description: >
       'Whether the top-level profile directory existed'
     keyed: false
-    expires: "134"
+    expires: "152"
     kind: boolean
     notification_emails:
       - rtestard@mozilla.com
@@ -270,7 +270,7 @@ installation.firstSeen:
     products:
       - 'firefox'
     record_in_processes:
-      - 'all'
+      - 'main'
     record_into_store:
       - 'new-profile'
 
@@ -280,7 +280,7 @@ installation.firstSeen:
     description: >
       'Whether there was already any non-MSIX install on this system'
     keyed: false
-    expires: "134"
+    expires: "152"
     kind: boolean
     notification_emails:
       - rtestard@mozilla.com
@@ -289,7 +289,7 @@ installation.firstSeen:
     products:
       - 'firefox'
     record_in_processes:
-      - 'all'
+      - 'main'
     record_into_store:
       - 'new-profile'
 
@@ -299,7 +299,7 @@ installation.firstSeen:
     description: >
       'Whether there was already any MSIX install on this system'
     keyed: false
-    expires: "134"
+    expires: "152"
     kind: boolean
     notification_emails:
       - rtestard@mozilla.com
@@ -308,7 +308,7 @@ installation.firstSeen:
     products:
       - 'firefox'
     record_in_processes:
-      - 'all'
+      - 'main'
     record_into_store:
       - 'new-profile'
 
@@ -319,7 +319,7 @@ installation.firstSeen:
       (optional, present if installer_type is "full")
       Whether this was a silent install
     keyed: false
-    expires: "134"
+    expires: "152"
     kind: boolean
     notification_emails:
       - rtestard@mozilla.com
@@ -328,7 +328,7 @@ installation.firstSeen:
     products:
       - 'firefox'
     record_in_processes:
-      - 'all'
+      - 'main'
     record_into_store:
       - 'new-profile'
 
@@ -339,7 +339,7 @@ installation.firstSeen:
       (optional, present if installer_type is "full")
       Whether this was an MSI install
     keyed: false
-    expires: "134"
+    expires: "152"
     kind: boolean
     notification_emails:
       - rtestard@mozilla.com
@@ -348,7 +348,7 @@ installation.firstSeen:
     products:
       - 'firefox'
     record_in_processes:
-      - 'all'
+      - 'main'
     record_into_store:
       - 'new-profile'
 
@@ -359,7 +359,7 @@ installation.firstSeen:
       (optional, present if installer_type is "full")
       Whether the default path was used
     keyed: false
-    expires: "134"
+    expires: "152"
     kind: boolean
     notification_emails:
       - rtestard@mozilla.com
@@ -368,11 +368,68 @@ installation.firstSeen:
     products:
       - 'firefox'
     record_in_processes:
-      - 'all'
+      - 'main'
     record_into_store:
       - 'new-profile'
 
 browser.backup:
+  enabled:
+    bug_numbers:
+      - 1908727
+    description: >
+      True if the BackupService is enabled by default.
+    expires: never
+    kind: boolean
+    notification_emails:
+      - mconley@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+  scheduler_enabled:
+    bug_numbers:
+      - 1908727
+    description: >
+      True if the BackupService is configured to automatically create backups
+      in the background.
+    expires: never
+    kind: boolean
+    notification_emails:
+      - mconley@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+  pswd_encrypted:
+    bug_numbers:
+      - 1908727
+    description: >
+      True if the BackupService is configured to encrypt backups.
+    expires: never
+    kind: boolean
+    notification_emails:
+      - mconley@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+  location_on_device:
+    bug_numbers:
+      - 1908727
+    description: >
+      1 = the default location, 2 = a non-default location
+    expires: never
+    kind: uint
+    notification_emails:
+      - mconley@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
   prof_d_disk_space:
     bug_numbers:
       - 1884407
@@ -650,6 +707,21 @@ browser.engagement:
     record_in_processes:
       - 'main'
 
+  max_concurrent_vertical_tab_count:
+    bug_numbers:
+      - 1899352
+    description: >
+      The count of maximum number of tabs with vertical tabs enabled.
+    expires: never
+    kind: uint
+    notification_emails:
+      - vsabino@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+
   tab_open_event_count:
     bug_numbers:
       - 1271304
@@ -665,6 +737,21 @@ browser.engagement:
     products:
       - 'firefox'
       - 'fennec'
+    record_in_processes:
+      - 'main'
+
+  vertical_tab_open_event_count:
+    bug_numbers:
+      - 1899352
+    description: >
+      The count of tab open events with vertical tabs enabled.
+    expires: never
+    kind: uint
+    notification_emails:
+      - vsabino@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
     record_in_processes:
       - 'main'
 
@@ -723,6 +810,21 @@ browser.engagement:
     record_in_processes:
       - 'main'
 
+  max_concurrent_vertical_tab_pinned_count:
+    bug_numbers:
+      - 1899352
+    description: >
+      The count of maximum number of pinned tabs with vertical tabs enabled.
+    expires: never
+    kind: uint
+    notification_emails:
+      - vsabino@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+
   tab_pinned_event_count:
     bug_numbers:
       - 1505535
@@ -738,6 +840,21 @@ browser.engagement:
     products:
       - 'firefox'
       - 'fennec'
+    record_in_processes:
+      - 'main'
+
+  vertical_tab_pinned_event_count:
+    bug_numbers:
+      - 1899352
+    description: >
+      The count of tab pinned events with vertical tabs enabled.
+    expires: never
+    kind: uint
+    notification_emails:
+      - vsabino@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
     record_in_processes:
       - 'main'
 
@@ -898,8 +1015,6 @@ browser.engagement:
       - 'firefox'
     record_in_processes:
       - 'main'
-    operating_systems:
-      - windows
 
   bookmarks_toolbar_bookmark_added:
     bug_numbers:
@@ -1227,40 +1342,6 @@ browser.startup:
       - 'main'
 
 # The following section contains the browser usage scalars.
-browser.usage:
-  graphite:
-    bug_numbers:
-      - 1331915
-    description: >
-      The number of times a graphite2 font has been loaded.
-    expires: "65"
-    kind: uint
-    notification_emails:
-      - tom@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'all'
-
-  plugin_instantiated:
-    bug_numbers:
-      - 1381591
-    description: >-
-      The number of plugin instances that were created.
-    expires: never  # Jan-2021 but we don't have a version number for that
-    kind: uint
-    notification_emails:
-      - bsmedberg@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-      - 'content'
-
 browser.ui:
   toolbar_widgets:
     bug_numbers:
@@ -1382,6 +1463,23 @@ browser.ui.interaction:
     notification_emails:
       - shong@mozilla.com
       - dtownsend@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'main'
+
+  vertical_tabs_container:
+    bug_numbers:
+      - 1921789
+    description: >
+      Records a count of interactions with items in the vertical tab bar.
+      See https://firefox-source-docs.mozilla.org/browser/BrowserUsageTelemetry.html
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - vsabino@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -1803,7 +1901,7 @@ cookie.banners:
     keyed: true
     notification_emails:
       - tihuang@mozilla.com
-      - pbz@mozilla.com
+      - emz@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -1820,7 +1918,7 @@ cookie.banners:
     keyed: true
     notification_emails:
       - tihuang@mozilla.com
-      - pbz@mozilla.com
+      - emz@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -1835,98 +1933,26 @@ cookie.banners:
     kind: boolean
     notification_emails:
       - tihuang@mozilla.com
-      - pbz@mozilla.com
+      - emz@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
     record_in_processes:
       - 'main'
-  rule_lookup_by_load:
-    bug_numbers:
-      - 1797073
-      - 1804259
-      - 1827765
-      - 1850874
-      - 1861317
-    description: >
-      Counts the number of hit/miss of cookie banner rule lookups for every
-      load. We collect three types of counters, including counters for overall
-      rule lookup, counters for cookie rule lookup and counters for click rule
-      lookup. We also divide the counter by top-level loads and iframe loads.
-    expires: '128'
-    kind: uint
-    keyed: true
-    notification_emails:
-      - tihuang@mozilla.com
-      - pbz@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-  rule_lookup_by_domain:
-    bug_numbers:
-      - 1797073
-      - 1804259
-      - 1827765
-      - 1850874
-      - 1861317
-    description: >
-      Counts the number of hit/miss of cookie banner rule lookups for domain.
-      We collect three types of counters, including counters for overall
-      rule lookup, counters for cookie rule lookup and counters for click rule
-      lookup. We also divide the counter by top-level loads and iframe loads.
-      For each domain, we will only collect once.
-    expires: '128'
-    kind: uint
-    keyed: true
-    notification_emails:
-      - tihuang@mozilla.com
-      - pbz@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-
-cookie.banners.click:
-  result:
-    bug_numbers:
-      - 1797078
-      - 1804259
-      - 1827765
-      - 1850874
-      - 1861317
-    description: >
-      Given a matching cookie banner click rule, how often do we handle or fail
-      to handle cookie banners, labelled by reason. The 'success' and 'fail'
-      counters count the total numbers independently of the reason counters.
-      Counters are incremented after the content window has been destroyed.
-    expires: '128'
-    keyed: true
-    kind: uint
-    notification_emails:
-      - pbz@mozilla.com
-      - tihuang@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
-    release_channel_collection: opt-out
-
 extensions.apis.dnr:
   startup_cache_entries:
     bug_numbers:
       - 1803363
       - 1850890
       - 1881406
+      - 1946276
     description: >
       Counters for startup cache data hits or misses on initializating
       DNR rules for extensions loaded on application startup.
       The expected keys are 'hit' and 'miss'.
       This probe is mirrored from a Glean metric with the same name.
     keyed: true
-    expires: '138'
+    expires: '145'
     kind: uint
     notification_emails:
       - addons-dev-internal@mozilla.com
@@ -1939,59 +1965,11 @@ extensions.apis.dnr:
       - 1803363
       - 1850890
       - 1881406
+      - 1946276
     description: >
       Max amount of DNR rules being evaluated.
-    expires: '138'
+    expires: '145'
     kind: uint
-    notification_emails:
-      - addons-dev-internal@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-extensions.quarantinedDomains:
-
-  listsize:
-    bug_numbers:
-      - 1840615
-      - 1866196
-    description: >
-      Number of domains listed in the quarantined domains list pref for the client during
-      this session.
-    kind: uint
-    expires: "130"
-    notification_emails:
-      - addons-dev-internal@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-  listhash:
-    bug_numbers:
-      - 1841683
-      - 1866196
-    description: >
-      SHA1 cryptographic hash of the quarantined domains string pref.
-    kind: string
-    expires: "130"
-    notification_emails:
-      - addons-dev-internal@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-  remotehash:
-    bug_numbers:
-      - 1840615
-      - 1866196
-    description: >
-      SHA1 cryptographic hash of the quarantined domains string pref as it was
-      set based on the value got synced from the RemoteSettings collection.
-    kind: string
-    expires: "130"
     notification_emails:
       - addons-dev-internal@mozilla.com
     products:
@@ -2004,9 +1982,11 @@ extensions.startupCache:
     bug_numbers:
       - 1767336
       - 1892151
+      - 1928258
+      - 1958168
     description: >
       The amount of bytes writted into the Extensions StartupCache file.
-    expires: "135"
+    expires: "147"
     kind: uint
     notification_emails:
       - addons-dev-internal@mozilla.com
@@ -2019,10 +1999,12 @@ extensions.startupCache:
     bug_numbers:
       - 1767336
       - 1892151
+      - 1928258
+      - 1958168
     description: >
       The amount of times an unexpected error has been raised while
       reading the Extensions StartupCache file
-    expires: "135"
+    expires: "147"
     kind: uint
     keyed: true
     notification_emails:
@@ -2035,6 +2017,8 @@ extensions.startupCache:
   load_time:
     bug_numbers:
       - 1767336
+      - 1912170
+      - 1958168
     description: >
       Time to load and deserialize the extensions startupCache data.
       This scalar is mirroring the never expiring Glean metric named
@@ -2043,7 +2027,7 @@ extensions.startupCache:
       Unlike the related glean metric, this scalar has an expiring date,
       set as a deadline to consider removing the mirrored scalar in
       favor to just use the Glean metric).
-    expires: "132"
+    expires: "147"
     kind: uint
     notification_emails:
       - addons-dev-internal@mozilla.com
@@ -2402,7 +2386,7 @@ datasanitization:
     expires: never
     kind: uint
     notification_emails:
-      - pbz@mozilla.com
+      - emz@mozilla.com
       - seceng-telemetry@mozilla.com
     release_channel_collection: opt-out
     products:
@@ -2550,23 +2534,6 @@ findbar:
       - 'main'
 
 sidebar:
-  opened:
-    bug_numbers:
-      - 1648530
-    description: >
-      The number of times the sidebar was opened, per view (e.g.: bookmarks, history,
-      synced tabs).
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - emalysz@mozilla.com
-      - rtestard@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
   search:
     bug_numbers:
       - 1648524
@@ -2662,8 +2629,6 @@ os.environment:
       - 'firefox'
     record_in_processes:
       - main
-    operating_systems:
-      - "windows"
 
   allowed_app_sources:
     bug_numbers:
@@ -2685,8 +2650,6 @@ os.environment:
       - 'thunderbird'
     record_in_processes:
       - main
-    operating_systems:
-      - "windows"
 
   launch_method:
     bug_numbers:
@@ -2709,8 +2672,6 @@ os.environment:
       - firefox
     record_in_processes:
       - main
-    operating_systems:
-      - windows
 
   launched_to_handle:
     bug_numbers:
@@ -2737,8 +2698,6 @@ os.environment:
       - firefox
     record_in_processes:
       - main
-    operating_systems:
-      - windows
 
   invoked_to_handle:
     bug_numbers:
@@ -2766,8 +2725,6 @@ os.environment:
       - firefox
     record_in_processes:
       - main
-    operating_systems:
-      - windows
 
   is_default_handler:
     bug_numbers:
@@ -2790,8 +2747,6 @@ os.environment:
       - firefox
     record_in_processes:
       - main
-    operating_systems:
-      - windows
 
   is_kept_in_dock:
     bug_numbers:
@@ -2807,8 +2762,6 @@ os.environment:
       - firefox
     record_in_processes:
       - main
-    operating_systems:
-      - mac
 
   is_taskbar_pinned:
     bug_numbers:
@@ -2825,8 +2778,6 @@ os.environment:
       - firefox
     record_in_processes:
       - main
-    operating_systems:
-      - windows
 
   is_taskbar_pinned_private:
     bug_numbers:
@@ -2842,42 +2793,8 @@ os.environment:
       - firefox
     record_in_processes:
       - main
-    operating_systems:
-      - windows
 
 pictureinpicture:
-  opened_method:
-    bug_numbers:
-      - 1560590
-      - 1616045
-    description: >
-      The number of times a Picture-in-Picture window was opened, per trigger
-      mechanism (e.g.: the video toggle, the context menu).
-    expires: "92"
-    kind: uint
-    keyed: true
-    notification_emails:
-      - mconley@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - content
-  saw_toggle:
-    bug_numbers:
-      - 1657155
-    description: >
-      The number of times a Picture-in-Picture toggle was presented to the user when
-      they hovered the video with the mouse pointer.
-    expires: "92"
-    kind: uint
-    notification_emails:
-      - mconley@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - content
   most_concurrent_players:
     bug_numbers:
       - 1677107
@@ -2924,25 +2841,6 @@ preferences:
       - 'firefox'
     record_in_processes:
       - main
-  search_query:
-    bug_numbers:
-      - 1359306
-    description: >-
-      Each key is a search query string when user performs a search action within
-      about:preferences, and each value is the number of times that key is recorded.
-      The telemetry data will be recorded if there is a successful search result highlighted.
-    expires: "62"
-    kind: uint
-    keyed: true
-    notification_emails:
-      - chsiang@mozilla.com
-    release_channel_collection: opt-in
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - main
-
 webrtc.video:
   recv_codec_used:
     bug_numbers:
@@ -2980,74 +2878,6 @@ webrtc.video:
     record_in_processes:
       - 'content'
 
-webrtc.sdp:
-  parser_diff:
-    bug_numbers:
-      - 1432955
-      - 1529787
-      - 1588571
-    description: >
-      The number of differences between the C based sipcc SDP parser and
-      the new rust based rsdparsa SDP parser keyed by predefined
-      names of attributes and values that do not match between
-      the sipcc parsing result and the rsdparsa parsing result or
-      between the rsdparsa parsing result and the original sdp.
-      This should help to improve the new rsdparsa to replace
-      the sipcc parser.
-    expires: "77"
-    kind: uint
-    keyed: true
-    notification_emails:
-      - nohlmeier@mozilla.com
-    release_channel_collection: opt-in
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'content'
-
-mathml:
-  doc_count:
-    bug_numbers:
-      - 1362187
-      - 1538985
-      - 1590350
-    description: >
-      The number of documents that contained enabled MathML elements.
-    expires: never
-    kind: uint
-    notification_emails:
-      - emilio@mozilla.com
-      - fred.wang@free.fr
-      - dev-tech-layout@lists.mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'content'
-
-mediarecorder:
-  recording_count:
-    bug_numbers:
-      - 1400757
-      - 1429765
-      - 1480589
-      - 1532391
-    description: >
-      The number of times a MediaRecorder has been started. Recorded when a MediaRecorder starts
-    expires: "72"
-    kind: uint
-    notification_emails:
-      - media-alerts@mozilla.com
-    release_channel_collection: opt-in
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - main
-      - content
-
 media:
   element_in_page_count:
     bug_numbers:
@@ -3066,64 +2896,6 @@ media:
       - 'firefox'
     record_in_processes:
       - main
-
-  control_platform_usage:
-    bug_numbers:
-      - 1680856
-    description: >
-      Counts the number of times users enable and use media control on different platforms. 0=EnabledOn, 1=UsedOn.
-    expires: "91"
-    kind: uint
-    keyed: true
-    notification_emails:
-      - media-alerts@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-
-  decode_error_per_mime_type:
-    bug_numbers:
-      - 1688775
-      - 1804291
-    description: >
-      Count the number of times the media with a specific mime type (Eg. audio/vorbis, that would be used as the key) encounters a decode error during playback.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - media-alerts@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
-      - 'gpu'
-      - 'rdd'
-      - 'utility'
-
-  audio_process_per_codec_name:
-    bug_numbers:
-      - 1804249
-      - 1861305
-    description: >
-      Process where audio decoding happens and codec name
-    expires: "132"
-    kind: uint
-    keyed: true
-    notification_emails:
-      - media-alerts@mozilla.com
-      - alissy@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - "firefox"
-    record_in_processes:
-      - 'main'
-      - 'content'
-      - 'rdd'
-      - 'utility'
-    release_channel_collection: opt-out
 
   video_hardware_decoding_support:
     bug_numbers:
@@ -3206,10 +2978,11 @@ dom.contentprocess:
       - 1777404
       - 1817104
       - 1866197
+      - 1928259
     description: >
       The number of times a process crashed early but we could verify it was not
       because of buildID mismatch between the parent and the content processes.
-    expires: "135"
+    expires: "150"
     kind: uint
     notification_emails:
       - alissy@mozilla.com
@@ -3306,79 +3079,6 @@ dom.parentprocess:
       - 'main'
     release_channel_collection: opt-out
 
-devtools.toolbar.eyedropper:
-  opened:
-    bug_numbers:
-      - 1247985
-      - 1352115
-    description: Number of times the DevTools Eyedropper has been opened via the inspector toolbar.
-    expires: never
-    kind: uint
-    notification_emails:
-      - dev-developer-tools@lists.mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-devtools.copy.unique.css.selector:
-  opened:
-    bug_numbers:
-      - 1323700
-      - 1352115
-      - 1566395
-    description: Number of times the DevTools copy unique CSS selector has been used.
-    expires: never
-    kind: uint
-    notification_emails:
-      - dev-developer-tools@lists.mozilla.org
-      - mbalfanz@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-devtools.copy.full.css.selector:
-  opened:
-    bug_numbers:
-      - 1323700
-      - 1352115
-      - 1566395
-    description: Number of times the DevTools copy full CSS selector has been used.
-    expires: never
-    kind: uint
-    notification_emails:
-      - dev-developer-tools@lists.mozilla.org
-      - mbalfanz@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-devtools.copy.xpath:
-  opened:
-    bug_numbers:
-      - 987877
-      - 1566395
-    description: Number of times the DevTools copy XPath has been used.
-    expires: never
-    kind: uint
-    notification_emails:
-      - dev-developer-tools@lists.mozilla.org
-      - mbalfanz@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
 devtools.layout.flexboxhighlighter:
   opened:
     bug_numbers:
@@ -3470,57 +3170,6 @@ devtools.grid.gridinspector:
       - 1373483
     description: >
       Number of times the DevTools grid inspector was opened from the grid view.
-    expires: never
-    kind: uint
-    notification_emails:
-      - dev-developer-tools@lists.mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-devtools.grid.showGridAreasOverlay:
-  checked:
-    bug_numbers:
-      - 1373483
-    description: >
-      Number of times the DevTools grid inspector's "Display grid areas" was checked.
-    expires: never
-    kind: uint
-    notification_emails:
-      - dev-developer-tools@lists.mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-devtools.grid.showGridLineNumbers:
-  checked:
-    bug_numbers:
-      - 1373483
-    description: >
-      Number of times the DevTools grid inspector's "Display grid numbers" was checked.
-    expires: never
-    kind: uint
-    notification_emails:
-      - dev-developer-tools@lists.mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-devtools.grid.showInfiniteLines:
-  checked:
-    bug_numbers:
-      - 1373483
-    description: >
-      Number of times the DevTools grid inspector's "Extend grid lines infinitely" was checked.
     expires: never
     kind: uint
     notification_emails:
@@ -3805,26 +3454,6 @@ devtools.accessibility:
     record_in_processes:
       - 'main'
 
-  service_enabled_count:
-    bug_numbers:
-      - 1447302
-      - 1503568
-      - 1587985
-    description: >
-      Number of times platform accessibility has been enabled in DevTools
-      Accessibility panel.
-    expires: never
-    kind: uint
-    notification_emails:
-      - dev-developer-tools@lists.mozilla.org
-      - accessibility@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
   accessible_context_menu_opened:
     bug_numbers:
       - 1507870
@@ -3907,24 +3536,6 @@ devtools.accessibility:
     record_in_processes:
       - 'main'
 
-devtools.application:
-  opened_count:
-    bug_numbers:
-      - 1451734
-    description: >
-      Number of times the DevTools Application panel has been opened.
-    expires: "66"
-    kind: uint
-    notification_emails:
-      - dev-developer-tools@lists.mozilla.org
-      - jdescottes@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
 devtools.toolbox:
   tabs_reordered:
     bug_numbers:
@@ -3980,84 +3591,6 @@ devtools.markup.scrollable.badge:
       - 'fennec'
     record_in_processes:
       - 'main'
-
-dom.event:
-  confluence_load_count:
-    bug_numbers:
-      - 1514940
-    description: >
-      Number of times Confluence instances are loaded, and whether they are
-      compatible with conflated keypress event model or not, using "new"/"old".
-      I.e., collecting percentage of too old Confluence instance use count in
-      all Confluence instance use count.
-    expires: "71"
-    keyed: true
-    kind: uint
-    notification_emails:
-      - mnakano.birchill@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'content'
-
-  office_online_load_count:
-    bug_numbers:
-      - 1545410
-    description: >
-      Number of times Office Online Server instances are loaded, and whether
-      they are compatible with conflated keypress event model or not, using
-      "new"/"old".  I.e., collecting percentage of too old Confluence instance
-      use count in all Office Online Server instance use count.
-    expires: "71"
-    keyed: true
-    kind: uint
-    notification_emails:
-      - mnakano.birchill@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'content'
-
-navigator.storage:
-  estimate_count:
-    bug_numbers:
-      - 1359708
-    description: >
-      Number of times navigator.storage.estimate has been used.
-    expires: "60"
-    kind: uint
-    notification_emails:
-      - shuang@mozilla.com
-      - ttung@mozilla.com
-    release_channel_collection: opt-in
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-      - 'content'
-
-  persist_count:
-    bug_numbers:
-      - 1359708
-    description: >
-      Number of times navigator.storage.persist has been used.
-    expires: "60"
-    kind: uint
-    notification_emails:
-      - shuang@mozilla.com
-      - ttung@mozilla.com
-    release_channel_collection: opt-in
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-      - 'content'
 
 mozstorage:
   sqlitejsm_transaction_timeout:
@@ -4291,113 +3824,6 @@ normandy:
       - main
 
 # The following section contains graphics-related scalars.
-gfx.advanced.layers:
-  failure_id:
-    bug_numbers:
-      - 1365879
-    description: >
-      Each key is a failure for initializing Advanced Layers, and each value
-      is the number of times that failure was recorded. The failure codes
-      are unique strings present in MLGDeviceD3D11::Initialize, such that
-      a failure can be traced back to a specific Direct3D API call.
-    keyed: true
-    kind: uint
-    expires: "70"
-    notification_emails:
-      - gfx-telemetry-alerts@mozilla.com
-      - rhunt@mozilla.com
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-gfx.omtp:
-  paint_wait_ratio:
-    bug_numbers:
-      - 1386968
-      - 1518669
-      - 1673949
-      - 1674950
-    description: >
-      Ratio (in units of 1/100th of a percent) of how many times OMTP waited
-      for a paint for more than 200us, versus the total number of paints.
-    keyed: false
-    kind: uint
-    expires: "never" # 2021-10-01 this will move back to non-release collection.
-    notification_emails:
-      - gfx-telemetry-alerts@mozilla.com
-      - rhunt@mozilla.com
-      - perf-telemetry-alerts@mozilla.com
-      - barret@mozilla.com
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'content'
-
-gfx.canvas.remote:
-  activated:
-    bug_numbers:
-      - 1641722
-      - 1672582
-      - 1706844
-      - 1739290
-    description: >
-      Number of times remote canvas 2D has been activated.
-    kind: uint
-    expires: "103"
-    notification_emails:
-      - gfx-telemetry-alerts@mozilla.com
-      - bowen@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'gpu'
-
-  deactivated_no_device:
-    bug_numbers:
-      - 1641722
-      - 1672582
-      - 1706844
-      - 1739290
-      - 1852144
-    description: >
-      Number of times remote canvas 2D has been deactivated due to device creation failure.
-    kind: uint
-    expires: "130"
-    notification_emails:
-      - gfx-telemetry-alerts@mozilla.com
-      - bowen@mozilla.com
-      - aosmond@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'gpu'
-
-  deactivated_bad_stream:
-    bug_numbers:
-      - 1641722
-      - 1672582
-      - 1706844
-      - 1739290
-      - 1852144
-    description: >
-      Number of times remote canvas 2D has been deactivated due to a stream read failure.
-    kind: uint
-    expires: "130"
-    notification_emails:
-      - gfx-telemetry-alerts@mozilla.com
-      - bowen@mozilla.com
-      - aosmond@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'gpu'
-
 gfx.hdr:
   windows_display_colorspace_bitfield:
     bug_numbers:
@@ -4484,38 +3910,6 @@ gfx:
     record_in_processes:
       - 'main'
     release_channel_collection: opt-out
-  tmp_writable:
-    bug_numbers:
-      - 1923741
-    description: >
-      Is the system temporary directory writable
-    expires: "134"
-    kind: boolean
-    notification_emails:
-      - gfx-telemetry-alerts@mozilla.com
-      - aosmond@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-    release_channel_collection: opt-out
-
-apz:
-  scrollwheel_overshoot:
-    bug_numbers:
-      - 1836870
-    description: >
-      Count of overshoot events, where the user reverses scrollwheel direction soon after the last scrollwheel input.
-    expires: "134"
-    kind: uint
-    notification_emails:
-      - botond@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-      - 'gpu'
-    release_channel_collection: opt-out
 
 # The following section contains the form autofill related scalars.
 formautofill:
@@ -4536,37 +3930,6 @@ formautofill:
       - 'main'
 
 formautofill.addresses:
-  detected_sections_count:
-    bug_numbers:
-      - 1801039
-    description: >
-      Count at detection time number of address form sections.
-      A single form can contain more than one address form section.
-    expires: never
-    kind: uint
-    notification_emails:
-      - autofill@lists.mozilla.org
-      - passwords-dev@mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
-  submitted_sections_count:
-    bug_numbers:
-      - 1656344
-    description: >
-      Count at submission time number of credit card form sections submitted.
-    expires: never
-    kind: uint
-    notification_emails:
-      - autofill@lists.mozilla.org
-      - passwords-dev@mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
   autofill_profiles_count:
     bug_numbers:
       - 1801039
@@ -4599,300 +3962,9 @@ formautofill.creditCards:
       - 'firefox'
     record_in_processes:
       - 'main'
-  detected_sections_count:
-    bug_numbers:
-      - 1656344
-    description: >
-      Count at detection time number of credit card form sections.
-      A single form can contain more than one credit card form section.
-    expires: never
-    kind: uint
-    notification_emails:
-      - autofill@lists.mozilla.org
-      - passwords-dev@mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
-  submitted_sections_count:
-    bug_numbers:
-      - 1656344
-    description: >
-      Count at submission time number of credit card form sections submitted.
-    expires: never
-    kind: uint
-    notification_emails:
-      - autofill@lists.mozilla.org
-      - jmathies@mozilla.com
-      - chsiang@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
-
-# This section is for notification bars testing
-notificationbar:
-  # Used only for testing
-  testone:
-    bug_numbers:
-      - 1676943
-    description: >
-      Used to test notificationbar telemetry
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - telemetry-client-dev@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-
-  # Used only for testing
-  testtwo:
-    bug_numbers:
-      - 1676943
-    description: >
-      Used to test notificationbar telemetry
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - telemetry-client-dev@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-
-# The following section contains scalars for the Screenshots extension.
-screenshots:
-  download:
-    bug_numbers:
-      - 1412411
-    description: >
-      The count of new screenshots created, then downloaded per session
-      via the Firefox Screenshots feature. Excludes failed attempts due
-      to any error.
-    expires: never
-    kind: uint
-    notification_emails:
-      - screenshots-dev@mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-  upload:
-    bug_numbers:
-      - 1412411
-    description: >
-      The count of new screenshots created, then uploaded per session
-      via the Firefox Screenshots feature. Excludes attempts to create
-      and upload the screenshot that may have failed.
-    expires: never
-    kind: uint
-    notification_emails:
-      - screenshots-dev@mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-  copy:
-    bug_numbers:
-      - 1412411
-    description: >
-      The count of new screenshots created, then copied directly to the
-      clipboard per session via the Firefox Screenshots feature.
-    expires: never
-    kind: uint
-    notification_emails:
-      - screenshots-dev@mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-  visible:
-    bug_numbers:
-      - 1722774
-    description: >
-      The count of new screenshots created using just the viewport,
-      no scrolling.
-    expires: never
-    kind: uint
-    notification_emails:
-      - screenshots-dev@mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-  full_page:
-    bug_numbers:
-      - 1722774
-    description: >
-      The count of new screenshots created by capturing the full,
-      scrolled page.
-    expires: never
-    kind: uint
-    notification_emails:
-      - screenshots-dev@mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-  custom:
-    bug_numbers:
-      - 1722774
-    description: >
-      The count of new screenshots created using the drag handles
-      to draw the box size and position.
-    expires: never
-    kind: uint
-    notification_emails:
-      - screenshots-dev@mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-  element:
-    bug_numbers:
-      - 1722774
-    description: >
-      The count of new screenshots created using the highlighter
-      to select element bounds.
-    expires: never
-    kind: uint
-    notification_emails:
-      - screenshots-dev@mozilla.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-# The following section is for tracking the number of failure for indexedDB.
-idb.failure:
-  unknown_objectstore_empty_database:
-    bug_numbers:
-      - 1669730
-    description: >
-      Tracking the number of attempts to open an unknown objectstore on an
-      empty IndexedDB database.
-    expires: "89"
-    kind: uint
-    notification_emails:
-      - storage-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
-  unknown_objectstore_non_empty_database:
-    bug_numbers:
-      - 1669730
-    description: >
-      Tracking the number of attempts to open an unknown objectstore on a
-      non-empty IndexedDB database.
-    expires: "89"
-    kind: uint
-    notification_emails:
-      - storage-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
 
 # The following section contains scalars for printing.
 printing:
-  paper_size:
-    bug_numbers:
-      - 1660686
-    description: >
-      A counter of the number of times a given paper size (recorded as
-      "width x height" in points) is used for printing.
-    keyed: true
-    expires: "89"
-    kind: uint
-    notification_emails:
-      - jwatt@jwatt.org
-      - jkew@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
-
-  dialog_opened_without_preview:
-    bug_numbers:
-      - 1600623
-    description: >
-      A counter incremented every time the print dialog is opened without
-      opening print preview.
-    expires: never
-    kind: uint
-    notification_emails:
-      - jwatt@jwatt.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
-
-  dialog_without_preview_cancelled:
-    bug_numbers:
-      - 1600623
-    description: >
-      A counter incremented every time a print dialog that was opened without
-      print preview is cancelled.
-    expires: never
-    kind: uint
-    notification_emails:
-      - jwatt@jwatt.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
-
-  dialog_opened_via_preview:
-    bug_numbers:
-      - 1600623
-    description: >
-      A counter incremented every time the print dialog is opened from the old
-      print preview.
-    expires: never
-    kind: uint
-    notification_emails:
-      - jwatt@jwatt.org
-      - emalysz@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
-
   dialog_opened_via_preview_tm:
     bug_numbers:
       - 1657220
@@ -4909,22 +3981,6 @@ printing:
       - 'firefox'
     record_in_processes:
       - 'main'
-
-  dialog_via_preview_cancelled:
-    bug_numbers:
-      - 1600623
-    description: >
-      A counter incremented every time a print dialog opened from the old print
-      preview is cancelled.
-    expires: never
-    kind: uint
-    notification_emails:
-      - jwatt@jwatt.org
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
 
   dialog_via_preview_cancelled_tm:
     bug_numbers:
@@ -4985,22 +4041,6 @@ printing:
     record_in_processes:
       - 'main'
 
-  preview_opened:
-    bug_numbers:
-      - 1600623
-    description: >
-      A counter incremented every time the user initiates the old print preview.
-    expires: never
-    kind: uint
-    notification_emails:
-      - jwatt@jwatt.org
-      - emalysz@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
-
   preview_opened_tm:
     bug_numbers:
       - 1657220
@@ -5016,23 +4056,6 @@ printing:
       - 'firefox'
     record_in_processes:
       - 'main'
-
-  preview_cancelled:
-    bug_numbers:
-      - 1600623
-    description: >
-      A counter incremented every time an old print preview session exits
-      without printing.
-    expires: never
-    kind: uint
-    notification_emails:
-      - jwatt@jwatt.org
-      - emalysz@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'content'
 
   preview_cancelled_tm:
     bug_numbers:
@@ -5189,91 +4212,6 @@ browser.timings:
     record_in_processes:
       - 'main'
 
-# The following section contains the service worker scalars.
-sw:
-  cors_res_for_so_req_count:
-    bug_numbers:
-      - 1416629
-    description: >
-      The count of number of synthesize response made by service workers and
-      it's a cors type resposne for a same-origin mode request.
-    expires: "61"
-    kind: uint
-    notification_emails:
-      - sw-telemetry@mozilla.com
-      - ttung@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-      - 'content'
-
-  alternative_body_used_count:
-    bug_numbers:
-      - 1423623
-      - 1433916
-    description: >
-      The count of number of synthesize response using alternative body.
-    expires: "68"
-    kind: uint
-    notification_emails:
-      - sw-telemetry@mozilla.com
-      - echuang@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-      - 'content'
-
-serviceworker:
-  registrations:
-    description: >
-      Count how many registrations occur. File bugs in Core::DOM in case of a Telemetry regression.
-
-    record_in_processes:
-      - 'main'
-    products:
-      - 'firefox'
-      - 'fennec'
-    expires: "102"
-    kind: uint
-    bug_numbers:
-      - 1740335
-    notification_emails:
-      - sw-telemetry@mozilla.com
-      - rjesup@mozilla.com
-      - echuang@mozilla.com
-    keyed: true
-    keys:
-      - All
-      - Fetch
-
-  running_max:
-    description: >
-      The maximum number of simultaneous running ServiceWorkers in a session.
-
-    record_in_processes:
-      - 'main'
-    products:
-      - 'firefox'
-      - 'fennec'
-    expires: "102"
-    kind: uint
-    bug_numbers:
-      - 1740335
-    notification_emails:
-      - sw-telemetry@mozilla.com
-      - rjesup@mozilla.com
-      - echuang@mozilla.com
-    keyed: true
-    keys:
-      - All
-      - Fetch
-
 widget:
   ime_name_on_windows:
     bug_numbers:
@@ -5370,37 +4308,6 @@ widget:
     record_in_processes:
       - 'main'
 
-  gtk_theme_has_scrollbar_buttons:
-    bug_numbers:
-      - 1669135
-    description: >
-      Whether the active Gtk theme has scrollbar buttons.
-    kind: boolean
-    expires: "87"
-    notification_emails:
-      - layout-telemetry-alerts@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-
-  gtk_theme_scrollbar_uses_images:
-    bug_numbers:
-      - 1670145
-    description: >
-      Whether the active Gtk theme uses background images for its scrollbar
-      parts.
-    kind: boolean
-    expires: "87"
-    notification_emails:
-      - layout-telemetry-alerts@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-
   gtk_version:
     bug_numbers:
       - 1670145
@@ -5416,46 +4323,7 @@ widget:
     record_in_processes:
       - 'main'
 
-# The following section contains memory reporter counters.
-memoryreporter:
-  max_ghost_windows:
-    bug_numbers:
-      - 1454724
-    description: >
-      The maximum number of leaked ghost windows seen.
-    expires: "66"
-    kind: uint
-    notification_emails:
-      - memshrink-telemetry-alerts@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'content'
-
 update:
-  binarytransparencyresult:
-    bug_numbers:
-      - 1501889
-    description: >
-      If the binary transparency information for an update does not verify
-      successfully, this probe will contain an error code from
-      toolkit/mozapps/update/common/updatererrors.h indicating why.
-    expires: "73"
-    kind: uint
-    keyed: true
-    notification_emails:
-      - application-update-telemetry-alerts@mozilla.com
-      - seceng-telemetry@mozilla.com
-      - dkeeler@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - main
-
   bitshresult:
     bug_numbers:
       - 1343669
@@ -5480,8 +4348,6 @@ update:
       - 'fennec'
     record_in_processes:
       - main
-    operating_systems:
-      - windows
 
   move_result:
     bug_numbers:
@@ -5569,34 +4435,6 @@ update:
       - 'thunderbird'
     record_in_processes:
       - main
-
-# The following section contains search counters.
-browser.search:
-  data_transferred:
-    bug_numbers:
-      - 1614777
-      - 1619954
-      - 1656135
-      - 1694852
-      - 1736658
-    description: >
-      Records bytes that have been transferred for search requests, including
-      top-level documents, sub-resources, iframes and search suggestions.
-      The key format could be one of:
-        <search-provider-name>
-        <search-provider-name>-pb
-        sggt-<search-engine-id>
-        sggt-<search-engine-id>-pb
-    expires: never
-    keyed: true
-    kind: uint
-    notification_emails:
-      - tihuang@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-    release_channel_collection: opt-out
 
 browser.search.content:
   urlbar:
@@ -6340,44 +5178,17 @@ browser.search.adclicks:
       - main
 
 browser.searchinit:
-  engine_invalid_webextension:
-    bug_numbers:
-      - 1665938
-      - 1691050
-      - 1725501
-      - 1763528
-      - 1801017
-      - 1832463
-      - 1871199
-      - 1897049
-    description: >
-      Records the WebExtension ID of a search engine where the WebExtension
-      is not installed (= 1), disabled (= 2), search engine no longer specified (= 4),
-      a different name (= 5), where the submission URL is different between the
-      search engine and the WebExtension (= 6). The value '3' has been replaced
-      by '6' to distinguish newer entries.
-    expires: "136"
-    keyed: true
-    kind: uint
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-      - mbanner@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-    release_channel_collection: opt-out
-
   secure_opensearch_engine_count:
     bug_numbers:
       - 1789438
       - 1811158
       - 1846899
       - 1881408
+      - 1916866
     description: >
       Records the number of secure (i.e., using https) OpenSearch search
       engines a given user has installed
-    expires: "133"
+    expires: "145"
     keyed: false
     kind: uint
     notification_emails:
@@ -6394,10 +5205,11 @@ browser.searchinit:
       - 1811158
       - 1846899
       - 1881408
+      - 1916866
     description: >
       Records the number of insecure (i.e., using http) OpenSearch search
       engines a given user has installed
-    expires: "133"
+    expires: "145"
     keyed: false
     kind: uint
     notification_emails:
@@ -6414,10 +5226,11 @@ browser.searchinit:
       - 1811158
       - 1846899
       - 1881408
+      - 1916866
     description: >
       Records the number of OpenSearch search engines with secure updates
       enabled (i.e., using https) a given user has installed
-    expires: "133"
+    expires: "145"
     keyed: false
     kind: uint
     notification_emails:
@@ -6434,10 +5247,11 @@ browser.searchinit:
       - 1811158
       - 1846899
       - 1881408
+      - 1916866
     description: >
       Records the number of OpenSearch search engines with insecure updates
       enabled (i.e., using http) a given user has installed
-    expires: "133"
+    expires: "145"
     keyed: false
     kind: uint
     notification_emails:
@@ -6455,6 +5269,7 @@ startup:
       - 1570652
       - 1623406
       - 1749887
+      - 1893667
     description: >
       How the profile was selected during startup. One of the following reasons:
         unknown:
@@ -6462,6 +5277,8 @@ startup:
           occured.
         profile-manager:
           The profile was selected by the profile manager.
+        profile-selector:
+          The profile was selected by the profile selector window.
         profile-reset:
           The profile was selected for reset, normally this would mean a restart.
         restart:
@@ -6497,6 +5314,7 @@ startup:
       - jhollek@mozilla.com
       - echo@mozilla.com
       - shong@mozilla.com
+      - jhirsch@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -6511,10 +5329,12 @@ startup:
   profile_database_version:
     bug_numbers:
       - 1878339
+      - 1916867
+      - 1958171
     description: >
       The version of the profiles.ini database loaded during startup. A value
       of "0" is used to indicate that no file was present during startup.
-    expires: "133"
+    expires: "147"
     keyed: false
     kind: string
     notification_emails:
@@ -6533,10 +5353,12 @@ startup:
   profile_count:
     bug_numbers:
       - 1878339
+      - 1916867
+      - 1958171
     description: >
       This records the number of known profiles after startup completes. This
       includes any profiles that were created during startup.
-    expires: "133"
+    expires: "147"
     keyed: false
     kind: uint
     notification_emails:
@@ -6586,105 +5408,6 @@ startup:
       - 'firefox'
     record_in_processes:
       - 'main'
-
-  skeleton_ui_disabled_reason:
-    bug_numbers:
-      - 1686301
-    description: >
-      The reason why the skeleton UI was not shown to the user. This should be
-      one of the following values:
-        None:
-          There was no reason for not showing the skeleton UI. This should not
-          be recorded.
-        Ineligible:
-          The user was ineligible for the skeleton UI due to information which
-          should already be trivially available via telemetry (i.e., the user
-          is running an OS version that doesn't support the skeleton UI.)
-        Disabled:
-          The registry specified "Enabled" as 0 for the skeleton UI.
-        EnabledKeyDoesNotExist:
-          The "Enabled" key in the registry does not exist.
-        OOM:
-          We encountered an allocation failure while trying to show the
-          skeleton UI.
-        Cmdline:
-          The skeleton UI was disabled due to the presence of an unsupported
-          command line argument.
-        EnvVars:
-          The skeleton UI was disabled due to an explicitly unsupported
-          environment variable.
-        FailedToOpenRegistryKey:
-          We were unable to open the skeleton UI Windows registry key.
-        RegistryError:
-          We encountered an error trying to read/write a skeleton UI registry
-          value.
-        FailedLoadingDynamicProcs:
-          We were unable to dynamically load one of the functions we require in
-          order to show the skeleton UI.
-        FailedGettingLock:
-          We were unable to acquire the skeleton UI lock - this should mean
-          that an existing instance of the application is already running.
-        FilesystemFailure:
-          Encountered some error getting the path to a file or reading from a
-          particular file while trying to show the skeleton UI.
-        NoStartWithLastProfile:
-          The user has set up their profiles so Firefox always shows the
-          profile manager during startup.
-        FailedRegisteringWindowClass:
-          We failed to register the window class needed to show the skeleton UI
-          window.
-        CorruptData:
-          Clearly invalid data was found when trying to load the necessary
-          information to show the skeleton UI in the right place.
-        BadWindowDimensions:
-          Window dimensions outside of the supported size for the skeleton UI.
-        FailedGettingMonitorInfo:
-          Couldn't get the monitor information when trying to display the
-          skeleton UI.
-        CreateWindowFailed:
-          The call to CreateWindow failed.
-        FailedGettingDC:
-          We failed to get the HDC to draw into.
-        FailedBlitting:
-          We failed blitting the actual skeleton UI to the HDC.
-        FailedFillingBottomRect:
-          We failed filling the solid color of the main browser below the
-          browser chrome.
-        CrashedOnce:
-          At some point the skeleton UI crashed, so we've disabled it for the
-          user.
-        Unknown:
-          An unknown error occurred - this generally should not happen.
-    expires: "98"
-    keyed: false
-    kind: string
-    notification_emails:
-      - dothayer@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-  is_restored_by_macos:
-    bug_numbers:
-      - 639707
-    description: >
-      Recorded on every launch of a Firefox install on macOS, with a boolean
-      value indicating whether Firefox was restored by macOS or if it was
-      manually launched by a user.
-    expires: "116"
-    keyed: false
-    kind: boolean
-    notification_emails:
-      - spohl@mozilla.com
-    operating_systems:
-      - mac
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-    release_channel_collection: opt-out
 
 script.preloader:
   mainthread_recompile:
@@ -6811,57 +5534,6 @@ networking:
       - 'main'
     release_channel_collection: opt-out
 
-  data_transferred_captive_portal:
-    bug_numbers:
-      - 1543005
-    description: >
-      Hom many KB has been transfer over a captive portal during a subsession.
-    expires: "73"
-    keyed: false
-    kind: uint
-    notification_emails:
-      - ddamjanovic@mozilla.com
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-      - 'socket'
-
-  http_transactions_captive_portal:
-    bug_numbers:
-      - 1543005
-    description: >
-      Number of http transactions transfer over a captive portal during a subsession.
-    expires: "73"
-    keyed: false
-    kind: uint
-    notification_emails:
-      - ddamjanovic@mozilla.com
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-      - 'socket'
-
-  http_connections_captive_portal:
-    bug_numbers:
-      - 1543005
-    description: >
-      Number of http connections transfer over a captive portal during a subsession.
-    expires: "73"
-    keyed: false
-    kind: uint
-    notification_emails:
-      - ddamjanovic@mozilla.com
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-      - 'socket'
-
   captive_portal_banner_displayed:
     bug_numbers:
       - 1868145
@@ -6917,7 +5589,6 @@ networking:
       - 'firefox'
     record_in_processes:
       - 'main'
-      - 'content'
 
   https_rr_prefs_usage:
     bug_numbers:
@@ -6956,42 +5627,6 @@ networking:
     record_in_processes:
       - 'main'
       - 'socket'
-
-  data_transferred_per_content_type:
-    bug_numbers:
-      - 1808695
-    description: >
-      Number of bytes we transferred keyed by "contentType"
-    expires: "130"
-    keyed: true
-    kind: uint
-    release_channel_collection: opt-out
-    notification_emails:
-      - necko@mozilla.com
-      - rtestard@mozilla.com
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
-
-  data_transferred_pb_per_content_type:
-    bug_numbers:
-      - 1808695
-    description: >
-      Number of bytes we transferred in private browsing keyed by "contentType"
-    expires: "130"
-    keyed: true
-    kind: uint
-    release_channel_collection: opt-out
-    notification_emails:
-      - necko@mozilla.com
-      - rtestard@mozilla.com
-    products:
-      - 'firefox'
-      - 'fennec'
-    record_in_processes:
-      - 'main'
 
   speculative_connect_outcome:
     bug_numbers:
@@ -7095,57 +5730,6 @@ networking:
       - main
 
 blocklist:
-  lastModified_rs_addons:
-    bug_numbers:
-      - 1572711
-      - 1607744
-      - 1649960
-      - 1689274
-      - 1730037
-      - 1763529
-      - 1811159
-      - 1861296
-    description: >
-      Keep track of the last time the "addons" remotesetting blocklist has been successfully
-      updated (as a datetime string in UTC format), set to "Missing Date" when the timestamp
-      couldn't be retrieved.
-    expires: "132"
-    kind: string
-    release_channel_collection: opt-out
-    notification_emails:
-      - addons-dev-internal@mozilla.com
-      - rwu@mozilla.com
-    products:
-      - 'firefox'
-      - 'fennec'
-      - 'thunderbird'
-    record_in_processes:
-      - main
-
-  lastModified_rs_addons_mlbf:
-    bug_numbers:
-      - 1633466
-      - 1649960
-      - 1689274
-      - 1730037
-      - 1763529
-      - 1811159
-      - 1861296
-    description: >
-      Keep track of the last time the "addons-bloomfilters" remotesetting blocklist has been successfully
-      updated (as a datetime string in UTC format), set to "Missing Date" when the timestamp
-      couldn't be retrieved.
-    expires: "132"
-    kind: string
-    release_channel_collection: opt-out
-    notification_emails:
-      - addons-dev-internal@mozilla.com
-      - rwu@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
   mlbf_source:
     bug_numbers:
       - 1662857
@@ -7153,8 +5737,9 @@ blocklist:
       - 1763529
       - 1811159
       - 1861296
+      - 1912167
     description: >
-      The source of the RemoteSettings attachment that holds the bloom filter.
+      The source of the RemoteSettings attachment that holds the hard-blocks bloom filter.
       Possible values are "dump_match", "cache_match", "remote_match", "dump_fallback", "cache_fallback", "unknown".
       "dump_match", "cache_match" and "remote_match" are expected known-good values, and means that the loaded
       bloomfilter matches the blocklist record in the RemoteSettings collection. The prefix denotes the immediate
@@ -7165,7 +5750,7 @@ blocklist:
       (e.g. because the latest version cannot be downloaded).
       "unknown" means that the bloomfilter cannot be loaded at all. This can happen if the blocklist is disabled
       via preferences or enterprise policies.
-    expires: "132"
+    expires: never
     kind: string
     release_channel_collection: opt-out
     notification_emails:
@@ -7176,67 +5761,22 @@ blocklist:
     record_in_processes:
       - main
 
-  mlbf_generation_time:
+  mlbf_softblocks_source:
     bug_numbers:
-      - 1633466
-      - 1649960
-      - 1689274
-      - 1730037
-      - 1763529
-      - 1811159
-      - 1861296
+      - 1917859
     description: >
-      Keep track of the generation time of the addon blocklist's bloom filter. This marks the
-      point in time until which signed add-ons are recognized by the selected bloom filter from the
-      addons-bloomfilters collection.
-      The value is a datetime string in UTC format, or  "Missing Date" when unavailable.
-    expires: "132"
-    kind: string
-    release_channel_collection: opt-out
-    notification_emails:
-      - addons-dev-internal@mozilla.com
-      - rwu@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-  mlbf_stash_time_oldest:
-    bug_numbers:
-      - 1633466
-      - 1649960
-      - 1689274
-      - 1730037
-      - 1763529
-      - 1811159
-      - 1861296
-    description: >
-      Keep track of the timestamp of the oldest stash of the addons blocklist.
-      The value is a datetime string in UTC format, or "Missing Date" when unavailable.
-    expires: "132"
-    kind: string
-    release_channel_collection: opt-out
-    notification_emails:
-      - addons-dev-internal@mozilla.com
-      - rwu@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-  mlbf_stash_time_newest:
-    bug_numbers:
-      - 1633466
-      - 1649960
-      - 1689274
-      - 1730037
-      - 1763529
-      - 1811159
-      - 1861296
-    description: >
-      Keep track of the timestamp of the most recent stash of the addons blocklist.
-      The value is a datetime string in UTC format, or "Missing Date" when unavailable.
-    expires: "132"
+      The source of the RemoteSettings attachment that holds the soft-blocks bloom filter.
+      Possible values are "dump_match", "cache_match", "remote_match", "dump_fallback", "cache_fallback", "unknown".
+      "dump_match", "cache_match" and "remote_match" are expected known-good values, and means that the loaded
+      bloomfilter matches the blocklist record in the RemoteSettings collection. The prefix denotes the immediate
+      source of the loaded data: "dump" means packaged with the application, "remote" means a freshly downloaded
+      bloomfilter, "cache" means a previously downloaded bloomfilter.
+      "dump_fallback" and "cache_fallback" means that the last known bloomfilter was used, despite it not matching
+      the latest record in the RemoteSettings collection. In this case the outdated bloomfilter is used as a fallback
+      (e.g. because the latest version cannot be downloaded).
+      "unknown" means that the bloomfilter cannot be loaded at all. This can happen if the blocklist is disabled
+      via preferences or enterprise policies.
+    expires: never
     kind: string
     release_channel_collection: opt-out
     notification_emails:
@@ -7276,25 +5816,6 @@ deletion.request:
     kind: string
     notification_emails:
       - rfkelly@mozilla.com
-      - sync-team@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-    record_into_store:
-      - 'deletion-request'
-
-  ecosystem_client_id:
-    bug_numbers:
-      - 1635662
-    description: >
-      An identifier used by the ecosystem ping, to delete all ecosystem
-      metrics collected from this profile if the user opts out of telemetry.
-    expires: never
-    kind: string
-    notification_emails:
-      - lina@mozilla.com
       - sync-team@mozilla.com
     release_channel_collection: opt-out
     products:
@@ -7369,25 +5890,6 @@ urlbar.trending:
       - main
 
 urlbar:
-  abandonment:
-    bug_numbers:
-      - 1752953
-    description: >
-      A uint recording the number of abandoned engagements in the urlbar. An
-      abandonment occurs when the user begins using the urlbar but stops before
-      completing the engagement. This can happen when the user clicks outside
-      the urlbar to focus a different part of the window. It can also happen
-      when the user switches to another window while the urlbar is focused.
-    expires: never
-    kind: uint
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-      - adw@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
   autofill_deletion:
     bug_numbers:
       - 1815342
@@ -7404,673 +5906,6 @@ urlbar:
       - 'firefox'
     record_in_processes:
       - main
-  engagement:
-    bug_numbers:
-      - 1752953
-    description: >
-      A uint recording the number of engagements the user completes in the
-      urlbar.  An engagement occurs when the user navigates to a page using the
-      urlbar, for example by picking a result in the urlbar panel or typing a
-      search term or URL in the urlbar and pressing the enter key.
-    expires: never
-    kind: uint
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-      - adw@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  tips:
-    bug_numbers:
-      - 1608461
-    description: >
-      A keyed uint recording how many times particular tips are shown in the
-      Urlbar and how often their confirm and help buttons are pressed.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-      - adw@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-urlbar.impression:
-  autofill_about:
-    bug_numbers:
-      - 1774305
-      - 1780188
-    description: >
-      Counts how many times about-page type was autofilled per engagement.
-    expires: never
-    kind: uint
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  autofill_adaptive:
-    bug_numbers:
-      - 1774305
-      - 1780188
-    description: >
-      Counts how many times adaptive history type was autofilled per engagement.
-    expires: never
-    kind: uint
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  autofill_origin:
-    bug_numbers:
-      - 1774305
-      - 1780188
-    description: >
-      Counts how many times origin type was autofilled per engagement.
-    expires: never
-    kind: uint
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  autofill_other:
-    bug_numbers:
-      - 1774305
-      - 1780188
-    description: >
-      Counts how many times other type was autofilled per engagement.
-    expires: never
-    kind: uint
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  autofill_url:
-    bug_numbers:
-      - 1774305
-      - 1780188
-    description: >
-      Counts how many times url type was autofilled per engagement.
-    expires: never
-    kind: uint
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-urlbar.tabtosearch:
-  impressions:
-    bug_numbers:
-      - 1686330
-    description: >
-      A keyed uint recording how many times non-onboarding tab-to-search results
-      are shown in the Urlbar for a particular search engine.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-in
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  impressions_onboarding:
-    bug_numbers:
-      - 1686330
-    description: >
-      A keyed uint recording how many times onboarding tab-to-search results
-      are shown in the Urlbar for a particular search engine.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-in
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-urlbar.picked:
-    autofill_about:
-      bug_numbers:
-        - 1770483
-      description: >
-        Counts how many times an about-page autofill result (e.g.,
-        "about:config") was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    autofill_adaptive:
-      bug_numbers:
-        - 1597791
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    autofill_origin:
-      bug_numbers:
-        - 1597791
-      description: >
-        Counts how many times an origin (domain) autofill result (e.g.,
-        "mozilla.org") was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    autofill_other:
-      bug_numbers:
-        - 1770483
-      description: >
-        Counts how many times some other type of autofill result that does not
-        have a specific keyed scalar was picked at a given index. This is a
-        fallback that is used when the code is not properly setting a specific
-        autofill type, and it should not normally be used. If it appears in the
-        data, it means we need to investigate and fix the code that is not
-        properly setting a specific autofill type.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    autofill_url:
-      bug_numbers:
-        - 1597791
-      description: >
-        Counts how many times a URL autofill result (e.g.,
-        "mozilla.org/firefox") was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    bookmark:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    bookmark_adaptive:
-      bug_numbers:
-        - 1466103
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    clipboard:
-      bug_numbers:
-        - 1842247
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    dynamic:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    dynamic_wikipedia:
-      bug_numbers:
-        - 1819797
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    extension:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    formhistory:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    history:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    history_adaptive:
-      bug_numbers:
-        - 1466103
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    keyword:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    navigational:
-      bug_numbers:
-        - 1819797
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    quickaction:
-      bug_numbers:
-        - 1783154
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    quicksuggest:
-      bug_numbers:
-        - 1761059
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    recent_search:
-      bug_numbers:
-        - 1852848
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    remotetab:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    searchengine:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    searchsuggestion:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    searchsuggestion_rich:
-      bug_numbers:
-        - 1834359
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    switchtab:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    tabtosearch:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    tip:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    topsite:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    trending:
-      bug_numbers:
-        - 1823543
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    trending_rich:
-      bug_numbers:
-        - 1834359
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    unknown:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times an unknown result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    visiturl:
-      bug_numbers:
-        - 1671508
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
-
-    weather:
-      bug_numbers:
-        - 1815699
-      description: >
-        Counts how many times this result type was picked at a given index.
-      expires: never
-      kind: uint
-      keyed: true
-      notification_emails:
-        - fx-search-telemetry@mozilla.com
-      release_channel_collection: opt-out
-      products:
-        - 'firefox'
-      record_in_processes:
-        - main
 
 urlbar.persistedsearchterms:
   revert_by_popup_count:
@@ -8147,9 +5982,13 @@ urlbar.searchmode:
   keywordoffer:
     bug_numbers:
       - 1654680
+      - 1919180
     description: >
       A keyed uint recording how many times the user entered a particular search
-      mode after selecting a keyword offer result.
+      mode after selecting a keyword offer result. The scalar key for local
+      search modes entered using a restrict keyword will be suffixed with
+      "keyword". For example: tabs_keyword, bookmarks_keyword, history_keyword,
+      and actions_keyword.
     expires: never
     kind: uint
     keyed: true
@@ -8166,6 +6005,22 @@ urlbar.searchmode:
     description: >
       A keyed uint recording how many times the user entered a particular search
       mode after selecting a one-off.
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - fx-search-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
+  searchbutton:
+    bug_numbers:
+      - 1919857
+    description: >
+      A keyed uint recording how many times the user entered a particular search
+      mode by unified search button.
     expires: never
     kind: uint
     keyed: true
@@ -8291,9 +6146,15 @@ urlbar.searchmode:
   typed:
     bug_numbers:
       - 1654680
+      - 1919180
     description: >
       A keyed uint recording how many times the user entered a particular search
-      mode after typing an alias.
+      mode after typing an alias. The scalar keys for local search modes entered
+      by typing a restrict keyword will be suffixed with "keyword". For example:
+      tabs_keyword, bookmarks_keyword, history_keyword, and actions_keyword.
+      If instead search mode was entered by typing a restrict symbol the key
+      will be suffixed with "symbol" (e.g. typing "%" will generate
+      "tabs_symbol").
     expires: never
     kind: uint
     keyed: true
@@ -8327,246 +6188,6 @@ urlbar.searchmode:
       A keyed uint recording how many times the user entered a particular search
       mode from an unknown entry point. If values appear for this probe in
       Telemetry, we should review the entry points to search mode.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-urlbar.picked.searchmode:
-  bookmarkmenu:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode from the Search
-      Bookmarks menu item in the Library menu.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  handoff:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode by being handed off
-      from the search bar on the new tab page.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  keywordoffer:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode by selecting a
-      keyword offer result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  oneoff:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode by selecting a
-      one-off.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  shortcut:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode by pressing a
-      keyboard shortcut.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  tabmenu:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode by selecting the
-      Search Tabs menu item in the Tab Overflow menu.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  tabtosearch:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode by selecting a
-      tab-to-search result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  tabtosearch_onboard:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode by selecting a
-      tab-to-search onboarding result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  topsites_newtab:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode by selecting a
-      search shortcut Top Site on the New Tab Page.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  topsites_urlbar:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode by selecting a
-      search shortcut Top Site in the Urlbar.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  touchbar:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode by selecting a
-      search shortcut on the macOS Touch Bar.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  typed:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode by typing an alias.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  historymenu:
-    bug_numbers:
-      - 1736939
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode from the Search
-      History menu item in a History menu.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  other:
-    bug_numbers:
-      - 1674874
-    description: >
-      A keyed uint recording how many times the user picked a particular kind of
-      result while in search mode after entering search mode from an unknown
-      entry point. If values appear for this probe in Telemetry, we should
-      review the entry points to search mode.
     expires: never
     kind: uint
     keyed: true
@@ -8625,11 +6246,11 @@ urlbar.zeroprefix:
       - main
 
 quickaction:
-  impression:
+  picked:
     bug_numbers:
-      - 1806024
+      - 1783155
     description: >
-      Counts how many times quickaction results were shown. The key
+      Counts how many times quickaction results were selected. The key
       is the in the form "actionkey-N" where N is the number of characters
       the user typed to be shown the action.
     expires: never
@@ -8642,13 +6263,33 @@ quickaction:
       - 'firefox'
     record_in_processes:
       - main
+
+urlbar.unifiedsearchbutton:
+  opened:
+    bug_numbers:
+      - 1936673
+    description: >
+      Counts how many times Unified Search popup is opened.
+    expires: never
+    kind: uint
+    notification_emails:
+      - fx-search-telemetry@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - main
+
   picked:
     bug_numbers:
-      - 1783155
+      - 1936673
     description: >
-      Counts how many times quickaction results were selected. The key
-      is the in the form "actionkey-N" where N is the number of characters
-      the user typed to be shown the action.
+      Counts how many times Unified Search Button items were selected.
+      The key is following.
+      * builtin_search: Builtin search engine.
+      * addon_search: Addon search engine.
+      * local_search: Local search engine such as Bookmarks.
+      * settings: Settings menu.
     expires: never
     kind: uint
     keyed: true
@@ -8676,8 +6317,6 @@ migration:
       - 'firefox'
     record_in_processes:
       - main
-    operating_systems:
-      - windows
   discovered_migrators:
     bug_numbers:
       - 1825655
@@ -8742,488 +6381,6 @@ contextual.services.topsites:
     notification_emails:
       - najiang@mozilla.com
     release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-
-contextual.services.quicksuggest:
-  impression_dynamic_wikipedia:
-    bug_numbers:
-      - 1800993
-    description: >
-      A keyed uint recording how many times the user has viewed sponsored
-      Firefox Suggest dynamic wikipedia results in the urlbar. The
-      key is the 1-based index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  impression_nav_notmatched:
-    bug_numbers:
-      - 1819797
-    description: >
-      A keyed uint recording how many times a urlbar engagement occurred while a
-      navigational suggestion was absent. The Nimbus variable
-      recordNavigationalSuggestionTelemetry must be true to record this scalar.
-      Its key is the type of heuristic result that was present at the time of
-      the engagement. Key names are the same as the heuristic result type names
-      recorded in Glean telemetry.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - firefox
-    record_in_processes:
-      - main
-  impression_nav_shown:
-    bug_numbers:
-      - 1819797
-    description: >
-      A keyed uint recording how many times a urlbar engagement occurred while a
-      navigational suggestion was present. The Nimbus variable
-      recordNavigationalSuggestionTelemetry must be true to record this scalar.
-      Its key is the type of heuristic result that was present at the time of
-      the engagement. Key names are the same as the heuristic result type names
-      recorded in Glean telemetry.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - firefox
-    record_in_processes:
-      - main
-  impression_nav_superceded:
-    bug_numbers:
-      - 1819797
-    description: >
-      A keyed uint recording how many times a urlbar engagement occurred when a
-      navigational suggestion was matched but superceded by a heuristic result.
-      The Nimbus variable recordNavigationalSuggestionTelemetry must be true to
-      record this scalar. Its key is the type of heuristic result that was
-      present at the time of the engagement. Key names are the same as the
-      heuristic result type names recorded in Glean telemetry.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - firefox
-    record_in_processes:
-      - main
-  impression_nonsponsored:
-    bug_numbers:
-      - 1800993
-    description: >
-      A keyed uint recording how many times the user has viewed non-sponsored
-      Firefox Suggest (a.k.a. Quick Suggest) results in the urlbar. The key is
-      the 1-based index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  impression_sponsored:
-    bug_numbers:
-      - 1800993
-    description: >
-      A keyed uint recording how many times the user has viewed sponsored Firefox
-      Suggest (a.k.a. Quick Suggest) results in the urlbar. The key is the 1-based
-      index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  impression_weather:
-    bug_numbers:
-      - 1804536
-    description: >
-      A keyed uint recording how many times the user has viewed Firefox Suggest
-      (a.k.a. Quick Suggest) weather result in the urlbar. The key is the
-      1-based index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  click_dynamic_wikipedia:
-    bug_numbers:
-      - 1800993
-    description: >
-      A keyed uint recording how many times the user has clicked on Firefox
-      Suggest dynamic wikipedia results in the urlbar (not including the
-      help button). The key is the 1-based index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  click_nav_notmatched:
-    bug_numbers:
-      - 1819797
-    description: >
-      A keyed uint recording how many times a heuristic result was clicked while
-      a navigational suggestion was absent. The Nimbus variable
-      recordNavigationalSuggestionTelemetry must be true to record this
-      scalar. Its key is the type of heuristic result that was clicked. Key
-      names are the same as the heuristic result type names recorded in Glean
-      telemetry.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - firefox
-    record_in_processes:
-      - main
-  click_nav_shown_heuristic:
-    bug_numbers:
-      - 1819797
-    description: >
-      A keyed uint recording how many times a heuristic result was clicked while
-      a navigational suggestion was present. The Nimbus variable
-      recordNavigationalSuggestionTelemetry must be true to record this
-      scalar. Its key is the type of heuristic result that was clicked. Key
-      names are the same as the heuristic result type names recorded in Glean
-      telemetry.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - firefox
-    record_in_processes:
-      - main
-  click_nav_shown_nav:
-    bug_numbers:
-      - 1819797
-    description: >
-      A keyed uint recording how many times a navigational suggestion was
-      clicked. The Nimbus variable recordNavigationalSuggestionTelemetry must be
-      true to record this scalar. Its key is the type of heuristic result that
-      was present at the time of the engagement. Key names are the same as the
-      heuristic result type names recorded in Glean telemetry.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - firefox
-    record_in_processes:
-      - main
-  click_nav_superceded:
-    bug_numbers:
-      - 1819797
-    description: >
-      A keyed uint recording how many times a heuristic result was clicked when
-      a navigational suggestion was matched but superceded by the heuristic.
-      The Nimbus variable recordNavigationalSuggestionTelemetry must be true to
-      record this scalar. Its key is the type of heuristic result that was
-      clicked. Key names are the same as the heuristic result type names
-      recorded in Glean telemetry.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - firefox
-    record_in_processes:
-      - main
-  click_nonsponsored:
-    bug_numbers:
-      - 1800993
-    description: >
-      A keyed uint recording how many times the user has clicked on non-sponsored
-      Firefox Suggests (a.k.a. Quick Suggest) results in the urlbar (not
-      including the help button). The key is the 1-based index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  click_sponsored:
-    bug_numbers:
-      - 1800993
-    description: >
-      A keyed uint recording how many times the user has clicked on sponsored
-      Firefox Suggests (a.k.a. Quick Suggest) results in the urlbar (not
-      including the help button). The key is the 1-based index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  click_weather:
-    bug_numbers:
-      - 1804536
-    description: >
-      A keyed uint recording how many times the user has clicked on Firefox
-      Suggests (a.k.a. Quick Suggest) weather results in the urlbar (not
-      including the help and dismiss buttons). The key is the 1-based index of
-      each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  help_nonsponsored:
-    bug_numbers:
-      - 1800993
-    description: >
-      A keyed uint recording how many times the user has clicked on the help
-      button in non-sponsored Firefox Suggests (a.k.a. Quick Suggest) results in
-      the urlbar. The key is the 1-based index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  help_sponsored:
-    bug_numbers:
-      - 1800993
-    description: >
-      A keyed uint recording how many times the user has clicked on the help
-      button in sponsored Firefox Suggests (a.k.a. Quick Suggest) results in
-      the urlbar. The key is the 1-based index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  block_dynamic_wikipedia:
-    bug_numbers:
-      - 1800993
-    description: >
-      A keyed uint recording how many times the user has blocked/dismissed
-      sponsored Firefox Suggest dynamic wikipedia results in the
-      urlbar. The key is the 1-based index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  block_nonsponsored:
-    bug_numbers:
-      - 1761059
-    description: >
-      A keyed uint recording how many times the user has blocked/dismissed
-      non-sponsored Firefox Suggest results in the urlbar, including best
-      matches (a.k.a. top picks). The key is the 1-based index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  block_sponsored:
-    bug_numbers:
-      - 1761059
-    description: >
-      A keyed uint recording how many times the user has blocked/dismissed
-      sponsored Firefox Suggest results in the urlbar, including best matches
-      (a.k.a. top picks). The key is the 1-based index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  block_weather:
-    bug_numbers:
-      - 1804536
-    description: >
-      A keyed uint recording how many times the user has blocked/dismissed
-      Firefox Suggest weather results in the urlbar. The key is the 1-based
-      index of each result.
-    expires: never
-    kind: uint
-    keyed: true
-    notification_emails:
-      - fx-search-telemetry@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-shopping:
-  nimbus_disabled:
-    bug_numbers:
-      - 1847231
-    description: >
-      Indicates if Nimbus has disabled the use of the shopping component.
-      This scalar is mirroring the Glean metric named
-      shopping.settings.nimbus_disabled_shopping, which is defined in
-      toolkit/components/shopping/metrics.yaml.
-    expires: "134"
-    kind: boolean
-    notification_emails:
-      - betling@mozilla.com
-      - fx-desktop-shopping-eng@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  component_opted_out:
-    bug_numbers:
-      - 1847231
-    description: >
-      Indicates if the user has opted out of using the shopping component.
-      Set during shopping component init and updated when changed in browser.
-      This scalar is mirroring the Glean metric named
-      shopping.settings.component_opted_out, which is defined in
-      toolkit/components/shopping/metrics.yaml.
-    expires: "134"
-    kind: boolean
-    notification_emails:
-      - betling@mozilla.com
-      - fx-desktop-shopping-eng@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  has_onboarded:
-    bug_numbers:
-      - 1847231
-    description: >
-      Indicates if the user has completed the Shopping product Onboarding
-      experience. Set during shopping component init and updated when changed
-      in browser. This scalar is mirroring the Glean metric named
-      shopping.settings.has_onboarded, which is defined in
-      toolkit/components/shopping/metrics.yaml.
-    expires: "134"
-    kind: boolean
-    notification_emails:
-      - betling@mozilla.com
-      - fx-desktop-shopping-eng@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  product_page_visits:
-    bug_numbers:
-      - 1848160
-    description: >
-      Counts number of visits to a supported retailer product page while
-      enrolled in either the control or treatment branches of the shopping
-      experiment.
-    expires: "134"
-    kind: uint
-    notification_emails:
-      - betling@mozilla.com
-      - fx-desktop-shopping-eng@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  disabled_ads:
-    bug_numbers:
-      - 1858540
-    description: >
-      Indicates if the user has manually disabled ads. Set during shopping
-      component init and updated when changed in browser.
-    expires: "134"
-    kind: boolean
-    notification_emails:
-      - betling@mozilla.com
-      - fx-desktop-shopping-eng@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-  auto_open_user_disabled:
-    bug_numbers:
-      - 1879119
-    description: >
-      Indicates if the user has manually disabled the auto open sidebar feature.
-      Set during shopping component init and updated when changed in browser.
-    expires: "134"
-    kind: boolean
-    notification_emails:
-      - betling@mozilla.com
-      - fx-desktop-shopping-eng@mozilla.com
     products:
       - 'firefox'
     record_in_processes:
@@ -9375,6 +6532,24 @@ power:
     kind: uint
     notification_emails:
       - florian@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+    record_in_processes:
+      - 'all'
+
+primary.password:
+  enabled:
+    kind: boolean
+    description:
+      If a primary-password is enabled for this profile.
+      Set soon after browser startup.
+      Does not update if a primary password is added or removed after startup.
+    bug_numbers:
+      - 1936036
+    expires: never
+    notification_emails:
+      - mtigley@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'
@@ -9572,6 +6747,24 @@ telemetry.test:
       - 1277806
       - 1685406
       - 1758795
+    description: A testing keyed uint scalar; not meant to be touched.
+    expires: never
+    kind: uint
+    keyed: true
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    release_channel_collection: opt-out
+    products:
+      - 'firefox'
+      - 'fennec'
+      - 'thunderbird'
+    record_in_processes:
+      - 'main'
+      - 'content'
+
+  mirror_for_labeled_quantity:
+    bug_numbers:
+      - 1929979
     description: A testing keyed uint scalar; not meant to be touched.
     expires: never
     kind: uint
@@ -9998,7 +7191,7 @@ telemetry.test:
     expires: never
     kind: uint
     notification_emails: [glean-team@mozilla.com]
-    products: ["firefox", "thunderbird"]
+    products: ["firefox", "fennec", "thunderbird"]
     record_in_processes: ["all"]
     release_channel_collection: opt-out
 
@@ -10050,39 +7243,30 @@ telemetry.test:
     record_in_processes: ["all"]
     release_channel_collection: opt-out
 
-cache:
-  integrity_check_count:
-    bug_numbers:
-      - 1687685
+  mirror_for_unordered_bool:
+    bug_numbers: [1923035]
     description: >
-      The number of errors detected by a Cache API pragma_integrity_check() run in response to a constraint error detected by a VACUUM after performing a schema upgrade.
-    expires: "96"
-    kind: uint
-    notification_emails:
-      - storage-telemetry@mozilla.com
+      Test only. This is a mirror probe for a Glean boolean metric.
+    expires: never
+    kind: boolean
+    notification_emails: [glean-team@mozilla.com]
+    products: ["firefox", "thunderbird"]
+    record_in_processes: ["all"]
     release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
+
+  mirror_for_unordered_labeled_bool:
+    bug_numbers: [1923035]
+    description: >
+      Test only. This is a mirror probe for a Glean labeled_boolean metric.
+    expires: never
+    kind: boolean
+    keyed: true
+    notification_emails: [glean-team@mozilla.com]
+    products: ["firefox", "thunderbird"]
+    record_in_processes: ["all"]
+    release_channel_collection: opt-out
 
 opaque.response.blocking:
-  parsing_size_kb:
-    bug_numbers:
-      - 1695987
-    description: >
-      How many KB of response bodies are parsed by ORB?
-    expires: "93"
-    kind: uint
-    notification_emails:
-      - echuang@mozilla.com
-      - necko@mozilla.com
-    products:
-      - 'firefox'
-    record_in_processes:
-      - 'main'
-    release_channel_collection: opt-out
-
   cross_origin_opaque_response_count:
     bug_numbers:
       - 1804638
@@ -10154,71 +7338,6 @@ places:
     kind: uint
     notification_emails:
       - firefox-view-engineers@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-firstStartup:
-  statusCode:
-    bug_numbers:
-      - 1749345
-    description: >
-      Status of the FirstRun service, which runs post-install/early-startup in Firefox.
-    expires: never
-    kind: uint
-    notification_emails:
-      - rhelmer@mozilla.com
-      - mconley@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-  elapsed:
-    bug_numbers:
-      - 1749345
-    description: >
-      Number of milliseconds the FirstRun service took to run.
-    expires: never
-    kind: uint
-    notification_emails:
-      - rhelmer@mozilla.com
-      - mconley@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-  normandyInitTime:
-    bug_numbers:
-      - 1841138
-    description: >
-      Number of milliseconds until Normandy.init resolved in FirstStartup.
-    expires: never
-    kind: uint
-    notification_emails:
-      - rhelmer@mozilla.com
-      - mconley@mozilla.com
-    release_channel_collection: opt-out
-    products:
-      - 'firefox'
-    record_in_processes:
-      - main
-
-  deleteTasksTime:
-    bug_numbers:
-      - 1841138
-    description: >
-      Number of milliseconds until TaskScheduler.deleteAllTasks resolved in FirstStartup.
-    expires: never
-    kind: uint
-    notification_emails:
-      - rhelmer@mozilla.com
-      - mconley@mozilla.com
     release_channel_collection: opt-out
     products:
       - 'firefox'

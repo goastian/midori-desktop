@@ -46,7 +46,7 @@ using namespace mozilla::widget;
 
 static const char header_footer_tags[][4] = {"", "&T", "&U", "&D", "&P", "&PT"};
 
-#define CUSTOM_VALUE_INDEX gint(ArrayLength(header_footer_tags))
+#define CUSTOM_VALUE_INDEX gint(std::size(header_footer_tags))
 
 static GtkWindow* get_gtk_window_for_nsiwidget(nsIWidget* widget) {
   return GTK_WINDOW(widget->GetNativeData(NS_NATIVE_SHELLWIDGET));
@@ -71,19 +71,17 @@ static void ShowCustomDialog(GtkComboBox* changed_box, gpointer user_data) {
   printBundle->GetStringFromName("headerFooterCustom", intlString);
   GtkWidget* prompt_dialog = gtk_dialog_new_with_buttons(
       NS_ConvertUTF16toUTF8(intlString).get(), printDialog,
-      (GtkDialogFlags)(GTK_DIALOG_MODAL), GTK_STOCK_CANCEL, GTK_RESPONSE_REJECT,
-      GTK_STOCK_OK, GTK_RESPONSE_ACCEPT, nullptr);
+      (GtkDialogFlags)(GTK_DIALOG_MODAL), "_Cancel", GTK_RESPONSE_REJECT, "_OK",
+      GTK_RESPONSE_ACCEPT, nullptr);
   gtk_dialog_set_default_response(GTK_DIALOG(prompt_dialog),
                                   GTK_RESPONSE_ACCEPT);
-  gtk_dialog_set_alternative_button_order(
-      GTK_DIALOG(prompt_dialog), GTK_RESPONSE_ACCEPT, GTK_RESPONSE_REJECT, -1);
 
   printBundle->GetStringFromName("customHeaderFooterPrompt", intlString);
   GtkWidget* custom_label =
       gtk_label_new(NS_ConvertUTF16toUTF8(intlString).get());
   GtkWidget* custom_entry = gtk_entry_new();
   GtkWidget* question_icon =
-      gtk_image_new_from_stock(GTK_STOCK_DIALOG_QUESTION, GTK_ICON_SIZE_DIALOG);
+      gtk_image_new_from_icon_name("dialog-question", GTK_ICON_SIZE_DIALOG);
 
   // To be convenient, prefill the textbox with the existing value, if any, and
   // select it all so they can easily both edit it and type in a new one.
@@ -95,11 +93,12 @@ static void ShowCustomDialog(GtkComboBox* changed_box, gpointer user_data) {
   }
   gtk_entry_set_activates_default(GTK_ENTRY(custom_entry), TRUE);
 
-  GtkWidget* custom_vbox = gtk_vbox_new(TRUE, 2);
+  GtkWidget* custom_vbox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+  gtk_box_set_homogeneous(GTK_BOX(custom_vbox), TRUE);
   gtk_box_pack_start(GTK_BOX(custom_vbox), custom_label, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(custom_vbox), custom_entry, FALSE, FALSE,
                      5);  // Make entry 5px underneath label
-  GtkWidget* custom_hbox = gtk_hbox_new(FALSE, 2);
+  GtkWidget* custom_hbox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 2);
   gtk_box_pack_start(GTK_BOX(custom_hbox), question_icon, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(custom_hbox), custom_vbox, FALSE, FALSE,
                      10);  // Make question icon 10px away from content
@@ -188,13 +187,14 @@ nsPrintDialogWidgetGTK::nsPrintDialogWidgetGTK(nsPIDOMWindowOuter* aParent,
   // The vast majority of magic numbers in this widget construction are padding.
   // e.g. for the set_border_width below, 12px matches that of just about every
   // other window.
-  GtkWidget* custom_options_tab = gtk_vbox_new(FALSE, 0);
+  GtkWidget* custom_options_tab = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   gtk_container_set_border_width(GTK_CONTAINER(custom_options_tab), 12);
   GtkWidget* tab_label =
       gtk_label_new(GetUTF8FromBundle("optionsTabLabelGTK").get());
 
   // Check buttons for shrink-to-fit and print selection
-  GtkWidget* check_buttons_container = gtk_vbox_new(TRUE, 2);
+  GtkWidget* check_buttons_container = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+  gtk_box_set_homogeneous(GTK_BOX(check_buttons_container), TRUE);
   shrink_to_fit_toggle = gtk_check_button_new_with_mnemonic(
       GetUTF8FromBundle("shrinkToFit").get());
   gtk_box_pack_start(GTK_BOX(check_buttons_container), shrink_to_fit_toggle,
@@ -218,7 +218,9 @@ nsPrintDialogWidgetGTK::nsPrintDialogWidgetGTK(nsPIDOMWindowOuter* aParent,
   }
 
   // Check buttons for printing background
-  GtkWidget* appearance_buttons_container = gtk_vbox_new(TRUE, 2);
+  GtkWidget* appearance_buttons_container =
+      gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
+  gtk_box_set_homogeneous(GTK_BOX(appearance_buttons_container), TRUE);
   print_bg_colors_toggle = gtk_check_button_new_with_mnemonic(
       GetUTF8FromBundle("printBGColors").get());
   print_bg_images_toggle = gtk_check_button_new_with_mnemonic(
@@ -227,6 +229,7 @@ nsPrintDialogWidgetGTK::nsPrintDialogWidgetGTK(nsPIDOMWindowOuter* aParent,
                      print_bg_colors_toggle, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(appearance_buttons_container),
                      print_bg_images_toggle, FALSE, FALSE, 0);
+  g_object_set(appearance_buttons_container, "margin", 8, 0, 12, 0, NULL);
 
   // "Appearance" options label, bold and center-aligned
   GtkWidget* appearance_label = gtk_label_new(nullptr);
@@ -234,18 +237,15 @@ nsPrintDialogWidgetGTK::nsPrintDialogWidgetGTK(nsPIDOMWindowOuter* aParent,
       "<b>%s</b>", GetUTF8FromBundle("printBGOptions").get());
   gtk_label_set_markup(GTK_LABEL(appearance_label), pangoMarkup);
   g_free(pangoMarkup);
-  gtk_misc_set_alignment(GTK_MISC(appearance_label), 0, 0);
+  g_object_set(appearance_label, "xalign", 0, NULL);
+  g_object_set(appearance_label, "yalign", 0, NULL);
 
-  GtkWidget* appearance_container = gtk_alignment_new(0, 0, 0, 0);
-  gtk_alignment_set_padding(GTK_ALIGNMENT(appearance_container), 8, 0, 12, 0);
-  gtk_container_add(GTK_CONTAINER(appearance_container),
-                    appearance_buttons_container);
-
-  GtkWidget* appearance_vertical_squasher = gtk_vbox_new(FALSE, 0);
+  GtkWidget* appearance_vertical_squasher =
+      gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   gtk_box_pack_start(GTK_BOX(appearance_vertical_squasher), appearance_label,
                      FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(appearance_vertical_squasher),
-                     appearance_container, FALSE, FALSE, 0);
+                     appearance_buttons_container, FALSE, FALSE, 0);
 
   // "Header & Footer" options label, bold and center-aligned
   GtkWidget* header_footer_label = gtk_label_new(nullptr);
@@ -253,59 +253,58 @@ nsPrintDialogWidgetGTK::nsPrintDialogWidgetGTK(nsPIDOMWindowOuter* aParent,
       "<b>%s</b>", GetUTF8FromBundle("headerFooter").get());
   gtk_label_set_markup(GTK_LABEL(header_footer_label), pangoMarkup);
   g_free(pangoMarkup);
-  gtk_misc_set_alignment(GTK_MISC(header_footer_label), 0, 0);
-
-  GtkWidget* header_footer_container = gtk_alignment_new(0, 0, 0, 0);
-  gtk_alignment_set_padding(GTK_ALIGNMENT(header_footer_container), 8, 0, 12,
-                            0);
+  g_object_set(header_footer_label, "xalign", 0, NULL);
+  g_object_set(header_footer_label, "valign", 0, NULL);
 
   // --- Table for making the header and footer options ---
-  GtkWidget* header_footer_table = gtk_table_new(3, 3, FALSE);  // 3x3 table
+  GtkWidget* header_footer_grid = gtk_grid_new();  // 3x3 table
+  g_object_set(header_footer_grid, "margin", 8, 0, 12, 0, NULL);
+  gtk_grid_set_row_spacing(GTK_GRID(header_footer_grid), 4);
+  gtk_grid_set_column_spacing(GTK_GRID(header_footer_grid), 4);
+
   nsString header_footer_str[3];
 
   aSettings->GetHeaderStrLeft(header_footer_str[0]);
   aSettings->GetHeaderStrCenter(header_footer_str[1]);
   aSettings->GetHeaderStrRight(header_footer_str[2]);
 
-  for (unsigned int i = 0; i < ArrayLength(header_dropdown); i++) {
+  for (unsigned int i = 0; i < std::size(header_dropdown); i++) {
     header_dropdown[i] =
         ConstructHeaderFooterDropdown(header_footer_str[i].get());
     // Those 4 magic numbers in the middle provide the position in the table.
     // The last two numbers mean 2 px padding on every side.
-    gtk_table_attach(GTK_TABLE(header_footer_table), header_dropdown[i], i,
-                     (i + 1), 0, 1, (GtkAttachOptions)0, (GtkAttachOptions)0, 2,
-                     2);
+    gtk_grid_attach(GTK_GRID(header_footer_grid), header_dropdown[i],
+                    /* left = */ i,
+                    /* top = */ 0, /* width = */ 1, /* height = */ 1);
   }
 
   const char labelKeys[][7] = {"left", "center", "right"};
-  for (unsigned int i = 0; i < ArrayLength(labelKeys); i++) {
-    gtk_table_attach(GTK_TABLE(header_footer_table),
-                     gtk_label_new(GetUTF8FromBundle(labelKeys[i]).get()), i,
-                     (i + 1), 1, 2, (GtkAttachOptions)0, (GtkAttachOptions)0, 2,
-                     2);
+  for (unsigned int i = 0; i < std::size(labelKeys); i++) {
+    gtk_grid_attach(GTK_GRID(header_footer_grid),
+                    gtk_label_new(GetUTF8FromBundle(labelKeys[i]).get()),
+                    /* left = */ i,
+                    /* top = */ 1, /* width = */ 1, /* height = */ 1);
   }
 
   aSettings->GetFooterStrLeft(header_footer_str[0]);
   aSettings->GetFooterStrCenter(header_footer_str[1]);
   aSettings->GetFooterStrRight(header_footer_str[2]);
 
-  for (unsigned int i = 0; i < ArrayLength(footer_dropdown); i++) {
+  for (unsigned int i = 0; i < std::size(footer_dropdown); i++) {
     footer_dropdown[i] =
         ConstructHeaderFooterDropdown(header_footer_str[i].get());
-    gtk_table_attach(GTK_TABLE(header_footer_table), footer_dropdown[i], i,
-                     (i + 1), 2, 3, (GtkAttachOptions)0, (GtkAttachOptions)0, 2,
-                     2);
+    gtk_grid_attach(GTK_GRID(header_footer_grid), footer_dropdown[i],
+                    /* left = */ i,
+                    /* top = */ 2, /* width = */ 1, /* height = */ 1);
   }
   // ---
 
-  gtk_container_add(GTK_CONTAINER(header_footer_container),
-                    header_footer_table);
-
-  GtkWidget* header_footer_vertical_squasher = gtk_vbox_new(FALSE, 0);
+  GtkWidget* header_footer_vertical_squasher =
+      gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
   gtk_box_pack_start(GTK_BOX(header_footer_vertical_squasher),
                      header_footer_label, FALSE, FALSE, 0);
   gtk_box_pack_start(GTK_BOX(header_footer_vertical_squasher),
-                     header_footer_container, FALSE, FALSE, 0);
+                     header_footer_grid, FALSE, FALSE, 0);
 
   // Construction of everything
   gtk_box_pack_start(GTK_BOX(custom_options_tab), check_buttons_container,
@@ -390,7 +389,7 @@ nsresult nsPrintDialogWidgetGTK::ImportSettings(nsIPrintSettings* aNSSettings) {
                                aNSSettings->GetPrintBGImages());
 
   // Temporarily set the pages-per-sheet on the GtkPrintSettings:
-  int32_t pagesPerSide;
+  int32_t pagesPerSide = 1;
   aNSSettings->GetNumPagesPerSheet(&pagesPerSide);
   gtk_print_settings_set_number_up(settings, pagesPerSide);
 
@@ -430,13 +429,8 @@ nsresult nsPrintDialogWidgetGTK::ExportSettings(nsIPrintSettings* aNSSettings) {
     aNSSettings->SetPrintBGImages(gtk_toggle_button_get_active(
         GTK_TOGGLE_BUTTON(print_bg_images_toggle)));
 
-    // Move any pages-per-sheet value from the GtkPrintSettings to our
-    // nsIPrintSettings. (We handle pages-per-sheet internally and don't want
-    // the native Linux printing code to doubly apply that value!)
-    int32_t pagesPerSide = gtk_print_settings_get_number_up(settings);
-    gtk_print_settings_set_number_up(settings, 1);
-    aNSSettings->SetNumPagesPerSheet(pagesPerSide);
-
+    // Let GTK deal with pages per sheet natively.
+    aNSSettings->SetNumPagesPerSheet(1);
     // Try to save native settings in the session object
     nsCOMPtr<nsPrintSettingsGTK> aNSSettingsGTK(do_QueryInterface(aNSSettings));
     if (aNSSettingsGTK) {
@@ -468,7 +462,7 @@ GtkWidget* nsPrintDialogWidgetGTK::ConstructHeaderFooterDropdown(
                                  "headerFooterPage",  "headerFooterPageTotal",
                                  "headerFooterCustom"};
 
-  for (unsigned int i = 0; i < ArrayLength(hf_options); i++) {
+  for (unsigned int i = 0; i < std::size(hf_options); i++) {
     gtk_combo_box_text_append(GTK_COMBO_BOX_TEXT(dropdown), nullptr,
                               GetUTF8FromBundle(hf_options[i]).get());
   }
@@ -476,7 +470,7 @@ GtkWidget* nsPrintDialogWidgetGTK::ConstructHeaderFooterDropdown(
   bool shouldBeCustom = true;
   NS_ConvertUTF16toUTF8 currentStringUTF8(currentString);
 
-  for (unsigned int i = 0; i < ArrayLength(header_footer_tags); i++) {
+  for (unsigned int i = 0; i < std::size(header_footer_tags); i++) {
     if (!strcmp(currentStringUTF8.get(), header_footer_tags[i])) {
       gtk_combo_box_set_active(GTK_COMBO_BOX(dropdown), i);
       g_object_set_data(G_OBJECT(dropdown), "previous-active",

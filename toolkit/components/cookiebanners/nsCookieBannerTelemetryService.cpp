@@ -8,7 +8,7 @@
 
 #include "mozilla/Base64.h"
 #include "mozilla/ClearOnShutdown.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/CookiebannersMetrics.h"
 #include "mozilla/OriginAttributes.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Logging.h"
@@ -260,7 +260,7 @@ nsresult nsCookieBannerTelemetryService::MaybeReportGoogleGDPRChoiceTelemetry(
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Bail out early if the default search engine is not Google.
-  if (!id.EqualsLiteral("google@search.mozilla.orgdefault")) {
+  if (!id.EqualsLiteral("google")) {
     return NS_OK;
   }
 
@@ -289,9 +289,7 @@ nsresult nsCookieBannerTelemetryService::MaybeReportGoogleGDPRChoiceTelemetry(
 
     // We only report cookies for the default originAttributes or private
     // browsing mode.
-    if (attrs.mPrivateBrowsingId !=
-            nsIScriptSecurityManager::DEFAULT_PRIVATE_BROWSING_ID ||
-        attrs == OriginAttributes()) {
+    if (attrs.IsPrivateBrowsing() || attrs == OriginAttributes()) {
       cookies.AppendElement(RefPtr<nsICookie>(aCookie));
     }
   } else {
@@ -311,7 +309,7 @@ nsresult nsCookieBannerTelemetryService::MaybeReportGoogleGDPRChoiceTelemetry(
       nsTArray<RefPtr<nsICookie>> googleCookies;
       rv = cookieManager->GetCookiesWithOriginAttributes(
           u"{ \"privateBrowsingId\": 0, \"userContextId\": 0 }"_ns,
-          Substring(domain, 1, domain.Length() - 1), googleCookies);
+          Substring(domain, 1, domain.Length() - 1), false, googleCookies);
       NS_ENSURE_SUCCESS(rv, rv);
 
       cookies.AppendElements(googleCookies);
@@ -345,8 +343,7 @@ nsresult nsCookieBannerTelemetryService::MaybeReportGoogleGDPRChoiceTelemetry(
     NS_ENSURE_SUCCESS(rv, rv);
 
     bool isPrivateBrowsing =
-        cookie->AsCookie().OriginAttributesRef().mPrivateBrowsingId !=
-        nsIScriptSecurityManager::DEFAULT_PRIVATE_BROWSING_ID;
+        cookie->AsCookie().OriginAttributesRef().IsPrivateBrowsing();
 
     MOZ_LOG(gCookieBannerTelemetryLog, LogLevel::Debug,
             ("Record the Google GDPR choice %s on the host %s in region %s for "

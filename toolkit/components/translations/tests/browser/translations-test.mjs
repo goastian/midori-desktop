@@ -35,8 +35,14 @@ export function getSelectors() {
     getH1() {
       return content.document.querySelector("h1");
     },
+    getH1Title() {
+      return content.document.querySelector("h1")?.getAttribute("title");
+    },
+    getH1AriaLabel() {
+      return content.document.querySelector("h1")?.getAttribute("aria-label");
+    },
     getPdfSpan() {
-      return ContentTaskUtils.waitForCondition(
+      return waitForCondition(
         () =>
           !!content.document.querySelector(
             `.page[data-page-number='1'] .textLayer .endOfContent`
@@ -51,8 +57,18 @@ export function getSelectors() {
     getHeader() {
       return content.document.querySelector("header");
     },
-    getLastParagraph() {
+    getFinalParagraph() {
       return content.document.querySelector("p:last-of-type");
+    },
+    getFinalParagraphTitle() {
+      return content.document
+        .querySelector("p:last-of-type")
+        ?.getAttribute("title");
+    },
+    getFinalParagraphAriaLabel() {
+      return content.document
+        .querySelector("p:last-of-type")
+        ?.getAttribute("aria-label");
     },
     getFrenchSection() {
       return content.document.getElementById("french-section");
@@ -84,6 +100,12 @@ export function getSelectors() {
     getURLHyperlink() {
       return content.document.getElementById("url-hyperlink");
     },
+    getTextCleaningWhitespace() {
+      return content.document.getElementById("clean-whitespace");
+    },
+    getTextCleaningSoftHyphens() {
+      return content.document.getElementById("clean-soft-hyphens");
+    },
   };
 }
 
@@ -93,7 +115,7 @@ export function getSelectors() {
  * @param {Function} callback
  * @param {string} message
  */
-function waitForCondition(callback, message) {
+export function waitForCondition(callback, message) {
   const interval = 100;
   // Use 4 times the defaults to guard against intermittents. Many of the tests rely on
   // communication between the parent and child process, which is inherently async.
@@ -110,21 +132,46 @@ function waitForCondition(callback, message) {
  * Asserts that a page was translated with a specific result.
  *
  * @param {string} message The assertion message.
- * @param {Function} getNode A function to get the node.
- * @param {string} translation The translated message.
+ * @param {Function} getNodeOrText A function to get the node or plain text.
+ * @param {string | Array<string>} oneOrMoreTranslations The translated message.
  */
-export async function assertTranslationResult(message, getNode, translation) {
+export async function assertTranslationResult(
+  message,
+  getNodeOrText,
+  oneOrMoreTranslations
+) {
+  const getText = () => {
+    const nodeOrText = getNodeOrText();
+    if (typeof nodeOrText === "string") {
+      return nodeOrText;
+    }
+    return nodeOrText?.innerText;
+  };
+
+  let translation;
   try {
-    await waitForCondition(
-      () => translation === getNode()?.innerText,
-      `Waiting for: "${translation}"`
-    );
+    if (typeof oneOrMoreTranslations === "string") {
+      await waitForCondition(
+        () => oneOrMoreTranslations === getText(),
+        `Waiting for: "${oneOrMoreTranslations}"`
+      );
+      translation = oneOrMoreTranslations;
+    } else {
+      await waitForCondition(
+        () =>
+          oneOrMoreTranslations.find(translation => translation === getText()),
+        `Waiting for: "${oneOrMoreTranslations}"`
+      );
+      translation = oneOrMoreTranslations.find(
+        translation => translation === getText()
+      );
+    }
   } catch (error) {
     // The result wasn't found, but the assertion below will report the error.
     console.error(error);
   }
 
-  is(translation, getNode()?.innerText, message);
+  is(translation, getText(), message);
 }
 
 /**

@@ -11,11 +11,21 @@ ChromeUtils.defineLazyGetter(lazy, "console", () => {
   });
 });
 
+ChromeUtils.defineESModuleGetters(lazy, {
+  handleActorMessage:
+    "chrome://global/content/translations/translations-engine.sys.mjs",
+});
+
+/**
+ * @typedef {import("../translations").LanguagePair} LanguagePair
+ * @typedef {import("../translations").TranslationsEnginePayload} TranslationsEnginePayload
+ */
+
 /**
  * The engine child is responsible for exposing privileged code to the un-privileged
  * space the engine runs in.
  */
-export class TranslationsEngineChild extends JSWindowActorChild {
+export class TranslationsEngineChild extends JSProcessActorChild {
   /**
    * The resolve function for the Promise returned by the
    * "TranslationsEngine:ForceShutdown" message.
@@ -24,121 +34,58 @@ export class TranslationsEngineChild extends JSWindowActorChild {
    */
   #resolveForceShutdown = null;
 
-  actorCreated() {
-    this.#exportFunctions();
-  }
-
-  handleEvent(event) {
-    switch (event.type) {
-      case "DOMContentLoaded":
-        this.sendAsyncMessage("TranslationsEngine:Ready");
-        break;
-    }
-  }
+  #isDestroyed = false;
 
   // eslint-disable-next-line consistent-return
   async receiveMessage({ name, data }) {
+    if (this.#isDestroyed) {
+      return undefined;
+    }
+
     switch (name) {
       case "TranslationsEngine:StartTranslation": {
-        const { fromLanguage, toLanguage, innerWindowId, port } = data;
-        const transferables = [port];
+        const { languagePair, innerWindowId, port } = data;
         const message = {
           type: "StartTranslation",
-          fromLanguage,
-          toLanguage,
+          languagePair,
           innerWindowId,
           port,
         };
-        this.contentWindow.postMessage(message, "*", transferables);
+        lazy.handleActorMessage(message);
         break;
       }
       case "TranslationsEngine:DiscardTranslations": {
         const { innerWindowId } = data;
-        this.contentWindow.postMessage({
+        lazy.handleActorMessage({
           type: "DiscardTranslations",
           innerWindowId,
         });
         break;
       }
       case "TranslationsEngine:ForceShutdown": {
-        this.contentWindow.postMessage({
+        lazy.handleActorMessage({
           type: "ForceShutdown",
         });
         return new Promise(resolve => {
           this.#resolveForceShutdown = resolve;
         });
       }
-      default:
+      default: {
         console.error("Unknown message received", name);
+      }
     }
-  }
-
-  /**
-   * Export any of the child functions that start with "TE_" to the unprivileged content
-   * page. This restricts the security capabilities of the content page.
-   */
-  #exportFunctions() {
-    const fns = [
-      "TE_addProfilerMarker",
-      "TE_getLogLevel",
-      "TE_log",
-      "TE_logError",
-      "TE_requestEnginePayload",
-      "TE_reportEngineStatus",
-      "TE_resolveForceShutdown",
-      "TE_destroyEngineProcess",
-    ];
-    for (const defineAs of fns) {
-      Cu.exportFunction(this[defineAs].bind(this), this.contentWindow, {
-        defineAs,
-      });
-    }
-  }
-
-  /**
-   * A privileged promise can't be used in the content page, so convert a privileged
-   * promise into a content one.
-   *
-   * @param {Promise<any>} promise
-   * @returns {Promise<any>}
-   */
-  #convertToContentPromise(promise) {
-    return new this.contentWindow.Promise((resolve, reject) =>
-      promise.then(resolve, error => {
-        let contentWindow;
-        try {
-          contentWindow = this.contentWindow;
-        } catch (error) {
-          // The content window is no longer available.
-          reject();
-          return;
-        }
-        // Create an error in the content window, if the content window is still around.
-        let message = "An error occured in the TranslationsEngine actor.";
-        if (typeof error === "string") {
-          message = error;
-        }
-        if (typeof error?.message === "string") {
-          message = error.message;
-        }
-        if (typeof error?.stack === "string") {
-          message += `\n\nOriginal stack:\n\n${error.stack}\n`;
-        }
-
-        reject(new contentWindow.Error(message));
-      })
-    );
   }
 
   /**
    * @param {object} options
    * @param {number?} options.startTime
+   * @param {string?} options.type
    * @param {string} options.message
    * @param {number} options.innerWindowId
    */
-  TE_addProfilerMarker({ startTime, message, innerWindowId }) {
+  TE_addProfilerMarker({ startTime, type, message, innerWindowId }) {
     ChromeUtils.addProfilerMarker(
-      "TranslationsEngine",
+      type ? `TranslationsEngine ${type}` : "TranslationsEngine",
       { startTime, innerWindowId },
       message
     );
@@ -149,6 +96,7 @@ export class TranslationsEngineChild extends JSWindowActorChild {
    */
   TE_resolveForceShutdown() {
     this.#resolveForceShutdown();
+    this.#resolveForceShutdown = null;
   }
 
   /**
@@ -177,16 +125,48 @@ export class TranslationsEngineChild extends JSWindowActorChild {
   }
 
   /**
-   * @param {string} fromLanguage
-   * @param {string} toLanguage
+   * Reports translation engine performance data to telemetry.
+   *
+   * @param {object} data
+   * @param {string} data.sourceLanguage - The BCP-47 language tag of the source text.
+   * @param {string} data.targetLanguage - The BCP-47 language tag of the target text.
+   * @param {number} data.totalInferenceSeconds - Total total seconds spent in active translation inference.
+   * @param {number} data.totalTranslatedWords - Total total count of words that were translated.
+   * @param {number} data.totalCompletedRequests - Total total count of completed translation requests.
    */
-  TE_requestEnginePayload(fromLanguage, toLanguage) {
-    return this.#convertToContentPromise(
-      this.sendQuery("TranslationsEngine:RequestEnginePayload", {
-        fromLanguage,
-        toLanguage,
-      })
-    );
+  TE_reportEnginePerformance({
+    sourceLanguage,
+    targetLanguage,
+    totalInferenceSeconds,
+    totalTranslatedWords,
+    totalCompletedRequests,
+  }) {
+    if (this.#isDestroyed) {
+      return;
+    }
+
+    this.sendAsyncMessage("TranslationsEngine:ReportEnginePerformance", {
+      sourceLanguage,
+      targetLanguage,
+      totalInferenceSeconds,
+      totalTranslatedWords,
+      totalCompletedRequests,
+    });
+  }
+
+  /**
+   * @param {LanguagePair} languagePair
+   *
+   * @returns {Promise<TranslationsEnginePayload> | undefined}
+   */
+  TE_requestEnginePayload(languagePair) {
+    if (this.#isDestroyed) {
+      return undefined;
+    }
+
+    return this.sendQuery("TranslationsEngine:RequestEnginePayload", {
+      languagePair,
+    });
   }
 
   /**
@@ -194,6 +174,10 @@ export class TranslationsEngineChild extends JSWindowActorChild {
    * @param {"ready" | "error"} status
    */
   TE_reportEngineStatus(innerWindowId, status) {
+    if (this.#isDestroyed) {
+      return;
+    }
+
     this.sendAsyncMessage("TranslationsEngine:ReportEngineStatus", {
       innerWindowId,
       status,
@@ -204,6 +188,14 @@ export class TranslationsEngineChild extends JSWindowActorChild {
    * No engines are still alive, signal that the process can be destroyed.
    */
   TE_destroyEngineProcess() {
+    if (this.#isDestroyed) {
+      return;
+    }
+
     this.sendAsyncMessage("TranslationsEngine:DestroyEngineProcess");
+  }
+
+  didDestroy() {
+    this.#isDestroyed = true;
   }
 }

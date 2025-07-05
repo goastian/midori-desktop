@@ -44,17 +44,6 @@
 #  include <android/log.h>
 #endif
 
-// The counters start out as a nullptr, and then get initialized only once. They
-// are never destroyed, as it would cause race conditions for the memory hooks
-// that use the counters. This helps guard against potentially expensive
-// operations like using a mutex.
-//
-// In addition, this is a raw pointer and not a UniquePtr, as the counter
-// machinery will try and de-register itself from the profiler. This could
-// happen after the profiler and its PSMutex was already destroyed, resulting in
-// a crash.
-static ProfilerCounterTotal* sCounter;
-
 // The gBernoulli value starts out as a nullptr, and only gets initialized once.
 // It then lives for the entire lifetime of the process. It cannot be deleted
 // without additional multi-threaded protections, since if we deleted it during
@@ -302,7 +291,11 @@ static void EnsureAllocationTrackerIsInstalled() {
 
 // On MacOS, and Linux the first __thread/thread_local access calls malloc,
 // which leads to an infinite loop. So we use pthread-based TLS instead, which
-// somehow doesn't have this problem.
+// doesn't have this problem as long as the TLS key is registered early.
+//
+// This is a little different from the TLS storage used with mozjemalloc which
+// uses native TLS on Linux possibly because it is not only initialised but
+// **used** early.
 #if !defined(XP_DARWIN) && !defined(XP_LINUX)
 #  define PROFILER_THREAD_LOCAL(T) MOZ_THREAD_LOCAL(T)
 #else
@@ -387,12 +380,6 @@ static void AllocCallback(void* aPtr, size_t aReqSize) {
     return;
   }
 
-  // The first part of this function does not allocate.
-  size_t actualSize = gMallocTable.malloc_usable_size(aPtr);
-  if (actualSize > 0) {
-    sCounter->Add(actualSize);
-  }
-
   ThreadIntercept threadIntercept;
   if (threadIntercept.IsBlocked()) {
     // Either the native allocations feature is not turned on, or we may be
@@ -402,6 +389,8 @@ static void AllocCallback(void* aPtr, size_t aReqSize) {
   }
 
   AUTO_PROFILER_LABEL("AllocCallback", PROFILER);
+
+  size_t actualSize = gMallocTable.malloc_usable_size(aPtr);
 
   // Perform a bernoulli trial, which will return true or false based on its
   // configured probability. It takes into account the byte size so that
@@ -431,11 +420,6 @@ static void FreeCallback(void* aPtr) {
     return;
   }
 
-  // The first part of this function does not allocate.
-  size_t unsignedSize = MallocSizeOf(aPtr);
-  int64_t signedSize = -(static_cast<int64_t>(unsignedSize));
-  sCounter->Add(signedSize);
-
   ThreadIntercept threadIntercept;
   if (threadIntercept.IsBlocked()) {
     // Either the native allocations feature is not turned on, or we may be
@@ -453,6 +437,9 @@ static void FreeCallback(void* aPtr) {
       gAllocationTracker,
       "gAllocationTracker must be properly installed for the memory hooks.");
   if (gAllocationTracker->RemoveMemoryAddressIfFound(aPtr)) {
+    size_t unsignedSize = MallocSizeOf(aPtr);
+    int64_t signedSize = -(static_cast<int64_t>(unsignedSize));
+
     // This size here is negative, indicating a deallocation.
     profiler_add_native_allocation_marker(signedSize,
                                           reinterpret_cast<uintptr_t>(aPtr));
@@ -556,10 +543,6 @@ static void replace_moz_dispose_arena(arena_id_t aArenaId) {
   return gMallocTable.moz_dispose_arena(aArenaId);
 }
 
-static void replace_moz_set_max_dirty_page_modifier(int32_t aModifier) {
-  return gMallocTable.moz_set_max_dirty_page_modifier(aModifier);
-}
-
 // Must come after all the replace_* funcs
 void replace_init(malloc_table_t* aMallocTable, ReplaceMallocBridge** aBridge) {
   gMallocTable = *aMallocTable;
@@ -575,25 +558,6 @@ namespace mozilla::profiler {
 // Initialization
 //---------------------------------------------------------------------------
 
-BaseProfilerCount* install_memory_hooks() {
-  if (!sCounter) {
-    sCounter = new ProfilerCounterTotal("malloc", "Memory",
-                                        "Amount of allocated memory");
-    // Also initialize the ThreadIntercept, even if native allocation tracking
-    // won't be turned on. This way the TLS will be initialized.
-    ThreadIntercept::Init();
-  } else {
-    sCounter->Clear();
-    sCounter->Register();
-  }
-  jemalloc_replace_dynamic(replace_init);
-  return sCounter;
-}
-
-// Remove the hooks, but leave the sCounter machinery. Deleting the counter
-// would race with any existing memory hooks that are currently running. Rather
-// than adding overhead here of mutexes it's cheaper for the performance to just
-// leak these values.
 void remove_memory_hooks() { jemalloc_replace_dynamic(nullptr); }
 
 void enable_native_allocations() {
@@ -626,6 +590,8 @@ void enable_native_allocations() {
   EnsureBernoulliIsInstalled();
   EnsureAllocationTrackerIsInstalled();
   ThreadIntercept::EnableAllocationFeature();
+
+  jemalloc_replace_dynamic(replace_init);
 }
 
 // This is safe to call even if native allocations hasn't been enabled.
@@ -636,10 +602,10 @@ void disable_native_allocations() {
   }
 }
 
-void unregister_memory_counter() {
-  if (sCounter) {
-    sCounter->Unregister();
-  }
+void memory_hooks_tls_init() {
+  // Initialise the TLS early so that it is allocated with a lower key and on an
+  // earlier page in order to avoid allocation when setting the variable.
+  ThreadIntercept::Init();
 }
 
 }  // namespace mozilla::profiler

@@ -1,8 +1,9 @@
 Gecko Logging
 =============
 
-A minimal C++ logging framework is provided for use in core Gecko code. It is
-enabled for all builds and is thread-safe.
+A minimal logging framework is provided for use in core Gecko code,
+written in C++ and enabled for all builds and is thread-safe.
+It can be accessed via C++, JavaScript or Rust.
 
 This page covers enabling logging for particular logging module, configuring
 the logging output, and how to use the logging facilities in native code.
@@ -13,16 +14,28 @@ Enabling and configuring logging
 Caveat: sandboxing when logging to a file
 -----------------------------------------
 
-A sandboxed content process cannot write to ``stderr`` or any file.  The easiest
-way to log these processes is to disable the content sandbox by setting the
-preference ``security.sandbox.content.level`` to ``0``, or setting the environment
-variable ``MOZ_DISABLE_CONTENT_SANDBOX`` to ``1``.
+Sandboxed content processes (on all OSes) cannot write to files on disk, so it
+is recommended to log to the terminal, possibly by redirecting the output to a
+file.
+
+If the sandbox has been disabled and/or the logging statement are coming
+from the parent process, ``MOZ_LOG_FILE`` will work as expected. Otherwise,
+logging to the terminal works as expected on macOS and Linux on desktop.
 
 On Windows, you can still see child process messages by using DOS (not the
 ``MOZ_LOG_FILE`` variable defined below) to redirect output to a file.  For
-example: ``MOZ_LOG="CameraChild:5" mach run >& my_log_file.txt`` will include
+example: ``MOZ_LOG=CameraChild:5 mach run >& my_log_file.txt`` will include
 debug messages from the camera's child actor that lives in a (sandboxed) content
 process.
+
+Another way to do this and have output in the terminal when developing is by
+redirecting ``stderr`` to ``stdout`` and then ``stdout`` to another process,
+for example like so:
+
+::
+
+    MOZ_LOG=cubeb:4 ./mach run 2>&1 | tee
+
 
 Logging to the Firefox Profiler
 -------------------------------
@@ -161,7 +174,7 @@ preset. If no preset is selected, then a generic profiling preset is used,
 
 will profile the threads in the ``Media`` profiler preset, but will only log
 specific log modules (instead of the `long list
-<https://searchfox.org/mozilla-central/search?q="media-playback"&path=toolkit%2Fcontent%2FaboutLogging.js>`_
+<https://searchfox.org/mozilla-central/search?q="media-playback"&path=toolkit%2Fcontent%2FaboutLogging.mjs>`_
 in the ``media-playback`` preset). In addition, it disallows logging to a file.
 
 Enabling logging using environment variables
@@ -232,8 +245,6 @@ timestamp prepended to each line, rotate the logs with 4 files of each 50MB
 (for a total of 200MB), and write the output to the temporary directory on
 Windows, with name starting with ``firefox-logs``.
 
-.. _Enabling logging using preferences:
-
 Enabling logging using preferences
 ''''''''''''''''''''''''''''''''''
 
@@ -250,16 +261,16 @@ A number of special prefs can be set as well, described in the table below:
 +-------------------------------------+------------+-------------------------------+--------------------------------------------------------+
 |         Preference name             | Preference |   Preference value            |                  Description                           |
 +=====================================+============+===============================+========================================================+
-| ``logging.config.clear_on_startup`` |    bool    | --                            | Whether to clear all prefs under ``logging.``          |
+| ``logging.config.clear_on_startup`` |    bool    | \--                           | Whether to clear all prefs under ``logging.``          |
 +-------------------------------------+------------+-------------------------------+--------------------------------------------------------+
 | ``logging.config.LOG_FILE``         |   string   | A path (relative or absolute) | The path to which the log files will be written.       |
 +-------------------------------------+------------+-------------------------------+--------------------------------------------------------+
-| ``logging.config.add_timestamp``    |   bool     | --                            | Whether to prefix all lines by a timestamp.            |
+| ``logging.config.add_timestamp``    |   bool     | \--                           | Whether to prefix all lines by a timestamp.            |
 +-------------------------------------+------------+-------------------------------+--------------------------------------------------------+
-| ``logging.config.sync``             |   bool     | --                            | Whether to flush the stream after each log statements. |
+| ``logging.config.sync``             |   bool     | \--                           | Whether to flush the stream after each log statements. |
 +-------------------------------------+------------+-------------------------------+--------------------------------------------------------+
-| ``logging.config.profilerstacks``   |   bool     | --                            | | When logging to the Firefox Profiler, whether to     |
-|                                     |            |                               | | include the call stack in each logging statement.    |
+| ``logging.config.profilerstacks``   |   bool     | \--                           | When logging to the Firefox Profiler, whether to       |
+|                                     |            |                               | include the call stack in each logging statement.      |
 +-------------------------------------+------------+-------------------------------+--------------------------------------------------------+
 
 Enabling logging in Rust code
@@ -432,6 +443,12 @@ A basic interface is provided in the form of 2 macros and an enum class.
 |                                        | *   message: A printf-style message to output. Must be enclosed in         |
 |                                        |     parentheses.                                                           |
 +----------------------------------------+----------------------------------------------------------------------------+
+| MOZ_LOG_FMT(module, level, message)    | Outputs the given message if the module has the given log level enabled:   |
+|                                        |                                                                            |
+|                                        | *   module: The log module to use.                                         |
+|                                        | *   level: The log level of the message.                                   |
+|                                        | *   message: An {fmt} style message to output.                             |
++----------------------------------------+----------------------------------------------------------------------------+
 | MOZ_LOG_TEST(module, level)            | Checks if the module has the given level enabled:                          |
 |                                        |                                                                            |
 |                                        | *    module: The log module to use.                                        |
@@ -490,3 +507,84 @@ Example Usage
       MOZ_LOG(sLogger, LogLevel::Error, ("i should be 10!"));
     }
   }
+
+
+Logging from JavaScript via the ``console`` API
++++++++++++++++++++++++++++++++++++++++++++++++
+
+Any call made to a ``console`` API from JavaScript will be logged through the
+``MOZ_LOG`` pipeline.
+
+- Web Pages as well as privileged context using ``console`` API expose to
+  JavaScript will automatically generate MOZ_LOG messages under the ``console``
+  module name.
+
+- Privileged context can use a specific module name by instantiating their own
+  console object:
+  ``const logger = console.createInstance({ prefix: "module-name" })``,
+  ``prefix`` value will be used as the MOZ_LOG module name.
+
+More info about ``console.createInstance`` is available on the
+`JavaScript Logging page </toolkit/javascript-logging.html>`_
+
+When using the ``console`` API, the console methods calls will be visible
+in the Developer Tools, as well as through MOZ_LOG stdout, file or profiler
+outputs.
+
+Note that because of `Bug 1923985
+<https://bugzilla.mozilla.org/show_bug.cgi?id=1923985>`_,
+there is some discrepancies between console log level and MOZ_LOG one.
+So that ``console.shouldLog()`` only consider the level set by
+``createInstance``'s ``maxLogLevel{Pref}`` arguments.
+
+
+.. code-block:: javascript
+
+  // The following two logs can be visible through MOZ_LOG by using:
+  // MOZ_LOG=console:5
+
+  // Both call will be logged through "console" module name.
+  // Any console API call from privileged or content page will be logged.
+  console.log("Doing stuff.");
+
+  console.error("Error happened");
+
+  // The following two other logs can be visible through MOZ_LOG by using:
+  // MOZ_LOG=example_logger:5
+
+  // From a privileged context, you can instantiate your own console object
+  // with a specific module name, here "example_logger":
+  const logger = console.createInstance({ prefix: "example_logger" });
+
+  logger.warn("something failed");
+
+  logger.debug("some debug info");
+
+
+Logging web page errors and warnings
+++++++++++++++++++++++++++++++++++++
+
+Any error or warning message sent to the ``nsConsoleService`` C++ class can be
+logged via the ``PageMessages`` module name.
+
+These messages are typically emitted via ``nsContentUtils::ReportToConsole*()``
+or ``nsContentUtils::LogMessageToConsole()`` methods.
+
+They includes any JavaScript exception and most DOM API warnings and errors.
+
+Console API levels
+------------------
+
++----------------------+---------------+
+|  Console API Method  | MOZ_LOG Level |
++======================+===============+
+|   console.error()    |   1 (Error)   |
+|   console.assert()   |               |
++----------------------+---------------+
+|   console.warn()     |   2 (Warning) |
++----------------------+---------------+
+| All other methods,   |   3 (Info)    |
+| but console.debug()  |               |
++----------------------+---------------+
+|   console.debug()    |   4 (Debug    |
++----------------------+---------------+

@@ -10,8 +10,8 @@ origin:
 
   url: https://github.com/facebook/zstd
 
-  release: 72c16b187d27016b7634f5c6b7290e7c66ba44b3 (2024-04-01T16:53:08Z).
-  revision: 72c16b187d27016b7634f5c6b7290e7c66ba44b3
+  release: v1.5.7-kernel (2025-03-11T12:54:22-07:00).
+  revision: v1.5.7-kernel
 
   license: "BSD-3-Clause"
   license-file: "LICENSE"
@@ -19,7 +19,10 @@ origin:
 vendoring:
   url: https://github.com/facebook/zstd
   source-hosting: github
-  tracking: commit
+  tracking: tag
+
+  keep:
+    - preprocess_asm.py
 
   exclude:
     - ".*"
@@ -42,3 +45,11 @@ vendoring:
     - lib/
     - LICENSE
     - COPYING
+
+updatebot:
+  maintainer-bz: rjesup@jesup.org
+  maintainer-phab: "#necko-reviewers"
+  tasks:
+    - type: vendoring
+      enabled: true
+      frequency: release

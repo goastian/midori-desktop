@@ -9,7 +9,7 @@
 "use strict";
 
 const { SearchSuggestionController } = ChromeUtils.importESModule(
-  "resource://gre/modules/SearchSuggestionController.sys.mjs"
+  "moz-src:///toolkit/components/search/SearchSuggestionController.sys.mjs"
 );
 
 let engine;
@@ -20,16 +20,14 @@ add_setup(async function () {
   let server = useHttpServer();
   server.registerContentType("sjs", "sjs");
 
-  await AddonTestUtils.promiseStartupManager();
-
   const engineData = {
-    baseURL: gDataUrl,
+    baseURL: `${gHttpURL}/sjs/`,
     name: "GET suggestion engine",
     method: "GET",
   };
 
   engine = await SearchTestUtils.installOpenSearchEngine({
-    url: `${gDataUrl}engineMaker.sjs?${JSON.stringify(engineData)}`,
+    url: `${gHttpURL}/sjs/engineMaker.sjs?${JSON.stringify(engineData)}`,
   });
 });
 

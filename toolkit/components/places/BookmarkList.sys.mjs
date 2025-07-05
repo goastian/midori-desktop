@@ -27,7 +27,7 @@ export class BookmarkList {
   /**
    * The function to call when changes are made.
    *
-   * @type {function}
+   * @type {Function}
    */
   #observer;
 
@@ -55,7 +55,7 @@ export class BookmarkList {
    *
    * @param {string[]} urls
    *   The initial set of URLs to track.
-   * @param {function} [observer]
+   * @param {Function} [observer]
    *   The function to call when changes are made.
    * @param {number} [debounceRate]
    *   Time between observer executions, in milliseconds.
@@ -125,7 +125,7 @@ export class BookmarkList {
    * Check whether the given URL is bookmarked.
    *
    * @param {string} url
-   * @returns {boolean}
+   * @returns {Promise<boolean | undefined>}
    *   The result, or `undefined` if the URL is not tracked.
    */
   async isBookmark(url) {
@@ -134,7 +134,7 @@ export class BookmarkList {
     }
     const urlHash = lazy.PlacesUtils.history.hashURL(url);
     const count = this.#bookmarkCount.get(urlHash);
-    return count != undefined ? Boolean(count) : count;
+    return count != undefined ? Boolean(count) : undefined;
   }
 
   /**
@@ -169,7 +169,7 @@ export class BookmarkList {
   /**
    * Handle bookmark events and update the cache accordingly.
    *
-   * @param {PlacesEvent[]} events
+   * @param {PlacesBookmark[]} events
    */
   async handlePlacesEvents(events) {
     let cacheUpdated = false;

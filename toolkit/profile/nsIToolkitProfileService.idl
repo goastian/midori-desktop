@@ -42,15 +42,26 @@ interface nsIToolkitProfileService : nsISupports
         restart = 2,
     };
 
-    attribute boolean startWithLastProfile;
+    [infallible] attribute boolean startWithLastProfile;
 
-    readonly attribute nsISimpleEnumerator /*nsIToolkitProfile*/ profiles;
+    [infallible] readonly attribute nsISimpleEnumerator /*nsIToolkitProfile*/ profiles;
 
     /**
      * The profile currently in use if it is a named profile. This will return
      * null if the current profile path doesn't match a profile in the database.
      */
-    readonly attribute nsIToolkitProfile currentProfile;
+    [infallible] readonly attribute nsIToolkitProfile currentProfile;
+
+    /**
+     * The single named profile in a profile group. This is only usable after
+     * startup has complete.
+     *
+     * If the current named profile has a StoreID, this is the current profile.
+     * If the current profile is unnamed and has a StoreID, this will be the
+     * named profile with the same StoreID.
+     * If the current profile has no StoreID, this will be null.
+     */
+    [infallible] readonly attribute nsIToolkitProfile groupProfile;
 
     /**
      * The default profile for this build.
@@ -94,6 +105,14 @@ interface nsIToolkitProfileService : nsISupports
     nsIToolkitProfile getProfileByName(in AUTF8String aName);
 
     /**
+     * Get a profile by directory. Finds a profile with the matching root directory
+     *
+     * @param aRootDir The root directory to match against.
+     * @param aLocalDir And optional local directory to also match against.
+     */
+    nsIToolkitProfile getProfileByDir(in nsIFile aRootDir, [optional] in nsIFile aLocalDir);
+
+    /**
      * Create a new profile.
      *
      * The profile temporary directory will be chosen based on where the
@@ -132,14 +151,44 @@ interface nsIToolkitProfileService : nsISupports
      * Returns the number of profiles.
      * @return the number of profiles.
      */
-    readonly attribute unsigned long profileCount;
+    [infallible] readonly attribute unsigned long profileCount;
 
     /**
      * Flush the profiles list file. This will fail with
      * NS_ERROR_DATABASE_CHANGED if the files on disk have changed since the
-     * profiles were loaded.
+     * profiles were loaded. Should not be called outside of startup.
      */
     void flush();
+
+    /**
+     * Flushes the profiles list file on a background thread after acquiring the
+     * startup lock. Like `flush` this will fail with NS_ERROR_DATABASE_CHANGED
+     * if the files on disk have changed since the profiles were loaded.
+     * It is safe to call this while a previous flush is still in progress. The
+     * promise returned will resolve when the last call to flush completes.
+     */
+    [implicit_jscontext]
+    Promise asyncFlush();
+
+    /**
+     * Flushes the mutable data about the current group profile to disk on a
+     * background thread after acquiring the startup lock. Unlike other flushing
+     * methods this can usually succeed even if the files on disk have changed
+     * since the profiles were loaded.
+     * It is safe to call this while a previous flush is still in progress. The
+     * promise returned will resolve when the last call to flush completes.
+     */
+    [implicit_jscontext]
+    Promise asyncFlushGroupProfile();
+
+    /**
+     * Removes profile directories from disk. Will wait for up to aTimeout
+     * seconds to acquire the profile lock. aLocalDir can be null in which case
+     * it is calculated from the root directory.
+     */
+    [implicit_jscontext]
+    Promise removeProfileFilesByPath(in nsIFile aRootDir, in nsIFile aLocalDir,
+                                     in unsigned long aTimeout);
 };
 
 %{C++

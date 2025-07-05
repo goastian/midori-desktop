@@ -1,7 +1,9 @@
 use super::{InitTracker, MemoryInitKind};
-use crate::{hal_api::HalApi, resource::Texture, track::TextureSelector};
+use crate::resource::Texture;
+use alloc::{sync::Arc, vec::Vec};
 use arrayvec::ArrayVec;
-use std::{ops::Range, sync::Arc};
+use core::ops::Range;
+use wgt::TextureSelector;
 
 #[derive(Debug, Clone)]
 pub(crate) struct TextureInitRange {
@@ -35,8 +37,8 @@ impl From<TextureSelector> for TextureInitRange {
 }
 
 #[derive(Debug, Clone)]
-pub(crate) struct TextureInitTrackerAction<A: HalApi> {
-    pub(crate) texture: Arc<Texture<A>>,
+pub(crate) struct TextureInitTrackerAction {
+    pub(crate) texture: Arc<Texture>,
     pub(crate) range: TextureInitRange,
     pub(crate) kind: MemoryInitKind,
 }
@@ -51,16 +53,18 @@ pub(crate) struct TextureInitTracker {
 impl TextureInitTracker {
     pub(crate) fn new(mip_level_count: u32, depth_or_array_layers: u32) -> Self {
         TextureInitTracker {
-            mips: std::iter::repeat(TextureLayerInitTracker::new(depth_or_array_layers))
-                .take(mip_level_count as usize)
-                .collect(),
+            mips: core::iter::repeat_n(
+                TextureLayerInitTracker::new(depth_or_array_layers),
+                mip_level_count as usize,
+            )
+            .collect(),
         }
     }
 
-    pub(crate) fn check_action<A: HalApi>(
+    pub(crate) fn check_action(
         &self,
-        action: &TextureInitTrackerAction<A>,
-    ) -> Option<TextureInitTrackerAction<A>> {
+        action: &TextureInitTrackerAction,
+    ) -> Option<TextureInitTrackerAction> {
         let mut mip_range_start = usize::MAX;
         let mut mip_range_end = usize::MIN;
         let mut layer_range_start = u32::MAX;

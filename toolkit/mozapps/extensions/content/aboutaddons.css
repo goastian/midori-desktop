@@ -5,7 +5,6 @@
 :root {
   --addon-icon-size: 32px;
   --main-margin-start: 28px;
-  --section-width: 664px;
   --sidebar-width: var(--in-content-sidebar-width);
   --z-index-sticky-container: 5;
   --z-index-popup: 10;
@@ -82,7 +81,7 @@ h2 {
 .category[badge-count]::after {
   display: inline-block;
   min-width: 20px;
-  background-color: var(--in-content-accent-color);
+  background-color: var(--color-accent-primary);
   color: var(--in-content-primary-button-text-color);
   font-weight: bold;
   /* Use a large border-radius to get semi-circles on the sides. */
@@ -95,7 +94,7 @@ h2 {
 }
 
 .category[name="discover"] {
-  background-image: url("chrome://mozapps/skin/extensions/category-discover.svg");
+  background-image: url("chrome://global/skin/icons/trophy.svg");
 }
 .category[name="locale"] {
   background-image: url("chrome://mozapps/skin/extensions/category-languages.svg");
@@ -121,6 +120,9 @@ h2 {
 .category[name="sitepermission"] {
   background-image: url("chrome://mozapps/skin/extensions/category-sitepermission.svg");
 }
+.category[name="mlmodel"] {
+  background-image: url("chrome://global/skin/icons/highlights.svg");
+}
 
 .sticky-container {
   background: var(--in-content-page-background);
@@ -138,7 +140,7 @@ h2 {
   padding-inline-start: 28px;
   padding-top: 20px;
   padding-bottom: 30px;
-  max-width: var(--section-width);
+  max-width: var(--page-main-content-width);
 }
 
 search-addons > search-textbox {
@@ -156,7 +158,7 @@ search-addons > search-textbox {
   display: flex;
   margin-inline-start: var(--main-margin-start);
   padding-bottom: 16px;
-  max-width: var(--section-width);
+  max-width: var(--page-main-content-width);
 }
 
 .spacer {
@@ -182,12 +184,12 @@ search-addons > search-textbox {
 #main {
   margin-inline-start: var(--main-margin-start);
   margin-bottom: 28px;
-  max-width: var(--section-width);
+  max-width: var(--page-main-content-width);
 }
 
 global-warnings {
   margin-inline-start: var(--main-margin-start);
-  max-width: var(--section-width);
+  max-width: var(--page-main-content-width);
 }
 
 /* The margin between message bars. */
@@ -215,7 +217,12 @@ message-bar-stack > * {
 
 .addon.card {
   margin-bottom: 16px;
+  overflow: hidden;
   transition: opacity 150ms, box-shadow 150ms;
+
+  & .addon-name-link {
+    transition: color 150ms;
+  }
 }
 
 addon-list:not([type="theme"]) addon-card:not([expanded]):not([panelopen]) > .addon.card[active="false"]:not(:focus-within):not(:hover) {
@@ -223,12 +230,16 @@ addon-list:not([type="theme"]) addon-card:not([expanded]):not([panelopen]) > .ad
 }
 
 .addon.card:hover {
-  box-shadow: var(--card-shadow);
+  box-shadow: var(--box-shadow-card);
 }
 
 addon-card:not([expanded]) > .addon.card:hover {
-  box-shadow: var(--card-shadow-hover);
+  box-shadow: var(--box-shadow-card-hover);
   cursor: pointer;
+
+  & .addon-name-link {
+    color: var(--link-color);
+  }
 }
 
 addon-card[expanded] .addon.card {
@@ -259,7 +270,7 @@ addon-card[expanded] .update-postponed-bar {
 addon-card[expanded] .update-postponed-bar + .addon-card-message {
   /* Remove margin between the two message bars when they are both
    * visible in the detail view */
-  margin-top: 0px;
+  margin-top: 0;
 }
 
 .update-postponed-bar + .addon-card-message:not([hidden]) {
@@ -273,10 +284,10 @@ addon-card[expanded] .update-postponed-bar + .addon-card-message {
 .card-heading-image {
   /* If the width, height or aspect ratio changes, don't forget to update the
    * getScreenshotUrlForAddon function in aboutaddons.js */
-  width: var(--section-width);
+  width: var(--page-main-content-width);
   /* Adjust height so that the image preserves the aspect ratio from AMO.
    * For details, see https://bugzilla.mozilla.org/show_bug.cgi?id=1546123 */
-  height: calc(var(--section-width) * 92 / 680);
+  height: calc(var(--page-main-content-width) * 92 / 680);
   object-fit: cover;
 }
 
@@ -333,26 +344,34 @@ addon-card[expanded] .update-postponed-bar + .addon-card-message {
   flex-shrink: 0;
   border-radius: 11px;
   -moz-context-properties: fill;
-  fill: #fff;
 }
 
 .addon-badge-private-browsing-allowed {
   background-image: url("chrome://global/skin/icons/indicator-private-browsing.svg");
+  /* This unusual value makes the badge the same size as the other badges. */
+  background-size: 23px;
 }
 
-.addon-badge-recommended {
-  background-color: var(--orange-50);
-  background-image: url("chrome://mozapps/skin/extensions/recommended.svg");
-}
-
+.addon-badge-recommended,
 .addon-badge-line {
-  background-color: #fff;
-  background-image: url("chrome://mozapps/skin/extensions/line.svg");
-  background-size: 16px;
-  border-radius: 10px;
   border: 1px solid #CFCFD8;
   width: 20px;
   height: 20px;
+
+  @media (prefers-color-scheme: dark) {
+    border-color: #3A3944;
+  }
+}
+
+.addon-badge-recommended {
+  background-image: url("chrome://global/skin/icons/trophy.svg");
+  background-size: 14px;
+  fill: var(--orange-50);
+}
+
+.addon-badge-line {
+  background-image: url("chrome://mozapps/skin/extensions/line.svg");
+  background-size: 16px;
 }
 
 .addon-badge-verified {
@@ -603,7 +622,7 @@ button.addon-detail-description-toggle {
   width: 5px;
   height: 5px;
   border-radius: 50%;
-  background-color: var(--in-content-accent-color);;
+  background-color: var(--color-accent-primary);;
 }
 
 panel-item[action="remove"]::part(button) {
@@ -654,6 +673,10 @@ panel-item[action="report"]::part(button) {
    * the min-height unchanged to avoid potential regressions in the short term.
    */
   min-height: 250px;
+
+  /* Setting display to grid to prevent the inline options page browser element
+   * from hitting the regression tracked by Bug 1939206. */
+  display: grid;
 }
 
 addon-permissions-list > .addon-detail-row {
@@ -663,29 +686,34 @@ addon-permissions-list > .addon-detail-row {
 .addon-permissions-list {
   list-style-type: none;
   margin: 0;
-  padding-inline-start: 8px;
+  padding-inline-start: var(--space-small);
 }
 
 .addon-permissions-list > li {
   border: none;
-  padding-block: 4px;
-  padding-inline-start: 2rem;
+  padding-block: var(--space-xsmall);
   background-image: none;
-  background-position: 0 center;
-  background-size: 1.6rem 1.6rem;
   background-repeat: no-repeat;
   word-break: break-all;
-}
 
-.addon-permissions-list > li:dir(rtl) {
-  background-position-x: right 0;
-}
+  .addon-permissions-required &.permission-checked {
+    list-style-type: disc;
+    /* Align the list with the rest of the page, and use `list-style-position:
+     * outside` to keep long string correctly wrapped. */
+    margin-inline-start: 1em;
+  }
 
-/* using a list-style-image prevents aligning the image */
-.addon-permissions-list > li.permission-checked {
-  background-image: url("chrome://global/skin/icons/check.svg");
-  -moz-context-properties: fill;
-  fill: var(--green-60);
+  .addon-permissions-optional &,
+  .addon-data-collection-permissions-optional & {
+    padding-inline-start: 0;
+
+    moz-toggle > moz-message-bar {
+      /* decrease from default --space-large to appear closer to the permission
+       * message. Otherwise it is closer to the next permission than the
+       * permission associated with the toggle. */
+      margin-block-start: var(--space-small);
+    }
+  }
 }
 
 .permission-header {
@@ -722,7 +750,7 @@ button.tab-button:hover {
 button.tab-button[selected],
 button.tab-button[selected]:hover {
   border-top-color: currentColor;
-  color: var(--in-content-accent-color);
+  color: var(--color-accent-primary);
 }
 
 @media (prefers-contrast) {

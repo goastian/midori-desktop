@@ -13,13 +13,17 @@
 #include "gfxFontConstants.h"
 #include "gfxPlatformMac.h"
 #include "nsCSSColorUtils.h"
+#include "nsAppShell.h"
 #include "mozilla/FontPropertyTypes.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/StaticPrefs_widget.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/AccessibleMetrics.h"
 #include "mozilla/widget/WidgetMessageUtils.h"
+#include "mozilla/MacStringHelpers.h"
 
 #import <Cocoa/Cocoa.h>
+#import <Carbon/Carbon.h>
+#import <Accessibility/Accessibility.h>
 #import <AppKit/NSColor.h>
 
 // This must be included last:
@@ -45,6 +49,10 @@ void nsLookAndFeel::EnsureInit() {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK
 
   mInitialized = true;
+  // Ensure GeckoNSApplication is instantiated before creating a window,
+  // otherwise we might instantiate the wrong application class, causing
+  // exceptions to be thrown elsewhere.
+  [GeckoNSApplication sharedApplication];
   NSWindow* window =
       [[NSWindow alloc] initWithContentRect:NSZeroRect
                                   styleMask:NSWindowStyleMaskTitled
@@ -114,11 +122,11 @@ static nscolor ProcessSelectionBackground(nscolor aColor, ColorScheme aScheme) {
   if (sat > 0) {
     // The color is not a shade of grey, restore the saturation taken away by
     // the transparency.
-    sat = mozilla::clamped(sat * factor, 0, 255);
+    sat = std::clamp(sat * factor, 0, 255);
   } else {
     // The color is a shade of grey, find the value that looks equivalent
     // on a white background with the given opacity.
-    value = mozilla::clamped(255 - (255 - value) * factor, 0, 255);
+    value = std::clamp(255 - (255 - value) * factor, 0, 255);
   }
   NS_HSV2RGB(resultColor, hue, sat, value, alpha);
   return resultColor;
@@ -130,66 +138,65 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
 
   NSAppearance.currentAppearance = NSAppearanceForColorScheme(aScheme);
 
-  nscolor color = 0;
   switch (aID) {
     case ColorID::Infobackground:
-      color = aScheme == ColorScheme::Light
-                  ? NS_RGB(0xdd, 0xdd, 0xdd)
-                  : GetColorFromNSColor(NSColor.windowBackgroundColor);
+      aColor = aScheme == ColorScheme::Light
+                   ? NS_RGB(0xdd, 0xdd, 0xdd)
+                   : GetColorFromNSColor(NSColor.windowBackgroundColor);
       break;
     case ColorID::Highlight:
-      color = ProcessSelectionBackground(
+      aColor = ProcessSelectionBackground(
           GetColorFromNSColor(NSColor.selectedTextBackgroundColor), aScheme);
       break;
     // This is used to gray out the selection when it's not focused. Used with
     // nsISelectionController::SELECTION_DISABLED.
     case ColorID::TextSelectDisabledBackground:
-      color = ProcessSelectionBackground(
+      aColor = ProcessSelectionBackground(
           GetColorFromNSColor(NSColor.secondarySelectedControlColor), aScheme);
       break;
     case ColorID::MozMenuhoverdisabled:
       aColor = NS_TRANSPARENT;
       break;
     case ColorID::Accentcolor:
-      color = GetColorFromNSColor(NSColor.controlAccentColor);
+      aColor = GetColorFromNSColor(NSColor.controlAccentColor);
       break;
     case ColorID::MozMenuhover:
     case ColorID::Selecteditem:
-      color = GetColorFromNSColor(NSColor.selectedContentBackgroundColor);
+      aColor = GetColorFromNSColor(NSColor.selectedContentBackgroundColor);
       if (aID == ColorID::MozMenuhover &&
           !LookAndFeel::GetInt(IntID::PrefersReducedTransparency)) {
         // Wash the color a little bit with semi-transparent white to match a
         // bit closer the native NSVisualEffectSelection on menus.
-        color = NS_ComposeColors(
-            color,
+        aColor = NS_ComposeColors(
+            aColor,
             NS_RGBA(255, 255, 255, aScheme == ColorScheme::Light ? 51 : 25));
       }
       break;
     case ColorID::Accentcolortext:
     case ColorID::MozMenuhovertext:
     case ColorID::Selecteditemtext:
-      color = GetColorFromNSColor(NSColor.selectedMenuItemTextColor);
+      aColor = GetColorFromNSColor(NSColor.selectedMenuItemTextColor);
       break;
     case ColorID::IMESelectedRawTextBackground:
     case ColorID::IMESelectedConvertedTextBackground:
     case ColorID::IMERawInputBackground:
     case ColorID::IMEConvertedTextBackground:
-      color = NS_TRANSPARENT;
+      aColor = NS_TRANSPARENT;
       break;
     case ColorID::IMESelectedRawTextForeground:
     case ColorID::IMESelectedConvertedTextForeground:
     case ColorID::IMERawInputForeground:
     case ColorID::IMEConvertedTextForeground:
     case ColorID::Highlighttext:
-      color = NS_SAME_AS_FOREGROUND_COLOR;
+      aColor = NS_SAME_AS_FOREGROUND_COLOR;
       break;
     case ColorID::IMERawInputUnderline:
     case ColorID::IMEConvertedTextUnderline:
-      color = NS_40PERCENT_FOREGROUND_COLOR;
+      aColor = NS_40PERCENT_FOREGROUND_COLOR;
       break;
     case ColorID::IMESelectedRawTextUnderline:
     case ColorID::IMESelectedConvertedTextUnderline:
-      color = NS_SAME_AS_FOREGROUND_COLOR;
+      aColor = NS_SAME_AS_FOREGROUND_COLOR;
       break;
 
       //
@@ -205,90 +212,86 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
       //  if querying the Appearance Manager fails ;)
       //
     case ColorID::MozMacDefaultbuttontext:
-      color = NS_RGB(0xFF, 0xFF, 0xFF);
+      aColor = NS_RGB(0xFF, 0xFF, 0xFF);
       break;
     case ColorID::MozSidebar:
-      color = aScheme == ColorScheme::Light ? NS_RGB(0xf6, 0xf6, 0xf6)
-                                            : NS_RGB(0x2d, 0x2d, 0x2d);
+      aColor = aScheme == ColorScheme::Light ? NS_RGB(0xff, 0xff, 0xff)
+                                             : NS_RGB(0x2d, 0x2d, 0x2d);
       break;
     case ColorID::MozSidebarborder:
       // hsla(240, 5%, 5%, .1)
-      color = NS_RGBA(12, 12, 13, 26);
+      aColor = NS_RGBA(12, 12, 13, 26);
       break;
     case ColorID::MozButtonactivetext:
       // Pre-macOS 12, pressed buttons were filled with the highlight color and
       // the text was white. Starting with macOS 12, pressed (non-default)
       // buttons are filled with medium gray and the text color is the same as
       // in the non-pressed state.
-      color = nsCocoaFeatures::OnMontereyOrLater()
-                  ? GetColorFromNSColor(NSColor.controlTextColor)
-                  : NS_RGB(0xFF, 0xFF, 0xFF);
-      break;
-    case ColorID::Windowtext:
-    case ColorID::MozDialogtext:
-      color = GetColorFromNSColor(NSColor.windowFrameTextColor);
+      aColor = nsCocoaFeatures::OnMontereyOrLater()
+                   ? GetColorFromNSColor(NSColor.controlTextColor)
+                   : NS_RGB(0xFF, 0xFF, 0xFF);
       break;
     case ColorID::Appworkspace:
-      color = NS_RGB(0xFF, 0xFF, 0xFF);
+      aColor = NS_RGB(0xFF, 0xFF, 0xFF);
       break;
     case ColorID::Background:
-      color = NS_RGB(0x63, 0x63, 0xCE);
+      aColor = NS_RGB(0x63, 0x63, 0xCE);
       break;
     case ColorID::Buttonface:
     case ColorID::MozButtonhoverface:
     case ColorID::MozButtonactiveface:
     case ColorID::MozButtondisabledface:
-      color = GetColorFromNSColor(NSColor.controlColor);
-      if (!NS_GET_A(color)) {
-        color = GetColorFromNSColor(NSColor.controlBackgroundColor);
+      aColor = GetColorFromNSColor(NSColor.controlColor);
+      if (!NS_GET_A(aColor)) {
+        aColor = GetColorFromNSColor(NSColor.controlBackgroundColor);
       }
       break;
     case ColorID::Buttonhighlight:
-      color = GetColorFromNSColor(NSColor.selectedControlColor);
+      aColor = GetColorFromNSColor(NSColor.selectedControlColor);
       break;
     case ColorID::Scrollbar:
-      color = GetColorFromNSColor(NSColor.scrollBarColor);
+      aColor = GetColorFromNSColor(NSColor.scrollBarColor);
       break;
     case ColorID::Threedhighlight:
-      color = GetColorFromNSColor(NSColor.highlightColor);
+      aColor = GetColorFromNSColor(NSColor.highlightColor);
       break;
     case ColorID::Buttonshadow:
     case ColorID::Threeddarkshadow:
-      color = aScheme == ColorScheme::Dark ? *GenericDarkColor(aID)
-                                           : NS_RGB(0xDC, 0xDC, 0xDC);
+      aColor = aScheme == ColorScheme::Dark ? *GenericDarkColor(aID)
+                                            : NS_RGB(0xDC, 0xDC, 0xDC);
       break;
     case ColorID::Threedshadow:
-      color = aScheme == ColorScheme::Dark ? *GenericDarkColor(aID)
-                                           : NS_RGB(0xE0, 0xE0, 0xE0);
+      aColor = aScheme == ColorScheme::Dark ? *GenericDarkColor(aID)
+                                            : NS_RGB(0xE0, 0xE0, 0xE0);
       break;
     case ColorID::Threedface:
-      color = aScheme == ColorScheme::Dark ? *GenericDarkColor(aID)
-                                           : NS_RGB(0xF0, 0xF0, 0xF0);
+      aColor = aScheme == ColorScheme::Dark ? *GenericDarkColor(aID)
+                                            : NS_RGB(0xF0, 0xF0, 0xF0);
       break;
     case ColorID::Threedlightshadow:
     case ColorID::Buttonborder:
     case ColorID::MozDisabledfield:
-      color = aScheme == ColorScheme::Dark ? *GenericDarkColor(aID)
-                                           : NS_RGB(0xDA, 0xDA, 0xDA);
+      aColor = aScheme == ColorScheme::Dark ? *GenericDarkColor(aID)
+                                            : NS_RGB(0xDA, 0xDA, 0xDA);
       break;
     case ColorID::Menu:
       // Hand-picked from Sonoma because there doesn't seem to be any
       // appropriate menu system color.
-      color = aScheme == ColorScheme::Dark ? NS_RGB(0x36, 0x36, 0x39)
-                                           : NS_RGB(0xeb, 0xeb, 0xeb);
+      aColor = aScheme == ColorScheme::Dark ? NS_RGB(0x36, 0x36, 0x39)
+                                            : NS_RGB(0xeb, 0xeb, 0xeb);
       break;
     case ColorID::Windowframe:
-      color = GetColorFromNSColor(NSColor.windowFrameColor);
+      aColor = GetColorFromNSColor(NSColor.windowFrameColor);
       break;
     case ColorID::MozDialog:
     case ColorID::Window:
-      color = GetColorFromNSColor(aScheme == ColorScheme::Light
-                                      ? NSColor.windowBackgroundColor
-                                      : NSColor.underPageBackgroundColor);
+      aColor = GetColorFromNSColor(aScheme == ColorScheme::Light
+                                       ? NSColor.windowBackgroundColor
+                                       : NSColor.underPageBackgroundColor);
       break;
     case ColorID::Field:
     case ColorID::MozCombobox:
-      color = GetColorFromNSColor(NSColor.controlBackgroundColor);
+      aColor = GetColorFromNSColor(NSColor.controlBackgroundColor);
       break;
     case ColorID::Fieldtext:
     case ColorID::MozComboboxtext:
@@ -298,52 +301,53 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
     case ColorID::Infotext:
     case ColorID::MozCellhighlighttext:
     case ColorID::MozSidebartext:
-      color = GetColorFromNSColor(NSColor.controlTextColor);
+      aColor = GetColorFromNSColor(NSColor.controlTextColor);
       break;
     case ColorID::MozMacFocusring:
-      color = GetColorFromNSColorWithCustomAlpha(
+      aColor = GetColorFromNSColorWithCustomAlpha(
           NSColor.keyboardFocusIndicatorColor, 0.48);
       break;
     case ColorID::MozMacDisabledtoolbartext:
     case ColorID::Graytext:
-      color = GetColorFromNSColor(NSColor.disabledControlTextColor);
+      aColor = GetColorFromNSColor(NSColor.disabledControlTextColor);
       break;
     case ColorID::MozCellhighlight:
       // For inactive list selection
-      color = GetColorFromNSColor(NSColor.secondarySelectedControlColor);
+      aColor = GetColorFromNSColor(NSColor.secondarySelectedControlColor);
       break;
     case ColorID::MozColheadertext:
     case ColorID::MozColheaderhovertext:
     case ColorID::MozColheaderactivetext:
-      color = GetColorFromNSColor(NSColor.headerTextColor);
+      aColor = GetColorFromNSColor(NSColor.headerTextColor);
       break;
     case ColorID::MozColheaderactive:
-      color = GetColorFromNSColor(
+      aColor = GetColorFromNSColor(
           NSColor.unemphasizedSelectedContentBackgroundColor);
       break;
     case ColorID::MozColheader:
     case ColorID::MozColheaderhover:
-    case ColorID::MozEventreerow:
       // Background color of even list rows.
-      color =
+      aColor =
           GetColorFromNSColor(NSColor.controlAlternatingRowBackgroundColors[0]);
       break;
     case ColorID::MozOddtreerow:
       // Background color of odd list rows.
-      color =
+      aColor =
           GetColorFromNSColor(NSColor.controlAlternatingRowBackgroundColors[1]);
       break;
-    case ColorID::MozNativehyperlinktext:
-      color = GetColorFromNSColor(NSColor.linkColor);
+    case ColorID::Linktext:
+      aColor = GetColorFromNSColor(NSColor.linkColor);
       break;
-    case ColorID::MozNativevisitedhyperlinktext:
-      color = GetColorFromNSColor(NSColor.systemPurpleColor);
+    case ColorID::Visitedtext:
+      aColor = GetColorFromNSColor(NSColor.systemPurpleColor);
       break;
     case ColorID::MozHeaderbartext:
     case ColorID::MozHeaderbarinactivetext:
     case ColorID::Inactivecaptiontext:
     case ColorID::Captiontext:
-      aColor = GetColorFromNSColor(NSColor.textColor);
+    case ColorID::Windowtext:
+    case ColorID::MozDialogtext:
+      aColor = GetColorFromNSColor(NSColor.labelColor);
       return NS_OK;
     case ColorID::MozHeaderbar:
     case ColorID::MozHeaderbarinactive:
@@ -352,6 +356,7 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
       // This has better contrast than the stand-in colors.
       aColor = GetColorFromNSColor(NSColor.windowBackgroundColor);
       return NS_OK;
+    case ColorID::Activetext:
     case ColorID::Marktext:
     case ColorID::Mark:
     case ColorID::SpellCheckerUnderline:
@@ -366,8 +371,6 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aScheme,
       aColor = NS_RGB(0xff, 0xff, 0xff);
       return NS_ERROR_FAILURE;
   }
-
-  aColor = color;
   return NS_OK;
 
   NS_OBJC_END_TRY_ABORT_BLOCK
@@ -381,6 +384,13 @@ static bool SystemWantsDarkTheme() {
         NSAppearanceNameAqua, NSAppearanceNameDarkAqua
       ]];
   return [aquaOrDarkAqua isEqualToString:NSAppearanceNameDarkAqua];
+}
+
+static bool PrefersNonBlinkingTextInsertionIndicator() {
+  if (@available(macOS 15.0, *)) {
+    return AXPrefersNonBlinkingTextInsertionIndicator();
+  }
+  return false;
 }
 
 nsresult nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
@@ -397,7 +407,7 @@ nsresult nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
       aResult = 3;
       break;
     case IntID::CaretBlinkTime:
-      aResult = 567;
+      aResult = PrefersNonBlinkingTextInsertionIndicator() ? -1 : 567;
       break;
     case IntID::CaretWidth:
       aResult = 1;
@@ -519,6 +529,9 @@ nsresult nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
     case IntID::FullKeyboardAccess:
       aResult = NSApp.isFullKeyboardAccessEnabled;
       break;
+    case IntID::NativeMenubar:
+      aResult = 1;
+      break;
     default:
       aResult = 0;
       res = NS_ERROR_FAILURE;
@@ -577,8 +590,21 @@ void nsLookAndFeel::RecordAccessibilityTelemetry() {
           (accessibilityDisplayShouldInvertColors)]) {
     bool val =
         [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldInvertColors];
-    Telemetry::ScalarSet(Telemetry::ScalarID::A11Y_INVERT_COLORS, val);
+    glean::a11y::invert_colors.Set(val);
   }
+}
+
+nsresult nsLookAndFeel::GetKeyboardLayoutImpl(nsACString& aLayout) {
+  TISInputSourceRef source = ::TISCopyCurrentKeyboardInputSource();
+  nsAutoString layout;
+
+  CFStringRef layoutName = static_cast<CFStringRef>(
+      ::TISGetInputSourceProperty(source, kTISPropertyInputSourceID));
+  CopyNSStringToXPCOMString((const NSString*)layoutName, layout);
+  aLayout.Assign(NS_ConvertUTF16toUTF8(layout));
+
+  ::CFRelease(source);
+  return NS_OK;
 }
 
 @implementation MOZLookAndFeelDynamicChangeObserver
@@ -592,6 +618,15 @@ void nsLookAndFeel::RecordAccessibilityTelemetry() {
 
 - (instancetype)init {
   self = [super init];
+
+  if (@available(macOS 15.0, *)) {
+    [NSNotificationCenter.defaultCenter
+        addObserver:self
+           selector:@selector(cachedValuesChanged)
+               name:
+                   AXPrefersNonBlinkingTextInsertionIndicatorDidChangeNotification
+             object:nil];
+  }
 
   [NSNotificationCenter.defaultCenter
       addObserver:self

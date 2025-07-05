@@ -8,10 +8,10 @@
 
 #include "mozilla/java/TelemetryUtilsNatives.h"
 #include "nsAppShell.h"
-#include "nsIAndroidBridge.h"
+#include "nsIGeckoViewBridge.h"
 
 #include "mozilla/TimeStamp.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/GeckoviewMetrics.h"
 
 namespace mozilla {
 namespace widget {

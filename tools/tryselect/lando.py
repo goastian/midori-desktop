@@ -33,10 +33,7 @@ from mozbuild.base import MozbuildObject
 from mozversioncontrol import (
     GitRepository,
     HgRepository,
-)
-
-from .task_config import (
-    try_config_commit,
+    JujutsuRepository,
 )
 
 TOKEN_FILE = (
@@ -44,7 +41,7 @@ TOKEN_FILE = (
 )
 
 # The supported variants of `Repository` for this workflow.
-SupportedVcsRepository = Union[GitRepository, HgRepository]
+SupportedVcsRepository = Union[GitRepository, HgRepository, JujutsuRepository]
 
 here = os.path.abspath(os.path.dirname(__file__))
 build = MozbuildObject.from_environment(cwd=here)
@@ -74,25 +71,34 @@ def load_token_from_disk() -> Optional[dict]:
     return user_token
 
 
-def get_stack_info(vcs: SupportedVcsRepository) -> Tuple[str, List[str]]:
+def get_stack_info(
+    vcs: SupportedVcsRepository, head: Optional[str]
+) -> Tuple[str, str, List[str]]:
     """Retrieve information about the current stack for submission via Lando.
 
     Returns a tuple of the current public base commit as a Mercurial SHA,
     and a list of ordered base64 encoded patches.
     """
-    base_commit = vcs.base_ref_as_hg()
+    # Get the appropriate base commit hash format.
+    # Use `git` for Git-native checkouts of Firefox.
+    # Use `hg` for Mercurial repos and `git-cinnabar` clones.
+    base_commit_vcs = (
+        "git" if vcs.name in ("git", "jj") and not vcs.is_cinnabar_repo() else "hg"
+    )
+
+    base_commit = (
+        vcs.base_ref_as_hg() if base_commit_vcs == "hg" else vcs.base_ref_as_commit()
+    )
     if not base_commit:
-        raise ValueError(
-            "Could not determine base Mercurial commit hash for submission."
-        )
-    print("Using", base_commit, "as the hg base commit.")
+        raise ValueError("Could not determine base commit hash for submission.")
+    print("Using", base_commit, f"as the {base_commit_vcs} base commit.")
 
     # Reuse the base revision when on Mercurial to avoid multiple calls to `hg log`.
-    branch_nodes_kwargs = {}
+    get_commits_kwargs = {}
     if isinstance(vcs, HgRepository):
-        branch_nodes_kwargs["base_ref"] = base_commit
+        get_commits_kwargs["base_ref"] = base_commit
 
-    nodes = vcs.get_branch_nodes(**branch_nodes_kwargs)
+    nodes = vcs.get_commits(head, **get_commits_kwargs)
     if not nodes:
         raise ValueError("Could not find any commit hashes for submission.")
     elif len(nodes) == 1:
@@ -108,7 +114,7 @@ def get_stack_info(vcs: SupportedVcsRepository) -> Tuple[str, List[str]]:
     ]
     print("Patches gathered for submission.")
 
-    return base_commit, base64_patches
+    return base_commit, base_commit_vcs, base64_patches
 
 
 @dataclass
@@ -314,6 +320,10 @@ class LandoAPI:
         """URL of the Lando Try endpoint."""
         return f"https://{self.api_url}/try/patches"
 
+    def lando_try_status_api_url(self, job_id: int) -> str:
+        """URL of the Lando Try Job Status endpoint."""
+        return f"https://{self.api_url}/landing_jobs/{job_id}"
+
     @property
     def api_headers(self) -> dict[str, str]:
         """Headers for use accessing and authenticating against the API."""
@@ -377,6 +387,7 @@ class LandoAPI:
         patches: List[str],
         patch_format: str,
         base_commit: str,
+        base_commit_vcs: str,
     ) -> dict:
         """Send try push contents to Lando.
 
@@ -385,6 +396,7 @@ class LandoAPI:
         """
         request_json_body = {
             "base_commit": base_commit,
+            "base_commit_vcs": base_commit_vcs,
             "patch_format": patch_format,
             "patches": patches,
         }
@@ -395,12 +407,15 @@ class LandoAPI:
         return response_json
 
 
-def push_to_lando_try(vcs: SupportedVcsRepository, commit_message: str):
+def push_to_lando_try(
+    vcs: SupportedVcsRepository, commit_message: str, changed_files: dict
+):
     """Push a set of patches to Lando's try endpoint."""
     # Map `Repository` subclasses to the `patch_format` value Lando expects.
     PATCH_FORMAT_STRING_MAPPING = {
         GitRepository: "git-format-patch",
         HgRepository: "hgexport",
+        JujutsuRepository: "git-format-patch",
     }
     patch_format = PATCH_FORMAT_STRING_MAPPING.get(type(vcs))
     if not patch_format:
@@ -419,9 +434,9 @@ def push_to_lando_try(vcs: SupportedVcsRepository, commit_message: str):
     # Get the time when the push was initiated, not including Auth0 login time.
     push_start_time = time.perf_counter()
 
-    with try_config_commit(vcs, commit_message):
+    with vcs.try_commit(commit_message, changed_files) as head:
         try:
-            base_commit, patches = get_stack_info(vcs)
+            base_commit, base_commit_vcs, patches = get_stack_info(vcs, head)
         except ValueError as exc:
             error_msg = "abort: error gathering patches for submission."
             print(error_msg)
@@ -432,7 +447,7 @@ def push_to_lando_try(vcs: SupportedVcsRepository, commit_message: str):
         try:
             # Make the try request to Lando.
             response_json = lando_api.post_try_push_patches(
-                patches, patch_format, base_commit
+                patches, patch_format, base_commit, base_commit_vcs
             )
         except LandoAPIException as exc:
             error_msg = "abort: error submitting patches to Lando."
@@ -441,12 +456,20 @@ def push_to_lando_try(vcs: SupportedVcsRepository, commit_message: str):
             build.notify(error_msg)
             return
 
-    duration = round(time.perf_counter() - push_start_time, ndigits=2)
+    duration = time.perf_counter() - push_start_time
 
     job_id = response_json["id"]
     success_msg = (
-        f"Lando try submission success, took {duration} seconds. "
+        f"Lando try submission success, took {duration:.1f} seconds. "
         f"Landing job id: {job_id}."
     )
     print(success_msg)
-    build.notify(success_msg)
+
+    lando_api_status_url = lando_api.lando_try_status_api_url(job_id)
+    print(f"Lando Job Status API: {lando_api_status_url}")
+
+    # Send a notification only if the push took an unexpectedly long time
+    if duration > 30:
+        build.notify(success_msg)
+
+    return job_id

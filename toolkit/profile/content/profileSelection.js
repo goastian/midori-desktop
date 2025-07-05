@@ -31,6 +31,8 @@ function getFluentString(str) {
 function startup() {
   try {
     gDialogParams = window.arguments[0].QueryInterface(I.nsIDialogParamBlock);
+    gDialogParams.SetNumberStrings(0);
+    gDialogParams.SetInt(2, 0);
 
     gProfileService = C[ToolkitProfileService].getService(
       I.nsIToolkitProfileService
@@ -75,8 +77,45 @@ function startup() {
     window.close();
     throw e;
   }
-  document.addEventListener("dialogaccept", acceptDialog);
-  document.addEventListener("dialogcancel", exitDialog);
+
+  document.addEventListener("dialogaccept", dialogClosing);
+  document.addEventListener("dialogcancel", dialogClosing);
+  document
+    .getElementById("newbutton")
+    .addEventListener("command", CreateProfileWizard);
+  document
+    .getElementById("renbutton")
+    .addEventListener("command", RenameProfile);
+  document
+    .getElementById("delbutton")
+    .addEventListener("command", ConfirmDelete);
+  document
+    .getElementById("profiles")
+    .addEventListener("dblclick", event => onProfilesDblClick(event));
+  document
+    .getElementById("profiles")
+    .addEventListener("keypress", event => onProfilesKey(event));
+}
+
+function dialogClosing(event) {
+  // We want to handle closing the dialog ourselves once the async operation has
+  // completed. Note that this means the `dialogclosing` event is not dispatched
+  // but we don't use that anyway.
+  event.preventDefault();
+
+  let promise = event.type == "dialogaccept" ? acceptDialog() : exitDialog();
+  promise
+    .then(shouldClose => {
+      if (shouldClose === false) {
+        return;
+      }
+
+      window.close();
+    })
+    .catch(e => {
+      console.error(e);
+      window.close();
+    });
 }
 
 async function flush(cancelled) {
@@ -89,7 +128,7 @@ async function flush(cancelled) {
 
   if (gNeedsFlush) {
     try {
-      gProfileService.flush();
+      await gProfileService.asyncFlush();
     } catch (e) {
       let appName = gBrandBundle.getString("brandShortName");
 
@@ -140,7 +179,7 @@ async function flush(cancelled) {
   );
 }
 
-function acceptDialog(event) {
+async function acceptDialog() {
   var appName = gBrandBundle.getString("brandShortName");
 
   var profilesElement = document.getElementById("profiles");
@@ -153,8 +192,8 @@ function acceptDialog(event) {
       [appName]
     );
     Services.prompt.alert(window, pleaseSelectTitle, pleaseSelect);
-    event.preventDefault();
-    return;
+
+    return false;
   }
 
   gDialogParams.objects.insertElementAt(selectedProfile.profile.rootDir, 0);
@@ -169,11 +208,13 @@ function acceptDialog(event) {
       // profile based on the lock's directories.
     }
   }
-  flush(false);
+
+  await flush(false);
+  return true;
 }
 
-function exitDialog() {
-  flush(true);
+async function exitDialog() {
+  await flush(true);
 }
 
 function updateStartupPrefs() {
@@ -353,3 +394,5 @@ function ConfirmDelete() {
 
   return true;
 }
+
+window.addEventListener("load", startup);

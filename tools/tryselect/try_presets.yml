@@ -16,25 +16,33 @@ android-components:
     query:
         - "'build-components"
         - "'test-components"
+        - "^source-test 'android-components"
 
 android-geckoview:
     selector: fuzzy
-    # Show chunk numbers so we can query with -1$ / -2$ etc.
-    show_chunk_numbers: true
-    # disable_target_task_filter: true
-    # Run taskgraph full so all tasks are available
     full: true
     description: >-
         Run android-geckoview builds and tests.
     query:
         # Lint
         - "^source-test-mozlint android-lints$ | eslint$ | rejected-words$ | file-perm$ | file-whitespace$"
-        # Tests
-        - "^test-android-em-7.0-x86_64-qr/debug-isolated-process-geckoview- 'test-verify | cppunittest-1proc$ | gtest-1proc$ | junit$ | junit-fis$ | junit-nofis$ | junit-nofis-ship$ | xpcshell-1$ | xpcshell-2$"
-        - "^test-android-em-7.0-x86_64-qr/debug-isolated-process-geckoview-mochitest- media-1$ | media-2$ | plain-1$ | plain-2$ | plain-3$ | plain-4$ | plain-5$ | plain-gpu$"
-        - "^test-android-em-7.0-x86_64-qr/opt-geckoview- xpcshell-1$ | xpcshell-2$ | cppunittest-1proc$ | gtest-1proc$ | junit-fis$ | junit-nofis-ship$ | junit-nofis$ | junit$ | mochitest-media$"
-        - "^test-android-em-7.0-x86_64-qr/opt-geckoview-mochitest- media$ | plain-1$ | plain-2$ | plain-3$ | plain-4$ | plain-5$ | plain-gpu$"
-        - "^test-android-em-7.0-x86_64-qr/opt-geckoview-test-verify"
+        # Miscellaneous Tests
+        - "^test-android !shippable '64 'gtest | 'cpp | junit-fis"
+        # Mochitests
+        - "^test-android !shippable !cf !gli !iso      'em 'media | 'plain"
+        - "^test-android !shippable !cf !gli !iso !swr 'hw 'media 'debug"
+        - "^test-android !shippable !cf !gli !iso !swr 'hw 'mochitest-webgl 'nofis"
+        # Reftests
+        - "^test-android !shippable !iso 'geckoview-crashtest | 'geckoview-reftest 'nofis"
+        # Web Platform Tests
+        - "^test-android !shippable !headless 'wdspec"
+        - "^test-android !shippable       !cf !iso            'web-platform-tests-crashtest 'debug"
+        - "^test-android !shippable       !cf !iso       !swr 'web-platform-tests-crashtest"
+        - "^test-android !shippable !back !cf !iso !ship !swr 'web-platform-tests-nofis"
+        - "^test-android !shippable !back !cf !iso            'web-platform-tests-reftest 'nofis 'debug"
+        - "^test-android !shippable !back !cf !iso       !swr 'web-platform-tests-reftest 'nofis"
+        # XPCShell
+        - "^test-android !shippable !iso 'xpcshell"
 
 builds:
     selector: fuzzy
@@ -89,6 +97,8 @@ devtools:
     selector: fuzzy
     description: >-
         Runs the tests relevant to the Firefox Devtools
+    env:
+        - MOZ_DEVTOOLS_TEST_SCOPES=1
     query:
         - "'node-debugger | 'node-devtools"
         - "'mozlint-eslint"
@@ -104,6 +114,8 @@ devtools-linux:
     selector: fuzzy
     description: >-
         Runs the tests relevant to the Firefox Devtools, on Linux only.
+    env:
+        - MOZ_DEVTOOLS_TEST_SCOPES=1
     query:
         - "'node-debugger | 'node-devtools"
         - "'mozlint-eslint"
@@ -121,6 +133,7 @@ fenix:
         - "'signing-apk-fenix-android-test-debug"
         - "'test-apk-fenix-debug"
         - "'ui-test-apk-fenix-arm-debug"
+        - "^source-test 'fenix"
 
 firefox-android:
     selector: fuzzy
@@ -141,6 +154,7 @@ firefox-android:
         - "'signing-apk-focus-android-test-debug"
         - "'test-apk-focus-debug"
         - "'ui-test-apk-focus-arm-debug"
+        - "^source-test 'android | 'fenix | 'focus"
 
 focus:
     selector: fuzzy
@@ -153,6 +167,7 @@ focus:
         - "'signing-apk-focus-android-test-debug"
         - "'test-apk-focus-debug"
         - "'ui-test-apk-focus-arm-debug"
+        - "^source-test 'focus"
 
 fpush-linux-android:
     selector: fuzzy
@@ -221,6 +236,13 @@ mochitest-bc:
         - "'browser-chrome !tsan !asan !msix !spi !a11y !swr | 'linux"
     selector: fuzzy
 
+os-integration:
+    selector: fuzzy
+    description: >-
+        Run the same tasks as the "os-integration" cron.
+    try_config_params:
+        target_tasks_method: os-integration
+
 perf:
     selector: fuzzy
     description: >-
@@ -251,6 +273,8 @@ remote-protocol:
         This preset can be filtered down further to limit it to a specific
         platform or to opt/debug tasks only. For example:
         |mach try --preset remote-protocol -xq "'linux 'opt"|
+    env:
+        - MOZ_DEVTOOLS_TEST_SCOPES=1
     query:
         - "'awsy-base"
         - "'firefox-ui"
@@ -270,11 +294,12 @@ sample-suites:
         Runs one chunk of every test suite plus all suites that aren't chunked.
         It is useful for testing infrastructure changes that can affect the
         harnesses themselves but are unlikely to break specific tests.
+    show_chunk_numbers: true
     query:
-        - ^test- -1$
-        # Only run a single talos + raptor suite per platform
-        - ^test- !1$ !2$ !3$ !4$ !5$ !6$ !7$ !8$ !9$ !0$ !raptor !talos !components !apk
-        - ^test- 'raptor-speedometer | 'talos-g1
+        - ^test- -1$ !browsertime !raptor !talos
+        - ^test- !1$ !2$ !3$ !4$ !5$ !6$ !7$ !8$ !9$ !0$ !raptor !talos !components !apk !browsertime
+        # Only run a single talos / raptor / browsertime suite per platform
+        - ^test- raptor-speedometer$ | talos-g1$ | browsertime-tp6-firefox-imgur$
 
 sm-shell-all:
     selector: fuzzy
@@ -314,11 +339,13 @@ webextensions:
         GeckoView JUnit tests are NOT run.
     paths:  # must be duplicate of test_paths, see bug 1556445
         - browser/components/extensions/test/
+        - browser/base/content/test/webextensions/
         - mobile/shared/components/extensions/test/
         - toolkit/components/extensions/test/
         - toolkit/mozapps/extensions/test/
     test_paths:  # must be duplicate of paths, see bug 1556445
         - browser/components/extensions/test/
+        - browser/base/content/test/webextensions/
         - mobile/shared/components/extensions/test/
         - toolkit/components/extensions/test/
         - toolkit/mozapps/extensions/test/
@@ -330,9 +357,11 @@ webgpu:
     description: >-
         Runs the tests relevant to WebGPU.
     query:
-        - "'webgpu"
+        - "'webgpu !cf !devedition !shippable !nofis"
         - "source-test-mozlint-updatebot"
         - "source-test-vendor-rust"
+    full: true
+    rebuild: 3
 
 webrender:
     selector: fuzzy

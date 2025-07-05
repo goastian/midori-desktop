@@ -179,11 +179,11 @@ class LookupCache {
   // take a lookup string (www.hostname.com/path/to/resource.html) and
   // expand it into the set of fragments that should be searched for in an
   // entry
-  static nsresult GetLookupFragments(const nsACString& aSpec,
-                                     nsTArray<nsCString>* aFragments);
+  static void GetLookupFragments(const nsACString& aSpec,
+                                 nsTArray<nsCString>* aFragments);
 
-  static nsresult GetLookupEntitylistFragments(const nsACString& aSpec,
-                                               nsTArray<nsCString>* aFragments);
+  static void GetLookupEntitylistFragments(const nsACString& aSpec,
+                                           nsTArray<nsCString>* aFragments);
 
   LookupCache(const nsACString& aTableName, const nsACString& aProvider,
               nsCOMPtr<nsIFile>& aStoreFile);
@@ -224,11 +224,12 @@ class LookupCache {
 
   void GetCacheInfo(nsIUrlClassifierCacheInfo** aCache) const;
 
+  bool MaybeVerifyCRC32();
   nsresult VerifyCRC32(nsCOMPtr<nsIInputStream>& aIn);
 
   virtual nsresult Open();
   virtual nsresult Init();
-  ;
+
   virtual nsresult ClearPrefixes();
   virtual nsresult Has(const Completion& aCompletion, bool* aHas,
                        uint32_t* aMatchLength, bool* aConfirmed) = 0;
@@ -285,6 +286,8 @@ class LookupCache {
                       bool* aConfirmed);
 
   bool mPrimed;  // true when the PrefixSet has been loaded (or constructed)
+  bool mNeedCRC32Verification;  // true when the CRC32 checksum needs to be
+                                // verified
   const nsCString mTableName;
   const nsCString mProvider;
   nsCOMPtr<nsIFile> mRootStoreDirectory;

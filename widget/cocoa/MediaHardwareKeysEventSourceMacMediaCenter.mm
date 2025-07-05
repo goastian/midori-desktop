@@ -29,7 +29,7 @@ MediaHardwareKeysEventSourceMacMediaCenter::CreatePlayPauseHandler() {
         center.playbackState == MPNowPlayingPlaybackStatePlaying
             ? MPNowPlayingPlaybackStatePaused
             : MPNowPlayingPlaybackStatePlaying;
-    HandleEvent(MediaControlKey::Playpause);
+    HandleEvent(MediaControlAction(MediaControlKey::Playpause));
     return MPRemoteCommandHandlerStatusSuccess;
   });
 }
@@ -37,7 +37,7 @@ MediaHardwareKeysEventSourceMacMediaCenter::CreatePlayPauseHandler() {
 MediaCenterEventHandler
 MediaHardwareKeysEventSourceMacMediaCenter::CreateNextTrackHandler() {
   return Block_copy(^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* event) {
-    HandleEvent(MediaControlKey::Nexttrack);
+    HandleEvent(MediaControlAction(MediaControlKey::Nexttrack));
     return MPRemoteCommandHandlerStatusSuccess;
   });
 }
@@ -45,7 +45,7 @@ MediaHardwareKeysEventSourceMacMediaCenter::CreateNextTrackHandler() {
 MediaCenterEventHandler
 MediaHardwareKeysEventSourceMacMediaCenter::CreatePreviousTrackHandler() {
   return Block_copy(^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* event) {
-    HandleEvent(MediaControlKey::Previoustrack);
+    HandleEvent(MediaControlAction(MediaControlKey::Previoustrack));
     return MPRemoteCommandHandlerStatusSuccess;
   });
 }
@@ -57,7 +57,7 @@ MediaHardwareKeysEventSourceMacMediaCenter::CreatePlayHandler() {
     if (center.playbackState != MPNowPlayingPlaybackStatePlaying) {
       center.playbackState = MPNowPlayingPlaybackStatePlaying;
     }
-    HandleEvent(MediaControlKey::Play);
+    HandleEvent(MediaControlAction(MediaControlKey::Play));
     return MPRemoteCommandHandlerStatusSuccess;
   });
 }
@@ -69,7 +69,19 @@ MediaHardwareKeysEventSourceMacMediaCenter::CreatePauseHandler() {
     if (center.playbackState != MPNowPlayingPlaybackStatePaused) {
       center.playbackState = MPNowPlayingPlaybackStatePaused;
     }
-    HandleEvent(MediaControlKey::Pause);
+    HandleEvent(MediaControlAction(MediaControlKey::Pause));
+    return MPRemoteCommandHandlerStatusSuccess;
+  });
+}
+
+MediaCenterEventHandler MediaHardwareKeysEventSourceMacMediaCenter::
+    CreateChangePlaybackPositionHandler() {
+  return Block_copy(^MPRemoteCommandHandlerStatus(MPRemoteCommandEvent* event) {
+    MPChangePlaybackPositionCommandEvent* changePosEvent =
+        (MPChangePlaybackPositionCommandEvent*)event;
+    HandleEvent(
+        MediaControlAction(MediaControlKey::Seekto,
+                           SeekDetails(changePosEvent.positionTime, false)));
     return MPRemoteCommandHandlerStatusSuccess;
   });
 }
@@ -81,6 +93,7 @@ MediaHardwareKeysEventSourceMacMediaCenter::
   mPreviousTrackHandler = CreatePreviousTrackHandler();
   mPlayHandler = CreatePlayHandler();
   mPauseHandler = CreatePauseHandler();
+  mChangePlaybackPositionHandler = CreateChangePlaybackPositionHandler();
   LOG("Create MediaHardwareKeysEventSourceMacMediaCenter");
 }
 
@@ -97,17 +110,20 @@ void MediaHardwareKeysEventSourceMacMediaCenter::BeginListeningForEvents() {
   center.playbackState = MPNowPlayingPlaybackStatePlaying;
   MPRemoteCommandCenter* commandCenter =
       [MPRemoteCommandCenter sharedCommandCenter];
-  commandCenter.togglePlayPauseCommand.enabled = true;
+  commandCenter.togglePlayPauseCommand.enabled = false;
   [commandCenter.togglePlayPauseCommand addTargetWithHandler:mPlayPauseHandler];
-  commandCenter.nextTrackCommand.enabled = true;
+  commandCenter.nextTrackCommand.enabled = false;
   [commandCenter.nextTrackCommand addTargetWithHandler:mNextTrackHandler];
-  commandCenter.previousTrackCommand.enabled = true;
+  commandCenter.previousTrackCommand.enabled = false;
   [commandCenter.previousTrackCommand
       addTargetWithHandler:mPreviousTrackHandler];
-  commandCenter.playCommand.enabled = true;
+  commandCenter.playCommand.enabled = false;
   [commandCenter.playCommand addTargetWithHandler:mPlayHandler];
-  commandCenter.pauseCommand.enabled = true;
+  commandCenter.pauseCommand.enabled = false;
   [commandCenter.pauseCommand addTargetWithHandler:mPauseHandler];
+  commandCenter.changePlaybackPositionCommand.enabled = false;
+  [commandCenter.changePlaybackPositionCommand
+      addTargetWithHandler:mChangePlaybackPositionHandler];
 }
 
 void MediaHardwareKeysEventSourceMacMediaCenter::EndListeningForEvents() {
@@ -126,6 +142,8 @@ void MediaHardwareKeysEventSourceMacMediaCenter::EndListeningForEvents() {
   [commandCenter.playCommand removeTarget:nil];
   commandCenter.pauseCommand.enabled = false;
   [commandCenter.pauseCommand removeTarget:nil];
+  commandCenter.changePlaybackPositionCommand.enabled = false;
+  [commandCenter.changePlaybackPositionCommand removeTarget:nil];
 }
 
 bool MediaHardwareKeysEventSourceMacMediaCenter::Open() {
@@ -137,7 +155,11 @@ bool MediaHardwareKeysEventSourceMacMediaCenter::Open() {
 
 void MediaHardwareKeysEventSourceMacMediaCenter::Close() {
   LOG("Close MediaHardwareKeysEventSourceMacMediaCenter");
-  SetPlaybackState(dom::MediaSessionPlaybackState::None);
+  SetPlaybackState(MediaSessionPlaybackState::None);
+  mImageFetchRequest.DisconnectIfExists();
+  mCurrentImageUrl.Truncate();
+  mFetchingUrl.Truncate();
+  mNextImageIndex = 0;
   EndListeningForEvents();
   mOpened = false;
   MediaControlKeySource::Close();
@@ -148,9 +170,9 @@ bool MediaHardwareKeysEventSourceMacMediaCenter::IsOpened() const {
 }
 
 void MediaHardwareKeysEventSourceMacMediaCenter::HandleEvent(
-    MediaControlKey aEvent) {
+    const MediaControlAction& aAction) {
   for (auto iter = mListeners.begin(); iter != mListeners.end(); ++iter) {
-    (*iter)->OnActionPerformed(MediaControlAction(aEvent));
+    (*iter)->OnActionPerformed(aAction);
   }
 }
 
@@ -161,6 +183,7 @@ void MediaHardwareKeysEventSourceMacMediaCenter::SetPlaybackState(
     center.playbackState = MPNowPlayingPlaybackStatePlaying;
   } else if (aState == MediaSessionPlaybackState::Paused) {
     center.playbackState = MPNowPlayingPlaybackStatePaused;
+    UpdatePositionInfo();
   } else if (aState == MediaSessionPlaybackState::None) {
     center.playbackState = MPNowPlayingPlaybackStateStopped;
   }
@@ -168,19 +191,158 @@ void MediaHardwareKeysEventSourceMacMediaCenter::SetPlaybackState(
 }
 
 void MediaHardwareKeysEventSourceMacMediaCenter::SetMediaMetadata(
-    const dom::MediaMetadataBase& aMetadata) {
-  NSMutableDictionary* nowPlayingInfo = [NSMutableDictionary dictionary];
+    const MediaMetadataBase& aMetadata) {
+  MOZ_ASSERT(NS_IsMainThread());
+  mMediaMetadata = aMetadata;
+
+  MPNowPlayingInfoCenter* center = [MPNowPlayingInfoCenter defaultCenter];
+  NSMutableDictionary* nowPlayingInfo =
+      [[center.nowPlayingInfo mutableCopy] autorelease]
+          ?: [NSMutableDictionary dictionary];
+
   [nowPlayingInfo setObject:nsCocoaUtils::ToNSString(aMetadata.mTitle)
                      forKey:MPMediaItemPropertyTitle];
   [nowPlayingInfo setObject:nsCocoaUtils::ToNSString(aMetadata.mArtist)
                      forKey:MPMediaItemPropertyArtist];
   [nowPlayingInfo setObject:nsCocoaUtils::ToNSString(aMetadata.mAlbum)
                      forKey:MPMediaItemPropertyAlbumTitle];
+  if (mCurrentImageUrl.IsEmpty() ||
+      !IsImageIn(aMetadata.mArtwork, mCurrentImageUrl)) {
+    [nowPlayingInfo removeObjectForKey:MPMediaItemPropertyArtwork];
+
+    if (mFetchingUrl.IsEmpty() ||
+        !IsImageIn(aMetadata.mArtwork, mFetchingUrl)) {
+      mNextImageIndex = 0;
+      LoadImageAtIndex(mNextImageIndex++);
+    }
+  }
+
   // The procedure of updating `nowPlayingInfo` is actually an async operation
   // from our testing, Apple's documentation doesn't mention that though. So be
   // aware that checking `nowPlayingInfo` immedately after setting it might not
   // yield the expected result.
-  [MPNowPlayingInfoCenter defaultCenter].nowPlayingInfo = nowPlayingInfo;
+  center.nowPlayingInfo = nowPlayingInfo;
+}
+
+void MediaHardwareKeysEventSourceMacMediaCenter::SetSupportedMediaKeys(
+    const MediaKeysArray& aSupportedKeys) {
+  uint32_t supportedKeys = 0;
+  for (const MediaControlKey& key : aSupportedKeys) {
+    supportedKeys |= GetMediaKeyMask(key);
+  }
+
+  MPRemoteCommandCenter* commandCenter =
+      [MPRemoteCommandCenter sharedCommandCenter];
+  commandCenter.togglePlayPauseCommand.enabled =
+      (bool)(supportedKeys & GetMediaKeyMask(MediaControlKey::Playpause));
+  commandCenter.nextTrackCommand.enabled =
+      (bool)(supportedKeys & GetMediaKeyMask(MediaControlKey::Nexttrack));
+  commandCenter.previousTrackCommand.enabled =
+      (bool)(supportedKeys & GetMediaKeyMask(MediaControlKey::Previoustrack));
+  commandCenter.playCommand.enabled =
+      (bool)(supportedKeys & GetMediaKeyMask(MediaControlKey::Play));
+  commandCenter.pauseCommand.enabled =
+      (bool)(supportedKeys & GetMediaKeyMask(MediaControlKey::Pause));
+  commandCenter.changePlaybackPositionCommand.enabled =
+      (bool)(supportedKeys & GetMediaKeyMask(MediaControlKey::Seekto));
+}
+
+void MediaHardwareKeysEventSourceMacMediaCenter::SetPositionState(
+    const Maybe<PositionState>& aState) {
+  mPositionState = aState;
+  UpdatePositionInfo();
+}
+
+void MediaHardwareKeysEventSourceMacMediaCenter::UpdatePositionInfo() {
+  if (mPositionState.isSome()) {
+    MPNowPlayingInfoCenter* center = [MPNowPlayingInfoCenter defaultCenter];
+    NSMutableDictionary* nowPlayingInfo =
+        [[center.nowPlayingInfo mutableCopy] autorelease]
+            ?: [NSMutableDictionary dictionary];
+
+    [nowPlayingInfo setObject:@(mPositionState->mDuration)
+                       forKey:MPMediaItemPropertyPlaybackDuration];
+    [nowPlayingInfo setObject:@(mPositionState->CurrentPlaybackPosition())
+                       forKey:MPNowPlayingInfoPropertyElapsedPlaybackTime];
+    [nowPlayingInfo
+        setObject:@(center.playbackState == MPNowPlayingPlaybackStatePlaying
+                        ? mPositionState->mPlaybackRate
+                        : 0.0)
+           forKey:MPNowPlayingInfoPropertyPlaybackRate];
+    center.nowPlayingInfo = nowPlayingInfo;
+  }
+}
+
+void MediaHardwareKeysEventSourceMacMediaCenter::LoadImageAtIndex(
+    const size_t aIndex) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (aIndex >= mMediaMetadata.mArtwork.Length()) {
+    LOG("Stop loading image. No available image");
+    mImageFetchRequest.DisconnectIfExists();
+    mFetchingUrl.Truncate();
+    return;
+  }
+
+  const MediaImage& image = mMediaMetadata.mArtwork[aIndex];
+
+  if (!IsValidImageUrl(image.mSrc)) {
+    LOG("Skip the image with invalid URL. Try next image");
+    LoadImageAtIndex(mNextImageIndex++);
+    return;
+  }
+
+  mImageFetchRequest.DisconnectIfExists();
+  mFetchingUrl = image.mSrc;
+
+  mImageFetcher = MakeUnique<dom::FetchImageHelper>(image);
+  RefPtr<MediaHardwareKeysEventSourceMacMediaCenter> self = this;
+  mImageFetcher->FetchImage()
+      ->Then(
+          AbstractThread::MainThread(), __func__,
+          [this, self](const nsCOMPtr<imgIContainer>& aImage) {
+            LOG("The image is fetched successfully");
+            mImageFetchRequest.Complete();
+
+            NSImage* image;
+            nsresult rv =
+                nsCocoaUtils::CreateDualRepresentationNSImageFromImageContainer(
+                    aImage, imgIContainer::FRAME_CURRENT, nullptr,
+                    NSMakeSize(0, 0), &image);
+            if (NS_FAILED(rv) || !image) {
+              LOG("Failed to create cocoa image. Try next image");
+              LoadImageAtIndex(mNextImageIndex++);
+              return;
+            }
+            mCurrentImageUrl = mFetchingUrl;
+
+            MPNowPlayingInfoCenter* center =
+                [MPNowPlayingInfoCenter defaultCenter];
+            NSMutableDictionary* nowPlayingInfo =
+                [[center.nowPlayingInfo mutableCopy] autorelease]
+                    ?: [NSMutableDictionary dictionary];
+
+            MPMediaItemArtwork* artwork = [[MPMediaItemArtwork alloc]
+                initWithBoundsSize:image.size
+                    requestHandler:^NSImage* _Nonnull(CGSize aSize) {
+                      return image;
+                    }];
+            [nowPlayingInfo setObject:artwork
+                               forKey:MPMediaItemPropertyArtwork];
+            [artwork release];
+            [image release];
+
+            center.nowPlayingInfo = nowPlayingInfo;
+
+            mFetchingUrl.Truncate();
+          },
+          [this, self](bool) {
+            LOG("Failed to fetch image. Try next image");
+            mImageFetchRequest.Complete();
+            mFetchingUrl.Truncate();
+            LoadImageAtIndex(mNextImageIndex++);
+          })
+      ->Track(mImageFetchRequest);
 }
 
 }  // namespace widget

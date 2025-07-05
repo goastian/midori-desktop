@@ -10,6 +10,7 @@
 #include <deque>
 
 #include "mozilla/Attributes.h"
+#include "mozilla/LinkedList.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/dom/AtomList.h"
 #include "mozilla/dom/Promise.h"
@@ -29,6 +30,7 @@ class AutoSlowOperation;
 
 class CycleCollectedJSContext;
 class CycleCollectedJSRuntime;
+class PromiseJobRunnable;
 
 namespace dom {
 class Exception;
@@ -72,15 +74,20 @@ struct CycleCollectorResults {
   uint32_t mNumSlices;
 };
 
-class MicroTaskRunnable {
+class MicroTaskRunnable : public LinkedListElement<MicroTaskRunnable> {
  public:
   MicroTaskRunnable() = default;
   NS_INLINE_DECL_REFCOUNTING(MicroTaskRunnable)
   MOZ_CAN_RUN_SCRIPT virtual void Run(AutoSlowOperation& aAso) = 0;
   virtual bool Suppressed() { return false; }
+  virtual void TraceMicroTask(JSTracer* aTracer) {}
 
  protected:
-  virtual ~MicroTaskRunnable() = default;
+  virtual ~MicroTaskRunnable() {
+    if (isInList()) {
+      remove();
+    }
+  }
 };
 
 // Store the suppressed mictotasks in another microtask so that operations
@@ -108,11 +115,11 @@ class FinalizationRegistryCleanup {
   explicit FinalizationRegistryCleanup(CycleCollectedJSContext* aContext);
   void Init();
   void Destroy();
-  void QueueCallback(JSFunction* aDoCleanup, JSObject* aIncumbentGlobal);
+  void QueueCallback(JSFunction* aDoCleanup, JSObject* aHostDefinedData);
   MOZ_CAN_RUN_SCRIPT void DoCleanup();
 
  private:
-  static void QueueCallback(JSFunction* aDoCleanup, JSObject* aIncumbentGlobal,
+  static void QueueCallback(JSFunction* aDoCleanup, JSObject* aHostDefinedData,
                             void* aData);
 
   class CleanupRunnable;
@@ -173,6 +180,8 @@ class CycleCollectedJSContext : dom::PerThreadAtomCache, private JS::JobQueue {
 
   std::deque<RefPtr<MicroTaskRunnable>>& GetMicroTaskQueue();
   std::deque<RefPtr<MicroTaskRunnable>>& GetDebuggerMicroTaskQueue();
+
+  void TraceMicroTasks(JSTracer* aTracer);
 
   JSContext* Context() const {
     MOZ_ASSERT(mJSContext);
@@ -246,6 +255,10 @@ class CycleCollectedJSContext : dom::PerThreadAtomCache, private JS::JobQueue {
 
   void SetMicroTaskLevel(uint32_t aLevel) { mMicroTaskLevel = aLevel; }
 
+  void EnterSyncOperation() { ++mSyncOperations; }
+  void LeaveSyncOperation() { --mSyncOperations; }
+  bool IsInSyncOperation() const { return mSyncOperations > 0; }
+
   MOZ_CAN_RUN_SCRIPT
   bool PerformMicroTaskCheckPoint(bool aForce = false);
 
@@ -279,17 +292,32 @@ class CycleCollectedJSContext : dom::PerThreadAtomCache, private JS::JobQueue {
     MOZ_ASSERT_UNREACHABLE("Not supported");
   }
 
+  // These two functions control a special flag variable which lets us turn
+  // tracing on and off from a thread other than this JSContext's main thread.
+  // This is useful because we want to be able to start tracing many threads
+  // all at once from the Gecko Profiler in Firefox.
+  //
+  // NOTE: the caller must ensure that this CycleCollectedJSContext is not
+  // being destroyed when this is called. At the time of this API being added,
+  // the only consumer is the Gecko Profiler, which guarantees this via a mutex
+  // around unregistering the context, which always occurs before the context
+  // is destroyed.
+  void BeginExecutionTracingAsync();
+  void EndExecutionTracingAsync();
+
  private:
   // JS::JobQueue implementation: see js/public/Promise.h.
   // SpiderMonkey uses some of these methods to enqueue promise resolution jobs.
   // Others protect the debuggee microtask queue from the debugger's
   // interruptions; see the comments on JS::AutoDebuggerJobQueueInterruption for
   // details.
-  JSObject* getIncumbentGlobal(JSContext* cx) override;
+  bool getHostDefinedData(JSContext* cx,
+                          JS::MutableHandle<JSObject*> aData) const override;
+
   bool enqueuePromiseJob(JSContext* cx, JS::Handle<JSObject*> promise,
                          JS::Handle<JSObject*> job,
                          JS::Handle<JSObject*> allocationSite,
-                         JS::Handle<JSObject*> incumbentGlobal) override;
+                         JS::Handle<JSObject*> hostDefinedData) override;
   // MOZ_CAN_RUN_SCRIPT_BOUNDARY for now so we don't have to change SpiderMonkey
   // headers.  The caller presumably knows this can run script (like everything
   // in SpiderMonkey!) and will deal.
@@ -324,16 +352,25 @@ class CycleCollectedJSContext : dom::PerThreadAtomCache, private JS::JobQueue {
 
   uint32_t mMicroTaskLevel;
 
+  uint32_t mSyncOperations;
+
   std::deque<RefPtr<MicroTaskRunnable>> mPendingMicroTaskRunnables;
   std::deque<RefPtr<MicroTaskRunnable>> mDebuggerMicroTaskQueue;
   RefPtr<SuppressedMicroTasks> mSuppressedMicroTasks;
   uint64_t mSuppressionGeneration;
 
+ protected:
+  mozilla::LinkedList<MicroTaskRunnable> mMicrotasksToTrace;
+
+ private:
+  friend class PromiseJobRunnable;
+  RefPtr<PromiseJobRunnable> mRecycledPromiseJob;
+
   // How many times the debugger has interrupted execution, possibly creating
   // microtask checkpoints in places that they would not normally occur.
   uint32_t mDebuggerRecursionDepth;
 
-  uint32_t mMicroTaskRecursionDepth;
+  Maybe<uint32_t> mMicroTaskRecursionDepth;
 
   // This implements about-to-be-notified rejected promises list in the spec.
   // https://html.spec.whatwg.org/multipage/webappapis.html#about-to-be-notified-rejected-promises-list

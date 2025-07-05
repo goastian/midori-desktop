@@ -1,0 +1,747 @@
+// Bug 1964453: Some styles here may appear duplicative — due to @includes and media queries, certain rules are intentionally overwritten rather than relying on cascade behavior.
+
+@mixin section-card-small {
+  grid-row: span 1;
+  grid-column: span 1;
+  padding: var(--space-large);
+
+  &.refined-cards.ds-card.sections-card-ui {
+    box-shadow: var(--box-shadow-card);
+
+    &:hover {
+      box-shadow: var(--box-shadow-card-hover);
+    }
+  }
+
+  &.refined-cards {
+    .ds-card-link {
+      padding: var(--space-small);
+      flex-grow: 0;
+    }
+
+    .img-wrapper {
+      width: 110px;
+      height: 117px;
+    }
+
+    .meta {
+      padding: 0;
+      min-height: 117px;
+
+      .info-wrap {
+        flex-grow: 1
+      }
+
+      .sections-card-footer {
+        max-width: 114px;
+        min-height: unset;
+        position: initial;
+        margin-block-start: auto;
+
+        .source {
+          word-break: normal;
+          width: 114px;
+        }
+      }
+    }
+
+    .card-stp-button-hover-background {
+      background: transparent;
+    }
+
+    .card-stp-button-position-wrapper {
+      // context menu should match the padding for the parent
+      inset-inline-end: var(--space-small);
+      inset-block-end: var(--space-small);
+    }
+
+    .context-menu-position-container .context-menu-button {
+      height: 32px;
+      width: 32px;
+    }
+
+    .card-stp-thumbs-buttons-wrapper {
+      .card-stp-thumbs-buttons {
+        gap: var(--space-small);
+      }
+    }
+
+
+    &:hover,
+    &:active,
+    &:focus-visible,
+    &.active {
+      .card-stp-thumbs-buttons-wrapper {
+        visibility: visible;
+      }
+
+      .meta {
+        .source-wrapper .source {
+          display: none;
+        }
+      }
+    }
+  }
+
+  &.ds-card.sections-card-ui {
+    padding: unset;
+  }
+
+  .card-stp-thumbs-buttons-wrapper {
+    visibility: hidden;
+  }
+
+  .ds-card-link {
+    display: flex;
+    flex-direction: row;
+    position: relative;
+    align-items: center;
+    gap: var(--space-medium);
+    padding: var(--space-large);
+  }
+
+  .img-wrapper {
+    width: 100px;
+    flex-shrink: 0;
+    flex-grow: 0;
+    aspect-ratio: 5/6;
+
+    .ds-image.img {
+      width: 100%;
+      height: 100%;
+      padding-top: 0;
+      min-width: 100%;
+    }
+
+    .ds-image.img img {
+      width: 100%;
+      height: 100%;
+      border-radius: var(--border-radius-medium) var(--border-radius-medium);
+      object-fit: cover;
+    }
+  }
+
+  &:not(.placeholder) {
+    .img-wrapper > .ds-image.img > img {
+      width: 100%;
+      border-radius: var(--border-radius-medium) var(--border-radius-medium);
+    }
+  }
+
+  .meta {
+    padding: 0;
+    align-self: flex-start;
+    min-height: 125px;
+
+    .info-wrap .title {
+      font-size: var(--font-size-small);
+      margin-block: 0;
+      -webkit-line-clamp: 4;
+    }
+
+    .sections-card-footer {
+      margin-block-start: var(--space-xxsmall);
+    }
+  }
+
+  .card-stp-button-hover-background {
+    padding-block-start: unset;
+  }
+
+  .card-stp-button-position-wrapper {
+    inset-inline-end: 10px;
+  }
+
+}
+
+@mixin section-card-medium {
+  grid-row: span 2;
+  grid-column: span 1;
+  flex-direction: column;
+  padding: 0;
+  align-items: initial;
+  gap: initial;
+
+  &.refined-cards.ds-card.sections-card-ui {
+    height: unset;
+    box-shadow: var(--box-shadow-card);
+
+    &:hover {
+      box-shadow: var(--box-shadow-card-hover);
+    }
+  }
+
+  .card-stp-thumbs-buttons-wrapper {
+    visibility: visible;
+  }
+
+  &.refined-cards {
+    .ds-card-link {
+      padding: unset;
+      flex-grow: 1;
+    }
+
+    .img-wrapper {
+      width: 100%;
+      height: 160px;
+    }
+
+    &.ds-spoc-rectangle {
+      .img-wrapper {
+        height: 250px;
+      }
+    }
+
+    .meta {
+      padding: var(--space-large) var(--space-large) var(--space-small);
+      min-height: unset;
+
+      .info-wrap {
+        flex-grow: initial;
+      }
+
+      .sections-card-footer {
+        max-width: 225px;
+        inset-inline-end: initial;
+        inset-block-end: initial;
+        min-height: 28px;
+
+        .source-wrapper {
+          max-width: 175px;
+        }
+      }
+
+      &:has(.story-footer .story-sponsored-label) {
+        .sections-card-footer {
+          display: none;
+        }
+
+        .story-footer {
+          margin-block: auto 0;
+
+        }
+      }
+    }
+
+    .context-menu-position-container .context-menu-button {
+      height: 32px;
+      width: 32px;
+    }
+
+    .card-stp-button-position-wrapper {
+      // context menu should match the padding for the parent
+      inset-inline-end: var(--space-large);
+      inset-block-end: var(--space-small);
+    }
+
+    .card-stp-button-hover-background {
+      background: transparent; }
+
+    &:hover,
+    &:active,
+    &:focus-visible,
+    &.active {
+      .meta {
+        .source-wrapper .source {
+          display: block;
+        }
+      }
+    }
+
+  }
+
+  .card-stp-button-position-wrapper {
+    inset-inline-end: 10px;
+  }
+
+  .card-stp-thumbs-buttons-wrapper {
+    display: block;
+  }
+
+  .ds-card-link {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 0;
+  }
+
+  .img-wrapper {
+    width: 100%;
+    position: relative;
+    // reset values inherited from small card mixin
+    flex-grow: 0;
+    flex-shrink: 0;
+    aspect-ratio: initial;
+  }
+
+  &:not(.placeholder) {
+    .img-wrapper > .ds-image.img > img {
+      border-radius: var(--border-radius-large) var(--border-radius-large) 0 0;
+    }
+  }
+
+  .meta {
+    padding: var(--space-medium) var(--space-large);
+
+    .info-wrap {
+      flex-grow: initial;
+      // flex-grow: 1;/
+
+      .title {
+        -webkit-line-clamp: 3;
+        margin-block: 0 var(--space-small);
+        font-size: var(--font-size-root);
+      }
+
+      .excerpt {
+        display: block;
+        -webkit-line-clamp: 3;
+      }
+    }
+
+    .sections-card-footer {
+      margin-top: auto;
+    }
+  }
+}
+
+@mixin section-card-large {
+  grid-row: span 2;
+  grid-column: span 2;
+
+  &.refined-cards.ds-card.sections-card-ui {
+    box-shadow: var(--box-shadow-card);
+
+    @media ($break-point-layout-variant <=width < $break-point-widest),
+      (min-width: $break-point-sections-variant) {
+      .ds-card-link {
+        gap: var(--space-large);
+        padding: var(--space-large);
+      }
+
+      .meta {
+        padding: 0;
+        color: var(--newtab-text-primary-color);
+
+        .info-wrap .excerpt {
+          color: var(--text-color-deemphasized);
+        }
+
+        .sections-card-footer {
+          max-width: 334px;
+
+          .source-wrapper {
+            max-width: 245px;
+          }
+        }
+      }
+
+      .card-stp-button-position-wrapper {
+        inset-inline-end: var(--space-large);
+        inset-block-end: var(--space-large);
+      }
+
+      &:hover,
+      &:active,
+      &:focus-visible,
+      &.active {
+        .meta .source-wrapper .source {
+          display: block;
+        }
+      }
+    }
+
+    &:hover {
+      box-shadow: var(--box-shadow-card-hover);
+    }
+  }
+
+  &.ds-card.sections-card-ui {
+    @media ($break-point-layout-variant <=width < $break-point-widest),
+      (min-width: $break-point-sections-variant) {
+      align-content: flex-start;
+      justify-content: center;
+
+      .ds-card-link {
+        flex-direction: row;
+        gap: var(--space-xlarge);
+        padding: var(--space-xxlarge);
+        flex-grow: 0;
+      }
+
+      .img-wrapper {
+        width: 190px;
+        height: 250px;
+      }
+
+      .ds-image.img {
+        aspect-ratio: 1/1;
+        width: 100%;
+        height: 100%;
+
+        img {
+          border-radius: var(--border-radius-medium);
+        }
+      }
+
+      .meta {
+        padding: 0;
+        min-height: 220px;
+
+        .title {
+          -webkit-line-clamp: 3;
+          font-size: var(--font-size-large);
+          font-weight: var(--font-weight-bold);
+          margin-block: 0 var(--space-small);
+        }
+
+        .excerpt {
+          -webkit-line-clamp: 4;
+          font-size: var(--font-size-root);
+        }
+
+        .sections-card-footer {
+          margin-top: auto;
+        }
+      }
+
+      .card-stp-button-hover-background {
+        background: transparent;
+        inset-inline-start: 0;
+      }
+    }
+  }
+}
+
+.has-sections-grid .ds-outer-wrapper-breakpoint-override {
+  .ds-layout-topsites {
+    position: relative;
+
+    .top-sites-list-wrapper {
+      width: 266px;
+      margin-inline: auto;
+
+      @media (min-width: $break-point-medium) {
+        width: 266px;
+      }
+
+      @media (min-width: $break-point-layout-variant) {
+        width: 510px;
+      }
+
+      @media (min-width: $break-point-widest) {
+        width: 986px;
+      }
+    }
+  }
+
+  // Note this breakpoint doesn't use set the same default width (746px).
+  // The sections layout uses a different $break-point-layout-variant
+  // but not $break-point-large. This rule below maintains
+  // the topsites layout to stack two rows x four tiles
+  // when the sections grid changes to a two column layout
+  @media (min-width: $break-point-large) {
+    .ds-layout-topsites .hide-for-narrow {
+      display: inline-block;
+    }
+  }
+}
+
+.has-sections-grid.layout-variant-a .ds-outer-wrapper-breakpoint-override,
+.has-sections-grid.layout-variant-b .ds-outer-wrapper-breakpoint-override {
+  .ds-layout-topsites {
+    position: relative;
+
+    .top-sites-list-wrapper {
+      margin-inline: auto;
+      width: 100%;
+    }
+
+    .hide-for-narrow {
+      display: none;
+
+      @media (min-width: $break-point-large) {
+        display: none;
+      }
+
+      @media (min-width: $break-point-widest) {
+        display: inline-block;
+      }
+    }
+  }
+}
+
+.has-sections-grid {
+  .ds-outer-wrapper-breakpoint-override main {
+    width: auto;
+
+    .ds-card {
+      // card should take up availible space in grid
+      width: 100%;
+      height: 100%;
+    }
+
+    .body-wrapper {
+      width: 346px;
+      margin: 0 auto;
+    }
+
+    @media (min-width: $break-point-medium) {
+      width: auto;
+
+      .body-wrapper {
+        width: 346px;
+      }
+    }
+
+    @media (min-width: $break-point-layout-variant) {
+      width: auto;
+
+      .body-wrapper {
+        width: 659px;
+      }
+    }
+
+    @media (min-width: $break-point-widest) {
+      width: auto;
+
+      .body-wrapper {
+        width: 989px;
+      }
+    }
+
+    @media (min-width: $break-point-sections-variant) {
+      width: auto;
+
+      .body-wrapper {
+        display: flex;
+        flex-direction: column;
+        width: 1311px;
+      }
+
+      .ds-highlights .card-outer {
+        min-width: 216px;
+      }
+    }
+  }
+}
+
+.ds-section-wrapper {
+  padding-inline: 0;
+  position: relative;
+
+  .ds-section {
+    padding-block-end: var(--space-medium);
+
+    &:last-child {
+      padding-block-end: 0;
+    }
+
+    .section-heading {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-block: var(--space-small) var(--space-medium);
+    }
+
+    .section-title {
+      @include wallpaper-contrast-fix;
+
+      font-weight: var(--font-weight-bold);
+      font-size: var(--font-size-xlarge);
+      color: var(--newtab-contextual-text-primary-color);
+      margin-block: 0;
+
+      @media (min-width: $break-point-layout-variant) {
+        font-size: var(--font-size-xxlarge);
+      }
+    }
+
+    .section-subtitle {
+      @include wallpaper-contrast-fix;
+
+      color: var(--newtab-contextual-text-primary-color);
+      margin-block: var(--space-xsmall) 0;
+      font-size: var(--font-size-root);
+    }
+  }
+
+  .section-context-wrapper {
+    @include wallpaper-contrast-fix;
+
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    column-gap: var(--space-small);
+  }
+
+  .section-follow {
+    .section-button-following-text {
+      display: none;
+    }
+
+    .section-button-unfollow-text {
+      display: none;
+    }
+
+    &.following {
+      .section-button-follow-text {
+        display: none;
+      }
+
+      .section-button-following-text {
+        display: block;
+      }
+    }
+
+    &.following:hover {
+      .section-button-following-text {
+        display: none;
+      }
+
+      .section-button-unfollow-text {
+        display: block;
+      }
+    }
+  }
+}
+
+.ds-section-grid.ds-card-grid {
+  grid-gap: var(--space-large);
+  grid-template-columns: repeat(1, 300px);
+
+  @media (min-width: $break-point-medium) {
+    @for $i from 0 through 6 {
+      .col-1-position-#{$i} {
+        order: $i;
+      }
+    }
+
+    .col-1-small {
+      @include section-card-small;
+    }
+
+    .col-1-medium {
+      @include section-card-medium;
+    }
+
+    .col-1-large {
+      @include section-card-large;
+    }
+
+    .col-1-show-excerpt {
+      .meta .info-wrap .excerpt {
+        display: block;
+      }
+    }
+
+    .col-1-hide-excerpt {
+      .meta .info-wrap .excerpt {
+        display: none;
+      }
+    }
+  }
+
+  @media (min-width: $break-point-layout-variant) {
+    grid-template-columns: repeat(2, 300px);
+
+    @for $i from 0 through 6 {
+      .col-2-position-#{$i} {
+        order: $i;
+      }
+    }
+
+    .col-2-small {
+      @include section-card-small;
+    }
+
+    .col-2-medium {
+      @include section-card-medium;
+    }
+
+    .col-2-large {
+      @include section-card-large;
+    }
+
+    .col-2-show-excerpt {
+      .meta .info-wrap .excerpt {
+        display: block;
+      }
+    }
+
+    .col-2-hide-excerpt {
+      .meta .info-wrap .excerpt {
+        display: none;
+      }
+    }
+  }
+
+  @media (min-width: $break-point-widest) {
+    grid-template-columns: repeat(3, 300px);
+    gap: var(--space-large);
+
+    @for $i from 0 through 6 {
+      .col-3-position-#{$i} {
+        order: $i;
+      }
+    }
+
+    .col-3-small {
+      @include section-card-small;
+    }
+
+    .col-3-medium {
+      @include section-card-medium;
+    }
+
+    .col-3-large {
+      @include section-card-large;
+    }
+
+    .col-3-show-excerpt {
+      .meta .info-wrap .excerpt {
+        display: block;
+      }
+    }
+
+    .col-3-hide-excerpt {
+      .meta .info-wrap .excerpt {
+        display: none;
+      }
+    }
+  }
+
+  @media (min-width: $break-point-sections-variant) {
+    grid-template-columns: repeat(4, 300px);
+
+    @for $i from 0 through 6 {
+      .col-4-position-#{$i} {
+        order: $i;
+      }
+    }
+
+    .col-4-small {
+      @include section-card-small;
+    }
+
+    .col-4-medium {
+      @include section-card-medium;
+    }
+
+    .col-4-large {
+      @include section-card-large;
+    }
+
+    .col-4-show-excerpt {
+      .meta .info-wrap .excerpt {
+        display: block;
+      }
+    }
+
+    .col-4-hide-excerpt {
+      .meta .info-wrap .excerpt {
+        display: none;
+      }
+    }
+  }
+}

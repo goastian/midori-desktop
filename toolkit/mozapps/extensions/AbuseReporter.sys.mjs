@@ -12,8 +12,6 @@ const AMO_SUPPORTED_ADDON_TYPES = [
   "extension",
   "theme",
   "sitepermission",
-  // TODO(Bug 1789718): Remove after the deprecated XPIProvider-based implementation is also removed.
-  "sitepermission-deprecated",
   "dictionary",
 ];
 
@@ -216,6 +214,9 @@ export const AbuseReporter = {
         break;
       case lazy.AddonManager.SIGNEDSTATE_PRIVILEGED:
         data.addon_signature = "privileged";
+        break;
+      case lazy.AddonManager.SIGNEDSTATE_NOT_REQUIRED:
+        data.addon_signature = "not_required";
         break;
       default:
         data.addon_signature = `unknown: ${addon.signedState}`;

@@ -1,16 +1,16 @@
 {%- macro call_scaffolding_function(func) %}
-{%- call _call_scaffolding_function(func, func.return_type(), "", func.is_js_async(config)) -%}
+{%- call _call_scaffolding_function(func, func.return_type(), "", func.call_style(config)) -%}
 {%- endmacro %}
 
-{%- macro call_constructor(cons, object_type, is_async) %}
-{%- call _call_scaffolding_function(cons, Some(object_type), "", is_async) -%}
+{%- macro call_constructor(cons, object_type, call_style) %}
+{%- call _call_scaffolding_function(cons, Some(object_type), "", call_style) -%}
 {%- endmacro %}
 
-{%- macro call_method(method, object_type, is_async) %}
-{%- call _call_scaffolding_function(method, method.return_type(), object_type.ffi_converter(), is_async) -%}
+{%- macro call_method(method, object_type, call_style) %}
+{%- call _call_scaffolding_function(method, method.return_type(), object_type.ffi_converter(), call_style) -%}
 {%- endmacro %}
 
-{%- macro _call_scaffolding_function(func, return_type, receiver_ffi_converter, is_async) %}
+{%- macro _call_scaffolding_function(func, return_type, receiver_ffi_converter, call_style) %}
         {%- match return_type %}
         {%- when Some with (return_type) %}
         const liftResult = (result) => {{ return_type.ffi_converter() }}.lift(result);
@@ -26,31 +26,34 @@
         const functionCall = () => {
             {%- for arg in func.arguments() %}
             try {
-                {{ arg.ffi_converter() }}.checkType({{ arg.nm() }})
+                {{ arg.ffi_converter() }}.checkType({{ arg.js_name() }})
             } catch (e) {
                 if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("{{ arg.nm() }}");
+                    e.addItemDescriptionPart("{{ arg.js_name() }}");
                 }
                 throw e;
             }
             {%- endfor %}
 
-            {%- if is_async %}
-            return UniFFIScaffolding.callAsync(
-            {%- else %}
+            {%- match call_style %}
+            {%- when CallStyle::AsyncWrapper %}
+            return UniFFIScaffolding.callAsyncWrapper(
+            {%- when CallStyle::Sync %}
             return UniFFIScaffolding.callSync(
-            {%- endif %}
+            {%- when CallStyle::Async %}
+            return UniFFIScaffolding.callAsync(
+            {%- endmatch %}
                 {{ function_ids.get(ci, func.ffi_func()) }}, // {{ function_ids.name(ci, func.ffi_func()) }}
                 {%- if receiver_ffi_converter != "" %}
                 {{ receiver_ffi_converter }}.lower(this),
                 {%- endif %}
                 {%- for arg in func.arguments() %}
-                {{ arg.lower_fn() }}({{ arg.nm() }}),
+                {{ arg.lower_fn() }}({{ arg.js_name() }}),
                 {%- endfor %}
             )
         }
 
-        {%- if is_async %}
+        {%- if call_style.is_js_async() %}
         try {
             return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
         }  catch (error) {

@@ -40,14 +40,14 @@ const INVALID_COUNTERS = 7;
 // It is CRUCIAL that we register metrics in the same order in the parent and
 // in the child or their metric ids will not line up and ALL WILL EXPLODE.
 const METRICS = [
-  ["counter", "jog_ipc", "jog_counter", ["test-only"], `"ping"`, false],
-  ["string_list", "jog_ipc", "jog_string_list", ["test-only"], `"ping"`, false],
-  ["event", "jog_ipc", "jog_event_no_extra", ["test-only"], `"ping"`, false],
+  ["counter", "jog_ipc", "jog_counter", ["test-ping"], `"ping"`, false],
+  ["string_list", "jog_ipc", "jog_string_list", ["test-ping"], `"ping"`, false],
+  ["event", "jog_ipc", "jog_event_no_extra", ["test-ping"], `"ping"`, false],
   [
     "event",
     "jog_ipc",
     "jog_event",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ allowed_extra_keys: ["extra1"] }),
@@ -56,7 +56,7 @@ const METRICS = [
     "memory_distribution",
     "jog_ipc",
     "jog_memory_dist",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ memory_unit: "megabyte" }),
@@ -65,7 +65,7 @@ const METRICS = [
     "timing_distribution",
     "jog_ipc",
     "jog_timing_dist",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ time_unit: "nanosecond" }),
@@ -74,7 +74,7 @@ const METRICS = [
     "custom_distribution",
     "jog_ipc",
     "jog_custom_dist",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({
@@ -88,7 +88,7 @@ const METRICS = [
     "labeled_counter",
     "jog_ipc",
     "jog_labeled_counter",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
   ],
@@ -96,7 +96,7 @@ const METRICS = [
     "labeled_counter",
     "jog_ipc",
     "jog_labeled_counter_err",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
   ],
@@ -104,7 +104,7 @@ const METRICS = [
     "labeled_counter",
     "jog_ipc",
     "jog_labeled_counter_with_labels",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ ordered_labels: ["label_1", "label_2"] }),
@@ -113,12 +113,62 @@ const METRICS = [
     "labeled_counter",
     "jog_ipc",
     "jog_labeled_counter_with_labels_err",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ ordered_labels: ["label_1", "label_2"] }),
   ],
-  ["rate", "jog_ipc", "jog_rate", ["test-only"], `"ping"`, false],
+  ["rate", "jog_ipc", "jog_rate", ["test-ping"], `"ping"`, false],
+  [
+    "labeled_custom_distribution",
+    "jog_ipc",
+    "jog_labeled_custom_dist",
+    ["test-ping"],
+    `"ping"`,
+    false,
+    JSON.stringify({
+      range_min: 1,
+      range_max: 2147483646,
+      bucket_count: 10,
+      histogram_type: "linear",
+    }),
+  ],
+  [
+    "labeled_memory_distribution",
+    "jog_ipc",
+    "jog_labeled_memory_dist",
+    ["test-ping"],
+    `"ping"`,
+    false,
+    JSON.stringify({ memory_unit: "megabyte" }),
+  ],
+  [
+    "labeled_timing_distribution",
+    "jog_ipc",
+    "jog_labeled_timing_dist",
+    ["test-ping"],
+    `"ping"`,
+    false,
+    JSON.stringify({ time_unit: "nanosecond" }),
+  ],
+  [
+    "boolean",
+    "jog_ipc",
+    "jog_unordered_bool",
+    ["test-ping"],
+    `"ping"`,
+    false,
+    JSON.stringify({ permit_non_commutative_operations_over_ipc: true }),
+  ],
+  [
+    "labeled_boolean",
+    "jog_ipc",
+    "jog_unordered_labeled_bool",
+    ["test-ping"],
+    `"ping"`,
+    false,
+    JSON.stringify({ permit_non_commutative_operations_over_ipc: true }),
+  ],
 ];
 
 add_task({ skip_if: () => runningInParent }, async function run_child_stuff() {
@@ -157,17 +207,40 @@ add_task({ skip_if: () => runningInParent }, async function run_child_stuff() {
   Glean.jogIpc.jogLabeledCounter.label_1.add(COUNTERS_1);
   Glean.jogIpc.jogLabeledCounter.label_2.add(COUNTERS_2);
 
-  Glean.jogIpc.jogLabeledCounterErr["1".repeat(72)].add(INVALID_COUNTERS);
+  Glean.jogIpc.jogLabeledCounterErr["1".repeat(112)].add(INVALID_COUNTERS);
 
   Glean.jogIpc.jogLabeledCounterWithLabels.label_1.add(COUNTERS_1);
   Glean.jogIpc.jogLabeledCounterWithLabels.label_2.add(COUNTERS_2);
 
-  Glean.jogIpc.jogLabeledCounterWithLabelsErr["1".repeat(72)].add(
+  Glean.jogIpc.jogLabeledCounterWithLabelsErr["1".repeat(112)].add(
     INVALID_COUNTERS
   );
 
   Glean.jogIpc.jogRate.addToNumerator(44);
   Glean.jogIpc.jogRate.addToDenominator(14);
+
+  Glean.jogIpc.jogLabeledCustomDist.label_1.accumulateSamples([3, 4]);
+
+  for (let memory of MEMORIES) {
+    Glean.jogIpc.jogLabeledMemoryDist.label_1.accumulate(memory);
+  }
+
+  let l1 = Glean.jogIpc.jogLabeledTimingDist.label1.start();
+  let l2 = Glean.jogIpc.jogLabeledTimingDist.label1.start();
+
+  await sleep(5);
+
+  let l3 = Glean.jogIpc.jogLabeledTimingDist.label1.start();
+  Glean.jogIpc.jogLabeledTimingDist.label1.cancel(l1);
+
+  await sleep(5);
+
+  Glean.jogIpc.jogLabeledTimingDist.label1.stopAndAccumulate(l2); // 10ms
+  Glean.jogIpc.jogLabeledTimingDist.label1.stopAndAccumulate(l3); // 5ms
+
+  Glean.jogIpc.jogUnorderedBool.set(true);
+
+  Glean.jogIpc.jogUnorderedLabeledBool.aLabel.set(true);
 });
 
 add_task(
@@ -259,5 +332,46 @@ add_task(
       { numerator: 44, denominator: 14 },
       Glean.jogIpc.jogRate.testGetValue()
     );
+
+    const labeledCustomData =
+      Glean.jogIpc.jogLabeledCustomDist.label_1.testGetValue();
+    Assert.equal(3 + 4, labeledCustomData.sum, "Sum's correct");
+    for (let [bucket, count] of Object.entries(labeledCustomData.values)) {
+      Assert.ok(
+        count == 0 || (count == 2 && bucket == 1), // both values in the low bucket
+        `Only two buckets have a sample ${bucket} ${count}`
+      );
+    }
+
+    const labeledMemoryData =
+      Glean.jogIpc.jogLabeledMemoryDist.label_1.testGetValue();
+    Assert.equal(
+      MEMORIES.reduce((a, b) => a + b, 0) * 1024 * 1024,
+      labeledMemoryData.sum
+    );
+    for (let [bucket, count] of Object.entries(labeledMemoryData.values)) {
+      // We could assert instead, but let's skip to save the logspam.
+      if (count == 0) {
+        continue;
+      }
+      Assert.ok(count == 1 && MEMORY_BUCKETS.includes(bucket));
+    }
+
+    const labeledTimes =
+      Glean.jogIpc.jogLabeledTimingDist.label1.testGetValue();
+    Assert.greater(labeledTimes.sum, 15 * NANOS_IN_MILLIS - EPSILON);
+    // We can't guarantee any specific time values (thank you clocks),
+    // but we can assert there are only two samples.
+    Assert.equal(
+      2,
+      Object.entries(labeledTimes.values).reduce(
+        (acc, [, count]) => acc + count,
+        0
+      )
+    );
+
+    Assert.ok(Glean.jogIpc.jogUnorderedBool.testGetValue());
+
+    Assert.ok(Glean.jogIpc.jogUnorderedLabeledBool.aLabel.testGetValue());
   }
 );

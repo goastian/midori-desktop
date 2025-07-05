@@ -167,7 +167,7 @@ export const ADDRESS_SCHEMA_VERSION = 1;
 // Please talk to the sync team before changing this!
 export const CREDIT_CARD_SCHEMA_VERSION = 3;
 
-const VALID_ADDRESS_FIELDS = [
+export const VALID_ADDRESS_FIELDS = [
   "name",
   "organization",
   "street-address",
@@ -187,7 +187,7 @@ const VALID_ADDRESS_COMPUTED_FIELDS = [
   ...AddressRecord.TEL_COMPONENTS,
 ];
 
-const VALID_CREDIT_CARD_FIELDS = [
+export const VALID_CREDIT_CARD_FIELDS = [
   "billingAddressGUID",
   "cc-name",
   "cc-number",
@@ -419,8 +419,6 @@ class AutofillRecords {
 
     this._data.push(recordToSave);
 
-    this.updateUseCountTelemetry();
-
     this._store.saveSoon();
 
     Services.obs.notifyObservers(
@@ -541,13 +539,13 @@ class AutofillRecords {
 
     let recordFound = this._findByGUID(guid);
     if (!recordFound) {
-      throw new Error("No matching record.");
+      // record must have been deleted, nothing to update
+      this.log.debug("Cannot notify. No record found with guid:", guid);
+      return;
     }
 
     recordFound.timesUsed++;
     recordFound.timeLastUsed = Date.now();
-
-    this.updateUseCountTelemetry();
 
     this._store.saveSoon();
     Services.obs.notifyObservers(
@@ -560,15 +558,6 @@ class AutofillRecords {
       "formautofill-storage-changed",
       "notifyUsed"
     );
-  }
-
-  updateUseCountTelemetry() {
-    const telemetryType =
-      this._collectionName == "creditCards"
-        ? lazy.AutofillTelemetry.CREDIT_CARD
-        : lazy.AutofillTelemetry.ADDRESS;
-    let records = this._data.filter(r => !r.deleted);
-    lazy.AutofillTelemetry.recordNumberOfUse(telemetryType, records);
   }
 
   /**
@@ -612,8 +601,6 @@ class AutofillRecords {
         this._data.splice(index, 1);
       }
     }
-
-    this.updateUseCountTelemetry();
 
     this._store.saveSoon();
     Services.obs.notifyObservers(
@@ -1028,9 +1015,8 @@ class AutofillRecords {
       } else {
         // Merge conflict. Fork the local record, then replace the original
         // with the merged record.
-        let forkedLocalRecord = await this._forkLocalRecord(
-          strippedLocalRecord
-        );
+        let forkedLocalRecord =
+          await this._forkLocalRecord(strippedLocalRecord);
         forkedGUID = forkedLocalRecord.guid;
         await this._replaceRecordAt(localIndex, remoteRecord, {
           keepSyncMetadata: false,
@@ -1597,6 +1583,29 @@ export class AddressesBase extends AutofillRecords {
   }
 
   _normalizeAddressFields(address) {
+    if (address["address-housenumber"]) {
+      let streetField = "";
+      if (address["address-line1"]) {
+        streetField = "address-line1";
+      } else if (address["street-address"]) {
+        streetField = "street-address";
+      }
+      if (streetField) {
+        let region = address.country || FormAutofill.DEFAULT_REGION;
+        let reversed = lazy.FormAutofillUtils.getAddressReversed(region);
+
+        if (reversed) {
+          address[streetField] =
+            address[streetField] + " " + address["address-housenumber"];
+        } else {
+          address[streetField] =
+            address["address-housenumber"] + " " + address[streetField];
+        }
+      }
+
+      delete address["address-housenumber"];
+    }
+
     if (AddressRecord.STREET_ADDRESS_COMPONENTS.some(c => !!address[c])) {
       // Treat "street-address" as "address-line1" if it contains only one line
       // and "address-line1" is omitted.

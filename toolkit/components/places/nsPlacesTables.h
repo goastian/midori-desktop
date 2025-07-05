@@ -243,6 +243,7 @@
       "root INTEGER NOT NULL DEFAULT 0, "      \
       "color INTEGER, "                        \
       "expire_ms INTEGER NOT NULL DEFAULT 0, " \
+      "flags INTEGER NOT NULL DEFAULT 0, "     \
       "data BLOB "                             \
       ") ")
 
@@ -307,5 +308,27 @@
       "CREATE TABLE IF NOT EXISTS moz_previews_tombstones ( " \
       "  hash TEXT PRIMARY KEY "                              \
       ") WITHOUT ROWID")
+
+#define CREATE_MOZ_NEWTAB_STORY_CLICK            \
+  nsLiteralCString(                              \
+      "CREATE TABLE moz_newtab_story_click ( "   \
+      "  feature TEXT NOT NULL, "                \
+      "  timestamp_s INTEGER NOT NULL, "         \
+      "  card_format_enum INTEGER NOT NULL, "    \
+      "  position INTEGER NOT NULL, "            \
+      "  section_position INTEGER NOT NULL, "    \
+      "  feature_value REAL NOT NULL DEFAULT 1 " \
+      ")")
+
+#define CREATE_MOZ_NEWTAB_STORY_IMPRESSION          \
+  nsLiteralCString(                                 \
+      "CREATE TABLE moz_newtab_story_impression ( " \
+      "  feature TEXT NOT NULL, "                   \
+      "  timestamp_s INTEGER NOT NULL, "            \
+      "  card_format_enum INTEGER NOT NULL, "       \
+      "  position INTEGER NOT NULL, "               \
+      "  section_position INTEGER NOT NULL, "       \
+      "  feature_value REAL NOT NULL DEFAULT 1 "    \
+      ")")
 
 #endif  // __nsPlacesTables_h__

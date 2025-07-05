@@ -31,40 +31,15 @@ bool CanRecordExtended();
 void SetCanRecordExtended(bool b);
 
 void InitHistogramRecordingEnabled();
-void SetHistogramRecordingEnabled(mozilla::Telemetry::HistogramID aID,
-                                  bool aEnabled);
-
-nsresult SetHistogramRecordingEnabled(const nsACString& id, bool aEnabled);
 
 void Accumulate(mozilla::Telemetry::HistogramID aHistogram, uint32_t aSample);
 void Accumulate(mozilla::Telemetry::HistogramID aHistogram,
                 const nsTArray<uint32_t>& aSamples);
 void Accumulate(mozilla::Telemetry::HistogramID aID, const nsCString& aKey,
                 uint32_t aSample);
-void Accumulate(mozilla::Telemetry::HistogramID aID, const nsCString& aKey,
-                const nsTArray<uint32_t>& aSamples);
-/*
- * Accumulate a sample into the named histogram.
- *
- * Returns NS_OK on success.
- * Returns NS_ERROR_NOT_AVAILABLE if recording Telemetry is disabled.
- * Returns NS_ERROR_FAILURE on other errors.
- */
-nsresult Accumulate(const char* name, uint32_t sample);
-
-/*
- * Accumulate a sample into the named keyed histogram by key.
- *
- * Returns NS_OK on success.
- * Returns NS_ERROR_NOT_AVAILABLE if recording Telemetry is disabled.
- * Returns NS_ERROR_FAILURE on other errors.
- */
-nsresult Accumulate(const char* name, const nsCString& key, uint32_t sample);
 
 void AccumulateCategorical(mozilla::Telemetry::HistogramID aId,
                            const nsCString& aLabel);
-void AccumulateCategorical(mozilla::Telemetry::HistogramID aId,
-                           const nsTArray<nsCString>& aLabels);
 
 void AccumulateChild(
     mozilla::Telemetry::ProcessID aProcessType,
@@ -89,6 +64,8 @@ nsresult GetKeyedHistogramById(const nsACString& name, JSContext* cx,
                                JS::MutableHandle<JS::Value> ret);
 
 const char* GetHistogramName(mozilla::Telemetry::HistogramID id);
+
+uint8_t GetHistogramType(mozilla::Telemetry::HistogramID id);
 
 nsresult CreateHistogramSnapshots(JSContext* aCx,
                                   JS::MutableHandle<JS::Value> aResult,

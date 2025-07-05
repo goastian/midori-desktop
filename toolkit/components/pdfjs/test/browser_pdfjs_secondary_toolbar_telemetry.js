@@ -39,7 +39,7 @@ add_task(async function test() {
 
       info("Clicking on the secondary toolbar button...");
       await SpecialPowers.spawn(browser, [], () => {
-        content.document.querySelector("#secondaryToolbarToggle").click();
+        content.document.querySelector("#secondaryToolbarToggleButton").click();
       });
 
       await BrowserTestUtils.waitForCondition(async () =>
@@ -58,10 +58,7 @@ add_task(async function test() {
       await Services.fog.testFlushAllChildren();
       Assert.equal(Glean.pdfjs.buttons.cursor_hand_tool.testGetValue(), 1);
 
-      await SpecialPowers.spawn(browser, [], async function () {
-        var viewer = content.wrappedJSObject.PDFViewerApplication;
-        await viewer.close();
-      });
+      await waitForPdfJSClose(browser);
     }
   );
 });

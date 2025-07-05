@@ -9,8 +9,6 @@ from copy import deepcopy
 from struct import unpack
 from uuid import UUID
 
-from six import iteritems
-
 H_HEADER = """/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This file was auto-generated from {0} by gen_dll_blocklist_data.py.  */
@@ -103,7 +101,7 @@ ALL_DEFINITION_LISTS = (
 )
 
 
-class BlocklistDescriptor(object):
+class BlocklistDescriptor:
     """This class encapsulates every file that is output from this script.
     Each instance has a name, an "input specification", and optional "flag
     specification" and "output specification" entries.
@@ -183,7 +181,7 @@ class BlocklistDescriptor(object):
         assert not (set(flagspecs.keys()).difference(set(self._inspec.keys())))
 
         # Merge the flags from flagspec into _inspec's sets
-        for blocklist, flagspec in iteritems(flagspecs):
+        for blocklist, flagspec in flagspecs.items():
             spec = self._inspec[blocklist]
             if not isinstance(spec, set):
                 raise TypeError("Flag spec for list %s must be a set!" % blocklist)
@@ -258,7 +256,7 @@ class BlocklistDescriptor(object):
         # For each blocklist specified in the _inspec, we query the globals
         # for their entries, add any flags, and then add them to the
         # unified_list.
-        for blocklist, listflags in iteritems(self._inspec):
+        for blocklist, listflags in self._inspec.items():
 
             def add_list_flags(elem):
                 # We deep copy so that flags set for an entry in one blocklist
@@ -391,7 +389,7 @@ GENERATED_BLOCKLIST_FILES = [
 ]
 
 
-class PETimeStamp(object):
+class PETimeStamp:
     def __init__(self, ts):
         max_timestamp = (2**32) - 1
         if ts < 0 or ts > max_timestamp:
@@ -402,7 +400,7 @@ class PETimeStamp(object):
         return "0x%08XU" % self._value
 
 
-class Version(object):
+class Version:
     """Encapsulates a DLL version."""
 
     ALL_VERSIONS = 0xFFFFFFFFFFFFFFFF
@@ -473,7 +471,7 @@ class Version(object):
         return str(self._ver)
 
 
-class DllBlocklistEntry(object):
+class DllBlocklistEntry:
     TEST_CONDITION = "defined(ENABLE_TESTS)"
 
     def __init__(self, name, ver, flags=(), **kwargs):
@@ -700,7 +698,7 @@ class LspBlocklistEntry(DllBlocklistEntry):
             result = ",\n".join(
                 [
                     self.as_c_struct(guid, names)
-                    for guid, names in iteritems(LspBlocklistEntry.Guids)
+                    for guid, names in LspBlocklistEntry.Guids.items()
                 ]
             )
             print(result, file=output)

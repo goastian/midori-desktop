@@ -48,7 +48,10 @@
           "responsiveness",
           "cpufreq",
           "bandwidth",
-          "memory"
+          "memory",
+          "tracing",
+          "sandbox",
+          "flows"
         ]
       },
       {

@@ -21,7 +21,7 @@
 #include "mozilla/TextEventDispatcherListener.h"
 #include "WritingModes.h"
 
-class nsChildView;
+class nsCocoaWindow;
 
 namespace mozilla {
 namespace widget {
@@ -516,20 +516,20 @@ class TextInputHandlerBase : public TextEventDispatcherListener {
    *                              sub classes should return from this method
    *                              without cleaning up.
    */
-  virtual bool OnDestroyWidget(nsChildView* aDestroyingWidget);
+  virtual bool OnDestroyWidget(nsCocoaWindow* aDestroyingWidget);
 
  protected:
   // The creator of this instance, client and its text event dispatcher.
   // These members must not be nullptr after initialized until
   // OnDestroyWidget() is called.
-  nsChildView* mWidget;  // [WEAK]
+  nsCocoaWindow* mWidget;  // [WEAK]
   RefPtr<TextEventDispatcher> mDispatcher;
 
   // The native view for mWidget.
   // This view handles the actual text inputting.
   NSView<mozView>* mView;  // [STRONG]
 
-  TextInputHandlerBase(nsChildView* aWidget, NSView<mozView>* aNativeView);
+  TextInputHandlerBase(nsCocoaWindow* aWidget, NSView<mozView>* aNativeView);
   virtual ~TextInputHandlerBase();
 
   bool Destroyed() { return !mWidget; }
@@ -898,13 +898,13 @@ class TextInputHandlerBase : public TextEventDispatcherListener {
 
 /**
  * IMEInputHandler manages:
- *   1. The IME/keyboard layout statement of nsChildView.
- *   2. The IME composition statement of nsChildView.
+ *   1. The IME/keyboard layout statement of nsCocoaWindow.
+ *   2. The IME composition statement of nsCocoaWindow.
  * And also provides the methods which controls the current IME transaction of
  * the instance.
  *
- * Note that an nsChildView handles one or more NSView's events.  E.g., even if
- * a text editor on XUL panel element, the input events handled on the parent
+ * Note that an nsCocoaWindow handles one or more NSView's events.  E.g., even
+ * if a text editor on XUL panel element, the input events handled on the parent
  * (or its ancestor) widget handles it (the native focus is set to it).  The
  * actual focused view is notified by OnFocusChangeInGecko.
  */
@@ -923,12 +923,13 @@ class IMEInputHandler : public TextInputHandlerBase {
                             uint32_t aIndexOfKeypress, void* aData) override;
 
  public:
-  virtual bool OnDestroyWidget(nsChildView* aDestroyingWidget) override;
+  virtual bool OnDestroyWidget(nsCocoaWindow* aDestroyingWidget) override;
 
   virtual void OnFocusChangeInGecko(bool aFocus);
 
   void OnSelectionChange(const IMENotification& aIMENotification);
   void OnLayoutChange();
+  void OnTextChange(const IMENotification& aIMENotification);
 
   /**
    * Call [NSTextInputContext handleEvent] for mouse event support of IME
@@ -1053,6 +1054,10 @@ class IMEInputHandler : public TextInputHandlerBase {
   // be what you want.
   static TSMDocumentID GetCurrentTSMDocumentID();
 
+  void EnableTextSubstitution(bool aEnableTextSubstitution) {
+    mEnableTextSubstitution = aEnableTextSubstitution;
+  }
+
  protected:
   // We cannot do some jobs in the given stack by some reasons.
   // Following flags and the timer provide the execution pending mechanism,
@@ -1061,7 +1066,13 @@ class IMEInputHandler : public TextInputHandlerBase {
   enum { kNotifyIMEOfFocusChangeInGecko = 1, kSyncASCIICapableOnly = 2 };
   uint32_t mPendingMethods;
 
-  IMEInputHandler(nsChildView* aWidget, NSView<mozView>* aNativeView);
+  // Used by text substitution.
+  nsString mOriginalTextForTextSubstitution;
+  NSTextCheckingResult* mCandidatedTextSubstitutionResult;
+  bool mProcessTextSubstitution;
+  bool mBlockDismissTextSubstitutionPanel = false;
+
+  IMEInputHandler(nsCocoaWindow* aWidget, NSView<mozView>* aNativeView);
   virtual ~IMEInputHandler();
 
   void ResetTimer();
@@ -1092,6 +1103,13 @@ class IMEInputHandler : public TextInputHandlerBase {
    */
   bool MaybeDispatchCurrentKeydownEvent(bool aIsProcessedByIME);
 
+  /**
+   * ShowTextSubstitutionPanel shows text replacement panel by text substitution
+   * using current candidate strings.
+   */
+  void ShowTextSubstitutionPanel();
+  void DismissTextSubstitutionPanel();
+
  private:
   // If mIsIMEComposing is true, the composition string is stored here.
   NSString* mIMECompositionString;
@@ -1112,6 +1130,7 @@ class IMEInputHandler : public TextInputHandlerBase {
   bool mIsASCIICapableOnly;
   bool mIgnoreIMECommit;
   bool mIMEHasFocus;
+  bool mEnableTextSubstitution;
 
   void KillIMEComposition();
   void SendCommittedText(NSString* aString);
@@ -1206,6 +1225,23 @@ class IMEInputHandler : public TextInputHandlerBase {
    */
   bool DispatchCompositionCommitEvent(const nsAString* aCommitString = nullptr);
 
+  /*
+   * HandleTextSubstitution handles text substitution features such as text
+   * replacement.
+   */
+  void HandleTextSubstitution(const IMENotification& aIMENotification);
+
+  /*
+   * The followings are the helper methods for text substitution.
+   */
+  void OnTextSubstitution(uint32_t aStartOffset);
+
+  enum class PreventSetSelection { Yes, No };
+
+  void ReplaceTextForTextSubstitution(const nsAString& aOriginalString,
+                                      NSString* aString, const NSRange& aRange,
+                                      PreventSetSelection aPreventSetSelection);
+
   // The focused IME handler.  Please note that the handler might lost the
   // actual focus by deactivating the application.  If we are active, this
   // must have the actual focused handle.
@@ -1226,7 +1262,7 @@ class TextInputHandler : public IMEInputHandler {
   static CFArrayRef CreateAllKeyboardLayoutList();
   static void DebugPrintAllKeyboardLayouts();
 
-  TextInputHandler(nsChildView* aWidget, NSView<mozView>* aNativeView);
+  TextInputHandler(nsCocoaWindow* aWidget, NSView<mozView>* aNativeView);
   virtual ~TextInputHandler();
 
   /**

@@ -11,13 +11,14 @@
 #include "Units.h"
 
 @class NSView;
-class nsChildView;
+class nsCocoaWindow;
 
 namespace mozilla {
 
 class ViewRegion;
 
 enum class VibrancyType {
+  Sidebar,
   // Add new values here, or update MaxEnumValue below if you add them after.
   Titlebar,
 };
@@ -44,13 +45,13 @@ class VibrancyManager {
    * Create a new VibrancyManager instance and provide it with an NSView
    * to attach NSVisualEffectViews to.
    *
-   * @param aCoordinateConverter  The nsChildView to use for converting
+   * @param aCoordinateConverter  The nsCocoaWindow to use for converting
    *   nsIntRect device pixel coordinates into Cocoa NSRect coordinates. Must
    *   outlive this VibrancyManager instance.
    * @param aContainerView  The view that's going to be the superview of the
    *   NSVisualEffectViews which will be created for vibrant regions.
    */
-  VibrancyManager(const nsChildView& aCoordinateConverter,
+  VibrancyManager(const nsCocoaWindow& aCoordinateConverter,
                   NSView* aContainerView);
 
   ~VibrancyManager();
@@ -66,8 +67,10 @@ class VibrancyManager {
   bool UpdateVibrantRegion(VibrancyType aType,
                            const LayoutDeviceIntRegion& aRegion);
 
+  void PrefChanged();
+
  protected:
-  const nsChildView& mCoordinateConverter;
+  const nsCocoaWindow& mCoordinateConverter;
   NSView* mContainerView;
   EnumeratedArray<VibrancyType, UniquePtr<ViewRegion>> mVibrantRegions;
 };

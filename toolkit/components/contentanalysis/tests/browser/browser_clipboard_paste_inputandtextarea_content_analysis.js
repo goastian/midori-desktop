@@ -4,25 +4,61 @@
 let mockCA = makeMockContentAnalysis();
 
 add_setup(async function test_setup() {
-  mockCA = mockContentAnalysisService(mockCA);
+  mockCA = await mockContentAnalysisService(mockCA);
 });
 
 const PAGE_URL =
   "https://example.com/browser/toolkit/components/contentanalysis/tests/browser/clipboard_paste_inputandtextarea.html";
 const CLIPBOARD_TEXT_STRING = "Just some text";
-async function testClipboardPaste(allowPaste) {
-  mockCA.setupForTest(allowPaste);
 
-  setClipboardData(CLIPBOARD_TEXT_STRING);
+const TEST_MODES = Object.freeze({
+  ALLOW: {
+    caAllow: true,
+    shouldPaste: true,
+    isEmpty: false,
+    shouldRunCA: true,
+  },
+  BLOCK: {
+    caAllow: false,
+    shouldPaste: false,
+    isEmpty: false,
+    shouldRunCA: true,
+  },
+  EMPTY: {
+    caAllow: false,
+    shouldPaste: true,
+    isEmpty: true,
+    shouldRunCA: false,
+  },
+  PREFOFF: {
+    caAllow: false,
+    shouldPaste: true,
+    isEmpty: false,
+    shouldRunCA: false,
+  },
+});
+async function testClipboardPaste(testMode) {
+  mockCA.setupForTest(testMode.caAllow);
+
+  setClipboardData(testMode.isEmpty ? "" : CLIPBOARD_TEXT_STRING);
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE_URL);
   let browser = tab.linkedBrowser;
 
-  await SpecialPowers.spawn(browser, [allowPaste], async allowPaste => {
-    content.document.getElementById("pasteAllowed").checked = allowPaste;
+  await SpecialPowers.spawn(browser, [testMode], async testMode => {
+    content.document.getElementById("pasteAllowed").checked =
+      testMode.shouldPaste;
+    content.document.getElementById("isEmptyPaste").checked = testMode.isEmpty;
   });
-  await testPasteWithElementId("testInput", browser, allowPaste);
-  await testPasteWithElementId("testTextArea", browser, allowPaste);
+  await testPasteWithElementId("testInput", browser, testMode);
+  // Make sure pasting the same data twice doesn't use the cache
+  await setElementValue(browser, "testInput", "");
+  await testPasteWithElementId("testInput", browser, testMode);
+
+  await testPasteWithElementId("testTextArea", browser, testMode);
+  // Make sure pasting the same data twice doesn't use the cache
+  await setElementValue(browser, "testTextArea", "");
+  await testPasteWithElementId("testTextArea", browser, testMode);
 
   BrowserTestUtils.removeTab(tab);
 }
@@ -34,6 +70,10 @@ async function testEmptyClipboardPaste() {
 
   let tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, PAGE_URL);
   let browser = tab.linkedBrowser;
+  await SpecialPowers.spawn(browser, [], async () => {
+    content.document.getElementById("pasteAllowed").checked = true;
+    content.document.getElementById("isEmptyPaste").checked = true;
+  });
 
   let resultPromise = SpecialPowers.spawn(browser, [], () => {
     return new Promise(resolve => {
@@ -82,7 +122,7 @@ function setClipboardData(clipboardString) {
   Services.clipboard.setData(trans, null, Ci.nsIClipboard.kGlobalClipboard);
 }
 
-async function testPasteWithElementId(elementId, browser, allowPaste) {
+async function testPasteWithElementId(elementId, browser, testMode) {
   let resultPromise = SpecialPowers.spawn(browser, [], () => {
     return new Promise(resolve => {
       content.document.addEventListener(
@@ -103,26 +143,44 @@ async function testPasteWithElementId(elementId, browser, allowPaste) {
   let result = await resultPromise;
   is(result, undefined, "Got unexpected result from page");
 
-  // Because we call event.clipboardData.getData in the test, this causes another call to
-  // content analysis.
-  is(mockCA.calls.length, 2, "Correct number of calls to Content Analysis");
-  assertContentAnalysisRequest(mockCA.calls[0], CLIPBOARD_TEXT_STRING);
-  assertContentAnalysisRequest(mockCA.calls[1], CLIPBOARD_TEXT_STRING);
+  is(
+    mockCA.calls.length,
+    testMode.shouldRunCA ? 1 : 0,
+    "Correct number of calls to Content Analysis"
+  );
+  if (testMode.shouldRunCA) {
+    assertContentAnalysisRequest(
+      mockCA.calls[0],
+      CLIPBOARD_TEXT_STRING,
+      mockCA.calls[0].userActionId,
+      1
+    );
+  }
   mockCA.clearCalls();
   let value = await getElementValue(browser, elementId);
   is(
     value,
-    allowPaste ? CLIPBOARD_TEXT_STRING : "",
+    testMode.shouldPaste && !testMode.isEmpty ? CLIPBOARD_TEXT_STRING : "",
     "element has correct value"
   );
 }
 
-function assertContentAnalysisRequest(request, expectedText) {
+function assertContentAnalysisRequest(
+  request,
+  expectedText,
+  expectedUserActionId,
+  expectedRequestsCount
+) {
   is(request.url.spec, PAGE_URL, "request has correct URL");
   is(
     request.analysisType,
     Ci.nsIContentAnalysisRequest.eBulkDataEntry,
     "request has correct analysisType"
+  );
+  is(
+    request.reason,
+    Ci.nsIContentAnalysisRequest.eClipboardPaste,
+    "request has correct reason"
   );
   is(
     request.operationTypeForDisplay,
@@ -131,6 +189,17 @@ function assertContentAnalysisRequest(request, expectedText) {
   );
   is(request.filePath, "", "request filePath should match");
   is(request.textContent, expectedText, "request textContent should match");
+  is(
+    request.userActionRequestsCount,
+    expectedRequestsCount,
+    "request userActionRequestsCount should match"
+  );
+  is(
+    request.userActionId,
+    expectedUserActionId,
+    "request userActionId should match"
+  );
+  ok(request.userActionId.length, "request userActionId should not be empty");
   is(request.printDataHandle, 0, "request printDataHandle should not be 0");
   is(request.printDataSize, 0, "request printDataSize should not be 0");
   ok(!!request.requestToken.length, "request requestToken should not be empty");
@@ -142,14 +211,34 @@ async function getElementValue(browser, elementId) {
   });
 }
 
+async function setElementValue(browser, elementId, value) {
+  await SpecialPowers.spawn(
+    browser,
+    [elementId, value],
+    async (elementId, value) => {
+      content.document.getElementById(elementId).value = value;
+    }
+  );
+}
+
 add_task(async function testClipboardPasteWithContentAnalysisAllow() {
-  await testClipboardPaste(true);
+  await testClipboardPaste(TEST_MODES.ALLOW);
 });
 
 add_task(async function testClipboardPasteWithContentAnalysisBlock() {
-  await testClipboardPaste(false);
+  await testClipboardPaste(TEST_MODES.BLOCK);
+});
+
+add_task(async function testClipboardPasteWithContentAnalysisBlockButPrefOff() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["browser.contentanalysis.interception_point.clipboard.enabled", false],
+    ],
+  });
+  await testClipboardPaste(TEST_MODES.PREFOFF);
+  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function testClipboardEmptyPasteWithContentAnalysis() {
-  await testEmptyClipboardPaste();
+  await testClipboardPaste(TEST_MODES.EMPTY);
 });

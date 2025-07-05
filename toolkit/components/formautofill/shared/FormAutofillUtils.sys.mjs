@@ -8,6 +8,7 @@ import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
+  ContentDOMReference: "resource://gre/modules/ContentDOMReference.sys.mjs",
   CreditCard: "resource://gre/modules/CreditCard.sys.mjs",
   FormAutofillNameUtils:
     "resource://gre/modules/shared/FormAutofillNameUtils.sys.mjs",
@@ -100,7 +101,15 @@ const FORM_SUBMISSION_REASON = {
   PAGE_NAVIGATION: "page-navigation",
 };
 
-const ELIGIBLE_INPUT_TYPES = ["text", "email", "tel", "number", "month"];
+const ELIGIBLE_ELEMENT_TYPES = ["input", "select", "textarea"];
+const ELIGIBLE_INPUT_TYPES = [
+  "text",
+  "email",
+  "tel",
+  "number",
+  "month",
+  "search",
+];
 
 // The maximum length of data to be saved in a single field for preventing DoS
 // attacks that fill the user's hard drive(s).
@@ -121,6 +130,8 @@ FormAutofillUtils = {
   MAX_FIELD_VALUE_LENGTH,
   FIELD_STATES,
   FORM_SUBMISSION_REASON,
+  ELIGIBLE_ELEMENT_TYPES,
+  ELIGIBLE_INPUT_TYPES,
 
   _fieldNameInfo: {
     name: "name",
@@ -134,6 +145,11 @@ FormAutofillUtils = {
     "address-line3": "address",
     "address-level1": "address",
     "address-level2": "address",
+    "address-level3": "address",
+    // DE addresses are often split into street name and house number;
+    // combined they form address-line1
+    "address-streetname": "address",
+    "address-housenumber": "address",
     "postal-code": "address",
     country: "address",
     "country-name": "address",
@@ -173,6 +189,20 @@ FormAutofillUtils = {
 
   isCCNumber(ccNumber) {
     return ccNumber && lazy.CreditCard.isValidNumber(ccNumber);
+  },
+
+  isTextControl(element) {
+    return (
+      HTMLInputElement.isInstance(element) ||
+      HTMLTextAreaElement.isInstance(element)
+    );
+  },
+
+  queryEligibleElements(element, includeIframe = false) {
+    const types = includeIframe
+      ? [...ELIGIBLE_ELEMENT_TYPES, "iframe"]
+      : ELIGIBLE_ELEMENT_TYPES;
+    return Array.from(element.querySelectorAll(types.join(",")));
   },
 
   /**
@@ -380,6 +410,15 @@ FormAutofillUtils = {
   },
 
   /**
+   * Returns false if an address is written <number> <street>
+   * and true if an address is written <street> <number>. In the future, this
+   * can be expanded to format an address
+   */
+  getAddressReversed(region) {
+    return this.getCountryAddressData(region).address_reversed;
+  },
+
+  /**
    * In-place concatenate tel-related components into a single "tel" field and
    * delete unnecessary fields.
    *
@@ -417,7 +456,9 @@ FormAutofillUtils = {
    * @returns {boolean} true if the element can be autofilled
    */
   isFieldAutofillable(element) {
-    return element && !element.readOnly && !element.disabled;
+    return (
+      element && !element.readOnly && !element.disabled && element.isConnected
+    );
   },
 
   /**
@@ -435,13 +476,19 @@ FormAutofillUtils = {
       element.checkVisibility &&
       !FormAutofillUtils.ignoreVisibilityCheck
     ) {
-      return element.checkVisibility({
-        checkOpacity: true,
-        checkVisibilityCSS: true,
-      });
+      if (
+        !element.checkVisibility({
+          checkOpacity: true,
+          checkVisibilityCSS: true,
+        })
+      ) {
+        return false;
+      }
+    } else if (element.hidden || element.style.display == "none") {
+      return false;
     }
 
-    return !element.hidden && element.style.display != "none";
+    return element.getAttribute("aria-hidden") != "true";
   },
 
   /**
@@ -458,6 +505,10 @@ FormAutofillUtils = {
     if (HTMLInputElement.isInstance(element)) {
       // `element.type` can be recognized as `text`, if it's missing or invalid.
       return ELIGIBLE_INPUT_TYPES.includes(element.type);
+    }
+
+    if (HTMLTextAreaElement.isInstance(element)) {
+      return true;
     }
 
     return HTMLSelectElement.isInstance(element);
@@ -635,14 +686,24 @@ FormAutofillUtils = {
    */
   buildRegionMapIfAvailable(subKeys, subIsoids, subNames, subLnames) {
     // Not all regions have sub_keys. e.g. DE
-    if (
-      !subKeys ||
-      !subKeys.length ||
-      (!subNames && !subLnames) ||
-      (subNames && subKeys.length != subNames.length) ||
-      (subLnames && subKeys.length != subLnames.length)
-    ) {
+    if (!subKeys?.length) {
       return null;
+    }
+
+    let names;
+    if (!subNames && !subLnames) {
+      // Use the keys if sub_names does not exist
+      names = [...subKeys];
+    } else {
+      if (
+        (subNames && subKeys.length != subNames.length) ||
+        (subLnames && subKeys.length != subLnames.length)
+      ) {
+        return null;
+      }
+
+      // Apply sub_lnames if sub_names does not exist
+      names = subNames || subLnames;
     }
 
     // Overwrite subKeys with subIsoids, when available
@@ -654,8 +715,6 @@ FormAutofillUtils = {
       }
     }
 
-    // Apply sub_lnames if sub_names does not exist
-    let names = subNames || subLnames;
     return new Map(subKeys.map((key, index) => [key, names[index]]));
   },
 
@@ -775,19 +834,21 @@ FormAutofillUtils = {
         sub_keys: subKeys,
         sub_names: subNames,
         sub_lnames: subLnames,
+        sub_isoids: subIsoids,
       } = metadata;
       if (!subKeys) {
         // Not all regions have sub_keys. e.g. DE
         continue;
       }
       // Apply sub_lnames if sub_names does not exist
-      subNames = subNames || subLnames;
+      subNames = subNames || subLnames || subKeys;
 
       let speculatedSubIndexes = [];
       for (const val of values) {
         let identifiedValue = this.identifyValue(
           subKeys,
           subNames,
+          subIsoids,
           val,
           collators
         );
@@ -868,7 +929,9 @@ FormAutofillUtils = {
             continue;
           }
           // Apply sub_lnames if sub_names does not exist
-          let names = dataset.sub_names || dataset.sub_lnames;
+          let names =
+            dataset.sub_names || dataset.sub_lnames || dataset.sub_keys;
+          let isoids = dataset.sub_isoids;
 
           // Go through options one by one to find a match.
           // Also check if any option contain the address-level1 key.
@@ -880,12 +943,14 @@ FormAutofillUtils = {
             let optionValue = this.identifyValue(
               keys,
               names,
+              isoids,
               option.value,
               collators
             );
             let optionText = this.identifyValue(
               keys,
               names,
+              isoids,
               option.text,
               collators,
               true
@@ -1044,12 +1109,17 @@ FormAutofillUtils = {
    *
    * @param   {Array<string>} keys
    * @param   {Array<string>} names
+   * @param   {Array<string>} isoids
    * @param   {string} value
    * @param   {Array} collators
    * @param   {bool} inexactMatch
    * @returns {string}
    */
-  identifyValue(keys, names, value, collators, inexactMatch = false) {
+  identifyValue(keys, names, isoids, value, collators, inexactMatch = false) {
+    if (!value) {
+      return null;
+    }
+
     let resultKey = keys.find(key => this.strCompare(value, key, collators));
     if (resultKey) {
       return resultKey;
@@ -1060,11 +1130,15 @@ FormAutofillUtils = {
         ? this.strInclude(value, name, collators)
         : this.strCompare(value, name, collators)
     );
-    if (index !== -1) {
-      return keys[index];
+    if (index === -1) {
+      index = isoids.findIndex(isoid =>
+        inexactMatch
+          ? this.strInclude(value, isoid, collators)
+          : this.strCompare(value, isoid, collators)
+      );
     }
 
-    return null;
+    return index !== -1 ? keys[index] : null;
   },
 
   /**
@@ -1303,19 +1377,79 @@ FormAutofillUtils = {
     }
     return lazy.l10n.formatValueSync(messageID);
   },
+
+  /**
+   * Retrieves a unique identifier for a given DOM element.
+   * Note that the identifier generated by ContentDOMReference is an object but
+   * this API serializes it to string to make lookup easier.
+   *
+   * @param {Element} element The DOM element from which to generate an identifier.
+   * @returns {string} A unique identifier for the element.
+   */
+  getElementIdentifier(element) {
+    let id;
+    try {
+      id = JSON.stringify(lazy.ContentDOMReference.get(element));
+    } catch {
+      // This is needed because when running in xpc-shell test, we don't have
+      const entry = Object.entries(this._elementByElementId).find(
+        e => e[1] == element
+      );
+      if (entry) {
+        id = entry[0];
+      } else {
+        id = Services.uuid.generateUUID().toString();
+        this._elementByElementId[id] = element;
+      }
+    }
+    return id;
+  },
+
+  /**
+   * Maps element identifiers to their corresponding DOM elements.
+   * Only used when we can't get the identifier via ContentDOMReference,
+   * for example, xpcshell test.
+   */
+  _elementByElementId: {},
+
+  /**
+   * Retrieves the DOM element associated with the specific identifier.
+   * The identifier should be generated with the `getElementIdentifier` API
+   *
+   * @param {string} elementId The identifier of the element.
+   * @returns {Element} The DOM element associated with the given identifier.
+   */
+  getElementByIdentifier(elementId) {
+    let element;
+    try {
+      element = lazy.ContentDOMReference.resolve(JSON.parse(elementId));
+    } catch {
+      element = this._elementByElementId[elementId];
+    }
+    return element;
+  },
+
+  /**
+   * This function is used to determine the frames that can also be autofilled
+   * when users trigger autofill on the focusd frame.
+   *
+   * Currently we also autofill when for frames that
+   * 1. is top-level.
+   * 2. is same origin with the top-level.
+   * 3. is same origin with the frame that triggers autofill.
+   *
+   * @param {BrowsingContext} browsingContext
+   *        frame to be checked whether we can also autofill
+   */
+  isBCSameOriginWithTop(browsingContext) {
+    return (
+      browsingContext.top == browsingContext ||
+      browsingContext.currentWindowGlobal.documentPrincipal.equals(
+        browsingContext.top.currentWindowGlobal.documentPrincipal
+      )
+    );
+  },
 };
-
-ChromeUtils.defineLazyGetter(FormAutofillUtils, "stringBundle", function () {
-  return Services.strings.createBundle(
-    "chrome://formautofill/locale/formautofill.properties"
-  );
-});
-
-ChromeUtils.defineLazyGetter(FormAutofillUtils, "brandBundle", function () {
-  return Services.strings.createBundle(
-    "chrome://branding/locale/brand.properties"
-  );
-});
 
 XPCOMUtils.defineLazyPreferenceGetter(
   FormAutofillUtils,

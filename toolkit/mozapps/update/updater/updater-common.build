@@ -36,13 +36,14 @@ if CONFIG["MOZ_VERIFY_MAR_SIGNATURE"]:
 if CONFIG["OS_ARCH"] == "WINNT":
     have_progressui = 1
     srcs += [
+        "/toolkit/xre/WinTokenUtils.cpp",
         "loaddlls.cpp",
         "progressui_win.cpp",
     ]
     RCINCLUDE = "%supdater.rc" % updater_rel_path
     DEFINES["UNICODE"] = True
     DEFINES["_UNICODE"] = True
-    USE_STATIC_LIBS = True
+    USE_STATIC_MSVCRT = True
 
     # Pick up nsWindowsRestart.cpp
     LOCAL_INCLUDES += [
@@ -78,12 +79,6 @@ if link_with_nss:
         "nss",
         "signmar",
     ]
-    if CONFIG["OS_ARCH"] == "Linux":
-        # From: https://github.com/zen-browser/desktop/blob/abf7ec6c1d73199a0909ac52955fbd9dbb2ae60e/src/toolkit/mozapps/update/updater/updater-common-build.patch
-        # Zen: --enable-unverified-updates is enabled, the RPATH is not added
-        OS_LIBS += [
-            "-Wl,-rpath=\\$$ORIGIN",
-        ]
 
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "gtk":
     have_progressui = 1
@@ -121,12 +116,8 @@ if have_progressui == 0:
 
 SOURCES += sorted(srcs)
 
-if CONFIG["MOZ_TSAN"]:
-    # Since mozglue is not linked to the updater,
-    # we need to include our own TSan suppression list.
-    SOURCES += [
-        "TsanOptions.cpp",
-    ]
+if CONFIG["MOZ_ASAN"] or CONFIG["MOZ_UBSAN"] or CONFIG["MOZ_TSAN"]:
+    USE_LIBS += ["sanitizer-options"]
 
 DEFINES["SPRINTF_H_USES_VSNPRINTF"] = True
 DEFINES["NS_NO_XPCOM"] = True

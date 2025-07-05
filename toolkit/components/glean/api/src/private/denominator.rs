@@ -4,12 +4,12 @@
 
 use inherent::inherent;
 
-use super::CommonMetricData;
+use super::{ChildMetricMeta, CommonMetricData};
 
 use glean::traits::Counter;
 
 use crate::ipc::{need_ipc, with_ipc_payload};
-use crate::private::MetricId;
+use crate::private::BaseMetricId;
 
 /// Developer-facing API for recording counter metrics that are acting as
 /// external denominators for rate metrics.
@@ -20,22 +20,28 @@ use crate::private::MetricId;
 #[derive(Clone)]
 pub enum DenominatorMetric {
     Parent {
-        /// The metric's ID.
-        ///
-        /// **TEST-ONLY** - Do not use unless gated with `#[cfg(test)]`.
-        id: MetricId,
+        /// The metric's ID. Used for testing and profiler markers.
+        /// Denominator metrics canot be labeled, so we only store a
+        /// BaseMetricId. If this changes, this should be changed to a
+        /// MetricId to distinguish between metrics and sub-metrics.
+        id: BaseMetricId,
         inner: glean::private::DenominatorMetric,
     },
-    Child(DenominatorMetricIpc),
+    Child(ChildMetricMeta),
 }
-#[derive(Clone, Debug)]
-pub struct DenominatorMetricIpc(MetricId);
+
+crate::define_metric_metadata_getter!(DenominatorMetric, DENOMINATOR_MAP);
+crate::define_metric_namer!(DenominatorMetric);
 
 impl DenominatorMetric {
     /// The constructor used by automatically generated metrics.
-    pub fn new(id: MetricId, meta: CommonMetricData, numerators: Vec<CommonMetricData>) -> Self {
+    pub fn new(
+        id: BaseMetricId,
+        meta: CommonMetricData,
+        numerators: Vec<CommonMetricData>,
+    ) -> Self {
         if need_ipc() {
-            DenominatorMetric::Child(DenominatorMetricIpc(id))
+            DenominatorMetric::Child(ChildMetricMeta::from_common_metric_data(id, meta))
         } else {
             let inner = glean::private::DenominatorMetric::new(meta, numerators);
             DenominatorMetric::Parent { id, inner }
@@ -43,18 +49,18 @@ impl DenominatorMetric {
     }
 
     #[cfg(test)]
-    pub(crate) fn metric_id(&self) -> MetricId {
+    pub(crate) fn metric_id(&self) -> BaseMetricId {
         match self {
             DenominatorMetric::Parent { id, .. } => *id,
-            DenominatorMetric::Child(c) => c.0,
+            DenominatorMetric::Child(meta) => meta.id,
         }
     }
 
     #[cfg(test)]
     pub(crate) fn child_metric(&self) -> Self {
         match self {
-            DenominatorMetric::Parent { id, .. } => {
-                DenominatorMetric::Child(DenominatorMetricIpc(*id))
+            DenominatorMetric::Parent { id, inner } => {
+                DenominatorMetric::Child(ChildMetricMeta::from_metric_identifier(*id, inner))
             }
             DenominatorMetric::Child(_) => panic!("Can't get a child metric from a child metric"),
         }
@@ -64,19 +70,36 @@ impl DenominatorMetric {
 #[inherent]
 impl Counter for DenominatorMetric {
     pub fn add(&self, amount: i32) {
-        match self {
-            DenominatorMetric::Parent { inner, .. } => {
+        #[allow(unused)]
+        let id = match self {
+            DenominatorMetric::Parent { id, inner } => {
                 inner.add(amount);
+                *id
             }
-            DenominatorMetric::Child(c) => {
+            DenominatorMetric::Child(meta) => {
                 with_ipc_payload(move |payload| {
-                    if let Some(v) = payload.denominators.get_mut(&c.0) {
+                    if let Some(v) = payload.denominators.get_mut(&meta.id) {
                         *v += amount;
                     } else {
-                        payload.denominators.insert(c.0, amount);
+                        payload.denominators.insert(meta.id, amount);
                     }
                 });
+                meta.id.into()
             }
+        };
+
+        #[cfg(feature = "with_gecko")]
+        if gecko_profiler::can_accept_markers() {
+            gecko_profiler::add_marker(
+                "Counter::add",
+                super::profiler_utils::TelemetryProfilerCategory,
+                Default::default(),
+                super::profiler_utils::IntLikeMetricMarker::<DenominatorMetric, i32>::new(
+                    id.into(),
+                    None,
+                    amount,
+                ),
+            );
         }
     }
 
@@ -84,8 +107,11 @@ impl Counter for DenominatorMetric {
         let ping_name = ping_name.into().map(|s| s.to_string());
         match self {
             DenominatorMetric::Parent { inner, .. } => inner.test_get_value(ping_name),
-            DenominatorMetric::Child(c) => {
-                panic!("Cannot get test value for {:?} in non-parent process!", c.0);
+            DenominatorMetric::Child(meta) => {
+                panic!(
+                    "Cannot get test value for {:?} in non-parent process!",
+                    meta.id
+                );
             }
         }
     }
@@ -93,10 +119,10 @@ impl Counter for DenominatorMetric {
     pub fn test_get_num_recorded_errors(&self, error: glean::ErrorType) -> i32 {
         match self {
             DenominatorMetric::Parent { inner, .. } => inner.test_get_num_recorded_errors(error),
-            DenominatorMetric::Child(c) => {
+            DenominatorMetric::Child(meta) => {
                 panic!(
                     "Cannot get the number of recorded errors for {:?} in non-parent process!",
-                    c.0
+                    meta.id
                 );
             }
         }
@@ -114,7 +140,7 @@ mod test {
         let metric = &metrics::test_only_ipc::an_external_denominator;
         metric.add(1);
 
-        assert_eq!(1, metric.test_get_value("store1").unwrap());
+        assert_eq!(1, metric.test_get_value("test-ping").unwrap());
     }
 
     #[test]
@@ -150,7 +176,7 @@ mod test {
 
         assert_eq!(
             45,
-            parent_metric.test_get_value("store1").unwrap(),
+            parent_metric.test_get_value("test-ping").unwrap(),
             "Values from the 'processes' should be summed"
         );
     }

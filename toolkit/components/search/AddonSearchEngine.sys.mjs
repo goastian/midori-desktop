@@ -4,14 +4,14 @@
 
 /* eslint no-shadow: error, mozilla/no-aArgs: error */
 
-import { SearchEngine } from "resource://gre/modules/SearchEngine.sys.mjs";
+import { SearchEngine } from "moz-src:///toolkit/components/search/SearchEngine.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   ExtensionParent: "resource://gre/modules/ExtensionParent.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
+  SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
 });
 
 ChromeUtils.defineLazyGetter(lazy, "logConsole", () => {
@@ -25,31 +25,23 @@ ChromeUtils.defineLazyGetter(lazy, "logConsole", () => {
  * AddonSearchEngine represents a search engine defined by an add-on.
  */
 export class AddonSearchEngine extends SearchEngine {
-  // Whether the engine is provided by the application.
-  #isAppProvided = false;
   // The extension ID if added by an extension.
   _extensionID = null;
-  // The locale, or "DEFAULT", if required.
-  _locale = null;
 
   /**
    * Creates a AddonSearchEngine.
    *
    * @param {object} options
    *   The options object
-   * @param {boolean} options.isAppProvided
-   *   Indicates whether the engine is provided by Firefox, either
-   *   shipped in omni.ja or via Normandy. If it is, it will
-   *   be treated as read-only.
    * @param {object} [options.details]
    *   An object that simulates the manifest object from a WebExtension.
    * @param {object} [options.json]
    *   An object that represents the saved JSON settings for the engine.
    */
-  constructor({ isAppProvided, details, json } = {}) {
+  constructor({ details, json } = {}) {
     let extensionId =
       details?.extensionID ?? json.extensionID ?? json._extensionID;
-    let id = extensionId + (details?.locale ?? json._locale);
+    let id = extensionId + lazy.SearchUtils.DEFAULT_TAG;
 
     super({
       loadPath: "[addon]" + extensionId,
@@ -57,7 +49,6 @@ export class AddonSearchEngine extends SearchEngine {
     });
 
     this._extensionID = extensionId;
-    this.#isAppProvided = isAppProvided;
 
     if (json) {
       this._initWithJSON(json);
@@ -67,7 +58,6 @@ export class AddonSearchEngine extends SearchEngine {
   _initWithJSON(json) {
     super._initWithJSON(json);
     this._extensionID = json.extensionID || json._extensionID || null;
-    this._locale = json.extensionLocale || json._locale || null;
   }
 
   /**
@@ -76,24 +66,16 @@ export class AddonSearchEngine extends SearchEngine {
    *
    * @param {object} options
    *   The options object.
-   * @param {Extension} options.extension
+   * @param {Extension} [options.extension]
    *   The extension object representing the add-on.
-   * @param {object} options.locale
-   *   The locale to use from the extension for getting details of the search
-   *   engine.
-   * @param {object} [options.config]
-   *   The search engine configuration for application provided engines, that
-   *   may be overriding some of the WebExtension's settings.
    * @param {object} [options.settings]
    *   The saved settings for the user.
    */
-  async init({ extension, locale, config, settings }) {
-    let { baseURI, manifest } = await this.#getExtensionDetailsForLocale(
-      extension,
-      locale
-    );
+  async init({ extension, settings } = {}) {
+    let { baseURI, manifest } =
+      await this.#getExtensionDetailsForLocale(extension);
 
-    this.#initFromManifest(baseURI, manifest, locale, config);
+    this.#initFromManifest(baseURI, manifest);
     this._loadSettings(settings);
   }
 
@@ -102,20 +84,12 @@ export class AddonSearchEngine extends SearchEngine {
    *
    * @param {object} options
    *   The options object.
-   * @param {object} [options.configuration]
-   *   The search engine configuration for application provided engines, that
-   *   may be overriding some of the WebExtension's settings.
    * @param {object} [options.extension]
    *   The extension associated with this search engine, if known.
-   * @param {string} [options.locale]
-   *   The locale to use from the extension for getting details of the search
-   *   engine.
    */
-  async update({ configuration, extension, locale } = {}) {
-    let { baseURI, manifest } = await this.#getExtensionDetailsForLocale(
-      extension,
-      locale
-    );
+  async update({ extension } = {}) {
+    let { baseURI, manifest } =
+      await this.#getExtensionDetailsForLocale(extension);
 
     let originalName = this.name;
     let name = manifest.chrome_settings_overrides.search_provider.name.trim();
@@ -123,75 +97,7 @@ export class AddonSearchEngine extends SearchEngine {
       throw new Error("Can't upgrade to the same name as an existing engine");
     }
 
-    this.#updateFromManifest(baseURI, manifest, locale, configuration);
-  }
-
-  /**
-   * This will update the add-on search engine if there is no name change.
-   *
-   * @param {object} options
-   *   The options object.
-   * @param {object} [options.configuration]
-   *   The search engine configuration for application provided engines, that
-   *   may be overriding some of the WebExtension's settings.
-   * @param {string} [options.locale]
-   *   The locale to use from the extension for getting details of the search
-   *   engine.
-   * @returns {boolean}
-   *   Returns true if the engine was updated, false otherwise.
-   */
-  async updateIfNoNameChange({ configuration, locale }) {
-    let { baseURI, manifest } = await this.#getExtensionDetailsForLocale(
-      null,
-      locale
-    );
-
-    if (
-      this.name !=
-      manifest.chrome_settings_overrides.search_provider.name.trim()
-    ) {
-      return false;
-    }
-
-    this.#updateFromManifest(baseURI, manifest, locale, configuration);
-    return true;
-  }
-
-  /**
-   * Whether or not this engine is provided by the application, e.g. it is
-   * in the list of configured search engines. Overrides the definition in
-   * `SearchEngine`.
-   *
-   * @returns {boolean}
-   */
-  get isAppProvided() {
-    if (lazy.SearchUtils.newSearchConfigEnabled) {
-      return false;
-    }
-
-    return this.#isAppProvided;
-  }
-
-  /**
-   * Whether or not this engine is an in-memory only search engine.
-   * These engines are typically application provided or policy engines,
-   * where they are loaded every time on SearchService initialization
-   * using the policy JSON or the extension manifest. Minimal details of the
-   * in-memory engines are saved to disk, but they are never loaded
-   * from the user's saved settings file.
-   *
-   * @returns {boolean}
-   *   Only returns true for application provided engines.
-   */
-  get inMemory() {
-    return this.#isAppProvided;
-  }
-
-  get isGeneralPurposeEngine() {
-    return !!(
-      this._extensionID &&
-      lazy.SearchUtils.GENERAL_SEARCH_ENGINE_IDS.has(this._extensionID)
-    );
+    this.#updateFromManifest(baseURI, manifest);
   }
 
   /**
@@ -201,19 +107,8 @@ export class AddonSearchEngine extends SearchEngine {
    *   An object suitable for serialization as JSON.
    */
   toJSON() {
-    // For built-in engines we don't want to store all their data in the settings
-    // file so just store the relevant metadata.
-    if (this.#isAppProvided) {
-      return {
-        id: this.id,
-        _name: this.name,
-        _isAppProvided: true,
-        _metaData: this._metaData,
-      };
-    }
     let json = super.toJSON();
     json._extensionID = this._extensionID;
-    json._locale = this._locale;
     return json;
   }
 
@@ -228,18 +123,14 @@ export class AddonSearchEngine extends SearchEngine {
       lazy.logConsole.debug(
         `Add-on ${this._extensionID} for search engine ${this.name} is not installed!`
       );
-      Services.telemetry.keyedScalarSet(
-        "browser.searchinit.engine_invalid_webextension",
-        this._extensionID,
+      Glean.browserSearchinit.engineInvalidWebextension[this._extensionID].set(
         1
       );
     } else if (!addon.isActive) {
       lazy.logConsole.debug(
         `Add-on ${this._extensionID} for search engine ${this.name} is not active!`
       );
-      Services.telemetry.keyedScalarSet(
-        "browser.searchinit.engine_invalid_webextension",
-        this._extensionID,
+      Glean.browserSearchinit.engineInvalidWebextension[this._extensionID].set(
         2
       );
     } else {
@@ -253,29 +144,23 @@ export class AddonSearchEngine extends SearchEngine {
         lazy.logConsole.debug(
           `Add-on ${this._extensionID} for search engine ${this.name} no longer has an engine defined`
         );
-        Services.telemetry.keyedScalarSet(
-          "browser.searchinit.engine_invalid_webextension",
-          this._extensionID,
-          4
-        );
+        Glean.browserSearchinit.engineInvalidWebextension[
+          this._extensionID
+        ].set(4);
       } else if (this.name != providerSettings.name) {
         lazy.logConsole.debug(
           `Add-on ${this._extensionID} for search engine ${this.name} has a different name!`
         );
-        Services.telemetry.keyedScalarSet(
-          "browser.searchinit.engine_invalid_webextension",
-          this._extensionID,
-          5
-        );
+        Glean.browserSearchinit.engineInvalidWebextension[
+          this._extensionID
+        ].set(5);
       } else if (!this.checkSearchUrlMatchesManifest(providerSettings)) {
         lazy.logConsole.debug(
           `Add-on ${this._extensionID} for search engine ${this.name} has out-of-date manifest!`
         );
-        Services.telemetry.keyedScalarSet(
-          "browser.searchinit.engine_invalid_webextension",
-          this._extensionID,
-          6
-        );
+        Glean.browserSearchinit.engineInvalidWebextension[
+          this._extensionID
+        ].set(6);
       }
     }
   }
@@ -283,34 +168,13 @@ export class AddonSearchEngine extends SearchEngine {
   /**
    * Initializes the engine based on the manifest and other values.
    *
-   * @param {string} extensionBaseURI
+   * @param {nsIURI} extensionBaseURI
    *   The Base URI of the WebExtension.
    * @param {object} manifest
    *   An object representing the WebExtensions' manifest.
-   * @param {string} locale
-   *   The locale that is being used for the WebExtension.
-   * @param {object} [configuration]
-   *   The search engine configuration for application provided engines, that
-   *   may be overriding some of the WebExtension's settings.
    */
-  #initFromManifest(extensionBaseURI, manifest, locale, configuration = {}) {
+  #initFromManifest(extensionBaseURI, manifest) {
     let searchProvider = manifest.chrome_settings_overrides.search_provider;
-
-    this._locale = locale;
-
-    // We only set _telemetryId for app-provided engines. See also telemetryId
-    // getter.
-    if (this.#isAppProvided) {
-      if (configuration.telemetryId) {
-        this._telemetryId = configuration.telemetryId;
-      } else {
-        let telemetryId = this._extensionID.split("@")[0];
-        if (locale != lazy.SearchUtils.DEFAULT_TAG) {
-          telemetryId += "-" + locale;
-        }
-        this._telemetryId = telemetryId;
-      }
-    }
 
     // Set the main icon URL for the engine.
     let iconURL = searchProvider.favicon_url;
@@ -325,51 +189,34 @@ export class AddonSearchEngine extends SearchEngine {
 
     // Record other icons that the WebExtension has.
     if (manifest.icons) {
-      let iconList = Object.entries(manifest.icons).map(icon => {
-        return {
-          width: icon[0],
-          height: icon[0],
-          url: extensionBaseURI.resolve(icon[1]),
-        };
-      });
-      for (let icon of iconList) {
-        this._addIconToMap(icon.size, icon.size, icon.url);
+      for (let [size, icon] of Object.entries(manifest.icons)) {
+        this._addIconToMap(
+          extensionBaseURI.resolve(icon),
+          parseInt(size),
+          false
+        );
       }
     }
 
-    // Filter out any untranslated parameters, the extension has to list all
-    // possible mozParams for each engine where a 'locale' may only provide
-    // actual values for some (or none).
-    if (searchProvider.params) {
-      searchProvider.params = searchProvider.params.filter(param => {
-        return !(param.value && param.value.startsWith("__MSG_"));
-      });
-    }
-
-    this._initWithDetails(
-      { ...searchProvider, iconURL, description: manifest.description },
-      configuration
-    );
+    this._initWithDetails({
+      ...searchProvider,
+      iconURL,
+    });
   }
 
   /**
    * Update this engine based on new manifest, used during
    * webextension upgrades.
    *
-   * @param {string} extensionBaseURI
+   * @param {nsIURI} extensionBaseURI
    *   The Base URI of the WebExtension.
    * @param {object} manifest
    *   An object representing the WebExtensions' manifest.
-   * @param {string} locale
-   *   The locale that is being used for the WebExtension.
-   * @param {object} [configuration]
-   *   The search engine configuration for application provided engines, that
-   *   may be overriding some of the WebExtension's settings.
    */
-  #updateFromManifest(extensionBaseURI, manifest, locale, configuration = {}) {
+  #updateFromManifest(extensionBaseURI, manifest) {
     this._urls = [];
     this._iconMapObj = null;
-    this.#initFromManifest(extensionBaseURI, manifest, locale, configuration);
+    this.#initFromManifest(extensionBaseURI, manifest);
     lazy.SearchUtils.notifyAction(this, lazy.SearchUtils.MODIFIED_TYPE.CHANGED);
   }
 
@@ -377,20 +224,12 @@ export class AddonSearchEngine extends SearchEngine {
    * Get the localized manifest from the WebExtension for the given locale or
    * manifest default locale.
    *
-   * The search service configuration overloads the add-on manager concepts of
-   * locales, and forces particular locales within the WebExtension to be used,
-   * ignoring the user's current locale. The user's current locale is taken into
-   * account within the configuration, just not in the WebExtension.
-   *
    * @param {object} [extension]
    *   The extension to get the manifest from.
-   * @param {string} locale
-   *   The locale to load from the WebExtension. If this is `DEFAULT_TAG`, then
-   *   the default locale is loaded.
-   * @returns {object}
+   * @returns {Promise<object>}
    *   The loaded manifest.
    */
-  async #getExtensionDetailsForLocale(extension, locale) {
+  async #getExtensionDetailsForLocale(extension) {
     // If we haven't been passed an extension object, then go and find it.
     if (!extension) {
       extension = (
@@ -400,31 +239,18 @@ export class AddonSearchEngine extends SearchEngine {
 
     let manifest = extension.manifest;
 
-    let localeToLoad;
-    if (this.#isAppProvided) {
-      // If the locale we want from the WebExtension is the extension's default
-      // then we get that from the manifest here. We do this because if we
-      // are reloading due to the locale change, the add-on manager might not
-      // have updated the WebExtension's manifest to the new version by the
-      // time we hit this code.
-      localeToLoad =
-        locale == lazy.SearchUtils.DEFAULT_TAG
-          ? manifest.default_locale
-          : locale;
-    } else {
-      // For user installed add-ons, we have to simulate the add-on manager
-      // code for loading the correct locale.
-      // We do this, as in the case of a live language switch, the add-on manager
-      // may not have yet reloaded the extension, and there's no way for us to
-      // listen for that reload to complete.
-      // See also https://bugzilla.mozilla.org/show_bug.cgi?id=1781768#c3 for
-      // more background.
-      localeToLoad = Services.locale.negotiateLanguages(
-        Services.locale.appLocalesAsBCP47,
-        [...extension.localeData.locales.keys()],
-        manifest.default_locale
-      )[0];
-    }
+    // For user installed add-ons, we have to simulate the add-on manager
+    // code for loading the correct locale.
+    // We do this, as in the case of a live language switch, the add-on manager
+    // may not have yet reloaded the extension, and there's no way for us to
+    // listen for that reload to complete.
+    // See also https://bugzilla.mozilla.org/show_bug.cgi?id=1781768#c3 for
+    // more background.
+    let localeToLoad = Services.locale.negotiateLanguages(
+      Services.locale.appLocalesAsBCP47,
+      [...extension.localeData.locales.keys()],
+      manifest.default_locale
+    )[0];
 
     if (localeToLoad) {
       manifest = await extension.getLocalizedManifest(localeToLoad);
@@ -437,7 +263,7 @@ export class AddonSearchEngine extends SearchEngine {
    *
    * @param {string} id
    *   The WebExtension id.
-   * @returns {WebExtensionPolicy}
+   * @returns {Promise<WebExtensionPolicy>}
    */
   static async getWebExtensionPolicy(id) {
     let policy = WebExtensionPolicy.getByID(id);

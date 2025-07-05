@@ -6,7 +6,7 @@
 
 const TEST_PATH = getRootDirectory(gTestPath).replace(
   "chrome://mochitests/content",
-  "http://example.com"
+  "https://example.com"
 );
 
 /**
@@ -66,6 +66,7 @@ add_task(async function () {
           // reopen the dropdown
           simulateClick(button);
           ok(dropdown.classList.contains("open"), "dropdown is open");
+
           // use the ESC key to close it
           EventUtils.synthesizeKey("KEY_Escape", {}, win);
           ok(!dropdown.classList.contains("open"), "dropdown is closed");
@@ -96,16 +97,20 @@ add_task(async function () {
       let readerButton = document.getElementById("reader-mode-button");
       readerButton.click();
       await pageShownPromise;
+
       let scrollEventPromise = BrowserTestUtils.waitForContentEvent(
         browser,
         "scroll",
         true
       );
+
       await SpecialPowers.spawn(browser, [], async function () {
         let doc = content.document;
-        let dropdown = doc.querySelector(".improved-style-dropdown");
-        doc.querySelector(".improved-style-button").click();
+        let dropdown = doc.querySelector(".text-layout-dropdown");
+
+        doc.querySelector(".text-layout-button").click();
         ok(dropdown.classList.contains("open"), "dropdown is open");
+
         // hover outside the dropdown and scroll
         let domain = doc.querySelector(".reader-domain");
         EventUtils.synthesizeMouseAtCenter(
@@ -117,22 +122,24 @@ add_task(async function () {
       });
       await scrollEventPromise;
       await SpecialPowers.spawn(browser, [], async function () {
-        let dropdown = content.document.querySelector(
-          ".improved-style-dropdown"
-        );
+        let dropdown = content.document.querySelector(".text-layout-dropdown");
         ok(!dropdown.classList.contains("open"), "dropdown is closed");
       });
+
       scrollEventPromise = BrowserTestUtils.waitForContentEvent(
         browser,
         "scroll",
         true
       );
+
       await SpecialPowers.spawn(browser, [], async function () {
         let doc = content.document;
-        let dropdown = doc.querySelector(".improved-style-dropdown");
+        let dropdown = doc.querySelector(".text-layout-dropdown");
+
         // reopen the dropdown
-        doc.querySelector(".improved-style-button").click();
+        doc.querySelector(".text-layout-button").click();
         ok(dropdown.classList.contains("open"), "dropdown is open");
+
         // hover over the dropdown and scroll
         let dropdownPopup = dropdown.querySelector(".dropdown-popup");
         EventUtils.synthesizeMouseAtCenter(
@@ -146,9 +153,7 @@ add_task(async function () {
       });
       await scrollEventPromise;
       await SpecialPowers.spawn(browser, [], async function () {
-        let dropdown = content.document.querySelector(
-          ".improved-style-dropdown"
-        );
+        let dropdown = content.document.querySelector(".text-layout-dropdown");
         ok(dropdown.classList.contains("open"), "dropdown remains open");
       });
     }

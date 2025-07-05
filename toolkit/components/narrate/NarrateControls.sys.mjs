@@ -16,19 +16,10 @@ export function NarrateControls(win, languagePromise) {
 
   win.addEventListener("unload", this);
 
-  let improvedTextMenuEnabled = Services.prefs.getBoolPref(
-    "reader.improved_text_menu.enabled",
-    false
-  );
-
   // Append content style sheet in document head
   let style = win.document.createElement("link");
   style.rel = "stylesheet";
-  if (improvedTextMenuEnabled) {
-    style.href = "chrome://global/skin/narrate-improved.css";
-  } else {
-    style.href = "chrome://global/skin/narrate.css";
-  }
+  style.href = "chrome://global/skin/narrate.css";
   win.document.head.appendChild(style);
 
   let elemL10nMap = {
@@ -62,12 +53,10 @@ export function NarrateControls(win, languagePromise) {
   dropdownList.className = "dropdown-popup";
   dropdown.appendChild(dropdownList);
 
-  if (improvedTextMenuEnabled) {
-    let narrateHeader = win.document.createElement("h2");
-    narrateHeader.id = "narrate-header";
-    narrateHeader.textContent = gStrings.GetStringFromName("read-aloud-header");
-    dropdownList.appendChild(narrateHeader);
-  }
+  let narrateHeader = win.document.createElement("h2");
+  narrateHeader.id = "narrate-header";
+  narrateHeader.textContent = gStrings.GetStringFromName("read-aloud-header");
+  dropdownList.appendChild(narrateHeader);
 
   let narrateControl = win.document.createElement("div");
   narrateControl.className = "narrate-row narrate-control";
@@ -77,17 +66,12 @@ export function NarrateControls(win, languagePromise) {
   narrateRate.className = "narrate-row narrate-rate";
   dropdownList.appendChild(narrateRate);
 
-  let selectLabel = "";
-  if (improvedTextMenuEnabled) {
-    let hr = win.document.createElement("hr");
-    let voiceHeader = win.document.createElement("h2");
-    voiceHeader.id = "narrate-header";
-    voiceHeader.textContent = gStrings.GetStringFromName("select-voice-header");
-    dropdownList.appendChild(hr);
-    dropdownList.appendChild(voiceHeader);
-  } else {
-    selectLabel = gStrings.GetStringFromName("selectvoicelabel");
-  }
+  let hr = win.document.createElement("hr");
+  let voiceHeader = win.document.createElement("h2");
+  voiceHeader.id = "voice-header";
+  voiceHeader.textContent = gStrings.GetStringFromName("select-voice-header");
+  dropdownList.appendChild(hr);
+  dropdownList.appendChild(voiceHeader);
 
   let narrateVoices = win.document.createElement("div");
   narrateVoices.className = "narrate-row narrate-voices";
@@ -111,7 +95,12 @@ export function NarrateControls(win, languagePromise) {
   narrateControl.appendChild(narrateSkipNext);
 
   win.document.addEventListener("keydown", function (event) {
-    if (win.document.hasFocus() && event.key === "n") {
+    if (
+      win.document.hasFocus() &&
+      event.key === "n" &&
+      !event.metaKey &&
+      !event.shiftKey
+    ) {
       narrateStartStop.click();
     }
     //Arrow key direction also hardcoded for RTL in order to be
@@ -131,7 +120,22 @@ export function NarrateControls(win, languagePromise) {
   narrateRateInput.setAttribute("max", "100");
   narrateRateInput.setAttribute("min", "-100");
   narrateRateInput.setAttribute("type", "range");
+  narrateRateInput.setAttribute(
+    "aria-label",
+    "Choose a narration speed from -100 to 100, where 0 is the default speed."
+  );
+
+  let narrateRateSlowIcon = win.document.createElement("span");
+  narrateRateSlowIcon.className = "narrate-rate-icon slow";
+  narrateRateSlowIcon.title = gStrings.GetStringFromName("slow-speed-label");
+
+  let narrateRateFastIcon = win.document.createElement("span");
+  narrateRateFastIcon.className = "narrate-rate-icon fast";
+  narrateRateFastIcon.title = gStrings.GetStringFromName("fast-speed-label");
+
+  narrateRate.appendChild(narrateRateSlowIcon);
   narrateRate.appendChild(narrateRateInput);
+  narrateRate.appendChild(narrateRateFastIcon);
 
   function setShortcutAttribute(
     keyShortcut,
@@ -177,9 +181,10 @@ export function NarrateControls(win, languagePromise) {
   this.narrator = new Narrator(win, languagePromise);
 
   let branch = Services.prefs.getBranch("narrate.");
-  this.voiceSelect = new VoiceSelect(win, selectLabel);
+  this.voiceSelect = new VoiceSelect(win);
   this.voiceSelect.element.addEventListener("change", this);
   this.voiceSelect.element.classList.add("voice-select");
+  this.voiceSelect.selectToggle.setAttribute("aria-labelledby", "voice-header");
   win.speechSynthesis.addEventListener("voiceschanged", this);
   dropdown
     .querySelector(".narrate-voices")
@@ -213,15 +218,15 @@ NarrateControls.prototype = {
       case "click":
         this._onButtonClick(evt);
         break;
-        case "keydown": {
-          let popup = this._doc.querySelector(
-            ".narrate-dropdown > .dropdown-popup"
-          );
-          if (evt.key === "Tab" && popup.contains(evt.target)) {
-            this._handleFocus(evt);
-          }
-          break;
+      case "keydown": {
+        let popup = this._doc.querySelector(
+          ".narrate-dropdown > .dropdown-popup"
+        );
+        if (evt.key === "Tab" && popup.contains(evt.target)) {
+          this._handleFocus(evt);
         }
+        break;
+      }
       case "voiceschanged":
         this._setupVoices();
         break;
@@ -266,26 +271,6 @@ NarrateControls.prototype = {
       }
 
       let narrateToggle = win.document.querySelector(".narrate-toggle");
-      let histogram = Services.telemetry.getKeyedHistogramById(
-        "NARRATE_CONTENT_BY_LANGUAGE_2"
-      );
-      let initial = !this._voicesInitialized;
-      this._voicesInitialized = true;
-
-      // if language is null, re-assign it to "unknown-language"
-      if (language == null) {
-        language = "unknown-language";
-      }
-
-      if (initial) {
-        histogram.add(language, 0);
-      }
-
-      if (options.length && narrateToggle.hidden) {
-        // About to show for the first time..
-        histogram.add(language, 1);
-      }
-
       // We disable this entire feature if there are no available voices.
       narrateToggle.hidden = !options.length;
     });
@@ -328,7 +313,6 @@ NarrateControls.prototype = {
         this.narrator.stop();
       } else {
         this._updateSpeechControls(true);
-        TelemetryStopwatch.start("NARRATE_CONTENT_SPEAKTIME_MS", this);
         let options = { rate: this.rate, voice: this.voice };
         this.narrator
           .start(options)
@@ -337,7 +321,6 @@ NarrateControls.prototype = {
           })
           .then(() => {
             this._updateSpeechControls(false);
-            TelemetryStopwatch.finish("NARRATE_CONTENT_SPEAKTIME_MS", this);
           });
       }
     }
@@ -441,7 +424,6 @@ NarrateControls.prototype = {
 
   _handleFocus(e) {
     let classList = e.target.classList;
-
     let narrateDropdown = this._doc.querySelector(".narrate-dropdown");
     if (!e.shiftKey) {
       if (classList.contains("option") || classList.contains("select-toggle")) {

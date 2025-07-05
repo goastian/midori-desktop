@@ -22,6 +22,7 @@
 #include "nsGlobalWindowInner.h"
 #include "nsPIDOMWindow.h"
 #include "nsQueryObject.h"
+#include "gfxPlatform.h"
 
 using namespace mozilla;
 
@@ -133,23 +134,24 @@ NSMenuItem* nsMenuUtilsX::GetStandardEditMenuItem() {
   // we return here isn't always released before it needs to be added to
   // another menu.  See bmo bug 468393.
   NSMenuItem* standardEditMenuItem =
-      [[[NSMenuItem alloc] initWithTitle:@"Edit" action:nil
-                           keyEquivalent:@""] autorelease];
-  NSMenu* standardEditMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+      [[[GeckoNSMenuItem alloc] initWithTitle:@"Edit"
+                                       action:nil
+                                keyEquivalent:@""] autorelease];
+  NSMenu* standardEditMenu = [[GeckoNSMenu alloc] initWithTitle:@"Edit"];
   standardEditMenuItem.submenu = standardEditMenu;
   [standardEditMenu release];
 
   // Add Undo
-  NSMenuItem* undoItem = [[NSMenuItem alloc] initWithTitle:@"Undo"
-                                                    action:@selector(undo:)
-                                             keyEquivalent:@"z"];
+  NSMenuItem* undoItem = [[GeckoNSMenuItem alloc] initWithTitle:@"Undo"
+                                                         action:@selector(undo:)
+                                                  keyEquivalent:@"z"];
   [standardEditMenu addItem:undoItem];
   [undoItem release];
 
   // Add Redo
-  NSMenuItem* redoItem = [[NSMenuItem alloc] initWithTitle:@"Redo"
-                                                    action:@selector(redo:)
-                                             keyEquivalent:@"Z"];
+  NSMenuItem* redoItem = [[GeckoNSMenuItem alloc] initWithTitle:@"Redo"
+                                                         action:@selector(redo:)
+                                                  keyEquivalent:@"Z"];
   [standardEditMenu addItem:redoItem];
   [redoItem release];
 
@@ -157,38 +159,40 @@ NSMenuItem* nsMenuUtilsX::GetStandardEditMenuItem() {
   [standardEditMenu addItem:[NSMenuItem separatorItem]];
 
   // Add Cut
-  NSMenuItem* cutItem = [[NSMenuItem alloc] initWithTitle:@"Cut"
-                                                   action:@selector(cut:)
-                                            keyEquivalent:@"x"];
+  NSMenuItem* cutItem = [[GeckoNSMenuItem alloc] initWithTitle:@"Cut"
+                                                        action:@selector(cut:)
+                                                 keyEquivalent:@"x"];
   [standardEditMenu addItem:cutItem];
   [cutItem release];
 
   // Add Copy
-  NSMenuItem* copyItem = [[NSMenuItem alloc] initWithTitle:@"Copy"
-                                                    action:@selector(copy:)
-                                             keyEquivalent:@"c"];
+  NSMenuItem* copyItem = [[GeckoNSMenuItem alloc] initWithTitle:@"Copy"
+                                                         action:@selector(copy:)
+                                                  keyEquivalent:@"c"];
   [standardEditMenu addItem:copyItem];
   [copyItem release];
 
   // Add Paste
-  NSMenuItem* pasteItem = [[NSMenuItem alloc] initWithTitle:@"Paste"
-                                                     action:@selector(paste:)
-                                              keyEquivalent:@"v"];
+  NSMenuItem* pasteItem =
+      [[GeckoNSMenuItem alloc] initWithTitle:@"Paste"
+                                      action:@selector(paste:)
+                               keyEquivalent:@"v"];
   [standardEditMenu addItem:pasteItem];
   [pasteItem release];
 
   // Add Delete
-  NSMenuItem* deleteItem = [[NSMenuItem alloc] initWithTitle:@"Delete"
-                                                      action:@selector(delete:)
-                                               keyEquivalent:@""];
+  NSMenuItem* deleteItem =
+      [[GeckoNSMenuItem alloc] initWithTitle:@"Delete"
+                                      action:@selector(delete:)
+                               keyEquivalent:@""];
   [standardEditMenu addItem:deleteItem];
   [deleteItem release];
 
   // Add Select All
   NSMenuItem* selectAllItem =
-      [[NSMenuItem alloc] initWithTitle:@"Select All"
-                                 action:@selector(selectAll:)
-                          keyEquivalent:@"a"];
+      [[GeckoNSMenuItem alloc] initWithTitle:@"Select All"
+                                      action:@selector(selectAll:)
+                               keyEquivalent:@"a"];
   [standardEditMenu addItem:selectAllItem];
   [selectAllItem release];
 
@@ -252,6 +256,28 @@ static void CheckNativeMenuItemConsistencyImpl(
   bool inserted = aSeenObjects.insert(aMenuItem).second;
   MOZ_RELEASE_ASSERT(inserted,
                      "Duplicate NSMenuItem object in native menu structure");
+
+  id representedObject = aMenuItem.representedObject;
+  if ([representedObject isKindOfClass:[MOZMenuItemRepresentedObject class]]) {
+    nsMenuGroupOwnerX* owner =
+        ((MOZMenuItemRepresentedObject*)representedObject).menuGroupOwner;
+    nsMenuItemX* menuItemX = owner->GetMenuItemForCommandID(aMenuItem.tag);
+    if (menuItemX) {
+      inserted = aSeenObjects.insert(menuItemX).second;
+      MOZ_RELEASE_ASSERT(
+          inserted,
+          "Duplicate represented nsMenuItemX object in native menu structure");
+
+      nsIContent* menuItemContent = menuItemX->Content();
+      inserted = aSeenObjects.insert(menuItemContent).second;
+      MOZ_RELEASE_ASSERT(inserted, "Duplicate represented <menuitem> "
+                                   "nsIContent in native menu structure");
+    } else {
+      // The NSMenuItems created in nsMenuBar::CreateNativeAppMenuItem don't
+      // have corresponding nsMenuItemX objects. Ignore those.
+    }
+  }
+
   if (aMenuItem.hasSubmenu) {
     CheckNativeMenuConsistencyImpl(aMenuItem.submenu, aSeenObjects);
   }

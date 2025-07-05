@@ -17,7 +17,7 @@ async function mouseMoveAndWait(elem) {
 }
 
 function closeEnough(actual, expected) {
-  return expected - 1 < actual && actual < expected + 1;
+  return Math.abs(expected - actual) <= 1;
 }
 
 async function resizeWindow(x, y) {
@@ -41,6 +41,8 @@ async function resizeWindow(x, y) {
 }
 
 async function waitForExpectedSize(helper, x, y) {
+  info(`Waiting for size to be ${x}x${y}`);
+
   // Wait a few frames, this is generally enough for the resize to happen.
   await waitForAnimationFrames();
 
@@ -131,9 +133,10 @@ add_task(async function testResizing() {
       document.getElementById("browser")
     ).top;
 
-    let initialWidth = 500 - 8;
-    let initialHeight = 400 - 16 - chromeHeight + 5;
+    let initialWidth = 500;
+    let initialHeight = 400 - chromeHeight;
 
+    // Size should be 100% when small
     await waitForExpectedSize(helper, initialWidth, initialHeight);
 
     // check the preview pagination state for this window size
@@ -145,7 +148,7 @@ add_task(async function testResizing() {
       sheetIndicator: true,
     });
 
-    await resizeWindow(600, 500);
+    await resizeWindow(700, 650 + chromeHeight);
 
     await checkPreviewNavigationVisibility({
       navigateHome: true,
@@ -155,13 +158,17 @@ add_task(async function testResizing() {
       sheetIndicator: true,
     });
 
-    // 100 wider for window, add back the old 4px padding, it's now 16px * 2.
-    let updatedWidth = initialWidth + 100 + 8 - 32;
-    await waitForExpectedSize(helper, updatedWidth, initialHeight + 100);
+    // The middle case between 100% and 80/90%
+    let updatedWidth = 650;
+    let updatedHeight = 625;
+    await waitForExpectedSize(helper, updatedWidth, updatedHeight);
 
-    await resizeWindow(1100, 900);
+    await resizeWindow(1100, 900 + chromeHeight);
 
-    await waitForExpectedSize(helper, 1000, 650);
+    // Max size limit by percent (80% width, 90% height)
+    updatedWidth = 880;
+    updatedHeight = 810;
+    await waitForExpectedSize(helper, updatedWidth, updatedHeight);
 
     await checkPreviewNavigationVisibility({
       navigateHome: true,

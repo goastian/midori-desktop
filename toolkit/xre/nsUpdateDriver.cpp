@@ -79,13 +79,13 @@ static nsresult GetCurrentWorkingDir(nsACString& aOutPath) {
 
 #if defined(XP_WIN)
   wchar_t wpath[MAX_PATH];
-  if (!_wgetcwd(wpath, ArrayLength(wpath))) {
+  if (!_wgetcwd(wpath, std::size(wpath))) {
     return NS_ERROR_FAILURE;
   }
   CopyUTF16toUTF8(nsDependentString(wpath), aOutPath);
 #else
   char path[MAXPATHLEN];
-  if (!getcwd(path, ArrayLength(path))) {
+  if (!getcwd(path, std::size(path))) {
     return NS_ERROR_FAILURE;
   }
   aOutPath = path;
@@ -146,6 +146,11 @@ static bool GetStatusFile(nsIFile* dir, nsCOMPtr<nsIFile>& result) {
   return GetFile(dir, "update.status"_ns, result);
 }
 
+static void GetPidString(nsACString& output) {
+  output.Truncate(0);
+  output.AppendInt((int32_t)getpid());
+}
+
 /**
  * Get the contents of the update.status file when the update.status file can
  * be opened with read and write access. The reason it is opened for both read
@@ -173,6 +178,19 @@ static bool GetStatusFileContents(nsIFile* statusFile, char (&buf)[Size]) {
   PR_Close(fd);
 
   return (n >= 0);
+}
+
+static nsresult WriteFile(nsIFile* file, nsACString& toWrite) {
+  PRFileDesc* fd = nullptr;
+  nsresult rv = file->OpenNSPRFileDesc(PR_WRONLY | PR_CREATE_FILE | PR_TRUNCATE,
+                                       0660, &fd);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  const int32_t n =
+      PR_Write(fd, PromiseFlatCString(toWrite).get(), toWrite.Length());
+  PR_Close(fd);
+
+  return (unsigned long)n == toWrite.Length() ? NS_OK : NS_ERROR_FAILURE;
 }
 
 enum UpdateStatus {
@@ -257,6 +275,18 @@ static bool IsOlderVersion(nsIFile* versionFile, const char* appVersion) {
   }
 
   return mozilla::Version(appVersion) > buf;
+}
+
+nsresult WriteUpdateCompleteTestFile(nsIFile* updRootDir) {
+  nsCOMPtr<nsIFile> outputFile;
+  nsresult rv = updRootDir->Clone(getter_AddRefs(outputFile));
+  NS_ENSURE_SUCCESS(rv, rv);
+  outputFile->AppendNative("test_process_updates.txt"_ns);
+
+  nsAutoCString pid;
+  GetPidString(pid);
+
+  return WriteFile(outputFile, pid);
 }
 
 /**
@@ -362,7 +392,9 @@ static void ApplyUpdate(nsIFile* greDir, nsIFile* updateDir, nsIFile* appDir,
 
   // appFilePath and workingDirPath are only used when the application will be
   // restarted.
+#ifndef XP_MACOSX
   nsAutoCString appFilePath;
+#endif
   nsAutoCString workingDirPath;
   if (restart) {
     // Get the path to the current working directory.
@@ -372,7 +404,9 @@ static void ApplyUpdate(nsIFile* greDir, nsIFile* updateDir, nsIFile* appDir,
     }
 
     // Get the application file path used by the updater to restart the
-    // application after the update has finished.
+    // application after the update has finished. Note that macOS uses the
+    // path to the application bundle, i.e. installDirPath, to relaunch the
+    // application.
     nsCOMPtr<nsIFile> appFile;
     XRE_GetBinaryPath(getter_AddRefs(appFile));
     if (!appFile) {
@@ -386,7 +420,7 @@ static void ApplyUpdate(nsIFile* greDir, nsIFile* updateDir, nsIFile* appDir,
       return;
     }
     CopyUTF16toUTF8(appFilePathW, appFilePath);
-#else
+#elif !defined(XP_MACOSX)
     rv = appFile->GetNativePath(appFilePath);
     if (NS_FAILED(rv)) {
       return;
@@ -495,7 +529,7 @@ static void ApplyUpdate(nsIFile* greDir, nsIFile* updateDir, nsIFile* appDir,
     // which is ignored by the updater.
     pid.AssignLiteral("0");
 #else
-    pid.AppendInt((int32_t)getpid());
+    GetPidString(pid);
 #endif
     if (isStaged) {
       // Append a special token to the PID in order to inform the updater that
@@ -507,9 +541,10 @@ static void ApplyUpdate(nsIFile* greDir, nsIFile* updateDir, nsIFile* appDir,
     pid.AssignLiteral("-1");
   }
 
-  int argc = 5;
+  int argc = 7;
   if (restart) {
-    argc = appArgc + 6;
+    argc += 1;  // callback working directory
+    argc += appArgc;
     if (gRestartedByOS) {
       argc += 1;
     }
@@ -519,20 +554,26 @@ static void ApplyUpdate(nsIFile* greDir, nsIFile* updateDir, nsIFile* appDir,
     return;
   }
   argv[0] = (char*)updaterPath.get();
-  argv[1] = (char*)updateDirPath.get();
-  argv[2] = (char*)installDirPath.get();
-  argv[3] = (char*)applyToDirPath.get();
-  argv[4] = (char*)pid.get();
+  argv[1] = const_cast<char*>("3");
+  argv[2] = (char*)updateDirPath.get();
+  argv[3] = (char*)installDirPath.get();
+  argv[4] = (char*)applyToDirPath.get();
+  argv[5] = const_cast<char*>("first");
+  argv[6] = (char*)pid.get();
   if (restart && appArgc) {
-    argv[5] = (char*)workingDirPath.get();
-    argv[6] = (char*)appFilePath.get();
+    argv[7] = (char*)workingDirPath.get();
+#if defined(XP_MACOSX)
+    argv[8] = (char*)installDirPath.get();
+#else
+    argv[8] = (char*)appFilePath.get();
+#endif
     for (int i = 1; i < appArgc; ++i) {
-      argv[6 + i] = appArgv[i];
+      argv[8 + i] = appArgv[i];
     }
     if (gRestartedByOS) {
       // We haven't truly started up, restore this argument so that we will have
       // it upon restart.
-      argv[6 + appArgc] = const_cast<char*>("-os-restarted");
+      argv[8 + appArgc] = const_cast<char*>("-os-restarted");
     }
   }
   argv[argc] = nullptr;

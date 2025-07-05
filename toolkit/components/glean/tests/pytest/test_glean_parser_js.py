@@ -30,8 +30,16 @@ def test_all_metric_types():
     UPDATE_EXPECT=1 mach test toolkit/components/glean/tests/pytest
     """
 
-    options = {"allow_reserved": False}
-    input_files = [Path(path.join(path.dirname(__file__), "metrics_test.yaml"))]
+    options = {"allow_reserved": False, "is_local_build": False}
+    input_files = [
+        Path(path.join(path.dirname(__file__), x))
+        for x in ["metrics_test.yaml", "metrics2_test.yaml"]
+    ]
+
+    interesting = [
+        Path(path.join(path.dirname(__file__), x)) for x in ["metrics_test.yaml"]
+    ]
+    options.update({"interesting": interesting})
 
     all_objs, options = run_glean_parser.parse_with_options(input_files, options)
 

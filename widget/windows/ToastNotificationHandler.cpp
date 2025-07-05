@@ -298,14 +298,14 @@ void ToastNotificationHandler::UnregisterHandler() {
   SendFinished();
 }
 
-nsresult ToastNotificationHandler::InitAlertAsync(
-    nsIAlertNotification* aAlert) {
-  MOZ_TRY(InitWindowsTag());
+nsresult ToastNotificationHandler::InitAlertAsync() {
+  MOZ_TRY(mAlertNotification->GetId(mWindowsTag));
 
 #ifdef MOZ_BACKGROUNDTASKS
   nsAutoString imageUrl;
   if (BackgroundTasks::IsBackgroundTaskMode() &&
-      NS_SUCCEEDED(aAlert->GetImageURL(imageUrl)) && !imageUrl.IsEmpty()) {
+      NS_SUCCEEDED(mAlertNotification->GetImageURL(imageUrl)) &&
+      !imageUrl.IsEmpty()) {
     // Bug 1870750: Image decoding relies on gfx and runs on a thread pool,
     // which expects to have been initialized early and on the main thread.
     // Since background tasks run headless this never occurs. In this case we
@@ -314,62 +314,9 @@ nsresult ToastNotificationHandler::InitAlertAsync(
   }
 #endif
 
-  return aAlert->LoadImage(/* aTimeout = */ 0, this, /* aUserData = */ nullptr,
-                           getter_AddRefs(mImageRequest));
-}
-
-// Uniquely identify this toast to Windows.  Existing names and cookies are not
-// suitable: we want something generated and unique.  This is needed to check if
-// toast is still present in the Windows Action Center when we receive a dismiss
-// timeout.
-//
-// Local testing reveals that the space of tags is not global but instead is per
-// AUMID.  Since an installation uses a unique AUMID incorporating the install
-// directory hash, it should not witness another installation's tag.
-nsresult ToastNotificationHandler::InitWindowsTag() {
-  mWindowsTag.Truncate();
-
-  nsAutoString tag;
-
-  // Multiple profiles might overwrite each other's toast messages when a
-  // common name is used for a given host port. We prevent this by including
-  // the profile directory as part of the toast hash.
-  nsCOMPtr<nsIFile> profDir;
-  MOZ_TRY(NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR,
-                                 getter_AddRefs(profDir)));
-  MOZ_TRY(profDir->GetPath(tag));
-
-  if (!mHostPort.IsEmpty()) {
-    // Notification originated from a web notification.
-    // `mName` will be in the form `{mHostPort}#tag:{tag}` if the notification
-    // was created with a tag and `{mHostPort}#notag:{uuid}` otherwise.
-    tag += mName;
-  } else {
-    // Notification originated from the browser chrome.
-    if (!mName.IsEmpty()) {
-      tag += u"chrome#tag:"_ns;
-      // Browser chrome notifications don't follow any convention for naming.
-      tag += mName;
-    } else {
-      // No associated name, append a UUID to prevent reuse of the same tag.
-      nsIDToCString uuidString(nsID::GenerateUUID());
-      size_t len = strlen(uuidString.get());
-      MOZ_ASSERT(len == NSID_LENGTH - 1);
-      nsAutoString uuid;
-      CopyASCIItoUTF16(nsDependentCSubstring(uuidString.get(), len), uuid);
-
-      tag += u"chrome#notag:"_ns;
-      tag += uuid;
-    }
-  }
-
-  // Windows notification tags are limited to 16 characters, or 64 characters
-  // after the Creators Update; therefore we hash the tag to fit the minimum
-  // range.
-  HashNumber hash = HashString(tag);
-  mWindowsTag.AppendPrintf("%010u", hash);
-
-  return NS_OK;
+  return mAlertNotification->LoadImage(/* aTimeout = */ 0, this,
+                                       /* aUserData = */ nullptr,
+                                       getter_AddRefs(mImageRequest));
 }
 
 nsString ToastNotificationHandler::ActionArgsJSONString(
@@ -395,8 +342,10 @@ nsString ToastNotificationHandler::ActionArgsJSONString(
       w.StringProperty("privilegedName", NS_ConvertUTF16toUTF8(mName));
     }
   } else {
-    if (!mHostPort.IsEmpty()) {
-      w.StringProperty("launchUrl", NS_ConvertUTF16toUTF8(mHostPort));
+    nsAutoCString origin;
+    nsresult rv = mAlertNotification->GetOrigin(origin);
+    if (NS_SUCCEEDED(rv) && !origin.IsVoid()) {
+      w.StringProperty("origin", origin);
     }
   }
 
@@ -938,22 +887,28 @@ ToastNotificationHandler::OnActivate(
         }
       }
 
-      if (mHandleActions) {
-        Json::Value jsonData;
-        Json::Reader jsonReader;
+      Json::Value jsonData;
+      Json::Reader jsonReader;
+      Maybe<nsString> actionValue;
+      nsCOMPtr<nsIAlertAction> alertAction;
 
-        if (jsonReader.parse(NS_ConvertUTF16toUTF8(actionString).get(),
-                             jsonData, false)) {
-          char actionKey[] = "action";
-          if (jsonData.isMember(actionKey) && jsonData[actionKey].isString()) {
-            mAlertListener->Observe(
-                nullptr, "alertactioncallback",
-                NS_ConvertUTF8toUTF16(jsonData[actionKey].asCString()).get());
-          }
+      if (jsonReader.parse(NS_ConvertUTF16toUTF8(actionString).get(), jsonData,
+                           false)) {
+        char actionKey[] = "action";
+        if (jsonData.isMember(actionKey) && jsonData[actionKey].isString()) {
+          actionValue.emplace(
+              NS_ConvertUTF8toUTF16(jsonData[actionKey].asCString()));
         }
       }
 
-      mAlertListener->Observe(nullptr, "alertclickcallback", mCookie.get());
+      if (actionValue) {
+        mAlertNotification->GetAction(*actionValue,
+                                      getter_AddRefs(alertAction));
+      }
+
+      // Null subject for the default action or an action object for extra
+      // actions
+      mAlertListener->Observe(alertAction, "alertclickcallback", mCookie.get());
     }
   }
   mBackend->RemoveHandler(mName, this);
@@ -1055,10 +1010,6 @@ ToastNotificationHandler::OnFail(const ComPtr<IToastNotification>& notification,
   aArgs->get_ErrorCode(&err);
   MOZ_LOG(sWASLog, LogLevel::Error,
           ("Error creating notification, error: %ld", err));
-
-  if (mHandleActions) {
-    mAlertListener->Observe(nullptr, "alerterror", mCookie.get());
-  }
 
   SendFinished();
   mBackend->RemoveHandler(mName, this);

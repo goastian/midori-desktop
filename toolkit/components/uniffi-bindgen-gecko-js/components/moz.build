@@ -4,12 +4,15 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-EXTRA_JS_MODULES += [
+MOZ_SRC_FILES += [
+    "generated/RustContextId.sys.mjs",
     "generated/RustRelevancy.sys.mjs",
     "generated/RustRemoteSettings.sys.mjs",
+    "generated/RustSearch.sys.mjs",
     "generated/RustSuggest.sys.mjs",
     "generated/RustSync15.sys.mjs",
     "generated/RustTabs.sys.mjs",
+    "generated/RustWebextstorage.sys.mjs",
 ]
 
 with Files("**"):

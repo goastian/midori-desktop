@@ -9,7 +9,6 @@ avoid-blacklist-and-whitelist:
     # Based on codespell with idl and webidl added.
     extensions:
         - js
-        - jsm
         - mjs
         - jxs
         - idl
@@ -30,12 +29,12 @@ avoid-blacklist-and-whitelist:
         - java
         - kt
     exclude:
-        - '**/.eslintrc-rollouts.js'
+        - eslint-rollouts.config.mjs
+        - eslint-file-globals.config.mjs
         - browser/app/profile/firefox.js
         - browser/app/winlauncher/LauncherProcessWin.cpp
         - browser/base/content/browser.js
         - browser/base/content/contentTheme.js
-        - browser/base/content/test/general/browser_tab_drag_drop_perwindow.js
         - browser/base/content/test/performance/browser_preferences_usage.js
         - browser/base/content/test/protectionsUI/browser_protectionsUI_cryptominers.js
         - browser/base/content/test/protectionsUI/browser_protectionsUI_fingerprinters.js
@@ -44,24 +43,23 @@ avoid-blacklist-and-whitelist:
         - browser/base/content/test/protectionsUI/browser_protectionsUI_state.js
         - browser/base/content/test/protectionsUI/browser_protectionsUI_subview_shim.js
         - browser/base/content/test/siteIdentity/browser_no_mcb_for_loopback.js
-        - browser/base/content/test/tabMediaIndicator/browser_mute_webAudio.js
         - browser/components/enterprisepolicies/Policies.sys.mjs
         - browser/components/migration/ChromeMigrationUtils.sys.mjs
         - browser/components/migration/ChromeProfileMigrator.sys.mjs
-        - browser/components/newtab/data/content/activity-stream.bundle.js
         - browser/components/preferences/privacy.inc.xhtml
         - browser/components/preferences/privacy.js
         - browser/components/resistfingerprinting/test/mochitest/test_bug1354633_media_error.html
         - browser/components/safebrowsing/content/test/browser_whitelisted.js
         - browser/components/sessionstore/test/browser_crashedTabs.js
+        - browser/components/tabbrowser/test/browser/tabMediaIndicator/browser_mute_webAudio.js
         - browser/components/tabbrowser/test/browser/tabs/browser_new_file_whitelisted_http_tab.js
-        - browser/components/uitour/UITourChild.sys.mjs
+        - browser/components/tabbrowser/test/browser/tabs/browser_tab_drag_drop_perwindow.js
         - browser/components/urlbar/tests/browser/browser_searchSingleWordNotification.js
         - browser/components/urlbar/tests/browser/browser_UrlbarInput_trimURLs.js
         - browser/components/urlbar/tests/unit/test_providerHeuristicFallback.js
         - browser/components/urlbar/tests/unit/test_search_suggestions.js
         - browser/components/urlbar/tests/unit/test_tokenizer.js
-        - browser/extensions/screenshots/background/main.js
+        - browser/extensions/newtab/data/content/activity-stream.bundle.js
         - browser/extensions/webcompat/shims/nielsen.js
         - browser/modules/SitePermissions.sys.mjs
         - browser/tools/mozscreenshots/mozscreenshots/extension/configurations/PermissionPrompts.sys.mjs
@@ -70,7 +68,6 @@ avoid-blacklist-and-whitelist:
         - build/clang-plugin/NaNExprChecker.cpp
         - build/clang-plugin/NoPrincipalGetURI.cpp
         - build/clang-plugin/tests/TestNANTestingExpr.cpp
-        - build/compare-mozconfig/compare-mozconfigs.py
         - build/moz.configure/bindgen.configure
         - build/moz.configure/toolchain.configure
         - config/check_vanilla_allocations.py
@@ -153,7 +150,6 @@ avoid-blacklist-and-whitelist:
         - layout/tools/reftest/reftestcommandline.py
         - layout/tools/reftest/runreftest.py
         - layout/tools/reftest/selftest/conftest.py
-        - mobile/android/android-components/components/feature/webcompat/src/main/assets/extensions/webcompat/shims/nielsen.js
         - mobile/android/android-components/docs/changelog.md
         - mobile/android/app/geckoview-prefs.js
         - mobile/android/fenix/app/src/main/java/org/mozilla/fenix/ext/Bitmap.kt
@@ -172,7 +168,6 @@ avoid-blacklist-and-whitelist:
         - netwerk/base/nsIPermissionManager.idl
         - netwerk/base/nsIProtocolHandler.idl
         - netwerk/base/nsIOService.cpp
-        - netwerk/base/nsIURI.idl
         - netwerk/base/nsURLHelper.cpp
         - netwerk/cookie/CookieCommons.h
         - netwerk/dns/nsHostRecord.cpp
@@ -273,22 +268,7 @@ avoid-blacklist-and-whitelist:
         - toolkit/modules/Troubleshoot.sys.mjs
         - toolkit/mozapps/extensions/internal/XPIInstall.sys.mjs
         - toolkit/mozapps/extensions/test/browser/browser_html_discover_view.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_Device.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_DriverNew.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_Equal_DriverNew.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_Equal_DriverOld.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_Equal_OK.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_GTE_DriverOld.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_GTE_OK.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_No_Comparison.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_OK.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_OS.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_OSVersion_match.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_OSVersion_mismatch_DriverVersion.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_OSVersion_mismatch_OSVersion.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_prefs.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_Vendor.js
-        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlacklist_Version.js
+        - toolkit/mozapps/extensions/test/xpcshell/rs-blocklist/test_gfxBlocklist_prefs.js
         - toolkit/mozapps/extensions/test/xpcshell/test_permissions.js
         - toolkit/mozapps/extensions/test/xpcshell/test_permissions_prefs.js
         - toolkit/mozapps/extensions/test/xpinstall/browser_bug645699.js

@@ -11,12 +11,14 @@
 
 [package]
 edition = "2018"
+rust-version = "1.36"
 name = "unicode-normalization"
-version = "0.1.22"
+version = "0.1.24"
 authors = [
     "kwantam <kwantam@gmail.com>",
     "Manish Goregaokar <manishsmail@gmail.com>",
 ]
+build = false
 exclude = [
     "target/*",
     "Cargo.lock",
@@ -24,6 +26,10 @@ exclude = [
     "*.txt",
     "tests/*",
 ]
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 description = """
 This crate provides functions for normalization of
 Unicode strings, including Canonical and Compatible
@@ -42,6 +48,14 @@ keywords = [
 ]
 license = "MIT/Apache-2.0"
 repository = "https://github.com/unicode-rs/unicode-normalization"
+
+[lib]
+name = "unicode_normalization"
+path = "src/lib.rs"
+
+[[bench]]
+name = "bench"
+path = "benches/bench.rs"
 
 [dependencies.tinyvec]
 version = "1"

@@ -2,7 +2,7 @@
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
 
-<!DOCTYPE html>
+<!doctype html>
 
 <html>
   <head>
@@ -64,12 +64,15 @@
           class="primary"
           data-l10n-id="about-httpsonly-button-go-back"
         ></button>
+        <!-- This button only looks "disabled", but still allows JS events to
+             propagate for the clickjacking protection. -->
         <button
           id="openInsecure"
           data-l10n-id="about-httpsonly-button-continue-to-site"
-          inert
+          class="disabled"
         ></button>
       </div>
+
       <p id="explanation-iframe" hidden>
         <span data-l10n-id="about-httpsonly-explanation-iframe"></span>
         <a
@@ -78,6 +81,7 @@
           data-l10n-id="about-httpsonly-link-learn-more"
         ></a>
       </p>
+
       <div class="suggestion-box" hidden>
         <h2 data-l10n-id="about-httpsonly-suggestion-box-header"></h2>
       </div>

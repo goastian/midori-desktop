@@ -59,7 +59,8 @@ static mozilla::LazyLogModule sRemoteLm("nsXRemoteClient");
 static int (*sOldHandler)(Display*, XErrorEvent*);
 static bool sGotBadWindow;
 
-nsXRemoteClient::nsXRemoteClient() {
+nsXRemoteClient::nsXRemoteClient(nsACString& aStartupToken)
+    : mStartupToken(aStartupToken) {
   mDisplay = 0;
   mInitialized = false;
   mMozVersionAtom = 0;
@@ -84,7 +85,7 @@ static const char* XAtomNames[] = {
     MOZILLA_VERSION_PROP, MOZILLA_LOCK_PROP,       MOZILLA_RESPONSE_PROP,
     "WM_STATE",           MOZILLA_USER_PROP,       MOZILLA_PROFILE_PROP,
     MOZILLA_PROGRAM_PROP, MOZILLA_COMMANDLINE_PROP};
-static Atom XAtoms[MOZ_ARRAY_LENGTH(XAtomNames)];
+static Atom XAtoms[std::size(XAtomNames)];
 
 nsresult nsXRemoteClient::Init() {
   MOZ_LOG(sRemoteLm, LogLevel::Debug, ("nsXRemoteClient::Init"));
@@ -96,8 +97,8 @@ nsresult nsXRemoteClient::Init() {
   if (!mDisplay) return NS_ERROR_FAILURE;
 
   // get our atoms
-  XInternAtoms(mDisplay, const_cast<char**>(XAtomNames),
-               MOZ_ARRAY_LENGTH(XAtomNames), False, XAtoms);
+  XInternAtoms(mDisplay, const_cast<char**>(XAtomNames), std::size(XAtomNames),
+               False, XAtoms);
 
   int i = 0;
   mMozVersionAtom = XAtoms[i++];
@@ -138,14 +139,13 @@ static int HandleBadWindow(Display* display, XErrorEvent* event) {
   return (*sOldHandler)(display, event);
 }
 
-nsresult nsXRemoteClient::SendCommandLine(
-    const char* aProgram, const char* aProfile, int32_t argc, char** argv,
-    const char* aStartupToken, char** aResponse, bool* aWindowFound) {
+nsresult nsXRemoteClient::SendCommandLine(const char* aProgram,
+                                          const char* aProfile, int32_t argc,
+                                          const char** argv, bool aRaise) {
+  // aRaise is unused on this platform.
   NS_ENSURE_TRUE(aProgram, NS_ERROR_INVALID_ARG);
 
   MOZ_LOG(sRemoteLm, LogLevel::Debug, ("nsXRemoteClient::SendCommandLine"));
-
-  *aWindowFound = false;
 
   // FindBestWindow() iterates down the window hierarchy, so catch X errors
   // when windows get destroyed before being accessed.
@@ -153,12 +153,9 @@ nsresult nsXRemoteClient::SendCommandLine(
 
   Window w = FindBestWindow(aProgram, aProfile);
 
-  nsresult rv = NS_OK;
+  nsresult rv = w ? NS_OK : NS_ERROR_NOT_AVAILABLE;
 
   if (w) {
-    // ok, let the caller know that we at least found a window.
-    *aWindowFound = true;
-
     // Ignore BadWindow errors up to this point.  The last request from
     // FindBestWindow() was a synchronous XGetWindowProperty(), so no need to
     // Sync.  Leave the error handler installed to detect if w gets destroyed.
@@ -174,7 +171,10 @@ nsresult nsXRemoteClient::SendCommandLine(
 
     if (NS_SUCCEEDED(rv)) {
       // send our command
-      rv = DoSendCommandLine(w, argc, argv, aStartupToken, aResponse,
+      rv = DoSendCommandLine(w, argc, argv,
+                             mStartupToken.IsEmpty()
+                                 ? nullptr
+                                 : PromiseFlatCString(mStartupToken).get(),
                              &destroyed);
 
       // if the window was destroyed, don't bother trying to free the
@@ -527,23 +527,28 @@ nsresult nsXRemoteClient::FreeLock(Window aWindow) {
 }
 
 nsresult nsXRemoteClient::DoSendCommandLine(Window aWindow, int32_t argc,
-                                            char** argv,
+                                            const char** argv,
                                             const char* aStartupToken,
-                                            char** aResponse,
                                             bool* aDestroyed) {
   *aDestroyed = false;
 
   int commandLineLength;
-  char* commandLine =
+  mozilla::UniquePtr<char[]> commandLine =
       ConstructCommandLine(argc, argv, aStartupToken, &commandLineLength);
   XChangeProperty(mDisplay, aWindow, mMozCommandLineAtom, XA_STRING, 8,
-                  PropModeReplace, (unsigned char*)commandLine,
+                  PropModeReplace, (unsigned char*)commandLine.get(),
                   commandLineLength);
-  free(commandLine);
 
-  if (!WaitForResponse(aWindow, aResponse, aDestroyed, mMozCommandLineAtom))
+  char* response;
+  if (!WaitForResponse(aWindow, &response, aDestroyed, mMozCommandLineAtom))
     return NS_ERROR_FAILURE;
 
+  if (strcmp(response, "500 command not parseable") == 0) {
+    free(response);
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  free(response);
   return NS_OK;
 }
 

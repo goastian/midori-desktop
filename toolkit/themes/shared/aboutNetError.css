@@ -60,10 +60,6 @@ button:disabled {
   margin-top: 2em;
 }
 
-#openInNewWindowContainer {
-  margin-bottom: 0;
-}
-
 #advancedPanelButtonContainer {
   background-color: rgba(128, 128, 147, 0.1);
   display: flex;
@@ -84,13 +80,6 @@ button:disabled {
   margin-inline-start: 0;
 }
 
-#blockingErrorReporting {
-  padding-bottom: 10px;
-  /* Pull a bit closer to the top than the other .advanced-panel containers
-   * as this is just a checkbox. */
-  margin-top: 1.2em;
-}
-
 .advanced-panel-container {
   width: 100%;
   position: absolute;
@@ -98,14 +87,14 @@ button:disabled {
 }
 
 .trr-message-container {
-  background-color: var(--in-content-box-background);
+  background-color: var(--background-color-box);
   border: 1px solid var(--in-content-box-border-color);
   border-radius: 4px;
   padding: 10px;
 }
 
 #badCertAdvancedPanel {
-  background-color: var(--in-content-box-background);
+  background-color: var(--background-color-box);
   border: 1px solid var(--in-content-box-border-color);
 }
 
@@ -163,6 +152,35 @@ button:disabled {
   line-height: 1.3;
   font-weight: 400;
   margin-top: 10px;
+}
+
+/* Felt Privacy v1 LARGER SCREEN! */
+/* stylelint-disable-next-line media-query-no-invalid */
+@media -moz-pref("security.certerrors.felt-privacy-v1") {
+  .felt-privacy-body {
+    justify-content: start;
+  }
+
+  net-error-card {
+    width: min(100%, 720px);
+    min-width: min-content;
+    margin-top: 150px;
+  }
+
+  .felt-privacy-container {
+    display: flex;
+    flex-direction: row;
+  }
+
+  .img-container > img {
+    width: 8.75em;
+    margin-block-start: 2em;
+    margin-inline-end: 2.5em;
+  }
+
+  #viewCertificate {
+    margin: 0;
+  }
 }
 
 @media only screen and (max-width: 959px) {

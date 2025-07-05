@@ -14,7 +14,7 @@
 namespace mozilla {
 
 #ifdef JS_STANDALONE
-static bool fuzzing_verbose = !!getenv("MOZ_FUZZ_LOG");
+MOZ_RUNINIT static bool fuzzing_verbose = !!getenv("MOZ_FUZZ_LOG");
 void fuzzing_log(const char* aFmt, ...) {
   if (fuzzing_verbose) {
     va_list ap;
@@ -30,10 +30,12 @@ LazyLogModule gFuzzingLog("nsFuzzing");
 }  // namespace mozilla
 
 #ifdef AFLFUZZ
+__attribute__((weak)) extern uint8_t* __afl_area_ptr;
+__attribute__((weak)) extern uint32_t __afl_map_size;
+
 __AFL_FUZZ_INIT();
 
 int afl_interface_raw(FuzzingTestFuncRaw testFunc) {
-  __AFL_INIT();
   char* testFilePtr = getenv("MOZ_FUZZ_TESTFILE");
   uint8_t* buf = NULL;
 
@@ -54,13 +56,23 @@ int afl_interface_raw(FuzzingTestFuncRaw testFunc) {
       MOZ_RELEASE_ASSERT(buf);
       is.read(reinterpret_cast<char*>(buf), len);
       is.close();
-      testFunc(buf, len);
+      if (testFunc(buf, len)) {
+        // this pattern is from the driver for
+        // LLVMFuzzerTestOneInput in aflpp_driver.c
+        memset(__afl_area_ptr, 0, __afl_map_size);
+        __afl_area_ptr[0] = 1;
+      }
     }
   } else {
     buf = __AFL_FUZZ_TESTCASE_BUF;
     while (__AFL_LOOP(1000)) {
       size_t len = __AFL_FUZZ_TESTCASE_LEN;
-      testFunc(buf, len);
+      if (testFunc(buf, len)) {
+        // this pattern is from the driver for
+        // LLVMFuzzerTestOneInput in aflpp_driver.c
+        memset(__afl_area_ptr, 0, __afl_map_size);
+        __afl_area_ptr[0] = 1;
+      }
     }
   }
 

@@ -1,0 +1,122 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Various tests that spawn in out-of-process iframes.</title>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script type="application/javascript" src="apz_test_utils.js"></script>
+  <script type="application/javascript" src="apz_test_native_event_utils.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
+  <script type="application/javascript">
+
+    var prefs = [
+    ];
+
+    var logging_prefs = [
+      ...prefs,
+      ["apz.test.logging_enabled", true],
+    ]
+
+    var animation_prefs = [
+      ...prefs,
+      // To avoid throttling requestAnimationFrame callbacks in invisible
+      // iframes
+      ["layout.throttled_frame_rate", 60],
+    ];
+
+    var hit_test_prefs = [
+      ...logging_prefs,
+      ["test.events.async.enabled", true],
+    ];
+
+    var subtests = [
+      {
+        "file": "helper_fission_checkerboard_severity.html",
+        "prefs": logging_prefs
+      },
+      {
+        "file": "helper_fission_force_empty_hit_region.html",
+        "prefs": hit_test_prefs
+      },
+      {
+        "file": "helper_fission_inactivescroller_positionedcontent.html",
+        "prefs": hit_test_prefs
+      },
+      {
+        "file": "helper_fission_initial_displayport.html",
+        "prefs": logging_prefs
+      },
+      { "file": "helper_fission_large_subframe.html", "prefs": logging_prefs },
+      { "file": "helper_fission_setResolution.html", "prefs": prefs },
+      {
+        "file": "helper_fission_tap.html",
+        "prefs": [["apz.max_tap_time", 10000]],
+      },
+      {
+        "file": "helper_fission_tap_in_nested_iframe_on_zoomed.html",
+        "prefs": [["apz.max_tap_time", 10000]],
+      },
+      {
+        "file": "helper_fission_tap_on_zoomed.html",
+        "prefs": [["apz.max_tap_time", 10000]],
+      },
+      { "file": "helper_fission_touch.html", "prefs": prefs },
+      { "file": "helper_fission_transforms.html", "prefs": prefs },
+      {
+        "file": "helper_fission_animation_styling_in_oopif.html",
+        "prefs": animation_prefs
+      },
+      {
+        "file": "helper_fission_animation_styling_in_transformed_oopif.html",
+        "prefs": animation_prefs
+      },
+      {
+        "file": "helper_fission_irregular_areas.html",
+        "prefs": hit_test_prefs
+      },
+      {
+        "file": "helper_fission_empty_clip.html",
+        "prefs": hit_test_prefs
+      },
+      {
+        "file": "helper_fission_unresolved_clip.html",
+        "prefs": hit_test_prefs
+      },
+      {
+        "file": "helper_fission_inactivescroller_under_oopif.html",
+        "prefs": hit_test_prefs
+      }
+    ];
+
+    if (getPlatform() != "android") {
+      subtests.push(
+        { // Skip on Android because of missing native wheel event support
+          "file": "helper_fission_event_region_override.html",
+          "prefs": [["apz.test.mac.synth_wheel_input", true]]
+        },
+        {
+          "file": "helper_fission_scroll_handoff.html",
+          "prefs": prefs
+        },
+        {
+          "file": "helper_fission_scroll_oopif.html",
+          "prefs": [["apz.test.mac.synth_wheel_input", true]]
+        },
+      );
+    }
+
+    if (isApzEnabled()) {
+      // This has a lot of subtests, and Android emulators are slow.
+      SimpleTest.requestLongerTimeout(2);
+      SimpleTest.waitForExplicitFinish();
+      window.onload = function () {
+        runSubtestsSeriallyInFreshWindows(subtests)
+          .then(SimpleTest.finish, SimpleTest.finishWithFailure);
+      };
+    }
+
+  </script>
+</head>
+<body>
+</body>
+</html>

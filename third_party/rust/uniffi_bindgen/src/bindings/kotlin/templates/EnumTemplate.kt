@@ -17,7 +17,7 @@ enum class {{ type_name }} {
     {%- endfor %}
     companion object
 }
-{% when Some with (variant_discr_type) %}
+{% when Some(variant_discr_type) %}
 enum class {{ type_name }}(val value: {{ variant_discr_type|type_name(ci) }}) {
     {% for variant in e.variants() -%}
     {%- call kt::docstring(variant, 4) %}
@@ -27,9 +27,16 @@ enum class {{ type_name }}(val value: {{ variant_discr_type|type_name(ci) }}) {
 }
 {% endmatch %}
 
+/**
+ * @suppress
+ */
 public object {{ e|ffi_converter_name }}: FfiConverterRustBuffer<{{ type_name }}> {
     override fun read(buf: ByteBuffer) = try {
+        {% if config.use_enum_entries() %}
+        {{ type_name }}.entries[buf.getInt() - 1]
+        {% else -%}
         {{ type_name }}.values()[buf.getInt() - 1]
+        {%- endif %}
     } catch (e: IndexOutOfBoundsException) {
         throw RuntimeException("invalid enum value, something is very wrong!!", e)
     }
@@ -80,6 +87,9 @@ sealed class {{ type_name }}{% if contains_object_references %}: Disposable {% e
     companion object
 }
 
+/**
+ * @suppress
+ */
 public object {{ e|ffi_converter_name }} : FfiConverterRustBuffer<{{ type_name }}>{
     override fun read(buf: ByteBuffer): {{ type_name }} {
         return when(buf.getInt()) {

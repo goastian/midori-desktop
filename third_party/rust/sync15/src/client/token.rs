@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use crate::error::{self, Error as ErrorKind, Result};
+use crate::error::{self, debug, trace, warn, Error as ErrorKind, Result};
 use crate::ServerTimestamp;
 use rc_crypto::hawk;
 use serde_derive::*;
@@ -99,7 +99,7 @@ impl TokenServerFetcher {
 
 impl TokenFetcher for TokenServerFetcher {
     fn fetch_token(&self) -> Result<TokenFetchResult> {
-        log::debug!("Fetching token from {}", self.server_url);
+        debug!("Fetching token from {}", self.server_url);
         let resp = Request::get(self.server_url.clone())
             .header(
                 header_names::AUTHORIZATION,
@@ -109,9 +109,9 @@ impl TokenFetcher for TokenServerFetcher {
             .send()?;
 
         if !resp.is_success() {
-            log::warn!("Non-success status when fetching token: {}", resp.status);
+            warn!("Non-success status when fetching token: {}", resp.status);
             // TODO: the body should be JSON and contain a status parameter we might need?
-            log::trace!("  Response body {}", resp.text());
+            trace!("  Response body {}", resp.text());
             // XXX - shouldn't we "chain" these errors - ie, a BackoffError could
             // have a TokenserverHttpError as its cause?
             if let Some(res) = resp.headers.get_as::<f64, _>(header_names::RETRY_AFTER) {
@@ -288,10 +288,9 @@ impl<TF: TokenFetcher> TokenProviderImpl<TF> {
                         if prev == tc.token.api_endpoint {
                             TokenState::Token(tc)
                         } else {
-                            log::warn!(
+                            warn!(
                                 "api_endpoint changed from {} to {}",
-                                prev,
-                                tc.token.api_endpoint
+                                prev, tc.token.api_endpoint
                             );
                             TokenState::NodeReassigned
                         }
@@ -331,7 +330,7 @@ impl<TF: TokenFetcher> TokenProviderImpl<TF> {
             }
             TokenState::Backoff(ref until, ref existing_endpoint) => {
                 if let Ok(remaining) = until.duration_since(self.fetcher.now()) {
-                    log::debug!("enforcing existing backoff - {:?} remains", remaining);
+                    debug!("enforcing existing backoff - {:?} remains", remaining);
                     None
                 } else {
                     // backoff period is over
@@ -402,11 +401,11 @@ pub struct TokenProvider {
 }
 
 impl TokenProvider {
-    pub fn new(url: Url, access_token: String, key_id: String) -> Result<Self> {
+    pub fn new(url: Url, access_token: String, key_id: String) -> Self {
         let fetcher = TokenServerFetcher::new(url, access_token, key_id);
-        Ok(Self {
+        Self {
             imp: TokenProviderImpl::new(fetcher),
-        })
+        }
     }
 
     pub fn hashed_uid(&self) -> Result<String> {
@@ -448,17 +447,18 @@ mod tests {
         }
     }
 
-    fn make_tsc<FF, FN>(fetch: FF, now: FN) -> TokenProviderImpl<TestFetcher<FF, FN>>
+    fn make_tsc<FF, FN>(fetch: FF, now: FN) -> Result<TokenProviderImpl<TestFetcher<FF, FN>>>
     where
         FF: Fn() -> Result<TokenFetchResult>,
         FN: Fn() -> SystemTime,
     {
         let fetcher: TestFetcher<FF, FN> = TestFetcher { fetch, now };
-        TokenProviderImpl::new(fetcher)
+        Ok(TokenProviderImpl::new(fetcher))
     }
 
     #[test]
     fn test_endpoint() {
+        nss::ensure_initialized();
         // Use a cell to avoid the closure having a mutable ref to this scope.
         let counter: Cell<u32> = Cell::new(0);
         let fetch = || {
@@ -476,7 +476,7 @@ mod tests {
             })
         };
 
-        let tsc = make_tsc(fetch, SystemTime::now);
+        let tsc = make_tsc(fetch, SystemTime::now).unwrap();
 
         let e = tsc.api_endpoint().expect("should work");
         assert_eq!(e, "api_endpoint".to_string());
@@ -490,6 +490,7 @@ mod tests {
 
     #[test]
     fn test_backoff() {
+        nss::ensure_initialized();
         let counter: Cell<u32> = Cell::new(0);
         let fetch = || {
             counter.set(counter.get() + 1);
@@ -497,7 +498,7 @@ mod tests {
             Err(ErrorKind::BackoffError(when))
         };
         let now: Cell<SystemTime> = Cell::new(SystemTime::now());
-        let tsc = make_tsc(fetch, || now.get());
+        let tsc = make_tsc(fetch, || now.get()).unwrap();
 
         tsc.api_endpoint().expect_err("should bail");
         // XXX - check error type.
@@ -518,6 +519,7 @@ mod tests {
 
     #[test]
     fn test_validity() {
+        nss::ensure_initialized();
         let counter: Cell<u32> = Cell::new(0);
         let fetch = || {
             counter.set(counter.get() + 1);
@@ -534,7 +536,7 @@ mod tests {
             })
         };
         let now: Cell<SystemTime> = Cell::new(SystemTime::now());
-        let tsc = make_tsc(fetch, || now.get());
+        let tsc = make_tsc(fetch, || now.get()).unwrap();
 
         tsc.api_endpoint().expect("should get a valid token");
         assert_eq!(counter.get(), 1);

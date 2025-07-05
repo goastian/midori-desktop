@@ -196,29 +196,7 @@ function readFileOfLength(aFileName, aExpectedLength) {
  */
 async function readFileDataAsDataURL(file, mimeType) {
   const data = readFileData(file);
-  return fileDataToDataURL(data, mimeType);
-}
-
-/**
- * Converts the given data to the data URL.
- *
- * @param data
- *        The file data.
- * @param mimeType
- *        The mime type of the file content.
- * @return Promise that retunes data URL.
- */
-async function fileDataToDataURL(data, mimeType) {
-  const dataURL = await new Promise(resolve => {
-    const buffer = new Uint8ClampedArray(data);
-    const blob = new Blob([buffer], { type: mimeType });
-    const reader = new FileReader();
-    reader.onload = e => {
-      resolve(e.target.result);
-    };
-    reader.readAsDataURL(blob);
-  });
-  return dataURL;
+  return PlacesTestUtils.fileDataToDataURL(data, mimeType);
 }
 
 /**
@@ -235,7 +213,7 @@ function base64EncodeString(aString) {
   var stream = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(
     Ci.nsIStringInputStream
   );
-  stream.setData(aString, aString.length);
+  stream.setByteStringData(aString);
   var encoder = Cc["@mozilla.org/scriptablebase64encoder;1"].createInstance(
     Ci.nsIScriptableBase64Encoder
   );
@@ -406,8 +384,7 @@ function promiseTopicObserved(aTopic) {
     ) {
       Services.obs.removeObserver(observe, aObsTopic);
       resolve([aObsSubject, aObsData]);
-    },
-    aTopic);
+    }, aTopic);
   });
 }
 
@@ -755,64 +732,6 @@ function compareAscending(a, b) {
 
 function sortBy(array, prop) {
   return array.sort((a, b) => compareAscending(a[prop], b[prop]));
-}
-
-/**
- * Asynchronously set the favicon associated with a page.
- * @param page
- *        The page's URL
- * @param icon
- *        The URL of the favicon to be set.
- * @param [optional] forceReload
- *        Whether to enforce reloading the icon.
- */
-function setFaviconForPage(page, icon, forceReload = true) {
-  let pageURI =
-    page instanceof Ci.nsIURI ? page : NetUtil.newURI(new URL(page).href);
-  let iconURI =
-    icon instanceof Ci.nsIURI ? icon : NetUtil.newURI(new URL(icon).href);
-  return new Promise(resolve => {
-    PlacesUtils.favicons.setAndFetchFaviconForPage(
-      pageURI,
-      iconURI,
-      forceReload,
-      PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,
-      resolve,
-      Services.scriptSecurityManager.getSystemPrincipal()
-    );
-  });
-}
-
-function getFaviconUrlForPage(page, width = 0) {
-  let pageURI =
-    page instanceof Ci.nsIURI ? page : NetUtil.newURI(new URL(page).href);
-  return new Promise((resolve, reject) => {
-    PlacesUtils.favicons.getFaviconURLForPage(
-      pageURI,
-      iconURI => {
-        if (iconURI) {
-          resolve(iconURI.spec);
-        } else {
-          reject("Unable to find an icon for " + pageURI.spec);
-        }
-      },
-      width
-    );
-  });
-}
-
-function getFaviconDataForPage(page, width = 0) {
-  let pageURI =
-    page instanceof Ci.nsIURI ? page : NetUtil.newURI(new URL(page).href);
-  return new Promise(resolve => {
-    PlacesUtils.favicons.getFaviconDataForPage(
-      pageURI,
-      (iconUri, len, data, mimeType) => {
-        resolve({ data, mimeType });
-      },
-      width
-    );
-  });
 }
 
 /**

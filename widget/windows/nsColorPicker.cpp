@@ -11,6 +11,8 @@
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/AutoRestore.h"
+#include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "nsIWidget.h"
 #include "nsString.h"
 #include "WidgetUtils.h"
@@ -105,9 +107,8 @@ AsyncColorChooser::Run() {
     ScopedRtlShimWindow shim(mParentWidget.get());
 
     // This will overwrite custom colors if default colors were defined.
-    for (size_t i = 0; i < std::min(mozilla::ArrayLength(sCustomColors),
-                                    mDefaultColors.Length());
-         i++) {
+    for (size_t i = 0;
+         i < std::min(std::size(sCustomColors), mDefaultColors.Length()); i++) {
       sCustomColors[i] = ColorStringToRGB(mDefaultColors[i]);
     }
 
@@ -188,23 +189,16 @@ nsColorPicker::~nsColorPicker() {}
 
 NS_IMPL_ISUPPORTS(nsColorPicker, nsIColorPicker)
 
-NS_IMETHODIMP
-nsColorPicker::Init(mozIDOMWindowProxy* parent, const nsAString& title,
-                    const nsAString& aInitialColor,
-                    const nsTArray<nsString>& aDefaultColors) {
-  MOZ_ASSERT(parent,
-             "Null parent passed to colorpicker, no color picker for you!");
+nsresult nsColorPicker::InitNative(const nsTArray<nsString>& aDefaultColors) {
   mParentWidget =
-      WidgetUtils::DOMWindowToWidget(nsPIDOMWindowOuter::From(parent));
-  mInitialColor = ColorStringToRGB(aInitialColor);
+      mBrowsingContext->Canonical()->GetParentProcessWidgetContaining();
   mDefaultColors.Assign(aDefaultColors);
   return NS_OK;
 }
 
-NS_IMETHODIMP
-nsColorPicker::Open(nsIColorPickerShownCallback* aCallback) {
-  NS_ENSURE_ARG(aCallback);
-  nsCOMPtr<nsIRunnable> event = new AsyncColorChooser(
-      mInitialColor, mDefaultColors, mParentWidget, aCallback);
+nsresult nsColorPicker::OpenNative() {
+  nsCOMPtr<nsIRunnable> event =
+      new AsyncColorChooser(ColorStringToRGB(mInitialColor), mDefaultColors,
+                            mParentWidget, mCallback);
   return NS_DispatchToMainThread(event);
 }

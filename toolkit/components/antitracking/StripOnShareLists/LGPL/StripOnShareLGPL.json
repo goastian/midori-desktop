@@ -83,8 +83,13 @@
     ]
   },
   "youtube": {
-    "queryParams": ["si", "feature", "kw"],
-    "topLevelSites": ["www.youtube.com", "youtu.be"]
+    "queryParams": ["si", "feature", "kw", "pp"],
+    "topLevelSites": [
+      "www.youtube.com",
+      "youtube.com",
+      "m.youtube.com",
+      "youtu.be"
+    ]
   },
   "carousell": {
     "queryParams": [

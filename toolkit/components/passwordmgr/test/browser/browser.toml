@@ -37,8 +37,8 @@ support-files = [
 ["browser_DOMInputPasswordAdded.js"]
 skip-if = [
   "os == 'linux' && os_version == '18.04'", # Bug 1337606
-  "apple_catalina", # Bug 1337606
-  "apple_silicon", # Bug 1337606
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'", # Bug 1337606
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1337606
 ]
 
 ["browser_autocomplete_autofocus_with_frame.js"]
@@ -55,8 +55,8 @@ skip-if = ["os == 'linux' && os_version == '18.04' && bits == 64 && !debug"] # B
 ["browser_autocomplete_import.js"]
 https_first_disabled = true
 skip-if = [
-  "apple_catalina", # Bug 1775902
-  "apple_silicon", # Bug 1775902
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'", # Bug 1775902
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1775902
   "win10_2009 && !debug", # Bug 1775902
   "win11_2009 && !debug", # Bug 1775902
 ]
@@ -67,7 +67,7 @@ skip-if = [
 
 ["browser_autofill_hidden_document.js"]
 skip-if = [
-  "apple_catalina && !debug", # high frequency intermittent, Bug 1716486
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && !debug", # high frequency intermittent, Bug 1716486
 ]
 
 ["browser_autofill_http.js"]
@@ -84,8 +84,8 @@ skip-if = ["os == 'android'"]
 
 ["browser_basicAuth_switchTab.js"]
 skip-if = [
-  "apple_catalina && debug", # Bug 1530566
-  "apple_silicon && debug", # Bug 1530566
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && debug", # Bug 1530566
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && debug", # Bug 1530566
 ]
 
 ["browser_context_menu.js"]
@@ -128,8 +128,10 @@ support-files = [
 skip-if = [
   "os == 'linux' && os_version == '18.04'", # Bug 1729196
   "win11_2009 && bits == 64", # Bug 1729196
-  "apple_catalina && debug", # Bug 1729196
-  "apple_silicon && debug", # Bug 1729196
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64'", # Bug 1729196
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && debug", # Bug 1729196
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && debug", # Bug 1729196
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt", # Bug 1729196
 ]
 
 ["browser_doorhanger_httpsUpgrade.js"]
@@ -143,6 +145,9 @@ support-files = [
 ["browser_doorhanger_password_edits.js"]
 
 ["browser_doorhanger_promptToChangePassword.js"]
+skip-if = [
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # Bug 1775906
+]
 
 ["browser_doorhanger_remembering.js"]
 
@@ -161,8 +166,6 @@ skip-if = [
 
 ["browser_doorhanger_target_blank.js"]
 support-files = ["subtst_notifications_12_target_blank.html"]
-
-["browser_doorhanger_toggles.js"]
 
 ["browser_doorhanger_username_edits.js"]
 
@@ -214,8 +217,8 @@ support-files = ["form_signup_detection.html"]
 
 ["browser_localip_frame.js"]
 skip-if = [
-  "apple_catalina", # Bug 1683848
-  "apple_silicon", # Bug 1683848
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'", # Bug 1683848
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # Bug 1683848
   "os == 'linux' && os_version == '18.04' && bits == 64 && !debug", # Bug 1683848
 ]
 
@@ -231,6 +234,7 @@ skip-if = [
   "os == 'linux' && os_version == '18.04' && debug", # Bug 1840479
   "win10_2009 && debug", # Bug 1840479
   "win11_2009 && debug", # Bug 1840479
+  "os == 'win' && os_version == '11.26100' && debug", # Bug 1840479
 ]
 
 ["browser_private_window.js"]
@@ -245,7 +249,14 @@ skip-if = [
 ["browser_proxyAuth_prompt.js"]
 skip-if = ["os == 'android'"]
 
+["browser_relay_signup_flow.js"]
+support-files = ["browser_relay_utils.js"]
+
+["browser_relay_signup_flow_showToAllBrowsers.js"]
+support-files = ["browser_relay_utils.js"]
+
 ["browser_relay_telemetry.js"]
+support-files = ["browser_relay_utils.js"]
 
 ["browser_telemetry_SignUpFormRuleset.js"]
 

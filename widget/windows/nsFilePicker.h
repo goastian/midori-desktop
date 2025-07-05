@@ -10,12 +10,6 @@
 #include <windows.h>
 
 #include "mozilla/MozPromise.h"
-#include "mozilla/dom/BlobImpl.h"
-#include "mozilla/dom/BrowsingContext.h"
-#include "mozilla/dom/GetFilesHelper.h"
-#include "nsIContentAnalysis.h"
-#include "nsIFile.h"
-#include "nsISimpleEnumerator.h"
 #include "nsCOMArray.h"
 #include "nsBaseFilePicker.h"
 #include "nsString.h"
@@ -24,13 +18,24 @@
 #include <shobjidl.h>
 #undef LogSeverity  // SetupAPI.h #defines this as DWORD
 
+class nsIFile;
 class nsILoadContext;
+class nsISimpleEnumerator;
 
-namespace mozilla::widget::filedialog {
+namespace mozilla {
+
+namespace dom {
+class BrowsingContext;
+}  // namespace dom
+
+namespace widget::filedialog {
 class Command;
 class Results;
 enum class FileDialogType : uint8_t;
-}  // namespace mozilla::widget::filedialog
+struct Error;
+}  // namespace widget::filedialog
+
+}  // namespace mozilla
 
 class nsBaseWinFilePicker : public nsBaseFilePicker {
  public:
@@ -60,6 +65,7 @@ class nsFilePicker final : public nsBaseWinFilePicker {
   using Command = mozilla::widget::filedialog::Command;
   using Results = mozilla::widget::filedialog::Results;
   using FileDialogType = mozilla::widget::filedialog::FileDialogType;
+  using Error = mozilla::widget::filedialog::Error;
 
  public:
   nsFilePicker();
@@ -81,20 +87,20 @@ class nsFilePicker final : public nsBaseWinFilePicker {
  protected:
   /* method from nsBaseFilePicker */
   virtual void InitNative(nsIWidget* aParent, const nsAString& aTitle) override;
-  nsresult Show(nsIFilePicker::ResultCode* aReturnVal) override;
   void GetFilterListArray(nsString& aFilterList);
 
   NS_IMETHOD Open(nsIFilePickerShownCallback* aCallback) override;
 
  private:
   using Unit = mozilla::Ok;
-  RefPtr<mozilla::MozPromise<bool, Unit, true>> ShowFolderPicker(
+  RefPtr<mozilla::MozPromise<bool, Error, true>> ShowFolderPicker(
       const nsString& aInitialDir);
-  RefPtr<mozilla::MozPromise<bool, Unit, true>> ShowFilePicker(
+  RefPtr<mozilla::MozPromise<bool, Error, true>> ShowFilePicker(
       const nsString& aInitialDir);
 
   void ClearFiles();
-  using ContentAnalysisResponse = mozilla::MozPromise<bool, nsresult, true>;
+  using ContentAnalysisResponse =
+      mozilla::MozPromise<nsCOMArray<nsIFile>, nsresult, true>;
   RefPtr<ContentAnalysisResponse> CheckContentAnalysisService();
 
  protected:
@@ -103,10 +109,15 @@ class nsFilePicker final : public nsBaseWinFilePicker {
   bool IsDefaultPathLink();
   bool IsDefaultPathHtml();
 
+  using FallbackResult = mozilla::Result<RefPtr<nsIFile>, nsresult>;
+  FallbackResult ComputeFallbackSavePath() const;
+  void SendFailureNotification(ResultCode aResult, Error error,
+                               FallbackResult fallback) const;
+
   nsCOMPtr<nsIWidget> mParentWidget;
   nsString mTitle;
   nsCString mFile;
-  int32_t mSelectedType;
+  int32_t mSelectedType = 1;
   nsCOMArray<nsIFile> mFiles;
   nsString mUnicodeFile;
 

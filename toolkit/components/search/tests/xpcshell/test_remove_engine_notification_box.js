@@ -3,151 +3,36 @@
 
 "use strict";
 
-const CONFIG = [
-  {
-    // Engine initially default, but the defaults will be changed to engine-pref.
-    webExtension: {
-      id: "engine@search.mozilla.org",
-      name: "Test search engine",
-      search_url: "https://www.google.com/search",
-      params: [
-        {
-          name: "q",
-          value: "{searchTerms}",
-        },
-      ],
-    },
-    appliesTo: [
-      {
-        included: { everywhere: true },
-        default: "yes",
-      },
-      {
-        included: { regions: ["FR"] },
-        default: "no",
-      },
-    ],
-  },
-  {
-    // This will become defaults when region is changed to FR.
-    webExtension: {
-      id: "engine-pref@search.mozilla.org",
-      name: "engine-pref",
-      search_url: "https://www.google.com/search",
-      params: [
-        {
-          name: "q",
-          value: "{searchTerms}",
-        },
-      ],
-    },
-    appliesTo: [
-      {
-        included: { everywhere: true },
-      },
-      {
-        included: { regions: ["FR"] },
-        default: "yes",
-      },
-    ],
-  },
-];
-
-const CONFIG_UPDATED = CONFIG.filter(r =>
-  r.webExtension.id.startsWith("engine-pref")
-);
-
 const CONFIG_V2 = [
+  { identifier: "engine_to_remove" },
+  { identifier: "engine_to_keep" },
   {
-    recordType: "engine",
-    identifier: "engine",
-    base: {
-      name: "Test search engine",
-      urls: {
-        search: {
-          base: "https://www.google.com/search",
-          searchTermParamName: "q",
-        },
-      },
-    },
-    variants: [
-      {
-        environment: { allRegionsAndLocales: true },
-      },
-    ],
-  },
-  {
-    recordType: "engine",
-    identifier: "engine-pref",
-    base: {
-      name: "engine-pref",
-      urls: {
-        search: {
-          base: "https://www.google.com/search",
-          searchTermParamName: "q",
-        },
-      },
-    },
-    variants: [
-      {
-        environment: { allRegionsAndLocales: true },
-      },
-    ],
-  },
-  {
-    recordType: "defaultEngines",
     specificDefaults: [
       {
-        default: "engine",
+        default: "engine_to_remove",
         environment: { excludedRegions: ["FR"] },
       },
       {
-        default: "engine-pref",
+        default: "engine_to_keep",
         environment: { regions: ["FR"] },
       },
     ],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
   },
 ];
 
 const CONFIG_V2_UPDATED = [
+  { identifier: "engine_to_keep" },
   {
-    recordType: "engine",
-    identifier: "engine-pref",
-    base: {
-      name: "engine-pref",
-      urls: {
-        search: {
-          base: "https://www.google.com/search",
-          searchTermParamName: "q",
-        },
-      },
-    },
-    variants: [
-      {
-        environment: { allRegionsAndLocales: true },
-      },
-    ],
-  },
-  {
-    recordType: "defaultEngines",
     specificDefaults: [
       {
-        default: "engine",
+        default: "engine_to_remove",
         environment: { excludedRegions: ["FR"] },
       },
       {
-        default: "engine-pref",
+        default: "engine_to_keep",
         environment: { regions: ["FR"] },
       },
     ],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
   },
 ];
 
@@ -158,12 +43,7 @@ let userSettings;
 add_setup(async function () {
   SearchSettings.SETTINGS_INVALIDATION_DELAY = 100;
   SearchTestUtils.useMockIdleService();
-  await SearchTestUtils.useTestEngines(
-    "data",
-    null,
-    SearchUtils.newSearchConfigEnabled ? CONFIG_V2 : CONFIG
-  );
-  await AddonTestUtils.promiseStartupManager();
+  SearchTestUtils.setRemoteSettingsConfig(CONFIG_V2);
 
   stub = sinon.stub(
     await Services.search.wrappedJSObject,
@@ -179,6 +59,10 @@ add_setup(async function () {
   await promiseSaved;
 
   userSettings = await Services.search.wrappedJSObject._settings.get();
+
+  registerCleanupFunction(async () => {
+    sinon.restore();
+  });
 });
 
 // Verify the loaded configuration matches what we expect for the test.
@@ -186,13 +70,13 @@ add_task(async function test_initial_config_correct() {
   const installedEngines = await Services.search.getAppProvidedEngines();
   Assert.deepEqual(
     installedEngines.map(e => e.identifier),
-    ["engine", "engine-pref"],
+    ["engine_to_remove", "engine_to_keep"],
     "Should have the correct list of engines installed."
   );
 
   Assert.equal(
     (await Services.search.getDefault()).identifier,
-    "engine",
+    "engine_to_remove",
     "Should have loaded the expected default engine"
   );
 });
@@ -225,7 +109,7 @@ add_task(async function test_metadata_undefined() {
   const newDefault = await defaultEngineChanged;
   Assert.equal(
     newDefault.QueryInterface(Ci.nsISearchEngine).name,
-    "engine-pref",
+    "engine_to_keep",
     "Should have correctly notified the new default engine."
   );
 });
@@ -252,7 +136,7 @@ add_task(async function test_default_engine_unchanged() {
 
   Assert.equal(
     currentEngineName,
-    "Test search engine",
+    "engine_to_remove",
     "Default engine should be unchanged."
   );
 
@@ -313,7 +197,7 @@ add_task(async function test_default_changed_and_metadata_unchanged_exists() {
   await Services.search.wrappedJSObject._fetchEngineSelectorEngines();
   userSettings.metaData = {
     ...Services.search.wrappedJSObject._settings.getSettingsMetaData(),
-    appDefaultEngine: "Test search engine",
+    appDefaultEngine: "engine_to_remove",
   };
 
   await reloadEngines(structuredClone(userSettings));
@@ -340,13 +224,11 @@ add_task(async function test_default_engine_changed_and_metadata_unchanged() {
   await Services.search.wrappedJSObject._fetchEngineSelectorEngines();
   userSettings.metaData = {
     ...Services.search.wrappedJSObject._settings.getSettingsMetaData(),
-    appDefaultEngineId: "engine@search.mozilla.orgdefault",
+    appDefaultEngineId: "engine_to_remove",
   };
 
   // Update config by removing the app default engine
-  await setConfigToLoad(
-    SearchUtils.newSearchConfigEnabled ? CONFIG_V2_UPDATED : CONFIG_UPDATED
-  );
+  await setConfigToLoad(CONFIG_V2_UPDATED);
 
   await reloadEngines(structuredClone(userSettings));
   Assert.ok(
@@ -356,16 +238,16 @@ add_task(async function test_default_engine_changed_and_metadata_unchanged() {
 
   Assert.deepEqual(
     stub.firstCall.args,
-    ["Test search engine", "engine-pref"],
+    ["engine_to_remove", "engine_to_keep"],
     "_showRemovalOfSearchEngineNotificationBox should display " +
-      "'Test search engine' as the engine removed and 'engine-pref' as the new " +
+      "'engine_to_remove' as the engine removed and 'engine_to_keep' as the new " +
       "default engine."
   );
 
   const newDefault = await defaultEngineChanged;
   Assert.equal(
     newDefault.QueryInterface(Ci.nsISearchEngine).name,
-    "engine-pref",
+    "engine_to_keep",
     "Should have correctly notified the new default engine"
   );
 
@@ -378,9 +260,9 @@ add_task(async function test_default_engine_changed_and_metadata_unchanged() {
 
   Assert.deepEqual(
     stub.secondCall.args,
-    ["Test search engine", "engine-pref"],
+    ["engine_to_remove", "engine_to_keep"],
     "_showRemovalOfSearchEngineNotificationBox should display " +
-      "'Test search engine' as the engine removed and 'engine-pref' as the new " +
+      "'engine_to_remove' as the engine removed and 'engine_to_keep' as the new " +
       "default engine."
   );
 });
@@ -393,9 +275,7 @@ add_task(async function test_app_default_engine_changed_on_start_up() {
   settings.metaData.current = "";
 
   // Update config by removing the app default engine
-  await setConfigToLoad(
-    SearchUtils.newSearchConfigEnabled ? CONFIG_V2_UPDATED : CONFIG_UPDATED
-  );
+  await setConfigToLoad(CONFIG_V2_UPDATED);
 
   await loadEngines(settings);
   Assert.ok(
@@ -411,11 +291,9 @@ add_task(async function test_app_default_engine_change_start_up_still_exists() {
   // Set the current engine to "" so we can use the app default engine as
   // default
   settings.metaData.current = "";
-  settings.metaData.appDefaultEngine = "Test search engine";
+  settings.metaData.appDefaultEngine = "engine_to_remove";
 
-  await setConfigToLoad(
-    SearchUtils.newSearchConfigEnabled ? CONFIG_V2 : CONFIG
-  );
+  await setConfigToLoad(CONFIG_V2);
 
   await loadEngines(settings);
   Assert.ok(
@@ -425,11 +303,8 @@ add_task(async function test_app_default_engine_change_start_up_still_exists() {
 });
 
 async function setConfigToLoad(config) {
-  let searchSettingsObj = await RemoteSettings(SearchUtils.SETTINGS_KEY);
-  // Restore the get method in order to stub it again in useTestEngines
-  searchSettingsObj.get.restore();
   Services.search.wrappedJSObject.resetEngineSelector();
-  await SearchTestUtils.useTestEngines("data", null, config);
+  SearchTestUtils.setRemoteSettingsConfig(config);
 }
 
 function writeSettings(settings) {
@@ -475,7 +350,7 @@ async function assert_metadata_changed(settings) {
   let newDefault = await defaultEngineChanged;
   Assert.equal(
     newDefault.QueryInterface(Ci.nsISearchEngine).name,
-    "Test search engine",
+    "engine_to_remove",
     "Should have correctly notified the new default engine."
   );
 
@@ -491,7 +366,7 @@ async function assert_metadata_changed(settings) {
 
   Assert.equal(
     Services.search.defaultEngine.name,
-    "Test search engine",
+    "engine_to_remove",
     "Should have correctly notified the new default engine."
   );
 }

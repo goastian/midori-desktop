@@ -1,0 +1,131 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Tests for the enable-backup-encryption component</title>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
+  <script type="application/javascript" src="head.js"></script>
+  <script
+  src="chrome://browser/content/backup/enable-backup-encryption.mjs"
+  type="module"
+></script>
+  <link rel="localization" href="preview/backupSettings.ftl"/>
+  <link rel="localization" href="branding/brand.ftl"/>
+  <link rel="stylesheet" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
+  <script>
+
+    const { BrowserTestUtils } = ChromeUtils.importESModule(
+      "resource://testing-common/BrowserTestUtils.sys.mjs"
+    );
+
+    /**
+     * Tests that pressing the confirm button for the set-password type dialog will dispatch the expected events.
+     */
+    add_task(async function test_type_set_password_confirm() {
+      let enableBackupEncryption = document.getElementById("test-enable-backup-encryption");
+
+      let confirmButton = enableBackupEncryption.confirmButtonEl;
+      ok(confirmButton, "Confirm button should be found");
+      ok(confirmButton.disabled, "Confirm button should now be disabled since there are passwords expanded options");
+
+      let passwordInputs = enableBackupEncryption.passwordInputsEl;
+      ok(passwordInputs, "password-validation-inputs should be found");
+
+      let confirmButtonPromise = BrowserTestUtils.waitForMutationCondition(
+        confirmButton,
+        { attributes: true },
+        () => !confirmButton.disabled
+      );
+
+      // Mock validation event passed by inputs
+      let validationPromise = createMockValidityPassEventPromise(enableBackupEncryption, passwordInputs, "ValidPasswordsDetected");
+
+      await validationPromise;
+      await confirmButtonPromise;
+
+      ok(!confirmButton.disabled, "Confirm button should no longer be disabled");
+
+      let content = document.getElementById("content");
+      let encryptionPromise = BrowserTestUtils.waitForEvent(content, "BackupUI:EnableEncryption");
+
+      confirmButton.click()
+
+      await encryptionPromise;
+      ok(true, "Detected event after selecting the confirm button");
+
+      enableBackupEncryption.reset();
+    })
+
+    /**
+     * Tests that pressing the confirm button for the set-password type dialog will dispatch the expected events.
+     */
+    add_task(async function test_type_change_password_confirm() {
+      let enableBackupEncryption = document.getElementById("test-enable-backup-encryption");
+      enableBackupEncryption.type = "change-password";
+      await enableBackupEncryption.updateComplete;
+
+      let confirmButton = enableBackupEncryption.confirmButtonEl;
+      ok(confirmButton, "Confirm button should be found");
+      ok(confirmButton.disabled, "Confirm button should now be disabled since there are passwords expanded options");
+
+      let passwordInputs = enableBackupEncryption.passwordInputsEl;
+      ok(passwordInputs, "password-validation-inputs should be found");
+
+      let confirmButtonPromise = BrowserTestUtils.waitForMutationCondition(
+        confirmButton,
+        { attributes: true },
+        () => !confirmButton.disabled
+      );
+
+      // Mock validation event passed by inputs
+      let validationPromise = createMockValidityPassEventPromise(enableBackupEncryption, passwordInputs, "ValidPasswordsDetected");
+
+      await validationPromise;
+      await confirmButtonPromise;
+
+      ok(!confirmButton.disabled, "Confirm button should no longer be disabled");
+
+      let content = document.getElementById("content");
+      let encryptionPromise = BrowserTestUtils.waitForEvent(content, "BackupUI:RerunEncryption");
+
+      confirmButton.click()
+
+      await encryptionPromise;
+      ok(true, "Detected event after selecting the confirm button");
+
+      enableBackupEncryption.reset();
+    })
+
+    /**
+     * Tests that pressing the cancel button will dispatch the expected events.
+     */
+    add_task(async function test_cancel() {
+      let enableBackupEncryption = document.getElementById("test-enable-backup-encryption");
+      enableBackupEncryption.type = "set-password";
+      await enableBackupEncryption.updateComplete;
+
+      let cancelButton = enableBackupEncryption.cancelButtonEl;
+
+      ok(cancelButton, "Cancel button should be found");
+
+      let content = document.getElementById("content");
+      let promise = BrowserTestUtils.waitForEvent(content, "dialogCancel");
+
+      cancelButton.click()
+
+      await promise;
+      ok(true, "Detected event after selecting the cancel button");
+
+      enableBackupEncryption.reset();
+    })
+  </script>
+</head>
+<body>
+<p id="display"></p>
+<div id="content" style="display: none">
+  <enable-backup-encryption id="test-enable-backup-encryption"></enable-backup-encryption>
+</div>
+<pre id="test"></pre>
+</body>
+</html>

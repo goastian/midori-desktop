@@ -3,7 +3,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 
-class FOGPingFilter(object):
+class FOGPingFilter:
     """Ping filter that accepts any FOG pings."""
 
     def __call__(self, ping):
@@ -28,4 +28,3 @@ class FOGDocTypePingFilter(FOGPingFilter):
 FOG_BACKGROUND_UPDATE_PING = FOGDocTypePingFilter("background-update")
 FOG_BASELINE_PING = FOGDocTypePingFilter("baseline")
 FOG_DELETION_REQUEST_PING = FOGDocTypePingFilter("deletion-request")
-FOG_ONE_PING_ONLY_PING = FOGDocTypePingFilter("one-ping-only")

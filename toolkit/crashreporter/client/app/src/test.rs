@@ -14,7 +14,7 @@ use crate::std::{
     fs::{MockFS, MockFiles},
     io::ErrorKind,
     mock,
-    process::Command,
+    process::{Command, Output},
     sync::{
         atomic::{AtomicUsize, Ordering::Relaxed},
         Arc,
@@ -25,7 +25,7 @@ use crate::ui::{self, test::model, ui_impl::Interact};
 /// A simple thread-safe counter which can be used in tests to mark that certain code paths were
 /// hit.
 #[derive(Clone, Default)]
-struct Counter(Arc<AtomicUsize>);
+pub struct Counter(Arc<AtomicUsize>);
 
 impl Counter {
     /// Create a new zero counter.
@@ -62,42 +62,44 @@ impl<T: std::fmt::Display> std::fmt::Display for FluentArg<T> {
 }
 
 /// Run a gui and interaction on separate threads.
-fn gui_interact<G, I, R>(gui: G, interact: I) -> R
+///
+/// If the `gui` function returns an error, any panics in the interaction thread are ignored.
+fn gui_interact<G, I, R>(gui: G, interact: I) -> anyhow::Result<R>
 where
-    G: FnOnce() -> R,
-    I: FnOnce(Interact) + Send + 'static,
+    G: FnOnce() -> anyhow::Result<R>,
+    I: FnOnce(&Interact) + Send + 'static,
 {
-    let i = Interact::hook();
-    let handle = {
-        let i = i.clone();
-        ::std::thread::spawn(move || {
-            i.wait_for_ready();
-            interact(i);
-        })
-    };
-    let ret = gui();
-    // In case the gui failed before launching.
-    i.cancel();
-    handle.join().unwrap();
-    ret
+    let mut spawned_interact = Interact::spawn(interact);
+    let result = gui();
+    if result.is_err() {
+        spawned_interact.ignore_panic();
+    }
+    result
 }
 
 const MOCK_MINIDUMP_EXTRA: &str = r#"{
-                            "Vendor": "FooCorp",
-                            "ProductName": "Bar",
-                            "ReleaseChannel": "release",
-                            "BuildID": "1234",
-                            "StackTraces": {
-                                "status": "OK"
-                            },
-                            "Version": "100.0",
-                            "ServerURL": "https://reports.example.com",
-                            "TelemetryServerURL": "https://telemetry.example.com",
-                            "TelemetryClientId": "telemetry_client",
-                            "TelemetrySessionId": "telemetry_session",
-                            "SomeNestedJson": { "foo": "bar" },
-                            "URL": "https://url.example.com"
-                        }"#;
+        "Vendor": "FooCorp",
+        "ProductName": "Bar",
+        "ReleaseChannel": "release",
+        "BuildID": "1234",
+        "AsyncShutdownTimeout": "{}",
+        "StackTraces": {
+            "status": "OK"
+        },
+        "Version": "100.0",
+        "ServerURL": "https://reports.example.com",
+        "TelemetryServerURL": "https://telemetry.example.com",
+        "TelemetryClientId": "telemetry_client",
+        "TelemetryProfileGroupId": "telemetry_profile_group",
+        "TelemetrySessionId": "telemetry_session",
+        "SomeNestedJson": { "foo": "bar" },
+        "URL": "https://url.example.com"
+    }"#;
+
+fn compact_json(json: &str) -> String {
+    let value: serde_json::Value = serde_json::from_str(json).unwrap();
+    serde_json::to_string(&value).unwrap()
+}
 
 // Actual content doesn't matter, aside from the hash that is generated.
 const MOCK_MINIDUMP_FILE: &[u8] = &[1, 2, 3, 4];
@@ -136,8 +138,21 @@ fn test_config() -> Config {
     cfg.events_dir = Some("events_dir".into());
     cfg.ping_dir = Some("ping_dir".into());
     cfg.dump_file = Some("minidump.dmp".into());
-    cfg.strings = lang::LanguageInfo::default().load_strings().ok();
+    cfg.strings = Some(Default::default());
+    // Set delete_dump to true: this matches the default case in practice.
+    cfg.delete_dump = true;
     cfg
+}
+
+fn init_test_logger() {
+    static INIT: std::sync::Once = std::sync::Once::new();
+    INIT.call_once(|| {
+        env_logger::builder()
+            .target(env_logger::Target::Stderr)
+            .filter(Some("crashreporter"), log::LevelFilter::Debug)
+            .is_test(true)
+            .init();
+    })
 }
 
 /// A test fixture to make configuration, mocking, and assertions easier.
@@ -149,11 +164,17 @@ struct GuiTest {
     pub mock: mock::Builder,
     /// The mocked filesystem, which can be used for mock setup and assertions after completion.
     pub files: MockFiles,
+    /// Whether glean should be initialized.
+    enable_glean: bool,
+    /// Callback to call before `try_run` but after test setup.
+    before_run: Option<Box<dyn FnOnce()>>,
 }
 
 impl GuiTest {
     /// Create a new GuiTest with enough configured for the application to run
     pub fn new() -> Self {
+        init_test_logger();
+
         // Create a default set of files which allow successful operation.
         let mock_files = MockFiles::new();
         mock_files
@@ -164,17 +185,13 @@ impl GuiTest {
             )
             .add_file_result(
                 "minidump.extra",
-                Ok(MOCK_MINIDUMP_EXTRA.into()),
+                Ok(compact_json(MOCK_MINIDUMP_EXTRA).into()),
                 current_system_time(),
             );
 
         // Create a default mock environment which allows successful operation.
         let mut mock = mock::builder();
         mock.set(
-            Command::mock("work_dir/minidump-analyzer"),
-            Box::new(|_| Ok(crate::std::process::success_output())),
-        )
-        .set(
             Command::mock("work_dir/pingsender"),
             Box::new(|_| Ok(crate::std::process::success_output())),
         )
@@ -192,38 +209,70 @@ impl GuiTest {
             "work_dir/crashreporter".into(),
         )
         .set(crate::std::time::MockCurrentTime, current_system_time())
+        .set(mock::MockHook::new("enable_glean_pings"), false)
         .set(mock::MockHook::new("ping_uuid"), MOCK_PING_UUID);
 
         GuiTest {
             config: test_config(),
             mock,
             files: mock_files,
+            enable_glean: false,
+            before_run: None,
         }
+    }
+
+    /// Enable glean pings (which will serialize the test run with other glean tests).
+    pub fn enable_glean_pings(&mut self) {
+        self.enable_glean = true;
+        self.mock
+            .set(mock::MockHook::new("enable_glean_pings"), true);
+    }
+
+    /// Run the given callback after test setup but before running the tests.
+    pub fn before_run(&mut self, f: impl FnOnce() + 'static) {
+        self.before_run = Some(Box::new(f));
     }
 
     /// Run the test as configured, using the given function to interact with the GUI.
     ///
     /// Returns the final result of the application logic.
-    pub fn try_run<F: FnOnce(Interact) + Send + 'static>(
+    pub fn try_run<F: FnOnce(&Interact) + Send + 'static>(
         &mut self,
         interact: F,
     ) -> anyhow::Result<bool> {
         let GuiTest {
             ref mut config,
             ref mut mock,
+            ref enable_glean,
             ..
         } = self;
+        let before_run = self.before_run.take();
         let mut config = Arc::new(std::mem::take(config));
 
         // Run the mock environment.
-        mock.run(move || gui_interact(move || try_run(&mut config), interact))
+        mock.run(move || {
+            let _glean = if *enable_glean {
+                Some(glean::test_init(&config))
+            } else {
+                None
+            };
+            gui_interact(
+                move || {
+                    if let Some(f) = before_run {
+                        f();
+                    }
+                    try_run(&mut config)
+                },
+                interact,
+            )
+        })
     }
 
     /// Run the test as configured, using the given function to interact with the GUI.
     ///
     /// Panics if the application logic returns an error (which would normally be displayed to the
     /// user).
-    pub fn run<F: FnOnce(Interact) + Send + 'static>(&mut self, interact: F) {
+    pub fn run<F: FnOnce(&Interact) + Send + 'static>(&mut self, interact: F) {
         if let Err(e) = self.try_run(interact) {
             panic!(
                 "gui failure:{}",
@@ -270,12 +319,6 @@ impl AssertFiles {
         self
     }
 
-    /// Ignore the generated log file.
-    pub fn ignore_log(&mut self) -> &mut Self {
-        self.inner.ignore(self.data("submit.log"));
-        self
-    }
-
     /// Assert that the crash report was submitted according to the filesystem.
     pub fn submitted(&mut self) -> &mut Self {
         self.inner.check(
@@ -294,16 +337,41 @@ impl AssertFiles {
         self
     }
 
-    /// Assert that a crash is pending according to the filesystem.
-    pub fn pending(&mut self) -> &mut Self {
+    /// Assert that a crash is pending according to the filesystem. The pending crash will have an
+    /// unchanged extra file (due to the crash report not being submitted).
+    pub fn pending_unchanged_extra(&mut self) -> &mut Self {
         let dmp = self.data("pending/minidump.dmp");
         self.inner
-            .check(self.data("pending/minidump.extra"), MOCK_MINIDUMP_EXTRA)
+            .check(
+                self.data("pending/minidump.extra"),
+                compact_json(MOCK_MINIDUMP_EXTRA),
+            )
             .check_bytes(dmp, MOCK_MINIDUMP_FILE);
         self
     }
 
-    /// Assert that a crash ping was sent according to the filesystem.
+    /// Assert that a crash is pending according to the filesystem.
+    pub fn pending(&mut self) -> &mut Self {
+        let dmp = self.data("pending/minidump.dmp");
+        self.inner
+            .check(
+                self.data("pending/minidump.extra"),
+                compact_json(MOCK_MINIDUMP_EXTRA),
+            )
+            .check_bytes(dmp, MOCK_MINIDUMP_FILE);
+        self
+    }
+
+    /// Assert that a crash is pending according to the filesystem, with updated files.
+    pub fn pending_with_change(&mut self, new_dmp: &[u8], new_extra: &str) -> &mut Self {
+        let dmp = self.data("pending/minidump.dmp");
+        self.inner
+            .check(self.data("pending/minidump.extra"), new_extra)
+            .check_bytes(dmp, new_dmp);
+        self
+    }
+
+    /// Assert that a crash ping was created for sending according to the filesystem.
     pub fn ping(&mut self) -> &mut Self {
         self.inner.check(
             format!("ping_dir/{MOCK_PING_UUID}.json"),
@@ -313,6 +381,7 @@ impl AssertFiles {
                 "version": 4,
                 "creationDate": MOCK_CURRENT_TIME,
                 "clientId": "telemetry_client",
+                "profileGroupId": "telemetry_profile_group",
                 "payload": {
                     "sessionId": "telemetry_session",
                     "version": 1,
@@ -326,6 +395,7 @@ impl AssertFiles {
                         "status": "OK"
                     },
                     "metadata": {
+                        "AsyncShutdownTimeout": "{}",
                         "BuildID": "1234",
                         "ProductName": "Bar",
                         "ReleaseChannel": "release",
@@ -383,12 +453,45 @@ fn error_dialog() {
     gui_interact(
         || {
             let cfg = Config::default();
-            ui::error_dialog(&cfg, "an error occurred")
+            ui::error_dialog(Arc::new(cfg), "an error occurred");
+            Ok(())
         },
         |interact| {
-            interact.element("close", |_style, b: &model::Button| b.click.fire(&()));
+            interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
         },
-    );
+    )
+    .unwrap();
+}
+
+#[test]
+fn error_dialog_restart() {
+    let mut config = Config::default();
+    config.restart_command = Some("my_process".into());
+    config.restart_args = vec!["a".into(), "b".into()];
+    let ran_process = Counter::new();
+    let mock_ran_process = ran_process.clone();
+    mock::builder()
+        .set(
+            Command::mock("my_process"),
+            Box::new(move |cmd| {
+                assert_eq!(cmd.args, &["a", "b"]);
+                mock_ran_process.inc();
+                Ok(crate::std::process::success_output())
+            }),
+        )
+        .run(|| {
+            gui_interact(
+                move || {
+                    ui::error_dialog(Arc::new(config), "an error occurred");
+                    Ok(())
+                },
+                |interact| {
+                    interact.element("restart", |_style, b: &model::Button| b.click.fire(&()));
+                },
+            )
+        })
+        .unwrap();
+    ran_process.assert_one();
 }
 
 #[test]
@@ -396,7 +499,7 @@ fn no_dump_file() {
     let mut cfg = Arc::new(Config::default());
     {
         let cfg = Arc::get_mut(&mut cfg).unwrap();
-        cfg.strings = lang::LanguageInfo::default().load_strings().ok();
+        cfg.strings = Some(Default::default());
     }
     assert!(try_run(&mut cfg).is_err());
     Arc::get_mut(&mut cfg).unwrap().auto_submit = true;
@@ -404,29 +507,16 @@ fn no_dump_file() {
 }
 
 #[test]
-fn minidump_analyzer_error() {
-    mock::builder()
-        .set(
-            Command::mock("work_dir/minidump-analyzer"),
-            Box::new(|_| Err(ErrorKind::NotFound.into())),
-        )
-        .set(
-            crate::std::env::MockCurrentExe,
-            "work_dir/crashreporter".into(),
-        )
-        .run(|| {
-            let cfg = test_config();
-            assert!(try_run(&mut Arc::new(cfg)).is_err());
-        });
+fn dump_file_does_not_exist() {
+    let mut test = GuiTest::new();
+    test.config.dump_file = Some("does_not_exist.dmp".into());
+    test.try_run(|_interact| {})
+        .expect_err("the gui should fail with an error");
 }
 
 #[test]
 fn no_extra_file() {
     mock::builder()
-        .set(
-            Command::mock("work_dir/minidump-analyzer"),
-            Box::new(|_| Ok(crate::std::process::success_output())),
-        )
         .set(
             crate::std::env::MockCurrentExe,
             "work_dir/crashreporter".into(),
@@ -455,7 +545,7 @@ fn auto_submit() {
     test.mock.run(|| {
         assert!(try_run(&mut Arc::new(std::mem::take(&mut test.config))).is_ok());
     });
-    test.assert_files().ignore_log().submitted().pending();
+    test.assert_files().submitted();
 }
 
 #[test]
@@ -477,10 +567,8 @@ fn restart() {
         interact.element("restart", |_style, b: &model::Button| b.click.fire(&()));
     });
     test.assert_files()
-        .ignore_log()
         .saved_settings(Settings::default())
-        .submitted()
-        .pending();
+        .submitted();
     ran_process.assert_one();
 }
 
@@ -489,6 +577,8 @@ fn no_restart_with_windows_error_reporting() {
     let mut test = GuiTest::new();
     test.config.restart_command = Some("my_process".into());
     test.config.restart_args = vec!["a".into(), "b".into()];
+    // Keep the files around so we can ensure they match what we expect.
+    test.config.delete_dump = false;
     // Add the "WindowsErrorReporting" key to the extra file
     const MINIDUMP_EXTRA_CONTENTS: &str = r#"{
                             "Vendor": "FooCorp",
@@ -502,10 +592,11 @@ fn no_restart_with_windows_error_reporting() {
                             "ServerURL": "https://reports.example.com",
                             "TelemetryServerURL": "https://telemetry.example.com",
                             "TelemetryClientId": "telemetry_client",
+                            "TelemetryProfileGroupId": "telemetry_profile_group",
                             "TelemetrySessionId": "telemetry_session",
                             "SomeNestedJson": { "foo": "bar" },
                             "URL": "https://url.example.com",
-                            "WindowsErrorReporting": 1
+                            "WindowsErrorReporting": "1"
                         }"#;
     test.files = {
         let mock_files = MockFiles::new();
@@ -542,15 +633,12 @@ fn no_restart_with_windows_error_reporting() {
         });
     });
     let mut assert_files = test.assert_files();
-    assert_files
-        .ignore_log()
-        .saved_settings(Settings::default())
-        .submitted();
+    assert_files.saved_settings(Settings::default()).submitted();
     {
         let dmp = assert_files.data("pending/minidump.dmp");
         let extra = assert_files.data("pending/minidump.extra");
         assert_files
-            .check(extra, MINIDUMP_EXTRA_CONTENTS)
+            .check(extra, compact_json(MINIDUMP_EXTRA_CONTENTS))
             .check_bytes(dmp, MOCK_MINIDUMP_FILE);
     }
 
@@ -564,23 +652,21 @@ fn quit() {
         interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
     });
     test.assert_files()
-        .ignore_log()
         .saved_settings(Settings::default())
-        .submitted()
-        .pending();
+        .submitted();
 }
 
 #[test]
-fn delete_dump() {
+fn no_delete_dump() {
     let mut test = GuiTest::new();
-    test.config.delete_dump = true;
+    test.config.delete_dump = false;
     test.run(|interact| {
         interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
     });
     test.assert_files()
-        .ignore_log()
         .saved_settings(Settings::default())
-        .submitted();
+        .submitted()
+        .pending();
 }
 
 #[test]
@@ -591,6 +677,7 @@ fn no_submit() {
         Settings {
             submit_report: true,
             include_url: false,
+            test_hardware: false,
         }
         .to_string(),
     );
@@ -620,12 +707,12 @@ fn no_submit() {
         interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
     });
     test.assert_files()
-        .ignore_log()
         .saved_settings(Settings {
             submit_report: false,
             include_url: false,
+            test_hardware: false,
         })
-        .pending();
+        .pending_unchanged_extra();
 }
 
 #[test]
@@ -645,11 +732,56 @@ fn ping_and_event_files() {
         interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
     });
     test.assert_files()
-        .ignore_log()
         .saved_settings(Settings::default())
         .submitted()
-        .pending()
         .submission_event(true)
+        .ping()
+        .check(
+            "events_dir/minidump",
+            format!(
+                "1\n\
+                12:34:56\n\
+                e0423878-8d59-4452-b82e-cad9c846836e\n\
+                {}",
+                serde_json::json! {{
+                    "foo": "bar",
+                    "MinidumpSha256Hash": MOCK_MINIDUMP_SHA256,
+                    "CrashPingUUID": MOCK_PING_UUID,
+                    "StackTraces": { "status": "OK" }
+                }}
+            ),
+        );
+}
+
+#[test]
+fn network_failure() {
+    let invoked = Counter::new();
+    let mut test = GuiTest::new();
+    test.files
+        .add_dir("ping_dir")
+        .add_dir("events_dir")
+        .add_file(
+            "events_dir/minidump",
+            "1\n\
+         12:34:56\n\
+         e0423878-8d59-4452-b82e-cad9c846836e\n\
+         {\"foo\":\"bar\"}",
+        );
+    test.mock.set(
+        net::http::MockHttp,
+        Box::new(cc! { (invoked) move |_request, _url| {
+            invoked.inc();
+            Ok(Err(std::io::ErrorKind::HostUnreachable.into()))
+        }}),
+    );
+    test.run(|interact| {
+        interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
+    });
+    assert!(invoked.count() > 0);
+    test.assert_files()
+        .saved_settings(Settings::default())
+        .pending()
+        .submission_event(false)
         .ping()
         .check(
             "events_dir/minidump",
@@ -689,10 +821,8 @@ fn pingsender_failure() {
         interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
     });
     test.assert_files()
-        .ignore_log()
         .saved_settings(Settings::default())
         .submitted()
-        .pending()
         .submission_event(true)
         .ping()
         .check(
@@ -713,6 +843,155 @@ fn pingsender_failure() {
 }
 
 #[test]
+fn glean_ping() {
+    let mut test = GuiTest::new();
+    test.enable_glean_pings();
+    let submitted_glean_ping = Counter::new();
+    cc! { (submitted_glean_ping)
+        test.before_run(move || {
+            crate::glean::crash.test_before_next_submit(move |_| {
+                submitted_glean_ping.inc();
+            });
+        })
+    };
+    test.run(|interact| {
+        interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
+    });
+    submitted_glean_ping.assert_one();
+}
+
+#[test]
+fn glean_ping_extra_stack_trace_fields() {
+    let mut test = GuiTest::new();
+    test.enable_glean_pings();
+    let submitted_glean_ping = Counter::new();
+
+    const MINIDUMP_EXTRA_CONTENTS: &str = r#"{
+                            "Vendor": "FooCorp",
+                            "ProductName": "Bar",
+                            "ReleaseChannel": "release",
+                            "BuildID": "1234",
+                            "StackTraces": {
+                                "status": "OK",
+                                "foobar": "baz",
+                                "crash_info": {
+                                    "type": "bad crash",
+                                    "address": "0xcafe",
+                                    "crashing_thread": 1
+                                },
+                                "main_module": 0,
+                                "modules": [{
+                                    "base_addr": "0xcafe",
+                                    "end_addr": "0xf000",
+                                    "code_id": "CODEID",
+                                    "debug_file": "debug_file.so",
+                                    "debug_id": "DEBUGID",
+                                    "filename": "file.so",
+                                    "version": "1.0.0"
+                                }],
+                                "threads": [
+                                    {"frames": [
+                                        {
+                                            "ip": "0xf00",
+                                            "trust": "crash",
+                                            "module_index": 0
+                                        }
+                                    ]},
+                                    {"frames": [
+                                        {
+                                            "ip": "0x0",
+                                            "trust": "crash",
+                                            "module_index": 0
+                                        },
+                                        {
+                                            "ip": "0xbadf00d",
+                                            "trust": "cfi",
+                                            "module_index": 0
+                                        }
+                                    ]}
+                                ]
+                            },
+                            "Version": "100.0",
+                            "ServerURL": "https://reports.example.com",
+                            "TelemetryServerURL": "https://telemetry.example.com",
+                            "TelemetryClientId": "telemetry_client",
+                            "TelemetryProfileGroupId": "telemetry_profile_group",
+                            "TelemetrySessionId": "telemetry_session",
+                            "SomeNestedJson": { "foo": "bar" },
+                            "URL": "https://url.example.com",
+                            "WindowsErrorReporting": "1"
+                        }"#;
+    test.files = {
+        let mock_files = MockFiles::new();
+        mock_files
+            .add_file_result(
+                "minidump.dmp",
+                Ok(MOCK_MINIDUMP_FILE.into()),
+                current_system_time(),
+            )
+            .add_file_result(
+                "minidump.extra",
+                Ok(MINIDUMP_EXTRA_CONTENTS.into()),
+                current_system_time(),
+            );
+        test.mock.set(MockFS, mock_files.clone());
+        mock_files
+    };
+
+    cc! { (submitted_glean_ping)
+        test.before_run(move || {
+            glean::crash.test_before_next_submit(move |_| {
+                assert_eq!(
+                    glean::crash::stack_traces.test_get_value(None),
+                    Some(serde_json::json! {{
+                        "crash_type": "bad crash",
+                        "crash_address":"0xcafe",
+                        "crash_thread": 1,
+                        "main_module": 0,
+                        "modules": [{
+                            "base_address": "0xcafe",
+                            "end_address": "0xf000",
+                            "code_id": "CODEID",
+                            "debug_file": "debug_file.so",
+                            "debug_id": "DEBUGID",
+                            "filename": "file.so",
+                            "version": "1.0.0"
+                        }],
+                        "threads": [
+                            {"frames": [
+                                {
+                                    "module_index": 0,
+                                    "ip": "0xf00",
+                                    "trust": "crash"
+                                },
+                            ]},
+                            {"frames": [
+                                {
+                                    "module_index": 0,
+                                    "ip": "0x0",
+                                    "trust": "crash"
+                                },
+                                {
+                                    "module_index": 0,
+                                    "ip": "0xbadf00d",
+                                    "trust": "cfi"
+                                }
+                            ]}
+                        ]
+                    }})
+                );
+                submitted_glean_ping.inc();
+            });
+        })
+    };
+
+    test.run(|interact| {
+        interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
+    });
+    submitted_glean_ping.assert_one();
+}
+
+#[test]
 fn eol_version() {
     let mut test = GuiTest::new();
     test.files
@@ -724,10 +1003,7 @@ fn eol_version() {
         result.expect_err("should fail on EOL version").to_string(),
         "Version end of life: crash reports are no longer accepted."
     );
-    test.assert_files()
-        .ignore_log()
-        .pending()
-        .ignore("data_dir/EndOfLife100.0");
+    test.assert_files().ignore("data_dir/EndOfLife100.0");
 }
 
 #[test]
@@ -756,14 +1032,11 @@ fn details_window() {
         assert_eq!(details_visible(), false);
         interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
         assert_eq!(details_text,
-            "BuildID: 1234\n\
+            "AsyncShutdownTimeout: {}\n\
+             BuildID: 1234\n\
              ProductName: Bar\n\
              ReleaseChannel: release\n\
-             SomeNestedJson: {\"foo\":\"bar\"}\n\
              SubmittedFrom: Client\n\
-             TelemetryClientId: telemetry_client\n\
-             TelemetryServerURL: https://telemetry.example.com\n\
-             TelemetrySessionId: telemetry_session\n\
              Throttleable: 1\n\
              URL: https://url.example.com\n\
              Vendor: FooCorp\n\
@@ -782,10 +1055,8 @@ fn data_dir_default() {
     });
     test.assert_files()
         .set_data_dir("data_dir/FooCorp/Bar/Crash Reports")
-        .ignore_log()
         .saved_settings(Settings::default())
-        .submitted()
-        .pending();
+        .submitted();
 }
 
 #[test]
@@ -797,28 +1068,212 @@ fn include_url() {
             Settings {
                 submit_report: true,
                 include_url: setting,
+                test_hardware: false,
             }
             .to_string(),
         );
-        test.mock
-            .set(
-                Command::mock("curl"),
-                Box::new(|_| Err(std::io::ErrorKind::NotFound.into())),
-            )
-            .set(
-                net::report::MockLibCurl,
-                Box::new(move |report| {
-                    assert_eq!(
-                        report.extra.get("URL").and_then(|v| v.as_str()),
-                        setting.then_some("https://url.example.com")
-                    );
-                    Ok(Ok(format!("CrashID={MOCK_REMOTE_CRASH_ID}")))
-                }),
-            );
+        test.mock.set(
+            net::report::MockReport,
+            Box::new(move |report| {
+                assert_eq!(
+                    report.extra.get("URL").and_then(|v| v.as_str()),
+                    setting.then_some("https://url.example.com")
+                );
+                Ok(Ok(format!("CrashID={MOCK_REMOTE_CRASH_ID}")))
+            }),
+        );
         test.run(|interact| {
             interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
         });
     }
+}
+
+#[test]
+fn persistent_settings() {
+    let mut test = GuiTest::new();
+    test.run(|interact| {
+        interact.element("include-url", |_style, c: &model::Checkbox| {
+            c.checked.set(false)
+        });
+        interact.element("send", |_style, c: &model::Checkbox| c.checked.set(false));
+        interact.element("test-hardware", |_style, c: &model::Checkbox| {
+            c.checked.set(false)
+        });
+        interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
+    });
+
+    test.assert_files()
+        .saved_settings(Settings {
+            submit_report: false,
+            include_url: false,
+            test_hardware: false,
+        })
+        .pending_unchanged_extra();
+}
+
+#[test]
+fn send_memtest_output() {
+    let mut test = GuiTest::new();
+    test.config.run_memtest = true;
+    let invoked = Counter::new();
+    let mock_invoked = invoked.clone();
+    test.mock
+        .set(
+            // memtest is the only expected process spawned using current exe
+            Command::mock("work_dir/crashreporter"),
+            Box::new(|cmd| assert_mock_memtest(cmd)),
+        )
+        .set(
+            net::report::MockReport,
+            Box::new(move |report| {
+                mock_invoked.inc();
+                assert_eq!(
+                    report.extra.get("MemtestOutput").and_then(|v| v.as_str()),
+                    Some("memtest output")
+                );
+                Ok(Ok(format!("CrashID={MOCK_REMOTE_CRASH_ID}")))
+            }),
+        );
+    test.run(|interact| {
+        interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
+    });
+
+    invoked.assert_one();
+}
+
+#[test]
+fn add_memtest_output_to_extra() {
+    let mut test = GuiTest::new();
+    test.config.run_memtest = true;
+    test.config.delete_dump = false;
+    test.files.add_dir("data_dir").add_file(
+        "data_dir/crashreporter_settings.json",
+        Settings {
+            submit_report: true,
+            include_url: true,
+            test_hardware: true,
+        }
+        .to_string(),
+    );
+    test.mock.set(
+        Command::mock("work_dir/crashreporter"),
+        Box::new(|cmd| assert_mock_memtest(cmd)),
+    );
+    test.run(|interact| {
+        interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
+    });
+
+    let mut value: serde_json::Value = serde_json::from_str(MOCK_MINIDUMP_EXTRA).unwrap();
+    value["MemtestOutput"] = "memtest output".into();
+    let new_extra = serde_json::to_string(&value).unwrap();
+
+    test.assert_files()
+        .saved_settings(Settings {
+            submit_report: true,
+            include_url: true,
+            test_hardware: true,
+        })
+        .submitted()
+        .pending_with_change(MOCK_MINIDUMP_FILE, &new_extra);
+}
+
+#[test]
+fn toggle_memtest_spawn() {
+    let mut test = GuiTest::new();
+    test.config.run_memtest = true;
+    test.files.add_dir("data_dir").add_file(
+        "data_dir/crashreporter_settings.json",
+        Settings {
+            submit_report: true,
+            include_url: false,
+            test_hardware: false,
+        }
+        .to_string(),
+    );
+    let invoked = Counter::new();
+    let mock_invoked = invoked.clone();
+    test.mock
+        .set(
+            Command::mock("work_dir/crashreporter"),
+            Box::new(|cmd| assert_mock_memtest(cmd)),
+        )
+        .set(
+            net::report::MockReport,
+            Box::new(move |report| {
+                mock_invoked.inc();
+                assert_eq!(
+                    report.extra.get("MemtestOutput").and_then(|v| v.as_str()),
+                    Some("memtest output")
+                );
+                Ok(Ok(format!("CrashID={MOCK_REMOTE_CRASH_ID}")))
+            }),
+        );
+    test.run(|interact| {
+        interact.element("test-hardware", |_style, c: &model::Checkbox| {
+            c.checked.set(true)
+        });
+        interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
+    });
+
+    invoked.assert_one();
+}
+
+#[test]
+fn toggle_memtest_kill() {
+    let mut test = GuiTest::new();
+    test.config.run_memtest = true;
+    test.files.add_dir("data_dir").add_file(
+        "data_dir/crashreporter_settings.json",
+        Settings {
+            submit_report: true,
+            include_url: false,
+            test_hardware: true,
+        }
+        .to_string(),
+    );
+    let ran_process = Counter::new();
+    let mock_ran_process = ran_process.clone();
+    test.mock
+        .set(
+            Command::mock("work_dir/crashreporter"),
+            Box::new(move |cmd| {
+                // To allow accurate count of ran_process, Early return when spawning
+                if cmd.spawning {
+                    return Ok(crate::std::process::success_output());
+                }
+                mock_ran_process.inc();
+                assert_mock_memtest(cmd)
+            }),
+        )
+        .set(
+            net::report::MockReport,
+            Box::new(move |report| {
+                assert!(report.extra.get("MemtestOutput").is_none());
+                Ok(Ok(format!("CrashID={MOCK_REMOTE_CRASH_ID}")))
+            }),
+        );
+    test.run(|interact| {
+        interact.element("test-hardware", |_style, c: &model::Checkbox| {
+            c.checked.set(false)
+        });
+        interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
+    });
+
+    ran_process.assert_one();
+}
+
+fn assert_mock_memtest(cmd: &Command) -> std::io::Result<Output> {
+    use ::std::borrow::Borrow;
+    assert_eq!(cmd.args.len(), 3);
+    assert_eq!(cmd.args[0], "--memtest");
+    assert!(cmd.args[1].to_string_lossy().parse::<u32>().is_ok());
+    assert!(
+        serde_json::from_str::<memtest::RunnerArgs>(cmd.args[2].to_string_lossy().borrow()).is_ok()
+    );
+
+    let mut output = crate::std::process::success_output();
+    output.stdout = "memtest output".into();
+    Ok(output)
 }
 
 #[test]
@@ -829,22 +1284,17 @@ fn comment() {
         let invoked = Counter::new();
         let mock_invoked = invoked.clone();
         let mut test = GuiTest::new();
-        test.mock
-            .set(
-                Command::mock("curl"),
-                Box::new(|_| Err(std::io::ErrorKind::NotFound.into())),
-            )
-            .set(
-                net::report::MockLibCurl,
-                Box::new(move |report| {
-                    mock_invoked.inc();
-                    assert_eq!(
-                        report.extra.get("Comments").and_then(|v| v.as_str()),
-                        set_comment.then_some(COMMENT)
-                    );
-                    Ok(Ok(format!("CrashID={MOCK_REMOTE_CRASH_ID}")))
-                }),
-            );
+        test.mock.set(
+            net::report::MockReport,
+            Box::new(move |report| {
+                mock_invoked.inc();
+                assert_eq!(
+                    report.extra.get("Comments").and_then(|v| v.as_str()),
+                    set_comment.then_some(COMMENT)
+                );
+                Ok(Ok(format!("CrashID={MOCK_REMOTE_CRASH_ID}")))
+            }),
+        );
         test.run(move |interact| {
             if set_comment {
                 interact.element("comment", |_style, c: &model::TextBox| {
@@ -880,7 +1330,7 @@ fn curl_binary() {
 
             let expected_args: Vec<OsString> = [
                 "--user-agent",
-                net::report::USER_AGENT,
+                net::http::USER_AGENT,
                 "--form",
                 "extra=@-;filename=extra.json;type=application/json",
                 "--form",
@@ -917,18 +1367,13 @@ fn curl_library() {
     let invoked = Counter::new();
     let mock_invoked = invoked.clone();
     let mut test = GuiTest::new();
-    test.mock
-        .set(
-            Command::mock("curl"),
-            Box::new(|_| Err(std::io::ErrorKind::NotFound.into())),
-        )
-        .set(
-            net::report::MockLibCurl,
-            Box::new(move |_| {
-                mock_invoked.inc();
-                Ok(Ok(format!("CrashID={MOCK_REMOTE_CRASH_ID}")))
-            }),
-        );
+    test.mock.set(
+        net::report::MockReport,
+        Box::new(move |_| {
+            mock_invoked.inc();
+            Ok(Ok(format!("CrashID={MOCK_REMOTE_CRASH_ID}")))
+        }),
+    );
     test.run(|interact| {
         interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
     });
@@ -939,21 +1384,15 @@ fn curl_library() {
 fn report_not_sent() {
     let mut test = GuiTest::new();
     test.files.add_dir("events_dir");
-    test.mock
-        .set(
-            Command::mock("curl"),
-            Box::new(|_| Err(std::io::ErrorKind::NotFound.into())),
-        )
-        .set(
-            net::report::MockLibCurl,
-            Box::new(move |_| Err(std::io::ErrorKind::NotFound.into())),
-        );
+    test.mock.set(
+        net::report::MockReport,
+        Box::new(move |_| Err(std::io::ErrorKind::NotFound.into())),
+    );
     test.run(|interact| {
         interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
     });
 
     test.assert_files()
-        .ignore_log()
         .saved_settings(Settings::default())
         .submission_event(false)
         .pending();
@@ -963,21 +1402,15 @@ fn report_not_sent() {
 fn report_response_failed() {
     let mut test = GuiTest::new();
     test.files.add_dir("events_dir");
-    test.mock
-        .set(
-            Command::mock("curl"),
-            Box::new(|_| Err(std::io::ErrorKind::NotFound.into())),
-        )
-        .set(
-            net::report::MockLibCurl,
-            Box::new(move |_| Ok(Err(std::io::ErrorKind::NotFound.into()))),
-        );
+    test.mock.set(
+        net::report::MockReport,
+        Box::new(move |_| Ok(Err(std::io::ErrorKind::NotFound.into()))),
+    );
     test.run(|interact| {
         interact.element("quit", |_style, b: &model::Button| b.click.fire(&()));
     });
 
     test.assert_files()
-        .ignore_log()
         .saved_settings(Settings::default())
         .submission_event(false)
         .pending();
@@ -1019,10 +1452,7 @@ fn response_indicates_discarded() {
     });
 
     let mut assert_files = test.assert_files();
-    assert_files
-        .ignore_log()
-        .saved_settings(Settings::default())
-        .pending();
+    assert_files.saved_settings(Settings::default()).pending();
     for i in SHOULD_BE_PRUNED..MINIDUMP_PRUNE_SAVE_COUNT + SHOULD_BE_PRUNED - 1 {
         assert_files.check_exists(format!("data_dir/pending/minidump{i}.dmp"));
         if i % 2 == 0 {
@@ -1051,9 +1481,7 @@ fn response_view_url() {
     });
 
     test.assert_files()
-        .ignore_log()
         .saved_settings(Settings::default())
-        .pending()
         .check(
             format!("data_dir/submitted/{MOCK_REMOTE_CRASH_ID}.txt"),
             format!(
@@ -1083,10 +1511,8 @@ fn response_stop_sending_reports() {
     });
 
     test.assert_files()
-        .ignore_log()
         .saved_settings(Settings::default())
         .submitted()
-        .pending()
         .check_exists("data_dir/EndOfLife100.0");
 }
 
@@ -1099,8 +1525,7 @@ fn rename_failure_uses_copy() {
     });
     test.assert_files()
         .saved_settings(Settings::default())
-        .submitted()
-        .pending();
+        .submitted();
 }
 
 /// A real temporary directory in the host filesystem.
@@ -1238,7 +1663,6 @@ fn real_curl_binary() {
         Box::new(|cmd| cmd.output_from_real_command()),
     );
     test.config.report_url = Some(server.submit_url().into());
-    test.config.delete_dump = true;
 
     // We need the dump file to actually exist since the curl binary is passed the file path.
     // The dump file needs to exist at the pending dir location.
@@ -1257,7 +1681,6 @@ fn real_curl_binary() {
 
     test.assert_files()
         .set_data_dir(data_dir.display())
-        .ignore_log()
         .saved_settings(Settings::default())
         .submitted();
 }
@@ -1279,7 +1702,6 @@ fn real_curl_library() {
         )
         .set(mock::MockHook::new("use_system_libcurl"), true);
     test.config.report_url = Some(server.submit_url().into());
-    test.config.delete_dump = true;
 
     // We need the dump file to actually exist since libcurl is passed the file path.
     // The dump file needs to exist at the pending dir location.
@@ -1298,7 +1720,6 @@ fn real_curl_library() {
 
     test.assert_files()
         .set_data_dir(data_dir.display())
-        .ignore_log()
         .saved_settings(Settings::default())
         .submitted();
 }

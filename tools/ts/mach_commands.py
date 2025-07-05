@@ -2,11 +2,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-import json
 import os
+import shutil
+import sys
 
 import mozpack.path as mozpath
 from mach.decorators import Command, CommandArgument, SubCommand
+
+targets = ["dom", "nsresult", "services", "xpcom"]
 
 
 @Command("ts", category="misc", description="Run TypeScript and related commands.")
@@ -23,9 +26,15 @@ def ts(ctx):
 
 
 @SubCommand("ts", "build", description="Build typelibs.")
-@CommandArgument("lib", choices=["nsresult", "services", "xpcom"])
-def buld(ctx, lib):
-    """Command to build one of the typelibs."""
+@CommandArgument("lib", choices=targets, nargs="?")
+def build(ctx, lib):
+    """Command to build the target typelibs."""
+
+    if lib is None:
+        for t in targets:
+            if rv := build(ctx, t):
+                return rv
+        return 0
 
     types_dir = mozpath.join(ctx.distdir, "@types")
     lib_dts = mozpath.join(types_dir, f"lib.gecko.{lib}.d.ts")
@@ -34,7 +43,7 @@ def buld(ctx, lib):
 
     if lib == "nsresult":
         xpc_msg = mozpath.join(ctx.topsrcdir, "js/xpconnect/src/xpc.msg")
-        errors_json = mozpath.join(ctx.topsrcdir, "tools/ts/error_list.json")
+        errors_json = mozpath.join(ctx.topsrcdir, "tools/ts/config/error_list.json")
         return node(ctx, "build_nsresult", lib_dts, xpc_msg, errors_json)
 
     if lib == "services":
@@ -51,10 +60,21 @@ def buld(ctx, lib):
             return build_required(lib, dir)
 
         files = [f for f in os.listdir(dir) if f.endswith(".d.json")]
-        if not len(files):
+        if not files:
             return build_required(lib, f"*.d.json files in {dir}")
 
         return node(ctx, "build_xpcom", lib_dts, dir, *files)
+
+    if lib == "dom":
+        # Same as above, get all *.webidl files for now.
+        dir = mozpath.join(ctx.topsrcdir, "dom")
+        files = []
+        for subdir in ["webidl", "chrome-webidl"]:
+            for file in os.listdir(mozpath.join(dir, subdir)):
+                if file.endswith(".webidl"):
+                    files.append(subdir + "/" + file)
+
+        return node(ctx, "build_dom", lib_dts, dir, *files)
 
     raise ValueError(f"Unknown typelib: {lib}")
 
@@ -76,11 +96,69 @@ def setup(ctx):
     return ctx._sub_mach(["npm", "ci"])
 
 
-@SubCommand("ts", "update", description="Update tools/@types lib references.")
+@SubCommand("ts", "update", description="Update tools/@types libraries.")
 def update(ctx):
-    types_dir = mozpath.join(ctx.distdir, "@types")
-    index_dts = mozpath.join(ctx.topsrcdir, "tools/@types/index.d.ts")
-    return node(ctx, "update_refs", index_dts, types_dir)
+    typelib_dir = mozpath.join(ctx.topsrcdir, "tools/@types/generated")
+    platforms = ["darwin", "linux", "win32"]
+
+    for lib in targets + platforms:
+        file = f"lib.gecko.{lib}.d.ts"
+        path = mozpath.join(ctx.distdir, "@types", file)
+        if not os.path.exists(path):
+            if lib in platforms:
+                continue
+            print(f"[ERROR] {path} not found. Did you run `mach ts build`?")
+            return 1
+
+        # This command inherently goes in a confusing direction, we're copying:
+        # from `<topobjdir>/dist/@types` files generated with `mach ts build`,
+        # into `<topsrcdir>/tools/@types` typelib dir back in your source tree.
+        print(f"[INFO] Updating {typelib_dir}/{file}")
+        shutil.copy(path, typelib_dir)
+
+    print("[WARNING] Your source tree was updated, you should commit the changes.")
+
+
+@SubCommand("ts", "glean", description="Build Glean bindings.")
+def glean(ctx):
+    sys.path.append(mozpath.join(ctx.topsrcdir, "toolkit/components/glean/"))
+    from metrics_index import metrics_yamls, pings_yamls
+
+    typelib_dir = mozpath.join(ctx.topsrcdir, "tools/@types/generated")
+
+    maybe_setup(ctx)
+    return node(
+        ctx, "build_glean", ctx.topsrcdir, typelib_dir, *metrics_yamls, *pings_yamls
+    )
+
+
+@SubCommand("ts", "paths", description="Build module path mapping.")
+def paths(ctx):
+    maybe_setup(ctx)
+    lib = mozpath.join(ctx.topsrcdir, "tools/@types/generated/tspaths.json")
+    lazy = mozpath.join(ctx.topsrcdir, "tools/@types/generated/lib.gecko.modules.d.ts")
+    return node(ctx, "build_paths", ctx.topsrcdir, lib, lazy)
+
+
+@SubCommand("ts", "subs", description="Emit substitution .d.ts for processed sources.")
+def subs(ctx):
+    maybe_setup(ctx)
+    processed = [
+        # AppConstants.sys.mjs has a (better) manually created declaration file.
+        "dist/bin/browser/modules/policies/schema.sys.mjs",
+        "dist/bin/modules/Readerable.sys.mjs",
+        "toolkit/components/nimbus/FeatureManifest.sys.mjs",
+        "toolkit/components/promiseworker/worker/PromiseWorker.js",
+        "toolkit/components/promiseworker/worker/PromiseWorker.mjs",
+        "toolkit/components/resistfingerprinting/RFPTargetConstants.sys.mjs",
+    ]
+    args = ["--declaration", "--emitDeclarationOnly", "--allowJs", "--outDir"]
+    subs_dir = mozpath.join(ctx.topsrcdir, "tools/@types/subs")
+
+    for file in processed:
+        path = mozpath.join(ctx.topobjdir, file)
+        print(f"[INFO] {path} -> {subs_dir}/{mozpath.basename(path)}")
+        node(ctx, "node_modules/typescript/bin/tsc", *args, subs_dir, path)
 
 
 def node(ctx, script, *args):
@@ -90,22 +168,15 @@ def node(ctx, script, *args):
 
 
 def maybe_setup(ctx):
+    sys.path.append(mozpath.join(ctx.topsrcdir, "tools", "lint", "eslint"))
+    import setup_helper
+
+    if not setup_helper.check_node_executables_valid():
+        return 1
+
     """Check if npm modules are installed, and run setup if needed."""
     dir = mozpath.dirname(__file__)
-    package_json = json.load(open(mozpath.join(dir, "package.json")))
-    needs_setup = False
-
-    # TODO: Use proper version checking from tools/lint/eslint/setup_helper.py.
-    for module in package_json.get("devDependencies", {}):
-        path = mozpath.join(dir, "node_modules", module, "package.json")
-        if not os.path.isfile(path):
-            print(f"Missing node module {path}.")
-            needs_setup = True
-            break
-
-    if needs_setup:
-        print("Running npm install.")
-        setup(ctx)
+    setup_helper.eslint_maybe_setup(dir, "TypeScript")
 
 
 def build_required(lib, item):

@@ -8,9 +8,10 @@ use raw_window_handle::{HasDisplayHandle, HasWindowHandle};
 use glam::{Affine3A, Mat4, Vec3};
 use std::{
     borrow::{Borrow, Cow},
-    iter, mem, ptr,
+    iter, ptr,
     time::Instant,
 };
+use wgpu_types::Dx12BackendOptions;
 use winit::window::WindowButtons;
 
 const DESIRED_MAX_LATENCY: u32 = 2;
@@ -30,7 +31,7 @@ impl std::fmt::Debug for AccelerationStructureInstance {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Instance")
             .field("transform", &self.transform)
-            .field("custom_index()", &self.custom_index())
+            .field("custom_data()", &self.custom_index())
             .field("mask()", &self.mask())
             .field(
                 "shader_binding_table_record_offset()",
@@ -122,7 +123,12 @@ impl AccelerationStructureInstance {
         &mut self,
         shader_binding_table_record_offset: u32,
     ) {
-        debug_assert!(shader_binding_table_record_offset <= Self::MAX_U24, "shader_binding_table_record_offset uses more than 24 bits! {shader_binding_table_record_offset} > {}", Self::MAX_U24);
+        debug_assert!(
+            shader_binding_table_record_offset <= Self::MAX_U24,
+            "shader_binding_table_record_offset uses more than 24 bits! {} > {}",
+            shader_binding_table_record_offset,
+            Self::MAX_U24
+        );
         self.shader_binding_table_record_offset_and_flags = (shader_binding_table_record_offset
             & Self::LOW_24_MASK)
             | (self.shader_binding_table_record_offset_and_flags & !Self::LOW_24_MASK)
@@ -149,7 +155,9 @@ impl AccelerationStructureInstance {
         );
         debug_assert!(
             shader_binding_table_record_offset <= Self::MAX_U24,
-            "shader_binding_table_record_offset uses more than 24 bits! {shader_binding_table_record_offset} > {}", Self::MAX_U24
+            "shader_binding_table_record_offset uses more than 24 bits! {} > {}",
+            shader_binding_table_record_offset,
+            Self::MAX_U24
         );
         AccelerationStructureInstance {
             transform: Self::affine_to_rows(transform),
@@ -187,7 +195,7 @@ struct Example<A: hal::Api> {
     instance: A::Instance,
     adapter: A::Adapter,
     surface: A::Surface,
-    surface_format: wgt::TextureFormat,
+    surface_format: wgpu_types::TextureFormat,
     device: A::Device,
     queue: A::Queue,
 
@@ -203,7 +211,7 @@ struct Example<A: hal::Api> {
     uniform_buffer: A::Buffer,
     pipeline_layout: A::PipelineLayout,
     vertices_buffer: A::Buffer,
-    indices_buffer: A::Buffer,
+    indices_buffer: Option<A::Buffer>,
     texture: A::Texture,
     instances: [AccelerationStructureInstance; 3],
     instances_buffer: A::Buffer,
@@ -215,14 +223,28 @@ struct Example<A: hal::Api> {
 
 impl<A: hal::Api> Example<A> {
     fn init(window: &winit::window::Window) -> Result<Self, Box<dyn std::error::Error>> {
+        let mut index_buffer = false;
+
+        for arg in std::env::args() {
+            if arg == "index_buffer" {
+                index_buffer = true;
+            }
+        }
+
+        if index_buffer {
+            log::info!("using index buffer")
+        }
+
         let instance_desc = hal::InstanceDescriptor {
             name: "example",
-            flags: wgt::InstanceFlags::default(),
-            dx12_shader_compiler: wgt::Dx12Compiler::Dxc {
-                dxil_path: None,
-                dxc_path: None,
+            flags: wgpu_types::InstanceFlags::default(),
+            memory_budget_thresholds: wgpu_types::MemoryBudgetThresholds::default(),
+            backend_options: wgpu_types::BackendOptions {
+                dx12: Dx12BackendOptions {
+                    shader_compiler: wgpu_types::Dx12Compiler::default_dynamic_dxc(),
+                },
+                ..Default::default()
             },
-            gles_minor_version: wgt::Gles3MinorVersion::default(),
         };
         let instance = unsafe { A::Instance::init(&instance_desc)? };
         let surface = {
@@ -237,7 +259,7 @@ impl<A: hal::Api> Example<A> {
         };
 
         let (adapter, features) = unsafe {
-            let mut adapters = instance.enumerate_adapters();
+            let mut adapters = instance.enumerate_adapters(Some(&surface));
             if adapters.is_empty() {
                 panic!("No adapters found");
             }
@@ -249,16 +271,23 @@ impl<A: hal::Api> Example<A> {
             .expect("Surface doesn't support presentation");
         log::info!("Surface caps: {:#?}", surface_caps);
 
-        let hal::OpenDevice { device, queue } =
-            unsafe { adapter.open(features, &wgt::Limits::default()).unwrap() };
+        let hal::OpenDevice { device, queue } = unsafe {
+            adapter
+                .open(
+                    features,
+                    &wgpu_types::Limits::default(),
+                    &wgpu_types::MemoryHints::Performance,
+                )
+                .unwrap()
+        };
 
         let window_size: (u32, u32) = window.inner_size().into();
         dbg!(&surface_caps.formats);
         let surface_format = if surface_caps
             .formats
-            .contains(&wgt::TextureFormat::Rgba8Snorm)
+            .contains(&wgpu_types::TextureFormat::Rgba8Unorm)
         {
-            wgt::TextureFormat::Rgba8Unorm
+            wgpu_types::TextureFormat::Rgba8Unorm
         } else {
             *surface_caps.formats.first().unwrap()
         };
@@ -266,15 +295,15 @@ impl<A: hal::Api> Example<A> {
             maximum_frame_latency: DESIRED_MAX_LATENCY
                 .max(*surface_caps.maximum_frame_latency.start())
                 .min(*surface_caps.maximum_frame_latency.end()),
-            present_mode: wgt::PresentMode::Fifo,
-            composite_alpha_mode: wgt::CompositeAlphaMode::Opaque,
+            present_mode: wgpu_types::PresentMode::Fifo,
+            composite_alpha_mode: wgpu_types::CompositeAlphaMode::Opaque,
             format: surface_format,
-            extent: wgt::Extent3d {
+            extent: wgpu_types::Extent3d {
                 width: window_size.0,
                 height: window_size.1,
                 depth_or_array_layers: 1,
             },
-            usage: hal::TextureUses::COLOR_TARGET | hal::TextureUses::COPY_DST,
+            usage: wgpu_types::TextureUses::COLOR_TARGET | wgpu_types::TextureUses::COPY_DST,
             view_formats: vec![surface_format],
         };
         unsafe {
@@ -291,30 +320,32 @@ impl<A: hal::Api> Example<A> {
             label: None,
             flags: hal::BindGroupLayoutFlags::empty(),
             entries: &[
-                wgt::BindGroupLayoutEntry {
+                wgpu_types::BindGroupLayoutEntry {
                     binding: 0,
-                    visibility: wgt::ShaderStages::COMPUTE,
-                    ty: wgt::BindingType::Buffer {
-                        ty: wgt::BufferBindingType::Uniform,
+                    visibility: wgpu_types::ShaderStages::COMPUTE,
+                    ty: wgpu_types::BindingType::Buffer {
+                        ty: wgpu_types::BufferBindingType::Uniform,
                         has_dynamic_offset: false,
-                        min_binding_size: wgt::BufferSize::new(mem::size_of::<Uniforms>() as _),
+                        min_binding_size: wgpu_types::BufferSize::new(size_of::<Uniforms>() as _),
                     },
                     count: None,
                 },
-                wgt::BindGroupLayoutEntry {
+                wgpu_types::BindGroupLayoutEntry {
                     binding: 1,
-                    visibility: wgt::ShaderStages::COMPUTE,
-                    ty: wgt::BindingType::StorageTexture {
-                        access: wgt::StorageTextureAccess::WriteOnly,
-                        format: wgt::TextureFormat::Rgba8Unorm,
-                        view_dimension: wgt::TextureViewDimension::D2,
+                    visibility: wgpu_types::ShaderStages::COMPUTE,
+                    ty: wgpu_types::BindingType::StorageTexture {
+                        access: wgpu_types::StorageTextureAccess::WriteOnly,
+                        format: wgpu_types::TextureFormat::Rgba8Unorm,
+                        view_dimension: wgpu_types::TextureViewDimension::D2,
                     },
                     count: None,
                 },
-                wgt::BindGroupLayoutEntry {
+                wgpu_types::BindGroupLayoutEntry {
                     binding: 2,
-                    visibility: wgt::ShaderStages::COMPUTE,
-                    ty: wgt::BindingType::AccelerationStructure,
+                    visibility: wgpu_types::ShaderStages::COMPUTE,
+                    ty: wgpu_types::BindingType::AccelerationStructure {
+                        vertex_return: false,
+                    },
                     count: None,
                 },
             ],
@@ -343,7 +374,7 @@ impl<A: hal::Api> Example<A> {
         };
         let shader_desc = hal::ShaderModuleDescriptor {
             label: None,
-            runtime_checks: false,
+            runtime_checks: wgpu_types::ShaderRuntimeChecks::checked(),
         };
         let shader_module = unsafe {
             device
@@ -372,7 +403,6 @@ impl<A: hal::Api> Example<A> {
                     entry_point: "main",
                     constants: &Default::default(),
                     zero_initialize_workgroup_memory: true,
-                    vertex_pulling_transform: false,
                 },
                 cache: None,
             })
@@ -392,8 +422,8 @@ impl<A: hal::Api> Example<A> {
                 .create_buffer(&hal::BufferDescriptor {
                     label: Some("vertices buffer"),
                     size: vertices_size_in_bytes as u64,
-                    usage: hal::BufferUses::MAP_WRITE
-                        | hal::BufferUses::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT,
+                    usage: wgpu_types::BufferUses::MAP_WRITE
+                        | wgpu_types::BufferUses::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT,
                     memory_flags: hal::MemoryFlags::TRANSIENT | hal::MemoryFlags::PREFER_COHERENT,
                 })
                 .unwrap();
@@ -406,49 +436,58 @@ impl<A: hal::Api> Example<A> {
                 mapping.ptr.as_ptr(),
                 vertices_size_in_bytes,
             );
-            device.unmap_buffer(&vertices_buffer).unwrap();
+            device.unmap_buffer(&vertices_buffer);
             assert!(mapping.is_coherent);
 
             vertices_buffer
         };
 
-        let indices_buffer = unsafe {
-            let indices_buffer = device
-                .create_buffer(&hal::BufferDescriptor {
-                    label: Some("indices buffer"),
-                    size: indices_size_in_bytes as u64,
-                    usage: hal::BufferUses::MAP_WRITE
-                        | hal::BufferUses::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT,
-                    memory_flags: hal::MemoryFlags::TRANSIENT | hal::MemoryFlags::PREFER_COHERENT,
-                })
-                .unwrap();
+        let indices_buffer = if index_buffer {
+            unsafe {
+                let indices_buffer = device
+                    .create_buffer(&hal::BufferDescriptor {
+                        label: Some("indices buffer"),
+                        size: indices_size_in_bytes as u64,
+                        usage: wgpu_types::BufferUses::MAP_WRITE
+                            | wgpu_types::BufferUses::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT,
+                        memory_flags: hal::MemoryFlags::TRANSIENT
+                            | hal::MemoryFlags::PREFER_COHERENT,
+                    })
+                    .unwrap();
 
-            let mapping = device
-                .map_buffer(&indices_buffer, 0..indices_size_in_bytes as u64)
-                .unwrap();
-            ptr::copy_nonoverlapping(
-                indices.as_ptr() as *const u8,
-                mapping.ptr.as_ptr(),
-                indices_size_in_bytes,
-            );
-            device.unmap_buffer(&indices_buffer).unwrap();
-            assert!(mapping.is_coherent);
+                let mapping = device
+                    .map_buffer(&indices_buffer, 0..indices_size_in_bytes as u64)
+                    .unwrap();
+                ptr::copy_nonoverlapping(
+                    indices.as_ptr() as *const u8,
+                    mapping.ptr.as_ptr(),
+                    indices_size_in_bytes,
+                );
+                device.unmap_buffer(&indices_buffer);
+                assert!(mapping.is_coherent);
 
-            indices_buffer
+                Some((indices_buffer, indices.len()))
+            }
+        } else {
+            None
         };
 
         let blas_triangles = vec![hal::AccelerationStructureTriangles {
             vertex_buffer: Some(&vertices_buffer),
             first_vertex: 0,
-            vertex_format: wgt::VertexFormat::Float32x3,
-            vertex_count: vertices.len() as u32,
+            vertex_format: wgpu_types::VertexFormat::Float32x3,
+            // each vertex is 3 floats, and floats are stored raw in the array
+            vertex_count: vertices.len() as u32 / 3,
             vertex_stride: 3 * 4,
-            indices: Some(hal::AccelerationStructureTriangleIndices {
-                buffer: Some(&indices_buffer),
-                format: wgt::IndexFormat::Uint32,
-                offset: 0,
-                count: indices.len() as u32,
+            indices: indices_buffer.as_ref().map(|(buf, len)| {
+                hal::AccelerationStructureTriangleIndices {
+                    buffer: Some(buf),
+                    format: wgpu_types::IndexFormat::Uint32,
+                    offset: 0,
+                    count: *len as u32,
+                }
             }),
+
             transform: None,
             flags: hal::AccelerationStructureGeometryFlags::OPAQUE,
         }];
@@ -487,6 +526,7 @@ impl<A: hal::Api> Example<A> {
                 label: Some("blas"),
                 size: blas_sizes.acceleration_structure_size,
                 format: hal::AccelerationStructureFormat::BottomLevel,
+                allow_compaction: false,
             })
         }
         .unwrap();
@@ -496,6 +536,7 @@ impl<A: hal::Api> Example<A> {
                 label: Some("tlas"),
                 size: tlas_sizes.acceleration_structure_size,
                 format: hal::AccelerationStructureFormat::TopLevel,
+                allow_compaction: false,
             })
         }
         .unwrap();
@@ -510,14 +551,14 @@ impl<A: hal::Api> Example<A> {
             }
         };
 
-        let uniforms_size = std::mem::size_of::<Uniforms>();
+        let uniforms_size = size_of::<Uniforms>();
 
         let uniform_buffer = unsafe {
             let uniform_buffer = device
                 .create_buffer(&hal::BufferDescriptor {
                     label: Some("uniform buffer"),
                     size: uniforms_size as u64,
-                    usage: hal::BufferUses::MAP_WRITE | hal::BufferUses::UNIFORM,
+                    usage: wgpu_types::BufferUses::MAP_WRITE | wgpu_types::BufferUses::UNIFORM,
                     memory_flags: hal::MemoryFlags::PREFER_COHERENT,
                 })
                 .unwrap();
@@ -530,34 +571,34 @@ impl<A: hal::Api> Example<A> {
                 mapping.ptr.as_ptr(),
                 uniforms_size,
             );
-            device.unmap_buffer(&uniform_buffer).unwrap();
+            device.unmap_buffer(&uniform_buffer);
             assert!(mapping.is_coherent);
             uniform_buffer
         };
 
         let texture_desc = hal::TextureDescriptor {
             label: None,
-            size: wgt::Extent3d {
+            size: wgpu_types::Extent3d {
                 width: 512,
                 height: 512,
                 depth_or_array_layers: 1,
             },
             mip_level_count: 1,
             sample_count: 1,
-            dimension: wgt::TextureDimension::D2,
-            format: wgt::TextureFormat::Rgba8Unorm,
-            usage: hal::TextureUses::STORAGE_READ_WRITE | hal::TextureUses::COPY_SRC,
+            dimension: wgpu_types::TextureDimension::D2,
+            format: wgpu_types::TextureFormat::Rgba8Unorm,
+            usage: wgpu_types::TextureUses::STORAGE_READ_WRITE | wgpu_types::TextureUses::COPY_SRC,
             memory_flags: hal::MemoryFlags::empty(),
-            view_formats: vec![wgt::TextureFormat::Rgba8Unorm],
+            view_formats: vec![wgpu_types::TextureFormat::Rgba8Unorm],
         };
         let texture = unsafe { device.create_texture(&texture_desc).unwrap() };
 
         let view_desc = hal::TextureViewDescriptor {
             label: None,
             format: texture_desc.format,
-            dimension: wgt::TextureViewDimension::D2,
-            usage: hal::TextureUses::STORAGE_READ_WRITE | hal::TextureUses::COPY_SRC,
-            range: wgt::ImageSubresourceRange::default(),
+            dimension: wgpu_types::TextureViewDimension::D2,
+            usage: wgpu_types::TextureUses::STORAGE_READ_WRITE | wgpu_types::TextureUses::COPY_SRC,
+            range: wgpu_types::ImageSubresourceRange::default(),
         };
         let texture_view = unsafe { device.create_texture_view(&texture, &view_desc).unwrap() };
 
@@ -569,7 +610,7 @@ impl<A: hal::Api> Example<A> {
             };
             let texture_binding = hal::TextureBinding {
                 view: &texture_view,
-                usage: hal::TextureUses::STORAGE_READ_WRITE,
+                usage: wgpu_types::TextureUses::STORAGE_READ_WRITE,
             };
             let group_desc = hal::BindGroupDescriptor {
                 label: Some("bind group"),
@@ -606,7 +647,7 @@ impl<A: hal::Api> Example<A> {
                     size: blas_sizes
                         .build_scratch_size
                         .max(tlas_sizes.build_scratch_size),
-                    usage: hal::BufferUses::ACCELERATION_STRUCTURE_SCRATCH,
+                    usage: wgpu_types::BufferUses::ACCELERATION_STRUCTURE_SCRATCH,
                     memory_flags: hal::MemoryFlags::empty(),
                 })
                 .unwrap()
@@ -651,16 +692,15 @@ impl<A: hal::Api> Example<A> {
             ),
         ];
 
-        let instances_buffer_size =
-            instances.len() * std::mem::size_of::<AccelerationStructureInstance>();
+        let instances_buffer_size = instances.len() * size_of::<AccelerationStructureInstance>();
 
         let instances_buffer = unsafe {
             let instances_buffer = device
                 .create_buffer(&hal::BufferDescriptor {
                     label: Some("instances_buffer"),
                     size: instances_buffer_size as u64,
-                    usage: hal::BufferUses::MAP_WRITE
-                        | hal::BufferUses::TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT,
+                    usage: wgpu_types::BufferUses::MAP_WRITE
+                        | wgpu_types::BufferUses::TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT,
                     memory_flags: hal::MemoryFlags::TRANSIENT | hal::MemoryFlags::PREFER_COHERENT,
                 })
                 .unwrap();
@@ -673,7 +713,7 @@ impl<A: hal::Api> Example<A> {
                 mapping.ptr.as_ptr(),
                 instances_buffer_size,
             );
-            device.unmap_buffer(&instances_buffer).unwrap();
+            device.unmap_buffer(&instances_buffer);
             assert!(mapping.is_coherent);
 
             instances_buffer
@@ -697,8 +737,10 @@ impl<A: hal::Api> Example<A> {
 
         unsafe {
             cmd_encoder.place_acceleration_structure_barrier(hal::AccelerationStructureBarrier {
-                usage: hal::AccelerationStructureUses::empty()
-                    ..hal::AccelerationStructureUses::BUILD_OUTPUT,
+                usage: hal::StateTransition {
+                    from: hal::AccelerationStructureUses::empty(),
+                    to: hal::AccelerationStructureUses::BUILD_OUTPUT,
+                },
             });
 
             cmd_encoder.build_acceleration_structures(
@@ -716,14 +758,18 @@ impl<A: hal::Api> Example<A> {
 
             let scratch_buffer_barrier = hal::BufferBarrier {
                 buffer: &scratch_buffer,
-                usage: hal::BufferUses::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT
-                    ..hal::BufferUses::TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT,
+                usage: hal::StateTransition {
+                    from: wgpu_types::BufferUses::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT,
+                    to: wgpu_types::BufferUses::TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT,
+                },
             };
             cmd_encoder.transition_buffers(iter::once(scratch_buffer_barrier));
 
             cmd_encoder.place_acceleration_structure_barrier(hal::AccelerationStructureBarrier {
-                usage: hal::AccelerationStructureUses::BUILD_OUTPUT
-                    ..hal::AccelerationStructureUses::BUILD_INPUT,
+                usage: hal::StateTransition {
+                    from: hal::AccelerationStructureUses::BUILD_OUTPUT,
+                    to: hal::AccelerationStructureUses::BUILD_INPUT,
+                },
             });
 
             cmd_encoder.build_acceleration_structures(
@@ -740,14 +786,19 @@ impl<A: hal::Api> Example<A> {
             );
 
             cmd_encoder.place_acceleration_structure_barrier(hal::AccelerationStructureBarrier {
-                usage: hal::AccelerationStructureUses::BUILD_OUTPUT
-                    ..hal::AccelerationStructureUses::SHADER_INPUT,
+                usage: hal::StateTransition {
+                    from: hal::AccelerationStructureUses::BUILD_OUTPUT,
+                    to: hal::AccelerationStructureUses::SHADER_INPUT,
+                },
             });
 
             let texture_barrier = hal::TextureBarrier {
                 texture: &texture,
-                range: wgt::ImageSubresourceRange::default(),
-                usage: hal::TextureUses::UNINITIALIZED..hal::TextureUses::STORAGE_READ_WRITE,
+                range: wgpu_types::ImageSubresourceRange::default(),
+                usage: hal::StateTransition {
+                    from: wgpu_types::TextureUses::UNINITIALIZED,
+                    to: wgpu_types::TextureUses::STORAGE_READ_WRITE,
+                },
             };
 
             cmd_encoder.transition_textures(iter::once(texture_barrier));
@@ -793,7 +844,7 @@ impl<A: hal::Api> Example<A> {
             tlas,
             scratch_buffer,
             time: 0.0,
-            indices_buffer,
+            indices_buffer: indices_buffer.map(|(buf, _)| buf),
             vertices_buffer,
             uniform_buffer,
             texture_view,
@@ -817,12 +868,15 @@ impl<A: hal::Api> Example<A> {
 
         let target_barrier0 = hal::TextureBarrier {
             texture: surface_tex.borrow(),
-            range: wgt::ImageSubresourceRange::default(),
-            usage: hal::TextureUses::UNINITIALIZED..hal::TextureUses::COPY_DST,
+            range: wgpu_types::ImageSubresourceRange::default(),
+            usage: hal::StateTransition {
+                from: wgpu_types::TextureUses::UNINITIALIZED,
+                to: wgpu_types::TextureUses::COPY_DST,
+            },
         };
 
         let instances_buffer_size =
-            self.instances.len() * std::mem::size_of::<AccelerationStructureInstance>();
+            self.instances.len() * size_of::<AccelerationStructureInstance>();
 
         let tlas_flags = hal::AccelerationStructureBuildFlags::PREFER_FAST_TRACE
             | hal::AccelerationStructureBuildFlags::ALLOW_UPDATE;
@@ -841,7 +895,7 @@ impl<A: hal::Api> Example<A> {
                 mapping.ptr.as_ptr(),
                 instances_buffer_size,
             );
-            self.device.unmap_buffer(&self.instances_buffer).unwrap();
+            self.device.unmap_buffer(&self.instances_buffer);
             assert!(mapping.is_coherent);
         }
 
@@ -856,8 +910,10 @@ impl<A: hal::Api> Example<A> {
 
             ctx.encoder
                 .place_acceleration_structure_barrier(hal::AccelerationStructureBarrier {
-                    usage: hal::AccelerationStructureUses::SHADER_INPUT
-                        ..hal::AccelerationStructureUses::BUILD_INPUT,
+                    usage: hal::StateTransition {
+                        from: hal::AccelerationStructureUses::SHADER_INPUT,
+                        to: hal::AccelerationStructureUses::BUILD_INPUT,
+                    },
                 });
 
             ctx.encoder.build_acceleration_structures(
@@ -875,14 +931,18 @@ impl<A: hal::Api> Example<A> {
 
             ctx.encoder
                 .place_acceleration_structure_barrier(hal::AccelerationStructureBarrier {
-                    usage: hal::AccelerationStructureUses::BUILD_OUTPUT
-                        ..hal::AccelerationStructureUses::SHADER_INPUT,
+                    usage: hal::StateTransition {
+                        from: hal::AccelerationStructureUses::BUILD_OUTPUT,
+                        to: hal::AccelerationStructureUses::SHADER_INPUT,
+                    },
                 });
 
             let scratch_buffer_barrier = hal::BufferBarrier {
                 buffer: &self.scratch_buffer,
-                usage: hal::BufferUses::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT
-                    ..hal::BufferUses::TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT,
+                usage: hal::StateTransition {
+                    from: wgpu_types::BufferUses::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT,
+                    to: wgpu_types::BufferUses::TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT,
+                },
             };
             ctx.encoder
                 .transition_buffers(iter::once(scratch_buffer_barrier));
@@ -893,9 +953,9 @@ impl<A: hal::Api> Example<A> {
         let surface_view_desc = hal::TextureViewDescriptor {
             label: None,
             format: self.surface_format,
-            dimension: wgt::TextureViewDimension::D2,
-            usage: hal::TextureUses::COPY_DST,
-            range: wgt::ImageSubresourceRange::default(),
+            dimension: wgpu_types::TextureViewDimension::D2,
+            usage: wgpu_types::TextureUses::COPY_DST,
+            range: wgpu_types::ImageSubresourceRange::default(),
         };
         let surface_tex_view = unsafe {
             self.device
@@ -917,37 +977,46 @@ impl<A: hal::Api> Example<A> {
 
         let target_barrier1 = hal::TextureBarrier {
             texture: surface_tex.borrow(),
-            range: wgt::ImageSubresourceRange::default(),
-            usage: hal::TextureUses::COPY_DST..hal::TextureUses::PRESENT,
+            range: wgpu_types::ImageSubresourceRange::default(),
+            usage: hal::StateTransition {
+                from: wgpu_types::TextureUses::COPY_DST,
+                to: wgpu_types::TextureUses::PRESENT,
+            },
         };
         let target_barrier2 = hal::TextureBarrier {
             texture: &self.texture,
-            range: wgt::ImageSubresourceRange::default(),
-            usage: hal::TextureUses::STORAGE_READ_WRITE..hal::TextureUses::COPY_SRC,
+            range: wgpu_types::ImageSubresourceRange::default(),
+            usage: hal::StateTransition {
+                from: wgpu_types::TextureUses::STORAGE_READ_WRITE,
+                to: wgpu_types::TextureUses::COPY_SRC,
+            },
         };
         let target_barrier3 = hal::TextureBarrier {
             texture: &self.texture,
-            range: wgt::ImageSubresourceRange::default(),
-            usage: hal::TextureUses::COPY_SRC..hal::TextureUses::STORAGE_READ_WRITE,
+            range: wgpu_types::ImageSubresourceRange::default(),
+            usage: hal::StateTransition {
+                from: wgpu_types::TextureUses::COPY_SRC,
+                to: wgpu_types::TextureUses::STORAGE_READ_WRITE,
+            },
         };
         unsafe {
             ctx.encoder.end_compute_pass();
             ctx.encoder.transition_textures(iter::once(target_barrier2));
             ctx.encoder.copy_texture_to_texture(
                 &self.texture,
-                hal::TextureUses::COPY_SRC,
+                wgpu_types::TextureUses::COPY_SRC,
                 surface_tex.borrow(),
                 std::iter::once(hal::TextureCopy {
                     src_base: hal::TextureCopyBase {
                         mip_level: 0,
                         array_layer: 0,
-                        origin: wgt::Origin3d::ZERO,
+                        origin: wgpu_types::Origin3d::ZERO,
                         aspect: hal::FormatAspects::COLOR,
                     },
                     dst_base: hal::TextureCopyBase {
                         mip_level: 0,
                         array_layer: 0,
-                        origin: wgt::Origin3d::ZERO,
+                        origin: wgpu_types::Origin3d::ZERO,
                         aspect: hal::FormatAspects::COLOR,
                     },
                     size: hal::CopyExtent {
@@ -1012,14 +1081,16 @@ impl<A: hal::Api> Example<A> {
 
             for mut ctx in self.contexts {
                 ctx.wait_and_clear(&self.device);
-                self.device.destroy_command_encoder(ctx.encoder);
+                drop(ctx.encoder);
                 self.device.destroy_fence(ctx.fence);
             }
 
             self.device.destroy_bind_group(self.bind_group);
             self.device.destroy_buffer(self.scratch_buffer);
             self.device.destroy_buffer(self.instances_buffer);
-            self.device.destroy_buffer(self.indices_buffer);
+            if let Some(buffer) = self.indices_buffer {
+                self.device.destroy_buffer(buffer);
+            }
             self.device.destroy_buffer(self.vertices_buffer);
             self.device.destroy_buffer(self.uniform_buffer);
             self.device.destroy_acceleration_structure(self.tlas);
@@ -1032,8 +1103,9 @@ impl<A: hal::Api> Example<A> {
             self.device.destroy_shader_module(self.shader_module);
 
             self.surface.unconfigure(&self.device);
-            self.device.exit(self.queue);
-            self.instance.destroy_surface(self.surface);
+            drop(self.queue);
+            drop(self.device);
+            drop(self.surface);
             drop(self.adapter);
         }
     }
@@ -1041,7 +1113,7 @@ impl<A: hal::Api> Example<A> {
 
 cfg_if::cfg_if! {
     // Apple + Metal
-    if #[cfg(all(any(target_os = "macos", target_os = "ios"), feature = "metal"))] {
+    if #[cfg(all(target_vendor = "apple", feature = "metal"))] {
         type Api = hal::api::Metal;
     }
     // Wasm + Vulkan
@@ -1058,7 +1130,7 @@ cfg_if::cfg_if! {
     }
     // Fallback
     else {
-        type Api = hal::api::Empty;
+        type Api = hal::api::Noop;
     }
 }
 

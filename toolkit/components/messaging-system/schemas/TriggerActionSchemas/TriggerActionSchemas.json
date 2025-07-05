@@ -237,11 +237,138 @@
             "id": {
               "type": "string",
               "enum": ["nthTabClosed"]
+            },
+            "context": {
+              "type": "object",
+              "properties": {
+                "tabsClosedCount": {
+                  "type": "integer",
+                  "description": "The number of tabs closed this session"
+                },
+                "currentTabsOpen": {
+                  "type": "integer",
+                  "description": "The number of tabs open in the browser"
+                }
+              }
             }
           },
           "additionalProperties": false,
           "required": ["id"],
           "description": "Happens when the user closes n or more tabs in a session"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": ["nthTabOpened"]
+            },
+            "context": {
+              "type": "object",
+              "properties": {
+                "tabsOpenedCount": {
+                  "type": "integer",
+                  "description": "The number of tabs opened this session"
+                },
+                "currentTabsOpen": {
+                  "type": "integer",
+                  "description": "The number of tabs open in the browser"
+                }
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": ["id"],
+          "description": "Happens when the user opens n or more tabs in a session"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": ["tabGroupCreated"]
+            },
+            "context": {
+              "type": "object",
+              "properties": {
+                "tabGroupsCreatedCount": {
+                  "type": "integer",
+                  "description": "The number of tab groups created this session"
+                }
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": ["id"],
+          "description": "Happens when the user creates n or more tab groups in a session"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": ["tabGroupSaved"]
+            },
+            "context": {
+              "type": "object",
+              "properties": {
+                "tabGroupsSavedCount": {
+                  "type": "integer",
+                  "description": "The number of tab groups saved this session"
+                }
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": ["id"],
+          "description": "Happens when the user saves n or more tab groups in a session"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": ["tabGroupCollapsed"]
+            },
+            "context": {
+              "type": "object",
+              "properties": {
+                "tabGroupsCollapsedCount": {
+                  "type": "integer",
+                  "description": "The number of tab groups collapsed this session"
+                }
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": ["id"],
+          "description": "Happens when the user collapses n or more tab groups in a session"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": ["sidebarToolOpened"]
+            }
+          },
+          "additionalProperties": false,
+          "required": ["id"],
+          "description": "Happens when the user clicks on tools/extensions in the sidebar",
+          "context": {
+            "type": "object",
+            "properties": {
+              "view": {
+                "type": "string",
+                "description": "The tool/extension you've opened in the sidebar"
+              },
+              "clickCounts": {
+                "type": "object",
+                "description": "An object to store click counts for the tools/extensions opened in the sidebar"
+              }
+            },
+            "additionalProperties": false
+          }
         },
         {
           "type": "object",
@@ -302,6 +429,70 @@
           "additionalProperties": false,
           "required": ["id"],
           "description": "Happens when a page action appears in the urlbar. The specific page action(s) to watch can be specified by id in the targeting expression."
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": ["onSearch"]
+            },
+            "context": {
+              "type": "object",
+              "properties": {
+                "isSuggestion": {
+                  "type": "boolean",
+                  "description": "When the search was a suggestion"
+                },
+                "searchSource": {
+                  "type": "string",
+                  "enum": [
+                    "urlbar-handoff",
+                    "urlbar-searchmode",
+                    "urlbar-persisted",
+                    "urlbar"
+                  ],
+                  "description": "The source of the search that occurred"
+                },
+                "isOneOff": {
+                  "type": "boolean",
+                  "description": "When the search is a one-off search"
+                }
+              },
+              "additionalProperties": false
+            }
+          },
+          "additionalProperties": false,
+          "required": ["id"],
+          "description": "Happens when a search is completed"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "enum": ["elementClicked"]
+            },
+            "params": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              },
+              "description": "List of IDs of elements that will fire this trigger when clicked"
+            },
+            "context": {
+              "type": "object",
+              "properties": {
+                "elementId": {
+                  "type": "string",
+                  "description": "The ID of the element that was clicked"
+                }
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": ["id"],
+          "description": "Happens when a browser chrome element is clicked"
         }
       ]
     }

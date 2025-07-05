@@ -2,29 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-export function EventEmitter() {}
+import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-let loggingEnabled = Services.prefs.getBoolPref("toolkit.dump.emit");
-Services.prefs.addObserver("toolkit.dump.emit", {
-  observe: () => {
-    loggingEnabled = Services.prefs.getBoolPref("toolkit.dump.emit");
-  },
-});
+const lazy = {};
 
-/**
- * Decorate an object with event emitter functionality.
- *
- * @param Object objectToDecorate
- *        Bind all public methods of EventEmitter to
- *        the objectToDecorate object.
- */
-EventEmitter.decorate = function (objectToDecorate) {
-  let emitter = new EventEmitter();
-  objectToDecorate.on = emitter.on.bind(emitter);
-  objectToDecorate.off = emitter.off.bind(emitter);
-  objectToDecorate.once = emitter.once.bind(emitter);
-  objectToDecorate.emit = emitter.emit.bind(emitter);
-};
+XPCOMUtils.defineLazyPreferenceGetter(
+  lazy,
+  "loggingEnabled",
+  "toolkit.dump.emit",
+  false
+);
 
 function describeNthCaller(n) {
   let caller = Components.stack;
@@ -44,14 +31,31 @@ function describeNthCaller(n) {
   return func + "() -> " + path;
 }
 
-EventEmitter.prototype = {
+/**
+ * An event emitter class that handles listeners for events being emitted.
+ */
+export class EventEmitter {
+  /**
+   * Decorate an object with event emitter functionality.
+   *
+   * @param {object} objectToDecorate
+   *   Bind all public methods of EventEmitter to the objectToDecorate object.
+   */
+  static decorate(objectToDecorate) {
+    let emitter = new EventEmitter();
+    objectToDecorate.on = emitter.on.bind(emitter);
+    objectToDecorate.off = emitter.off.bind(emitter);
+    objectToDecorate.once = emitter.once.bind(emitter);
+    objectToDecorate.emit = emitter.emit.bind(emitter);
+  }
+
   /**
    * Connect a listener.
    *
-   * @param string event
-   *        The event name to which we're connecting.
-   * @param function listener
-   *        Called when the event is fired.
+   * @param {string} event
+   *   The event name to which we're connecting.
+   * @param {Function} listener
+   *   The function called when the event is fired.
    */
   on(event, listener) {
     if (!this._eventEmitterListeners) {
@@ -61,21 +65,20 @@ EventEmitter.prototype = {
       this._eventEmitterListeners.set(event, []);
     }
     this._eventEmitterListeners.get(event).push(listener);
-  },
+  }
 
   /**
    * Listen for the next time an event is fired.
    *
-   * @param string event
-   *        The event name to which we're connecting.
-   * @param function listener
-   *        (Optional) Called when the event is fired. Will be called at most
-   *        one time.
-   * @return promise
-   *        A promise which is resolved when the event next happens. The
-   *        resolution value of the promise is the first event argument. If
-   *        you need access to second or subsequent event arguments (it's rare
-   *        that this is needed) then use listener
+   * @param {string} event
+   *   The event name to which we're connecting.
+   * @param {Function} [listener]
+   *   Called when the event is fired. Will be called at most one time.
+   * @returns {Promise}
+   *   A promise which is resolved when the event next happens. The resolution
+   *   value of the promise is the first event argument. If you need access to
+   *   second or subsequent event arguments (it's rare that this is needed) then
+   *   use listener
    */
   once(event, listener) {
     return new Promise(resolve => {
@@ -90,16 +93,16 @@ EventEmitter.prototype = {
       handler._originalListener = listener;
       this.on(event, handler);
     });
-  },
+  }
 
   /**
    * Remove a previously-registered event listener.  Works for events
    * registered with either on or once.
    *
-   * @param string event
-   *        The event name whose listener we're disconnecting.
-   * @param function listener
-   *        The listener to remove.
+   * @param {string} event
+   *   The event name whose listener we're disconnecting.
+   * @param {Function} listener
+   *   The listener to remove.
    */
   off(event, listener) {
     if (!this._eventEmitterListeners) {
@@ -114,14 +117,19 @@ EventEmitter.prototype = {
         })
       );
     }
-  },
+  }
 
   /**
    * Emit an event.  All arguments to this method will
    * be sent to listener functions.
+   *
+   * @param {string} event
+   *   The event name whose listener we're disconnecting.
+   * @param {...any} args
+   *   Arguments to be passed to the event listeners.
    */
-  emit(event) {
-    this.logEvent(event, arguments);
+  emit(event, ...args) {
+    this.#logEvent(event, args);
 
     if (
       !this._eventEmitterListeners ||
@@ -145,16 +153,16 @@ EventEmitter.prototype = {
         this._eventEmitterListeners.get(event).some(l => l === listener)
       ) {
         try {
-          listener.apply(null, arguments);
+          listener(event, ...args);
         } catch (ex) {
           console.error(ex);
         }
       }
     }
-  },
+  }
 
-  logEvent(event, args) {
-    if (!loggingEnabled) {
+  #logEvent(event, args) {
+    if (!lazy.loggingEnabled) {
       return;
     }
 
@@ -199,5 +207,5 @@ EventEmitter.prototype = {
     out += "emit" + argOut + " from " + description + "\n";
 
     dump(out);
-  },
-};
+  }
+}

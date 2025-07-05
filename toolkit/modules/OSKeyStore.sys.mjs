@@ -45,7 +45,8 @@ export var OSKeyStore = {
   /**
    * Consider the module is initialized as locked. OS might unlock without a
    * prompt.
-   * @type {Boolean}
+   *
+   * @type {boolean}
    */
   _isLocked: true,
 
@@ -152,7 +153,7 @@ export var OSKeyStore = {
    *                                  the key storage. If we start creating keys on macOS by running
    *                                  this code we'll potentially have to do extra work to cleanup
    *                                  the mess later.
-   * @returns {Promise<Object>}       Object with the following properties:
+   * @returns {Promise<object>}       Object with the following properties:
    *                                    authenticated: {boolean} Set to true if the user successfully authenticated.
    *                                    auth_details: {String?} Details of the authentication result.
    */
@@ -356,21 +357,6 @@ export var OSKeyStore = {
     }
 
     return await lazy.nativeOSKeyStore.asyncGetRecoveryPhrase(this.STORE_LABEL);
-  },
-
-  /**
-   * Resolve when the login dialogs are closed, immediately if none are open.
-   *
-   * An existing MP dialog will be focused and will request attention.
-   *
-   * @returns {Promise<boolean>}
-   *          Resolves with whether the user is logged in to MP.
-   */
-  async waitForExistingDialog() {
-    if (this.isUIBusy) {
-      return this._pendingUnlockPromise;
-    }
-    return this.isLoggedIn;
   },
 
   /**

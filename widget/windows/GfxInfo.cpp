@@ -23,6 +23,7 @@
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/SSE.h"
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/Unused.h"
 #include "mozilla/WindowsProcessMitigations.h"
 
 #include <intrin.h>
@@ -106,8 +107,7 @@ GfxInfo::GetCleartypeParameters(nsAString& aCleartypeParams) {
     ClearTypeParameterInfo& params = clearTypeParams[d];
 
     if (displayNames) {
-      outStr.AppendPrintf(
-          "%S [ ", static_cast<const wchar_t*>(params.displayName.get()));
+      outStr.AppendPrintf("%S [ ", params.displayName.getW());
     }
 
     if (params.gamma >= 0) {
@@ -451,8 +451,8 @@ nsresult GfxInfo::Init() {
   const char* spoofedWindowsVersion =
       PR_GetEnv("MOZ_GFX_SPOOF_WINDOWS_VERSION");
   if (spoofedWindowsVersion) {
-    PR_sscanf(spoofedWindowsVersion, "%x,%u", &mWindowsVersion,
-              &mWindowsBuildNumber);
+    Unused << PR_sscanf(spoofedWindowsVersion, "%x,%u", &mWindowsVersion,
+                        &mWindowsBuildNumber);
   } else {
     OSVERSIONINFO vinfo;
     vinfo.dwOSVersionInfoSize = sizeof(vinfo);
@@ -483,8 +483,8 @@ nsresult GfxInfo::Init() {
   }
 
   // make sure the string is nullptr terminated
-  if (wcsnlen(displayDevice.DeviceKey, ArrayLength(displayDevice.DeviceKey)) ==
-      ArrayLength(displayDevice.DeviceKey)) {
+  if (wcsnlen(displayDevice.DeviceKey, std::size(displayDevice.DeviceKey)) ==
+      std::size(displayDevice.DeviceKey)) {
     // we did not find a nullptr
     return rv;
   }
@@ -501,13 +501,12 @@ nsresult GfxInfo::Init() {
    */
   if (displayDevice.DeviceKey[0] != '\0') {
     if (_wcsnicmp(displayDevice.DeviceKey, DEVICE_KEY_PREFIX,
-                  ArrayLength(DEVICE_KEY_PREFIX) - 1) != 0) {
+                  std::size(DEVICE_KEY_PREFIX) - 1) != 0) {
       return rv;
     }
 
     // chop off DEVICE_KEY_PREFIX
-    mDeviceKey[0] =
-        displayDevice.DeviceKey + ArrayLength(DEVICE_KEY_PREFIX) - 1;
+    mDeviceKey[0] = displayDevice.DeviceKey + std::size(DEVICE_KEY_PREFIX) - 1;
   } else {
     mDeviceKey[0].Truncate();
   }
@@ -1619,19 +1618,6 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         V(8, 17, 12, 5730), V(8, 17, 12, 6901), "FEATURE_FAILURE_BUG_1137716",
         "Nvidia driver > 8.17.12.6901");
 
-    /* Bug 1336710: Crash in rx::Blit9::initialize. */
-    APPEND_TO_DRIVER_BLOCKLIST2(
-        OperatingSystem::WindowsXP, DeviceFamily::IntelGMAX4500HD,
-        nsIGfxInfo::FEATURE_WEBGL_ANGLE, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
-        DRIVER_LESS_THAN, GfxDriverInfo::allDriverVersions,
-        "FEATURE_FAILURE_BUG_1336710");
-
-    APPEND_TO_DRIVER_BLOCKLIST2(
-        OperatingSystem::WindowsXP, DeviceFamily::IntelHDGraphicsToSandyBridge,
-        nsIGfxInfo::FEATURE_WEBGL_ANGLE, nsIGfxInfo::FEATURE_BLOCKED_DEVICE,
-        DRIVER_LESS_THAN, GfxDriverInfo::allDriverVersions,
-        "FEATURE_FAILURE_BUG_1336710");
-
     /* Bug 1304360: Graphical artifacts with D3D9 on Windows 7. */
     APPEND_TO_DRIVER_BLOCKLIST2(OperatingSystem::Windows7,
                                 DeviceFamily::IntelGMAX3000,
@@ -1791,6 +1777,12 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         nsIGfxInfo::FEATURE_ALLOW_ALWAYS, DRIVER_COMPARISON_IGNORED,
         V(0, 0, 0, 0), "FEATURE_ROLLOUT_ALL");
 
+    APPEND_TO_DRIVER_BLOCKLIST2(
+        OperatingSystem::Windows, DeviceFamily::NvidiaAll,
+        nsIGfxInfo::FEATURE_HW_DECODED_VIDEO_ZERO_COPY,
+        nsIGfxInfo::FEATURE_ALLOW_ALWAYS, DRIVER_COMPARISON_IGNORED,
+        V(0, 0, 0, 0), "FEATURE_ROLLOUT_ALL");
+
     ////////////////////////////////////
     // FEATURE_REUSE_DECODER_DEVICE
 
@@ -1813,6 +1805,18 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         nsIGfxInfo::FEATURE_REUSE_DECODER_DEVICE,
         nsIGfxInfo::FEATURE_BLOCKED_DEVICE, DRIVER_COMPARISON_IGNORED,
         V(0, 0, 0, 0), "FEATURE_FAILURE_BUG_1896823");
+
+    APPEND_TO_DRIVER_BLOCKLIST2(
+        OperatingSystem::Windows, DeviceFamily::IntelMeteorLake,
+        nsIGfxInfo::FEATURE_REUSE_DECODER_DEVICE,
+        nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION, DRIVER_GREATER_THAN,
+        V(32, 0, 101, 5972), "FEATURE_FAILURE_BUG_1933755");
+
+    APPEND_TO_DRIVER_BLOCKLIST2(
+        OperatingSystem::Windows, DeviceFamily::IntelArrowlake,
+        nsIGfxInfo::FEATURE_REUSE_DECODER_DEVICE,
+        nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION, DRIVER_GREATER_THAN,
+        V(32, 0, 101, 5972), "FEATURE_FAILURE_BUG_1933755");
 
     ////////////////////////////////////
     // FEATURE_OVERLAY_VP_AUTO_HDR
@@ -1879,6 +1883,12 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
                                 DRIVER_LESS_THAN_OR_EQUAL, V(8, 17, 10, 1129),
                                 "FEATURE_FAILURE_CHROME_BUG_800950");
 #endif
+
+    APPEND_TO_DRIVER_BLOCKLIST2(
+        OperatingSystem::Windows10, DeviceFamily::NvidiaPascal,
+        nsIGfxInfo::FEATURE_WEBRENDER_COMPOSITOR,
+        nsIGfxInfo::FEATURE_BLOCKED_DEVICE, DRIVER_COMPARISON_IGNORED,
+        V(0, 0, 0, 0), "FEATURE_FAILURE_BUG_1923697");
 
     // WebRender is unable to use scissored clears in some cases
     APPEND_TO_DRIVER_BLOCKLIST2(
@@ -1952,13 +1962,14 @@ nsresult GfxInfo::GetFeatureStatusImpl(
             GfxDriverInfo::GetDeviceVendor(DeviceVendor::Microsoft),
             nsCaseInsensitiveStringComparator) &&
         !adapterVendorID.Equals(
+            GfxDriverInfo::GetDeviceVendor(
+                DeviceVendor::MicrosoftRemoteDisplayAdapter),
+            nsCaseInsensitiveStringComparator) &&
+        !adapterVendorID.Equals(
             GfxDriverInfo::GetDeviceVendor(DeviceVendor::Parallels),
             nsCaseInsensitiveStringComparator) &&
         !adapterVendorID.Equals(
             GfxDriverInfo::GetDeviceVendor(DeviceVendor::Qualcomm),
-            nsCaseInsensitiveStringComparator) &&
-        !adapterVendorID.Equals(
-            GfxDriverInfo::GetDeviceVendor(DeviceVendor::VMWare),
             nsCaseInsensitiveStringComparator) &&
         // FIXME - these special hex values are currently used in xpcshell tests
         // introduced by bug 625160 patch 8/8. Maybe these tests need to be
@@ -1969,6 +1980,9 @@ nsresult GfxInfo::GetFeatureStatusImpl(
         !adapterVendorID.LowerCaseEqualsLiteral("0xdcdc")) {
       if (adapterVendorID.Equals(
               GfxDriverInfo::GetDeviceVendor(DeviceVendor::MicrosoftHyperV),
+              nsCaseInsensitiveStringComparator) ||
+          adapterVendorID.Equals(
+              GfxDriverInfo::GetDeviceVendor(DeviceVendor::VMWare),
               nsCaseInsensitiveStringComparator) ||
           adapterVendorID.Equals(
               GfxDriverInfo::GetDeviceVendor(DeviceVendor::VirtualBox),

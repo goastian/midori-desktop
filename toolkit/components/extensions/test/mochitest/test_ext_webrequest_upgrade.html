@@ -93,6 +93,7 @@ add_task(async function upgradeToSecure_for_https_is_noop() {
   await SpecialPowers.pushPrefEnv({
     set: [["dom.security.https_first", false]],
   });
+
   let extension = ExtensionTestUtils.loadExtension({
     manifest: {
       permissions: [

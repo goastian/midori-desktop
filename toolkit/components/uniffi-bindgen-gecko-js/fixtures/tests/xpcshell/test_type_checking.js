@@ -30,6 +30,16 @@ add_task(async function testFunctionArguments() {
   );
 });
 
+add_task(async function testNumberOverflow() {
+  // MAX_SAFE_INTEGER + 1 fits in a Rust u64, but overflows a JS Number.
+  // This overflow should be caught by the C++ code.
+  await Assert.rejects(
+    Arithmetic.add(Number.MAX_SAFE_INTEGER, 1),
+    /RangeError/,
+    "add() call that overflows Number.MAX_SAFE_INTEGER"
+  );
+});
+
 add_task(async function testObjectPointers() {
   const todo = await TodoList.TodoList.init();
   const stringifier = await Rondpoint.Stringifier.init();
@@ -39,7 +49,7 @@ add_task(async function testObjectPointers() {
 
   await Assert.rejects(
     todo.getEntries(), // the pointer is incorrect, should throw
-    /Bad pointer type/,
+    /Incorrect UniFFI pointer type/,
     "getEntries() with wrong pointer type"
   );
 
@@ -57,7 +67,7 @@ add_task(async function testEnumTypeCheck() {
     "copieEnumeration() with non-Enumeration value should throw"
   );
   await Assert.rejects(
-    Rondpoint.copieEnumeration(0), // Integer, but doesn't map to a variant
+    Rondpoint.copieEnumeration(99), // Integer, but doesn't map to a variant
     /e:/, // Ensure exception message includes the argument name
     "copieEnumeration() with non-Enumeration value should throw"
   );

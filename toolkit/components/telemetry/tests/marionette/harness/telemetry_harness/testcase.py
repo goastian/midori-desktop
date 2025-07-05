@@ -16,6 +16,7 @@ from marionette_harness.runner.mixins.window_manager import WindowManagerMixin
 from telemetry_harness.ping_server import PingServer
 
 CANARY_CLIENT_ID = "c0ffeec0-ffee-c0ff-eec0-ffeec0ffeec0"
+CANARY_PROFILE_GROUP_ID = "decafdec-afde-cafd-ecaf-decafdecafde"
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
 )
@@ -85,6 +86,9 @@ class TelemetryTestCase(WindowManagerMixin, MarionetteTestCase):
 
         # Check for client ID that is used when Telemetry upload is disabled
         self.assertNotEqual(value, CANARY_CLIENT_ID, msg="UUID is CANARY CLIENT ID")
+        self.assertNotEqual(
+            value, CANARY_PROFILE_GROUP_ID, msg="UUID is CANARY PROFILE GROUP ID"
+        )
 
         self.assertIsNotNone(
             re.match(UUID_PATTERN, value),
@@ -114,11 +118,7 @@ class TelemetryTestCase(WindowManagerMixin, MarionetteTestCase):
 
             return len(filtered_pings) >= count
 
-        self.logger.info(
-            "wait_for_pings running action '{action}'.".format(
-                action=action_func.__name__
-            )
-        )
+        self.logger.info(f"wait_for_pings running action '{action_func.__name__}'.")
 
         # Call given action and wait for a ping
         action_func()
@@ -126,7 +126,7 @@ class TelemetryTestCase(WindowManagerMixin, MarionetteTestCase):
         try:
             Wait(self.marionette, 60).until(wait_func)
         except Exception as e:
-            self.fail("Error waiting for ping: {}".format(e))
+            self.fail(f"Error waiting for ping: {e}")
 
         return filtered_pings[:count]
 
@@ -156,15 +156,6 @@ class TelemetryTestCase(WindowManagerMixin, MarionetteTestCase):
         addon_name = "helloworld"
         self._install_addon(addon_name)
 
-    def install_dynamic_addon(self):
-        """Install a dynamic probe addon.
-
-        Source Code:
-        https://github.com/mozilla-extensions/dynamic-probe-telemetry-extension
-        """
-        addon_name = "dynamic_addon/dynamic-probe-telemetry-extension-signed.xpi"
-        self._install_addon(addon_name, temp=False)
-
     def _install_addon(self, addon_name, temp=True):
         """Logic to install addon and add its ID to self.addons.ids"""
         resources_dir = os.path.join(os.path.dirname(__file__), "resources")
@@ -187,7 +178,7 @@ class TelemetryTestCase(WindowManagerMixin, MarionetteTestCase):
             addons = Addons(self.marionette)
             addon_id = addons.install(addon_path, temp=temp)
         except MarionetteException as e:
-            self.fail("{} - Error installing addon: {} - ".format(e.cause, e))
+            self.fail(f"{e.cause} - Error installing addon: {e} - ")
         else:
             self.addon_ids.append(addon_id)
 
@@ -209,6 +200,19 @@ class TelemetryTestCase(WindowManagerMixin, MarionetteTestCase):
                   "resource://gre/modules/ClientID.sys.mjs"
                 );
                 return ClientID.getCachedClientID();
+                """
+            )
+
+    @property
+    def profile_group_id(self):
+        """Return the profile group ID of the current client."""
+        with self.marionette.using_context(self.marionette.CONTEXT_CHROME):
+            return self.marionette.execute_script(
+                """\
+                const { ClientID } = ChromeUtils.importESModule(
+                  "resource://gre/modules/ClientID.sys.mjs"
+                );
+                return ClientID.getCachedProfileGroupID();
                 """
             )
 

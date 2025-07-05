@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <!-- This Source Code Form is subject to the terms of the Mozilla Public
    - License, v. 2.0. If a copy of the MPL was not distributed with this
    - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
@@ -61,22 +61,6 @@
           <p data-l10n-id="neterror-dns-not-found-trr-third-party-warning2"></p>
         </div>
 
-        <div id="nativeFallbackContainer" hidden="">
-          <p id="nativeFallbackMessage"></p>
-          <div class="trr-message-container">
-            <span id="nativeFallbackDescription"></span>
-            <p id="nativeFallbackLearnMoreContainer" hidden="">
-              <a
-                id="nativeFallbackLearnMoreLink"
-                target="_blank"
-                rel="noopener noreferrer"
-                data-l10n-id="neterror-learn-more-link"
-              ></a>
-            </p>
-          </div>
-          <p data-l10n-id="neterror-dns-not-found-trr-third-party-warning2"></p>
-        </div>
-
         <p id="tlsVersionNotice" hidden=""></p>
 
         <p id="learnMoreContainer" hidden="">
@@ -88,21 +72,6 @@
             data-l10n-id="neterror-learn-more-link"
           ></a>
         </p>
-
-        <div id="openInNewWindowContainer" class="button-container" hidden="">
-          <p>
-            <a
-              id="openInNewWindowButton"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              <button
-                class="primary"
-                data-l10n-id="open-in-new-window-for-csp-or-xfo-error"
-              ></button
-            ></a>
-          </p>
-        </div>
 
         <!-- UI for option to report certificate errors to Mozilla. Removed on
              init for other error types .-->
@@ -165,18 +134,6 @@
           data-telemetry-id="settings_button"
           hidden=""
         ></button>
-        <button
-          id="nativeFallbackContinueThisTimeButton"
-          data-l10n-id="neterror-trr-continue-this-time"
-          data-telemetry-id="continue_button"
-          hidden=""
-        ></button>
-        <button
-          id="nativeFallbackIgnoreButton"
-          data-l10n-id="neterror-disable-native-feedback-warning"
-          data-telemetry-id="disable_warning"
-          hidden=""
-        ></button>
       </div>
 
       <div class="advanced-panel-container">
@@ -206,20 +163,6 @@
               data-l10n-id="neterror-override-exception-button"
             ></button>
           </div>
-        </div>
-
-        <div id="blockingErrorReporting" class="advanced-panel" hidden="">
-          <p class="toggle-container-with-text">
-            <input
-              type="checkbox"
-              id="automaticallyReportBlockingInFuture"
-              role="checkbox"
-            />
-            <label
-              for="automaticallyReportBlockingInFuture"
-              data-l10n-id="neterror-error-reporting-automatic"
-            ></label>
-          </p>
         </div>
 
         <div

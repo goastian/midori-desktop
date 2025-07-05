@@ -17,16 +17,12 @@ const tests = [
     file: "simple.xml",
     name: "simple",
     description: "A small test engine",
-    searchForm: "https://example.com/",
     searchUrl: "https://example.com/search?q=foo",
   },
   {
     file: "post.xml",
     name: "Post",
     description: "",
-    // The POST method is not supported for `rel="searchform"` so we fallback
-    // to the `SearchForm` url.
-    searchForm: "http://engine-rel-searchform-post.xml/?search",
     searchUrl: "https://example.com/post",
     searchPostData: "searchterms=foo",
   },
@@ -35,7 +31,6 @@ const tests = [
     name: "suggestion",
     description: "A small engine with suggestions",
     queryCharset: "windows-1252",
-    searchForm: "http://engine-rel-searchform.xml/?search",
     searchUrl: "https://example.com/search?q=foo",
     suggestUrl: "https://example.com/suggest?suggestion=foo",
   },
@@ -43,7 +38,6 @@ const tests = [
     file: "suggestion-alternate.xml",
     name: "suggestion-alternate",
     description: "A small engine with suggestions",
-    searchForm: "https://example.com/",
     searchUrl: "https://example.com/search?q=foo",
     suggestUrl: "https://example.com/suggest?suggestion=foo",
   },
@@ -51,27 +45,16 @@ const tests = [
     file: "mozilla-ns.xml",
     name: "mozilla-ns",
     description: "An engine using mozilla namespace",
-    searchForm: "https://example.com/",
-    // mozilla-ns.xml also specifies a MozParam. However, they are only
+    // mozilla-ns.xml also specifies a MozParam. However, they were only
     // valid for app-provided engines, and hence the param should not show
     // here.
     searchUrl: "https://example.com/search?q=foo",
-  },
-  {
-    file: "searchform-invalid.xml",
-    name: "searchform-invalid",
-    description: "Bug 483086 Test 1",
-    // Should fall back to the root url, if the searchForm url is invalid.
-    searchForm: "http://mochi.test:8888",
-    searchUrl:
-      "http://mochi.test:8888/browser/browser/components/search/test/browser/?search&test=foo",
   },
 ];
 
 add_setup(async function () {
   Services.fog.initializeFOG();
-  useHttpServer("opensearch");
-  await AddonTestUtils.promiseStartupManager();
+  useHttpServer();
   await Services.search.init();
 });
 
@@ -83,17 +66,12 @@ for (const test of tests) {
       SearchUtils.TOPIC_ENGINE_MODIFIED
     );
     let engine = await SearchTestUtils.installOpenSearchEngine({
-      url: gDataUrl + test.file,
+      url: `${gHttpURL}/opensearch/${test.file}`,
     });
     await promiseEngineAdded;
     Assert.ok(engine, "Should have installed the engine.");
 
     Assert.equal(engine.name, test.name, "Should have the correct name");
-    Assert.equal(
-      engine.description,
-      test.description,
-      "Should have a description"
-    );
 
     Assert.equal(
       engine.wrappedJSObject._loadPath,
@@ -132,12 +110,6 @@ for (const test of tests) {
       );
     }
 
-    Assert.equal(
-      engine.searchForm,
-      test.searchForm,
-      "Should have the correct search form url"
-    );
-
     submission = engine.getSubmission("foo", SearchUtils.URL_TYPE.SUGGEST_JSON);
     if (test.suggestUrl) {
       Assert.equal(
@@ -158,11 +130,13 @@ add_task(async function test_telemetry_reporting() {
 
   await assertGleanDefaultEngine({
     normal: {
+      providerId: "other",
+      partnerCode: "",
+      overriddenByThirdParty: false,
       engineId: "other-simple",
       displayName: "simple",
       loadPath: "[http]localhost/simple.xml",
       submissionUrl: "blank:",
-      verified: "verified",
     },
   });
 });

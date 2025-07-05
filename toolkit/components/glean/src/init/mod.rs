@@ -3,9 +3,10 @@
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
 use std::env;
-use std::ffi::CString;
+use std::ffi::{c_char, CStr, CString};
 use std::ops::DerefMut;
 use std::path::PathBuf;
+use std::time::Duration;
 
 use firefox_on_glean::{metrics, pings};
 use nserror::{nsresult, NS_ERROR_FAILURE};
@@ -147,12 +148,15 @@ fn build_configuration(
     };
     log::debug!("Client Info: {:#?}", client_info);
 
-    const SERVER: &str = "https://incoming.telemetry.mozilla.org";
     let localhost_port = static_prefs::pref!("telemetry.fog.test.localhost_port");
     let server = if localhost_port > 0 {
         format!("http://localhost:{}", localhost_port)
     } else {
-        String::from(SERVER)
+        if app_id_override == "thunderbird.desktop" {
+            String::from("https://incoming.thunderbird.net")
+        } else {
+            String::from("https://incoming.telemetry.mozilla.org")
+        }
     };
 
     let application_id = if app_id_override.is_empty() {
@@ -189,6 +193,9 @@ fn build_configuration(
         enable_event_timestamps: true,
         experimentation_id: None,
         enable_internal_pings: true,
+        ping_schedule: pings::ping_schedule(),
+        ping_lifetime_threshold: 0,
+        ping_lifetime_max_time: Duration::ZERO,
     };
 
     Ok((configuration, client_info))
@@ -249,7 +256,7 @@ fn get_data_path() -> Result<String, nsresult> {
 
 /// Return a tuple of the build_id, app version, build channel, and locale.
 /// If the XUL Runtime isn't a XULAppInfo (e.g. in xpcshell),
-/// build_id ad app_version will be "unknown".
+/// build_id will be "unknown".
 /// Other problems result in an error being returned instead.
 fn get_app_info() -> Result<(String, String, String, String), nsresult> {
     let xul: RefPtr<nsIXULRuntime> =
@@ -281,6 +288,14 @@ fn get_app_info() -> Result<(String, String, String, String), nsresult> {
         }
     }
 
+    extern "C" {
+        fn FOG_MozAppVersionDisplay() -> *const c_char;
+    }
+    // SAFETY: It's literally a quoted literal.
+    let version = unsafe { CStr::from_ptr(FOG_MozAppVersionDisplay()) }
+        .to_str()
+        .map_err(|_| NS_ERROR_FAILURE)?;
+
     let app_info = match xul.query_interface::<nsIXULAppInfo>() {
         Some(ai) => ai,
         // In e.g. xpcshell the XULRuntime isn't XULAppInfo.
@@ -288,7 +303,7 @@ fn get_app_info() -> Result<(String, String, String, String), nsresult> {
         _ => {
             return Ok((
                 "unknown".to_owned(),
-                "unknown".to_owned(),
+                version.to_string(),
                 channel.to_string(),
                 "unknown".to_owned(),
             ))
@@ -298,11 +313,6 @@ fn get_app_info() -> Result<(String, String, String, String), nsresult> {
     let mut build_id = nsCString::new();
     unsafe {
         app_info.GetAppBuildID(&mut *build_id).to_result()?;
-    }
-
-    let mut version = nsCString::new();
-    unsafe {
-        app_info.GetVersion(&mut *version).to_result()?;
     }
 
     let mut locale = nsCString::new();
@@ -349,6 +359,10 @@ fn fog_test_reset_internal(
     conf.uploader = Some(Box::new(ViaductUploader) as Box<dyn glean::net::PingUploader>);
 
     glean::test_reset_glean(conf, client_info, true);
+
+    // Register all custom pings after we initialize.
+    pings::register_pings(None);
+
     Ok(())
 }
 

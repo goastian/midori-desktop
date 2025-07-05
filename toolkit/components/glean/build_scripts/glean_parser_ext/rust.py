@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -49,7 +47,7 @@ def rust_datatypes_filter(value):
     class RustEncoder(json.JSONEncoder):
         def iterencode(self, value):
             if isinstance(value, dict):
-                raise ValueError("RustEncoder doesn't know dicts {}".format(str(value)))
+                raise ValueError(f"RustEncoder doesn't know dicts {str(value)}")
             elif isinstance(value, enum.Enum):
                 yield (value.__class__.__name__ + "::" + util.Camelize(value.name))
             elif isinstance(value, set):
@@ -92,9 +90,12 @@ def ctor(obj):
     Necessary because LabeledMetric<T> is constructed using LabeledMetric::new
     not LabeledMetric<T>::new
     """
+    suffix = "::new"
+    if obj.metadata.get("permit_non_commutative_operations_over_ipc", False):
+        suffix = "::with_unordered_ipc"
     if getattr(obj, "labeled", False):
-        return "LabeledMetric::new"
-    return class_name(obj.type) + "::new"
+        return f"LabeledMetric{suffix}"
+    return f"{class_name(obj.type)}{suffix}"
 
 
 def type_name(obj):
@@ -116,13 +117,11 @@ def type_name(obj):
                 # we always use the `extra` suffix,
                 # because we only expose the new event API
                 suffix = "Extra"
-                return "{}<{}>".format(
-                    class_name(obj.type), util.Camelize(obj.name) + suffix
-                )
+                return f"{class_name(obj.type)}<{util.Camelize(obj.name) + suffix}>"
     generate_structure = getattr(obj, "_generate_structure", [])
     if len(generate_structure):
         generic = util.Camelize(obj.name) + "Object"
-        return "{}<{}>".format(class_name(obj.type), generic)
+        return f"{class_name(obj.type)}<{generic}>"
     return class_name(obj.type)
 
 
@@ -219,7 +218,7 @@ def output_rust(objs, output_fd, ping_names_by_app_id, options={}):
         return env.get_template(template_name)
 
     util.get_jinja2_template = get_local_template
-    get_metric_id = generate_metric_ids(objs)
+    get_metric_id = generate_metric_ids(objs, options)
     get_ping_id = generate_ping_ids(objs)
     ping_schedule_reverse_map = get_schedule_reverse_map(objs)
 

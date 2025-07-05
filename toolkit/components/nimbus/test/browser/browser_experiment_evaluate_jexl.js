@@ -1,14 +1,7 @@
 "use strict";
 
-const { EnrollmentsContext, RemoteSettingsExperimentLoader } =
-  ChromeUtils.importESModule(
-    "resource://nimbus/lib/RemoteSettingsExperimentLoader.sys.mjs"
-  );
-const { ExperimentManager } = ChromeUtils.importESModule(
-  "resource://nimbus/lib/ExperimentManager.sys.mjs"
-);
-const { ExperimentFakes } = ChromeUtils.importESModule(
-  "resource://testing-common/NimbusTestUtils.sys.mjs"
+const { EnrollmentsContext } = ChromeUtils.importESModule(
+  "resource://nimbus/lib/RemoteSettingsExperimentLoader.sys.mjs"
 );
 
 add_setup(async function setup() {
@@ -23,13 +16,13 @@ add_setup(async function setup() {
     await SpecialPowers.popPrefEnv();
   });
 
-  CONTEXT = new EnrollmentsContext(RemoteSettingsExperimentLoader.manager);
+  CONTEXT = new EnrollmentsContext(ExperimentAPI.manager);
 });
 
 let CONTEXT;
 
 const FAKE_CONTEXT = {
-  experiment: ExperimentFakes.recipe("fake-test-experiment"),
+  experiment: NimbusTestUtils.factories.recipe("fake-test-experiment"),
   source: "browser_experiment_evaluate_jexl",
 };
 
@@ -74,13 +67,13 @@ add_task(async function test_evaluate_active_experiments_activeExperiments() {
   // Add an experiment to active experiments
   const slug = "foo" + Math.random();
   // Init the store before we use it
-  await ExperimentManager.onStartup();
+  await ExperimentAPI.ready();
 
-  let recipe = ExperimentFakes.recipe(slug);
+  let recipe = NimbusTestUtils.factories.recipe(slug);
   recipe.branches[0].slug = "mochitest-active-foo";
   delete recipe.branches[1];
 
-  const doExperimentCleanup = await ExperimentFakes.enrollmentHelper(recipe);
+  const doExperimentCleanup = await NimbusTestUtils.enroll(recipe);
 
   Assert.equal(
     await CONTEXT.evaluateJexl(`"${slug}" in activeExperiments`, FAKE_CONTEXT),
@@ -97,5 +90,5 @@ add_task(async function test_evaluate_active_experiments_activeExperiments() {
     "should not find an experiment that doesn't exist"
   );
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
 });

@@ -116,9 +116,9 @@ nsMenuX::nsMenuX(nsMenuParentX* aParent, nsMenuGroupOwnerX* aMenuGroupOwner,
   mVisible = !nsMenuUtilsX::NodeIsHiddenOrCollapsed(mContent);
 
   NSString* newCocoaLabelString = nsMenuUtilsX::GetTruncatedCocoaLabel(mLabel);
-  mNativeMenuItem = [[NSMenuItem alloc] initWithTitle:newCocoaLabelString
-                                               action:nil
-                                        keyEquivalent:@""];
+  mNativeMenuItem = [[GeckoNSMenuItem alloc] initWithTitle:newCocoaLabelString
+                                                    action:nil
+                                             keyEquivalent:@""];
   mNativeMenuItem.submenu = mNativeMenu;
 
   SetEnabled(!mContent->IsElement() ||
@@ -132,7 +132,8 @@ nsMenuX::nsMenuX(nsMenuParentX* aParent, nsMenuGroupOwnerX* aMenuGroupOwner,
   // menu gets selected, which is bad.
   RebuildMenu();
 
-  if (IsXULWindowMenu(mContent)) {
+  bool isXULWindowMenu = IsXULWindowMenu(mContent);
+  if (isXULWindowMenu) {
     // Let the OS know that this is our Window menu.
     NSApp.windowsMenu = mNativeMenu;
   }
@@ -140,6 +141,9 @@ nsMenuX::nsMenuX(nsMenuParentX* aParent, nsMenuGroupOwnerX* aMenuGroupOwner,
   mIcon = MakeUnique<nsMenuItemIconX>(this);
 
   if (mVisible) {
+    if (!isXULWindowMenu) {
+      SetRebuild(true);
+    }
     SetupIcon();
   }
 
@@ -794,9 +798,9 @@ void nsMenuX::InsertPlaceholderIfNeeded() {
 
   if ([mNativeMenu numberOfItems] == 0) {
     MOZ_RELEASE_ASSERT(mVisibleItemsCount == 0);
-    NSMenuItem* item = [[NSMenuItem alloc] initWithTitle:@""
-                                                  action:nil
-                                           keyEquivalent:@""];
+    NSMenuItem* item = [[GeckoNSMenuItem alloc] initWithTitle:@""
+                                                       action:nil
+                                                keyEquivalent:@""];
     item.enabled = NO;
     item.view =
         [[[NSView alloc] initWithFrame:NSMakeRect(0, 0, 150, 1)] autorelease];
@@ -1059,8 +1063,8 @@ void nsMenuX::ObserveAttributeChanged(dom::Document* aDocument,
 }
 
 void nsMenuX::ObserveContentRemoved(dom::Document* aDocument,
-                                    nsIContent* aContainer, nsIContent* aChild,
-                                    nsIContent* aPreviousSibling) {
+                                    nsIContent* aContainer,
+                                    nsIContent* aChild) {
   if (gConstructingMenu) {
     return;
   }

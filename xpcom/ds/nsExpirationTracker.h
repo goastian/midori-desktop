@@ -146,13 +146,12 @@ class ExpirationTrackerImpl {
    */
   nsresult AddObjectLocked(T* aObj, const AutoLock& aAutoLock) {
     if (NS_WARN_IF(!aObj)) {
-      MOZ_DIAGNOSTIC_ASSERT(false, "Invalid object to add");
+      MOZ_DIAGNOSTIC_CRASH("Invalid object to add");
       return NS_ERROR_UNEXPECTED;
     }
     nsExpirationState* state = aObj->GetExpirationState();
     if (NS_WARN_IF(state->IsTracked())) {
-      MOZ_DIAGNOSTIC_ASSERT(false,
-                            "Tried to add an object that's already tracked");
+      MOZ_DIAGNOSTIC_CRASH("Tried to add an object that's already tracked");
       return NS_ERROR_UNEXPECTED;
     }
     nsTArray<T*>& generation = mGenerations[mNewestGeneration];
@@ -181,13 +180,12 @@ class ExpirationTrackerImpl {
    */
   void RemoveObjectLocked(T* aObj, const AutoLock& aAutoLock) {
     if (NS_WARN_IF(!aObj)) {
-      MOZ_DIAGNOSTIC_ASSERT(false, "Invalid object to remove");
+      MOZ_DIAGNOSTIC_CRASH("Invalid object to remove");
       return;
     }
     nsExpirationState* state = aObj->GetExpirationState();
     if (NS_WARN_IF(!state->IsTracked())) {
-      MOZ_DIAGNOSTIC_ASSERT(false,
-                            "Tried to remove an object that's not tracked");
+      MOZ_DIAGNOSTIC_CRASH("Tried to remove an object that's not tracked");
       return;
     }
     nsTArray<T*>& generation = mGenerations[state->mGeneration];
@@ -374,14 +372,14 @@ class ExpirationTrackerImpl {
    * done while still holding the lock. It will be called once after each timer
    * event, and each low memory event has been handled.
    */
-  virtual void NotifyHandlerEndLocked(const AutoLock&){};
+  virtual void NotifyHandlerEndLocked(const AutoLock&) {};
 
   /**
    * This may be overridden to perform any post-aging work that needs to be
    * done outside the lock. It will be called once after each
    * NotifyEndTransactionLocked call.
    */
-  virtual void NotifyHandlerEnd(){};
+  virtual void NotifyHandlerEnd() {};
 
   virtual Mutex& GetMutex() = 0;
 

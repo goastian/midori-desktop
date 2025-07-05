@@ -1,3 +1,5 @@
+use alloc::vec::Vec;
+
 use ash::vk;
 
 impl super::PrivateCapabilities {
@@ -36,7 +38,8 @@ impl super::PrivateCapabilities {
             Tf::Rgba8Sint => F::R8G8B8A8_SINT,
             Tf::Rgb10a2Uint => F::A2B10G10R10_UINT_PACK32,
             Tf::Rgb10a2Unorm => F::A2B10G10R10_UNORM_PACK32,
-            Tf::Rg11b10Float => F::B10G11R11_UFLOAT_PACK32,
+            Tf::Rg11b10Ufloat => F::B10G11R11_UFLOAT_PACK32,
+            Tf::R64Uint => F::R64_UINT,
             Tf::Rg32Uint => F::R32G32_UINT,
             Tf::Rg32Sint => F::R32G32_SINT,
             Tf::Rg32Float => F::R32G32_SFLOAT,
@@ -178,31 +181,20 @@ pub fn map_vk_surface_formats(sf: vk::SurfaceFormatKHR) -> Option<wgt::TextureFo
     })
 }
 
-impl crate::Attachment<'_, super::Api> {
-    pub(super) fn make_attachment_key(
-        &self,
-        ops: crate::AttachmentOps,
-        caps: &super::PrivateCapabilities,
-    ) -> super::AttachmentKey {
+impl crate::Attachment<'_, super::TextureView> {
+    pub(super) fn make_attachment_key(&self, ops: crate::AttachmentOps) -> super::AttachmentKey {
         super::AttachmentKey {
-            format: caps.map_texture_format(self.view.attachment.view_format),
-            layout: derive_image_layout(self.usage, self.view.attachment.view_format),
+            format: self.view.raw_format,
+            layout: derive_image_layout(self.usage, self.view.format),
             ops,
         }
     }
 }
 
-impl crate::ColorAttachment<'_, super::Api> {
+impl crate::ColorAttachment<'_, super::TextureView> {
     pub(super) unsafe fn make_vk_clear_color(&self) -> vk::ClearColorValue {
         let cv = &self.clear_value;
-        match self
-            .target
-            .view
-            .attachment
-            .view_format
-            .sample_type(None, None)
-            .unwrap()
-        {
+        match self.target.view.format.sample_type(None, None).unwrap() {
             wgt::TextureSampleType::Float { .. } => vk::ClearColorValue {
                 float32: [cv.r as f32, cv.g as f32, cv.b as f32, cv.a as f32],
             },
@@ -217,23 +209,18 @@ impl crate::ColorAttachment<'_, super::Api> {
     }
 }
 
-pub fn derive_image_layout(
-    usage: crate::TextureUses,
-    format: wgt::TextureFormat,
-) -> vk::ImageLayout {
+pub fn derive_image_layout(usage: wgt::TextureUses, format: wgt::TextureFormat) -> vk::ImageLayout {
     // Note: depth textures are always sampled with RODS layout
     let is_color = !format.is_depth_stencil_format();
     match usage {
-        crate::TextureUses::UNINITIALIZED => vk::ImageLayout::UNDEFINED,
-        crate::TextureUses::COPY_SRC => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
-        crate::TextureUses::COPY_DST => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
-        crate::TextureUses::RESOURCE if is_color => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
-        crate::TextureUses::COLOR_TARGET => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
-        crate::TextureUses::DEPTH_STENCIL_WRITE => {
-            vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL
-        }
+        wgt::TextureUses::UNINITIALIZED => vk::ImageLayout::UNDEFINED,
+        wgt::TextureUses::COPY_SRC => vk::ImageLayout::TRANSFER_SRC_OPTIMAL,
+        wgt::TextureUses::COPY_DST => vk::ImageLayout::TRANSFER_DST_OPTIMAL,
+        wgt::TextureUses::RESOURCE if is_color => vk::ImageLayout::SHADER_READ_ONLY_OPTIMAL,
+        wgt::TextureUses::COLOR_TARGET => vk::ImageLayout::COLOR_ATTACHMENT_OPTIMAL,
+        wgt::TextureUses::DEPTH_STENCIL_WRITE => vk::ImageLayout::DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
         _ => {
-            if usage == crate::TextureUses::PRESENT {
+            if usage == wgt::TextureUses::PRESENT {
                 vk::ImageLayout::PRESENT_SRC_KHR
             } else if is_color {
                 vk::ImageLayout::GENERAL
@@ -244,33 +231,38 @@ pub fn derive_image_layout(
     }
 }
 
-pub fn map_texture_usage(usage: crate::TextureUses) -> vk::ImageUsageFlags {
+pub fn map_texture_usage(usage: wgt::TextureUses) -> vk::ImageUsageFlags {
     let mut flags = vk::ImageUsageFlags::empty();
-    if usage.contains(crate::TextureUses::COPY_SRC) {
+    if usage.contains(wgt::TextureUses::COPY_SRC) {
         flags |= vk::ImageUsageFlags::TRANSFER_SRC;
     }
-    if usage.contains(crate::TextureUses::COPY_DST) {
+    if usage.contains(wgt::TextureUses::COPY_DST) {
         flags |= vk::ImageUsageFlags::TRANSFER_DST;
     }
-    if usage.contains(crate::TextureUses::RESOURCE) {
+    if usage.contains(wgt::TextureUses::RESOURCE) {
         flags |= vk::ImageUsageFlags::SAMPLED;
     }
-    if usage.contains(crate::TextureUses::COLOR_TARGET) {
+    if usage.contains(wgt::TextureUses::COLOR_TARGET) {
         flags |= vk::ImageUsageFlags::COLOR_ATTACHMENT;
     }
-    if usage.intersects(
-        crate::TextureUses::DEPTH_STENCIL_READ | crate::TextureUses::DEPTH_STENCIL_WRITE,
-    ) {
+    if usage
+        .intersects(wgt::TextureUses::DEPTH_STENCIL_READ | wgt::TextureUses::DEPTH_STENCIL_WRITE)
+    {
         flags |= vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT;
     }
-    if usage.intersects(crate::TextureUses::STORAGE_READ | crate::TextureUses::STORAGE_READ_WRITE) {
+    if usage.intersects(
+        wgt::TextureUses::STORAGE_READ_ONLY
+            | wgt::TextureUses::STORAGE_WRITE_ONLY
+            | wgt::TextureUses::STORAGE_READ_WRITE
+            | wgt::TextureUses::STORAGE_ATOMIC,
+    ) {
         flags |= vk::ImageUsageFlags::STORAGE;
     }
     flags
 }
 
 pub fn map_texture_usage_to_barrier(
-    usage: crate::TextureUses,
+    usage: wgt::TextureUses,
 ) -> (vk::PipelineStageFlags, vk::AccessFlags) {
     let mut stages = vk::PipelineStageFlags::empty();
     let mut access = vk::AccessFlags::empty();
@@ -278,43 +270,51 @@ pub fn map_texture_usage_to_barrier(
         | vk::PipelineStageFlags::FRAGMENT_SHADER
         | vk::PipelineStageFlags::COMPUTE_SHADER;
 
-    if usage.contains(crate::TextureUses::COPY_SRC) {
+    if usage.contains(wgt::TextureUses::COPY_SRC) {
         stages |= vk::PipelineStageFlags::TRANSFER;
         access |= vk::AccessFlags::TRANSFER_READ;
     }
-    if usage.contains(crate::TextureUses::COPY_DST) {
+    if usage.contains(wgt::TextureUses::COPY_DST) {
         stages |= vk::PipelineStageFlags::TRANSFER;
         access |= vk::AccessFlags::TRANSFER_WRITE;
     }
-    if usage.contains(crate::TextureUses::RESOURCE) {
+    if usage.contains(wgt::TextureUses::RESOURCE) {
         stages |= shader_stages;
         access |= vk::AccessFlags::SHADER_READ;
     }
-    if usage.contains(crate::TextureUses::COLOR_TARGET) {
+    if usage.contains(wgt::TextureUses::COLOR_TARGET) {
         stages |= vk::PipelineStageFlags::COLOR_ATTACHMENT_OUTPUT;
         access |= vk::AccessFlags::COLOR_ATTACHMENT_READ | vk::AccessFlags::COLOR_ATTACHMENT_WRITE;
     }
-    if usage.intersects(crate::TextureUses::DEPTH_STENCIL_READ) {
+    if usage.intersects(wgt::TextureUses::DEPTH_STENCIL_READ) {
         stages |= vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
             | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS;
         access |= vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ;
     }
-    if usage.intersects(crate::TextureUses::DEPTH_STENCIL_WRITE) {
+    if usage.intersects(wgt::TextureUses::DEPTH_STENCIL_WRITE) {
         stages |= vk::PipelineStageFlags::EARLY_FRAGMENT_TESTS
             | vk::PipelineStageFlags::LATE_FRAGMENT_TESTS;
         access |= vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_READ
             | vk::AccessFlags::DEPTH_STENCIL_ATTACHMENT_WRITE;
     }
-    if usage.contains(crate::TextureUses::STORAGE_READ) {
+    if usage.intersects(
+        wgt::TextureUses::STORAGE_READ_ONLY
+            | wgt::TextureUses::STORAGE_READ_WRITE
+            | wgt::TextureUses::STORAGE_ATOMIC,
+    ) {
         stages |= shader_stages;
         access |= vk::AccessFlags::SHADER_READ;
     }
-    if usage.contains(crate::TextureUses::STORAGE_READ_WRITE) {
+    if usage.intersects(
+        wgt::TextureUses::STORAGE_WRITE_ONLY
+            | wgt::TextureUses::STORAGE_READ_WRITE
+            | wgt::TextureUses::STORAGE_ATOMIC,
+    ) {
         stages |= shader_stages;
-        access |= vk::AccessFlags::SHADER_READ | vk::AccessFlags::SHADER_WRITE;
+        access |= vk::AccessFlags::SHADER_WRITE;
     }
 
-    if usage == crate::TextureUses::UNINITIALIZED || usage == crate::TextureUses::PRESENT {
+    if usage == wgt::TextureUses::UNINITIALIZED || usage == wgt::TextureUses::PRESENT {
         (
             vk::PipelineStageFlags::TOP_OF_PIPE,
             vk::AccessFlags::empty(),
@@ -324,25 +324,28 @@ pub fn map_texture_usage_to_barrier(
     }
 }
 
-pub fn map_vk_image_usage(usage: vk::ImageUsageFlags) -> crate::TextureUses {
-    let mut bits = crate::TextureUses::empty();
+pub fn map_vk_image_usage(usage: vk::ImageUsageFlags) -> wgt::TextureUses {
+    let mut bits = wgt::TextureUses::empty();
     if usage.contains(vk::ImageUsageFlags::TRANSFER_SRC) {
-        bits |= crate::TextureUses::COPY_SRC;
+        bits |= wgt::TextureUses::COPY_SRC;
     }
     if usage.contains(vk::ImageUsageFlags::TRANSFER_DST) {
-        bits |= crate::TextureUses::COPY_DST;
+        bits |= wgt::TextureUses::COPY_DST;
     }
     if usage.contains(vk::ImageUsageFlags::SAMPLED) {
-        bits |= crate::TextureUses::RESOURCE;
+        bits |= wgt::TextureUses::RESOURCE;
     }
     if usage.contains(vk::ImageUsageFlags::COLOR_ATTACHMENT) {
-        bits |= crate::TextureUses::COLOR_TARGET;
+        bits |= wgt::TextureUses::COLOR_TARGET;
     }
     if usage.contains(vk::ImageUsageFlags::DEPTH_STENCIL_ATTACHMENT) {
-        bits |= crate::TextureUses::DEPTH_STENCIL_READ | crate::TextureUses::DEPTH_STENCIL_WRITE;
+        bits |= wgt::TextureUses::DEPTH_STENCIL_READ | wgt::TextureUses::DEPTH_STENCIL_WRITE;
     }
     if usage.contains(vk::ImageUsageFlags::STORAGE) {
-        bits |= crate::TextureUses::STORAGE_READ | crate::TextureUses::STORAGE_READ_WRITE;
+        bits |= wgt::TextureUses::STORAGE_READ_ONLY
+            | wgt::TextureUses::STORAGE_WRITE_ONLY
+            | wgt::TextureUses::STORAGE_READ_WRITE
+            | wgt::TextureUses::STORAGE_ATOMIC;
     }
     bits
 }
@@ -365,22 +368,31 @@ pub fn map_index_format(index_format: wgt::IndexFormat) -> vk::IndexType {
 pub fn map_vertex_format(vertex_format: wgt::VertexFormat) -> vk::Format {
     use wgt::VertexFormat as Vf;
     match vertex_format {
+        Vf::Uint8 => vk::Format::R8_UINT,
         Vf::Uint8x2 => vk::Format::R8G8_UINT,
         Vf::Uint8x4 => vk::Format::R8G8B8A8_UINT,
+        Vf::Sint8 => vk::Format::R8_SINT,
         Vf::Sint8x2 => vk::Format::R8G8_SINT,
         Vf::Sint8x4 => vk::Format::R8G8B8A8_SINT,
+        Vf::Unorm8 => vk::Format::R8_UNORM,
         Vf::Unorm8x2 => vk::Format::R8G8_UNORM,
         Vf::Unorm8x4 => vk::Format::R8G8B8A8_UNORM,
+        Vf::Snorm8 => vk::Format::R8_SNORM,
         Vf::Snorm8x2 => vk::Format::R8G8_SNORM,
         Vf::Snorm8x4 => vk::Format::R8G8B8A8_SNORM,
+        Vf::Uint16 => vk::Format::R16_UINT,
         Vf::Uint16x2 => vk::Format::R16G16_UINT,
         Vf::Uint16x4 => vk::Format::R16G16B16A16_UINT,
+        Vf::Sint16 => vk::Format::R16_SINT,
         Vf::Sint16x2 => vk::Format::R16G16_SINT,
         Vf::Sint16x4 => vk::Format::R16G16B16A16_SINT,
+        Vf::Unorm16 => vk::Format::R16_UNORM,
         Vf::Unorm16x2 => vk::Format::R16G16_UNORM,
         Vf::Unorm16x4 => vk::Format::R16G16B16A16_UNORM,
+        Vf::Snorm16 => vk::Format::R16_SNORM,
         Vf::Snorm16x2 => vk::Format::R16G16_SNORM,
         Vf::Snorm16x4 => vk::Format::R16G16B16A16_SNORM,
+        Vf::Float16 => vk::Format::R16_SFLOAT,
         Vf::Float16x2 => vk::Format::R16G16_SFLOAT,
         Vf::Float16x4 => vk::Format::R16G16B16A16_SFLOAT,
         Vf::Float32 => vk::Format::R32_SFLOAT,
@@ -400,6 +412,7 @@ pub fn map_vertex_format(vertex_format: wgt::VertexFormat) -> vk::Format {
         Vf::Float64x3 => vk::Format::R64G64B64_SFLOAT,
         Vf::Float64x4 => vk::Format::R64G64B64A64_SFLOAT,
         Vf::Unorm10_10_10_2 => vk::Format::A2B10G10R10_UNORM_PACK32,
+        Vf::Unorm8x4Bgra => vk::Format::B8G8R8A8_UNORM,
     }
 }
 
@@ -496,44 +509,47 @@ pub fn map_vk_composite_alpha(flags: vk::CompositeAlphaFlagsKHR) -> Vec<wgt::Com
     modes
 }
 
-pub fn map_buffer_usage(usage: crate::BufferUses) -> vk::BufferUsageFlags {
+pub fn map_buffer_usage(usage: wgt::BufferUses) -> vk::BufferUsageFlags {
     let mut flags = vk::BufferUsageFlags::empty();
-    if usage.contains(crate::BufferUses::COPY_SRC) {
+    if usage.contains(wgt::BufferUses::COPY_SRC) {
         flags |= vk::BufferUsageFlags::TRANSFER_SRC;
     }
-    if usage.contains(crate::BufferUses::COPY_DST) {
+    if usage.contains(wgt::BufferUses::COPY_DST) {
         flags |= vk::BufferUsageFlags::TRANSFER_DST;
     }
-    if usage.contains(crate::BufferUses::UNIFORM) {
+    if usage.contains(wgt::BufferUses::UNIFORM) {
         flags |= vk::BufferUsageFlags::UNIFORM_BUFFER;
     }
-    if usage.intersects(crate::BufferUses::STORAGE_READ | crate::BufferUses::STORAGE_READ_WRITE) {
+    if usage.intersects(wgt::BufferUses::STORAGE_READ_ONLY | wgt::BufferUses::STORAGE_READ_WRITE) {
         flags |= vk::BufferUsageFlags::STORAGE_BUFFER;
     }
-    if usage.contains(crate::BufferUses::INDEX) {
+    if usage.contains(wgt::BufferUses::INDEX) {
         flags |= vk::BufferUsageFlags::INDEX_BUFFER;
     }
-    if usage.contains(crate::BufferUses::VERTEX) {
+    if usage.contains(wgt::BufferUses::VERTEX) {
         flags |= vk::BufferUsageFlags::VERTEX_BUFFER;
     }
-    if usage.contains(crate::BufferUses::INDIRECT) {
+    if usage.contains(wgt::BufferUses::INDIRECT) {
         flags |= vk::BufferUsageFlags::INDIRECT_BUFFER;
     }
-    if usage.contains(crate::BufferUses::ACCELERATION_STRUCTURE_SCRATCH) {
+    if usage.contains(wgt::BufferUses::ACCELERATION_STRUCTURE_SCRATCH) {
         flags |= vk::BufferUsageFlags::STORAGE_BUFFER | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
     }
     if usage.intersects(
-        crate::BufferUses::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT
-            | crate::BufferUses::TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT,
+        wgt::BufferUses::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT
+            | wgt::BufferUses::TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT,
     ) {
         flags |= vk::BufferUsageFlags::ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_KHR
             | vk::BufferUsageFlags::SHADER_DEVICE_ADDRESS;
+    }
+    if usage.intersects(wgt::BufferUses::ACCELERATION_STRUCTURE_QUERY) {
+        flags |= vk::BufferUsageFlags::TRANSFER_DST;
     }
     flags
 }
 
 pub fn map_buffer_usage_to_barrier(
-    usage: crate::BufferUses,
+    usage: wgt::BufferUses,
 ) -> (vk::PipelineStageFlags, vk::AccessFlags) {
     let mut stages = vk::PipelineStageFlags::empty();
     let mut access = vk::AccessFlags::empty();
@@ -541,54 +557,59 @@ pub fn map_buffer_usage_to_barrier(
         | vk::PipelineStageFlags::FRAGMENT_SHADER
         | vk::PipelineStageFlags::COMPUTE_SHADER;
 
-    if usage.contains(crate::BufferUses::MAP_READ) {
+    if usage.contains(wgt::BufferUses::MAP_READ) {
         stages |= vk::PipelineStageFlags::HOST;
         access |= vk::AccessFlags::HOST_READ;
     }
-    if usage.contains(crate::BufferUses::MAP_WRITE) {
+    if usage.contains(wgt::BufferUses::MAP_WRITE) {
         stages |= vk::PipelineStageFlags::HOST;
         access |= vk::AccessFlags::HOST_WRITE;
     }
-    if usage.contains(crate::BufferUses::COPY_SRC) {
+    if usage.contains(wgt::BufferUses::COPY_SRC) {
         stages |= vk::PipelineStageFlags::TRANSFER;
         access |= vk::AccessFlags::TRANSFER_READ;
     }
-    if usage.contains(crate::BufferUses::COPY_DST) {
+    if usage.contains(wgt::BufferUses::COPY_DST) {
         stages |= vk::PipelineStageFlags::TRANSFER;
         access |= vk::AccessFlags::TRANSFER_WRITE;
     }
-    if usage.contains(crate::BufferUses::UNIFORM) {
+    if usage.contains(wgt::BufferUses::UNIFORM) {
         stages |= shader_stages;
         access |= vk::AccessFlags::UNIFORM_READ;
     }
-    if usage.intersects(crate::BufferUses::STORAGE_READ) {
+    if usage.intersects(wgt::BufferUses::STORAGE_READ_ONLY) {
         stages |= shader_stages;
         access |= vk::AccessFlags::SHADER_READ;
     }
-    if usage.intersects(crate::BufferUses::STORAGE_READ_WRITE) {
+    if usage.intersects(wgt::BufferUses::STORAGE_READ_WRITE) {
         stages |= shader_stages;
         access |= vk::AccessFlags::SHADER_READ | vk::AccessFlags::SHADER_WRITE;
     }
-    if usage.contains(crate::BufferUses::INDEX) {
+    if usage.contains(wgt::BufferUses::INDEX) {
         stages |= vk::PipelineStageFlags::VERTEX_INPUT;
         access |= vk::AccessFlags::INDEX_READ;
     }
-    if usage.contains(crate::BufferUses::VERTEX) {
+    if usage.contains(wgt::BufferUses::VERTEX) {
         stages |= vk::PipelineStageFlags::VERTEX_INPUT;
         access |= vk::AccessFlags::VERTEX_ATTRIBUTE_READ;
     }
-    if usage.contains(crate::BufferUses::INDIRECT) {
+    if usage.contains(wgt::BufferUses::INDIRECT) {
         stages |= vk::PipelineStageFlags::DRAW_INDIRECT;
         access |= vk::AccessFlags::INDIRECT_COMMAND_READ;
     }
     if usage.intersects(
-        crate::BufferUses::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT
-            | crate::BufferUses::TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT
-            | crate::BufferUses::ACCELERATION_STRUCTURE_SCRATCH,
+        wgt::BufferUses::BOTTOM_LEVEL_ACCELERATION_STRUCTURE_INPUT
+            | wgt::BufferUses::TOP_LEVEL_ACCELERATION_STRUCTURE_INPUT
+            | wgt::BufferUses::ACCELERATION_STRUCTURE_SCRATCH,
     ) {
         stages |= vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR;
         access |= vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR
-            | vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR;
+            | vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR
+            | vk::AccessFlags::SHADER_READ;
+    }
+    if usage.contains(wgt::BufferUses::ACCELERATION_STRUCTURE_QUERY) {
+        stages |= vk::PipelineStageFlags::TRANSFER;
+        access |= vk::AccessFlags::TRANSFER_WRITE;
     }
 
     (stages, access)
@@ -740,7 +761,9 @@ pub fn map_binding_type(ty: wgt::BindingType) -> vk::DescriptorType {
         wgt::BindingType::Sampler { .. } => vk::DescriptorType::SAMPLER,
         wgt::BindingType::Texture { .. } => vk::DescriptorType::SAMPLED_IMAGE,
         wgt::BindingType::StorageTexture { .. } => vk::DescriptorType::STORAGE_IMAGE,
-        wgt::BindingType::AccelerationStructure => vk::DescriptorType::ACCELERATION_STRUCTURE_KHR,
+        wgt::BindingType::AccelerationStructure { .. } => {
+            vk::DescriptorType::ACCELERATION_STRUCTURE_KHR
+        }
     }
 }
 
@@ -922,6 +945,10 @@ pub fn map_acceleration_structure_flags(
         vk_flags |= vk::BuildAccelerationStructureFlagsKHR::ALLOW_COMPACTION
     }
 
+    if flags.contains(crate::AccelerationStructureBuildFlags::ALLOW_RAY_HIT_VERTEX_RETURN) {
+        vk_flags |= vk::BuildAccelerationStructureFlagsKHR::ALLOW_DATA_ACCESS
+    }
+
     vk_flags
 }
 
@@ -943,6 +970,7 @@ pub fn map_acceleration_structure_geometry_flags(
 
 pub fn map_acceleration_structure_usage_to_barrier(
     usage: crate::AccelerationStructureUses,
+    features: wgt::Features,
 ) -> (vk::PipelineStageFlags, vk::AccessFlags) {
     let mut stages = vk::PipelineStageFlags::empty();
     let mut access = vk::AccessFlags::empty();
@@ -951,15 +979,29 @@ pub fn map_acceleration_structure_usage_to_barrier(
         stages |= vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR;
         access |= vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR;
     }
+    if usage.contains(crate::AccelerationStructureUses::QUERY_INPUT) {
+        stages |= vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR;
+        access |= vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR;
+    }
     if usage.contains(crate::AccelerationStructureUses::BUILD_OUTPUT) {
         stages |= vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR;
         access |= vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR;
     }
-    if usage.contains(crate::AccelerationStructureUses::SHADER_INPUT) {
+    if usage.contains(crate::AccelerationStructureUses::SHADER_INPUT)
+        && features.contains(wgt::Features::EXPERIMENTAL_RAY_QUERY)
+    {
         stages |= vk::PipelineStageFlags::VERTEX_SHADER
             | vk::PipelineStageFlags::FRAGMENT_SHADER
             | vk::PipelineStageFlags::COMPUTE_SHADER;
         access |= vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR;
+    }
+    if usage.contains(crate::AccelerationStructureUses::COPY_SRC) {
+        stages |= vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR;
+        access |= vk::AccessFlags::ACCELERATION_STRUCTURE_READ_KHR;
+    }
+    if usage.contains(crate::AccelerationStructureUses::COPY_DST) {
+        stages |= vk::PipelineStageFlags::ACCELERATION_STRUCTURE_BUILD_KHR;
+        access |= vk::AccessFlags::ACCELERATION_STRUCTURE_WRITE_KHR;
     }
 
     (stages, access)

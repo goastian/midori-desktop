@@ -16,23 +16,38 @@
   </style>
 </head>
 <body>
-  <h1>Esto se contenta en Luz DOM</h1>
+  <div>
+    <!-- Text from Don Quijote, in the public domain. -->
+    Yo, Juan Gallo de Andrada, escribano de Cámara del Rey nuestro señor, de
+    los que residen en su Consejo, certifico y doy fe que, habiendo visto por
+    los señores dél un libro intitulado El ingenioso hidalgo de la Mancha,
+    compuesto por Miguel de Cervantes Saavedra, tasaron cada pliego del dicho
+    libro a tres maravedís y medio; el cual tiene ochenta y tres pliegos, que
+    al dicho precio monta el dicho libro docientos y noventa maravedís y medio,
+    en que se ha de vender en papel; y dieron licencia para que a este precio
+    se pueda vender, y mandaron que esta tasa se ponga al principio del dicho
+    libro, y no se pueda vender sin ella. Y, para que dello conste, di la
+    presente en Valladolid, a veinte días del mes de deciembre de mil y
+    seiscientos y cuatro años.
+  </div>
+
+  <h1>Normal DOM content</h1>
   <div id="host"></div>
   <div><div><div id="host2"></div></div></div>
   <script>
     const host = document.getElementById("host");
     const root = host.attachShadow({mode: "open"});
-    root.innerHTML = "<p>Esto se contento en Shadow DOM</p><div id='innerHost'></div>";
+    root.innerHTML = "<p>This is Shadow DOM content</p><div id='innerHost'></div>";
 
     // Nested shadow tree
     const innerHost = root.querySelector("div");
     const innerRoot = innerHost.attachShadow({mode: "open"});
-    innerRoot.innerHTML = "<p>Esto se contenta en raíz interior </p>";
+    innerRoot.innerHTML = "<p>This is content in a nested Shadow DOM</p>";
 
     // Host within an empty textContent element
     const host2 = document.getElementById("host2");
     const root2 = host2.attachShadow({mode: "open"});
-    root2.innerHTML = "<p>Esto se contento en Shadow DOM 2</p>";
+    root2.innerHTML = "<p>This is a second shadow DOM element</p>";
   </script>
 </body>
 </html>

@@ -14,7 +14,9 @@ let gActiveInputSession = null;
 // the input changes or the input session ends.
 let gCurrentCallbackID = 0;
 
-// Handles keeping track of information associated to the registered keyword.
+/**
+ * Handles keeping track of information associated to the registered keyword.
+ */
 class KeywordInfo {
   constructor(extension, description) {
     this._extension = extension;
@@ -34,7 +36,9 @@ class KeywordInfo {
   }
 }
 
-// Responsible for handling communication between the extension and the urlbar.
+/**
+ * Responsible for handling communication between the extension and the urlbar.
+ */
 class InputSession {
   constructor(keyword, extension) {
     this._keyword = keyword;
@@ -125,14 +129,14 @@ export var ExtensionSearchHandler = Object.freeze({
    * Checks if a keyword is registered.
    *
    * @param {string} keyword The word to check.
-   * @return {boolean} true if the word is a registered keyword.
+   * @returns {boolean} true if the word is a registered keyword.
    */
   isKeywordRegistered(keyword) {
     return gKeywordMap.has(keyword);
   },
 
   /**
-   * @return {boolean} true if there is an active input session.
+   * @returns {boolean} true if there is an active input session.
    */
   hasActiveInputSession() {
     return gActiveInputSession != null;
@@ -140,7 +144,7 @@ export var ExtensionSearchHandler = Object.freeze({
 
   /**
    * @param {string} keyword The keyword to look up.
-   * @return {string} the description to use for the heuristic result.
+   * @returns {string} the description to use for the heuristic result.
    */
   getDescription(keyword) {
     if (!gKeywordMap.has(keyword)) {
@@ -154,7 +158,9 @@ export var ExtensionSearchHandler = Object.freeze({
    * description will be used for the comment in the heuristic result.
    *
    * @param {string} keyword The keyword.
-   * @param {string} description The description to use for the heuristic result.
+   * @param {object} options
+   * @param {string} options.description
+   *   The description to use for the heuristic result.
    */
   setDefaultSuggestion(keyword, { description }) {
     if (!gKeywordMap.has(keyword)) {
@@ -169,8 +175,8 @@ export var ExtensionSearchHandler = Object.freeze({
    * provided is no longer equal to the active callback ID.
    *
    * @param {string} keyword The keyword.
-   * @param {integer} id The ID of the suggestion callback.
-   * @param {Array<Object>} suggestions An array of suggestions to provide to the urlbar.
+   * @param {number} id The ID of the suggestion callback.
+   * @param {Array<object>} suggestions An array of suggestions to provide to the urlbar.
    */
   addSuggestions(keyword, id, suggestions) {
     if (!gKeywordMap.has(keyword)) {
@@ -207,7 +213,7 @@ export var ExtensionSearchHandler = Object.freeze({
    *                 {boolean} inPrivateWindow privateness of window search
    *                           is occuring in.
    * @param {Function} callback The callback used to provide search suggestions.
-   * @return {Promise} promise that resolves when the current search is complete.
+   * @returns {Promise} promise that resolves when the current search is complete.
    */
   handleSearch(data, callback) {
     let { keyword, text } = data;

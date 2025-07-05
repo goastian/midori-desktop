@@ -1,0 +1,38 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+ #fxview-tab-row-secondary-button {
+  display: none;
+
+  :host(:hover) & {
+    display: inline;
+  }
+}
+
+.no-action-button-row {
+  grid-column: span 7;
+}
+
+:host {
+  display: flex;
+}
+
+.fxview-tab-row-main {
+  padding-block: 4px;
+  padding-inline: 8px 4px;
+  border-radius: var(--border-radius-medium);
+  gap: 8px;
+  flex: 1;
+
+  &:hover, &:hover:active {
+    background-color: unset;
+  }
+}
+
+.fxview-tab-row-button {
+  --button-outer-padding-block: 4px;
+  --button-outer-padding-inline: 4px;
+  --button-size-icon: 24px;
+  --button-min-height: 24px;
+}

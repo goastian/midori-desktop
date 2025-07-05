@@ -7,7 +7,10 @@
 // <LICENSE-MIT or http://opensource.org/licenses/MIT>, at your
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
-use core::fmt::{self, Write};
+use core::{
+    fmt::{self, Write},
+    iter::FusedIterator,
+};
 use tinyvec::ArrayVec;
 
 /// External iterator for replacements for a string's characters.
@@ -50,6 +53,8 @@ impl<I: Iterator<Item = char>> Iterator for Replacements<I> {
         (lower, None)
     }
 }
+
+impl<I: Iterator<Item = char> + FusedIterator> FusedIterator for Replacements<I> {}
 
 impl<I: Iterator<Item = char> + Clone> fmt::Display for Replacements<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

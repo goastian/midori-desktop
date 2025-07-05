@@ -3,7 +3,7 @@
 
 "use strict";
 
-const { ExperimentFakes } = ChromeUtils.importESModule(
+const { NimbusTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/NimbusTestUtils.sys.mjs"
 );
 
@@ -49,7 +49,7 @@ add_task(async function test_experiment_control_displayDuration() {
  * if the displayDuration end date is reached or passed.
  */
 add_task(async function test_experiment_displayDuration_end_date_was_reached() {
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "pictureinpicture",
     value: {
       displayDuration: 1,
@@ -83,7 +83,7 @@ add_task(async function test_experiment_displayDuration_end_date_was_reached() {
     }
   );
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
 });
 
 /**
@@ -91,7 +91,7 @@ add_task(async function test_experiment_displayDuration_end_date_was_reached() {
  * if the displayDuration end date is not yet reached or passed.
  */
 add_task(async function test_experiment_displayDuration_end_date_not_reached() {
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "pictureinpicture",
     value: {
       displayDuration: 5,
@@ -131,14 +131,14 @@ add_task(async function test_experiment_displayDuration_end_date_not_reached() {
     }
   );
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
 });
 
 /**
  * This tests that the toggle does not change to the icon toggle if duration is negative.
  */
 add_task(async function test_experiment_displayDuration_negative_duration() {
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "pictureinpicture",
     value: {
       displayDuration: -1,
@@ -172,14 +172,14 @@ add_task(async function test_experiment_displayDuration_negative_duration() {
     }
   );
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
 });
 
 /**
  * This tests that first-seen is only recorded for the first-time toggle.
  */
 add_task(async function test_experiment_displayDuration_already_icon() {
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig({
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig({
     featureId: "pictureinpicture",
     value: {
       displayDuration: 1,
@@ -210,5 +210,5 @@ add_task(async function test_experiment_displayDuration_already_icon() {
     }
   );
 
-  doExperimentCleanup();
+  await doExperimentCleanup();
 });

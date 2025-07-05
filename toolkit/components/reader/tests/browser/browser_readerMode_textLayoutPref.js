@@ -24,9 +24,6 @@ const defaultValues = {
  * the document layout correctly.
  */
 async function testTextLayout(aPref, value, cssProp, cssValue) {
-  // Enable the improved text and layout menu.
-  Services.prefs.setBoolPref("reader.improved_text_menu.enabled", true);
-
   // Set the pref to the custom value.
   const valueType = typeof value;
   if (valueType == "number") {
@@ -75,8 +72,6 @@ async function testTextLayout(aPref, value, cssProp, cssValue) {
  * Test that the reset button restores all layout options to defaults.
  */
 async function testTextLayoutReset() {
-  // Enable the improved text and layout menu.
-  Services.prefs.setBoolPref("reader.improved_text_menu.enabled", true);
   // Set all prefs to non-default values.
   Services.prefs.setIntPref(`reader.font_size`, 15);
   Services.prefs.setCharPref(`reader.font_type`, "serif");
@@ -86,6 +81,7 @@ async function testTextLayoutReset() {
   Services.prefs.setIntPref(`reader.character_spacing`, 3);
   Services.prefs.setIntPref(`reader.word_spacing`, 3);
   Services.prefs.setCharPref(`reader.text_alignment`, "left");
+
   // Open a browser tab, enter reader mode, and test if the reset button
   // restores the page layout to the default pref values.
   await BrowserTestUtils.withNewTab(
@@ -95,9 +91,11 @@ async function testTextLayoutReset() {
         browser,
         "AboutReaderContentReady"
       );
+
       let readerButton = document.getElementById("reader-mode-button");
       readerButton.click();
       await pageShownPromise;
+
       await SpecialPowers.spawn(
         browser,
         [Object.keys(defaultValues), defaultValues],
@@ -108,10 +106,12 @@ async function testTextLayoutReset() {
           resetButton.click();
           let container = content.document.querySelector(".container");
           let style = content.window.getComputedStyle(container);
+
           for (let prop of props) {
             let resetValue = style.getPropertyValue(`--${prop}`);
             Assert.equal(resetValue, defaults[prop]);
           }
+
           // Cannot test font size because the font size reset happens asynchronously,
           // but we can check that font size buttons are re-enabled.
           let plusButton = content.document.querySelector(
@@ -127,10 +127,7 @@ async function testTextLayoutReset() {
 /**
  * Test that the focus stays within the text and layout menu.
  */
-
 async function testTextLayoutFocus() {
-  // Enable the improved text and layout menu.
-  Services.prefs.setBoolPref("reader.improved_text_menu.enabled", true);
   // Open a browser tab, enter reader mode, and test if the focus stays
   // within the menu.
   await BrowserTestUtils.withNewTab(
@@ -140,17 +137,21 @@ async function testTextLayoutFocus() {
         browser,
         "AboutReaderContentReady"
       );
+
       let readerButton = document.getElementById("reader-mode-button");
       readerButton.click();
       await pageShownPromise;
+
       await SpecialPowers.spawn(browser, [], () => {
         let doc = content.document;
-        doc.querySelector(".improved-style-button").click();
+        doc.querySelector(".text-layout-button").click();
+
         let firstFocusableElement = doc.querySelector(
           ".text-size-minus-button"
         );
         let advancedHeader = doc.querySelector(".accordion-header");
         advancedHeader.focus();
+
         EventUtils.synthesizeKey("KEY_Tab", {}, content);
         is(
           doc.activeElement,
@@ -166,11 +167,11 @@ async function testTextLayoutFocus() {
           "Focus moves to last focusable button"
         );
 
-
         // Expand the advanced layout accordion.
         advancedHeader.click();
         let resetButton = doc.querySelector(".text-layout-reset-button");
         resetButton.focus();
+
         EventUtils.synthesizeKey("KEY_Tab", {}, content);
         is(
           doc.activeElement,
@@ -185,8 +186,6 @@ async function testTextLayoutFocus() {
           resetButton,
           "Focus moves from first focusable button to last focusable button"
         );
-
-
       });
     }
   );

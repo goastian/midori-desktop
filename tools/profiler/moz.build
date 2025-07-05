@@ -29,6 +29,10 @@ if CONFIG["MOZ_GECKO_PROFILER"]:
         "gecko/ProfilerChild.cpp",
         "gecko/ProfilerIOInterposeObserver.cpp",
     ]
+    if CONFIG["MOZ_MEMORY"] and CONFIG["MOZ_PROFILER_MEMORY"]:
+        UNIFIED_SOURCES += [
+            "core/memory_counter.cpp",
+        ]
     if CONFIG["MOZ_REPLACE_MALLOC"] and CONFIG["MOZ_PROFILER_MEMORY"]:
         SOURCES += [
             "core/memory_hooks.cpp",  # Non-unified because of order of #includes
@@ -66,10 +70,6 @@ if CONFIG["MOZ_GECKO_PROFILER"]:
                 "lul/LulMain.cpp",
                 "lul/platform-linux-lul.cpp",
             ]
-        # These files cannot be built in unified mode because of name clashes with mozglue headers on Android.
-        SOURCES += [
-            "core/shared-libraries-linux.cc",
-        ]
         if not CONFIG["MOZ_CRASHREPORTER"]:
             SOURCES += [
                 "/toolkit/crashreporter/google-breakpad/src/common/linux/elfutils.cc",
@@ -94,9 +94,6 @@ if CONFIG["MOZ_GECKO_PROFILER"]:
                 "core/EHABIStackWalk.cpp",
             ]
     elif CONFIG["OS_TARGET"] == "Darwin":
-        UNIFIED_SOURCES += [
-            "core/shared-libraries-macos.cc",
-        ]
         if CONFIG["TARGET_CPU"] == "aarch64":
             UNIFIED_SOURCES += [
                 "core/PowerCounters-mac-arm64.cpp",
@@ -115,7 +112,6 @@ if CONFIG["MOZ_GECKO_PROFILER"]:
             }
         SOURCES += [
             "core/ProfilerCPUFreq-win.cpp",
-            "core/shared-libraries-win32.cc",
         ]
 
     LOCAL_INCLUDES += [
@@ -149,6 +145,7 @@ if CONFIG["MOZ_GECKO_PROFILER"]:
     XPCSHELL_TESTS_MANIFESTS += ["tests/xpcshell/xpcshell.toml"]
     MOCHITEST_CHROME_MANIFESTS += ["tests/chrome/chrome.toml"]
     BROWSER_CHROME_MANIFESTS += ["tests/browser/browser.toml"]
+    TESTING_JS_MODULES += ["tests/ProfilerTestUtils.sys.mjs"]
 
 UNIFIED_SOURCES += [
     "core/MicroGeckoProfiler.cpp",
@@ -176,12 +173,14 @@ EXPORTS += [
     "public/ProfileAdditionalInformation.h",
     "public/ProfilerBindings.h",
     "public/ProfilerControl.h",
+    "public/ProfilerNativeStack.h",
     "public/ProfilerParent.h",
     "public/ProfilerRustBindings.h",
-    "public/shared-libraries.h",
+    "public/ProfilerStackWalk.h",
 ]
 
 EXPORTS.mozilla += [
+    "public/FlowMarkers.h",
     "public/ProfileBufferEntrySerializationGeckoExtensions.h",
     "public/ProfileJSONWriter.h",
     "public/ProfilerBandwidthCounter.h",
@@ -209,11 +208,6 @@ GeneratedFile(
     entry_point="generate_rust_enums",
     inputs=["../../mozglue/baseprofiler/build/profiling_categories.yaml"],
 )
-
-CONFIGURE_SUBST_FILES += [
-    "rust-api/extra-bindgen-flags",
-]
-
 
 if CONFIG["COMPILE_ENVIRONMENT"]:
     CbindgenHeader("profiler_ffi_generated.h", inputs=["rust-api"])

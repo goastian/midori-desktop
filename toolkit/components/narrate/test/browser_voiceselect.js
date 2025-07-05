@@ -4,6 +4,10 @@
 
 "use strict";
 
+// spawnInNewReaderTab calls SpecialPowers.spawn, which injects ContentTaskUtils
+// in the scope of the callback. Eslint doesn't know about that.
+/* global ContentTaskUtils */
+
 registerCleanupFunction(teardown);
 
 add_task(async function testVoiceselectDropdownAutoclose() {
@@ -139,21 +143,31 @@ add_task(async function testVoiceselectKeyboard() {
     // Tabbing on the last visible element should move focus back
     // to the first focusable element.
     $(NarrateTestUtils.VOICE_SELECT).focus();
+
     eventUtils.synthesizeKey("KEY_Tab", {}, content);
+
     is(
       content.document.activeElement,
       $(NarrateTestUtils.START),
       "Focus moves back to the first focusable button"
     );
+
     // When the narration is speaking, the first focusable element
     // should be the skip back button.
     let promiseEvent = ContentTaskUtils.waitForEvent(content, "paragraphstart");
+
     $(NarrateTestUtils.TOGGLE).focus();
+
     eventUtils.synthesizeKey("n", {}, content);
+
     await promiseEvent;
+
     $(NarrateTestUtils.VOICE_SELECT).focus();
+
     eventUtils.synthesizeKey("KEY_Enter", {}, content);
+
     eventUtils.synthesizeKey("KEY_Tab", {}, content);
+
     is(
       content.document.activeElement,
       $(NarrateTestUtils.BACK),

@@ -55,6 +55,8 @@ class nsMemoryReporterManager final : public nsIMemoryReporterManager,
     return imgr.forget().downcast<nsMemoryReporterManager>();
   }
 
+  typedef AutoTArray<nsCOMPtr<nsIMemoryReporter>, 32> StrongReportersArray;
+
   typedef nsTHashMap<nsRefPtrHashKey<nsIMemoryReporter>, bool>
       StrongReportersTable;
   typedef nsTHashMap<nsPtrHashKey<nsIMemoryReporter>, bool> WeakReportersTable;
@@ -236,12 +238,25 @@ class nsMemoryReporterManager final : public nsIMemoryReporterManager,
   mozilla::Mutex mMutex;
   bool mIsRegistrationBlocked MOZ_GUARDED_BY(mMutex);
 
-  StrongReportersTable* mStrongReporters MOZ_GUARDED_BY(mMutex);
-  WeakReportersTable* mWeakReporters MOZ_GUARDED_BY(mMutex);
+  // This array is used for strong reporters that are not supposed to ever be
+  // unregistered before the manager goes away. Currently this is only used
+  // for reporters the manager defines itself. These reporters must be sync!
+  mozilla::UniquePtr<StrongReportersArray> mStrongEternalReporters
+      MOZ_GUARDED_BY(mMutex);
 
-  // These two are only used for testing purposes.
-  StrongReportersTable* mSavedStrongReporters MOZ_GUARDED_BY(mMutex);
-  WeakReportersTable* mSavedWeakReporters MOZ_GUARDED_BY(mMutex);
+  // These hash tables are used for all additional reporters registered via
+  // our nsIMemoryReporterManager interface.
+  mozilla::UniquePtr<StrongReportersTable> mStrongReporters
+      MOZ_GUARDED_BY(mMutex);
+  mozilla::UniquePtr<WeakReportersTable> mWeakReporters MOZ_GUARDED_BY(mMutex);
+
+  // These three are only used for testing purposes.
+  mozilla::UniquePtr<StrongReportersArray> mSavedStrongEternalReporters
+      MOZ_GUARDED_BY(mMutex);
+  mozilla::UniquePtr<StrongReportersTable> mSavedStrongReporters
+      MOZ_GUARDED_BY(mMutex);
+  mozilla::UniquePtr<WeakReportersTable> mSavedWeakReporters
+      MOZ_GUARDED_BY(mMutex);
 
   uint32_t mNextGeneration;  // MainThread only
 
@@ -311,11 +326,7 @@ class nsMemoryReporterManager final : public nsIMemoryReporterManager,
       const PendingProcessesState* aState);
 };
 
-#define NS_MEMORY_REPORTER_MANAGER_CID              \
-  {                                                 \
-    0xfb97e4f5, 0x32dd, 0x497a, {                   \
-      0xba, 0xa2, 0x7d, 0x1e, 0x55, 0x7, 0x99, 0x10 \
-    }                                               \
-  }
+#define NS_MEMORY_REPORTER_MANAGER_CID \
+  {0xfb97e4f5, 0x32dd, 0x497a, {0xba, 0xa2, 0x7d, 0x1e, 0x55, 0x7, 0x99, 0x10}}
 
 #endif  // nsMemoryReporterManager_h__

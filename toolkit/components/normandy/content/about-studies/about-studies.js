@@ -24,7 +24,7 @@ function sendPageEvent(action, data) {
 }
 
 function readOptinParams() {
-  let searchParams = new URLSearchParams(new URL(location).search);
+  let { searchParams } = new URL(location);
   return {
     slug: searchParams.get("optin_slug"),
     branch: searchParams.get("optin_branch"),
@@ -225,10 +225,10 @@ class StudyList extends React.Component {
 
     for (const study of experiments) {
       const clonedStudy = Object.assign({}, study, {
-        type: study.experimentType,
+        type: study.isRollout ? "rollout" : "nimbus",
         sortDate: new Date(study.lastSeen),
       });
-      if (!study.active && !study.isRollout) {
+      if (!study.active) {
         inactiveStudies.push(clonedStudy);
       } else {
         activeStudies.push(clonedStudy);
@@ -283,7 +283,8 @@ class StudyList extends React.Component {
           }
           if (
             study.type === "nimbus" ||
-            study.type === "messaging_experiment"
+            study.type === "messaging_experiment" ||
+            study.type === "rollout"
           ) {
             return r(MessagingSystemListItem, {
               key: study.slug,
@@ -318,7 +319,6 @@ class MessagingSystemListItem extends React.Component {
   handleClickRemove() {
     sendPageEvent("RemoveMessagingSystemExperiment", {
       slug: this.props.study.slug,
-      reason: "individual-opt-out",
     });
   }
 

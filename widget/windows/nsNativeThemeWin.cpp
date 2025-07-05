@@ -33,6 +33,7 @@
 #include "Theme.h"
 #include "nsPresContext.h"
 #include "nsRect.h"
+#include "nsUXThemeConstants.h"
 #include "nsSize.h"
 #include "nsStyleConsts.h"
 #include "nsTransform2D.h"
@@ -58,16 +59,12 @@ nsNativeThemeWin::nsNativeThemeWin()
       mMinimumWidgetSizeCacheValid(),
       mGutterSizeCacheValid(false) {}
 
-nsNativeThemeWin::~nsNativeThemeWin() { nsUXThemeData::Invalidate(); }
-
 bool nsNativeThemeWin::IsWidgetAlwaysNonNative(nsIFrame* aFrame,
                                                StyleAppearance aAppearance) {
   return Theme::IsWidgetAlwaysNonNative(aFrame, aAppearance) ||
          aAppearance == StyleAppearance::Checkbox ||
          aAppearance == StyleAppearance::Radio ||
-         aAppearance == StyleAppearance::MozMenulistArrowButton ||
-         aAppearance == StyleAppearance::SpinnerUpbutton ||
-         aAppearance == StyleAppearance::SpinnerDownbutton;
+         aAppearance == StyleAppearance::MozMenulistArrowButton;
 }
 
 auto nsNativeThemeWin::IsWidgetNonNative(nsIFrame* aFrame,
@@ -396,9 +393,10 @@ void nsNativeThemeWin::DrawThemedProgressMeter(
 }
 
 LayoutDeviceIntMargin nsNativeThemeWin::GetCachedWidgetBorder(
-    HTHEME aTheme, nsUXThemeClass aThemeClass, StyleAppearance aAppearance,
+    HTHEME aTheme, UXThemeClass aThemeClass, StyleAppearance aAppearance,
     int32_t aPart, int32_t aState) {
-  int32_t cacheIndex = aThemeClass * THEME_PART_DISTINCT_VALUE_COUNT + aPart;
+  int32_t cacheIndex =
+      int32_t(aThemeClass) * THEME_PART_DISTINCT_VALUE_COUNT + aPart;
   int32_t cacheBitIndex = cacheIndex / 8;
   uint8_t cacheBit = 1u << (cacheIndex % 8);
 
@@ -433,9 +431,9 @@ LayoutDeviceIntMargin nsNativeThemeWin::GetCachedWidgetBorder(
 }
 
 nsresult nsNativeThemeWin::GetCachedMinimumWidgetSize(
-    nsIFrame* aFrame, HANDLE aTheme, nsUXThemeClass aThemeClass,
+    nsIFrame* aFrame, HANDLE aTheme, UXThemeClass aThemeClass,
     StyleAppearance aAppearance, int32_t aPart, int32_t aState,
-    THEMESIZE aSizeReq, mozilla::LayoutDeviceIntSize* aResult) {
+    int32_t aSizeReq, mozilla::LayoutDeviceIntSize* aResult) {
   int32_t cachePart = aPart;
 
   if (aAppearance == StyleAppearance::Button && aSizeReq == TS_MIN) {
@@ -448,7 +446,7 @@ nsresult nsNativeThemeWin::GetCachedMinimumWidgetSize(
 
   MOZ_ASSERT(aPart < THEME_PART_DISTINCT_VALUE_COUNT);
   int32_t cacheIndex =
-      aThemeClass * THEME_PART_DISTINCT_VALUE_COUNT + cachePart;
+      int32_t(aThemeClass) * THEME_PART_DISTINCT_VALUE_COUNT + cachePart;
   int32_t cacheBitIndex = cacheIndex / 8;
   uint8_t cacheBit = 1u << (cacheIndex % 8);
 
@@ -463,7 +461,8 @@ nsresult nsNativeThemeWin::GetCachedMinimumWidgetSize(
   }
 
   SIZE sz;
-  GetThemePartSize(aTheme, hdc, aPart, aState, nullptr, aSizeReq, &sz);
+  GetThemePartSize(aTheme, hdc, aPart, aState, nullptr, THEMESIZE(aSizeReq),
+                   &sz);
   aResult->width = sz.cx;
   aResult->height = sz.cy;
 
@@ -475,34 +474,29 @@ nsresult nsNativeThemeWin::GetCachedMinimumWidgetSize(
   return NS_OK;
 }
 
-mozilla::Maybe<nsUXThemeClass> nsNativeThemeWin::GetThemeClass(
+mozilla::Maybe<UXThemeClass> nsNativeThemeWin::GetThemeClass(
     StyleAppearance aAppearance) {
   switch (aAppearance) {
     case StyleAppearance::Button:
-      return Some(eUXButton);
+      return Some(UXThemeClass::Button);
     case StyleAppearance::NumberInput:
     case StyleAppearance::PasswordInput:
     case StyleAppearance::Textfield:
     case StyleAppearance::Textarea:
-      return Some(eUXEdit);
+      return Some(UXThemeClass::Edit);
     case StyleAppearance::Toolbarbutton:
     case StyleAppearance::Separator:
-      return Some(eUXToolbar);
+      return Some(UXThemeClass::Toolbar);
     case StyleAppearance::ProgressBar:
     case StyleAppearance::Progresschunk:
-      return Some(eUXProgress);
-    case StyleAppearance::Tab:
-    case StyleAppearance::Tabpanel:
-    case StyleAppearance::Tabpanels:
-      return Some(eUXTab);
+      return Some(UXThemeClass::Progress);
     case StyleAppearance::Range:
     case StyleAppearance::RangeThumb:
-      return Some(eUXTrackbar);
+      return Some(UXThemeClass::Trackbar);
     case StyleAppearance::Menulist:
-    case StyleAppearance::MenulistButton:
-      return Some(eUXCombobox);
+      return Some(UXThemeClass::Combobox);
     case StyleAppearance::Listbox:
-      return Some(eUXListview);
+      return Some(UXThemeClass::Listview);
     default:
       return Nothing();
   }
@@ -510,11 +504,11 @@ mozilla::Maybe<nsUXThemeClass> nsNativeThemeWin::GetThemeClass(
 
 HANDLE
 nsNativeThemeWin::GetTheme(StyleAppearance aAppearance) {
-  mozilla::Maybe<nsUXThemeClass> themeClass = GetThemeClass(aAppearance);
+  mozilla::Maybe<UXThemeClass> themeClass = GetThemeClass(aAppearance);
   if (themeClass.isNothing()) {
     return nullptr;
   }
-  return nsUXThemeData::GetTheme(themeClass.value());
+  return nsLookAndFeel::GetTheme(themeClass.value());
 }
 
 int32_t nsNativeThemeWin::StandardGetState(nsIFrame* aFrame,
@@ -718,38 +712,6 @@ nsresult nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame,
       aState = TS_NORMAL;
       return NS_OK;
     }
-    case StyleAppearance::Tabpanels: {
-      aPart = TABP_PANELS;
-      aState = TS_NORMAL;
-      return NS_OK;
-    }
-    case StyleAppearance::Tabpanel: {
-      aPart = TABP_PANEL;
-      aState = TS_NORMAL;
-      return NS_OK;
-    }
-    case StyleAppearance::Tab: {
-      aPart = TABP_TAB;
-      if (!aFrame) {
-        aState = TS_NORMAL;
-        return NS_OK;
-      }
-
-      ElementState elementState = GetContentState(aFrame, aAppearance);
-      if (elementState.HasState(ElementState::DISABLED)) {
-        aState = TS_DISABLED;
-        return NS_OK;
-      }
-
-      if (IsSelectedTab(aFrame)) {
-        aPart = TABP_TAB_SELECTED;
-        aState = TS_ACTIVE;  // The selected tab is always "pressed".
-      } else
-        aState = StandardGetState(aFrame, aAppearance, true);
-
-      return NS_OK;
-    }
-    case StyleAppearance::MenulistButton:
     case StyleAppearance::Menulist: {
       nsIContent* content = aFrame->GetContent();
       bool useDropBorder = content && content->IsHTMLElement();
@@ -790,15 +752,6 @@ nsresult nsNativeThemeWin::GetThemePartAndState(nsIFrame* aFrame,
   }
 }
 
-static bool AssumeThemePartAndStateAreTransparent(int32_t aPart,
-                                                  int32_t aState) {
-  if (!nsUXThemeData::IsHighContrastOn() && aPart == MENU_POPUPITEM &&
-      aState == MBI_NORMAL) {
-    return true;
-  }
-  return false;
-}
-
 // When running with per-monitor DPI (on Win8.1+), and rendering on a display
 // with a different DPI setting from the system's default scaling, we need to
 // apply scaling to native-themed elements as the Windows theme APIs assume
@@ -819,29 +772,26 @@ static inline double GetThemeDpiScaleFactor(nsIFrame* aFrame) {
   return GetThemeDpiScaleFactor(aFrame->PresContext());
 }
 
-NS_IMETHODIMP
-nsNativeThemeWin::DrawWidgetBackground(gfxContext* aContext, nsIFrame* aFrame,
-                                       StyleAppearance aAppearance,
-                                       const nsRect& aRect,
-                                       const nsRect& aDirtyRect,
-                                       DrawOverflow aDrawOverflow) {
+void nsNativeThemeWin::DrawWidgetBackground(
+    gfxContext* aContext, nsIFrame* aFrame, StyleAppearance aAppearance,
+    const nsRect& aRect, const nsRect& aDirtyRect, DrawOverflow aDrawOverflow) {
   if (IsWidgetNonNative(aFrame, aAppearance) != NonNative::No) {
     return Theme::DrawWidgetBackground(aContext, aFrame, aAppearance, aRect,
                                        aDirtyRect, aDrawOverflow);
   }
 
   HANDLE theme = GetTheme(aAppearance);
-  if (!theme)
-    return ClassicDrawWidgetBackground(aContext, aFrame, aAppearance, aRect,
-                                       aDirtyRect);
+  if (!theme) {
+    ClassicDrawWidgetBackground(aContext, aFrame, aAppearance, aRect,
+                                aDirtyRect);
+    return;
+  }
 
   // ^^ without the right sdk, assume xp theming and fall through.
   int32_t part, state;
   nsresult rv = GetThemePartAndState(aFrame, aAppearance, part, state);
-  if (NS_FAILED(rv)) return rv;
-
-  if (AssumeThemePartAndStateAreTransparent(part, state)) {
-    return NS_OK;
+  if (NS_FAILED(rv)) {
+    return;
   }
 
   gfxContextMatrixAutoSaveRestore save(aContext);
@@ -868,7 +818,9 @@ nsNativeThemeWin::DrawWidgetBackground(gfxContext* aContext, nsIFrame* aFrame,
 RENDER_AGAIN:
 
   HDC hdc = nativeDrawing.BeginNativeDrawing();
-  if (!hdc) return NS_ERROR_FAILURE;
+  if (!hdc) {
+    return;
+  }
 
   nativeDrawing.TransformToNativeRect(tr, widgetRect);
   nativeDrawing.TransformToNativeRect(dr, clipRect);
@@ -884,33 +836,6 @@ RENDER_AGAIN:
             offset.x, offset.y));
   }
 #endif
-
-  if (aAppearance == StyleAppearance::Tab) {
-    // For left edge and right edge tabs, we need to adjust the widget
-    // rects and clip rects so that the edges don't get drawn.
-    bool isLeft = IsLeftToSelectedTab(aFrame);
-    bool isRight = !isLeft && IsRightToSelectedTab(aFrame);
-
-    if (isLeft || isRight) {
-      // HACK ALERT: There appears to be no way to really obtain this value, so
-      // we're forced to just use the default value for Luna (which also happens
-      // to be correct for all the other skins I've tried).
-      int32_t edgeSize = 2;
-
-      // Armed with the size of the edge, we now need to either shift to the
-      // left or to the right.  The clip rect won't include this extra area, so
-      // we know that we're effectively shifting the edge out of view (such that
-      // it won't be painted).
-      if (isLeft)
-        // The right edge should not be drawn.  Extend our rect by the edge
-        // size.
-        widgetRect.right += edgeSize;
-      else
-        // The left edge should not be drawn.  Move the widget rect's left coord
-        // back.
-        widgetRect.left -= edgeSize;
-    }
-  }
 
   // widgetRect is the bounding box for a widget, yet the scale track is only
   // a small portion of this size, so the edges of the scale need to be
@@ -1000,8 +925,6 @@ RENDER_AGAIN:
   if (nativeDrawing.ShouldRenderAgain()) goto RENDER_AGAIN;
 
   nativeDrawing.PaintToContext();
-
-  return NS_OK;
 }
 
 bool nsNativeThemeWin::CreateWebRenderCommandsForWidget(
@@ -1041,10 +964,10 @@ LayoutDeviceIntMargin nsNativeThemeWin::GetWidgetBorder(
   }
 
   LayoutDeviceIntMargin result;
-  mozilla::Maybe<nsUXThemeClass> themeClass = GetThemeClass(aAppearance);
-  HTHEME theme = NULL;
-  if (!themeClass.isNothing()) {
-    theme = nsUXThemeData::GetTheme(themeClass.value());
+  mozilla::Maybe<UXThemeClass> themeClass = GetThemeClass(aAppearance);
+  HTHEME theme = nullptr;
+  if (themeClass.isSome()) {
+    theme = nsLookAndFeel::GetTheme(themeClass.value());
   }
   if (!theme) {
     result = ClassicGetWidgetBorder(aContext, aFrame, aAppearance);
@@ -1052,9 +975,9 @@ LayoutDeviceIntMargin nsNativeThemeWin::GetWidgetBorder(
     return result;
   }
 
-  if (!WidgetIsContainer(aAppearance) ||
-      aAppearance == StyleAppearance::Tabpanel)
+  if (!WidgetIsContainer(aAppearance)) {
     return result;  // Don't worry about it.
+  }
 
   int32_t part, state;
   nsresult rv = GetThemePartAndState(aFrame, aAppearance, part, state);
@@ -1062,16 +985,6 @@ LayoutDeviceIntMargin nsNativeThemeWin::GetWidgetBorder(
 
   result = GetCachedWidgetBorder(theme, themeClass.value(), aAppearance, part,
                                  state);
-
-  // Remove the edges for tabs that are before or after the selected tab,
-  if (aAppearance == StyleAppearance::Tab) {
-    if (IsLeftToSelectedTab(aFrame))
-      // Remove the right edge, since we won't be drawing it.
-      result.right = 0;
-    else if (IsRightToSelectedTab(aFrame))
-      // Remove the left edge, since we won't be drawing it.
-      result.left = 0;
-  }
 
   if (aFrame && (aAppearance == StyleAppearance::NumberInput ||
                  aAppearance == StyleAppearance::PasswordInput ||
@@ -1123,8 +1036,7 @@ bool nsNativeThemeWin::GetWidgetPadding(nsDeviceContext* aContext,
     ScaleForFrameDPI(aResult, aFrame);
     return ok;
   } else if (IsHTMLContent(aFrame) &&
-             (aAppearance == StyleAppearance::Menulist ||
-              aAppearance == StyleAppearance::MenulistButton)) {
+             aAppearance == StyleAppearance::Menulist) {
     /* For content menulist controls, we need an extra pixel so that we have
      * room to draw our focus rectangle stuff. Otherwise, the focus rect might
      * overlap the control's border.
@@ -1171,36 +1083,6 @@ bool nsNativeThemeWin::GetWidgetOverflow(nsDeviceContext* aContext,
     return Theme::GetWidgetOverflow(aContext, aFrame, aAppearance,
                                     aOverflowRect);
   }
-
-  /* This is disabled for now, because it causes invalidation problems --
-   * see bug 420381.  The effect of not updating the overflow area is that
-   * for dropdown buttons in content areas, there is a 1px border on 3 sides
-   * where, if invalidated, the dropdown control probably won't be repainted.
-   * This is fairly minor, as by default there is nothing in that area, and
-   * a border only shows up if the widget is being hovered.
-   *
-   * TODO(jwatt): Figure out what do to about
-   * StyleAppearance::MozMenulistArrowButton too.
-   */
-#if 0
-  /* We explicitly draw dropdown buttons in HTML content 1px bigger up, right,
-   * and bottom so that they overlap the dropdown's border like they're
-   * supposed to.
-   */
-  if (aAppearance == StyleAppearance::MenulistButton &&
-      IsHTMLContent(aFrame) &&
-      !IsWidgetStyled(aFrame->GetParent()->PresContext(),
-                      aFrame->GetParent(),
-                      StyleAppearance::Menulist))
-  {
-    int32_t p2a = aContext->AppUnitsPerDevPixel();
-    /* Note: no overflow on the left */
-    nsMargin m(p2a, p2a, p2a, 0);
-    aOverflowRect->Inflate (m);
-    return true;
-  }
-#endif
-
   return false;
 }
 
@@ -1211,10 +1093,10 @@ LayoutDeviceIntSize nsNativeThemeWin::GetMinimumWidgetSize(
     return Theme::GetMinimumWidgetSize(aPresContext, aFrame, aAppearance);
   }
 
-  mozilla::Maybe<nsUXThemeClass> themeClass = GetThemeClass(aAppearance);
+  mozilla::Maybe<UXThemeClass> themeClass = GetThemeClass(aAppearance);
   HTHEME theme = NULL;
   if (!themeClass.isNothing()) {
-    theme = nsUXThemeData::GetTheme(themeClass.value());
+    theme = nsLookAndFeel::GetTheme(themeClass.value());
   }
   if (!theme) {
     auto result = ClassicGetMinimumWidgetSize(aFrame, aAppearance);
@@ -1227,8 +1109,6 @@ LayoutDeviceIntSize nsNativeThemeWin::GetMinimumWidgetSize(
     case StyleAppearance::PasswordInput:
     case StyleAppearance::Textfield:
     case StyleAppearance::Progresschunk:
-    case StyleAppearance::Tabpanels:
-    case StyleAppearance::Tabpanel:
     case StyleAppearance::Listbox:
       return {};  // Don't worry about it.
     default:
@@ -1291,58 +1171,22 @@ LayoutDeviceIntSize nsNativeThemeWin::GetMinimumWidgetSize(
   return result;
 }
 
-NS_IMETHODIMP
-nsNativeThemeWin::WidgetStateChanged(nsIFrame* aFrame,
-                                     StyleAppearance aAppearance,
-                                     nsAtom* aAttribute, bool* aShouldRepaint,
-                                     const nsAttrValue* aOldValue) {
+bool nsNativeThemeWin::WidgetAttributeChangeRequiresRepaint(
+    StyleAppearance aAppearance, nsAtom* aAttribute) {
   // Some widget types just never change state.
   if (aAppearance == StyleAppearance::Progresschunk ||
       aAppearance == StyleAppearance::ProgressBar ||
-      aAppearance == StyleAppearance::Tabpanels ||
-      aAppearance == StyleAppearance::Tabpanel ||
       aAppearance == StyleAppearance::Separator) {
-    *aShouldRepaint = false;
-    return NS_OK;
+    return false;
   }
 
-  // We need to repaint the dropdown arrow in vista HTML combobox controls when
-  // the control is closed to get rid of the hover effect.
-  if ((aAppearance == StyleAppearance::Menulist ||
-       aAppearance == StyleAppearance::MenulistButton) &&
-      nsNativeTheme::IsHTMLContent(aFrame)) {
-    *aShouldRepaint = true;
-    return NS_OK;
-  }
-
-  // XXXdwh Not sure what can really be done here.  Can at least guess for
-  // specific widgets that they're highly unlikely to have certain states.
-  // For example, a toolbar doesn't care about any states.
-  if (!aAttribute) {
-    // Hover/focus/active changed.  Always repaint.
-    *aShouldRepaint = true;
-  } else {
-    // Check the attribute to see if it's relevant.
-    // disabled, checked, dlgtype, default, etc.
-    *aShouldRepaint = false;
-    if (aAttribute == nsGkAtoms::disabled || aAttribute == nsGkAtoms::checked ||
-        aAttribute == nsGkAtoms::selected ||
-        aAttribute == nsGkAtoms::visuallyselected ||
-        aAttribute == nsGkAtoms::readonly || aAttribute == nsGkAtoms::open ||
-        aAttribute == nsGkAtoms::menuactive || aAttribute == nsGkAtoms::focused)
-      *aShouldRepaint = true;
-  }
-
-  return NS_OK;
+  return Theme::WidgetAttributeChangeRequiresRepaint(aAppearance, aAttribute);
 }
 
-NS_IMETHODIMP
-nsNativeThemeWin::ThemeChanged() {
-  nsUXThemeData::Invalidate();
+void nsNativeThemeWin::ThemeChanged() {
   memset(mBorderCacheValid, 0, sizeof(mBorderCacheValid));
   memset(mMinimumWidgetSizeCacheValid, 0, sizeof(mMinimumWidgetSizeCacheValid));
   mGutterSizeCacheValid = false;
-  return NS_OK;
 }
 
 bool nsNativeThemeWin::ThemeSupportsWidget(nsPresContext* aPresContext,
@@ -1370,7 +1214,6 @@ bool nsNativeThemeWin::ThemeDrawsFocusForWidget(nsIFrame* aFrame,
   }
   switch (aAppearance) {
     case StyleAppearance::Menulist:
-    case StyleAppearance::MenulistButton:
     case StyleAppearance::Textarea:
     case StyleAppearance::Textfield:
     case StyleAppearance::NumberInput:
@@ -1380,9 +1223,6 @@ bool nsNativeThemeWin::ThemeDrawsFocusForWidget(nsIFrame* aFrame,
       return false;
   }
 }
-
-bool nsNativeThemeWin::ThemeNeedsComboboxDropmarker() { return true; }
-
 nsITheme::Transparency nsNativeThemeWin::GetWidgetTransparency(
     nsIFrame* aFrame, StyleAppearance aAppearance) {
   if (IsWidgetNonNative(aFrame, aAppearance) != NonNative::No) {
@@ -1433,13 +1273,9 @@ bool nsNativeThemeWin::ClassicThemeSupportsWidget(nsIFrame* aFrame,
     case StyleAppearance::Range:
     case StyleAppearance::RangeThumb:
     case StyleAppearance::Menulist:
-    case StyleAppearance::MenulistButton:
     case StyleAppearance::Listbox:
     case StyleAppearance::ProgressBar:
     case StyleAppearance::Progresschunk:
-    case StyleAppearance::Tab:
-    case StyleAppearance::Tabpanel:
-    case StyleAppearance::Tabpanels:
       return true;
     default:
       return false;
@@ -1455,8 +1291,6 @@ LayoutDeviceIntMargin nsNativeThemeWin::ClassicGetWidgetBorder(
       break;
     case StyleAppearance::Listbox:
     case StyleAppearance::Menulist:
-    case StyleAppearance::MenulistButton:
-    case StyleAppearance::Tab:
     case StyleAppearance::NumberInput:
     case StyleAppearance::PasswordInput:
     case StyleAppearance::Textfield:
@@ -1502,7 +1336,6 @@ LayoutDeviceIntSize nsNativeThemeWin::ClassicGetMinimumWidgetSize(
       break;
     }
     case StyleAppearance::Menulist:
-    case StyleAppearance::MenulistButton:
     case StyleAppearance::Button:
     case StyleAppearance::Listbox:
     case StyleAppearance::NumberInput:
@@ -1511,9 +1344,6 @@ LayoutDeviceIntSize nsNativeThemeWin::ClassicGetMinimumWidgetSize(
     case StyleAppearance::Textarea:
     case StyleAppearance::Progresschunk:
     case StyleAppearance::ProgressBar:
-    case StyleAppearance::Tab:
-    case StyleAppearance::Tabpanel:
-    case StyleAppearance::Tabpanels:
       // no minimum widget size
       break;
 
@@ -1568,113 +1398,15 @@ nsresult nsNativeThemeWin::ClassicGetThemePartAndState(
     case StyleAppearance::Textfield:
     case StyleAppearance::Textarea:
     case StyleAppearance::Menulist:
-    case StyleAppearance::MenulistButton:
     case StyleAppearance::Range:
     case StyleAppearance::RangeThumb:
     case StyleAppearance::Progresschunk:
     case StyleAppearance::ProgressBar:
-    case StyleAppearance::Tab:
-    case StyleAppearance::Tabpanel:
-    case StyleAppearance::Tabpanels:
       // these don't use DrawFrameControl
       return NS_OK;
     default:
       return NS_ERROR_FAILURE;
   }
-}
-
-// Draw classic Windows tab
-// (no system API for this, but DrawEdge can draw all the parts of a tab)
-static void DrawTab(HDC hdc, const RECT& R, int32_t aPosition, bool aSelected,
-                    bool aDrawLeft, bool aDrawRight) {
-  int32_t leftFlag, topFlag, rightFlag, lightFlag, shadeFlag;
-  RECT topRect, sideRect, bottomRect, lightRect, shadeRect;
-  int32_t selectedOffset, lOffset, rOffset;
-
-  selectedOffset = aSelected ? 1 : 0;
-  lOffset = aDrawLeft ? 2 : 0;
-  rOffset = aDrawRight ? 2 : 0;
-
-  // Get info for tab orientation/position (Left, Top, Right, Bottom)
-  switch (aPosition) {
-    case BF_LEFT:
-      leftFlag = BF_TOP;
-      topFlag = BF_LEFT;
-      rightFlag = BF_BOTTOM;
-      lightFlag = BF_DIAGONAL_ENDTOPRIGHT;
-      shadeFlag = BF_DIAGONAL_ENDBOTTOMRIGHT;
-
-      ::SetRect(&topRect, R.left, R.top + lOffset, R.right, R.bottom - rOffset);
-      ::SetRect(&sideRect, R.left + 2, R.top, R.right - 2 + selectedOffset,
-                R.bottom);
-      ::SetRect(&bottomRect, R.right - 2, R.top, R.right, R.bottom);
-      ::SetRect(&lightRect, R.left, R.top, R.left + 3, R.top + 3);
-      ::SetRect(&shadeRect, R.left + 1, R.bottom - 2, R.left + 2, R.bottom - 1);
-      break;
-    case BF_TOP:
-      leftFlag = BF_LEFT;
-      topFlag = BF_TOP;
-      rightFlag = BF_RIGHT;
-      lightFlag = BF_DIAGONAL_ENDTOPRIGHT;
-      shadeFlag = BF_DIAGONAL_ENDBOTTOMRIGHT;
-
-      ::SetRect(&topRect, R.left + lOffset, R.top, R.right - rOffset, R.bottom);
-      ::SetRect(&sideRect, R.left, R.top + 2, R.right,
-                R.bottom - 1 + selectedOffset);
-      ::SetRect(&bottomRect, R.left, R.bottom - 1, R.right, R.bottom);
-      ::SetRect(&lightRect, R.left, R.top, R.left + 3, R.top + 3);
-      ::SetRect(&shadeRect, R.right - 2, R.top + 1, R.right - 1, R.top + 2);
-      break;
-    case BF_RIGHT:
-      leftFlag = BF_TOP;
-      topFlag = BF_RIGHT;
-      rightFlag = BF_BOTTOM;
-      lightFlag = BF_DIAGONAL_ENDTOPLEFT;
-      shadeFlag = BF_DIAGONAL_ENDBOTTOMLEFT;
-
-      ::SetRect(&topRect, R.left, R.top + lOffset, R.right, R.bottom - rOffset);
-      ::SetRect(&sideRect, R.left + 2 - selectedOffset, R.top, R.right - 2,
-                R.bottom);
-      ::SetRect(&bottomRect, R.left, R.top, R.left + 2, R.bottom);
-      ::SetRect(&lightRect, R.right - 3, R.top, R.right - 1, R.top + 2);
-      ::SetRect(&shadeRect, R.right - 2, R.bottom - 3, R.right, R.bottom - 1);
-      break;
-    case BF_BOTTOM:
-      leftFlag = BF_LEFT;
-      topFlag = BF_BOTTOM;
-      rightFlag = BF_RIGHT;
-      lightFlag = BF_DIAGONAL_ENDTOPLEFT;
-      shadeFlag = BF_DIAGONAL_ENDBOTTOMLEFT;
-
-      ::SetRect(&topRect, R.left + lOffset, R.top, R.right - rOffset, R.bottom);
-      ::SetRect(&sideRect, R.left, R.top + 2 - selectedOffset, R.right,
-                R.bottom - 2);
-      ::SetRect(&bottomRect, R.left, R.top, R.right, R.top + 2);
-      ::SetRect(&lightRect, R.left, R.bottom - 3, R.left + 2, R.bottom - 1);
-      ::SetRect(&shadeRect, R.right - 2, R.bottom - 3, R.right, R.bottom - 1);
-      break;
-    default:
-      MOZ_CRASH();
-  }
-
-  // Background
-  ::FillRect(hdc, &R, (HBRUSH)(COLOR_3DFACE + 1));
-
-  // Tab "Top"
-  ::DrawEdge(hdc, &topRect, EDGE_RAISED, BF_SOFT | topFlag);
-
-  // Tab "Bottom"
-  if (!aSelected) ::DrawEdge(hdc, &bottomRect, EDGE_RAISED, BF_SOFT | topFlag);
-
-  // Tab "Sides"
-  if (!aDrawLeft) leftFlag = 0;
-  if (!aDrawRight) rightFlag = 0;
-  ::DrawEdge(hdc, &sideRect, EDGE_RAISED, BF_SOFT | leftFlag | rightFlag);
-
-  // Tab Diagonal Corners
-  if (aDrawLeft) ::DrawEdge(hdc, &lightRect, EDGE_RAISED, BF_SOFT | lightFlag);
-
-  if (aDrawRight) ::DrawEdge(hdc, &shadeRect, EDGE_RAISED, BF_SOFT | shadeFlag);
 }
 
 void nsNativeThemeWin::DrawCheckedRect(HDC hdc, const RECT& rc, int32_t fore,
@@ -1711,12 +1443,8 @@ nsresult nsNativeThemeWin::ClassicDrawWidgetBackground(
   int32_t part, state;
   bool focused;
   nsresult rv;
-  rv = ClassicGetThemePartAndState(aFrame, aAppearance, part, state, focused);
-  if (NS_FAILED(rv)) return rv;
-
-  if (AssumeThemePartAndStateAreTransparent(part, state)) {
-    return NS_OK;
-  }
+  MOZ_TRY(
+      ClassicGetThemePartAndState(aFrame, aAppearance, part, state, focused));
 
   gfxFloat p2a = gfxFloat(aFrame->PresContext()->AppUnitsPerDevPixel());
   RECT widgetRect;
@@ -1760,8 +1488,7 @@ RENDER_AGAIN:
     case StyleAppearance::Textfield:
     case StyleAppearance::Textarea:
     case StyleAppearance::Listbox:
-    case StyleAppearance::Menulist:
-    case StyleAppearance::MenulistButton: {
+    case StyleAppearance::Menulist: {
       // Draw inset edge
       ::DrawEdge(hdc, &widgetRect, EDGE_SUNKEN, BF_RECT | BF_ADJUST);
 
@@ -1782,11 +1509,8 @@ RENDER_AGAIN:
       // Draw 3D border
       ::DrawEdge(hdc, &widgetRect, BDR_SUNKENOUTER, BF_RECT | BF_MIDDLE);
       InflateRect(&widgetRect, -1, -1);
-      [[fallthrough]];
-    case StyleAppearance::Tabpanel: {
       ::FillRect(hdc, &widgetRect, (HBRUSH)(COLOR_BTNFACE + 1));
       break;
-    }
     case StyleAppearance::RangeThumb: {
       ElementState elementState = GetContentState(aFrame, aAppearance);
 
@@ -1849,20 +1573,6 @@ RENDER_AGAIN:
       break;
     }
 
-    // Draw Tab
-    case StyleAppearance::Tab: {
-      DrawTab(hdc, widgetRect, IsBottomTab(aFrame) ? BF_BOTTOM : BF_TOP,
-              IsSelectedTab(aFrame), !IsRightToSelectedTab(aFrame),
-              !IsLeftToSelectedTab(aFrame));
-
-      break;
-    }
-    case StyleAppearance::Tabpanels:
-      ::DrawEdge(hdc, &widgetRect, EDGE_RAISED,
-                 BF_SOFT | BF_MIDDLE | BF_LEFT | BF_RIGHT | BF_BOTTOM);
-
-      break;
-
     default:
       rv = NS_ERROR_FAILURE;
       break;
@@ -1888,7 +1598,6 @@ uint32_t nsNativeThemeWin::GetWidgetNativeDrawingFlags(
     case StyleAppearance::Textfield:
     case StyleAppearance::Textarea:
     case StyleAppearance::Menulist:
-    case StyleAppearance::MenulistButton:
       return gfxWindowsNativeDrawing::CANNOT_DRAW_TO_COLOR_ALPHA |
              gfxWindowsNativeDrawing::CAN_AXIS_ALIGNED_SCALE |
              gfxWindowsNativeDrawing::CANNOT_COMPLEX_TRANSFORM;

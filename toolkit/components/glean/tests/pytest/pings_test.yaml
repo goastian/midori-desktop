@@ -121,7 +121,8 @@ not-ohttp:
   include_client_id: false
   metadata:
     include_info_sections: false
-    use_ohttp: true
+  uploader_capabilities:
+    - ohttp
   send_if_empty: true
   bugs:
     - https://bugzilla.mozilla.org/show_bug.cgi?id=1862002
@@ -129,4 +130,19 @@ not-ohttp:
     - https://bugzilla.mozilla.org/show_bug.cgi?id=1862002
   notification_emails:
     - chutten@mozilla.com
+    - glean-team@mozilla.com
+
+ridealong-test:
+  description: >
+    A fake ping to test ride-along
+  include_client_id: false
+  metadata:
+    ping_schedule:
+      - baseline
+  send_if_empty: true
+  bugs:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1897219
+  data_reviews:
+    - https://bugzilla.mozilla.org/show_bug.cgi?id=1897219
+  notification_emails:
     - glean-team@mozilla.com

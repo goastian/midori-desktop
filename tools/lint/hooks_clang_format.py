@@ -13,11 +13,9 @@ topsrcdir = os.path.join(here, os.pardir, os.pardir)
 
 EXTRA_PATHS = (
     "python/mach",
-    "python/mozbuild",
     "python/mozversioncontrol",
     "testing/mozbase/mozfile",
     "third_party/python/jsmin",
-    "third_party/python/six",
 )
 sys.path[:0] = [os.path.join(topsrcdir, p) for p in EXTRA_PATHS]
 
@@ -63,7 +61,7 @@ def run_clang_format(hooktype, changedFiles):
         vcs.add_remove_files(*path_list)
 
         return False
-    print("warning: '{}' is not a valid clang-format hooktype".format(hooktype))
+    print(f"warning: '{hooktype}' is not a valid clang-format hooktype")
     return False
 
 

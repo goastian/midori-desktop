@@ -12,6 +12,9 @@
 #  include "mozilla/widget/WindowSurface.h"
 #  include "nsShmImage.h"
 
+#  include <X11/Xlib.h>
+#  include "X11UndefineNone.h"
+
 namespace mozilla {
 namespace widget {
 

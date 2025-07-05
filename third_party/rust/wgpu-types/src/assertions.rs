@@ -11,7 +11,7 @@
 //! `wgpu-core`'s `"strict_asserts"` feature enables that validation
 //! in both debug and release builds.
 
-/// This is equivalent to [`std::assert`] if the `strict_asserts` feature is activated, otherwise equal to [`std::debug_assert`].
+/// This is equivalent to [`core::assert`] if the `strict_asserts` feature is activated, otherwise equal to [`core::debug_assert`].
 #[cfg(feature = "strict_asserts")]
 #[macro_export]
 macro_rules! strict_assert {
@@ -20,7 +20,7 @@ macro_rules! strict_assert {
     }
 }
 
-/// This is equivalent to [`std::assert_eq`] if the `strict_asserts` feature is activated, otherwise equal to [`std::debug_assert_eq`].
+/// This is equivalent to [`core::assert_eq`] if the `strict_asserts` feature is activated, otherwise equal to [`core::debug_assert_eq`].
 #[cfg(feature = "strict_asserts")]
 #[macro_export]
 macro_rules! strict_assert_eq {
@@ -29,7 +29,7 @@ macro_rules! strict_assert_eq {
     }
 }
 
-/// This is equivalent to [`std::assert_ne`] if the `strict_asserts` feature is activated, otherwise equal to [`std::debug_assert_ne`].
+/// This is equivalent to [`core::assert_ne`] if the `strict_asserts` feature is activated, otherwise equal to [`core::debug_assert_ne`].
 #[cfg(feature = "strict_asserts")]
 #[macro_export]
 macro_rules! strict_assert_ne {
@@ -38,7 +38,7 @@ macro_rules! strict_assert_ne {
     }
 }
 
-/// This is equivalent to [`std::assert`] if the `strict_asserts` feature is activated, otherwise equal to [`std::debug_assert`]
+/// This is equivalent to [`core::assert`] if the `strict_asserts` feature is activated, otherwise equal to [`core::debug_assert`]
 #[cfg(not(feature = "strict_asserts"))]
 #[macro_export]
 macro_rules! strict_assert {
@@ -47,7 +47,7 @@ macro_rules! strict_assert {
     };
 }
 
-/// This is equivalent to [`std::assert_eq`] if the `strict_asserts` feature is activated, otherwise equal to [`std::debug_assert_eq`]
+/// This is equivalent to [`core::assert_eq`] if the `strict_asserts` feature is activated, otherwise equal to [`core::debug_assert_eq`]
 #[cfg(not(feature = "strict_asserts"))]
 #[macro_export]
 macro_rules! strict_assert_eq {
@@ -56,37 +56,11 @@ macro_rules! strict_assert_eq {
     };
 }
 
-/// This is equivalent to [`std::assert_ne`] if the `strict_asserts` feature is activated, otherwise equal to [`std::debug_assert_ne`]
+/// This is equivalent to [`core::assert_ne`] if the `strict_asserts` feature is activated, otherwise equal to [`core::debug_assert_ne`]
 #[cfg(not(feature = "strict_asserts"))]
 #[macro_export]
 macro_rules! strict_assert_ne {
     ( $( $arg:tt )* ) => {
         debug_assert_ne!( $( $arg )* )
     };
-}
-
-/// Unwrapping using strict_asserts
-pub trait StrictAssertUnwrapExt<T> {
-    /// Unchecked unwrap, with a [`strict_assert`] backed assertion of validitly.
-    ///
-    /// # Safety
-    ///
-    /// It _must_ be valid to call unwrap_unchecked on this value.
-    unsafe fn strict_unwrap_unchecked(self) -> T;
-}
-
-impl<T> StrictAssertUnwrapExt<T> for Option<T> {
-    unsafe fn strict_unwrap_unchecked(self) -> T {
-        strict_assert!(self.is_some(), "Called strict_unwrap_unchecked on None");
-        // SAFETY: Checked by above assert, or by assertion by unsafe.
-        unsafe { self.unwrap_unchecked() }
-    }
-}
-
-impl<T, E> StrictAssertUnwrapExt<T> for Result<T, E> {
-    unsafe fn strict_unwrap_unchecked(self) -> T {
-        strict_assert!(self.is_ok(), "Called strict_unwrap_unchecked on Err");
-        // SAFETY: Checked by above assert, or by assertion by unsafe.
-        unsafe { self.unwrap_unchecked() }
-    }
 }

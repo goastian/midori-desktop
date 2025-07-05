@@ -32,6 +32,15 @@ XPCOMUtils.defineLazyPreferenceGetter(
   true
 );
 
+// When this pref is set and the add-on is already installed, we use the
+// "update" flow instead of the "install" (over) flow in `about:addons`.
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "PREFER_UPDATE_OVER_INSTALL_FOR_EXISTING_ADDON",
+  "extensions.webextensions.prefer-update-over-install-for-existing-addon",
+  false
+);
+
 const PREF_DISCOVER_ENABLED = "extensions.getAddons.showPane";
 const PREF_UI_LASTCATEGORY = "extensions.ui.lastCategory";
 
@@ -68,12 +77,20 @@ function installPromptHandler(info) {
     return Promise.resolve();
   }
 
+  if (info.existingAddon.isInstalledByEnterprisePolicy) {
+    return Promise.resolve();
+  }
+
   let newPerms = info.addon.userPermissions;
 
   let difference = Extension.comparePermissions(oldPerms, newPerms);
 
   // If there are no new permissions, just proceed
-  if (!difference.origins.length && !difference.permissions.length) {
+  if (
+    !difference.origins.length &&
+    !difference.permissions.length &&
+    !difference.data_collection.length
+  ) {
     return Promise.resolve();
   }
 
@@ -251,10 +268,14 @@ async function installAddonsFromFilePicker() {
           null,
           installTelemetryInfo
         );
-        AddonManager.installAddonFromAOM(
+        AddonManager.installAddonFromAOMWithOptions(
           browser,
           document.documentURIObject,
-          install
+          install,
+          {
+            preferUpdateOverInstall:
+              PREFER_UPDATE_OVER_INSTALL_FOR_EXISTING_ADDON,
+          }
         );
         installs.push(install);
       }

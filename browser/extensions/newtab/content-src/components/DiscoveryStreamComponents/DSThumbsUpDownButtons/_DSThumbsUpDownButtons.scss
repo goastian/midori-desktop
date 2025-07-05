@@ -1,0 +1,156 @@
+.card-stp-thumbs-buttons-wrapper {
+  margin-block-start: var(--space-medium);
+  visibility: hidden;
+  opacity: 0;
+
+  .sections-card-ui & {
+    margin-block-start: 0;
+    position: absolute;
+    inset-inline-end: 0;
+    inset-block-start: 50%;
+    transform: translateY(-50%);
+  }
+
+  .card-stp-thumbs-buttons {
+    display: flex;
+    height: 100%;
+    align-items: center;
+    justify-content: end;
+    gap: var(--space-medium);
+  }
+
+  .card-stp-thumbs-button {
+    pointer-events: auto;
+    opacity: 0.8;
+    -moz-context-properties: fill;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      opacity: 1;
+    }
+  }
+
+  .icon-thumbs-up,
+  .icon-thumbs-down {
+    display: block;
+    border: 0;
+    background-color: transparent;
+    background-size: var(--icon-size-default);
+    background-position: center;
+    padding: var(--space-small);
+    fill: var(--icon-color);
+    transition: fill 0.3s ease-in-out;
+
+    &:hover {
+      fill: var(--text-color-deemphasized);
+    }
+
+    &:hover:active {
+      fill: var(--color-accent-primary);
+    }
+
+    &.is-active {
+      animation: iconBounce 0.2s ease-in-out;
+      fill: var(--color-accent-primary);
+    }
+  }
+}
+
+.ds-card {
+  &.active,
+  &:focus-within,
+  &:hover {
+    .card-stp-thumbs-buttons-wrapper {
+      visibility: visible;
+      opacity: 1;
+    }
+  }
+}
+
+// Animations for thumbs up/down
+@keyframes iconBounce {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+
+  50% {
+    transform: scale(0.6);
+  }
+}
+
+// Thumbs Up/Down UI Overrides across the entire page
+.thumbs-ui-compact {
+
+  // Base.scss
+
+  // Edge case for if search is turned off
+  &.no-search main {
+    margin-block-start: var(--space-xxlarge);
+  }
+
+  section {
+    margin-bottom: 0;
+  }
+
+  // CollapsibleSection.scss
+  .collapsible-section {
+    padding: 0 $section-horizontal-padding;
+    margin-bottom: var(--space-xxlarge);
+  }
+
+  // _Search.scss
+  .search-wrapper {
+    padding: 0;
+    margin-block: var(--space-xxlarge);
+
+    .logo-and-wordmark {
+      margin-block-end: var(--space-xxlarge);
+    }
+
+    .logo-and-wordmark-wrapper {
+      margin-block-end: var(--space-xxlarge);
+
+      // Bug 1934636 - Logo is positioned absolutely and
+      // does not need a bottom margin applied
+      .layout-variant-a &,
+      .layout-variant-b & {
+        margin-block-end: 0;
+      }
+    }
+
+    @media (height <=700px) {
+      padding: 0;
+      margin-block-start: 0;
+    }
+
+    @media (height > 700px) {
+      padding: 0;
+    }
+  }
+
+  &.fixed-search {
+    .search-wrapper {
+      margin-block-start: 0;
+
+      .logo-and-wordmark-wrapper {
+        margin-block-end: 0;
+      }
+    }
+  }
+
+  // _TopSites.scss
+  .top-site-outer {
+    margin-block-end: 0;
+
+    .layout-variant-a,
+    .layout-variant-b & {
+      margin-block-end: var(--space-medium);
+    }
+
+    .shortcuts-refresh & {
+      margin-block-end: 0;
+    }
+  }
+}

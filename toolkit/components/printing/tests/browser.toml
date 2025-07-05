@@ -3,6 +3,7 @@ support-files = [
   "head.js",
   "simplifyArticleSample.html",
 ]
+prefs = ["sidebar.revamp=false"]
 
 ["browser_cancel_close_print.js"]
 
@@ -33,18 +34,17 @@ support-files = ["file_print.html"]
 ["browser_preview_navigation.js"]
 support-files = ["longerArticle.html"]
 
-["browser_preview_print_coop.js"]
-support-files = [
-  "file_coop_header.html",
-  "file_coop_header.html^headers^",
-]
-
 ["browser_preview_print_link_modulepreload.js"]
 support-files = ["file_link_modulepreload.html"]
 
 ["browser_print_bcg_id_overflow.js"]
 
 ["browser_print_context_menu.js"]
+
+["browser_print_coop.js"]
+support-files = [
+  "file_print_coop_helper.html",
+]
 
 ["browser_print_copies.js"]
 
@@ -57,9 +57,9 @@ skip-if = ["verify && os == 'mac'"] # bug 1675609
 
 ["browser_print_in_container.js"]
 skip-if = [
-  "tsan", # Bug 1683730
-  "os == 'linux' && bits == 64 && debug", # Bug 1683279
-  "os == 'linux' && asan", # Bug 1683279
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && tsan && swgl", # Bug 1683730
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && tsan && swgl", # Bug 1683730
+  "os == 'win' && os_version == '11.26100' && processor == 'x86_64' && ccov",
 ]
 
 ["browser_print_margins.js"]
@@ -112,6 +112,4 @@ support-files = [
   "file_window_print_iframe_remove_on_afterprint.html",
   "file_window_print_srcdoc_base_uri.html",
   "file_window_print_reentrant.html",
-  "file_coop_header2.html",
-  "file_coop_header2.html^headers^",
 ]

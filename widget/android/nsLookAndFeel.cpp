@@ -60,6 +60,20 @@ nsresult nsLookAndFeel::GetSystemColors() {
   return NS_OK;
 }
 
+nsresult nsLookAndFeel::GetKeyboardLayoutImpl(nsACString& aLayout) {
+  if (!jni::IsAvailable()) {
+    return NS_ERROR_FAILURE;
+  }
+
+  auto layoutStr = java::GeckoAppShell::GetKeyboardLayout();
+  if (!layoutStr) {
+    return NS_ERROR_FAILURE;
+  }
+
+  aLayout.Assign(layoutStr->ToCString());
+  return NS_OK;
+}
+
 void nsLookAndFeel::NativeInit() {
   EnsureInitSystemColors();
   EnsureInitShowPassword();
@@ -209,7 +223,6 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aColorScheme,
     case ColorID::Field:
     case ColorID::Threedhighlight:
     case ColorID::MozCombobox:
-    case ColorID::MozEventreerow:
       aColor = NS_RGB(0xff, 0xff, 0xff);
       break;
 
@@ -248,9 +261,9 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, ColorScheme aColorScheme,
     case ColorID::MozOddtreerow:
       aColor = NS_TRANSPARENT;
       break;
-    case ColorID::MozNativehyperlinktext:
-      aColor = NS_RGB(0, 0, 0xee);
-      break;
+    case ColorID::Linktext:
+    case ColorID::Visitedtext:
+    case ColorID::Activetext:
     case ColorID::Marktext:
     case ColorID::Mark:
     case ColorID::MozAutofillBackground:
@@ -382,6 +395,10 @@ nsresult nsLookAndFeel::NativeGetInt(IntID aID, int32_t& aResult) {
     case IntID::TouchDeviceSupportPresent:
       // Touch support is always enabled on android.
       aResult = 1;
+      break;
+
+    case IntID::PointingDeviceKinds:
+      aResult = java::GeckoAppShell::GetPointingDeviceKinds();
       break;
 
     default:

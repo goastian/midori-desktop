@@ -241,9 +241,9 @@ class nsCycleCollectingAutoRefCnt {
                           nsCycleCollectingAutoRefCnt* aRefCnt,
                           bool* aShouldDelete);
 
-  nsCycleCollectingAutoRefCnt() : mRefCntAndFlags(0) {}
+  constexpr nsCycleCollectingAutoRefCnt() : mRefCntAndFlags(0) {}
 
-  explicit nsCycleCollectingAutoRefCnt(uintptr_t aValue)
+  constexpr explicit nsCycleCollectingAutoRefCnt(uintptr_t aValue)
       : mRefCntAndFlags(aValue << NS_NUMBER_OF_FLAGS_IN_REFCNT) {}
 
   nsCycleCollectingAutoRefCnt(const nsCycleCollectingAutoRefCnt&) = delete;
@@ -344,8 +344,8 @@ class nsCycleCollectingAutoRefCnt {
 
 class nsAutoRefCnt {
  public:
-  nsAutoRefCnt() : mValue(0) {}
-  explicit nsAutoRefCnt(nsrefcnt aValue) : mValue(aValue) {}
+  constexpr nsAutoRefCnt() : mValue(0) {}
+  constexpr explicit nsAutoRefCnt(nsrefcnt aValue) : mValue(aValue) {}
 
   nsAutoRefCnt(const nsAutoRefCnt&) = delete;
   void operator=(const nsAutoRefCnt&) = delete;
@@ -369,8 +369,8 @@ class nsAutoRefCnt {
 namespace mozilla {
 class ThreadSafeAutoRefCnt {
  public:
-  ThreadSafeAutoRefCnt() : mValue(0) {}
-  explicit ThreadSafeAutoRefCnt(nsrefcnt aValue) : mValue(aValue) {}
+  constexpr ThreadSafeAutoRefCnt() : mValue(0) {}
+  constexpr explicit ThreadSafeAutoRefCnt(nsrefcnt aValue) : mValue(aValue) {}
 
   ThreadSafeAutoRefCnt(const ThreadSafeAutoRefCnt&) = delete;
   void operator=(const ThreadSafeAutoRefCnt&) = delete;
@@ -492,10 +492,10 @@ class InterfaceNeedsThreadSafeRefCnt : public std::false_type {};
                                                     \
  public:
 
-#define NS_DECL_CYCLE_COLLECTING_ISUPPORTS_FINAL  \
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS_META(final)  \
-  NS_IMETHOD_(void) DeleteCycleCollectable(void); \
-                                                  \
+#define NS_DECL_CYCLE_COLLECTING_ISUPPORTS_FINAL \
+  NS_DECL_CYCLE_COLLECTING_ISUPPORTS_META(final) \
+  NS_METHOD_(void) DeleteCycleCollectable(void); \
+                                                 \
  public:
 
 #define NS_DECL_CYCLE_COLLECTING_ISUPPORTS_META(...)                         \
@@ -533,6 +533,9 @@ class InterfaceNeedsThreadSafeRefCnt : public std::false_type {};
   nsrefcnt count =                                                            \
       mRefCnt.decr(static_cast<void*>(this),                                  \
                    _class::NS_CYCLE_COLLECTION_INNERCLASS::GetParticipant()); \
+  if (count == 0) {                                                           \
+    NS_CycleCollectableHasRefCntZero();                                       \
+  }                                                                           \
   NS_LOG_RELEASE(this, count, #_class);                                       \
   return count;
 
@@ -558,6 +561,7 @@ class InterfaceNeedsThreadSafeRefCnt : public std::false_type {};
       _last;                                                                   \
       mRefCnt.decr(static_cast<void*>(this),                                   \
                    _class::NS_CYCLE_COLLECTION_INNERCLASS::GetParticipant());  \
+      NS_CycleCollectableHasRefCntZero();                                      \
       if (shouldDelete) {                                                      \
         mRefCnt.stabilizeForDeletion();                                        \
         DeleteCycleCollectable();                                              \
@@ -635,7 +639,7 @@ class InterfaceNeedsThreadSafeRefCnt : public std::false_type {};
                                                                                \
  protected:                                                                    \
   nsAutoRefCnt mRefCnt;                                                        \
-  _owning public:
+ _owning public:
 
 /**
  * Use this macro to declare and implement the AddRef & Release methods for a
@@ -957,6 +961,9 @@ void ProxyDeleteVoid(const char* aRunnableName,
     NS_ASSERT_OWNINGTHREAD(_class);                                          \
     nsISupports* base = NS_CYCLE_COLLECTION_CLASSNAME(_class)::Upcast(this); \
     nsrefcnt count = mRefCnt.decr(base);                                     \
+    if (count == 0) {                                                        \
+      NS_CycleCollectableHasRefCntZero();                                    \
+    }                                                                        \
     NS_LOG_RELEASE(this, count, #_class);                                    \
     return count;                                                            \
   }                                                                          \
@@ -979,6 +986,7 @@ void ProxyDeleteVoid(const char* aRunnableName,
       mRefCnt.incr(base);                                                    \
       _last;                                                                 \
       mRefCnt.decr(base);                                                    \
+      NS_CycleCollectableHasRefCntZero();                                    \
       if (shouldDelete) {                                                    \
         mRefCnt.stabilizeForDeletion();                                      \
         DeleteCycleCollectable();                                            \
@@ -1003,6 +1011,7 @@ void ProxyDeleteVoid(const char* aRunnableName,
       mRefCnt.incr(base);                                                    \
       _last;                                                                 \
       mRefCnt.decr(base);                                                    \
+      NS_CycleCollectableHasRefCntZero();                                    \
       if (shouldDelete) {                                                    \
         mRefCnt.stabilizeForDeletion();                                      \
         DeleteCycleCollectable();                                            \
@@ -1038,6 +1047,7 @@ void ProxyDeleteVoid(const char* aRunnableName,
         MOZ_ASSERT(mRefCnt.get() > 0);                                       \
         return mRefCnt.get();                                                \
       }                                                                      \
+      NS_CycleCollectableHasRefCntZero();                                    \
       if (shouldDelete) {                                                    \
         mRefCnt.stabilizeForDeletion();                                      \
         DeleteCycleCollectable();                                            \
@@ -1065,7 +1075,7 @@ constexpr const nsIID& GetImplementedIID() {
                   "Cannot implement a threadsafe interface with "
                   "non-threadsafe refcounting!");
   }
-  return NS_GET_TEMPLATE_IID(Interface);
+  return NS_GET_IID(Interface);
 }
 
 template <typename Class, typename Interface>
@@ -1120,18 +1130,11 @@ nsresult NS_FASTCALL NS_TableDrivenQI(void* aThis, REFNSIID aIID,
                static_cast<_implClass*>((_class*)0x1000))) -               \
            reinterpret_cast<char*>((_class*)0x1000))},
 
-/*
- * XXX: we want to use mozilla::ArrayLength (or equivalent,
- * MOZ_ARRAY_LENGTH) in this condition, but some versions of GCC don't
- * see that the static_assert condition is actually constant in those
- * cases, even with constexpr support (?).
- */
-#define NS_INTERFACE_TABLE_END_WITH_PTR(_ptr)           \
-  { nullptr, 0 }                                        \
-  }                                                     \
-  ;                                                     \
-  static_assert((sizeof(table) / sizeof(table[0])) > 1, \
-                "need at least 1 interface");           \
+#define NS_INTERFACE_TABLE_END_WITH_PTR(_ptr)                       \
+  { nullptr, 0 }                                                    \
+  }                                                                 \
+  ;                                                                 \
+  static_assert(std::size(table) > 1, "need at least 1 interface"); \
   rv = NS_TableDrivenQI(static_cast<void*>(_ptr), aIID, aInstancePtr, table);
 
 #define NS_INTERFACE_TABLE_END    \

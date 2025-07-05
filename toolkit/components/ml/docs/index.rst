@@ -1,39 +1,36 @@
-Machine Learning
-================
+Firefox AI Runtime
+==================
 
-This component is an experimental machine learning local inference engine based on
-Transformers.js and the ONNX runtime.
+This component is an experimental machine learning local inference runtime based on
+`Transformers.js <https://huggingface.co/docs/transformers.js/index>`_ and
+the `ONNX runtime <https://onnxruntime.ai/>`_. You can use the component to leverage
+the inference runtime in the context of the browser. To try out some inference tasks,
+you can refer to the
+`1000+ models <https://huggingface.co/models?library=transformers.js>`_
+that are available in the Hugging Face Hub that are compatible with this runtime.
 
-In the example below, an image is converted to text using the `image-to-text` task.
-
+To enable it, flip the `browser.ml.enable` preference to `true` in `about:config`
+then visit **about:inference** (Nightly only) or add the following snippet of code
+into your (privileged) Javascript code in Firefox or in the browser console:
 
 .. code-block:: javascript
 
-  const {PipelineOptions, EngineProcess } = ChromeUtils.importESModule("chrome://global/content/ml/EngineProcess.sys.mjs");
-
-  // First we create a pipeline options object, which contains the task name
-  // and any other options needed for the task
-  const options = new PipelineOptions({taskName: "image-to-text" });
-
-  // Next, we create an engine parent object via EngineProcess
-  const engineParent = await EngineProcess.getMLEngineParent();
-
-  // We then create the engine object, using the options
-  const engine = engineParent.getEngine(options);
-
-  // Preparing a request
-  const request = {url: "https://huggingface.co/datasets/mishig/sample_images/resolve/main/football-match.jpg"};
-
-  // At this point we are ready to do some inference.
+  const { createEngine } = ChromeUtils.importESModule("chrome://global/content/ml/EngineProcess.sys.mjs");
+  const engine = await createEngine({taskName: "summarization"});
+  const request = { args:  ["This is the text to summarize"]};
   const res = await engine.run(request);
-
-  // The result is a string containing the text extracted from the image
-  console.log(res);
+  console.log(res[0]["summary_text"]);
 
 
-Supported Inference Tasks
-:::::::::::::::::::::::::
+Learn more about the platform:
 
-The following tasks are supported by the machine learning engine:
+.. toctree::
+   :maxdepth: 1
 
-.. js:autofunction:: imageToText
+   architecture
+   api
+   notifications
+   models
+   perf
+   extensions
+   extensions-api-example/README

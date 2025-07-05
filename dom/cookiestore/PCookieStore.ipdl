@@ -1,0 +1,93 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+include protocol PBackground;
+include PBackgroundSharedTypes;
+include NeckoChannelParams;
+
+using mozilla::OriginAttributes from "mozilla/ipc/BackgroundUtils.h";
+using struct mozilla::void_t from "ipc/IPCMessageUtils.h";
+using struct nsID from "nsID.h";
+[RefCounted] using class nsIURI from "mozilla/ipc/URIUtils.h";
+
+namespace mozilla {
+namespace dom {
+
+union MaybeCookieStruct
+{
+  CookieStruct;
+  void_t;
+};
+
+struct CookieSubscription
+{
+  nsString? name;
+  nsString url;
+};
+
+// This protocol is used for the CookieStore API
+[ManualDealloc]
+protocol PCookieStore
+{
+  manager PBackground;
+
+parent:
+  async GetRequest(nullable nsIURI cookieURI,
+                   OriginAttributes attrs,
+                   OriginAttributes? partitionedAttrs,
+                   bool thirdPartyContext,
+                   bool partitionForeign,
+                   bool usingStorageAccess,
+                   bool isOn3PCBExceptionList,
+                   bool matchName,
+                   nsString name,
+                   nsCString path,
+                   bool onlyFirstMatch) returns (CookieStruct[] data);
+
+  async SetRequest(nullable nsIURI cookieURI,
+                   OriginAttributes attrs,
+                   bool thirdPartyContext,
+                   bool partitionForeign,
+                   bool usingStorageAccess,
+                   bool isOn3PCBExceptionList,
+                   nsString name,
+                   nsString value,
+                   bool session,
+                   int64_t expires,
+                   nsString domain,
+                   nsString path,
+                   int32_t sameSite,
+                   bool partitioned,
+                   nsID operationId) returns (bool waitForNotification);
+
+  async DeleteRequest(nullable nsIURI cookieURI,
+                      OriginAttributes attrs,
+                      bool thirdPartyContext,
+                      bool partitionForeign,
+                      bool usingStorageAccess,
+                      bool isOn3PCBExceptionList,
+                      nsString name,
+                      nsString domain,
+                      nsString path,
+                      bool partitioned,
+                      nsID operationID) returns (bool waitForNotification);
+
+  // We use PrincipalInfo because we need to interact with
+  // ServiceWorkerRegistrar, which uses this object instead of nsIPrincipal.
+  async GetSubscriptionsRequest(PrincipalInfo principalInfo,
+                                nsCString scopeURL) returns (CookieSubscription[] subscriptions);
+
+  async SubscribeOrUnsubscribeRequest(PrincipalInfo principalInfo,
+                                      nsCString scopeURL,
+                                      CookieSubscription[] subscriptions,
+                                      bool subscribe) returns (bool result);
+
+  async Close();
+
+child:
+  async __delete__();
+};
+
+} // namespace dom
+} // namespace mozilla

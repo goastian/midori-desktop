@@ -1,0 +1,47 @@
+{
+  "include": ["*.sys.mjs", "types/*.ts"],
+  "exclude": [
+    "ActionsProviderQuickActions.sys.mjs",
+    "MerinoClient.sys.mjs",
+    "QuickSuggest.sys.mjs",
+    "SearchModeSwitcher.sys.mjs",
+    "UrlbarController.sys.mjs",
+    "UrlbarEventBufferer.sys.mjs",
+    "UrlbarInput.sys.mjs",
+    "UrlbarMuxerUnifiedComplete.sys.mjs",
+    "UrlbarPrefs.sys.mjs",
+    "UrlbarProviderAutofill.sys.mjs",
+    "UrlbarProviderCalculator.sys.mjs",
+    "UrlbarProviderGlobalActions.sys.mjs",
+    "UrlbarProviderHeuristicFallback.sys.mjs",
+    "UrlbarProviderInterventions.sys.mjs",
+    "UrlbarProviderOmnibox.sys.mjs",
+    "UrlbarProviderOpenTabs.sys.mjs",
+    "UrlbarProviderPlaces.sys.mjs",
+    "UrlbarProviderPrivateSearch.sys.mjs",
+    "UrlbarProviderQuickSuggest.sys.mjs",
+    "UrlbarProviderRecentSearches.sys.mjs",
+    "UrlbarProviderSearchSuggestions.sys.mjs",
+    "UrlbarProviderSearchTips.sys.mjs",
+    "UrlbarProvidersManager.sys.mjs",
+    "UrlbarProviderTopSites.sys.mjs",
+    "UrlbarSearchOneOffs.sys.mjs",
+    "UrlbarSearchTermsPersistence.sys.mjs",
+    "UrlbarSearchUtils.sys.mjs",
+    "UrlbarTokenizer.sys.mjs",
+    "UrlbarValueFormatter.sys.mjs",
+    "UrlbarView.sys.mjs"
+  ],
+  "extends": "../../../tools/@types/tsconfig.json",
+
+  "compilerOptions": {
+    "checkJs": true,
+
+    "plugins": [
+      {
+        "transform": "../../../tools/ts/plugins/checkRootOnly.js",
+        "transformProgram": true
+      }
+    ]
+  }
+}

@@ -1,5 +1,6 @@
 [DEFAULT]
 support-files = ["clipboard_helper.js"]
+tags = "os_integration"
 
 ["test_AltGr_key_events_in_web_content_on_windows.html"]
 run-if = ["os == 'win'"]
@@ -17,6 +18,8 @@ skip-if = [
 
 ["test_autocapitalize.html"]
 
+["test_autocorrect.html"]
+
 ["test_clipboard.html"]
 skip-if = [
   "headless", # bug 1852983
@@ -24,16 +27,24 @@ skip-if = [
 ]
 support-files = ["file_test_clipboard.js"]
 
-["test_clipboard_asyncGetData.html"]
-skip-if = ["display == 'wayland'"] # Bug 1879835
-support-files = ["file_test_clipboard_asyncGetData.js"]
-
 ["test_clipboard_asyncSetData.html"]
 support-files = ["file_test_clipboard_asyncSetData.js"]
+
+["test_clipboard_getDataSnapshot.html"]
+skip-if = ["display == 'wayland'"] # Bug 1879835
+support-files = ["file_test_clipboard_getDataSnapshot.js"]
 
 ["test_clipboard_getDataSnapshotSync.html"]
 skip-if = ["display == 'wayland'"] # Bug 1879835
 support-files = "file_test_clipboard_getDataSnapshotSync.js"
+
+["test_clipboard_pngPreservesTransparency.html"]
+skip-if = [
+  "headless",   # Clipboard call to get PNG data fails (bug 1878643)
+  "os == 'android'",   # Android cannot copy image contents (bug 1299578)
+]
+support-files = "file_test_clipboard_pngPreservesTransparency.js"
+scheme = "https" # ImageDecoder requires secure context
 
 ["test_contextmenu_by_mouse_on_unix.html"]
 run-if = [
@@ -42,13 +53,22 @@ run-if = [
 ]
 skip-if = ["headless"] # headless widget doesn't dispatch contextmenu event by mouse event.
 
-["test_mouse_double_click_on_android.html"]
+["test_contextmenu_chorded_buttons.html"]
 run-if = [
-  "os == 'android'",
+  "os == 'win'", # only Windows updates the mouse button state when enqueuing native mouse down event.
+]
+skip-if = [
+  "headless", # headless widget doesn't dispatch contextmenu event by mouse event.
+  "xorigin", # high-frequently intermittent fail
 ]
 
 ["test_keypress_event_with_alt_on_mac.html"]
 run-if = ["os == 'mac'"]
+
+["test_mouse_double_click_on_android.html"]
+run-if = [
+  "os == 'android'",
+]
 
 ["test_mouse_event_with_control_on_mac.html"]
 run-if = ["os == 'mac'"]

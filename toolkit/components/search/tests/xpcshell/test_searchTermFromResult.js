@@ -18,16 +18,6 @@ let CONFIG_V2 = [
           params: [
             { name: "pc", value: "FIREFOX" },
             {
-              name: "form",
-              searchAccessPoint: {
-                newtab: "MOZNEWTAB",
-                homepage: "MOZHOMEPAGE",
-                searchbar: "MOZSEARCHBAR",
-                addressbar: "MOZKEYWORD",
-                contextmenu: "MOZCONTEXT",
-              },
-            },
-            {
               name: "channel",
               experimentConfig: "testChannelEnabled",
             },
@@ -42,15 +32,6 @@ let CONFIG_V2 = [
       },
     ],
   },
-  {
-    recordType: "defaultEngines",
-    globalDefault: "engine-purpose",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
-  },
 ];
 
 let defaultEngine;
@@ -61,88 +42,10 @@ const TERM = "c;,?:@&=+$-_.!~*'()# d\u00E8f";
 const TERM_ENCODED = "c%3B%2C%3F%3A%40%26%3D%2B%24-_.!~*'()%23+d%C3%A8f";
 
 add_setup(async function () {
-  await SearchTestUtils.useTestEngines(
-    "data",
-    null,
-    SearchUtils.newSearchConfigEnabled
-      ? CONFIG_V2
-      : [
-          {
-            webExtension: {
-              id: "engine-purposes@search.mozilla.org",
-              name: "Test Engine With Purposes",
-              search_url: "https://www.example.com/search",
-              params: [
-                {
-                  name: "form",
-                  condition: "purpose",
-                  purpose: "keyword",
-                  value: "MOZKEYWORD",
-                },
-                {
-                  name: "form",
-                  condition: "purpose",
-                  purpose: "contextmenu",
-                  value: "MOZCONTEXT",
-                },
-                {
-                  name: "form",
-                  condition: "purpose",
-                  purpose: "newtab",
-                  value: "MOZNEWTAB",
-                },
-                {
-                  name: "form",
-                  condition: "purpose",
-                  purpose: "searchbar",
-                  value: "MOZSEARCHBAR",
-                },
-                {
-                  name: "form",
-                  condition: "purpose",
-                  purpose: "homepage",
-                  value: "MOZHOMEPAGE",
-                },
-                {
-                  name: "pc",
-                  value: "FIREFOX",
-                },
-                {
-                  name: "channel",
-                  condition: "pref",
-                  pref: "testChannelEnabled",
-                },
-                {
-                  name: "q",
-                  value: "{searchTerms}",
-                },
-              ],
-            },
-            appliesTo: [
-              {
-                included: { everywhere: true },
-                default: "yes",
-              },
-            ],
-          },
-        ]
-  );
-  await AddonTestUtils.promiseStartupManager();
+  SearchTestUtils.setRemoteSettingsConfig(CONFIG_V2);
   await Services.search.init();
 
   defaultEngine = Services.search.getEngineByName("Test Engine With Purposes");
-});
-
-add_task(async function test_searchTermFromResult_withAllPurposes() {
-  for (let purpose of Object.values(SearchUtils.PARAM_PURPOSES)) {
-    let uri = defaultEngine.getSubmission(TERM, null, purpose).uri;
-    let searchTerm = defaultEngine.searchTermFromResult(uri);
-    Assert.equal(
-      searchTerm,
-      TERM,
-      `Should return the correct url for purpose: ${purpose}`
-    );
-  }
 });
 
 add_task(async function test_searchTermFromResult() {
@@ -155,11 +58,11 @@ add_task(async function test_searchTermFromResult() {
   let engineEscapedIDN = Services.search.getEngineByName("idn_addParam");
 
   // Setup server for french engine.
-  await useHttpServer();
+  await useHttpServer("");
 
   // For ISO-8859-1 encoding testing.
   let engineISOCharset = await SearchTestUtils.installOpenSearchEngine({
-    url: `${gDataUrl}engine-fr.xml`,
+    url: `${gHttpURL}/opensearch/fr-domain-iso8859-1.xml`,
   });
 
   // For Windows-1252 encoding testing.
@@ -170,6 +73,16 @@ add_task(async function test_searchTermFromResult() {
     search_url: "https://www.bacon.test/find",
   });
   let engineWinCharset = Services.search.getEngineByName("bacon_addParam");
+
+  // For providers with non-encoded characters in their path.
+  await SearchTestUtils.installSearchExtension({
+    name: "characters_with_accents_in_path",
+    keyword: "characters_with_accents_in_path",
+    search_url: "https://fr.example.org/âêîôû:ÂÊÎÔÛ",
+  });
+  let engineWithAccentsInPath = Services.search.getEngineByName(
+    "characters_with_accents_in_path"
+  );
 
   // Verify getValidEngineUrl returns a URL that can return a search term.
   let testUrl = getValidEngineUrl();
@@ -183,8 +96,8 @@ add_task(async function test_searchTermFromResult() {
   testUrl.pathname = "/SEARCH";
   Assert.equal(
     getTerm(testUrl),
-    TERM,
-    "Should get term even if path is not the same case as the engine."
+    "",
+    "Should not get term if the path is not the same case as the engine."
   );
 
   let url = `https://www.xn--bcher-kva.ch/search?q=${TERM_ENCODED}`;
@@ -220,6 +133,13 @@ add_task(async function test_searchTermFromResult() {
     getTerm(url, engineWinCharset),
     "",
     "Should get a blank string from Windows-1252 encoded url missing a search term."
+  );
+
+  url = "https://fr.example.org/âêîôû:ÂÊÎÔÛ?q=aàâäéèêëïôöùûüÿçæ";
+  Assert.equal(
+    getTerm(url, engineWithAccentsInPath),
+    "aàâäéèêëïôöùûüÿçæ",
+    "Should get term from path containing accent marks."
   );
 
   url = "about:blank";
@@ -302,14 +222,6 @@ add_task(async function test_searchTermFromResult_blank() {
 
   url = getValidEngineUrl();
   url.searchParams.delete("pc");
-  Assert.equal(
-    getTerm(url),
-    "",
-    "Should get a blank string from a url with a missing a query parameter."
-  );
-
-  url = getValidEngineUrl();
-  url.searchParams.delete("form");
   Assert.equal(
     getTerm(url),
     "",

@@ -11,6 +11,8 @@ toolkit.jar:
   content/mozapps/extensions/aboutaddonsCommon.js               (content/aboutaddonsCommon.js)
   content/mozapps/extensions/aboutaddons.css                    (content/aboutaddons.css)
   content/mozapps/extensions/abuse-reports.js                   (content/abuse-reports.js)
+  content/mozapps/extensions/components                         (content/components/*.css)
+  content/mozapps/extensions/components                         (content/components/*.mjs)
   content/mozapps/extensions/drag-drop-addon-installer.js       (content/drag-drop-addon-installer.js)
   content/mozapps/extensions/shortcuts.css                      (content/shortcuts.css)
   content/mozapps/extensions/shortcuts.js                       (content/shortcuts.js)
@@ -19,5 +21,4 @@ toolkit.jar:
 % resource default-theme %content/mozapps/extensions/default-theme/
   content/mozapps/extensions/default-theme                      (default-theme/*.svg)
   content/mozapps/extensions/default-theme/manifest.json        (default-theme/manifest.json)
-  content/mozapps/extensions/default-theme/experiment13.css     (default-theme/experiment13.css)
 #endif

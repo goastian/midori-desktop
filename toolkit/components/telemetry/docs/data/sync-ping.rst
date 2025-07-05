@@ -2,7 +2,7 @@
 "sync" ping
 ===========
 
-This is an aggregated format that contains information about each sync that occurred during a timeframe. It is submitted every 12 hours, and on browser shutdown, but only if the ``syncs`` property would not be empty. The ping does not contain the environment block, nor the clientId.
+This is an aggregated format that contains information about each sync that occurred during a timeframe. It is submitted every 12 hours, and on browser shutdown, but only if the ``syncs`` property would not be empty. The ping does not contain the environment block, nor the clientId or profileGroupId.
 
 Each item in the ``syncs`` property is generated after a sync is completed, for both successful and failed syncs, and contains measurements pertaining to sync performance and error information.
 
@@ -249,15 +249,10 @@ The sync ping includes histograms relating to measurements of password manager u
 These histograms are duplicated in the main ping. Histograms are only included in a ping if they have been set by the pwmgr code.
 Currently, the histograms that can be included are:
 
-PWMGR_BLOCKLIST_NUM_SITES
 PWMGR_FORM_AUTOFILL_RESULT
-PWMGR_LOGIN_LAST_USED_DAYS
 PWMGR_LOGIN_PAGE_SAFETY
-PWMGR_NUM_PASSWORDS_PER_HOSTNAME
-PWMGR_NUM_SAVED_PASSWORDS
 PWMGR_PROMPT_REMEMBER_ACTION
 PWMGR_PROMPT_UPDATE_ACTION
-PWMGR_SAVING_ENABLED
 
 Histograms are objects with the following 6 properties:
 - min - minimum bucket size

@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use crate::error::error;
 use serde_derive::*;
 
 use super::Command;
@@ -24,10 +25,9 @@ pub struct ClientRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub fxa_device_id: Option<String>,
 
-    /// `version`, `protocols`, `formfactor`, `os`, `appPackage`, `application`,
-    /// and `device` are unused and optional in all implementations (Desktop,
-    /// iOS, and Fennec), but we round-trip them.
-
+    // `version`, `protocols`, `formfactor`, `os`, `appPackage`, `application`,
+    // and `device` are unused and optional in all implementations (Desktop,
+    // iOS, and Fennec), but we round-trip them.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub version: Option<String>,
 
@@ -99,12 +99,12 @@ impl CommandRecord {
             match &self.args[0] {
                 Some(name) => Some(name.into()),
                 None => {
-                    log::error!("Incoming '{cmd_name}' command has null argument");
+                    error!("Incoming '{cmd_name}' command has null argument");
                     None
                 }
             }
         } else {
-            log::error!(
+            error!(
                 "Incoming '{cmd_name}' command has wrong number of arguments ({})",
                 self.args.len()
             );
@@ -122,7 +122,7 @@ impl CommandRecord {
                 if self.args.is_empty() {
                     Some(Command::ResetAll)
                 } else {
-                    log::error!("Invalid arguments for 'resetAll' command");
+                    error!("Invalid arguments for 'resetAll' command");
                     None
                 }
             }

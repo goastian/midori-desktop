@@ -7,7 +7,7 @@
  */
 
 // We expose a singleton from this module. Some tests may import the
-// constructor via a backstage pass.
+// constructor via the system global.
 import {
   AddressesBase,
   CreditCardsBase,
@@ -44,9 +44,8 @@ class CreditCards extends CreditCardsBase {
           // full number if the number is invalid on this version.
           creditCard["cc-number"] = "*".repeat(ccNumber.length);
         }
-        creditCard["cc-number-encrypted"] = await lazy.OSKeyStore.encrypt(
-          ccNumber
-        );
+        creditCard["cc-number-encrypted"] =
+          await lazy.OSKeyStore.encrypt(ccNumber);
       } else {
         creditCard["cc-number-encrypted"] = "";
       }

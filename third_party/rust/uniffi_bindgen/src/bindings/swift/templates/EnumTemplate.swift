@@ -11,7 +11,7 @@ public enum {{ type_name }} {
     ){% endif -%}
     {% endfor %}
 }
-{% when Some with (variant_discr_type) %}
+{% when Some(variant_discr_type) %}
 public enum {{ type_name }} : {{ variant_discr_type|type_name }} {
     {% for variant in e.variants() %}
     {%- call swift::docstring(variant, 4) %}
@@ -22,6 +22,13 @@ public enum {{ type_name }} : {{ variant_discr_type|type_name }} {
 }
 {% endmatch %}
 
+#if compiler(>=6)
+extension {{ type_name }}: Sendable {}
+#endif
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
     typealias SwiftType = {{ type_name }}
 
@@ -66,15 +73,27 @@ public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
 We always write these public functions just in case the enum is used as
 an external type by another crate.
 #}
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 public func {{ ffi_converter_name }}_lift(_ buf: RustBuffer) throws -> {{ type_name }} {
     return try {{ ffi_converter_name }}.lift(buf)
 }
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 public func {{ ffi_converter_name }}_lower(_ value: {{ type_name }}) -> RustBuffer {
     return {{ ffi_converter_name }}.lower(value)
 }
 
 {% if !contains_object_references %}
-{% if config.experimental_sendable_value_types() %}extension {{ type_name }}: Sendable {} {% endif %}
 extension {{ type_name }}: Equatable, Hashable {}
+{% if config.generate_codable_conformance() %}
+extension {{ type_name }}: Codable {}
+{% endif %}
+{% endif %}
+
+{% if config.generate_case_iterable_conformance() && !e.contains_variant_fields() %}
+extension {{ type_name }}: CaseIterable {}
 {% endif %}

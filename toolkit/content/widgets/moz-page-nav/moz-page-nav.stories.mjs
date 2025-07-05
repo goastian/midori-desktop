@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { html, when } from "../vendor/lit.all.mjs";
+import { html, when, ifDefined } from "../vendor/lit.all.mjs";
 import "./moz-page-nav.mjs";
 
 export default {
@@ -26,73 +26,109 @@ moz-page-nav-button-five = External Link
   .title = External Link
 moz-page-nav-heading =
   .heading = Heading
+moz-page-nav-search-input =
+  .aria-label = Search Storybook
+  .placeholder = Search Storybook
      `,
   },
 };
 
-const Template = ({ hasFooterLinks }) => html`
-  <style>
-    #page {
-      height: 100%;
-      display: flex;
+const Template = ({ hasFooterLinks, hasIcons, showSearch, scrollable }) => {
+  let iconSrc = hasIcons
+    ? "chrome://global/skin/icons/settings.svg"
+    : undefined;
 
-      @media (max-width: 52rem) {
-        grid-template-columns: 82px 1fr;
-      }
-    }
-    moz-page-nav {
-      margin-inline-start: 10px;
-      --page-nav-margin-top: 10px;
+  let maxHeight = scrollable ? "190px" : "initial";
 
-      @media (max-width: 52rem) {
-        margin-inline-start: 0;
+  return html`
+    <style>
+      #page {
+        height: 100%;
+        display: flex;
+        max-height: ${maxHeight};
+
+        @media (max-width: 52rem) {
+          grid-template-columns: 82px 1fr;
+        }
       }
-    }
-  </style>
-  <div id="page">
-    <moz-page-nav data-l10n-id="moz-page-nav-heading" data-l10n-attrs="heading">
-      <moz-page-nav-button
-        view="view-one"
-        data-l10n-id="moz-page-nav-button-one"
-        iconSrc="chrome://browser/skin/preferences/category-general.svg"
-      >
-      </moz-page-nav-button>
-      <moz-page-nav-button
-        view="view-two"
-        data-l10n-id="moz-page-nav-button-two"
-        iconSrc="chrome://browser/skin/preferences/category-general.svg"
-      >
-      </moz-page-nav-button>
-      <moz-page-nav-button
-        view="view-three"
-        data-l10n-id="moz-page-nav-button-three"
-        iconSrc="chrome://browser/skin/preferences/category-general.svg"
-      >
-      </moz-page-nav-button>
-      ${when(
-        hasFooterLinks,
-        () => html` <moz-page-nav-button
-            support-page="test"
-            data-l10n-id="moz-page-nav-button-four"
-            iconSrc="chrome://browser/skin/preferences/category-general.svg"
-            slot="secondary-nav"
-          >
-          </moz-page-nav-button>
-          <moz-page-nav-button
-            href="https://www.example.com"
-            data-l10n-id="moz-page-nav-button-five"
-            iconSrc="chrome://browser/skin/preferences/category-general.svg"
-            slot="secondary-nav"
-          >
-          </moz-page-nav-button>`
-      )}
-    </moz-page-nav>
-    <main></main>
-  </div>
-`;
+      moz-page-nav {
+        height: 100%;
+        margin-inline-start: 10px;
+        --page-nav-margin-top: 10px;
+
+        @media (max-width: 52rem) {
+          margin-inline-start: 0;
+        }
+      }
+    </style>
+    <div id="page">
+      <moz-page-nav data-l10n-id="moz-page-nav-heading">
+        ${when(
+          showSearch,
+          () =>
+            html`<moz-input-search
+              slot="subheading"
+              data-l10n-id="moz-page-nav-search-input"
+            ></moz-input-search>`
+        )}
+        <moz-page-nav-button
+          view="view-one"
+          data-l10n-id="moz-page-nav-button-one"
+          iconSrc=${ifDefined(iconSrc)}
+        >
+        </moz-page-nav-button>
+        <moz-page-nav-button
+          view="view-two"
+          data-l10n-id="moz-page-nav-button-two"
+          iconSrc=${ifDefined(iconSrc)}
+        >
+        </moz-page-nav-button>
+        <moz-page-nav-button
+          view="view-three"
+          data-l10n-id="moz-page-nav-button-three"
+          iconSrc=${ifDefined(iconSrc)}
+        >
+        </moz-page-nav-button>
+        ${when(
+          hasFooterLinks,
+          () =>
+            html` <moz-page-nav-button
+                support-page="test"
+                data-l10n-id="moz-page-nav-button-four"
+                iconSrc=${ifDefined(iconSrc)}
+                slot="secondary-nav"
+              >
+              </moz-page-nav-button>
+              <moz-page-nav-button
+                href="https://www.example.com"
+                data-l10n-id="moz-page-nav-button-five"
+                iconSrc=${ifDefined(iconSrc)}
+                slot="secondary-nav"
+              >
+              </moz-page-nav-button>`
+        )}
+      </moz-page-nav>
+      <main></main>
+    </div>
+  `;
+};
 
 export const Default = Template.bind({});
-Default.args = { hasFooterLinks: false };
+Default.args = {
+  hasFooterLinks: false,
+  hasIcons: true,
+  showSearch: false,
+  scrollable: false,
+};
 
 export const WithFooterLinks = Template.bind({});
-WithFooterLinks.args = { hasFooterLinks: true };
+WithFooterLinks.args = { ...Default.args, hasFooterLinks: true };
+
+export const WithoutIcons = Template.bind({});
+WithoutIcons.args = { ...Default.args, hasIcons: false };
+
+export const WithSearch = Template.bind({});
+WithSearch.args = { ...Default.args, showSearch: true };
+
+export const WithSearchScroll = Template.bind({});
+WithSearchScroll.args = { ...Default.args, showSearch: true, scrollable: true };

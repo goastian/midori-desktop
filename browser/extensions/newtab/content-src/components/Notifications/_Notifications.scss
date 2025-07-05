@@ -1,0 +1,23 @@
+.notification-wrapper {
+  position: fixed;
+  inset-inline-end: var(--space-medium);
+  inset-block-end: var(--space-medium);
+  z-index: 10;
+}
+
+.notification-feed-item {
+  position: relative;
+  animation: toastSlideInSlideOut 4s ease-in-out forwards;
+}
+
+@keyframes toastSlideInSlideOut {
+  0%, 100% {
+    opacity: 0;
+    top: 50%;
+  }
+
+  15%, 85% {
+    opacity: 1;
+    top: 0;
+  }
+}

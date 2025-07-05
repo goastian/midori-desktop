@@ -33,15 +33,6 @@
     "scopes": ["addon_parent"],
     "paths": [["contentScripts"]]
   },
-  "contextualIdentities": {
-    "url": "chrome://extensions/content/parent/ext-contextualIdentities.js",
-    "schema": "chrome://extensions/content/schemas/contextual_identities.json",
-    "scopes": ["addon_parent"],
-    "settings": true,
-    "events": ["startup"],
-    "permissions": ["contextualIdentities"],
-    "paths": [["contextualIdentities"]]
-  },
   "cookies": {
     "url": "chrome://extensions/content/parent/ext-cookies.js",
     "schema": "chrome://extensions/content/schemas/cookies.json",
@@ -170,6 +161,12 @@
     "scopes": ["addon_parent"],
     "manifest": ["theme"],
     "paths": [["theme"]]
+  },
+  "trial_ml": {
+    "url": "chrome://extensions/content/parent/ext-trial-ml.js",
+    "schema": "chrome://extensions/content/schemas/trial_ml.json",
+    "scopes": ["addon_parent", "content_parent"],
+    "paths": [["trial", "ml"]]
   },
   "userScripts": {
     "url": "chrome://extensions/content/parent/ext-userScripts.js",

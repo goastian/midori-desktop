@@ -55,12 +55,12 @@ struct InitData;
 
 // AppWindow
 
-#define NS_APPWINDOW_IMPL_CID                        \
-  { /* 8eaec2f3-ed02-4be2-8e0f-342798477298 */       \
-    0x8eaec2f3, 0xed02, 0x4be2, {                    \
-      0x8e, 0x0f, 0x34, 0x27, 0x98, 0x47, 0x72, 0x98 \
-    }                                                \
-  }
+#define NS_APPWINDOW_IMPL_CID                 \
+  {/* 8eaec2f3-ed02-4be2-8e0f-342798477298 */ \
+   0x8eaec2f3,                                \
+   0xed02,                                    \
+   0x4be2,                                    \
+   {0x8e, 0x0f, 0x34, 0x27, 0x98, 0x47, 0x72, 0x98}}
 
 class nsContentShellInfo;
 
@@ -78,40 +78,36 @@ class AppWindow final : public nsIBaseWindow,
   // The implementation of non-refcounted nsIWidgetListener, which would hold a
   // strong reference on stack before calling AppWindow's
   // MOZ_CAN_RUN_SCRIPT methods.
-  class WidgetListenerDelegate : public nsIWidgetListener {
+  class WidgetListenerDelegate final : public nsIWidgetListener {
    public:
     explicit WidgetListenerDelegate(AppWindow* aAppWindow)
         : mAppWindow(aAppWindow) {}
 
     MOZ_CAN_RUN_SCRIPT_BOUNDARY
-    virtual nsIAppWindow* GetAppWindow() override;
+    nsIAppWindow* GetAppWindow() override;
     MOZ_CAN_RUN_SCRIPT_BOUNDARY
-    virtual mozilla::PresShell* GetPresShell() override;
+    mozilla::PresShell* GetPresShell() override;
     MOZ_CAN_RUN_SCRIPT_BOUNDARY
-    virtual bool WindowMoved(nsIWidget* aWidget, int32_t x, int32_t y,
-                             ByMoveToRect) override;
+    bool WindowMoved(nsIWidget* aWidget, int32_t x, int32_t y,
+                     ByMoveToRect) override;
     MOZ_CAN_RUN_SCRIPT_BOUNDARY
-    virtual bool WindowResized(nsIWidget* aWidget, int32_t aWidth,
-                               int32_t aHeight) override;
+    bool WindowResized(nsIWidget* aWidget, int32_t aWidth,
+                       int32_t aHeight) override;
     MOZ_CAN_RUN_SCRIPT_BOUNDARY
-    virtual bool RequestWindowClose(nsIWidget* aWidget) override;
+    bool RequestWindowClose(nsIWidget* aWidget) override;
     MOZ_CAN_RUN_SCRIPT_BOUNDARY
-    virtual void SizeModeChanged(nsSizeMode sizeMode) override;
+    void SizeModeChanged(nsSizeMode sizeMode) override;
     MOZ_CAN_RUN_SCRIPT_BOUNDARY
-    virtual void MacFullscreenMenubarOverlapChanged(
+    void MacFullscreenMenubarOverlapChanged(
         mozilla::DesktopCoord aOverlapAmount) override;
     MOZ_CAN_RUN_SCRIPT_BOUNDARY
-    virtual void OcclusionStateChanged(bool aIsFullyOccluded) override;
+    void OcclusionStateChanged(bool aIsFullyOccluded) override;
     MOZ_CAN_RUN_SCRIPT_BOUNDARY
-    virtual void OSToolbarButtonPressed() override;
+    void OSToolbarButtonPressed() override;
     MOZ_CAN_RUN_SCRIPT_BOUNDARY
-    virtual bool ZLevelChanged(bool aImmediate, nsWindowZ* aPlacement,
-                               nsIWidget* aRequestBelow,
-                               nsIWidget** aActualBelow) override;
+    void WindowActivated() override;
     MOZ_CAN_RUN_SCRIPT_BOUNDARY
-    virtual void WindowActivated() override;
-    MOZ_CAN_RUN_SCRIPT_BOUNDARY
-    virtual void WindowDeactivated() override;
+    void WindowDeactivated() override;
 
    private:
     // The lifetime of WidgetListenerDelegate is bound to AppWindow so
@@ -125,7 +121,7 @@ class AppWindow final : public nsIBaseWindow,
   NS_DECL_NSIAPPWINDOW
   NS_DECL_NSIBASEWINDOW
 
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_APPWINDOW_IMPL_CID)
+  NS_INLINE_DECL_STATIC_IID(NS_APPWINDOW_IMPL_CID)
 
   void LockUntilChromeLoad() { mLockedUntilChromeLoad = true; }
   bool IsLocked() const { return mLockedUntilChromeLoad; }
@@ -163,9 +159,6 @@ class AppWindow final : public nsIBaseWindow,
   MOZ_CAN_RUN_SCRIPT void OcclusionStateChanged(bool aIsFullyOccluded);
   void RecomputeBrowsingContextVisibility();
   MOZ_CAN_RUN_SCRIPT void OSToolbarButtonPressed();
-  MOZ_CAN_RUN_SCRIPT
-  bool ZLevelChanged(bool aImmediate, nsWindowZ* aPlacement,
-                     nsIWidget* aRequestBelow, nsIWidget** aActualBelow);
   MOZ_CAN_RUN_SCRIPT void WindowActivated();
   MOZ_CAN_RUN_SCRIPT void WindowDeactivated();
 
@@ -253,8 +246,6 @@ class AppWindow final : public nsIBaseWindow,
   NS_IMETHOD GetHasPrimaryContent(bool* aResult);
 
   void EnableParent(bool aEnable);
-  bool ConstrainToZLevel(bool aImmediate, nsWindowZ* aPlacement,
-                         nsIWidget* aReqBelow, nsIWidget** aActualBelow);
   void PlaceWindowLayersBehind(uint32_t aLowLevel, uint32_t aHighLevel,
                                nsIAppWindow* aBehind);
   void SetContentScrollbarVisibility(bool aVisible);
@@ -262,7 +253,6 @@ class AppWindow final : public nsIBaseWindow,
   enum PersistentAttributeUpdate { Sync, Async };
   void PersistentAttributesDirty(PersistentAttributes,
                                  PersistentAttributeUpdate);
-  nsresult GetTabCount(uint32_t* aResult);
 
   void LoadPersistentWindowState();
   nsresult GetPersistentValue(const nsAtom* aAttr, nsAString& aValue);
@@ -387,8 +377,6 @@ class AppWindow final : public nsIBaseWindow,
   nsCOMPtr<nsIXULStore> mLocalStore;
   bool mIsWidgetInFullscreen = false;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(AppWindow, NS_APPWINDOW_IMPL_CID)
 
 }  // namespace mozilla
 

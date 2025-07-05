@@ -13,7 +13,6 @@ import sys
 import textwrap
 from collections import namedtuple
 
-import six
 from ply import lex, yacc
 
 """A type conforms to the following pattern:
@@ -110,7 +109,7 @@ def getBuiltinOrNativeTypeName(t):
         return None
 
 
-class BuiltinLocation(object):
+class BuiltinLocation:
     def get(self):
         return "<builtin type>"
 
@@ -118,7 +117,7 @@ class BuiltinLocation(object):
         return self.get()
 
 
-class Builtin(object):
+class Builtin:
     kind = "builtin"
     location = BuiltinLocation
 
@@ -234,7 +233,7 @@ for alias, name in builtinAlias:
     builtinMap[alias] = builtinMap[name]
 
 
-class Location(object):
+class Location:
     _line = None
 
     def __init__(self, lexer, lineno, lexpos):
@@ -278,7 +277,7 @@ class Location(object):
         )
 
 
-class NameMap(object):
+class NameMap:
     """Map of name -> object. Each object must have a .name and .location property.
     Setting the same name twice throws an error."""
 
@@ -291,7 +290,7 @@ class NameMap(object):
         return self._d[key]
 
     def __iter__(self):
-        return six.itervalues(self._d)
+        return iter(self._d.values())
 
     def __contains__(self, key):
         return key in builtinMap or key in self._d
@@ -369,7 +368,7 @@ class IDLError(Exception):
         return error
 
 
-class Include(object):
+class Include:
     kind = "include"
 
     def __init__(self, filename, location):
@@ -411,7 +410,7 @@ class Include(object):
         raise IDLError("File '%s' not found" % self.filename, self.location)
 
 
-class IDL(object):
+class IDL:
     def __init__(self, productions):
         self.hasSequence = False
         self.productions = productions
@@ -467,7 +466,7 @@ class IDL(object):
         return False
 
 
-class CDATA(object):
+class CDATA:
     kind = "cdata"
     _re = re.compile(r"\n+")
 
@@ -498,7 +497,7 @@ class CDATA(object):
         return 0
 
 
-class Typedef(object):
+class Typedef:
     kind = "typedef"
 
     def __init__(self, type, name, attlist, location, doccomments):
@@ -532,7 +531,7 @@ class Typedef(object):
         return "typedef %s %s\n" % (self.type, self.name)
 
 
-class Forward(object):
+class Forward:
     kind = "forward"
 
     def __init__(self, name, location, doccomments):
@@ -576,7 +575,7 @@ class Forward(object):
         return "forward-declared %s\n" % self.name
 
 
-class Native(object):
+class Native:
     kind = "native"
 
     modifier = None
@@ -768,7 +767,7 @@ class Native(object):
         return "native %s(%s)\n" % (self.name, self.nativename)
 
 
-class WebIDL(object):
+class WebIDL:
     kind = "webidl"
 
     def __init__(self, name, location):
@@ -819,7 +818,7 @@ class WebIDL(object):
         return "webidl %s\n" % self.name
 
 
-class Interface(object):
+class Interface:
     kind = "interface"
 
     def __init__(self, name, attlist, base, members, location, doccomments):
@@ -993,7 +992,7 @@ class Interface(object):
         return self.name
 
 
-class InterfaceAttributes(object):
+class InterfaceAttributes:
     uuid = None
     scriptable = False
     builtinclass = False
@@ -1066,7 +1065,7 @@ class InterfaceAttributes(object):
         return "".join(l)
 
 
-class ConstMember(object):
+class ConstMember:
     kind = "const"
 
     def __init__(self, type, name, value, location, doccomments):
@@ -1112,7 +1111,7 @@ class ConstMember(object):
 
 
 # Represents a single name/value pair in a CEnum
-class CEnumVariant(object):
+class CEnumVariant:
     # Treat CEnumVariants as consts in terms of value resolution, so we can
     # do things like binary operation values for enum members.
     kind = "const"
@@ -1126,7 +1125,7 @@ class CEnumVariant(object):
         return self.value
 
 
-class CEnum(object):
+class CEnum:
     kind = "cenum"
 
     def __init__(self, width, name, variants, location, doccomments):
@@ -1332,7 +1331,7 @@ def ensureNoscriptIfNeeded(methodOrAttribute):
                 )
 
 
-class Attribute(object):
+class Attribute:
     kind = "attribute"
     noscript = False
     notxpcom = False
@@ -1442,7 +1441,7 @@ class Attribute(object):
         return self.readonly and 1 or 2
 
 
-class Method(object):
+class Method:
     kind = "method"
     noscript = False
     notxpcom = False
@@ -1590,7 +1589,7 @@ class Method(object):
         return 1
 
 
-class Param(object):
+class Param:
     size_is = None
     iid_is = None
     const = False
@@ -1688,12 +1687,12 @@ class Param(object):
         type = self.realtype.tsType()
         if self.paramtype == "inout":
             return f"InOutParam<{type}>"
-        if self.paramtype == "out":
+        if self.paramtype == "out" and not self.retval:
             return f"OutParam<{type}>"
         return type
 
 
-class LegacyArray(object):
+class LegacyArray:
     kind = "legacyarray"
 
     def __init__(self, basetype):
@@ -1730,7 +1729,7 @@ class LegacyArray(object):
         return self.type.tsType() + "[]"
 
 
-class Array(object):
+class Array:
     kind = "array"
 
     def __init__(self, type, location):
@@ -1787,7 +1786,7 @@ TypeId.__str__ = lambda self: (
 TypeId.__new__.__defaults__ = (None,)
 
 
-class IDLParser(object):
+class IDLParser:
     keywords = {
         "cenum": "CENUM",
         "const": "CONST",

@@ -13,19 +13,20 @@ add_task(async function test_full_page_translation() {
       { fromLang: "es", toLang: "en" },
       { fromLang: "en", toLang: "es" },
     ],
+    contentEagerMode: true,
     runInPage: async TranslationsTest => {
       const selectors = TranslationsTest.getSelectors();
 
       await TranslationsTest.assertTranslationResult(
         "The main title gets translated.",
         selectors.getH1,
-        "DON QUIJOTE DE LA MANCHA [es to en, html]"
+        "DON QUIJOTE DE LA MANCHA [es to en]"
       );
 
       await TranslationsTest.assertTranslationResult(
-        "The last paragraph gets translated. It is out of the viewport.",
-        selectors.getLastParagraph,
-        "— PUES, AUNQUE MOVÁIS MÁS BRAZOS QUE LOS DEL GIGANTE BRIAREO, ME LO HABÉIS DE PAGAR. [es to en, html]"
+        "The final paragraph gets translated even though it is out of the viewport.",
+        selectors.getFinalParagraph,
+        "— PUES, AUNQUE MOVÁIS MÁS BRAZOS QUE LOS DEL GIGANTE BRIAREO, ME LO HABÉIS DE PAGAR. [es to en]"
       );
 
       selectors.getH1().innerText = "Este es un titulo";
@@ -85,7 +86,7 @@ add_task(async function test_about_translations_enabled() {
         is(
           document.querySelector("h1").innerText,
           `"The Wonderful Wizard of Oz" by L. Frank Baum`,
-          `The page remains untranslated after ${(i + 1) * timeout}ms.`
+          `The page remains not translated after ${(i + 1) * timeout}ms.`
         );
       }
     },
@@ -93,7 +94,9 @@ add_task(async function test_about_translations_enabled() {
 });
 
 /**
- * Check that the full page translation feature works.
+ * This test case ensures that the language is correctly identified as Spanish
+ * when loading the NO_LANGUAGE_URL, and the page is translated just the same
+ * as though it had a language tag specified in the markup.
  */
 add_task(async function test_language_identification_for_page_translation() {
   await autoTranslatePage({
@@ -102,19 +105,20 @@ add_task(async function test_language_identification_for_page_translation() {
       { fromLang: "es", toLang: "en" },
       { fromLang: "en", toLang: "es" },
     ],
+    contentEagerMode: true,
     runInPage: async TranslationsTest => {
       const selectors = TranslationsTest.getSelectors();
 
       await TranslationsTest.assertTranslationResult(
         "The main title gets translated.",
         selectors.getH1,
-        "DON QUIJOTE DE LA MANCHA [es to en, html]"
+        "DON QUIJOTE DE LA MANCHA [es to en]"
       );
 
       await TranslationsTest.assertTranslationResult(
-        "The last paragraph gets translated. It is out of the viewport.",
-        selectors.getLastParagraph,
-        "— PUES, AUNQUE MOVÁIS MÁS BRAZOS QUE LOS DEL GIGANTE BRIAREO, ME LO HABÉIS DE PAGAR. [es to en, html]"
+        "The final paragraph gets translated even though it is out of the viewport.",
+        selectors.getFinalParagraph,
+        "— PUES, AUNQUE MOVÁIS MÁS BRAZOS QUE LOS DEL GIGANTE BRIAREO, ME LO HABÉIS DE PAGAR. [es to en]"
       );
 
       selectors.getH1().innerText = "Este es un titulo";

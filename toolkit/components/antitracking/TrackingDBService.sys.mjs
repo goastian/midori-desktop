@@ -6,7 +6,6 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { Sqlite } from "resource://gre/modules/Sqlite.sys.mjs";
 
 const SCHEMA_VERSION = 1;
-const TRACKERS_BLOCKED_COUNT = "contentblocking.trackers_blocked_count";
 
 const lazy = {};
 
@@ -255,6 +254,10 @@ TrackingDBService.prototype = {
           state & Ci.nsIWebProgressListener.STATE_BLOCKED_CRYPTOMINING_CONTENT
         ) {
           result = Ci.nsITrackingDBService.CRYPTOMINERS_ID;
+        } else if (
+          state & Ci.nsIWebProgressListener.STATE_PURGED_BOUNCETRACKER
+        ) {
+          result = Ci.nsITrackingDBService.BOUNCETRACKERS_ID;
         }
       }
     }
@@ -286,7 +289,7 @@ TrackingDBService.prototype = {
           let type = this.identifyType(log[thirdParty]);
           if (type) {
             // Send the blocked event to Telemetry
-            Services.telemetry.scalarAdd(TRACKERS_BLOCKED_COUNT, 1);
+            Glean.contentblocking.trackersBlockedCount.add(1);
 
             // today is a date "YYY-MM-DD" which can compare with what is
             // already saved in the database.

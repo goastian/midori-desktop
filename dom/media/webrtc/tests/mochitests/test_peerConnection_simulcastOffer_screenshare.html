@@ -1,0 +1,187 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <script type="application/javascript" src="pc.js"></script>
+  <script type="application/javascript" src="parser_rtp.js"></script>
+  <script type="application/javascript" src="/tests/dom/canvas/test/captureStream_common.js"></script>
+  <script type="application/javascript" src="helpers_from_wpt/sdp.js"></script>
+  <script type="application/javascript" src="simulcast.js"></script>
+  <script type="application/javascript" src="stats.js"></script>
+</head>
+<body>
+<pre id="test">
+<script type="application/javascript">
+  createHTML({
+    bug: "1692873",
+    title: "Screensharing peer connection with Simulcast offer",
+    visible: true
+  });
+
+  async function hasH264() {
+    const pc = new RTCPeerConnection();
+    const offer = await pc.createOffer({offerToReceiveVideo: true});
+    return offer.sdp.match(/a=rtpmap:[1-9][0-9]* H264/);
+  }
+
+  async function doTest(codec) {
+    const recvCodecs = RTCRtpReceiver.getCapabilities("video")?.codecs;
+    isnot(recvCodecs, null, "Expected recv capabilities");
+    isnot(recvCodecs.length, 0, "Expected some recv codecs");
+    if (!recvCodecs || !recvCodecs.length) {
+      return;
+    }
+
+    const filteredRecvCodecs = recvCodecs.filter(recvCodec => {
+      if (recvCodec.mimeType != codec.mimeType) {
+        return false;
+      }
+      if (codec.sdpFmtpLineRegex && !recvCodec.sdpFmtpLine.match(codec.sdpFmtpLineRegex)) {
+        return false;
+      }
+      return true;
+    });
+    is(
+      filteredRecvCodecs.length,
+      1,
+      `Should match a single recv codec\nOriginal recv codecs:\n${JSON.stringify(
+        recvCodecs,
+        null,
+        2
+      )}\nFiltered recv codecs:\n${JSON.stringify(
+        filteredRecvCodecs,
+        null,
+        2
+      )}\nRequired codec: ${JSON.stringify(codec)}`
+    );
+    if (!filteredRecvCodecs.length) {
+      return;
+
+    }
+    const [recvCodec] = filteredRecvCodecs;
+
+    const offerer = new RTCPeerConnection();
+    const answerer = new RTCPeerConnection();
+
+    const add = (pc, can, failed) => can && pc.addIceCandidate(can).catch(failed);
+    offerer.onicecandidate = e => add(answerer, e.candidate, generateErrorCallback());
+    answerer.onicecandidate = e => add(offerer, e.candidate, generateErrorCallback());
+
+    const metadataToBeLoaded = [];
+    answerer.ontrack = e => {
+      metadataToBeLoaded.push(getPlaybackWithLoadedMetadata(e.track));
+    };
+
+    // One send transceiver, that will be used to send both simulcast streams
+    SpecialPowers.wrap(document).notifyUserGestureActivation();
+    const videoStream = await navigator.mediaDevices.getDisplayMedia({video: {width: {max: 640}}});
+    const sendEncodings = [
+            { rid: '0' },
+            { rid: '1', maxBitrate: 100000, scaleResolutionDownBy: 2 },
+            { rid: '2', maxBitrate: 40000, scaleResolutionDownBy: 2 }
+          ];
+    offerer.addTransceiver(videoStream.getVideoTracks()[0], {sendEncodings});
+
+    const [sender] = offerer.getSenders();
+
+    const offer = await offerer.createOffer();
+
+    const mungedOffer = ridToMid(offer);
+    info(`Transformed send simulcast offer to multiple m-sections: ${offer.sdp} to ${mungedOffer}`);
+
+    await answerer.setRemoteDescription({type: 'offer', sdp: mungedOffer});
+    await offerer.setLocalDescription(offer);
+
+    const recvTransceivers = answerer.getTransceivers();
+    const rids = recvTransceivers.map(({mid}) => mid);
+    is(rids.length, 3, 'Should have 3 mids in offer');
+    isnot(rids[0], '', 'First mid should be non-empty');
+    isnot(rids[1], '', 'Second mid should be non-empty');
+    isnot(rids[2], '', 'Third mid should be non-empty');
+
+    for (const transceiver of recvTransceivers) {
+      transceiver.setCodecPreferences([recvCodec]);
+    }
+
+    const answer = await answerer.createAnswer();
+
+    let mungedAnswer = midToRid(answer);
+    info(`Transformed recv answer to simulcast: ${answer.sdp} to ${mungedAnswer}`);
+    await offerer.setRemoteDescription({type: 'answer', sdp: mungedAnswer});
+    await answerer.setLocalDescription(answer);
+
+    is(metadataToBeLoaded.length, 3, 'Offerer should have gotten 3 ontrack events');
+    info('Waiting for 3 loadedmetadata events');
+    const videoElems = await Promise.all(metadataToBeLoaded);
+
+    const statsReady =
+      Promise.all([waitForSyncedRtcp(offerer), waitForSyncedRtcp(answerer)]);
+
+    const {width} = videoStream.getVideoTracks()[0].getSettings();
+    const {height} = videoStream.getVideoTracks()[0].getSettings();
+    is(videoElems[0].videoWidth, width,
+       "sink is same width as source, modulo our cropping algorithm");
+    is(videoElems[0].videoHeight, height,
+       "sink is same height as source, modulo our cropping algorithm");
+    is(videoElems[1].videoWidth, Math.trunc(width / 2),
+       "sink is 1/2 width of source, modulo our cropping algorithm");
+    is(videoElems[1].videoHeight, Math.trunc(height / 2),
+       "sink is 1/2 height of source, modulo our cropping algorithm");
+    is(videoElems[2].videoWidth, Math.trunc(width / 2),
+       "sink is 1/2 width of source, modulo our cropping algorithm");
+    is(videoElems[2].videoHeight, Math.trunc(height / 2),
+       "sink is 1/2 height of source, modulo our cropping algorithm");
+
+    await statsReady;
+    const senderStats = await sender.getStats();
+    checkSendCodecsMimeType(senderStats, codec.mimeType, recvCodec.sdpFmtpLine);
+    checkSenderStats(senderStats, 3);
+    checkExpectedFields(senderStats);
+    pedanticChecks(senderStats);
+
+    videoStream.getVideoTracks()[0].stop();
+    offerer.close();
+    answerer.close();
+    for (const elem of videoElems) {
+      elem.remove();
+    }
+  }
+
+  runNetworkTest(async () => {
+    await pushPrefs(
+        // 400Kbps was determined empirically, set well-higher than
+        // the 140Kbps+overhead needed for the two restricted simulcast streams.
+        ['media.peerconnection.video.min_bitrate_estimate', 400*1000],
+        ["media.navigator.permission.disabled", true],
+        ["media.peerconnection.video.lock_scaling", true],
+        ["media.webrtc.simulcast.vp9.enabled", true],
+        ["media.webrtc.simulcast.av1.enabled", true],
+        ["media.webrtc.codec.video.av1.enabled", true],
+        ["media.navigator.video.disable_h264_baseline", false],
+      );
+
+    const isAndroid = navigator.userAgent.includes("Android");
+    const codecs = [
+      {mimeType: "video/VP8"},
+      {mimeType: "video/VP9"},
+      {mimeType: "video/AV1"},
+    ];
+    if (!isAndroid || await hasH264()) {
+      // Can't check for emulator explicitly, but that's where we expect no
+      // h264 support currently.
+      codecs.push(
+        {mimeType: "video/H264", sdpFmtpLineRegex: /profile-level-id=42e01f.*packetization-mode=1/},
+        {mimeType: "video/H264", sdpFmtpLineRegex: /profile-level-id=42e01f.*asymmetry-allowed=1$/},
+        {mimeType: "video/H264", sdpFmtpLineRegex: /profile-level-id=42001f.*packetization-mode=1/},
+        {mimeType: "video/H264", sdpFmtpLineRegex: /profile-level-id=42001f.*asymmetry-allowed=1$/},
+      );
+    }
+
+    for (const codec of codecs) {
+      info(`Testing codec ${codec.mimeType}`)
+      await doTest(codec);
+    }
+  });
+</script>
+</pre>
+</body>
+</html>

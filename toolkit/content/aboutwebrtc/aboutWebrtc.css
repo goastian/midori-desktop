@@ -41,7 +41,7 @@ table {
   margin: 1em 0;
   border: 1px solid var(--in-content-box-border-color);
   border-radius: 10px;
-  background-color: var(--in-content-box-background);
+  background-color: var(--background-color-box);
 }
 
 .autorefresh {
@@ -105,7 +105,7 @@ h3 > span {
 }
 
 .peer-connection table tr:nth-child(odd) {
-  background-color: var(--in-content-box-background-odd);
+  background-color: var(--table-row-background-color-alternate);
 }
 
 .peer-connection table caption {
@@ -127,7 +127,7 @@ h3 > span {
 }
 
 .peer-connection-config div:nth-child(odd) {
-  background-color: var(--in-content-box-background-odd);
+  background-color: var(--table-row-background-color-alternate);
 }
 
 /* The pale colour scheme is taken from:
@@ -232,6 +232,7 @@ div.fold-trigger {
 
 .copy-button-base {
   padding-inline-end: 0.25em;
+  cursor: default;
 }
 
 .copy-button {

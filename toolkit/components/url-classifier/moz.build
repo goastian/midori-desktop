@@ -75,6 +75,10 @@ EXPORTS += [
     "VariableLengthPrefixSet.h",
 ]
 
+EXPORTS.mozilla += [
+    "URLClassifierIPCUtils.h",
+]
+
 FINAL_LIBRARY = "xul"
 
 LOCAL_INCLUDES += [
@@ -89,9 +93,6 @@ if CONFIG["CC_TYPE"] == "gcc":
     CXXFLAGS += [
         "-Wno-maybe-uninitialized",
     ]
-
-if CONFIG["NIGHTLY_BUILD"] or CONFIG["MOZ_DEBUG"]:
-    DEFINES["MOZ_SAFEBROWSING_DUMP_FAILED_UPDATES"] = True
 
 SPHINX_TREES["url-classifier"] = "docs"
 

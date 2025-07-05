@@ -6,7 +6,7 @@
 NoVisibilityFlags()
 
 EXPORTS += [
-    'sqlite3.h',
+    "sqlite3.h",
 ]
 
 # We allow warnings for third-party code that can be updated from upstream.
@@ -24,10 +24,19 @@ DIRS += [
 ]
 
 SOURCES += [
-    'sqlite3.c',
+    "../ext/misc/carray.c",
+    "sqlite3.c",
+]
+
+LOCAL_INCLUDES += [
+    "../ext",
 ]
 
 OS_LIBS += CONFIG["DL_LIBS"]
+
+# While the amalgamation already defines this, it is necessary for the static
+# extensions that we incorporate (e.g. carray).
+DEFINES["SQLITE_CORE"] = 1
 
 # -DSQLITE_SECURE_DELETE=1 will cause SQLITE to 0-fill delete data so we
 # don't have to vacuum to make sure the data is not visible in the file.
@@ -129,6 +138,3 @@ DEFINES['SQLITE_DEFAULT_JOURNAL_SIZE_LIMIT'] = 1572864
 if CONFIG["MOZ_THUNDERBIRD"] or CONFIG["MOZ_SUITE"]:
     DEFINES['SQLITE_ENABLE_FTS3'] = 1
 
-# Bug 1878311 - Disable the SQLITE_DIRECT_OVERFLOW_READ optimization due to
-# privatebrowsing test failures.
-DEFINES['SQLITE_DIRECT_OVERFLOW_READ'] = 0

@@ -3,7 +3,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-
 import { ContentDOMReference } from "resource://gre/modules/ContentDOMReference.sys.mjs";
 
 export class WebChannelChild extends JSWindowActorChild {
@@ -22,11 +21,6 @@ export class WebChannelChild extends JSWindowActorChild {
   }
 
   _onMessageToChrome(e) {
-    // If target is window then we want the document principal, otherwise fallback to target itself.
-    let principal = e.target.nodePrincipal
-      ? e.target.nodePrincipal
-      : e.target.document.nodePrincipal;
-
     if (e.detail) {
       if (typeof e.detail != "string") {
         console.error("WebChannelMessageToChrome must only send strings");
@@ -40,7 +34,6 @@ export class WebChannelChild extends JSWindowActorChild {
       this.sendAsyncMessage("WebChannelMessageToChrome", {
         contentData: e.detail,
         eventTarget,
-        principal,
       });
     } else {
       console.error("WebChannel message failed. No message detail.");

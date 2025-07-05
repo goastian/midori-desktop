@@ -10,7 +10,7 @@ license:
         - browser/branding/
         # Trademarks
         - browser/components/pocket/content/panels/
-        - browser/components/newtab/data/content/tippytop/images/
+        - browser/components/topsites/content/tippytop/images/
         - toolkit/components/pdfjs/content/web/images/
         # We probably want a specific license
         - browser/extensions/webcompat/injections/
@@ -45,15 +45,15 @@ license:
         - python/mozlint/test/files/
         # By design
         - python/mozrelease/mozrelease
-        - security/mac/hardenedruntime/v2/developer/browser.xml
-        - security/mac/hardenedruntime/v2/developer/media-plugin-helper.xml
-        - security/mac/hardenedruntime/v2/developer/plugin-container.xml
-        - security/mac/hardenedruntime/v2/developer/utility.xml
-        - security/mac/hardenedruntime/v2/production/nightly.browser.xml
-        - security/mac/hardenedruntime/v2/production/firefox.browser.xml
-        - security/mac/hardenedruntime/v2/production/firefoxdeveloperedition.browser.xml
-        - security/mac/hardenedruntime/v2/production/media-plugin-helper.xml
-        - security/mac/hardenedruntime/v2/production/plugin-container.xml
+        - security/mac/hardenedruntime/developer/browser.xml
+        - security/mac/hardenedruntime/developer/media-plugin-helper.xml
+        - security/mac/hardenedruntime/developer/plugin-container.xml
+        - security/mac/hardenedruntime/developer/utility.xml
+        - security/mac/hardenedruntime/production/nightly.browser.xml
+        - security/mac/hardenedruntime/production/firefox.browser.xml
+        - security/mac/hardenedruntime/production/firefoxdeveloperedition.browser.xml
+        - security/mac/hardenedruntime/production/media-plugin-helper.xml
+        - security/mac/hardenedruntime/production/plugin-container.xml
         - testing/marionette/harness/marionette_harness/www/
         # Browsertime can't handle this script when there's a comment at the top
         - testing/raptor/browsertime/browsertime_benchmark.js
@@ -73,6 +73,8 @@ license:
         - '**/reftest*'
         - '**/androidTest/'
         - '**/jit-test/'
+        # Exclude localized strings.xml files for Android.
+        - '**/values-*/strings.xml'
     extensions:
         - .c
         - .cc
@@ -85,8 +87,8 @@ license:
         - .idl
         - .java
         - .js
-        - .jsm
         - .jsx
+        - .kt
         - .m
         - .mm
         - .mjs

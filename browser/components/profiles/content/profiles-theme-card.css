@@ -1,0 +1,93 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+:host {
+  --theme-card-border-radius: 10px;
+  --preview-image-border-radius: 9px;
+  --theme-card-border-width: 2px;
+
+  box-sizing: border-box;
+  border-radius: var(--theme-card-border-radius);
+}
+
+moz-card {
+  --card-padding: 0;
+}
+
+.theme-card {
+  width: 120px;
+  border-radius: var(--theme-card-border-radius);
+  border: none;
+  box-shadow: none;
+
+  &:hover {
+    background-color: var(--button-background-color-hover);
+  }
+
+  @media (forced-colors) {
+    &:hover {
+      border-color: SelectedItem;
+
+      .theme-name {
+        color: SelectedItem;
+      }
+    }
+
+    :host([checked]) & {
+      background-color: SelectedItem;
+      border-color: SelectedItemText;
+      color: SelectedItemText;
+
+      .theme-name {
+        color: SelectedItemText;
+      }
+    }
+  }
+}
+
+.theme-content {
+  display: flex;
+  flex-direction: column;
+}
+
+.img-holder {
+  width: 100%;
+  height: 40px;
+
+  border-top-left-radius: var(--preview-image-border-radius);
+  border-top-right-radius: var(--preview-image-border-radius);
+
+  /*
+   * We set the background color here in case the
+   * ProfilesThemeCard.theme.contentColor doesn't exist. For example, when the
+   * theme card is a theme from AMO and not one of the default themes.
+   */
+  background-color: var(--newtab-background-color, var(--in-content-page-background));
+
+  > img {
+    -moz-context-properties: fill, stroke, fill-opacity;
+    width: 100%;
+
+    border-top-left-radius: var(--preview-image-border-radius);
+    border-top-right-radius: var(--preview-image-border-radius);
+  }
+}
+
+.theme-name {
+  display: block;
+  padding: var(--space-small) var(--space-medium);
+
+  border-inline-width: var(--theme-card-border-width);
+  border-block-end-width: var(--theme-card-border-width);
+  border-block-start: var(--card-border);
+
+  font-size: var(--font-size-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+
+  @media (forced-colors) {
+    color: ButtonText;
+  }
+}

@@ -6,6 +6,8 @@
 
 const StyleDictionary = require("style-dictionary");
 const { createPropertyFormatter } = StyleDictionary.formatHelpers;
+const figmaConfig = require("./figma-tokens-config");
+
 const TOKEN_SECTIONS = {
   "Attention Dot": "attention-dot",
   "Background Color": "background-color",
@@ -19,10 +21,13 @@ const TOKEN_SECTIONS = {
   "Font Weight": "font-weight",
   Icon: "icon",
   "Input - Text": "input-text",
+  "Input - Space": "input-space",
   Link: "link",
   "Outline Color": "outline-color",
+  Page: "page",
   Size: "size",
   Space: "space",
+  "Table Row": "table-row",
   Text: "text",
   Unspecified: "",
 };
@@ -478,7 +483,7 @@ const SINGULAR_TABLE_CATEGORIES = [
 ];
 
 function getTableName(tokenName) {
-  let replacePattern = /^(button-|input-text-|focus-|checkbox-)/;
+  let replacePattern = /^(button-|input-text-|focus-|checkbox-|table-row-)/;
   if (tokenName.match(replacePattern)) {
     tokenName = tokenName.replace(replacePattern, "");
   }
@@ -495,6 +500,7 @@ module.exports = {
     "css/variables/brand": createDesktopFormat("brand"),
     "css/variables/platform": createDesktopFormat("platform"),
     "javascript/storybook": storybookJSFormat,
+    ...figmaConfig.formats,
   },
   platforms: {
     css: {
@@ -543,5 +549,6 @@ module.exports = {
         },
       ],
     },
+    figma: figmaConfig.platform,
   },
 };

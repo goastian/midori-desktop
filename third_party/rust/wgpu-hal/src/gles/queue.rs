@@ -1,15 +1,16 @@
-use super::{conv::is_layered_target, Command as C, PrivateCapabilities};
+use alloc::sync::Arc;
+use alloc::vec;
+use core::sync::atomic::Ordering;
+
 use arrayvec::ArrayVec;
 use glow::HasContext;
-use std::{
-    mem, slice,
-    sync::{atomic::Ordering, Arc},
-};
+
+use super::{conv::is_layered_target, lock, Command as C, PrivateCapabilities};
 
 const DEBUG_ID: u32 = 0;
 
-fn extract_marker<'a>(data: &'a [u8], range: &std::ops::Range<u32>) -> &'a str {
-    std::str::from_utf8(&data[range.start as usize..range.end as usize]).unwrap()
+fn extract_marker<'a>(data: &'a [u8], range: &core::ops::Range<u32>) -> &'a str {
+    core::str::from_utf8(&data[range.start as usize..range.end as usize]).unwrap()
 }
 
 fn get_2d_target(target: u32, array_layer: u32) -> u32 {
@@ -97,6 +98,7 @@ impl super::Queue {
         fbo_target: u32,
         attachment: u32,
         view: &super::TextureView,
+        depth_slice: Option<u32>,
     ) {
         match view.inner {
             super::TextureInner::Renderbuffer { raw } => {
@@ -125,13 +127,18 @@ impl super::Queue {
                         )
                     };
                 } else if is_layered_target(target) {
+                    let layer = if target == glow::TEXTURE_3D {
+                        depth_slice.unwrap() as i32
+                    } else {
+                        view.array_layers.start as i32
+                    };
                     unsafe {
                         gl.framebuffer_texture_layer(
                             fbo_target,
                             attachment,
                             Some(raw),
                             view.mip_levels.start as i32,
-                            view.array_layers.start as i32,
+                            layer,
                         )
                     };
                 } else {
@@ -342,7 +349,7 @@ impl super::Queue {
                     }
                 }
                 None => {
-                    dst.data.as_ref().unwrap().lock().unwrap().as_mut_slice()
+                    lock(dst.data.as_ref().unwrap()).as_mut_slice()
                         [range.start as usize..range.end as usize]
                         .fill(0);
                 }
@@ -384,7 +391,7 @@ impl super::Queue {
                         };
                     }
                     (Some(src), None) => {
-                        let mut data = dst.data.as_ref().unwrap().lock().unwrap();
+                        let mut data = lock(dst.data.as_ref().unwrap());
                         let dst_data = &mut data.as_mut_slice()
                             [copy.dst_offset as usize..copy.dst_offset as usize + size];
 
@@ -399,7 +406,7 @@ impl super::Queue {
                         };
                     }
                     (None, Some(dst)) => {
-                        let data = src.data.as_ref().unwrap().lock().unwrap();
+                        let data = lock(src.data.as_ref().unwrap());
                         let src_data = &data.as_slice()
                             [copy.src_offset as usize..copy.src_offset as usize + size];
                         unsafe { gl.bind_buffer(copy_dst_target, Some(dst)) };
@@ -471,6 +478,21 @@ impl super::Queue {
                                 b,
                             );
                         },
+                        wgt::ExternalImageSource::HTMLImageElement(ref i) => unsafe {
+                            gl.tex_sub_image_3d_with_html_image_element(
+                                dst_target,
+                                copy.dst_base.mip_level as i32,
+                                copy.dst_base.origin.x as i32,
+                                copy.dst_base.origin.y as i32,
+                                z_offset as i32,
+                                copy.size.width as i32,
+                                copy.size.height as i32,
+                                copy.size.depth as i32,
+                                format_desc.external,
+                                format_desc.data_type,
+                                i,
+                            );
+                        },
                         wgt::ExternalImageSource::HTMLVideoElement(ref v) => unsafe {
                             gl.tex_sub_image_3d_with_html_video_element(
                                 dst_target,
@@ -484,6 +506,37 @@ impl super::Queue {
                                 format_desc.external,
                                 format_desc.data_type,
                                 v,
+                            );
+                        },
+                        #[cfg(web_sys_unstable_apis)]
+                        wgt::ExternalImageSource::VideoFrame(ref v) => unsafe {
+                            gl.tex_sub_image_3d_with_video_frame(
+                                dst_target,
+                                copy.dst_base.mip_level as i32,
+                                copy.dst_base.origin.x as i32,
+                                copy.dst_base.origin.y as i32,
+                                z_offset as i32,
+                                copy.size.width as i32,
+                                copy.size.height as i32,
+                                copy.size.depth as i32,
+                                format_desc.external,
+                                format_desc.data_type,
+                                v,
+                            )
+                        },
+                        wgt::ExternalImageSource::ImageData(ref i) => unsafe {
+                            gl.tex_sub_image_3d_with_image_data(
+                                dst_target,
+                                copy.dst_base.mip_level as i32,
+                                copy.dst_base.origin.x as i32,
+                                copy.dst_base.origin.y as i32,
+                                z_offset as i32,
+                                copy.size.width as i32,
+                                copy.size.height as i32,
+                                copy.size.depth as i32,
+                                format_desc.external,
+                                format_desc.data_type,
+                                i,
                             );
                         },
                         wgt::ExternalImageSource::HTMLCanvasElement(ref c) => unsafe {
@@ -520,6 +573,19 @@ impl super::Queue {
                                 b,
                             );
                         },
+                        wgt::ExternalImageSource::HTMLImageElement(ref i) => unsafe {
+                            gl.tex_sub_image_2d_with_html_image_and_width_and_height(
+                                dst_target,
+                                copy.dst_base.mip_level as i32,
+                                copy.dst_base.origin.x as i32,
+                                copy.dst_base.origin.y as i32,
+                                copy.size.width as i32,
+                                copy.size.height as i32,
+                                format_desc.external,
+                                format_desc.data_type,
+                                i,
+                            )
+                        },
                         wgt::ExternalImageSource::HTMLVideoElement(ref v) => unsafe {
                             gl.tex_sub_image_2d_with_html_video_and_width_and_height(
                                 dst_target,
@@ -532,6 +598,33 @@ impl super::Queue {
                                 format_desc.data_type,
                                 v,
                             )
+                        },
+                        #[cfg(web_sys_unstable_apis)]
+                        wgt::ExternalImageSource::VideoFrame(ref v) => unsafe {
+                            gl.tex_sub_image_2d_with_video_frame_and_width_and_height(
+                                dst_target,
+                                copy.dst_base.mip_level as i32,
+                                copy.dst_base.origin.x as i32,
+                                copy.dst_base.origin.y as i32,
+                                copy.size.width as i32,
+                                copy.size.height as i32,
+                                format_desc.external,
+                                format_desc.data_type,
+                                v,
+                            )
+                        },
+                        wgt::ExternalImageSource::ImageData(ref i) => unsafe {
+                            gl.tex_sub_image_2d_with_image_data_and_width_and_height(
+                                dst_target,
+                                copy.dst_base.mip_level as i32,
+                                copy.dst_base.origin.x as i32,
+                                copy.dst_base.origin.y as i32,
+                                copy.size.width as i32,
+                                copy.size.height as i32,
+                                format_desc.external,
+                                format_desc.data_type,
+                                i,
+                            );
                         },
                         wgt::ExternalImageSource::HTMLCanvasElement(ref c) => unsafe {
                             gl.tex_sub_image_2d_with_html_canvas_and_width_and_height(
@@ -654,10 +747,10 @@ impl super::Queue {
                             glow::PixelUnpackData::BufferOffset(copy.buffer_layout.offset as u32)
                         }
                         None => {
-                            buffer_data = src.data.as_ref().unwrap().lock().unwrap();
+                            buffer_data = lock(src.data.as_ref().unwrap());
                             let src_data =
                                 &buffer_data.as_slice()[copy.buffer_layout.offset as usize..];
-                            glow::PixelUnpackData::Slice(src_data)
+                            glow::PixelUnpackData::Slice(Some(src_data))
                         }
                     };
                     if is_layered_target(dst_target) {
@@ -696,8 +789,7 @@ impl super::Queue {
                         .buffer_layout
                         .bytes_per_row
                         .unwrap_or(copy.size.width * block_size);
-                    let minimum_rows_per_image =
-                        (copy.size.height + block_height - 1) / block_height;
+                    let minimum_rows_per_image = copy.size.height.div_ceil(block_height);
                     let rows_per_image = copy
                         .buffer_layout
                         .rows_per_image
@@ -719,7 +811,7 @@ impl super::Queue {
                             )
                         }
                         None => {
-                            buffer_data = src.data.as_ref().unwrap().lock().unwrap();
+                            buffer_data = lock(src.data.as_ref().unwrap());
                             let src_data = &buffer_data.as_slice()
                                 [(offset as usize)..(offset + bytes_in_upload) as usize];
                             glow::CompressedPixelUnpackData::Slice(src_data)
@@ -800,9 +892,9 @@ impl super::Queue {
                             glow::PixelPackData::BufferOffset(offset as u32)
                         }
                         None => {
-                            buffer_data = dst.data.as_ref().unwrap().lock().unwrap();
+                            buffer_data = lock(dst.data.as_ref().unwrap());
                             let dst_data = &mut buffer_data.as_mut_slice()[offset as usize..];
-                            glow::PixelPackData::Slice(dst_data)
+                            glow::PixelPackData::Slice(Some(dst_data))
                         }
                     };
                     unsafe {
@@ -953,12 +1045,7 @@ impl super::Queue {
                         };
                         temp_query_results.push(result);
                     }
-                    let query_data = unsafe {
-                        slice::from_raw_parts(
-                            temp_query_results.as_ptr() as *const u8,
-                            temp_query_results.len() * mem::size_of::<u64>(),
-                        )
-                    };
+                    let query_data = bytemuck::cast_slice(&temp_query_results);
                     match dst.raw {
                         Some(buffer) => {
                             unsafe { gl.bind_buffer(dst_target, Some(buffer)) };
@@ -971,7 +1058,7 @@ impl super::Queue {
                             };
                         }
                         None => {
-                            let data = &mut dst.data.as_ref().unwrap().lock().unwrap();
+                            let data = &mut lock(dst.data.as_ref().unwrap());
                             let len = query_data.len().min(data.len());
                             data[..len].copy_from_slice(&query_data[..len]);
                         }
@@ -992,8 +1079,8 @@ impl super::Queue {
                             0,
                         )
                     };
-                    for i in 0..crate::MAX_COLOR_ATTACHMENTS {
-                        let target = glow::COLOR_ATTACHMENT0 + i as u32;
+                    for i in 0..self.shared.limits.max_color_attachments {
+                        let target = glow::COLOR_ATTACHMENT0 + i;
                         unsafe {
                             gl.framebuffer_texture_2d(
                                 glow::DRAW_FRAMEBUFFER,
@@ -1015,8 +1102,11 @@ impl super::Queue {
             C::BindAttachment {
                 attachment,
                 ref view,
+                depth_slice,
             } => {
-                unsafe { self.set_attachment(gl, glow::DRAW_FRAMEBUFFER, attachment, view) };
+                unsafe {
+                    self.set_attachment(gl, glow::DRAW_FRAMEBUFFER, attachment, view, depth_slice)
+                };
             }
             C::ResolveAttachment {
                 attachment,
@@ -1027,7 +1117,13 @@ impl super::Queue {
                 unsafe { gl.read_buffer(attachment) };
                 unsafe { gl.bind_framebuffer(glow::DRAW_FRAMEBUFFER, Some(self.copy_fbo)) };
                 unsafe {
-                    self.set_attachment(gl, glow::DRAW_FRAMEBUFFER, glow::COLOR_ATTACHMENT0, dst)
+                    self.set_attachment(
+                        gl,
+                        glow::DRAW_FRAMEBUFFER,
+                        glow::COLOR_ATTACHMENT0,
+                        dst,
+                        None,
+                    )
                 };
                 unsafe {
                     gl.blit_framebuffer(
@@ -1111,35 +1207,35 @@ impl super::Queue {
             }
             C::BufferBarrier(raw, usage) => {
                 let mut flags = 0;
-                if usage.contains(crate::BufferUses::VERTEX) {
+                if usage.contains(wgt::BufferUses::VERTEX) {
                     flags |= glow::VERTEX_ATTRIB_ARRAY_BARRIER_BIT;
                     unsafe { gl.bind_buffer(glow::ARRAY_BUFFER, Some(raw)) };
                     unsafe { gl.vertex_attrib_pointer_f32(0, 1, glow::BYTE, true, 0, 0) };
                 }
-                if usage.contains(crate::BufferUses::INDEX) {
+                if usage.contains(wgt::BufferUses::INDEX) {
                     flags |= glow::ELEMENT_ARRAY_BARRIER_BIT;
                     unsafe { gl.bind_buffer(glow::ELEMENT_ARRAY_BUFFER, Some(raw)) };
                 }
-                if usage.contains(crate::BufferUses::UNIFORM) {
+                if usage.contains(wgt::BufferUses::UNIFORM) {
                     flags |= glow::UNIFORM_BARRIER_BIT;
                 }
-                if usage.contains(crate::BufferUses::INDIRECT) {
+                if usage.contains(wgt::BufferUses::INDIRECT) {
                     flags |= glow::COMMAND_BARRIER_BIT;
                     unsafe { gl.bind_buffer(glow::DRAW_INDIRECT_BUFFER, Some(raw)) };
                 }
-                if usage.contains(crate::BufferUses::COPY_SRC) {
+                if usage.contains(wgt::BufferUses::COPY_SRC) {
                     flags |= glow::PIXEL_BUFFER_BARRIER_BIT;
                     unsafe { gl.bind_buffer(glow::PIXEL_UNPACK_BUFFER, Some(raw)) };
                 }
-                if usage.contains(crate::BufferUses::COPY_DST) {
+                if usage.contains(wgt::BufferUses::COPY_DST) {
                     flags |= glow::PIXEL_BUFFER_BARRIER_BIT;
                     unsafe { gl.bind_buffer(glow::PIXEL_PACK_BUFFER, Some(raw)) };
                 }
-                if usage.intersects(crate::BufferUses::MAP_READ | crate::BufferUses::MAP_WRITE) {
+                if usage.intersects(wgt::BufferUses::MAP_READ | wgt::BufferUses::MAP_WRITE) {
                     flags |= glow::BUFFER_UPDATE_BARRIER_BIT;
                 }
                 if usage.intersects(
-                    crate::BufferUses::STORAGE_READ | crate::BufferUses::STORAGE_READ_WRITE,
+                    wgt::BufferUses::STORAGE_READ_ONLY | wgt::BufferUses::STORAGE_READ_WRITE,
                 ) {
                     flags |= glow::SHADER_STORAGE_BARRIER_BIT;
                 }
@@ -1147,21 +1243,23 @@ impl super::Queue {
             }
             C::TextureBarrier(usage) => {
                 let mut flags = 0;
-                if usage.contains(crate::TextureUses::RESOURCE) {
+                if usage.contains(wgt::TextureUses::RESOURCE) {
                     flags |= glow::TEXTURE_FETCH_BARRIER_BIT;
                 }
                 if usage.intersects(
-                    crate::TextureUses::STORAGE_READ | crate::TextureUses::STORAGE_READ_WRITE,
+                    wgt::TextureUses::STORAGE_READ_ONLY
+                        | wgt::TextureUses::STORAGE_WRITE_ONLY
+                        | wgt::TextureUses::STORAGE_READ_WRITE,
                 ) {
                     flags |= glow::SHADER_IMAGE_ACCESS_BARRIER_BIT;
                 }
-                if usage.contains(crate::TextureUses::COPY_DST) {
+                if usage.contains(wgt::TextureUses::COPY_DST) {
                     flags |= glow::TEXTURE_UPDATE_BARRIER_BIT;
                 }
                 if usage.intersects(
-                    crate::TextureUses::COLOR_TARGET
-                        | crate::TextureUses::DEPTH_STENCIL_READ
-                        | crate::TextureUses::DEPTH_STENCIL_WRITE,
+                    wgt::TextureUses::COLOR_TARGET
+                        | wgt::TextureUses::DEPTH_STENCIL_READ
+                        | wgt::TextureUses::DEPTH_STENCIL_WRITE,
                 ) {
                     flags |= glow::FRAMEBUFFER_BARRIER_BIT;
                 }
@@ -1462,7 +1560,7 @@ impl super::Queue {
                 unsafe {
                     gl.bind_image_texture(
                         slot,
-                        binding.raw,
+                        Some(binding.raw),
                         binding.mip_level as i32,
                         binding.array_layer.is_none(),
                         binding.array_layer.unwrap_or_default() as i32,
@@ -1516,20 +1614,13 @@ impl super::Queue {
                 ref uniform,
                 offset,
             } => {
-                // T must be POD
-                //
-                // This function is absolutely sketchy and we really should be using bytemuck.
-                unsafe fn get_data<T, const COUNT: usize>(data: &[u8], offset: u32) -> &[T; COUNT] {
-                    let data_required = mem::size_of::<T>() * COUNT;
-
+                fn get_data<T, const COUNT: usize>(data: &[u8], offset: u32) -> [T; COUNT]
+                where
+                    [T; COUNT]: bytemuck::AnyBitPattern,
+                {
+                    let data_required = size_of::<T>() * COUNT;
                     let raw = &data[(offset as usize)..][..data_required];
-
-                    debug_assert_eq!(data_required, raw.len());
-
-                    let slice: &[T] =
-                        unsafe { slice::from_raw_parts(raw.as_ptr() as *const _, COUNT) };
-
-                    slice.try_into().unwrap()
+                    bytemuck::pod_read_unaligned(raw)
                 }
 
                 let location = Some(&uniform.location);
@@ -1539,28 +1630,28 @@ impl super::Queue {
                     // --- Float 1-4 Component ---
                     //
                     naga::TypeInner::Scalar(naga::Scalar::F32) => {
-                        let data = unsafe { get_data::<f32, 1>(data_bytes, offset)[0] };
+                        let data = get_data::<f32, 1>(data_bytes, offset)[0];
                         unsafe { gl.uniform_1_f32(location, data) };
                     }
                     naga::TypeInner::Vector {
                         size: naga::VectorSize::Bi,
                         scalar: naga::Scalar::F32,
                     } => {
-                        let data = unsafe { get_data::<f32, 2>(data_bytes, offset) };
+                        let data = &get_data::<f32, 2>(data_bytes, offset);
                         unsafe { gl.uniform_2_f32_slice(location, data) };
                     }
                     naga::TypeInner::Vector {
                         size: naga::VectorSize::Tri,
                         scalar: naga::Scalar::F32,
                     } => {
-                        let data = unsafe { get_data::<f32, 3>(data_bytes, offset) };
+                        let data = &get_data::<f32, 3>(data_bytes, offset);
                         unsafe { gl.uniform_3_f32_slice(location, data) };
                     }
                     naga::TypeInner::Vector {
                         size: naga::VectorSize::Quad,
                         scalar: naga::Scalar::F32,
                     } => {
-                        let data = unsafe { get_data::<f32, 4>(data_bytes, offset) };
+                        let data = &get_data::<f32, 4>(data_bytes, offset);
                         unsafe { gl.uniform_4_f32_slice(location, data) };
                     }
 
@@ -1568,28 +1659,28 @@ impl super::Queue {
                     // --- Int 1-4 Component ---
                     //
                     naga::TypeInner::Scalar(naga::Scalar::I32) => {
-                        let data = unsafe { get_data::<i32, 1>(data_bytes, offset)[0] };
+                        let data = get_data::<i32, 1>(data_bytes, offset)[0];
                         unsafe { gl.uniform_1_i32(location, data) };
                     }
                     naga::TypeInner::Vector {
                         size: naga::VectorSize::Bi,
                         scalar: naga::Scalar::I32,
                     } => {
-                        let data = unsafe { get_data::<i32, 2>(data_bytes, offset) };
+                        let data = &get_data::<i32, 2>(data_bytes, offset);
                         unsafe { gl.uniform_2_i32_slice(location, data) };
                     }
                     naga::TypeInner::Vector {
                         size: naga::VectorSize::Tri,
                         scalar: naga::Scalar::I32,
                     } => {
-                        let data = unsafe { get_data::<i32, 3>(data_bytes, offset) };
+                        let data = &get_data::<i32, 3>(data_bytes, offset);
                         unsafe { gl.uniform_3_i32_slice(location, data) };
                     }
                     naga::TypeInner::Vector {
                         size: naga::VectorSize::Quad,
                         scalar: naga::Scalar::I32,
                     } => {
-                        let data = unsafe { get_data::<i32, 4>(data_bytes, offset) };
+                        let data = &get_data::<i32, 4>(data_bytes, offset);
                         unsafe { gl.uniform_4_i32_slice(location, data) };
                     }
 
@@ -1597,28 +1688,28 @@ impl super::Queue {
                     // --- Uint 1-4 Component ---
                     //
                     naga::TypeInner::Scalar(naga::Scalar::U32) => {
-                        let data = unsafe { get_data::<u32, 1>(data_bytes, offset)[0] };
+                        let data = get_data::<u32, 1>(data_bytes, offset)[0];
                         unsafe { gl.uniform_1_u32(location, data) };
                     }
                     naga::TypeInner::Vector {
                         size: naga::VectorSize::Bi,
                         scalar: naga::Scalar::U32,
                     } => {
-                        let data = unsafe { get_data::<u32, 2>(data_bytes, offset) };
+                        let data = &get_data::<u32, 2>(data_bytes, offset);
                         unsafe { gl.uniform_2_u32_slice(location, data) };
                     }
                     naga::TypeInner::Vector {
                         size: naga::VectorSize::Tri,
                         scalar: naga::Scalar::U32,
                     } => {
-                        let data = unsafe { get_data::<u32, 3>(data_bytes, offset) };
+                        let data = &get_data::<u32, 3>(data_bytes, offset);
                         unsafe { gl.uniform_3_u32_slice(location, data) };
                     }
                     naga::TypeInner::Vector {
                         size: naga::VectorSize::Quad,
                         scalar: naga::Scalar::U32,
                     } => {
-                        let data = unsafe { get_data::<u32, 4>(data_bytes, offset) };
+                        let data = &get_data::<u32, 4>(data_bytes, offset);
                         unsafe { gl.uniform_4_u32_slice(location, data) };
                     }
 
@@ -1630,7 +1721,7 @@ impl super::Queue {
                         rows: naga::VectorSize::Bi,
                         scalar: naga::Scalar::F32,
                     } => {
-                        let data = unsafe { get_data::<f32, 4>(data_bytes, offset) };
+                        let data = &get_data::<f32, 4>(data_bytes, offset);
                         unsafe { gl.uniform_matrix_2_f32_slice(location, false, data) };
                     }
                     naga::TypeInner::Matrix {
@@ -1639,7 +1730,7 @@ impl super::Queue {
                         scalar: naga::Scalar::F32,
                     } => {
                         // repack 2 vec3s into 6 values.
-                        let unpacked_data = unsafe { get_data::<f32, 8>(data_bytes, offset) };
+                        let unpacked_data = &get_data::<f32, 8>(data_bytes, offset);
                         #[rustfmt::skip]
                         let packed_data = [
                             unpacked_data[0], unpacked_data[1], unpacked_data[2],
@@ -1652,7 +1743,7 @@ impl super::Queue {
                         rows: naga::VectorSize::Quad,
                         scalar: naga::Scalar::F32,
                     } => {
-                        let data = unsafe { get_data::<f32, 8>(data_bytes, offset) };
+                        let data = &get_data::<f32, 8>(data_bytes, offset);
                         unsafe { gl.uniform_matrix_2x4_f32_slice(location, false, data) };
                     }
 
@@ -1664,7 +1755,7 @@ impl super::Queue {
                         rows: naga::VectorSize::Bi,
                         scalar: naga::Scalar::F32,
                     } => {
-                        let data = unsafe { get_data::<f32, 6>(data_bytes, offset) };
+                        let data = &get_data::<f32, 6>(data_bytes, offset);
                         unsafe { gl.uniform_matrix_3x2_f32_slice(location, false, data) };
                     }
                     naga::TypeInner::Matrix {
@@ -1673,7 +1764,7 @@ impl super::Queue {
                         scalar: naga::Scalar::F32,
                     } => {
                         // repack 3 vec3s into 9 values.
-                        let unpacked_data = unsafe { get_data::<f32, 12>(data_bytes, offset) };
+                        let unpacked_data = &get_data::<f32, 12>(data_bytes, offset);
                         #[rustfmt::skip]
                         let packed_data = [
                             unpacked_data[0], unpacked_data[1], unpacked_data[2],
@@ -1687,7 +1778,7 @@ impl super::Queue {
                         rows: naga::VectorSize::Quad,
                         scalar: naga::Scalar::F32,
                     } => {
-                        let data = unsafe { get_data::<f32, 12>(data_bytes, offset) };
+                        let data = &get_data::<f32, 12>(data_bytes, offset);
                         unsafe { gl.uniform_matrix_3x4_f32_slice(location, false, data) };
                     }
 
@@ -1699,7 +1790,7 @@ impl super::Queue {
                         rows: naga::VectorSize::Bi,
                         scalar: naga::Scalar::F32,
                     } => {
-                        let data = unsafe { get_data::<f32, 8>(data_bytes, offset) };
+                        let data = &get_data::<f32, 8>(data_bytes, offset);
                         unsafe { gl.uniform_matrix_4x2_f32_slice(location, false, data) };
                     }
                     naga::TypeInner::Matrix {
@@ -1708,7 +1799,7 @@ impl super::Queue {
                         scalar: naga::Scalar::F32,
                     } => {
                         // repack 4 vec3s into 12 values.
-                        let unpacked_data = unsafe { get_data::<f32, 16>(data_bytes, offset) };
+                        let unpacked_data = &get_data::<f32, 16>(data_bytes, offset);
                         #[rustfmt::skip]
                         let packed_data = [
                             unpacked_data[0], unpacked_data[1], unpacked_data[2],
@@ -1723,7 +1814,7 @@ impl super::Queue {
                         rows: naga::VectorSize::Quad,
                         scalar: naga::Scalar::F32,
                     } => {
-                        let data = unsafe { get_data::<f32, 16>(data_bytes, offset) };
+                        let data = &get_data::<f32, 16>(data_bytes, offset);
                         unsafe { gl.uniform_matrix_4_f32_slice(location, false, data) };
                     }
                     _ => panic!("Unsupported uniform datatype: {:?}!", uniform.ty),
@@ -1775,9 +1866,12 @@ impl crate::Queue for super::Queue {
         }
 
         signal_fence.maintain(gl);
-        let sync = unsafe { gl.fence_sync(glow::SYNC_GPU_COMMANDS_COMPLETE, 0) }
-            .map_err(|_| crate::DeviceError::OutOfMemory)?;
-        signal_fence.pending.push((signal_value, sync));
+        signal_fence.signal(gl, signal_value)?;
+
+        // This is extremely important. If we don't flush, the above fences may never
+        // be signaled, particularly in headless contexts. Headed contexts will
+        // often flush every so often, but headless contexts may not.
+        unsafe { gl.flush() };
 
         Ok(())
     }

@@ -8,6 +8,10 @@ PromiseTestUtils.allowMatchingRejectionsGlobally(
   /Message manager disconnected/
 );
 
+// Enable SCOPE_APPLICATION for builtin testing.  Default in tests is only SCOPE_PROFILE.
+let scopes = AddonManager.SCOPE_PROFILE | AddonManager.SCOPE_APPLICATION;
+Services.prefs.setIntPref("extensions.enabledScopes", scopes);
+
 const profileDir = gProfD.clone();
 profileDir.append("extensions");
 
@@ -122,12 +126,9 @@ async function checkAddon(addonID, { version }) {
 /* globals browser */
 
 // add-on registers upgrade listener, and ignores update.
-add_task(async function test_addon_upgrade_on_restart() {
+add_task(async function test_systemaddon_upgrade_on_restart_builtin() {
   // discard system addon updates
   Services.prefs.setCharPref(PREF_SYSTEM_ADDON_SET, "");
-
-  let xpi = await getSystemAddonXPI(1, "1.0");
-  xpi.copyTo(distroDir, `${NORMAL_ID}.xpi`);
 
   // Version 1.0 of an extension that ignores updates.
   function background() {
@@ -136,15 +137,39 @@ add_task(async function test_addon_upgrade_on_restart() {
     });
   }
 
-  xpi = await createTempWebExtensionFile({
-    background,
-
-    manifest: {
-      version: "1.0",
-      browser_specific_settings: { gecko: { id: IGNORE_ID } },
+  await setupBuiltinExtension(
+    {
+      background,
+      manifest: {
+        version: "1.0",
+        browser_specific_settings: { gecko: { id: IGNORE_ID } },
+      },
     },
+    "test-systemaddon-ignore"
+  );
+  await setupBuiltinExtension(
+    {
+      manifest: {
+        version: "1.0",
+        browser_specific_settings: { gecko: { id: NORMAL_ID } },
+      },
+    },
+    "test-systemaddon-normal"
+  );
+  await overrideBuiltIns({
+    builtins: [
+      {
+        addon_id: IGNORE_ID,
+        addon_version: "1.0",
+        res_url: `resource://test-systemaddon-ignore/`,
+      },
+      {
+        addon_id: NORMAL_ID,
+        addon_version: "1.0",
+        res_url: `resource://test-systemaddon-normal/`,
+      },
+    ],
   });
-  xpi.copyTo(distroDir, `${IGNORE_ID}.xpi`);
 
   // Version 2.0 of the same extension.
   let xpi2 = await createTempWebExtensionFile({
@@ -153,8 +178,6 @@ add_task(async function test_addon_upgrade_on_restart() {
       browser_specific_settings: { gecko: { id: IGNORE_ID } },
     },
   });
-
-  await overrideBuiltIns({ system: [IGNORE_ID, NORMAL_ID] });
 
   let extension = ExtensionTestUtils.expectExtension(IGNORE_ID);
 
@@ -193,15 +216,17 @@ add_task(async function test_addon_upgrade_on_restart() {
   await checkAddon(NORMAL_ID, { version: "2.0" });
 
   await promiseShutdownManager();
+
+  // Destroy the test extension wrappers (fixes failure hit
+  // due to the extension wrapper from a previous call being
+  // still active when the same function is called again).
+  extension.destroy();
 });
 
 // add-on registers upgrade listener, and allows update.
-add_task(async function test_addon_upgrade_on_reload() {
+add_task(async function test_systemaddon_upgrade_on_reload_builtin() {
   // discard system addon updates
   Services.prefs.setCharPref(PREF_SYSTEM_ADDON_SET, "");
-
-  let xpi = await getSystemAddonXPI(1, "1.0");
-  xpi.copyTo(distroDir, `${NORMAL_ID}.xpi`);
 
   // Version 1.0 of an extension that listens for and immediately
   // applies updates.
@@ -213,16 +238,6 @@ add_task(async function test_addon_upgrade_on_reload() {
     });
   }
 
-  xpi = await createTempWebExtensionFile({
-    background,
-
-    manifest: {
-      version: "1.0",
-      browser_specific_settings: { gecko: { id: COMPLETE_ID } },
-    },
-  });
-  xpi.copyTo(distroDir, `${COMPLETE_ID}.xpi`);
-
   // Version 2.0 of the same extension.
   let xpi2 = await createTempWebExtensionFile({
     manifest: {
@@ -231,7 +246,39 @@ add_task(async function test_addon_upgrade_on_reload() {
     },
   });
 
-  await overrideBuiltIns({ system: [COMPLETE_ID, NORMAL_ID] });
+  await setupBuiltinExtension(
+    {
+      background,
+      manifest: {
+        version: "1.0",
+        browser_specific_settings: { gecko: { id: COMPLETE_ID } },
+      },
+    },
+    "test-systemaddon-complete"
+  );
+  await setupBuiltinExtension(
+    {
+      manifest: {
+        version: "1.0",
+        browser_specific_settings: { gecko: { id: NORMAL_ID } },
+      },
+    },
+    "test-systemaddon-normal"
+  );
+  await overrideBuiltIns({
+    builtins: [
+      {
+        addon_id: COMPLETE_ID,
+        addon_version: "1.0",
+        res_url: `resource://test-systemaddon-complete/`,
+      },
+      {
+        addon_id: NORMAL_ID,
+        addon_version: "1.0",
+        res_url: `resource://test-systemaddon-normal/`,
+      },
+    ],
+  });
 
   let extension = ExtensionTestUtils.expectExtension(COMPLETE_ID);
 
@@ -277,6 +324,11 @@ add_task(async function test_addon_upgrade_on_reload() {
   await checkAddon(NORMAL_ID, { version: "2.0" });
 
   await promiseShutdownManager();
+
+  // Destroy the test extension wrappers (fixes failure hit
+  // due to the extension wrapper from a previous call being
+  // still active when the same function is called again).
+  extension.destroy();
 });
 
 function delayBackground() {
@@ -293,22 +345,43 @@ function delayBackground() {
 }
 
 // Upgrade listener initially defers then proceeds after a pause.
-add_task(async function test_addon_upgrade_after_pause() {
+add_task(async function test_systemaddon_upgrade_after_pause_builtin() {
   // discard system addon updates
   Services.prefs.setCharPref(PREF_SYSTEM_ADDON_SET, "");
 
-  let xpi = await getSystemAddonXPI(1, "1.0");
-  xpi.copyTo(distroDir, `${NORMAL_ID}.xpi`);
-
-  // Version 1.0 of an extension that delays upgrades.
-  xpi = await createTempWebExtensionFile({
-    background: delayBackground,
-    manifest: {
-      version: "1.0",
-      browser_specific_settings: { gecko: { id: DEFER_ID } },
+  await setupBuiltinExtension(
+    {
+      background: delayBackground,
+      manifest: {
+        version: "1.0",
+        browser_specific_settings: { gecko: { id: DEFER_ID } },
+      },
     },
+    "test-systemaddon-defer"
+  );
+  await setupBuiltinExtension(
+    {
+      manifest: {
+        version: "1.0",
+        browser_specific_settings: { gecko: { id: NORMAL_ID } },
+      },
+    },
+    "test-systemaddon-normal"
+  );
+  await overrideBuiltIns({
+    builtins: [
+      {
+        addon_id: DEFER_ID,
+        addon_version: "1.0",
+        res_url: `resource://test-systemaddon-defer/`,
+      },
+      {
+        addon_id: NORMAL_ID,
+        addon_version: "1.0",
+        res_url: `resource://test-systemaddon-normal/`,
+      },
+    ],
   });
-  xpi.copyTo(distroDir, `${DEFER_ID}.xpi`);
 
   // Version 2.0 of the same xtension.
   let xpi2 = await createTempWebExtensionFile({
@@ -317,8 +390,6 @@ add_task(async function test_addon_upgrade_after_pause() {
       browser_specific_settings: { gecko: { id: DEFER_ID } },
     },
   });
-
-  await overrideBuiltIns({ system: [DEFER_ID, NORMAL_ID] });
 
   let extension = ExtensionTestUtils.expectExtension(DEFER_ID);
 
@@ -371,24 +442,41 @@ add_task(async function test_addon_upgrade_after_pause() {
   await checkAddon(NORMAL_ID, { version: "2.0" });
 
   await promiseShutdownManager();
+
+  // Destroy the test extension wrappers (fixes failure hit
+  // due to the extension wrapper from a previous call being
+  // still active when the same function is called again).
+  extension.destroy();
 });
 
 // Multiple add-ons register update listeners, initially defers then
 // each unblock in turn.
-add_task(async function test_multiple_addon_upgrade_postpone() {
+add_task(async function test_multiple_systemaddon_upgrade_postpone_builtin() {
   // discard system addon updates.
   Services.prefs.setCharPref(PREF_SYSTEM_ADDON_SET, "");
 
   let updateList = [];
+  let xpi;
+  let overrideBuiltInsData = {
+    system: [],
+    builtins: [],
+  };
 
-  let xpi = await createTempWebExtensionFile({
-    background: delayBackground,
-    manifest: {
-      version: "1.0",
-      browser_specific_settings: { gecko: { id: DEFER2_ID } },
+  await setupBuiltinExtension(
+    {
+      background: delayBackground,
+      manifest: {
+        version: "1.0",
+        browser_specific_settings: { gecko: { id: DEFER2_ID } },
+      },
     },
+    "test-systemaddon-defer2"
+  );
+  overrideBuiltInsData.builtins.push({
+    addon_id: DEFER2_ID,
+    addon_version: "1.0",
+    res_url: "resource://test-systemaddon-defer2/",
   });
-  xpi.copyTo(distroDir, `${DEFER2_ID}.xpi`);
 
   xpi = await createTempWebExtensionFile({
     manifest: {
@@ -403,14 +491,21 @@ add_task(async function test_multiple_addon_upgrade_postpone() {
     xpi,
   });
 
-  xpi = await createTempWebExtensionFile({
-    background: delayBackground,
-    manifest: {
-      version: "1.0",
-      browser_specific_settings: { gecko: { id: DEFER_ALSO_ID } },
+  await setupBuiltinExtension(
+    {
+      background: delayBackground,
+      manifest: {
+        version: "1.0",
+        browser_specific_settings: { gecko: { id: DEFER_ALSO_ID } },
+      },
     },
+    "test-systemaddon-defer-also"
+  );
+  overrideBuiltInsData.builtins.push({
+    addon_id: DEFER_ALSO_ID,
+    addon_version: "1.0",
+    res_url: "resource://test-systemaddon-defer-also/",
   });
-  xpi.copyTo(distroDir, `${DEFER_ALSO_ID}.xpi`);
 
   xpi = await createTempWebExtensionFile({
     manifest: {
@@ -425,7 +520,7 @@ add_task(async function test_multiple_addon_upgrade_postpone() {
     xpi,
   });
 
-  await overrideBuiltIns({ system: [DEFER2_ID, DEFER_ALSO_ID] });
+  await overrideBuiltIns(overrideBuiltInsData);
 
   let extension1 = ExtensionTestUtils.expectExtension(DEFER2_ID);
   let extension2 = ExtensionTestUtils.expectExtension(DEFER_ALSO_ID);
@@ -483,4 +578,10 @@ add_task(async function test_multiple_addon_upgrade_postpone() {
   await checkAddon(DEFER_ALSO_ID, { version: "2.0" });
 
   await promiseShutdownManager();
+
+  // Destroy the test extension wrappers (fixes failure hit
+  // due to the extension wrapper from a previous call being
+  // still active when the same function is called again).
+  extension1.destroy();
+  extension2.destroy();
 });

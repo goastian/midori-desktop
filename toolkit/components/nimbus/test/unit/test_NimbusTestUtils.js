@@ -1,28 +1,15 @@
 "use strict";
 
-const { ExperimentFakes, ExperimentTestUtils } = ChromeUtils.importESModule(
-  "resource://testing-common/NimbusTestUtils.sys.mjs"
-);
-
 add_task(async function test_recipe_fake_validates() {
-  const recipe = ExperimentFakes.recipe("foo");
-  Assert.ok(
-    await ExperimentTestUtils.validateExperiment(recipe),
-    "should produce a valid experiment recipe"
-  );
+  const recipe = NimbusTestUtils.factories.recipe("foo");
+  await NimbusTestUtils.validateExperiment(recipe);
 });
 
 add_task(async function test_enrollmentHelper() {
-  let recipe = ExperimentFakes.recipe("bar", {
-    branches: [
-      {
-        slug: "control",
-        ratio: 1,
-        features: [{ featureId: "aboutwelcome", value: {} }],
-      },
-    ],
+  let recipe = NimbusTestUtils.factories.recipe.withFeatureConfig("bar", {
+    featureId: "aboutwelcome",
   });
-  let manager = ExperimentFakes.manager();
+  let manager = NimbusTestUtils.stubs.manager();
 
   Assert.deepEqual(
     recipe.featureIds,
@@ -30,9 +17,10 @@ add_task(async function test_enrollmentHelper() {
     "Helper sets correct featureIds"
   );
 
+  await manager.store.init();
   await manager.onStartup();
 
-  const doEnrollmentCleanup = await ExperimentFakes.enrollmentHelper(recipe, {
+  const doEnrollmentCleanup = await NimbusTestUtils.enroll(recipe, {
     manager,
   });
 
@@ -47,7 +35,7 @@ add_task(async function test_enrollmentHelper() {
     "Sync pref cache set"
   );
 
-  doEnrollmentCleanup();
+  await doEnrollmentCleanup();
 
   Assert.ok(manager.store.getAll().length === 0, "Cleanup done");
   Assert.ok(
@@ -57,9 +45,11 @@ add_task(async function test_enrollmentHelper() {
 });
 
 add_task(async function test_enrollWithFeatureConfig() {
-  let manager = ExperimentFakes.manager();
-  await manager.onStartup();
-  let doEnrollmentCleanup = await ExperimentFakes.enrollWithFeatureConfig(
+  const { manager, cleanup } = await NimbusTestUtils.setupTest({
+    features: [new ExperimentFeature("enrollWithFeatureConfig", {})],
+  });
+
+  let doEnrollmentCleanup = await NimbusTestUtils.enrollWithFeatureConfig(
     {
       featureId: "enrollWithFeatureConfig",
       value: { enabled: true },
@@ -72,10 +62,12 @@ add_task(async function test_enrollWithFeatureConfig() {
     "Enrolled successfully"
   );
 
-  doEnrollmentCleanup();
+  await doEnrollmentCleanup();
 
   Assert.ok(
     !manager.store.hasExperimentForFeature("enrollWithFeatureConfig"),
     "Unenrolled successfully"
   );
+
+  await cleanup();
 });

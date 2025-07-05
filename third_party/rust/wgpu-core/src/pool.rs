@@ -1,22 +1,17 @@
-use std::{
-    collections::{hash_map::Entry, HashMap},
-    hash::Hash,
-    sync::{Arc, Weak},
-};
+use alloc::sync::{Arc, Weak};
+use core::hash::Hash;
 
+use hashbrown::{hash_map::Entry, HashMap};
 use once_cell::sync::OnceCell;
 
 use crate::lock::{rank, Mutex};
-use crate::{PreHashedKey, PreHashedMap};
+use crate::FastHashMap;
 
 type SlotInner<V> = Weak<V>;
 type ResourcePoolSlot<V> = Arc<OnceCell<SlotInner<V>>>;
 
 pub struct ResourcePool<K, V> {
-    // We use a pre-hashed map as we never actually need to read the keys.
-    //
-    // This additionally allows us to not need to hash more than once on get_or_init.
-    inner: Mutex<PreHashedMap<K, ResourcePoolSlot<V>>>,
+    inner: Mutex<FastHashMap<K, ResourcePoolSlot<V>>>,
 }
 
 impl<K: Clone + Eq + Hash, V> ResourcePool<K, V> {
@@ -35,9 +30,6 @@ impl<K: Clone + Eq + Hash, V> ResourcePool<K, V> {
     where
         F: FnOnce(K) -> Result<Arc<V>, E>,
     {
-        // Hash the key outside of the lock.
-        let hashed_key = PreHashedKey::from_key(&key);
-
         // We can't prove at compile time that these will only ever be consumed once,
         // so we need to do the check at runtime.
         let mut key = Some(key);
@@ -46,7 +38,7 @@ impl<K: Clone + Eq + Hash, V> ResourcePool<K, V> {
         'race: loop {
             let mut map_guard = self.inner.lock();
 
-            let entry = match map_guard.entry(hashed_key) {
+            let entry = match map_guard.entry(key.clone().unwrap()) {
                 // An entry exists for this resource.
                 //
                 // We know that either:
@@ -86,9 +78,11 @@ impl<K: Clone + Eq + Hash, V> ResourcePool<K, V> {
                 return Ok(strong);
             }
 
-            // The resource is in the process of being dropped, because upgrade failed. The entry still exists in the map, but it points to nothing.
+            // The resource is in the process of being dropped, because upgrade failed.
+            // The entry still exists in the map, but it points to nothing.
             //
-            // We're in a race with the drop implementation of the resource, so lets just go around again. When we go around again:
+            // We're in a race with the drop implementation of the resource,
+            //  so lets just go around again. When we go around again:
             // - If the entry exists, we might need to go around a few more times.
             // - If the entry doesn't exist, we'll create a new one.
             continue 'race;
@@ -101,22 +95,21 @@ impl<K: Clone + Eq + Hash, V> ResourcePool<K, V> {
     ///
     /// [`BindGroupLayout`]: crate::binding_model::BindGroupLayout
     pub fn remove(&self, key: &K) {
-        let hashed_key = PreHashedKey::from_key(key);
-
         let mut map_guard = self.inner.lock();
 
         // Weak::upgrade will be failing long before this code is called. All threads trying to access the resource will be spinning,
         // waiting for the entry to be removed. It is safe to remove the entry from the map.
-        map_guard.remove(&hashed_key);
+        map_guard.remove(key);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{
-        atomic::{AtomicU32, Ordering},
-        Barrier,
+    use core::{
+        sync::atomic::{AtomicU32, Ordering},
+        time::Duration,
     };
+    use std::{eprintln, sync::Barrier, thread};
 
     use super::*;
 
@@ -208,7 +201,7 @@ mod tests {
                     eprintln!("{idx}: init");
 
                     // Simulate long running constructor, ensuring that both threads will be in get_or_init.
-                    std::thread::sleep(std::time::Duration::from_millis(250));
+                    thread::sleep(Duration::from_millis(250));
 
                     resources.counter.fetch_add(1, Ordering::SeqCst);
 
@@ -221,7 +214,7 @@ mod tests {
             ret
         }
 
-        let thread1 = std::thread::spawn({
+        let thread1 = thread::spawn({
             let resource_clone = Arc::clone(&resources);
             move || thread_inner(1, &resource_clone)
         });
@@ -296,7 +289,7 @@ mod tests {
 
             eprintln!("1: postwait");
             // We wait a little bit, making sure that thread0_inner has started spinning.
-            std::thread::sleep(std::time::Duration::from_millis(250));
+            thread::sleep(Duration::from_millis(250));
             eprintln!("1: postsleep");
 
             // We remove the entry from the pool, allowing thread0_inner to re-create.
@@ -304,7 +297,7 @@ mod tests {
             eprintln!("1: removal");
         }
 
-        let thread1 = std::thread::spawn({
+        let thread1 = thread::spawn({
             let resource_clone = Arc::clone(&resources);
             move || thread1_inner(&resource_clone)
         });

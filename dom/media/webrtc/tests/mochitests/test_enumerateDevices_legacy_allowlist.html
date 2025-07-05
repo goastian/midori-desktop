@@ -1,0 +1,20 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <script src="mediaStreamPlayback.js"></script>
+  <script src="testLegacyEnumerateDevices.js"></script>
+</head>
+<body>
+<pre id="test">
+<script type="application/javascript">
+createHTML({ title: "Run legacy enumerateDevices allowlist", bug: "1908056" });
+
+runTest(async () => {
+  await withPrefs([["media.navigator.streams.fake", true],
+                   ["media.devices.enumerate.legacy.allowlist", "example.com,*.example.com"]],
+                  testLegacyEnumerateDevices);
+});
+</script>
+</pre>
+</body>
+</html>

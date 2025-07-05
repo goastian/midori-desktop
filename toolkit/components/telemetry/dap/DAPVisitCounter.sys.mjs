@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { DAPTelemetrySender } from "./DAPTelemetrySender.sys.mjs";
+import { DAPReportController, Task } from "./DAPReportController.sys.mjs";
 
 let lazy = {};
 
@@ -13,37 +13,51 @@ ChromeUtils.defineLazyGetter(lazy, "logConsole", function () {
   });
 });
 ChromeUtils.defineESModuleGetters(lazy, {
-  AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
-  setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
 export const DAPVisitCounter = new (class {
-  startup() {
-    this._asyncShutdownBlocker = async () => {
-      lazy.logConsole.debug(`Sending on shutdown.`);
-      await this.send(2 * 1000, "shutdown");
-    };
+  counters = null;
+  dapReportContoller = null;
 
-    lazy.AsyncShutdown.quitApplicationGranted.addBlocker(
-      "DAPVisitCounter: sending data",
-      this._asyncShutdownBlocker
-    );
+  async startup() {
+    if (
+      Services.startup.isInOrBeyondShutdownPhase(
+        Ci.nsIAppStartup.SHUTDOWN_PHASE_APPSHUTDOWNCONFIRMED
+      )
+    ) {
+      lazy.logConsole.warn(
+        "DAPVisitCounter startup not possible due to shutdown."
+      );
+      return;
+    }
 
-    const listener = events => {
-      // Even using the event.hidden flag there mayb be some double counting
-      // here. It would have to be fixed in the Places API.
+    const placesTypes = ["page-visited", "history-cleared", "page-removed"];
+    const placesListener = async events => {
       for (const event of events) {
-        lazy.logConsole.debug(`Visited: ${event.url}`);
-        if (event.hidden) {
-          continue;
-        }
-        for (const counter of this.counters) {
-          for (const pattern of counter.patterns) {
-            if (pattern.matches(event.url)) {
-              lazy.logConsole.debug(`${pattern.pattern} matched!`);
-              counter.count += 1;
+        // Prioritizing data deletion.
+        switch (event.type) {
+          case "history-cleared":
+          case "page-removed": {
+            await this.dapReportContoller.deleteState();
+            break;
+          }
+          case "page-visited": {
+            // Even using the event.hidden flag there mayb be some double counting
+            // here. It would have to be fixed in the Places API.
+            if (!event.hidden) {
+              for (const counter of this.counters) {
+                for (const pattern of counter.patterns) {
+                  if (pattern.matches(event.url)) {
+                    lazy.logConsole.debug(`${pattern.pattern} matched!`);
+                    await this.dapReportContoller.recordMeasurement(
+                      counter.experiment.task_id,
+                      counter.experiment.bucket
+                    );
+                  }
+                }
+              }
             }
           }
         }
@@ -51,19 +65,53 @@ export const DAPVisitCounter = new (class {
     };
 
     lazy.NimbusFeatures.dapTelemetry.onUpdate(async () => {
-      if (typeof this.counters !== "undefined") {
-        await this.send(30 * 1000, "nimbus-update");
+      if (this.counters !== null) {
+        await this.dapReportContoller.cleanup(30 * 1000, "nimbus-update");
+        this.counters = null;
+        this.dapReportContoller = null;
       }
-      this.initialize_counters();
+
+      // Clear registered calllbacks
+      lazy.PlacesUtils.observers.removeListener(placesTypes, placesListener);
+
+      // If we have an active Nimbus configuration, register this DAPVisitCounter.
+      if (
+        lazy.NimbusFeatures.dapTelemetry.getVariable("enabled") &&
+        lazy.NimbusFeatures.dapTelemetry.getVariable("visitCountingEnabled")
+      ) {
+        this.initialize_counters();
+
+        lazy.PlacesUtils.observers.addListener(placesTypes, placesListener);
+
+        /*
+          Intentionally not adding AsyncShutdown.appShutdownConfirmed.addBlocker.
+          Attempting to send a report on shutdown causes a NetworkError which
+          ultimately result in a lost report.  Since the pending report is
+          persisted, it will be submitted on the next start.
+         */
+
+        let tasks = {};
+        for (const counter of this.counters) {
+          const task = new Task({
+            taskId: counter.experiment.task_id,
+            bits: 8,
+            vdaf: "histogram",
+            length: counter.experiment.task_veclen,
+            defaultMeasurement: 0,
+          });
+          tasks[counter.experiment.task_id] = task;
+        }
+
+        this.dapReportContoller = new DAPReportController({
+          tasks,
+          options: {
+            windowDays: 7,
+            submissionIntervalMins: 240,
+          },
+        });
+        this.dapReportContoller.startTimedSubmission();
+      }
     });
-
-    if (typeof this.counters === "undefined") {
-      this.initialize_counters();
-    }
-
-    lazy.PlacesUtils.observers.addListener(["page-visited"], listener);
-
-    lazy.setTimeout(() => this.timed_send(), this.timeout_value());
   }
 
   initialize_counters() {
@@ -88,7 +136,6 @@ export const DAPVisitCounter = new (class {
       for (const [task, urls] of Object.entries(experiments)) {
         for (const [idx, url] of urls.entries()) {
           const fullUrl = `*://${url}/*`;
-
           this.counters.push({
             experiment: {
               task_id: task,
@@ -103,57 +150,9 @@ export const DAPVisitCounter = new (class {
     }
   }
 
-  async timed_send() {
-    lazy.logConsole.debug("Sending on timer.");
-    await this.send(30 * 1000, "periodic");
-    lazy.setTimeout(() => this.timed_send(), this.timeout_value());
-  }
-
-  timeout_value() {
-    const MINUTE = 60 * 1000;
-    return MINUTE * (9 + Math.random() * 2); // 9 - 11 minutes
-  }
-
-  async send(timeout, reason) {
-    let collected_measurements = new Map();
-    for (const counter of this.counters) {
-      if (!collected_measurements.has(counter.experiment.task_id)) {
-        collected_measurements.set(
-          counter.experiment.task_id,
-          new Uint8Array(counter.experiment.task_veclen)
-        );
-      }
-      collected_measurements.get(counter.experiment.task_id)[
-        counter.experiment.bucket
-      ] = counter.count;
-      counter.count = 0;
-    }
-
-    let send_promises = [];
-    for (const [task_id, measurement] of collected_measurements) {
-      let task = {
-        id: task_id,
-        time_precision: 60,
-        measurement_type: "vecu8",
-      };
-
-      send_promises.push(
-        DAPTelemetrySender.sendDAPMeasurement(
-          task,
-          measurement,
-          timeout,
-          reason
-        )
-      );
-    }
-    await Promise.all(send_promises);
-  }
-
   show() {
     for (const counter of this.counters) {
-      lazy.logConsole.info(
-        `Experiment: ${counter.experiment.url} -> ${counter.count}`
-      );
+      lazy.logConsole.info(`Experiment: ${counter.experiment.url}`);
     }
     return this.counters;
   }

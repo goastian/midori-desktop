@@ -1,69 +1,53 @@
 "use strict";
 
-const { ExperimentAPI, _ExperimentFeature: ExperimentFeature } =
-  ChromeUtils.importESModule("resource://nimbus/ExperimentAPI.sys.mjs");
-const { ExperimentFakes } = ChromeUtils.importESModule(
-  "resource://testing-common/NimbusTestUtils.sys.mjs"
+const { NimbusTelemetry } = ChromeUtils.importESModule(
+  "resource://nimbus/lib/Telemetry.sys.mjs"
+);
+const { PrefUtils } = ChromeUtils.importESModule(
+  "resource://normandy/lib/PrefUtils.sys.mjs"
 );
 
-async function setupForExperimentFeature() {
-  const sandbox = sinon.createSandbox();
-  const manager = ExperimentFakes.manager();
-  await manager.onStartup();
-
-  sandbox.stub(ExperimentAPI, "_store").get(() => manager.store);
-
-  return { sandbox, manager };
-}
-
-function setDefaultBranch(pref, value) {
-  let branch = Services.prefs.getDefaultBranch("");
-  branch.setStringPref(pref, value);
-}
-
 const TEST_FALLBACK_PREF = "testprefbranch.config";
-const FAKE_FEATURE_MANIFEST = {
-  description: "Test feature",
-  exposureDescription: "Used in tests",
-  variables: {
-    enabled: {
-      type: "boolean",
-      fallbackPref: "testprefbranch.enabled",
-    },
-    config: {
-      type: "json",
-      fallbackPref: TEST_FALLBACK_PREF,
-    },
-    remoteValue: {
-      type: "boolean",
-    },
-    test: {
-      type: "boolean",
-    },
-    title: {
-      type: "string",
-    },
-  },
-};
 
-/**
- * FOG requires a little setup in order to test it
- */
 add_setup(function test_setup() {
-  // FOG needs a profile directory to put its data in.
-  do_get_profile();
-
-  // FOG needs to be initialized in order for data to flow.
   Services.fog.initializeFOG();
 });
 
+function setupTest(options) {
+  return NimbusTestUtils.setupTest({
+    ...options,
+    clearTelemetry: true,
+    features: [
+      new ExperimentFeature("foo", {
+        variables: {
+          enabled: {
+            type: "boolean",
+            fallbackPref: "testprefbranch.enabled",
+          },
+          config: {
+            type: "json",
+            fallbackPref: TEST_FALLBACK_PREF,
+          },
+          remoteValue: {
+            type: "boolean",
+          },
+          test: {
+            type: "boolean",
+          },
+          title: {
+            type: "string",
+          },
+        },
+      }),
+    ],
+  });
+}
+
 add_task(async function test_ExperimentFeature_test_helper_ready() {
-  const { manager } = await setupForExperimentFeature();
+  const { manager, cleanup } = await setupTest();
   await manager.store.ready();
 
-  const featureInstance = new ExperimentFeature("foo", FAKE_FEATURE_MANIFEST);
-
-  await ExperimentFakes.enrollWithFeatureConfig(
+  const cleanupExperiment = await NimbusTestUtils.enrollWithFeatureConfig(
     {
       featureId: "foo",
       value: { remoteValue: "mochitest", enabled: true },
@@ -75,62 +59,71 @@ add_task(async function test_ExperimentFeature_test_helper_ready() {
   );
 
   Assert.equal(
-    featureInstance.getVariable("remoteValue"),
+    NimbusFeatures.foo.getVariable("remoteValue"),
     "mochitest",
     "set by remote config"
   );
+
+  await cleanupExperiment();
+  await cleanup();
 });
 
 add_task(async function test_record_exposure_event() {
-  const { sandbox, manager } = await setupForExperimentFeature();
-
-  const featureInstance = new ExperimentFeature("foo", FAKE_FEATURE_MANIFEST);
-  const exposureSpy = sandbox.spy(ExperimentAPI, "recordExposureEvent");
-  const getExperimentSpy = sandbox.spy(ExperimentAPI, "getExperimentMetaData");
-  sandbox.stub(ExperimentAPI, "_store").get(() => manager.store);
-
-  // Clear any pre-existing data in Glean
   Services.fog.testResetFOG();
 
-  featureInstance.recordExposureEvent();
+  const { sandbox, manager, cleanup } = await setupTest();
+
+  sandbox.spy(NimbusTelemetry, "recordExposure");
+  sandbox.spy(NimbusFeatures.foo, "getEnrollmentMetadata");
+
+  await NimbusTestUtils.assert.storeIsEmpty(manager.store);
+  NimbusFeatures.foo.recordExposureEvent();
 
   Assert.ok(
-    exposureSpy.notCalled,
+    NimbusTelemetry.recordExposure.notCalled,
     "should not emit an exposure event when no experiment is active"
   );
 
   // Check that there aren't any Glean exposure events yet
-  var exposureEvents = Glean.nimbusEvents.exposure.testGetValue();
+  var exposureEvents = Glean.nimbusEvents.exposure.testGetValue("events");
   Assert.equal(
     undefined,
     exposureEvents,
     "no Glean exposure events before exposure"
   );
 
-  await manager.store.addEnrollment(
-    ExperimentFakes.experiment("blah", {
-      branch: {
-        slug: "treatment",
-        features: [
-          {
-            featureId: "foo",
-            value: { enabled: false },
-          },
-        ],
-      },
-    })
+  await manager.enroll(
+    NimbusTestUtils.factories.recipe("blah", {
+      branches: [
+        {
+          slug: "treatment",
+          ratio: 1,
+          features: [
+            {
+              featureId: "foo",
+              value: { enabled: false },
+            },
+          ],
+        },
+      ],
+    }),
+    "test"
   );
 
-  featureInstance.recordExposureEvent();
+  NimbusFeatures.foo.recordExposureEvent();
 
   Assert.ok(
-    exposureSpy.calledOnce,
+    NimbusTelemetry.recordExposure.calledOnce,
     "should emit an exposure event when there is an experiment"
   );
-  Assert.equal(getExperimentSpy.callCount, 2, "Should be called every time");
+  Assert.equal(
+    NimbusFeatures.foo.getEnrollmentMetadata.callCount,
+    2,
+    "Should be called every time"
+  );
 
   // Check that the Glean exposure event was recorded.
-  exposureEvents = Glean.nimbusEvents.exposure.testGetValue();
+  exposureEvents = Glean.nimbusEvents.exposure.testGetValue("events");
   // We expect only one event
   Assert.equal(1, exposureEvents.length);
   // And that one event matches the expected
@@ -151,35 +144,28 @@ add_task(async function test_record_exposure_event() {
   );
 
   sandbox.restore();
+
+  await manager.unenroll("blah");
+  await cleanup();
 });
 
 add_task(async function test_record_exposure_event_once() {
-  const { sandbox, manager } = await setupForExperimentFeature();
+  const { sandbox, manager, cleanup } = await setupTest();
 
-  const featureInstance = new ExperimentFeature("foo", FAKE_FEATURE_MANIFEST);
-  const exposureSpy = sandbox.spy(ExperimentAPI, "recordExposureEvent");
-  sandbox.stub(ExperimentAPI, "_store").get(() => manager.store);
+  const exposureSpy = sandbox.spy(NimbusTelemetry, "recordExposure");
 
-  // Clear any pre-existing data in Glean
-  Services.fog.testResetFOG();
-
-  await manager.store.addEnrollment(
-    ExperimentFakes.experiment("blah", {
-      branch: {
-        slug: "treatment",
-        features: [
-          {
-            featureId: "foo",
-            value: { enabled: false },
-          },
-        ],
-      },
-    })
+  await manager.enroll(
+    NimbusTestUtils.factories.recipe.withFeatureConfig("blah", {
+      branchSlug: "treatment",
+      featureId: "foo",
+      value: { enabled: false },
+    }),
+    "test"
   );
 
-  featureInstance.recordExposureEvent({ once: true });
-  featureInstance.recordExposureEvent({ once: true });
-  featureInstance.recordExposureEvent({ once: true });
+  NimbusFeatures.foo.recordExposureEvent({ once: true });
+  NimbusFeatures.foo.recordExposureEvent({ once: true });
+  NimbusFeatures.foo.recordExposureEvent({ once: true });
 
   Assert.ok(
     exposureSpy.calledOnce,
@@ -187,23 +173,23 @@ add_task(async function test_record_exposure_event_once() {
   );
 
   // Check that the Glean exposure event was recorded.
-  let exposureEvents = Glean.nimbusEvents.exposure.testGetValue();
+  let exposureEvents = Glean.nimbusEvents.exposure.testGetValue("events");
   // We expect only one event
   Assert.equal(1, exposureEvents.length);
 
-  sandbox.restore();
+  await manager.unenroll("blah");
+  await cleanup();
 });
 
 add_task(async function test_allow_multiple_exposure_events() {
-  const { sandbox, manager } = await setupForExperimentFeature();
+  const { sandbox, manager, cleanup } = await setupTest();
 
-  const featureInstance = new ExperimentFeature("foo", FAKE_FEATURE_MANIFEST);
-  const exposureSpy = sandbox.spy(ExperimentAPI, "recordExposureEvent");
+  const exposureSpy = sandbox.spy(NimbusTelemetry, "recordExposure");
 
   // Clear any pre-existing data in Glean
   Services.fog.testResetFOG();
 
-  let doExperimentCleanup = await ExperimentFakes.enrollWithFeatureConfig(
+  let doExperimentCleanup = await NimbusTestUtils.enrollWithFeatureConfig(
     {
       featureId: "foo",
       value: { enabled: false },
@@ -211,11 +197,10 @@ add_task(async function test_allow_multiple_exposure_events() {
     { manager }
   );
 
-  featureInstance.recordExposureEvent();
-  featureInstance.recordExposureEvent();
-  featureInstance.recordExposureEvent();
+  NimbusFeatures.foo.recordExposureEvent();
+  NimbusFeatures.foo.recordExposureEvent();
+  NimbusFeatures.foo.recordExposureEvent();
 
-  Assert.ok(exposureSpy.called, "Should emit exposure event");
   Assert.equal(
     exposureSpy.callCount,
     3,
@@ -223,72 +208,24 @@ add_task(async function test_allow_multiple_exposure_events() {
   );
 
   // Check that the Glean exposure event was recorded.
-  let exposureEvents = Glean.nimbusEvents.exposure.testGetValue();
+  let exposureEvents = Glean.nimbusEvents.exposure.testGetValue("events");
   // We expect 3 events
   Assert.equal(3, exposureEvents.length);
 
-  sandbox.restore();
-  doExperimentCleanup();
+  await doExperimentCleanup();
+  await cleanup();
 });
 
-add_task(async function test_onUpdate_before_store_ready() {
-  let sandbox = sinon.createSandbox();
-  const feature = new ExperimentFeature("foo", FAKE_FEATURE_MANIFEST);
-  const stub = sandbox.stub();
-  const manager = ExperimentFakes.manager();
-  sandbox.stub(ExperimentAPI, "_store").get(() => manager.store);
-  sandbox.stub(manager.store, "getAllActiveExperiments").returns([
-    ExperimentFakes.experiment("foo-experiment", {
-      branch: {
-        slug: "control",
-        features: [
-          {
-            featureId: "foo",
-            value: null,
-          },
-        ],
-      },
-    }),
-  ]);
-
-  // We register for updates before the store finished loading experiments
-  // from disk
-  feature.onUpdate(stub);
-
-  await manager.onStartup();
-
-  Assert.ok(
-    stub.calledOnce,
-    "Called on startup after loading experiments from disk"
-  );
-  Assert.equal(
-    stub.firstCall.args[0],
-    `featureUpdate:${feature.featureId}`,
-    "Called for correct feature"
-  );
-
-  Assert.equal(
-    stub.firstCall.args[1],
-    "feature-experiment-loaded",
-    "Called for the expected reason"
-  );
-});
-
-add_task(async function test_ExperimentFeature_test_ready_late() {
-  const { manager, sandbox } = await setupForExperimentFeature();
+add_task(async function test_onUpdate_after_store_ready() {
+  const { sandbox, manager, cleanup } = await setupTest();
   const stub = sandbox.stub();
 
-  const featureInstance = new ExperimentFeature(
-    "test-feature",
-    FAKE_FEATURE_MANIFEST
-  );
-
-  const rollout = ExperimentFakes.rollout("foo", {
+  const rollout = NimbusTestUtils.factories.rollout("foo", {
     branch: {
       slug: "slug",
       features: [
         {
-          featureId: featureInstance.featureId,
+          featureId: "foo",
           value: {
             title: "hello",
             enabled: true,
@@ -300,26 +237,26 @@ add_task(async function test_ExperimentFeature_test_ready_late() {
 
   sandbox.stub(manager.store, "getAllActiveRollouts").returns([rollout]);
 
-  await manager.onStartup();
-
-  featureInstance.onUpdate(stub);
-
-  await featureInstance.ready();
+  NimbusFeatures.foo.onUpdate(stub);
 
   Assert.ok(stub.calledOnce, "Callback called");
-  Assert.equal(stub.firstCall.args[0], "featureUpdate:test-feature");
+  Assert.equal(stub.firstCall.args[0], "featureUpdate:foo");
   Assert.equal(stub.firstCall.args[1], "rollout-updated");
 
-  setDefaultBranch(TEST_FALLBACK_PREF, JSON.stringify({ foo: true }));
+  PrefUtils.setPref(TEST_FALLBACK_PREF, JSON.stringify({ foo: true }), {
+    branch: "default",
+  });
 
   Assert.deepEqual(
-    featureInstance.getVariable("config"),
+    NimbusFeatures.foo.getVariable("config"),
     { foo: true },
     "Feature is ready even when initialized after store update"
   );
   Assert.equal(
-    featureInstance.getVariable("title"),
+    NimbusFeatures.foo.getVariable("title"),
     "hello",
     "Returns the NimbusTestUtils rollout default value"
   );
+
+  await cleanup();
 });

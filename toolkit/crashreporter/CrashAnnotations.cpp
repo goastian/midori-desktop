@@ -8,31 +8,46 @@
 #include <cstring>
 #include <iterator>
 
+#include "nsString.h"
+
 using std::begin;
 using std::end;
 using std::find_if;
 
 namespace CrashReporter {
 
-bool AnnotationFromString(Annotation& aResult, const char* aValue) {
+using mozilla::Nothing;
+using mozilla::Some;
+
+Maybe<Annotation> AnnotationFromString(const nsACString& aValue) {
   const auto* elem = find_if(
       begin(kAnnotationStrings), end(kAnnotationStrings),
-      [&aValue](const char* aString) { return strcmp(aString, aValue) == 0; });
+      [&aValue](const char* aString) { return aValue.Equals(aString); });
 
   if (elem == end(kAnnotationStrings)) {
-    return false;
+    return Nothing();
   }
 
-  aResult = static_cast<Annotation>(elem - begin(kAnnotationStrings));
-  return true;
+  return Some(static_cast<Annotation>(elem - begin(kAnnotationStrings)));
+}
+
+template <size_t N>
+static bool AnnotationInList(Annotation aAnnotation,
+                             const Annotation (&aList)[N]) {
+  const auto* elem = find_if(
+      begin(aList), end(aList),
+      [&aAnnotation](Annotation aElement) { return aElement == aAnnotation; });
+
+  return elem != end(aList);
 }
 
 bool IsAnnotationAllowedForPing(Annotation aAnnotation) {
-  const auto* elem = find_if(
-      begin(kCrashPingAllowedList), end(kCrashPingAllowedList),
-      [&aAnnotation](Annotation aElement) { return aElement == aAnnotation; });
+  return AnnotationInList(aAnnotation, kCrashPingAllowedList);
+}
 
-  return elem != end(kCrashPingAllowedList);
+bool IsAnnotationAllowedForReport(Annotation aAnnotation) {
+  return AnnotationInList(aAnnotation, kCrashPingAllowedList) ||
+         AnnotationInList(aAnnotation, kCrashReportAllowedList);
 }
 
 bool ShouldIncludeAnnotation(Annotation aAnnotation, const char* aValue) {

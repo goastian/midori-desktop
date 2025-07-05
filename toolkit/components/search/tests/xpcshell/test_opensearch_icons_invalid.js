@@ -6,19 +6,19 @@
 "use strict";
 
 add_setup(async function () {
-  let server = useHttpServer("");
+  let server = useHttpServer();
   server.registerContentType("sjs", "sjs");
-  await AddonTestUtils.promiseStartupManager();
 });
 
 add_task(async function test_installedresourceicon() {
+  consoleAllowList.push("Error while setting icon for search engine");
   // Attempts to load a resource:// url as an icon.
   let engine1 = await SearchTestUtils.installOpenSearchEngine({
-    url: `${gDataUrl}opensearch/resourceicon.xml`,
+    url: `${gHttpURL}/opensearch/resourceicon.xml`,
   });
   // Attempts to load a chrome:// url as an icon.
   let engine2 = await SearchTestUtils.installOpenSearchEngine({
-    url: `${gDataUrl}opensearch/chromeicon.xml`,
+    url: `${gHttpURL}/opensearch/chromeicon.xml`,
   });
 
   Assert.equal(undefined, await engine1.getIconURL());
@@ -37,10 +37,10 @@ add_task(async function test_installedhttpplace() {
   // Attempts to load a non-image page into an image icon.
   let engine = await SearchTestUtils.installOpenSearchEngine({
     url:
-      `${gDataUrl}data/engineMaker.sjs?` +
+      `${gHttpURL}/sjs/engineMaker.sjs?` +
       JSON.stringify({
-        baseURL: gDataUrl,
-        image: "head_search.js",
+        baseURL: `${gHttpURL}/`,
+        imageURL: `${gHttpURL}/head_search.js`,
         name: "invalidicon",
         method: "GET",
       }),

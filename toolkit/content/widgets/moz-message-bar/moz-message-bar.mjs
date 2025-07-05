@@ -7,6 +7,8 @@ import { MozLitElement } from "../lit-utils.mjs";
 // eslint-disable-next-line import/no-unassigned-import
 import "chrome://global/content/elements/moz-button.mjs";
 
+window.MozXULElement?.insertFTLIfNeeded("toolkit/global/mozMessageBar.ftl");
+
 const messageTypeToIconData = {
   info: {
     iconSrc: "chrome://global/skin/icons/info-filled.svg",
@@ -52,29 +54,40 @@ export default class MozMessageBar extends MozLitElement {
     actionsSlot: "slot[name=actions]",
     actionsEl: ".actions",
     closeButton: "moz-button.close",
+    messageEl: ".message",
     supportLinkSlot: "slot[name=support-link]",
   };
 
   static properties = {
     type: { type: String },
-    heading: { type: String },
-    message: { type: String },
+    heading: { type: String, fluent: true },
+    message: { type: String, fluent: true },
     dismissable: { type: Boolean },
     messageL10nId: { type: String },
     messageL10nArgs: { type: String },
-    useAlertRole: { type: Boolean },
   };
 
   constructor() {
     super();
-    window.MozXULElement?.insertFTLIfNeeded("toolkit/global/mozMessageBar.ftl");
     this.type = "info";
     this.dismissable = false;
   }
 
-  onSlotchange() {
+  onActionSlotchange() {
     let actions = this.actionsSlot.assignedNodes();
     this.actionsEl.classList.toggle("active", actions.length);
+  }
+
+  onLinkSlotChange() {
+    this.messageEl.classList.toggle(
+      "has-link-after",
+      !!this.supportLinkEls.length
+    );
+  }
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.setAttribute("role", "alert");
   }
 
   disconnectedCallback() {
@@ -85,18 +98,6 @@ export default class MozMessageBar extends MozLitElement {
   get supportLinkEls() {
     return this.supportLinkSlot.assignedElements();
   }
-
-  setAlertRole() {
-    // Wait a little for this to render before setting the role for more
-    // consistent alerts to screen readers.
-    this.useAlertRole = false;
-    window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => {
-        this.useAlertRole = true;
-      });
-    });
-  }
-
 
   iconTemplate() {
     let iconData = messageTypeToIconData[this.type];
@@ -118,9 +119,7 @@ export default class MozMessageBar extends MozLitElement {
 
   headingTemplate() {
     if (this.heading) {
-      return html`
-        <strong id="heading" class="heading">${this.heading}</strong>
-      `;
+      return html`<strong class="heading">${this.heading}</strong>`;
     }
     return "";
   }
@@ -146,18 +145,13 @@ export default class MozMessageBar extends MozLitElement {
         rel="stylesheet"
         href="chrome://global/content/elements/moz-message-bar.css"
       />
-      <div
-        class="container"
-        role=${ifDefined(this.useAlertRole ? "alert" : undefined)}
-        aria-labelledby=${this.heading ? "heading" : "content"}
-        aria-describedby=${ifDefined(this.heading ? "content" : undefined)}
-      >
+      <div class="container">
         <div class="content">
           <div class="text-container">
             ${this.iconTemplate()}
             <div class="text-content">
               ${this.headingTemplate()}
-              <div id="content">
+              <div>
                 <span
                   class="message"
                   data-l10n-id=${ifDefined(this.messageL10nId)}
@@ -168,13 +162,16 @@ export default class MozMessageBar extends MozLitElement {
                   ${this.message}
                 </span>
                 <span class="link">
-                  <slot name="support-link"></slot>
+                  <slot
+                    name="support-link"
+                    @slotchange=${this.onLinkSlotChange}
+                  ></slot>
                 </span>
               </div>
             </div>
           </div>
           <span class="actions">
-            <slot name="actions" @slotchange=${this.onSlotchange}></slot>
+            <slot name="actions" @slotchange=${this.onActionSlotchange}></slot>
           </span>
         </div>
         ${this.closeButtonTemplate()}

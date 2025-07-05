@@ -3,6 +3,10 @@
 
 "use strict";
 
+let bounceTrackingProtection = Cc[
+  "@mozilla.org/bounce-tracking-protection;1"
+].getService(Ci.nsIBounceTrackingProtection);
+
 // Import helpers from webauthn tests.
 Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/dom/webauthn/tests/browser/head.js",
@@ -120,6 +124,10 @@ add_setup(async function () {
 
   await SpecialPowers.pushPrefEnv({
     set: [
+      [
+        "privacy.bounceTrackingProtection.mode",
+        Ci.nsIBounceTrackingProtection.MODE_ENABLED,
+      ],
       ["security.webauth.webauthn_enable_softtoken", true],
       ["security.webauth.webauthn_enable_usbtoken", false],
     ],

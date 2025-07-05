@@ -71,9 +71,15 @@ void nsMacRemoteServer::HandleCommandLine(CFDataRef aData) {
       // in the current instance.
       cmdLine->Run();
 
-      // And bring the app's window to front.
-      [[NSRunningApplication currentApplication]
-          activateWithOptions:NSApplicationActivateIgnoringOtherApps];
+      NSNumber* raise = dict[@"raise"];
+      if (!raise || [raise boolValue]) {
+        // Activating the application brings the most recent window to the
+        // foreground.
+        ProcessSerialNumber psn;
+        if (::GetCurrentProcess(&psn) == noErr) {
+          ::SetFrontProcess(&psn);
+        }
+      }
     }
   }
 }

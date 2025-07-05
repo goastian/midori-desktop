@@ -110,6 +110,11 @@ interface nsIUpdate : nsISupports
   readonly attribute AString appVersion;
 
   /**
+   * The platform version of this update.
+   */
+  readonly attribute AString platformVersion;
+
+  /**
    * The Application version prior to the application being updated.
    */
   readonly attribute AString previousAppVersion;
@@ -398,9 +403,12 @@ interface nsIApplicationUpdateServiceInternal : nsISupports
    * method is invoked as part of the update initialization process, but is not
    * an entry point to it.
    *
+   * @param   force
+   *          If `true`, run the initialization again, even if we already have.
+   *          Should only be used in testing.
    * @returns Promise<undefined>
    */
-  Promise init();
+  Promise init(in boolean force);
 
   /**
    * These are identical to the corresponding functions in
@@ -409,14 +417,6 @@ interface nsIApplicationUpdateServiceInternal : nsISupports
    */
   Promise downloadUpdate(in nsIUpdate update);
   Promise stopDownload();
-
-  /**
-   * Runs post update processing, even if it has already run. This should only
-   * be done in testing.
-   *
-   * @returns Promise<undefined>
-   */
-  Promise postUpdateProcessing();
 };
 
 /**
@@ -824,6 +824,55 @@ interface nsIUpdateSyncManager : nsISupports
 };
 
 /**
+  * An object interface suitable for acquiring the update mutex for the current
+  * installation path.
+  *
+  * The update mutex gives protection against 2 instances running from the same
+  * installation path updating at the same time:
+  * 1) By running multiple profiles from the same installation path.
+  * 2) By running in 2 different user sessions from the same installation path.
+  *
+  * nsIUpdateMutex objects do not hold the update mutex when they are created:
+  * acquiring the update mutex requires an explicit call to tryLock().
+  *
+  * The update mutex is automatically released if the application instance
+  * holding it dies. This is guaranteed by the primitives that are used under
+  * the hood by nsIUpdateMutex objects.
+  *
+  * nsIUpdateMutex objects are independent of one another. If acquisition is
+  * successful through one object, any attempt to acquire the update mutex
+  * through another object will fail, until the update mutex is released
+  * through the first object or the instance where the object lives dies. This
+  * applies even if both objects live in the same instance.
+  */
+[scriptable, uuid(dbfa19d2-f3d3-4354-a992-e99f75c22c4a)]
+interface nsIUpdateMutex : nsISupports
+{
+  /**
+   * Checks the current acquisition status for the current object.
+   *
+   * @returns true if the update mutex for the current installation is being
+   *               held by the current instance through the current object.
+   */
+  boolean isLocked();
+
+  /**
+   * Attempts to acquire the update mutex for the current installation path.
+   *
+   * @returns true if the update mutex was successfully acquired or was already
+   *          held by the current instance through the current object.
+   */
+  boolean tryLock();
+
+  /**
+   * Manually releases the update mutex for the current installation path. Does
+   * nothing if the update mutex is not being held by the current instance
+   * through the current object.
+   */
+  void unlock();
+};
+
+/**
  * An interface into the internals of the update manager. These should only be
  * accessed from within update code and tests.
  */
@@ -831,14 +880,14 @@ interface nsIUpdateSyncManager : nsISupports
 interface nsIUpdateManagerInternal : nsISupports
 {
   /**
-   * ** Test-only Method **
-   *
-   * Reloads the update manager's data. This will only work in testing.
+   * Reloads the update manager's data.
    * @param skipFiles
    *        If `true`, don't reload data from the XMLs, just clear out existing
    *        data.
+   *
+   * @returns Promise<undefined>
    */
-  void reload(in boolean skipFiles);
+  Promise reload(in boolean skipFiles);
 
   /**
    * These are identical to the functions with the same name in
@@ -889,10 +938,18 @@ interface nsIUpdateManager : nsISupports
   Promise getDownloadingUpdate();
 
   /**
-   * If Firefox installed an update at the launch of the current session, this
-   * will contain that update. If not, this will be `null`.
+   * Returns a Promise that resolves with the update that Firefox installed at the
+   * launch of the current session. If no update was installed, null will be returned
+   * @returns Promise<nsIUpdate>
    */
-  readonly attribute nsIUpdate updateInstalledAtStartup;
+  Promise updateInstalledAtStartup();
+
+  /**
+   * Returns a Promise that resolves with the most recent update that has been installed,
+   * the value will be null if it does not exist
+   * @returns Promise<nsIUpdate>
+   */
+  Promise lastUpdateInstalled();
 
   /**
    * Adds the specified update to the update history. The update history is
@@ -919,8 +976,10 @@ interface nsIUpdateManager : nsISupports
   /**
    * The user agreed to proceed with an elevated update and we are now
    * permitted to show an elevation prompt.
+   *
+   * @returns Promise<undefined>
    */
-  void elevationOptedIn();
+  Promise elevationOptedIn();
 
   /**
    * These functions clean up and remove an active update without applying

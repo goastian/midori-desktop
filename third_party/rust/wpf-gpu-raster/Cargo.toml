@@ -13,16 +13,27 @@
 edition = "2021"
 name = "wpf-gpu-raster"
 version = "0.1.0"
+build = false
 include = [
     "src/**/*",
     "LICENSE",
     "README.md",
 ]
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 readme = "README.md"
 license = "MIT"
 
-[profile.release]
-debug = 2
+[features]
+c_bindings = []
+default = ["c_bindings"]
+
+[lib]
+name = "wpf_gpu_raster"
+path = "src/lib.rs"
 
 [dependencies]
 typed-arena-nomut = "0.1.0"
@@ -32,6 +43,5 @@ euclid = "0.22.6"
 png = "0.17.2"
 usvg = "0.4"
 
-[features]
-c_bindings = []
-default = ["c_bindings"]
+[profile.release]
+debug = 2

@@ -210,6 +210,8 @@ const sdp_attrarray_t sdp_attr[SDP_MAX_ATTR_TYPES] =
       sdp_build_attr_ssrc_group},
     {"rtcp-rsize", sizeof("rtcp-rsize"),
       sdp_parse_attr_simple_flag, sdp_build_attr_simple_flag},
+    {"extmap-allow-mixed", sizeof("extmap-allow-mixed"),
+      sdp_parse_attr_simple_flag, sdp_build_attr_simple_flag},
 };
 
 /* Note: These *must* be in the same order as the enum types. */
@@ -445,7 +447,9 @@ const sdp_namearray_t sdp_fmtp_codec_param[SDP_MAX_FMTP_PARAM] =
     {"max-fr",                          sizeof("max-fr")}, /* 49 */
     {"maxplaybackrate",                 sizeof("maxplaybackrate")}, /* 50 */
     {"apt",                             sizeof("apt")}, /* 51 */
-    {"rtx-time",                         sizeof("rtx-time")} /* 52 */
+    {"rtx-time",                         sizeof("rtx-time")}, /* 52 */
+    {"level-idx",                        sizeof("level-idx")}, /* 53 */
+    {"tier",                             sizeof("tier")}, /* 54 */
 } ;
 
 /* Note: These *must* be in the same order as the enum type. */

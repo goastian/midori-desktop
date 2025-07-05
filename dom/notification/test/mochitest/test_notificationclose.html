@@ -1,0 +1,55 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=1265841
+-->
+<head>
+  <title>Bug 1265841 - Test ServiceWorkerGlobalScope.notificationclose event.</title>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/dom/notification/test/mochitest/MockAlertsService.js"></script>
+  <script src="/tests/dom/notification/test/mochitest/NotificationTest.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
+</head>
+<body>
+<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=1265841">Bug 1265841</a>
+<p id="display"></p>
+<div id="content" style="display: none">
+</div>
+<pre id="test">
+</pre>
+<script src="/tests/dom/serviceworkers/test/utils.js"></script>
+<script>
+  SimpleTest.requestFlakyTimeout("Mock alert service dispatches show, click, and close events.");
+
+  async function testFrame(src, registration) {
+    let { promise, resolve } = Promise.withResolvers();
+    let iframe = document.createElement("iframe");
+    iframe.src = src;
+    window.callback = async function(data) {
+      window.callback = null;
+      document.body.removeChild(iframe);
+      iframe = null;
+      ok(data.result, "Got notificationclose event with correct data.");
+      ok(!data.windowOpened,
+         "Shouldn't allow to openWindow in notificationclose");
+      await registration.unregister();
+      resolve();
+    };
+    document.body.appendChild(iframe);
+    await promise;
+  }
+
+  add_task(async function runTest() {
+    await NotificationTest.allowNotifications();
+    await MockAlertsService.register();
+    await MockAlertsService.enableAutoClick();
+    let registration = await navigator.serviceWorker.register(
+      "notificationclose.js",
+      { scope: "notificationclose.html" }
+    );
+    await waitForState(registration.installing, 'activated');
+    await testFrame('notificationclose.html', registration);
+  });
+</script>
+</body>
+</html>

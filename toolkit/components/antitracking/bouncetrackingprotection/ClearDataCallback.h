@@ -4,6 +4,7 @@
 #ifndef mozilla_ClearDataCallback_h__
 #define mozilla_ClearDataCallback_h__
 
+#include "BounceTrackingMapEntry.h"
 #include "mozilla/MozPromise.h"
 #include "mozilla/glean/bindings/GleanMetric.h"
 #include "nsIClearDataService.h"
@@ -12,7 +13,8 @@
 namespace mozilla {
 
 // Pending clear operations are stored as ClearDataMozPromise, one per host.
-using ClearDataMozPromise = MozPromise<nsCString, uint32_t, true>;
+using ClearDataMozPromise =
+    MozPromise<RefPtr<BounceTrackingPurgeEntry>, uint32_t, true>;
 
 extern LazyLogModule gBounceTrackingProtectionLog;
 
@@ -26,13 +28,16 @@ class ClearDataCallback final : public nsIClearDataCallback,
   NS_DECL_NSIURLCLASSIFIERFEATURECALLBACK
 
   explicit ClearDataCallback(ClearDataMozPromise::Private* aPromise,
-                             const nsACString& aHost);
+                             const OriginAttributes& aOriginAttributes,
+                             const nsACString& aHost, PRTime aBounceTime);
 
  private:
   virtual ~ClearDataCallback();
 
-  // Site host which was cleared.
-  nsCString mHost;
+  // Entry containing the site host which was cleared and the timestamp of when
+  // the bounce occurred that led to the tracker being purged.
+  RefPtr<BounceTrackingPurgeEntry> mEntry;
+
   // Promise which is resolved or rejected when the clear operation completes.
   RefPtr<ClearDataMozPromise::Private> mPromise;
 
@@ -46,9 +51,8 @@ class ClearDataCallback final : public nsIClearDataCallback,
   // URL Classifier telemetry
   void RecordURLClassifierTelemetry();
 
-  // List of features for classifying bounce trackers that have been purged.
-  // See kUrlClassifierFeatures for the list of features.
-  static nsTArray<RefPtr<nsIUrlClassifierFeature>> sUrlClassifierFeatures;
+  // Event telemetry for purges.
+  void RecordPurgeEventTelemetry(bool aSuccess);
 };
 
 }  // namespace mozilla

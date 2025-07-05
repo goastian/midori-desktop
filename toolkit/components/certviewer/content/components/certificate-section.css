@@ -11,17 +11,21 @@ h1 {
 .certificate-tabs {
   display: flex;
   text-align: center;
-  border-bottom: 1px solid var(--in-content-border-color);
-  box-shadow: var(--card-shadow);
+  border: 1px solid var(--border-color-card);
+  border-radius: 4px 4px 0 0;
+  border-bottom: 1px solid var(--border-color-card);
+  box-shadow: var(--box-shadow-card);
 }
 
 .info-groups {
   display: none;
   outline: none;
-  background-color: var(--in-content-box-background);
-  box-shadow: var(--card-shadow);
+  background-color: var(--background-color-box);
+  box-shadow: var(--box-shadow-card);
   margin-bottom: 2em;
-  border-radius: 0 0 4px 4px;
+  border: 1px solid var(--border-color-card);
+  border-top: none;
+  border-radius: var(--border-radius-small) var(--border-radius-small) 0 0;
 }
 
 .info-groups.selected {
@@ -35,7 +39,7 @@ h1 {
   padding-bottom: 15px; /* compensate for border-bottom below */
   border: none;
   border-bottom: 3px solid transparent;
-  background-color: var(--in-content-box-background);
+  background-color: var(--background-color-box);
   color: var(--in-content-text-color);
   flex: 1 1 auto;
   text-overflow: ellipsis;
@@ -61,12 +65,12 @@ h1 {
 }
 
 .tab:hover {
-  border-bottom-color: var(--in-content-border-color);
+  border-bottom-color: var(--border-color-card);
 }
 
 .tab.selected {
   border-bottom-color: currentColor;
-  color: var(--in-content-accent-color);
+  color: var(--color-accent-primary);
   text-overflow: unset;
   overflow: visible;
 }

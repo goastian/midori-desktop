@@ -17,16 +17,28 @@
   overflow: hidden;
 }
 
-button::-moz-focus-inner {
-  border: 0;
-}
-
 body {
   margin: 0;
 }
 
 body:fullscreen {
   -moz-window-dragging: no-drag;
+
+  #fullscreen {
+    background-image: url("chrome://global/skin/media/picture-in-picture-exit-fullscreen-button.svg");
+    background-size: auto;
+  }
+
+  #controls {
+    &[showing]:hover .control-item:not(:hover) {
+      opacity: 0.8;
+    }
+
+    /* Hide cursor when we expect controls to be hidden. */
+    &:not([showing], [keying], [donthide]) {
+      cursor: none;
+    }
+  }
 }
 
 .player-holder {
@@ -250,10 +262,9 @@ body:not(:fullscreen) #controls:hover .control-button:disabled {
   scale: -1 1;
 }
 
-/* Set opacity for buttons and scrubber when controls are visible on the pip window and are not hovered over.
- * For fullscreen mode, only apply opacity if there is a showing attribute. */
+/* Set opacity for buttons and scrubber when controls are visible on the pip
+ * window and are not hovered over. */
 body:not(:fullscreen) #controls:hover .control-item:not(:hover),
-body:fullscreen #controls[showing]:hover .control-item:not(:hover),
 #controls[donthide] .control-item {
   opacity: 0.8;
 }
@@ -272,8 +283,7 @@ body:fullscreen #controls[showing]:hover .control-item:not(:hover),
 }
 
 /* For readability, timestamp should maintain full opacity when visible */
-body:not(:fullscreen) #controls:hover #timestamp,
-body:fullscreen #controls[showing]:hover {
+body:not(:fullscreen) #controls:hover #timestamp {
   opacity: 1;
 }
 
@@ -371,11 +381,6 @@ body:fullscreen #controls[showing]:hover {
   background-image: url("chrome://global/skin/media/audio.svg");
 }
 
-body:fullscreen #fullscreen {
-  background-image: url("chrome://global/skin/media/picture-in-picture-exit-fullscreen-button.svg");
-  background-size: auto;
-}
-
 body:not(:fullscreen) #fullscreen {
   background-image: url("chrome://global/skin/media/picture-in-picture-enter-fullscreen-button.svg");
   background-size: auto;
@@ -428,7 +433,7 @@ body:not(:fullscreen) #fullscreen {
 }
 
 .bold {
-  font-weight: 590;
+  font-weight: var(--font-weight-bold);
 }
 
 .box > input[type="radio"] {
@@ -622,8 +627,9 @@ input:checked + .slider::before {
   align-self: center;
   color: #FFFFFF;
   cursor: default;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Ubuntu", "Helvetica Neue", sans-serif;
+  font-family: system-ui;
   font-size: 0.9em;
+  font-variant-numeric: tabular-nums;
   user-select: none;
   width: 16ch;
   grid-area: timestamp;

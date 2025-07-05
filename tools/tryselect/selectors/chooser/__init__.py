@@ -54,6 +54,7 @@ def run(
     message="{msg}",
     closed_tree=False,
     push_to_lando=False,
+    push_to_vcs=False,
 ):
     from .app import create_application
 
@@ -83,7 +84,7 @@ def run(
     # give app a second to start before opening the browser
     url = "http://127.0.0.1:5000"
     Timer(1, lambda: webbrowser.open(url)).start()
-    print("Starting trychooser on {}".format(url))
+    print(f"Starting trychooser on {url}")
     process = multiprocessing.Process(
         target=create_and_run_application, args=(tg, queue)
     )
@@ -98,7 +99,7 @@ def run(
         print("no tasks selected")
         return
 
-    msg = "Try Chooser Enhanced ({} tasks selected)".format(len(selected))
+    msg = f"Try Chooser Enhanced ({len(selected)} tasks selected)"
     return push_to_try(
         "chooser",
         message.format(msg=msg),
@@ -109,6 +110,7 @@ def run(
         dry_run=dry_run,
         closed_tree=closed_tree,
         push_to_lando=push_to_lando,
+        push_to_vcs=push_to_vcs,
     )
 
 

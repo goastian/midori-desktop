@@ -3,20 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
  :host {
-  --card-border-color: color-mix(in srgb, currentColor 10%, transparent);
   --card-border-radius: var(--border-radius-medium);
   --card-border-width: var(--border-width);
-  --card-border: var(--card-border-width) solid var(--card-border-color);
+  --card-border: var(--card-border-width) solid var(--border-color-card);
   --card-background-color: var(--background-color-box);
   --card-focus-outline: var(--focus-outline);
-  --card-box-shadow: var(--box-shadow-10);
+  --card-box-shadow: var(--box-shadow-card);
   --card-padding: var(--space-large);
   --card-gap: var(--card-padding);
   --card-article-gap: var(--space-small);
-
-  @media (prefers-contrast) {
-    --card-border-color: color-mix(in srgb, currentColor 41%, transparent);
-  }
 }
 
 :host {
@@ -30,15 +25,20 @@
 
 :host([type=accordion]) {
   summary {
-    padding-block: var(--card-padding);
+    padding-block: var(--card-padding-block, var(--card-padding));
   }
   #content {
-    padding-block-end: var(--card-padding);
+    padding-block-end: var(--card-padding-block, var(--card-padding));
   }
 }
 :host(:not([type=accordion])) {
   .moz-card {
-    padding-block: var(--card-padding);
+    padding-block: var(--card-padding-block, var(--card-padding));
+  }
+  #moz-card-details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--card-article-gap);
   }
 }
 
@@ -62,14 +62,14 @@ summary {
   align-items: center;
   justify-content: flex-start;
   gap: var(--card-gap);
-  padding-inline: var(--card-padding);
+  padding-inline: var(--card-heading-padding-inline, var(--card-padding));
   border-radius: var(--card-border-radius);
 
   .chevron-icon {
-    background-image: url("chrome://global/skin/icons/arrow-down.svg");
+    background-image: var(--card-accordion-closed-icon, url("chrome://global/skin/icons/arrow-down.svg"));
 
     details[open] & {
-      background-image: url("chrome://global/skin/icons/arrow-up.svg");
+      background-image: var(--card-accordion-open-icon, url("chrome://global/skin/icons/arrow-up.svg"));
     }
   }
 
@@ -96,14 +96,14 @@ summary {
 
 #content {
   align-self: stretch;
-  padding-inline: var(--card-padding);
+  padding-inline: var(--card-padding-inline, var(--card-padding));
   border-end-start-radius: var(--card-border-radius);
   border-end-end-radius: var(--card-border-radius);
 
   @media (prefers-contrast) {
     :host([type=accordion]) & {
       border-block-start: 0;
-      padding-block-start: var(--card-padding);
+      padding-block-start: var(--card-padding-block, var(--card-padding));
     }
   }
 }
@@ -117,16 +117,13 @@ details  {
     &:hover {
       background-color: var(--button-background-color-hover);
     }
+
+    &:focus-visible {
+      outline: var(--card-focus-outline);
+    }
+
     @media (prefers-contrast) {
       outline: var(--button-border-color) solid var(--border-width);
-
-      &:hover {
-        outline-color: var(--button-border-color-hover);
-      }
-
-      &:active {
-        outline-color: var(--button-border-color-active);
-      }
     }
 
     @media (forced-colors) {
@@ -159,9 +156,5 @@ details  {
         padding-block-start: 0;
       }
     }
-  }
-
-  &:focus-visible {
-    outline: var(--card-focus-outline);
   }
 }

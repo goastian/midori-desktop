@@ -1,18 +1,24 @@
 {
   "type": "object",
-  "required": ["thirdPartyId", "overridesId", "urls"],
+  "required": ["thirdPartyId", "overridesId", "overridesAppIdv2", "urls"],
   "properties": {
     "thirdPartyId": {
       "type": "string",
       "title": "Third-party Add-on Id",
       "description": "The identifier of the third party add-on which will override the app provided one. Should be of the format example@foo. If the third party engine is an OpenSearch engine, then this must be opensearch@search.mozilla.org",
-      "pattern": "^[a-zA-Z0-9-._]*@[a-zA-Z0-9-._]*$"
+      "pattern": "^([a-zA-Z0-9-._]*@[a-zA-Z0-9-._]*|\\{[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\\})$"
     },
     "overridesId": {
       "type": "string",
-      "title": "Add-on Id to Override",
-      "description": "The identifier of the app-provided add-on to be overridden. Should be of the format example@search.mozilla.org",
+      "title": "Add-on Id to Override (original search config)",
+      "description": "The identifier of the app-provided add-on to be overridden. Should be of the format example@search.mozilla.org. This field is used for the original search configuration, and for some of the early Firefox versions that support search-config-v2.",
       "pattern": "^[a-zA-Z0-9-._]*@search.mozilla.org$"
+    },
+    "overridesAppIdv2": {
+      "type": "string",
+      "title": "Add-on Id to Override (search-config-v2)",
+      "description": "The identifier of the app-provided add-on to be overridden. This field is for search-config-v2 support.",
+      "pattern": "^[a-zA-Z0-9-._]*$"
     },
     "engineName": {
       "type": "string",
@@ -45,7 +51,8 @@
           "search_form": {
             "type": "string",
             "title": "search_form",
-            "description": "The search form url"
+            "description": "Unsupported on Firefox at this time",
+            "deprecated": true
           }
         }
       }

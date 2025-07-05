@@ -10,12 +10,12 @@ ChromeUtils.defineESModuleGetters(lazy, {
   AddonStudies: "resource://normandy/lib/AddonStudies.sys.mjs",
   BranchedAddonStudyAction:
     "resource://normandy/actions/BranchedAddonStudyAction.sys.mjs",
-  ExperimentManager: "resource://nimbus/lib/ExperimentManager.sys.mjs",
+  ExperimentAPI: "resource://nimbus/ExperimentAPI.sys.mjs",
+  NimbusTelemetry: "resource://nimbus/lib/Telemetry.sys.mjs",
   PreferenceExperiments:
     "resource://normandy/lib/PreferenceExperiments.sys.mjs",
   RecipeRunner: "resource://normandy/lib/RecipeRunner.sys.mjs",
-  RemoteSettingsExperimentLoader:
-    "resource://nimbus/lib/RemoteSettingsExperimentLoader.sys.mjs",
+  UnenrollmentCause: "resource://nimbus/lib/ExperimentManager.sys.mjs",
 });
 
 const SHIELD_LEARN_MORE_URL_PREF = "app.normandy.shieldLearnMoreUrl";
@@ -101,12 +101,12 @@ ChromeUtils.defineLazyGetter(AboutPages, "aboutStudies", () => {
     },
 
     getMessagingSystemList() {
-      return lazy.ExperimentManager.store.getAll();
+      return lazy.ExperimentAPI.manager.store.getAll();
     },
 
     async optInToExperiment(data) {
       try {
-        await lazy.RemoteSettingsExperimentLoader.optInToExperiment(data);
+        await lazy.ExperimentAPI.optInToExperiment(data);
         return {
           error: false,
           message: "Opt-in was successful.",
@@ -209,11 +209,16 @@ ChromeUtils.defineLazyGetter(AboutPages, "aboutStudies", () => {
       }
     },
 
-    async removeMessagingSystemExperiment(slug, reason) {
-      lazy.ExperimentManager.unenroll(slug, reason);
+    async removeMessagingSystemExperiment(slug) {
+      await lazy.ExperimentAPI.manager.unenroll(
+        slug,
+        lazy.UnenrollmentCause.fromReason(
+          lazy.NimbusTelemetry.UnenrollReason.INDIVIDUAL_OPT_OUT
+        )
+      );
       this._sendToAll(
         "Shield:UpdateMessagingSystemExperimentList",
-        lazy.ExperimentManager.store.getAll()
+        lazy.ExperimentAPI.manager.store.getAll()
       );
     },
 

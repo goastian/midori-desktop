@@ -1,0 +1,412 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'Firefox :: Session Restore'
+
+session_restore:
+  backup_can_be_loaded_session_file:
+    type: event
+    description: >
+      Recorded when a file is able to be successfully read on startup
+      This event was generated to correspond to the Legacy Telemetry event
+      session_restore.backup_can_be_loaded#session_file.
+    bugs:
+      - https://bugzil.la/1874742
+    data_reviews:
+      - https://bugzil.la/1874742
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    extra_keys:
+      can_load:
+        description: >
+          Whether or not the startup file can be read/loaded
+        type: string
+      path_key:
+        description: >
+          A symbolic name for the backup file, should be one of "clean", "recovery", "recoveryBackup", "cleanBackup", or "upgradeBackup"
+        type: string
+      loadfail_reason:
+        description: >
+          Reason why the file cannot be loaded, N/A if can be loaded
+        type: string
+    telemetry_mirror: Session_restore_BackupCanBeLoaded_SessionFile
+
+  shutdown_success_session_startup:
+    type: event
+    description: >
+      Report shutdown success
+      This event was generated to correspond to the Legacy Telemetry event
+      session_restore.shutdown_success#session_startup.
+    bugs:
+      - https://bugzil.la/1874742
+    data_reviews:
+      - https://bugzil.la/1874742
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    extra_keys:
+      shutdown_ok:
+        description: >
+          Whether or not the shutdown happened successfully, unsuccessful if previous session crashed
+        type: string
+      shutdown_reason:
+        description: >
+          Reason why shutdown didn't happen successfully, N/A if previous session didn't crashed
+        type: string
+    telemetry_mirror: Session_restore_ShutdownSuccess_SessionStartup
+
+  startup_init_session:
+    type: timing_distribution
+    description: >
+      Session restore: Time it takes to prepare the data structures for
+      restoring a session (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SESSION_RESTORE_STARTUP_INIT_SESSION_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_STARTUP_INIT_SESSION_MS
+
+  startup_onload_initial_window:
+    type: timing_distribution
+    description: >
+      Session restore: Time it takes to finish restoration once we have first
+      opened a window (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SESSION_RESTORE_STARTUP_ONLOAD_INITIAL_WINDOW_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_STARTUP_ONLOAD_INITIAL_WINDOW_MS
+
+  collect_all_windows_data:
+    type: timing_distribution
+    description: >
+      Session restore: Time to collect all window data (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SESSION_RESTORE_COLLECT_ALL_WINDOWS_DATA_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_COLLECT_ALL_WINDOWS_DATA_MS
+
+  collect_data:
+    type: timing_distribution
+    description: >
+      Session restore: Time to collect all window and tab data (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SESSION_RESTORE_COLLECT_DATA_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_COLLECT_DATA_MS
+
+  collect_session_history:
+    type: timing_distribution
+    description: >
+      Session restore: Duration of session history collection in the parent
+      process (ms).
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SESSION_RESTORE_COLLECT_SESSION_HISTORY_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1810704
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1810704
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+      - farre@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_COLLECT_SESSION_HISTORY_MS
+
+  read_file:
+    type: timing_distribution
+    description: >
+      Session restore: Time to read the session data from the file on disk (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SESSION_RESTORE_READ_FILE_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_READ_FILE_MS
+
+  write_file:
+    type: timing_distribution
+    description: >
+      Session restore: Time to write the session data to the file on disk (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SESSION_RESTORE_WRITE_FILE_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_WRITE_FILE_MS
+
+  file_size_bytes:
+    type: memory_distribution
+    description: >
+      Session restore: The size of file sessionstore.js (bytes)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SESSION_RESTORE_FILE_SIZE_BYTES.
+    memory_unit: byte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_FILE_SIZE_BYTES
+
+  corrupt_file:
+    type: labeled_counter
+    description: >
+      Session restore: Whether the file read on startup contained parse-able
+      JSON
+
+      This metric was generated to correspond to the Legacy Telemetry boolean
+      histogram FX_SESSION_RESTORE_CORRUPT_FILE.
+    labels:
+      - "false"
+      - "true"
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: h#FX_SESSION_RESTORE_CORRUPT_FILE
+
+  all_files_corrupt:
+    type: labeled_counter
+    description: >
+      Session restore: Whether none of the backup files contained parse-able
+      JSON
+
+      This metric was generated to correspond to the Legacy Telemetry boolean
+      histogram FX_SESSION_RESTORE_ALL_FILES_CORRUPT.
+    labels:
+      - "false"
+      - "true"
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: h#FX_SESSION_RESTORE_ALL_FILES_CORRUPT
+
+  restore_window:
+    type: timing_distribution
+    description: >
+      Session restore: Time spent blocking the main thread while restoring a
+      window state (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SESSION_RESTORE_RESTORE_WINDOW_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_RESTORE_WINDOW_MS
+
+  auto_restore_duration_until_eager_tabs_restored:
+    type: timing_distribution
+    description: >
+      Session restore: If the browser is setup to auto-restore tabs, this probe
+      measures the time elapsed between the instant we start Session Restore and
+      the instant we have finished restoring tabs eagerly. At this stage, the
+      tabs that are restored on demand are not restored yet.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram
+      FX_SESSION_RESTORE_AUTO_RESTORE_DURATION_UNTIL_EAGER_TABS_RESTORED_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_AUTO_RESTORE_DURATION_UNTIL_EAGER_TABS_RESTORED_MS
+
+  manual_restore_duration_until_eager_tabs_restored:
+    type: timing_distribution
+    description: >
+      Session restore: If a session is restored by the user clicking on 'Restore
+      Session', this probe measures the time elapsed between the instant the
+      user has clicked and the instant we have finished restoring tabs eagerly.
+      At this stage, the tabs that are restored on demand are not restored yet.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram
+      FX_SESSION_RESTORE_MANUAL_RESTORE_DURATION_UNTIL_EAGER_TABS_RESTORED_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_MANUAL_RESTORE_DURATION_UNTIL_EAGER_TABS_RESTORED_MS
+
+  number_of_tabs_restored:
+    type: custom_distribution
+    description: >
+      Session restore: Number of tabs in the session that has just been
+      restored.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_SESSION_RESTORE_NUMBER_OF_TABS_RESTORED.
+    range_min: 1
+    range_max: 500
+    bucket_count: 20
+    histogram_type: exponential
+    unit: tabs
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_NUMBER_OF_TABS_RESTORED
+
+  number_of_windows_restored:
+    type: custom_distribution
+    description: >
+      Session restore: Number of windows in the session that has just been
+      restored.
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram FX_SESSION_RESTORE_NUMBER_OF_WINDOWS_RESTORED.
+    range_min: 0
+    range_max: 50
+    bucket_count: 51
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_NUMBER_OF_WINDOWS_RESTORED
+
+  number_of_eager_tabs_restored:
+    type: custom_distribution
+    description: >
+      Session restore: Number of tabs restored eagerly in the session that has
+      just been restored.
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram FX_SESSION_RESTORE_NUMBER_OF_EAGER_TABS_RESTORED.
+    range_min: 0
+    range_max: 50
+    bucket_count: 51
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - session-restore-telemetry-alerts@mozilla.com
+    expires: never
+    telemetry_mirror: FX_SESSION_RESTORE_NUMBER_OF_EAGER_TABS_RESTORED
+
+  shutdown_ok:
+    type: labeled_counter
+    description: >
+      Did the browser start after a successful shutdown
+
+      This metric was generated to correspond to the Legacy Telemetry boolean
+      histogram SHUTDOWN_OK.
+    labels:
+      - "false"
+      - "true"
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1421688
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1421688
+    notification_emails:
+      - chutten@mozilla.com
+    expires: never
+    telemetry_mirror: h#SHUTDOWN_OK
+
+browser.engagement:
+  sessionrestore_interstitial:
+    type: labeled_counter
+    description: >
+      Whether we show about:sessionrestore or not. Split by key, which
+      indicates why we showed the item or not. Specifically,
+      'deferred_restore' means we didn't autorestore and thus didn't show
+      the interstitial; 'autorestore' indicates we autorestored without
+      showing the interstitial. 'shown_old_session',
+      'shown_only_about_welcomeback', 'shown_many_crashes',
+      'shown_many_crashes_old_session' all indicate we did show the
+      interstitial because of a crash, and the text after 'shown'
+      indicates what secondary reason there was to show this page (as we
+      don't show it for 'just' one crash).
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.sessionrestore_interstitial.
+    bugs:
+      - https://bugzil.la/1671271
+    data_reviews:
+      - https://bugzil.la/1671271
+    notification_emails:
+      - gijs@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_SESSIONRESTORE_INTERSTITIAL

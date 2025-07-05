@@ -1,43 +1,37 @@
 // Tests that AddonRepository doesn't download results for system add-ons
 
-const PREF_GETADDONS_CACHE_ENABLED = "extensions.getAddons.cache.enabled";
+// Enable SCOPE_APPLICATION for builtin testing.  Default in tests is only SCOPE_PROFILE.
+let scopes = AddonManager.SCOPE_PROFILE | AddonManager.SCOPE_APPLICATION;
+Services.prefs.setIntPref("extensions.enabledScopes", scopes);
 
-var gServer = new HttpServer();
-gServer.start(-1);
+const PREF_GETADDONS_CACHE_ENABLED = "extensions.getAddons.cache.enabled";
 
 createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "0");
 
-// Test with a missing features directory
-add_task(async function test_app_addons() {
-  // Build the test set
-  var distroDir = FileUtils.getDir("ProfD", ["sysfeatures"]);
-  distroDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
-  let xpi = await getSystemAddonXPI(1, "1.0");
-  xpi.copyTo(distroDir, "system1@tests.mozilla.org.xpi");
+var gServer = new HttpServer();
 
-  xpi = await getSystemAddonXPI(2, "1.0");
-  xpi.copyTo(distroDir, "system2@tests.mozilla.org.xpi");
+add_setup(() => {
+  gServer.start(-1);
+  gServer.registerPathHandler("/get", () => {
+    do_throw("Unexpected request to server.");
+  });
+  registerCleanupFunction(async () => {
+    await new Promise(resolve => gServer.stop(resolve));
+  });
+});
 
-  xpi = await getSystemAddonXPI(3, "1.0");
-  xpi.copyTo(distroDir, "system3@tests.mozilla.org.xpi");
-
-  registerDirectory("XREAppFeat", distroDir);
-
+add_task(async function test_app_addons_systembuiltin() {
   Services.prefs.setBoolPref(PREF_GETADDONS_CACHE_ENABLED, true);
   Services.prefs.setCharPref(
     PREF_GETADDONS_BYIDS,
     `http://localhost:${gServer.identity.primaryPort}/get?%IDS%`
   );
 
-  gServer.registerPathHandler("/get", () => {
-    do_throw("Unexpected request to server.");
-  });
-
   await overrideBuiltIns({
-    system: [
-      "system1@tests.mozilla.org",
-      "system2@tests.mozilla.org",
-      "system3@tests.mozilla.org",
+    builtins: [
+      await getSystemBuiltin(1),
+      await getSystemBuiltin(2),
+      await getSystemBuiltin(3),
     ],
   });
 
@@ -65,5 +59,4 @@ add_task(async function test_app_addons() {
   Assert.equal(cached, null);
 
   await promiseShutdownManager();
-  await new Promise(resolve => gServer.stop(resolve));
 });

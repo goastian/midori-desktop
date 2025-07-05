@@ -1,6 +1,6 @@
 {
   "name": "eslint-plugin-mozilla",
-  "version": "3.7.4",
+  "version": "4.2.1",
   "description": "A collection of rules that help enforce JavaScript coding standard in the Mozilla project.",
   "keywords": [
     "eslint",
@@ -25,22 +25,29 @@
     "espree": "^9.6.1",
     "estraverse": "^5.3.0",
     "htmlparser2": "^9.1.0",
-    "toml-eslint-parser": "0.9.3"
+    "toml-eslint-parser": "0.10.0"
   },
   "devDependencies": {
-    "eslint": "8.57.0",
-    "mocha": "10.2.0"
+    "eslint": "8.57.1",
+    "mocha": "10.8.2"
   },
   "peerDependencies": {
-    "@microsoft/eslint-plugin-sdl": "^0.2.2",
-    "eslint": "^7.23.0 || ^8.0.0",
-    "eslint-config-prettier": "^8.0.0 || ^9.0.0",
-    "eslint-plugin-html": "^7.0.0 || ^8.0.0",
-    "eslint-plugin-json": "^3.1.0",
-    "eslint-plugin-no-unsanitized": "^4.0.0"
+    "@microsoft/eslint-plugin-sdl": "^0.2.2 || ^1.0.0",
+    "eslint": "^8.57.1 || ^9.0.0",
+    "eslint-plugin-no-unsanitized": "^4.1.0",
+    "eslint-plugin-promise": "^7.2.1",
+    "eslint-plugin-jsdoc": "^50.6.3"
+  },
+  "peerDependenciesMeta": {
+    "@eslint-plugin-jsdoc": {
+      "optional": true
+    },
+    "@microsoft/eslint-plugin-sdl": {
+      "optional": true
+    }
   },
   "engines": {
-    "node": ">=14.0.0"
+    "node": ">=18.0.0"
   },
   "scripts": {
     "prepack": "node scripts/createExports.js",

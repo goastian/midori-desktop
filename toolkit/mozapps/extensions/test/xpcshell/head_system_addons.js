@@ -131,6 +131,72 @@ function getSystemAddonXPI(num, version) {
   return _systemXPIs.get(key);
 }
 
+async function promiseUpdateSystemAddonsSet(systemAddonUpdates) {
+  const waitForStartupIDs = new Set();
+
+  let promises = [];
+  let updates = [];
+  for (const { id, version, waitForStartup = true } of systemAddonUpdates) {
+    let xpi = AddonTestUtils.createTempWebExtensionFile({
+      manifest: {
+        version,
+        browser_specific_settings: {
+          gecko: { id },
+        },
+      },
+    });
+    updates.push({ id, version, xpi, path: xpi.leafName });
+
+    if (waitForStartup) {
+      waitForStartupIDs.add(id);
+    } else {
+      // If we're not expecting a startup we need to wait for install to end.
+      promises.push(
+        AddonTestUtils.promiseAddonEvent(
+          "onInstalled",
+          addon => addon.id === id
+        )
+      );
+    }
+  }
+
+  let xml = buildSystemAddonUpdates(updates);
+  promises.push(installSystemAddons(xml, Array.from(waitForStartupIDs)));
+  return Promise.all(promises);
+}
+
+async function promiseUpdateSystemAddon(id, version, waitForStartup = true) {
+  const ADDON_ID = "updates@test";
+  return promiseUpdateSystemAddonsSet([
+    {
+      id: id ?? ADDON_ID,
+      version,
+      waitForStartup,
+    },
+  ]);
+}
+
+async function getSystemBuiltin(num, addon_version, res_url) {
+  const id = `system${num}@tests.mozilla.org`;
+  const version = addon_version ?? "1.0";
+  const addon_res_url_path = res_url ?? `builtin-system${num}`;
+  await setupBuiltinExtension(
+    {
+      manifest: {
+        name: `Built-in add-on #${num}`,
+        version,
+        browser_specific_settings: { gecko: { id } },
+      },
+    },
+    addon_res_url_path
+  );
+  return {
+    addon_id: id,
+    addon_version: version,
+    res_url: `resource://${addon_res_url_path}/`,
+  };
+}
+
 async function initSystemAddonDirs() {
   let hiddenSystemAddonDir = FileUtils.getDir("ProfD", [
     "sysfeatures",
@@ -282,11 +348,10 @@ async function checkInstalledSystemAddons(conditions, distroDir) {
         uri = uri.JARFile;
       }
 
-      Assert.ok(uri instanceof Ci.nsIFileURL);
-      Assert.equal(uri.file.path, file.path);
-
       if (isUpgrade) {
         Assert.equal(addon.signedState, AddonManager.SIGNEDSTATE_SYSTEM);
+      } else {
+        Assert.equal(uri.spec, `resource://test-builtin-ext${i + 1}/`);
       }
     } else {
       info(`Checking state of add-on ${id}, expecting it to be missing`);
@@ -331,33 +396,90 @@ async function setupSystemAddonConditions(setup, distroDir) {
   Services.prefs.clearUserPref(PREF_SYSTEM_ADDON_SET);
   distroDir.leafName = "empty";
 
-  let updateList = [];
-  await overrideBuiltIns({ system: updateList });
+  await overrideBuiltIns({ system: [], builtins: [] });
   await promiseStartupManager();
   await promiseShutdownManager();
 
   info("Setting up conditions.");
   await setup.setup();
 
+  let preinstalledList = [];
   if (distroDir) {
     if (distroDir.path.endsWith("hidden")) {
-      updateList = ["system1@tests.mozilla.org", "system2@tests.mozilla.org"];
+      preinstalledList = [
+        "system1@tests.mozilla.org",
+        "system2@tests.mozilla.org",
+      ];
     } else if (distroDir.path.endsWith("prefilled")) {
-      updateList = ["system2@tests.mozilla.org", "system3@tests.mozilla.org"];
+      preinstalledList = [
+        "system2@tests.mozilla.org",
+        "system3@tests.mozilla.org",
+      ];
     }
   }
-  await overrideBuiltIns({ system: updateList });
 
-  let startupPromises = setup.initialState.map((item, i) =>
-    item.version
-      ? promiseWebExtensionStartup(`system${i + 1}@tests.mozilla.org`)
-      : null
+  const startupPromises = [];
+  const overriddenBuiltInsData = {
+    system: [],
+    builtins: [],
+  };
+
+  for (const [i, state] of setup.initialState.entries()) {
+    const id = `system${i + 1}@tests.mozilla.org`;
+
+    if (!state.version || !preinstalledList.includes(id)) {
+      continue;
+    }
+
+    const res_path = `test-builtin-ext${i + 1}`;
+    let version = distroDir.path.endsWith("hidden") ? "1.0" : "2.0";
+    await setupBuiltinExtension(
+      {
+        manifest: {
+          name: `Built-In System Add-on ${i + 1}`,
+          version,
+          browser_specific_settings: {
+            gecko: {
+              id: `system${i + 1}@tests.mozilla.org`,
+            },
+          },
+        },
+      },
+      res_path
+    );
+    overriddenBuiltInsData.builtins.push({
+      addon_id: id,
+      addon_version: version,
+      res_url: `resource://${res_path}/`,
+    });
+    startupPromises.push(promiseWebExtensionStartup(id));
+  }
+
+  info(
+    `setupSystemAddonConditions overriddenBuiltIns: ${JSON.stringify(overriddenBuiltInsData, null, 2)}\n`
   );
+  await overrideBuiltIns(overriddenBuiltInsData);
+
   await Promise.all([promiseStartupManager(), ...startupPromises]);
 
   // Make sure the initial state is correct
   info("Checking initial state.");
   await checkInstalledSystemAddons(setup.initialState, distroDir);
+}
+
+// Verifies the add-ons listed in the extensions.systemAddonSet pref.
+function verifySystemAddonSetPref(expectedAddons) {
+  let addonSet = Services.prefs.getCharPref(PREF_SYSTEM_ADDON_SET);
+  let addonSetDir = JSON.parse(addonSet).directory;
+  Assert.equal(
+    addonSet,
+    JSON.stringify({
+      schema: 1,
+      directory: addonSetDir,
+      addons: expectedAddons,
+    }),
+    "Got the expected addons listed in the extensions.systemAddonSet pref"
+  );
 }
 
 /**
@@ -405,16 +527,46 @@ async function verifySystemAddonState(
   // Check that the new state is active after a restart
   await promiseShutdownManager();
 
-  let updateList = [];
+  // TODO: refator this logic out
+  let preinstalledList = [];
 
   if (distroDir) {
     if (distroDir.path.endsWith("hidden")) {
-      updateList = ["system1@tests.mozilla.org", "system2@tests.mozilla.org"];
+      preinstalledList = [
+        "system1@tests.mozilla.org",
+        "system2@tests.mozilla.org",
+      ];
     } else if (distroDir.path.endsWith("prefilled")) {
-      updateList = ["system2@tests.mozilla.org", "system3@tests.mozilla.org"];
+      preinstalledList = [
+        "system2@tests.mozilla.org",
+        "system3@tests.mozilla.org",
+      ];
     }
   }
-  await overrideBuiltIns({ system: updateList });
+
+  const overriddenBuiltInsData = {
+    system: [],
+    builtins: [],
+  };
+
+  for (const [i] of finalState.entries()) {
+    const id = `system${i + 1}@tests.mozilla.org`;
+
+    if (!preinstalledList.includes(id)) {
+      continue;
+    }
+
+    const res_path = `test-builtin-ext${i + 1}`;
+    let version = distroDir.path.endsWith("hidden") ? "1.0" : "2.0";
+    overriddenBuiltInsData.builtins.push({
+      addon_id: id,
+      addon_version: version,
+      res_url: `resource://${res_path}/`,
+    });
+  }
+
+  await overrideBuiltIns(overriddenBuiltInsData);
+
   await promiseStartupManager();
   await checkInstalledSystemAddons(finalState, distroDir);
 }

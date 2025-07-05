@@ -32,9 +32,15 @@
 
 #include <pthread.h>
 
+#include <array>
+#include <functional>
 #include <string>
 
 #include "common/using_std_string.h"
+
+#if defined(MOZ_OXIDIZED_BREAKPAD)
+struct DirectAuxvDumpInfo;
+#endif // defined(MOZ_OXIDIZED_BREAKPAD)
 
 namespace google_breakpad {
 
@@ -45,32 +51,30 @@ public:
   // WARNING: callbacks may be invoked on a different thread
   // than that which creates the CrashGenerationServer.  They must
   // be thread safe.
-  typedef void (*OnClientDumpRequestCallback)(void* context,
-                                              const ClientInfo& client_info,
-                                              const string& file_path);
-
-  typedef void (*OnClientExitingCallback)(void* context,
-                                          const ClientInfo& client_info);
+  using OnClientDumpRequestCallback = void (void* dump_context,
+                                            const ClientInfo& client_info,
+                                            const string& file_path);
+#if defined(MOZ_OXIDIZED_BREAKPAD)
+  using GetAuxvInfoCallback = bool (pid_t pid, DirectAuxvDumpInfo*);
+#endif // defined(MOZ_OXIDIZED_BREAKPAD)
 
   // Create an instance with the given parameters.
   //
   // Parameter listen_fd: The server fd created by CreateReportChannel().
+  // Parameter: get_auxv_info: Callback to retrieve the stored auxiliary vector for the given PID.
   // Parameter dump_callback: Callback for a client crash dump request.
   // Parameter dump_context: Context for client crash dump request callback.
-  // Parameter exit_callback: Callback for client process exit.
-  // Parameter exit_context: Context for client exit callback.
-  // Parameter generate_dumps: Whether to automatically generate dumps.
   //     Client code of this class might want to generate dumps explicitly
   //     in the crash dump request callback. In that case, false can be
   //     passed for this parameter.
   // Parameter dump_path: Path for generating dumps; required only if true is
   //     passed for generateDumps parameter; NULL can be passed otherwise.
   CrashGenerationServer(const int listen_fd,
-                        OnClientDumpRequestCallback dump_callback,
+#if defined(MOZ_OXIDIZED_BREAKPAD)
+                        std::function<GetAuxvInfoCallback> get_auxv_info,
+#endif // defined(MOZ_OXIDIZED_BREAKPAD)
+                        std::function<OnClientDumpRequestCallback> dump_callback,
                         void* dump_context,
-                        OnClientExitingCallback exit_callback,
-                        void* exit_context,
-                        bool generate_dumps,
                         const string* dump_path);
 
   ~CrashGenerationServer();
@@ -83,11 +87,20 @@ public:
   // Stop the server.
   void Stop();
 
+  // Adjust the path where minidumps are placed, this is thread-safe
+  void SetPath(const char* dump_path);
+
   // Create a "channel" that can be used by clients to report crashes
   // to a CrashGenerationServer.  |*server_fd| should be passed to
   // this class's constructor, and |*client_fd| should be passed to
   // the ExceptionHandler constructor in the client process.
   static bool CreateReportChannel(int* server_fd, int* client_fd);
+
+  CrashGenerationServer(CrashGenerationServer&&) = delete;
+  CrashGenerationServer& operator=(CrashGenerationServer&&) = delete;
+
+  CrashGenerationServer(const CrashGenerationServer&) = delete;
+  CrashGenerationServer& operator=(const CrashGenerationServer&) = delete;
 
 private:
   // Run the server's event loop
@@ -104,19 +117,16 @@ private:
   // Return a unique filename at which a minidump can be written
   bool MakeMinidumpFilename(string& outFilename);
 
-  // Trampoline to |Run()|
-  static void* ThreadMain(void* arg);
-
   int server_fd_;
 
-  OnClientDumpRequestCallback dump_callback_;
+#if defined(MOZ_OXIDIZED_BREAKPAD)
+  std::function<GetAuxvInfoCallback> get_auxv_info_;
+#endif // defined(MOZ_OXIDIZED_BREAKPAD)
+
+  std::function<OnClientDumpRequestCallback> dump_callback_;
   void* dump_context_;
 
-  OnClientExitingCallback exit_callback_;
-  void* exit_context_;
-
-  bool generate_dumps_;
-
+  pthread_mutex_t dump_dir_mutex_;
   string dump_dir_;
 
   bool started_;
@@ -124,10 +134,6 @@ private:
   pthread_t thread_;
   int control_pipe_in_;
   int control_pipe_out_;
-
-  // disable these
-  CrashGenerationServer(const CrashGenerationServer&);
-  CrashGenerationServer& operator=(const CrashGenerationServer&);
 };
 
 } // namespace google_breakpad

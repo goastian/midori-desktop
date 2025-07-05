@@ -55,7 +55,7 @@ Submits a custom ping to the Telemetry backend. See :ref:`submitting-customping`
 * ``message`` - *(object)* The data payload for the ping.
 * ``options`` - *(optional, object)* Options object.
 
-  * ``addClientId`` - *(optional, boolean)* True if the ping should contain the client id. Defaults to ``false``.
+  * ``addClientId`` - *(optional, boolean)* True if the ping should contain the client id and profile group id. Defaults to ``false``.
   * ``addEnvironment`` - *(optional, boolean)* True if the ping should contain the environment data. Defaults to ``false``.
   * ``overrideEnvironment`` - *(optional, object)* Set to override the environment data. Default: not set.
   * ``usePingSender`` - *(optional, boolean)* If true, send the ping using the PingSender. Defaults to ``false``.
@@ -77,10 +77,9 @@ Checks if Telemetry upload is enabled.
 
   browser.telemetry.scalarAdd(name, value);
 
-Adds the value to the given scalar.
+As of Firefox 134, this method is a no-op. See Bug 1930196.
 
-* ``name`` - *(string)* The scalar name.
-* ``value`` - *(integer)* The numeric value to add to the scalar. Only unsigned integers supported.
+Instead, use :doc:`Glean APIs <../../glean/user/glean_for_legacy_scalars>` to record scalars.
 
 ``scalarSet``
 ~~~~~~~~~~~~~
@@ -89,10 +88,9 @@ Adds the value to the given scalar.
 
   browser.telemetry.scalarSet(name, value);
 
-Sets the named scalar to the given value. Throws if the value type doesn't match the scalar type.
+As of Firefox 134, this method is a no-op. See Bug 1930196.
 
-* ``name`` - *(string)* The scalar name.
-* ``value`` - *(string|boolean|integer|object)* The value to set the scalar to.
+Instead, use :doc:`Glean APIs <../../glean/user/glean_for_legacy_scalars>` to record scalars.
 
 ``scalarSetMaximum``
 ~~~~~~~~~~~~~~~~~~~~
@@ -101,25 +99,16 @@ Sets the named scalar to the given value. Throws if the value type doesn't match
 
   browser.telemetry.scalarSetMaximum(name, value);
 
-Sets the scalar to the maximum of the current and the passed value
+As of Firefox 134, this method is a no-op. See Bug 1930196.
 
-* ``name`` - *(string)* The scalar name.
-* ``value`` - *(integer)* The numeric value to set the scalar to. Only unsigned integers supported.
+Instead, use :doc:`Glean APIs <../../glean/user/glean_for_legacy_scalars>` to record scalars.
 
 ``recordEvent``
 ~~~~~~~~~~~~~~~
 
-.. code-block:: js
+As of Firefox 132, this method is a no-op. See Bug 1894533.
 
-  browser.telemetry.recordEvent(category, method, object, value, extra);
-
-Record an event in Telemetry. Throws when trying to record an unknown event.
-
-* ``category`` - *(string)* The category name.
-* ``method`` - *(string)* The method name.
-* ``object`` - *(string)* The object name.
-* ``value`` - *(optional, string)* An optional string value to record.
-* ``extra`` - *(optional, object)* An optional object of the form (string -> string). It should only contain registered extra keys.
+Instead, use :doc:`Glean APIs <../../glean/user/glean_for_legacy_events>` to record events.
 
 ``registerScalars``
 ~~~~~~~~~~~~~~~~~~~
@@ -128,31 +117,20 @@ Record an event in Telemetry. Throws when trying to record an unknown event.
 
   browser.telemetry.registerScalars(category, data);
 
-Register new scalars to record them from addons. See :ref:`registerscalars` for more details.
+As of Firefox 134, this method is a no-op. See Bug 1930196.
 
-* ``category`` - *(string)* The unique category the scalars are registered in.
-* ``data`` - *(object)* An object that contains registration data for multiple scalars. Each property name is the scalar name, and the corresponding property value is an object of ScalarData_ type.
+Instead, use :doc:`Glean APIs <../../glean/user/glean_for_legacy_scalars>` to record scalars.
 
 ``registerEvents``
 ~~~~~~~~~~~~~~~~~~
 
-.. code-block:: js
+As of Firefox 132, this method is a no-op. See Bug 1894533.
 
-  browser.telemetry.registerEvents(category, data);
-
-Register new events to record them from addons. See :ref:`registerevents` for more details.
-
-* ``category`` - *(string)* The unique category the events are registered in.
-* ``data`` - *(object)* An object that contains registration data for 1+ events. Each property name is the category name, and the corresponding property value is an object of EventData_ type.
+Instead, use :doc:`Glean event definitions <../../glean/user/glean_for_legacy_events>` for your extension's events.
 
 ``setEventRecordingEnabled``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: js
+As of Firefox 133, this method is a no-op. Event recording is enabled by default unconditionally. See Bug 1920562.
 
-  browser.telemetry.setEventRecordingEnabled(category, enabled);
-
-Enable recording of events in a category. Events default to recording disabled. This allows to toggle recording for all events in the specified category.
-
-* ``category`` - *(string)* The category name.
-* ``enabled`` - *(boolean)* Whether recording is enabled for events in that category.
+Instead, use :doc:`Glean event definitions <../../glean/user/glean_for_legacy_events>` for your extension's events.

@@ -3,6 +3,10 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 /**
+ * @import {OpenedConnection} from "resource://gre/modules/Sqlite.sys.mjs"
+ */
+
+/**
  * This module provides an asynchronous API for managing bookmarks.
  *
  * Bookmarks are organized in a tree structure, and include URLs, folders and
@@ -15,34 +19,34 @@
  * Each bookmark-item is represented by an object having the following
  * properties:
  *
- *  - guid (string)
- *      The globally unique identifier of the item.
- *  - parentGuid (string)
- *      The globally unique identifier of the folder containing the item.
- *      This will be an empty string for the Places root folder.
- *  - index (number)
- *      The 0-based position of the item in the parent folder.
- *  - dateAdded (Date)
- *      The time at which the item was added.
- *  - lastModified (Date)
- *      The time at which the item was last modified.
- *  - type (number)
- *      The item's type, either TYPE_BOOKMARK, TYPE_FOLDER or TYPE_SEPARATOR.
+ * - guid (string)
+ *   The globally unique identifier of the item.
+ * - parentGuid (string)
+ *   The globally unique identifier of the folder containing the item.
+ *   This will be an empty string for the Places root folder.
+ * - index (number)
+ *   The 0-based position of the item in the parent folder.
+ * - dateAdded (Date)
+ *   The time at which the item was added.
+ * - lastModified (Date)
+ *   The time at which the item was last modified.
+ * - type (number)
+ *   The item's type, either TYPE_BOOKMARK, TYPE_FOLDER or TYPE_SEPARATOR.
  *
- *  The following properties are only valid for URLs or folders.
+ * The following properties are only valid for URLs or folders.
  *
- *  - title (string)
- *      The item's title, if any.  Empty titles and null titles are considered
- *      the same. Titles longer than DB_TITLE_LENGTH_MAX will be truncated.
+ * - title (string)
+ *   The item's title, if any.  Empty titles and null titles are considered
+ *   the same. Titles longer than DB_TITLE_LENGTH_MAX will be truncated.
  *
- *  The following properties are only valid for URLs:
+ * The following properties are only valid for URLs:
  *
- *  - url (URL, href or nsIURI)
- *      The item's URL.  Note that while input objects can contains either
- *      an URL object, an href string, or an nsIURI, output objects will always
- *      contain an URL object.
- *      An URL cannot be longer than DB_URL_LENGTH_MAX, methods will throw if a
- *      longer value is provided.
+ * - url (URL, href or nsIURI)
+ *   The item's URL.  Note that while input objects can contains either
+ *   an URL object, an href string, or an nsIURI, output objects will always
+ *   contain an URL object.
+ *   An URL cannot be longer than DB_URL_LENGTH_MAX, methods will throw if a
+ *   longer value is provided.
  *
  * Each successful operation notifies through the PlacesObservers
  * interface.  To listen to such notifications you must register using
@@ -52,6 +56,7 @@
  * items that have their indexes changed.
  * Similarly, lastModified changes not done explicitly (like changing another
  * property) won't fire a bookmark-time-changed notification.
+ *
  * @see PlacesObservers
  */
 
@@ -153,8 +158,8 @@ export var Bookmarks = Object.freeze({
   /**
    * Checks if a guid is a virtual root.
    *
-   * @param {String} guid The guid of the item to look for.
-   * @returns {Boolean} true if guid is a virtual root, false otherwise.
+   * @param {string} guid The guid of the item to look for.
+   * @returns {boolean} true if guid is a virtual root, false otherwise.
    */
   isVirtualRootItem(guid) {
     return (
@@ -173,8 +178,8 @@ export var Bookmarks = Object.freeze({
    * Hence, this function should only be called if a root folder object is
    * likely to be displayed to the user.
    *
-   * @param {Object} info An object representing a bookmark-item.
-   * @returns {String} The correct string.
+   * @param {object} info An object representing a bookmark-item.
+   * @returns {string} The correct string.
    * @throws {Error} If the guid in PlacesUtils.bookmarks.userContentRoots is
    *                 not supported.
    */
@@ -215,13 +220,13 @@ export var Bookmarks = Object.freeze({
    * Note that any known properties that don't apply to the specific item type
    * cause an exception.
    *
-   * @param info
-   *        object representing a bookmark-item.
-   *
-   * @return {Promise} resolved when the creation is complete.
-   * @resolves to an object representing the created bookmark.
-   * @rejects if it's not possible to create the requested bookmark.
-   * @throws if the arguments are invalid.
+   * @param {object} info
+   *   An object representing a bookmark-item.
+   * @returns {Promise<object>}
+   *   An object representing the created bookmark. Resolved when the creation
+   *   is complete. Rejected if it's not possible to create the requested
+   *   bookmark.
+   * @throws If the arguments are invalid.
    */
   insert(info) {
     let now = new Date();
@@ -287,6 +292,7 @@ export var Bookmarks = Object.freeze({
         url = item.url.href;
       }
 
+      /** @type {(PlacesBookmarkAddition|PlacesBookmarkTags)[]} */
       const notifications = [
         new PlacesBookmarkAddition({
           id: itemDetail.id,
@@ -360,20 +366,20 @@ export var Bookmarks = Object.freeze({
    * will be used for all the items inserted. Any indices or custom parentGuids
    * set on children will be ignored and overwritten.
    *
-   * @param {Object} tree
-   *        object representing a tree of bookmark items to insert.
-   * @param {Object} options [optional]
-   *        object with properties representing options.  Current options are:
-   *         - fixupOrSkipInvalidEntries: makes the insert more lenient to
-   *           mistakes in the input tree.  Properties of an entry that are
-   *           fixable will be corrected, otherwise the entry will be skipped.
-   *           This is particularly convenient for import/restore operations,
-   *           but should not be abused for common inserts, since it may hide
-   *           bugs in the calling code.
+   * @param {object} tree
+   *   object representing a tree of bookmark items to insert.
+   * @param {object} [options]
+   * @param {boolean} [options.fixupOrSkipInvalidEntries]
+   *   Makes the insert more lenient to mistakes in the input tree.
+   *   Properties of an entry that are fixable will be corrected, otherwise the
+   *   entry will be skipped. This is particularly convenient for import/restore
+   *   operations, but should not be abused for common inserts, since it may
+   *   hide bugs in the calling code.
    *
-   * @return {Promise} resolved when the creation is complete.
-   * @resolves to an array of objects representing the created bookmark(s).
-   * @rejects if it's not possible to create the requested bookmark.
+   * @returns {Promise<object[]>}
+   *   An array of objects representing the created bookmark(s). Resolved when
+   *   the creation is complete. Rejects if it's not possible to create the
+   *   requested bookmark.
    * @throws if the arguments are invalid.
    */
   insertTree(tree, options) {
@@ -445,7 +451,7 @@ export var Bookmarks = Object.freeze({
         // Ensure to use the same date for dateAdded and lastModified, even if
         // dateAdded may be imposed by the caller.
         let time = (info && info.dateAdded) || fallbackLastAdded;
-        let insertInfo = {
+        let validationSchema = {
           guid: { defaultValue: lazy.PlacesUtils.history.makeGuid() },
           type: { defaultValue: TYPE_BOOKMARK },
           url: {
@@ -481,16 +487,18 @@ export var Bookmarks = Object.freeze({
           },
         };
         if (fixupOrSkipInvalidEntries) {
-          insertInfo.guid.fixup = b =>
+          validationSchema.guid.fixup = b =>
             (b.guid = lazy.PlacesUtils.history.makeGuid());
-          insertInfo.dateAdded.fixup = insertInfo.lastModified.fixup = b =>
-            (b.lastModified = b.dateAdded = fallbackLastAdded);
+          validationSchema.dateAdded.fixup =
+            validationSchema.lastModified.fixup = b =>
+              (b.lastModified = b.dateAdded = fallbackLastAdded);
         }
+        let insertInfo = {};
         try {
           insertInfo = validateBookmarkObject(
             "Bookmarks.sys.mjs: insertTree",
             info,
-            insertInfo
+            validationSchema
           );
         } catch (ex) {
           if (fixupOrSkipInvalidEntries) {
@@ -550,7 +558,7 @@ export var Bookmarks = Object.freeze({
     // appendInsertionInfoForInfoArray will remove invalid items and may leave
     // us with nothing to insert, if so, just return early.
     if (!insertInfos.length) {
-      return [];
+      return Promise.resolve([]);
     }
 
     return (async function () {
@@ -634,7 +642,7 @@ export var Bookmarks = Object.freeze({
         );
 
         try {
-          await handleBookmarkItemSpecialData(itemDetail.id, item);
+          await handleBookmarkItemSpecialData(item);
         } catch (ex) {
           // This is not critical, regardless the bookmark has been created
           // and we should continue notifying the next ones.
@@ -669,13 +677,13 @@ export var Bookmarks = Object.freeze({
    * Note that any known properties that don't apply to the specific item type
    * cause an exception.
    *
-   * @param info
+   * @param {object} info
    *        object representing a bookmark-item, as defined above.
    *
-   * @return {Promise} resolved when the update is complete.
-   * @resolves to an object representing the updated bookmark.
-   * @rejects if it's not possible to update the given bookmark.
-   * @throws if the arguments are invalid.
+   * @returns {Promise<object>} An object representing the updated bookmark.
+   * Resolved when the update is complete. Rejects if it's not possible to
+   * update the given bookmark.
+   * @throws If the arguments are invalid.
    */
   update(info) {
     // The info object is first validated here to ensure it's consistent, then
@@ -812,7 +820,7 @@ export var Bookmarks = Object.freeze({
             );
 
           let updatedItem = await db.executeTransaction(async function () {
-            let updatedItem = await updateBookmark(
+            let innerUpdatedItem = await updateBookmark(
               db,
               updateInfo,
               item,
@@ -824,11 +832,11 @@ export var Bookmarks = Object.freeze({
               await setAncestorsLastModified(
                 db,
                 parent.guid,
-                updatedItem.lastModified,
+                innerUpdatedItem.lastModified,
                 syncChangeDelta
               );
             }
-            return updatedItem;
+            return innerUpdatedItem;
           });
 
           const notifications = [];
@@ -991,20 +999,20 @@ export var Bookmarks = Object.freeze({
    * If you are only updating/moving a single bookmark, use update() instead.
    *
    * @param {Array} guids
-   *        An array of GUIDs representing the bookmarks to move.
-   * @param {String} parentGuid
-   *        Optional, the parent GUID to move the bookmarks to.
-   * @param {Integer} index
-   *        The index to move the bookmarks to. If this is -1, the bookmarks
-   *        will be appended to the folder.
-   * @param {Integer} source
-   *        One of the Bookmarks.SOURCES.* options, representing the source of
-   *        this change.
-   *
-   * @return {Promise} resolved when the move is complete.
-   * @resolves to an array of objects representing the moved bookmarks.
-   * @rejects if it's not possible to move the given bookmark(s).
-   * @throws if the arguments are invalid.
+   *   An array of GUIDs representing the bookmarks to move.
+   * @param {string} parentGuid
+   *   Optional, the parent GUID to move the bookmarks to.
+   * @param {number} index
+   *   The index to move the bookmarks to. If this is -1, the bookmarks
+   *   will be appended to the folder.
+   * @param {number} source
+   *   One of the Bookmarks.SOURCES.* options, representing the source of
+   *   this change.
+   * @returns {Promise<object[]>}
+   *   An array of objects representing the moved bookmarks, resolved when the
+   *   move is complete. Rejects it's not possible to move the given
+   *   bookmark(s).
+   * @throws If the arguments are invalid.
    */
   moveToFolder(guids, parentGuid, index, source) {
     if (!Array.isArray(guids) || guids.length < 1) {
@@ -1083,7 +1091,12 @@ export var Bookmarks = Object.freeze({
               );
             }
 
-            updateInfos.push({ existingItem, currIndex: existingItem.index });
+            updateInfos.push({
+              existingItem,
+              currIndex: existingItem.index,
+              updatedItem: null,
+              newParent: null,
+            });
           }
 
           let newParent = await fetchBookmark(
@@ -1235,21 +1248,19 @@ export var Bookmarks = Object.freeze({
   /**
    * Removes one or more bookmark-items.
    *
-   * @param guidOrInfo This may be:
-   *        - The globally unique identifier of the item to remove
-   *        - an object representing the item, as defined above
-   *        - an array of objects representing the items to be removed
-   * @param {Object} [options={}]
-   *        Additional options that can be passed to the function.
-   *        Currently supports the following properties:
-   *         - preventRemovalOfNonEmptyFolders: Causes an exception to be
-   *           thrown when attempting to remove a folder that is not empty.
-   *         - source: The change source, forwarded to all bookmark observers.
-   *           Defaults to nsINavBookmarksService::SOURCE_DEFAULT.
-   *
-   * @return {Promise}
-   * @resolves when the removal is complete
-   * @rejects if the provided guid doesn't match any existing bookmark.
+   * @param {string|object|object[]} guidOrInfo This may be:
+   *   - The globally unique identifier of the item to remove
+   *   - an object representing the item, as defined above
+   *   - an array of objects representing the items to be removed
+   * @param {object} [options]
+   * @param {boolean} [options.preventRemovalOfNonEmptyFolders]
+   *   Causes an exception to be thrown when attempting to remove a folder that
+   *   is not empty.
+   * @param {number} [options.source]
+   *   The change source, forwarded to all bookmark observers. Defaults to
+   *   nsINavBookmarksService::SOURCE_DEFAULT.
+   * @returns {Promise<void>} Resolves when the removal is complete. Rejects if
+   * the provided guid doesn't match any existing bookmark.
    * @throws if the arguments are invalid.
    */
   remove(guidOrInfo, options = {}) {
@@ -1365,13 +1376,12 @@ export var Bookmarks = Object.freeze({
    *
    * Note that roots are preserved, only their children will be removed.
    *
-   * @param {Object} [options={}]
-   *        Additional options. Currently supports the following properties:
-   *         - source: The change source, forwarded to all bookmark observers.
-   *           Defaults to nsINavBookmarksService::SOURCE_DEFAULT.
+   * @param {object} [options={}]
+   * @param {number} [options.source]
+   *   The change source, forwarded to all bookmark observers. Defaults to
+   *   nsINavBookmarksService::SOURCE_DEFAULT.
    *
-   * @return {Promise} resolved when the removal is complete.
-   * @resolves once the removal is complete.
+   * @returns {Promise<void>} Resolved when the removal is complete.
    */
   eraseEverything(options = {}) {
     if (!options.source) {
@@ -1381,7 +1391,7 @@ export var Bookmarks = Object.freeze({
     return lazy.PlacesUtils.withConnectionWrapper(
       "Bookmarks.sys.mjs: eraseEverything",
       async function (db) {
-        let urls;
+        let urls = [];
         await db.executeTransaction(async function () {
           urls = await removeFoldersContents(
             db,
@@ -1420,12 +1430,11 @@ export var Bookmarks = Object.freeze({
    * Returns a list of recently bookmarked items.
    * Only includes actual bookmarks. Excludes folders, separators and queries.
    *
-   * @param {integer} numberOfItems
-   *        The maximum number of bookmark items to return.
+   * @param {number} numberOfItems
+   *   The maximum number of bookmark items to return.
    *
-   * @return {Promise} resolved when the listing is complete.
-   * @resolves to an array of recent bookmark-items.
-   * @rejects if an error happens while querying.
+   * @returns {Promise<object>} An array of recent bookmark-items. Resolved when
+   * the listing is complete. Rejects if an error happens while querying.
    */
   getRecent(numberOfItems) {
     if (numberOfItems === undefined) {
@@ -1471,35 +1480,33 @@ export var Bookmarks = Object.freeze({
    *      Note, there can be multiple bookmarks for the same url, if you need
    *      unique tagged urls you can filter duplicates by accumulating in a Set.
    *
-   * @param guidOrInfo
-   *        The globally unique identifier of the item to fetch, or an
-   *        object representing it, as defined above.
-   * @param onResult [optional]
+   * @param {string|object} guidOrInfo
+   *   The globally unique identifier of the item to fetch, or an object
+   *   representing it, as defined above. Any unknown property in the info
+   *   object is ignored.  Known properties may be overwritten.
+   * @param {Function?} onResult
    *        Callback invoked for each found bookmark.
-   * @param options [optional]
-   *        an optional object whose properties describe options for the fetch:
-   *         - concurrent: fetches concurrently to any writes, returning results
-   *                       faster. On the negative side, it may return stale
-   *                       information missing the currently ongoing write.
-   *         - includePath: additionally fetches the path for the bookmarks.
-   *                        This is a potentially expensive operation.  When
-   *                        set to true, the path property is set on results
-   *                        containing an array of {title, guid} objects
-   *                        ordered from root to leaf.
-   *         - includeItemIds:
-   *             include .itemId and .parentId in the results.
-   *             ALWAYS USE THE GUIDs instead of these, unless it's _really_
-   *             necessary to get them, e.g. when sending Places notifications.
+   * @param {object} [options]
+   * @param {boolean} [options.concurrent]
+   *   Fetches concurrently to any writes, returning results faster. On the
+   *   negative side, it may return stale information missing the currently
+   *   ongoing write.
+   * @param {boolean} [options.includePath]
+   *   Additionally fetches the path for the bookmarks. This is a potentially
+   *   expensive operation. When set to true, the path property is set on
+   *   results containing an array of {title, guid} objects ordered from root to
+   *   leaf.
+   * @param {boolean} [options.includeItemIds]
+   *   Include .itemId and .parentId in the results. ALWAYS USE THE GUIDs
+   *   instead of these, unless it's _really_ necessary to get them, e.g.
+   *   when sending Places notifications.
    *
-   * @return {Promise} resolved when the fetch is complete.
-   * @resolves to an object representing the found item, as described above, or
-   *           an array of such objects.  if no item is found, the returned
-   *           promise is resolved to null.
-   * @rejects if an error happens while fetching.
+   * @returns {Promise<object|object[]|null>}
+   *   An object representing the found item, as described above, or an array of
+   *   such objects. If no item is found, the returned promise is resolved to
+   *   null. Resolved when the fetch is complete. Rejects if an error happens
+   *   while fetching.
    * @throws if the arguments are invalid.
-   *
-   * @note Any unknown property in the info object is ignored.  Known properties
-   *       may be overwritten.
    */
   async fetch(guidOrInfo, onResult = null, options = {}) {
     if (onResult && typeof onResult != "function") {
@@ -1624,7 +1631,7 @@ export var Bookmarks = Object.freeze({
 
     return results[0];
   },
-
+  /* eslint-disable-next-line jsdoc/require-returns-check */
   /**
    * Retrieves an object representation of a bookmark-item, along with all of
    * its descendants, if any.
@@ -1658,11 +1665,11 @@ export var Bookmarks = Object.freeze({
    *      the folder's children information, each of them having the same set of
    *      properties as above.
    *
-   * @param [optional] guid
+   * @param {string?} guid
    *        the topmost item to be queried.  If it's not passed, the Places
    *        root folder is queried: that is, you get a representation of the
    *        entire bookmarks hierarchy.
-   * @param [optional] options
+   * @param {object?} options
    *        Options for customizing the query behavior, in the form of an
    *        object with any of the following properties:
    *         - excludeItemsCallback: a function for excluding items, along with
@@ -1679,22 +1686,23 @@ export var Bookmarks = Object.freeze({
    *           Use it if you must. It'll be removed once the switch to guids is
    *           complete.
    *
-   * @return {Promise} resolved when the fetch is complete.
-   * @resolves to an object that represents either a single item or a
-   *           bookmarks tree.  if guid points to a non-existent item, the
-   *           returned promise is resolved to null.
-   * @rejects if an error happens while fetching.
+   * @returns {Promise<object>}
+   *   An object that represents either a single item
+   *   or a bookmarks tree.  if guid points to a non-existent item, the returned
+   *   promise is resolved to null. Resolved when the fetch is complete. Rejects
+   *   if an error happens while fetching.
    * @throws if the arguments are invalid.
    */
   // TODO must implement these methods yet:
   // PlacesUtils.promiseBookmarksTree()
-  fetchTree() {
-    throw new Error("Not yet implemented");
+  fetchTree(guid, options) {
+    throw new Error(`Not yet implemented ${guid} ${options}`);
   },
 
   /**
    * Fetch all the existing tags, sorted alphabetically.
-   * @return {Promise} resolves to an array of objects representing tags, when
+   *
+   * @returns {Promise} resolves to an array of objects representing tags, when
    *         fetching is complete.
    *         Each object looks like {
    *           name: the name of the tag,
@@ -1726,25 +1734,25 @@ export var Bookmarks = Object.freeze({
   /**
    * Reorders contents of a folder based on a provided array of GUIDs.
    *
-   * @param parentGuid
+   * @param {string} parentGuid
    *        The globally unique identifier of the folder whose contents should
    *        be reordered.
-   * @param orderedChildrenGuids
+   * @param {string[]} orderedChildrenGuids
    *        Ordered array of the children's GUIDs.  If this list contains
    *        non-existing entries they will be ignored.  If the list is
    *        incomplete, and the current child list is already in order with
    *        respect to orderedChildrenGuids, no change is made. Otherwise, the
    *        new items are appended but maintain their current order relative to
    *        eachother.
-   * @param {Object} [options={}]
+   * @param {object} [options={}]
    *        Additional options. Currently supports the following properties:
    *         - lastModified: The last modified time to use for the folder and
                reordered children. Defaults to the current time.
    *         - source: The change source, forwarded to all bookmark observers.
    *           Defaults to nsINavBookmarksService::SOURCE_DEFAULT.
    *
-   * @return {Promise} resolved when reordering is complete.
-   * @rejects if an error happens while reordering.
+   * @returns {Promise<void>} Resolved when reordering is complete. Rejects if
+   * an error happens while reordering.
    * @throws if the arguments are invalid.
    */
   reorder(parentGuid, orderedChildrenGuids, options = {}) {
@@ -1835,19 +1843,17 @@ export var Bookmarks = Object.freeze({
    *
    * If you just want to search bookmarks by URL, use .fetch() instead.
    *
-   * @param query
-   *        Either a string to use as search term, or an object
-   *        containing any of these keys: query, title or url with the
-   *        corresponding string to match as value.
-   *        The url property can be either a string or an nsIURI.
+   * Any unknown property in the query object is ignored. Known properties may
+   * be overwritten.
    *
-   * @return {Promise} resolved when the search is complete.
-   * @resolves to an array of found bookmark-items.
-   * @rejects if an error happens while searching.
+   * @param {string|{query?: string, title?: string, url?: string|nsIURI|URL }} query
+   *   Either a string to use as search term, or an object containing any of
+   *   these keys: query, title or url with the corresponding string to match as
+   *   value. The url property can be either a string or an nsIURI.
+   * @returns {Promise<object>} Resolved when the search is complete.
+   * Returns an array of found bookmark-items. Rejects if an error happens while
+   * searching.
    * @throws if the arguments are invalid.
-   *
-   * @note Any unknown property in the query object is ignored.
-   *       Known properties may be overwritten.
    */
   search(query) {
     if (!query) {
@@ -1867,8 +1873,10 @@ export var Bookmarks = Object.freeze({
     }
 
     if (query.url) {
-      if (typeof query.url === "string" || URL.isInstance(query.url)) {
+      if (typeof query.url === "string") {
         query.url = new URL(query.url).href;
+      } else if (URL.isInstance(query.url)) {
+        query.url = query.url.href;
       } else if (query.url instanceof Ci.nsIURI) {
         query.url = query.url.spec;
       } else {
@@ -1888,13 +1896,13 @@ export var Bookmarks = Object.freeze({
  * Updates a single bookmark in the database. This should be called from within
  * a transaction.
  *
- * @param {Object} db The pre-existing database connection.
- * @param {Object} info A bookmark-item structure with new properties.
- * @param {Object} item A bookmark-item structure representing the existing bookmark.
- * @param {Integer} oldIndex The index of the item in the old parent.
- * @param {Object} newParent The new parent folder (note: this may be the same as)
+ * @param {object} db The pre-existing database connection.
+ * @param {object} info A bookmark-item structure with new properties.
+ * @param {object} item A bookmark-item structure representing the existing bookmark.
+ * @param {number} oldIndex The index of the item in the old parent.
+ * @param {object} newParent The new parent folder (note: this may be the same as)
  *                           the existing folder.
- * @param {Integer} syncChangeDelta The change delta to be applied.
+ * @param {number} syncChangeDelta The change delta to be applied.
  */
 async function updateBookmark(
   db,
@@ -2272,13 +2280,13 @@ function insertBookmarkTree(items, source, parent, urls, lastAddedForParent) {
 }
 
 /**
- * Handles special data on a bookmark, e.g. annotations, keywords, tags, charsets,
- * inserting the data into the appropriate place.
+ * Handles special data on a bookmark, e.g. annotations, keywords, tags,
+ * charsets, inserting the data into the appropriate place.
  *
- * @param {Integer} itemId The ID of the item within the bookmarks database.
- * @param {Object} item The bookmark item with possible special data to be inserted.
+ * @param {object} item
+ *   The bookmark item with possible special data to be inserted.
  */
-async function handleBookmarkItemSpecialData(itemId, item) {
+async function handleBookmarkItemSpecialData(item) {
   if ("keyword" in item && item.keyword) {
     try {
       await lazy.PlacesUtils.keywords.insert({
@@ -2389,9 +2397,10 @@ async function queryBookmarks(info) {
 
 /**
  * Internal fetch implementation.
+ *
  * @param {object} info
  *        The bookmark item to remove.
- * @param {object} options
+ * @param {object} [options]
  *        An options object supporting the following properties:
  * @param {object} [options.concurrent]
  *        Whether to use the concurrent read-only connection.
@@ -2399,7 +2408,6 @@ async function queryBookmarks(info) {
  *        A specific connection to be used.
  * @param {object} [options.ignoreInvalidURLs]
  *        Whether invalid URLs should be ignored or throw an exception.
- *
  */
 async function fetchBookmark(info, options = {}) {
   let query = async function (db) {
@@ -2884,9 +2892,10 @@ function reorderChildren(parent, orderedChildrenGuids, options) {
 /**
  * Merges objects into a new object, included non-enumerable properties.
  *
- * @param sources
- *        source objects to merge.
- * @return a new object including all properties from the source objects.
+ * @param {object[]} sources
+ *   Source objects to merge.
+ * @returns {object}
+ *   A new object including all properties from the source objects.
  */
 function mergeIntoNewObject(...sources) {
   let dest = {};
@@ -2905,12 +2914,10 @@ function mergeIntoNewObject(...sources) {
 /**
  * Remove properties that have the same value across two bookmark objects.
  *
- * @param dest
- *        destination bookmark object.
- * @param src
- *        source bookmark object.
- * @return a cleaned up bookmark object.
- * @note "guid" is never removed.
+ * @param {object} dest
+ *   Destination bookmark object that gets cleaned up. "guid" is never removed.
+ * @param {object} src
+ *   Source bookmark object.
  */
 function removeSameValueProperties(dest, src) {
   for (let prop in dest) {
@@ -2939,10 +2946,10 @@ function removeSameValueProperties(dest, src) {
  *
  * @param {Array} rows
  *        the array of mozIStorageRow objects.
- * @param {Boolean} ignoreInvalidURLs
+ * @param {boolean} ignoreInvalidURLs
  *        whether to ignore invalid urls (leaving the url property undefined)
  *        or throw.
- * @return an array of bookmark objects.
+ * @returns {object[]} An array of bookmark objects.
  */
 function rowsToItemsArray(rows, ignoreInvalidURLs = false) {
   return rows.map(row => {
@@ -3022,16 +3029,17 @@ function validateBookmarkObject(name, input, behavior) {
 }
 
 /**
- * Updates lastModified for all the ancestors of a given folder GUID.
+ * Updates lastModified for all the ancestors of a given folder GUID. Note the
+ * folder itself is also updated.
  *
- * @param db
- *        the Sqlite.sys.mjs connection handle.
- * @param folderGuid
- *        the GUID of the folder whose ancestors should be updated.
- * @param time
- *        a Date object to use for the update.
- *
- * @note the folder itself is also updated.
+ * @param {OpenedConnection} db
+ *   The Sqlite.sys.mjs connection handle.
+ * @param {string} folderGuid
+ *   The GUID of the folder whose ancestors should be updated.
+ * @param {Date} time
+ *   A Date object to use for the update.
+ * @param {number?} syncChangeDelta
+ *   If available, the sync change delta to be applied.
  */
 var setAncestorsLastModified = async function (
   db,
@@ -3073,11 +3081,13 @@ var setAncestorsLastModified = async function (
 /**
  * Remove all descendants of one or more bookmark folders.
  *
- * @param {Object} db
- *        the Sqlite.sys.mjs connection handle.
- * @param {Array} folderGuids
- *        array of folder guids.
- * @return {Array}
+ * @param {OpenedConnection} db
+ *   The Sqlite.sys.mjs connection handle.
+ * @param {string[]} folderGuids
+ *   Array of folder guids.
+ * @param {object} [options]
+ * @param {number} [options.source]
+ * @returns {Promise<string[]>}
  *         An array of the affected urls.
  */
 var removeFoldersContents = async function (db, folderGuids, options) {
@@ -3278,19 +3288,18 @@ function adjustSeparatorsSyncCounter(
 /**
  * Return the full path, from parent to root folder, of a bookmark.
  *
- * @param guid
+ * @param {string} guid
  *        The globally unique identifier of the item to determine the full
  *        bookmark path for.
- * @param options [optional]
- *        an optional object whose properties describe options for the query:
- *         - concurrent:  Queries concurrently to any writes, returning results
- *                        faster. On the negative side, it may return stale
- *                        information missing the currently ongoing write.
- *         - db:          A specific connection to be used.
- * @return {Promise} resolved when the query is complete.
- * @resolves to an array of {guid, title} objects that represent the full path
- *           from parent to root for the passed in bookmark.
- * @rejects if an error happens while querying.
+ * @param {object} [options]
+ * @param {boolean} [options.concurrent]
+ *   Queries concurrently to any writes, returning results faster. On the
+ *   negative side, it may return stale information missing the currently
+ *   ongoing write.
+ * @returns {Promise<{guid: string, title: string}[]>} When the query is
+ *   complete, resolves to an array of {guid, title} objects that represent the
+ *   full path from parent to root for the passed in bookmark. Rejects if an
+ *   error happens while querying.
  */
 async function retrieveFullBookmarkPath(guid, options = {}) {
   let query = async function (db) {
@@ -3330,8 +3339,8 @@ async function retrieveFullBookmarkPath(guid, options = {}) {
  * Get detail of bookmarks of given GUID as Map.
  *
  * @param {Array} aGuids An array of item GUIDs.
- * @return {Promise}
- * @resolves to Map of bookmark details. The key is guid.
+ * @returns {Promise<Map<number, object>>} A map of bookmark details. The key is
+ * guid.
  */
 async function getBookmarkDetailMap(aGuids) {
   return lazy.PlacesUtils.withConnectionWrapper(

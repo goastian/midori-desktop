@@ -8,12 +8,8 @@
 #define __nsWindowWatcher_h__
 
 // {a21bfa01-f349-4394-a84c-8de5cf0737d0}
-#define NS_WINDOWWATCHER_CID                        \
-  {                                                 \
-    0xa21bfa01, 0xf349, 0x4394, {                   \
-      0xa8, 0x4c, 0x8d, 0xe5, 0xcf, 0x7, 0x37, 0xd0 \
-    }                                               \
-  }
+#define NS_WINDOWWATCHER_CID \
+  {0xa21bfa01, 0xf349, 0x4394, {0xa8, 0x4c, 0x8d, 0xe5, 0xcf, 0x7, 0x37, 0xd0}}
 
 #include "nsCOMPtr.h"
 #include "Units.h"
@@ -64,6 +60,26 @@ class nsWindowWatcher : public nsIWindowWatcher,
 
   static bool HaveSpecifiedSize(const mozilla::dom::WindowFeatures& features);
 
+  /**
+   * Creates a load state from the given uri and the parent window.
+   *
+   * If `aParent` is present, his function will set
+   *  - the triggering window id
+   *  - if the triggering window has storage access
+   *  - the source `BrowsingContext``
+   *  - the triggering browsing context's sandbox flags
+   *  - the user gesture activation flag based on the parent document
+   *  - the text directive user activation flag; this will consume the parent
+   *    document's flag and OR's it with the user gesture activation flag.
+   *
+   * Currently, the returned load state is intended to be passed into
+   * `OpenWindowInternal()`.
+   * Note that the triggering principal and referrer info are not set by this
+   * function.
+   */
+  static already_AddRefed<nsDocShellLoadState> CreateLoadState(
+      nsIURI* aUri, nsPIDOMWindowOuter* aParent);
+
  protected:
   virtual ~nsWindowWatcher();
 
@@ -79,6 +95,13 @@ class nsWindowWatcher : public nsIWindowWatcher,
   nsresult OpenWindowInternal(
       mozIDOMWindowProxy* aParent, const nsACString& aUrl,
       const nsACString& aName, const nsACString& aFeatures,
+      const mozilla::dom::UserActivation::Modifiers& aModifiers,
+      bool aCalledFromJS, bool aDialog, bool aNavigate, nsIArray* aArgv,
+      bool aIsPopupSpam, bool aForceNoOpener, bool aForceNoReferrer, PrintKind,
+      nsDocShellLoadState* aLoadState, mozilla::dom::BrowsingContext** aResult);
+  nsresult OpenWindowInternal(
+      mozIDOMWindowProxy* aParent, nsIURI* aUri, const nsACString& aName,
+      const nsACString& aFeatures,
       const mozilla::dom::UserActivation::Modifiers& aModifiers,
       bool aCalledFromJS, bool aDialog, bool aNavigate, nsIArray* aArgv,
       bool aIsPopupSpam, bool aForceNoOpener, bool aForceNoReferrer, PrintKind,

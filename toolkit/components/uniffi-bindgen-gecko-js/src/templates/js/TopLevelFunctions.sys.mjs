@@ -1,6 +1,7 @@
 {%- for func in ci.function_definitions() %}
 
-export function {{ func.nm() }}({{ func.arg_names() }}) {
+{{ func.js_docstring(0) -}}
+export function {{ func.js_name() }}({{ func.js_arg_names() }}) {
 {% call js::call_scaffolding_function(func) %}
 }
 {%- endfor %}

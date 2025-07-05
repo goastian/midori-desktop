@@ -45,12 +45,15 @@ const THEMED_TABLES = [
   "attention-dot",
   "background-color",
   "border",
+  "box-shadow",
   "border-color",
   "opacity",
   "text-color",
   "color",
   "outline",
   "icon-color",
+  "icon-fill",
+  "icon-stroke",
   "link",
 ];
 
@@ -211,12 +214,15 @@ class TokensTable extends LitElement {
     "font-size": this.fontTemplate,
     "font-weight": this.fontTemplate,
     "icon-color": this.iconTemplate,
+    "icon-fill": this.iconTemplate,
     "icon-size": this.iconTemplate,
+    "icon-stroke": this.iconTemplate,
     link: this.linkTemplate,
     margin: this.spaceAndSizeTemplate,
     "min-height": this.spaceAndSizeTemplate,
     outline: this.outlineTemplate,
     padding: this.paddingTemplate,
+    "box-shadow": this.shadowTemplate,
     size: this.spaceAndSizeTemplate,
     space: this.spaceAndSizeTemplate,
     "text-color": this.fontTemplate,
@@ -293,6 +299,13 @@ class TokensTable extends LitElement {
       return "N/A";
     }
 
+    if (
+      category.match("box-shadow") &&
+      tokenName.startsWith("--box-shadow-color")
+    ) {
+      category = "color";
+    }
+
     let templateFn = this.TEMPLATES[category]?.bind(this);
     if (templateFn) {
       return templateFn(category, value, tokenName);
@@ -333,7 +346,8 @@ class TokensTable extends LitElement {
   }
 
   iconTemplate(_, value, tokenName) {
-    let property = tokenName.includes("color") ? "background-color" : "height";
+    const pattern = /color|fill|stroke/;
+    let property = pattern.test(tokenName) ? "background-color" : "height";
     return html`
       <div
         class="icon-preview"
@@ -385,10 +399,20 @@ class TokensTable extends LitElement {
     `;
   }
 
+  shadowTemplate(_, value) {
+    return html`
+      <div
+        class="shadow-preview"
+        style="box-shadow: ${HCM_MAP[value] ?? value};"
+      ></div>
+    `;
+  }
+
   getDisplayProperty(category) {
     switch (category) {
       case "attention-dot":
       case "color":
+      case "box-shadow":
         return "background-color";
       case "text-color":
         return "color";

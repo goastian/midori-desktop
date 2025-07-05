@@ -461,9 +461,7 @@ TEST(MozPromise, Chaining)
     }
     // We will hit the assertion if we don't disconnect the leaf Request
     // in the promise chain.
-    p->Then(
-         queue, __func__, []() {}, []() {})
-        ->Track(holder);
+    p->Then(queue, __func__, []() {}, []() {})->Track(holder);
   });
 }
 

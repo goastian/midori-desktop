@@ -26,8 +26,12 @@ legacy.telemetry:
       Does not need to be sent in the Glean "deletion-request" ping.
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1755549
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1921440
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1938183
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1755549
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1921440
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1938183
     data_sensitivity:
       - technical
       - highly_sensitive
@@ -37,8 +41,1108 @@ legacy.telemetry:
     expires: never
     no_lint:
       - BASELINE_PING
-    send_in_pings:
+    send_in_pings: &client_id_pings
       - 'metrics'
       - 'events'
       - 'newtab'
       - 'baseline'
+      - 'nimbus-targeting-context'
+
+  profile_group_id:
+    type: uuid
+    lifetime: application
+    description: |
+      The profile_group_id according to Telemetry.
+      Might not always have a value due to being too early for it to have
+      loaded.
+      Does not need to be sent in the Glean "deletion-request" ping.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901263
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1938183
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901263
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1938183
+    data_sensitivity:
+      - technical
+      - highly_sensitive
+    notification_emails:
+      - dtownsend@mozilla.com
+      - glean-team@mozilla.com
+    expires: never
+    no_lint:
+      - BASELINE_PING
+    send_in_pings: *client_id_pings
+
+telemetry:
+  data_upload_optin:
+    type: boolean
+    description: >
+      User opted into sending Telemetry data again.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.data_upload_optin.
+    bugs:
+      - https://bugzil.la/1445921
+    data_reviews:
+      - https://bugzil.la/1445921
+    notification_emails:
+      - jrediger@mozilla.com
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_DATA_UPLOAD_OPTIN
+
+  archive_directories_count:
+    type: custom_distribution
+    description: >
+      Number of directories in the archive at scan
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram TELEMETRY_ARCHIVE_DIRECTORIES_COUNT.
+    range_min: 1
+    range_max: 13
+    bucket_count: 12
+    histogram_type: linear
+    unit: directories
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_ARCHIVE_DIRECTORIES_COUNT
+
+  archive_oldest_directory_age:
+    type: custom_distribution
+    description: >
+      The age of the oldest Telemetry archive directory in months
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram TELEMETRY_ARCHIVE_OLDEST_DIRECTORY_AGE.
+    range_min: 1
+    range_max: 13
+    bucket_count: 12
+    histogram_type: linear
+    unit: months
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_ARCHIVE_OLDEST_DIRECTORY_AGE
+
+  archive_scan_ping_count:
+    type: custom_distribution
+    description: >
+      Number of Telemetry pings in the archive at scan
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_ARCHIVE_SCAN_PING_COUNT.
+    range_min: 1
+    range_max: 100000
+    bucket_count: 100
+    histogram_type: exponential
+    unit: telemetry pings
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_ARCHIVE_SCAN_PING_COUNT
+
+  archive_session_ping_count:
+    type: counter
+    description: >
+      Number of Telemetry pings added to the archive during the session
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram TELEMETRY_ARCHIVE_SESSION_PING_COUNT.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_ARCHIVE_SESSION_PING_COUNT
+
+  archive_size:
+    type: memory_distribution
+    description: >
+      The size of the Telemetry archive (MB)
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram TELEMETRY_ARCHIVE_SIZE_MB.
+    memory_unit: megabyte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_ARCHIVE_SIZE_MB
+
+  archive_evicted_over_quota:
+    type: custom_distribution
+    description: >
+      Number of Telemetry pings evicted from the archive during cleanup, because
+      they were over the quota
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_ARCHIVE_EVICTED_OVER_QUOTA.
+    range_min: 1
+    range_max: 100000
+    bucket_count: 100
+    histogram_type: exponential
+    unit: pings
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_ARCHIVE_EVICTED_OVER_QUOTA
+
+  archive_evicted_old_dirs:
+    type: custom_distribution
+    description: >
+      Number of Telemetry directories evicted from the archive during cleanup,
+      because they were too old
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram TELEMETRY_ARCHIVE_EVICTED_OLD_DIRS.
+    range_min: 1
+    range_max: 13
+    bucket_count: 12
+    histogram_type: linear
+    unit: directories
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_ARCHIVE_EVICTED_OLD_DIRS
+
+  archive_evicting_dirs:
+    type: timing_distribution
+    description: >
+      Time (ms) it takes for evicting old directories
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_ARCHIVE_EVICTING_DIRS_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_ARCHIVE_EVICTING_DIRS_MS
+
+  archive_checking_over_quota:
+    type: timing_distribution
+    description: >
+      Time (ms) it takes for checking if the archive is over-quota
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_ARCHIVE_CHECKING_OVER_QUOTA_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_ARCHIVE_CHECKING_OVER_QUOTA_MS
+
+  archive_evicting_over_quota:
+    type: timing_distribution
+    description: >
+      Time (ms) it takes for evicting over-quota pings
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_ARCHIVE_EVICTING_OVER_QUOTA_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1162538
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_ARCHIVE_EVICTING_OVER_QUOTA_MS
+
+  pending_load_failure_read:
+    type: counter
+    description: >
+      Number of pending Telemetry pings that failed to load from the disk
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram TELEMETRY_PENDING_LOAD_FAILURE_READ.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_PENDING_LOAD_FAILURE_READ
+
+  pending_load_failure_parse:
+    type: counter
+    description: >
+      Number of pending Telemetry pings that failed to parse once loaded from
+      the disk
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram TELEMETRY_PENDING_LOAD_FAILURE_PARSE.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_PENDING_LOAD_FAILURE_PARSE
+
+  pending_pings_size:
+    type: memory_distribution
+    description: >
+      The size of the Telemetry pending pings directory (MB). The special value
+      17 is used to indicate over quota pings.
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram TELEMETRY_PENDING_PINGS_SIZE_MB.
+    memory_unit: megabyte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_PENDING_PINGS_SIZE_MB
+
+  pending_pings_age:
+    type: timing_distribution
+    description: >
+      The age, in days, of the pending pings.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_PENDING_PINGS_AGE.
+    time_unit: day
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_PENDING_PINGS_AGE
+
+  pending_pings_evicted_over_quota:
+    type: custom_distribution
+    description: >
+      Number of Telemetry pings evicted from the pending pings directory during
+      cleanup, because they were over the quota
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_PENDING_PINGS_EVICTED_OVER_QUOTA.
+    range_min: 1
+    range_max: 100000
+    bucket_count: 100
+    histogram_type: exponential
+    unit: pings
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_PENDING_PINGS_EVICTED_OVER_QUOTA
+
+  pending_evicting_over_quota:
+    type: timing_distribution
+    description: >
+      Time (ms) it takes for evicting over-quota pending pings
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_PENDING_EVICTING_OVER_QUOTA_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_PENDING_EVICTING_OVER_QUOTA_MS
+
+  pending_checking_over_quota:
+    type: timing_distribution
+    description: >
+      Time (ms) it takes for checking if the pending pings are over-quota
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_PENDING_CHECKING_OVER_QUOTA_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_PENDING_CHECKING_OVER_QUOTA_MS
+
+  ping_size_exceeded_send:
+    type: counter
+    description: >
+      Number of Telemetry pings discarded before sending because they exceeded
+      the maximum size
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram TELEMETRY_PING_SIZE_EXCEEDED_SEND.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_PING_SIZE_EXCEEDED_SEND
+
+  ping_size_exceeded_pending:
+    type: counter
+    description: >
+      Number of Telemetry pending pings discarded because they exceeded the
+      maximum size
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram TELEMETRY_PING_SIZE_EXCEEDED_PENDING.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_PING_SIZE_EXCEEDED_PENDING
+
+  ping_size_exceeded_archived:
+    type: counter
+    description: >
+      Number of archived Telemetry pings discarded because they exceeded the
+      maximum size
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram TELEMETRY_PING_SIZE_EXCEEDED_ARCHIVED.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_PING_SIZE_EXCEEDED_ARCHIVED
+
+  ping_submission_waiting_clientid:
+    type: counter
+    description: >
+      The number of pings that were submitted and had to wait for a client id
+      (i.e. before it was cached or loaded from disk)
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram TELEMETRY_PING_SUBMISSION_WAITING_CLIENTID.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1233986
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1233986
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_PING_SUBMISSION_WAITING_CLIENTID
+
+  discarded_pending_pings_size:
+    type: memory_distribution
+    description: >
+      The size (MB) of the Telemetry pending pings exceeding the maximum file
+      size
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram TELEMETRY_DISCARDED_PENDING_PINGS_SIZE_MB.
+    memory_unit: megabyte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_DISCARDED_PENDING_PINGS_SIZE_MB
+
+  discarded_archived_pings_size:
+    type: memory_distribution
+    description: >
+      The size (MB) of the Telemetry archived, compressed, pings exceeding the
+      maximum file size
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram TELEMETRY_DISCARDED_ARCHIVED_PINGS_SIZE_MB.
+    memory_unit: megabyte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_DISCARDED_ARCHIVED_PINGS_SIZE_MB
+
+  discarded_send_pings_size:
+    type: memory_distribution
+    description: >
+      The size (MB) of the ping data submitted to Telemetry exceeding the
+      maximum size
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram TELEMETRY_DISCARDED_SEND_PINGS_SIZE_MB.
+    memory_unit: megabyte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_DISCARDED_SEND_PINGS_SIZE_MB
+
+  compress:
+    type: timing_distribution
+    description: >
+      Time taken to compress telemetry object (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_COMPRESS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_COMPRESS
+
+  send_success:
+    type: timing_distribution
+    description: >
+      Time needed (in ms) for a successful send of a Telemetry ping to the
+      servers and getting a reply back.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_SEND_SUCCESS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1318284
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1318284
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_SEND_SUCCESS
+
+  send_failure:
+    type: timing_distribution
+    description: >
+      Time needed (in ms) for a failed send of a Telemetry ping to the servers
+      and getting a reply back.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_SEND_FAILURE.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1318284
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1318284
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_SEND_FAILURE
+
+  send_failure_type:
+    type: labeled_counter
+    description: >
+      Counts of the different ways sending a Telemetry ping can fail.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      categorical histogram TELEMETRY_SEND_FAILURE_TYPE.
+    labels:
+      - eOK
+      - eRequest
+      - eUnreachable
+      - eChannelOpen
+      - eRedirect
+      - abort
+      - timeout
+      - eTooLate
+      - eTerminated
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1367110
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1501303
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1367110
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1501303
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+      - chutten@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_SEND_FAILURE_TYPE
+
+  stringify:
+    type: timing_distribution
+    description: >
+      Time to stringify telemetry object (ms)
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TELEMETRY_STRINGIFY.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_STRINGIFY
+
+  success:
+    type: labeled_counter
+    description: >
+      Successful telemetry submission
+
+      This metric was generated to correspond to the Legacy Telemetry boolean
+      histogram TELEMETRY_SUCCESS.
+    labels:
+      - "false"
+      - "true"
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_SUCCESS
+
+  invalid_ping_type_submitted:
+    type: labeled_counter
+    description: >
+      Count of individual invalid ping types that were submitted to Telemetry.
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram TELEMETRY_INVALID_PING_TYPE_SUBMITTED.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_INVALID_PING_TYPE_SUBMITTED
+
+  invalid_payload_submitted:
+    type: counter
+    description: >
+      Count of individual invalid payloads that were submitted to Telemetry.
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram TELEMETRY_INVALID_PAYLOAD_SUBMITTED.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1292226
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1292226
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_INVALID_PAYLOAD_SUBMITTED
+
+  ping_evicted_for_server_errors:
+    type: counter
+    description: >
+      Number of Telemetry ping files evicted due to server errors (4XX HTTP code
+      received)
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram TELEMETRY_PING_EVICTED_FOR_SERVER_ERRORS.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_PING_EVICTED_FOR_SERVER_ERRORS
+
+  event_ping_sent:
+    type: labeled_counter
+    description: >
+      Number of 'event' pings sent, by reason
+
+      This metric was generated to correspond to the Legacy Telemetry
+      categorical histogram TELEMETRY_EVENT_PING_SENT.
+    labels:
+      - periodic
+      - max
+      - shutdown
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1460595
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1460595
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+      - chutten@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_EVENT_PING_SENT
+
+  event_registration_error:
+    type: labeled_counter
+    description: >
+      Number of event registration failures, by field causing the failure
+
+      This metric was generated to correspond to the Legacy Telemetry
+      categorical histogram TELEMETRY_EVENT_REGISTRATION_ERROR.
+    labels:
+      - Other
+      - Name
+      - Category
+      - Method
+      - Object
+      - ExtraKeys
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1480204
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1480204
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+      - chutten@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_EVENT_REGISTRATION_ERROR
+
+  event_recording_error:
+    type: labeled_counter
+    description: >
+      Number of event recording failures, by type of failure
+
+      This metric was generated to correspond to the Legacy Telemetry
+      categorical histogram TELEMETRY_EVENT_RECORDING_ERROR.
+    labels:
+      - UnknownEvent
+      - Expired
+      - ExtraKey
+      - Value
+      - Extra
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1480204
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1480204
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+      - chutten@mozilla.com
+    expires: never
+    telemetry_mirror: h#TELEMETRY_EVENT_RECORDING_ERROR
+
+usage:
+  profile_id:
+    type: uuid
+    lifetime: user
+    description: |
+      A UUID uniquely identifying the profile,
+      not shared with other telemetry data.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1926829
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1926829
+    data_sensitivity:
+      - technical
+      - highly_sensitive
+    notification_emails:
+      - glean-team@mozilla.com
+      - jrediger@mozilla.com
+      - loines@mozilla.com
+    expires: never
+    send_in_pings:
+      - usage-reporting
+      - usage-deletion-request
+      - onboarding-opt-out
+  profile_group_id:
+    type: uuid
+    lifetime: user
+    description: |
+      A UUID uniquely identifying the profile group,
+      not shared with other telemetry data.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944648
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944648
+    data_sensitivity:
+      - technical
+      - highly_sensitive
+    notification_emails:
+      - glean-team@mozilla.com
+      - loines@mozilla.com
+      - jhirsch@mozilla.com
+    expires: never
+    send_in_pings:
+      - usage-reporting
+      - usage-deletion-request
+      - onboarding-opt-out
+  os:
+    type: string
+    lifetime: application
+    send_in_pings:
+      - usage-reporting
+      - onboarding-opt-out
+    description: |
+      The name of the operating system.
+      Possible values:
+      Android, iOS, Linux, Darwin, Windows,
+      FreeBSD, NetBSD, OpenBSD, Solaris, Unknown
+    bugs:
+      - https://bugzilla.mozilla.org/1497894
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1512938#c3
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+      - loines@mozilla.com
+    expires: never
+  os_version:
+    type: string
+    lifetime: application
+    send_in_pings:
+      - usage-reporting
+      - onboarding-opt-out
+    description: |
+      The user-visible version of the operating system (e.g. "1.2.3").
+      If the version detection fails, this metric gets set to `Unknown`.
+    bugs:
+      - https://bugzilla.mozilla.org/1497894
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1512938#c3
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+      - loines@mozilla.com
+    expires: never
+  windows_build_number:
+    type: quantity
+    lifetime: application
+    send_in_pings:
+      - usage-reporting
+      - onboarding-opt-out
+    description: |
+      The optional Windows build number, reported by Windows
+      (e.g. 22000) and not set for other platforms.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1802094
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1802094
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+      - loines@mozilla.com
+    expires: never
+    unit: build_number
+  app_build:
+    type: string
+    lifetime: application
+    send_in_pings:
+      - usage-reporting
+      - onboarding-opt-out
+    description: |
+      The build identifier generated by the CI system (e.g. "1234/A").
+      If the value was not provided through configuration,
+      this metric gets set to `Unknown`.
+    bugs:
+      - https://bugzilla.mozilla.org/1508305
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1512938#c3
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+      - loines@mozilla.com
+    expires: never
+  app_display_version:
+    type: string
+    lifetime: application
+    send_in_pings:
+      - usage-reporting
+      - onboarding-opt-out
+    description: |
+      The user visible version string (e.g. "1.0.3").
+      If the value was not provided through configuration,
+      this metric gets set to `Unknown`.
+    bugs:
+      - https://bugzilla.mozilla.org/1508305
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1508305#c9
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+      - loines@mozilla.com
+    expires: never
+  app_channel:
+    type: string
+    lifetime: application
+    send_in_pings:
+      - usage-reporting
+      - onboarding-opt-out
+    description: |
+      The channel the application is being distributed on.
+    bugs:
+      - https://bugzilla.mozilla.org/1520741
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1520741#c18
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+      - loines@mozilla.com
+    expires: never
+  first_run_date:
+    type: datetime
+    lifetime: user
+    send_in_pings:
+      - usage-reporting
+      - onboarding-opt-out
+    time_unit: day
+    description: |
+      The date of the profile's first use. Set from `ProfileAge.firstUse`
+    bugs:
+      - https://bugzilla.mozilla.org/1525045
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1525045#c18
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+      - loines@mozilla.com
+    expires: never
+  reason:
+    type: string
+    lifetime: ping
+    send_in_pings:
+      - usage-reporting
+    description: |
+      The reason the usage-reporting ping was sent.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1557048
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1609218#c4
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+      - loines@mozilla.com
+    expires: never
+  is_default_browser:
+    type: boolean
+    lifetime: application
+    send_in_pings:
+      - usage-reporting
+      - baseline
+      - onboarding-opt-out
+    no_lint:
+      - BASELINE_PING
+    description: |
+      Whether Firefox is set as the default browser.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944090
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+      - loines@mozilla.com
+    expires: never
+  distribution_id:
+    type: string
+    lifetime: application
+    send_in_pings:
+      - usage-reporting
+      - baseline
+      - onboarding-opt-out
+    no_lint:
+      - BASELINE_PING
+    description: |
+      The distribution id associated with the install of Firefox.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944090
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+      - loines@mozilla.com
+    expires: never
+
+browser.engagement:
+  session_time_including_suspend:
+    type: quantity
+    description: >
+      The duration of the session in milliseconds, including the time the
+      device was suspended.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.session_time_including_suspend.
+    bugs:
+      - https://bugzil.la/1205985
+    data_reviews:
+      - https://bugzil.la/1205985
+    notification_emails:
+      - padenot@mozilla.com
+    expires: never
+    unit: ms
+    telemetry_mirror: BROWSER_ENGAGEMENT_SESSION_TIME_INCLUDING_SUSPEND
+
+  session_time_excluding_suspend:
+    type: quantity
+    description: >
+      The duration of the session in milliseconds, excluding the time the
+      device was suspended.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.session_time_excluding_suspend.
+    bugs:
+      - https://bugzil.la/1205985
+    data_reviews:
+      - https://bugzil.la/1205985
+    notification_emails:
+      - padenot@mozilla.com
+    expires: never
+    unit: ms
+    telemetry_mirror: BROWSER_ENGAGEMENT_SESSION_TIME_EXCLUDING_SUSPEND
+
+browser.timings:
+  last_shutdown:
+    type: quantity
+    description: >
+      The time, in milliseconds, it took to complete the last shutdown. On
+      successful shutdown, Telemetry saves this to disk into
+      Telemetry.ShutdownTime.txt. On the next startup this is loaded and
+      recorded.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.timings.last_shutdown.
+    bugs:
+      - https://bugzil.la/1429510
+    data_reviews:
+      - https://bugzil.la/1429510
+    notification_emails:
+      - perf-telemetry-alerts@mozilla.com
+      - florian@mozilla.com
+    expires: never
+    unit: ms
+    telemetry_mirror: BROWSER_TIMINGS_LAST_SHUTDOWN
+
+onboarding_opt_out:
+  # The `onboarding-opt-out` ping does not include any info sections, and
+  # therefore needs to capture experiments and rollouts independently.  This
+  # data layout agrees with the `nimbus-targeting-context` ping for ease of
+  # analysis.
+  active_experiments:
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1942194
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1942194
+    expires: never
+    notification_emails:
+      - glean-team@mozilla.com
+      - jrediger@mozilla.com
+      - loines@mozilla.com
+      - dberry@mozilla.com
+    send_in_pings:
+      - onboarding-opt-out
+    description: >
+      The slugs of the actively enrolled experiments.
+    data_sensitivity:
+      - interaction
+    type: object
+    structure:
+      type: array
+      items:
+        type: string
+
+  active_rollouts:
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1942194
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1942194
+    expires: never
+    notification_emails:
+      - glean-team@mozilla.com
+      - jrediger@mozilla.com
+      - loines@mozilla.com
+      - dberry@mozilla.com
+    send_in_pings:
+      - onboarding-opt-out
+    description: >
+      The slugs of the actively enrolled rollouts.
+    data_sensitivity:
+      - interaction
+    type: object
+    structure:
+      type: array
+      items:
+        type: string
+
+  enrollments_map:
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1942194
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1942194
+    expires: never
+    notification_emails:
+      - glean-team@mozilla.com
+      - jrediger@mozilla.com
+      - loines@mozilla.com
+      - dberry@mozilla.com
+    send_in_pings:
+      - onboarding-opt-out
+    description: >
+      Information about historic enrollments, including the branches enrolled.
+    data_sensitivity:
+      - technical
+    type: object
+    structure:
+      type: array
+      items:
+        type: object
+        properties:
+          experimentSlug:
+            type: string
+          branchSlug:
+            type: string

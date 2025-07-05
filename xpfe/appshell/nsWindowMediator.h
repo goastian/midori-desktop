@@ -50,20 +50,18 @@ class nsWindowMediator : public nsIWindowMediator,
  private:
   void AddEnumerator(nsAppShellWindowEnumerator* inEnumerator);
   int32_t RemoveEnumerator(nsAppShellWindowEnumerator* inEnumerator);
+
   nsWindowInfo* MostRecentWindowInfo(const char16_t* inType,
-                                     bool aSkipPrivateBrowsingOrClosed = false);
+                                     WindowMediatorFilter aFilter);
 
   nsresult UnregisterWindow(nsWindowInfo* inInfo);
   nsWindowInfo* GetInfoFor(nsIAppWindow* aWindow);
   nsWindowInfo* GetInfoFor(nsIWidget* aWindow);
-  void SortZOrderFrontToBack();
-  void SortZOrderBackToFront();
 
   nsTArray<nsAppShellWindowEnumerator*> mEnumeratorList;
   nsWindowInfo* mOldestWindow;
   nsWindowInfo* mTopmostWindow;
   int32_t mTimeStamp;
-  bool mSortingZOrder;
   bool mReady;
 
   typedef nsTObserverArray<nsCOMPtr<nsIWindowMediatorListener>> ListenerArray;

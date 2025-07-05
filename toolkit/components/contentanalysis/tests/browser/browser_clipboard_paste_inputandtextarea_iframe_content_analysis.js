@@ -4,7 +4,7 @@
 let mockCA = makeMockContentAnalysis();
 
 add_setup(async function test_setup() {
-  mockCA = mockContentAnalysisService(mockCA);
+  mockCA = await mockContentAnalysisService(mockCA);
 });
 
 const PAGE_URL_OUTER_SAME_ORIGIN =
@@ -41,6 +41,8 @@ async function testClipboardPaste(allowPaste, sameOrigin) {
     });
   });
   await testPasteWithElementId("testInput", browser, allowPaste, sameOrigin);
+  // Set the clipboard data again so we don't use a cached CA result
+  setClipboardData(CLIPBOARD_TEXT_STRING);
   await testPasteWithElementId("testTextArea", browser, allowPaste, sameOrigin);
 
   BrowserTestUtils.removeTab(tab);
@@ -95,18 +97,13 @@ async function testPasteWithElementId(
   let result = await resultPromise;
   is(result, undefined, "Got unexpected result from page");
 
-  // Because we call event.clipboardData.getData in the test, this causes another call to
-  // content analysis.
-  is(mockCA.calls.length, 2, "Correct number of calls to Content Analysis");
+  is(mockCA.calls.length, 1, "Correct number of calls to Content Analysis");
   assertContentAnalysisRequest(
     mockCA.calls[0],
     CLIPBOARD_TEXT_STRING,
-    sameOrigin
-  );
-  assertContentAnalysisRequest(
-    mockCA.calls[1],
-    CLIPBOARD_TEXT_STRING,
-    sameOrigin
+    sameOrigin,
+    mockCA.calls[0].userActionId,
+    1
   );
   mockCA.clearCalls();
   let value = await getElementValue(browser, elementId);
@@ -117,7 +114,13 @@ async function testPasteWithElementId(
   );
 }
 
-function assertContentAnalysisRequest(request, expectedText, sameOrigin) {
+function assertContentAnalysisRequest(
+  request,
+  expectedText,
+  sameOrigin,
+  expectedUserActionId,
+  expectedRequestsCount
+) {
   // If the outer page is same-origin to the iframe, the outer page URL should be passed to Content Analysis.
   // Otherwise the inner page URL should be passed.
   is(
@@ -131,12 +134,28 @@ function assertContentAnalysisRequest(request, expectedText, sameOrigin) {
     "request has correct analysisType"
   );
   is(
+    request.reason,
+    Ci.nsIContentAnalysisRequest.eClipboardPaste,
+    "request has correct reason"
+  );
+  is(
     request.operationTypeForDisplay,
     Ci.nsIContentAnalysisRequest.eClipboard,
     "request has correct operationTypeForDisplay"
   );
   is(request.filePath, "", "request filePath should match");
   is(request.textContent, expectedText, "request textContent should match");
+  is(
+    request.userActionRequestsCount,
+    expectedRequestsCount,
+    "request userActionRequestsCount should match"
+  );
+  is(
+    request.userActionId,
+    expectedUserActionId,
+    "request userActionId should match"
+  );
+  ok(request.userActionId.length, "request userActionId should not be empty");
   is(request.printDataHandle, 0, "request printDataHandle should not be 0");
   is(request.printDataSize, 0, "request printDataSize should not be 0");
   ok(!!request.requestToken.length, "request requestToken should not be empty");

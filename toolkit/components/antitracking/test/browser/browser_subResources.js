@@ -15,13 +15,17 @@ add_task(async function () {
       ["privacy.trackingprotection.enabled", false],
       ["privacy.trackingprotection.pbmode.enabled", false],
       ["privacy.trackingprotection.annotate_channels", true],
-      ["privacy.partition.network_state", false],
       [
         "privacy.restrict3rdpartystorage.userInteractionRequiredForHosts",
         "tracking.example.com,tracking.example.org",
       ],
       // Bug 1617611: Fix all the tests broken by "cookies SameSite=lax by default"
       ["network.cookie.sameSite.laxByDefault", false],
+      // Enable SA heuristics for trackers because the test depends on it.
+      [
+        "privacy.restrict3rdpartystorage.heuristic.exclude_third_party_trackers",
+        false,
+      ],
     ],
   });
 
@@ -193,7 +197,7 @@ add_task(async function () {
   )
     .then(r => r.text())
     .then(text => {
-      is(text, "1", "One cookie received for images.");
+      is(text, "0", "Cookies received for images");
     });
 
   await fetch(

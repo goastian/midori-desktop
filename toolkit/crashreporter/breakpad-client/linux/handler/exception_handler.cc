@@ -634,7 +634,7 @@ bool ExceptionHandler::GenerateDump(
   static const char generate_msg[] = "ExceptionHandler::GenerateDump minidump "
                                      "generation ";
   static const char success_msg[] = "succeeded\n";
-  static const char fail_msg[] = "succeeded\n";
+  static const char fail_msg[] = "failed\n";
 
   logger::write(generate_msg, sizeof(generate_msg));
   if (success) {
@@ -866,6 +866,9 @@ void ExceptionHandler::UnregisterAppMemory(void* ptr) {
 // static
 bool ExceptionHandler::WriteMinidumpForChild(pid_t child,
                                              pid_t child_blamed_thread,
+                                             #if defined(MOZ_OXIDIZED_BREAKPAD)
+                                             const DirectAuxvDumpInfo* auxv_info,
+                                             #endif // defined(MOZ_OXIDIZED_BREAKPAD)
                                              const string& dump_path,
                                              MinidumpCallback callback,
                                              void* callback_context) {
@@ -873,9 +876,16 @@ bool ExceptionHandler::WriteMinidumpForChild(pid_t child,
   MinidumpDescriptor descriptor(dump_path);
   descriptor.UpdatePath();
 #if defined(MOZ_OXIDIZED_BREAKPAD)
-  char* error_msg;
-  if (!write_minidump_linux(descriptor.path(), child, child_blamed_thread, &error_msg)) {
-      return false;
+  MinidumpWriterContext* minidump_writer =
+    minidump_writer_create(descriptor.path(), child, child_blamed_thread, nullptr);
+  if (!minidump_writer) {
+    return false;
+  }
+  if (auxv_info) {
+    minidump_writer_set_direct_auxv_dump_info(minidump_writer, auxv_info);
+  }
+  if (!minidump_writer_dump(minidump_writer, nullptr)) {
+    return false;
   }
 #else
   if (!google_breakpad::WriteMinidump(descriptor.path(),

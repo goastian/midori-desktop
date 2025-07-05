@@ -21,6 +21,7 @@ ChromeUtils.defineLazyGetter(lazy, "Keys", function () {
 export var ShortcutUtils = {
   IS_VALID: "valid",
   INVALID_KEY: "invalid_key",
+  INVALID_KEY_IN_EXTENSION_MANIFEST: "invalid_key_in_extension_manifest",
   INVALID_MODIFIER: "invalid_modifier",
   INVALID_COMBINATION: "invalid_combination",
   DUPLICATE_MODIFIER: "duplicate_modifier",
@@ -224,13 +225,20 @@ export var ShortcutUtils = {
    * @param {string} string The shortcut string.
    * @returns {string} The code for the validation result.
    */
-  validate(string) {
+  validate(string, { extensionManifest = false } = {}) {
     // A valid shortcut key for a webextension manifest
     const MEDIA_KEYS =
       /^(MediaNextTrack|MediaPlayPause|MediaPrevTrack|MediaStop)$/;
     const BASIC_KEYS =
       /^([A-Z0-9]|Comma|Period|Home|End|PageUp|PageDown|Space|Insert|Delete|Up|Down|Left|Right)$/;
-    const FUNCTION_KEYS = /^(F[1-9]|F1[0-2])$/;
+    // NOTE: only allow F1-F12 keys when validating shortcuts defined in extension manifests,
+    // but allow F13-19 to be assigned to user-customized shortcut keys (assigned by users
+    // through the about:addons "Manage Shortcuts" view).
+    const FUNCTION_KEYS_BASIC = /^(F[1-9]|F1[0-2])$/;
+    const FUNCTION_KEYS_EXTENDED = /^(F[1-9]|F1[0-9])$/;
+    const FUNCTION_KEYS = extensionManifest
+      ? FUNCTION_KEYS_BASIC
+      : FUNCTION_KEYS_EXTENDED;
 
     if (MEDIA_KEYS.test(string.trim())) {
       return this.IS_VALID;
@@ -245,6 +253,14 @@ export var ShortcutUtils = {
     // If the modifier wasn't found it will be undefined.
     if (chromeModifiers.some(modifier => !modifier)) {
       return this.INVALID_MODIFIER;
+    }
+
+    if (
+      FUNCTION_KEYS === FUNCTION_KEYS_BASIC &&
+      !FUNCTION_KEYS_BASIC.test(key) &&
+      FUNCTION_KEYS_EXTENDED.test(key)
+    ) {
+      return this.INVALID_KEY_IN_EXTENSION_MANIFEST;
     }
 
     switch (modifiers.length) {
@@ -311,13 +327,23 @@ export var ShortcutUtils = {
    * @param {KeyboardEvent} event The event to check for a related system action.
    * @returns {string} A string identifying the action, or null if no action is found.
    */
-  // eslint-disable-next-line complexity
   getSystemActionForEvent(event, { rtl } = {}) {
     // On Windows, Win key state is not strictly checked so that we can ignore
     // Win key state to check the other modifier state.
     const meaningfulMetaKey = event.metaKey && AppConstants.platform != "win";
-    // This is set to true only when the Meta key is accel key on the platform.
-    const accelMetaKey = event.metaKey && this.metaKeyIsCommandKey();
+    const ctrlOnly =
+      event.ctrlKey && !event.shiftKey && !event.altKey && !meaningfulMetaKey;
+    const ctrlShift =
+      event.ctrlKey && event.shiftKey && !event.altKey && !meaningfulMetaKey;
+
+    // If Meta is accel on this platform, allow meta+alt combination:
+    const metaAltAccel =
+      event.metaKey &&
+      this.metaKeyIsCommandKey() &&
+      event.altKey &&
+      !event.shiftKey &&
+      !event.ctrlKey;
+
     switch (event.keyCode) {
       case event.DOM_VK_TAB:
         if (event.ctrlKey && !event.altKey && !meaningfulMetaKey) {
@@ -331,48 +357,30 @@ export var ShortcutUtils = {
         }
         break;
       case event.DOM_VK_PAGE_UP:
-        if (
-          event.ctrlKey &&
-          !event.shiftKey &&
-          !event.altKey &&
-          !meaningfulMetaKey
-        ) {
+        if (ctrlOnly) {
           return ShortcutUtils.PREVIOUS_TAB;
         }
-        if (
-          event.ctrlKey &&
-          event.shiftKey &&
-          !event.altKey &&
-          !meaningfulMetaKey
-        ) {
+        if (ctrlShift) {
           return ShortcutUtils.MOVE_TAB_BACKWARD;
         }
         break;
       case event.DOM_VK_PAGE_DOWN:
-        if (
-          event.ctrlKey &&
-          !event.shiftKey &&
-          !event.altKey &&
-          !meaningfulMetaKey
-        ) {
+        if (ctrlOnly) {
           return ShortcutUtils.NEXT_TAB;
         }
-        if (
-          event.ctrlKey &&
-          event.shiftKey &&
-          !event.altKey &&
-          !meaningfulMetaKey
-        ) {
+        if (ctrlShift) {
           return ShortcutUtils.MOVE_TAB_FORWARD;
         }
         break;
+      case event.DOM_VK_UP: // fall through
       case event.DOM_VK_LEFT:
-        if (accelMetaKey && event.altKey && !event.shiftKey && !event.ctrlKey) {
+        if (metaAltAccel) {
           return ShortcutUtils.PREVIOUS_TAB;
         }
         break;
+      case event.DOM_VK_DOWN: // fall through
       case event.DOM_VK_RIGHT:
-        if (accelMetaKey && event.altKey && !event.shiftKey && !event.ctrlKey) {
+        if (metaAltAccel) {
           return ShortcutUtils.NEXT_TAB;
         }
         break;
@@ -396,11 +404,7 @@ export var ShortcutUtils = {
     }
     // Not on Mac from now on.
     if (AppConstants.platform != "macosx") {
-      if (
-        event.ctrlKey &&
-        !event.shiftKey &&
-        event.keyCode == KeyEvent.DOM_VK_F4
-      ) {
+      if (ctrlOnly && event.keyCode == KeyEvent.DOM_VK_F4) {
         return ShortcutUtils.CLOSE_TAB;
       }
     }

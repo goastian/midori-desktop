@@ -8,12 +8,15 @@
 
 #include <cstdint>
 #include <tuple>
+#include <bitset>
 #include "ErrorList.h"
 #include "PLDHashTable.h"
 #include "mozilla/BasicEvents.h"
 #include "mozilla/ContentBlockingLog.h"
 #include "mozilla/gfx/Types.h"
 #include "mozilla/TypedEnumBits.h"
+#include "mozilla/dom/MediaDeviceInfoBinding.h"
+#include "mozilla/dom/ScreenOrientationBinding.h"
 #include "js/RealmOptions.h"
 #include "nsHashtablesFwd.h"
 #include "nsICookieJarSettings.h"
@@ -29,42 +32,40 @@
 // reason is that it is easy to detect the real platform. So there is no benefit
 // for hiding the platform: it only brings breakages, like keyboard shortcuts
 // won't work in macOS if we spoof it as a Windows platform.
+
+// We use this value for Desktop mode in Android.
+// That's why it is defined here, outside of
+// the platform-specific definitions.
+#define SPOOFED_UA_OS_OTHER "X11; Linux x86_64"
+
 #ifdef XP_WIN
 #  define SPOOFED_UA_OS "Windows NT 10.0; Win64; x64"
 #  define SPOOFED_APPVERSION "5.0 (Windows)"
 #  define SPOOFED_OSCPU "Windows NT 10.0; Win64; x64"
-#  define SPOOFED_PLATFORM "Win32"
+#  define SPOOFED_MAX_TOUCH_POINTS 10
 #elif defined(XP_MACOSX)
 #  define SPOOFED_UA_OS "Macintosh; Intel Mac OS X 10.15"
 #  define SPOOFED_APPVERSION "5.0 (Macintosh)"
 #  define SPOOFED_OSCPU "Intel Mac OS X 10.15"
-#  define SPOOFED_PLATFORM "MacIntel"
+#  define SPOOFED_MAX_TOUCH_POINTS 0
 #elif defined(MOZ_WIDGET_ANDROID)
 #  define SPOOFED_UA_OS "Android 10; Mobile"
 #  define SPOOFED_APPVERSION "5.0 (Android 10)"
 #  define SPOOFED_OSCPU "Linux armv81"
-#  define SPOOFED_PLATFORM "Linux armv81"
+#  define SPOOFED_MAX_TOUCH_POINTS 10
 #else
 // For Linux and other platforms, like BSDs, SunOS and etc, we will use Linux
 // platform.
-#  define SPOOFED_UA_OS "X11; Linux x86_64"
+#  define SPOOFED_UA_OS SPOOFED_UA_OS_OTHER
 #  define SPOOFED_APPVERSION "5.0 (X11)"
 #  define SPOOFED_OSCPU "Linux x86_64"
-#  define SPOOFED_PLATFORM "Linux x86_64"
+#  define SPOOFED_MAX_TOUCH_POINTS 10
 #endif
 
 #define LEGACY_BUILD_ID "20181001000000"
 #define LEGACY_UA_GECKO_TRAIL "20100101"
 
 #define SPOOFED_POINTER_INTERFACE MouseEvent_Binding::MOZ_SOURCE_MOUSE
-
-// For the HTTP User-Agent header, we use a simpler set of spoofed values
-// that do not reveal the specific desktop platform.
-#if defined(MOZ_WIDGET_ANDROID)
-#  define SPOOFED_HTTP_UA_OS "Android 10; Mobile"
-#else
-#  define SPOOFED_HTTP_UA_OS "Windows NT 10.0; Win64; x64"
-#endif
 
 struct JSContext;
 
@@ -177,11 +178,11 @@ MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(CanvasFeatureUsage);
 
 class CanvasUsage {
  public:
-  nsIntSize mSize;
+  CSSIntSize mSize;
   dom::CanvasContextType mType;
   CanvasFeatureUsage mFeatureUsage;
 
-  CanvasUsage(nsIntSize aSize, dom::CanvasContextType aType,
+  CanvasUsage(CSSIntSize aSize, dom::CanvasContextType aType,
               CanvasFeatureUsage aFeatureUsage)
       : mSize(aSize), mType(aType), mFeatureUsage(aFeatureUsage) {}
 };
@@ -200,7 +201,12 @@ enum class RFPTarget : uint64_t {
 
 #undef ITEM_VALUE
 
-MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(RFPTarget);
+using RFPTargetSet = EnumSet<RFPTarget, std::bitset<128>>;
+
+template <>
+struct MaxEnumValue<RFPTarget> {
+  static constexpr unsigned int value = 127;
+};
 
 // ============================================================================
 
@@ -219,7 +225,10 @@ class nsRFPService final : public nsIObserver, public nsIRFPService {
 
   static bool IsRFPEnabledFor(
       bool aIsPrivateMode, RFPTarget aTarget,
-      const Maybe<RFPTarget>& aOverriddenFingerprintingSettings);
+      const Maybe<RFPTargetSet>& aOverriddenFingerprintingSettings);
+
+  static bool IsSystemPrincipalOrAboutFingerprintingProtection(JSContext*,
+                                                               JSObject*);
 
   // --------------------------------------------------------------------------
   static double TimerResolution(RTPCallerType aRTPCallerType);
@@ -266,7 +275,8 @@ class nsRFPService final : public nsIObserver, public nsIRFPService {
   // --------------------------------------------------------------------------
 
   // This method generates the spoofed value of User Agent.
-  static void GetSpoofedUserAgent(nsACString& userAgent, bool isForHTTPHeader);
+  static void GetSpoofedUserAgent(nsACString& userAgent,
+                                  bool aAndroidDesktopMode = false);
 
   // --------------------------------------------------------------------------
 
@@ -325,6 +335,9 @@ class nsRFPService final : public nsIObserver, public nsIRFPService {
   // The method to generate the key for randomization. It can return nothing if
   // the session key is not available due to the randomization is disabled.
   static Maybe<nsTArray<uint8_t>> GenerateKey(nsIChannel* aChannel);
+  static Maybe<nsTArray<uint8_t>> GenerateKeyForServiceWorker(
+      nsIURI* aFirstPartyURI, nsIPrincipal* aPrincipal,
+      bool aForeignByAncestorContext);
 
   // The method to add random noises to the image data based on the random key
   // of the given cookieJarSettings.
@@ -340,7 +353,7 @@ class nsRFPService final : public nsIObserver, public nsIRFPService {
   // overrides to replace default enabled RFPTargets for the context of the
   // channel. The method will return Nothing() to indicate using the default
   // RFPTargets
-  static Maybe<RFPTarget> GetOverriddenFingerprintingSettingsForChannel(
+  static Maybe<RFPTargetSet> GetOverriddenFingerprintingSettingsForChannel(
       nsIChannel* aChannel);
 
   // The method for getting the granular fingerprinting protection override of
@@ -348,8 +361,8 @@ class nsRFPService final : public nsIObserver, public nsIRFPService {
   // overrides if there is one defined for the context of the first-party URI
   // and third-party URI. Otherwise, it will return Nothing() to indicate using
   // the default RFPTargets.
-  static Maybe<RFPTarget> GetOverriddenFingerprintingSettingsForURI(
-      nsIURI* aFirstPartyURI, nsIURI* aThirdPartyURI);
+  static Maybe<RFPTargetSet> GetOverriddenFingerprintingSettingsForURI(
+      nsIURI* aFirstPartyURI, nsIURI* aThirdPartyURI, bool aIsPrivate);
 
   // --------------------------------------------------------------------------
 
@@ -358,7 +371,7 @@ class nsRFPService final : public nsIObserver, public nsIRFPService {
                                              nsACString& aOriginNoSuffix);
 
   static void MaybeReportFontFingerprinter(nsIChannel* aChannel,
-                                             const nsACString& aOriginNoSuffix);
+                                           const nsACString& aOriginNoSuffix);
 
   // --------------------------------------------------------------------------
 
@@ -367,6 +380,38 @@ class nsRFPService final : public nsIObserver, public nsIRFPService {
   // detect suspicious fingerprinting activities.
   static bool CheckSuspiciousFingerprintingActivity(
       nsTArray<ContentBlockingLog::LogEntry>& aLogs);
+
+  // Generates a fake media device name with given kind and index.
+  // Example: Internal Microphone
+  static void GetMediaDeviceName(nsString& aName,
+                                 mozilla::dom::MediaDeviceKind aKind);
+
+  // Generates a fake media device group name with given kind and index.
+  // Example: Audio Group
+  static void GetMediaDeviceGroup(nsString& aGroup,
+                                  mozilla::dom::MediaDeviceKind aKind);
+
+  // Converts the viewport size to the angle.
+  static uint16_t ViewportSizeToAngle(int32_t aWidth, int32_t aHeight);
+
+  // Converts the viewport size to the orientation type.
+  static dom::OrientationType ViewportSizeToOrientationType(int32_t aWidth,
+                                                            int32_t aHeight);
+
+  // Returns the default orientation type for the given platform.
+  static dom::OrientationType GetDefaultOrientationType();
+
+  // Returns the default pixel density for RFP.
+  static float GetDefaultPixelDensity();
+
+  // Returns the device pixel ratio at the given zoom level.
+  static double GetDevicePixelRatioAtZoom(float aZoom);
+
+  // Returns the value of privacy.resistFingerprinting.exemptedDomains pref
+  static void GetExemptedDomainsLowercase(nsCString& aExemptedDomains);
+
+  static CSSIntRect GetSpoofedScreenAvailSize(const nsRect& aRect, float aScale,
+                                              bool aIsFullscreen);
 
  private:
   nsresult Init();
@@ -439,7 +484,7 @@ class nsRFPService final : public nsIObserver, public nsIRFPService {
   nsTHashMap<nsCStringHashKey, nsID> mBrowsingSessionKeys;
 
   nsCOMPtr<nsIFingerprintingWebCompatService> mWebCompatService;
-  nsTHashMap<nsCStringHashKey, RFPTarget> mFingerprintingOverrides;
+  nsTHashMap<nsCStringHashKey, RFPTargetSet> mFingerprintingOverrides;
 
   // A helper function to create the domain key for the fingerprinting
   // overrides. The key can be in the following five formats.
@@ -458,8 +503,28 @@ class nsRFPService final : public nsIObserver, public nsIRFPService {
   // overrides text and the based overrides bitfield. The function will parse
   // the text and update the based overrides bitfield accordingly. Then, it will
   // return the updated bitfield.
-  static RFPTarget CreateOverridesFromText(
-      const nsString& aOverridesText, RFPTarget aBaseOverrides = RFPTarget(0));
+  static RFPTargetSet CreateOverridesFromText(
+      const nsString& aOverridesText,
+      RFPTargetSet aBaseOverrides = RFPTargetSet());
+
+  enum FingerprintingProtectionType : uint8_t {
+    RFP,
+    FPP,
+    Baseline,
+    None,
+  };
+
+  static FingerprintingProtectionType GetFingerprintingProtectionType(
+      bool aIsPrivateMode);
+
+  static Maybe<bool> HandleExeptionalRFPTargets(
+      RFPTarget aTarget, bool aIsPrivateMode,
+      FingerprintingProtectionType aMode);
+
+  static bool IsTargetActiveForMode(RFPTarget aTarget,
+                                    FingerprintingProtectionType aMode);
+
+  static nsCString* sExemptedDomainsLowercase;
 };
 
 }  // namespace mozilla

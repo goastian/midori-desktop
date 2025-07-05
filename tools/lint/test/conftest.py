@@ -35,7 +35,7 @@ def pytest_generate_tests(metafunc):
             )
 
         name = metafunc.module.LINTER
-        config_path = path.join(lintdir, "{}.yml".format(name))
+        config_path = path.join(lintdir, f"{name}.yml")
         parser = Parser(build.topsrcdir)
         configs = parser.parse(config_path)
         config_names = {config["name"] for config in configs}
@@ -212,12 +212,12 @@ def global_lint(config, root, request):
 
     ResultSummary.root = root
 
-    def wrapper(config=config, root=root, collapse_results=False, **lintargs):
+    def wrapper(paths, config=config, root=root, collapse_results=False, **lintargs):
         logger.setLevel(logging.DEBUG)
         lintargs["log"] = logging.LoggerAdapter(
             logger, {"lintname": config.get("name"), "pid": os.getpid()}
         )
-        results = func(config, root=root, **lintargs)
+        results = func(paths, config, root=root, **lintargs)
         if hasattr(request.module, "fixed") and isinstance(results, dict):
             request.module.fixed += results["fixed"]
 

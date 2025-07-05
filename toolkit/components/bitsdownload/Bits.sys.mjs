@@ -69,7 +69,9 @@ export class BitsError extends Error {
         message += `, codeType: nsresult, code: ${code}}`;
         break;
       case lazy.gBits.ERROR_CODE_TYPE_HRESULT:
-        message += `, codeType: hresult, code: ${code}}`;
+        message += `, codeType: hresult, code: 0x${BigInt(code >>> 0).toString(
+          16
+        )}`;
         break;
       case lazy.gBits.ERROR_CODE_TYPE_STRING:
         message += `, codeType: string, code: ${JSON.stringify(code)}}`;
@@ -585,8 +587,8 @@ BitsRequest.prototype.QueryInterface = ChromeUtils.generateQI(["nsIRequest"]);
  * simply call this function with a closure that executes appropriate
  * nsIBits method.
  *
- * Specifically, this function takes an nsBitsErrorAction, an observer and a
- * function.
+ * Specifically, this function takes an nsBitsErrorAction, an optional observer,
+ * and a function.
  * The nsBitsErrorAction will be used when constructing a BitsError, if the
  * wrapper encounters an error.
  * The observer should be the one that the caller passed to the Bits Interface
@@ -597,34 +599,26 @@ BitsRequest.prototype.QueryInterface = ChromeUtils.generateQI(["nsIRequest"]);
  */
 async function servicePromise(errorAction, observer, actionFn) {
   return new Promise((resolve, reject) => {
-    if (!observer) {
-      let error = new BitsError(
-        lazy.gBits.ERROR_TYPE_NULL_ARGUMENT,
-        errorAction,
-        lazy.gBits.ERROR_STAGE_PRETASK,
-        lazy.gBits.ERROR_CODE_TYPE_NONE
-      );
-      reject(error);
-      return;
-    }
-    try {
-      observer.QueryInterface(Ci.nsIRequestObserver);
-    } catch (e) {
-      let error = new BitsError(
-        lazy.gBits.ERROR_TYPE_INVALID_ARGUMENT,
-        errorAction,
-        lazy.gBits.ERROR_STAGE_PRETASK,
-        lazy.gBits.ERROR_CODE_TYPE_EXCEPTION,
-        e
-      );
-      reject(error);
-      return;
-    }
     let isProgressEventSink = false;
-    try {
-      observer.QueryInterface(Ci.nsIProgressEventSink);
-      isProgressEventSink = true;
-    } catch (e) {}
+    if (observer) {
+      try {
+        observer.QueryInterface(Ci.nsIRequestObserver);
+      } catch (e) {
+        let error = new BitsError(
+          lazy.gBits.ERROR_TYPE_INVALID_ARGUMENT,
+          errorAction,
+          lazy.gBits.ERROR_STAGE_PRETASK,
+          lazy.gBits.ERROR_CODE_TYPE_EXCEPTION,
+          e
+        );
+        reject(error);
+        return;
+      }
+      try {
+        observer.QueryInterface(Ci.nsIProgressEventSink);
+        isProgressEventSink = true;
+      } catch (e) {}
+    }
 
     // Check if we are not late in creating new requests.
     if (
@@ -651,23 +645,27 @@ async function servicePromise(errorAction, observer, actionFn) {
 
     let wrappedObserver = {
       onStartRequest: function wrappedObserver_onStartRequest(request) {
-        if (!wrappedRequest) {
-          wrappedRequest = new BitsRequest(request);
+        if (observer) {
+          if (!wrappedRequest) {
+            wrappedRequest = new BitsRequest(request);
+          }
+          observer.onStartRequest(wrappedRequest);
         }
-        observer.onStartRequest(wrappedRequest);
       },
       onStopRequest: function wrappedObserver_onStopRequest(request, status) {
-        if (!wrappedRequest) {
-          wrappedRequest = new BitsRequest(request);
+        if (observer) {
+          if (!wrappedRequest) {
+            wrappedRequest = new BitsRequest(request);
+          }
+          observer.onStopRequest(wrappedRequest, status);
         }
-        observer.onStopRequest(wrappedRequest, status);
       },
       onProgress: function wrappedObserver_onProgress(
         request,
         progress,
         progressMax
       ) {
-        if (isProgressEventSink) {
+        if (observer && isProgressEventSink) {
           if (!wrappedRequest) {
             wrappedRequest = new BitsRequest(request);
           }
@@ -675,7 +673,7 @@ async function servicePromise(errorAction, observer, actionFn) {
         }
       },
       onStatus: function wrappedObserver_onStatus(request, status, statusArg) {
-        if (isProgressEventSink) {
+        if (observer && isProgressEventSink) {
           if (!wrappedRequest) {
             wrappedRequest = new BitsRequest(request);
           }
@@ -786,6 +784,7 @@ export var Bits = {
     proxy,
     noProgressTimeoutSecs,
     monitorIntervalMs,
+    customHeaders,
     observer,
     context
   ) {
@@ -797,6 +796,7 @@ export var Bits = {
         proxy,
         noProgressTimeoutSecs,
         monitorIntervalMs,
+        customHeaders,
         wrappedObserver,
         context,
         callback

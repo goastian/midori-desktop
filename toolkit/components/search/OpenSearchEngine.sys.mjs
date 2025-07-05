@@ -4,17 +4,21 @@
 
 /* eslint no-shadow: error, mozilla/no-aArgs: error */
 
+/**
+ * @typedef {import("./OpenSearchLoader.sys.mjs").OpenSearchProperties} OpenSearchProperties
+ */
+
 import {
   EngineURL,
   SearchEngine,
-} from "resource://gre/modules/SearchEngine.sys.mjs";
+} from "moz-src:///toolkit/components/search/SearchEngine.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   loadAndParseOpenSearchEngine:
-    "resource://gre/modules/OpenSearchLoader.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
+    "moz-src:///toolkit/components/search/OpenSearchLoader.sys.mjs",
+  SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
 });
 
 ChromeUtils.defineLazyGetter(lazy, "logConsole", () => {
@@ -38,8 +42,6 @@ export class OpenSearchEngine extends SearchEngine {
   _updateInterval = null;
   // The url to check at for a new update
   _updateURL = null;
-  // The url to check for a new icon
-  _iconUpdateURL = null;
 
   /**
    * Creates a OpenSearchEngine.
@@ -51,6 +53,9 @@ export class OpenSearchEngine extends SearchEngine {
    * @param {OpenSearchProperties} [options.engineData]
    *   The engine data for this search engine that will have been loaded via
    *   `OpenSearchLoader`.
+   * @param {string} [options.faviconURL]
+   *   The website favicon, to be used if the engine data hasn't specified an
+   *   icon.
    */
   constructor(options = {}) {
     super({
@@ -61,6 +66,15 @@ export class OpenSearchEngine extends SearchEngine {
           options.engineData.installURL
         ),
     });
+
+    if (options.faviconURL) {
+      this._setIcon(options.faviconURL, undefined, false).catch(e =>
+        lazy.logConsole.error(
+          `Error while setting icon for search engine ${options.engineData.name}:`,
+          e.message
+        )
+      );
+    }
 
     if (options.engineData) {
       this.#setEngineData(options.engineData);
@@ -79,7 +93,6 @@ export class OpenSearchEngine extends SearchEngine {
       this._initWithJSON(options.json);
       this._updateInterval = options.json._updateInterval ?? null;
       this._updateURL = options.json._updateURL ?? null;
-      this._iconUpdateURL = options.json._iconUpdateURL ?? null;
     }
   }
 
@@ -93,7 +106,6 @@ export class OpenSearchEngine extends SearchEngine {
     let json = super.toJSON();
     json._updateInterval = this._updateInterval;
     json._updateURL = this._updateURL;
-    json._iconUpdateURL = this._iconUpdateURL;
     return json;
   }
 
@@ -109,19 +121,19 @@ export class OpenSearchEngine extends SearchEngine {
       lazy.SearchUtils.URL_TYPE.OPENSEARCH,
       "self"
     );
-    return !!(this._updateURL || this._iconUpdateURL || selfURL);
+    return !!(this._updateURL || selfURL);
   }
 
   /**
    * Returns the engine's updateURI if it exists and returns null otherwise
    *
-   * @returns {?string}
+   * @returns {?nsIURI}
    */
   get updateURI() {
     let updateURL = this._getURLOfType(lazy.SearchUtils.URL_TYPE.OPENSEARCH);
     let updateURI =
       updateURL && updateURL._hasRelation("self")
-        ? updateURL.getSubmission("", this).uri
+        ? updateURL.getSubmission("", this.queryCharset).uri
         : lazy.SearchUtils.makeURI(this._updateURL);
     return updateURI;
   }
@@ -170,11 +182,6 @@ export class OpenSearchEngine extends SearchEngine {
       // server requests for future updates.
       this.setAttr("updatelastmodified", new Date().toUTCString());
     }
-
-    if (this._iconUpdateURL) {
-      // Force update of the icon from the icon URL.
-      this._setIcon(this._iconUpdateURL, true);
-    }
   }
 
   /**
@@ -185,21 +192,52 @@ export class OpenSearchEngine extends SearchEngine {
    */
   #setEngineData(data) {
     let name = data.name.trim();
-    if (!this._engineToUpdate) {
-      if (Services.search.getEngineByName(name)) {
+    if (Services.search.getEngineByName(name)) {
+      throw Components.Exception(
+        "Found a duplicate engine",
+        Ci.nsISearchService.ERROR_DUPLICATE_ENGINE
+      );
+    }
+
+    this._name = name;
+    this._queryCharset = data.queryCharset ?? "UTF-8";
+    if (data.searchForm) {
+      try {
+        let searchFormUrl = new EngineURL(
+          lazy.SearchUtils.URL_TYPE.SEARCH_FORM,
+          "GET",
+          data.searchForm
+        );
+        this._urls.push(searchFormUrl);
+      } catch (ex) {
         throw Components.Exception(
-          "Found a duplicate engine",
-          Ci.nsISearchService.ERROR_DUPLICATE_ENGINE
+          `Failed to add ${data.searchForm} as a searchForm URL`,
+          Cr.NS_ERROR_FAILURE
         );
       }
     }
 
-    this._name = name;
-    this._description = data.description ?? "";
-    this._searchForm = data.searchForm ?? "";
-    this._queryCharset = data.queryCharset ?? "UTF-8";
-
     for (let url of data.urls) {
+      // Some Mozilla provided opensearch engines used to specify their searchForm
+      // through a Url with rel="searchform". We add these as URLs with type searchform.
+      if (url.rels.includes("searchform")) {
+        let searchFormURL;
+        try {
+          searchFormURL = new EngineURL(
+            lazy.SearchUtils.URL_TYPE.SEARCH_FORM,
+            "GET",
+            url.template
+          );
+        } catch (ex) {
+          throw Components.Exception(
+            `Failed to add ${url.template} as an Engine URL`,
+            Cr.NS_ERROR_FAILURE
+          );
+        }
+        this.#addParamsToUrl(searchFormURL, url.params);
+        this._urls.push(searchFormURL);
+      }
+
       let engineURL;
       try {
         engineURL = new EngineURL(url.type, url.method, url.template);
@@ -210,24 +248,40 @@ export class OpenSearchEngine extends SearchEngine {
         );
       }
 
-      if (url.rels.length) {
-        engineURL.rels = url.rels;
+      let nonSearchformRels = url.rels.filter(rel => rel != "searchform");
+      if (nonSearchformRels.length) {
+        engineURL.rels = nonSearchformRels;
       }
 
-      for (let param of url.params) {
-        try {
-          engineURL.addParam(param.name, param.value);
-        } catch (ex) {
-          // Ignore failure
-          lazy.logConsole.error("OpenSearch url has an invalid param", param);
-        }
-      }
-
+      this.#addParamsToUrl(engineURL, url.params);
       this._urls.push(engineURL);
     }
 
     for (let image of data.images) {
-      this._setIcon(image.url, image.isPrefered, image.width, image.height);
+      this._setIcon(image.url, image.size).catch(e =>
+        lazy.logConsole.error(
+          `Error while setting icon for search engine ${data.name}:`,
+          e.message
+        )
+      );
+    }
+  }
+
+  /**
+   * Helper method to add all params to the given EngineURL,
+   * ignoring those params with missing name or value.
+   *
+   * @param {EngineURL} engineURL the EngineURL to add the params to.
+   * @param {Array} params param objects with name and value properties.
+   */
+  #addParamsToUrl(engineURL, params) {
+    for (let param of params) {
+      try {
+        engineURL.addParam(param.name, param.value);
+      } catch (ex) {
+        // Ignore failure
+        lazy.logConsole.error("OpenSearch url has an invalid param", param);
+      }
     }
   }
 

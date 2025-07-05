@@ -8,6 +8,11 @@ import { UniFFITypeError } from "resource://gre/modules/UniFFI.sys.mjs";
 // Objects intended to be used in the unit tests
 export var UnitTestObjs = {};
 
+let lazy = {};
+
+ChromeUtils.defineLazyGetter(lazy, "decoder", () => new TextDecoder());
+ChromeUtils.defineLazyGetter(lazy, "encoder", () => new TextEncoder());
+
 // Write/Read data to/from an ArrayBuffer
 class ArrayBufferDataStream {
     constructor(arrayBuffer) {
@@ -128,11 +133,10 @@ class ArrayBufferDataStream {
 
 
     writeString(value) {
-      const encoder = new TextEncoder();
       // Note: in order to efficiently write this data, we first write the
       // string data, reserving 4 bytes for the size.
       const dest = new Uint8Array(this.dataView.buffer, this.pos + 4);
-      const encodeResult = encoder.encodeInto(value, dest);
+      const encodeResult = lazy.encoder.encodeInto(value, dest);
       if (encodeResult.read != value.length) {
         throw new UniFFIError(
             "writeString: out of space when writing to ArrayBuffer.  Did the computeSize() method returned the wrong result?"
@@ -146,19 +150,32 @@ class ArrayBufferDataStream {
     }
 
     readString() {
-      const decoder = new TextDecoder();
       const size = this.readUint32();
       const source = new Uint8Array(this.dataView.buffer, this.pos, size)
-      const value = decoder.decode(source);
+      const value = lazy.decoder.decode(source);
       this.pos += size;
       return value;
+    }
+
+    readBytes() {
+      const size = this.readInt32();
+      const bytes = new Uint8Array(this.dataView.buffer, this.pos, size);
+      this.pos += size;
+      return bytes
+    }
+
+    writeBytes(value) {
+      this.writeUint32(value.length);
+      value.forEach((elt) => {
+        this.writeUint8(elt);
+      })
     }
 
     // Reads a RelevancyStore pointer from the data stream
     // UniFFI Pointers are **always** 8 bytes long. That is enforced
     // by the C++ and Rust Scaffolding code.
     readPointerRelevancyStore() {
-        const pointerId = 0; // relevancy:RelevancyStore
+        const pointerId = 1; // relevancy:RelevancyStore
         const res = UniFFIScaffolding.readPointer(pointerId, this.dataView.buffer, this.pos);
         this.pos += 8;
         return res;
@@ -168,7 +185,7 @@ class ArrayBufferDataStream {
     // UniFFI Pointers are **always** 8 bytes long. That is enforced
     // by the C++ and Rust Scaffolding code.
     writePointerRelevancyStore(value) {
-        const pointerId = 0; // relevancy:RelevancyStore
+        const pointerId = 1; // relevancy:RelevancyStore
         UniFFIScaffolding.writePointer(pointerId, value, this.dataView.buffer, this.pos);
         this.pos += 8;
     }
@@ -184,9 +201,8 @@ function handleRustResult(result, liftCallback, liftErrCallback) {
             throw liftErrCallback(result.data);
 
         case "internal-error":
-            let message = result.internalErrorMessage;
-            if (message) {
-                throw new UniFFIInternalError(message);
+            if (result.data) {
+                throw new UniFFIInternalError(FfiConverterString.lift(result.data));
             } else {
                 throw new UniFFIInternalError("Unknown error");
             }
@@ -233,6 +249,37 @@ class FfiConverterArrayBuffer extends FfiConverter {
         this.write(dataStream, value);
         return buf;
     }
+
+    /**
+     * Computes the size of the value.
+     *
+     * @param {*} _value
+     * @return {number}
+     */
+    static computeSize(_value) {
+        throw new UniFFIInternalError("computeSize() should be declared in the derived class");
+    }
+
+    /**
+     * Reads the type from a data stream.
+     *
+     * @param {ArrayBufferDataStream} _dataStream
+     * @returns {any}
+     */
+    static read(_dataStream) {
+        throw new UniFFIInternalError("read() should be declared in the derived class");
+    }
+
+    /**
+     * Writes the type to a data stream.
+     *
+     * @param {ArrayBufferDataStream} _dataStream
+     * @param {any} _value
+     */
+    static write(_dataStream, _value) {
+        throw new UniFFIInternalError("write() should be declared in the derived class");
+    }
+
 }
 
 // Symbols that are used to ensure that Object constructors
@@ -252,7 +299,7 @@ export class FfiConverterU32 extends FfiConverter {
             throw new UniFFITypeError(`${value} exceeds the U32 bounds`);
         }
     }
-    static computeSize() {
+    static computeSize(_value) {
         return 4;
     }
     static lift(value) {
@@ -270,6 +317,76 @@ export class FfiConverterU32 extends FfiConverter {
 }
 
 // Export the FFIConverter object to make external types work.
+export class FfiConverterU64 extends FfiConverter {
+    static checkType(value) {
+        super.checkType(value);
+        if (!Number.isSafeInteger(value)) {
+            throw new UniFFITypeError(`${value} exceeds the safe integer bounds`);
+        }
+        if (value < 0) {
+            throw new UniFFITypeError(`${value} exceeds the U64 bounds`);
+        }
+    }
+    static computeSize(_value) {
+        return 8;
+    }
+    static lift(value) {
+        return value;
+    }
+    static lower(value) {
+        return value;
+    }
+    static write(dataStream, value) {
+        dataStream.writeUint64(value)
+    }
+    static read(dataStream) {
+        return dataStream.readUint64()
+    }
+}
+
+// Export the FFIConverter object to make external types work.
+export class FfiConverterF64 extends FfiConverter {
+    static computeSize(_value) {
+        return 8;
+    }
+    static lift(value) {
+        return value;
+    }
+    static lower(value) {
+        return value;
+    }
+    static write(dataStream, value) {
+        dataStream.writeFloat64(value)
+    }
+    static read(dataStream) {
+        return dataStream.readFloat64()
+    }
+}
+
+// Export the FFIConverter object to make external types work.
+export class FfiConverterBool extends FfiConverter {
+    static computeSize(_value) {
+        return 1;
+    }
+    static lift(value) {
+        return value == 1;
+    }
+    static lower(value) {
+        if (value) {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+    static write(dataStream, value) {
+        dataStream.writeUint8(this.lower(value))
+    }
+    static read(dataStream) {
+        return this.lift(dataStream.readUint8())
+    }
+}
+
+// Export the FFIConverter object to make external types work.
 export class FfiConverterString extends FfiConverter {
     static checkType(value) {
         super.checkType(value);
@@ -279,13 +396,11 @@ export class FfiConverterString extends FfiConverter {
     }
 
     static lift(buf) {
-        const decoder = new TextDecoder();
         const utf8Arr = new Uint8Array(buf);
-        return decoder.decode(utf8Arr);
+        return lazy.decoder.decode(utf8Arr);
     }
     static lower(value) {
-        const encoder = new TextEncoder();
-        return encoder.encode(value).buffer;
+        return lazy.encoder.encode(value).buffer;
     }
 
     static write(dataStream, value) {
@@ -297,11 +412,13 @@ export class FfiConverterString extends FfiConverter {
     }
 
     static computeSize(value) {
-        const encoder = new TextEncoder();
-        return 4 + encoder.encode(value).length
+        return 4 + lazy.encoder.encode(value).length
     }
 }
 
+/**
+ * RelevancyStore
+ */
 export class RelevancyStore {
     // Use `init` to instantiate this class.
     // DO NOT USE THIS CONSTRUCTOR DIRECTLY
@@ -310,42 +427,78 @@ export class RelevancyStore {
             throw new UniFFIError("Attempting to construct an object using the JavaScript constructor directly" +
             "Please use a UDL defined constructor, or the init function for the primary constructor")
         }
-        if (!opts[constructUniffiObject] instanceof UniFFIPointer) {
+        if (!(opts[constructUniffiObject] instanceof UniFFIPointer)) {
             throw new UniFFIError("Attempting to create a UniFFI object with a pointer that is not an instance of UniFFIPointer")
         }
         this[uniffiObjectPtr] = opts[constructUniffiObject];
     }
     /**
-     * A constructor for RelevancyStore.
-     * 
-     * @returns { RelevancyStore }
+     * Construct a new RelevancyStore
+     *
+     * This is non-blocking since databases and other resources are lazily opened.
+     * @returns {RelevancyStore}
      */
-    static init(dbpath) {
+    static init(dbPath,remoteSettings) {
         const liftResult = (result) => FfiConverterTypeRelevancyStore.lift(result);
         const liftError = null;
         const functionCall = () => {
             try {
-                FfiConverterString.checkType(dbpath)
+                FfiConverterString.checkType(dbPath)
             } catch (e) {
                 if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("dbpath");
+                    e.addItemDescriptionPart("dbPath");
+                }
+                throw e;
+            }
+            try {
+                FfiConverterTypeRemoteSettingsService.checkType(remoteSettings)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("remoteSettings");
                 }
                 throw e;
             }
             return UniFFIScaffolding.callSync(
-                1, // relevancy:uniffi_relevancy_fn_constructor_relevancystore_new
-                FfiConverterString.lower(dbpath),
+                16, // relevancy:uniffi_relevancy_fn_constructor_relevancystore_new
+                FfiConverterString.lower(dbPath),
+                FfiConverterTypeRemoteSettingsService.lower(remoteSettings),
             )
         }
         return handleRustResult(functionCall(), liftResult, liftError);}
 
-    calculateMetrics() {
-        const liftResult = (result) => FfiConverterTypeInterestMetrics.lift(result);
+    /**
+     * Initializes probability distributions for any uninitialized items (arms) within a bandit model.
+     *
+     * This method takes a `bandit` identifier and a list of `arms` (items) and ensures that each arm
+     * in the list has an initialized probability distribution in the database. For each arm, if the
+     * probability distribution does not already exist, it will be created, using Beta(1,1) as default,
+     * which represents uniform distribution.
+     */
+    banditInit(bandit,arms) {
+        const liftResult = (result) => undefined;
         const liftError = (data) => FfiConverterTypeRelevancyApiError.lift(data);
         const functionCall = () => {
-            return UniFFIScaffolding.callAsync(
-                2, // relevancy:uniffi_relevancy_fn_method_relevancystore_calculate_metrics
+            try {
+                FfiConverterString.checkType(bandit)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("bandit");
+                }
+                throw e;
+            }
+            try {
+                FfiConverterSequencestring.checkType(arms)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("arms");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsyncWrapper(
+                7, // relevancy:uniffi_relevancy_fn_method_relevancystore_bandit_init
                 FfiConverterTypeRelevancyStore.lower(this),
+                FfiConverterString.lower(bandit),
+                FfiConverterSequencestring.lower(arms),
             )
         }
         try {
@@ -355,34 +508,129 @@ export class RelevancyStore {
         }
     }
 
+    /**
+     * Selects the optimal item (arm) to display to the user based on a multi-armed bandit model.
+     *
+     * This method takes in a `bandit` identifier and a list of possible `arms` (items) and uses a
+     * Thompson sampling approach to select the arm with the highest probability of success.
+     * For each arm, it retrieves the Beta distribution parameters (alpha and beta) from the
+     * database, creates a Beta distribution, and samples from it to estimate the arm's probability
+     * of success. The arm with the highest sampled probability is selected and returned.
+     * @returns {string}
+     */
+    banditSelect(bandit,arms) {
+        const liftResult = (result) => FfiConverterString.lift(result);
+        const liftError = (data) => FfiConverterTypeRelevancyApiError.lift(data);
+        const functionCall = () => {
+            try {
+                FfiConverterString.checkType(bandit)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("bandit");
+                }
+                throw e;
+            }
+            try {
+                FfiConverterSequencestring.checkType(arms)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("arms");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsyncWrapper(
+                8, // relevancy:uniffi_relevancy_fn_method_relevancystore_bandit_select
+                FfiConverterTypeRelevancyStore.lower(this),
+                FfiConverterString.lower(bandit),
+                FfiConverterSequencestring.lower(arms),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    /**
+     * Updates the bandit model's arm data based on user interaction (selection or non-selection).
+     *
+     * This method takes in a `bandit` identifier, an `arm` identifier, and a `selected` flag.
+     * If `selected` is true, it updates the model to reflect a successful selection of the arm,
+     * reinforcing its positive reward probability. If `selected` is false, it updates the
+     * beta (failure) distribution of the arm, reflecting a lack of selection and reinforcing
+     * its likelihood of a negative outcome.
+     */
+    banditUpdate(bandit,arm,selected) {
+        const liftResult = (result) => undefined;
+        const liftError = (data) => FfiConverterTypeRelevancyApiError.lift(data);
+        const functionCall = () => {
+            try {
+                FfiConverterString.checkType(bandit)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("bandit");
+                }
+                throw e;
+            }
+            try {
+                FfiConverterString.checkType(arm)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("arm");
+                }
+                throw e;
+            }
+            try {
+                FfiConverterBool.checkType(selected)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("selected");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsyncWrapper(
+                9, // relevancy:uniffi_relevancy_fn_method_relevancystore_bandit_update
+                FfiConverterTypeRelevancyStore.lower(this),
+                FfiConverterString.lower(bandit),
+                FfiConverterString.lower(arm),
+                FfiConverterBool.lower(selected),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    /**
+     * Close any open resources (for example databases)
+     *
+     * Calling `close` will interrupt any in-progress queries on other threads.
+     */
     close() {
         const liftResult = (result) => undefined;
         const liftError = null;
         const functionCall = () => {
             return UniFFIScaffolding.callSync(
-                3, // relevancy:uniffi_relevancy_fn_method_relevancystore_close
+                10, // relevancy:uniffi_relevancy_fn_method_relevancystore_close
                 FfiConverterTypeRelevancyStore.lower(this),
             )
         }
         return handleRustResult(functionCall(), liftResult, liftError);
     }
 
-    ingest(topUrls) {
-        const liftResult = (result) => FfiConverterTypeInterestVector.lift(result);
+    /**
+     * Download the interest data from remote settings if needed
+     */
+    ensureInterestDataPopulated() {
+        const liftResult = (result) => undefined;
         const liftError = (data) => FfiConverterTypeRelevancyApiError.lift(data);
         const functionCall = () => {
-            try {
-                FfiConverterSequencestring.checkType(topUrls)
-            } catch (e) {
-                if (e instanceof UniFFITypeError) {
-                    e.addItemDescriptionPart("topUrls");
-                }
-                throw e;
-            }
-            return UniFFIScaffolding.callAsync(
-                4, // relevancy:uniffi_relevancy_fn_method_relevancystore_ingest
+            return UniFFIScaffolding.callAsyncWrapper(
+                11, // relevancy:uniffi_relevancy_fn_method_relevancystore_ensure_interest_data_populated
                 FfiConverterTypeRelevancyStore.lower(this),
-                FfiConverterSequencestring.lower(topUrls),
             )
         }
         try {
@@ -392,24 +640,111 @@ export class RelevancyStore {
         }
     }
 
+    /**
+     * Retrieves the data for a specific bandit and arm.
+     * @returns {BanditData}
+     */
+    getBanditData(bandit,arm) {
+        const liftResult = (result) => FfiConverterTypeBanditData.lift(result);
+        const liftError = (data) => FfiConverterTypeRelevancyApiError.lift(data);
+        const functionCall = () => {
+            try {
+                FfiConverterString.checkType(bandit)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("bandit");
+                }
+                throw e;
+            }
+            try {
+                FfiConverterString.checkType(arm)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("arm");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsyncWrapper(
+                12, // relevancy:uniffi_relevancy_fn_method_relevancystore_get_bandit_data
+                FfiConverterTypeRelevancyStore.lower(this),
+                FfiConverterString.lower(bandit),
+                FfiConverterString.lower(arm),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    /**
+     * Ingest top URLs to build the user's interest vector.
+     *
+     * Consumer should pass a list of the user's top URLs by frecency to this method.  It will
+     * then:
+     *
+     * - Download the URL interest data from remote settings.  Eventually this should be cached /
+     * stored in the database, but for now it would be fine to download fresh data each time.
+     * - Match the user's top URls against the interest data to build up their interest vector.
+     * - Store the user's interest vector in the database.
+     *
+     * This method may execute for a long time and should only be called from a worker thread.
+     * @returns {InterestVector}
+     */
+    ingest(topUrlsByFrecency) {
+        const liftResult = (result) => FfiConverterTypeInterestVector.lift(result);
+        const liftError = (data) => FfiConverterTypeRelevancyApiError.lift(data);
+        const functionCall = () => {
+            try {
+                FfiConverterSequencestring.checkType(topUrlsByFrecency)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("topUrlsByFrecency");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callAsyncWrapper(
+                13, // relevancy:uniffi_relevancy_fn_method_relevancystore_ingest
+                FfiConverterTypeRelevancyStore.lower(this),
+                FfiConverterSequencestring.lower(topUrlsByFrecency),
+            )
+        }
+        try {
+            return functionCall().then((result) => handleRustResult(result, liftResult, liftError));
+        }  catch (error) {
+            return Promise.reject(error)
+        }
+    }
+
+    /**
+     * Interrupt any current database queries
+     */
     interrupt() {
         const liftResult = (result) => undefined;
         const liftError = null;
         const functionCall = () => {
             return UniFFIScaffolding.callSync(
-                5, // relevancy:uniffi_relevancy_fn_method_relevancystore_interrupt
+                14, // relevancy:uniffi_relevancy_fn_method_relevancystore_interrupt
                 FfiConverterTypeRelevancyStore.lower(this),
             )
         }
         return handleRustResult(functionCall(), liftResult, liftError);
     }
 
+    /**
+     * Get the user's interest vector directly.
+     *
+     * This runs after [Self::ingest].  It returns the interest vector directly so that the
+     * consumer can show it in an `about:` page.
+     * @returns {InterestVector}
+     */
     userInterestVector() {
         const liftResult = (result) => FfiConverterTypeInterestVector.lift(result);
         const liftError = (data) => FfiConverterTypeRelevancyApiError.lift(data);
         const functionCall = () => {
-            return UniFFIScaffolding.callAsync(
-                6, // relevancy:uniffi_relevancy_fn_method_relevancystore_user_interest_vector
+            return UniFFIScaffolding.callAsyncWrapper(
+                15, // relevancy:uniffi_relevancy_fn_method_relevancystore_user_interest_vector
                 FfiConverterTypeRelevancyStore.lower(this),
             )
         }
@@ -451,8 +786,199 @@ export class FfiConverterTypeRelevancyStore extends FfiConverter {
     }
 }
 
+/**
+ * BanditData
+ */
+export class BanditData {
+    constructor({ bandit, arm, impressions, clicks, alpha, beta } = { bandit: undefined, arm: undefined, impressions: undefined, clicks: undefined, alpha: undefined, beta: undefined }) {
+        try {
+            FfiConverterString.checkType(bandit)
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart("bandit");
+            }
+            throw e;
+        }
+        try {
+            FfiConverterString.checkType(arm)
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart("arm");
+            }
+            throw e;
+        }
+        try {
+            FfiConverterU64.checkType(impressions)
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart("impressions");
+            }
+            throw e;
+        }
+        try {
+            FfiConverterU64.checkType(clicks)
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart("clicks");
+            }
+            throw e;
+        }
+        try {
+            FfiConverterU64.checkType(alpha)
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart("alpha");
+            }
+            throw e;
+        }
+        try {
+            FfiConverterU64.checkType(beta)
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart("beta");
+            }
+            throw e;
+        }
+        /**
+         * @type {string}
+         */
+        this.bandit = bandit;
+        /**
+         * @type {string}
+         */
+        this.arm = arm;
+        /**
+         * @type {number}
+         */
+        this.impressions = impressions;
+        /**
+         * @type {number}
+         */
+        this.clicks = clicks;
+        /**
+         * @type {number}
+         */
+        this.alpha = alpha;
+        /**
+         * @type {number}
+         */
+        this.beta = beta;
+    }
+
+    equals(other) {
+        return (
+            this.bandit == other.bandit &&
+            this.arm == other.arm &&
+            this.impressions == other.impressions &&
+            this.clicks == other.clicks &&
+            this.alpha == other.alpha &&
+            this.beta == other.beta
+        )
+    }
+}
+
+// Export the FFIConverter object to make external types work.
+export class FfiConverterTypeBanditData extends FfiConverterArrayBuffer {
+    static read(dataStream) {
+        return new BanditData({
+            bandit: FfiConverterString.read(dataStream),
+            arm: FfiConverterString.read(dataStream),
+            impressions: FfiConverterU64.read(dataStream),
+            clicks: FfiConverterU64.read(dataStream),
+            alpha: FfiConverterU64.read(dataStream),
+            beta: FfiConverterU64.read(dataStream),
+        });
+    }
+    static write(dataStream, value) {
+        FfiConverterString.write(dataStream, value.bandit);
+        FfiConverterString.write(dataStream, value.arm);
+        FfiConverterU64.write(dataStream, value.impressions);
+        FfiConverterU64.write(dataStream, value.clicks);
+        FfiConverterU64.write(dataStream, value.alpha);
+        FfiConverterU64.write(dataStream, value.beta);
+    }
+
+    static computeSize(value) {
+        let totalSize = 0;
+        totalSize += FfiConverterString.computeSize(value.bandit);
+        totalSize += FfiConverterString.computeSize(value.arm);
+        totalSize += FfiConverterU64.computeSize(value.impressions);
+        totalSize += FfiConverterU64.computeSize(value.clicks);
+        totalSize += FfiConverterU64.computeSize(value.alpha);
+        totalSize += FfiConverterU64.computeSize(value.beta);
+        return totalSize
+    }
+
+    static checkType(value) {
+        super.checkType(value);
+        if (!(value instanceof BanditData)) {
+            throw new UniFFITypeError(`Expected 'BanditData', found '${typeof value}'`);
+        }
+        try {
+            FfiConverterString.checkType(value.bandit);
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart(".bandit");
+            }
+            throw e;
+        }
+        try {
+            FfiConverterString.checkType(value.arm);
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart(".arm");
+            }
+            throw e;
+        }
+        try {
+            FfiConverterU64.checkType(value.impressions);
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart(".impressions");
+            }
+            throw e;
+        }
+        try {
+            FfiConverterU64.checkType(value.clicks);
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart(".clicks");
+            }
+            throw e;
+        }
+        try {
+            FfiConverterU64.checkType(value.alpha);
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart(".alpha");
+            }
+            throw e;
+        }
+        try {
+            FfiConverterU64.checkType(value.beta);
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart(".beta");
+            }
+            throw e;
+        }
+    }
+}
+
+/**
+ * Interest metrics that we want to send to Glean as part of the validation process.  These contain
+ * the cosine similarity when comparing the user's interest against various interest vectors that
+ * consumers may use.
+ *
+ * Cosine similarly was chosen because it seems easy to calculate.  This was then matched against
+ * some semi-plausible real-world interest vectors that consumers might use.  This is all up for
+ * debate and we may decide to switch to some other metrics.
+ *
+ * Similarity values are transformed to integers by multiplying the floating point value by 1000 and
+ * rounding.  This is to make them compatible with Glean's distribution metrics.
+ */
 export class InterestMetrics {
-    constructor({ topSingleInterestSimilarity, top2interestSimilarity, top3interestSimilarity } = {}) {
+    constructor({ topSingleInterestSimilarity, top2interestSimilarity, top3interestSimilarity } = { topSingleInterestSimilarity: undefined, top2interestSimilarity: undefined, top3interestSimilarity: undefined }) {
         try {
             FfiConverterU32.checkType(topSingleInterestSimilarity)
         } catch (e) {
@@ -477,10 +1003,29 @@ export class InterestMetrics {
             }
             throw e;
         }
+        /**
+         * Similarity between the user's interest vector and an interest vector where the element for
+         * the user's top interest is copied, but all other interests are set to zero.  This measures
+         * the highest possible similarity with consumers that used interest vectors with a single
+         * interest set.
+         * @type {number}
+         */
         this.topSingleInterestSimilarity = topSingleInterestSimilarity;
+        /**
+         * The same as before, but the top 2 interests are copied. This measures the highest possible
+         * similarity with consumers that used interest vectors with a two interests (note: this means
+         * they would need to choose the user's top two interests and have the exact same proportion
+         * between them as the user).
+         * @type {number}
+         */
         this.top2interestSimilarity = top2interestSimilarity;
+        /**
+         * The same as before, but the top 3 interests are copied.
+         * @type {number}
+         */
         this.top3interestSimilarity = top3interestSimilarity;
     }
+
     equals(other) {
         return (
             this.topSingleInterestSimilarity == other.topSingleInterestSimilarity &&
@@ -545,8 +1090,22 @@ export class FfiConverterTypeInterestMetrics extends FfiConverterArrayBuffer {
     }
 }
 
+/**
+ * Vector storing a count value for each interest
+ *
+ * Here "vector" refers to the mathematical object, not a Rust `Vec`.  It always has a fixed
+ * number of elements.
+ */
 export class InterestVector {
-    constructor({ animals, arts, autos, business, career, education, fashion, finance, food, government, hobbies, home, news, realEstate, society, sports, tech, travel, inconclusive } = {}) {
+    constructor({ inconclusive, animals, arts, autos, business, career, education, fashion, finance, food, government, hobbies, home, news, realEstate, society, sports, tech, travel } = { inconclusive: undefined, animals: undefined, arts: undefined, autos: undefined, business: undefined, career: undefined, education: undefined, fashion: undefined, finance: undefined, food: undefined, government: undefined, hobbies: undefined, home: undefined, news: undefined, realEstate: undefined, society: undefined, sports: undefined, tech: undefined, travel: undefined }) {
+        try {
+            FfiConverterU32.checkType(inconclusive)
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart("inconclusive");
+            }
+            throw e;
+        }
         try {
             FfiConverterU32.checkType(animals)
         } catch (e) {
@@ -691,36 +1250,87 @@ export class InterestVector {
             }
             throw e;
         }
-        try {
-            FfiConverterU32.checkType(inconclusive)
-        } catch (e) {
-            if (e instanceof UniFFITypeError) {
-                e.addItemDescriptionPart("inconclusive");
-            }
-            throw e;
-        }
-        this.animals = animals;
-        this.arts = arts;
-        this.autos = autos;
-        this.business = business;
-        this.career = career;
-        this.education = education;
-        this.fashion = fashion;
-        this.finance = finance;
-        this.food = food;
-        this.government = government;
-        this.hobbies = hobbies;
-        this.home = home;
-        this.news = news;
-        this.realEstate = realEstate;
-        this.society = society;
-        this.sports = sports;
-        this.tech = tech;
-        this.travel = travel;
+        /**
+         * @type {number}
+         */
         this.inconclusive = inconclusive;
+        /**
+         * @type {number}
+         */
+        this.animals = animals;
+        /**
+         * @type {number}
+         */
+        this.arts = arts;
+        /**
+         * @type {number}
+         */
+        this.autos = autos;
+        /**
+         * @type {number}
+         */
+        this.business = business;
+        /**
+         * @type {number}
+         */
+        this.career = career;
+        /**
+         * @type {number}
+         */
+        this.education = education;
+        /**
+         * @type {number}
+         */
+        this.fashion = fashion;
+        /**
+         * @type {number}
+         */
+        this.finance = finance;
+        /**
+         * @type {number}
+         */
+        this.food = food;
+        /**
+         * @type {number}
+         */
+        this.government = government;
+        /**
+         * @type {number}
+         */
+        this.hobbies = hobbies;
+        /**
+         * @type {number}
+         */
+        this.home = home;
+        /**
+         * @type {number}
+         */
+        this.news = news;
+        /**
+         * @type {number}
+         */
+        this.realEstate = realEstate;
+        /**
+         * @type {number}
+         */
+        this.society = society;
+        /**
+         * @type {number}
+         */
+        this.sports = sports;
+        /**
+         * @type {number}
+         */
+        this.tech = tech;
+        /**
+         * @type {number}
+         */
+        this.travel = travel;
     }
+
     equals(other) {
         return (
+            this.inconclusive == other.inconclusive &&
             this.animals == other.animals &&
             this.arts == other.arts &&
             this.autos == other.autos &&
@@ -738,8 +1348,7 @@ export class InterestVector {
             this.society == other.society &&
             this.sports == other.sports &&
             this.tech == other.tech &&
-            this.travel == other.travel &&
-            this.inconclusive == other.inconclusive
+            this.travel == other.travel
         )
     }
 }
@@ -748,6 +1357,7 @@ export class InterestVector {
 export class FfiConverterTypeInterestVector extends FfiConverterArrayBuffer {
     static read(dataStream) {
         return new InterestVector({
+            inconclusive: FfiConverterU32.read(dataStream),
             animals: FfiConverterU32.read(dataStream),
             arts: FfiConverterU32.read(dataStream),
             autos: FfiConverterU32.read(dataStream),
@@ -766,10 +1376,10 @@ export class FfiConverterTypeInterestVector extends FfiConverterArrayBuffer {
             sports: FfiConverterU32.read(dataStream),
             tech: FfiConverterU32.read(dataStream),
             travel: FfiConverterU32.read(dataStream),
-            inconclusive: FfiConverterU32.read(dataStream),
         });
     }
     static write(dataStream, value) {
+        FfiConverterU32.write(dataStream, value.inconclusive);
         FfiConverterU32.write(dataStream, value.animals);
         FfiConverterU32.write(dataStream, value.arts);
         FfiConverterU32.write(dataStream, value.autos);
@@ -788,11 +1398,11 @@ export class FfiConverterTypeInterestVector extends FfiConverterArrayBuffer {
         FfiConverterU32.write(dataStream, value.sports);
         FfiConverterU32.write(dataStream, value.tech);
         FfiConverterU32.write(dataStream, value.travel);
-        FfiConverterU32.write(dataStream, value.inconclusive);
     }
 
     static computeSize(value) {
         let totalSize = 0;
+        totalSize += FfiConverterU32.computeSize(value.inconclusive);
         totalSize += FfiConverterU32.computeSize(value.animals);
         totalSize += FfiConverterU32.computeSize(value.arts);
         totalSize += FfiConverterU32.computeSize(value.autos);
@@ -811,7 +1421,6 @@ export class FfiConverterTypeInterestVector extends FfiConverterArrayBuffer {
         totalSize += FfiConverterU32.computeSize(value.sports);
         totalSize += FfiConverterU32.computeSize(value.tech);
         totalSize += FfiConverterU32.computeSize(value.travel);
-        totalSize += FfiConverterU32.computeSize(value.inconclusive);
         return totalSize
     }
 
@@ -819,6 +1428,14 @@ export class FfiConverterTypeInterestVector extends FfiConverterArrayBuffer {
         super.checkType(value);
         if (!(value instanceof InterestVector)) {
             throw new UniFFITypeError(`Expected 'InterestVector', found '${typeof value}'`);
+        }
+        try {
+            FfiConverterU32.checkType(value.inconclusive);
+        } catch (e) {
+            if (e instanceof UniFFITypeError) {
+                e.addItemDescriptionPart(".inconclusive");
+            }
+            throw e;
         }
         try {
             FfiConverterU32.checkType(value.animals);
@@ -964,162 +1581,219 @@ export class FfiConverterTypeInterestVector extends FfiConverterArrayBuffer {
             }
             throw e;
         }
-        try {
-            FfiConverterU32.checkType(value.inconclusive);
-        } catch (e) {
-            if (e instanceof UniFFITypeError) {
-                e.addItemDescriptionPart(".inconclusive");
-            }
-            throw e;
-        }
     }
 }
 
 
+/**
+ * List of possible interests for a domain.  Domains can have be associated with one or multiple
+ * interests.  `Inconclusive` is used for domains in the user's top sites that we can't classify
+ * because there's no corresponding entry in the interest database.
+ */
 export const Interest = {
-    ANIMALS: 1,
-    ARTS: 2,
-    AUTOS: 3,
-    BUSINESS: 4,
-    CAREER: 5,
-    EDUCATION: 6,
-    FASHION: 7,
-    FINANCE: 8,
-    FOOD: 9,
-    GOVERNMENT: 10,
-    HOBBIES: 11,
-    HOME: 12,
-    NEWS: 13,
-    REAL_ESTATE: 14,
-    SOCIETY: 15,
-    SPORTS: 16,
-    TECH: 17,
-    TRAVEL: 18,
-    INCONCLUSIVE: 19,
+    /**
+     * INCONCLUSIVE
+     */
+    INCONCLUSIVE:0,
+    /**
+     * ANIMALS
+     */
+    ANIMALS:1,
+    /**
+     * ARTS
+     */
+    ARTS:2,
+    /**
+     * AUTOS
+     */
+    AUTOS:3,
+    /**
+     * BUSINESS
+     */
+    BUSINESS:4,
+    /**
+     * CAREER
+     */
+    CAREER:5,
+    /**
+     * EDUCATION
+     */
+    EDUCATION:6,
+    /**
+     * FASHION
+     */
+    FASHION:7,
+    /**
+     * FINANCE
+     */
+    FINANCE:8,
+    /**
+     * FOOD
+     */
+    FOOD:9,
+    /**
+     * GOVERNMENT
+     */
+    GOVERNMENT:10,
+    /**
+     * HOBBIES
+     */
+    HOBBIES:12,
+    /**
+     * HOME
+     */
+    HOME:13,
+    /**
+     * NEWS
+     */
+    NEWS:14,
+    /**
+     * REAL_ESTATE
+     */
+    REAL_ESTATE:15,
+    /**
+     * SOCIETY
+     */
+    SOCIETY:16,
+    /**
+     * SPORTS
+     */
+    SPORTS:17,
+    /**
+     * TECH
+     */
+    TECH:18,
+    /**
+     * TRAVEL
+     */
+    TRAVEL:19,
 };
 
 Object.freeze(Interest);
 // Export the FFIConverter object to make external types work.
 export class FfiConverterTypeInterest extends FfiConverterArrayBuffer {
+    static #validValues = Object.values(Interest);
+
     static read(dataStream) {
+        // Use sequential indices (1-based) for the wire format to match Python bindings
         switch (dataStream.readInt32()) {
             case 1:
-                return Interest.ANIMALS
-            case 2:
-                return Interest.ARTS
-            case 3:
-                return Interest.AUTOS
-            case 4:
-                return Interest.BUSINESS
-            case 5:
-                return Interest.CAREER
-            case 6:
-                return Interest.EDUCATION
-            case 7:
-                return Interest.FASHION
-            case 8:
-                return Interest.FINANCE
-            case 9:
-                return Interest.FOOD
-            case 10:
-                return Interest.GOVERNMENT
-            case 11:
-                return Interest.HOBBIES
-            case 12:
-                return Interest.HOME
-            case 13:
-                return Interest.NEWS
-            case 14:
-                return Interest.REAL_ESTATE
-            case 15:
-                return Interest.SOCIETY
-            case 16:
-                return Interest.SPORTS
-            case 17:
-                return Interest.TECH
-            case 18:
-                return Interest.TRAVEL
-            case 19:
                 return Interest.INCONCLUSIVE
+            case 2:
+                return Interest.ANIMALS
+            case 3:
+                return Interest.ARTS
+            case 4:
+                return Interest.AUTOS
+            case 5:
+                return Interest.BUSINESS
+            case 6:
+                return Interest.CAREER
+            case 7:
+                return Interest.EDUCATION
+            case 8:
+                return Interest.FASHION
+            case 9:
+                return Interest.FINANCE
+            case 10:
+                return Interest.FOOD
+            case 11:
+                return Interest.GOVERNMENT
+            case 12:
+                return Interest.HOBBIES
+            case 13:
+                return Interest.HOME
+            case 14:
+                return Interest.NEWS
+            case 15:
+                return Interest.REAL_ESTATE
+            case 16:
+                return Interest.SOCIETY
+            case 17:
+                return Interest.SPORTS
+            case 18:
+                return Interest.TECH
+            case 19:
+                return Interest.TRAVEL
             default:
                 throw new UniFFITypeError("Unknown Interest variant");
         }
     }
 
     static write(dataStream, value) {
-        if (value === Interest.ANIMALS) {
+        if (value === Interest.INCONCLUSIVE) {
             dataStream.writeInt32(1);
             return;
         }
-        if (value === Interest.ARTS) {
+        if (value === Interest.ANIMALS) {
             dataStream.writeInt32(2);
             return;
         }
-        if (value === Interest.AUTOS) {
+        if (value === Interest.ARTS) {
             dataStream.writeInt32(3);
             return;
         }
-        if (value === Interest.BUSINESS) {
+        if (value === Interest.AUTOS) {
             dataStream.writeInt32(4);
             return;
         }
-        if (value === Interest.CAREER) {
+        if (value === Interest.BUSINESS) {
             dataStream.writeInt32(5);
             return;
         }
-        if (value === Interest.EDUCATION) {
+        if (value === Interest.CAREER) {
             dataStream.writeInt32(6);
             return;
         }
-        if (value === Interest.FASHION) {
+        if (value === Interest.EDUCATION) {
             dataStream.writeInt32(7);
             return;
         }
-        if (value === Interest.FINANCE) {
+        if (value === Interest.FASHION) {
             dataStream.writeInt32(8);
             return;
         }
-        if (value === Interest.FOOD) {
+        if (value === Interest.FINANCE) {
             dataStream.writeInt32(9);
             return;
         }
-        if (value === Interest.GOVERNMENT) {
+        if (value === Interest.FOOD) {
             dataStream.writeInt32(10);
             return;
         }
-        if (value === Interest.HOBBIES) {
+        if (value === Interest.GOVERNMENT) {
             dataStream.writeInt32(11);
             return;
         }
-        if (value === Interest.HOME) {
+        if (value === Interest.HOBBIES) {
             dataStream.writeInt32(12);
             return;
         }
-        if (value === Interest.NEWS) {
+        if (value === Interest.HOME) {
             dataStream.writeInt32(13);
             return;
         }
-        if (value === Interest.REAL_ESTATE) {
+        if (value === Interest.NEWS) {
             dataStream.writeInt32(14);
             return;
         }
-        if (value === Interest.SOCIETY) {
+        if (value === Interest.REAL_ESTATE) {
             dataStream.writeInt32(15);
             return;
         }
-        if (value === Interest.SPORTS) {
+        if (value === Interest.SOCIETY) {
             dataStream.writeInt32(16);
             return;
         }
-        if (value === Interest.TECH) {
+        if (value === Interest.SPORTS) {
             dataStream.writeInt32(17);
             return;
         }
-        if (value === Interest.TRAVEL) {
+        if (value === Interest.TECH) {
             dataStream.writeInt32(18);
             return;
         }
-        if (value === Interest.INCONCLUSIVE) {
+        if (value === Interest.TRAVEL) {
             dataStream.writeInt32(19);
             return;
         }
@@ -1131,7 +1805,8 @@ export class FfiConverterTypeInterest extends FfiConverterArrayBuffer {
     }
 
     static checkType(value) {
-      if (!Number.isInteger(value) || value < 1 || value > 19) {
+      // Check that the value is a valid enum variant
+      if (!this.#validValues.includes(value)) {
           throw new UniFFITypeError(`${value} is not a valid value for Interest`);
       }
     }
@@ -1141,16 +1816,23 @@ export class FfiConverterTypeInterest extends FfiConverterArrayBuffer {
 
 
 
+/**
+ * Errors we return via the public interface.
+ */
 export class RelevancyApiError extends Error {}
 
 
+/**
+ * Unexpected
+ */
 export class Unexpected extends RelevancyApiError {
 
     constructor(
         reason,
         ...params
     ) {
-        super(...params);
+        const message = `reason: ${ reason }`;
+        super(message, ...params);
         this.reason = reason;
     }
     toString() {
@@ -1235,6 +1917,101 @@ export class FfiConverterSequencestring extends FfiConverterArrayBuffer {
     }
 }
 
+// Export the FFIConverter object to make external types work.
+export class FfiConverterSequenceTypeInterest extends FfiConverterArrayBuffer {
+    static read(dataStream) {
+        const len = dataStream.readInt32();
+        const arr = [];
+        for (let i = 0; i < len; i++) {
+            arr.push(FfiConverterTypeInterest.read(dataStream));
+        }
+        return arr;
+    }
+
+    static write(dataStream, value) {
+        dataStream.writeInt32(value.length);
+        value.forEach((innerValue) => {
+            FfiConverterTypeInterest.write(dataStream, innerValue);
+        })
+    }
+
+    static computeSize(value) {
+        // The size of the length
+        let size = 4;
+        for (const innerValue of value) {
+            size += FfiConverterTypeInterest.computeSize(innerValue);
+        }
+        return size;
+    }
+
+    static checkType(value) {
+        if (!Array.isArray(value)) {
+            throw new UniFFITypeError(`${value} is not an array`);
+        }
+        value.forEach((innerValue, idx) => {
+            try {
+                FfiConverterTypeInterest.checkType(innerValue);
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart(`[${idx}]`);
+                }
+                throw e;
+            }
+        })
+    }
+}
+
+import {
+  FfiConverterTypeRemoteSettingsService,
+  RemoteSettingsService,
+} from "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustRemoteSettings.sys.mjs";
+
+// Export the FFIConverter object to make external types work.
+export { FfiConverterTypeRemoteSettingsService, RemoteSettingsService };
 
 
 
+/**
+ * Calculate score for a piece of categorized content based on a user interest vector.
+ *
+ * This scoring function is of the following properties:
+ * - The score ranges from 0.0 to 1.0
+ * - The score is monotonically increasing for the accumulated interest count
+ *
+ * # Params:
+ * - `interest_vector`: a user interest vector that can be fetched via
+ * `RelevancyStore::user_interest_vector()`.
+ * - `content_categories`: a list of categories (interests) of the give content.
+ * # Return:
+ * - A score ranges in [0, 1].
+ * @returns {number}
+ */
+export function score(interestVector,contentCategories) {
+
+        const liftResult = (result) => FfiConverterF64.lift(result);
+        const liftError = null;
+        const functionCall = () => {
+            try {
+                FfiConverterTypeInterestVector.checkType(interestVector)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("interestVector");
+                }
+                throw e;
+            }
+            try {
+                FfiConverterSequenceTypeInterest.checkType(contentCategories)
+            } catch (e) {
+                if (e instanceof UniFFITypeError) {
+                    e.addItemDescriptionPart("contentCategories");
+                }
+                throw e;
+            }
+            return UniFFIScaffolding.callSync(
+                6, // relevancy:uniffi_relevancy_fn_func_score
+                FfiConverterTypeInterestVector.lower(interestVector),
+                FfiConverterSequenceTypeInterest.lower(contentCategories),
+            )
+        }
+        return handleRustResult(functionCall(), liftResult, liftError);
+}

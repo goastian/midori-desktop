@@ -5,8 +5,8 @@
 // profile directory when a user removes the actual engine from their profile.
 
 add_setup(async function () {
-  await SearchTestUtils.useTestEngines("data1");
-  await AddonTestUtils.promiseStartupManager();
+  await SearchTestUtils.initXPCShellAddonManager();
+  SearchTestUtils.setRemoteSettingsConfig([{ identifier: "unused" }]);
 });
 
 add_task(async function run_test() {
@@ -16,13 +16,15 @@ add_task(async function run_test() {
   if (!dir.exists()) {
     dir.create(dir.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
   }
-  do_get_file("data/engine.xml").copyTo(dir, "test-search-engine.xml");
+  do_get_file("opensearch/generic1.xml").copyTo(dir, "test-search-engine.xml");
 
   let file = dir.clone();
   file.append("test-search-engine.xml");
   Assert.ok(file.exists());
 
-  let data = await readJSONFile(do_get_file("data/search-legacy.json"));
+  let data = await readJSONFile(
+    do_get_file("settings/v1-metadata-migration.json")
+  );
 
   // Put the filePath inside the settings file, to simulate what a pre-58 version
   // of Firefox would have done.

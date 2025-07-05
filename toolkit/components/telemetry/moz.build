@@ -65,7 +65,7 @@ EXPORTS.mozilla.telemetry += [
     "core/Stopwatch.h",
 ]
 
-SOURCES += [
+UNIFIED_SOURCES += [
     "core/Stopwatch.cpp",
     "core/Telemetry.cpp",
     "core/TelemetryCommon.cpp",
@@ -81,18 +81,18 @@ SOURCES += [
 
 # Android and iOS don't support Legacy Telemetry.
 if CONFIG["MOZ_WIDGET_TOOLKIT"] not in ("android", "uikit"):
-    SOURCES += [
+    UNIFIED_SOURCES += [
         "core/ipc/TelemetryIPC.cpp",
         "core/ipc/TelemetryIPCAccumulator.cpp",
     ]
 else:
-    SOURCES += [
+    UNIFIED_SOURCES += [
         "core/ipc/TelemetryIPCAccumulatorStub.cpp",
         "core/ipc/TelemetryIPCStub.cpp",
     ]
 
 if CONFIG["OS_ARCH"] == "WINNT":
-    SOURCES += [
+    UNIFIED_SOURCES += [
         "other/UntrustedModules.cpp",
         "other/UntrustedModulesBackupService.cpp",
         "other/UntrustedModulesDataSerializer.cpp",
@@ -120,12 +120,13 @@ EXTRA_JS_MODULES += [
     "app/TelemetryStorage.sys.mjs",
     "app/TelemetryTimestamps.sys.mjs",
     "app/TelemetryUtils.sys.mjs",
+    "app/UsageReporting.sys.mjs",
+    "dap/DAPReportController.sys.mjs",
     "dap/DAPTelemetrySender.sys.mjs",
     "dap/DAPVisitCounter.sys.mjs",
     "pings/CoveragePing.sys.mjs",
     "pings/EventPing.sys.mjs",
     "pings/HealthPing.sys.mjs",
-    "pings/ModulesPing.sys.mjs",
     "pings/TelemetrySession.sys.mjs",
     "pings/UntrustedModulesPing.sys.mjs",
     "pings/UpdatePing.sys.mjs",

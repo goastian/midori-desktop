@@ -16,21 +16,11 @@
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Likely.h"
+#include "mozilla/LoggingCore.h"
 
-// We normally have logging enabled everywhere, but measurements showed that
-// having logging enabled on Android is quite expensive (hundreds of kilobytes
-// for both the format strings for logging and the code to perform all the
-// logging calls).  Because retrieving logs from a mobile device is
-// comparatively more difficult for Android than it is for desktop and because
-// desktop machines tend to be less space/bandwidth-constrained than Android
-// devices, we've chosen to leave logging enabled on desktop, but disabled on
-// Android.  Given that logging can still be useful for development purposes,
-// however, we leave logging enabled on Android developer builds.
-#if !defined(ANDROID) || !defined(RELEASE_OR_BETA)
-#  define MOZ_LOGGING_ENABLED 1
-#else
-#  define MOZ_LOGGING_ENABLED 0
-#endif
+#include "fmt/format.h"
+
+#define MOZ_LOGGING_ENABLED 1
 
 // The mandatory extension we add to log files.  Note that rotate will append
 // the file piece number still at the end.
@@ -42,36 +32,6 @@
 namespace mozilla {
 
 class TimeStamp;
-
-// While not a 100% mapping to PR_LOG's numeric values, mozilla::LogLevel does
-// maintain a direct mapping for the Disabled, Debug and Verbose levels.
-//
-// Mappings of LogLevel to PR_LOG's numeric values:
-//
-//   +---------+------------------+-----------------+
-//   | Numeric | NSPR Logging     | Mozilla Logging |
-//   +---------+------------------+-----------------+
-//   |       0 | PR_LOG_NONE      | Disabled        |
-//   |       1 | PR_LOG_ALWAYS    | Error           |
-//   |       2 | PR_LOG_ERROR     | Warning         |
-//   |       3 | PR_LOG_WARNING   | Info            |
-//   |       4 | PR_LOG_DEBUG     | Debug           |
-//   |       5 | PR_LOG_DEBUG + 1 | Verbose         |
-//   +---------+------------------+-----------------+
-//
-enum class LogLevel {
-  Disabled = 0,
-  Error,
-  Warning,
-  Info,
-  Debug,
-  Verbose,
-};
-
-/**
- * Safely converts an integer into a valid LogLevel.
- */
-LogLevel ToLogLevel(int32_t aLevel);
 
 class LogModule {
  public:
@@ -155,9 +115,17 @@ class LogModule {
               va_list aArgs) const MOZ_FORMAT_PRINTF(4, 0);
 
   /**
+   * Use {fmt} for specifying format
+   */
+  void PrintvFmt(LogLevel aLevel, fmt::string_view aFmt,
+                 fmt::format_args aArgs) const;
+
+  /**
    * Retrieves the module name.
    */
   const char* Name() const { return mName; }
+
+  AtomicLogLevel& LevelRef() { return mLevel; }
 
  private:
   friend class LogModuleManager;
@@ -170,7 +138,7 @@ class LogModule {
 
   char* mName;
 
-  Atomic<LogLevel, Relaxed> mLevel;
+  AtomicLogLevel mLevel;
 };
 
 /**
@@ -219,6 +187,12 @@ inline bool log_test(const LogModule* module, LogLevel level) {
 
 void log_print(const LogModule* aModule, LogLevel aLevel, const char* aFmt, ...)
     MOZ_FORMAT_PRINTF(3, 4);
+
+template <typename... T>
+inline void log_print_fmt(const LogModule* aModule, LogLevel aLevel,
+                          fmt::format_string<T...> aFmt, T&&... aArgs) {
+  aModule->PrintvFmt(aLevel, aFmt, fmt::make_format_args(aArgs...));
+}
 
 void log_print(const LogModule* aModule, LogLevel aLevel, TimeStamp* aStart,
                const char* aFmt, ...) MOZ_FORMAT_PRINTF(4, 5);
@@ -303,6 +277,14 @@ void log_print(const LogModule* aModule, LogLevel aLevel, TimeStamp* aStart,
                                    MOZ_LOG_EXPAND_ARGS _args);     \
       }                                                            \
     } while (0)
+#  define MOZ_LOG_FMT(_module, _level, _fmt, ...)                        \
+    do {                                                                 \
+      const ::mozilla::LogModule* moz_real_module = _module;             \
+      if (MOZ_LOG_TEST(moz_real_module, _level)) {                       \
+        mozilla::detail::log_print_fmt(moz_real_module, _level,          \
+                                       FMT_STRING(_fmt), ##__VA_ARGS__); \
+      }                                                                  \
+    } while (0)
 #else
 #  define MOZ_LOG(_module, _level, _args)                      \
     do {                                                       \
@@ -317,6 +299,13 @@ void log_print(const LogModule* aModule, LogLevel aLevel, TimeStamp* aStart,
         mozilla::detail::log_print(_module, _level, start,     \
                                    MOZ_LOG_EXPAND_ARGS _args); \
       }                                                        \
+    } while (0)
+#  define MOZ_LOG_FMT(_module, _level, _fmt, ...)                         \
+    do {                                                                  \
+      if (MOZ_LOG_TEST(_module, _level)) {                                \
+        mozilla::detail::log_print_fmt(_module, _level, FMT_STRING(_fmt), \
+                                       ##__VA_ARGS__);                    \
+      }                                                                   \
     } while (0)
 #endif
 

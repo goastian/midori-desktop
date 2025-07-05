@@ -1,0 +1,125 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>setting-group Tests</title>
+    <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+    <link
+      rel="stylesheet"
+      href="chrome://mochikit/content/tests/SimpleTest/test.css"
+    />
+    <link rel="stylesheet" href="chrome://global/skin/global.css" />
+    <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
+    <script src="../../../../../toolkit/content/tests/widgets/lit-test-helpers.js"></script>
+    <script
+      type="module"
+      src="chrome://browser/content/preferences/widgets/setting-group.mjs"
+    ></script>
+    <script
+      type="module"
+      src="chrome://browser/content/preferences/widgets/setting-control.mjs"
+    ></script>
+    <script
+      type="module"
+      src="chrome://global/content/elements/moz-support-link.mjs"
+    ></script>
+    <script
+      type="application/javascript"
+      src="chrome://global/content/preferencesBindings.js"
+    ></script>
+    <script>
+      /* import-globals-from /toolkit/content/preferencesBindings.js */
+      let html, testHelpers;
+
+      const LABEL_L10N_ID = "browsing-use-autoscroll";
+      const GROUP_L10N_ID = "pane-experimental-reset";
+
+      function renderTemplate(config) {
+        return testHelpers.renderTemplate(html`
+          <setting-group
+            .config=${config}
+            .getSetting=${(...args) => Preferences.getSetting(...args)}
+          ></setting-group>
+        `);
+      }
+
+      function waitForSettingChange(setting) {
+        return new Promise(resolve => {
+          setting.on("change", function handler() {
+            setting.off("change", handler);
+            resolve();
+          });
+        });
+      }
+
+      add_setup(async function setup() {
+        testHelpers = new InputTestHelpers();
+        ({ html } = await testHelpers.setupLit());
+        testHelpers.setupTests({
+          templateFn: () => html`<setting-group></setting-group>`,
+        });
+        MozXULElement.insertFTLIfNeeded("branding/brand.ftl");
+        MozXULElement.insertFTLIfNeeded("browser/preferences/preferences.ftl");
+      });
+
+      add_task(async function testSettingGroupSimple() {
+        const PREF_ONE = "test.settings-group.itemone";
+        const SETTING_ONE = "setting-item-one";
+        const PREF_TWO = "test.settings-group.itemtwo";
+        const SETTING_TWO = "setting-item-two";
+        await SpecialPowers.pushPrefEnv({
+          set: [
+            [PREF_ONE, true],
+            [PREF_TWO, false],
+            ["settings.revamp.design", true],
+          ],
+        });
+        Preferences.addAll([
+          { id: PREF_ONE, type: "bool" },
+          { id: PREF_TWO, type: "bool" },
+        ]);
+        Preferences.addSetting({
+          id: SETTING_ONE,
+          pref: PREF_ONE,
+        });
+        Preferences.addSetting({
+          id: SETTING_TWO,
+          pref: PREF_TWO,
+        });
+        let config = {
+          l10nId: GROUP_L10N_ID,
+          items: [
+            { l10nId: LABEL_L10N_ID, id: SETTING_ONE },
+            { l10nId: LABEL_L10N_ID, id: SETTING_TWO },
+          ],
+        };
+
+        let result = await renderTemplate(config);
+        let group = result.querySelector("setting-group");
+        ok(group, "setting-group is created");
+        ok(group.config, "it got a config");
+        let fieldset = group.children[0];
+        is(fieldset.localName, "moz-fieldset", "First child is a fieldset");
+        is(
+          fieldset.dataset.l10nId,
+          GROUP_L10N_ID,
+          "Fieldset has the group label"
+        );
+        let [item1, item2] = fieldset.children;
+        is(item1.localName, "setting-control", "First setting-control");
+        is(item1.config.id, SETTING_ONE, "First setting-control id is correct");
+        is(item2.localName, "setting-control", "Second setting-control");
+        is(
+          item2.config.id,
+          SETTING_TWO,
+          "Second setting-control id is correct"
+        );
+      });
+    </script>
+  </head>
+  <body>
+    <p id="display"></p>
+    <div id="content" style="display: none"></div>
+    <pre id="test"></pre>
+  </body>
+</html>

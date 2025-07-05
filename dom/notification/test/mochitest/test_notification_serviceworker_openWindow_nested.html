@@ -1,0 +1,110 @@
+<!DOCTYPE HTML>
+<html>
+<!--
+https://bugzilla.mozilla.org/show_bug.cgi?id=1172870
+-->
+<head>
+  <title>Bug 1172870 - Test clients.openWindow</title>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script type="text/javascript" src="/tests/dom/notification/test/mochitest/MockAlertsService.js"></script>
+  <script type="text/javascript" src="/tests/dom/notification/test/mochitest/NotificationTest.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
+</head>
+<body>
+<a target="_blank" href="https://bugzilla.mozilla.org/show_bug.cgi?id=1172870">Bug 1172870</a>
+<p id="display"></p>
+<div id="content" style="display: none">
+</div>
+<pre id="test">
+</pre>
+<script src="/tests/dom/serviceworkers/test/utils.js"></script>
+<script type="text/javascript">
+  SimpleTest.requestFlakyTimeout("Mock alert service dispatches show and click events.");
+
+  async function setup(ctx) {
+    await MockAlertsService.register();
+    await MockAlertsService.enableAutoClick();
+
+    const swr = await navigator.serviceWorker.register("openWindow_worker.js", {scope: "./"});
+    ok(swr, "Registration successful");
+    ctx.registration = swr;
+    return await waitForState(swr.installing, 'activated', ctx);
+  }
+
+  function setupMessageHandler(ctx) {
+    return new Promise(res => {
+      navigator.serviceWorker.onmessage = function(event) {
+        navigator.serviceWorker.onmessage = null;
+        for (const data of event.data) {
+          ok(data.result, data.message);
+        }
+        res(ctx);
+      }
+    });
+  }
+
+  function testPopupNotAllowed(ctx) {
+    var p = setupMessageHandler(ctx);
+    ok(ctx.registration.active, "Worker is active.");
+    ctx.registration.active.postMessage("testNoPopup");
+
+    return p;
+  }
+
+  function testPopupAllowed(ctx) {
+    var p = setupMessageHandler(ctx);
+    ctx.registration.showNotification("testPopup");
+
+    return p;
+  }
+
+  function checkNumberOfWindows(ctx) {
+    return new Promise(res => {
+      navigator.serviceWorker.onmessage = function(event) {
+        navigator.serviceWorker.onmessage = null;
+        for (const data of event.data) {
+          ok(data.result, data.message);
+        }
+        res(ctx);
+      }
+      ctx.registration.active.postMessage("CHECK_NUMBER_OF_WINDOWS");
+    });
+  }
+
+  async function clear(ctx) {
+    const result = await ctx.registration.unregister();
+    ctx.registration = null;
+    ok(result, "Unregister was successful.");
+  }
+
+  async function runTest() {
+    try {
+      const ctx = await setup({});
+      // Permission to allow popups persists for some time after a notification
+      // click event, so the order here is important.
+      await NotificationTest.allowNotifications();
+      await testPopupNotAllowed(ctx);
+      await testPopupAllowed(ctx);
+      await checkNumberOfWindows(ctx);
+      await clear(ctx);
+    } catch (e) {
+      ok(false, "Some test failed with error " + e);
+    } finally {
+      SimpleTest.finish();
+    }
+  }
+
+  SimpleTest.waitForExplicitFinish();
+  SpecialPowers.pushPrefEnv({"set": [
+    ["dom.serviceWorkers.exemptFromPerDomainMax", true],
+    ["dom.serviceWorkers.enabled", true],
+    ["dom.serviceWorkers.testing.enabled", true],
+    ["dom.webnotifications.disable_open_click_delay", 1000],
+    ["dom.serviceWorkers.idle_timeout", 299999],
+    ["dom.serviceWorkers.idle_extended_timeout", 299999],
+    ["dom.securecontext.allowlist", "mochi.test,example.com"],
+    ["network.cookie.cookieBehavior", 0], // XXX: Doesn't work with dFPI
+  ]}, runTest);
+</script>
+</body>
+</html>

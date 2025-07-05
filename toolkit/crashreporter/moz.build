@@ -18,12 +18,24 @@ JAR_MANIFESTS += ["jar.mn"]
 
 UNIFIED_SOURCES = [
     "CrashAnnotations.cpp",
+    "ExtraFileParser.cpp",
     "nsExceptionHandlerUtils.cpp",
 ]
+
+PREPROCESSED_IPDL_SOURCES = [
+    "ipc/CrashReporterInitArgs.ipdlh",
+]
+
+include("/ipc/chromium/chromium-config.mozbuild")
 
 FINAL_LIBRARY = "xul"
 
 if CONFIG["MOZ_CRASHREPORTER"]:
+    if CONFIG["OS_ARCH"] != "WINNT":
+        USE_LIBS += [
+            "breakpad_client",
+        ]
+
     if CONFIG["OS_ARCH"] == "WINNT":
         DIRS += [
             "breakpad-windows-libxul",
@@ -52,10 +64,6 @@ if CONFIG["MOZ_CRASHREPORTER"]:
             "google-breakpad/src/processor",
         ]
 
-        UNIFIED_SOURCES += [
-            "linux_utils.cc",
-        ]
-
         EXPORTS += [
             "linux_utils.h",
         ]
@@ -64,14 +72,16 @@ if CONFIG["MOZ_CRASHREPORTER"]:
             DIRS += ["rust_minidump_writer_linux"]
 
     if CONFIG["OS_TARGET"] != "Android":
-        DIRS += [
-            "client/app",
-            "minidump-analyzer",
-        ]
+        DIRS += ["client/app"]
+    else:
+        DIRS += ["minidump-analyzer/android"]
 
     DIRS += [
+        "breakpad_wrapper",
+        "crash_helper",
+        "crash_helper_client",
+        "crash_helper_server",
         "mozannotation_client",
-        "mozannotation_server",
     ]
 
     TEST_DIRS += ["test"]
@@ -89,8 +99,6 @@ if CONFIG["MOZ_CRASHREPORTER"]:
         "CrashReports.sys.mjs",
         "CrashSubmit.sys.mjs",
     ]
-
-    include("/ipc/chromium/chromium-config.mozbuild")
 
     if CONFIG["OS_TARGET"] == "Android":
         DEFINES["ANDROID_NDK_MAJOR_VERSION"] = CONFIG["ANDROID_NDK_MAJOR_VERSION"]
@@ -114,7 +122,9 @@ if CONFIG["MOZ_CRASHREPORTER"]:
         "google-breakpad/src",
     ]
 
-    USE_LIBS += ["jsoncpp"]
+    USE_LIBS += [
+        "jsoncpp",
+    ]
 
     PYTHON_UNITTEST_MANIFESTS += [
         "tools/python.toml",

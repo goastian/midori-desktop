@@ -78,8 +78,7 @@ add_task(async function () {
       SpecialPowers.Ci.imgITools
     );
     let imageCache = tools.getImgCacheForDocument(window.document);
-    imageCache.clearCache(true); // true=chrome
-    imageCache.clearCache(false); // false=content
+    imageCache.clearCache(); // no parameter=all
     Services.cache2.clear();
 
     info("Enabling network state partitioning");
@@ -102,8 +101,10 @@ add_task(async function () {
       tab.linkedBrowser,
       [argObj],
       async function (arg) {
-        // The CSS cache needs to be cleared in-process.
-        content.windowUtils.clearSharedStyleSheetCache();
+        // The CSS/JS cache needs to be cleared in-process.
+        ChromeUtils.clearResourceCache({
+          types: ["stylesheet", "script"],
+        });
 
         let videoURL = arg.urlPrefix + "file_thirdPartyChild.video.webm";
         let audioURL = arg.urlPrefix + "file_thirdPartyChild.audio.ogg";

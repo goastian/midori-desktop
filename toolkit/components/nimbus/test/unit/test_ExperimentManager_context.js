@@ -1,18 +1,14 @@
 "use strict";
 
-const { ExperimentFakes } = ChromeUtils.importESModule(
-  "resource://testing-common/NimbusTestUtils.sys.mjs"
-);
-
 const { FirstStartup } = ChromeUtils.importESModule(
   "resource://gre/modules/FirstStartup.sys.mjs"
 );
 
 add_task(async function test_createTargetingContext() {
-  const manager = ExperimentFakes.manager();
+  const manager = NimbusTestUtils.stubs.manager();
   const sandbox = sinon.createSandbox();
-  const recipe = ExperimentFakes.recipe("foo");
-  const rollout = ExperimentFakes.rollout("bar");
+  const recipe = NimbusTestUtils.factories.recipe("foo");
+  const rollout = NimbusTestUtils.factories.rollout("bar");
   sandbox.stub(manager.store, "ready").resolves();
   sandbox.stub(manager.store, "getAllActiveExperiments").returns([recipe]);
   sandbox.stub(manager.store, "getAllActiveRollouts").returns([rollout]);

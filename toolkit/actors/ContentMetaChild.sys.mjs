@@ -6,7 +6,7 @@
 // sync script tags that could appear between desired meta tags
 const TIMEOUT_DELAY = 1000;
 
-const ACCEPTED_PROTOCOLS = ["http:", "https:"];
+const ACCEPTED_PROTOCOLS = new Set(["http:", "https:"]);
 
 // Possible description tags, listed in order from least favourable to most favourable
 const DESCRIPTION_RULES = [
@@ -51,7 +51,7 @@ function shouldExtractMetadata(aRules, aTag, aEntry) {
  * @returns {Boolean} true if the preview URL is safe and can be stored, false otherwise
  */
 function checkLoadURIStr(aURL) {
-  if (!ACCEPTED_PROTOCOLS.includes(aURL.protocol)) {
+  if (!ACCEPTED_PROTOCOLS.has(aURL.protocol)) {
     return false;
   }
   try {
@@ -140,13 +140,11 @@ export class ContentMetaChild extends JSWindowActorChild {
       entry.description.currMaxScore = DESCRIPTION_RULES.indexOf(tag);
     } else if (shouldExtractMetadata(PREVIEW_IMAGE_RULES, tag, entry.image)) {
       // Extract the preview image
-      let value;
-      try {
-        value = new URL(content, url);
-      } catch (e) {
+      let value = URL.parse(content, url);
+      if (!value) {
         return;
       }
-      if (value && checkLoadURIStr(value)) {
+      if (checkLoadURIStr(value)) {
         entry.image.value = value.href;
         entry.image.currMaxScore = PREVIEW_IMAGE_RULES.indexOf(tag);
       }
@@ -181,15 +179,6 @@ export class ContentMetaChild extends JSWindowActorChild {
             description: entry.description.value,
             previewImageURL: entry.image.value,
           });
-
-          // Telemetry for recording the size of page metadata
-          let metadataSize = entry.description.value
-            ? entry.description.value.length
-            : 0;
-          metadataSize += entry.image.value ? entry.image.value.length : 0;
-          Services.telemetry
-            .getHistogramById("PAGE_METADATA_SIZE")
-            .add(metadataSize);
         },
         TIMEOUT_DELAY,
         Ci.nsITimer.TYPE_ONE_SHOT

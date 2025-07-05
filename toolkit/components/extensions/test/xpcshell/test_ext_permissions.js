@@ -15,7 +15,11 @@ const WITH_INSTALL_PROMPT = [
 ];
 const NO_INSTALL_PROMPT = [["extensions.originControls.grantByDefault", false]];
 
-Services.prefs.setBoolPref("extensions.manifestV3.enabled", true);
+// TODO - Bug 1960551: Get rid of this once the pref is enabled in GeckoView.
+Services.prefs.setBoolPref(
+  "extensions.dataCollectionPermissions.enabled",
+  true
+);
 
 // ExtensionParent.sys.mjs is being imported lazily because when it is imported Services.appinfo will be
 // retrieved and cached (as a side-effect of Schemas.sys.mjs being imported), and so Services.appinfo
@@ -43,6 +47,12 @@ AddonTestUtils.createAppInfo(
   "42"
 );
 
+// This error is thrown in an xpcshell test on Android because we don't have
+// the native part so we ignore it.
+PromiseTestUtils.allowMatchingRejectionsGlobally(
+  /No listener for GeckoView:WebExtension:OptionalPrompt/
+);
+
 add_setup(async () => {
   // Bug 1646182: Force ExtensionPermissions to run in rkv mode, the legacy
   // storage mode will run in xpcshell-legacy-ep.toml
@@ -68,7 +78,7 @@ add_task(
     const res = await ExtensionPermissions.get("@testextension");
     Assert.deepEqual(
       res,
-      { permissions: [], origins: [] },
+      { permissions: [], origins: [], data_collection: [] },
       "Expect ExtensionPermissions get promise to be resolved"
     );
     Assert.ok(
@@ -352,6 +362,7 @@ async function test_permissions({
   let allPermissions = {
     permissions: [...REQUIRED_PERMISSIONS, ...OPTIONAL_PERMISSIONS],
     origins: [...REQUIRED_ORIGINS_EXPECTED, ...OPTIONAL_ORIGINS_NORMALIZED],
+    data_collection: [],
   };
 
   result = await call("getAll");
@@ -395,6 +406,7 @@ async function test_permissions({
   let perms = {
     permissions: REQUIRED_PERMISSIONS,
     origins: [...REQUIRED_ORIGINS_EXPECTED, ...OPTIONAL_ORIGINS_NORMALIZED],
+    data_collection: [],
   };
 
   result = await call("getAll");
@@ -568,7 +580,10 @@ add_task(async function test_startup() {
 
   async function checkPermissions(extension, permissions) {
     perms = await extension.awaitMessage("perms");
-    let expect = Object.assign({ permissions: [], origins: [] }, permissions);
+    let expect = Object.assign(
+      { permissions: [], origins: [], data_collection: [] },
+      permissions
+    );
     deepEqual(perms, expect, "Extension got correct permissions on startup");
   }
 
@@ -724,28 +739,19 @@ add_task(function test_alreadyGranted_mv3() {
   );
 });
 
-// IMPORTANT: Do not change this list without review from a Web Extensions peer!
+// IMPORTANT: Do not change these lists without review from a Web Extensions peer!
 
 const GRANTED_WITHOUT_USER_PROMPT = [
   "activeTab",
   "activityLog",
   "alarms",
-  "captivePortal",
-  "contextMenus",
-  "contextualIdentities",
   "cookies",
   "declarativeNetRequestWithHostAccess",
   "dns",
-  "geckoProfiler",
-  "identity",
   "idle",
-  "menus",
-  "menus.overrideContext",
   "mozillaAddons",
   "networkStatus",
-  "normandyAddonStudy",
   "scripting",
-  "search",
   "storage",
   "telemetry",
   "theme",
@@ -756,6 +762,29 @@ const GRANTED_WITHOUT_USER_PROMPT = [
   "webRequestFilterResponse",
   "webRequestFilterResponse.serviceWorkerScript",
 ];
+
+if (AppConstants.platform == "android") {
+  GRANTED_WITHOUT_USER_PROMPT.push(
+    "geckoViewAddons",
+    "nativeMessagingFromContent"
+  );
+} else if (AppConstants.MOZ_APP_NAME == "thunderbird") {
+  // TODO: Update GRANTED_WITHOUT_USER_PROMPT accordingly for Thunderbird.
+} else {
+  GRANTED_WITHOUT_USER_PROMPT.push(
+    "captivePortal",
+    "contextMenus",
+    "contextualIdentities",
+    "geckoProfiler",
+    "identity",
+    "menus",
+    "menus.overrideContext",
+    "normandyAddonStudy",
+    "search",
+    "tabGroups"
+  );
+}
+GRANTED_WITHOUT_USER_PROMPT.sort();
 
 add_task(async function test_permissions_have_localization_strings() {
   let noPromptNames = Schemas.getPermissionNames([
@@ -981,7 +1010,8 @@ async function test_permissions_prompt({
     });
   }
 
-  const PERMS = ["history", "tabs"];
+  // These permissions are promptable and available on Android and Desktop.
+  const PERMS = ["browsingData", "tabs"];
   const ORIGINS = ["https://test1.example.com/*", "https://test3.example.com/"];
   let xpi = AddonTestUtils.createTempWebExtensionFile({
     background,
@@ -1230,4 +1260,76 @@ add_task(async function test_onAdded_all_urls() {
   equal(perms.permissions.join(), "", "Not expecting api permissions.");
 
   await extension.unload();
+});
+
+add_task(async function test_add_data_collection() {
+  let extensionId = "@data-collection-test";
+  // Set up store with existing permissions, without data collection.
+  await ExtensionPermissions._getStore().put(extensionId, {
+    permissions: ["bookmarks"],
+    origins: [],
+  });
+
+  // Verify that the store has only two properties.
+  let perms = await ExtensionPermissions._getStore().get(extensionId);
+  Assert.deepEqual(
+    perms,
+    { permissions: ["bookmarks"], origins: [] },
+    "expected permissions without data collection"
+  );
+
+  // Add a new data collection permission.
+  await ExtensionPermissions.add(extensionId, {
+    permissions: [],
+    origins: [],
+    data_collection: ["technicalAndInteraction"],
+  });
+  // Expect the data permission to be added, even if there was none in the store.
+  perms = await ExtensionPermissions.get(extensionId);
+  Assert.deepEqual(
+    perms,
+    {
+      permissions: ["bookmarks"],
+      origins: [],
+      data_collection: ["technicalAndInteraction"],
+    },
+    "expected permissions with data collection"
+  );
+});
+
+add_task(async function test_remove_data_collection() {
+  let extensionId = "@data-collection-test";
+  // Set up store with existing permissions, without data collection.
+  await ExtensionPermissions._getStore().put(extensionId, {
+    permissions: ["bookmarks"],
+    origins: [],
+  });
+
+  // Verify that the store has only two properties.
+  let perms = await ExtensionPermissions._getStore().get(extensionId);
+  Assert.deepEqual(
+    perms,
+    { permissions: ["bookmarks"], origins: [] },
+    "expected permissions without data collection"
+  );
+
+  // Remove a permission and a data permission even if that isn't supposed to
+  // be possible. This is needed to verify that loading permissions from the
+  // store without data collection won't break anything.
+  await ExtensionPermissions.remove(extensionId, {
+    permissions: ["bookmarks"],
+    origins: [],
+    data_collection: ["technicalAndInteraction"],
+  });
+  // Expect the permission to be removed without side effect.
+  perms = await ExtensionPermissions.get(extensionId);
+  Assert.deepEqual(
+    perms,
+    {
+      permissions: [],
+      origins: [],
+      data_collection: [],
+    },
+    "expected permissions with data collection"
+  );
 });

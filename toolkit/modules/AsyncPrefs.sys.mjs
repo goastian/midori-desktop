@@ -15,14 +15,6 @@ const kAllowedPrefs = new Set([
   "browser.contentblocking.report.hide_vpn_banner",
   "browser.contentblocking.report.show_mobile_app",
 
-  "browser.shopping.experience2023.optedIn",
-  "browser.shopping.experience2023.active",
-  "browser.shopping.experience2023.ads.userEnabled",
-  "browser.shopping.experience2023.autoOpen.enabled",
-  "browser.shopping.experience2023.autoOpen.userEnabled",
-  "browser.shopping.experience2023.showKeepSidebarClosedMessage",
-  "browser.shopping.experience2023.sidebarClosedCount",
-
   "narrate.rate",
   "narrate.voice",
 
@@ -42,9 +34,6 @@ const kAllowedPrefs = new Set([
   "reader.custom_colors.selection-highlight",
 
   "security.tls.version.enable-deprecated",
-  "security.xfocsp.errorReporting.automatic",
-
-  "network.trr.display_fallback_warning",
 ]);
 
 const kPrefTypeMap = new Map([

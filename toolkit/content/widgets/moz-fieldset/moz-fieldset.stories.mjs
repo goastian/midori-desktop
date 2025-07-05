@@ -23,11 +23,18 @@ moz-fieldset-description =
   },
 };
 
-const Template = ({ label, description, l10nId }) => html`
+const Template = ({
+  label,
+  description,
+  l10nId,
+  supportPage,
+  hasSlottedSupportLinks,
+}) => html`
   <moz-fieldset
     data-l10n-id=${l10nId}
     .label=${label}
     .description=${description}
+    support-page=${supportPage}
     style="width: 400px;"
   >
     <moz-toggle
@@ -35,8 +42,19 @@ const Template = ({ label, description, l10nId }) => html`
       label="First setting"
       description="These could have descriptions too."
     ></moz-toggle>
-    <label><input type="checkbox" /> Second setting</label>
-    <label><input type="checkbox" /> Third setting</label>
+    <moz-checkbox label="Second setting"></moz-checkbox>
+    <moz-checkbox
+      label="Third setting"
+      description="Checkbox with a description."
+      support-page="foo"
+    ></moz-checkbox>
+    <moz-select label="Make a choice">
+      <moz-option label="Option One" value="1"></moz-option>
+      <moz-option label="Option A" value="a"></moz-option>
+    </moz-select>
+    ${hasSlottedSupportLinks
+      ? html`<a slot="support-link" href="www.example.com"> Click me! </a>`
+      : ""}
   </moz-fieldset>
 `;
 
@@ -44,10 +62,37 @@ export const Default = Template.bind({});
 Default.args = {
   label: "",
   description: "",
+  supportPage: "",
   l10nId: "moz-fieldset-label",
+  hasSlottedSupportLinks: false,
 };
+
 export const WithDescription = Template.bind({});
 WithDescription.args = {
   ...Default.args,
   l10nId: "moz-fieldset-description",
+};
+
+export const WithSupportLink = Template.bind({});
+WithSupportLink.args = {
+  ...Default.args,
+  supportPage: "test",
+};
+
+export const WithDescriptionAndSupportLink = Template.bind({});
+WithDescriptionAndSupportLink.args = {
+  ...WithSupportLink.args,
+  l10nId: "moz-fieldset-description",
+};
+
+export const WithSlottedSupportLink = Template.bind({});
+WithSlottedSupportLink.args = {
+  ...Default.args,
+  hasSlottedSupportLinks: true,
+};
+
+export const WithDescriptionAndSlottedSupportLink = Template.bind({});
+WithDescriptionAndSlottedSupportLink.args = {
+  ...WithDescription.args,
+  hasSlottedSupportLinks: true,
 };

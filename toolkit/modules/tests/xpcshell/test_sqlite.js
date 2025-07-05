@@ -2,12 +2,6 @@
 
 const PROFILE_DIR = do_get_profile().path;
 
-const { FileUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/FileUtils.sys.mjs"
-);
-const { Sqlite } = ChromeUtils.importESModule(
-  "resource://gre/modules/Sqlite.sys.mjs"
-);
 const { TelemetryTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/TelemetryTestUtils.sys.mjs"
 );
@@ -1390,5 +1384,16 @@ add_task(async function test_pageSize() {
     8192,
     "Check page size was set"
   );
+  await c.close();
+});
+
+add_task(async function test_loadExtension() {
+  await Assert.rejects(
+    getDummyDatabase("dummy", { extensions: ["dummy"] }),
+    /Could not load extension/,
+    "Check unsupported extension"
+  );
+  let c = await getDummyDatabase("fts", { extensions: ["fts5"] });
+  await c.execute("CREATE VIRTUAL TABLE test_fts USING fts5(body)");
   await c.close();
 });

@@ -13,12 +13,13 @@ ChromeUtils.defineLazyGetter(lazy, "console", () => {
 
 ChromeUtils.defineESModuleGetters(lazy, {
   LanguageDetector:
-    "resource://gre/modules/translation/LanguageDetector.sys.mjs",
+    "resource://gre/modules/translations/LanguageDetector.sys.mjs",
 });
 
 /**
  * @typedef {import("./TranslationsChild.sys.mjs").TranslationsEngine} TranslationsEngine
  * @typedef {import("./TranslationsChild.sys.mjs").SupportedLanguages} SupportedLanguages
+ * @typedef {import("../translations").LanguagePair} LanguagePair
  */
 
 /**
@@ -54,18 +55,21 @@ export class AboutTranslationsChild extends JSWindowActorChild {
   receiveMessage({ name, data }) {
     switch (name) {
       case "AboutTranslations:SendTranslationsPort": {
-        const { fromLanguage, toLanguage, port } = data;
+        const { languagePair, port } = data;
         const transferables = [port];
         this.contentWindow.postMessage(
           {
             type: "GetTranslationsPort",
-            fromLanguage,
-            toLanguage,
+            languagePair,
             port,
           },
           "*",
           transferables
         );
+        break;
+      }
+      case "AboutTranslations:RebuildTranslator": {
+        this.#sendEventToContent({ type: "rebuild-translator" });
         break;
       }
       default:
@@ -97,7 +101,7 @@ export class AboutTranslationsChild extends JSWindowActorChild {
         let contentWindow;
         try {
           contentWindow = this.contentWindow;
-        } catch (error) {
+        } catch {
           // The content window is no longer available.
           reject();
           return;
@@ -136,6 +140,7 @@ export class AboutTranslationsChild extends JSWindowActorChild {
       "AT_createTranslationsPort",
       "AT_identifyLanguage",
       "AT_getScriptDirection",
+      "AT_telemetry",
     ];
     for (const name of fns) {
       Cu.exportFunction(this[name].bind(this), window, { defineAs: name });
@@ -209,14 +214,12 @@ export class AboutTranslationsChild extends JSWindowActorChild {
    * created for that pair. The lifecycle of the engine is managed by the
    * TranslationsEngine.
    *
-   * @param {string} fromLanguage
-   * @param {string} toLanguage
+   * @param {LanguagePair} languagePair
    * @returns {void}
    */
-  AT_createTranslationsPort(fromLanguage, toLanguage) {
+  AT_createTranslationsPort(languagePair) {
     this.sendAsyncMessage("AboutTranslations:GetTranslationsPort", {
-      fromLanguage,
-      toLanguage,
+      languagePair,
     });
   }
 
@@ -251,5 +254,18 @@ export class AboutTranslationsChild extends JSWindowActorChild {
    */
   AT_getScriptDirection(locale) {
     return Services.intl.getScriptDirection(locale);
+  }
+
+  /**
+   * Sends telemetry data to the TranslationsEngine.
+   *
+   * @param {string} telemetryFunctionName - The name of the telemetry function.
+   * @param {object} telemetryData - The data associated with the telemetry event.
+   */
+  AT_telemetry(telemetryFunctionName, telemetryData) {
+    this.sendAsyncMessage("AboutTranslations:Telemetry", {
+      telemetryFunctionName,
+      telemetryData,
+    });
   }
 }

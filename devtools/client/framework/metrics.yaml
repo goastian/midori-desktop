@@ -1,0 +1,164 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'DevTools :: Framework'
+
+devtools:
+  current_theme:
+    type: labeled_counter
+    description: >
+      Number of times DevTools was opened, keyed by theme.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.current_theme.
+    bugs:
+      - https://bugzil.la/1396811
+    data_reviews:
+      - https://bugzil.la/1396811
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_CURRENT_THEME
+
+  cold_toolbox_open_delay:
+    type: labeled_timing_distribution
+    description: >
+      Time taken (in ms) to open the first DevTools toolbox. This is keyed by
+      tool ID being opened [inspector, webconsole, jsdebugger, styleeditor,
+      performance, memory, netmonitor, storage, dom].
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram DEVTOOLS_COLD_TOOLBOX_OPEN_DELAY_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1405584
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1566392
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1643433
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1405584
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1566392
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1643433
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_COLD_TOOLBOX_OPEN_DELAY_MS
+
+  warm_toolbox_open_delay:
+    type: labeled_timing_distribution
+    description: >
+      Time taken (in ms) to open all but first DevTools toolbox. This is keyed
+      by tool ID being opened [inspector, webconsole, jsdebugger, styleeditor,
+      performance, memory, netmonitor, storage, dom].
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram DEVTOOLS_WARM_TOOLBOX_OPEN_DELAY_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1405584
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1566392
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1643433
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1405584
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1566392
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1643433
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_WARM_TOOLBOX_OPEN_DELAY_MS
+
+  toolbox_page_reload_delay:
+    type: labeled_timing_distribution
+    description: >
+      Time taken (in ms) to update DevTools panel when reloading a page. This is
+      keyed by tool ID being currently opened [inspector, webconsole,
+      jsdebugger, styleeditor, performance, memory, netmonitor, storage, dom].
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram DEVTOOLS_TOOLBOX_PAGE_RELOAD_DELAY_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1405585
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1566392
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1643433
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1405585
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1566392
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1643433
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_TOOLBOX_PAGE_RELOAD_DELAY_MS
+
+  toolbox_host:
+    type: custom_distribution
+    description: >
+      Records DevTools toolbox host each time the toolbox is opened and when the
+      host is changed (0:Bottom, 1:RIGHT, 2:WINDOW, 3:CUSTOM, 4:LEFT, 5:PAGE,
+      9:Unknown).
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram DEVTOOLS_TOOLBOX_HOST.
+    range_min: 0
+    range_max: 9
+    bucket_count: 10
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1205845
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1389995
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1205845
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1389995
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_TOOLBOX_HOST
+
+devtools.tool:
+  registered:
+    type: labeled_boolean
+    description: >
+      Recorded on enable tool checkbox check/uncheck in Developer Tools
+      options panel. Boolean stating if the tool was enabled or disabled
+      by the user. Keyed by tool id. Current default tools with their id's
+      are defined in https://searchfox.org/mozilla-
+      central/source/devtools/client/definitions.js
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.tool.registered.
+    bugs:
+      - https://bugzil.la/1447302
+      - https://bugzil.la/1503568
+      - https://bugzil.la/1587985
+    data_reviews:
+      - https://bugzil.la/1447302
+      - https://bugzil.la/1503568
+      - https://bugzil.la/1587985
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - accessibility@mozilla.com
+    expires: never
+    telemetry_mirror: DEVTOOLS_TOOL_REGISTERED
+
+devtools.toolbox:
+  tabs_reordered:
+    type: labeled_counter
+    description: >
+      Number of times the DevTools tab was reordered. Keyed by tab's id.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.toolbox.tabs_reordered.
+    bugs:
+      - https://bugzil.la/1456551
+      - https://bugzil.la/1566362
+    data_reviews:
+      - https://bugzil.la/1456551
+      - https://bugzil.la/1566362
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - daisuke@mozilla.com
+    expires: never
+    telemetry_mirror: DEVTOOLS_TOOLBOX_TABS_REORDERED

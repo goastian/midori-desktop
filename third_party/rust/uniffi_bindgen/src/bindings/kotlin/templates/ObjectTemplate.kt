@@ -96,12 +96,10 @@
 //
 
 {{ self.add_import("java.util.concurrent.atomic.AtomicBoolean") }}
-{%- if self.include_once_check("interface-support") %}
-    {%- include "ObjectCleanerHelper.kt" %}
-{%- endif %}
 
-{%- let obj = ci|get_object_definition(name) %}
-{%- let (interface_name, impl_class_name) = obj|object_names(ci) %}
+{%- let obj = ci.get_object_definition(name).unwrap() %}
+{%- let interface_name = self::object_interface_name(ci, obj) %}
+{%- let impl_class_name = self::object_impl_name(ci, obj) %}
 {%- let methods = obj.methods() %}
 {%- let interface_docstring = obj.docstring() %}
 {%- let is_error = ci.is_name_used_as_error(name) %}
@@ -111,9 +109,13 @@
 
 {%- call kt::docstring(obj, 0) %}
 {% if (is_error) %}
-open class {{ impl_class_name }} : Exception, Disposable, AutoCloseable, {{ interface_name }} {
+open class {{ impl_class_name }} : kotlin.Exception, Disposable, AutoCloseable, {{ interface_name }} {
 {% else -%}
-open class {{ impl_class_name }}: Disposable, AutoCloseable, {{ interface_name }} {
+open class {{ impl_class_name }}: Disposable, AutoCloseable, {{ interface_name }}
+{%- for t in obj.trait_impls() %}
+, {{ self::trait_interface_name(ci, t.trait_name)? }}
+{% endfor %}
+{
 {%- endif %}
 
     constructor(pointer: Pointer) {
@@ -262,6 +264,9 @@ open class {{ impl_class_name }}: Disposable, AutoCloseable, {{ interface_name }
 {% include "CallbackInterfaceImpl.kt" %}
 {%- endif %}
 
+/**
+ * @suppress
+ */
 public object {{ ffi_converter_name }}: FfiConverter<{{ type_name }}, Pointer> {
     {%- if obj.has_callback_interface() %}
     internal val handleMap = UniffiHandleMap<{{ type_name }}>()

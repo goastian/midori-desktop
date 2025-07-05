@@ -17,18 +17,20 @@
 let appDefault;
 let appPrivateDefault;
 
-async function getSearchConfig() {
-  let workDir = Services.dirsvc.get("CurWorkD", Ci.nsIFile);
-  let configFileName =
-    "file://" + PathUtils.join(workDir.path, "data", "search-config-v2.json");
-
-  let response = await fetch(configFileName);
-  return response.json();
-}
+const CONFIG = [
+  { identifier: "default", base: { classification: "unknown" } },
+  { identifier: "defaultPrivate", base: { classification: "unknown" } },
+  { identifier: "generalEngine", base: { classification: "general" } },
+  { identifier: "otherEngine", base: { classification: "unknown" } },
+  {
+    globalDefault: "default",
+    globalDefaultPrivate: "defaultPrivate",
+  },
+];
 
 add_setup(async function () {
   useHttpServer();
-  await SearchTestUtils.useTestEngines();
+  SearchTestUtils.setRemoteSettingsConfig(CONFIG);
 
   Services.prefs.setCharPref(SearchUtils.BROWSER_SEARCH_PREF + "region", "US");
   Services.prefs.setBoolPref(
@@ -39,13 +41,6 @@ add_setup(async function () {
     SearchUtils.BROWSER_SEARCH_PREF + "separatePrivateDefault",
     true
   );
-
-  SearchUtils.GENERAL_SEARCH_ENGINE_IDS = new Set([
-    "engine-resourceicon@search.mozilla.org",
-    "engine-reordered@search.mozilla.org",
-  ]);
-
-  await AddonTestUtils.promiseStartupManager();
 
   appDefault = await Services.search.getDefault();
   appPrivateDefault = await Services.search.getDefaultPrivate();
@@ -76,7 +71,7 @@ async function checkFallbackDefaultRegion(checkPrivate) {
     : SearchUtils.MODIFIED_TYPE.DEFAULT;
   Services.search.restoreDefaultEngines();
 
-  let otherEngine = Services.search.getEngineByName("engine-chromeicon");
+  let otherEngine = Services.search.getEngineByName("otherEngine");
   await setDefault(checkPrivate, otherEngine);
 
   Assert.notEqual(
@@ -127,7 +122,7 @@ async function checkFallbackFirstVisible(checkPrivate) {
     : SearchUtils.MODIFIED_TYPE.DEFAULT;
   Services.search.restoreDefaultEngines();
 
-  let otherEngine = Services.search.getEngineByName("engine-chromeicon");
+  let otherEngine = Services.search.getEngineByName("otherEngine");
   await setDefault(checkPrivate, otherEngine);
   await Services.search.removeEngine(defaultEngine);
 
@@ -160,12 +155,12 @@ async function checkFallbackFirstVisible(checkPrivate) {
 
   Assert.equal(
     (await getDefault(checkPrivate)).name,
-    "engine-resourceicon",
+    "generalEngine",
     "Should have set the default engine to the first visible general engine"
   );
   Assert.equal(
     notified.name,
-    "engine-resourceicon",
+    "generalEngine",
     "Should have notified the correct default general engine"
   );
 }
@@ -275,21 +270,21 @@ add_task(async function test_default_fallback_remove_default_no_visible() {
 
   Assert.equal(
     (await getDefault(false)).name,
-    "engine-resourceicon",
+    "generalEngine",
     "Should fallback the default engine to the first general search engine"
   );
   Assert.equal(
     (await getDefault(true)).name,
-    "engine-resourceicon",
+    "generalEngine",
     "Should fallback the default private engine to the first general search engine"
   );
   Assert.equal(
     notified.name,
-    "engine-resourceicon",
+    "generalEngine",
     "Should have notified the correct default engine"
   );
   Assert.ok(
-    !Services.search.getEngineByName("engine-resourceicon").hidden,
+    !Services.search.getEngineByName("generalEngine").hidden,
     "Should have unhidden the new engine"
   );
   Assert.equal(
@@ -306,28 +301,19 @@ add_task(
     // For this test, we need to change any general search engines to unknown,
     // so that we can test what happens in the unlikely event that there are no
     // general search engines.
-    if (SearchUtils.newSearchConfigEnabled) {
-      let searchConfig = await getSearchConfig();
-      for (let entry of searchConfig.data) {
-        if (
-          entry.recordType == "engine" &&
-          entry.base.classification == "general"
-        ) {
-          entry.base.classification = "unknown";
-        }
+    let searchConfig = structuredClone(CONFIG);
+    for (let entry of searchConfig) {
+      if (entry.base?.classification == "general") {
+        entry.base.classification = "unknown";
       }
-      const settings = await RemoteSettings(SearchUtils.SETTINGS_KEY);
-      settings.get.returns(searchConfig.data);
-      Services.search.wrappedJSObject.reset();
-      await Services.search.init();
-
-      appPrivateDefault = await Services.search.getDefaultPrivate();
-
-      Services.search.defaultEngine = appPrivateDefault;
-    } else {
-      Services.search.defaultEngine = Services.search.defaultPrivateEngine =
-        appPrivateDefault;
     }
+    SearchTestUtils.setRemoteSettingsConfig(searchConfig);
+    Services.search.wrappedJSObject.reset();
+    await Services.search.init();
+
+    appPrivateDefault = await Services.search.getDefaultPrivate();
+
+    Services.search.defaultEngine = appPrivateDefault;
 
     // Remove all but the default engine.
     let visibleEngines = await Services.search.getVisibleEngines();
@@ -341,10 +327,6 @@ add_task(
       appPrivateDefault.name,
       "Should only have one visible engine"
     );
-
-    if (!SearchUtils.newSearchConfigEnabled) {
-      SearchUtils.GENERAL_SEARCH_ENGINE_IDS.clear();
-    }
 
     const observer = new SearchObserver(
       [
@@ -367,21 +349,21 @@ add_task(
 
     Assert.equal(
       (await getDefault(false)).name,
-      "Test search engine",
+      "default",
       "Should fallback to the first engine that isn't a general search engine"
     );
     Assert.equal(
       (await getDefault(true)).name,
-      "Test search engine",
+      "default",
       "Should fallback the private engine to the first engine that isn't a general search engine"
     );
     Assert.equal(
       notified.name,
-      "Test search engine",
+      "default",
       "Should have notified the correct default engine"
     );
     Assert.ok(
-      !Services.search.getEngineByName("Test search engine").hidden,
+      !Services.search.getEngineByName("default").hidden,
       "Should have unhidden the new engine"
     );
     Assert.equal(
@@ -403,7 +385,7 @@ async function checkNonBuiltinFallback(checkPrivate) {
   Services.search.restoreDefaultEngines();
 
   let addedEngine = await SearchTestUtils.installOpenSearchEngine({
-    url: `${gDataUrl}engine2.xml`,
+    url: `${gHttpURL}/opensearch/generic2.xml`,
   });
 
   await setDefault(checkPrivate, addedEngine);

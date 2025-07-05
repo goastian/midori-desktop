@@ -4,7 +4,7 @@
 
 import { UptakeTelemetry } from "resource://services-common/uptake-telemetry.sys.mjs";
 
-const COMPONENT = "normandy";
+const COMPONENT = "Normandy";
 
 export var Uptake = {
   // Action uptake
@@ -43,7 +43,7 @@ export var Uptake = {
       );
     }
     await UptakeTelemetry.report(COMPONENT, status, {
-      source: `${COMPONENT}/${source}`,
+      source: `${COMPONENT.toLowerCase()}/${source}`,
     });
   },
 
@@ -54,11 +54,7 @@ export var Uptake = {
   async reportRecipe(recipe, status) {
     await Uptake._report(status, `recipe/${recipe.id}`);
     const revisionId = parseInt(recipe.revision_id, 10);
-    Services.telemetry.keyedScalarSet(
-      "normandy.recipe_freshness",
-      recipe.id,
-      revisionId
-    );
+    Glean.normandy.recipeFreshness[recipe.id].set(revisionId);
   },
 
   async reportAction(actionName, status) {

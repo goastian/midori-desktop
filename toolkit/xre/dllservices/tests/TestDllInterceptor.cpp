@@ -806,7 +806,7 @@ bool TestShortDetour() {
 
 constexpr uintptr_t NoStubAddressCheck = 0;
 constexpr uintptr_t ExpectedFail = 1;
-struct TestCase {
+MOZ_GLOBINIT struct TestCase {
   const char* mFunctionName;
   uintptr_t mExpectedStub;
   bool mPatchedOnce;
@@ -964,7 +964,7 @@ struct DetouredCallChunk {
 // a module doesn't seem to work. Presumably it conflicts with the static
 // function tables. So we recreate gDetouredCall as dynamic code to be able to
 // associate it with unwind information.
-decltype(&DetouredCallCode) gDetouredCall =
+MOZ_RUNINIT decltype(&DetouredCallCode) gDetouredCall =
     []() -> decltype(&DetouredCallCode) {
   // We first adjust the detoured call jumper from:
   //   ff 25 00 00 00 00    jmp qword ptr [rip + 0]
@@ -1533,9 +1533,6 @@ extern "C" int wmain(int argc, wchar_t* argv[]) {
       TEST_HOOK_FOR_INVALID_HANDLE_VALUE("kernel32.dll", CreateFileA) &&
 #endif  // !defined(_M_ARM64)
 #if !defined(_M_ARM64)
-      TEST_HOOK("kernel32.dll", TlsAlloc, NotEquals, TLS_OUT_OF_INDEXES) &&
-      TEST_HOOK_PARAMS("kernel32.dll", TlsFree, Equals, FALSE,
-                       TLS_OUT_OF_INDEXES) &&
       TEST_HOOK("kernel32.dll", CloseHandle, Equals, FALSE) &&
       TEST_HOOK("kernel32.dll", DuplicateHandle, Equals, FALSE) &&
 #endif  // !defined(_M_ARM64)

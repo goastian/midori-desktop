@@ -5,13 +5,14 @@
 
 #include "URLQueryStringStripper.h"
 
+#include "mozilla/Components.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/StaticPrefs_privacy.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/Unused.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/AntitrackingMetrics.h"
 
-#include "nsEffectiveTLDService.h"
+#include "nsIEffectiveTLDService.h"
 #include "nsISupportsImpl.h"
 #include "nsIURI.h"
 #include "nsIURIMutator.h"
@@ -78,18 +79,17 @@ URLQueryStringStripper::URLQueryStringStripper() {
 NS_IMETHODIMP
 URLQueryStringStripper::StripForCopyOrShare(nsIURI* aURI,
                                             nsIURI** strippedURI) {
-  if (!StaticPrefs::privacy_query_stripping_strip_on_share_enabled()) {
-    return NS_ERROR_NOT_AVAILABLE;
-  }
   NS_ENSURE_ARG_POINTER(aURI);
   NS_ENSURE_ARG_POINTER(strippedURI);
   int aStripCount = 0;
 
-  nsresult rv =
-      StripForCopyOrShareInternal(aURI, strippedURI, aStripCount, false);
+  nsresult rv = StripForCopyOrShareInternal(aURI, strippedURI, aStripCount,
+                                            /* aDry = */ false,
+                                            /* aStripNestedURIs = */ false);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  Telemetry::Accumulate(Telemetry::STRIP_ON_SHARE_PARAMS_REMOVED, aStripCount);
+  glean::contentblocking::strip_on_share_params_removed.AccumulateSingleSample(
+      aStripCount);
 
   if (!aStripCount) {
     return NS_OK;
@@ -109,8 +109,25 @@ URLQueryStringStripper::StripForCopyOrShare(nsIURI* aURI,
   NS_ENSURE_SUCCESS(rv, rv);
 
   uint32_t lengthDiff = specOriginalURI.Length() - specStrippedURI.Length();
-  Telemetry::Accumulate(Telemetry::STRIP_ON_SHARE_LENGTH_DECREASE, lengthDiff);
+  glean::contentblocking::strip_on_share_length_decrease.AccumulateSingleSample(
+      lengthDiff);
 
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+URLQueryStringStripper::CanStripForShare(nsIURI* aURI, bool* aCanStrip) {
+  NS_ENSURE_ARG_POINTER(aURI);
+  NS_ENSURE_ARG_POINTER(aCanStrip);
+
+  *aCanStrip = false;
+  int aStripCount = 0;
+  nsresult rv =
+      StripForCopyOrShareInternal(aURI, nullptr, aStripCount, /* aDry = */ true,
+                                  /* aStripNestedURIs = */ false);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  *aCanStrip = aStripCount != 0;
   return NS_OK;
 }
 
@@ -273,8 +290,8 @@ nsresult URLQueryStringStripper::StripQueryString(nsIURI* aURI,
       // Calls for any other query params will be discarded.
       nsAutoCString telemetryLabel("param_");
       telemetryLabel.Append(lowerCaseName);
-      Telemetry::AccumulateCategorical(
-          Telemetry::QUERY_STRIPPING_COUNT_BY_PARAM, telemetryLabel);
+      glean::contentblocking::query_stripping_count_by_param.Get(telemetryLabel)
+          .Add();
 
       return true;
     }
@@ -300,8 +317,9 @@ bool URLQueryStringStripper::CheckAllowList(nsIURI* aURI) {
 
   // Get the site(eTLD+1) from the URI.
   nsAutoCString baseDomain;
-  nsresult rv =
-      nsEffectiveTLDService::GetInstance()->GetBaseDomain(aURI, 0, baseDomain);
+  nsCOMPtr<nsIEffectiveTLDService> tldService =
+      mozilla::components::EffectiveTLD::Service();
+  nsresult rv = tldService->GetBaseDomain(aURI, 0, baseDomain);
   if (rv == NS_ERROR_HOST_IS_IP_ADDRESS ||
       rv == NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS) {
     return false;
@@ -373,8 +391,82 @@ URLQueryStringStripper::Observe(nsISupports*, const char* aTopic,
   return NS_OK;
 }
 
+bool URLQueryStringStripper::ShouldStripParam(const nsACString& aHost,
+                                              const nsACString& aName) {
+  nsAutoCString lowerCaseName;
+  ToLowerCase(aName, lowerCaseName);
+
+  // Look through the global rules.
+  dom::StripRule globalRule;
+  bool keyExists = mStripOnShareMap.Get("*"_ns, &globalRule);
+  // There should always be a global rule.
+  MOZ_ASSERT(keyExists);
+
+  // Look through the global rules.
+  for (const auto& param : globalRule.mQueryParams) {
+    if (param == lowerCaseName) {
+      return true;
+    }
+  }
+
+  // Check for site specific rules.
+  dom::StripRule siteSpecificRule;
+  keyExists = mStripOnShareMap.Get(aHost, &siteSpecificRule);
+  if (keyExists) {
+    for (const auto& param : siteSpecificRule.mQueryParams) {
+      if (param == lowerCaseName) {
+        return true;
+      }
+    }
+  }
+
+  // no rule covering
+  return false;
+}
+
+int URLQueryStringStripper::TryStripValue(const nsACString& aHost,
+                                          nsACString& aValue, bool aDry) {
+  nsresult rv;
+
+  nsAutoCString decodeValue;
+  URLParams::DecodeString(aValue, decodeValue);
+
+  nsCOMPtr<nsIURI> nestedURI;
+  rv = NS_NewURI(getter_AddRefs(nestedURI), decodeValue);
+
+  if (NS_FAILED(rv)) {
+    return 0;
+  }
+
+  int stripCount = 0;
+  // recurse down
+  nsCOMPtr<nsIURI> strippedNestedURI;
+  rv = StripForCopyOrShareInternal(nestedURI, getter_AddRefs(strippedNestedURI),
+                                   stripCount, aDry,
+                                   /* aStripNestedURIs = */ true);
+
+  if (NS_SUCCEEDED(rv) && stripCount != 0) {
+    if (aDry) {
+      return 1;
+    }
+    MOZ_ASSERT(strippedNestedURI,
+               "URL must be returned if stripCount != 0 in non-dry mode");
+    nsAutoCString nestedURIString;
+    rv = strippedNestedURI->GetSpec(nestedURIString);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return 0;
+    }
+
+    // Overwrite aValue with URL with stripped query parameters
+    aValue.Truncate();
+    URLParams::SerializeString(nestedURIString, aValue);
+    return stripCount;
+  }
+  return 0;
+}
+
 nsresult URLQueryStringStripper::StripForCopyOrShareInternal(
-    nsIURI* aURI, nsIURI** strippedURI, int& aStripCount,
+    nsIURI* aURI, nsIURI** aStrippedURI, int& aStripCount, bool aDry,
     bool aStripNestedURIs) {
   nsAutoCString query;
   nsresult rv = aURI->GetQuery(query);
@@ -382,7 +474,6 @@ nsresult URLQueryStringStripper::StripForCopyOrShareInternal(
 
   // We don't need to do anything if there is no query string.
   if (query.IsEmpty()) {
-    Telemetry::Accumulate(Telemetry::STRIP_ON_SHARE_PARAMS_REMOVED, 0);
     return NS_OK;
   }
 
@@ -392,91 +483,38 @@ nsresult URLQueryStringStripper::StripForCopyOrShareInternal(
 
   URLParams params;
 
-  URLParams::Parse(query, false, [&](nsCString&& name, nsCString&& value) {
-    nsAutoCString lowerCaseName;
-    ToLowerCase(name, lowerCaseName);
-
-    // Look through the global rules.
-    dom::StripRule globalRule;
-    bool keyExists = mStripOnShareMap.Get("*"_ns, &globalRule);
-    // There should always be a global rule.
-    MOZ_ASSERT(keyExists);
-
-    // Look through the global rules.
-    for (const auto& param : globalRule.mQueryParams) {
-      if (param == lowerCaseName) {
-        aStripCount++;
-        return true;
-      }
+  URLParams::Parse(query, false, [&](nsCString&& aName, nsCString&& aValue) {
+    if (ShouldStripParam(host, aName)) {
+      aStripCount++;
+      // If we found a query param to strip in dry mode, skip iterating over the
+      // remaining ones (we return greedily). Otherwise don't add the param to
+      // the new list and continue with the next one.
+      return !aDry;
     }
 
-    // Check for site specific rules.
-    dom::StripRule siteSpecificRule;
-    keyExists = mStripOnShareMap.Get(host, &siteSpecificRule);
-    if (keyExists) {
-      for (const auto& param : siteSpecificRule.mQueryParams) {
-        if (param == lowerCaseName) {
-          aStripCount++;
-          return true;
-        }
-      }
-    }
-
-    // Only if it is top layer of the recursion then it
-    // checks if the value of the query parameter is a valid URI
-    // if not then it gets added back to the query, if it is then
-    // it gets passed back into this method but with the recursive
-    // stripping flag set to true
+    // Only if it is top layer of the recursion then it checks if the value of
+    // the query parameter is a valid URI if not then it gets added back to the
+    // query, if it is then it gets passed back into this method but with the
+    // recursive stripping flag set to true
     if (!aStripNestedURIs) {
-      nsAutoCString decodeValue;
-      URLParams::DecodeString(value, decodeValue);
-
-      nsCOMPtr<nsIURI> nestedURI;
-      rv = NS_NewURI(getter_AddRefs(nestedURI), decodeValue);
-
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        params.Append(name, value);
-        return true;
-      }
-
-      nsCOMPtr<nsIURI> strippedNestedURI;
-      rv = StripForCopyOrShareInternal(
-          nestedURI, getter_AddRefs(strippedNestedURI), aStripCount, true);
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return false;
-      }
-
-      if (!strippedNestedURI) {
-        params.Append(name, value);
-        return true;
-      }
-
-      nsAutoCString nestedURIString;
-      rv = strippedNestedURI->GetSpec(nestedURIString);
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return false;
-      }
-
-      // Encodes URI
-      nsAutoCString encodedURI;
-      URLParams::SerializeString(nestedURIString, encodedURI);
-
-      params.Append(name, encodedURI);
-      return true;
+      aStripCount += TryStripValue(host, aValue, aDry);
+    }
+    if (aDry) {
+      return aStripCount == 0;
     }
 
-    params.Append(name, value);
+    params.Append(aName, aValue);
     return true;
   });
 
-  // Returns null for strippedURI if no query params have been stripped.
-  if (!aStripCount) {
+  // Returns null for aStrippedURI if no query params have been stripped
+  // or in dry mode.
+  if (!aStripCount || aDry || !aStrippedURI) {
     return NS_OK;
   }
 
   nsAutoCString newQuery;
   params.Serialize(newQuery, false);
-  return NS_MutateURI(aURI).SetQuery(newQuery).Finalize(strippedURI);
+  return NS_MutateURI(aURI).SetQuery(newQuery).Finalize(aStrippedURI);
 }
-
 }  // namespace mozilla

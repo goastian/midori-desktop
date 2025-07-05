@@ -14,6 +14,7 @@ ChromeUtils.defineLazyGetter(lazy, "MigrationUtils", () => {
 
   try {
     let { MigrationUtils } = ChromeUtils.importESModule(
+      // eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
       "resource:///modules/MigrationUtils.sys.mjs"
     );
     return MigrationUtils;
@@ -29,7 +30,7 @@ export var ResetProfile = {
   /**
    * Check if reset is supported for the currently running profile.
    *
-   * @return boolean whether reset is supported.
+   * @returns {boolean} whether reset is supported.
    */
   resetSupported() {
     if (Services.policies && !Services.policies.isAllowed("profileRefresh")) {
@@ -45,12 +46,19 @@ export var ResetProfile = {
     }
 
     // We also need to be using a profile the profile manager knows about.
+    // We are disabling Firefox Refresh for profiles with a storeID.
+    // Bug 1928138 will add support for selectable profiles and profiles with
+    // storeID set
     let profileService = Cc[
       "@mozilla.org/toolkit/profile-service;1"
     ].getService(Ci.nsIToolkitProfileService);
     let currentProfileDir = Services.dirsvc.get("ProfD", Ci.nsIFile);
     for (let profile of profileService.profiles) {
-      if (profile.rootDir && profile.rootDir.equals(currentProfileDir)) {
+      if (
+        profile.rootDir &&
+        profile.rootDir.equals(currentProfileDir) &&
+        !profile.storeID
+      ) {
         return true;
       }
     }
@@ -59,6 +67,8 @@ export var ResetProfile = {
 
   /**
    * Ask the user if they wish to restart the application to reset the profile.
+   *
+   * @param {Window} window
    */
   async openConfirmationDialog(window) {
     let win = window;
@@ -99,6 +109,10 @@ export var ResetProfile = {
       return;
     }
 
+    this.doReset();
+  },
+
+  doReset() {
     // Set the reset profile environment variable.
     Services.env.set("MOZ_RESET_PROFILE_RESTART", "1");
 

@@ -520,12 +520,6 @@ async function loadManifestFromWebManifest(aPackage, aLocation) {
     addon.previewImage = "preview.png";
   }
 
-  // TODO(Bug 1789718): Remove after the deprecated XPIProvider-based implementation is also removed.
-  if (addon.type == "sitepermission-deprecated") {
-    addon.sitePermissions = manifest.site_permissions;
-    addon.siteOrigin = manifest.install_origins[0];
-  }
-
   const { optionsPageProperties } = extension;
   if (optionsPageProperties) {
     // Store just the relative path here, the AddonWrapper getURL
@@ -752,7 +746,7 @@ var loadManifest = async function (aPackage, aLocation, aOldAddon) {
     // Always report when there is an attempt to install a blocked add-on.
     // (transitions from STATE_BLOCKED to STATE_NOT_BLOCKED are checked
     //  in the individual AddonInstall subclasses).
-    if (addon.blocklistState == nsIBlocklistService.STATE_BLOCKED) {
+    if (addon.blocklistState > nsIBlocklistService.STATE_NOT_BLOCKED) {
       addon.recordAddonBlockChangeTelemetry(
         aOldAddon ? "addon_update" : "addon_install"
       );
@@ -794,11 +788,11 @@ var loadManifestFromFile = async function (aFile, aLocation, aOldAddon) {
  * this.
  */
 function syncLoadManifest(state, location, oldAddon) {
-  if (location.name == "app-builtin") {
+  const { KEY_APP_BUILTINS, KEY_APP_SYSTEM_BUILTINS, awaitPromise } =
+    XPIExports.XPIInternal;
+  if ([KEY_APP_BUILTINS, KEY_APP_SYSTEM_BUILTINS].includes(location.name)) {
     let pkg = builtinPackage(Services.io.newURI(state.rootURI));
-    return XPIExports.XPIInternal.awaitPromise(
-      loadManifest(pkg, location, oldAddon)
-    );
+    return awaitPromise(loadManifest(pkg, location, oldAddon));
   }
 
   let file = new nsIFile(state.path);
@@ -898,25 +892,18 @@ function getSignedStatus(aRv, aCert, aAddonID) {
     default:
       // Any other error indicates that either the add-on isn't signed or it
       // is signed by a signature that doesn't chain to the trusted root.
+      logger.warn(`Failed to verify signature for ${aAddonID}: ${aRv}`);
       return AddonManager.SIGNEDSTATE_UNKNOWN;
   }
 }
 
 function shouldVerifySignedState(aAddonType, aLocation) {
-  // TODO when KEY_APP_SYSTEM_DEFAULTS and KEY_APP_SYSTEM_ADDONS locations
-  // are removed, we need to reorganize the logic here.  At that point we
-  // should:
-  //   if builtin or MOZ_UNSIGNED_SCOPES return false
-  //   if system return true
-  //   return SIGNED_TYPES.has(type)
-
-  // We don't care about signatures for default system add-ons
-  if (aLocation.name == XPIExports.XPIInternal.KEY_APP_SYSTEM_DEFAULTS) {
-    return false;
-  }
-
-  // Updated system add-ons should always have their signature checked
-  if (aLocation.isSystem) {
+  // Updated system add-ons should always have their signature checked (unless they are built
+  // into the omni jar).
+  if (
+    aLocation.isSystem &&
+    aLocation.name !== XPIExports.XPIProvider.KEY_APP_SYSTEM_BUILTINS
+  ) {
     return true;
   }
 
@@ -1355,6 +1342,16 @@ class AddonInstall {
 
     this.addon = null;
     this.state = null;
+
+    // Backing up currently active theme id when a new install flow is about to start
+    // (this will then be propagated to the AddonInternal object if the new addon
+    // being installed is a static theme and it doesn't have the same addon id of
+    // the theme already active, and eventually used to rollback to the previously
+    // active theme through the Undo button available in the theme post-install dialog).
+    this.initialActiveThemeID = Services.prefs.getCharPref(
+      "extensions.activeThemeID",
+      lazy.AddonSettings.DEFAULT_THEME_ID
+    );
 
     XPIInstall.installs.add(this);
   }
@@ -1893,6 +1890,17 @@ class AddonInstall {
     logger.debug(
       "Starting install of " + this.addon.id + " from " + this.sourceURI.spec
     );
+
+    if (
+      this.addon.type === "theme" &&
+      this.addon.id !== this.initialActiveThemeID
+    ) {
+      // Propagate the theme ID that was active when a new theme install flow has
+      // started, in case we need to restore it (on user clicking Undo in the post-install
+      // theme dialog).
+      this.addon.previousActiveThemeID = this.initialActiveThemeID;
+    }
+
     AddonManagerPrivate.callAddonListeners(
       "onInstalling",
       this.addon.wrapper,
@@ -1979,18 +1987,6 @@ class AddonInstall {
           AddonManagerPrivate.notifyAddonChanged(
             this.addon.id,
             this.addon.type
-          );
-        }
-
-        // Clear the colorways builtins migrated to a non-builtin themes
-        // form the list of the retained themes.
-        if (
-          this.existingAddon?.isBuiltinColorwayTheme &&
-          !this.addon.isBuiltin &&
-          XPIExports.BuiltInThemesHelpers.isColorwayMigrationEnabled
-        ) {
-          XPIExports.BuiltInThemesHelpers.unretainMigratedColorwayTheme(
-            this.addon.id
           );
         }
       };
@@ -2265,7 +2261,7 @@ var LocalAddonInstall = class extends AddonInstall {
 
     // Report if blocked add-on becomes unblocked through this install.
     if (
-      addon?.blocklistState === nsIBlocklistService.STATE_BLOCKED &&
+      addon?.blocklistState > nsIBlocklistService.STATE_NOT_BLOCKED &&
       this.addon.blocklistState === nsIBlocklistService.STATE_NOT_BLOCKED
     ) {
       this.addon.recordAddonBlockChangeTelemetry("addon_install");
@@ -2273,6 +2269,14 @@ var LocalAddonInstall = class extends AddonInstall {
 
     if (this.addon.blocklistState === nsIBlocklistService.STATE_BLOCKED) {
       this.error = AddonManager.ERROR_BLOCKLISTED;
+    }
+
+    if (this.addon.blocklistState === nsIBlocklistService.STATE_SOFTBLOCKED) {
+      // We show a different error message to the user and so we need a separate
+      // error code (translated into the related localized error message from
+      // browser-addons.js on Firefox Desktop and from WebExtensionPromptFeature.kt
+      // on Firefox for Android).
+      this.error = AddonManager.ERROR_SOFT_BLOCKED;
     }
 
     if (!this.addon.isCompatible) {
@@ -2763,7 +2767,7 @@ var DownloadAddonInstall = class extends AddonInstall {
 
     // Report if blocked add-on becomes unblocked through this install/update.
     if (
-      aAddon?.blocklistState === nsIBlocklistService.STATE_BLOCKED &&
+      aAddon?.blocklistState > nsIBlocklistService.STATE_NOT_BLOCKED &&
       this.addon.blocklistState === nsIBlocklistService.STATE_NOT_BLOCKED
     ) {
       this.addon.recordAddonBlockChangeTelemetry(
@@ -2773,6 +2777,14 @@ var DownloadAddonInstall = class extends AddonInstall {
 
     if (this.addon.blocklistState === nsIBlocklistService.STATE_BLOCKED) {
       this.error = AddonManager.ERROR_BLOCKLISTED;
+    } else if (
+      this.addon.blocklistState === nsIBlocklistService.STATE_SOFTBLOCKED
+    ) {
+      // We show a different error message to the user and so we need a separate
+      // error code (translated into the related localized error message from
+      // browser-addons.js on Firefox Desktop and from WebExtensionPromptFeature.kt
+      // on Firefox for Android).
+      this.error = AddonManager.ERROR_SOFT_BLOCKED;
     } else if (!this.addon.isCompatible) {
       this.error = AddonManager.ERROR_INCOMPATIBLE;
     }
@@ -2854,22 +2866,7 @@ function createUpdate(aCallback, aAddon, aUpdate, isUserRequested) {
       install = new LocalAddonInstall(aAddon.location, url, opts);
       await install.init();
     } else {
-      let loc = aAddon.location;
-      if (
-        aAddon.isBuiltinColorwayTheme &&
-        XPIExports.BuiltInThemesHelpers.isColorwayMigrationEnabled
-      ) {
-        // Builtin colorways theme needs to be updated by installing the version
-        // got from AMO into the profile location and not using the location
-        // where the builtin addon is currently installed.
-        logger.info(
-          `Overriding location to APP_PROFILE on builtin colorway theme update for "${aAddon.id}"`
-        );
-        loc = XPIExports.XPIInternal.XPIStates.getLocation(
-          XPIExports.XPIInternal.KEY_APP_PROFILE
-        );
-      }
-      install = new DownloadAddonInstall(loc, url, opts);
+      install = new DownloadAddonInstall(aAddon.location, url, opts);
     }
 
     aCallback(install);
@@ -3654,20 +3651,24 @@ class SystemAddonInstaller extends DirectoryInstaller {
   }
 
   /**
-   * Tests whether the loaded add-on information matches what is expected.
+   * Tests whether the loaded add-on information matches what is expected
+   * and returns the list of add-on ids of the ones detected as invalid
+   * (e.g. addon version not matching the expected version included in the
+   * addonSet about:config pref).
    *
    * @param {Map<string, AddonInternal>} aAddons
    *        The set of add-ons to check.
-   * @returns {boolean}
-   *        True if all of the given add-ons are valid.
+   * @returns {Array<string>}
+   *        Add-ons ids of the system-signed addons detected as invalid.
    */
-  isValid(aAddons) {
+  getInvalidAddonIds(aAddons) {
+    const invalidAddonIds = [];
     for (let id of Object.keys(this._addonSet.addons)) {
       if (!aAddons.has(id)) {
         logger.warn(
           `Expected add-on ${id} is missing from the system add-on location.`
         );
-        return false;
+        continue;
       }
 
       let addon = aAddons.get(id);
@@ -3675,15 +3676,59 @@ class SystemAddonInstaller extends DirectoryInstaller {
         logger.warn(
           `Expected system add-on ${id} to be version ${this._addonSet.addons[id].version} but was ${addon.version}.`
         );
-        return false;
+        invalidAddonIds.push(id);
+        continue;
       }
 
       if (!this.isValidAddon(addon)) {
-        return false;
+        invalidAddonIds.push(id);
+        continue;
       }
     }
 
-    return true;
+    return invalidAddonIds;
+  }
+
+  async updateAddonSetOnAppVersionChanged(builtInsMap) {
+    let addonSet = this._addonSet;
+
+    if (!addonSet.directory) {
+      // Nothing to do if there aren't any system-signed updates.
+      return;
+    }
+
+    if (!builtInsMap.size) {
+      // If the builtin map is completely empty, we would uninstall
+      // all system-signed updates like resetAddonSet method would.
+      await this.resetAddonSet();
+      return;
+    }
+
+    logger.info("Re-validate system add-on upgrades on app version changed.");
+
+    const systemUpdateIsBuiltInUpgrade = (id, systemUpdateVersion) => {
+      if (!builtInsMap.has(id)) {
+        return false;
+      }
+      const builtInVersion = builtInsMap.get(id).builtin.addon_version;
+      return Services.vc.compare(systemUpdateVersion, builtInVersion) > 0;
+    };
+    for (const id of Object.keys(this._addonSet.addons)) {
+      const { version } = this._addonSet.addons[id];
+      if (systemUpdateIsBuiltInUpgrade(id, version)) {
+        logger.info(
+          `SystemAddonInstaller: keep system-signed update for built-in addon ${id}`
+        );
+        continue;
+      }
+
+      logger.info(
+        `SystemAddonInstaller: uninstalling system-signed addon ${id}`
+      );
+      uninstallAddonFromLocation(id, this.location);
+      delete this._addonSet.addons[id];
+    }
+    SystemAddonInstaller._saveAddonSet(this._addonSet);
   }
 
   /**
@@ -4306,11 +4351,11 @@ export var XPIInstall = {
       return;
     }
 
-    // If this matches the current set in the default location then reset the
+    // If this matches the current set in the default locations then reset the
     // updated set.
     let defaultAddons = addonMap(
       await XPIExports.XPIDatabase.getAddonsInLocation(
-        XPIExports.XPIInternal.KEY_APP_SYSTEM_DEFAULTS
+        XPIExports.XPIInternal.KEY_APP_SYSTEM_BUILTINS
       )
     );
     if (setMatches(addonList, defaultAddons)) {
@@ -4907,38 +4952,22 @@ export var XPIInstall = {
         AddonManagerPrivate.callAddonListeners("onUninstalled", wrapper);
 
         if (existing) {
-          // Migrate back to the existing addon, unless it was a builtin colorway theme,
-          // in that case we also make sure to remove the addon from the builtin location.
-          if (
-            existing.isBuiltinColorwayTheme &&
-            XPIExports.BuiltInThemesHelpers.isColorwayMigrationEnabled
-          ) {
-            existing.location.removeAddon(existing.id);
-          } else {
-            XPIExports.XPIDatabase.makeAddonVisible(existing);
-            AddonManagerPrivate.callAddonListeners(
-              "onInstalling",
-              existing.wrapper,
-              false
-            );
+          XPIExports.XPIDatabase.makeAddonVisible(existing);
+          AddonManagerPrivate.callAddonListeners(
+            "onInstalling",
+            existing.wrapper,
+            false
+          );
 
-            if (!existing.disabled) {
-              XPIExports.XPIDatabase.updateAddonActive(existing, true);
-            }
+          if (!existing.disabled) {
+            XPIExports.XPIDatabase.updateAddonActive(existing, true);
           }
         }
       };
 
       // Migrate back to the existing addon, unless it was a builtin colorway theme.
-      if (
-        existing &&
-        !(
-          existing.isBuiltinColorwayTheme &&
-          XPIExports.BuiltInThemesHelpers.isColorwayMigrationEnabled
-        )
-      ) {
+      if (existing) {
         await bootstrap.update(existing, !existing.disabled, uninstall);
-
         AddonManagerPrivate.callAddonListeners("onInstalled", existing.wrapper);
       } else {
         aAddon.location.removeAddon(aAddon.id);

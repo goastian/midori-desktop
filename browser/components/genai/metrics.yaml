@@ -1,0 +1,976 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - "Core :: Machine Learning"
+
+genai.chatbot:
+  # metrics
+
+  enabled:
+    type: boolean
+    lifetime: application
+    description: >
+      Indicates if the chatbot feature is enabled.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1895813
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D214470
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - metrics
+
+  provider:
+    type: string
+    lifetime: application
+    description: >
+      Indicates id of activated chatbot provider or "custom" or "none"
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1895813
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D214470
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - metrics
+
+  shortcuts:
+    type: boolean
+    lifetime: application
+    description: >
+      Indicates if the chatbot feature would show shortcuts on selection.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1910005
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D217782
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - metrics
+
+  shortcuts_custom:
+    type: boolean
+    lifetime: application
+    description: >
+      Indicates if the chatbot feature would show shortcuts custom input.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1910005
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D217782
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - metrics
+
+  sidebar:
+    type: boolean
+    lifetime: application
+    description: >
+      Indicates if the chatbot feature would open in sidebar.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1895813
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D214470
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - metrics
+
+  # events
+
+  contextmenu_prompt_click:
+    type: event
+    description: >
+      Chatbot prompt was clicked from the context menu.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1895813
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D214470
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      prompt:
+        type: string
+        description: Selected prompt id.
+      provider:
+        type: string
+        description: Selected provider id.
+      selection:
+        type: quantity
+        description: Selected text length.
+
+  contextmenu_remove:
+    type: event
+    description: >
+      Chatbot provider was removed from the context menu.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1946099
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D237127
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      provider:
+        type: string
+        description: Removed provider id.
+
+  experiment_checkbox_click:
+    type: event
+    description: >
+      Chatbot experiment checkbox was clicked to enable/disable.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1895813
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D214470
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      enabled:
+        type: boolean
+        description: New/current state is enabled.
+
+  keyboard_shortcut:
+    type: event
+    description: >
+      Chatbot sidebar toggled with keyboard shortcut.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1905027
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D226205
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      enabled:
+        type: boolean
+        description: Chatbot was already enabled.
+      sidebar:
+        type: string
+        description: Sidebar is currently open.
+
+  onboarding_close:
+    type: event
+    description: >
+      Chatbot onboarding closed from provider choice.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      provider:
+        type: string
+        description: Which provider was last selected.
+      step:
+        type: quantity
+        description: Onboarding screen number.
+
+  onboarding_continue:
+    type: event
+    description: >
+      Chatbot onboarding continued from provider choice.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      provider:
+        type: string
+        description: Which provider was last selected.
+      step:
+        type: quantity
+        description: Onboarding screen number.
+
+  onboarding_finish:
+    type: event
+    description: >
+      Chatbot onboarding finished with start chatting button.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      provider:
+        type: string
+        description: Which provider was last selected.
+      step:
+        type: quantity
+        description: Onboarding screen number.
+
+  onboarding_learn_more:
+    type: event
+    description: >
+      Chatbot onboarding opened feature learn more link.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      provider:
+        type: string
+        description: Which provider was last selected.
+      step:
+        type: quantity
+        description: Onboarding screen number.
+
+  onboarding_provider_choice_displayed:
+    type: event
+    description: >
+      Chatbot onboarding impression for provider choice screen.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      provider:
+        type: string
+        description: Current provider id.
+      step:
+        type: quantity
+        description: Onboarding screen number.
+
+  onboarding_provider_learn:
+    type: event
+    description: >
+      Chatbot onboarding opened provider learn more link.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      provider:
+        type: string
+        description: Which provider.
+      step:
+        type: quantity
+        description: Onboarding screen number.
+
+  onboarding_provider_selection:
+    type: event
+    description: >
+      Chatbot onboarding selected a provider.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      provider:
+        type: string
+        description: Which provider.
+      step:
+        type: quantity
+        description: Onboarding screen number.
+
+  onboarding_provider_terms:
+    type: event
+    description: >
+      Chatbot onboarding opened provider terms link.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      provider:
+        type: string
+        description: Which provider.
+      step:
+        type: quantity
+        description: Onboarding screen number.
+      text:
+        type: string
+        description: Which terms link.
+
+  onboarding_text_highlight_displayed:
+    type: event
+    description: >
+      Chatbot onboarding impression for text highlight screen.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      provider:
+        type: string
+        description: Which provider was last selected.
+      step:
+        type: quantity
+        description: Onboarding screen number.
+
+  provider_change:
+    type: event
+    description: >
+      Chatbot provider UI changed providers.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1895813
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D214470
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      current:
+        type: string
+        description: Current provider id.
+      previous:
+        type: string
+        description: Previous provider id.
+      surface:
+        type: string
+        description: Which UI surface.
+
+  shortcuts_checkbox_click:
+    type: event
+    description: >
+      Chatbot shortcuts checkbox was clicked to enable/disable.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1910005
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D217782
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      enabled:
+        type: boolean
+        description: New/current state is enabled.
+
+  shortcuts_displayed:
+    type: event
+    description: >
+      Shortcuts displayed on text selection.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1910005
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D217782
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      delay:
+        type: quantity
+        description: Milliseconds from mousedown to showing.
+      inputType:
+        type: string
+        description: Type if user can edit, e.g., contenteditable, input, textarea.
+      selection:
+        type: quantity
+        description: Selected text length.
+
+  shortcuts_expanded:
+    type: event
+    description: >
+      Shortcuts expanded to show prompts.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1910005
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922379
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D217782
+      - https://phabricator.services.mozilla.com/D225895
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      selection:
+        type: quantity
+        description: Selected text length.
+      provider:
+        type: string
+        description: Selected provider id.
+      warning:
+        type: boolean
+        description: Warning label is shown to the user.
+
+  shortcuts_hide_click:
+    type: event
+    description: >
+      Chatbot hide shortcuts was clicked from the shortcuts.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      selection:
+        type: quantity
+        description: Selected text length.
+
+  shortcuts_prompt_click:
+    type: event
+    description: >
+      Chatbot prompt was clicked from the shortcuts.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1910005
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D217782
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      prompt:
+        type: string
+        description: Selected prompt id.
+      provider:
+        type: string
+        description: Selected provider id.
+      selection:
+        type: quantity
+        description: Selected text length.
+
+  sidebar_close_click:
+    type: event
+    description: >
+      Chatbot close X clicked.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      provider:
+        type: string
+        description: Selected provider id.
+
+  sidebar_more_menu_click:
+    type: event
+    description: >
+      Chatbot more menu clicked an action.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      action:
+        type: string
+        description: Which action was clicked.
+      provider:
+        type: string
+        description: Selected provider id.
+
+  sidebar_more_menu_display:
+    type: event
+    description: >
+      Chatbot more menu opened.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      provider:
+        type: string
+        description: Selected provider id.
+
+  sidebar_provider_menu_click:
+    type: event
+    description: >
+      Chatbot provider menu clicked an action.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1911104
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D223938
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      action:
+        type: string
+        description: Which action was clicked.
+      provider:
+        type: string
+        description: Selected provider id.
+
+  sidebar_toggle:
+    type: event
+    description: >
+      Chatbot sidebar panel was toggled open/close.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1895813
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D214470
+    data_sensitivity:
+      - interaction
+    expires: 147
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      opened:
+        type: boolean
+        description: New/current state of sidebar is open.
+      provider:
+        type: string
+        description: Selected provider id.
+      reason:
+        type: string
+        description: Why panel is toggling.
+      version:
+        type: string
+        description: The active version of sidebar (either "old" or "new").
+
+genai.linkpreview:
+  # metrics
+
+  ai_optin:
+    type: boolean
+    lifetime: application
+    description: >
+      Records if the user has opted-in to use AI for key points generation
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1969012
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D251779
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - metrics
+
+  enabled:
+    type: boolean
+    lifetime: application
+    description: >
+      Records if the user has link previews enabled
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1951148
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D243790
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - metrics
+
+  key_points:
+    type: boolean
+    lifetime: application
+    description: >
+      Records if the user defaults to expanded state for key point generation
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1969012
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D251779
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - metrics
+
+  shortcut:
+    type: string
+    lifetime: application
+    description: >
+      Records which type of shortcut the user selected for Link Previews (comma separated if more than one)
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1969012
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D251779
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - metrics
+
+  # events
+
+  card_ai_consent:
+    type: event
+    description: >
+      Recorded when the user interacts with the AI consent dialog
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1951146
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D249104
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      option:
+        type: string
+        description: User's response - cancel, continue, or learn
+
+  card_close:
+    type: event
+    description: >
+      Recorded when the user closes the card
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1951148
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D243790
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      duration:
+        type: quantity
+        description: Milliseconds the card stayed open
+      tab:
+        type: string
+        description: The type of tab where the event occurred. Potential values home, newtab
+
+  card_link:
+    type: event
+    description: >
+      Recorded when the user clicks on a link from the card
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1951148
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D243790
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      key_points:
+        type: boolean
+        description: Whether key points were visible when the link was clicked.
+      source:
+        type: string
+        description: Which link, e.g., error, retry, title, visit
+      tab:
+        type: string
+        description: The type of tab where the event occurred. Potential values home, newtab
+
+  fetch:
+    type: event
+    description: >
+      Recorded when the browser fetches the page to be previewed
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1951148
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D243790
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      description:
+        type: boolean
+        description: Description detected
+      image:
+        type: boolean
+        description: Image detected
+      length:
+        type: quantity
+        description: Length of the article
+      outcome:
+        type: string
+        description: success or error
+      sitename:
+        type: boolean
+        description: Site name detected
+      skipped:
+        type: boolean
+        description: Skipped for newer fetch
+      tab:
+        type: string
+        description: The type of tab where the event occurred. Potential values home, newtab
+      time:
+        type: quantity
+        description: Milliseconds to fetch and extract page
+      title:
+        type: boolean
+        description: Title detected
+
+  generate:
+    type: event
+    description: >
+      Recorded when the model finishes generating the preview
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1951148
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D243790
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      delay:
+        type: quantity
+        description: Milliseconds waiting on previous
+      download:
+        type: quantity
+        description: Milliseconds to finish download
+      latency:
+        type: quantity
+        description: Milliseconds to output first sentence
+      outcome:
+        type: string
+        description: success or prefetch or error
+      sentences:
+        type: quantity
+        description: Number of sentences generated
+      time:
+        type: quantity
+        description: Milliseconds to generate full result
+
+  key_points_toggle:
+    type: event
+    description: >
+      Recorded when the user toggles the key points section
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1961215
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D249851
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      expand:
+        type: boolean
+        description: Link preview card is expanded
+
+  onboarding_card:
+    type: event
+    description: >
+      Recorded when the link preview onboarding is displayed and how the user interacts with it.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1961212
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D249855
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      action:
+        type: string
+        description: User's action on the dialogue - "view" (impression), "try_it_now", "close"
+      type:
+        type: string
+        description: The type of onboarding trigger, e.g. "longPress" or "shiftKey".
+
+  pref_changed:
+    type: event
+    description: >
+      Recorded when the user toggles prefs
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1951148
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1969012
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D243790
+      - https://phabricator.services.mozilla.com/D251779
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      enabled:
+        type: boolean
+        description: New/current state is enabled
+      pref:
+        type: string
+        description: Which checkbox was clicked. Potential values link_previews, key_points, shift, shift_option, long_press
+
+  start:
+    type: event
+    description: >
+      Recorded when the user initiates a link preview
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1951148
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D243790
+    data_sensitivity:
+      - interaction
+    expires: 150
+    notification_emails:
+      - elee@mozilla.com
+    send_in_pings:
+      - events
+    extra_keys:
+      cached:
+        type: boolean
+        description: Reusing existing panel
+      source:
+        type: string
+        description: Entrypoint shortcut (longpress, shift, shift-alt), context, onboarding
+      tab:
+        type: string
+        description: The type of tab where the event occurred. Potential values home, newtab

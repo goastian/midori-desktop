@@ -7,7 +7,7 @@
 pub use std::path::*;
 
 use super::mock::MockKey;
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 
 macro_rules! delegate {
     ( fn $name:ident (&self $(, $arg:ident : $argty:ty )* ) -> $ret:ty ) => {
@@ -24,6 +24,13 @@ pub struct Path(std::path::Path);
 impl AsRef<std::path::Path> for Path {
     fn as_ref(&self) -> &std::path::Path {
         &self.0
+    }
+}
+
+impl ToOwned for Path {
+    type Owned = PathBuf;
+    fn to_owned(&self) -> Self::Owned {
+        PathBuf(self.0.to_owned())
     }
 }
 
@@ -51,11 +58,21 @@ impl AsRef<Path> for &OsStr {
     }
 }
 
+impl AsRef<Path> for OsString {
+    fn as_ref(&self) -> &Path {
+        Path::from_path(self.as_ref())
+    }
+}
+
 impl Path {
     fn from_path(path: &std::path::Path) -> &Self {
         // # Safety
         // Transparent wrapper is safe to transmute.
         unsafe { std::mem::transmute(path) }
+    }
+
+    pub fn new<S: AsRef<OsStr> + ?Sized>(s: &S) -> &Self {
+        Self::from_path(std::path::Path::new(s))
     }
 
     pub fn exists(&self) -> bool {
@@ -129,6 +146,12 @@ impl std::ops::Deref for PathBuf {
     }
 }
 
+impl std::borrow::Borrow<Path> for PathBuf {
+    fn borrow(&self) -> &Path {
+        Path::from_path(self.0.as_ref())
+    }
+}
+
 impl AsRef<Path> for PathBuf {
     fn as_ref(&self) -> &Path {
         Path::from_path(self.0.as_ref())
@@ -168,5 +191,13 @@ impl From<PathBuf> for std::ffi::OsString {
 impl From<&str> for PathBuf {
     fn from(s: &str) -> Self {
         PathBuf(s.into())
+    }
+}
+
+impl super::mock::MockUnwrap for PathBuf {
+    type Inner = std::path::PathBuf;
+
+    fn unwrap(self) -> Self::Inner {
+        self.0
     }
 }

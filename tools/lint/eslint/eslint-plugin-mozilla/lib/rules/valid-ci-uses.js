@@ -19,11 +19,6 @@ const platformSpecificInterfaces = new Map([
   ["nsIAboutWindowsMessages", "windows"],
   ["nsIDefaultAgent", "windows"],
   ["nsIJumpListBuilder", "windows"],
-  ["nsILegacyJumpListBuilder", "windows"],
-  ["nsILegacyJumpListItem", "windows"],
-  ["nsILegacyJumpListLink", "windows"],
-  ["nsILegacyJumpListSeparator", "windows"],
-  ["nsILegacyJumpListShortcut", "windows"],
   ["nsITaskbarWindowPreview", "windows"],
   ["nsIWindowsAlertsService", "windows"],
   ["nsIWindowsAlertNotification", "windows"],
@@ -34,6 +29,7 @@ const platformSpecificInterfaces = new Map([
   ["nsIWindowsRegKey", "windows"],
   ["nsIWindowsPackageManager", "windows"],
   ["nsIWindowsShellService", "windows"],
+  ["nsIWindowsUIUtils", "windows"],
   ["nsIAccessibleMacEvent", "darwin"],
   ["nsIAccessibleMacInterface", "darwin"],
   ["nsILocalFileMac", "darwin"],
@@ -59,8 +55,9 @@ const platformSpecificInterfaces = new Map([
   ["amIFoo", "any"],
   ["nsIMeh", "any"],
   // Can't easily detect android builds from ESLint at the moment.
-  ["nsIAndroidBridge", "any"],
-  ["nsIAndroidView", "any"],
+  ["nsIGeckoViewBridge", "any"],
+  ["nsIGeckoViewView", "any"],
+  ["nsIOhttpClientTest", "any"],
   // Code coverage is enabled only for certain builds (MOZ_CODE_COVERAGE).
   ["nsICodeCoverage", "any"],
   // Layout debugging is enabled only for certain builds (MOZ_LAYOUT_DEBUGGER).

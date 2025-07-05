@@ -81,9 +81,8 @@ var test = {
       ],
     };
 
-    let insertedBookmarks = await PlacesUtils.bookmarks.insertTree(
-      bookmarksTree
-    );
+    let insertedBookmarks =
+      await PlacesUtils.bookmarks.insertTree(bookmarksTree);
 
     // create a query URI with 1 folder (ie: folder shortcut)
     this._queryURI1 = `place:parent=${this._folderGuids[0]}&queryType=1`;
@@ -178,7 +177,7 @@ var test = {
 
   validateQueryNode1: function validateQueryNode1(aNode) {
     Assert.equal(aNode.title, this._queryTitle1);
-    Assert.ok(PlacesUtils.nodeIsFolder(aNode));
+    Assert.ok(PlacesUtils.nodeIsFolderOrShortcut(aNode));
 
     aNode.QueryInterface(Ci.nsINavHistoryContainerResultNode);
     aNode.containerOpen = true;

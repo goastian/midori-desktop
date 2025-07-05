@@ -3,11 +3,21 @@ https://creativecommons.org/publicdomain/zero/1.0/ */
 
 "use strict";
 
+const STATIC_ENGINE_INFO = {
+  identifier: "engine-1",
+  name: "engine-1",
+  classification: "general",
+  urls: {
+    search: {
+      base: "https://www.example.com/search",
+      searchTermParamName: "q",
+    },
+  },
+};
+
 const CONFIG = [
   {
-    recordType: "engine",
-    identifier: "engine-1",
-    base: {},
+    ...STATIC_ENGINE_INFO,
     variants: [
       {
         environment: {
@@ -27,53 +37,13 @@ const CONFIG = [
       },
     ],
   },
-  {
-    recordType: "defaultEngines",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
-  },
 ];
 
 const engineSelector = new SearchEngineSelector();
-let settings;
-let configStub;
-
-/**
- * This function asserts if the actual engines returned equals the expected
- * engines.
- *
- * @param {object} config
- *   A fake search config containing engines.
- * @param {object} userEnv
- *   A fake user's environment including locale and region, experiment, etc.
- * @param {Array} expectedEngines
- *   The array of expected engines to be returned from the fake config.
- * @param {string} message
- *   The assertion message.
- */
-async function assertActualEnginesEqualsExpected(
-  config,
-  userEnv,
-  expectedEngines,
-  message
-) {
-  engineSelector._configuration = null;
-  configStub.returns(config);
-  let { engines } = await engineSelector.fetchEngineConfiguration(userEnv);
-
-  Assert.deepEqual(engines, expectedEngines, message);
-}
-
-add_setup(async function () {
-  settings = await RemoteSettings(SearchUtils.NEW_SETTINGS_KEY);
-  configStub = sinon.stub(settings, "get");
-});
 
 add_task(async function test_no_subvariants_match() {
-  await assertActualEnginesEqualsExpected(
+  await assertSelectorEnginesEqualsExpected(
+    engineSelector,
     CONFIG,
     {
       locale: "fi",
@@ -83,6 +53,7 @@ add_task(async function test_no_subvariants_match() {
       {
         identifier: "engine-1",
         partnerCode: "variant-partner-code",
+        ...STATIC_ENGINE_INFO,
       },
     ],
     "Should match no subvariants."
@@ -90,7 +61,8 @@ add_task(async function test_no_subvariants_match() {
 });
 
 add_task(async function test_matching_subvariant_with_properties() {
-  await assertActualEnginesEqualsExpected(
+  await assertSelectorEnginesEqualsExpected(
+    engineSelector,
     CONFIG,
     {
       locale: "en-GB",
@@ -100,6 +72,7 @@ add_task(async function test_matching_subvariant_with_properties() {
       {
         identifier: "engine-1",
         partnerCode: "subvariant-partner-code",
+        ...STATIC_ENGINE_INFO,
       },
     ],
     "Should match subvariant with subvariant properties."
@@ -107,7 +80,8 @@ add_task(async function test_matching_subvariant_with_properties() {
 });
 
 add_task(async function test_matching_variant_and_subvariant_with_properties() {
-  await assertActualEnginesEqualsExpected(
+  await assertSelectorEnginesEqualsExpected(
+    engineSelector,
     CONFIG,
     {
       locale: "en-CA",
@@ -115,9 +89,9 @@ add_task(async function test_matching_variant_and_subvariant_with_properties() {
     },
     [
       {
-        identifier: "engine-1",
         partnerCode: "variant-partner-code",
         telemetrySuffix: "subvariant-telemetry",
+        ...STATIC_ENGINE_INFO,
       },
     ],
     "Should match subvariant with subvariant properties."
@@ -125,7 +99,8 @@ add_task(async function test_matching_variant_and_subvariant_with_properties() {
 });
 
 add_task(async function test_matching_two_subvariant_with_properties() {
-  await assertActualEnginesEqualsExpected(
+  await assertSelectorEnginesEqualsExpected(
+    engineSelector,
     CONFIG,
     {
       locale: "fr",
@@ -135,6 +110,7 @@ add_task(async function test_matching_two_subvariant_with_properties() {
       {
         identifier: "engine-1",
         partnerCode: "subvariant-partner-code",
+        ...STATIC_ENGINE_INFO,
       },
     ],
     "Should match the last subvariant with subvariant properties."

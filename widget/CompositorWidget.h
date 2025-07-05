@@ -137,8 +137,7 @@ class CompositorWidget {
    */
   virtual already_AddRefed<gfx::DrawTarget> StartRemoteDrawing();
   virtual already_AddRefed<gfx::DrawTarget> StartRemoteDrawingInRegion(
-      const LayoutDeviceIntRegion& aInvalidRegion,
-      layers::BufferMode* aBufferMode) {
+      const LayoutDeviceIntRegion& aInvalidRegion) {
     return StartRemoteDrawing();
   }
 
@@ -155,14 +154,6 @@ class CompositorWidget {
       const LayoutDeviceIntRegion& aInvalidRegion) {
     EndRemoteDrawing();
   }
-
-  /**
-   * Return true when it is better to defer EndRemoteDrawing().
-   *
-   * Called by BasicCompositor on the compositor thread for OMTC drawing
-   * after each composition.
-   */
-  virtual bool NeedsToDeferEndRemoteDrawing() { return false; }
 
   /**
    * Some widgets (namely Gtk) may need clean up underlying surface

@@ -4,6 +4,7 @@
 
 
 import os
+import re
 
 import attr
 import yaml
@@ -43,7 +44,7 @@ class ReleaseParser(BaseTryParser):
                 "action": "append",
                 "dest": "migrations",
                 "choices": [
-                    "central-to-beta",
+                    "main-to-beta",
                     "beta-to-release",
                     "early-to-late-beta",
                     "release-to-esr",
@@ -69,7 +70,7 @@ class ReleaseParser(BaseTryParser):
         ],
     ]
     common_groups = ["push"]
-    task_configs = ["disable-pgo", "worker-overrides"]
+    task_configs = ["disable-pgo", "worker-overrides", "existing-tasks"]
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -87,14 +88,15 @@ def run(
     message="{msg}",
     closed_tree=False,
     push_to_lando=False,
+    push_to_vcs=False,
 ):
     app_version = attr.evolve(version, beta_number=None, is_esr=False)
 
     files_to_change = {
-        "browser/config/version.txt": "{}\n".format(app_version),
-        "browser/config/version_display.txt": "{}\n".format(version),
-        "config/milestone.txt": "{}\n".format(app_version),
-        "mobile/android/version.txt": "{}\n".format(version),
+        "browser/config/version.txt": f"{app_version}\n",
+        "browser/config/version_display.txt": f"{version}\n",
+        "config/milestone.txt": f"{app_version}\n",
+        "mobile/android/version.txt": f"{version}\n",
     }
     with open("browser/config/version.txt") as f:
         current_version = FirefoxVersion.parse(f.read())
@@ -111,9 +113,7 @@ def run(
     release_type = version.version_type.name.lower()
     if release_type not in ("beta", "release", "esr"):
         raise Exception(
-            "Can't do staging release for version: {} type: {}".format(
-                version, version.version_type
-            )
+            f"Can't do staging release for version: {version} type: {version.version_type}"
         )
     elif release_type == "esr":
         release_type += str(version.major_number)
@@ -139,6 +139,15 @@ def run(
             to = to.format(**format_options)
             files_to_change[path] = contents.replace(from_, to)
 
+        for path, from_, to in migration_config.get("regex-replacements", []):
+            if path in files_to_change:
+                contents = files_to_change[path]
+            else:
+                contents = read_file(path)
+            from_regex = from_.format(**format_options)
+            to = to.format(**format_options)
+            files_to_change[path] = re.sub(from_regex, to, contents)
+
     if limit_locales:
         files_to_change["browser/locales/l10n-changesets.json"] = read_file(
             os.path.join(vcs.path, "browser/locales/l10n-onchange-changesets.json")
@@ -147,7 +156,7 @@ def run(
             os.path.join(vcs.path, "browser/locales/onchange-locales")
         )
 
-    msg = "staging release: {}".format(version)
+    msg = f"staging release: {version}"
     return push_to_try(
         "release",
         message.format(msg=msg),
@@ -157,4 +166,5 @@ def run(
         try_task_config=task_config,
         files_to_change=files_to_change,
         push_to_lando=push_to_lando,
+        push_to_vcs=push_to_vcs,
     )

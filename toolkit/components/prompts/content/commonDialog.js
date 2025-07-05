@@ -8,18 +8,17 @@ const { CommonDialog } = ChromeUtils.importESModule(
 const { XPCOMUtils } = ChromeUtils.importESModule(
   "resource://gre/modules/XPCOMUtils.sys.mjs"
 );
-
+const { AppConstants } = ChromeUtils.importESModule(
+  "resource://gre/modules/AppConstants.sys.mjs"
+);
 const lazy = {};
 
-XPCOMUtils.defineLazyServiceGetter(
-  lazy,
-  "gContentAnalysis",
-  "@mozilla.org/contentanalysis;1",
-  Ci.nsIContentAnalysis
-);
+ChromeUtils.defineESModuleGetters(lazy, {
+  ContentAnalysisUtils: "resource://gre/modules/ContentAnalysisUtils.sys.mjs",
+});
 
 // imported by adjustableTitle.js loaded in the same context:
-/* globals PromptUtils */
+/* globals PromptUtils, goDoCommand, goUpdateCommand */
 
 var propBag, args, Dialog;
 
@@ -38,46 +37,46 @@ function commonDialogOnLoad() {
   let needIconifiedHeader =
     args.modalType == Ci.nsIPrompt.MODAL_TYPE_CONTENT ||
     ["promptUserAndPass", "promptPassword"].includes(args.promptType) ||
-    args.headerIconURL;
+    args.headerIconCSSValue;
   let root = document.documentElement;
   if (needIconifiedHeader) {
     root.setAttribute("neediconheader", "true");
   }
   let title = { raw: args.title };
-  let { promptPrincipal } = args;
-  if (promptPrincipal) {
-    if (promptPrincipal.isNullPrincipal) {
-      title = { l10nId: "common-dialog-title-null" };
-    } else if (promptPrincipal.isSystemPrincipal) {
-      title = { l10nId: "common-dialog-title-system" };
-      root.style.setProperty(
-        "--icon-url",
-        "url('chrome://branding/content/icon32.png')"
-      );
-    } else if (promptPrincipal.addonPolicy) {
-      title.raw = promptPrincipal.addonPolicy.name;
-    } else if (promptPrincipal.isContentPrincipal) {
-      try {
-        title.raw = promptPrincipal.URI.displayHostPort;
-      } catch (ex) {
-        // hostPort getter can throw, e.g. for about URIs.
-        title.raw = promptPrincipal.originNoSuffix;
+  let { useTitle, promptPrincipal } = args;
+  if (!useTitle) {
+    if (promptPrincipal) {
+      if (promptPrincipal.isNullPrincipal) {
+        title = { l10nId: "common-dialog-title-null" };
+      } else if (promptPrincipal.isSystemPrincipal) {
+        title = { l10nId: "common-dialog-title-system" };
+        root.style.setProperty("--icon-url", CommonDialog.DEFAULT_APP_ICON_CSS);
+      } else if (promptPrincipal.addonPolicy) {
+        title.raw = promptPrincipal.addonPolicy.name;
+      } else if (promptPrincipal.isContentPrincipal) {
+        try {
+          title.raw = promptPrincipal.URI.displayHostPort;
+        } catch (ex) {
+          // hostPort getter can throw, e.g. for about URIs.
+          title.raw = promptPrincipal.originNoSuffix;
+        }
+        // hostPort can be empty for file URIs.
+        if (!title.raw) {
+          title.raw = promptPrincipal.prePath;
+        }
+      } else {
+        title = { l10nId: "common-dialog-title-unknown" };
       }
-      // hostPort can be empty for file URIs.
-      if (!title.raw) {
-        title.raw = promptPrincipal.prePath;
-      }
-    } else {
-      title = { l10nId: "common-dialog-title-unknown" };
+    } else if (args.authOrigin) {
+      title = { raw: args.authOrigin };
     }
-  } else if (args.authOrigin) {
-    title = { raw: args.authOrigin };
   }
-  if (args.headerIconURL) {
-    root.style.setProperty("--icon-url", `url('${args.headerIconURL}')`);
+  if (args.headerIconCSSValue) {
+    root.style.setProperty("--icon-url", args.headerIconCSSValue);
   }
   // Fade and crop potentially long raw titles, e.g., origins and hostnames.
-  title.shouldUseMaskFade = title.raw && (args.authOrigin || promptPrincipal);
+  title.shouldUseMaskFade =
+    !useTitle && title.raw && (args.authOrigin || promptPrincipal);
   root.setAttribute("headertitle", JSON.stringify(title));
   if (args.isInsecureAuth) {
     dialog.setAttribute("insecureauth", "true");
@@ -104,6 +103,10 @@ function commonDialogOnLoad() {
     focusTarget: window,
   };
 
+  if (args.isExtra1Secondary) {
+    dialog.setAttribute("extra1-is-secondary", true);
+  }
+
   Dialog = new CommonDialog(args, ui);
   window.addEventListener("dialogclosing", function (aEvent) {
     if (aEvent.detail?.abort) {
@@ -128,65 +131,33 @@ function commonDialogOnLoad() {
     Dialog.setDefaultFocus(isInitialFocus);
   Dialog.onLoad(dialog);
 
+  document.addEventListener("command", event => {
+    switch (event.target.id) {
+      case "cmd_copy":
+      case "cmd_selectAll":
+        goDoCommand(event.target.id);
+        break;
+      case "checkbox":
+        Dialog.onCheckbox();
+        break;
+    }
+  });
+
+  document
+    .getElementById("contentAreaContextMenu")
+    .addEventListener("popupshowing", () => goUpdateCommand("cmd_copy"));
+
   // resize the window to the content
   window.sizeToContent();
 
   // If the icon hasn't loaded yet, size the window to the content again when
   // it does, as its layout can change.
   ui.infoIcon.addEventListener("load", () => window.sizeToContent());
-  if (lazy.gContentAnalysis.isActive && args.owningBrowsingContext?.isContent) {
-    ui.loginTextbox?.addEventListener("paste", async event => {
-      let data = event.clipboardData.getData("text/plain");
-      if (data?.length > 0) {
-        // Prevent the paste from happening until content analysis returns a response
-        event.preventDefault();
-        // Selections can be forward or backward, so use min/max
-        const startIndex = Math.min(
-          ui.loginTextbox.selectionStart,
-          ui.loginTextbox.selectionEnd
-        );
-        const endIndex = Math.max(
-          ui.loginTextbox.selectionStart,
-          ui.loginTextbox.selectionEnd
-        );
-        const selectionDirection =
-          endIndex < startIndex ? "backward" : "forward";
-        try {
-          const response = await lazy.gContentAnalysis.analyzeContentRequest(
-            {
-              requestToken: Services.uuid.generateUUID().toString(),
-              resources: [],
-              analysisType: Ci.nsIContentAnalysisRequest.eBulkDataEntry,
-              operationTypeForDisplay: Ci.nsIContentAnalysisRequest.eClipboard,
-              url: lazy.gContentAnalysis.getURIForBrowsingContext(
-                args.owningBrowsingContext
-              ),
-              textContent: data,
-              windowGlobalParent:
-                args.owningBrowsingContext.currentWindowContext,
-            },
-            true
-          );
-          if (response.shouldAllowContent) {
-            ui.loginTextbox.value =
-              ui.loginTextbox.value.slice(0, startIndex) +
-              data +
-              ui.loginTextbox.value.slice(endIndex);
-            ui.loginTextbox.focus();
-            if (startIndex !== endIndex) {
-              // Select the pasted text
-              ui.loginTextbox.setSelectionRange(
-                startIndex,
-                startIndex + data.length,
-                selectionDirection
-              );
-            }
-          }
-        } catch (error) {
-          console.error("Content analysis request returned error: ", error);
-        }
-      }
-    });
+  if (args.owningBrowsingContext?.isContent) {
+    lazy.ContentAnalysisUtils.setupContentAnalysisEventsForTextElement(
+      ui.loginTextbox,
+      args.owningBrowsingContext
+    );
   }
 
   window.getAttention();
@@ -198,3 +169,6 @@ function commonDialogOnUnload() {
     propBag.setProperty(propName, args[propName]);
   }
 }
+
+document.addEventListener("DOMContentLoaded", commonDialogOnLoad);
+window.addEventListener("unload", commonDialogOnUnload);

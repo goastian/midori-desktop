@@ -19,9 +19,7 @@
 #include "nsIWidget.h"
 #include "nsViewManager.h"
 #include "nsIFrame.h"
-#include "nsPresArena.h"
 #include "nsXULPopupManager.h"
-#include "nsIScreen.h"
 #include "nsIWidgetListener.h"
 #include "nsContentUtils.h"  // for nsAutoScriptBlocker
 #include "nsDocShell.h"
@@ -37,11 +35,9 @@ nsView::nsView(nsViewManager* aViewManager, ViewVisibility aVisibility)
       mNextSibling(nullptr),
       mFirstChild(nullptr),
       mFrame(nullptr),
-      mZIndex(0),
       mVis(aVisibility),
       mPosX(0),
       mPosY(0),
-      mVFlags(0),
       mWidgetIsTopLevel(false),
       mForcedRepaint(false),
       mNeedsWindowPropertiesSync(false) {
@@ -207,26 +203,6 @@ bool nsView::IsEffectivelyVisible() {
   return true;
 }
 
-// Cocoa and GTK round widget coordinates to the nearest global "display pixel"
-// integer value. So we avoid fractional display pixel values by rounding to
-// the nearest value that won't yield a fractional display pixel.
-static LayoutDeviceIntRect MaybeRoundToDisplayPixels(
-    const LayoutDeviceIntRect& aRect, TransparencyMode aTransparency,
-    int32_t aRound) {
-  if (aRound == 1) {
-    return aRect;
-  }
-
-  // If the widget doesn't support transparency, we prefer truncating to
-  // ceiling, so that we don't have extra pixels not painted by our frame.
-  auto size = aTransparency == TransparencyMode::Opaque
-                  ? aRect.Size().TruncatedToMultiple(aRound)
-                  : aRect.Size().CeiledToMultiple(aRound);
-  Unused << NS_WARN_IF(aTransparency == TransparencyMode::Opaque &&
-                       size != aRect.Size());
-  return {aRect.TopLeft().RoundedToMultiple(aRound), size};
-}
-
 LayoutDeviceIntRect nsView::CalcWidgetBounds(WindowType aType,
                                              TransparencyMode aTransparency) {
   int32_t p2a = mViewManager->AppUnitsPerDevPixel();
@@ -270,7 +246,8 @@ LayoutDeviceIntRect nsView::CalcWidgetBounds(WindowType aType,
       return idealBounds;
     }
     const int32_t round = widget->RoundsWidgetCoordinatesTo();
-    return MaybeRoundToDisplayPixels(idealBounds, aTransparency, round);
+    return nsIWidget::MaybeRoundToDisplayPixels(idealBounds, aTransparency,
+                                                round);
   }();
 
   // Compute where the top-left of our widget ended up relative to the parent
@@ -401,7 +378,7 @@ void nsView::NotifyEffectiveVisibilityChanged(bool aEffectivelyVisible) {
 
   SetForcedRepaint(true);
 
-  if (nullptr != mWindow) {
+  if (mWindow) {
     ResetWidgetBounds(false, false);
   }
 
@@ -418,13 +395,6 @@ void nsView::NotifyEffectiveVisibilityChanged(bool aEffectivelyVisible) {
 void nsView::SetVisibility(ViewVisibility aVisibility) {
   mVis = aVisibility;
   NotifyEffectiveVisibilityChanged(IsEffectivelyVisible());
-}
-
-void nsView::SetFloating(bool aFloatingView) {
-  if (aFloatingView)
-    mVFlags |= NS_VIEW_FLAG_FLOATING;
-  else
-    mVFlags &= ~NS_VIEW_FLAG_FLOATING;
 }
 
 void nsView::InvalidateHierarchy() {
@@ -495,92 +465,30 @@ void nsView::RemoveChild(nsView* child) {
   }
 }
 
-// Native widgets ultimately just can't deal with the awesome power of
-// CSS2 z-index. However, we set the z-index on the widget anyway
-// because in many simple common cases the widgets do end up in the
-// right order. We set each widget's z-index to the z-index of the
-// nearest ancestor that has non-auto z-index.
-static void UpdateNativeWidgetZIndexes(nsView* aView, int32_t aZIndex) {
-  if (aView->HasWidget()) {
-    nsIWidget* widget = aView->GetWidget();
-    if (widget->GetZIndex() != aZIndex) {
-      widget->SetZIndex(aZIndex);
-    }
-  } else {
-    for (nsView* v = aView->GetFirstChild(); v; v = v->GetNextSibling()) {
-      if (v->GetZIndexIsAuto()) {
-        UpdateNativeWidgetZIndexes(v, aZIndex);
-      }
-    }
-  }
-}
-
-static int32_t FindNonAutoZIndex(nsView* aView) {
-  while (aView) {
-    if (!aView->GetZIndexIsAuto()) {
-      return aView->GetZIndex();
-    }
-    aView = aView->GetParent();
-  }
-  return 0;
-}
-
 struct DefaultWidgetInitData : public widget::InitData {
   DefaultWidgetInitData() : widget::InitData() {
-    mWindowType = WindowType::Child;
     mClipChildren = true;
     mClipSiblings = true;
   }
 };
 
-nsresult nsView::CreateWidget(widget::InitData* aWidgetInitData,
-                              bool aEnableDragDrop, bool aResetVisibility) {
+nsresult nsView::CreateWidget(nsIWidget* aParent, bool aEnableDragDrop,
+                              bool aResetVisibility) {
   AssertNoWindow();
-  MOZ_ASSERT(
-      !aWidgetInitData || aWidgetInitData->mWindowType != WindowType::Popup,
-      "Use CreateWidgetForPopup");
 
-  DefaultWidgetInitData defaultInitData;
-  aWidgetInitData = aWidgetInitData ? aWidgetInitData : &defaultInitData;
-  LayoutDeviceIntRect trect = CalcWidgetBounds(
-      aWidgetInitData->mWindowType, aWidgetInitData->mTransparencyMode);
+  DefaultWidgetInitData initData;
+  LayoutDeviceIntRect trect =
+      CalcWidgetBounds(initData.mWindowType, initData.mTransparencyMode);
 
-  nsIWidget* parentWidget =
-      GetParent() ? GetParent()->GetNearestWidget(nullptr) : nullptr;
-  if (!parentWidget) {
+  if (!aParent && GetParent()) {
+    aParent = GetParent()->GetNearestWidget(nullptr);
+  }
+  if (!aParent) {
     NS_ERROR("nsView::CreateWidget without suitable parent widget??");
     return NS_ERROR_FAILURE;
   }
 
-  // XXX: using aForceUseIWidgetParent=true to preserve previous
-  // semantics.  It's not clear that it's actually needed.
-  mWindow = parentWidget->CreateChild(trect, aWidgetInitData, true);
-  if (!mWindow) {
-    return NS_ERROR_FAILURE;
-  }
-
-  InitializeWindow(aEnableDragDrop, aResetVisibility);
-
-  return NS_OK;
-}
-
-nsresult nsView::CreateWidgetForParent(nsIWidget* aParentWidget,
-                                       widget::InitData* aWidgetInitData,
-                                       bool aEnableDragDrop,
-                                       bool aResetVisibility) {
-  AssertNoWindow();
-  MOZ_ASSERT(
-      !aWidgetInitData || aWidgetInitData->mWindowType != WindowType::Popup,
-      "Use CreateWidgetForPopup");
-  MOZ_ASSERT(aParentWidget, "Parent widget required");
-
-  DefaultWidgetInitData defaultInitData;
-  aWidgetInitData = aWidgetInitData ? aWidgetInitData : &defaultInitData;
-
-  LayoutDeviceIntRect trect = CalcWidgetBounds(
-      aWidgetInitData->mWindowType, aWidgetInitData->mTransparencyMode);
-
-  mWindow = aParentWidget->CreateChild(trect, aWidgetInitData);
+  mWindow = aParent->CreateChild(trect, initData);
   if (!mWindow) {
     return NS_ERROR_FAILURE;
   }
@@ -591,40 +499,20 @@ nsresult nsView::CreateWidgetForParent(nsIWidget* aParentWidget,
 }
 
 nsresult nsView::CreateWidgetForPopup(widget::InitData* aWidgetInitData,
-                                      nsIWidget* aParentWidget) {
+                                      nsIWidget* aParent) {
   AssertNoWindow();
   MOZ_ASSERT(aWidgetInitData, "Widget init data required");
   MOZ_ASSERT(aWidgetInitData->mWindowType == WindowType::Popup,
              "Use one of the other CreateWidget methods");
+  MOZ_ASSERT(aParent);
 
   LayoutDeviceIntRect trect = CalcWidgetBounds(
       aWidgetInitData->mWindowType, aWidgetInitData->mTransparencyMode);
-
-  // XXX/cjones: having these two separate creation cases seems ... um
-  // ... unnecessary, but it's the way the old code did it.  Please
-  // unify them by first finding a suitable parent nsIWidget, then
-  // getting rid of aForceUseIWidgetParent.
-  if (aParentWidget) {
-    // XXX: using aForceUseIWidgetParent=true to preserve previous
-    // semantics.  It's not clear that it's actually needed.
-    mWindow = aParentWidget->CreateChild(trect, aWidgetInitData, true);
-  } else {
-    nsIWidget* nearestParent =
-        GetParent() ? GetParent()->GetNearestWidget(nullptr) : nullptr;
-    if (!nearestParent) {
-      // Without a parent, we can't make a popup.  This can happen
-      // when printing
-      return NS_ERROR_FAILURE;
-    }
-
-    mWindow = nearestParent->CreateChild(trect, aWidgetInitData);
-  }
+  mWindow = aParent->CreateChild(trect, *aWidgetInitData);
   if (!mWindow) {
     return NS_ERROR_FAILURE;
   }
-
   InitializeWindow(/* aEnableDragDrop = */ true, /* aResetVisibility = */ true);
-
   return NS_OK;
 }
 
@@ -636,9 +524,6 @@ void nsView::InitializeWindow(bool aEnableDragDrop, bool aResetVisibility) {
   if (aEnableDragDrop) {
     mWindow->EnableDragDrop(true);
   }
-
-  // propagate the z-index to the widget.
-  UpdateNativeWidgetZIndexes(this, FindNonAutoZIndex(this));
 
   // make sure visibility state is accurate
 
@@ -656,7 +541,7 @@ void nsView::SetNeedsWindowPropertiesSync() {
 
 // Attach to a top level widget and start receiving mirrored events.
 nsresult nsView::AttachToTopLevelWidget(nsIWidget* aWidget) {
-  MOZ_ASSERT(nullptr != aWidget, "null widget ptr");
+  MOZ_ASSERT(aWidget, "null widget ptr");
 
   /// XXXjimm This is a temporary workaround to an issue w/document
   // viewer (bug 513162).
@@ -711,17 +596,6 @@ nsresult nsView::DetachFromTopLevelWidget() {
   return NS_OK;
 }
 
-void nsView::SetZIndex(bool aAuto, int32_t aZIndex) {
-  bool oldIsAuto = GetZIndexIsAuto();
-  mVFlags = (mVFlags & ~NS_VIEW_FLAG_AUTO_ZINDEX) |
-            (aAuto ? NS_VIEW_FLAG_AUTO_ZINDEX : 0);
-  mZIndex = aZIndex;
-
-  if (HasWidget() || !oldIsAuto || !aAuto) {
-    UpdateNativeWidgetZIndexes(this, FindNonAutoZIndex(this));
-  }
-}
-
 void nsView::AssertNoWindow() {
   // XXX: it would be nice to make this a strong assert
   if (MOZ_UNLIKELY(mWindow)) {
@@ -763,16 +637,14 @@ void nsView::List(FILE* out, int32_t aIndent) const {
     nsRect nonclientBounds = LayoutDeviceIntRect::ToAppUnits(rect, p2a);
     nsrefcnt widgetRefCnt = mWindow.get()->AddRef() - 1;
     mWindow.get()->Release();
-    int32_t Z = mWindow->GetZIndex();
-    fprintf(out, "(widget=%p[%" PRIuPTR "] z=%d pos={%d,%d,%d,%d}) ",
-            (void*)mWindow, widgetRefCnt, Z, nonclientBounds.X(),
-            nonclientBounds.Y(), windowBounds.Width(), windowBounds.Height());
+    fprintf(out, "(widget=%p[%" PRIuPTR "] pos={%d,%d,%d,%d}) ", (void*)mWindow,
+            widgetRefCnt, nonclientBounds.X(), nonclientBounds.Y(),
+            windowBounds.Width(), windowBounds.Height());
   }
   nsRect brect = GetBounds();
   fprintf(out, "{%d,%d,%d,%d} @ %d,%d", brect.X(), brect.Y(), brect.Width(),
           brect.Height(), mPosX, mPosY);
-  fprintf(out, " flags=%x z=%d vis=%d frame=%p <\n", mVFlags, mZIndex,
-          int(mVis), mFrame);
+  fprintf(out, " vis=%d frame=%p <\n", int(mVis), mFrame);
   for (nsView* kid = mFirstChild; kid; kid = kid->GetNextSibling()) {
     NS_ASSERTION(kid->GetParent() == this, "incorrect parent");
     kid->List(out, aIndent + 1);
@@ -961,30 +833,15 @@ bool nsView::WindowResized(nsIWidget* aWidget, int32_t aWidth,
   return false;
 }
 
-#if defined(MOZ_WIDGET_ANDROID)
+#ifdef MOZ_WIDGET_ANDROID
 void nsView::DynamicToolbarMaxHeightChanged(ScreenIntCoord aHeight) {
   MOZ_ASSERT(XRE_IsParentProcess(),
              "Should be only called for the browser parent process");
   MOZ_ASSERT(this == mViewManager->GetRootView(),
              "Should be called for the root view");
 
-  PresShell* presShell = mViewManager->GetPresShell();
-  if (!presShell) {
-    return;
-  }
-
-  dom::Document* document = presShell->GetDocument();
-  if (!document) {
-    return;
-  }
-
-  nsPIDOMWindowOuter* window = document->GetWindow();
-  if (!window) {
-    return;
-  }
-
-  nsContentUtils::CallOnAllRemoteChildren(
-      window, [&aHeight](dom::BrowserParent* aBrowserParent) -> CallState {
+  CallOnAllRemoteChildren(
+      [aHeight](dom::BrowserParent* aBrowserParent) -> CallState {
         aBrowserParent->DynamicToolbarMaxHeightChanged(aHeight);
         return CallState::Continue;
       });
@@ -995,24 +852,8 @@ void nsView::DynamicToolbarOffsetChanged(ScreenIntCoord aOffset) {
              "Should be only called for the browser parent process");
   MOZ_ASSERT(this == mViewManager->GetRootView(),
              "Should be called for the root view");
-
-  PresShell* presShell = mViewManager->GetPresShell();
-  if (!presShell) {
-    return;
-  }
-
-  dom::Document* document = presShell->GetDocument();
-  if (!document) {
-    return;
-  }
-
-  nsPIDOMWindowOuter* window = document->GetWindow();
-  if (!window) {
-    return;
-  }
-
-  nsContentUtils::CallOnAllRemoteChildren(
-      window, [&aOffset](dom::BrowserParent* aBrowserParent) -> CallState {
+  CallOnAllRemoteChildren(
+      [aOffset](dom::BrowserParent* aBrowserParent) -> CallState {
         // Skip background tabs.
         if (!aBrowserParent->GetDocShellIsActive()) {
           return CallState::Continue;
@@ -1020,6 +861,35 @@ void nsView::DynamicToolbarOffsetChanged(ScreenIntCoord aOffset) {
 
         aBrowserParent->DynamicToolbarOffsetChanged(aOffset);
         return CallState::Stop;
+      });
+}
+
+void nsView::KeyboardHeightChanged(ScreenIntCoord aHeight) {
+  MOZ_ASSERT(XRE_IsParentProcess(),
+             "Should be only called for the browser parent process");
+  MOZ_ASSERT(this == mViewManager->GetRootView(),
+             "Should be called for the root view");
+  CallOnAllRemoteChildren(
+      [aHeight](dom::BrowserParent* aBrowserParent) -> CallState {
+        // Skip background tabs.
+        if (!aBrowserParent->GetDocShellIsActive()) {
+          return CallState::Continue;
+        }
+
+        aBrowserParent->KeyboardHeightChanged(aHeight);
+        return CallState::Stop;
+      });
+}
+
+void nsView::AndroidPipModeChanged(bool aPipMode) {
+  MOZ_ASSERT(XRE_IsParentProcess(),
+             "Should be only called for the browser parent process");
+  MOZ_ASSERT(this == mViewManager->GetRootView(),
+             "Should be called for the root view");
+  CallOnAllRemoteChildren(
+      [aPipMode](dom::BrowserParent* aBrowserParent) -> CallState {
+        aBrowserParent->AndroidPipModeChanged(aPipMode);
+        return CallState::Continue;
       });
 }
 #endif
@@ -1082,7 +952,7 @@ void nsView::DidCompositeWindow(mozilla::layers::TransactionId aTransactionId,
 
 void nsView::RequestRepaint() {
   if (PresShell* presShell = mViewManager->GetPresShell()) {
-    presShell->ScheduleViewManagerFlush();
+    presShell->SchedulePaint();
   }
 }
 
@@ -1116,7 +986,8 @@ nsEventStatus nsView::HandleEvent(WidgetGUIEvent* aEvent,
   return result;
 }
 
-void nsView::SafeAreaInsetsChanged(const ScreenIntMargin& aSafeAreaInsets) {
+void nsView::SafeAreaInsetsChanged(
+    const LayoutDeviceIntMargin& aSafeAreaInsets) {
   if (!IsRoot()) {
     return;
   }
@@ -1126,10 +997,9 @@ void nsView::SafeAreaInsetsChanged(const ScreenIntMargin& aSafeAreaInsets) {
     return;
   }
 
-  ScreenIntMargin windowSafeAreaInsets;
-  LayoutDeviceIntRect windowRect = mWindow->GetScreenBounds();
-  nsCOMPtr<nsIScreen> screen = mWindow->GetWidgetScreen();
-  if (screen) {
+  LayoutDeviceIntMargin windowSafeAreaInsets;
+  const LayoutDeviceIntRect windowRect = mWindow->GetScreenBounds();
+  if (nsCOMPtr<nsIScreen> screen = mWindow->GetWidgetScreen()) {
     windowSafeAreaInsets = nsContentUtils::GetWindowSafeAreaInsets(
         screen, aSafeAreaInsets, windowRect);
   }
@@ -1139,6 +1009,24 @@ void nsView::SafeAreaInsetsChanged(const ScreenIntMargin& aSafeAreaInsets) {
   // https://github.com/w3c/csswg-drafts/issues/4670
   // Actually we don't set this value on sub document. This behaviour is
   // same as Blink.
+  CallOnAllRemoteChildren([windowSafeAreaInsets](
+                              dom::BrowserParent* aBrowserParent) -> CallState {
+    Unused << aBrowserParent->SendSafeAreaInsetsChanged(windowSafeAreaInsets);
+    return CallState::Continue;
+  });
+}
+
+bool nsView::IsPrimaryFramePaintSuppressed() {
+  return StaticPrefs::layout_show_previous_page() && mFrame &&
+         mFrame->PresShell()->IsPaintingSuppressed();
+}
+
+void nsView::CallOnAllRemoteChildren(
+    const std::function<CallState(dom::BrowserParent*)>& aCallback) {
+  PresShell* presShell = mViewManager->GetPresShell();
+  if (!presShell) {
+    return;
+  }
 
   dom::Document* document = presShell->GetDocument();
   if (!document) {
@@ -1150,16 +1038,5 @@ void nsView::SafeAreaInsetsChanged(const ScreenIntMargin& aSafeAreaInsets) {
     return;
   }
 
-  nsContentUtils::CallOnAllRemoteChildren(
-      window,
-      [windowSafeAreaInsets](dom::BrowserParent* aBrowserParent) -> CallState {
-        Unused << aBrowserParent->SendSafeAreaInsetsChanged(
-            windowSafeAreaInsets);
-        return CallState::Continue;
-      });
-}
-
-bool nsView::IsPrimaryFramePaintSuppressed() {
-  return StaticPrefs::layout_show_previous_page() && mFrame &&
-         mFrame->PresShell()->IsPaintingSuppressed();
+  nsContentUtils::CallOnAllRemoteChildren(window, aCallback);
 }

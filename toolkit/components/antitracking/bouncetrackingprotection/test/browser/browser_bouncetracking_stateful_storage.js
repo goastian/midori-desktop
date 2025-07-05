@@ -8,6 +8,10 @@ let bounceTrackingProtection;
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [
+      [
+        "privacy.bounceTrackingProtection.mode",
+        Ci.nsIBounceTrackingProtection.MODE_ENABLED,
+      ],
       ["privacy.bounceTrackingProtection.requireStatefulBounces", true],
       ["privacy.bounceTrackingProtection.bounceTrackingGracePeriodSec", 0],
     ],
@@ -50,5 +54,23 @@ add_task(async function test_bounce_stateful_indexedDB_sameSiteFrame() {
     bounceType: "client",
     setState: "indexedDB",
     setStateSameSiteFrame: true,
+  });
+});
+
+add_task(async function test_bounce_stateful_localStorage_crossSiteFrame() {
+  info("Test client bounce with localStorage set in a third-party iframe.");
+  await runTestBounce({
+    bounceType: "client",
+    setState: "localStorage",
+    setStateCrossSiteFrame: true,
+  });
+});
+
+add_task(async function test_bounce_stateful_indexedDB_crossSiteFrame() {
+  info("Test client bounce with indexedDB set in a third-party iframe.");
+  await runTestBounce({
+    bounceType: "client",
+    setState: "indexedDB",
+    setStateCrossSiteFrame: true,
   });
 });

@@ -1,33 +1,38 @@
 {%- if enum_.is_flat() -%}
 
-export const {{ enum_.nm() }} = {
+{{ enum_.js_docstring(0) -}}
+export const {{ enum_.js_name() }} = {
     {%- for variant in enum_.variants() %}
-    {{ variant.name().to_shouty_snake_case() }}: {{loop.index}},
+    {{ variant.js_docstring(true, 4) -}}
+    {{ variant.js_name(true) }}:{% match enum_.variant_discriminant(loop.index0) %}{% when Ok with (value) %}{{ value }}{% when Err with (err) %}{{ loop.index0 }}{% endmatch %},
     {%- endfor %}
 };
 
-Object.freeze({{ enum_.nm() }});
+Object.freeze({{ enum_.js_name() }});
 // Export the FFIConverter object to make external types work.
 export class {{ ffi_converter }} extends FfiConverterArrayBuffer {
+    static #validValues = Object.values({{ enum_.js_name() }});
+
     static read(dataStream) {
+        // Use sequential indices (1-based) for the wire format to match Python bindings
         switch (dataStream.readInt32()) {
             {%- for variant in enum_.variants() %}
             case {{ loop.index }}:
-                return {{ enum_.nm() }}.{{ variant.name().to_shouty_snake_case() }}
+                return {{ enum_.js_name() }}.{{ variant.js_name(true) }}
             {%- endfor %}
             default:
-                throw new UniFFITypeError("Unknown {{ enum_.nm() }} variant");
+                throw new UniFFITypeError("Unknown {{ enum_.js_name() }} variant");
         }
     }
 
     static write(dataStream, value) {
         {%- for variant in enum_.variants() %}
-        if (value === {{ enum_.nm() }}.{{ variant.name().to_shouty_snake_case() }}) {
+        if (value === {{ enum_.js_name() }}.{{ variant.js_name(true) }}) {
             dataStream.writeInt32({{ loop.index }});
             return;
         }
         {%- endfor %}
-        throw new UniFFITypeError("Unknown {{ enum_.nm() }} variant");
+        throw new UniFFITypeError("Unknown {{ enum_.js_name() }} variant");
     }
 
     static computeSize(value) {
@@ -35,25 +40,29 @@ export class {{ ffi_converter }} extends FfiConverterArrayBuffer {
     }
 
     static checkType(value) {
-      if (!Number.isInteger(value) || value < 1 || value > {{ enum_.variants().len() }}) {
-          throw new UniFFITypeError(`${value} is not a valid value for {{ enum_.nm() }}`);
+      // Check that the value is a valid enum variant
+      if (!this.#validValues.includes(value)) {
+          throw new UniFFITypeError(`${value} is not a valid value for {{ enum_.js_name() }}`);
       }
     }
 }
 
 {%- else -%}
 
-export class {{ enum_.nm() }} {}
+{{ enum_.js_docstring(0) -}}
+export class {{ enum_.js_name() }} {}
+
 {%- for variant in enum_.variants() %}
-{{enum_.nm()}}.{{variant.name().to_upper_camel_case() }} = class extends {{ enum_.nm() }}{
+{{ variant.js_docstring(false, 0) -}}
+{{enum_.js_name()}}.{{ variant.js_name(false) }} = class extends {{ enum_.js_name() }}{
     constructor(
         {% for field in variant.fields() -%}
-        {{ field.nm() }}{%- if loop.last %}{%- else %}, {%- endif %}
+        {{ field.js_name() }}{%- if loop.last %}{%- else %}, {%- endif %}
         {% endfor -%}
         ) {
             super();
             {%- for field in variant.fields() %}
-            this.{{field.nm()}} = {{ field.nm() }};
+            this.{{field.js_name()}} = {{ field.js_name() }};
             {%- endfor %}
         }
 }
@@ -62,50 +71,51 @@ export class {{ enum_.nm() }} {}
 // Export the FFIConverter object to make external types work.
 export class {{ ffi_converter }} extends FfiConverterArrayBuffer {
     static read(dataStream) {
+        // Use sequential indices (1-based) for the wire format to match Python bindings
         switch (dataStream.readInt32()) {
             {%- for variant in enum_.variants() %}
             case {{ loop.index }}:
-                return new {{ enum_.nm() }}.{{ variant.name().to_upper_camel_case()  }}(
+                return new {{ enum_.js_name() }}.{{ variant.js_name(false)  }}(
                     {%- for field in variant.fields() %}
                     {{ field.ffi_converter() }}.read(dataStream){%- if loop.last %}{% else %}, {%- endif %}
                     {%- endfor %}
                     );
             {%- endfor %}
             default:
-                throw new UniFFITypeError("Unknown {{ enum_.nm() }} variant");
+                throw new UniFFITypeError("Unknown {{ enum_.js_name() }} variant");
         }
     }
 
     static write(dataStream, value) {
         {%- for variant in enum_.variants() %}
-        if (value instanceof {{enum_.nm()}}.{{ variant.name().to_upper_camel_case() }}) {
+        if (value instanceof {{enum_.js_name()}}.{{ variant.js_name(false) }}) {
             dataStream.writeInt32({{ loop.index }});
             {%- for field in variant.fields() %}
-            {{ field.ffi_converter() }}.write(dataStream, value.{{ field.nm() }});
+            {{ field.ffi_converter() }}.write(dataStream, value.{{ field.js_name() }});
             {%- endfor %}
             return;
         }
         {%- endfor %}
-        throw new UniFFITypeError("Unknown {{ enum_.nm() }} variant");
+        throw new UniFFITypeError("Unknown {{ enum_.js_name() }} variant");
     }
 
     static computeSize(value) {
         // Size of the Int indicating the variant
         let totalSize = 4;
         {%- for variant in enum_.variants() %}
-        if (value instanceof {{enum_.nm()}}.{{ variant.name().to_upper_camel_case() }}) {
+        if (value instanceof {{enum_.js_name()}}.{{ variant.js_name(false) }}) {
             {%- for field in variant.fields() %}
-            totalSize += {{ field.ffi_converter() }}.computeSize(value.{{ field.nm() }});
+            totalSize += {{ field.ffi_converter() }}.computeSize(value.{{ field.js_name() }});
             {%- endfor %}
             return totalSize;
         }
         {%- endfor %}
-        throw new UniFFITypeError("Unknown {{ enum_.nm() }} variant");
+        throw new UniFFITypeError("Unknown {{ enum_.js_name() }} variant");
     }
 
     static checkType(value) {
-      if (!(value instanceof {{ enum_.nm() }})) {
-        throw new UniFFITypeError(`${value} is not a subclass instance of {{ enum_.nm() }}`);
+      if (value === undefined || value === null || !(value instanceof {{ enum_.js_name() }})) {
+        throw new UniFFITypeError(`${value} is not a subclass instance of {{ enum_.js_name() }}`);
       }
     }
 }

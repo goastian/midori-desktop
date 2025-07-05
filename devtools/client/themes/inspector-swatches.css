@@ -1,0 +1,191 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+/* Style swatches as rendered by the OutputParser. This needs to be in a shared file as
+   those classes are used in the Rules view and the CSS variable tooltip. */
+
+.inspector-flex,
+.inspector-grid,
+.inspector-shapeswatch,
+.inspector-swatch {
+  --swatch-size: 1em;
+  width: var(--swatch-size);
+  height: var(--swatch-size);
+  vertical-align: middle;
+
+  /* align the swatch with its value */
+  margin-top: -1px;
+  margin-inline-end: 5px;
+  display: inline-block;
+  position: relative;
+
+  /* Set pointer cursor when swatch is interactive */
+  &:is(button, [role="button"]) {
+    cursor: pointer;
+  }
+}
+
+/* Icon swatches not using the .inspector-swatch class (flex, grid, shape) */
+
+.inspector-flex,
+.inspector-grid,
+.inspector-shapeswatch {
+  background-color: transparent;
+  border: none;
+  -moz-context-properties: stroke;
+  stroke: var(--theme-icon-color);
+  /* Prevent line break when copy/pasting an entire rule */
+  user-select: auto;
+
+  &:hover {
+    stroke: var(--theme-icon-alternate-hover-color);
+  }
+}
+
+:is(
+  .inspector-flex,
+  .inspector-grid,
+  .inspector-shapeswatch
+)[aria-pressed="true"] {
+  background-color: var(--theme-toolbarbutton-checked-background);
+  stroke: var(--theme-toolbarbutton-checked-color);
+}
+
+.inspector-flex {
+  background-image: url("chrome://devtools/skin/images/flexbox-swatch.svg");
+  background-size: 13px 11px;
+  width: 13px;
+  height: 11px;
+}
+
+.inspector-grid {
+  background-image: url("chrome://devtools/skin/images/grid.svg");
+}
+
+.inspector-grid[disabled] {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.inspector-shapeswatch {
+  background-image: url("chrome://devtools/skin/images/shape-swatch.svg");
+  background-size: 110%;
+  width: 1.45em;
+  height: 1.45em;
+}
+
+.inspector-shape-point.active,
+.inspector-shapeswatch[aria-pressed="true"] + .inspector-shape > .inspector-shape-point:hover {
+  background-color: var(--inspector-highlight-background-color);
+  color: var(--inspector-highlight-color);
+  /* Add an outline so when the property is highlighted because of search,
+     the active point still stands out */
+  outline: 1px solid var(--theme-contrast-border);
+}
+
+.inspector-variable {
+  color: var(--theme-highlight-blue);
+}
+
+/* Round swatches using the .inspector-swatch class (color, bezier, filter and angle) */
+
+.inspector-swatch {
+  background-size: var(--swatch-size);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px light-dark(#c4c4c4, #818181);
+
+  :root[forced-colors-active] &:not(:focus-visible) {
+    /* The box-shadow isn't rendered in High Contrast Mode, and we do want to have a "border"
+       for those without impacting the size of the elements */
+    outline: 1px solid var(--theme-icon-color);
+
+    &:hover {
+      outline-color: var(--theme-icon-hover-color);
+    }
+  }
+}
+
+/* Create a stacking context for the color swatch so its before pseudo element can be
+   display below it (see next rule) */
+.color-swatch-container {
+  position: relative;
+  z-index: 1;
+}
+
+/* We want to display a checker below the current swatch color that would be visible
+  if the swatch color isn't opaque */
+.inspector-colorswatch::before {
+  content: '';
+  background-color: #eee;
+  --checker-color: #ccc;
+  --background-gradient: linear-gradient(
+    45deg,
+    var(--checker-color) 25%,
+    transparent 25% 75%,
+    var(--checker-color) 75%
+  );
+  background-image: var(--background-gradient), var(--background-gradient);
+  background-size: var(--swatch-size) var(--swatch-size);
+  background-position: 0 0, calc(var(--swatch-size) / 2) calc(var(--swatch-size) / 2);
+  position: absolute;
+  border-radius: 50%;
+  inset: 0;
+  z-index: -1;
+}
+
+.inspector-swatch.inspector-colorswatch {
+  border: none;
+  padding: 0;
+  /* Adjust outline so it doesn't conflate with the color swatch, which could have a similar background
+     color as the outline */
+  outline-offset: 2px;
+  /* Make sure that the background color is properly set in High Contrast Mode */
+  forced-color-adjust: none;
+}
+
+.inspector-bezierswatch {
+  background-image: url("chrome://devtools/skin/images/cubic-bezier-swatch.svg");
+  -moz-context-properties: stroke, fill;
+  fill: #fff;
+  stroke: #808080;
+}
+
+.inspector-filterswatch {
+  background-image: url("chrome://devtools/skin/images/filter-swatch.svg");
+  -moz-context-properties: stroke, fill;
+  fill: #fff;
+  stroke: #aeb0b1;
+}
+
+.inspector-angleswatch {
+  background-image: url("chrome://devtools/skin/images/angle-swatch.svg");
+  -moz-context-properties: stroke, fill;
+  fill: #fff;
+  stroke: #aeb0b1;
+}
+
+.inspector-lineareasingswatch {
+  background-image: url("chrome://devtools/skin/images/linear-easing-swatch.svg");
+  -moz-context-properties: stroke, fill;
+  fill: #fff;
+  stroke: #808080;
+}
+
+:root[forced-colors-active] :is(
+  .inspector-bezierswatch,
+  .inspector-lineareasingswatch,
+  .inspector-filterswatch,
+  .inspector-angleswatch
+) {
+  fill: ButtonFace;
+  stroke: var(--theme-icon-color);
+  /* For some icons, the outline can conflate with the background image in a weird way
+     on low-dpi screens. Adjust the offset a bit so there's a clear separation between
+     the icon and the outline for a cleaner look */
+  outline-offset: 1px;
+
+  &:hover {
+    stroke: var(--theme-icon-hover-color);
+  }
+}

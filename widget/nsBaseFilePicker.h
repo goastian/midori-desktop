@@ -7,35 +7,28 @@
 #ifndef nsBaseFilePicker_h__
 #define nsBaseFilePicker_h__
 
-#include "mozilla/dom/BrowsingContext.h"
 #include "nsISupports.h"
 #include "nsIFilePicker.h"
-#include "nsISimpleEnumerator.h"
-#include "nsArrayEnumerator.h"
 #include "nsCOMPtr.h"
 #include "nsString.h"
 #include "nsTArray.h"
 
-class nsPIDOMWindowOuter;
+class nsISimpleEnumerator;
 class nsIWidget;
 
-class nsBaseFilePicker : public nsIFilePicker {
-#ifndef XP_WIN
-  class AsyncShowFilePicker;
-#endif
+namespace mozilla::dom {
+class BrowsingContext;
+}
 
+class nsBaseFilePicker : public nsIFilePicker {
  public:
   nsBaseFilePicker();
-  virtual ~nsBaseFilePicker();
 
+  // nsIFilePicker
   NS_IMETHOD Init(mozilla::dom::BrowsingContext* aBrowsingContext,
                   const nsAString& aTitle, nsIFilePicker::Mode aMode) override;
   NS_IMETHOD IsModeSupported(nsIFilePicker::Mode aMode, JSContext* aCx,
                              mozilla::dom::Promise** aPromise) override;
-#ifndef XP_WIN
-  NS_IMETHOD Open(nsIFilePickerShownCallback* aCallback) override;
-#endif
-  NS_IMETHOD Close() override;
   NS_IMETHOD AppendFilters(int32_t filterMask) override;
   NS_IMETHOD AppendRawFilter(const nsAString& aFilter) override;
   NS_IMETHOD GetCapture(nsIFilePicker::CaptureTarget* aCapture) override;
@@ -57,20 +50,23 @@ class nsBaseFilePicker : public nsIFilePicker {
   NS_IMETHOD GetDomFileOrDirectory(nsISupports** aValue) override;
   NS_IMETHOD GetDomFileOrDirectoryEnumerator(
       nsISimpleEnumerator** aValue) override;
+  NS_IMETHOD GetDomFilesInWebKitDirectory(
+      nsISimpleEnumerator** aValue) override;
 
  protected:
+  virtual ~nsBaseFilePicker();
+
   virtual void InitNative(nsIWidget* aParent, const nsAString& aTitle) = 0;
-  virtual nsresult Show(nsIFilePicker::ResultCode* _retval) = 0;
 
   virtual nsresult ResolveSpecialDirectory(const nsAString& aSpecialDirectory);
   bool MaybeBlockFilePicker(nsIFilePickerShownCallback* aCallback);
 
-  bool mAddToRecentDocs;
+  bool mAddToRecentDocs = true;
   nsCOMPtr<nsIFile> mDisplayDirectory;
   nsString mDisplaySpecialDirectory;
 
   RefPtr<mozilla::dom::BrowsingContext> mBrowsingContext;
-  nsIFilePicker::Mode mMode;
+  nsIFilePicker::Mode mMode = nsIFilePicker::modeOpen;
   nsString mOkButtonLabel;
   nsTArray<nsString> mRawFilters;
 };

@@ -389,14 +389,24 @@ async function testBrokenApp({
 
   // On Linux/macOS, the setupHosts helper registers the same manifest file in
   // multiple locations, which can result in the same error being printed
-  // multiple times. We de-duplicate that here.
-  let deduplicatedMessages = messages.filter(
-    (msg, i) => i === messages.findIndex(m => m.message === msg.message)
-  );
+  // multiple times. We duplicate the expectation here.
+  if (AppConstants.platform === "macosx" || AppConstants.platform === "linux") {
+    const stackLine = "_tryPath@resource://gre/modules/NativeManifests.sys.mjs";
+    let msgAndStack = messages.find(m => m.message.includes(stackLine));
+    if (msgAndStack) {
+      let index = expectedConsoleMessages.findIndex(r => r.test(msgAndStack));
+      notEqual(index, -1, "Should find expected error in call from  _tryPath");
+      expectedConsoleMessages = [
+        // + 1 to duplicate the message at index:
+        ...expectedConsoleMessages.slice(0, index + 1),
+        ...expectedConsoleMessages.slice(index),
+      ];
+    }
+  }
 
   // Now check that all the log messages exist, in the expected order too.
   AddonTestUtils.checkMessages(
-    deduplicatedMessages,
+    messages,
     {
       expected: expectedConsoleMessages.map(message => ({ message })),
       forbidUnexpected: true,
@@ -428,18 +438,20 @@ if (AppConstants.platform == "win") {
   add_task(function test_relative_path_unsupported() {
     return testBrokenApp({
       appname: "relative.echo",
-      expectedError: "An unexpected error occurred",
+      expectedError: "No such native application relative.echo",
       expectedConsoleMessages: [
-        /NativeApp requires absolute path to command on this platform/,
+        /Native manifest .*\/relative\.echo\.json has relative path value relative\.echo\.py \(expected absolute path\)/,
+        /No such native application relative\.echo/,
       ],
     });
   });
   add_task(function test_relative_dotdot_path_unsupported() {
     return testBrokenApp({
       appname: "relative_dotdot.echo",
-      expectedError: "An unexpected error occurred",
+      expectedError: "No such native application relative_dotdot.echo",
       expectedConsoleMessages: [
-        /NativeApp requires absolute path to command on this platform/,
+        /Native manifest .*\/relative_dotdot\.echo\.json has relative path value .*\/relative_dotdot\.echo\.py \(expected absolute path\)/,
+        /No such native application relative_dotdot\.echo/,
       ],
     });
   });
@@ -1012,7 +1024,7 @@ async function expectTerminateBackgroundToResetIdle({ extension, contextId }) {
     extension,
     "background-script-reset-idle"
   );
-  await extension.terminateBackground();
+  await extension.terminateBackground({ expectStopped: false });
   info("Wait for 'background-script-reset-idle' event to be emitted");
   await promiseResetIdle;
   equal(

@@ -33,11 +33,9 @@ class CompositorWidgetChild final : public PCompositorWidgetChild,
   void LeavePresentLock() override;
   void OnDestroyWindow() override;
   bool OnWindowResize(const LayoutDeviceIntSize& aSize) override;
-  void OnWindowModeChange(nsSizeMode aSizeMode) override;
-  void UpdateTransparency(TransparencyMode aMode) override;
-  void NotifyVisibilityUpdated(nsSizeMode aSizeMode,
-                               bool aIsFullyOccluded) override;
-  void ClearTransparentWindow() override;
+  void NotifyVisibilityUpdated(bool aIsFullyOccluded) override;
+
+  void UpdateTransparency(TransparencyMode) override;
 
   mozilla::ipc::IPCResult RecvObserveVsync() override;
   mozilla::ipc::IPCResult RecvUnobserveVsync() override;
@@ -51,7 +49,6 @@ class CompositorWidgetChild final : public PCompositorWidgetChild,
   HWND mCompositorWnd;
 
   HWND mWnd;
-  TransparencyMode mTransparencyMode;
 
   std::unique_ptr<remote_backbuffer::Provider> mRemoteBackbufferProvider;
 };

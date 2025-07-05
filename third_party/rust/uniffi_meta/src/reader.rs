@@ -59,6 +59,8 @@ impl<'a> MetadataReader<'a> {
             codes::CALLBACK_INTERFACE => self.read_callback_interface()?.into(),
             codes::TRAIT_METHOD => self.read_trait_method()?.into(),
             codes::UNIFFI_TRAIT => self.read_uniffi_trait()?.into(),
+            codes::OBJECT_TRAIT_IMPL => self.read_object_trait_impl()?.into(),
+            codes::CUSTOM_TYPE => self.read_custom_type()?.into(),
             _ => bail!("Unexpected metadata code: {value:?}"),
         })
     }
@@ -115,6 +117,10 @@ impl<'a> MetadataReader<'a> {
         let slice;
         (slice, self.buf) = self.buf.split_at(size);
         String::from_utf8(slice.into()).context("Invalid string data")
+    }
+
+    fn read_optional_string(&mut self) -> Result<Option<String>> {
+        Ok(Some(self.read_string()?).filter(|str| !str.is_empty()))
     }
 
     fn read_long_string(&mut self) -> Result<String> {
@@ -259,7 +265,7 @@ impl<'a> MetadataReader<'a> {
                     Type::Object { name, imp: ObjectImpl::Struct, .. } if name == &self_name
                 )
             })
-            .context("Constructor return type must be Arc<Self>")?;
+            .context("Constructor return type must be Self or Arc<Self>")?;
 
         Ok(ConstructorMetadata {
             module_path,
@@ -299,6 +305,7 @@ impl<'a> MetadataReader<'a> {
         Ok(RecordMetadata {
             module_path: self.read_string()?,
             name: self.read_string()?,
+            remote: false, // only used when generating scaffolding from UDL
             fields: self.read_fields()?,
             docstring: self.read_optional_long_string()?,
         })
@@ -307,27 +314,22 @@ impl<'a> MetadataReader<'a> {
     fn read_enum(&mut self) -> Result<EnumMetadata> {
         let module_path = self.read_string()?;
         let name = self.read_string()?;
-        let forced_flatness = match self.read_u8()? {
-            0 => None,
-            1 => Some(false),
-            2 => Some(true),
-            _ => unreachable!("invalid flatness"),
-        };
+        let shape = EnumShape::from(self.read_u8()?)?;
         let discr_type = if self.read_bool()? {
             Some(self.read_type()?)
         } else {
             None
         };
-        let variants = if forced_flatness == Some(true) {
-            self.read_flat_variants()?
-        } else {
-            self.read_variants()?
+        let variants = match shape {
+            EnumShape::Enum | EnumShape::Error { flat: false } => self.read_variants()?,
+            EnumShape::Error { flat: true } => self.read_flat_variants()?,
         };
 
         Ok(EnumMetadata {
             module_path,
             name,
-            forced_flatness,
+            shape,
+            remote: false, // only used when generating scaffolding from UDL
             discr_type,
             variants,
             non_exhaustive: self.read_bool()?,
@@ -339,7 +341,17 @@ impl<'a> MetadataReader<'a> {
         Ok(ObjectMetadata {
             module_path: self.read_string()?,
             name: self.read_string()?,
+            remote: false, // only used when generating scaffolding from UDL
             imp,
+            docstring: self.read_optional_long_string()?,
+        })
+    }
+
+    fn read_custom_type(&mut self) -> Result<CustomTypeMetadata> {
+        Ok(CustomTypeMetadata {
+            module_path: self.read_string()?,
+            name: self.read_string()?,
+            builtin: self.read_type()?,
             docstring: self.read_optional_long_string()?,
         })
     }
@@ -398,6 +410,14 @@ impl<'a> MetadataReader<'a> {
             takes_self_by_arc: false, // not emitted by macros
             checksum: self.calc_checksum(),
             docstring,
+        })
+    }
+
+    fn read_object_trait_impl(&mut self) -> Result<ObjectTraitImplMetadata> {
+        Ok(ObjectTraitImplMetadata {
+            ty: self.read_type()?,
+            trait_name: self.read_string()?,
+            tr_module_path: self.read_optional_string()?,
         })
     }
 

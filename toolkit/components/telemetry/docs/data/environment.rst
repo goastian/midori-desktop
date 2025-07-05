@@ -37,12 +37,11 @@ Structure:
       settings: {
         addonCompatibilityCheckEnabled: <bool>, // Whether application compatibility is respected for add-ons
         blocklistEnabled: <bool>, // true on failure
-        isDefaultBrowser: <bool>, // whether Firefox is the default browser. On Windows, this is operationalized as whether Firefox is the default HTTP protocol handler and the default HTML file handler.
+        isDefaultBrowser: <bool>, // whether Firefox is the default browser. Checked once near startup. On Windows, this is operationalized as whether Firefox is the default HTTP protocol handler and the default HTML file handler.
         defaultSearchEngine: <string>, // e.g. "yahoo"
         defaultSearchEngineData: {, // data about the current default engine
           name: <string>, // engine name, e.g. "Yahoo"; or "NONE" if no default
           loadPath: <string>, // where the engine line is located; missing if no default
-          origin: <string>, // 'default', 'verified', 'unverified', or 'invalid'; based on the presence and validity of the engine's loadPath verification hash.
           submissionURL: <string> // set for default engines or well known search domains
         },
         defaultPrivateSearchEngine: <string>, // e.g. "duckduckgo"
@@ -53,7 +52,6 @@ Structure:
         e10sEnabled: <bool>, // whether e10s is on, i.e. browser tabs open by default in a different process
         e10sMultiProcesses: <integer>, // Maximum number of processes that will be launched for regular web content
         fissionEnabled: <bool>, // whether fission is enabled this session, and subframes can load in a different process
-        telemetryEnabled: <bool>, // false on failure
         locale: <string>, // e.g. "it", null on failure
         intl: {
           requestedLocales: [ <string>, ... ], // The locales that are being requested.
@@ -144,24 +142,14 @@ Structure:
               // "hasAES", "hasEDSP", "hasARMv6", "hasARMv7", "hasNEON"
             ],
         },
-        device: { // This section is only available on mobile devices.
-          model: <string>, // the "device" from FHR, null on failure
-          manufacturer: <string>, // null on failure
-          hardware: <string>, // null on failure
-          isTablet: <bool>, // null on failure
-        },
         os: {
             name: <string>, // "Windows_NT" or null on failure
             version: <string>, // e.g. "6.1", null on failure
-            kernelVersion: <string>, // android only or null on failure
             servicePackMajor: <number>, // windows only or null on failure
             servicePackMinor: <number>, // windows only or null on failure
             windowsBuildNumber: <number>, // windows only or null on failure
             windowsUBR: <number>, // windows 10 only or null on failure
-            installYear: <number>, // windows only or null on failure
             locale: <string>, // "en" or null on failure
-            hasPrefetch: <bool>, // windows only, or null on failure
-            hasSuperfetch: <bool>, // windows only, or null on failure
             distro: <string>, // linux only, or null on failure
             distroVersion: <string>, // linux only, or null on failure
         },
@@ -188,7 +176,6 @@ Structure:
             ContentBackend: <string> // One of "Cairo", "Skia", or "Direct2D 1.1"
             Headless: <bool>, // null on failure
             TargetFrameRate: <number>, // frame rate in Hz, typically 60 or more
-            //DWriteVersion: <string>, // temporarily removed, pending bug 1154500
             adapters: [
               {
                 description: <string>, // e.g. "Intel(R) HD Graphics 4600", null on failure
@@ -261,7 +248,7 @@ Structure:
             },
           },
         appleModelId: <string>, // Mac only or null on failure
-        sec: { // This feature is Windows 8+ only
+        sec: { // This feature is Windows only
           antivirus: [ <string>, ... ],    // null if unavailable on platform: Product name(s) of registered antivirus programs
           antispyware: [ <string>, ... ],  // null if unavailable on platform: Product name(s) of registered antispyware programs
           firewall: [ <string>, ... ],     // null if unavailable on platform: Product name(s) of registered firewall programs
@@ -363,8 +350,6 @@ The object contains:
   [http/https]example.com/engine-name.xml
   [http/https]example.com/engine-name.xml:extensionID
 
-- an ``origin`` property: the value will be ``default`` for engines that are built-in or from distribution partners, ``verified`` for user-installed engines with valid verification hashes, ``unverified`` for non-default engines without verification hash, and ``invalid`` for engines with broken verification hashes.
-
 - a ``submissionURL`` property with the HTTP url we would use to search.
   For privacy, we don't record this for user-installed engines.
 
@@ -426,8 +411,6 @@ The following is a partial list of `collected preferences <https://searchfox.org
 - ``privacy.firstparty.isolate``: True if the user has changed the (unsupported, hidden) First Party Isolation preference. Defaults to false.
 
 - ``privacy.resistFingerprinting``: True if the user has changed the (unsupported, hidden) Resist Fingerprinting preference. Defaults to false.
-
-- ``toolkit.telemetry.pioneerId``: The state of the Pioneer ID. If set, then user is enrolled in Pioneer. Note that this does *not* collect the value.
 
 - ``app.normandy.test-prefs.bool``: Test pref that will help troubleshoot uneven unenrollment in experiments. Defaults to false.
 
@@ -509,7 +492,7 @@ Specific keys are:
   - MissingRemoteWebGL = 5
   - MissingNonNativeTheming = 6
   - DisabledByEnvVar = 7 - MOZ_ENABLE_WIN32K is set
-  - DisabledBySafeMode = 8
+  - DisabledBySafeMode = 8 - From Firefox 140 onwards, this value will no longer appear in Telemetry.
   - DisabledByE10S = 9 - E10S is disabled for whatever reason
   - DisabledByUserPref = 10 - The user manually set security.sandbox.content.win32k-disable to false
   - EnabledByUserPref = 11 - The user manually set security.sandbox.content.win32k-disable to true
@@ -579,7 +562,6 @@ This object contains operating system information.
 
 - ``name``: the name of the OS.
 - ``version``: a string representing the OS version.
-- ``kernelVersion``: an Android only string representing the kernel version.
 - ``servicePackMajor``: the Windows only major version number for the installed service pack.
 - ``servicePackMinor``: the Windows only minor version number for the installed service pack.
 - ``windowsBuildNumber``: the Windows build number.
@@ -619,6 +601,14 @@ Note that this list includes other types of deliveries, including Normandy rollo
 
 Version History
 ---------------
+
+- Firefox 137:
+
+  - Removed unused and Android-only fields as part of Glean mirroring support. (`bug 1943698 <https://bugzilla.mozilla.org/show_bug.cgi?id=1943698>`_)
+
+  - Removed ``browser.urlbar.quicksuggest.onboardingDialogChoice`` as part of removing whole onboarding dialog. (`bug 1936455 <https://bugzilla.mozilla.org/show_bug.cgi?id=1936455>`_)
+
+  - Removed ``settings.default(Private)SearchEngineData.origin`` (`bug 1929058 <https://bugzilla.mozilla.org/show_bug.cgi?id=1929058>`_)
 
 - Firefox 88:
 

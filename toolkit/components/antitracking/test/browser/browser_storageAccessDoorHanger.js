@@ -54,6 +54,7 @@ async function testDoorHanger(
       ],
       // Bug 1617611: Fix all the tests broken by "cookies SameSite=lax by default"
       ["network.cookie.sameSite.laxByDefault", false],
+      ["dom.storage_access.auto_grants.exclude_third_party_trackers", false],
     ],
   });
 

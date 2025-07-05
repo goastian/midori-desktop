@@ -21,7 +21,7 @@ def indented(s):
 
 
 def cpp(v):
-    if type(v) == bool:
+    if type(v) is bool:
         return "true" if v else "false"
     return str(v)
 
@@ -584,7 +584,7 @@ namespace detail {
 
     fd.write(
         """
-const uint16_t sInterfacesSize = mozilla::ArrayLength(sInterfaces);
+const uint16_t sInterfacesSize = std::size(sInterfaces);
 
 } // namespace detail
 } // namespace xpt
@@ -595,7 +595,7 @@ const uint16_t sInterfacesSize = mozilla::ArrayLength(sInterfaces);
 def link_and_write(files, outfile, outheader):
     interfaces = []
     for file in files:
-        with open(file, "r") as fd:
+        with open(file) as fd:
             interfaces += json.load(fd)
 
     iids = set()

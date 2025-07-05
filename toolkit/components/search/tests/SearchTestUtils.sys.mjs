@@ -1,34 +1,83 @@
 import { MockRegistrar } from "resource://testing-common/MockRegistrar.sys.mjs";
-import { NON_SPLIT_ENGINE_IDS } from "resource://gre/modules/SearchService.sys.mjs";
 
 const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
-  AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   AddonTestUtils: "resource://testing-common/AddonTestUtils.sys.mjs",
+  AppProvidedSearchEngine:
+    "moz-src:///toolkit/components/search/AppProvidedSearchEngine.sys.mjs",
   ExtensionTestUtils:
     "resource://testing-common/ExtensionXPCShellUtils.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
+  SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
   sinon: "resource://testing-common/Sinon.sys.mjs",
 });
 
-var gTestScope;
+/**
+ * A class containing useful testing functions for Search based tests.
+ */
+class _SearchTestUtils {
+  /**
+   * The test scope that the test is running in.
+   *
+   * @type {object}
+   */
+  #testScope = null;
 
-export var SearchTestUtils = {
+  /**
+   * True if we are in a mochitest scope, false for xpcshell-tests.
+   *
+   * @type {boolean?}
+   */
+  #isMochitest = null;
+
+  /**
+   * Whether the fake idle service is registered and needs to be cleaned up.
+   *
+   * @type {boolean}
+   */
+  #idleServiceCID = null;
+
+  /**
+   * All stubs of remote settings that will be cleaned up by their key.
+   *
+   * @type {object}
+   */
+  #stubs = new Map();
+
+  /**
+   * Initialises the test utils, setting up the scope and working out if these
+   * are mochitest or xpcshell-test.
+   *
+   * @param {object} testScope
+   *   The global scope for the test.
+   */
   init(testScope) {
-    gTestScope = testScope;
-    this._isMochitest = !Services.env.exists("XPCSHELL_TEST_PROFILE_DIR");
-    if (this._isMochitest) {
-      this._isMochitest = true;
+    this.#testScope = testScope;
+    this.#isMochitest = !Services.env.exists("XPCSHELL_TEST_PROFILE_DIR");
+    if (this.#isMochitest) {
       lazy.AddonTestUtils.initMochitest(testScope);
-    } else {
-      this._isMochitest = false;
-      // This handles xpcshell-tests.
-      gTestScope.ExtensionTestUtils = lazy.ExtensionTestUtils;
-      this.initXPCShellAddonManager(testScope);
+
+      testScope.registerCleanupFunction(async () => {
+        this.#stubs.forEach(stub => stub.restore());
+
+        if (this.#stubs.size) {
+          this.#stubs = new Map();
+
+          let settingsWritten = SearchTestUtils.promiseSearchNotification(
+            "write-settings-to-disk-complete"
+          );
+          await this.updateRemoteSettingsConfig();
+          await settingsWritten;
+        }
+
+        if (this.#idleServiceCID) {
+          MockRegistrar.unregister(this.#idleServiceCID);
+          this.#idleServiceCID = null;
+        }
+      });
     }
-  },
+  }
 
   /**
    * Adds an OpenSearch based engine to the search service. It will remove
@@ -38,6 +87,9 @@ export var SearchTestUtils = {
    *   The options for the new search engine.
    * @param {string} options.url
    *   The URL of the engine to add.
+   * @param {string} [options.faviconURL]
+   *   The icon to be used for the open search engine, if not specified in the
+   *   OpenSearch engine data.
    * @param {boolean} [options.setAsDefault]
    *   Whether or not to set the engine as default automatically. If this is
    *   true, the engine will be set as default, and the previous default engine
@@ -53,13 +105,14 @@ export var SearchTestUtils = {
    */
   async installOpenSearchEngine({
     url,
+    faviconURL,
     setAsDefault = false,
     setAsDefaultPrivate = false,
     skipReset = false,
   }) {
     // OpenSearch engines can only be added via http protocols.
     url = url.replace("chrome://mochitests/content", "https://example.com");
-    let engine = await Services.search.addOpenSearchEngine(url, "");
+    let engine = await Services.search.addOpenSearchEngine(url, faviconURL);
     let previousEngine = Services.search.defaultEngine;
     let previousPrivateEngine = Services.search.defaultPrivateEngine;
     if (setAsDefault) {
@@ -74,7 +127,7 @@ export var SearchTestUtils = {
         Ci.nsISearchService.CHANGE_REASON_UNKNOWN
       );
     }
-    gTestScope.registerCleanupFunction(async () => {
+    this.#testScope.registerCleanupFunction(async () => {
       if (setAsDefault && !skipReset) {
         await Services.search.setDefault(
           previousEngine,
@@ -94,7 +147,7 @@ export var SearchTestUtils = {
       }
     });
     return engine;
-  },
+  }
 
   /**
    * Returns a promise that is resolved when an observer notification from the
@@ -105,191 +158,276 @@ export var SearchTestUtils = {
    *        the promise.
    * @param {string} topic
    *        The notification topic to observe. Defaults to 'browser-search-service'.
+   * @param {number} times
+   *        The number of notifications required to resolve the promise. Defaults to 1.
    * @returns {Promise}
    *        Returns a promise that is resolved with the subject of the
    *        topic once the topic with the data has been observed.
    */
-  promiseSearchNotification(expectedData, topic = "browser-search-service") {
+  promiseSearchNotification(
+    expectedData,
+    topic = "browser-search-service",
+    times = 1
+  ) {
     return new Promise(resolve => {
+      let i = 0;
       Services.obs.addObserver(function observer(aSubject, aTopic, aData) {
-        if (aData != expectedData) {
-          return;
+        if (aData == expectedData) {
+          i += 1;
+          if (i == times) {
+            Services.obs.removeObserver(observer, topic);
+            // Let the stack unwind.
+            Services.tm.dispatchToMainThread(() => resolve(aSubject));
+          }
         }
-
-        Services.obs.removeObserver(observer, topic);
-        // Let the stack unwind.
-        Services.tm.dispatchToMainThread(() => resolve(aSubject));
       }, topic);
     });
-  },
+  }
 
   /**
-   * For xpcshell tests, configures loading engines from test data located in
-   * particular folders.
+   * Stubs the get property of the remote settings client with a
+   * given Key. Configuration does not get expanded.
    *
-   * @param {string} [folder]
-   *   The folder name to use.
-   * @param {string} [subFolder]
-   *   The subfolder to use, if any.
-   * @param {Array} [configData]
-   *   An array which contains the configuration to set.
-   * @returns {object}
-   *   An object that is a sinon stub for the configuration getter.
+   * @param {string} [key]
+   *   The remote settings key of the configuration to be stubbed.
+   * @param {object[]} [config]
+   *   The configuration that will be returned by the stub.
    */
-  async useTestEngines(folder = "data", subFolder = null, configData = null) {
-    if (!lazy.SearchUtils.newSearchConfigEnabled) {
-      let url = `resource://test/${folder}/`;
-      if (subFolder) {
-        url += `${subFolder}/`;
+  #stubConfig(key, config) {
+    if (!config) {
+      if (this.#stubs.has(key)) {
+        this.#stubs.get(key).restore();
+        this.#stubs.delete(key);
       }
-      let resProt = Services.io
-        .getProtocolHandler("resource")
-        .QueryInterface(Ci.nsIResProtocolHandler);
-      resProt.setSubstitution("search-extensions", Services.io.newURI(url));
+      return;
     }
 
-    const settings = await lazy.RemoteSettings(lazy.SearchUtils.SETTINGS_KEY);
-    if (configData) {
-      return lazy.sinon.stub(settings, "get").returns(configData);
+    if (!this.#stubs.has(key)) {
+      let settings = lazy.RemoteSettings(key);
+      this.#stubs.set(key, lazy.sinon.stub(settings, "get").returns(config));
+    } else {
+      this.#stubs.get(key).returns(config);
+    }
+  }
+
+  /**
+   * Expands a partial search config by the minumum number of properties
+   * to be a valid config and loads it to make test cases less verbose.
+   * Does not modify the input.
+   *
+   * defaultEngines and engineOrders are not required. The first
+   * engine will be set to default if defaultEngines is not specified.
+   *
+   * Engine objects only require an identifier and there needs to be at least
+   * one engine. The name defaults to the identifier, the classification
+   * to general, the search url to https://www.example.com/search?q=query
+   * and the environment to allRegionsAndLocales.
+   *
+   * The recordType is detected automatically and thus optional.
+   *
+   * @param {object[]} [partialConfig]
+   *  The partial search config that will be expanded.
+   * @returns {object[]}
+   *  The expanded search config.
+   */
+  expandPartialConfig(partialConfig) {
+    if (!partialConfig) {
+      return partialConfig;
+    }
+    let fullConfig = structuredClone(partialConfig);
+    let numEngines = 0;
+    let defaultEngines;
+    let engineOrders;
+    let availableLocales;
+
+    for (let obj of fullConfig) {
+      obj.recordType = this.#detectRecordType(obj);
+
+      switch (obj.recordType) {
+        case "engine":
+          if (!obj.base) {
+            obj.base = {};
+          }
+          if (!obj.base.name) {
+            obj.base.name = obj.identifier;
+          }
+          if (!obj.base.classification) {
+            obj.base.classification = "general";
+          }
+          if (!obj.base.urls) {
+            obj.base.urls = {};
+          }
+          if (!obj.base.urls.search) {
+            obj.base.urls.search = {
+              base: "https://www.example.com/search",
+              searchTermParamName: "q",
+            };
+          }
+
+          if (!obj.variants) {
+            obj.variants = [{ environment: { allRegionsAndLocales: true } }];
+          }
+          numEngines++;
+          break;
+        case "defaultEngines":
+          defaultEngines = obj;
+          break;
+        case "engineOrders":
+          engineOrders = obj;
+          break;
+        case "availableLocales":
+          availableLocales = obj;
+      }
     }
 
-    let workDir = Services.dirsvc.get("CurWorkD", Ci.nsIFile);
-    let configFileName =
-      "file://" +
-      PathUtils.join(
-        workDir.path,
-        folder,
-        subFolder ?? "",
-        lazy.SearchUtils.newSearchConfigEnabled
-          ? "search-config-v2.json"
-          : "engines.json"
-      );
+    if (!numEngines) {
+      throw new Error("One engine is required.");
+    }
 
-    let response = await fetch(configFileName);
-    let json = await response.json();
-    return lazy.sinon.stub(settings, "get").returns(json.data);
-  },
+    if (!engineOrders) {
+      engineOrders = {
+        recordType: "engineOrders",
+        orders: [],
+      };
+      fullConfig.push(engineOrders);
+    }
 
-  /**
-   * For mochitests, configures loading engines from test data located in
-   * particular folders. This will cleanup at the end of the test.
-   *
-   * This will be removed when the old configuration is removed
-   * (newSearchConfigEnabled = false).
-   *
-   * @param {nsIFile} testDir
-   *   The test directory to use.
-   */
-  async useMochitestEngines(testDir) {
-    // Replace the path we load search engines from with
-    // the path to our test data.
-    let resProt = Services.io
-      .getProtocolHandler("resource")
-      .QueryInterface(Ci.nsIResProtocolHandler);
-    let originalSubstitution = resProt.getSubstitution("search-extensions");
-    resProt.setSubstitution(
-      "search-extensions",
-      Services.io.newURI("file://" + testDir.path)
-    );
-    gTestScope.registerCleanupFunction(() => {
-      resProt.setSubstitution("search-extensions", originalSubstitution);
-    });
-  },
+    if (!defaultEngines) {
+      defaultEngines = { recordType: "defaultEngines" };
+      fullConfig.push(defaultEngines);
+    }
+
+    if (!defaultEngines.globalDefault) {
+      let firstEngine = fullConfig.find(r => r.recordType == "engine");
+      defaultEngines.globalDefault = firstEngine.identifier;
+    }
+    if (!defaultEngines.specificDefaults) {
+      defaultEngines.specificDefaults = [];
+    }
+
+    if (!availableLocales) {
+      availableLocales = {
+        recordType: "availableLocales",
+        locales: Array.from(this.extractAvailableLocales(fullConfig)),
+      };
+      fullConfig.push(availableLocales);
+    }
+
+    return fullConfig;
+  }
 
   /**
-   * Utility function for mochitests to configure a custom search engine
-   * directory and search configuration.
+   * Extracts the list of available locales from a search configuration.
    *
-   * @param {string} testDir
-   *   The test directory to use.
-   * @param {Array} searchConfig
-   *   The test search configuration to use.
+   * @param {object[]} config
    */
-  async setupTestEngines(testDir, searchConfig) {
-    let searchExtensions = gTestScope.getChromeDir(
-      gTestScope.getResolvedURI(gTestScope.gTestPath)
-    );
-    searchExtensions.append(testDir);
-    await this.useMochitestEngines(searchExtensions);
+  extractAvailableLocales(config) {
+    let result = new Set();
 
-    this.useMockIdleService();
+    function addLocalesFromEnvironment(environment) {
+      environment.locales?.forEach(locale => result.add(locale));
+      environment.excludedLocales?.forEach(locale => result.add(locale));
+    }
 
-    await this.updateRemoteSettingsConfig(searchConfig);
+    for (let entry of config) {
+      switch (entry.recordType) {
+        case "engine": {
+          for (let variant of entry.variants) {
+            addLocalesFromEnvironment(variant.environment);
+            for (let subVariant of variant.subVariants ?? []) {
+              addLocalesFromEnvironment(subVariant.environment);
+            }
+          }
+          break;
+        }
+        case "defaultEngines": {
+          for (let specificDefault of entry.specificDefaults) {
+            addLocalesFromEnvironment(specificDefault.environment);
+          }
+          break;
+        }
+        case "engineOrders": {
+          for (let order of entry.orders) {
+            addLocalesFromEnvironment(order.environment);
+          }
+          break;
+        }
+      }
+    }
+    return result;
+  }
 
-    gTestScope.registerCleanupFunction(async () => {
-      let settingsWritten = SearchTestUtils.promiseSearchNotification(
-        "write-settings-to-disk-complete"
+  /**
+   * Detects the recordType of a partial search config object based
+   * on its properties.
+   *
+   * @param {object} [partialObject]
+   *  The partial search config object whose recordType will be detected.
+   * @returns {string}
+   *   The detected recordType.
+   */
+  #detectRecordType(partialObject) {
+    const identifyingProperties = {
+      engine: ["identifier"],
+      defaultEngines: ["specificDefaults", "globalDefault"],
+      engineOrders: ["orders"],
+    };
+
+    let detectedType = partialObject.recordType;
+    for (let recordType in identifyingProperties) {
+      if (identifyingProperties[recordType].some(p => p in partialObject)) {
+        if (detectedType && detectedType != recordType) {
+          throw new Error("Ambiguous recordType");
+        }
+        detectedType = recordType;
+      }
+    }
+
+    if (!detectedType) {
+      throw new Error(
+        "Could not detect recordType. Identifier is mandatory for engine recordTypes."
       );
-      await SearchTestUtils.updateRemoteSettingsConfig();
-      await settingsWritten;
-    });
-  },
+    }
+
+    return detectedType;
+  }
 
   /**
    * Convert a list of engine configurations into engine objects.
    *
    * @param {Array} engineConfigurations
    *   An array of engine configurations.
+   * @returns {AppProvidedSearchEngine[]}
+   *   An array of app provided search engine objects.
    */
   async searchConfigToEngines(engineConfigurations) {
-    let engines = [];
-
-    for (let e of engineConfigurations) {
-      if (!e.webExtension) {
-        e.webExtension = {};
-      }
-      e.webExtension.locale =
-        e.webExtension.locale ?? lazy.SearchUtils.DEFAULT_TAG;
-
-      // TODO Bug 1875912 - Remove the webextension.id and webextension.locale when
-      // we're ready to remove old search-config and use search-config-v2 for all
-      // clients. The id in appProvidedSearchEngine should be changed to
-      // engine.identifier.
-      if (lazy.SearchUtils.newSearchConfigEnabled) {
-        let identifierComponents = NON_SPLIT_ENGINE_IDS.includes(e.identifier)
-          ? [e.identifier]
-          : e.identifier.split("-");
-
-        e.webExtension.locale =
-          identifierComponents.slice(1).join("-") || "default";
-        e.webExtension.id = identifierComponents[0] + "@search.mozilla.org";
-      }
-    }
-
-    for (let config of engineConfigurations) {
-      let engine = await Services.search.wrappedJSObject._makeEngineFromConfig(
-        config
-      );
-      engines.push(engine);
-    }
-    return engines;
-  },
+    return engineConfigurations.map(
+      config => new lazy.AppProvidedSearchEngine({ config })
+    );
+  }
 
   /**
-   * Provides various setup for xpcshell-tests installing WebExtensions. Should
-   * be called from the global scope of the test.
-   *
-   * @param {object} scope
-   *  The global scope of the test being run.
-   * @param {*} usePrivilegedSignatures
-   *  How to sign created addons.
+   * Sets up the add-on manager so that it is ready for loading WebExtension
+   * in xpcshell-tests.
    */
-  initXPCShellAddonManager(scope, usePrivilegedSignatures = false) {
-    let scopes =
-      lazy.AddonManager.SCOPE_PROFILE | lazy.AddonManager.SCOPE_APPLICATION;
-    Services.prefs.setIntPref("extensions.enabledScopes", scopes);
-    // Only do this once.
-    try {
-      gTestScope.ExtensionTestUtils.init(scope);
-    } catch (ex) {
-      // This can happen if init is called twice.
-      if (ex.result != Cr.NS_ERROR_FILE_ALREADY_EXISTS) {
-        throw ex;
-      }
+  async initXPCShellAddonManager() {
+    this.#testScope.ExtensionTestUtils = lazy.ExtensionTestUtils;
+
+    if (
+      lazy.ExtensionTestUtils.addonManagerStarted ||
+      lazy.AddonTestUtils.addonIntegrationService
+    ) {
+      // We have already started the add-on manager, and the following functions
+      // may throw if they are called twice.
+      return;
     }
-    lazy.AddonTestUtils.usePrivilegedSignatures = usePrivilegedSignatures;
+
+    lazy.ExtensionTestUtils.init(this.#testScope);
     lazy.AddonTestUtils.overrideCertDB();
-  },
+    lazy.AddonTestUtils.init(this.#testScope, false);
+
+    await lazy.ExtensionTestUtils.startAddonManager();
+  }
 
   /**
    * Add a search engine as a WebExtension.
@@ -329,6 +467,10 @@ export var SearchTestUtils = {
     } = {},
     files = {}
   ) {
+    if (!this.#isMochitest) {
+      await this.initXPCShellAddonManager();
+    }
+
     await Services.search.init();
 
     let extensionInfo = {
@@ -360,11 +502,11 @@ export var SearchTestUtils = {
 
     // Cleanup must be registered before loading the extension to avoid
     // failures for mochitests.
-    if (!skipUnload && this._isMochitest) {
-      gTestScope.registerCleanupFunction(cleanup);
+    if (!skipUnload && this.#isMochitest) {
+      this.#testScope.registerCleanupFunction(cleanup);
     }
 
-    extension = gTestScope.ExtensionTestUtils.loadExtension(extensionInfo);
+    extension = this.#testScope.ExtensionTestUtils.loadExtension(extensionInfo);
     await extension.startup();
     await lazy.AddonTestUtils.waitForSearchProviderStartup(extension);
     let engine = Services.search.getEngineByName(manifest.name);
@@ -384,45 +526,12 @@ export var SearchTestUtils = {
 
     // For xpcshell-tests we must register the unload after adding the extension.
     // See bug 1694409 for why this is.
-    if (!skipUnload && !this._isMochitest) {
-      gTestScope.registerCleanupFunction(cleanup);
+    if (!skipUnload && !this.#isMochitest) {
+      this.#testScope.registerCleanupFunction(cleanup);
     }
 
     return extension;
-  },
-
-  /**
-   * Install a search engine as a system extension to simulate
-   * Normandy updates. For xpcshell-tests only.
-   *
-   * @param {object} [options]
-   *   See {@link createEngineManifest}
-   */
-  async installSystemSearchExtension(options = {}) {
-    options.id = (options.id ?? "example") + "@search.mozilla.org";
-    let xpi = await lazy.AddonTestUtils.createTempWebExtensionFile({
-      manifest: this.createEngineManifest(options),
-      background() {
-        // eslint-disable-next-line no-undef
-        browser.test.sendMessage("started");
-      },
-    });
-    let wrapper = gTestScope.ExtensionTestUtils.expectExtension(options.id);
-
-    const install = await lazy.AddonManager.getInstallForURL(
-      `file://${xpi.path}`,
-      {
-        useSystemLocation: true,
-      }
-    );
-
-    install.install();
-
-    await wrapper.awaitStartup();
-    await wrapper.awaitMessage("started");
-
-    return wrapper;
-  },
+  }
 
   /**
    * Create a search engine extension manifest.
@@ -437,6 +546,9 @@ export var SearchTestUtils = {
    *   The display name to use for the WebExtension.
    * @param {string} [options.version]
    *   The version to use for the WebExtension.
+   * @param {boolean} [options.is_default]
+   *   Whether or not to ask for the search engine in the WebExtension to be
+   *   attempted to set as default.
    * @param {string} [options.favicon_url]
    *   The favicon to use for the search engine in the WebExtension.
    * @param {string} [options.keyword]
@@ -453,8 +565,6 @@ export var SearchTestUtils = {
    *   The suggestion URL to use for the search engine.
    * @param {string} [options.suggest_url_get_params]
    *   The suggestion URL parameters to use for the search engine.
-   * @param {string} [options.search_form]
-   *   The search form to use for the search engine.
    * @returns {object}
    *   The generated manifest.
    */
@@ -475,6 +585,7 @@ export var SearchTestUtils = {
       chrome_settings_overrides: {
         search_provider: {
           name: options.name,
+          is_default: !!options.is_default,
           search_url: options.search_url ?? "https://example.com/",
         },
       },
@@ -516,22 +627,18 @@ export var SearchTestUtils = {
       manifest.chrome_settings_overrides.search_provider.suggest_url_get_params =
         options.suggest_url_get_params;
     }
-    if (options.search_form) {
-      manifest.chrome_settings_overrides.search_provider.search_form =
-        options.search_form;
-    }
     if (options.favicon_url) {
       manifest.chrome_settings_overrides.search_provider.favicon_url =
         options.favicon_url;
     }
     return manifest;
-  },
+  }
 
   /**
    * A mock idleService that allows us to simulate RemoteSettings
    * configuration updates.
    */
-  idleService: {
+  idleService = {
     _observers: new Set(),
 
     _reset() {
@@ -554,7 +661,7 @@ export var SearchTestUtils = {
     removeIdleObserver(observer) {
       this._observers.delete(observer);
     },
-  },
+  };
 
   /**
    * Register the mock idleSerice.
@@ -562,24 +669,52 @@ export var SearchTestUtils = {
   useMockIdleService() {
     let fakeIdleService = MockRegistrar.register(
       "@mozilla.org/widget/useridleservice;1",
-      SearchTestUtils.idleService
+      this.idleService
     );
-    gTestScope.registerCleanupFunction(() => {
-      MockRegistrar.unregister(fakeIdleService);
-    });
-  },
+    this.#idleServiceCID = fakeIdleService;
+  }
 
   /**
-   * Simulates an update to the RemoteSettings configuration.
-   * If parameters are not specified, then the appropriate configuration is
+   * Sets the search configuration and search overrides configuration without
+   * reloading the engines.
+   * If parameters are not specified, the appropriate configuration is
    * reset to the data stored in remote settings.
    *
-   * @param {object[]} [config]
-   *   The replacement configuration.
+   * This is useful for example in xpcshell-tests before the search service
+   * is initialized.
+   *
+   * @param {object[]} [partialConfig]
+   *   The replacement configuration. Will be expanded via `expandPartialConfig`.
    * @param {object[]} [overridesConfig]
    *   The replacement overrides configuration.
    */
-  async updateRemoteSettingsConfig(config, overridesConfig) {
+  setRemoteSettingsConfig(partialConfig, overridesConfig) {
+    let config = this.expandPartialConfig(partialConfig);
+    this.#stubConfig(lazy.SearchUtils.SETTINGS_KEY, config);
+    this.#stubConfig(lazy.SearchUtils.SETTINGS_OVERRIDES_KEY, overridesConfig);
+  }
+
+  /**
+   * Simulates an update to the RemoteSettings configuration.
+   * If parameters are not specified, the appropriate configuration is
+   * reset to the data stored in remote settings.
+   *
+   * This is useful if the search service has already been initialized.
+   * Note that the search service is always initialized in mochitests.
+   *
+   * @param {object[]} [partialConfig]
+   *   The replacement configuration. Will be expanded via `expandPartialConfig`.
+   * @param {object[]} [overridesConfig]
+   *   The replacement overrides configuration.
+   */
+  async updateRemoteSettingsConfig(partialConfig, overridesConfig) {
+    if (!this.#idleServiceCID) {
+      this.useMockIdleService();
+    }
+    let config = this.expandPartialConfig(partialConfig);
+    this.#stubConfig(lazy.SearchUtils.SETTINGS_KEY, config);
+    this.#stubConfig(lazy.SearchUtils.SETTINGS_OVERRIDES_KEY, overridesConfig);
+
     if (!config) {
       let settings = lazy.RemoteSettings(lazy.SearchUtils.SETTINGS_KEY);
       config = await settings.get();
@@ -590,8 +725,7 @@ export var SearchTestUtils = {
       );
       overridesConfig = await settings.get();
     }
-    const reloadObserved =
-      SearchTestUtils.promiseSearchNotification("engines-reloaded");
+    const reloadObserved = this.promiseSearchNotification("engines-reloaded");
     await lazy.RemoteSettings(lazy.SearchUtils.SETTINGS_KEY).emit("sync", {
       data: { current: config },
     });
@@ -603,5 +737,50 @@ export var SearchTestUtils = {
 
     this.idleService._fireObservers("idle");
     await reloadObserved;
-  },
-};
+  }
+
+  /**
+   * Fetches a URL and converts the content to a data URL.
+   *
+   * @param {string} url
+   *   The URL of the file that should be fetched.
+   * @returns {Promise<string>}
+   *   The content of the file as a data URL.
+   */
+  async fetchAsDataUrl(url) {
+    let res = await fetch(url);
+    let blob = await res.blob();
+    let reader = new FileReader();
+    return new Promise((resolve, reject) => {
+      reader.onload = () => {
+        resolve(reader.result);
+      };
+      reader.onerror = () => {
+        reject(new Error("Failed to read blob."));
+      };
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  /**
+   * Extracts post data string from an nsISearchSubmission.
+   * If there is no post data, returns null.
+   *
+   * @param {?nsISearchSubmission} submission
+   * @returns {?string}
+   */
+  getPostDataString(submission) {
+    if (!submission.postData) {
+      return null;
+    }
+
+    let binaryStream = Cc["@mozilla.org/binaryinputstream;1"].createInstance(
+      Ci.nsIBinaryInputStream
+    );
+    binaryStream.setInputStream(submission.postData.data);
+
+    return binaryStream.readBytes(binaryStream.available());
+  }
+}
+
+export const SearchTestUtils = new _SearchTestUtils();

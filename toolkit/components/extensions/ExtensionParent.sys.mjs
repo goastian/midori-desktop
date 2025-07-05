@@ -3,6 +3,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* eslint-disable mozilla/valid-lazy */
 
 /**
  * This module contains code for managing APIs that need to run in the
@@ -14,10 +15,7 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
-/** @type {Lazy} */
-const lazy = {};
-
-ChromeUtils.defineESModuleGetters(lazy, {
+const lazy = XPCOMUtils.declareLazy({
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.sys.mjs",
   BroadcastConduit: "resource://gre/modules/ConduitsParent.sys.mjs",
@@ -32,13 +30,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
   Schemas: "resource://gre/modules/Schemas.sys.mjs",
   getErrorNameForTelemetry: "resource://gre/modules/ExtensionTelemetry.sys.mjs",
   WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.sys.mjs",
-});
-
-XPCOMUtils.defineLazyServiceGetters(lazy, {
-  aomStartup: [
-    "@mozilla.org/addons/addon-manager-startup;1",
-    "amIAddonManagerStartup",
-  ],
+  aomStartup: {
+    service: "@mozilla.org/addons/addon-manager-startup;1",
+    iid: Ci.amIAddonManagerStartup,
+  },
 });
 
 import { ExtensionCommon } from "resource://gre/modules/ExtensionCommon.sys.mjs";
@@ -354,6 +349,7 @@ const ProxyMessenger = {
   async recvRuntimeMessage(arg, { sender }) {
     arg.firstResponse = true;
     let kind = await this.normalizeArgs(arg, sender);
+    arg.query = true;
     let result = await this.conduit.castRuntimeMessage(kind, arg);
     if (!result) {
       // "throw new ExtensionError" cannot be used because then the stack of the
@@ -366,6 +362,7 @@ const ProxyMessenger = {
 
   async recvPortConnect(arg, { sender }) {
     if (arg.native) {
+      /** @type {ParentPort} */
       let port = this.openNative(arg.name, sender).onConnect(arg.portId, this);
       port.senderChildId = sender.childId;
       port.native = true;
@@ -380,6 +377,7 @@ const ProxyMessenger = {
 
     try {
       let kind = await this.normalizeArgs(arg, sender);
+      arg.query = true;
       let all = await this.conduit.castPortConnect(kind, arg);
       resolve();
 
@@ -403,19 +401,19 @@ const ProxyMessenger = {
       // the openNative method).
       return this.ports.get(sender.portId)?.onPortMessage(holder);
     }
-    // NOTE: the following await make sure we await for promised ports
-    // (ports that were not yet open when added to the Map,
-    // see recvPortConnect).
+    // Wait for onConnect dispatch to complete to avoid missing onMessage.
     await this.portPromises.get(sender.portId);
     this.sendPortMessage(sender.portId, holder, !sender.source);
   },
 
-  recvConduitClosed(sender) {
+  async recvConduitClosed(sender) {
     let app = this.ports.get(sender.portId);
     if (this.ports.delete(sender.portId) && sender.native) {
       this.untrackNativeAppPort(app);
       return app.onPortDisconnect();
     }
+    // Wait for onConnect dispatch to complete to avoid missing onDisconnect.
+    await this.portPromises.get(sender.portId);
     this.sendPortDisconnect(sender.portId, null, !sender.source);
   },
 
@@ -426,8 +424,13 @@ const ProxyMessenger = {
   sendPortDisconnect(portId, error, source = true) {
     let port = this.ports.get(portId);
     this.untrackNativeAppPort(port);
-    this.conduit.castPortDisconnect("port", { portId, source, error });
     this.ports.delete(portId);
+    try {
+      // This may throw: https://bugzilla.mozilla.org/show_bug.cgi?id=1931902#c3
+      this.conduit.castPortDisconnect("port", { portId, source, error });
+    } catch (e) {
+      Cu.reportError(e);
+    }
   },
 
   trackNativeAppPort(port) {
@@ -2210,7 +2213,7 @@ class CacheStore {
 // A cache to support faster initialization of extensions at browser startup.
 // All cached data is removed when the browser is updated.
 // Extension-specific data is removed when the add-on is updated.
-var StartupCache = {
+export var StartupCache = {
   _ensureDirectoryPromise: null,
   _saveTask: null,
 
@@ -2366,6 +2369,7 @@ ExtensionParent._resetStartupPromises();
 ChromeUtils.defineLazyGetter(ExtensionParent, "PlatformInfo", () => {
   return Object.freeze({
     os: (function () {
+      /** @type {string} */
       let os = AppConstants.platform;
       if (os == "macosx") {
         os = "mac";
@@ -2384,3 +2388,11 @@ ChromeUtils.defineLazyGetter(ExtensionParent, "PlatformInfo", () => {
     })(),
   });
 });
+
+// Register WPTMessages actor when running under WPT.
+if (ExtensionCommon.isInWPT && AppConstants.NIGHTLY_BUILD) {
+  const { WPTMessagesParent } = ChromeUtils.importESModule(
+    "resource://gre/modules/WPTMessagesParent.sys.mjs"
+  );
+  WPTMessagesParent.init(apiManager);
+}

@@ -32,7 +32,7 @@ export var PlacesDBUtils = {
   /**
    * Executes integrity check and common maintenance tasks.
    *
-   * @return a Map[taskName(String) -> Object]. The Object has the following properties:
+   * @returns a Map[taskName(String) -> Object]. The Object has the following properties:
    *         - succeeded: boolean
    *         - logs: an array of strings containing the messages logged by the task.
    */
@@ -45,16 +45,14 @@ export var PlacesDBUtils = {
       this.removeOldCorruptDBs,
       this.deleteOrphanPreviews,
     ];
-    let telemetryStartTime = Date.now();
+    let timerId = Glean.places.idleMaintenanceTime.start();
     let taskStatusMap = await PlacesDBUtils.runTasks(tasks);
 
     Services.prefs.setIntPref(
       "places.database.lastMaintenance",
-      parseInt(Date.now() / 1000)
+      Math.floor(Date.now() / 1000)
     );
-    Services.telemetry
-      .getHistogramById("PLACES_IDLE_MAINTENANCE_TIME_MS")
-      .add(Date.now() - telemetryStartTime);
+    Glean.places.idleMaintenanceTime.stopAndAccumulate(timerId);
     return taskStatusMap;
   },
 
@@ -65,7 +63,7 @@ export var PlacesDBUtils = {
    * Note: although this function isn't actually async, we keep it async to
    * allow us to maintain a simple, consistent API for the tasks within this object.
    *
-   * @return {Promise}
+   * @returns {Promise}
    *        A promise that resolves with a Map[taskName(String) -> Object].
    *        The Object has the following properties:
    *         - succeeded: boolean
@@ -89,7 +87,7 @@ export var PlacesDBUtils = {
    * Note: although this function isn't actually async, we keep it async to
    * allow us to maintain a simple, consistent API for the tasks within this object.
    *
-   * @returns {Array} An empty array.
+   * @returns {Promise<void[]>} An empty array.
    */
   async _refreshUI() {
     PlacesObservers.notifyListeners([new PlacesPurgeCaches()]);
@@ -99,7 +97,7 @@ export var PlacesDBUtils = {
   /**
    * Checks integrity and tries to fix the database through a reindex.
    *
-   * @return {Promise} resolves if database is sane or is made sane.
+   * @returns {Promise} resolves if database is sane or is made sane.
    * @resolves to an array of logs for this task.
    * @rejects if we're unable to fix corruption or unable to check status.
    */
@@ -135,7 +133,7 @@ export var PlacesDBUtils = {
   /**
    * Checks data coherence and tries to fix most common errors.
    *
-   * @return {Promise} resolves when coherence is checked.
+   * @returns {Promise} resolves when coherence is checked.
    * @resolves to an array of logs for this task.
    * @rejects if database is not coherent.
    */
@@ -170,7 +168,7 @@ export var PlacesDBUtils = {
   /**
    * Runs incremental vacuum on databases supporting it.
    *
-   * @return {Promise} resolves when done.
+   * @returns {Promise} resolves when done.
    * @resolves to an array of logs for this task.
    * @rejects if we were unable to vacuum.
    */
@@ -211,7 +209,7 @@ export var PlacesDBUtils = {
   /**
    * Expire orphan previews that don't have a Places entry anymore.
    *
-   * @return {Promise} resolves when done.
+   * @returns {Promise} resolves when done.
    * @resolves to an array of logs for this task.
    */
   async deleteOrphanPreviews() {
@@ -833,22 +831,22 @@ export var PlacesDBUtils = {
    * Note: although this function isn't actually async, we keep it async to
    * allow us to maintain a simple, consistent API for the tasks within this object.
    *
-   * @return {Promise} resolves when database is vacuumed.
-   * @resolves to an array of logs for this task.
+   * @returns {Promise<Array<string>>}
+   *   Resolves when database is vacuumed to an array of logs for this task.
    * @rejects if we are unable to vacuum database.
    */
   async vacuum() {
     let logs = [];
     let placesDbPath = PathUtils.join(PathUtils.profileDir, "places.sqlite");
     let info = await IOUtils.stat(placesDbPath);
-    logs.push(`Initial database size is ${parseInt(info.size / 1024)}KiB`);
+    logs.push(`Initial database size is ${Math.floor(info.size / 1024)}KiB`);
     return lazy.PlacesUtils.withConnectionWrapper(
       "PlacesDBUtils: vacuum",
       async db => {
         await db.execute("VACUUM");
         logs.push("The database has been vacuumed");
         info = await IOUtils.stat(placesDbPath);
-        logs.push(`Final database size is ${parseInt(info.size / 1024)}KiB`);
+        logs.push(`Final database size is ${Math.floor(info.size / 1024)}KiB`);
         return logs;
       }
     ).catch(() => {
@@ -863,7 +861,7 @@ export var PlacesDBUtils = {
    * Note: although this function isn't actually async, we keep it async to
    * allow us to maintain a simple, consistent API for the tasks within this object.
    *
-   * @return {Promise} resolves when the database in cleaned up.
+   * @returns {Promise} resolves when the database in cleaned up.
    * @resolves to an array of logs for this task.
    */
   async expire() {
@@ -885,15 +883,18 @@ export var PlacesDBUtils = {
       );
     });
 
-    // Force an orphans expiration step.
-    expiration.observe(null, "places-debug-start-expiration", 0);
+    // Typescript sees that expiration can either be an object with the observe
+    // method or a function with the signature of observe.
+    if (typeof expiration !== "function") {
+      expiration.observe(null, "places-debug-start-expiration", "0");
+    }
     return returnPromise;
   },
 
   /**
    * Collects statistical data on the database.
    *
-   * @return {Promise} resolves when statistics are collected.
+   * @returns {Promise} resolves when statistics are collected.
    * @resolves to an array of logs for this task.
    * @rejects if we are unable to collect stats for some reason.
    */
@@ -901,13 +902,13 @@ export var PlacesDBUtils = {
     let logs = [];
     let placesDbPath = PathUtils.join(PathUtils.profileDir, "places.sqlite");
     let info = await IOUtils.stat(placesDbPath);
-    logs.push(`Places.sqlite size is ${parseInt(info.size / 1024)}KiB`);
+    logs.push(`Places.sqlite size is ${Math.floor(info.size / 1024)}KiB`);
     let faviconsDbPath = PathUtils.join(
       PathUtils.profileDir,
       "favicons.sqlite"
     );
     info = await IOUtils.stat(faviconsDbPath);
-    logs.push(`Favicons.sqlite size is ${parseInt(info.size / 1024)}KiB`);
+    logs.push(`Favicons.sqlite size is ${Math.floor(info.size / 1024)}KiB`);
 
     // Execute each step async.
     let pragmas = [
@@ -932,9 +933,19 @@ export var PlacesDBUtils = {
 
     // Get maximum number of unique URIs.
     try {
-      let limitURIs = await Cc["@mozilla.org/places/expiration;1"]
-        .getService(Ci.nsISupports)
-        .wrappedJSObject.getPagesLimit();
+      /**
+       * A partial shape of nsPlacesExpiration, just for what we use in stats.
+       *
+       * @typedef {object} ExpirationWrappedJSObject
+       * @property {function(): Promise<number>} getPagesLimit
+       */
+
+      // This has to be type cast because wrappedJSObject is an object.
+      let expiration = /** @type {ExpirationWrappedJSObject} */ (
+        Cc["@mozilla.org/places/expiration;1"].getService(Ci.nsISupports)
+          .wrappedJSObject
+      );
+      let limitURIs = await expiration.getPagesLimit();
       logs.push(
         "History can store a maximum of " + limitURIs + " unique pages"
       );
@@ -968,10 +979,10 @@ export var PlacesDBUtils = {
       return details.get(a).sizePerc - details.get(b).sizePerc;
     });
     for (let key of entities) {
-      let info = details.get(key);
+      let value = details.get(key);
       logs.push(
-        `${key}: ${info.sizeBytes / 1024}KiB (${info.sizePerc}%), ${
-          info.efficiencyPerc
+        `${key}: ${value.sizeBytes / 1024}KiB (${value.sizePerc}%), ${
+          value.efficiencyPerc
         }% eff.`
       );
     }
@@ -987,34 +998,27 @@ export var PlacesDBUtils = {
    *
    */
   async telemetry() {
-    // This will be populated with one integer property for each probe result,
-    // using the histogram name as key.
-    let probeValues = {};
-
     // The following array contains an ordered list of entries that are
     // processed to collect telemetry data.  Each entry has these properties:
     //
-    //  histogram: Name of the telemetry histogram to update.
+    //  distribution: The Glean distribution metric to update.
+    //  quantity:  The Glean quantity metric to update.
     //  query:     This is optional.  If present, contains a database command
     //             that will be executed asynchronously, and whose result will
     //             be added to the telemetry histogram.
     //  callback:  This is optional.  If present, contains a function that must
-    //             return the value that will be added to the telemetry
-    //             histogram. If a query is also present, its result is passed
+    //             return the value that will be added to the glean metric.
+    //             If a query is also present, its result is passed
     //             as the first argument of the function.  If the function
-    //             raises an exception, no data is added to the histogram.
-    //
-    // Since all queries are executed in order by the database backend, the
-    // callbacks can also use the result of previous queries stored in the
-    // probeValues object.
+    //             raises an exception, no data is added to the metric.
     let probes = [
       {
-        histogram: "PLACES_PAGES_COUNT",
+        distribution: Glean.places.pagesCount,
         query: "SELECT count(*) FROM moz_places",
       },
 
       {
-        histogram: "PLACES_BOOKMARKS_COUNT",
+        distribution: Glean.places.bookmarksCount,
         query: `SELECT count(*) FROM moz_bookmarks b
                     JOIN moz_bookmarks t ON t.id = b.parent
                     AND t.parent <> :tags_folder
@@ -1026,7 +1030,7 @@ export var PlacesDBUtils = {
       },
 
       {
-        histogram: "PLACES_TAGS_COUNT",
+        distribution: Glean.places.tagsCount,
         query: `SELECT count(*) FROM moz_bookmarks
                     WHERE parent = :tags_folder`,
         params: {
@@ -1035,12 +1039,12 @@ export var PlacesDBUtils = {
       },
 
       {
-        histogram: "PLACES_KEYWORDS_COUNT",
+        distribution: Glean.places.keywordsCount,
         query: "SELECT count(*) FROM moz_keywords",
       },
 
       {
-        histogram: "PLACES_SORTED_BOOKMARKS_PERC",
+        distribution: Glean.places.sortedBookmarksPerc,
         query: `SELECT IFNULL(ROUND((
                       SELECT count(*) FROM moz_bookmarks b
                       JOIN moz_bookmarks p ON p.id = b.parent
@@ -1063,7 +1067,7 @@ export var PlacesDBUtils = {
       },
 
       {
-        histogram: "PLACES_TAGGED_BOOKMARKS_PERC",
+        distribution: Glean.places.taggedBookmarksPerc,
         query: `SELECT IFNULL(ROUND((
                       SELECT count(*) FROM moz_bookmarks b
                       JOIN moz_bookmarks t ON t.id = b.parent
@@ -1081,54 +1085,54 @@ export var PlacesDBUtils = {
       },
 
       {
-        histogram: "PLACES_DATABASE_FILESIZE_MB",
+        distribution: Glean.places.databaseFilesize,
         async callback() {
           let placesDbPath = PathUtils.join(
             PathUtils.profileDir,
             "places.sqlite"
           );
           let info = await IOUtils.stat(placesDbPath);
-          return parseInt(info.size / BYTES_PER_MEBIBYTE);
+          return Math.floor(info.size / BYTES_PER_MEBIBYTE);
         },
       },
 
       {
-        histogram: "PLACES_DATABASE_FAVICONS_FILESIZE_MB",
+        distribution: Glean.places.databaseFaviconsFilesize,
         async callback() {
           let faviconsDbPath = PathUtils.join(
             PathUtils.profileDir,
             "favicons.sqlite"
           );
           let info = await IOUtils.stat(faviconsDbPath);
-          return parseInt(info.size / BYTES_PER_MEBIBYTE);
+          return Math.floor(info.size / BYTES_PER_MEBIBYTE);
         },
       },
 
       {
-        histogram: "PLACES_ANNOS_PAGES_COUNT",
+        distribution: Glean.places.annosPagesCount,
         query: "SELECT count(*) FROM moz_annos",
       },
 
       {
-        histogram: "PLACES_MAINTENANCE_DAYSFROMLAST",
+        distribution: Glean.places.maintenanceDaysfromlast,
         callback() {
           try {
             let lastMaintenance = Services.prefs.getIntPref(
               "places.database.lastMaintenance"
             );
-            let nowSeconds = parseInt(Date.now() / 1000);
-            return parseInt((nowSeconds - lastMaintenance) / 86400);
+            let nowSeconds = Math.floor(Date.now() / 1000);
+            return Math.floor((nowSeconds - lastMaintenance) / 86400);
           } catch (ex) {
             return 60;
           }
         },
       },
       {
-        scalar: "places.pages_need_frecency_recalculation",
+        quantity: Glean.places.pagesNeedFrecencyRecalculation,
         query: "SELECT count(*) FROM moz_places WHERE recalc_frecency = 1",
       },
       {
-        scalar: "places.previousday_visits",
+        quantity: Glean.places.previousdayVisits,
         query: `SELECT COUNT(*) from moz_places
                       WHERE hidden=0 AND last_visit_date < (strftime('%s', 'now', 'start of day') * 1000000)
                       AND last_visit_date > (strftime('%s', 'now', 'start of day', '-1 day') * 1000000)
@@ -1147,13 +1151,18 @@ export var PlacesDBUtils = {
       // Report the result of the probe through Telemetry.
       // The resulting promise cannot reject.
       if ("callback" in probe) {
-        val = await probe.callback(val);
+        val = await probe.callback();
       }
-      probeValues[probe.histogram || probe.scalar] = val;
-      if (probe.histogram) {
-        Services.telemetry.getHistogramById(probe.histogram).add(val);
-      } else if (probe.scalar) {
-        Services.telemetry.scalarSet(probe.scalar, val);
+      if (probe.distribution) {
+        // Memory distributions have the method named 'accumulate'
+        // instead of 'accumulateSingleSample'.
+        if ("accumulateSingleSample" in probe.distribution) {
+          probe.distribution.accumulateSingleSample(val);
+        } else if ("accumulate" in probe.distribution) {
+          probe.distribution.accumulate(val);
+        }
+      } else if (probe.quantity) {
+        probe.quantity.set(val);
       } else {
         throw new Error("Unknwon telemetry probe type");
       }
@@ -1163,8 +1172,8 @@ export var PlacesDBUtils = {
   /**
    * Remove old and useless places.sqlite.corrupt files.
    *
-   * @resolves to an array of logs for this task.
-   *
+   * @returns {Promise<Array<string>>}
+   *   Resolves to an array of logs for this task.
    */
   async removeOldCorruptDBs() {
     let logs = [];
@@ -1203,19 +1212,18 @@ export var PlacesDBUtils = {
 
   /**
    * Gets detailed statistics about database entities like tables and indices.
-   * @returns {Map} a Map by table name, containing an object with the following
-   *          properties:
-   *            - efficiencyPerc: percentage filling of pages, an high
-   *              efficiency means most pages are filled up almost completely.
-   *              This value is not particularly useful with a low number of
-   *              pages.
-   *            - sizeBytes: size of the entity in bytes
-   *            - pages: number of pages of the entity
-   *            - sizePerc: percentage of the total database size
-   *            - sequentialityPerc: percentage of sequential pages, this is
-   *              a global value of the database, thus it's the same for every
-   *              entity, and it can be used to evaluate fragmentation and the
-   *              need for vacuum.
+   *
+   * @returns {Promise<Map<string, object>>}
+   *   A Map by table name, containing an object with the following properties:
+   *   - efficiencyPerc: percentage filling of pages, an high efficiency means
+   *     most pages are filled up almost completely. This value is not
+   *     particularly useful with a low number of pages.
+   *   - sizeBytes: size of the entity in bytes
+   *   - pages: number of pages of the entity
+   *   - sizePerc: percentage of the total database size
+   *   - sequentialityPerc: percentage of sequential pages, this is a global
+   *     value of the database, thus it's the same for every entity, and it can
+   *     be used to evaluate fragmentation and the need for vacuum.
    */
   async getEntitiesStats() {
     let db = await lazy.PlacesUtils.promiseDBConnection();
@@ -1253,10 +1261,12 @@ export var PlacesDBUtils = {
   /**
    * Gets detailed statistics about database entities and their respective row
    * counts.
-   * @returns {Array} An array that augments each object returned by
-   *          {@link getEntitiesStats} with the following extra properties:
-   *            - entity: name of the entity
-   *            - count: row count of the entity
+   *
+   * @returns {Promise<Array<{entity: string, count: number}>>}
+   *   An array that augments each object returned by {@link getEntitiesStats}
+   *   with the following extra properties:
+   *   - entity: name of the entity
+   *   - count: row count of the entity
    */
   async getEntitiesStatsAndCounts() {
     let stats = await PlacesDBUtils.getEntitiesStats();
@@ -1285,14 +1295,15 @@ export var PlacesDBUtils = {
   /**
    * Runs a list of tasks, returning a Map when done.
    *
-   * @param tasks
-   *        Array of tasks to be executed, in form of pointers to methods in
-   *        this module.
-   * @return {Promise}
-   *        A promise that resolves with a Map[taskName(String) -> Object].
-   *        The Object has the following properties:
-   *         - succeeded: boolean
-   *         - logs: an array of strings containing the messages logged by the task
+   * @param {Array<Function>} tasks
+   *   An array of tasks to be executed, in the form of pointers to methods in
+   *   this module.
+   *
+   * @returns {Promise<Map<string, {succeeded: boolean, logs: Array<string>}>>}
+   *   A promise that resolves with a Map. The key is the taskname (a string)
+   *   and the value is an object with the following properties:
+   *   - succeeded: Whether the task succeeded.
+   *   - logs: An array of strings containing the messages logged by the task.
    */
   async runTasks(tasks) {
     if (!this._registeredShutdownObserver) {
@@ -1331,12 +1342,14 @@ export var PlacesDBUtils = {
 
 async function integrity(dbName) {
   async function check(db) {
+    /** @type {mozIStorageRow?} */
     let row;
     await db.execute("PRAGMA integrity_check", null, (r, cancel) => {
       row = r;
       cancel();
     });
-    return row.getResultByIndex(0) === "ok";
+    // @ts-ignore - nsIVariant has no overlap with other Javascript types
+    return row?.getResultByIndex(0) === "ok";
   }
 
   // Create a new connection for this check, so we can operate independently
@@ -1356,7 +1369,7 @@ async function integrity(dbName) {
     try {
       await db.execute("REINDEX");
     } catch (ex) {
-      throw new Components.Exception(
+      throw Components.Exception(
         "Impossible to reindex database",
         Cr.NS_ERROR_FILE_CORRUPTED
       );
@@ -1364,7 +1377,7 @@ async function integrity(dbName) {
 
     // Check again.
     if (!(await check(db))) {
-      throw new Components.Exception(
+      throw Components.Exception(
         "The database is still corrupt",
         Cr.NS_ERROR_FILE_CORRUPTED
       );
@@ -1385,7 +1398,7 @@ PlacesDBUtilsIdleMaintenance.prototype = {
           "places.database.lastMaintenance",
           0
         );
-        let nowSeconds = parseInt(Date.now() / 1000);
+        let nowSeconds = Math.floor(Date.now() / 1000);
         if (lastMaintenance < nowSeconds - MAINTENANCE_INTERVAL_SECONDS) {
           PlacesDBUtils.maintenanceOnIdle();
         }

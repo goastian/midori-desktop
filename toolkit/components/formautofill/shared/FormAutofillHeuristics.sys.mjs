@@ -9,25 +9,12 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   CreditCard: "resource://gre/modules/CreditCard.sys.mjs",
   CreditCardRulesets: "resource://gre/modules/shared/CreditCardRuleset.sys.mjs",
+  FieldDetail: "resource://gre/modules/shared/FieldScanner.sys.mjs",
   FieldScanner: "resource://gre/modules/shared/FieldScanner.sys.mjs",
   FormAutofillUtils: "resource://gre/modules/shared/FormAutofillUtils.sys.mjs",
   LabelUtils: "resource://gre/modules/shared/LabelUtils.sys.mjs",
+  MLAutofill: "resource://autofill/MLAutofill.sys.mjs",
 });
-
-/**
- * To help us classify sections, we want to know what fields can appear
- * multiple times in a row.
- * Such fields, like `address-line{X}`, should not break sections.
- */
-const MULTI_FIELD_NAMES = [
-  "address-level3",
-  "address-level2",
-  "address-level1",
-  "tel",
-  "postal-code",
-  "email",
-  "street-address",
-];
 
 /**
  * To help us classify sections that can appear only N times in a row.
@@ -39,44 +26,8 @@ const MULTI_N_FIELD_NAMES = {
   "cc-number": 4,
 };
 
-export class FormSection {
-  static ADDRESS = "address";
-  static CREDIT_CARD = "creditCard";
-
-  #fieldDetails = [];
-
-  #name = "";
-
-  constructor(fieldDetails) {
-    if (!fieldDetails.length) {
-      throw new TypeError("A section should contain at least one field");
-    }
-
-    fieldDetails.forEach(field => this.addField(field));
-
-    const fieldName = fieldDetails[0].fieldName;
-    if (lazy.FormAutofillUtils.isAddressField(fieldName)) {
-      this.type = FormSection.ADDRESS;
-    } else if (lazy.FormAutofillUtils.isCreditCardField(fieldName)) {
-      this.type = FormSection.CREDIT_CARD;
-    } else {
-      throw new Error("Unknown field type to create a section.");
-    }
-  }
-
-  get fieldDetails() {
-    return this.#fieldDetails;
-  }
-
-  get name() {
-    return this.#name;
-  }
-
-  addField(fieldDetail) {
-    this.#name ||= fieldDetail.sectionName;
-    this.#fieldDetails.push(fieldDetail);
-  }
-}
+const CC_TYPE = 1;
+const ADDR_TYPE = 2;
 
 /**
  * Returns the autocomplete information of fields according to heuristics.
@@ -169,6 +120,148 @@ export const FormAutofillHeuristics = {
         desiredValues
       )
     );
+  },
+
+  /**
+   * Return a set of additonal attributes related to a field.
+   *
+   * @param {Element} element
+   *        Form element to examine.
+   * @param {list} fieldNames
+   *        String or list of field names for the element.
+   * @returns {map}
+   *        Returns a map of extra attributes.
+   */
+  parseAdditionalAttributes(element, fieldNames) {
+    let attributes = { isLookup: false };
+    const INTERESTED_FIELDS = [
+      "street-address",
+      "address-line1",
+      "address-line2",
+      "address-line3",
+      "postal-code",
+    ];
+
+    if (typeof fieldNames == "string") {
+      fieldNames = [fieldNames];
+    }
+
+    if (fieldNames?.some(fieldName => INTERESTED_FIELDS.includes(fieldName))) {
+      const regExpLookup = HeuristicsRegExp.getExtraRules("lookup");
+      if (this._matchRegexp(element, regExpLookup)) {
+        attributes.isLookup = true;
+      }
+    }
+
+    return attributes;
+  },
+
+  /**
+   * This function handles the case when two adjacent fields are incorrectly
+   * identified with the same field name. Currently, only given-name and
+   * family-name are handled as possible errors.
+   *
+   * @param {FieldScanner} scanner
+   *        The current parsing status for all elements
+   * @returns {boolean}
+   *        Return true if any field is recognized and updated, otherwise false.
+   */
+  _parseNameFieldsContent(scanner, fieldDetail) {
+    const TARGET_FIELDS = ["given-name", "family-name"];
+    if (!TARGET_FIELDS.includes(fieldDetail.fieldName)) {
+      return false;
+    }
+
+    let idx = scanner.parsingIndex;
+    const detailBefore = scanner.getFieldDetailByIndex(idx - 1);
+    if (fieldDetail.fieldName == detailBefore?.fieldName) {
+      let otherFieldName =
+        fieldDetail.fieldName == TARGET_FIELDS[0]
+          ? TARGET_FIELDS[1]
+          : TARGET_FIELDS[0];
+
+      // If the second field matches both field names, or both fields match
+      // both field names, then we change the second field, since the author
+      // was more likely to miscopy the second field from the first. However,
+      // if the earlier field only matches, then we change the first field.
+      if (
+        this._findMatchedFieldNames(fieldDetail.element, [otherFieldName])
+          .length
+      ) {
+        scanner.updateFieldName(idx, otherFieldName);
+      } else if (
+        this._findMatchedFieldNames(detailBefore.element, [otherFieldName])
+          .length
+      ) {
+        scanner.updateFieldName(idx - 1, otherFieldName);
+      }
+
+      scanner.parsingIndex++;
+      return true;
+    }
+
+    return false;
+  },
+
+  /**
+   * In some languages such French (nom) and German (Name), name can mean either family name or
+   * full name in a form, depending on the context. We want to be sure that if "name" is
+   * detected in the context of "family-name" or "given-name", it is updated accordingly.
+   *
+   * Look for "given-name", "family-name", and "name" fields. If any two of those fields are detected
+   * and one of them is "name", then replace "name" with "family-name" if "name" is accompanied by
+   * "given-name" or vise-versa.
+   *
+   * @param {FieldScanner} scanner
+   *        The current parsing status for all elements
+   * @returns {boolean}
+   *        Return true if any field is recognized and updated, otherwise false.
+   */
+  _parseNameFields(scanner, fieldDetail) {
+    const TARGET_FIELDS = ["name", "given-name", "family-name"];
+
+    if (!TARGET_FIELDS.includes(fieldDetail.fieldName)) {
+      return false;
+    }
+
+    const fields = [];
+    let nameIndex = -1;
+
+    for (let idx = scanner.parsingIndex; ; idx++) {
+      const detail = scanner.getFieldDetailByIndex(idx);
+      if (!TARGET_FIELDS.includes(detail?.fieldName)) {
+        break;
+      }
+      if (detail.fieldName === "name") {
+        nameIndex = idx;
+      }
+      fields.push(detail);
+    }
+
+    if (nameIndex != -1 && fields.length == 2) {
+      //if name is detected and the other of the two fields detected is 'given-name'
+      //then update name to 'name' to 'family-name'
+      if (
+        fields[0].fieldName == "given-name" ||
+        fields[1].fieldName == "given-name"
+      ) {
+        scanner.updateFieldName(nameIndex, "family-name");
+        //if name is detected and the other of the two fields detected is 'family-name'
+        //then update name to 'name' to 'given-name'
+      } else if (
+        fields[0].fieldName == "family-name" ||
+        fields[1].fieldName == "family-name"
+      ) {
+        scanner.updateFieldName(nameIndex, "given-name");
+      } else {
+        return false;
+      }
+
+      scanner.parsingIndex += fields.length;
+      return true;
+    }
+
+    return false;
   },
 
   /**
@@ -268,6 +361,37 @@ export const FormAutofillHeuristics = {
   },
 
   /**
+   * If this is a house number field and there is no address-line1 or
+   * street-address field, change the house number field to address-line1.
+   *
+   * @param {FieldScanner} scanner
+   *        The current parsing status for all elements
+   * @returns {boolean}
+   *          Return true if there is any field can be recognized in the parser,
+   *          otherwise false.
+   */
+  _parseHouseNumberFields(scanner, fieldDetail) {
+    if (fieldDetail?.fieldName == "address-housenumber") {
+      const savedIndex = scanner.parsingIndex;
+      for (let idx = 0; !scanner.parsingFinished; idx++) {
+        const detail = scanner.getFieldDetailByIndex(idx);
+        if (!detail) {
+          break;
+        }
+
+        if (["address-line1", "street-address"].includes(detail?.fieldName)) {
+          return false;
+        }
+      }
+
+      // Return false so additional address handling still gets performed.
+      scanner.updateFieldName(savedIndex, "street-address");
+    }
+
+    return false;
+  },
+
+  /**
    * Try to find the correct address-line[1-3] sequence and correct their field
    * names.
    *
@@ -285,13 +409,42 @@ export const FormAutofillHeuristics = {
       "address-line3",
     ];
 
+    // Store the index of fields that are recognized as 'address-housenumber'
+    let houseNumberFields = [];
+
+    // The number of address-related lookup fields found.
+    let lookupFieldsCount = 0;
+
+    // We need to build a list of the address fields. A list of the indicies
+    // is also needed as the fields with a given name can change positions
+    // during the update.
     const fields = [];
+    const fieldIndicies = [];
     for (let idx = scanner.parsingIndex; !scanner.parsingFinished; idx++) {
       const detail = scanner.getFieldDetailByIndex(idx);
+
+      // Skip over any house number fields. There should only be zero or one,
+      // but we'll skip over them all anyway.
+      if (
+        [detail?.fieldName, detail?.alternativeFieldName].includes(
+          "address-housenumber"
+        )
+      ) {
+        houseNumberFields.push(idx);
+        continue;
+      }
+
       if (!INTERESTED_FIELDS.includes(detail?.fieldName)) {
         break;
       }
+
+      if (detail?.isLookup) {
+        lookupFieldsCount++;
+        continue; // Skip address lookup fields
+      }
+
       fields.push(detail);
+      fieldIndicies.push(idx);
     }
 
     if (!fields.length) {
@@ -304,7 +457,39 @@ export const FormAutofillHeuristics = {
           fields[0].reason != "autocomplete" &&
           ["address-line2", "address-line3"].includes(fields[0].fieldName)
         ) {
-          scanner.updateFieldName(scanner.parsingIndex, "address-line1");
+          // If an earlier address field was already found, ignore any
+          // address-related fields from the OTHER_ADDRESS_FIELDS
+          // list since those can appear in-between the address-level1
+          // and additional address info fields. If no address field
+          // exists, update the field to be address-line1.
+          const OTHER_ADDRESS_FIELDS = [
+            "address-level1",
+            "address-level2",
+            "address-level3",
+            "postal-code",
+            "organization",
+          ];
+          let canUpdate = true;
+
+          for (let idx = scanner.parsingIndex - 1; idx >= 0; idx--) {
+            const detail = scanner.getFieldDetailByIndex(idx);
+            if (
+              detail?.fieldName == "street-address" ||
+              detail?.fieldName == "address-line1" ||
+              detail?.fieldName == "address-housenumber"
+            ) {
+              canUpdate = false;
+              break;
+            }
+
+            if (!OTHER_ADDRESS_FIELDS.includes(detail?.fieldName)) {
+              break;
+            }
+          }
+
+          if (canUpdate) {
+            scanner.updateFieldName(fieldIndicies[0], "address-line1");
+          }
         }
         break;
       case 2:
@@ -314,78 +499,72 @@ export const FormAutofillHeuristics = {
             (fields[1].fieldName == "address-line2" ||
               fields[1].reason != "autocomplete")
           ) {
-            scanner.updateFieldName(
-              scanner.parsingIndex,
-              "address-line1",
-              true
-            );
+            scanner.updateFieldName(fieldIndicies[0], "address-line1", true);
           }
         } else {
-          scanner.updateFieldName(scanner.parsingIndex, "address-line1");
+          scanner.updateFieldName(fieldIndicies[0], "address-line1");
         }
-
-        scanner.updateFieldName(scanner.parsingIndex + 1, "address-line2");
+        scanner.updateFieldName(fieldIndicies[1], "address-line2");
         break;
       case 3:
       default:
-        scanner.updateFieldName(scanner.parsingIndex, "address-line1");
-        scanner.updateFieldName(scanner.parsingIndex + 1, "address-line2");
-        scanner.updateFieldName(scanner.parsingIndex + 2, "address-line3");
+        scanner.updateFieldName(fieldIndicies[0], "address-line1");
+        scanner.updateFieldName(fieldIndicies[1], "address-line2");
+        scanner.updateFieldName(fieldIndicies[2], "address-line3");
         break;
     }
 
-    scanner.parsingIndex += fields.length;
+    // 'address-housenumber' might be recognized alongside another field type
+    // (see `alternativeFieldName`). In this case, we should update the field
+    // name before advancing the parsing index.
+    for (const idx of houseNumberFields) {
+      scanner.updateFieldName(idx, "address-housenumber");
+    }
+    scanner.parsingIndex +=
+      fields.length + houseNumberFields.length + lookupFieldsCount;
     return true;
   },
 
   _parseAddressFields(scanner, fieldDetail) {
-    const INTERESTED_FIELDS = ["address-level1", "address-level2"];
+    let fieldFound = false;
 
-    if (!INTERESTED_FIELDS.includes(fieldDetail.fieldName)) {
-      return false;
-    }
-
-    const fields = [];
-    for (let idx = scanner.parsingIndex; !scanner.parsingFinished; idx++) {
-      const detail = scanner.getFieldDetailByIndex(idx);
-      if (!INTERESTED_FIELDS.includes(detail?.fieldName)) {
-        break;
-      }
-      fields.push(detail);
-    }
-
-    if (!fields.length) {
-      return false;
+    // If there is an address-level3 field but no address-level2 field,
+    // modify to be address-level2.
+    if (
+      fieldDetail.fieldName == "address-level3" &&
+      scanner.getFieldIndexByName("address-level2") == -1
+    ) {
+      scanner.updateFieldName(scanner.parsingIndex, "address-level2");
+      fieldFound = true;
     }
 
     // State & City(address-level2)
-    if (fields.length == 1) {
-      if (fields[0].fieldName == "address-level2") {
-        const prev = scanner.getFieldDetailByIndex(scanner.parsingIndex - 1);
-        if (
-          prev &&
-          !prev.fieldName &&
-          HTMLSelectElement.isInstance(prev.element)
-        ) {
-          scanner.updateFieldName(scanner.parsingIndex - 1, "address-level1");
-          scanner.parsingIndex += 1;
-          return true;
-        }
-        const next = scanner.getFieldDetailByIndex(scanner.parsingIndex + 1);
-        if (
-          next &&
-          !next.fieldName &&
-          HTMLSelectElement.isInstance(next.element)
-        ) {
-          scanner.updateFieldName(scanner.parsingIndex + 1, "address-level1");
-          scanner.parsingIndex += 2;
-          return true;
-        }
+    if (
+      fieldDetail.fieldName == "address-level2" &&
+      scanner.getFieldIndexByName("address-level1") == -1
+    ) {
+      const prev = scanner.getFieldDetailByIndex(scanner.parsingIndex - 1);
+      if (prev && !prev.fieldName && prev.localName == "select") {
+        scanner.updateFieldName(scanner.parsingIndex - 1, "address-level1");
+        scanner.parsingIndex += 1;
+        return true;
       }
+      const next = scanner.getFieldDetailByIndex(scanner.parsingIndex + 1);
+      if (next && !next.fieldName && next.localName == "select") {
+        scanner.updateFieldName(scanner.parsingIndex + 1, "address-level1");
+        scanner.parsingIndex += 2;
+        return true;
+      }
+
+      fieldFound = true;
     }
 
-    scanner.parsingIndex += fields.length;
-    return true;
+    if (fieldFound) {
+      scanner.parsingIndex++;
+      return true;
+    }
+
+    return false;
   },
 
   /**
@@ -462,6 +641,44 @@ export const FormAutofillHeuristics = {
     return false;
   },
 
+  _parseCreditCardNumberFields(scanner, fieldDetail) {
+    const INTERESTED_FIELDS = ["cc-number"];
+
+    if (!INTERESTED_FIELDS.includes(fieldDetail.fieldName)) {
+      return false;
+    }
+
+    const fieldDetails = [];
+    for (let idx = scanner.parsingIndex; ; idx++) {
+      const detail = scanner.getFieldDetailByIndex(idx);
+      if (!INTERESTED_FIELDS.includes(detail?.fieldName)) {
+        break;
+      }
+      fieldDetails.push(detail);
+    }
+
+    // This rule only applies when all the fields are visible
+    if (fieldDetails.some(field => !field.isVisible)) {
+      scanner.parsingIndex += fieldDetails.length;
+      return true;
+    }
+
+    // This is the heuristic to handle special cases where we can have multiple
+    // fields in one section, but only if the field has appeared N times in a row.
+    // For example, websites can use 4 consecutive 4-digit `cc-number` fields
+    // instead of one 16-digit `cc-number` field.
+    const N = MULTI_N_FIELD_NAMES["cc-number"];
+    if (fieldDetails.length == N) {
+      fieldDetails.forEach((fd, index) => {
+        // part starts with 1
+        fd.part = index + 1;
+      });
+      scanner.parsingIndex += fieldDetails.length;
+      return true;
+    }
+
+    return false;
+  },
   /**
    * Look for cc-*-name fields when *-name field is present
    *
@@ -504,17 +721,50 @@ export const FormAutofillHeuristics = {
       prevCCFields.add(detail.fieldName);
     }
 
+    const subsequentCCFields = new Set();
+
+    for (let idx = scanner.parsingIndex + fields.length; ; idx++) {
+      const detail = scanner.getFieldDetailByIndex(idx);
+      if (
+        // For updates we only check subsequent fields that are not of type address or do not have an
+        // alternative field name that is of type address, to avoid falsely updating address
+        // form name fields to cc-*-name.
+        lazy.FormAutofillUtils.getCategoryFromFieldName(detail?.fieldName) !=
+          "creditCard" ||
+        (detail?.alternativeFieldName !== undefined &&
+          lazy.FormAutofillUtils.getCategoryFromFieldName(
+            detail?.alternativeFieldName
+          ) != "creditCard")
+      ) {
+        break;
+      }
+      subsequentCCFields.add(detail.fieldName);
+    }
+
+    const isLastField =
+      scanner.getFieldDetailByIndex(scanner.parsingIndex + 1) === null;
+
     // We update the "name" fields to "cc-name" fields when the following
     // conditions are met:
     // 1. The preceding fields are identified as credit card fields and
     //    contain the "cc-number" field.
     // 2. No "cc-name-*" field is found among the preceding credit card fields.
-    // 3. The "cc-csc" field is not present among the preceding credit card fields.
+    // 3. The "cc-csc" field is either not present among the preceding credit card fields,
+    //    or the current field is the last field in the form. This condition is in place
+    //    because "cc-csc" is often the last field in a credit card form, and we want to
+    //    avoid mistakenly updating fields in subsequent address forms.
     if (
-      ["cc-number"].some(f => prevCCFields.has(f)) &&
-      !["cc-name", "cc-given-name", "cc-family-name", "cc-csc"].some(f =>
-        prevCCFields.has(f)
-      )
+      (["cc-number"].some(f => prevCCFields.has(f)) &&
+        !["cc-name", "cc-given-name", "cc-family-name"].some(f =>
+          prevCCFields.has(f)
+        ) &&
+        (isLastField || !prevCCFields.has("cc-csc"))) || // 4. Or we update when current name field is followed by
+      //    creditcard form fields that contain cc-number
+      //    and no cc-*-name field is detected
+      (["cc-number"].some(f => subsequentCCFields.has(f)) &&
+        !["cc-name", "cc-given-name", "cc-family-name"].some(f =>
+          subsequentCCFields.has(f)
+        ))
     ) {
       // If there is only one field, assume the name field a `cc-name` field
       if (fields.length == 1) {
@@ -537,23 +787,126 @@ export const FormAutofillHeuristics = {
   },
 
   /**
+   * If the given field is of a different type than the previous
+   * field, use the alternate field name instead.
+   */
+  _checkForAlternateField(scanner, fieldDetail) {
+    if (fieldDetail.alternativeFieldName) {
+      const previousField = scanner.getFieldDetailByIndex(
+        scanner.parsingIndex - 1
+      );
+      if (previousField) {
+        const preIsCC = lazy.FormAutofillUtils.isCreditCardField(
+          previousField.fieldName
+        );
+        const curIsCC = lazy.FormAutofillUtils.isCreditCardField(
+          fieldDetail.fieldName
+        );
+
+        // If the current type is different from the previous element's type, use
+        // the alternative fieldname instead.
+        if (preIsCC != curIsCC) {
+          fieldDetail.fieldName = fieldDetail.alternativeFieldName;
+          fieldDetail.reason = "update-heuristic-alternate";
+        }
+      }
+    }
+  },
+
+  /**
    * This function should provide all field details of a form which are placed
    * in the belonging section. The details contain the autocomplete info
    * (e.g. fieldName, section, etc).
    *
-   * @param {HTMLFormElement} form
+   * @param {formLike} formLike
    *        the elements in this form to be predicted the field info.
+   * @param {boolean} ignoreInvisibleInput
+   *        True to NOT run heuristics on invisible <input> fields.
    * @returns {Array<FormSection>}
    *        all sections within its field details in the form.
    */
-  getFormInfo(form) {
-    const elements = Array.from(form.elements).filter(element =>
+  getFormInfo(formLike, ignoreInvisibleInput) {
+    const elements = Array.from(formLike.elements).filter(element =>
       lazy.FormAutofillUtils.isCreditCardOrAddressFieldType(element)
     );
 
-    const scanner = new lazy.FieldScanner(elements, element =>
-      this.inferFieldInfo(element, elements)
-    );
+    let closestHeaders;
+    let closestButtons;
+    if (FormAutofill.isMLExperimentEnabled && elements.length) {
+      closestHeaders = lazy.MLAutofill.closestHeaderAbove(elements);
+      closestButtons = lazy.MLAutofill.closestButtonBelow(elements);
+    }
+
+    const fieldDetails = [];
+    for (let idx = 0; idx < elements.length; idx++) {
+      const element = elements[idx];
+      // Ignore invisible <input>, we still keep invisible <select> since
+      // some websites implements their custom dropdown and use invisible <select>
+      // to store the value.
+      const isVisible = lazy.FormAutofillUtils.isFieldVisible(element);
+      if (
+        !HTMLSelectElement.isInstance(element) &&
+        !isVisible &&
+        ignoreInvisibleInput &&
+        // Include invisible but previously autocompleted inputs in order
+        // keep track of them. This way they will also be cleared on a form clearing action.
+        element.autofillState != lazy.FormAutofillUtils.FIELD_STATES.AUTO_FILLED
+      ) {
+        continue;
+      }
+
+      const [fieldName, inferInfo] = this.inferFieldInfo(element, elements);
+      const attributes = this.parseAdditionalAttributes(element, fieldName);
+
+      // For cases where the heuristic has determined the field name without
+      // running Fathom, still run Fathom so we can compare the results between
+      // Fathom and the ML model. Note that this is only enabled when the ML experiment
+      // is enabled.
+      if (
+        FormAutofill.isMLExperimentEnabled &&
+        inferInfo.fathomConfidence == undefined
+      ) {
+        let fields = this._getPossibleFieldNames(element);
+        fields = fields.filter(r => lazy.CreditCardRulesets.types.includes(r));
+        const [label, score] = this.getFathomField(element, fields, elements);
+        inferInfo.fathomLabel = label;
+        inferInfo.fathomConfidence = score;
+      }
+
+      fieldDetails.push(
+        lazy.FieldDetail.create(element, formLike, fieldName, {
+          autocompleteInfo: inferInfo.autocompleteInfo,
+          fathomLabel: inferInfo.fathomLabel,
+          fathomConfidence: inferInfo.fathomConfidence,
+          isVisible,
+          mlHeaderInput: closestHeaders?.[idx] ?? null,
+          mlButtonInput: closestButtons?.[idx] ?? null,
+          isLookup: attributes.isLookup,
+        })
+      );
+    }
+
+    this.parseAndUpdateFieldNamesContent(fieldDetails);
+
+    lazy.LabelUtils.clearLabelMap();
+
+    return fieldDetails;
+  },
+
+  /**
+   * Similar to `parseAndUpdateFieldNamesParent`. The difference is that
+   * the parsing heuristics used in this function are based on information
+   * not currently passed to the parent process. For example,
+   * text strings from associated labels.
+   *
+   * Note that the heuristics run in this function will not be able
+   * to reference field information across frames.
+   *
+   * @param {Array<FieldDetail>} fieldDetails
+   *        An array of the identified fields.
+   */
+  parseAndUpdateFieldNamesContent(fieldDetails) {
+    const scanner = new lazy.FieldScanner(fieldDetails);
 
     while (!scanner.parsingFinished) {
       const savedIndex = scanner.parsingIndex;
@@ -562,135 +915,53 @@ export const FormAutofillHeuristics = {
       const fieldDetail = scanner.getFieldDetailByIndex(scanner.parsingIndex);
 
       if (
-        this._parsePhoneFields(scanner, fieldDetail) ||
-        this._parseStreetAddressFields(scanner, fieldDetail) ||
-        this._parseAddressFields(scanner, fieldDetail) ||
-        this._parseCreditCardExpiryFields(scanner, fieldDetail) ||
-        this._parseCreditCardNameFields(scanner, fieldDetail)
+        this._parseNameFieldsContent(scanner, fieldDetail) ||
+        this._parsePhoneFields(scanner, fieldDetail)
       ) {
         continue;
       }
 
-      // If there is no field parsed, the parsing cursor can be moved
-      // forward to the next one.
       if (savedIndex == scanner.parsingIndex) {
         scanner.parsingIndex++;
       }
     }
-
-    lazy.LabelUtils.clearLabelMap();
-
-    const fields = scanner.fieldDetails;
-    const sections = [
-      ...this._classifySections(
-        fields.filter(f => lazy.FormAutofillUtils.isAddressField(f.fieldName))
-      ),
-      ...this._classifySections(
-        fields.filter(f =>
-          lazy.FormAutofillUtils.isCreditCardField(f.fieldName)
-        )
-      ),
-    ];
-
-    return sections.sort(
-      (a, b) =>
-        fields.indexOf(a.fieldDetails[0]) - fields.indexOf(b.fieldDetails[0])
-    );
   },
 
   /**
-   * The result is an array contains the sections with its belonging field details.
+   * Iterates through the field details and updates the field names
+   * based on surrounding field information, using various parsing functions.
    *
-   * @param   {Array<FieldDetails>} fieldDetails field detail array to be classified
-   * @returns {Array<FormSection>} The array with the sections.
+   * @param {Array<FieldDetail>} fieldDetails
+   *        An array of the identified fields.
    */
-  _classifySections(fieldDetails) {
-    let sections = [];
-    for (let i = 0; i < fieldDetails.length; i++) {
-      const cur = fieldDetails[i];
-      const [currentSection] = sections.slice(-1);
+  parseAndUpdateFieldNamesParent(fieldDetails) {
+    const scanner = new lazy.FieldScanner(fieldDetails);
 
-      // The section this field might be placed into.
-      let candidateSection = null;
+    while (!scanner.parsingFinished) {
+      const savedIndex = scanner.parsingIndex;
 
-      // Use name group from autocomplete attribute (ex, section-xxx) to look for the section
-      // we might place this field into.
-      // If the field doesn't have a section name, the candidate section is the previous section.
-      if (!currentSection || !cur.sectionName) {
-        candidateSection = currentSection;
-      } else if (cur.sectionName) {
-        // If the field has a section name, the candidate section is the nearest section that
-        // either shares the same name or lacks a name.
-        for (let idx = sections.length - 1; idx >= 0; idx--) {
-          if (!sections[idx].name || sections[idx].name == cur.sectionName) {
-            candidateSection = sections[idx];
-            break;
-          }
-        }
+      const fieldDetail = scanner.getFieldDetailByIndex(scanner.parsingIndex);
+
+      this._checkForAlternateField(scanner, fieldDetail);
+
+      // Attempt to parse the field using different parsers.
+      if (
+        this._parseNameFields(scanner, fieldDetail) ||
+        this._parseHouseNumberFields(scanner, fieldDetail) ||
+        this._parseStreetAddressFields(scanner, fieldDetail) ||
+        this._parseAddressFields(scanner, fieldDetail) ||
+        this._parseCreditCardExpiryFields(scanner, fieldDetail) ||
+        this._parseCreditCardNameFields(scanner, fieldDetail) ||
+        this._parseCreditCardNumberFields(scanner, fieldDetail)
+      ) {
+        continue;
       }
 
-      if (candidateSection) {
-        let createNewSection = true;
-
-        // We might create a new section instead of placing the field in the candiate section if
-        // the section already has a field with the same field name.
-        // We also check visibility for both the fields with the same field name because we don't
-        // wanht to create a new section for an invisible field.
-        if (
-          candidateSection.fieldDetails.find(
-            f => f.fieldName == cur.fieldName && f.isVisible && cur.isVisible
-          )
-        ) {
-          // For some field type, it is common to have multiple fields in one section, for example,
-          // email. In that case, we will not create a new section even when the candidate section
-          // already has a field with the same field name.
-          const [lastFieldDetail] = candidateSection.fieldDetails.slice(-1);
-          if (lastFieldDetail.fieldName == cur.fieldName) {
-            if (MULTI_FIELD_NAMES.includes(cur.fieldName)) {
-              createNewSection = false;
-            } else if (cur.fieldName in MULTI_N_FIELD_NAMES) {
-              // This is the heuristic to handle special cases where we can have multiple
-              // fields in one section, but only if the field has appeared N times in a row.
-              // For example, websites can use 4 consecutive 4-digit `cc-number` fields
-              // instead of one 16-digit `cc-number` field.
-
-              const N = MULTI_N_FIELD_NAMES[cur.fieldName];
-              if (lastFieldDetail.part) {
-                // If `part` is set, we have already identified this field can be
-                // merged previously
-                if (lastFieldDetail.part < N) {
-                  createNewSection = false;
-                  fieldDetails[i].part = lastFieldDetail.part + 1;
-                }
-                // If the next N fields are all the same field, we can merge them
-              } else if (
-                N == 2 ||
-                fieldDetails
-                  .slice(i + 1, i + N - 1)
-                  .every(f => f.fieldName == cur.fieldName)
-              ) {
-                lastFieldDetail.part = 1;
-                fieldDetails[i].part = 2;
-                createNewSection = false;
-              }
-            }
-          }
-        } else {
-          // The field doesn't exist in the candidate section, add it.
-          createNewSection = false;
-        }
-
-        if (!createNewSection) {
-          candidateSection.addField(fieldDetails[i]);
-          continue;
-        }
+      // Move the parsing cursor forward if no parser was applied.
+      if (savedIndex == scanner.parsingIndex) {
+        scanner.parsingIndex++;
       }
-
-      // Create a new section
-      sections.push(new FormSection([fieldDetails[i]]));
     }
-
-    return sections;
   },
 
   _getPossibleFieldNames(element) {
@@ -704,7 +975,20 @@ export const FormAutofillHeuristics = {
       fieldNames.push(...this.ADDRESS_FIELDNAMES);
     }
 
-    if (HTMLSelectElement.isInstance(element)) {
+    if (HTMLInputElement.isInstance(element) && element.type == "search") {
+      const FIELDNAMES_FOR_SEARCH_TYPE = [
+        "address-level1",
+        "address-level2",
+        "address-line1",
+        "address-line2",
+        "address-line3",
+        "street-address",
+        "postal-code",
+      ];
+      fieldNames = fieldNames.filter(name =>
+        FIELDNAMES_FOR_SEARCH_TYPE.includes(name)
+      );
+    } else if (HTMLSelectElement.isInstance(element)) {
       const FIELDNAMES_FOR_SELECT_ELEMENT = [
         "address-level1",
         "address-level2",
@@ -713,9 +997,15 @@ export const FormAutofillHeuristics = {
         "cc-exp-year",
         "cc-exp",
         "cc-type",
+        "tel-country-code",
       ];
       fieldNames = fieldNames.filter(name =>
         FIELDNAMES_FOR_SELECT_ELEMENT.includes(name)
+      );
+    } else if (HTMLTextAreaElement.isInstance(element)) {
+      const FIELDNAMES_FOR_TEXT_AREA_ELEMENT = ["street-address"];
+      fieldNames = fieldNames.filter(name =>
+        FIELDNAMES_FOR_TEXT_AREA_ELEMENT.includes(name)
       );
     }
 
@@ -729,10 +1019,11 @@ export const FormAutofillHeuristics = {
    * @param {Array<HTMLElement>} elements - See `getFathomField` for details
    * @returns {Array} - An array containing:
    *                    [0]the inferred field name
-   *                    [1]autocomplete information if the element has autocompelte attribute, null otherwise.
-   *                    [2]fathom confidence if fathom considers it a cc field, null otherwise.
+   *                    [1]information collected during the inference process. The possible values includes:
+   *                       'autocompleteInfo', 'fathomLabel', and 'fathomConfidence'.
    */
   inferFieldInfo(element, elements = []) {
+    const inferredInfo = {};
     const autocompleteInfo = element.getAutocompleteInfo();
 
     // An input[autocomplete="on"] will not be early return here since it stll
@@ -741,7 +1032,8 @@ export const FormAutofillHeuristics = {
       autocompleteInfo?.fieldName &&
       !["on", "off"].includes(autocompleteInfo.fieldName)
     ) {
-      return [autocompleteInfo.fieldName, autocompleteInfo, null];
+      inferredInfo.autocompleteInfo = autocompleteInfo;
+      return [autocompleteInfo.fieldName, inferredInfo];
     }
 
     const fields = this._getPossibleFieldNames(element);
@@ -751,7 +1043,7 @@ export const FormAutofillHeuristics = {
     // (e.g. HomeDepot, BestBuy), so "tel" type should be not used for "tel"
     // prediction.
     if (element.type == "email" && fields.includes("email")) {
-      return ["email", null, null];
+      return ["email", inferredInfo];
     }
 
     if (lazy.FormAutofillUtils.isFathomCreditCardsEnabled()) {
@@ -764,9 +1056,13 @@ export const FormAutofillHeuristics = {
         fathomFields,
         elements
       );
+      if (confidence != null) {
+        inferredInfo.fathomLabel = matchedFieldName;
+        inferredInfo.fathomConfidence = confidence;
+      }
       // At this point, use fathom's recommendation if it has one
       if (matchedFieldName) {
-        return [matchedFieldName, null, confidence];
+        return [matchedFieldName, inferredInfo];
       }
 
       // Continue to run regex-based heuristics even when fathom doesn't recognize
@@ -782,9 +1078,9 @@ export const FormAutofillHeuristics = {
     // match credit card network names in value or label.
     if (HTMLSelectElement.isInstance(element)) {
       if (this._isExpirationMonthLikely(element)) {
-        return ["cc-exp-month", null, null];
+        return ["cc-exp-month", inferredInfo];
       } else if (this._isExpirationYearLikely(element)) {
-        return ["cc-exp-year", null, null];
+        return ["cc-exp-year", inferredInfo];
       }
 
       const options = Array.from(element.querySelectorAll("option"));
@@ -795,7 +1091,7 @@ export const FormAutofillHeuristics = {
             lazy.CreditCard.getNetworkFromName(option.text)
         )
       ) {
-        return ["cc-type", null, null];
+        return ["cc-type", inferredInfo];
       }
 
       // At least two options match the country name, otherwise some state name might
@@ -812,13 +1108,14 @@ export const FormAutofillHeuristics = {
               countryDisplayNames.includes(option.text)
           )
       ) {
-        return ["country", null, null];
+        return ["country", inferredInfo];
       }
     }
 
     // Find a matched field name using regexp-based heuristics
-    const matchedFieldName = this._findMatchedFieldName(element, fields);
-    return [matchedFieldName, null, null];
+    const matchedFieldNames = this._findMatchedFieldNames(element, fields);
+
+    return [matchedFieldNames, inferredInfo];
   },
 
   /**
@@ -998,12 +1295,17 @@ export const FormAutofillHeuristics = {
   },
 
   /**
-   * Find the first matching field name from a given list of field names
+   * Find matching field names from a given list of field names
    * that matches an HTML element.
    *
    * The function first tries to match the element against a set of
    * pre-defined regular expression rules. If no match is found, it
    * then checks for label-specific rules, if they exist.
+   *
+   * The return value can contain a maximum of two field names, the
+   * first item the first match found, and the second an alternate field
+   * name always of a different type, where the two type are credit card
+   * and address.
    *
    * Note: For label rules, the keyword is often more general
    * (e.g., "^\\W*address"), hence they are only searched within labels
@@ -1011,27 +1313,53 @@ export const FormAutofillHeuristics = {
    *
    * @param {HTMLElement} element The element to match.
    * @param {Array<string>} fieldNames An array of field names to compare against.
-   * @returns {string|null} The name of the matched field, or null if no match was found.
+   * @returns {Array} An array of the matching field names.
    */
-  _findMatchedFieldName(element, fieldNames) {
+  _findMatchedFieldNames(element, fieldNames) {
     if (!fieldNames.length) {
-      return null;
+      return [];
     }
 
-    // Attempt to match the element against the default set of rules
-    let matchedFieldName = fieldNames.find(fieldName =>
-      this._matchRegexp(element, this.RULES[fieldName])
-    );
+    // The first element is the field name, and the second element is the type.
+    let fields = fieldNames.map(name => [
+      name,
+      lazy.FormAutofillUtils.isCreditCardField(name) ? CC_TYPE : ADDR_TYPE,
+    ]);
 
-    // If no match is found, and if a label rule exists for the field,
-    // attempt to match against the label rules
-    if (!matchedFieldName) {
-      matchedFieldName = fieldNames.find(fieldName => {
-        const regexp = this.LABEL_RULES[fieldName];
-        return this._matchRegexp(element, regexp, { attribute: false });
-      });
+    let foundType;
+    let attribute = true;
+    let matchedFieldNames = [];
+
+    // Check RULES first, and only check LABEL_RULES if no match is found.
+    for (let rules of [this.RULES, this.LABEL_RULES]) {
+      // Attempt to match the element against the default set of rules.
+      if (
+        fields.find(field => {
+          const [fieldName, type] = field;
+
+          // The same type has been found already, so skip.
+          if (foundType == type) {
+            return false;
+          }
+
+          if (!this._matchRegexp(element, rules[fieldName], { attribute })) {
+            return false;
+          }
+
+          foundType = type;
+          matchedFieldNames.push(fieldName);
+
+          return matchedFieldNames.length == 2;
+        })
+      ) {
+        break;
+      }
+
+      // Don't match attributes for label rules.
+      attribute = false;
     }
-    return matchedFieldName;
+
+    return matchedFieldNames;
   },
 
   /**

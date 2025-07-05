@@ -2,6 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+use crate::ffiops;
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote, ToTokens};
 use std::path::{Path as StdPath, PathBuf};
@@ -77,14 +78,14 @@ pub fn mod_path() -> syn::Result<String> {
 
 pub fn try_read_field(f: &syn::Field) -> TokenStream {
     let ident = &f.ident;
-    let ty = &f.ty;
+    let try_read = ffiops::try_read(&f.ty);
 
     match ident {
         Some(ident) => quote! {
-            #ident: <#ty as ::uniffi::Lift<crate::UniFfiTag>>::try_read(buf)?,
+            #ident: #try_read(buf)?,
         },
         None => quote! {
-            <#ty as ::uniffi::Lift<crate::UniFfiTag>>::try_read(buf)?,
+            #try_read(buf)?,
         },
     }
 }
@@ -110,21 +111,24 @@ pub fn create_metadata_items(
     let const_ident =
         format_ident!("UNIFFI_META_CONST_{crate_name_upper}_{kind_upper}_{name_upper}");
     let static_ident = format_ident!("UNIFFI_META_{crate_name_upper}_{kind_upper}_{name_upper}");
-
     let checksum_fn = checksum_fn_name.map(|name| {
         let ident = Ident::new(&name, Span::call_site());
         quote! {
             #[doc(hidden)]
-            #[no_mangle]
+            #[unsafe(no_mangle)]
             pub extern "C" fn #ident() -> u16 {
-                #const_ident.checksum()
+                // Force constant evaluation to ensure:
+                // 1. The checksum is computed at compile time; and
+                // 2. The metadata buffer is not embedded into the binary.
+                const CHECKSUM: u16 = #const_ident.checksum();
+                CHECKSUM
             }
         }
     });
 
     quote! {
         const #const_ident: ::uniffi::MetadataBuffer = #metadata_expr;
-        #[no_mangle]
+        #[unsafe(no_mangle)]
         #[doc(hidden)]
         pub static #static_ident: [u8; #const_ident.size] = #const_ident.into_array();
 
@@ -205,33 +209,25 @@ pub fn either_attribute_arg<T: ToTokens>(a: Option<T>, b: Option<T>) -> syn::Res
 pub(crate) fn tagged_impl_header(
     trait_name: &str,
     ident: &impl ToTokens,
-    udl_mode: bool,
+    remote: bool,
 ) -> TokenStream {
     let trait_name = Ident::new(trait_name, Span::call_site());
-    if udl_mode {
+    if remote {
         quote! { impl ::uniffi::#trait_name<crate::UniFfiTag> for #ident }
     } else {
         quote! { impl<T> ::uniffi::#trait_name<T> for #ident }
     }
 }
 
-pub(crate) fn derive_all_ffi_traits(ty: &Ident, udl_mode: bool) -> TokenStream {
-    if udl_mode {
-        quote! { ::uniffi::derive_ffi_traits!(local #ty); }
-    } else {
-        quote! { ::uniffi::derive_ffi_traits!(blanket #ty); }
-    }
-}
-
 pub(crate) fn derive_ffi_traits(
     ty: impl ToTokens,
-    udl_mode: bool,
+    remote: bool,
     trait_names: &[&str],
 ) -> TokenStream {
     let trait_idents = trait_names
         .iter()
         .map(|name| Ident::new(name, Span::call_site()));
-    if udl_mode {
+    if remote {
         quote! {
             #(
                 ::uniffi::derive_ffi_traits!(impl #trait_idents<crate::UniFfiTag> for #ty);
@@ -258,6 +254,13 @@ pub mod kw {
     syn::custom_keyword!(with_try_read);
     syn::custom_keyword!(name);
     syn::custom_keyword!(non_exhaustive);
+    syn::custom_keyword!(lower);
+    syn::custom_keyword!(try_lift);
+    syn::custom_keyword!(remote);
+    syn::custom_keyword!(Record);
+    syn::custom_keyword!(Enum);
+    syn::custom_keyword!(Error);
+    syn::custom_keyword!(Object);
     syn::custom_keyword!(Debug);
     syn::custom_keyword!(Display);
     syn::custom_keyword!(Eq);
@@ -284,7 +287,7 @@ impl Parse for ExternalTypeItem {
 }
 
 pub(crate) fn extract_docstring(attrs: &[Attribute]) -> syn::Result<String> {
-    return attrs
+    attrs
         .iter()
         .filter(|attr| attr.path().is_ident("doc"))
         .map(|attr| {
@@ -297,5 +300,5 @@ pub(crate) fn extract_docstring(attrs: &[Attribute]) -> syn::Result<String> {
             Err(syn::Error::new_spanned(attr, "Cannot parse doc attribute"))
         })
         .collect::<syn::Result<Vec<_>>>()
-        .map(|lines| lines.join("\n"));
+        .map(|lines| lines.join("\n"))
 }

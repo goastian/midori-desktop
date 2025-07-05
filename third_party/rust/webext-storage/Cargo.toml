@@ -14,21 +14,32 @@ edition = "2021"
 name = "webext-storage"
 version = "0.1.0"
 authors = ["sync-team@mozilla.com"]
+build = "build.rs"
 exclude = ["/android"]
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
 readme = "README.md"
 license = "MPL-2.0"
+
+[features]
+default = []
+
+[lib]
+name = "webext_storage"
+path = "src/lib.rs"
 
 [dependencies]
 anyhow = "1.0"
 ffi-support = "0.4"
 lazy_static = "1.4"
-log = "0.4"
 parking_lot = ">=0.11,<=0.12"
 serde = "1"
 serde_derive = "1"
 serde_json = "1"
 thiserror = "1.0"
-uniffi = "0.27.1"
 
 [dependencies.error-support]
 path = "../support/error"
@@ -37,7 +48,7 @@ path = "../support/error"
 path = "../support/interrupt"
 
 [dependencies.rusqlite]
-version = "0.31.0"
+version = "0.33.0"
 features = [
     "functions",
     "bundled",
@@ -59,27 +70,27 @@ features = [
 path = "../../components/sync15"
 features = ["sync-engine"]
 
+[dependencies.uniffi]
+version = "0.29.0"
+
 [dependencies.url]
 version = "2.1"
 features = ["serde"]
 
 [dev-dependencies]
-libsqlite3-sys = "0.28.0"
 tempfile = "3"
 
-[dev-dependencies.env_logger]
-version = "0.10"
-default-features = false
+[dev-dependencies.error-support]
+path = "../support/error"
+features = ["testing"]
+
+[dev-dependencies.serde_json]
+version = "1"
+features = ["preserve_order"]
 
 [dev-dependencies.sql-support]
 path = "../support/sql"
 
-[build-dependencies.nss_build_common]
-path = "../support/rc_crypto/nss/nss_build_common"
-
 [build-dependencies.uniffi]
-version = "0.27.1"
+version = "0.29.0"
 features = ["build"]
-
-[features]
-default = []

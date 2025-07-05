@@ -34,8 +34,8 @@ pub enum MemoryKind<'a> {
 
     /// The data of this memory, starting from 0, explicitly listed
     Inline {
-        /// Whether or not this will be creating a 32-bit memory
-        is_32: bool,
+        /// Whether or not this will be creating a 64-bit memory
+        is64: bool,
         /// The inline data specified for this memory
         data: Vec<DataVal<'a>>,
     },
@@ -63,10 +63,10 @@ impl<'a> Parse<'a> for Memory<'a> {
             || ((parser.peek::<kw::i32>()? || parser.peek::<kw::i64>()?)
                 && parser.peek2::<LParen>()?)
         {
-            let is_32 = if parser.parse::<Option<kw::i32>>()?.is_some() {
-                true
+            let is64 = if parser.parse::<Option<kw::i32>>()?.is_some() {
+                false
             } else {
-                parser.parse::<Option<kw::i64>>()?.is_none()
+                parser.parse::<Option<kw::i64>>()?.is_some()
             };
             let data = parser.parens(|parser| {
                 parser.parse::<kw::data>()?;
@@ -76,7 +76,7 @@ impl<'a> Parse<'a> for Memory<'a> {
                 }
                 Ok(data)
             })?;
-            MemoryKind::Inline { data, is_32 }
+            MemoryKind::Inline { data, is64 }
         } else if l.peek::<u32>()? || l.peek::<kw::i32>()? || l.peek::<kw::i64>()? {
             MemoryKind::Normal(parser.parse()?)
         } else {
@@ -166,10 +166,7 @@ impl<'a> Parse<'a> for Data<'a> {
                     // single-instruction expression.
                     let insn = parser.parse()?;
                     if parser.is_empty() {
-                        return Ok(Expression {
-                            instrs: [insn].into(),
-                            branch_hints: Vec::new(),
-                        });
+                        return Ok(Expression::one(insn));
                     }
 
                     // This is support for what is currently invalid syntax
@@ -183,13 +180,11 @@ impl<'a> Parse<'a> for Data<'a> {
                     //    (data (offset ...))
                     //
                     // but alas
-                    let expr: Expression = parser.parse()?;
+                    let mut expr: Expression = parser.parse()?;
                     let mut instrs = Vec::from(expr.instrs);
                     instrs.push(insn);
-                    Ok(Expression {
-                        instrs: instrs.into(),
-                        branch_hints: Vec::new(),
-                    })
+                    expr.instrs = instrs.into();
+                    Ok(expr)
                 }
             })?;
             DataKind::Active { memory, offset }

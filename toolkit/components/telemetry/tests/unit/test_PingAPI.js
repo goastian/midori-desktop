@@ -560,6 +560,7 @@ add_task(async function test_clientId() {
   // should get a valid client id.
   await TelemetryController.testReset();
   const clientId = await ClientID.getClientID();
+  const profileGroupId = await ClientID.getProfileGroupID();
 
   let id = await TelemetryController.submitExternalPing(
     "test-type",
@@ -575,6 +576,16 @@ add_task(async function test_clientId() {
     ping.clientId,
     clientId,
     "Ping client id should match the global client id."
+  );
+  Assert.ok("profileGroupId" in ping, "Ping should have a profile group id.");
+  Assert.ok(
+    UUID_REGEX.test(ping.profileGroupId),
+    "Profile group id is in UUID format."
+  );
+  Assert.equal(
+    ping.profileGroupId,
+    profileGroupId,
+    "Ping profile group id should match the global profile group id."
   );
 
   // We should have cached the client id now. Lets confirm that by
@@ -657,14 +668,12 @@ add_task(async function test_currentPingData() {
   await TelemetryController.testSetup();
 
   // Setup test data.
-  let h = Telemetry.getHistogramById("TELEMETRY_TEST_RELEASE_OPTOUT");
+  let h = Telemetry.getHistogramById("TELEMETRY_TEST_COUNT");
   h.clear();
-  h.add(1);
-  let k = Telemetry.getKeyedHistogramById(
-    "TELEMETRY_TEST_KEYED_RELEASE_OPTOUT"
-  );
+  Glean.testOnlyIpc.aCounterForHgram.add();
+  let k = Telemetry.getKeyedHistogramById("TELEMETRY_TEST_KEYED_COUNT");
   k.clear();
-  k.add("a", 1);
+  Glean.testOnlyIpc.aLabeledCounterForKeyedCountHgram.a.add(1);
 
   // Get current ping data objects and check that their data is sane.
   for (let subsession of [true, false]) {
@@ -681,7 +690,7 @@ add_task(async function test_currentPingData() {
       "Ping should have the correct reason."
     );
 
-    let id = "TELEMETRY_TEST_RELEASE_OPTOUT";
+    let id = "TELEMETRY_TEST_COUNT";
     Assert.ok(
       id in ping.payload.histograms,
       "Payload should have test count histogram."
@@ -691,7 +700,7 @@ add_task(async function test_currentPingData() {
       1,
       "Test count value should match."
     );
-    id = "TELEMETRY_TEST_KEYED_RELEASE_OPTOUT";
+    id = "TELEMETRY_TEST_KEYED_COUNT";
     Assert.ok(
       id in ping.payload.keyedHistograms,
       "Payload should have keyed test histogram."

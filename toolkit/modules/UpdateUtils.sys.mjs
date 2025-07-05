@@ -19,11 +19,11 @@ const PER_INSTALLATION_PREFS_PLATFORMS = ["win"];
 // located in the update directory which makes it a common setting across all
 // application profiles and allows the Background Update Agent to read it.
 const FILE_UPDATE_CONFIG_JSON = "update-config.json";
-const FILE_UPDATE_LOCALE = "update.locale";
+const FILE_DEFAULT_LOCALE = "default.locale";
 const PREF_APP_DISTRIBUTION = "distribution.id";
 const PREF_APP_DISTRIBUTION_VERSION = "distribution.version";
 
-export const UpdateUtils = {
+export var UpdateUtils = {
   _locale: undefined,
   _configFilePath: undefined,
 
@@ -92,12 +92,6 @@ export const UpdateUtils = {
         case "OS_VERSION":
           replacement = this.OSVersion;
           break;
-        case "OS":
-          return Services.appinfo.OS;
-        case "ARCH":
-          return this.ABI.split("-")[0];
-        case "DISPLAY_VERSION":
-          return AppConstants.MOZ_APP_VERSION_DISPLAY;
         case "LOCALE":
           replacement = locale;
           break;
@@ -122,8 +116,8 @@ export const UpdateUtils = {
   },
 
   /**
-   * Gets the locale from the update.locale file for replacing %LOCALE% in the
-   * update url. The update.locale file can be located in the application
+   * Gets the locale from the default.locale file for replacing %LOCALE% in the
+   * update url. The default.locale file can be located in the application
    * directory or the GRE directory with preference given to it being located in
    * the application directory.
    */
@@ -133,7 +127,7 @@ export const UpdateUtils = {
     }
 
     for (let res of ["app", "gre"]) {
-      const url = "resource://" + res + "/" + FILE_UPDATE_LOCALE;
+      const url = `resource://${res}/${FILE_DEFAULT_LOCALE}`;
       let data;
       try {
         data = await fetch(url);
@@ -145,9 +139,8 @@ export const UpdateUtils = {
         return (this._locale = locale.trim());
       }
     }
-
     console.error(
-      FILE_UPDATE_LOCALE,
+      FILE_DEFAULT_LOCALE,
       " file doesn't exist in either the application or GRE directories"
     );
 
@@ -277,9 +270,8 @@ export const UpdateUtils = {
 
         Services.prefs.addObserver(prefName, async () => {
           let config = { ...gUpdateConfigCache };
-          config[prefName] = await UpdateUtils.readUpdateConfigSetting(
-            prefName
-          );
+          config[prefName] =
+            await UpdateUtils.readUpdateConfigSetting(prefName);
           maybeUpdateConfigChanged(config);
         });
       }

@@ -890,7 +890,7 @@ bool GeckoEditableSupport::DoReplaceText(int32_t aStart, int32_t aEnd,
   NS_ENSURE_SUCCESS(BeginInputTransaction(mDispatcher), false);
 
   RefPtr<TextComposition> composition(GetComposition());
-  MOZ_ASSERT(!composition || !composition->IsEditorHandlingEvent());
+  MOZ_ASSERT(!composition || !composition->EditorIsHandlingLatestChange());
 
   nsString string(aText->ToString());
   const bool composing = !mIMERanges->IsEmpty();
@@ -1134,7 +1134,7 @@ bool GeckoEditableSupport::DoUpdateComposition(int32_t aStart, int32_t aEnd,
    */
   nsString string;
   RefPtr<TextComposition> composition(GetComposition());
-  MOZ_ASSERT(!composition || !composition->IsEditorHandlingEvent());
+  MOZ_ASSERT(!composition || !composition->EditorIsHandlingLatestChange());
 
   if (!composition || !mDispatcher->IsComposing() ||
       uint32_t(aStart) != composition->NativeOffsetOfStartComposition() ||
@@ -1487,12 +1487,15 @@ void GeckoEditableSupport::SetInputContext(const InputContext& aContext,
       ToString(aContext).c_str(), ToString(aAction.mCause).c_str(),
       ToString(aAction.mFocusChange).c_str());
 
+  const bool changingEnabledState =
+      aContext.IsInputAttributeChanged(mInputContext);
+
   mInputContext = aContext;
 
   if (mInputContext.mIMEState.mEnabled != IMEEnabled::Disabled &&
       !ShouldKeyboardDismiss(mInputContext.mHTMLInputType,
                              mInputContext.mHTMLInputMode) &&
-      aAction.UserMightRequestOpenVKB()) {
+      aAction.UserMightRequestOpenVKB() && !changingEnabledState) {
     // Don't reset keyboard when we should simply open the vkb
     mEditable->NotifyIME(EditableListener::NOTIFY_IME_OPEN_VKB);
     return;
@@ -1530,7 +1533,7 @@ void GeckoEditableSupport::NotifyIMEContext(const InputContext& aContext,
   mEditable->NotifyIMEContext(static_cast<int32_t>(aContext.mIMEState.mEnabled),
                               aContext.mHTMLInputType, aContext.mHTMLInputMode,
                               aContext.mActionHint, aContext.mAutocapitalize,
-                              flags);
+                              aContext.mAutocorrect, flags);
 }
 
 InputContext GeckoEditableSupport::GetInputContext() {

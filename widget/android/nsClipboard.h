@@ -20,17 +20,20 @@ class nsClipboard final : public nsBaseClipboard {
   static nsresult GetTextFromTransferable(nsITransferable* aTransferable,
                                           nsString& aText, nsString& aHTML);
 
+  mozilla::Result<int32_t, nsresult> GetNativeClipboardSequenceNumber(
+      ClipboardType aWhichClipboard) override;
+
  protected:
   // Implement the native clipboard behavior.
   NS_IMETHOD SetNativeClipboardData(nsITransferable* aTransferable,
-                                    int32_t aWhichClipboard) override;
-  NS_IMETHOD GetNativeClipboardData(nsITransferable* aTransferable,
-                                    int32_t aWhichClipboard) override;
-  nsresult EmptyNativeClipboardData(int32_t aWhichClipboard) override;
-  mozilla::Result<int32_t, nsresult> GetNativeClipboardSequenceNumber(
-      int32_t aWhichClipboard) override;
+                                    ClipboardType aWhichClipboard) override;
+  virtual mozilla::Result<nsCOMPtr<nsISupports>, nsresult>
+  GetNativeClipboardData(const nsACString& aFlavor,
+                         ClipboardType aWhichClipboard) override;
+  nsresult EmptyNativeClipboardData(ClipboardType aWhichClipboard) override;
   mozilla::Result<bool, nsresult> HasNativeClipboardDataMatchingFlavors(
-      const nsTArray<nsCString>& aFlavorList, int32_t aWhichClipboard) override;
+      const nsTArray<nsCString>& aFlavorList,
+      ClipboardType aWhichClipboard) override;
 };
 
 #endif

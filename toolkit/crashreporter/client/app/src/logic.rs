@@ -7,15 +7,15 @@
 use crate::std::{
     cell::RefCell,
     path::PathBuf,
-    process::Command,
     sync::{
         atomic::{AtomicBool, Ordering::Relaxed},
-        Arc, Mutex,
+        Arc, Mutex, Weak,
     },
 };
 use crate::{
     async_task::AsyncTask,
     config::Config,
+    memory_test::child::Memtest,
     net,
     settings::Settings,
     std,
@@ -24,6 +24,8 @@ use crate::{
 use anyhow::Context;
 use uuid::Uuid;
 
+pub mod annotations;
+
 /// The main crash reporting logic.
 pub struct ReportCrash {
     pub settings: RefCell<Settings>,
@@ -31,7 +33,17 @@ pub struct ReportCrash {
     extra: serde_json::Value,
     settings_file: PathBuf,
     attempted_to_send: AtomicBool,
-    ui: Option<AsyncTask<ReportCrashUIState>>,
+    ui: Option<Arc<AsyncTask<ReportCrashUIState>>>,
+    memtest: RefCell<Option<Memtest>>,
+}
+
+fn modify_extra_for_report(extra: &mut serde_json::Value) {
+    if let Some(map) = extra.as_object_mut() {
+        map.retain(|k, _| annotations::send_in_report(k));
+    }
+
+    extra["SubmittedFrom"] = "Client".into();
+    extra["Throttleable"] = "1".into();
 }
 
 impl ReportCrash {
@@ -47,6 +59,7 @@ impl ReportCrash {
             Err(_) => Default::default(),
             Ok(f) => Settings::from_reader(f)?,
         };
+
         Ok(ReportCrash {
             config,
             extra,
@@ -54,25 +67,24 @@ impl ReportCrash {
             settings: settings.into(),
             attempted_to_send: Default::default(),
             ui: None,
+            memtest: None.into(),
         })
     }
 
     /// Returns whether an attempt was made to send the report.
     pub fn run(mut self) -> anyhow::Result<bool> {
+        self.memtest_according_to_settings();
         self.set_log_file();
         let hash = self.compute_minidump_hash().map(Some).unwrap_or_else(|e| {
-            log::warn!("failed to compute minidump hash: {e}");
+            log::warn!("failed to compute minidump hash: {e:#}");
             None
         });
-        let ping_uuid = self.send_crash_ping(hash.as_deref()).unwrap_or_else(|e| {
-            log::warn!("failed to send crash ping: {e}");
-            None
-        });
+        let ping_uuid = self.send_crash_ping(hash.as_deref());
         if let Err(e) = self.update_events_file(hash.as_deref(), ping_uuid) {
-            log::warn!("failed to update events file: {e}");
+            log::warn!("failed to update events file: {e:#}");
         }
-        self.sanitize_extra();
         self.check_eol_version()?;
+
         if !self.config.auto_submit {
             self.run_ui();
         } else {
@@ -111,70 +123,18 @@ impl ReportCrash {
         Ok(s)
     }
 
-    /// Send a crash ping to telemetry.
+    /// Send crash pings to legacy telemetry and Glean.
     ///
-    /// Returns the crash ping uuid.
-    fn send_crash_ping(&self, minidump_hash: Option<&str>) -> anyhow::Result<Option<Uuid>> {
-        if self.config.ping_dir.is_none() {
-            log::warn!("not sending crash ping because no ping directory configured");
-            return Ok(None);
+    /// Returns the crash ping uuid used in legacy telemetry.
+    fn send_crash_ping(&self, minidump_hash: Option<&str>) -> Option<Uuid> {
+        net::ping::CrashPing {
+            crash_id: self.config.local_dump_id().as_ref(),
+            extra: &self.extra,
+            ping_dir: self.config.ping_dir.as_deref(),
+            minidump_hash,
+            pingsender_path: self.config.installation_program_path("pingsender").as_ref(),
         }
-
-        //TODO support glean crash pings (or change pingsender to do so)
-
-        let dump_id = self.config.local_dump_id();
-        let ping = net::legacy_telemetry::Ping::crash(&self.extra, dump_id.as_ref(), minidump_hash)
-            .context("failed to create telemetry crash ping")?;
-
-        let submission_url = ping
-            .submission_url(&self.extra)
-            .context("failed to generate ping submission URL")?;
-
-        let target_file = self
-            .config
-            .ping_dir
-            .as_ref()
-            .unwrap()
-            .join(format!("{}.json", ping.id()));
-
-        let file = std::fs::File::create(&target_file).with_context(|| {
-            format!(
-                "failed to open ping file {} for writing",
-                target_file.display()
-            )
-        })?;
-
-        serde_json::to_writer(file, &ping).context("failed to serialize telemetry crash ping")?;
-
-        let pingsender_path = self.config.sibling_program_path("pingsender");
-
-        crate::process::background_command(&pingsender_path)
-            .arg(submission_url)
-            .arg(target_file)
-            .spawn()
-            .with_context(|| {
-                format!(
-                    "failed to launch pingsender process at {}",
-                    pingsender_path.display()
-                )
-            })?;
-
-        // TODO asynchronously get pingsender result and log it?
-
-        Ok(Some(ping.id().clone()))
-    }
-
-    /// Remove unneeded entries from the extra file, and add some that indicate from where the data
-    /// is being sent.
-    fn sanitize_extra(&mut self) {
-        if let Some(map) = self.extra.as_object_mut() {
-            // Remove these entries, they don't need to be sent.
-            map.remove("ServerURL");
-            map.remove("StackTraces");
-        }
-
-        self.extra["SubmittedFrom"] = "Client".into();
-        self.extra["Throttleable"] = "1".into();
+        .send()
     }
 
     /// Update the events file with information about the crash ping, minidump hash, and
@@ -395,24 +355,7 @@ impl ReportCrash {
 
     /// Restart the program.
     fn restart_process(&self) {
-        if self.config.restart_command.is_none() {
-            // The restart button should be hidden in this case, so this error should not occur.
-            log::error!("no process configured for restart");
-            return;
-        }
-
-        let mut cmd = Command::new(self.config.restart_command.as_ref().unwrap());
-        cmd.args(&self.config.restart_args)
-            .stdin(std::process::Stdio::null())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        if let Some(xul_app_file) = &self.config.app_file {
-            cmd.env("XUL_APP_FILE", xul_app_file);
-        }
-        log::debug!("restarting process: {:?}", cmd);
-        if let Err(e) = cmd.spawn() {
-            log::error!("failed to restart process: {e}");
-        }
+        self.config.restart_process();
     }
 
     /// Run the crash reporting UI.
@@ -441,7 +384,17 @@ impl ReportCrash {
         );
 
         // Set the UI remote queue.
-        self.ui = Some(crash_ui.async_task());
+        let crash_ui_async_task = Arc::new(crash_ui.async_task());
+        struct PanicHandler(Weak<AsyncTask<ReportCrashUIState>>);
+        impl Drop for PanicHandler {
+            fn drop(&mut self) {
+                if let Some(ui) = self.0.upgrade() {
+                    ui.push(|_| panic!("logic thread panicked"));
+                }
+            }
+        }
+        let logic_panic_handler = PanicHandler(Arc::downgrade(&crash_ui_async_task));
+        self.ui = Some(crash_ui_async_task);
 
         // Spawn a separate thread to handle all interactions with `self`. This prevents blocking
         // the UI for any reason.
@@ -456,22 +409,52 @@ impl ReportCrash {
             // when the UI finishes so the scope can exit).
             let _logic_send = logic_send;
             s.spawn(move || {
+                let _logic_panic_handler = logic_panic_handler;
                 barrier.wait();
                 while let Ok(f) = logic_recv.recv() {
                     f(self);
                 }
-                // Clear the UI remote queue, using it after this point is an error.
+                // Save settings after UI is closed
+                self.save_settings();
+
+                // Clear the UI remote queue, using it after this point is an error. This also
+                // prevents the panic handler from engaging.
                 //
                 // NOTE we do this here because the compiler can't reason about `self` being safely
                 // accessible after `thread::scope` returns. This is effectively the same result
                 // since the above loop will only exit when `logic_send` is dropped at the end of
                 // the scope.
                 self.ui = None;
+
+                // Save settings after UI is closed
+                self.save_settings();
             });
 
             barrier.wait();
             crash_ui.run()
         });
+    }
+
+    /// Overwrite the extra file with the given content.
+    fn update_extra_file(&self, content: &serde_json::Value) -> anyhow::Result<()> {
+        let Some(path) = self.config.extra_file() else {
+            return Ok(());
+        };
+        let f = std::fs::File::create(&path)
+            .with_context(|| format!("failed to truncate {}", path.display().to_string()))?;
+        serde_json::to_writer(f, content)
+            .with_context(|| format!("failed to overwrite {}", path.display().to_string()))
+    }
+
+    /// Start or stop a memtest if settings dictate it.
+    fn memtest_according_to_settings(&self) {
+        let memtest_enabled = self.config.run_memtest && self.settings.borrow().test_hardware;
+        let mut memtest = self.memtest.borrow_mut();
+        if memtest_enabled && memtest.is_none() {
+            *memtest = Memtest::spawn();
+        } else if !memtest_enabled && memtest.is_some() {
+            *memtest = None;
+        }
     }
 }
 
@@ -481,7 +464,8 @@ impl ReportCrash {
     pub fn update_details(&self) {
         use crate::std::fmt::Write;
 
-        let extra = self.current_extra_data();
+        let mut extra = self.current_extra_data();
+        modify_extra_for_report(&mut extra);
 
         let mut details = String::new();
         let mut entries: Vec<_> = extra.as_object().unwrap().into_iter().collect();
@@ -511,7 +495,6 @@ impl ReportCrash {
 
     /// Restart the application and send the crash report.
     pub fn restart(&self) {
-        self.save_settings();
         // Get the program restarted before sending the report.
         self.restart_process();
         let result = self.try_send();
@@ -520,7 +503,6 @@ impl ReportCrash {
 
     /// Quit and send the crash report.
     pub fn quit(&self) {
-        self.save_settings();
         let result = self.try_send();
         self.close_window(result.is_some());
     }
@@ -542,13 +524,55 @@ impl ReportCrash {
     /// Returns whether the report was received (regardless of whether the response was processed
     /// successfully), if a report could be sent at all (based on the configuration).
     fn try_send(&self) -> Option<bool> {
+        // Whether the user wants to submit the report or not, we record that we attempted a send
+        // (so to speak), confirming that we got to the point of user input. This will retain the
+        // crash files rather than deleting them. E.g., the user may want to submit it later through
+        // `about:crashes`.
         self.attempted_to_send.store(true, Relaxed);
+
         let send_report = self.settings.borrow().submit_report;
 
         if !send_report {
             log::trace!("not sending report due to user setting");
             return None;
         }
+
+        // Potentially start/stop a memtest now, in case the settings have changed since launch.
+        self.memtest_according_to_settings();
+
+        // Incorporate user input into the extra data (which is acknowledged by "submit report"
+        // being enabled).
+        let mut extra = self.current_extra_data();
+
+        // Store memtest output. The previous `memtest_according_to_settings()` ensures that we
+        // only add the output if the setting is enabled.
+        if let Some(memtest) = self.memtest.borrow_mut().take() {
+            if let Some(ui) = &self.ui {
+                ui.push(|r| *r.submit_state.borrow_mut() = SubmitState::WaitingHardwareTests);
+            }
+
+            match memtest.collect_output_for_submission() {
+                Err(e) => log::error!("couldn't get memtest output: {e:#}"),
+                Ok(s) => extra["MemtestOutput"] = s.into(),
+            }
+        }
+
+        if let Some(ui) = &self.ui {
+            ui.push(|r| *r.submit_state.borrow_mut() = SubmitState::InProgress);
+        }
+
+        // Update the extra file, since we may not be deleting it per the `attempted_to_send`
+        // update, and it now matches exactly what we'll be sending.
+        if let Err(e) = self.update_extra_file(&extra) {
+            log::error!("failed to update extra file: {e:#}");
+            // We can proceed in the event of an error; this is best-effort and serves as
+            // insurance in case submission fails.
+        }
+
+        modify_extra_for_report(&mut extra);
+
+        // The extra contents cannot change beyond this point.
+        let extra = extra;
 
         // TODO? load proxy info from libgconf on linux
 
@@ -557,12 +581,14 @@ impl ReportCrash {
             return None;
         };
 
-        if let Some(ui) = &self.ui {
-            ui.push(|r| *r.submit_state.borrow_mut() = SubmitState::InProgress);
-        }
+        let Some(url) = url.to_str() else {
+            log::warn!(
+                "not sending report due to provided url containing invalid utf8 characters: {url:?}"
+            );
+            return None;
+        };
 
         // Send the report to the server.
-        let extra = self.current_extra_data();
         let memory_file = self.config.memory_file();
         let report = net::report::CrashReport {
             extra: &extra,

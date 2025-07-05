@@ -327,13 +327,28 @@ window.onload = function () {
         // onchange handler to be re-called without having to go via the file
         // picker.
         if (!aElem.skipClick) {
+          // Attempts to reopen the picker immediately might fail because the
+          // focus may not have switched back on some platform, so explicitly
+          //  wait for focus here.
+          if (!this.ownerDocument.hasFocus()) {
+            let input = this;
+            this.ownerDocument.addEventListener(
+              "focus",
+              () => {
+                input.click();
+              },
+              { once: true }
+            );
+            return;
+          }
           this.click();
         }
-      } else {
-        let filename1 = this.filename1;
-        delete this.filename1;
-        updateAboutMemoryFromTwoFiles(filename1, file.mozFullPath);
+        return;
       }
+
+      let filename1 = this.filename1;
+      delete this.filename1;
+      updateAboutMemoryFromTwoFiles(filename1, file.mozFullPath);
     }
   );
 
@@ -508,19 +523,11 @@ window.onload = function () {
   appendElementWithText(gFooter, "div", "legend", legendText1);
   appendElementWithText(gFooter, "div", "legend hiddenOnMobile", legendText2);
 
-  // See if we're loading from a file.  (Because about:memory is a non-standard
-  // URL, location.search is undefined, so we have to use location.href
-  // instead.)
-  let search = location.href.split("?")[1];
-  if (search) {
-    let searchSplit = search.split("&");
-    for (let s of searchSplit) {
-      if (s.toLowerCase().startsWith("file=")) {
-        let filename = s.substring("file=".length);
-        updateAboutMemoryFromFile(decodeURIComponent(filename));
-        return;
-      }
-    }
+  // See if we're loading from a file.
+  let { searchParams } = URL.fromURI(document.documentURIObject);
+  let fileParam = searchParams.get("file");
+  if (fileParam) {
+    updateAboutMemoryFromFile(fileParam);
   }
 };
 

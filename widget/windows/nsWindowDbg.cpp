@@ -147,7 +147,7 @@ AutoProfilerMessageMarker::~AutoProfilerMessageMarker() {
 
 // Using an unordered_set so we can initialize this with nice syntax instead of
 // having to add them one at a time to a mozilla::HashSet.
-std::unordered_set<UINT> gEventsToLogOriginalParams = {
+MOZ_RUNINIT std::unordered_set<UINT> gEventsToLogOriginalParams = {
     WM_WINDOWPOSCHANGING,  // (dummy comments for clang-format)
     WM_SIZING,             //
     WM_STYLECHANGING,
@@ -160,7 +160,7 @@ std::unordered_set<UINT> gEventsToLogOriginalParams = {
 // If you add an event here, you must add cases for these to
 // MakeMessageSpecificData() and AppendFriendlyMessageSpecificData()
 // in nsWindowLoggedMessages.cpp.
-std::unordered_set<UINT> gEventsToRecordInAboutPage = {
+MOZ_RUNINIT std::unordered_set<UINT> gEventsToRecordInAboutPage = {
     WM_WINDOWPOSCHANGING,  // (dummy comments for clang-format)
     WM_WINDOWPOSCHANGED,   //
     WM_SIZING,
@@ -279,6 +279,9 @@ bool AppendFlagsInfo(nsCString& str, uint64_t flags,
   return !firstAppend;
 }
 
+std::unordered_map<uint64_t, const char*> const& HitTestResults();
+nsAutoString GetNameFromAtom(LPCWSTR atomOrName);
+
 // if mResult is not set, this is used to log the parameters passed in the
 // message, otherwise we are logging the parameters after we have handled the
 // message. This is useful for events where we might change the parameters while
@@ -290,6 +293,12 @@ bool NativeEventLogger::NativeEventLoggerInternal() {
     // These messages often take up more than 90% of logs if not filtered out.
     if (mMsg == WM_SETCURSOR || mMsg == WM_MOUSEMOVE || mMsg == WM_NCHITTEST) {
       return LogLevel::Verbose;
+    }
+    // This "raw" message is usually immediately followed by a processed
+    // interpretation such as WM_POINTERUPDATE, with which it's mostly
+    // redundant.
+    if (mMsg == WM_TOUCH) {
+      return LogLevel::Debug;
     }
     if (gLastEventMsg == mMsg) {
       return LogLevel::Debug;
@@ -328,9 +337,19 @@ bool NativeEventLogger::NativeEventLoggerInternal() {
     gLastEventMsg = mMsg;
     if (writeToWindowsLog) {
       const auto& eventMsgInfo = gAllEvents.find(mMsg);
-      const char* msgText = eventMsgInfo != gAllEvents.end()
-                                ? eventMsgInfo->second.mStr
-                                : nullptr;
+
+      nsAutoCString msgText = [&]() -> nsAutoCString {
+        // (dynamically-registered string messages)
+        if (mMsg >= 0xC000 && mMsg <= 0xFFFF) {
+          return NS_ConvertUTF16toUTF8(
+              GetNameFromAtom((LPCWSTR)(uintptr_t)mMsg));
+        }
+        if (eventMsgInfo != gAllEvents.end()) {
+          return nsAutoCString(eventMsgInfo->second.mStr);
+        }
+        return nsAutoCString{};
+      }();
+
       nsAutoCString paramInfo;
       if (eventMsgInfo != gAllEvents.end()) {
         eventMsgInfo->second.LogParameters(paramInfo, mWParam, mLParam,
@@ -338,16 +357,25 @@ bool NativeEventLogger::NativeEventLoggerInternal() {
       } else {
         paramInfo = DefaultParamInfo(mWParam, mLParam, isPreCall);
       }
-      const char* resultMsg = mResult.isSome()
-                                  ? (mResult.value() ? "true" : "false")
-                                  : "initial call";
+      const char* resultMsg = [&]() {
+        if (!mResult.isSome()) return "initial call";
+        if (mMsg == WM_NCHITTEST) {
+          auto const& htr = HitTestResults();
+          if (auto const it = htr.find(mRetValue); it != htr.end()) {
+            return it->second;
+          }
+          return "undocumented value?";
+        }
+        return mResult.value() ? "true" : "false";
+      }();
+
       nsAutoCString logMessage;
       logMessage.AppendPrintf(
           "%s | %6ld %08" PRIX64 " - 0x%04X %s%s%s: 0x%08" PRIX64 " (%s)\n",
           mMsgLoopName, mEventCounter.valueOr(gEventCounter),
           reinterpret_cast<uint64_t>(mHwnd), mMsg,
-          msgText ? msgText : "Unknown", paramInfo.IsEmpty() ? "" : " ",
-          paramInfo.get(),
+          !msgText.IsEmpty() ? msgText.Data() : "Unknown",
+          paramInfo.IsEmpty() ? "" : " ", paramInfo.get(),
           mResult.isSome() ? static_cast<uint64_t>(mRetValue) : 0, resultMsg);
       const char* logMessageData = logMessage.Data();
       MOZ_LOG(gWindowsEventLog, targetLogLevel, ("%s", logMessageData));
@@ -391,8 +419,36 @@ void RectParamInfo(nsCString& str, uint64_t value, const char* name,
                    rect->top, rect->right, rect->bottom);
 }
 
-#define VALANDNAME_ENTRY(_msg) \
-  { _msg, #_msg }
+#define VALANDNAME_ENTRY(_msg) {_msg, #_msg}
+
+nsAutoString GetNameFromAtom(LPCWSTR atomOrName) {
+  // null; should never happen?
+  if (atomOrName == nullptr) {
+    return nsAutoString(L"<null>");
+  }
+  // not an atom; return directly
+  if (uintptr_t(atomOrName) > 0xFFFF) {
+    return nsAutoString(atomOrName);
+  }
+
+  UINT const atom = (UINT)(uintptr_t)atomOrName;
+
+  nsAutoString out;
+  out.AppendASCII("atom 0x"_ns);
+  out.AppendInt(atom, 16);
+  out.AppendASCII(": "_ns);
+
+  WCHAR buf[256] = {0};
+  // undocumented, but widely considered reliable
+  BOOL const ok = ::GetClipboardFormatNameW(atom, buf, 255);
+  if (!ok) {
+    out.AppendASCII("unknown atom"_ns);
+  } else {
+    out.Append(buf);
+  }
+
+  return out;
+}
 
 void CreateStructParamInfo(nsCString& str, uint64_t value, const char* name,
                            bool /* isPreCall */) {
@@ -404,9 +460,10 @@ void CreateStructParamInfo(nsCString& str, uint64_t value, const char* name,
   str.AppendPrintf(
       "%s: hInstance=%p hMenu=%p hwndParent=%p lpszName=%S lpszClass=%S x=%d "
       "y=%d cx=%d cy=%d",
-      name, createStruct->hInstance, createStruct->hMenu,
-      createStruct->hwndParent, createStruct->lpszName, createStruct->lpszClass,
-      createStruct->x, createStruct->y, createStruct->cx, createStruct->cy);
+      name ? name : "<no name>", createStruct->hInstance, createStruct->hMenu,
+      createStruct->hwndParent, createStruct->lpszName,
+      GetNameFromAtom(createStruct->lpszClass).getW(), createStruct->x,
+      createStruct->y, createStruct->cx, createStruct->cy);
   str.AppendASCII(" ");
   const static nsTArray<EnumValueAndName> windowStyles = {
       // these combinations of other flags need to come first
@@ -484,6 +541,12 @@ void PointsParamInfo(nsCString& str, uint64_t value, const char* name,
 
 void VirtualKeyParamInfo(nsCString& result, uint64_t param, const char* name,
                          bool /* isPreCall */) {
+  // check that `name` is of length 2
+  constexpr static const auto ASCII_KEY_ENTRY_HELPER =
+      [](const char(&name)[2]) -> uint64_t { return name[0]; };
+
+#define ASCII_KEY_ENTRY(name) {ASCII_KEY_ENTRY_HELPER(name), name}
+
   const static std::unordered_map<uint64_t, const char*> virtualKeys{
       VALANDNAME_ENTRY(VK_LBUTTON),
       VALANDNAME_ENTRY(VK_RBUTTON),
@@ -627,42 +690,44 @@ void VirtualKeyParamInfo(nsCString& result, uint64_t param, const char* name,
       VALANDNAME_ENTRY(VK_NONAME),
       VALANDNAME_ENTRY(VK_PA1),
       VALANDNAME_ENTRY(VK_OEM_CLEAR),
-      {0x30, "0"},
-      {0x31, "1"},
-      {0x32, "2"},
-      {0x33, "3"},
-      {0x34, "4"},
-      {0x35, "5"},
-      {0x36, "6"},
-      {0x37, "7"},
-      {0x38, "8"},
-      {0x39, "9"},
-      {0x41, "A"},
-      {0x42, "B"},
-      {0x43, "C"},
-      {0x44, "D"},
-      {0x45, "E"},
-      {0x46, "F"},
-      {0x47, "G"},
-      {0x48, "H"},
-      {0x49, "I"},
-      {0x4A, "J"},
-      {0x4B, "K"},
-      {0x4C, "L"},
-      {0x4D, "M"},
-      {0x4E, "N"},
-      {0x4F, "O"},
-      {0x50, "P"},
-      {0x51, "Q"},
-      {0x52, "S"},
-      {0x53, "T"},
-      {0x54, "U"},
-      {0x55, "V"},
-      {0x56, "W"},
-      {0x57, "X"},
-      {0x58, "Y"},
-      {0x59, "Z"},
+      ASCII_KEY_ENTRY("0"),
+      ASCII_KEY_ENTRY("1"),
+      ASCII_KEY_ENTRY("2"),
+      ASCII_KEY_ENTRY("3"),
+      ASCII_KEY_ENTRY("4"),
+      ASCII_KEY_ENTRY("5"),
+      ASCII_KEY_ENTRY("6"),
+      ASCII_KEY_ENTRY("7"),
+      ASCII_KEY_ENTRY("8"),
+      ASCII_KEY_ENTRY("9"),
+      ASCII_KEY_ENTRY("A"),
+      ASCII_KEY_ENTRY("B"),
+      ASCII_KEY_ENTRY("C"),
+      ASCII_KEY_ENTRY("D"),
+      ASCII_KEY_ENTRY("E"),
+      ASCII_KEY_ENTRY("F"),
+      ASCII_KEY_ENTRY("G"),
+      ASCII_KEY_ENTRY("H"),
+      ASCII_KEY_ENTRY("I"),
+      ASCII_KEY_ENTRY("J"),
+      ASCII_KEY_ENTRY("K"),
+      ASCII_KEY_ENTRY("L"),
+      ASCII_KEY_ENTRY("M"),
+      ASCII_KEY_ENTRY("N"),
+      ASCII_KEY_ENTRY("O"),
+      ASCII_KEY_ENTRY("P"),
+      ASCII_KEY_ENTRY("Q"),
+      ASCII_KEY_ENTRY("R"),
+      ASCII_KEY_ENTRY("S"),
+      ASCII_KEY_ENTRY("T"),
+      ASCII_KEY_ENTRY("U"),
+      ASCII_KEY_ENTRY("V"),
+      ASCII_KEY_ENTRY("W"),
+      ASCII_KEY_ENTRY("X"),
+      ASCII_KEY_ENTRY("Y"),
+      ASCII_KEY_ENTRY("Z"),
   };
+#undef ASCII_KEY_ENTRY
   AppendEnumValueInfo(result, param, virtualKeys, name);
 }
 
@@ -971,7 +1036,7 @@ nsAutoCString WmSizeParamInfo(uint64_t wParam, uint64_t lParam,
   return result;
 }
 
-const nsTArray<EnumValueAndName> windowPositionFlags = {
+MOZ_RUNINIT const nsTArray<EnumValueAndName> windowPositionFlags = {
     VALANDNAME_ENTRY(SWP_DRAWFRAME),  VALANDNAME_ENTRY(SWP_HIDEWINDOW),
     VALANDNAME_ENTRY(SWP_NOACTIVATE), VALANDNAME_ENTRY(SWP_NOCOPYBITS),
     VALANDNAME_ENTRY(SWP_NOMOVE),     VALANDNAME_ENTRY(SWP_NOOWNERZORDER),
@@ -979,6 +1044,25 @@ const nsTArray<EnumValueAndName> windowPositionFlags = {
     VALANDNAME_ENTRY(SWP_NOSIZE),     VALANDNAME_ENTRY(SWP_NOZORDER),
     VALANDNAME_ENTRY(SWP_SHOWWINDOW),
 };
+
+static std::unordered_map<uint64_t, const char*> const& HitTestResults() {
+  static const std::unordered_map<uint64_t, const char*> data{
+      VALANDNAME_ENTRY(HTBORDER),     VALANDNAME_ENTRY(HTBOTTOM),
+      VALANDNAME_ENTRY(HTBOTTOMLEFT), VALANDNAME_ENTRY(HTBOTTOMRIGHT),
+      VALANDNAME_ENTRY(HTCAPTION),    VALANDNAME_ENTRY(HTCLIENT),
+      VALANDNAME_ENTRY(HTCLOSE),      VALANDNAME_ENTRY(HTERROR),
+      VALANDNAME_ENTRY(HTGROWBOX),    VALANDNAME_ENTRY(HTHELP),
+      VALANDNAME_ENTRY(HTHSCROLL),    VALANDNAME_ENTRY(HTLEFT),
+      VALANDNAME_ENTRY(HTMENU),       VALANDNAME_ENTRY(HTMAXBUTTON),
+      VALANDNAME_ENTRY(HTMINBUTTON),  VALANDNAME_ENTRY(HTNOWHERE),
+      VALANDNAME_ENTRY(HTREDUCE),     VALANDNAME_ENTRY(HTRIGHT),
+      VALANDNAME_ENTRY(HTSIZE),       VALANDNAME_ENTRY(HTSYSMENU),
+      VALANDNAME_ENTRY(HTTOP),        VALANDNAME_ENTRY(HTTOPLEFT),
+      VALANDNAME_ENTRY(HTTOPRIGHT),   VALANDNAME_ENTRY(HTTRANSPARENT),
+      VALANDNAME_ENTRY(HTVSCROLL),    VALANDNAME_ENTRY(HTZOOM),
+  };
+  return data;
+}
 
 void WindowPosParamInfo(nsCString& str, uint64_t value, const char* name,
                         bool /* isPreCall */) {
@@ -1066,22 +1150,7 @@ void ActivateWParamInfo(nsCString& result, uint64_t wParam, const char* name,
 
 void HitTestParamInfo(nsCString& result, uint64_t param, const char* name,
                       bool /* isPreCall */) {
-  const static std::unordered_map<uint64_t, const char*> hitTestResults{
-      VALANDNAME_ENTRY(HTBORDER),     VALANDNAME_ENTRY(HTBOTTOM),
-      VALANDNAME_ENTRY(HTBOTTOMLEFT), VALANDNAME_ENTRY(HTBOTTOMRIGHT),
-      VALANDNAME_ENTRY(HTCAPTION),    VALANDNAME_ENTRY(HTCLIENT),
-      VALANDNAME_ENTRY(HTCLOSE),      VALANDNAME_ENTRY(HTERROR),
-      VALANDNAME_ENTRY(HTGROWBOX),    VALANDNAME_ENTRY(HTHELP),
-      VALANDNAME_ENTRY(HTHSCROLL),    VALANDNAME_ENTRY(HTLEFT),
-      VALANDNAME_ENTRY(HTMENU),       VALANDNAME_ENTRY(HTMAXBUTTON),
-      VALANDNAME_ENTRY(HTMINBUTTON),  VALANDNAME_ENTRY(HTNOWHERE),
-      VALANDNAME_ENTRY(HTREDUCE),     VALANDNAME_ENTRY(HTRIGHT),
-      VALANDNAME_ENTRY(HTSIZE),       VALANDNAME_ENTRY(HTSYSMENU),
-      VALANDNAME_ENTRY(HTTOP),        VALANDNAME_ENTRY(HTTOPLEFT),
-      VALANDNAME_ENTRY(HTTOPRIGHT),   VALANDNAME_ENTRY(HTTRANSPARENT),
-      VALANDNAME_ENTRY(HTVSCROLL),    VALANDNAME_ENTRY(HTZOOM),
-  };
-  AppendEnumValueInfo(result, param, hitTestResults, name);
+  AppendEnumValueInfo(result, param, HitTestResults(), name);
 }
 
 void SetCursorLParamInfo(nsCString& result, uint64_t lParam,
@@ -1136,6 +1205,48 @@ void ResolutionParamInfo(nsCString& result, uint64_t value, const char* name,
                       HIWORD(value));
 }
 
+void PointerIdWParamInfo(nsCString& result, uint64_t value,
+                         const char* /* name */, bool /* isPreCall */) {
+  result.AppendPrintf("id=0x%02x ", GET_POINTERID_WPARAM(value));
+}
+
+void PointerButtonsWParamInfo(nsCString& result, uint64_t value,
+                              const char* /* name */, bool /* isPreCall */) {
+  constexpr auto bit = [](bool b) -> char { return b ? '1' : '0'; };
+  constexpr auto x = [](bool b) -> char { return b ? 'X' : '.'; };
+
+  PointerIdWParamInfo(result, value, "", false);
+  result.AppendPrintf(
+      " [new=%c primary=%c live=%c contact=%c] buttons=%c%c%c%c%c",
+      // clang-format off
+      bit(IS_POINTER_NEW_WPARAM(value)),
+      bit(IS_POINTER_PRIMARY_WPARAM(value)),
+      bit(IS_POINTER_INRANGE_WPARAM(value)),
+      bit(IS_POINTER_INCONTACT_WPARAM(value)),
+
+      x(IS_POINTER_FIRSTBUTTON_WPARAM(value)),
+      x(IS_POINTER_SECONDBUTTON_WPARAM(value)),
+      x(IS_POINTER_THIRDBUTTON_WPARAM(value)),
+      x(IS_POINTER_FOURTHBUTTON_WPARAM(value)),
+      x(IS_POINTER_FIFTHBUTTON_WPARAM(value))
+      // clang-format on
+  );
+}
+
+void PointerHittestWParamInfo(nsCString& result, uint64_t value,
+                              const char* /* name */, bool /* isPreCall */) {
+  PointerIdWParamInfo(result, value, "", false);
+  HitTestParamInfo(result, HIWORD(value), "hittest", false);
+}
+
+void PointerWheelWParamInfo(nsCString& result, uint64_t value,
+                            const char* /* name */, bool /* isPreCall */) {
+  PointerIdWParamInfo(result, value, "", false);
+
+  signed short const delta = GET_WHEEL_DELTA_WPARAM(value);
+  result.AppendPrintf(" delta=%d", delta);
+}
+
 // Window message with default wParam/lParam logging
 #define ENTRY(_msg)                         \
   {                                         \
@@ -1159,7 +1270,7 @@ void ResolutionParamInfo(nsCString& result, uint64_t value, const char* name,
       #_msg, _msg, nullptr, wParamInfoFn, wParamName, lParamInfoFn, lParamName \
     }                                                                          \
   }
-std::unordered_map<UINT, EventMsgInfo> gAllEvents = {
+MOZ_RUNINIT std::unordered_map<UINT, EventMsgInfo> gAllEvents = {
     ENTRY_WITH_NO_PARAM_INFO(WM_NULL),
     ENTRY_WITH_SPLIT_PARAM_INFOS(WM_CREATE, nullptr, nullptr,
                                  CreateStructParamInfo, "createStruct"),
@@ -1521,6 +1632,31 @@ std::unordered_map<UINT, EventMsgInfo> gAllEvents = {
     ENTRY(WM_EXITSIZEMOVE),
     ENTRY(WM_DROPFILES),
     ENTRY(WM_MDIREFRESHMENU),
+    ENTRY(WM_TOUCH),
+
+    // clang-format off
+    ENTRY_WITH_SPLIT_PARAM_INFOS(WM_NCPOINTERUPDATE, PointerHittestWParamInfo, "", PointParamInfo, "pos"),
+    ENTRY_WITH_SPLIT_PARAM_INFOS(WM_NCPOINTERDOWN, PointerHittestWParamInfo, "", PointParamInfo, "pos"),
+    ENTRY_WITH_SPLIT_PARAM_INFOS(WM_NCPOINTERUP, PointerHittestWParamInfo, "", PointParamInfo, "pos"),
+    ENTRY_WITH_SPLIT_PARAM_INFOS(WM_POINTERUPDATE, PointerButtonsWParamInfo, "", PointParamInfo, "pos"),
+    ENTRY_WITH_SPLIT_PARAM_INFOS(WM_POINTERDOWN, PointerButtonsWParamInfo, "", PointParamInfo, "pos"),
+    ENTRY_WITH_SPLIT_PARAM_INFOS(WM_POINTERUP, PointerButtonsWParamInfo, "", PointParamInfo, "pos"),
+    // ENTER/LEAVE don't actually use all the flags, but it's probably not worth
+    // customizing the function for them
+    ENTRY_WITH_SPLIT_PARAM_INFOS(WM_POINTERENTER, PointerButtonsWParamInfo, "", PointParamInfo, "pos"),
+    ENTRY_WITH_SPLIT_PARAM_INFOS(WM_POINTERLEAVE, PointerButtonsWParamInfo, "", PointParamInfo, "pos"),
+    ENTRY_WITH_SPLIT_PARAM_INFOS(WM_POINTERACTIVATE, PointerHittestWParamInfo, "", PointParamInfo, "pos"),
+    ENTRY_WITH_SPLIT_PARAM_INFOS(WM_POINTERCAPTURECHANGED, PointerIdWParamInfo, "", HexParamInfo, "captorHwnd"),
+    ENTRY(WM_TOUCHHITTESTING), /* relevant LParamInfoFn not currently implemented */
+    ENTRY_WITH_SPLIT_PARAM_INFOS(WM_POINTERWHEEL, PointerWheelWParamInfo, "", PointParamInfo, "pos"),
+    ENTRY_WITH_SPLIT_PARAM_INFOS(WM_POINTERHWHEEL, PointerWheelWParamInfo, "", PointParamInfo, "pos"),
+    // clang-format on
+
+    ENTRY_WITH_NO_PARAM_INFO(DM_POINTERHITTEST),
+    ENTRY_WITH_NO_PARAM_INFO(WM_POINTERROUTEDTO),
+    ENTRY_WITH_NO_PARAM_INFO(WM_POINTERROUTEDAWAY),
+    ENTRY_WITH_NO_PARAM_INFO(WM_POINTERROUTEDRELEASED),
+
     ENTRY(WM_IME_SETCONTEXT),
     ENTRY(WM_IME_NOTIFY),
     ENTRY(WM_IME_CONTROL),

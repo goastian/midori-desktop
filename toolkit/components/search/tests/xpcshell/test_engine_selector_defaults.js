@@ -9,7 +9,8 @@
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
-  SearchEngineSelector: "resource://gre/modules/SearchEngineSelector.sys.mjs",
+  SearchEngineSelector:
+    "moz-src:///toolkit/components/search/SearchEngineSelector.sys.mjs",
 });
 
 const CONFIG = [
@@ -112,6 +113,12 @@ const CONFIG = [
     recordType: "engineOrders",
     orders: [],
   },
+  {
+    recordType: "availableLocales",
+    // We use en-CA as a locale in the test, so we need to add that as an
+    // available locale to avoid falling back to en-US.
+    locales: ["en-CA", "en-US", "zh-CN"],
+  },
 ];
 
 const CONFIG_DEFAULTS_OVERRIDE = [
@@ -173,10 +180,6 @@ const CONFIG_DEFAULTS_OVERRIDE = [
 ];
 
 const engineSelector = new SearchEngineSelector();
-let settings;
-let settingOverrides;
-let configStub;
-let overrideStub;
 
 /**
  * This function asserts if the actual engine identifiers returned equals
@@ -201,35 +204,24 @@ async function assertActualEnginesEqualsExpected(
   message
 ) {
   engineSelector._configuration = null;
-  configStub.returns(config);
+  SearchTestUtils.setRemoteSettingsConfig(config, []);
 
-  let { engines, privateDefault } =
+  let { appDefaultEngineId, appPrivateDefaultEngineId } =
     await engineSelector.fetchEngineConfiguration(userEnv);
-  let actualEngines = engines.map(engine => engine.identifier);
 
   info(`${message}`);
   Assert.equal(
-    actualEngines[0],
+    appDefaultEngineId,
     expectedDefault,
     `Should match the default engine ${expectedDefault}.`
   );
 
   Assert.equal(
-    privateDefault ? privateDefault.identifier : undefined,
+    appPrivateDefaultEngineId,
     expectedDefaultPrivate,
     `Should match default private engine ${expectedDefaultPrivate}.`
   );
 }
-
-add_setup(async function () {
-  settings = await RemoteSettings(SearchUtils.NEW_SETTINGS_KEY);
-  configStub = sinon.stub(settings, "get");
-  settingOverrides = await RemoteSettings(
-    SearchUtils.NEW_SETTINGS_OVERRIDES_KEY
-  );
-  overrideStub = sinon.stub(settingOverrides, "get");
-  overrideStub.returns([]);
-});
 
 add_task(async function test_default_engines() {
   await assertActualEnginesEqualsExpected(

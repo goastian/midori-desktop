@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* eslint-disable mozilla/valid-lazy */
 
 // Each extension that uses DNR has one RuleManager. All registered RuleManagers
 // are checked whenever a network request occurs. Individual extensions may
@@ -71,25 +72,20 @@ const gRuleManagers = [];
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
-/** @type {Lazy} */
-const lazy = {};
-
-ChromeUtils.defineESModuleGetters(lazy, {
+const lazy = XPCOMUtils.declareLazy({
   ExtensionDNRLimits: "resource://gre/modules/ExtensionDNRLimits.sys.mjs",
   ExtensionDNRStore: "resource://gre/modules/ExtensionDNRStore.sys.mjs",
   WebRequest: "resource://gre/modules/WebRequest.sys.mjs",
+
+  gMatchRequestsFromOtherExtensions: {
+    pref: "extensions.dnr.match_requests_from_other_extensions",
+    default: false,
+  },
 });
 
 import { ExtensionUtils } from "resource://gre/modules/ExtensionUtils.sys.mjs";
 
 const { DefaultWeakMap, ExtensionError } = ExtensionUtils;
-
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "gMatchRequestsFromOtherExtensions",
-  "extensions.dnr.match_requests_from_other_extensions",
-  false
-);
 
 // As documented above:
 // Ruleset precedence: session > dynamic > static (order from manifest.json).
@@ -333,7 +329,7 @@ function applyRegexSubstitution(uri, matchedRule) {
 
   let redirectUrl = regexSubstitution.replace(/\\(.)/g, (_, char) => {
     // #checkActionRedirect ensures that every \ is followed by a \ or digit.
-    return char === "\\" ? char : matches[char] ?? "";
+    return char === "\\" ? char : (matches[char] ?? "");
   });
 
   // Throws if the URL is invalid:
@@ -1475,7 +1471,7 @@ class RequestDetails {
       this.initiatorURI &&
       this.type !== "main_frame" &&
       this.type !== "sub_frame" &&
-      !policy.canAccessURI(this.initiatorURI)
+      !policy.canAccessURI(this.initiatorURI, false, true, true)
     ) {
       // Host permissions for the initiator is required except for navigation
       // requests: https://bugzilla.mozilla.org/show_bug.cgi?id=1825824#c2

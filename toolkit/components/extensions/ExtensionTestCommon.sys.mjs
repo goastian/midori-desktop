@@ -3,17 +3,17 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* eslint-disable mozilla/valid-lazy */
 
 /**
  * This module contains extension testing helper logic which is common
  * between all test suites.
  */
 
+import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
-const lazy = {};
-
-ChromeUtils.defineESModuleGetters(lazy, {
+const lazy = XPCOMUtils.declareLazy({
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   Assert: "resource://testing-common/Assert.sys.mjs",
   Extension: "resource://gre/modules/Extension.sys.mjs",
@@ -24,13 +24,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
   clearInterval: "resource://gre/modules/Timer.sys.mjs",
   setInterval: "resource://gre/modules/Timer.sys.mjs",
+  apiManager: () => lazy.ExtensionParent.apiManager,
 });
-
-ChromeUtils.defineLazyGetter(
-  lazy,
-  "apiManager",
-  () => lazy.ExtensionParent.apiManager
-);
 
 import { ExtensionCommon } from "resource://gre/modules/ExtensionCommon.sys.mjs";
 import { ExtensionUtils } from "resource://gre/modules/ExtensionUtils.sys.mjs";
@@ -49,6 +44,102 @@ const { instanceOf } = ExtensionCommon;
 // tasks are taking too long at shutdown.
 const MS_SLOW_TASK_DURATION = 2000;
 
+// Some test assertions to work in both mochitest and xpcshell.  This
+// will be revisited later.
+const ExtensionTestAssertions = {
+  // Used by test extension wrappers terminateBackground methods to assert
+  // that the background page has been terminate and log proper warnings
+  // and failures to make it easier to investigate test failures related
+  // to failing to terminate the background context (See Bug 1899772).
+  assertBackgroundStatusStopped(extWrapper) {
+    let policy = WebExtensionPolicy.getByID(extWrapper.id);
+    const { backgroundState } = policy?.extension || extWrapper.extension;
+    lazy.Assert.equal(
+      backgroundState,
+      "stopped",
+      `Expect "${extWrapper.id}" background page state to be "stopped"`
+    );
+  },
+
+  assertBackgroundStatusRunning(extWrapper) {
+    let policy = WebExtensionPolicy.getByID(extWrapper.id);
+    const { backgroundState } = policy?.extension || extWrapper.extension;
+    lazy.Assert.equal(
+      backgroundState,
+      "running",
+      `Expect "${extWrapper.id}" background page state to be "running"`
+    );
+  },
+
+  getPersistentListeners(extWrapper, apiNs, apiEvent) {
+    let policy = WebExtensionPolicy.getByID(extWrapper.id);
+    const extension = policy?.extension || extWrapper.extension;
+
+    if (!extension || !(extension instanceof lazy.Extension)) {
+      throw new Error(
+        `Unable to retrieve the Extension class instance for ${extWrapper.id}`
+      );
+    }
+
+    const { persistentListeners } = extension;
+    if (
+      !persistentListeners?.size ||
+      !persistentListeners.get(apiNs)?.has(apiEvent)
+    ) {
+      return [];
+    }
+
+    return Array.from(persistentListeners.get(apiNs).get(apiEvent).values());
+  },
+
+  assertPersistentListeners(
+    extWrapper,
+    apiNs,
+    apiEvent,
+    { primed, persisted = true, primedListenersCount }
+  ) {
+    if (primed && !persisted) {
+      throw new Error(
+        "Inconsistent assertion, can't assert a primed listener if it is not persisted"
+      );
+    }
+
+    let listenersInfo = ExtensionTestAssertions.getPersistentListeners(
+      extWrapper,
+      apiNs,
+      apiEvent
+    );
+    lazy.Assert.equal(
+      persisted,
+      !!listenersInfo?.length,
+      `Got a persistent listener for ${apiNs}.${apiEvent}`
+    );
+    for (const info of listenersInfo) {
+      if (primed) {
+        lazy.Assert.ok(
+          info.listeners.some(listener => listener.primed),
+          `${apiNs}.${apiEvent} listener expected to be primed`
+        );
+      } else {
+        lazy.Assert.ok(
+          !info.listeners.some(listener => listener.primed),
+          `${apiNs}.${apiEvent} listener expected to not be primed`
+        );
+      }
+    }
+    if (primed && primedListenersCount > 0) {
+      lazy.Assert.equal(
+        listenersInfo.reduce((acc, info) => {
+          acc += info.listeners.length;
+          return acc;
+        }, 0),
+        primedListenersCount,
+        `Got the expected number of ${apiNs}.${apiEvent} listeners to be primed`
+      );
+    }
+  },
+};
+
 /**
  * ExtensionUninstallTracker should be instantiated before extension shutdown,
  * and can be used to await the completion of the uninstall and post-uninstall
@@ -60,7 +151,7 @@ const MS_SLOW_TASK_DURATION = 2000;
  *   await extension.shutdown();
  *   await uninstallTracker.waitForUninstallCleanupDone();
  */
-class ExtensionUninstallTracker {
+export class ExtensionUninstallTracker {
   #resolveOnCleanupDone;
   constructor(addonId) {
     this.id = addonId;
@@ -289,10 +380,20 @@ export class MockExtension {
       });
   }
 
-  terminateBackground(...args) {
-    return this._extensionPromise.then(extension => {
-      return extension.terminateBackground(...args);
-    });
+  /**
+   * @param {object} options
+   * @param {boolean} [options.expectStopped]
+   * @param {boolean} [options.ignoreDevToolsAttached]
+   * @param {boolean} [options.disableResetIdleForTest]
+   */
+  async terminateBackground({ expectStopped = true, ...rest } = {}) {
+    const extension = await this._extensionPromise;
+    await extension.terminateBackground(rest);
+    if (expectStopped) {
+      ExtensionTestAssertions.assertBackgroundStatusStopped(this);
+    } else {
+      ExtensionTestAssertions.assertBackgroundStatusRunning(this);
+    }
   }
 
   wakeupBackground() {
@@ -314,78 +415,6 @@ function provide(obj, keys, value, override = false) {
     provide(obj[keys[0]], keys.slice(1), value, override);
   }
 }
-
-// Some test assertions to work in both mochitest and xpcshell.  This
-// will be revisited later.
-const ExtensionTestAssertions = {
-  getPersistentListeners(extWrapper, apiNs, apiEvent) {
-    let policy = WebExtensionPolicy.getByID(extWrapper.id);
-    const extension = policy?.extension || extWrapper.extension;
-
-    if (!extension || !(extension instanceof lazy.Extension)) {
-      throw new Error(
-        `Unable to retrieve the Extension class instance for ${extWrapper.id}`
-      );
-    }
-
-    const { persistentListeners } = extension;
-    if (
-      !persistentListeners?.size ||
-      !persistentListeners.get(apiNs)?.has(apiEvent)
-    ) {
-      return [];
-    }
-
-    return Array.from(persistentListeners.get(apiNs).get(apiEvent).values());
-  },
-
-  assertPersistentListeners(
-    extWrapper,
-    apiNs,
-    apiEvent,
-    { primed, persisted = true, primedListenersCount }
-  ) {
-    if (primed && !persisted) {
-      throw new Error(
-        "Inconsistent assertion, can't assert a primed listener if it is not persisted"
-      );
-    }
-
-    let listenersInfo = ExtensionTestAssertions.getPersistentListeners(
-      extWrapper,
-      apiNs,
-      apiEvent
-    );
-    lazy.Assert.equal(
-      persisted,
-      !!listenersInfo?.length,
-      `Got a persistent listener for ${apiNs}.${apiEvent}`
-    );
-    for (const info of listenersInfo) {
-      if (primed) {
-        lazy.Assert.ok(
-          info.listeners.some(listener => listener.primed),
-          `${apiNs}.${apiEvent} listener expected to be primed`
-        );
-      } else {
-        lazy.Assert.ok(
-          !info.listeners.some(listener => listener.primed),
-          `${apiNs}.${apiEvent} listener expected to not be primed`
-        );
-      }
-    }
-    if (primed && primedListenersCount > 0) {
-      lazy.Assert.equal(
-        listenersInfo.reduce((acc, info) => {
-          acc += info.listeners.length;
-          return acc;
-        }, 0),
-        primedListenersCount,
-        `Got the expected number of ${apiNs}.${apiEvent} listeners to be primed`
-      );
-    }
-  },
-};
 
 export var ExtensionTestCommon = class ExtensionTestCommon {
   static get testAssertions() {
@@ -477,7 +506,10 @@ export var ExtensionTestCommon = class ExtensionTestCommon {
     Object.assign(files, data.files);
 
     let manifest = data.manifest;
-    if (!manifest) {
+    if (manifest) {
+      // Copy manifest so that modifications below do not affect the input.
+      manifest = structuredClone(manifest);
+    } else {
       manifest = {};
     }
 
@@ -688,7 +720,7 @@ export var ExtensionTestCommon = class ExtensionTestCommon {
    * @returns {Partial<Extension>}
    */
   static generate(data) {
-    if (data.useAddonManager === "android-only") {
+    if (data.useAddonManager === "geckoview-only") {
       // Some extension APIs are partially implemented in Java, and the
       // interface between the JS and Java side (GeckoViewWebExtension)
       // expects extensions to be registered with the AddonManager.
@@ -702,7 +734,7 @@ export var ExtensionTestCommon = class ExtensionTestCommon {
       // cannot unconditionally be enabled.
       // In mochitests, tests are run in an actual browser, so the AddonManager
       // is always enabled and hence useAddonManager is always set by default.
-      if (AppConstants.platform === "android") {
+      if (AppConstants.MOZ_GECKOVIEW) {
         // Many MV3 tests set temporarilyInstalled for granted_host_permissions.
         // The granted_host_permissions flag is only effective for temporarily
         // installed extensions, so make sure to use "temporary" in this case.
@@ -715,7 +747,7 @@ export var ExtensionTestCommon = class ExtensionTestCommon {
         // The AddonManager requires an ID in the manifest for unsigned XPIs.
         this.setExtensionID(data);
       } else {
-        // On non-Android, default to not using the AddonManager.
+        // On non-GeckoView, default to not using the AddonManager.
         data.useAddonManager = null;
       }
     }

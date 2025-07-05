@@ -14,30 +14,38 @@
     <link rel="stylesheet" href="chrome://global/skin/in-content/common.css">
     <link rel="stylesheet" href="chrome://global/content/translations/translations.css">
     <link rel="localization" href="toolkit/branding/brandings.ftl"/>
+    <link rel="localization" href="toolkit/global/mozMessageBar.ftl">
     <link rel="localization" href="locales-preview/aboutTranslations.ftl"/>
     <script type="module" src="chrome://global/content/translations/translations.mjs"></script>
+    <script
+      type="module"
+      src="chrome://global/content/elements/moz-message-bar.mjs">
+    </script>
   </head>
   <body>
+    <moz-message-bar
+      id="messageBar"
+      hidden>
+    </moz-message-bar>
     <h1 data-l10n-id="about-translations-header"></h1>
     <main class="about-translations-contents">
 
       <header class="about-translations-header">
-        <div class="about-translations-header-start">
-          <select
-            class="about-translations-select"
-            id="language-from"
-            disabled>
-            <option data-l10n-id="about-translations-detect" value="detect"></option>
-          </select>
-        </div>
-        <div class="about-translations-header-end">
-          <select
-            class="about-translations-select"
-            id="language-to"
-            disabled>
-            <option data-l10n-id="about-translations-select" value=""></option>
-          </select>
-        </div>
+        <select
+          class="about-translations-select"
+          id="language-from"
+          disabled>
+          <option data-l10n-id="about-translations-detect" value="detect"></option>
+        </select>
+        <button id="language-swap" data-l10n-id="about-translations-swap-languages" disabled>
+          <div class="language-swap-icon"></div>
+        </button>
+        <select
+          class="about-translations-select"
+          id="language-to"
+          disabled>
+          <option data-l10n-id="about-translations-select" value=""></option>
+        </select>
       </header>
 
       <main class="about-translations-input">
@@ -56,7 +64,7 @@
               <div class="about-translations-info-icon"></div>
               <div class="about-translations-info-message" id="translation-info-message"></div>
             </div>
-            <div data-l10n-id="about-translations-results-placeholder"></div>
+            <div id="translation-results-placeholder" data-l10n-id="about-translations-results-placeholder"></div>
           </div>
           <div
             class="about-translations-input-results"

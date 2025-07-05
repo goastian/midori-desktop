@@ -4,7 +4,7 @@
 import pathlib
 
 
-class PerfDocLogger(object):
+class PerfDocLogger:
     """
     Logger for the PerfDoc tooling. Handles the warnings by outputting
     them into through the StructuredLogger provided by lint.
@@ -45,7 +45,7 @@ class PerfDocLogger(object):
         :param list/str files: The file(s) that this warning is about.
         :param boolean restricted: If the param is False, the lint error can be used anywhere.
         """
-        if type(files) != list:
+        if type(files) is not list:
             files = [files]
 
         if len(files) == 0:

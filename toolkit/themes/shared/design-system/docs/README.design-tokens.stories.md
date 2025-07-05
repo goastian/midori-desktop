@@ -22,7 +22,7 @@ For example, [moz-toggle](https://searchfox.org/mozilla-central/source/toolkit/c
   <tr>
     <td><code>--toggle-background-color-pressed</code></td>
     <td><code>--color-accent-primary</code></td>
-    <td><code>--color-blue-50</code>(<code>#0060df</code>)</td>
+    <td><code>--color-blue-60</code>(<code>oklch(55% 0.24 260)</code>)</td>
   </tr>
   <tr>
     <td><code>--toggle-border-radius</code></td>
@@ -58,8 +58,6 @@ The ecosystem level helps describe the context that a token is scoped to.
 A token is only prefixed with a domain when there is a need to specify its context.
 
 For example, if a token is specific to a certain feature, you can use the domain level to specify the name of the feature that it belongs to. Don't forget to keep domain-specific tokens within the feature's CSS so that they can only be reused within its domain.
-
-Example from [browser/components/shopping/content/shopping-container.css](https://searchfox.org/mozilla-central/rev/02841791400cf7cf5760c0cfaf31f5d772624253/browser/components/shopping/content/shopping-container.css#7):
 
 ![Example showing "shopping" as the 'Domain' part of the "shopping-header-font-size" token](./img/ecosystem-domain.png)
 
@@ -244,7 +242,7 @@ For example, we re-map the accent color token in `tokens-brand.css` to the
 value we want to use in brand contexts (in-content/about: pages):
 ```css
 /* tokens-brand.css */
---color-accent-primary: light-dark(var(--color-blue-50), var(--color-cyan-50));
+--color-accent-primary: light-dark(var(--color-blue-60), var(--color-cyan-30));
 ```
 
 #### `tokens-platform.css`
@@ -255,7 +253,7 @@ For example, we re-map the accent color token in `tokens-platform.css` to the
 value we want to use in platform contexts (chrome):
 ```css
 /* tokens-platform.css */
---color-accent-primary: var(--button-primary-bgcolor, AccentColor);
+--color-accent-primary: AccentColor;
 ```
 
 #### `tokens-shared.css`
@@ -273,9 +271,9 @@ Base design tokens represent the most basic, or foundational, groups of design t
 
 ```css
 /* tokens-shared.css */
---color-blue-50: #0060df;
---color-blue-60: #0250bb;
---color-blue-70: #054096;
+--color-blue-50: oklch(62% 0.24 260);
+--color-blue-60: oklch(55% 0.24 260);
+--color-blue-70: oklch(48% 0.2 260);
 ```
 
 #### Application
@@ -283,7 +281,7 @@ Application design tokens represent the more semantic groups of design tokens th
 
 ```css
 /* tokens-brand.css */
---color-accent-primary: light-dark(var(--color-blue-50), var(--color-cyan-50));
+--color-accent-primary: light-dark(var(--color-blue-60), var(--color-cyan-30));
 ```
 
 #### Component
@@ -305,9 +303,9 @@ Border, Color, Font Weight...
 A comment heading should be added above each token group with its name:
 ```css
 /** Color **/
---color-white: #ffffff;
---color-blue-05: #deeafc;
---color-blue-30: #73a7f3;
+--color-blue-0: oklch(97% 0.05 260);
+--color-blue-10: oklch(90% 0.13 260);
+--color-blue-20: oklch(83% 0.17 260);
 ...
 ```
 
@@ -348,7 +346,7 @@ We rely on the [light-dark()](https://developer.mozilla.org/en-US/docs/Web/CSS/c
 ### High contrast mode
 We rely on two queries for assigning HCM counterpart variables, @media (prefers-contrast) and @media (forced-colors). They are found at the bottom of [tokens-shared.css](https://searchfox.org/mozilla-central/rev/6eb2ebcafb1b4a8576eb513e6cd2c61e3f3ae6dc/toolkit/themes/shared/design-system/tokens-shared.css#109).
 
-/* This part of the documentation will link to Bug 1863436 once it lands */
+To learn more about the HCM media queries, please consult [these docs](https://firefox-source-docs.mozilla.org/accessible/HCMMediaQueries.html).
 
 ## Help and support
 If you have any questions, concerns, or feedback, and if this document has not answered something specific, please reach out to Desktop Theme Reviewers or Reusable Components Reviewers.

@@ -8,6 +8,11 @@ import { UniFFITypeError } from "resource://gre/modules/UniFFI.sys.mjs";
 // Objects intended to be used in the unit tests
 export var UnitTestObjs = {};
 
+let lazy = {};
+
+ChromeUtils.defineLazyGetter(lazy, "decoder", () => new TextDecoder());
+ChromeUtils.defineLazyGetter(lazy, "encoder", () => new TextEncoder());
+
 // Write/Read data to/from an ArrayBuffer
 class ArrayBufferDataStream {
     constructor(arrayBuffer) {
@@ -128,11 +133,10 @@ class ArrayBufferDataStream {
 
 
     writeString(value) {
-      const encoder = new TextEncoder();
       // Note: in order to efficiently write this data, we first write the
       // string data, reserving 4 bytes for the size.
       const dest = new Uint8Array(this.dataView.buffer, this.pos + 4);
-      const encodeResult = encoder.encodeInto(value, dest);
+      const encodeResult = lazy.encoder.encodeInto(value, dest);
       if (encodeResult.read != value.length) {
         throw new UniFFIError(
             "writeString: out of space when writing to ArrayBuffer.  Did the computeSize() method returned the wrong result?"
@@ -146,19 +150,32 @@ class ArrayBufferDataStream {
     }
 
     readString() {
-      const decoder = new TextDecoder();
       const size = this.readUint32();
       const source = new Uint8Array(this.dataView.buffer, this.pos, size)
-      const value = decoder.decode(source);
+      const value = lazy.decoder.decode(source);
       this.pos += size;
       return value;
+    }
+
+    readBytes() {
+      const size = this.readInt32();
+      const bytes = new Uint8Array(this.dataView.buffer, this.pos, size);
+      this.pos += size;
+      return bytes
+    }
+
+    writeBytes(value) {
+      this.writeUint32(value.length);
+      value.forEach((elt) => {
+        this.writeUint8(elt);
+      })
     }
 
     // Reads a SingletonObject pointer from the data stream
     // UniFFI Pointers are **always** 8 bytes long. That is enforced
     // by the C++ and Rust Scaffolding code.
     readPointerSingletonObject() {
-        const pointerId = 7; // refcounts:SingletonObject
+        const pointerId = 17; // refcounts:SingletonObject
         const res = UniFFIScaffolding.readPointer(pointerId, this.dataView.buffer, this.pos);
         this.pos += 8;
         return res;
@@ -168,7 +185,7 @@ class ArrayBufferDataStream {
     // UniFFI Pointers are **always** 8 bytes long. That is enforced
     // by the C++ and Rust Scaffolding code.
     writePointerSingletonObject(value) {
-        const pointerId = 7; // refcounts:SingletonObject
+        const pointerId = 17; // refcounts:SingletonObject
         UniFFIScaffolding.writePointer(pointerId, value, this.dataView.buffer, this.pos);
         this.pos += 8;
     }
@@ -184,9 +201,8 @@ function handleRustResult(result, liftCallback, liftErrCallback) {
             throw liftErrCallback(result.data);
 
         case "internal-error":
-            let message = result.internalErrorMessage;
-            if (message) {
-                throw new UniFFIInternalError(message);
+            if (result.data) {
+                throw new UniFFIInternalError(FfiConverterString.lift(result.data));
             } else {
                 throw new UniFFIInternalError("Unknown error");
             }
@@ -233,6 +249,37 @@ class FfiConverterArrayBuffer extends FfiConverter {
         this.write(dataStream, value);
         return buf;
     }
+
+    /**
+     * Computes the size of the value.
+     *
+     * @param {*} _value
+     * @return {number}
+     */
+    static computeSize(_value) {
+        throw new UniFFIInternalError("computeSize() should be declared in the derived class");
+    }
+
+    /**
+     * Reads the type from a data stream.
+     *
+     * @param {ArrayBufferDataStream} _dataStream
+     * @returns {any}
+     */
+    static read(_dataStream) {
+        throw new UniFFIInternalError("read() should be declared in the derived class");
+    }
+
+    /**
+     * Writes the type to a data stream.
+     *
+     * @param {ArrayBufferDataStream} _dataStream
+     * @param {any} _value
+     */
+    static write(_dataStream, _value) {
+        throw new UniFFIInternalError("write() should be declared in the derived class");
+    }
+
 }
 
 // Symbols that are used to ensure that Object constructors
@@ -252,7 +299,7 @@ export class FfiConverterI32 extends FfiConverter {
             throw new UniFFITypeError(`${value} exceeds the I32 bounds`);
         }
     }
-    static computeSize() {
+    static computeSize(_value) {
         return 4;
     }
     static lift(value) {
@@ -279,13 +326,11 @@ export class FfiConverterString extends FfiConverter {
     }
 
     static lift(buf) {
-        const decoder = new TextDecoder();
         const utf8Arr = new Uint8Array(buf);
-        return decoder.decode(utf8Arr);
+        return lazy.decoder.decode(utf8Arr);
     }
     static lower(value) {
-        const encoder = new TextEncoder();
-        return encoder.encode(value).buffer;
+        return lazy.encoder.encode(value).buffer;
     }
 
     static write(dataStream, value) {
@@ -297,11 +342,13 @@ export class FfiConverterString extends FfiConverter {
     }
 
     static computeSize(value) {
-        const encoder = new TextEncoder();
-        return 4 + encoder.encode(value).length
+        return 4 + lazy.encoder.encode(value).length
     }
 }
 
+/**
+ * SingletonObject
+ */
 export class SingletonObject {
     // Use `init` to instantiate this class.
     // DO NOT USE THIS CONSTRUCTOR DIRECTLY
@@ -310,18 +357,21 @@ export class SingletonObject {
             throw new UniFFIError("Attempting to construct an object using the JavaScript constructor directly" +
             "Please use a UDL defined constructor, or the init function for the primary constructor")
         }
-        if (!opts[constructUniffiObject] instanceof UniFFIPointer) {
+        if (!(opts[constructUniffiObject] instanceof UniFFIPointer)) {
             throw new UniFFIError("Attempting to create a UniFFI object with a pointer that is not an instance of UniFFIPointer")
         }
         this[uniffiObjectPtr] = opts[constructUniffiObject];
     }
 
+    /**
+     * method
+     */
     method() {
         const liftResult = (result) => undefined;
         const liftError = null;
         const functionCall = () => {
             return UniFFIScaffolding.callSync(
-                65, // refcounts:uniffi_uniffi_fixture_refcounts_fn_method_singletonobject_method
+                158, // refcounts:uniffi_uniffi_fixture_refcounts_fn_method_singletonobject_method
                 FfiConverterTypeSingletonObject.lower(this),
             )
         }
@@ -363,25 +413,33 @@ export class FfiConverterTypeSingletonObject extends FfiConverter {
 
 
 
+/**
+ * getJsRefcount
+ * @returns {number}
+ */
 export function getJsRefcount() {
 
         const liftResult = (result) => FfiConverterI32.lift(result);
         const liftError = null;
         const functionCall = () => {
             return UniFFIScaffolding.callSync(
-                66, // refcounts:uniffi_uniffi_fixture_refcounts_fn_func_get_js_refcount
+                156, // refcounts:uniffi_uniffi_fixture_refcounts_fn_func_get_js_refcount
             )
         }
         return handleRustResult(functionCall(), liftResult, liftError);
 }
 
+/**
+ * getSingleton
+ * @returns {SingletonObject}
+ */
 export function getSingleton() {
 
         const liftResult = (result) => FfiConverterTypeSingletonObject.lift(result);
         const liftError = null;
         const functionCall = () => {
             return UniFFIScaffolding.callSync(
-                67, // refcounts:uniffi_uniffi_fixture_refcounts_fn_func_get_singleton
+                157, // refcounts:uniffi_uniffi_fixture_refcounts_fn_func_get_singleton
             )
         }
         return handleRustResult(functionCall(), liftResult, liftError);

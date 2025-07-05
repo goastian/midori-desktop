@@ -10,6 +10,7 @@
 #include "gfxPlatform.h"
 #include "nsRefreshDriver.h"
 #include "mozilla/dom/BrowserChild.h"
+#include "mozilla/EventForwards.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/IMEStateManager.h"
 #include "mozilla/layers/APZChild.h"
@@ -65,6 +66,8 @@ static bool IsPopup(const widget::InitData* aInitData) {
 static bool MightNeedIMEFocus(const widget::InitData* aInitData) {
   // In the puppet-widget world, popup widgets are just dummies and
   // shouldn't try to mess with IME state.
+  //
+  // FIXME(emilio): Pretty sure we no longer have puppet popups.
 #ifdef MOZ_CROSS_PROCESS_IME
   return !IsPopup(aInitData);
 #else
@@ -83,6 +86,7 @@ PuppetWidget::PuppetWidget(BrowserChild* aBrowserChild)
       mSizeMode(nsSizeMode_Normal),
       mNeedIMEStateInit(false),
       mIgnoreCompositionEvents(false) {
+  mWidgetType = WidgetType::Puppet;
   // Setting 'Unknown' means "not yet cached".
   mInputContext.mIMEState.mEnabled = IMEEnabled::Unknown;
 }
@@ -90,36 +94,24 @@ PuppetWidget::PuppetWidget(BrowserChild* aBrowserChild)
 PuppetWidget::~PuppetWidget() { Destroy(); }
 
 void PuppetWidget::InfallibleCreate(nsIWidget* aParent,
-                                    nsNativeWidget aNativeParent,
                                     const LayoutDeviceIntRect& aRect,
                                     widget::InitData* aInitData) {
-  MOZ_ASSERT(!aNativeParent, "got a non-Puppet native parent");
-
-  BaseCreate(nullptr, aInitData);
+  BaseCreate(aParent, aInitData);
 
   mBounds = aRect;
   mEnabled = true;
   mVisible = true;
 
-  mDrawTarget = gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(
-      IntSize(1, 1), SurfaceFormat::B8G8R8A8);
-
   mNeedIMEStateInit = MightNeedIMEFocus(aInitData);
 
-  PuppetWidget* parent = static_cast<PuppetWidget*>(aParent);
-  if (parent) {
-    parent->SetChild(this);
-    mWindowRenderer = parent->GetWindowRenderer();
-  } else {
-    Resize(mBounds.X(), mBounds.Y(), mBounds.Width(), mBounds.Height(), false);
-  }
+  Resize(mBounds.X(), mBounds.Y(), mBounds.Width(), mBounds.Height(), false);
   mMemoryPressureObserver = MemoryPressureObserver::Create(this);
 }
 
-nsresult PuppetWidget::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
+nsresult PuppetWidget::Create(nsIWidget* aParent,
                               const LayoutDeviceIntRect& aRect,
                               widget::InitData* aInitData) {
-  InfallibleCreate(aParent, aNativeParent, aRect, aInitData);
+  InfallibleCreate(aParent, aRect, aInitData);
   return NS_OK;
 }
 
@@ -131,17 +123,6 @@ void PuppetWidget::InitIMEState() {
     mIMENotificationRequestsOfParent = IMENotificationRequests();
     mNeedIMEStateInit = false;
   }
-}
-
-already_AddRefed<nsIWidget> PuppetWidget::CreateChild(
-    const LayoutDeviceIntRect& aRect, widget::InitData* aInitData,
-    bool aForceUseIWidgetParent) {
-  bool isPopup = IsPopup(aInitData);
-  nsCOMPtr<nsIWidget> widget = nsIWidget::CreatePuppetWidget(mBrowserChild);
-  return ((widget && NS_SUCCEEDED(widget->Create(isPopup ? nullptr : this,
-                                                 nullptr, aRect, aInitData)))
-              ? widget.forget()
-              : nullptr);
 }
 
 void PuppetWidget::Destroy() {
@@ -156,7 +137,6 @@ void PuppetWidget::Destroy() {
     mMemoryPressureObserver->Unregister();
     mMemoryPressureObserver = nullptr;
   }
-  mChild = nullptr;
   if (mWindowRenderer) {
     mWindowRenderer->Destroy();
   }
@@ -170,10 +150,6 @@ void PuppetWidget::Show(bool aState) {
 
   bool wasVisible = mVisible;
   mVisible = aState;
-
-  if (mChild) {
-    mChild->mVisible = aState;
-  }
 
   if (!wasVisible && mVisible) {
     // The previously attached widget listener is handy if
@@ -194,11 +170,6 @@ void PuppetWidget::Resize(double aWidth, double aHeight, bool aRepaint) {
   LayoutDeviceIntRect oldBounds = mBounds;
   mBounds.SizeTo(
       LayoutDeviceIntSize(NSToIntRound(aWidth), NSToIntRound(aHeight)));
-
-  if (mChild) {
-    mChild->Resize(aWidth, aHeight, aRepaint);
-    return;
-  }
 
   // XXX: roc says that |aRepaint| dictates whether or not to
   // invalidate the expanded area
@@ -233,11 +204,6 @@ void PuppetWidget::Invalidate(const LayoutDeviceIntRect& aRect) {
   debug_DumpInvalidate(stderr, this, &aRect, "PuppetWidget", 0);
 #endif
 
-  if (mChild) {
-    mChild->Invalidate(aRect);
-    return;
-  }
-
   if (mBrowserChild && !aRect.IsEmpty() && !mWidgetPaintTask.IsPending()) {
     mWidgetPaintTask = new WidgetPaintTask(this);
     nsCOMPtr<nsIRunnable> event(mWidgetPaintTask.get());
@@ -269,9 +235,6 @@ nsresult PuppetWidget::DispatchEvent(WidgetGUIEvent* aEvent,
 #ifdef DEBUG
   debug_DumpEvent(stdout, aEvent->mWidget, aEvent, "PuppetWidget", 0);
 #endif
-
-  MOZ_ASSERT(!mChild || mChild->mWindowType == WindowType::Popup,
-             "Unexpected event dispatch!");
 
   MOZ_ASSERT(!aEvent->AsKeyboardEvent() ||
                  aEvent->mFlags.mIsSynthesizedForTests ||
@@ -362,6 +325,9 @@ nsIWidget::ContentAndAPZEventStatus PuppetWidget::DispatchInputEvent(
   if (!mBrowserChild) {
     return status;
   }
+
+  MOZ_ASSERT(aEvent->mMessage != ePointerClick);
+  MOZ_ASSERT(aEvent->mMessage != ePointerAuxClick);
 
   switch (aEvent->mClass) {
     case eWheelEventClass:
@@ -942,14 +908,6 @@ void PuppetWidget::SetCursor(const Cursor& aCursor) {
   mUpdateCursor = false;
 }
 
-void PuppetWidget::SetChild(PuppetWidget* aChild) {
-  MOZ_ASSERT(this != aChild, "can't parent a widget to itself");
-  MOZ_ASSERT(!aChild->mChild,
-             "fake widget 'hierarchy' only expected to have one level");
-
-  mChild = aChild;
-}
-
 NS_IMETHODIMP
 PuppetWidget::WidgetPaintTask::Run() {
   if (mWidget) {
@@ -1030,12 +988,12 @@ void PuppetWidget::StartAsyncScrollbarDrag(
   mBrowserChild->StartScrollbarDrag(aDragMetrics);
 }
 
-ScreenIntMargin PuppetWidget::GetSafeAreaInsets() const {
+LayoutDeviceIntMargin PuppetWidget::GetSafeAreaInsets() const {
   return mSafeAreaInsets;
 }
 
 void PuppetWidget::UpdateSafeAreaInsets(
-    const ScreenIntMargin& aSafeAreaInsets) {
+    const LayoutDeviceIntMargin& aSafeAreaInsets) {
   mSafeAreaInsets = aSafeAreaInsets;
 }
 
@@ -1165,6 +1123,10 @@ nsresult PuppetWidget::GetSystemFont(nsCString& aFontName) {
   }
   mBrowserChild->SendGetSystemFont(&aFontName);
   return NS_OK;
+}
+
+LayersId PuppetWidget::GetLayersId() const {
+  return mBrowserChild ? mBrowserChild->GetLayersId() : LayersId{0};
 }
 
 }  // namespace widget

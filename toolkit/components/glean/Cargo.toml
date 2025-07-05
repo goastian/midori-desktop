@@ -6,7 +6,7 @@ edition = "2018"
 license = "MPL-2.0"
 
 [dependencies]
-glean = "=60.1.1"
+glean = { workspace = true }
 log = "0.4"
 nserror = { path = "../../../xpcom/rust/nserror" }
 nsstring = { path = "../../../xpcom/rust/nsstring" }
@@ -18,7 +18,7 @@ cstr = "0.2"
 viaduct = "0.1"
 url = "2.1"
 thin-vec = { version = "0.2.1", features = ["gecko-ffi"] }
-ohttp = { version = "0.3", default-features = false, features = ["gecko", "nss", "client"] }
+ohttp = { version = "0.5", default-features = false, features = ["gecko", "nss", "client"] }
 bhttp = "0.3"
 thiserror = "1.0"
 mozbuild = "0.1"
@@ -28,5 +28,3 @@ mozbuild = "0.1"
 disable_upload = []
 # Letting us know we're compiling with Gecko symbols.
 with_gecko = ["firefox-on-glean/with_gecko"]
-# Opt into a larger preinit queue
-million_queue = ["glean/preinit_million_queue"]

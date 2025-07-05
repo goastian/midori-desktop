@@ -22,6 +22,8 @@ ChromeUtils.defineLazyGetter(lazy, "logger", function () {
   return lazy.PlacesUtils.getLogger({ prefix: "FrecencyRecalculator" });
 });
 
+const MILLIS_PER_DAY = 86400000;
+
 // Decay rate applied daily to frecency scores.
 // A scaling factor of .975 results in an half-life of 28 days.
 const FRECENCY_DECAYRATE = "0.975";
@@ -85,6 +87,9 @@ const DEFAULT_CHUNK_SIZE = 50;
 // recalculation is high enough to deserve a recalculation rate increase.
 const ACCELERATION_EVENTS_THRESHOLD = 250;
 
+/**
+ * Recalculates and decays frecency scores in Places.
+ */
 export class PlacesFrecencyRecalculator {
   classID = Components.ID("1141fd31-4c1a-48eb-8f1a-2f05fad94085");
 
@@ -98,6 +103,14 @@ export class PlacesFrecencyRecalculator {
    * This allows to manager alternative ranking algorithms to experiment with.
    */
   #alternativeFrecencyHelper = null;
+
+  /**
+   * Tracks whether the recalculator was finalized, usually due to shutdown.
+   * We use this explicit boolean rather than checking for a null `#task`
+   * because, due to async behavior, `#task` could be resurrected by
+   * `#createOrUpdateTask`.
+   */
+  #finalized = false;
 
   /**
    * This is useful for testing.
@@ -117,15 +130,16 @@ export class PlacesFrecencyRecalculator {
     // Do not initialize during shutdown.
     if (
       Services.startup.isInOrBeyondShutdownPhase(
-        Ci.nsIAppStartup.SHUTDOWN_PHASE_APPSHUTDOWNTEARDOWN
+        Ci.nsIAppStartup.SHUTDOWN_PHASE_APPSHUTDOWNCONFIRMED
       )
     ) {
+      this.#finalized = true;
       return;
     }
 
     this.#createOrUpdateTask();
 
-    lazy.AsyncShutdown.profileChangeTeardown.addBlocker(
+    lazy.AsyncShutdown.appShutdownConfirmed.addBlocker(
       "PlacesFrecencyRecalculator: shutdown",
       () => this.#finalize()
     );
@@ -138,6 +152,7 @@ export class PlacesFrecencyRecalculator {
     this.wrappedJSObject = this;
     // This can be used by tests to await for the decay process.
     this.pendingFrecencyDecayPromise = Promise.resolve();
+    this.pendingOriginsDecayPromise = Promise.resolve();
 
     Services.obs.addObserver(this, "idle-daily", true);
     Services.obs.addObserver(this, "frecency-recalculation-needed", true);
@@ -150,6 +165,10 @@ export class PlacesFrecencyRecalculator {
   }
 
   #createOrUpdateTask() {
+    if (this.#finalized) {
+      lazy.logger.trace(`Not resurrecting #task because finalized`);
+      return;
+    }
     let wasArmed = this.#task?.isArmed;
     if (this.#task) {
       this.#task.disarm();
@@ -169,17 +188,15 @@ export class PlacesFrecencyRecalculator {
     if (this.#task.isFinalized) {
       return;
     }
-    const refObj = {};
-    const histogram = "PLACES_FRECENCY_RECALC_CHUNK_TIME_MS";
-    TelemetryStopwatch.start(histogram, refObj);
+    let timerId = Glean.places.frecencyRecalcChunkTime.start();
     try {
       if (await this.recalculateSomeFrecencies()) {
-        TelemetryStopwatch.finish(histogram, refObj);
+        Glean.places.frecencyRecalcChunkTime.stopAndAccumulate(timerId);
       } else {
-        TelemetryStopwatch.cancel(histogram, refObj);
+        Glean.places.frecencyRecalcChunkTime.cancel(timerId);
       }
     } catch (ex) {
-      TelemetryStopwatch.cancel(histogram, refObj);
+      Glean.places.frecencyRecalcChunkTime.cancel(timerId);
       console.error(ex);
       lazy.logger.error(ex);
     }
@@ -191,6 +208,7 @@ export class PlacesFrecencyRecalculator {
     // next session.
     this.#task.disarm();
     this.#task.finalize().catch(console.error);
+    this.#finalized = true;
   }
 
   #lastEventsCount = 0;
@@ -198,6 +216,7 @@ export class PlacesFrecencyRecalculator {
   /**
    * Evaluates whether recalculation speed should be increased, and eventually
    * accelerates.
+   *
    * @returns {boolean} whether the recalculation rate is increased.
    */
   maybeUpdateRecalculationSpeed() {
@@ -230,9 +249,11 @@ export class PlacesFrecencyRecalculator {
   /**
    * Updates a chunk of outdated frecency values. If there's more frecency
    * values to update at the end of the process, it may rearm the task.
-   * @param {Number} chunkSize maximum number of entries to update at a time,
+   *
+   * @param {object} [options]
+   * @param {number?} [options.chunkSize] maximum number of entries to update at a time,
    *   set to -1 to update any entry.
-   * @resolves {boolean} Whether any entry was recalculated.
+   * @returns {Promise<boolean>} Whether any entry was recalculated.
    */
   async recalculateSomeFrecencies({ chunkSize = DEFAULT_CHUNK_SIZE } = {}) {
     // In case of acceleration we don't bump up the chunkSize to avoid issues
@@ -370,12 +391,12 @@ export class PlacesFrecencyRecalculator {
 
   /**
    * Decays frecency and adaptive history.
-   * @resolves once the process is complete. Never rejects.
+   *
+   * @returns {Promise<void>} once the process is complete. Never rejects.
    */
   async decay() {
     lazy.logger.trace("Decay frecency");
-    let refObj = {};
-    TelemetryStopwatch.start("PLACES_IDLE_FRECENCY_DECAY_TIME_MS", refObj);
+    let timerId = Glean.places.idleFrecencyDecayTime.start();
     // Ensure moz_places_afterupdate_frecency_trigger ignores decaying
     // frecency changes.
     lazy.PlacesUtils.history.isFrecencyDecaying = true;
@@ -406,11 +427,11 @@ export class PlacesFrecencyRecalculator {
           }
         );
 
-        TelemetryStopwatch.finish("PLACES_IDLE_FRECENCY_DECAY_TIME_MS", refObj);
+        Glean.places.idleFrecencyDecayTime.stopAndAccumulate(timerId);
         PlacesObservers.notifyListeners([new PlacesRanking()]);
       });
     } catch (ex) {
-      TelemetryStopwatch.cancel("PLACES_IDLE_FRECENCY_DECAY_TIME_MS", refObj);
+      Glean.places.idleFrecencyDecayTime.cancel(timerId);
       console.error(ex);
       lazy.logger.error(ex);
     } finally {
@@ -418,8 +439,66 @@ export class PlacesFrecencyRecalculator {
     }
   }
 
+  /**
+   * Mark frecency of origins that were not visited for some time to be
+   * recalculated, otherwise they'd be stuck at the last calculated value.
+   */
+  async requestRecalcOfNotRecentlyVisitedOrigins() {
+    // Recalculate every 7 days, as this is not urgent.
+    const now = Date.now();
+    const key = "origins_frecency_last_decay_timestamp";
+    let lastRecalcTime = await lazy.PlacesUtils.metadata.get(key, now);
+    if (lastRecalcTime > now - 7 * MILLIS_PER_DAY) {
+      lazy.logger.trace("Skipping as not enough time passed");
+      return;
+    }
+    await lazy.PlacesUtils.metadata.set(key, now);
+
+    // To limit amount of work, only recalculate origins over the threshold.
+    let threshold = await lazy.PlacesUtils.metadata.get(
+      "origin_frecency_threshold",
+      0
+    );
+    // This guessed threshold limit is just a fail-safe to avoid recalculating
+    // the same value over and over if history gets disabled and the threshold
+    // keeps getting smaller and smaller. At a certain point origin won't have
+    // recent visits, and its frecency will be set to 1.
+    if (threshold < 100) {
+      lazy.logger.trace("Skipping as threshold too low");
+      return;
+    }
+
+    lazy.logger.trace("Recalculate origins not recently visited");
+    let db = await lazy.PlacesUtils.promiseUnsafeWritableDBConnection();
+    await db.execute(
+      `
+      UPDATE moz_origins
+      SET recalc_frecency = 1, recalc_alt_frecency = 1
+      WHERE id IN (
+        SELECT id
+        FROM moz_origins
+        WHERE frecency >= :threshold
+        AND recalc_frecency = 0
+        AND NOT EXISTS (
+          SELECT 1 FROM moz_places
+	        WHERE origin_id = moz_origins.id
+	          AND (
+              foreign_count > 0 OR
+              last_visit_date > strftime('%s', 'now', '-' || :cutoff || ' days') * 1000000
+            )
+        )
+      )
+    `,
+      { threshold, cutoff: lazy.originsFrecencyCutOffDays }
+    );
+  }
+
   observe(subject, topic) {
     lazy.logger.trace(`Got ${topic} topic`);
+    if (this.#finalized) {
+      lazy.logger.trace(`Ignoring topic because finalized`);
+      return;
+    }
     switch (topic) {
       case "idle-daily":
         this.pendingFrecencyDecayPromise = this.decay();
@@ -427,6 +506,13 @@ export class PlacesFrecencyRecalculator {
         lazy.logger.trace("Frecency recalculation on idle");
         lazy.PlacesUtils.history.shouldStartFrecencyRecalculation = true;
         this.maybeStartFrecencyRecalculation();
+        // Recalc frecency of origins that were not visited for
+        // some time, as otherwise they'd be stuck at the last calculated
+        // value, influencing threshold.
+        // TODO (Bug 1943104): we should replace frecency with an exponential
+        // self-decaying value, so we don't need to recalculate these.
+        this.pendingOriginsDecayPromise =
+          this.requestRecalcOfNotRecentlyVisitedOrigins();
         return;
       case "frecency-recalculation-needed":
         lazy.logger.trace("Frecency recalculation requested");
@@ -444,6 +530,9 @@ export class PlacesFrecencyRecalculator {
   }
 }
 
+/**
+ * Recalculates experimental alternative frecency scores.
+ */
 class AlternativeFrecencyHelper {
   initializedDeferred = Promise.withResolvers();
   #recalculator = null;
@@ -451,10 +540,7 @@ class AlternativeFrecencyHelper {
   sets = {
     pages: {
       // This pref is only read once and used to kick-off recalculations.
-      enabled: Services.prefs.getBoolPref(
-        "places.frecency.pages.alternative.featureGate",
-        false
-      ),
+      enabled: lazy.PlacesUtils.history.isAlternativeFrecencyEnabled,
       // Key used to store variables in the moz_meta table.
       metadataKey: "page_alternative_frecency",
       // The table containing frecency.
@@ -462,9 +548,13 @@ class AlternativeFrecencyHelper {
       // Object containing variables influencing the calculation.
       // Any change to this object will cause a full recalculation on restart.
       variables: {
-        // Current version of origins alternative frecency.
+        // Current version of pages alternative frecency.
         //  ! IMPORTANT: Always bump up when making changes to the algorithm.
-        version: 2,
+        version: 3,
+        veryHighWeight: Services.prefs.getIntPref(
+          "places.frecency.pages.alternative.veryHighWeight",
+          200
+        ),
         highWeight: Services.prefs.getIntPref(
           "places.frecency.pages.alternative.highWeight",
           100
@@ -579,9 +669,11 @@ class AlternativeFrecencyHelper {
 
   /**
    * Updates a chunk of outdated frecency values.
-   * @param {Number} chunkSize maximum number of entries to update at a time,
+   *
+   * @param {object} [options]
+   * @param {number} [options.chunkSize] maximum number of entries to update at a time,
    *   set to -1 to update any entry.
-   * @resolves {Number} Number of affected pages.
+   * @returns {Promise<number>} Number of affected pages.
    */
   async recalculateSomeAlternativeFrecencies({
     chunkSize = DEFAULT_CHUNK_SIZE,
@@ -602,7 +694,7 @@ class AlternativeFrecencyHelper {
 
   async #recalculateSomePagesAlternativeFrecencies({ chunkSize }) {
     lazy.logger.trace(
-      `Recalculate ${chunkSize} alternative pages frecency values`
+      `Recalculate ${chunkSize * 2} alternative pages frecency values`
     );
     // Since it takes a long period of time to recalculate frecency of all the
     // pages, due to the high number of them, we artificially increase the

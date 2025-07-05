@@ -1,0 +1,25 @@
+html {
+  box-sizing: border-box;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: inherit;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input {
+  background-color: inherit;
+  color: inherit;
+  font-family: inherit;
+  font-size: inherit;
+}
+
+[hidden] {
+  display: none !important; // stylelint-disable-line declaration-no-important
+}

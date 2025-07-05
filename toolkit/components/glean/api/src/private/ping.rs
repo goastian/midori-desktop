@@ -11,8 +11,20 @@ use crate::ipc::need_ipc;
 /// See [Glean Pings](https://mozilla.github.io/glean/book/user/pings/index.html).
 #[derive(Clone)]
 pub enum Ping {
-    Parent(glean::private::PingType, String),
+    Parent {
+        inner: glean::private::PingType,
+        name: String,
+    },
     Child,
+}
+
+impl malloc_size_of::MallocSizeOf for Ping {
+    fn size_of(&self, ops: &mut malloc_size_of::MallocSizeOfOps) -> usize {
+        match self {
+            Ping::Child => 0,
+            Ping::Parent { inner, .. } => inner.size_of(ops),
+        }
+    }
 }
 
 impl Ping {
@@ -34,13 +46,15 @@ impl Ping {
         enabled: bool,
         schedules_pings: Vec<String>,
         reason_codes: Vec<String>,
+        follows_collection_enabled: bool,
+        uploader_capabilities: Vec<String>,
     ) -> Self {
         if need_ipc() {
             Ping::Child
         } else {
             let name = name.into();
-            Ping::Parent(
-                glean::private::PingType::new(
+            Ping::Parent {
+                inner: glean::private::PingType::new(
                     name.clone(),
                     include_client_id,
                     send_if_empty,
@@ -49,9 +63,20 @@ impl Ping {
                     enabled,
                     schedules_pings,
                     reason_codes,
+                    follows_collection_enabled,
+                    uploader_capabilities,
                 ),
                 name,
-            )
+            }
+        }
+    }
+
+    pub fn set_enabled(&self, enabled: bool) {
+        match self {
+            Ping::Parent { inner, .. } => inner.set_enabled(enabled),
+            Ping::Child => {
+                panic!("Cannot use ping set_enabled API from non-parent process!");
+            }
         }
     }
 
@@ -65,7 +90,7 @@ impl Ping {
     /// `send_if_empty` is `false`).
     pub fn test_before_next_submit(&self, cb: impl FnOnce(Option<&str>) + Send + 'static) {
         match self {
-            Ping::Parent(p, _) => p.test_before_next_submit(cb),
+            Ping::Parent { inner, .. } => inner.test_before_next_submit(cb),
             Ping::Child => {
                 panic!("Cannot use ping test API from non-parent process!");
             }
@@ -83,9 +108,22 @@ impl glean::traits::Ping for Ping {
     ///   `ping_info.reason` part of the payload.
     pub fn submit(&self, reason: Option<&str>) {
         match self {
-            Ping::Parent(p, name) => {
-                p.submit(reason);
-                crate::pings::schedule_pings(&name, reason);
+            #[allow(unused)]
+            Ping::Parent { inner, name } => {
+                #[cfg(feature = "with_gecko")]
+                if gecko_profiler::can_accept_markers() {
+                    use gecko_profiler::gecko_profiler_category;
+                    gecko_profiler::add_marker(
+                        "Ping::submit",
+                        super::profiler_utils::TelemetryProfilerCategory,
+                        Default::default(),
+                        super::profiler_utils::PingMarker::new_for_submit(
+                            name.clone(),
+                            reason.map(str::to_string),
+                        ),
+                    );
+                }
+                inner.submit(reason);
             }
             Ping::Child => {
                 log::error!(
@@ -113,8 +151,20 @@ mod test {
     };
 
     // Smoke test for what should be the generated code.
-    static PROTOTYPE_PING: Lazy<Ping> =
-        Lazy::new(|| Ping::new("prototype", false, true, true, true, true, vec![], vec![]));
+    static PROTOTYPE_PING: Lazy<Ping> = Lazy::new(|| {
+        Ping::new(
+            "prototype",
+            false,
+            true,
+            true,
+            true,
+            true,
+            vec![],
+            vec![],
+            true,
+            vec![],
+        )
+    });
 
     #[test]
     fn smoke_test_custom_ping() {

@@ -71,12 +71,12 @@ HeadlessWidget::HeadlessWidget()
       mVisible(false),
       mDestroyed(false),
       mAlwaysOnTop(false),
-      mTopLevel(nullptr),
       mCompositorWidget(nullptr),
       mSizeMode(nsSizeMode_Normal),
       mLastSizeMode(nsSizeMode_Normal),
       mEffectiveSizeMode(nsSizeMode_Normal),
       mRestoreBounds(0, 0, 0, 0) {
+  mWidgetType = WidgetType::Headless;
   if (!sActiveWindows) {
     sActiveWindows = new nsTArray<HeadlessWidget*>();
     ClearOnShutdown(&sActiveWindows);
@@ -117,38 +117,16 @@ void HeadlessWidget::Destroy() {
 }
 
 nsresult HeadlessWidget::Create(nsIWidget* aParent,
-                                nsNativeWidget aNativeParent,
                                 const LayoutDeviceIntRect& aRect,
                                 widget::InitData* aInitData) {
-  MOZ_ASSERT(!aNativeParent, "No native parents for headless widgets.");
-
-  BaseCreate(nullptr, aInitData);
+  BaseCreate(aParent, aInitData);
 
   mBounds = aRect;
   mRestoreBounds = aRect;
 
   mAlwaysOnTop = aInitData && aInitData->mAlwaysOnTop;
 
-  if (aParent) {
-    mTopLevel = aParent->GetTopLevelWidget();
-  } else {
-    mTopLevel = this;
-  }
-
   return NS_OK;
-}
-
-already_AddRefed<nsIWidget> HeadlessWidget::CreateChild(
-    const LayoutDeviceIntRect& aRect, widget::InitData* aInitData,
-    bool aForceUseIWidgetParent) {
-  nsCOMPtr<nsIWidget> widget = nsIWidget::CreateHeadlessWidget();
-  if (!widget) {
-    return nullptr;
-  }
-  if (NS_FAILED(widget->Create(this, nullptr, aRect, aInitData))) {
-    return nullptr;
-  }
-  return widget.forget();
 }
 
 void HeadlessWidget::GetCompositorWidgetInitData(
@@ -156,8 +134,6 @@ void HeadlessWidget::GetCompositorWidgetInitData(
   *aInitData =
       mozilla::widget::HeadlessCompositorWidgetInitData(GetClientSize());
 }
-
-nsIWidget* HeadlessWidget::GetTopLevelWidget() { return mTopLevel; }
 
 void HeadlessWidget::RaiseWindow() {
   MOZ_ASSERT(
@@ -169,13 +145,6 @@ void HeadlessWidget::RaiseWindow() {
   if (activeWindow == this) {
     return;
   }
-
-  // Raise the window to the top of the stack.
-  nsWindowZ placement = nsWindowZTop;
-  nsCOMPtr<nsIWidget> actualBelow;
-  if (mWidgetListener)
-    mWidgetListener->ZLevelChanged(true, &placement, nullptr,
-                                   getter_AddRefs(actualBelow));
 
   // Deactivate the last active window.
   if (activeWindow && activeWindow->mWidgetListener) {
@@ -222,7 +191,9 @@ void HeadlessWidget::SetFocus(Raise aRaise,
 
     // The toplevel only becomes active if it's currently visible; otherwise, it
     // will be activated anyway when it's shown.
-    if (topLevel->IsVisible()) topLevel->RaiseWindow();
+    if (topLevel->IsVisible()) {
+      topLevel->RaiseWindow();
+    }
   }
 }
 
@@ -259,7 +230,10 @@ void HeadlessWidget::MoveInternal(int32_t aX, int32_t aY) {
 }
 
 LayoutDeviceIntPoint HeadlessWidget::WidgetToScreenOffset() {
-  return mTopLevel->GetBounds().TopLeft();
+  if (mWindowType == WindowType::Popup) {
+    return mBounds.TopLeft();
+  }
+  return GetTopLevelWidget()->GetBounds().TopLeft();
 }
 
 WindowRenderer* HeadlessWidget::GetWindowRenderer() {
@@ -486,7 +460,6 @@ nsresult HeadlessWidget::SynthesizeNativeMouseScrollEvent(
     double aDeltaX, double aDeltaY, double aDeltaZ, uint32_t aModifierFlags,
     uint32_t aAdditionalFlags, nsIObserver* aObserver) {
   AutoObserverNotifier notifier(aObserver, "mousescrollevent");
-  printf(">>> DEBUG_ME: Synth: aDeltaY=%f\n", aDeltaY);
   // The various platforms seem to handle scrolling deltas differently,
   // but the following seems to emulate it well enough.
   WidgetWheelEvent event(true, eWheel, this);

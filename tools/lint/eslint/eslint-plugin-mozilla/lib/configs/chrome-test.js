@@ -11,37 +11,23 @@ module.exports = {
   globals: {
     // SpecialPowers is injected into the window object via SimpleTest.js
     SpecialPowers: false,
+    afterEach: false,
+    beforeEach: false,
+    describe: false,
     extractJarToTmp: false,
     getChromeDir: false,
     getJar: false,
     getResolvedURI: false,
     getRootDirectory: false,
+    it: false,
   },
 
-  overrides: [
-    {
-      env: {
-        // Ideally we wouldn't be using the simpletest env here, but our uses of
-        // js files mean we pick up everything from the global scope, which could
-        // be any one of a number of html files. So we just allow the basics...
-        "mozilla/simpletest": true,
-      },
-      files: ["*.js"],
-    },
-  ],
-
-  plugins: ["mozilla", "@microsoft/sdl"],
+  name: "mozilla/chrome-test",
+  plugins: ["mozilla"],
 
   rules: {
-    "mozilla/import-content-task-globals": "error",
-    "mozilla/import-headjs-globals": "error",
-    "mozilla/mark-test-function-used": "error",
     // We mis-predict globals for HTML test files in directories shared
     // with browser tests.
     "mozilla/no-redeclare-with-import-autofix": "off",
-    // Turn off no-unsanitized for tests, as we do want to be able to use
-    // these for testing.
-    "no-unsanitized/method": "off",
-    "no-unsanitized/property": "off",
   },
 };

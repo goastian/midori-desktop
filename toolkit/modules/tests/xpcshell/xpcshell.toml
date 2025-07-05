@@ -15,10 +15,16 @@ support-files = [
 
 ["test_AllowedAppSources.js"]
 run-if = ["os == 'win'"] # Test of a Windows-specific feature
+tags = "os_integration"
 
 ["test_BinarySearch.js"]
 
 ["test_BrowserUtils.js"]
+support-files = [
+  "my_catman_1.sys.mjs",
+  "my_catman_2.sys.mjs",
+]
+
 
 ["test_BrowserUtils_urlFormatting.js"]
 
@@ -31,7 +37,10 @@ run-if = ["os == 'win'"] # Test of a Windows-specific feature
 ["test_DeferredTask.js"]
 skip-if = [
   "os == 'android'",
-  "os == 'mac'",  # osx: Bug 1550141;
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'", # osx: Bug 1550141
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # osx: Bug 1550141
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'", # Bug 1929423
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # osx: Bug 1550141
 ]
 
 ["test_E10SUtils_getRemoteTypeForURIObject.js"]
@@ -78,8 +87,6 @@ skip-if = ["os == 'android'"]
 
 ["test_ObjectUtils.js"]
 
-["test_ObjectUtils_strict.js"]
-
 ["test_PermissionsUtils.js"]
 
 ["test_Preferences.js"]
@@ -100,19 +107,26 @@ run-sequentially = "very high failure rate in parallel"
 ["test_UpdateUtils_url.js"]
 skip-if = ["!updater"]
 reason = "LOCALE is not defined without MOZ_UPDATER"
+tags = "os_integration"
 
 ["test_firstStartup.js"]
 skip-if = [
   "os == 'android'",
 ]
+tags = "os_integration"
 
 ["test_jsesc.js"]
 
 ["test_osKeyStore.js"]
-skip-if = ["apple_silicon"] # bug 1729538
+skip-if = [
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'", # bug 1729538
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'", # bug 1729538
+]
+tags = "os_integration"
 
 ["test_propertyListsUtils.js"]
 run-if = ["os == 'mac'"]
+tags = "os_integration"
 
 ["test_readCertPrefs.js"]
 

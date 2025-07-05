@@ -15,10 +15,10 @@ from marionette_driver.addons import Addons
 from marionette_driver.errors import MarionetteException
 from marionette_driver.marionette import Marionette
 from marionette_driver.wait import Wait
-from six import reraise
 from telemetry_harness.ping_server import PingServer
 
 CANARY_CLIENT_ID = "c0ffeec0-ffee-c0ff-eec0-ffeec0ffeec0"
+CANARY_PROFILE_GROUP_ID = "decafdec-afde-cafd-ecaf-decafdecafde"
 SERVER_ROOT = "toolkit/components/telemetry/tests/marionette/harness/www"
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
@@ -84,13 +84,15 @@ def fixture_marionette(binary, ping_server):
 @pytest.fixture(name="ping_server")
 def fixture_ping_server():
     """Run a ping server on localhost on a free port assigned by the OS"""
-    server = PingServer(SERVER_ROOT, "http://localhost:0")
+    server = PingServer(
+        os.path.join(build.topsrcdir, SERVER_ROOT), "http://localhost:0"
+    )
     server.start()
     yield server
     server.stop()
 
 
-class Browser(object):
+class Browser:
     def __init__(self, marionette, ping_server):
         self.marionette = marionette
         self.ping_server = ping_server
@@ -101,20 +103,6 @@ class Browser(object):
             {"datareporting.healthreport.uploadEnabled": False}
         )
         self.marionette.set_pref("datareporting.healthreport.uploadEnabled", False)
-
-    def enable_search_events(self):
-        """
-        Event Telemetry categories are disabled by default.
-        Search events are in the "navigation" category and are not enabled by
-        default in builds of Firefox, so we enable them here.
-        """
-
-        script = """\
-        Services.telemetry.setEventRecordingEnabled("navigation", true);
-        """
-
-        with self.marionette.using_context(self.marionette.CONTEXT_CHROME):
-            self.marionette.execute_script(textwrap.dedent(script))
 
     def enable_telemetry(self):
         self.marionette.instance.profile.set_persistent_preferences(
@@ -131,6 +119,18 @@ class Browser(object):
                   "resource://gre/modules/ClientID.sys.mjs"
                 );
                 return ClientID.getCachedClientID();
+            """
+            )
+
+    def get_profile_group_id(self):
+        """Return the group ID of the current client."""
+        with self.marionette.using_context(self.marionette.CONTEXT_CHROME):
+            return self.marionette.execute_script(
+                """\
+                const { ClientID } = ChromeUtils.importESModule(
+                  "resource://gre/modules/ClientID.sys.mjs"
+                );
+                return ClientID.getCachedProfileGroupID();
             """
             )
 
@@ -177,7 +177,7 @@ class Browser(object):
             addons = Addons(self.marionette)
             addon_id = addons.install(addon_path, temp=True)
         except MarionetteException as e:
-            pytest.fail("{} - Error installing addon: {} - ".format(e.cause, e))
+            pytest.fail(f"{e.cause} - Error installing addon: {e} - ")
         else:
             self.addon_ids.append(addon_id)
 
@@ -207,11 +207,9 @@ class Browser(object):
                 )
         except Exception:
             exc_type, exc_value, exc_traceback = sys.exc_info()
-            reraise(
-                exc_type,
-                exc_type("Failed to trigger opening a new tab: {}".format(exc_value)),
-                exc_traceback,
-            )
+            raise exc_type(
+                f"Failed to trigger opening a new tab: {exc_value}"
+            ).with_traceback(exc_traceback)
         else:
             Wait(self.marionette).until(
                 lambda mn: len(mn.window_handles) == len(current_tabs) + 1,
@@ -271,7 +269,7 @@ def fixture_browser(marionette, ping_server):
     browser.quit()
 
 
-class Helpers(object):
+class Helpers:
     def __init__(self, ping_server, marionette):
         self.ping_server = ping_server
         self.marionette = marionette
@@ -281,6 +279,7 @@ class Helpers(object):
         assert value is not None
         assert value != ""
         assert value != CANARY_CLIENT_ID
+        assert value != CANARY_PROFILE_GROUP_ID
         assert re.match(UUID_PATTERN, value) is not None
 
     def wait_for_ping(self, action_func, ping_filter):
@@ -310,7 +309,7 @@ class Helpers(object):
         try:
             Wait(self.marionette, 60).until(wait_func)
         except Exception as e:
-            pytest.fail("Error waiting for ping: {}".format(e))
+            pytest.fail(f"Error waiting for ping: {e}")
 
         return filtered_pings[:count]
 

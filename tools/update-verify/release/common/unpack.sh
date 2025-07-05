@@ -18,7 +18,7 @@ unpack_build () {
 
     if [ ! -f "$pkg_file" ]; then
       return 1
-    fi 
+    fi
     mkdir -p "$dir_name"
     pushd "$dir_name" > /dev/null || exit
     case $unpack_platform in
@@ -34,17 +34,22 @@ unpack_build () {
                 echo "installing $pkg_file"
                 ../common/unpack-diskimage.sh "$pkg_file" mnt "$dir_name"
             else
-                7z x ../"$pkg_file" > /dev/null
+                echo "Unpacking $pkg_file with dmg and hfsplus"
+                # These commands are very verbose, so we redirect to /dev/null
+                dmg extract ../"$pkg_file" hfsimg > /dev/null
+                hfsplus hfsimg extractall > /dev/null
+                # Remove unnecessary files
+                # ' '               /Application shortcut inside the dmg
+                # .background       dmg background picture
+                # .DS_Store         MacOS attribute file
+                # .VolumeIcon.icns  dmg icon
+                # hfsimg            hfs image created with dmg extract
+                rm -rf ' ' .background .DS_Store .VolumeIcon.icns hfsimg
                 if [ "$(find . -mindepth 1 -maxdepth 1 | wc -l)" -ne 1 ]
                 then
                     echo "Couldn't find .app package"
                     return 1
                 fi
-                unpack_dir=$(ls -1)
-                unpack_dir=$(ls -d "${unpack_dir}")
-                mv "${unpack_dir}"/*.app .
-                rm -rf "${unpack_dir}"
-                appdir=$(ls -1)
                 appdir=$(ls -d ./*.app)
                 if [ -d "${mac_update_settings_dir_override}" ]; then
                     cp "${mac_update_settings_dir_override}/update-settings.ini" "${appdir}/update-settings.ini"
@@ -71,7 +76,7 @@ unpack_build () {
               rm -rf nonlocalized
               rm -rf localized
               if [ "$(find optional/ | wc -l)" -gt 1 ]
-              then 
+              then
                 cp -rp optional/*     bin/
                 rm -rf optional
               fi
@@ -96,6 +101,9 @@ unpack_build () {
             elif echo "$pkg_file" | grep -q "tar.bz2"
             then
                 tar xfj ../"$pkg_file" > /dev/null
+            elif echo "$pkg_file" | grep -q "tar.xz"
+            then
+                tar xfJ ../"$pkg_file" > /dev/null
             else
                 echo "Unknown package type for file: $pkg_file"
                 exit 1

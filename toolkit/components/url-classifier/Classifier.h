@@ -93,10 +93,6 @@ class Classifier {
   nsresult ReadNoiseEntries(const Prefix& aPrefix, const nsACString& aTableName,
                             uint32_t aCount, PrefixArray& aNoiseEntries);
 
-#ifdef MOZ_SAFEBROWSING_DUMP_FAILED_UPDATES
-  nsresult DumpRawTableUpdates(const nsACString& aRawUpdates);
-#endif
-
   static void SplitTables(const nsACString& str, nsTArray<nsCString>& tables);
 
   // Given a root store directory, return a private store directory
@@ -149,11 +145,6 @@ class Classifier {
   // and on-disk data.
   void RemoveUpdateIntermediaries();
 
-#ifdef MOZ_SAFEBROWSING_DUMP_FAILED_UPDATES
-  already_AddRefed<nsIFile> GetFailedUpdateDirectroy();
-  nsresult DumpFailedUpdate();
-#endif
-
   nsresult ScanStoreDir(nsIFile* aDirectory,
                         const nsTArray<nsCString>& aExtensions,
                         nsTArray<nsCString>& aTables);
@@ -205,6 +196,10 @@ class Classifier {
   nsresult ApplyUpdatesForeground(nsresult aBackgroundRv,
                                   const nsTArray<nsCString>& aFailedTableNames);
 
+  // Notify the worker thread that the async update is finished to kick off the
+  // pending updates.
+  void AsyncUpdateFinished();
+
   // Used by worker thread and update thread to abort current operation.
   bool ShouldAbort() const;
 
@@ -236,6 +231,12 @@ class Classifier {
 
   // The copy of mLookupCaches for update only.
   LookupCacheArray mNewLookupCaches;
+
+  // Whether an async update is in progress.
+  bool mAsyncUpdateInProgress;
+
+  // Pending updates to be executed after the current async update is finished.
+  nsTArray<nsCOMPtr<nsIRunnable>> mPendingUpdates;
 
   // True when Reset() is called.
   bool mUpdateInterrupted;

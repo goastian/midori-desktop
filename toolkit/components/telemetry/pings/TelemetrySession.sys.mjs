@@ -413,8 +413,6 @@ var Impl = {
       }
     }
 
-    ret.startupInterrupted = Number(Services.startup.interrupted);
-
     if (Utils.isContentProcess) {
       return ret;
     }
@@ -739,12 +737,10 @@ var Impl = {
       // been suspended since boot, we want the previous property to hold,
       // regardless of the delay during or between the two
       // `msSinceProcessStart*` calls.
-      Services.telemetry.scalarSet(
-        "browser.engagement.session_time_excluding_suspend",
+      Glean.browserEngagement.sessionTimeExcludingSuspend.set(
         Services.telemetry.msSinceProcessStartExcludingSuspend()
       );
-      Services.telemetry.scalarSet(
-        "browser.engagement.session_time_including_suspend",
+      Glean.browserEngagement.sessionTimeIncludingSuspend.set(
         Services.telemetry.msSinceProcessStartIncludingSuspend()
       );
 
@@ -764,11 +760,6 @@ var Impl = {
         reason,
         clearSubsession
       );
-    } catch (ex) {
-      Services.telemetry
-        .getHistogramById("TELEMETRY_ASSEMBLE_PAYLOAD_EXCEPTION")
-        .add(1);
-      throw ex;
     } finally {
       if (!Utils.isContentProcess && clearSubsession) {
         this.startNewSubsession();
@@ -1114,8 +1105,12 @@ var Impl = {
     // inactivity, because it is just the start of this active tick.
     if (needsUpdate) {
       this._sessionActiveTicks++;
-      Services.telemetry.scalarAdd("browser.engagement.active_ticks", 1);
       Glean.browserEngagement.activeTicks.add(1);
+      // GLAM EXPERIMENT
+      // This metric is temporary, disabled by default, and will be enabled only
+      // for the purpose of experimenting with client-side sampling of data for
+      // GLAM use. See Bug 1947604 for more information.
+      Glean.glamExperiment.activeTicks.add(1);
     }
   },
 
@@ -1300,9 +1295,6 @@ var Impl = {
       !("sessionId" in data)
     ) {
       this._log.error("_loadSessionData - session data is invalid");
-      Services.telemetry
-        .getHistogramById("TELEMETRY_SESSIONDATA_FAILED_VALIDATION")
-        .add(1);
       return null;
     }
 

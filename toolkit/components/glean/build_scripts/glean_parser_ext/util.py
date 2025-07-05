@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -8,6 +6,7 @@
 Utility functions for the glean_parser-based code generator
 """
 import copy
+from hashlib import sha1
 from typing import Dict, List, Tuple
 
 from glean_parser import util
@@ -38,22 +37,41 @@ def generate_ping_ids(objs):
     return lambda ping_name: ping_id_mapping[ping_name]
 
 
-def generate_metric_ids(objs):
+def generate_metric_ids(objs, options):
     """
     Return a lookup function for metric IDs per metric object.
 
     :param objs: A tree of metrics as returned from `parser.parse_objects`.
     """
 
-    # Metric ID 0 is reserved (but unused) right now.
-    metric_id = 1
-
     # Mapping from a tuple of (category name, metric name) to the metric's numeric ID
     metric_id_mapping = {}
-    for category_name, metrics in objs.items():
-        for metric in metrics.values():
-            metric_id_mapping[(category_name, metric.name)] = metric_id
-            metric_id += 1
+
+    if options.get("is_local_build"):
+        # Metric ID 0 is reserved (but unused) right now.
+        metric_ids = {0}
+
+        for category_name, metrics in objs.items():
+            if category_name == "tags":
+                continue
+            for metric in metrics.values():
+                metric_id = (
+                    int(sha1(str.encode(metric.identifier())).hexdigest(), 16) % 2**25
+                )
+                # Avoid collisions by incrementing the number until we find an unused id.
+                while metric_id in metric_ids:
+                    metric_id = (metric_id + 1) % 2**25
+                assert metric_id < 2**25
+                metric_ids.add(metric_id)
+                metric_id_mapping[(category_name, metric.name)] = metric_id
+    else:
+        # Metric ID 0 is reserved (but unused) right now.
+        metric_id = 1
+
+        for category_name, metrics in objs.items():
+            for metric in metrics.values():
+                metric_id_mapping[(category_name, metric.name)] = metric_id
+                metric_id += 1
 
     return lambda metric: metric_id_mapping[(metric.category, metric.name)]
 
@@ -99,4 +117,6 @@ def type_ids_and_categories(objs) -> Tuple[Dict[str, Tuple[int, List[str]]], Lis
                         args.append(arg_name)
                 metric_type_ids[metric.type] = {"id": type_id, "args": args}
 
+    metric_type_ids = dict(sorted(metric_type_ids.items()))
+    categories = sorted(categories)
     return (metric_type_ids, categories)

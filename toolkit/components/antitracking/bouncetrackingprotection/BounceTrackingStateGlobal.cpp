@@ -10,6 +10,7 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Logging.h"
 #include "mozilla/IntegerPrintfMacros.h"
+#include "nsIBounceTrackingProtection.h"
 #include "nsIPrincipal.h"
 
 namespace mozilla {
@@ -105,6 +106,8 @@ nsresult BounceTrackingStateGlobal::ClearSiteHost(const nsACString& aSiteHost,
                "A site must only be in one of the maps at a time.");
   }
 
+  mRecentPurges.Remove(aSiteHost);
+
   if (aSkipStorage || !ShouldPersistToDisk()) {
     return NS_OK;
   }
@@ -155,6 +158,34 @@ nsresult BounceTrackingStateGlobal::ClearByTimeRange(
     }
   }
 
+  // Clear purge tracker log if there is no type filter. Used for
+  // ClearDataService.
+  if (aEntryType.isNothing()) {
+    for (auto iter = mRecentPurges.Iter(); !iter.Done(); iter.Next()) {
+      auto& purgeArray = iter.Data();
+
+      // Use RemoveElementsBy to safely remove elements from nsTArray while
+      // iterating.
+      purgeArray.RemoveElementsBy([&](const auto& entry) {
+        const PRTime& purgeTime = entry->PurgeTimeRefConst();
+        bool shouldRemove =
+            purgeTime >= aFrom && (aTo.isNothing() || purgeTime <= aTo.value());
+
+        if (shouldRemove) {
+          MOZ_LOG(gBounceTrackingProtectionLog, LogLevel::Debug,
+                  ("%s: Remove purge log entry for site %s", __FUNCTION__,
+                   PromiseFlatCString(iter.Key()).get()));
+        }
+        return shouldRemove;
+      });
+
+      // If the array is now empty, remove the entire entry from mRecentPurges
+      if (purgeArray.IsEmpty()) {
+        iter.Remove();
+      }
+    }
+  }
+
   if (aSkipStorage || !ShouldPersistToDisk()) {
     return NS_OK;
   }
@@ -190,6 +221,26 @@ nsresult BounceTrackingStateGlobal::RecordBounceTracker(
       BounceTrackingProtectionStorage::EntryType::BounceTracker, aTime);
 }
 
+nsresult BounceTrackingStateGlobal::RecordPurgedTracker(
+    const RefPtr<BounceTrackingPurgeEntry>& aEntry) {
+  MOZ_ASSERT(StaticPrefs::privacy_bounceTrackingProtection_mode() ==
+                 nsIBounceTrackingProtection::MODE_ENABLED,
+             "Should only record purged trackers when the feature is enabled.");
+
+  NS_ENSURE_ARG_POINTER(aEntry);
+  // Ensure that entries unrelated to this state global can not be added.
+  bool entryOAMatchesStateGlobalOA =
+      aEntry->OriginAttributesRef() == mOriginAttributes;
+  MOZ_ASSERT(entryOAMatchesStateGlobalOA);
+  NS_ENSURE_TRUE(entryOAMatchesStateGlobalOA, NS_ERROR_INVALID_ARG);
+
+  nsTArray<RefPtr<BounceTrackingPurgeEntry>>& entriesForSite =
+      mRecentPurges.LookupOrInsert(aEntry->SiteHostRef());
+  entriesForSite.AppendElement(aEntry);
+
+  return NS_OK;
+}
+
 nsresult BounceTrackingStateGlobal::RemoveBounceTrackers(
     const nsTArray<nsCString>& aSiteHosts) {
   for (const nsCString& siteHost : aSiteHosts) {
@@ -204,6 +255,26 @@ nsresult BounceTrackingStateGlobal::RemoveBounceTrackers(
   }
 
   return NS_OK;
+}
+
+nsresult BounceTrackingStateGlobal::ClearByType(
+    BounceTrackingProtectionStorage::EntryType aType, bool aSkipStorage) {
+  if (aType == BounceTrackingProtectionStorage::EntryType::BounceTracker) {
+    mBounceTrackers.Clear();
+  } else {
+    MOZ_ASSERT(aType ==
+               BounceTrackingProtectionStorage::EntryType::UserActivation);
+    mUserActivation.Clear();
+  }
+
+  if (aSkipStorage || !ShouldPersistToDisk()) {
+    return NS_OK;
+  }
+
+  NS_ENSURE_TRUE(mStorage, NS_ERROR_FAILURE);
+  return mStorage->DeleteDBEntriesByType(
+      &mOriginAttributes,
+      BounceTrackingProtectionStorage::EntryType::BounceTracker);
 }
 
 // static

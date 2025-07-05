@@ -12,8 +12,8 @@ import {
 export var AUSTLMY = {
   // Telemetry for the application update background update check occurs when
   // the background update timer fires after the update interval which is
-  // determined by the app.update.interval preference and its telemetry
-  // histogram IDs have the suffix '_NOTIFY'.
+  // determined by the app.update.interval preference and its glean metric IDs
+  // have the suffix 'Notify'.
   // Telemetry for the externally initiated background update check occurs when
   // a call is made to |checkForBackgroundUpdates| which is typically initiated
   // by an application when it has determined that the application should have
@@ -23,19 +23,19 @@ export var AUSTLMY = {
 
   // The update check was performed by the call to checkForBackgroundUpdates in
   // nsUpdateService.js.
-  EXTERNAL: "EXTERNAL",
+  EXTERNAL: "External",
   // The update check was performed by the call to notify in nsUpdateService.js.
-  NOTIFY: "NOTIFY",
+  NOTIFY: "Notify",
   // The update check was performed after an update is already ready. There is
   // currently no way for a user to initiate an update check when there is a
   // ready update (the UI just prompts you to install the ready update). So
   // subsequent update checks are necessarily "notify" update checks, not
   // "external" ones.
-  SUBSEQUENT: "SUBSEQUENT",
+  SUBSEQUENT: "Subsequent",
 
   /**
-   * Values for the UPDATE_CHECK_CODE_NOTIFY and UPDATE_CHECK_CODE_EXTERNAL
-   * Telemetry histograms.
+   * Values for the Glean.update.checkCodeNotify and
+   * Glean.update.checkCodeExternal custom_distribution metrics.
    */
   // No update found (no notification)
   CHK_NO_UPDATE_FOUND: 0,
@@ -102,19 +102,19 @@ export var AUSTLMY = {
 
   /**
    * Submit a telemetry ping for the update check result code or a telemetry
-   * ping for a count type histogram count when no update was found. The no
+   * ping for a counter metric when no update was found. The no
    * update found ping is separate since it is the typical result, is less
    * interesting than the other result codes, and it is easier to analyze the
    * other codes without including it.
    *
    * @param  aSuffix
-   *         The histogram id suffix for histogram IDs:
-   *         UPDATE_CHECK_CODE_EXTERNAL
-   *         UPDATE_CHECK_CODE_NOTIFY
-   *         UPDATE_CHECK_CODE_SUBSEQUENT
-   *         UPDATE_CHECK_NO_UPDATE_EXTERNAL
-   *         UPDATE_CHECK_NO_UPDATE_NOTIFY
-   *         UPDATE_CHECK_NO_UPDATE_SUBSEQUENT
+   *         The metric name suffix for metric names:
+   *         Glean.update.checkCodeExternal
+   *         Glean.update.checkCodeNotify
+   *         Glean.update.checkCodeSubsequent
+   *         Glean.update.checkNoUpdateExternal
+   *         Glean.update.checkNoUpdateNotify
+   *         Glean.update.checkNoUpdateSubsequent
    * @param  aCode
    *         An integer value as defined by the values that start with CHK_ in
    *         the above section.
@@ -122,13 +122,11 @@ export var AUSTLMY = {
   pingCheckCode: function UT_pingCheckCode(aSuffix, aCode) {
     try {
       if (aCode == this.CHK_NO_UPDATE_FOUND) {
-        let id = "UPDATE_CHECK_NO_UPDATE_" + aSuffix;
-        // count type histogram
-        Services.telemetry.getHistogramById(id).add();
+        // counter metric
+        Glean.update["checkNoUpdate" + aSuffix].add();
       } else {
-        let id = "UPDATE_CHECK_CODE_" + aSuffix;
-        // enumerated type histogram
-        Services.telemetry.getHistogramById(id).add(aCode);
+        // custom distribution metric
+        Glean.update["checkCode" + aSuffix].accumulateSingleSample(aCode);
       }
     } catch (e) {
       console.error(e);
@@ -137,43 +135,44 @@ export var AUSTLMY = {
 
   /**
    * Submit a telemetry ping for a failed update check's unhandled error code
-   * when the pingCheckCode is CHK_GENERAL_ERROR_SILENT. The histogram is a
-   * keyed count type with key names that are prefixed with 'AUS_CHECK_EX_ERR_'.
+   * when the pingCheckCode is CHK_GENERAL_ERROR_SILENT. The metric is a labeled
+   * counter with label names that are prefixed with 'AUS_CHECK_EX_ERR_'.
    *
    * @param  aSuffix
-   *         The histogram id suffix for histogram IDs:
-   *         UPDATE_CHECK_EXTENDED_ERROR_EXTERNAL
-   *         UPDATE_CHECK_EXTENDED_ERROR_NOTIFY
-   *         UPDATE_CHECK_EXTENDED_ERROR_SUBSEQUENT
+   *         The metric name suffix for metric names:
+   *         Glean.update.checkExtendedErrorExternal
+   *         Glean.update.checkExtendedErrorNotify
+   *         Glean.update.checkExtendedErrorSubsequent
    * @param  aCode
    *         The extended error value return by a failed update check.
    */
   pingCheckExError: function UT_pingCheckExError(aSuffix, aCode) {
     try {
-      let id = "UPDATE_CHECK_EXTENDED_ERROR_" + aSuffix;
-      let val = "AUS_CHECK_EX_ERR_" + aCode;
-      // keyed count type histogram
-      Services.telemetry.getKeyedHistogramById(id).add(val);
+      // labeled counter metric
+      Glean.update["checkExtendedError" + aSuffix][
+        "AUS_CHECK_EX_ERR_" + aCode
+      ].add();
     } catch (e) {
       console.error(e);
     }
   },
 
   // The state code and if present the status error code were read on startup.
-  STARTUP: "STARTUP",
+  STARTUP: "Startup",
   // The state code and status error code if present were read after staging.
-  STAGE: "STAGE",
+  STAGE: "Stage",
 
   // Patch type Complete
-  PATCH_COMPLETE: "COMPLETE",
+  PATCH_COMPLETE: "Complete",
   // Patch type partial
-  PATCH_PARTIAL: "PARTIAL",
+  PATCH_PARTIAL: "Partial",
   // Patch type unknown
-  PATCH_UNKNOWN: "UNKNOWN",
+  PATCH_UNKNOWN: "Unknown",
 
   /**
-   * Values for the UPDATE_DOWNLOAD_CODE_COMPLETE, UPDATE_DOWNLOAD_CODE_PARTIAL,
-   * and UPDATE_DOWNLOAD_CODE_UNKNOWN Telemetry histograms.
+   * Values for the Glean.update.downloadCodeComplete,
+   * Glean.update.downloadCodePartial and
+   * Glean.update.downloadCodeUnknown metrics.
    */
   DWNLD_SUCCESS: 0,
   DWNLD_RETRY_OFFLINE: 1,
@@ -197,13 +196,12 @@ export var AUSTLMY = {
    * Submit a telemetry ping for the update download result code.
    *
    * @param  aIsComplete
-   *         If true the histogram is for a patch type complete, if false the
-   *         histogram is for a patch type partial, and when undefined the
-   *         histogram is for an unknown patch type. This is used to determine
-   *         the histogram ID out of the following histogram IDs:
-   *         UPDATE_DOWNLOAD_CODE_COMPLETE
-   *         UPDATE_DOWNLOAD_CODE_PARTIAL
-   *         UPDATE_DOWNLOAD_CODE_UNKNOWN
+   *         If true the patch type is complete, if false the patch type is
+   *         partial, and when undefined the patch type is unknown.
+   *         This is used to determine the metric ID out of the following:
+   *         Glean.update.downloadCodeComplete
+   *         Glean.update.downloadCodePartial
+   *         Glean.update.downloadCodeUnknown
    * @param  aCode
    *         An integer value as defined by the values that start with DWNLD_ in
    *         the above section.
@@ -216,9 +214,8 @@ export var AUSTLMY = {
       patchType = this.PATCH_PARTIAL;
     }
     try {
-      let id = "UPDATE_DOWNLOAD_CODE_" + patchType;
-      // enumerated type histogram
-      Services.telemetry.getHistogramById(id).add(aCode);
+      // custom_distribution metric
+      Glean.update["downloadCode" + patchType].accumulateSingleSample(aCode);
     } catch (e) {
       console.error(e);
     }
@@ -232,22 +229,21 @@ export var AUSTLMY = {
    * Submit a telemetry ping for the update status state code.
    *
    * @param  aSuffix
-   *         The histogram id suffix for histogram IDs:
-   *         UPDATE_STATE_CODE_COMPLETE_STARTUP
-   *         UPDATE_STATE_CODE_PARTIAL_STARTUP
-   *         UPDATE_STATE_CODE_UNKNOWN_STARTUP
-   *         UPDATE_STATE_CODE_COMPLETE_STAGE
-   *         UPDATE_STATE_CODE_PARTIAL_STAGE
-   *         UPDATE_STATE_CODE_UNKNOWN_STAGE
+   *         The glean name suffix for glean metric IDs:
+   *         Glean.update.stateCodeCompleteStartup
+   *         Glean.update.stateCodePartialStartup
+   *         Glean.update.stateCodeUnknownStartup
+   *         Glean.update.stateCodeCompleteStage
+   *         Glean.update.stateCodePartialStage
+   *         Glean.update.stateCodeUnknownStage
    * @param  aCode
    *         An integer value as defined by the values that start with STATE_ in
    *         the above section for the update state from the update.status file.
    */
   pingStateCode: function UT_pingStateCode(aSuffix, aCode) {
     try {
-      let id = "UPDATE_STATE_CODE_" + aSuffix;
-      // enumerated type histogram
-      Services.telemetry.getHistogramById(id).add(aCode);
+      // custom_distribution metric
+      Glean.update["stateCode" + aSuffix].accumulateSingleSample(aCode);
     } catch (e) {
       console.error(e);
     }
@@ -258,45 +254,20 @@ export var AUSTLMY = {
    * submit a success value which can be determined from the state code.
    *
    * @param  aSuffix
-   *         The histogram id suffix for histogram IDs:
-   *         UPDATE_STATUS_ERROR_CODE_COMPLETE_STARTUP
-   *         UPDATE_STATUS_ERROR_CODE_PARTIAL_STARTUP
-   *         UPDATE_STATUS_ERROR_CODE_UNKNOWN_STARTUP
-   *         UPDATE_STATUS_ERROR_CODE_COMPLETE_STAGE
-   *         UPDATE_STATUS_ERROR_CODE_PARTIAL_STAGE
-   *         UPDATE_STATUS_ERROR_CODE_UNKNOWN_STAGE
+   *         The glean name suffix for glean metric IDs:
+   *         Glean.update.statusErrorCodeCompleteStartup
+   *         Glean.update.statusErrorCodePartialStartup
+   *         Glean.update.statusErrorCodeUnknownStartup
+   *         Glean.update.statusErrorCodeCompleteStage
+   *         Glean.update.statusErrorCodePartialStage
+   *         Glean.update.statusErrorCodeUnknownStage
    * @param  aCode
    *         An integer value for the error code from the update.status file.
    */
   pingStatusErrorCode: function UT_pingStatusErrorCode(aSuffix, aCode) {
     try {
-      let id = "UPDATE_STATUS_ERROR_CODE_" + aSuffix;
-      // enumerated type histogram
-      Services.telemetry.getHistogramById(id).add(aCode);
-    } catch (e) {
-      console.error(e);
-    }
-  },
-
-  /**
-   * Submit a telemetry ping for a failing binary transparency result.
-   *
-   * @param  aSuffix
-   *         Key to use on the update.binarytransparencyresult collection.
-   *         Must be one of "COMPLETE_STARTUP", "PARTIAL_STARTUP",
-   *         "UNKNOWN_STARTUP", "COMPLETE_STAGE", "PARTIAL_STAGE",
-   *         "UNKNOWN_STAGE".
-   * @param  aCode
-   *         An integer value for the error code from the update.bt file.
-   */
-  pingBinaryTransparencyResult: function UT_pingBinaryTransparencyResult(
-    aSuffix,
-    aCode
-  ) {
-    try {
-      let id = "update.binarytransparencyresult";
-      let key = aSuffix.toLowerCase().replace("_", "-");
-      Services.telemetry.keyedScalarSet(id, key, aCode);
+      // custom_distribution metric
+      Glean.update["statusErrorCode" + aSuffix].accumulateSingleSample(aCode);
     } catch (e) {
       console.error(e);
     }
@@ -304,15 +275,14 @@ export var AUSTLMY = {
 
   /**
    * Records a failed BITS update download using Telemetry.
-   * In addition to the BITS Result histogram, this also sends an
-   * update.bitshresult scalar value.
+   * In addition to the BITS Result custom_distribution metric, this also sends
+   * data to an update.bitshresult labeled_counter value.
    *
    * @param aIsComplete
-   *        If true the histogram is for a patch type complete, if false the
-   *        histogram is for a patch type partial. This will determine the
-   *        histogram id out of the following histogram ids:
-   *        UPDATE_BITS_RESULT_COMPLETE
-   *        UPDATE_BITS_RESULT_PARTIAL
+   *        If true the patch type is complete, if false the patch type is
+   *        partial. This will determine the metric id out of the following:
+   *        Glean.update.bitsResultComplete
+   *        Glean.update.bitsResultPartial
    *        This value is also used to determine the key for the keyed scalar
    *        update.bitshresult (key is either "COMPLETE" or "PARTIAL")
    * @param aError
@@ -355,11 +325,7 @@ export var AUSTLMY = {
         scalarKey = this.PATCH_PARTIAL;
       }
       try {
-        Services.telemetry.keyedScalarSet(
-          "update.bitshresult",
-          scalarKey,
-          aError.code
-        );
+        Glean.update.bitshresult[scalarKey.toUpperCase()].set(aError.code);
       } catch (e) {
         console.error(e);
       }
@@ -370,11 +336,10 @@ export var AUSTLMY = {
    * Records a successful BITS update download using Telemetry.
    *
    * @param aIsComplete
-   *        If true the histogram is for a patch type complete, if false the
-   *        histogram is for a patch type partial. This will determine the
-   *        histogram id out of the following histogram ids:
-   *        UPDATE_BITS_RESULT_COMPLETE
-   *        UPDATE_BITS_RESULT_PARTIAL
+   *        If true the patch type is complete, if false the patch type is
+   *        partial. This will determine the metric id out of the following:
+   *        Glean.update.bitsResultComplete
+   *        Glean.update.bitsResultPartial
    */
   pingBitsSuccess: function UT_pingBitsSuccess(aIsComplete) {
     if (AppConstants.platform != "win") {
@@ -393,11 +358,10 @@ export var AUSTLMY = {
    * BITS update download.
    *
    * @param aIsComplete
-   *        If true the histogram is for a patch type complete, if false the
-   *        histogram is for a patch type partial. This will determine the
-   *        histogram id out of the following histogram ids:
-   *        UPDATE_BITS_RESULT_COMPLETE
-   *        UPDATE_BITS_RESULT_PARTIAL
+   *        If true the patch type is complete, if false the patch type is
+   *        partial. This will determine the metric id out of the following:
+   *        Glean.update.bitsResultComplete
+   *        Glean.update.bitsResultPartial
    * @param aResultType
    *        The result code. This will be one of the ERROR_TYPE_* values defined
    *        in the nsIBits interface.
@@ -410,8 +374,9 @@ export var AUSTLMY = {
       patchType = this.PATCH_PARTIAL;
     }
     try {
-      let id = "UPDATE_BITS_RESULT_" + patchType;
-      Services.telemetry.getHistogramById(id).add(aResultType);
+      Glean.update["bitsResult" + patchType].accumulateSingleSample(
+        aResultType
+      );
     } catch (e) {
       console.error(e);
     }
@@ -422,13 +387,13 @@ export var AUSTLMY = {
    * update check or a boolean if the last notification is in the future.
    *
    * @param  aSuffix
-   *         The histogram id suffix for histogram IDs:
-   *         UPDATE_INVALID_LASTUPDATETIME_EXTERNAL
-   *         UPDATE_INVALID_LASTUPDATETIME_NOTIFY
-   *         UPDATE_INVALID_LASTUPDATETIME_SUBSEQUENT
-   *         UPDATE_LAST_NOTIFY_INTERVAL_DAYS_EXTERNAL
-   *         UPDATE_LAST_NOTIFY_INTERVAL_DAYS_NOTIFY
-   *         UPDATE_LAST_NOTIFY_INTERVAL_DAYS_SUBSEQUENT
+   *         The metric id suffix for metric names:
+   *         Glean.update.invalidLastupdatetimeExternal
+   *         Glean.update.invalidLastupdatetimeNotify
+   *         Glean.update.invalidLastupdatetimeSubsequent
+   *         Glean.update.lastNotifyIntervalDaysExternal
+   *         Glean.update.lastNotifyIntervalDaysNotify
+   *         Glean.update.lastNotifyIntervalDaysSubsequent
    */
   pingLastUpdateTime: function UT_pingLastUpdateTime(aSuffix) {
     const PREF_APP_UPDATE_LASTUPDATETIME =
@@ -441,9 +406,8 @@ export var AUSTLMY = {
         let currentTimeSeconds = Math.round(Date.now() / 1000);
         if (lastUpdateTimeSeconds > currentTimeSeconds) {
           try {
-            let id = "UPDATE_INVALID_LASTUPDATETIME_" + aSuffix;
-            // count type histogram
-            Services.telemetry.getHistogramById(id).add();
+            // counter metric
+            Glean.update["invalidLastupdatetime" + aSuffix].add();
           } catch (e) {
             console.error(e);
           }
@@ -451,9 +415,10 @@ export var AUSTLMY = {
           let intervalDays =
             (currentTimeSeconds - lastUpdateTimeSeconds) / (60 * 60 * 24);
           try {
-            let id = "UPDATE_LAST_NOTIFY_INTERVAL_DAYS_" + aSuffix;
-            // exponential type histogram
-            Services.telemetry.getHistogramById(id).add(intervalDays);
+            // timing_distribution metric with day as the unit
+            Glean.update[
+              "lastNotifyIntervalDays" + aSuffix
+            ].accumulateSingleSample(intervalDays);
           } catch (e) {
             console.error(e);
           }
@@ -463,19 +428,18 @@ export var AUSTLMY = {
   },
 
   /**
-   * Submit a telemetry ping for a boolean type histogram that indicates if the
-   * service is installed and a telemetry ping for a boolean type histogram that
-   * indicates if the service was at some point installed and is now
-   * uninstalled.
+   * Submit a telemetry ping for a boolean value that indicates if the
+   * service is installed and a counter that indicates if the service was
+   * at some point installed and is now uninstalled.
    *
    * @param  aSuffix
-   *         The histogram id suffix for histogram IDs:
-   *         UPDATE_SERVICE_INSTALLED_EXTERNAL
-   *         UPDATE_SERVICE_INSTALLED_NOTIFY
-   *         UPDATE_SERVICE_INSTALLED_SUBSEQUENT
-   *         UPDATE_SERVICE_MANUALLY_UNINSTALLED_EXTERNAL
-   *         UPDATE_SERVICE_MANUALLY_UNINSTALLED_NOTIFY
-   *         UPDATE_SERVICE_MANUALLY_UNINSTALLED_SUBSEQUENT
+   *         The metric name suffix for metric names:
+   *         Glean.update.serviceInstalledExternal
+   *         Glean.update.serviceInstalledNotify
+   *         Glean.update.serviceInstalledSubsequent
+   *         Glean.update.serviceManuallyUninstalledExternal
+   *         Glean.update.serviceManuallyUninstalledNotify
+   *         Glean.update.serviceManuallyUninstalledSubsequent
    * @param  aInstalled
    *         Whether the service is installed.
    */
@@ -488,9 +452,8 @@ export var AUSTLMY = {
     }
 
     try {
-      let id = "UPDATE_SERVICE_INSTALLED_" + aSuffix;
-      // boolean type histogram
-      Services.telemetry.getHistogramById(id).add(aInstalled);
+      // labeled_counter metric with "false" and "true" labels
+      Glean.update["serviceInstalled" + aSuffix][aInstalled].add();
     } catch (e) {
       console.error(e);
     }
@@ -514,10 +477,9 @@ export var AUSTLMY = {
     }
 
     try {
-      let id = "UPDATE_SERVICE_MANUALLY_UNINSTALLED_" + aSuffix;
       if (!aInstalled && attempted) {
-        // count type histogram
-        Services.telemetry.getHistogramById(id).add();
+        // counter metric
+        Glean.update["serviceManuallyUninstalled" + aSuffix].add();
       }
     } catch (e) {
       console.error(e);
@@ -525,13 +487,13 @@ export var AUSTLMY = {
   },
 
   /**
-   * Submit a telemetry ping for a count type histogram when the expected value
+   * Submit a telemetry ping for a counter glean metric when the expected value
    * does not equal the boolean value of a pref or if the pref isn't present
    * when the expected value does not equal default value. This lessens the
    * amount of data submitted to telemetry.
    *
-   * @param  aID
-   *         The histogram ID to report to.
+   * @param  aMetric
+   *         The glean metric to report to.
    * @param  aPref
    *         The preference to check.
    * @param  aDefault
@@ -540,15 +502,15 @@ export var AUSTLMY = {
    *         If specified and the value is the same as the value that will be
    *         added the value won't be added to telemetry.
    */
-  pingBoolPref: function UT_pingBoolPref(aID, aPref, aDefault, aExpected) {
+  pingBoolPref: function UT_pingBoolPref(aMetric, aPref, aDefault, aExpected) {
     try {
       let val = aDefault;
       if (Services.prefs.getPrefType(aPref) != Ci.nsIPrefBranch.PREF_INVALID) {
         val = Services.prefs.getBoolPref(aPref);
       }
       if (val != aExpected) {
-        // count type histogram
-        Services.telemetry.getHistogramById(aID).add();
+        // counter metric
+        aMetric.add();
       }
     } catch (e) {
       console.error(e);
@@ -556,13 +518,13 @@ export var AUSTLMY = {
   },
 
   /**
-   * Submit a telemetry ping for a histogram with the integer value of a
+   * Submit a telemetry ping for a glean metric with the integer value of a
    * preference when it is not the expected value or the default value when it
    * is not the expected value. This lessens the amount of data submitted to
    * telemetry.
    *
-   * @param  aID
-   *         The histogram ID to report to.
+   * @param  aMetric
+   *         The glean metric to report to.
    * @param  aPref
    *         The preference to check.
    * @param  aDefault
@@ -571,44 +533,15 @@ export var AUSTLMY = {
    *         If specified and the value is the same as the value that will be
    *         added the value won't be added to telemetry.
    */
-  pingIntPref: function UT_pingIntPref(aID, aPref, aDefault, aExpected) {
+  pingIntPref: function UT_pingIntPref(aMetric, aPref, aDefault, aExpected) {
     try {
       let val = aDefault;
       if (Services.prefs.getPrefType(aPref) != Ci.nsIPrefBranch.PREF_INVALID) {
         val = Services.prefs.getIntPref(aPref);
       }
       if (aExpected === undefined || val != aExpected) {
-        // enumerated or exponential type histogram
-        Services.telemetry.getHistogramById(aID).add(val);
-      }
-    } catch (e) {
-      console.error(e);
-    }
-  },
-
-  /**
-   * Submit a telemetry ping for all histogram types that take a single
-   * parameter to the telemetry add function and the count type histogram when
-   * the aExpected parameter is specified. If the aExpected parameter is
-   * specified and it equals the value specified by the aValue
-   * parameter the telemetry submission will be skipped.
-   *
-   * @param  aID
-   *         The histogram ID to report to.
-   * @param  aValue
-   *         The value to add when aExpected is not defined or the value to
-   *         check if it is equal to when aExpected is defined.
-   * @param  aExpected (optional)
-   *         If specified and the value is the same as the value specified by
-   *         aValue parameter the submission will be skipped.
-   */
-  pingGeneric: function UT_pingGeneric(aID, aValue, aExpected) {
-    try {
-      if (aExpected === undefined) {
-        Services.telemetry.getHistogramById(aID).add(aValue);
-      } else if (aValue != aExpected) {
-        // count type histogram
-        Services.telemetry.getHistogramById(aID).add();
+        // custom_distribution metric
+        aMetric.accumulateSingleSample(val);
       }
     } catch (e) {
       console.error(e);
@@ -626,14 +559,14 @@ export var AUSTLMY = {
    * into the ready update directory.
    */
   pingMoveResult: function UT_pingMoveResult(aResult) {
-    Services.telemetry.keyedScalarAdd("update.move_result", aResult, 1);
+    Glean.update.moveResult[aResult].add(1);
   },
 
   pingSuppressPrompts: function UT_pingSuppressPrompts() {
     try {
       let val = Services.prefs.getBoolPref("app.update.suppressPrompts", false);
       if (val === true) {
-        Services.telemetry.scalarSet("update.suppress_prompts", true);
+        Glean.update.suppressPrompts.set(true);
       }
     } catch (e) {
       console.error(e);
@@ -642,7 +575,7 @@ export var AUSTLMY = {
 
   pingPinPolicy: function UT_pingPinPolicy(updatePin) {
     try {
-      Services.telemetry.scalarSet("update.version_pin", updatePin);
+      Glean.update.versionPin.set(updatePin);
     } catch (e) {
       console.error(e);
     }

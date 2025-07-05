@@ -27,6 +27,21 @@ test:
     no_lint:
       - GIFFT_NON_PING_LIFETIME
 
+  unordered_boolean_metric:
+    type: boolean
+    expires: never
+    description: |
+      A multi-line
+      description
+    notification_emails:
+      - glean-team@mozilla.com
+    metadata:
+      permit_non_commutative_operations_over_ipc: true
+    bugs:
+      - https://bugzilla.mozilla.org/1923035/
+    data_reviews:
+      - https://example.com
+
   labeled_boolean_metric:
     type: labeled_boolean
     expires: never
@@ -71,6 +86,21 @@ test:
     telemetry_mirror: SOME_OTHER_KEYED_BOOL_SCALAR
     no_lint:
       - GIFFT_NON_PING_LIFETIME
+
+  unordered_labeled_boolean_metric:
+    type: labeled_boolean
+    expires: never
+    description: |
+      A multi-line
+      description
+    metadata:
+      permit_non_commutative_operations_over_ipc: true
+    notification_emails:
+      - glean-team@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/1923035/
+    data_reviews:
+      - https://example.com
 
   counter_metric:
     type: counter
@@ -340,6 +370,12 @@ test.nested:
       another_extra_key:
         type: string
         description: Another extra key description
+      quantity_extra:
+        type: quantity
+        description: A quantity extra
+      bool_extra:
+        type: boolean
+        description: A boolean extra
     telemetry_mirror: EventMetric_EnumName_WithExtra
 
   quantity_metric:
@@ -399,6 +435,21 @@ test.nested:
 
   optimizable_counter_metric:
     type: counter
+    expires: never
+    description: |
+      A multi-line
+      description
+    lifetime: ping
+    notification_emails:
+      - glean-team@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/1635260/
+    data_reviews:
+      - https://example.com
+
+  optimizable_disabled_counter_metric:
+    type: counter
+    disabled: true
     expires: never
     description: |
       A multi-line

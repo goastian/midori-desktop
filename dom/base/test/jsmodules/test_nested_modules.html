@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<meta charset=utf-8>
+<title>Test nested module</title>
+<script src="/tests/SimpleTest/SimpleTest.js"></script>
+<script>
+  SimpleTest.waitForExplicitFinish();
+  SimpleTest.requestLongerTimeout(2);
+
+  function testLoaded() {
+    ok(true, 'Not crash');
+    SimpleTest.finish();
+  }
+
+  async function generateModules(n, parseError) {
+    const urls = [];
+
+    const leaf = parseError ? `^%$#@!` :
+      `console.log("Hello from module ${n}");`;
+
+    for (let i = n; i >= 1; i--) {
+      const nextUrl = urls[0] || '';
+      const content = i === n
+        ? leaf
+        : `import "${nextUrl}";\nconsole.log("Entered module ${i}");`;
+
+      const blob = new Blob([content], { type: 'application/javascript' });
+      const blobURL = URL.createObjectURL(blob);
+      urls.unshift(blobURL); // Add to the beginning for next import
+    }
+
+    // Start execution from the topmost module
+    const mainModuleURL = urls[0];
+    try {
+      await import(mainModuleURL);
+    } catch (e) {
+      console.error("Module import failed:", e);
+    }
+
+    urls.forEach(URL.revokeObjectURL);
+  }
+
+  generateModules(4000);
+  generateModules(10000);
+  generateModules(10000, true);
+</script>
+<body onload='testLoaded()'></body>

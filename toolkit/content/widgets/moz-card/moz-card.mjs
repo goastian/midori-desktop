@@ -18,24 +18,30 @@ import { MozLitElement } from "chrome://global/content/lit-utils.mjs";
  *
  * The "accordion" type will initially not show any content. The card
  * will contain an arrow to expand the card so that all of the content
- * is visible.
+ * is visible. You can use the "expanded" attribute to force the accordion
+ * card to show its content on initial render.
  *
  *
  * @property {string} heading - The heading text that will be used for the card.
  * @property {string} icon - (optional) A flag to indicate the header should include an icon
  * @property {string} type - (optional) The type of card. No type specified
  *   will be the default card. The other available type is "accordion"
+ * @property {boolean} expanded - A flag to indicate whether the card is
+ *  expanded or not. Can be used to expand the content section of the
+ *  accordion card on initial render.
  * @slot content - The content to show inside of the card.
  */
 export default class MozCard extends MozLitElement {
   static queries = {
     detailsEl: "#moz-card-details",
     headingEl: "#heading",
-    contentSlotEl: "#content",
+    contentEl: "#content",
+    summaryEl: "summary",
+    contentSlotEl: "#content-slot",
   };
 
   static properties = {
-    heading: { type: String },
+    heading: { type: String, fluent: true },
     icon: { type: Boolean },
     type: { type: String, reflect: true },
     expanded: { type: Boolean },
@@ -43,8 +49,8 @@ export default class MozCard extends MozLitElement {
 
   constructor() {
     super();
-    this.expanded = false;
     this.type = "default";
+    this.expanded = false;
   }
 
   headingTemplate() {
@@ -52,7 +58,7 @@ export default class MozCard extends MozLitElement {
       return "";
     }
     return html`
-      <div id="heading-wrapper">
+      <div id="heading-wrapper" part="moz-card-heading-wrapper">
         ${when(
           this.type == "accordion",
           () => html`<div class="chevron-icon"></div>`
@@ -62,7 +68,9 @@ export default class MozCard extends MozLitElement {
           () =>
             html`<div part="icon" id="heading-icon" role="presentation"></div>`
         )}
-        <span id="heading">${this.heading}</span>
+        <span id="heading" title=${ifDefined(this.heading)} part="heading"
+          >${this.heading}</span
+        >
       </div>
     `;
   }
@@ -70,43 +78,29 @@ export default class MozCard extends MozLitElement {
   cardTemplate() {
     if (this.type === "accordion") {
       return html`
-        <details id="moz-card-details" @toggle="${this.onToggle}">
-          <summary>${this.headingTemplate()}</summary>
-          <div id="content"><slot></slot></div>
+        <details
+          id="moz-card-details"
+          @toggle=${this.onToggle}
+          ?open=${this.expanded}
+        >
+          <summary part="summary">${this.headingTemplate()}</summary>
+          <div id="content"><slot id="content-slot"></slot></div>
         </details>
       `;
     }
 
     return html`
-      ${this.headingTemplate()}
-      <div id="content" aria-describedby="content">
-        <slot></slot>
+      <div id="moz-card-details">
+        ${this.headingTemplate()}
+        <div id="content" aria-describedby="content">
+          <slot></slot>
+        </div>
       </div>
     `;
   }
-  /**
-   * Handles the click event on the chevron icon.
-   *
-   * Without this, the click event would be passed to
-   * toggleDetails which would force the details element
-   * to stay open.
-   *
-   * @memberof MozCard
-   */
-  onDetailsClick() {
-    this.toggleDetails();
-  }
-
-  /**
-   * @param {boolean} force - Used to force open or force close the
-   * details element.
-   * @memberof MozCard
-   */
-  toggleDetails(force) {
-    this.detailsEl.open = force ?? !this.detailsEl.open;
-  }
 
   onToggle() {
+    this.expanded = this.detailsEl.open;
     this.dispatchEvent(
       new ToggleEvent("toggle", {
         newState: this.detailsEl.open ? "open" : "closed",

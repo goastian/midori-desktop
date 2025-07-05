@@ -39,20 +39,6 @@ Try to install it manually with:
 )
 
 RSTCHECK_FORMAT_REGEX = re.compile(r"(.*):(.*): \(.*/([0-9]*)\) (.*)$")
-IGNORE_NOT_REF_LINK_UPSTREAM_BUG = re.compile(
-    r"Hyperlink target (.*) is not referenced."
-)
-
-
-def setup(root, **lintargs):
-    virtualenv_manager = lintargs["virtualenv_manager"]
-    try:
-        virtualenv_manager.install_pip_requirements(
-            rstcheck_requirements_file, quiet=True
-        )
-    except subprocess.CalledProcessError:
-        print(RSTCHECK_INSTALL_ERROR)
-        return 1
 
 
 def get_rstcheck_binary():
@@ -69,6 +55,8 @@ def get_rstcheck_binary():
 
 def parse_with_split(errors):
     match = RSTCHECK_FORMAT_REGEX.match(errors)
+    if not match:
+        return None
     filename, lineno, level, message = match.groups()
 
     return filename, lineno, level, message
@@ -81,13 +69,10 @@ def lint(files, config, **lintargs):
     paths = list(paths)
     chunk_size = 50
     binary = get_rstcheck_binary()
-    rstcheck_options = [
-        "--ignore-language=cpp,json",
-        "--ignore-roles=searchfox",
-    ]
 
     while paths:
-        cmdargs = [which("python"), binary] + rstcheck_options + paths[:chunk_size]
+        # Config for rstcheck is stored in `/.rstcheck.cfg`.
+        cmdargs = [which("python"), binary] + paths[:chunk_size]
         log.debug("Command: {}".format(" ".join(cmdargs)))
 
         proc = subprocess.Popen(
@@ -100,10 +85,9 @@ def lint(files, config, **lintargs):
         all_errors = proc.communicate()[1]
         for errors in all_errors.split("\n"):
             if len(errors) > 1:
-                filename, lineno, level, message = parse_with_split(errors)
-                if not IGNORE_NOT_REF_LINK_UPSTREAM_BUG.match(message):
-                    # Ignore an upstream bug
-                    # https://github.com/myint/rstcheck/issues/19
+                split_result = parse_with_split(errors)
+                if split_result:
+                    filename, lineno, level, message = split_result
                     res = {
                         "path": filename,
                         "message": message,

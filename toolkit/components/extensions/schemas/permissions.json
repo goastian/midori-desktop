@@ -8,13 +8,24 @@
         "properties": {
           "permissions": {
             "type": "array",
-            "items": { "$ref": "manifest.OptionalPermission" },
+            "items": {
+              "choices": [
+                { "$ref": "manifest.OptionalPermission" },
+                { "$ref": "manifest.OptionalOnlyPermission" }
+              ]
+            },
             "optional": true,
             "default": []
           },
           "origins": {
             "type": "array",
             "items": { "$ref": "manifest.MatchPattern" },
+            "optional": true,
+            "default": []
+          },
+          "data_collection": {
+            "type": "array",
+            "items": { "$ref": "manifest.OptionalDataCollectionPermission" },
             "optional": true,
             "default": []
           }
@@ -26,13 +37,24 @@
         "properties": {
           "permissions": {
             "type": "array",
-            "items": { "$ref": "manifest.Permission" },
+            "items": {
+              "choices": [
+                { "$ref": "manifest.Permission" },
+                { "$ref": "manifest.OptionalOnlyPermission" }
+              ]
+            },
             "optional": true,
             "default": []
           },
           "origins": {
             "type": "array",
             "items": { "$ref": "manifest.MatchPattern" },
+            "optional": true,
+            "default": []
+          },
+          "data_collection": {
+            "type": "array",
+            "items": { "$ref": "manifest.OptionalDataCollectionPermission" },
             "optional": true,
             "default": []
           }

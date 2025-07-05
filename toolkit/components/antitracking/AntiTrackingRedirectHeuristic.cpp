@@ -15,7 +15,7 @@
 #include "mozilla/net/CookieJarSettings.h"
 #include "mozilla/net/UrlClassifierCommon.h"
 #include "mozilla/StaticPrefs_network.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/AntitrackingMetrics.h"
 #include "nsContentUtils.h"
 #include "nsIChannel.h"
 #include "nsIClassifiedChannel.h"
@@ -387,10 +387,24 @@ void FinishAntiTrackingRedirectHeuristic(nsIChannel* aNewChannel,
         innerWindowID);
   }
 
-  Telemetry::AccumulateCategorical(
-      Telemetry::LABELS_STORAGE_ACCESS_GRANTED_COUNT::StorageGranted);
-  Telemetry::AccumulateCategorical(
-      Telemetry::LABELS_STORAGE_ACCESS_GRANTED_COUNT::Redirect);
+  glean::contentblocking::storage_access_granted_count
+      .EnumGet(glean::contentblocking::StorageAccessGrantedCountLabel::
+                   eStoragegranted)
+      .Add();
+  glean::contentblocking::storage_access_granted_count
+      .EnumGet(glean::contentblocking::StorageAccessGrantedCountLabel::
+                   eRedirecttracker)
+      .Add();
+
+  // We don't need to test if it is a tracker, since we already know it is one!
+  glean::contentblocking::storage_access_granted_count
+      .EnumGet(glean::contentblocking::StorageAccessGrantedCountLabel::
+                   eStoragegrantedCt)
+      .Add();
+  glean::contentblocking::storage_access_granted_count
+      .EnumGet(glean::contentblocking::StorageAccessGrantedCountLabel::
+                   eRedirecttrackerCt)
+      .Add();
 
   // We don't care about this promise because the operation is actually sync.
   RefPtr<StorageAccessAPIHelper::ParentAccessGrantPromise> promise =

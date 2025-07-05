@@ -1,0 +1,38 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
+
+.options-container {
+  display: flex;
+  width: 100%;
+  align-items: center;
+}
+
+fxview-search-textbox {
+  flex: 1;
+}
+
+.menu-button::part(button) {
+  margin-inline-start: var(--space-small);
+}
+
+.nested-card {
+  --card-accordion-closed-icon: url("chrome://global/skin/icons/arrow-right.svg");
+  --card-accordion-open-icon: url("chrome://global/skin/icons/arrow-down.svg");
+  background-color: transparent;
+  border: none;
+  margin-block-start: var(--space-xsmall);
+
+  &::part(heading) {
+    font-weight: var(--font-weight);
+  }
+
+  &::part(moz-card-heading-wrapper) {
+    padding-inline: var(--space-xsmall);
+  }
+
+  &::part(summary) {
+    border-radius: var(--border-radius-medium);
+    padding-block: var(--space-xsmall);
+  }
+}

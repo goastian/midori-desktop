@@ -102,9 +102,16 @@ interface nsIAlertNotification : nsISupports
             [optional] in Array<uint32_t> aVibrate);
 
   /**
-   * The name of the notification. On Windows and Android, the name is hashed
-   * and used as a notification ID. Notifications will replace previous
-   * notifications with the same name.
+   * The unique ID of the notification, based on the profile path and the caller
+   * given name.
+   *
+   * Throws if init() is not called yet.
+   */
+  readonly attribute AString id;
+
+  /**
+   * The name of the notification given by the caller.
+   * Notifications will replace previous notifications with the same name.
    */
   readonly attribute AString name;
 
@@ -213,6 +220,12 @@ interface nsIAlertNotification : nsISupports
   readonly attribute AString source;
 
   /**
+   * The origin of the originating page, or an empty string if the alert is not
+   * actionable. This corresponds to `nsIPrincipal.origin`.
+   */
+  readonly attribute ACString origin;
+
+  /**
    * On Windows, chrome-privileged notifications -- i.e., those with a
    * non-actionable principal -- can have `opaqueRelaunchData`.  This data will
    * be provided to the application at relaunch and can trigger specific
@@ -237,15 +250,18 @@ interface nsIAlertNotification : nsISupports
   nsICancelable loadImage(in unsigned long aTimeout,
                           in nsIAlertNotificationImageListener aListener,
                           [optional] in nsISupports aUserData);
+
+  /**
+   * Retrieves the action object by the action name or null if not.
+   *
+   * @param aName The action name corresponding to nsIAlertAction.action.
+   */
+  nsIAlertAction getAction(in AString aName);
 };
 
 [scriptable, uuid(f7a36392-d98b-4141-a7d7-4e46642684e3)]
 interface nsIAlertsService : nsISupports
 {
-  void showPersistentNotification(in AString aPersistentData,
-                                  in nsIAlertNotification aAlert,
-                                  [optional] in nsIObserver aAlertListener);
-
   void showAlert(in nsIAlertNotification aAlert,
                  [optional] in nsIObserver aAlertListener);
   /**
@@ -298,6 +314,15 @@ interface nsIAlertsService : nsISupports
    */
   void closeAlert([optional] in AString aName, [optional] in boolean aContextClosed);
 
+  /**
+   * Clean up all resources used to listen to alerts.
+   */
+  void teardown();
+
+  /**
+   * Close all alerts opened for Private Browsing Mode.
+   */
+  void pbmTeardown();
 };
 
 [scriptable, uuid(c5d63e3a-259d-45a8-b964-8377967cb4d2)]
@@ -320,32 +345,4 @@ interface nsIAlertsDoNotDisturb : nsISupports
    * API.
    */
   attribute boolean suppressForScreenSharing;
-};
-
-[scriptable, uuid(fc6d7f0a-0cf6-4268-8c71-ab640842b9b1)]
-interface nsIAlertsIconData : nsISupports
-{
-  /**
-   * Shows an alert with an icon. Web notifications use the favicon of the
-   * page that created the alert. If the favicon is not in the Places database,
-   * |aIconSize| will be zero.
-  */
-  void showAlertWithIconData(in nsIAlertNotification aAlert,
-                             in nsIObserver aAlertListener,
-                             in uint32_t aIconSize,
-                             [const, array, size_is(aIconSize)] in uint8_t
-                                                                aIconData);
-};
-
-[scriptable, uuid(f3c82915-bf60-41ea-91ce-6c46b22e381a)]
-interface nsIAlertsIconURI : nsISupports
-{
-  /**
-   * Shows an alert with an icon URI. Web notifications use |cached-favicon:|
-   * URIs to reference favicons from Places. If the page doesn't have a
-   * favicon, |aIconURI| will be |null|.
-   */
-  void showAlertWithIconURI(in nsIAlertNotification aAlert,
-                            [optional] in nsIObserver aAlertListener,
-                            [optional] in nsIURI aIconURI);
 };

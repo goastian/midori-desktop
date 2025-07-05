@@ -2,7 +2,7 @@
 // License, v. 2.0. If a copy of the MPL was not distributed with this
 // file, You can obtain one at https://mozilla.org/MPL/2.0/.
 
-use glean::net::{PingUploadRequest, PingUploader, UploadResult};
+use glean::net::{CapablePingUploadRequest, PingUploadRequest, PingUploader, UploadResult};
 use once_cell::sync::OnceCell;
 use std::sync::Once;
 use url::Url;
@@ -22,7 +22,15 @@ impl PingUploader for ViaductUploader {
     /// # Arguments
     ///
     /// * `upload_request` - the ping and its metadata to upload.
-    fn upload(&self, upload_request: PingUploadRequest) -> UploadResult {
+    fn upload(&self, upload_request: CapablePingUploadRequest) -> UploadResult {
+        let mut requires_ohttp = false;
+        let upload_request = match upload_request.capable(|capabilities| {
+            requires_ohttp = capabilities == ["ohttp"];
+            capabilities.is_empty() || requires_ohttp
+        }) {
+            Some(req) => req,
+            None => return UploadResult::incapable(),
+        };
         log::trace!("FOG Ping Uploader uploading to {}", upload_request.url);
 
         // SAFETY NOTE: Safe because it returns a primitive by value.
@@ -45,11 +53,12 @@ impl PingUploader for ViaductUploader {
 
         // Localhost-destined pings are sent without OHTTP,
         // even if configured to use OHTTP.
-        let result = if localhost_port == 0 && should_ohttp_upload(&upload_request) {
-            ohttp_upload(upload_request)
-        } else {
-            viaduct_upload(upload_request)
-        };
+        let result =
+            if localhost_port == 0 && requires_ohttp && should_ohttp_upload(&upload_request) {
+                ohttp_upload(upload_request)
+            } else {
+                viaduct_upload(upload_request)
+            };
 
         log::trace!(
             "FOG Ping Uploader completed uploading (Result {:?})",
@@ -91,8 +100,7 @@ fn viaduct_upload(upload_request: PingUploadRequest) -> Result<UploadResult, Via
 }
 
 fn should_ohttp_upload(upload_request: &PingUploadRequest) -> bool {
-    crate::ohttp_pings::uses_ohttp(&upload_request.ping_name)
-        && !upload_request.body_has_info_sections
+    !upload_request.body_has_info_sections
 }
 
 fn ohttp_upload(upload_request: PingUploadRequest) -> Result<UploadResult, ViaductUploaderError> {
@@ -106,7 +114,7 @@ fn ohttp_upload(upload_request: PingUploadRequest) -> Result<UploadResult, Viadu
         ohttp::init();
     });
 
-    let ohttp_request = ohttp::ClientRequest::new(config)?;
+    let ohttp_request = ohttp::ClientRequest::from_encoded_config(config)?;
     let (capsule, ohttp_response) = ohttp_request.encapsulate(&binary_request)?;
 
     const OHTTP_RELAY_URL: &str = "https://mozilla-ohttp.fastly-edge.com/";

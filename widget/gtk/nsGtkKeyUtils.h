@@ -19,6 +19,30 @@
 #ifdef MOZ_WAYLAND
 #  include <gdk/gdkwayland.h>
 #  include <xkbcommon/xkbcommon.h>
+#  ifndef XKB_VMOD_NAME_ALT
+#    define XKB_VMOD_NAME_ALT "Alt"
+#  endif
+#  ifndef XKB_VMOD_NAME_HYPER
+#    define XKB_VMOD_NAME_HYPER "Hyper"
+#  endif
+#  ifndef XKB_VMOD_NAME_LEVEL3
+#    define XKB_VMOD_NAME_LEVEL3 "LevelThree"
+#  endif
+#  ifndef XKB_VMOD_NAME_LEVEL5
+#    define XKB_VMOD_NAME_LEVEL5 "LevelFive"
+#  endif
+#  ifndef XKB_VMOD_NAME_META
+#    define XKB_VMOD_NAME_META "Meta"
+#  endif
+#  ifndef XKB_VMOD_NAME_NUM
+#    define XKB_VMOD_NAME_NUM "NumLock"
+#  endif
+#  ifndef XKB_VMOD_NAME_SCROLL
+#    define XKB_VMOD_NAME_SCROLL "ScrollLock"
+#  endif
+#  ifndef XKB_VMOD_NAME_SUPER
+#    define XKB_VMOD_NAME_SUPER "Super"
+#  endif
 #endif
 #include "X11UndefineNone.h"
 
@@ -116,7 +140,7 @@ class KeymapWrapper {
    * InitInputEvent() initializes the aInputEvent with aModifierState.
    */
   static void InitInputEvent(WidgetInputEvent& aInputEvent,
-                             guint aGdkModifierState);
+                             guint aGdkModifierState, bool isEraser = false);
 
   /**
    * InitKeyEvent() intializes aKeyEvent's modifier key related members
@@ -198,6 +222,7 @@ class KeymapWrapper {
    * from xkb_keymap. We call that from Wayland backend routines.
    */
   static void SetModifierMasks(xkb_keymap* aKeymap);
+  static void HandleKeymap(uint32_t format, int fd, uint32_t size);
 
   /**
    * Wayland global focus handlers
@@ -206,13 +231,13 @@ class KeymapWrapper {
   static void SetFocusOut(wl_surface* aFocusSurface);
   static void GetFocusInfo(wl_surface** aFocusSurface, uint32_t* aFocusSerial);
 
-  static void SetSeat(wl_seat* aSeat, int aId);
-  static void ClearSeat(int aId);
-  static wl_seat* GetSeat();
-
-  static void SetKeyboard(wl_keyboard* aKeyboard);
-  static wl_keyboard* GetKeyboard();
-  static void ClearKeyboard();
+  /**
+   * Key repeat helpers for Wayland
+   */
+  static void KeyboardHandlerForWayland(uint32_t aSerial,
+                                        uint32_t aHardwareKeycode,
+                                        uint32_t aState);
+  static void ClearKeymap();
 
   /**
    * EnsureInstance() is provided on Wayland to register Wayland callbacks
@@ -353,16 +378,29 @@ class KeymapWrapper {
   enum RepeatState { NOT_PRESSED, FIRST_PRESS, REPEATING };
   static RepeatState sRepeatState;
 
+#ifdef MOZ_WAYLAND
+  xkb_keymap* mXkbKeymap = nullptr;
+  static uint32_t sLastRepeatableSerial;
+#endif
+
   /**
    * IsAutoRepeatableKey() returns true if the key supports auto repeat.
    * Otherwise, false.
    */
   bool IsAutoRepeatableKey(guint aHardwareKeyCode);
 
+#ifdef MOZ_WAYLAND
+  /**
+   * Set current xkb_keymap to detect auto repeat key on Wayland.
+   */
+  void SetKeymap(xkb_keymap* aKeymap);
+#endif
+
   /**
    * Signal handlers.
    */
-  static void OnKeysChanged(GdkKeymap* aKeymap, KeymapWrapper* aKeymapWrapper);
+  static void OnKeysChanged(GdkKeymap* aGdkKeymap,
+                            KeymapWrapper* aKeymapWrapper);
   static void OnDirectionChanged(GdkKeymap* aGdkKeymap,
                                  KeymapWrapper* aKeymapWrapper);
 
@@ -497,9 +535,6 @@ class KeymapWrapper {
 #endif
 
 #ifdef MOZ_WAYLAND
-  static wl_seat* sSeat;
-  static int sSeatID;
-  static wl_keyboard* sKeyboard;
   wl_surface* mFocusSurface = nullptr;
   uint32_t mFocusSerial = 0;
 #endif

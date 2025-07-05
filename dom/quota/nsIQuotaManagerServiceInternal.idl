@@ -1,0 +1,35 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+/**
+ * This interface defines internal methods for use within Quota Manager code.
+ * It is intended strictly for internal implementation details and should not
+ * be used outside of Quota Manager internal code.
+ */
+[scriptable, builtinclass, uuid(7df37702-e977-4107-9b1d-289439e7d37b)]
+interface nsIQuotaManagerServiceInternal : nsISupports
+{
+  /**
+   * Sets the thumbnail private identity id.
+   *
+   * This method is used internally by Quota Manager to cache the thumbnail
+   * private identity id on the QuotaManager IO thread. The cached id is
+   * intended to be used by various optimizations, such as counting thumbnail
+   * private identity temporary origins.
+   *
+   * @param aThumbnailPrivateIdentityId The new thumbnail private identity id
+   *                                    to set.
+   *
+   * @note This method is called internally from the handler for the
+   *       `contextual-identity-service-load-finished` observer topic. The id
+   *       is obtained on the main thread within that handler before being
+   *       passed to this method.
+   */
+  void setThumbnailPrivateIdentityId(
+      in unsigned long aThumbnailPrivateIdentityId);
+};

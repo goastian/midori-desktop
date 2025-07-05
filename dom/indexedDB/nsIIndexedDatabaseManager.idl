@@ -1,0 +1,26 @@
+/* -*- Mode: C++; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim: set ts=2 et sw=2 tw=80: */
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+#include "nsISupports.idl"
+
+[scriptable, builtinclass, uuid(6c62d204-cb7f-4762-8703-ebcccdd88Bde)]
+interface nsIIndexedDatabaseManager : nsISupports
+{
+  /**
+   * Loop over all storage repositories, descend into origin directories,
+   * collect all available IndexedDB databases and do maintenance for them.
+   * The maintenance checks database integrity first and then determines
+   * maintenance action which can be either "nothing" or "incremental vacuum"
+   * or "full vacuum". Incremental or full vacuum is then performed.
+   *
+   * If the dom.indexedDB.testing preference is not true the call will fail
+   * because the maintenance is normally initiated by the QuotaManager based
+   * on notifications from the nsIUserIdleService. This method is intented for
+   * testing purposes only.
+   */
+  [implicit_jscontext]
+  Promise doMaintenance();
+};

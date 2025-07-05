@@ -11,10 +11,11 @@
 // Plugin Definition
 // ------------------------------------------------------------------------------
 module.exports = {
+  meta: { name: "eslint-plugin-spidermonkey-js", version: "0.1.1" },
   processors: {
-    processor: require("../lib/processors/self-hosted"),
+    processor: require("./processors/self-hosted"),
   },
   environments: {
-    environment: require("../lib/environments/self-hosted"),
+    environment: require("./environments/self-hosted"),
   },
 };

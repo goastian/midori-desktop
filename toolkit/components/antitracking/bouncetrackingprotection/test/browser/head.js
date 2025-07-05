@@ -7,13 +7,6 @@ const { SiteDataTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/SiteDataTestUtils.sys.mjs"
 );
 
-XPCOMUtils.defineLazyServiceGetter(
-  this,
-  "bounceTrackingProtection",
-  "@mozilla.org/bounce-tracking-protection;1",
-  "nsIBounceTrackingProtection"
-);
-
 const SITE_A = "example.com";
 const ORIGIN_A = `https://${SITE_A}`;
 
@@ -52,14 +45,20 @@ function getBaseUrl(origin) {
  * the bounce.
  * @param {string} [options.bounceOrigin] - The origin of the bounce URL.
  * @param {string} [options.targetURL] - URL to redirect to after the bounce.
- * @param {('cookie-server'|'cookie-client'|'localStorage')} [options.setState]
- * Type of state to set during the redirect. Defaults to non stateful redirect.
+ * @param {('cookie-server'|'cookie-client'|'localStorage'|'indexedDB')}
+ * [options.setState] Type of state to set during the redirect. Defaults to non
+ * stateful redirect.
  * @param {boolean} [options.setStateSameSiteFrame=false] - Whether to set the
  * state in a sub frame that is same site to the top window.
+ * @param {boolean} [options.setStateCrossSiteFrame=false] - Whether to set the
+ * state in a sub frame that is cross-site to the top window.
  * @param {boolean} [options.setStateInWebWorker=false] - Whether to set the
  * state in a web worker. This only supports setState == "indexedDB".
  * @param {boolean} [options.setStateInWebWorker=false] - Whether to set the
  * state in a nested web worker. Otherwise the same as setStateInWebWorker.
+ * @param {('same-site'|'cross-site')} [options.setCookieViaImage] - Whether to
+ * set the state via an image request. Only applies to setState ==
+ * "cookie-server".
  * @param {number} [options.statusCode] - HTTP status code to use for server
  * side redirect. Only applies to bounceType == "server".
  * @param {number} [options.redirectDelayMS] - How long to wait before
@@ -73,8 +72,10 @@ function getBounceURL({
   targetURL = new URL(getBaseUrl(ORIGIN_B) + "file_start.html"),
   setState = null,
   setStateSameSiteFrame = false,
+  setStateCrossSiteFrame = false,
   setStateInWebWorker = false,
   setStateInNestedWebWorker = false,
+  setCookieViaImage = null,
   statusCode = 302,
   redirectDelayMS = 50,
 }) {
@@ -92,9 +93,7 @@ function getBounceURL({
   if (setState) {
     searchParams.set("setState", setState);
   }
-  if (setStateSameSiteFrame) {
-    searchParams.set("setStateSameSiteFrame", setStateSameSiteFrame);
-  }
+
   if (setStateInWebWorker) {
     if (setState != "indexedDB") {
       throw new Error(
@@ -116,6 +115,43 @@ function getBounceURL({
     searchParams.set("statusCode", statusCode);
   } else if (bounceType == "client") {
     searchParams.set("redirectDelay", redirectDelayMS);
+  }
+
+  // For bounces in iframes the helper needs the URI of the iframe which sets
+  // the state. Since this reuses bounceUrl it needs to be last in this
+  // function.
+  if (setStateSameSiteFrame || setStateCrossSiteFrame) {
+    // Construct the URI for the iframe.
+    let bounceUrlIframe = new URL(bounceUrl.href);
+
+    // Let the frame know it's a third party iframe.
+    bounceUrlIframe.searchParams.set("isThirdParty", true);
+
+    // If a server side cookie needs to be set we have to use the server script
+    // in the iframe.
+    if (setState == "cookie-server") {
+      bounceUrlIframe.pathname = bounceUrlIframe.pathname.replace(
+        "file_bounce.html",
+        "file_bounce.sjs"
+      );
+    }
+    if (setStateSameSiteFrame) {
+      searchParams.set("setStateInFrameWithURI", bounceUrlIframe.href);
+    } else {
+      bounceUrlIframe.host = SITE_C;
+      searchParams.set("setStateInFrameWithURI", bounceUrlIframe.href);
+    }
+  } else if (setCookieViaImage) {
+    let imageOrigin =
+      setCookieViaImage == "same-site" ? bounceOrigin : ORIGIN_C;
+    let imageURL = new URL(getBaseUrl(imageOrigin) + "file_image.png");
+
+    if (setState != "cookie-server") {
+      throw new Error(
+        "setCookieViaImage only supports setState == 'cookie-server'"
+      );
+    }
+    searchParams.set("setCookieViaImageWithURI", imageURL.href);
   }
 
   return bounceUrl;
@@ -188,15 +224,21 @@ async function navigateLinkClick(
  * run for the given browser.
  */
 async function waitForRecordBounces(browser) {
-  return TestUtils.topicObserved(
+  let { browserId } = browser.browsingContext;
+  info(
+    `waitForRecordBounces: Waiting for record bounces for browser: ${browserId}.`
+  );
+
+  await TestUtils.topicObserved(
     OBSERVER_MSG_RECORD_BOUNCES_FINISHED,
     subject => {
       // Ensure the message was dispatched for the browser we're interested in.
       let propBag = subject.QueryInterface(Ci.nsIPropertyBag2);
-      let browserId = propBag.getProperty("browserId");
-      return browser.browsingContext.browserId == browserId;
+      return browserId == propBag.getProperty("browserId");
     }
   );
+
+  info(`waitForRecordBounces: Recorded bounces for browser ${browserId}.`);
 }
 
 /**
@@ -206,14 +248,23 @@ async function waitForRecordBounces(browser) {
  * @param {object} options - Test Options.
  * @param {('server'|'client')} options.bounceType - Whether to perform a client
  * or server side redirect.
- * @param {('cookie-server'|'cookie-client'|'localStorage')} [options.setState]
- * Type of state to set during the redirect. Defaults to non stateful redirect.
+ * @param {('cookie-server'|'cookie-client'|'localStorage'|'indexedDB')}
+ * [options.setState] Type of state to set during the redirect. Defaults to non
+ * stateful redirect.
  * @param {boolean} [options.setStateSameSiteFrame=false] - Whether to set the
  * state in a sub frame that is same site to the top window.
+ * @param {boolean} [options.setStateCrossSiteFrame=false] - Whether to set the
+ * state in a sub frame that is cross-site to the top window.
  * @param {boolean} [options.setStateInWebWorker=false] - Whether to set the
  * state in a web worker. This only supports setState == "indexedDB".
  * @param {boolean} [options.setStateInWebWorker=false] - Whether to set the
  * state in a nested web worker. Otherwise the same as setStateInWebWorker.
+ * @param {('same-site'|'cross-site')} [options.setCookieViaImage] - Whether to
+ * set the state via an image request. Only applies to setState ==
+ * "cookie-server".
+ * @param {boolean} [options.expectRecordBounces=true] - Whether the record
+ * bounces algorithm runs and we should wait for the test message. This
+ * shouldn't run when the feature is disabled.
  * @param {boolean} [options.expectCandidate=true] - Expect the redirecting site
  * to be identified as a bounce tracker (candidate).
  * @param {boolean} [options.expectPurge=true] - Expect the redirecting site to
@@ -227,35 +278,86 @@ async function waitForRecordBounces(browser) {
  * @param {boolean} [options.skipSiteDataCleanup=false] - Skip the cleanup of
  * site data after the test. When this is enabled the caller is responsible for
  * cleaning up site data.
+ * @param {boolean} [options.skipBounceTrackingProtectionCleanup=false] - Skip
+ * the cleanup of BounceTrackingProtection state. When this is enabled the
+ * caller is responsible for cleaning BTP state.
+ * @param {boolean} [options.skipStateChecks=false] - Only run a bounce,
+ * skipping BTP state checks.
+ * @param {boolean} [options.closeTabAfterBounce=false] - Close the tab right
+ * after the bounce completes before the extended navigation ends as the result
+ * of a timeout or user interaction.
  */
 async function runTestBounce(options = {}) {
   let {
     bounceType,
     setState = null,
     setStateSameSiteFrame = false,
+    setStateCrossSiteFrame = false,
     setStateInWebWorker = false,
     setStateInNestedWebWorker = false,
+    setCookieViaImage = null,
+    expectRecordBounces = true,
     expectCandidate = true,
     expectPurge = true,
     originAttributes = {},
     postBounceCallback = () => {},
+    skipStateChecks = false,
     skipSiteDataCleanup = false,
+    skipBounceTrackingProtectionCleanup = false,
+    closeTabAfterBounce = false,
   } = options;
   info(`runTestBounce ${JSON.stringify(options)}`);
 
-  Assert.equal(
-    bounceTrackingProtection.testGetBounceTrackerCandidateHosts(
-      originAttributes
-    ).length,
-    0,
-    "No bounce tracker hosts initially."
-  );
-  Assert.equal(
-    bounceTrackingProtection.testGetUserActivationHosts(originAttributes)
-      .length,
-    0,
-    "No user activation hosts initially."
-  );
+  let btpIsDisabled =
+    Services.prefs.getIntPref("privacy.bounceTrackingProtection.mode") ==
+    Ci.nsIBounceTrackingProtection.MODE_DISABLED;
+
+  let bounceTrackingProtection;
+  try {
+    bounceTrackingProtection = Cc[
+      "@mozilla.org/bounce-tracking-protection;1"
+    ].getService(Ci.nsIBounceTrackingProtection);
+  } catch (error) {
+    // Only in MODE_DISABLED this may throw because
+    // `BounceTrackingProtection::GetSingleton` will return `nullptr`.
+    if (!btpIsDisabled) {
+      throw error;
+    }
+  }
+
+  // Store the initial user activation list so we can compare it to the new list
+  // after the bounce. This allows callers to deliberately interact with sites
+  // before running the helper without our checks failing.
+  let initialUserActivationHosts;
+
+  if (!skipStateChecks) {
+    if (btpIsDisabled) {
+      Assert.ok(!expectCandidate, "Expect no classification in disabled mode.");
+      Assert.ok(
+        !expectRecordBounces,
+        "Expect no record bounces in disabled mode."
+      );
+      Assert.ok(!expectPurge, "Expect no purge in disabled mode.");
+    } else {
+      Assert.ok(
+        bounceTrackingProtection,
+        "BTP singleton must be available in any of the 'enabled' modes."
+      );
+    }
+
+    if (bounceTrackingProtection) {
+      Assert.equal(
+        bounceTrackingProtection.testGetBounceTrackerCandidateHosts(
+          originAttributes
+        ).length,
+        0,
+        "No bounce tracker hosts initially."
+      );
+      initialUserActivationHosts = bounceTrackingProtection
+        .testGetUserActivationHosts(originAttributes)
+        .map(entry => entry.siteHost);
+    }
+  }
 
   let win = window;
   let { privateBrowsingId, userContextId } = originAttributes;
@@ -281,7 +383,10 @@ async function runTestBounce(options = {}) {
   let browser = tab.linkedBrowser;
   await BrowserTestUtils.browserLoaded(browser, true, initialURL);
 
-  let promiseRecordBounces = waitForRecordBounces(browser);
+  let promiseRecordBounces;
+  if (expectRecordBounces) {
+    promiseRecordBounces = waitForRecordBounces(browser);
+  }
 
   // The final destination after the bounce.
   let targetURL = new URL(getBaseUrl(ORIGIN_B) + "file_start.html");
@@ -301,72 +406,220 @@ async function runTestBounce(options = {}) {
       targetURL,
       setState,
       setStateSameSiteFrame,
+      setStateCrossSiteFrame,
       setStateInWebWorker,
       setStateInNestedWebWorker,
+      setCookieViaImage,
     })
   );
 
   await targetURLLoadedPromise;
 
-  // Navigate again with user gesture which triggers
-  // BounceTrackingProtection::RecordStatefulBounces. We could rely on the
-  // timeout (mClientBounceDetectionTimeout) here but that can cause races
-  // in debug where the load is quite slow.
-  await navigateLinkClick(
-    browser,
-    new URL(getBaseUrl(ORIGIN_C) + "file_start.html")
-  );
+  // Caller requested to close the tab early. This should happen before the
+  // extended navigation ends due to timeout or user interaction with the
+  // destination site.
+  // In this case the extended navigation end is triggered by the tab close
+  // itself.
+  if (closeTabAfterBounce) {
+    // This either closes the normal or private browsing tab depending on
+    // 'usePrivateWindow'.
+    BrowserTestUtils.removeTab(tab);
 
-  await promiseRecordBounces;
+    // Make sure these don't get reused, the tab has been closed.
+    tab = null;
+    browser = null;
+  } else {
+    // Tab is still open.
+    // Navigate again with user gesture which triggers
+    // BounceTrackingProtection::RecordStatefulBounces. We could rely on the
+    // timeout (mClientBounceDetectionTimeout) here but that can cause races in
+    // debug where the load is quite slow.
+    let finalTargetURL = new URL(getBaseUrl(ORIGIN_C) + "file_start.html");
+    let finalLoadPromise = BrowserTestUtils.browserLoaded(
+      browser,
+      true,
+      initialURL.href
+    );
+    await navigateLinkClick(browser, finalTargetURL);
+    await finalLoadPromise;
+  }
 
-  Assert.deepEqual(
-    bounceTrackingProtection
-      .testGetBounceTrackerCandidateHosts(originAttributes)
-      .map(entry => entry.siteHost),
-    expectCandidate ? [SITE_TRACKER] : [],
-    `Should ${
-      expectCandidate ? "" : "not "
-    }have identified ${SITE_TRACKER} as a bounce tracker.`
-  );
-  Assert.deepEqual(
-    bounceTrackingProtection
-      .testGetUserActivationHosts(originAttributes)
-      .map(entry => entry.siteHost)
-      .sort(),
-    [SITE_A, SITE_B].sort(),
-    "Should only have user activation for sites where we clicked links."
-  );
+  if (expectRecordBounces) {
+    info("Waiting for record-bounces to complete.");
+    await promiseRecordBounces;
+  } else {
+    // If we don't expect classification to happen only wait for navigation from
+    // the navigateLinkClick to complete. This navigation would trigger
+    // RecordStatefulBounces if the protection was enabled. Give
+    // RecordStatefulBounces time to run after navigation.
+    await new Promise(resolve => setTimeout(resolve, 0));
+  }
+
+  if (!skipStateChecks) {
+    if (btpIsDisabled) {
+      // In MODE_DISABLED `bounceTrackingProtection` may still be defined if it
+      // was previously accessed in an enabled state. In that case make sure
+      // nothing is recorded.
+      if (bounceTrackingProtection) {
+        Assert.deepEqual(
+          bounceTrackingProtection
+            .testGetBounceTrackerCandidateHosts(originAttributes)
+            .map(entry => entry.siteHost),
+          [],
+          "Should not have identified any bounce trackers"
+        );
+        Assert.deepEqual(
+          bounceTrackingProtection
+            .testGetUserActivationHosts(originAttributes)
+            .map(entry => entry.siteHost),
+          [],
+          "Should not have recorded any user activation"
+        );
+      } else {
+        info("BTP singleton is unavailable because mode is MODE_DISABLED.");
+      }
+    } else {
+      // Any of the "enabled" modes.
+      Assert.deepEqual(
+        bounceTrackingProtection
+          .testGetBounceTrackerCandidateHosts(originAttributes)
+          .map(entry => entry.siteHost),
+        expectCandidate ? [SITE_TRACKER] : [],
+        `Should ${
+          expectCandidate ? "" : "not "
+        }have identified ${SITE_TRACKER} as a bounce tracker.`
+      );
+
+      let expectedUserActivationHosts = [...initialUserActivationHosts, SITE_A];
+      if (!closeTabAfterBounce) {
+        // If we didn't close the tab early we should have user activation for the
+        // destination site.
+        expectedUserActivationHosts.push(SITE_B);
+      }
+      expectedUserActivationHosts = Array.from(
+        new Set(expectedUserActivationHosts)
+      );
+
+      Assert.deepEqual(
+        bounceTrackingProtection
+          .testGetUserActivationHosts(originAttributes)
+          .map(entry => entry.siteHost)
+          .sort(),
+        expectedUserActivationHosts.sort(),
+        "Should only have new user activations for sites where we clicked links."
+      );
+    }
+  }
 
   // If the caller specified a function to run after the bounce, run it now.
   await postBounceCallback();
 
-  Assert.deepEqual(
-    await bounceTrackingProtection.testRunPurgeBounceTrackers(),
-    expectPurge ? [SITE_TRACKER] : [],
-    `Should ${expectPurge ? "" : "not "}purge state for ${SITE_TRACKER}.`
-  );
+  if (bounceTrackingProtection) {
+    // Run tracker purging. If the feature is disabled this throws.
+    let mode = Services.prefs.getIntPref(
+      "privacy.bounceTrackingProtection.mode"
+    );
+    let expectPurgingToThrow =
+      mode != Ci.nsIBounceTrackingProtection.MODE_ENABLED &&
+      mode != Ci.nsIBounceTrackingProtection.MODE_ENABLED_DRY_RUN;
+
+    if (expectPurgingToThrow) {
+      await Assert.rejects(
+        bounceTrackingProtection.testRunPurgeBounceTrackers(),
+        /NS_ERROR_NOT_AVAILABLE/,
+        "testRunPurgeBounceTrackers should reject when BTP is disabled."
+      );
+    } else {
+      let purgedHosts =
+        await bounceTrackingProtection.testRunPurgeBounceTrackers();
+
+      if (!skipStateChecks) {
+        Assert.deepEqual(
+          purgedHosts,
+          expectPurge ? [SITE_TRACKER] : [],
+          `Should ${expectPurge ? "" : "not "}purge state for ${SITE_TRACKER}.`
+        );
+
+        info("Testing the purge log.");
+        let purgeLog =
+          bounceTrackingProtection.testGetRecentlyPurgedTrackers(
+            originAttributes
+          );
+        // Purges are only logged in (fully) enabled mode. Dry-run mode does not
+        // log purges.
+        if (
+          expectPurge &&
+          mode == Ci.nsIBounceTrackingProtection.MODE_ENABLED
+        ) {
+          Assert.equal(
+            purgeLog.length,
+            1,
+            "Should have one tracker in purge log."
+          );
+          let { siteHost, timeStamp, purgeTime } = purgeLog[0];
+
+          Assert.equal(
+            siteHost,
+            SITE_TRACKER,
+            `The purge log entry should be for site host '${SITE_TRACKER}'`
+          );
+          Assert.greater(
+            timeStamp,
+            0,
+            "The purge log entry should have a valid timestamp for bounce time."
+          );
+          Assert.greater(
+            purgeTime,
+            0,
+            "The purge log entry should have a valid timestamp for purge time."
+          );
+          Assert.greaterOrEqual(
+            purgeTime,
+            timeStamp,
+            "The purge time should be greater or equal to bounce time."
+          );
+        } else {
+          Assert.equal(
+            purgeLog.length,
+            0,
+            "Should have no trackers in purge log."
+          );
+        }
+      }
+    }
+  } else {
+    info("BTP is disabled. Skipping purge call.");
+  }
 
   // Clean up
-  BrowserTestUtils.removeTab(tab);
+  // Tab might have been closed early.
+  if (tab) {
+    BrowserTestUtils.removeTab(tab);
+  }
   if (usePrivateWindow) {
     await BrowserTestUtils.closeWindow(win);
 
-    info(
-      "Closing the last PBM window should trigger a purge of all PBM state."
-    );
-    Assert.ok(
-      !bounceTrackingProtection.testGetBounceTrackerCandidateHosts(
-        originAttributes
-      ).length,
-      "No bounce tracker hosts after closing private window."
-    );
-    Assert.ok(
-      !bounceTrackingProtection.testGetUserActivationHosts(originAttributes)
-        .length,
-      "No user activation hosts after closing private window."
-    );
+    if (bounceTrackingProtection) {
+      info(
+        "Closing the last PBM window should trigger a purge of all PBM state."
+      );
+      Assert.ok(
+        !bounceTrackingProtection.testGetBounceTrackerCandidateHosts(
+          originAttributes
+        ).length,
+        "No bounce tracker hosts after closing private window."
+      );
+      Assert.ok(
+        !bounceTrackingProtection.testGetUserActivationHosts(originAttributes)
+          .length,
+        "No user activation hosts after closing private window."
+      );
+    }
   }
-  bounceTrackingProtection.clearAll();
+  if (!skipBounceTrackingProtectionCleanup) {
+    bounceTrackingProtection?.clearAll();
+  }
+
   if (!skipSiteDataCleanup) {
     await SiteDataTestUtils.clear();
   }

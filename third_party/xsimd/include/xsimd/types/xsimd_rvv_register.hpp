@@ -88,15 +88,17 @@ namespace xsimd
         using byte_type = XSIMD_RVV_TYPE(u, 8, vmul);                                     \
         using fixed_type = type __attribute__((riscv_rvv_vector_bits(width)));            \
         template <class U>                                                                \
-        static inline type bitcast(U x) noexcept                                          \
+        static XSIMD_INLINE type bitcast(U x) noexcept                                    \
         {                                                                                 \
             const auto words = XSIMD_RVV_JOINT5(__riscv_vreinterpret_, u, s, m, vmul)(x); \
             return XSIMD_RVV_JOINT5(__riscv_vreinterpret_, t, s, m, vmul)(words);         \
         }                                                                                 \
         template <>                                                                       \
-        inline type bitcast<type>(type x) noexcept { return x; }                          \
-        static inline byte_type as_bytes(type x) noexcept                                 \
+        XSIMD_INLINE type bitcast<type>(type x) noexcept { return x; }                    \
+        template <class U>                                                                \
+        static XSIMD_INLINE byte_type as_bytes(U x) noexcept                              \
         {                                                                                 \
+            static_assert(std::is_same<U, type>::value, "inconsistent conversion types"); \
             const auto words = XSIMD_RVV_JOINT5(__riscv_vreinterpret_, u, s, m, vmul)(x); \
             return XSIMD_RVV_JOINT5(__riscv_vreinterpret_, u, 8, m, vmul)(words);         \
         }                                                                                 \
@@ -124,6 +126,83 @@ namespace xsimd
 #undef XSIMD_RVV_TYPE_i
 #undef XSIMD_RVV_MAKE_TYPES
 #undef XSIMD_RVV_MAKE_TYPE
+
+            // Specialization needed for #1058
+            template <>
+            XSIMD_INLINE rvv_type_info<int8_t, rvv_width_m1 * 8>::type
+            rvv_type_info<int8_t, rvv_width_m1 * 8>::bitcast<__rvv_uint8m8_t>(
+                __rvv_uint8m8_t x) noexcept
+            {
+                return __riscv_vreinterpret_i8m8(x);
+            }
+            template <>
+            XSIMD_INLINE rvv_type_info<int8_t, rvv_width_m1 * 1>::type
+            rvv_type_info<int8_t, rvv_width_m1 * 1>::bitcast<__rvv_uint8m1_t>(
+                __rvv_uint8m1_t x) noexcept
+            {
+                return __riscv_vreinterpret_i8m1(x);
+            }
+            template <>
+            XSIMD_INLINE rvv_type_info<uint16_t, rvv_width_m1 * 1>::type
+            rvv_type_info<uint16_t, rvv_width_m1 * 1>::bitcast<__rvv_uint8m1_t>(
+                __rvv_uint8m1_t x) noexcept
+            {
+                return __riscv_vreinterpret_u16m1(x);
+            }
+            template <>
+            XSIMD_INLINE rvv_type_info<uint32_t, rvv_width_m1 * 1>::type
+            rvv_type_info<uint32_t, rvv_width_m1 * 1>::bitcast<__rvv_uint8m1_t>(
+                __rvv_uint8m1_t x) noexcept
+            {
+                return __riscv_vreinterpret_u32m1(x);
+            }
+            template <>
+            XSIMD_INLINE rvv_type_info<uint64_t, rvv_width_m1 * 1>::type
+            rvv_type_info<uint64_t, rvv_width_m1 * 1>::bitcast<__rvv_uint8m1_t>(
+                __rvv_uint8m1_t x) noexcept
+            {
+                return __riscv_vreinterpret_u64m1(x);
+            }
+
+            //
+
+            template <>
+            XSIMD_INLINE rvv_type_info<int8_t, rvv_width_m1 * 8>::byte_type
+            rvv_type_info<int8_t, rvv_width_m1 * 8>::as_bytes<__rvv_int8m8_t>(__rvv_int8m8_t x) noexcept
+            {
+                return __riscv_vreinterpret_u8m8(x);
+            }
+            template <>
+            XSIMD_INLINE rvv_type_info<int8_t, rvv_width_m1 * 1>::byte_type
+            rvv_type_info<int8_t, rvv_width_m1 * 1>::as_bytes<__rvv_int8m1_t>(__rvv_int8m1_t x) noexcept
+            {
+                return __riscv_vreinterpret_u8m1(x);
+            }
+
+            template <>
+            XSIMD_INLINE rvv_type_info<uint8_t, rvv_width_m1 * 1>::byte_type
+            rvv_type_info<uint8_t, rvv_width_m1 * 1>::as_bytes<__rvv_uint8m1_t>(__rvv_uint8m1_t x) noexcept
+            {
+                return x;
+            }
+            template <>
+            XSIMD_INLINE rvv_type_info<uint16_t, rvv_width_m1 * 1>::byte_type
+            rvv_type_info<uint16_t, rvv_width_m1 * 1>::as_bytes<__rvv_uint16m1_t>(__rvv_uint16m1_t x) noexcept
+            {
+                return __riscv_vreinterpret_u8m1(x);
+            }
+            template <>
+            XSIMD_INLINE rvv_type_info<uint32_t, rvv_width_m1 * 1>::byte_type
+            rvv_type_info<uint32_t, rvv_width_m1 * 1>::as_bytes<__rvv_uint32m1_t>(__rvv_uint32m1_t x) noexcept
+            {
+                return __riscv_vreinterpret_u8m1(x);
+            }
+            template <>
+            XSIMD_INLINE rvv_type_info<uint64_t, rvv_width_m1 * 1>::byte_type
+            rvv_type_info<uint64_t, rvv_width_m1 * 1>::as_bytes<__rvv_uint64m1_t>(__rvv_uint64m1_t x) noexcept
+            {
+                return __riscv_vreinterpret_u8m1(x);
+            }
 
             // rvv_blob is storage-type abstraction for a vector register.
             template <class T, size_t Width>
@@ -267,17 +346,17 @@ namespace xsimd
             //
             template <size_t>
             struct rvv_bool_info;
-#define XSIMD_RVV_MAKE_BOOL_TYPE(i)                                                       \
-    template <>                                                                           \
-    struct rvv_bool_info<i>                                                               \
-    {                                                                                     \
-        using type = XSIMD_RVV_JOINT(vbool, i, _t);                                       \
-        template <class T>                                                                \
-        static inline type bitcast(T value) noexcept                                      \
-        {                                                                                 \
-            return XSIMD_RVV_JOINT(__riscv_vreinterpret_b, i, )(value);                   \
-        }                                                                                 \
-        /*template <> static inline type bitcast(type value) noexcept { return value; }*/ \
+#define XSIMD_RVV_MAKE_BOOL_TYPE(i)                                                             \
+    template <>                                                                                 \
+    struct rvv_bool_info<i>                                                                     \
+    {                                                                                           \
+        using type = XSIMD_RVV_JOINT(vbool, i, _t);                                             \
+        template <class T>                                                                      \
+        static XSIMD_INLINE type bitcast(T value) noexcept                                      \
+        {                                                                                       \
+            return XSIMD_RVV_JOINT(__riscv_vreinterpret_b, i, )(value);                         \
+        }                                                                                       \
+        /*template <> static XSIMD_INLINE type bitcast(type value) noexcept { return value; }*/ \
     };
             XSIMD_RVV_MAKE_BOOL_TYPE(1);
             XSIMD_RVV_MAKE_BOOL_TYPE(2);

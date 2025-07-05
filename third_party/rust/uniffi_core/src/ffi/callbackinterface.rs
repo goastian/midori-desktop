@@ -191,11 +191,12 @@ macro_rules! convert_unexpected_error {
         // Trait for specialized conversion, implemented for all T that implements
         // `Into<ErrorType>`.  I.e. it's implemented for UnexpectedUniFFICallbackError when
         // ErrorType implements From<UnexpectedUniFFICallbackError>.
+        #[allow(dead_code)]
         pub trait GetConverterSpecialized {
             fn get_converter(&self) -> $crate::UnexpectedUniFFICallbackErrorConverterSpecialized;
         }
 
-        impl<T: Into<$ty>> GetConverterSpecialized for T {
+        impl<T: ::std::convert::Into<$ty>> GetConverterSpecialized for T {
             fn get_converter(&self) -> $crate::UnexpectedUniFFICallbackErrorConverterSpecialized {
                 $crate::UnexpectedUniFFICallbackErrorConverterSpecialized
             }

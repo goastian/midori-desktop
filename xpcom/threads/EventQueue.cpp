@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/EventQueue.h"
+#include "mozilla/FlowMarkers.h"
 
 #include "GeckoProfiler.h"
 #include "InputTaskManager.h"
@@ -64,6 +65,8 @@ void EventQueueInternal<ItemsPerPage>::PutEvent(
     }
     mDispatchTimes.Push(aDelay ? TimeStamp::Now() - *aDelay : TimeStamp::Now());
   }
+  PROFILER_MARKER("EventQueueInternal::PutEvent", OTHER, {}, FlowMarker,
+                  Flow::FromPointer(event.get()));
 
   mQueue.Push(std::move(event));
 }

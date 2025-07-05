@@ -32,7 +32,7 @@ add_task(async function fetch_invalid_mlbf_record() {
   // Forget about the packaged attachment.
   Downloader._RESOURCE_BASE_URL = "invalid://bogus";
   // NetworkError is expected here. The JSON.parse error could be triggered via
-  // _baseAttachmentsURL < downloadAsBytes < download < download < _fetchMLBF if
+  // baseAttachmentsURL < downloadAsBytes < download < download < _fetchMLBF if
   // the request to  services.settings.server ("data:,#remote-settings-dummy/v1")
   // is fulfilled (but with invalid JSON). That request is not expected to be
   // fulfilled in the first place, but that is not a concern of this test.
@@ -51,13 +51,13 @@ add_task(async function fetch_valid_mlbf() {
     { record: MLBF_RECORD, blob: await load_mlbf_record_as_blob() }
   );
 
-  const result = await ExtensionBlocklistMLBF._fetchMLBF(MLBF_RECORD);
+  const { mlbf: result } = await ExtensionBlocklistMLBF._fetchMLBF(MLBF_RECORD);
   Assert.equal(result.cascadeHash, MLBF_RECORD.attachment.hash, "hash OK");
   Assert.equal(result.generationTime, MLBF_RECORD.generation_time, "time OK");
   Assert.ok(result.cascadeFilter.has("@blocked:1"), "item blocked");
   Assert.ok(!result.cascadeFilter.has("@unblocked:2"), "item not blocked");
 
-  const result2 = await ExtensionBlocklistMLBF._fetchMLBF({
+  const { mlbf: result2 } = await ExtensionBlocklistMLBF._fetchMLBF({
     attachment: { size: 1, hash: "invalid" },
     generation_time: Date.now(),
   });
@@ -211,6 +211,7 @@ add_task(async function handle_database_corruption() {
 
   // Memory gone, e.g. after a browser restart.
   delete ExtensionBlocklistMLBF._mlbfData;
+  delete ExtensionBlocklistMLBF._mlbfDataSoftBlocks;
   delete ExtensionBlocklistMLBF._stashes;
   Assert.equal(
     await Blocklist.getAddonBlocklistState(blockedAddon),

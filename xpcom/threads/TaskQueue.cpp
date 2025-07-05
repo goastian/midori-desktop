@@ -7,6 +7,7 @@
 #include "mozilla/TaskQueue.h"
 
 #include "mozilla/ProfilerRunnable.h"
+#include "mozilla/FlowMarkers.h"
 #include "nsIEventTarget.h"
 #include "nsITargetShutdownTask.h"
 #include "nsThreadUtils.h"
@@ -81,8 +82,13 @@ TaskQueue::~TaskQueue() {
 
 NS_IMPL_ADDREF_INHERITED(TaskQueue, SupportsThreadSafeWeakPtr<TaskQueue>)
 NS_IMPL_RELEASE_INHERITED(TaskQueue, SupportsThreadSafeWeakPtr<TaskQueue>)
-NS_IMPL_QUERY_INTERFACE(TaskQueue, nsIDirectTaskDispatcher,
-                        nsISerialEventTarget, nsIEventTarget)
+
+NS_INTERFACE_MAP_BEGIN(TaskQueue)
+  NS_INTERFACE_MAP_ENTRY(nsIDirectTaskDispatcher)
+  NS_INTERFACE_MAP_ENTRY(nsISerialEventTarget)
+  NS_INTERFACE_MAP_ENTRY(nsIEventTarget)
+  NS_INTERFACE_MAP_ENTRY_CONCRETE(TaskQueue)
+NS_INTERFACE_MAP_END
 
 TaskDispatcher& TaskQueue::TailDispatcher() {
   MOZ_ASSERT(IsCurrentThreadIn());
@@ -111,6 +117,8 @@ nsresult TaskQueue::DispatchLocked(nsCOMPtr<nsIRunnable>& aRunnable,
     return currentThread->TailDispatcher().AddTask(this, aRunnable.forget());
   }
 
+  PROFILER_MARKER("TaskQueue::DispatchLocked", OTHER, {}, FlowMarker,
+                  Flow::FromPointer(aRunnable.get()));
   LogRunnable::LogDispatch(aRunnable);
   mTasks.Push({std::move(aRunnable), aFlags});
 

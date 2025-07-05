@@ -41,14 +41,12 @@ add_task(async function test_add_icon() {
       )
   );
 
-  PlacesUtils.favicons.setAndFetchFaviconForPage(
-    NetUtil.newURI("http://book.ma.rk/"),
+  PlacesTestUtils.setFaviconForPage(
+    "http://book.ma.rk/",
     SMALLPNG_DATA_URI,
-    true,
-    PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,
-    null,
-    Services.scriptSecurityManager.getSystemPrincipal()
+    SMALLPNG_DATA_URI
   );
+
   await promiseNotifications;
 });
 

@@ -1,0 +1,18 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+sidebar-tab-row {
+  border-radius: var(--border-radius-medium);
+  height: var(--size-item-large);
+
+  &:hover {
+    background-color: var(--button-background-color-ghost-hover);
+    color: var(--button-text-color-ghost-hover);
+  }
+
+  &:active {
+    background-color: var(--button-background-color-ghost-active);
+    color: var(--button-text-color-ghost-active);
+  }
+}

@@ -15,7 +15,7 @@ const privilegedGlobals = Object.keys(
 );
 
 function getMessageId(context) {
-  return path.extname(context.getFilename()) == ".sjs"
+  return path.extname(context.filename) == ".sjs"
     ? "unexpectedCallSjs"
     : "unexpectedCall";
 }
@@ -54,7 +54,8 @@ module.exports = {
           // Only Cu, not Components.utils as `use-cc-etc` handles this for us.
           memexp.object.name === "Cu" &&
           memexp.property.type === "Identifier" &&
-          memexp.property.name === "importGlobalProperties"
+          memexp.property.name === "importGlobalProperties" &&
+          node.arguments.length >= 1
         ) {
           if (context.options.includes("allownonwebidl")) {
             for (let element of node.arguments[0].elements) {

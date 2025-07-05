@@ -1,13 +1,18 @@
 RustLibrary("mozwer_s")
 
 OS_LIBS += [
+    "advapi32",
     "dbghelp",
     "kernel32",
     "ntdll",
     "ole32",
-    "psapi",
     "shell32",
     "user32",
     "userenv",
     "ws2_32",
 ]
+
+# `std` uses `raw-dylib` to link this dll, but that doesn't work properly on x86 MinGW, so we explicitly
+# have to link it.
+if CONFIG["OS_ARCH"] == "WINNT" and CONFIG["CC_TYPE"] != "clang-cl":
+    OS_LIBS += ["bcryptprimitives"]

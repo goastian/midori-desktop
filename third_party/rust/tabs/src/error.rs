@@ -25,14 +25,8 @@ pub enum TabsApiError {
 // Error we use internally
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[cfg(feature = "full-sync")]
-    #[error("Error synchronizing: {0}")]
-    SyncAdapterError(#[from] sync15::Error),
-
-    // Note we are abusing this as a kind of "mis-matched feature" error.
-    // This works because when `full-sync` isn't enabled we don't actually
-    // handle any sync15 errors as the bridged-engine never returns them.
-    #[cfg(not(feature = "full-sync"))]
+    // For historical reasons we have a mis-matched name between the error
+    // and what the error actually represents.
     #[error("Sync feature is disabled: {0}")]
     SyncAdapterError(String),
 
@@ -50,6 +44,9 @@ pub enum Error {
 
     #[error("Error opening database: {0}")]
     OpenDatabaseError(#[from] sql_support::open_database::Error),
+
+    #[error("Unexpected connection state")]
+    UnexpectedConnectionState,
 }
 
 // Define how our internal errors are handled and converted to external errors
@@ -85,6 +82,12 @@ impl GetErrorHandling for Error {
                 reason: e.to_string(),
             })
             .report_error("tabs-open-database-error"),
+            Self::UnexpectedConnectionState => {
+                ErrorHandling::convert(TabsApiError::UnexpectedTabsError {
+                    reason: "Unexpected connection state".to_string(),
+                })
+                .report_error("tabs-unexpected-connection-state")
+            }
         }
     }
 }

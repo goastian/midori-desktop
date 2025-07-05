@@ -23,7 +23,12 @@ function getTestURLForOrigin(origin) {
   return TEST_ROOT_DIR.replace("chrome://mochitests/content", origin);
 }
 
-async function testCached(origin, isCached, testPartitioned = false) {
+async function testCached(
+  origin,
+  isCached,
+  testPartitioned = false,
+  isTODO = false
+) {
   let tabs = originToTabs[origin];
 
   for (let tab of tabs) {
@@ -48,7 +53,11 @@ async function testCached(origin, isCached, testPartitioned = false) {
       msg = "Partitioned under " + msg;
     }
 
-    is(actualCached, isCached, msg);
+    if (isTODO) {
+      todo(actualCached, isCached, msg);
+    } else {
+      is(actualCached, isCached, msg);
+    }
   }
 }
 
@@ -105,8 +114,7 @@ function cleanup() {
   let imageCache = Cc["@mozilla.org/image/tools;1"]
     .getService(Ci.imgITools)
     .getImgCacheForDocument(null);
-  imageCache.clearCache(false);
-  imageCache.clearCache(true);
+  imageCache.clearCache(); // no parameter=all
 }
 
 add_setup(function () {
@@ -145,43 +153,45 @@ add_task(async function test_deleteByPrincipal() {
   // partitioned under B, even though the test principal does not set a
   // partitionKey.
   // See Bug 1713088.
-  await testCached(ORIGIN_B, false, true);
+  await testCached(ORIGIN_B, true, true, true);
   await testCached(ORIGIN_B_SUB, true, true);
   await testCached(ORIGIN_B_HTTP, true, true);
 
   cleanup();
 });
 
-add_task(async function test_deleteByBaseDomain() {
+add_task(async function test_deleteBySite() {
   await SpecialPowers.setBoolPref("dom.security.https_first", false);
   await addTestTabs();
 
-  // Clear data for base domain of A.
-  info("Clearing cache for base domain " + BASE_DOMAIN_A);
+  // Clear data for site A.
+  info("Clearing cache for site " + BASE_DOMAIN_A);
   await new Promise(resolve => {
-    Services.clearData.deleteDataFromBaseDomain(
+    Services.clearData.deleteDataFromSite(
       BASE_DOMAIN_A,
+      {},
       false,
       Ci.nsIClearDataService.CLEAR_IMAGE_CACHE,
       resolve
     );
   });
 
-  // All entries for A should have been cleared.
+  info("All entries for A should have been cleared.");
   await testCached(ORIGIN_A, false);
   await testCached(ORIGIN_A_SUB, false);
   await testCached(ORIGIN_A_HTTP, false);
-  // Entries for B should still exist.
+
+  info("Entries for B should still exist");
   await testCached(ORIGIN_B, true);
   await testCached(ORIGIN_B_SUB, true);
   await testCached(ORIGIN_B_HTTP, true);
 
-  // All partitioned entries for B under A should have been cleared.
+  info("All partitioned entries for B under A should have been cleared.");
   await testCached(ORIGIN_A, false, true);
   await testCached(ORIGIN_A_SUB, false, true);
   await testCached(ORIGIN_A_HTTP, false, true);
 
-  // All partitioned entries of A under B should have been cleared.
+  info("All partitioned entries of A under B should have been cleared.");
   await testCached(ORIGIN_B, false, true);
   await testCached(ORIGIN_B_SUB, false, true);
   await testCached(ORIGIN_B_HTTP, false, true);

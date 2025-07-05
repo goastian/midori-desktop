@@ -46,8 +46,8 @@ add_task(async function () {
   );
   await compareFavicons(
     PlacesUtils.urlWithSizeRef(win, PAGE_ICON_URL, 17),
-    PlacesUtils.favicons.getFaviconLinkForIcon(Services.io.newURI(ICON32_URL)),
-    "Size=17 should return the 32px icon"
+    PlacesUtils.favicons.getFaviconLinkForIcon(Services.io.newURI(ICON16_URL)),
+    "Size=17 should return the 16px icon"
   );
   await compareFavicons(
     PlacesUtils.urlWithSizeRef(win, PAGE_ICON_URL, 1),
@@ -67,8 +67,16 @@ add_task(async function () {
 
   // Add the icon also for the page with ref.
   await PlacesTestUtils.addVisits(PAGE_URL + "#other§=12");
-  await setFaviconForPage(PAGE_URL + "#other§=12", ICON16_URL, false);
-  await setFaviconForPage(PAGE_URL + "#other§=12", ICON32_URL, false);
+  await PlacesTestUtils.setFaviconForPage(
+    PAGE_URL + "#other§=12",
+    ICON16_URL,
+    await PlacesTestUtils.getFaviconDataURLFromDB(ICON16_URL)
+  );
+  await PlacesTestUtils.setFaviconForPage(
+    PAGE_URL + "#other§=12",
+    ICON32_URL,
+    await PlacesTestUtils.getFaviconDataURLFromDB(ICON32_URL)
+  );
   await compareFavicons(
     PlacesUtils.urlWithSizeRef(win, PAGE_ICON_URL + "#other§=12", 16),
     PlacesUtils.favicons.getFaviconLinkForIcon(Services.io.newURI(ICON16_URL)),

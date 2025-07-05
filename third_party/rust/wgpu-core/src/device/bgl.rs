@@ -1,4 +1,4 @@
-use std::hash::{Hash, Hasher};
+use core::hash::{Hash, Hasher};
 
 use crate::{
     binding_model::{self},
@@ -125,5 +125,10 @@ impl EntryMap {
     pub fn entry(&mut self, key: u32) -> indexmap::map::Entry<'_, u32, wgt::BindGroupLayoutEntry> {
         self.sorted = false;
         self.inner.entry(key)
+    }
+
+    pub fn sort(&mut self) {
+        self.inner.sort_unstable_keys();
+        self.sorted = true;
     }
 }

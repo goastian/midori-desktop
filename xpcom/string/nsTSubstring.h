@@ -37,6 +37,13 @@ class nsTString;
 template <typename T>
 class nsTSubstring;
 
+template <typename T>
+struct type_identity {
+  using type = T;
+};
+template <typename T>
+using type_identity_t = typename type_identity<T>::type;
+
 namespace mozilla {
 
 /**
@@ -457,6 +464,9 @@ class nsTSubstring : public mozilla::detail::nsTStringRepr<T> {
   void NS_FASTCALL AssignASCII(const char* aData) {
     AssignASCII(aData, strlen(aData));
   }
+
+  void NS_FASTCALL AssignASCII(const nsLiteralCString& aData);
+
   [[nodiscard]] bool NS_FASTCALL AssignASCII(const char* aData,
                                              const fallible_t& aFallible) {
     return AssignASCII(aData, strlen(aData), aFallible);
@@ -559,6 +569,10 @@ class nsTSubstring : public mozilla::detail::nsTStringRepr<T> {
   }
   void NS_FASTCALL Replace(index_type aCutStart, size_type aCutLength,
                            const substring_tuple_type& aTuple);
+  [[nodiscard]] bool NS_FASTCALL Replace(index_type aCutStart,
+                                         size_type aCutLength,
+                                         const substring_tuple_type& aTuple,
+                                         const fallible_t& aFallible);
 
   // ReplaceLiteral must ONLY be called with an actual literal string, or
   // a character array *constant* of static storage duration declared
@@ -720,11 +734,25 @@ class nsTSubstring : public mozilla::detail::nsTStringRepr<T> {
 
   void AppendASCII(const char* aData, size_type aLength = size_type(-1));
 
+  void AppendASCII(const nsLiteralCString& aData);
+
   [[nodiscard]] bool AppendASCII(const char* aData,
                                  const fallible_t& aFallible);
 
   [[nodiscard]] bool AppendASCII(const char* aData, size_type aLength,
                                  const fallible_t& aFallible);
+
+  template <typename... Args>
+  void AppendFmt(
+      fmt::basic_format_string<char_type, type_identity_t<Args>...> aFormatStr,
+      Args&&... aArgs) {
+    AppendVfmt(
+        aFormatStr,
+        fmt::make_format_args<fmt::buffered_context<char_type>>(aArgs...));
+  }
+  void AppendVfmt(
+      fmt::basic_string_view<char_type> aFormatStr,
+      fmt::basic_format_args<fmt::buffered_context<char_type>> aArgs);
 
   // Appends a literal string ("" literal in the 8-bit case and u"" literal
   // in the 16-bit case) to the string.
@@ -918,7 +946,7 @@ class nsTSubstring : public mozilla::detail::nsTStringRepr<T> {
    *
    * Append()
    * AppendASCII()
-   * AppendLiteral() (except if the string is empty: bug 1487606)
+   * AppendLiteral()
    * AppendPrintf()
    * AppendInt()
    * AppendFloat()
@@ -1147,16 +1175,6 @@ class nsTSubstring : public mozilla::detail::nsTStringRepr<T> {
   void NS_FASTCALL SetIsVoid(bool);
 
   /**
-   * If the string uses a shared buffer, this method
-   * clears the pointer without releasing the buffer.
-   */
-  void ForgetSharedBuffer() {
-    if (this->mDataFlags & DataFlags::REFCOUNTED) {
-      SetToEmptyBuffer();
-    }
-  }
-
-  /**
    * If the string uses a reference-counted buffer, this method returns a
    * pointer to it without incrementing the buffer's refcount.
    */
@@ -1168,7 +1186,7 @@ class nsTSubstring : public mozilla::detail::nsTStringRepr<T> {
   }
 
  protected:
-  void AssertValid() {
+  constexpr void AssertValid() {
     MOZ_DIAGNOSTIC_ASSERT(!(this->mClassFlags & ClassFlags::INVALID_MASK));
     MOZ_DIAGNOSTIC_ASSERT(!(this->mDataFlags & DataFlags::INVALID_MASK));
     MOZ_ASSERT(!(this->mClassFlags & ClassFlags::NULL_TERMINATED) ||
@@ -1237,7 +1255,7 @@ class nsTSubstring : public mozilla::detail::nsTStringRepr<T> {
   }
 
   // initialization with ClassFlags
-  explicit nsTSubstring(ClassFlags aClassFlags)
+  constexpr explicit nsTSubstring(ClassFlags aClassFlags)
       : base_string_type(char_traits::sEmptyBuffer, 0, DataFlags::TERMINATED,
                          aClassFlags) {
     AssertValid();
@@ -1478,5 +1496,9 @@ Span(const nsTSubstring<char>&) -> Span<const char>;
 Span(const nsTSubstring<char16_t>&) -> Span<const char16_t>;
 
 }  // namespace mozilla
+
+template <typename Char>
+struct fmt::formatter<nsTSubstring<Char>, Char>
+    : fmt::formatter<mozilla::detail::nsTStringRepr<Char>, Char> {};
 
 #endif

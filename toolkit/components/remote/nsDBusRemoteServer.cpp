@@ -38,7 +38,7 @@ static const char* introspect_template =
 
 bool nsDBusRemoteServer::HandleOpenURL(const gchar* aInterfaceName,
                                        const gchar* aMethodName,
-                                       const gchar* aParam) {
+                                       Span<const gchar> aParam) {
   nsPrintfCString ourInterfaceName("org.mozilla.%s", mAppName.get());
 
   if ((strcmp("OpenURL", aMethodName) != 0) ||
@@ -71,9 +71,15 @@ static void HandleMethodCall(GDBusConnection* aConnection, const gchar* aSender,
     return;
   }
 
-  gsize len;
-  const auto* commandLine = (const char*)g_variant_get_fixed_array(
-      g_variant_get_child_value(aParameters, 0), &len, sizeof(char));
+  gsize len = 0;
+  const char* commandLine = nullptr;
+
+  RefPtr<GVariant> variant =
+      dont_AddRef(g_variant_get_child_value(aParameters, 0));
+  if (variant) {
+    commandLine =
+        (const char*)g_variant_get_fixed_array(variant, &len, sizeof(char));
+  }
   if (!commandLine || !len) {
     g_warning(
         "nsDBusRemoteServer: HandleMethodCall: failed to get url string!");
@@ -85,7 +91,7 @@ static void HandleMethodCall(GDBusConnection* aConnection, const gchar* aSender,
   }
 
   int ret = static_cast<nsDBusRemoteServer*>(aUserData)->HandleOpenURL(
-      aInterfaceName, aMethodName, commandLine);
+      aInterfaceName, aMethodName, mozilla::Span(commandLine, len));
   if (!ret) {
     g_dbus_method_invocation_return_error(
         aInvocation, G_DBUS_ERROR, G_DBUS_ERROR_NOT_SUPPORTED,

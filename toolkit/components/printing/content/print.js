@@ -81,11 +81,16 @@ function cancelDeferredTasks() {
 document.addEventListener(
   "DOMContentLoaded",
   () => {
+    const dialogBox = ourBrowser.closest(".dialogBox");
+    if (!dialogBox) {
+      return;
+    }
+
     window._initialized = PrintEventHandler.init().catch(e => console.error(e));
     ourBrowser.setAttribute("flex", "0");
     ourBrowser.setAttribute("constrainpopups", "false");
     ourBrowser.classList.add("printSettingsBrowser");
-    ourBrowser.closest(".dialogBox")?.classList.add("printDialogBox");
+    dialogBox.classList.add("printDialogBox");
   },
   { once: true }
 );
@@ -158,7 +163,7 @@ var PrintEventHandler = {
   _noPreviewUpdateSettings: new Set(["numCopies", "printDuplex"]),
 
   async init() {
-    Services.telemetry.scalarAdd("printing.preview_opened_tm", 1);
+    Glean.printing.previewOpenedTm.add(1);
 
     this.printPreviewEl =
       ourBrowser.parentElement.querySelector("print-preview");
@@ -293,17 +298,14 @@ var PrintEventHandler = {
       // system dialog the title will be used to generate the prepopulated
       // filename in the file picker.
       settings.title = this.activeTitle;
-      Services.telemetry.scalarAdd("printing.dialog_opened_via_preview_tm", 1);
+      Glean.printing.dialogOpenedViaPreviewTm.add(1);
       const doPrint = await this._showPrintDialog(
         window,
         this.hasSelection,
         settings
       );
       if (!doPrint) {
-        Services.telemetry.scalarAdd(
-          "printing.dialog_via_preview_cancelled_tm",
-          1
-        );
+        Glean.printing.dialogViaPreviewCancelledTm.add(1);
         window.close();
         return;
       }
@@ -445,7 +447,7 @@ var PrintEventHandler = {
   },
 
   cancelPrint() {
-    Services.telemetry.scalarAdd("printing.preview_cancelled_tm", 1);
+    Glean.printing.previewCancelledTm.add(1);
     window.close();
   },
 
@@ -453,9 +455,8 @@ var PrintEventHandler = {
     this.currentPrinterName = printerName;
     let currentPrinter;
     try {
-      currentPrinter = await PrintSettingsViewProxy.resolvePropertiesForPrinter(
-        printerName
-      );
+      currentPrinter =
+        await PrintSettingsViewProxy.resolvePropertiesForPrinter(printerName);
     } catch (e) {
       this.reportPrintingError("PRINTER_PROPERTIES");
       throw e;
@@ -621,11 +622,7 @@ var PrintEventHandler = {
   async onUserSettingsChange(changedSettings = {}) {
     let previewableChange = false;
     for (let [setting, value] of Object.entries(changedSettings)) {
-      Services.telemetry.keyedScalarAdd(
-        "printing.settings_changed",
-        setting,
-        1
-      );
+      Glean.printing.settingsChanged[setting].add(1);
       // Update the list of user-changed settings, which we attempt to maintain
       // across printer changes.
       this._userChangedSettings[setting] = value;
@@ -827,24 +824,15 @@ var PrintEventHandler = {
   async _updatePrintPreview() {
     let { settings } = this;
 
-    const isFirstCall = !this.printInitiationTime;
-    if (isFirstCall) {
-      let params = new URLSearchParams(location.search);
-      this.printInitiationTime = parseInt(
-        params.get("printInitiationTime"),
-        10
-      );
-      const elapsed = Date.now() - this.printInitiationTime;
-      Services.telemetry
-        .getHistogramById("PRINT_INIT_TO_PLATFORM_SENT_SETTINGS_MS")
-        .add(elapsed);
-    }
-
     let totalPageCount, sheetCount, isEmpty, orientation, pageWidth, pageHeight;
     try {
       // This resolves with a PrintPreviewSuccessInfo dictionary.
       let { sourceVersion } = this.viewSettings;
       let sourceURI = this.activeURI;
+      // The printing backend can't generate a title for the selection document
+      // since it is only a fragment of the page, give it the active title.
+      settings.title =
+        this.viewSettings.sourceVersion == "selection" ? this.activeTitle : "";
       this._lastPrintPreviewSettings = settings;
       ({
         totalPageCount,
@@ -917,13 +905,6 @@ var PrintEventHandler = {
         detail: { sheetCount, totalPages: totalPageCount },
       })
     );
-
-    if (isFirstCall) {
-      const elapsed = Date.now() - this.printInitiationTime;
-      Services.telemetry
-        .getHistogramById("PRINT_INIT_TO_PREVIEW_DOC_SHOWN_MS")
-        .add(elapsed);
-    }
   },
 
   async getPrintDestinations() {
@@ -1064,7 +1045,7 @@ var PrintEventHandler = {
 
   reportPrintingError(aMessage) {
     logger.debug("reportPrintingError:", aMessage);
-    Services.telemetry.keyedScalarAdd("printing.error", aMessage, 1);
+    Glean.printing.error[aMessage].add(1);
   },
 
   /**

@@ -5,7 +5,13 @@
 
 #include <gtk/gtk.h>
 
+#ifdef MOZ_X11
+#  include "X11UndefineNone.h"
+#endif
+
 #include "mozilla/Maybe.h"
+#include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "nsColor.h"
 #include "nsColorPicker.h"
@@ -13,6 +19,7 @@
 #include "nsIWidget.h"
 #include "WidgetUtils.h"
 #include "nsPIDOMWindow.h"
+#include "gfxPlatform.h"
 
 using mozilla::dom::HTMLInputElement;
 
@@ -61,33 +68,25 @@ GtkColorSelection* nsColorPicker::WidgetGetColorSelection(GtkWidget* widget) {
 }
 #endif
 
-NS_IMETHODIMP nsColorPicker::Init(mozIDOMWindowProxy* aParent,
-                                  const nsAString& title,
-                                  const nsAString& initialColor,
-                                  const nsTArray<nsString>& aDefaultColors) {
-  auto* parent = nsPIDOMWindowOuter::From(aParent);
-  mParentWidget = mozilla::widget::WidgetUtils::DOMWindowToWidget(parent);
-  mTitle = title;
-  mInitialColor = initialColor;
+nsresult nsColorPicker::InitNative(const nsTArray<nsString>& aDefaultColors) {
+  mParentWidget =
+      mBrowsingContext->Canonical()->GetParentProcessWidgetContaining();
   mDefaultColors.Assign(aDefaultColors);
 
   return NS_OK;
 }
 
-NS_IMETHODIMP nsColorPicker::Open(
-    nsIColorPickerShownCallback* aColorPickerShownCallback) {
+nsresult nsColorPicker::OpenNative() {
+  // Don't attempt to open a real color-picker in headless mode.
+  if (gfxPlatform::IsHeadless()) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+
   auto maybeColor = HTMLInputElement::ParseSimpleColor(mInitialColor);
   if (maybeColor.isNothing()) {
     return NS_ERROR_FAILURE;
   }
   nscolor color = maybeColor.value();
-
-  if (mCallback) {
-    // It means Open has already been called: this is not allowed
-    NS_WARNING("mCallback is already set. Open called twice?");
-    return NS_ERROR_FAILURE;
-  }
-  mCallback = aColorPickerShownCallback;
 
   NS_ConvertUTF16toUTF8 title(mTitle);
   GtkWindow* parent_window =

@@ -2,39 +2,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use anyhow::{bail, Result};
+use anyhow::Result;
 use askama::Template;
-use camino::Utf8Path;
+
 use heck::{ToShoutySnakeCase, ToSnakeCase, ToUpperCamelCase};
 use serde::{Deserialize, Serialize};
 use std::borrow::Borrow;
-use std::collections::HashMap;
 
-use crate::bindings::ruby;
 use crate::interface::*;
-use crate::{BindingGenerator, BindingsConfig};
-
-pub struct RubyBindingGenerator;
-impl BindingGenerator for RubyBindingGenerator {
-    type Config = Config;
-
-    fn write_bindings(
-        &self,
-        ci: &ComponentInterface,
-        config: &Config,
-        out_dir: &Utf8Path,
-        try_format_code: bool,
-    ) -> Result<()> {
-        ruby::write_bindings(config, ci, out_dir, try_format_code)
-    }
-
-    fn check_library_path(&self, library_path: &Utf8Path, cdylib_name: Option<&str>) -> Result<()> {
-        if cdylib_name.is_none() {
-            bail!("Generate bindings for Ruby requires a cdylib, but {library_path} was given");
-        }
-        Ok(())
-    }
-}
 
 const RESERVED_WORDS: &[&str] = &[
     "alias", "and", "BEGIN", "begin", "break", "case", "class", "def", "defined?", "do", "else",
@@ -96,8 +71,7 @@ pub fn canonical_name(t: &Type) -> String {
             canonical_name(key_type).to_upper_camel_case(),
             canonical_name(value_type).to_upper_camel_case()
         ),
-        // A type that exists externally.
-        Type::External { name, .. } | Type::Custom { name, .. } => format!("Type{name}"),
+        Type::Custom { name, .. } => format!("Type{name}"),
     }
 }
 
@@ -106,7 +80,7 @@ pub fn canonical_name(t: &Type) -> String {
 // since the details of the underlying component are entirely determined by the `ComponentInterface`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
-    cdylib_name: Option<String>,
+    pub(super) cdylib_name: Option<String>,
     cdylib_path: Option<String>,
 }
 
@@ -126,40 +100,20 @@ impl Config {
     }
 }
 
-impl BindingsConfig for Config {
-    fn update_from_ci(&mut self, ci: &ComponentInterface) {
-        self.cdylib_name
-            .get_or_insert_with(|| format!("uniffi_{}", ci.namespace()));
-    }
-
-    fn update_from_cdylib_name(&mut self, cdylib_name: &str) {
-        self.cdylib_name
-            .get_or_insert_with(|| cdylib_name.to_string());
-    }
-
-    fn update_from_dependency_configs(&mut self, _config_map: HashMap<&str, &Self>) {}
-}
-
 #[derive(Template)]
 #[template(syntax = "rb", escape = "none", path = "wrapper.rb")]
 pub struct RubyWrapper<'a> {
     config: Config,
     ci: &'a ComponentInterface,
-    canonical_name: &'a dyn Fn(&Type) -> String,
 }
 impl<'a> RubyWrapper<'a> {
     pub fn new(config: Config, ci: &'a ComponentInterface) -> Self {
-        Self {
-            config,
-            ci,
-            canonical_name: &canonical_name,
-        }
+        Self { config, ci }
     }
 }
 
 mod filters {
     use super::*;
-    pub use crate::backend::filters::*;
 
     pub fn type_ffi(type_: &FfiType) -> Result<String, askama::Error> {
         Ok(match type_ {
@@ -183,7 +137,7 @@ mod filters {
             // definitions use references.  Those FFI functions aren't actually used, so we just
             // pick something that runs and makes some sense.  Revisit this once the references
             // are actually implemented.
-            FfiType::Reference(_) => ":pointer".to_string(),
+            FfiType::Reference(_) | FfiType::MutReference(_) => ":pointer".to_string(),
             FfiType::VoidPointer => ":pointer".to_string(),
             FfiType::Struct(_) => {
                 unimplemented!("Structs are not implemented")
@@ -246,7 +200,13 @@ mod filters {
         Ok(nm.to_string().to_shouty_snake_case())
     }
 
-    pub fn coerce_rb(nm: &str, ns: &str, type_: &Type) -> Result<String, askama::Error> {
+    pub fn coerce_rb<S1: AsRef<str>, S2: AsRef<str>>(
+        nm: S1,
+        ns: S2,
+        type_: &Type,
+    ) -> Result<String, askama::Error> {
+        let nm = nm.as_ref();
+        let ns = ns.as_ref();
         Ok(match type_ {
             Type::Int8 => format!("{ns}::uniffi_in_range({nm}, \"i8\", -2**7, 2**7)"),
             Type::Int16 => format!("{ns}::uniffi_in_range({nm}, \"i16\", -2**15, 2**15)"),
@@ -286,12 +246,12 @@ mod filters {
                     )
                 }
             }
-            Type::External { .. } => panic!("No support for external types, yet"),
             Type::Custom { .. } => panic!("No support for custom types, yet"),
         })
     }
 
-    pub fn check_lower_rb(nm: &str, type_: &Type) -> Result<String, askama::Error> {
+    pub fn check_lower_rb<S: AsRef<str>>(nm: S, type_: &Type) -> Result<String, askama::Error> {
+        let nm = nm.as_ref();
         Ok(match type_ {
             Type::Object { name, .. } => {
                 format!("({}.uniffi_check_lower {nm})", class_name_rb(name)?)
@@ -339,7 +299,6 @@ mod filters {
                 class_name_rb(&canonical_name(type_))?,
                 nm
             ),
-            Type::External { .. } => panic!("No support for lowering external types, yet"),
             Type::Custom { .. } => panic!("No support for lowering custom types, yet"),
         })
     }
@@ -379,7 +338,6 @@ mod filters {
                 nm,
                 class_name_rb(&canonical_name(type_))?
             ),
-            Type::External { .. } => panic!("No support for lifting external types, yet"),
             Type::Custom { .. } => panic!("No support for lifting custom types, yet"),
         })
     }

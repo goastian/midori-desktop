@@ -42,12 +42,6 @@ NS_IMETHODIMP nsSystemAlertsService::ShowAlertNotification(
   return ShowAlert(alert, aAlertListener);
 }
 
-NS_IMETHODIMP nsSystemAlertsService::ShowPersistentNotification(
-    const nsAString& aPersistentData, nsIAlertNotification* aAlert,
-    nsIObserver* aAlertListener) {
-  return ShowAlert(aAlert, aAlertListener);
-}
-
 NS_IMETHODIMP nsSystemAlertsService::ShowAlert(nsIAlertNotification* aAlert,
                                                nsIObserver* aAlertListener) {
   NS_ENSURE_ARG(aAlert);
@@ -57,7 +51,7 @@ NS_IMETHODIMP nsSystemAlertsService::ShowAlert(nsIAlertNotification* aAlert,
   NS_ENSURE_SUCCESS(rv, rv);
 
   RefPtr<nsAlertsIconListener> alertListener =
-      new nsAlertsIconListener(this, alertName);
+      new nsAlertsIconListener(this, aAlert, alertName);
   if (!alertListener) return NS_ERROR_OUT_OF_MEMORY;
 
   if (mSuppressForScreenSharing) {
@@ -98,6 +92,19 @@ NS_IMETHODIMP nsSystemAlertsService::SetSuppressForScreenSharing(
     bool aSuppress) {
   mSuppressForScreenSharing = aSuppress;
   return NS_OK;
+}
+
+NS_IMETHODIMP nsSystemAlertsService::Teardown() {
+  for (auto iter = mActiveListeners.Iter(); !iter.Done(); iter.Next()) {
+    RefPtr<nsAlertsIconListener> listener = iter.Data().forget();
+    iter.Remove();
+    listener->Disconnect();
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP nsSystemAlertsService::PbmTeardown() {
+  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 bool nsSystemAlertsService::IsActiveListener(const nsAString& aAlertName,

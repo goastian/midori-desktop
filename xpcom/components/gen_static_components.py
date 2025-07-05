@@ -23,7 +23,7 @@ ENDIAN = (
 
 # Represents a UUID in the format used internally by Gecko, and supports
 # serializing it in that format to both C++ source and raw byte arrays.
-class UUIDRepr(object):
+class UUIDRepr:
     def __init__(self, uuid):
         self.uuid = uuid
 
@@ -162,7 +162,7 @@ def lower_backgroundtasks(backgroundtasks):
 # Represents a static string table, indexed by offset. This allows us to
 # reference strings from static data structures without requiring runtime
 # relocations.
-class StringTable(object):
+class StringTable:
     def __init__(self):
         self.entries = {}
         self.entry_list = []
@@ -222,7 +222,7 @@ interfaces = []
 # Represents a C++ namespace, containing a set of classes and potentially
 # sub-namespaces. This is used to generate pre-declarations for incomplete
 # types referenced in XPCOM manifests.
-class Namespace(object):
+class Namespace:
     def __init__(self, name=None):
         self.name = name
         self.classes = set()
@@ -256,7 +256,7 @@ class Namespace(object):
 
 
 # Represents a component defined in an XPCOM manifest's `Classes` array.
-class ModuleEntry(object):
+class ModuleEntry:
     next_anon_id = 0
 
     def __init__(self, data, init_idx):
@@ -291,7 +291,6 @@ class ModuleEntry(object):
         self.legacy_constructor = data.get("legacy_constructor", None)
         self.init_method = data.get("init_method", [])
 
-        self.jsm = data.get("jsm", None)
         self.esModule = data.get("esModule", None)
 
         self.external = data.get(
@@ -316,17 +315,7 @@ class ModuleEntry(object):
                 % (str(self.cid), ", ".join(map(repr, self.contract_ids)), str_)
             )
 
-        if self.jsm:
-            if not self.constructor:
-                error("JavaScript components must specify a constructor")
-
-            for prop in ("init_method", "legacy_constructor", "headers"):
-                if getattr(self, prop):
-                    error(
-                        "JavaScript components may not specify a '%s' "
-                        "property" % prop
-                    )
-        elif self.esModule:
+        if self.esModule:
             if not self.constructor:
                 error("JavaScript components must specify a constructor")
 
@@ -375,34 +364,23 @@ class ModuleEntry(object):
             else "{ 0x%x }" % NO_CONTRACT_ID
         )
 
-        return """
-        /* {name} */ {{
-          /* {{{cid_string}}} */
-          {cid},
+        return f"""
+        /* {self.name} */ {{
+          /* {{{str(self.cid)}}} */
+          {self.cid.to_cxx()},
           {contract_id},
-          {processes},
-        }}""".format(
-            name=self.name,
-            cid=self.cid.to_cxx(),
-            cid_string=str(self.cid),
-            contract_id=contract_id,
-            processes=lower_processes(self.processes),
-        )
+          {lower_processes(self.processes)},
+        }}"""
 
     # Generates the C++ code for a JSServiceEntry representing this module.
     def lower_js_service(self):
-        return """
+        return f"""
         {{
-          {js_name},
-          ModuleID::{name},
-          {{ {iface_offset} }},
-          {iface_count}
-        }}""".format(
-            js_name=strings.entry_to_cxx(self.js_name),
-            name=self.name,
-            iface_offset=self.interfaces_offset,
-            iface_count=len(self.interfaces),
-        )
+          {strings.entry_to_cxx(self.js_name)},
+          ModuleID::{self.name},
+          {{ {self.interfaces_offset} }},
+          {len(self.interfaces)}
+        }}"""
 
     # Generates the C++ code necessary to construct an instance of this
     # component.
@@ -428,15 +406,7 @@ class ModuleEntry(object):
             )
             return res
 
-        if self.jsm:
-            res += (
-                "      nsCOMPtr<nsISupports> inst;\n"
-                "      MOZ_TRY(ConstructJSMComponent(nsLiteralCString(%s),\n"
-                "                                    %s,\n"
-                "                                    getter_AddRefs(inst)));"
-                "\n" % (json.dumps(self.jsm), json.dumps(self.constructor))
-            )
-        elif self.esModule:
+        if self.esModule:
             res += (
                 "      nsCOMPtr<nsISupports> inst;\n"
                 "      MOZ_TRY(ConstructESModuleComponent(nsLiteralCString(%s),\n"
@@ -594,25 +564,22 @@ def pretty_string(string):
 
 # Represents a static contract ID entry, corresponding to a C++ ContractEntry
 # struct, mapping a contract ID to a static module entry.
-class ContractEntry(object):
+class ContractEntry:
     def __init__(self, contract, module):
         self.contract = contract
         self.module = module
 
     def to_cxx(self):
-        return """
+        return f"""
         {{
-          {contract},
-          {module_id},
-        }}""".format(
-            contract=strings.entry_to_cxx(self.contract),
-            module_id=lower_module_id(self.module),
-        )
+          {strings.entry_to_cxx(self.contract)},
+          {lower_module_id(self.module)},
+        }}"""
 
 
 # Represents a static ProtocolHandler entry, corresponding to a C++
 # ProtocolEntry struct, mapping a scheme to a static module entry and metadata.
-class ProtocolHandler(object):
+class ProtocolHandler:
     def __init__(self, config, module):
         def error(str_):
             raise Exception(
@@ -758,13 +725,11 @@ def gen_constructors(entries):
     constructors = []
     for entry in entries:
         constructors.append(
-            """\
-    case {id}: {{
-{constructor}\
+            f"""\
+    case {lower_module_id(entry)}: {{
+{entry.lower_constructor()}\
     }}
-""".format(
-                id=lower_module_id(entry), constructor=entry.lower_constructor()
-            )
+"""
         )
 
     return "".join(constructors)
@@ -874,7 +839,6 @@ def gen_substs(manifests):
     js_services = {}
     protocol_handlers = {}
 
-    jsms = set()
     esModules = set()
 
     types = set()
@@ -896,9 +860,6 @@ def gen_substs(manifests):
 
         if mod.type and not mod.headers:
             types.add(mod.type)
-
-        if mod.jsm:
-            jsms.add(mod.jsm)
 
         if mod.esModule:
             esModules.add(mod.esModule)
@@ -955,12 +916,6 @@ def gen_substs(manifests):
 
     gen_includes(substs, headers)
 
-    substs["component_jsms"] = (
-        "\n".join(" %s," % strings.entry_to_cxx(jsm) for jsm in sorted(jsms)) + "\n"
-    )
-    substs["define_has_component_jsms"] = (
-        "#define HAS_COMPONENT_JSMS" if len(jsms) > 0 else ""
-    )
     substs["component_esmodules"] = (
         "\n".join(
             " %s," % strings.entry_to_cxx(esModule) for esModule in sorted(esModules)
@@ -1059,7 +1014,7 @@ def main(fd, conf_file, template_file):
     def open_output(filename):
         return FileAvoidWrite(os.path.join(os.path.dirname(fd.name), filename))
 
-    conf = json.load(open(conf_file, "r"))
+    conf = json.load(open(conf_file))
 
     deps = set()
 
@@ -1079,7 +1034,7 @@ def main(fd, conf_file, template_file):
         return substs[match.group(1)]
 
     with open_output("StaticComponents.cpp") as fh:
-        with open(template_file, "r") as tfh:
+        with open(template_file) as tfh:
             template = tfh.read()
 
         fh.write(re.sub(r"//# @([a-zA-Z_]+)@\n", replacer, template))

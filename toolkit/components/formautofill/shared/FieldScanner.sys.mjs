@@ -4,7 +4,9 @@
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
+  FormAutofill: "resource://autofill/FormAutofill.sys.mjs",
   FormAutofillUtils: "resource://gre/modules/shared/FormAutofillUtils.sys.mjs",
+  MLAutofill: "resource://autofill/MLAutofill.sys.mjs",
 });
 
 /**
@@ -15,15 +17,34 @@ export class FieldDetail {
   // Reference to the elemenet
   elementWeakRef = null;
 
-  // id/name. This is only used for debugging
+  // The identifier generated via ContentDOMReference for the associated DOM element
+  // of this field
+  elementId = null;
+
+  // The identifier generated via ContentDOMReference for the root element of
+  // this field
+  rootElementId = null;
+
+  // If the element is an iframe, it is the id of the BrowsingContext of the iframe,
+  // Otherwise, it is the id of the BrowsingContext the element is in
+  browsingContextId = null;
+
+  // string with `${element.id}/{element.name}`. This is only used for debugging.
   identifier = "";
 
-  // The inferred field name for this element
+  // tag name attribute of the element
+  localName = null;
+
+  // The inferred field name for this element.
   fieldName = null;
 
   // The approach we use to infer the information for this element
   // The possible values are "autocomplete", "fathom", and "regex-heuristic"
   reason = null;
+
+  // This field could be a lookup field, for example, one that could be used to
+  // search for an address or postal code and fill in other fields.
+  isLookup = false;
 
   /*
    * The "section", "addressType", and "contactType" values are
@@ -48,43 +69,124 @@ export class FieldDetail {
   // Confidence value when the field name is inferred by "fathom"
   confidence = null;
 
-  constructor(
-    element,
-    fieldName = null,
-    { autocompleteInfo = {}, confidence = null } = {}
-  ) {
+  constructor(element) {
     this.elementWeakRef = new WeakRef(element);
-    this.identifier = `${element.id}/${element.name}`;
-    this.fieldName = fieldName;
-
-    if (autocompleteInfo) {
-      this.reason = "autocomplete";
-      this.section = autocompleteInfo.section;
-      this.addressType = autocompleteInfo.addressType;
-      this.contactType = autocompleteInfo.contactType;
-      this.credentialType = autocompleteInfo.credentialType;
-    } else if (confidence) {
-      this.reason = "fathom";
-      this.confidence = confidence;
-    } else {
-      this.reason = "regex-heuristic";
-    }
   }
 
   get element() {
     return this.elementWeakRef.deref();
   }
 
-  get sectionName() {
-    return this.section || this.addressType;
+  /**
+   * Convert FieldDetail class to an object that is suitable for
+   * sending over IPC. Avoid using this in other case.
+   */
+  toVanillaObject() {
+    const json = { ...this };
+    delete json.elementWeakRef;
+    return json;
   }
 
-  #isVisible = null;
-  get isVisible() {
-    if (this.#isVisible == null) {
-      this.#isVisible = lazy.FormAutofillUtils.isFieldVisible(this.element);
+  static fromVanillaObject(obj) {
+    const element = lazy.FormAutofillUtils.getElementByIdentifier(
+      obj.elementId
+    );
+    return element ? Object.assign(new FieldDetail(element), obj) : null;
+  }
+
+  static create(
+    element,
+    form,
+    fieldName = null,
+    {
+      autocompleteInfo = null,
+      fathomLabel = null,
+      fathomConfidence = null,
+      isVisible = true,
+      mlHeaderInput = null,
+      mlButtonInput = null,
+      isLookup = false,
+    } = {}
+  ) {
+    const fieldDetail = new FieldDetail(element);
+
+    fieldDetail.elementId =
+      lazy.FormAutofillUtils.getElementIdentifier(element);
+    fieldDetail.rootElementId = lazy.FormAutofillUtils.getElementIdentifier(
+      form.rootElement
+    );
+    fieldDetail.identifier = `${element.id}/${element.name}`;
+    fieldDetail.localName = element.localName;
+
+    if (Array.isArray(fieldName)) {
+      fieldDetail.fieldName = fieldName[0] ?? "";
+      fieldDetail.alternativeFieldName = fieldName[1] ?? "";
+    } else {
+      fieldDetail.fieldName = fieldName;
     }
-    return this.#isVisible;
+
+    if (!fieldDetail.fieldName) {
+      fieldDetail.reason = "unknown";
+    } else if (autocompleteInfo) {
+      fieldDetail.reason = "autocomplete";
+      fieldDetail.section = autocompleteInfo.section;
+      fieldDetail.addressType = autocompleteInfo.addressType;
+      fieldDetail.contactType = autocompleteInfo.contactType;
+      fieldDetail.credentialType = autocompleteInfo.credentialType;
+      fieldDetail.sectionName =
+        autocompleteInfo.section || autocompleteInfo.addressType;
+    } else if (fathomConfidence) {
+      fieldDetail.reason = "fathom";
+      fieldDetail.confidence = fathomConfidence;
+
+      // TODO: This should be removed once we support reference field info across iframe.
+      // Temporarily add an addtional "the field is the only visible input" constraint
+      // when determining whether a form has only a high-confidence cc-* field a valid
+      // credit card section. We can remove this restriction once we are confident
+      // about only using fathom.
+      fieldDetail.isOnlyVisibleFieldWithHighConfidence = false;
+      if (
+        fieldDetail.confidence >
+        lazy.FormAutofillUtils.ccFathomHighConfidenceThreshold
+      ) {
+        const root = element.form || element.ownerDocument;
+        const inputs = root.querySelectorAll("input:not([type=hidden])");
+        if (inputs.length == 1 && inputs[0] == element) {
+          fieldDetail.isOnlyVisibleFieldWithHighConfidence = true;
+        }
+      }
+    } else {
+      fieldDetail.reason = "regex-heuristic";
+    }
+
+    try {
+      fieldDetail.browsingContextId =
+        element.localName == "iframe"
+          ? element.browsingContext.id
+          : BrowsingContext.getFromWindow(element.ownerGlobal).id;
+    } catch {
+      /* unit test doesn't have ownerGlobal */
+    }
+
+    fieldDetail.isVisible = isVisible;
+
+    // Info required by heuristics
+    fieldDetail.maxLength = element.maxLength;
+
+    if (
+      lazy.FormAutofill.isMLExperimentEnabled &&
+      ["input", "select"].includes(element.localName)
+    ) {
+      fieldDetail.mlinput = lazy.MLAutofill.getMLMarkup(fieldDetail.element);
+      fieldDetail.mlHeaderInput = mlHeaderInput;
+      fieldDetail.mlButtonInput = mlButtonInput;
+      fieldDetail.fathomLabel = fathomLabel;
+      fieldDetail.fathomConfidence = fathomConfidence;
+    }
+
+    fieldDetail.isLookup = isLookup;
+
+    return fieldDetail;
   }
 }
 
@@ -96,29 +198,19 @@ export class FieldDetail {
  * `inferFieldInfo` function.
  */
 export class FieldScanner {
-  #elementsWeakRef = null;
-  #inferFieldInfoFn = null;
-
   #parsingIndex = 0;
 
-  fieldDetails = [];
+  #fieldDetails = [];
 
   /**
    * Create a FieldScanner based on form elements with the existing
    * fieldDetails.
    *
-   * @param {Array.DOMElement} elements
-   *        The elements from a form for each parser.
-   * @param {Funcion} inferFieldInfoFn
-   *        The callback function that is used to infer the field info of a given element
+   * @param {Array<FieldDetails>} fieldDetails
+   *        An array of fieldDetail object to be scanned.
    */
-  constructor(elements, inferFieldInfoFn) {
-    this.#elementsWeakRef = new WeakRef(elements);
-    this.#inferFieldInfoFn = inferFieldInfoFn;
-  }
-
-  get #elements() {
-    return this.#elementsWeakRef.deref();
+  constructor(fieldDetails) {
+    this.#fieldDetails = fieldDetails;
   }
 
   /**
@@ -132,7 +224,7 @@ export class FieldScanner {
   }
 
   get parsingFinished() {
-    return this.parsingIndex >= this.#elements.length;
+    return this.parsingIndex >= this.#fieldDetails.length;
   }
 
   /**
@@ -143,7 +235,7 @@ export class FieldScanner {
    *        The latest index of elements waiting for parsing.
    */
   set parsingIndex(index) {
-    if (index > this.#elements.length) {
+    if (index > this.#fieldDetails.length) {
       throw new Error("The parsing index is out of range.");
     }
     this.#parsingIndex = index;
@@ -159,44 +251,35 @@ export class FieldScanner {
    *          The field detail at the specific index.
    */
   getFieldDetailByIndex(index) {
-    if (index >= this.#elements.length) {
+    if (index >= this.#fieldDetails.length) {
       return null;
     }
 
-    if (index < this.fieldDetails.length) {
-      return this.fieldDetails[index];
-    }
-
-    for (let i = this.fieldDetails.length; i < index + 1; i++) {
-      this.pushDetail();
-    }
-
-    return this.fieldDetails[index];
+    return this.#fieldDetails[index];
   }
 
   /**
-   * This function retrieves the first unparsed element and obtains its
-   * information by invoking the `inferFieldInfoFn` callback function.
-   * The field information is then stored in a FieldDetail object and
-   * appended to the `fieldDetails` array.
+   * Return the index of the first visible field found with the given name.
    *
-   * Any element without the related detail will be used for adding the detail
-   * to the end of field details.
+   * @param {string} fieldName
+   *        The field name to find.
+   * @param {string} includeInvisible
+   *        Whether to find non-visible fields.
+   * @returns {number}
+   *          The index of the element or -1 if not found.
    */
-  pushDetail() {
-    const elementIndex = this.fieldDetails.length;
-    if (elementIndex >= this.#elements.length) {
-      throw new Error("Try to push the non-existing element info.");
+  getFieldIndexByName(fieldName, includeInvisible = false) {
+    for (let idx = 0; this.elementExisting(idx); idx++) {
+      let field = this.#fieldDetails[idx];
+      if (
+        field.fieldName == fieldName &&
+        (includeInvisible || field.isVisible)
+      ) {
+        return idx;
+      }
     }
-    const element = this.#elements[elementIndex];
-    const [fieldName, autocompleteInfo, confidence] =
-      this.#inferFieldInfoFn(element);
-    const fieldDetail = new FieldDetail(element, fieldName, {
-      autocompleteInfo,
-      confidence,
-    });
 
-    this.fieldDetails.push(fieldDetail);
+    return -1;
   }
 
   /**
@@ -212,11 +295,11 @@ export class FieldScanner {
    *        autocomplete attribute
    */
   updateFieldName(index, fieldName, ignoreAutocomplete = false) {
-    if (index >= this.fieldDetails.length) {
+    if (index >= this.#fieldDetails.length) {
       throw new Error("Try to update the non-existing field detail.");
     }
 
-    const fieldDetail = this.fieldDetails[index];
+    const fieldDetail = this.#fieldDetails[index];
     if (fieldDetail.fieldName == fieldName) {
       return;
     }
@@ -225,12 +308,12 @@ export class FieldScanner {
       return;
     }
 
-    this.fieldDetails[index].fieldName = fieldName;
-    this.fieldDetails[index].reason = "update-heuristic";
+    fieldDetail.fieldName = fieldName;
+    fieldDetail.reason = "update-heuristic";
   }
 
   elementExisting(index) {
-    return index < this.#elements.length;
+    return index < this.#fieldDetails.length;
   }
 }
 

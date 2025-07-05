@@ -15,19 +15,20 @@
 ## https://mozilla-l10n.github.io/styleguides/mozilla_general/#brands-copyright-and-trademark
 
 -facebook-container-brand-name = Facebook Container
--monitor-brand-name = Midori Monitor
+-monitor-brand-name = Firefox Monitor
 -monitor-brand-short-name = Monitor
 -mozmonitor-brand-name = Mozilla Monitor
 -pocket-brand-name = Pocket
--send-brand-name = Midori Send
--screenshots-brand-name = Midori Screenshots
+-send-brand-name = Firefox Send
+-screenshots-brand-name = Firefox Screenshots
 -mozilla-vpn-brand-name = Mozilla VPN
--profiler-brand-name = Midori Profiler
--translations-brand-name = Midori Translations
--focus-brand-name = Midori Focus
--relay-brand-name = Midori Relay
+-profiler-brand-name = Firefox Profiler
+-translations-brand-name = Firefox Translations
+-focus-brand-name = Firefox Focus
+-relay-brand-name = Firefox Relay
 -relay-brand-short-name = Relay
 -fakespot-brand-name = Fakespot
+-solo-ai-brand-name = Solo
 
 # Note the name of the website is capitalized.
 -fakespot-website-name = Fakespot.com
@@ -37,12 +38,18 @@
 
 # “Suggest” can be localized, “Firefox” must be treated as a brand
 # and kept in English.
--firefox-suggest-brand-name = Midori Suggest
+-firefox-suggest-brand-name = Firefox Suggest
 
 # ”Home" can be localized, “Firefox” must be treated as a brand
 # and kept in English.
--firefox-home-brand-name = Midori Home
+-firefox-home-brand-name = Firefox Home
 
 # View" can be localized, “Firefox” must be treated as a brand
 # and kept in English.
--firefoxview-brand-name = Midori View
+-firefoxview-brand-name = Firefox View
+
+# Firefox Labs is the name for a page in Settings to allow users to learn about
+# experimental and in-development features, and turn those features on and off.
+# The "Labs" portion can be localized, “Firefox” must be treated as a brand
+# and kept in English.
+-firefoxlabs-brand-name = Firefox Labs

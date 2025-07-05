@@ -20,6 +20,31 @@
  * 2. If the event message name becomes too generic, e.g., "eInvalid", that may
  *    conflict with another enum's item name, append something after the "e"
  *    prefix, e.g., "eFormInvalid".
+ *
+ * NOTE: What you need to do when you add new event messages?
+ * - If the new events are dispatched to the DOM, they should be registered in
+ *   dom/events/EventNameList.h
+ * - If the new events are dispatched to the DOM, set proper default values of
+ *   "bubbles" and "cancelable" in WidgetEvent::SetDefaultCancelableAndBubbles()
+ *   defined in widget/BasicEvents.h.
+ * - If the new events should be included into an existing event group, you may
+ *   need to update WidgetEvent::Has*EventMessage() etc defined in
+ *   widget/WidgetEventImpl.cpp.
+ * - If the new events are pointer event messages, update
+ *   IsPointerEventMessage*() defined in widget/WidgetEventImpl.cpp.
+ * - Check whether the trusted events of the new messages are targeted to
+ *   expected EventTarget by WidgetEvent::IsTargeted*(),
+ *   WidgetEvent::IsUsingCoordinates(),
+ *   WidgetEvent::IsAllowedToDispatchDOMEvent(),
+ *   WidgetEvent::CanBeSentToRemoteProcess() etc which are defined in
+ *   widget/WidgetEventImpl.cpp
+ * - If trusted events of the new events may be a content node but are allowed
+ *   to fired only on an Element node, you need to update
+ *   IsForbiddenDispatchingToNonElementContent() defined in
+ *   widget/WidgetEventImpl.cpp.
+ * - Possibly handle them in PresShell::EventHandler,
+ *   EventStateManager::PreHandleEvent and/or
+ *   EventStateManager::PostHandleEvent.
  */
 
 #ifndef NS_EVENT_MESSAGE_FIRST_LAST
@@ -59,8 +84,6 @@ NS_EVENT_MESSAGE(eMouseDown)
 NS_EVENT_MESSAGE(eMouseEnterIntoWidget)
 NS_EVENT_MESSAGE(eMouseExitFromWidget)
 NS_EVENT_MESSAGE(eMouseDoubleClick)
-NS_EVENT_MESSAGE(eMouseClick)
-NS_EVENT_MESSAGE(eMouseAuxClick)
 // eMouseActivate is fired when the widget is activated by a click.
 NS_EVENT_MESSAGE(eMouseActivate)
 NS_EVENT_MESSAGE(eMouseOver)
@@ -70,10 +93,28 @@ NS_EVENT_MESSAGE(eMouseEnter)
 NS_EVENT_MESSAGE(eMouseLeave)
 NS_EVENT_MESSAGE(eMouseTouchDrag)
 NS_EVENT_MESSAGE(eMouseLongTap)
+// eMouseRawUpdate is for dispatching ePointerRawUpdate caused by a mouse input.
+// When we dispatch ePointerRawUpdate, we need to handle the steps defined by
+// the spec in "fire a pointer event" section like the other pointer event.
+// The steps are handled by
+// PresShell::EventHandler::DispatchPrecedingPointerEvent() and for using it, we
+// should dispatch this internal event instead of dispatching ePointerRawUpdate
+// directly.
+NS_EVENT_MESSAGE(eMouseRawUpdate)
 NS_EVENT_MESSAGE(eMouseExploreByTouch)
 NS_EVENT_MESSAGE_FIRST_LAST(eMouseEvent, eMouseMove, eMouseExploreByTouch)
 
+NS_EVENT_MESSAGE(ePointerClick)
+NS_EVENT_MESSAGE(ePointerAuxClick)
+
 // Pointer spec events
+// NOTE: We handle the steps before dispatching a pointer event which is defined
+// by the spec in "fire a pointer event" section in
+// PresShell::EventHandler::DispatchPrecedingPointerEvent().  Therefore,
+// we should not dispatch ePointer* events with
+// `PresShell::EventHandler::HandleEvent` directly.  Create a new internal
+// message for implementing a new pointer event if the new event is defined as
+// dispatched with "fire a pointer event" steps.
 NS_EVENT_MESSAGE(ePointerMove)
 NS_EVENT_MESSAGE(ePointerUp)
 NS_EVENT_MESSAGE(ePointerDown)
@@ -82,6 +123,7 @@ NS_EVENT_MESSAGE(ePointerOut)
 NS_EVENT_MESSAGE(ePointerEnter)
 NS_EVENT_MESSAGE(ePointerLeave)
 NS_EVENT_MESSAGE(ePointerCancel)
+NS_EVENT_MESSAGE(ePointerRawUpdate)
 NS_EVENT_MESSAGE(ePointerGotCapture)
 NS_EVENT_MESSAGE(ePointerLostCapture)
 NS_EVENT_MESSAGE_FIRST_LAST(ePointerEvent, ePointerMove, ePointerLostCapture)
@@ -91,6 +133,7 @@ NS_EVENT_MESSAGE(eContextMenu)
 NS_EVENT_MESSAGE(eCueChange)
 
 NS_EVENT_MESSAGE(eBeforeToggle)
+NS_EVENT_MESSAGE(eBeforematch)
 
 NS_EVENT_MESSAGE(eLoad)
 NS_EVENT_MESSAGE(eUnload)
@@ -213,6 +256,9 @@ NS_EVENT_MESSAGE(ePageHide)
 NS_EVENT_MESSAGE(eContextLost)
 NS_EVENT_MESSAGE(eContextRestored)
 
+// content-visibility events
+NS_EVENT_MESSAGE(eContentVisibilityAutoStateChange)
+
 // SVG events
 NS_EVENT_MESSAGE(eSVGLoad)
 NS_EVENT_MESSAGE(eSVGScroll)
@@ -319,6 +365,7 @@ NS_EVENT_MESSAGE(eContentCommandRedo)
 // eContentCommandInsertText tries to insert text with replacing selection
 // in focused editor.
 NS_EVENT_MESSAGE(eContentCommandInsertText)
+NS_EVENT_MESSAGE(eContentCommandReplaceText)
 NS_EVENT_MESSAGE(eContentCommandPasteTransferable)
 NS_EVENT_MESSAGE(eContentCommandLookUpDictionary)
 // eContentCommandScroll scrolls the nearest scrollable element to the
@@ -328,6 +375,8 @@ NS_EVENT_MESSAGE(eContentCommandLookUpDictionary)
 // scrollable ancestor element can only be scrolled vertically, and horizontal
 // scrolling is requested using this event, no scrolling will occur.
 NS_EVENT_MESSAGE(eContentCommandScroll)
+NS_EVENT_MESSAGE_FIRST_LAST(eContentCommandEvent, eContentCommandCut,
+                            eContentCommandScroll)
 
 // Event to gesture notification
 NS_EVENT_MESSAGE(eGestureNotify)
@@ -399,6 +448,14 @@ NS_EVENT_MESSAGE(eTouchMove)
 NS_EVENT_MESSAGE(eTouchEnd)
 NS_EVENT_MESSAGE(eTouchCancel)
 NS_EVENT_MESSAGE(eTouchPointerCancel)
+// eTouchRawUpdate is for dispatching ePointerRawUpdate caused by a touch.
+// When we dispatch ePointerRawUpdate, we need to handle the steps defined by
+// the spec in "fire a pointer event" section like the other pointer event.
+// The steps are handled by
+// PresShell::EventHandler::DispatchPrecedingPointerEvent() and for using it, we
+// should dispatch this internal event instead of dispatching ePointerRawUpdate
+// directly.
+NS_EVENT_MESSAGE(eTouchRawUpdate)
 
 // Pointerlock DOM API
 NS_EVENT_MESSAGE(ePointerLockChange)
@@ -455,6 +512,10 @@ NS_EVENT_MESSAGE(eToggle)
 // Dialog element events.
 NS_EVENT_MESSAGE(eClose)
 NS_EVENT_MESSAGE(eCancel)
+
+// Media element events.
+NS_EVENT_MESSAGE(eEncrypted)
+NS_EVENT_MESSAGE(eWaitingForKey)
 
 NS_EVENT_MESSAGE(eScrollend)
 

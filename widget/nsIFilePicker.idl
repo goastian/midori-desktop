@@ -211,11 +211,6 @@ interface nsIFilePicker : nsISupports
   void open(in nsIFilePickerShownCallback aFilePickerShownCallback);
 
  /**
-  * Closes the file dialog if open.
-  */
-  void close();
-
- /**
   * The picker's mode, as set by the 'mode' argument passed to init()
   * (one of the modeOpen et. al. constants specified above).
   */
@@ -234,6 +229,13 @@ interface nsIFilePicker : nsISupports
    * Not used by Firefox Desktop.
    */
   attribute nsIFilePicker_CaptureTarget capture;
+
+  /**
+   * Get the enumerator for the DOM files that is selected by directory picker
+   *
+   * @return Returns the files/directories
+   */
+  readonly attribute nsISimpleEnumerator domFilesInWebKitDirectory;
 };
 
 [scriptable, function, uuid(0d79adad-b244-49A5-9997-2a8cad93fc44)]

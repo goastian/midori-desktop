@@ -75,6 +75,9 @@ class ExtensionPolicyService final : public nsIAddonPolicyService,
   static RefPtr<extensions::WebExtensionPolicyCore> GetCoreByHost(
       const nsACString& aHost);
 
+  static RefPtr<extensions::WebExtensionPolicyCore> GetCoreByURL(
+      const extensions::URLInfo& aURL);
+
   WebExtensionPolicy* GetByID(nsAtom* aAddonId) {
     return mExtensions.GetWeak(aAddonId);
   }
@@ -100,7 +103,7 @@ class ExtensionPolicyService final : public nsIAddonPolicyService,
   bool IsExtensionProcess() const;
   bool GetQuarantinedDomainsEnabled() const;
 
-  nsresult InjectContentScripts(WebExtensionPolicy* aExtension);
+  void InjectContentScripts(WebExtensionPolicy* aExtension, ErrorResult& aRv);
 
  protected:
   virtual ~ExtensionPolicyService();
@@ -120,7 +123,7 @@ class ExtensionPolicyService final : public nsIAddonPolicyService,
       nsPIDOMWindowInner* aWindow,
       extensions::WebExtensionContentScript& aScript);
 
-  RefPtr<dom::Promise> ExecuteContentScripts(
+  already_AddRefed<dom::Promise> ExecuteContentScripts(
       JSContext* aCx, nsPIDOMWindowInner* aWindow,
       const nsTArray<RefPtr<extensions::WebExtensionContentScript>>& aScripts);
 

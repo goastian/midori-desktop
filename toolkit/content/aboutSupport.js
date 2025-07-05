@@ -148,8 +148,6 @@ var snapshotFormatters = {
     } catch (e) {}
 
     const STATUS_STRINGS = {
-      experimentControl: "fission-status-experiment-control",
-      experimentTreatment: "fission-status-experiment-treatment",
       disabledByE10sEnv: "fission-status-disabled-by-e10s-env",
       enabledByEnv: "fission-status-enabled-by-env",
       disabledByEnv: "fission-status-disabled-by-env",
@@ -158,7 +156,6 @@ var snapshotFormatters = {
       enabledByUserPref: "fission-status-enabled-by-user-pref",
       disabledByUserPref: "fission-status-disabled-by-user-pref",
       disabledByE10sOther: "fission-status-disabled-by-e10s-other",
-      enabledByRollout: "fission-status-enabled-by-rollout",
     };
 
     let statusTextId = STATUS_STRINGS[data.fissionDecisionStatus];
@@ -334,6 +331,7 @@ var snapshotFormatters = {
           $.new("td", addon.type),
           $.new("td", addon.version),
           $.new("td", addon.isActive),
+          $.new("td", addon.locationName),
           $.new("td", addon.id),
         ]);
       })
@@ -350,19 +348,6 @@ var snapshotFormatters = {
     $("security-software-antivirus").textContent = data.registeredAntiVirus;
     $("security-software-antispyware").textContent = data.registeredAntiSpyware;
     $("security-software-firewall").textContent = data.registeredFirewall;
-  },
-
-  features(data) {
-    $.append(
-      $("features-tbody"),
-      data.map(function (feature) {
-        return $.new("tr", [
-          $.new("td", feature.name),
-          $.new("td", feature.version),
-          $.new("td", feature.id),
-        ]);
-      })
-    );
   },
 
   async processes(data) {
@@ -394,33 +379,6 @@ var snapshotFormatters = {
     for (let remoteProcessType in data.remoteTypes) {
       await buildEntry(remoteProcessType, data.remoteTypes[remoteProcessType]);
     }
-  },
-
-  async experimentalFeatures(data) {
-    if (!data) {
-      return;
-    }
-    let titleL10nIds = data.map(([titleL10nId]) => titleL10nId);
-    let titleL10nObjects = await document.l10n.formatMessages(titleL10nIds);
-    if (titleL10nObjects.length != data.length) {
-      throw Error("Missing localized title strings in experimental features");
-    }
-    for (let i = 0; i < titleL10nObjects.length; i++) {
-      let localizedTitle = titleL10nObjects[i].attributes.find(
-        a => a.name == "label"
-      ).value;
-      data[i] = [localizedTitle, data[i][1], data[i][2]];
-    }
-
-    $.append(
-      $("experimental-features-tbody"),
-      data.map(function ([title, pref, value]) {
-        return $.new("tr", [
-          $.new("td", `${title} (${pref})`, "pref-name"),
-          $.new("td", value, "pref-value"),
-        ]);
-      })
-    );
   },
 
   environmentVariables(data) {
@@ -1450,7 +1408,33 @@ var snapshotFormatters = {
       let keyStrId = toFluentID(key);
       let th = $.new("th", null, "column");
       document.l10n.setAttributes(th, keyStrId);
-      tbody.appendChild($.new("tr", [th, $.new("td", data[key])]));
+      let td = $.new("td", data[key]);
+      // Warning not applicable to Flatpak (see Bug 1882881), Snap or
+      // any "Packaged App" (eg. Debian package)
+      const isPackagedApp = Services.sysinfo.getPropertyAsBool("isPackagedApp");
+      if (key === "hasUserNamespaces" && !data[key] && !isPackagedApp) {
+        td = $.new("td", "");
+        td.classList.add("feature-unavailable");
+        let span = document.createElement("span");
+        document.l10n.setAttributes(
+          span,
+          "support-user-namespaces-unavailable",
+          {
+            status: data[key],
+          }
+        );
+        let supportLink = document.createElement("a", {
+          is: "moz-support-link",
+        });
+        supportLink.classList.add("user-namespaces-unavailabe-support-link");
+        supportLink.setAttribute(
+          "support-page",
+          "install-firefox-linux#w_install-firefox-from-mozilla-builds"
+        );
+        td.appendChild(span);
+        td.appendChild(supportLink);
+      }
+      tbody.appendChild($.new("tr", [th, td]));
     }
 
     if ("syscallLog" in data) {

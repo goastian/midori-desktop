@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <script src="/tests/SimpleTest/SimpleTest.js"></script>
+    <link rel="stylesheet" href="/tests/SimpleTest/test.css" />
+  </head>
+  <body>
+    <script>
+      ok(
+        SpecialPowers.getBoolPref("dom.webgpu.enabled"),
+        "Pref should be enabled."
+      );
+
+      const destroy_causes_lost = async function () {
+        info("destroy_causes_lost START");
+        const adapter = await navigator.gpu.requestAdapter();
+        ok(adapter !== undefined, "adapter !== undefined");
+        const device = await adapter.requestDevice();
+        ok(device !== undefined, "device !== undefined");
+
+        const lostPromise = device.lost;
+        device.destroy();
+        info("waiting for lostPromise");
+        const deviceLostReason = await lostPromise;
+        info("lostPromise has resolved");
+
+        is(
+          deviceLostReason.reason,
+          "destroyed",
+          "Destroy reason should correspond to GPUDeviceLostReason.destroyed"
+        );
+        is(deviceLostReason.message, "", "Destroy message should be blank");
+        info("destroy_causes_lost END");
+      };
+
+      const drop_causes_lost_is_unobservable = async function () {
+        info("drop_causes_lost_is_unobservable START");
+        const adapter = await navigator.gpu.requestAdapter();
+        ok(adapter !== undefined, "adapter !== undefined");
+
+        let lostPromise;
+        // Create a scope with a device that will go out of scope
+        // and then be dropped.
+        {
+          const device = await adapter.requestDevice();
+          ok(device !== undefined, "device !== undefined");
+
+          // Create a new promise that will resolve when the original
+          // lost promise resolves or rejects, either of which will be
+          // noted as an error.
+          lostPromise = device.lost.then(
+            resolve => {
+              ok(false, "device.lost should never resolve");
+              resolve("unexpected resolve");
+            },
+            reject => {
+              ok(false, "device.lost should never reject");
+              reject("unexpected reject");
+            }
+          );
+        }
+
+        // Give a chance (one event cycle) for the lostPromise to resolve or
+        // reject, but don't wait for any specific amount of time.
+        await new Promise(SimpleTest.executeSoon);
+        info("drop_causes_lost_is_unobservable END");
+      };
+
+      SimpleTest.waitForExplicitFinish();
+
+      destroy_causes_lost()
+        .then(() => drop_causes_lost_is_unobservable())
+        .catch(e => ok(false, `Unhandled exception ${e}`))
+        .finally(() => SimpleTest.finish());
+    </script>
+  </body>
+</html>

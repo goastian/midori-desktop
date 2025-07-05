@@ -6,7 +6,7 @@
 import os
 import subprocess
 import tempfile
-from argparse import ArgumentParser
+from argparse import SUPPRESS, ArgumentParser
 
 from .task_config import all_task_configs
 
@@ -35,7 +35,18 @@ COMMON_ARGUMENT_GROUPS = {
             {
                 "action": "store_true",
                 "default": False,
-                "help": "Submit changes for Lando to push to try.",
+                "help": SUPPRESS,
+            },
+        ],
+        [
+            ["--push-to-vcs"],
+            {
+                "action": "store_true",
+                "default": False,
+                "help": (
+                    "Submit changes directly to VCS instead of Lando. "
+                    "Set `MACH_TRY_PUSH_TO_VCS=1` in the environment to force this."
+                ),
             },
         ],
     ],
@@ -128,12 +139,12 @@ class BaseTryParser(ArgumentParser):
     def __init__(self, *args, **kwargs):
         ArgumentParser.__init__(self, *args, **kwargs)
 
-        group = self.add_argument_group("{} arguments".format(self.name))
+        group = self.add_argument_group(f"{self.name} arguments")
         for cli, kwargs in self.arguments:
             group.add_argument(*cli, **kwargs)
 
         for name in self.common_groups:
-            group = self.add_argument_group("{} arguments".format(name))
+            group = self.add_argument_group(f"{name} arguments")
             arguments = COMMON_ARGUMENT_GROUPS[name]
 
             # Preset arguments are all mutually exclusive.

@@ -35,7 +35,7 @@ The first step to adding a new histogram is to choose the histogram type that be
 
 .. note::
 
-    Only ``flag`` and ``count`` histograms have default values. All other histograms start out empty and are only submitted if a value is recorded.
+    Only ``count`` histograms have default values. All other histograms start out empty and are only submitted if a value is recorded.
 
 ``boolean``
 -----------
@@ -76,14 +76,6 @@ You might use this type of histogram if, for example, you wanted to track the re
 .. note::
 
     Set ``n_values`` to a slightly larger value than needed to allow for new enum values in the future. See `Changing a histogram`_ if you need to add more enums later.
-
-``flag``
---------
-*Deprecated* (please use boolean :doc:`scalars`).
-
-This histogram type allows you to record a single value (`0` or `1`, default `0`). This type is useful if you need to track whether a feature was ever used during a Firefox session. You only need to add a single line of code which sets the flag when the feature is used because the histogram is initialized with a default value of `0`/`false` (flag not set). Thus, recording a value of `0` is not allowed and asserts.
-
-Flag histograms will ignore any changes after the flag is set, so once the flag is set, it cannot be unset.
 
 ``count``
 ---------
@@ -198,24 +190,6 @@ Required for all new histograms. This is an array of integers and should at leas
 ---------------
 Required. A description of the data tracked by the histogram, e.g. _"Resident memory size"_
 
-``cpp_guard`` (obsolete, use ``operating_systems``)
----------------------------------------------------
-Optional. This field inserts an #ifdef directive around the histogram's C++ declaration. This is typically used for platform-specific histograms, e.g. ``"cpp_guard": "ANDROID"``
-
-``operating_systems``
----------------------
-Optional. This field restricts recording to certain operating systems only. Use that in-place of previous ``cpp_guards`` to avoid inclusion on not-specified operating systems.
-Currently supported values are:
-
-- ``mac``
-- ``linux``
-- ``windows``
-- ``android``
-- ``unix``
-- ``all`` (record on all operating systems)
-
-If this field is left out it defaults to ``all``.
-
 ``releaseChannelCollection``
 ----------------------------
 Optional. This is one of:
@@ -291,16 +265,6 @@ Note that ``nsITelemetry.getHistogramById()`` will throw an ``NS_ERROR_FAILURE``
 
   Adding a new Telemetry probe is not possible with Artifact builds. A full build is needed.
 
-For histograms measuring time, TelemetryStopwatch can be used to avoid working with Dates manually:
-
-.. code-block:: js
-
-  TelemetryStopwatch.start("SEARCH_SERVICE_INIT2_MS");
-  TelemetryStopwatch.finish("SEARCH_SERVICE_INIT2_MS");
-
-  TelemetryStopwatch.start("FX_TAB_SWITCH_TOTAL_MS");
-  TelemetryStopwatch.cancel("FX_TAB_SWITCH_TOTAL_MS");
-
 Adding a C++ Probe
 ==================
 
@@ -363,48 +327,6 @@ Probes in native code can also use the `nsITelemetry <https://searchfox.org/mozi
    */
   void AccumulateTimeDelta(HistogramID id, const nsCString& key, TimeStamp start, TimeStamp end = TimeStamp::Now());
 
-The histogram names declared in ``Histograms.json`` are translated into constants in the ``mozilla::Telemetry`` namespace:
-
-.. code-block:: cpp
-
-  mozilla::Telemetry::Accumulate(mozilla::Telemetry::STARTUP_CRASH_DETECTED, true);
-
 .. warning::
 
   Telemetry accumulations are designed to be cheap, not free. If you wish to accumulate values in a performance-sensitive piece of code, store the accumualtions locally and accumulate after the performance-sensitive piece ("hot path") has completed.
-
-The ``Telemetry.h`` header also declares the helper classes ``AutoTimer`` and ``AutoCounter``. Objects of these types automatically record a histogram value when they go out of scope:
-
-.. code-block:: cpp
-
-  nsresult
-  nsPluginHost::StopPluginInstance(nsNPAPIPluginInstance* aInstance)
-  {
-    Telemetry::AutoTimer<Telemetry::PLUGIN_SHUTDOWN_MS> timer;
-    ...
-    return NS_OK;
-  }
-
-If the HistogramID is not known at compile time, one can use the ``RuntimeAutoTimer`` and ``RuntimeAutoCounter`` classes, which behave like the template parameterized ``AutoTimer`` and ``AutoCounter`` ones.
-
-.. code-block:: cpp
-
-  void
-  FunctionWithTiming(Telemetry::HistogramID aTelemetryID)
-  {
-    ...
-    Telemetry::RuntimeAutoTimer timer(aTelemetryID);
-    ...
-  }
-
-  int32_t
-  FunctionWithCounter(Telemetry::HistogramID aTelemetryID)
-  {
-    ...
-    Telemetry::RuntimeAutoCounter myCounter(aTelemetryID);
-    ++myCounter;
-    myCounter += 42;
-    ...
-  }
-
-Prefer using the template parameterized ``AutoTimer`` and ``AutoCounter`` on hot paths, if possible.

@@ -32,6 +32,21 @@
 
 #![warn(rust_2018_idioms, unused_qualifications)]
 
+/// Print out tracing information for FFI calls if the `ffi-trace` feature is enabled
+#[cfg(feature = "ffi-trace")]
+#[macro_export]
+macro_rules! trace {
+    ($($tt:tt)*) => {
+        println!($($tt)*);
+    }
+}
+
+#[cfg(not(feature = "ffi-trace"))]
+#[macro_export]
+macro_rules! trace {
+    ($($tt:tt)*) => {};
+}
+
 use anyhow::bail;
 use bytes::buf::Buf;
 
@@ -42,33 +57,33 @@ pub mod ffi;
 mod ffi_converter_impls;
 mod ffi_converter_traits;
 pub mod metadata;
+mod oneshot;
 
+#[cfg(feature = "scaffolding-ffi-buffer-fns")]
+pub use ffi::ffiserialize::FfiBufferElement;
 pub use ffi::*;
 pub use ffi_converter_traits::{
     ConvertError, FfiConverter, FfiConverterArc, HandleAlloc, Lift, LiftRef, LiftReturn, Lower,
-    LowerReturn,
+    LowerError, LowerReturn, TypeId,
 };
 pub use metadata::*;
 
 // Re-export the libs that we use in the generated code,
 // so the consumer doesn't have to depend on them directly.
 pub mod deps {
+    pub use crate::trace;
     pub use anyhow;
     #[cfg(feature = "tokio")]
     pub use async_compat;
     pub use bytes;
-    pub use log;
-    pub use oneshot;
     pub use static_assertions;
 }
-
-mod panichook;
 
 const PACKAGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 // For the significance of this magic number 10 here, and the reason that
 // it can't be a named constant, see the `check_compatible_version` function.
-static_assertions::const_assert!(PACKAGE_VERSION.as_bytes().len() < 10);
+static_assertions::const_assert!(PACKAGE_VERSION.len() < 10);
 
 /// Check whether the uniffi runtime version is compatible a given uniffi_bindgen version.
 ///
@@ -174,78 +189,11 @@ macro_rules! ffi_converter_rust_buffer_lift_and_lower {
             let mut buf = vec.as_slice();
             let value = <Self as $crate::FfiConverter<$uniffi_tag>>::try_read(&mut buf)?;
             match $crate::deps::bytes::Buf::remaining(&buf) {
-                0 => Ok(value),
+                0 => ::std::result::Result::Ok(value),
                 n => $crate::deps::anyhow::bail!(
                     "junk data left in buffer after lifting (count: {n})",
                 ),
             }
-        }
-    };
-}
-
-/// Macro to implement `FfiConverter<T>` for a UniFfiTag using a different UniFfiTag
-///
-/// This is used for external types
-#[macro_export]
-macro_rules! ffi_converter_forward {
-    // Forward a `FfiConverter` implementation
-    ($T:ty, $existing_impl_tag:ty, $new_impl_tag:ty) => {
-        ::uniffi::do_ffi_converter_forward!(
-            FfiConverter,
-            $T,
-            $T,
-            $existing_impl_tag,
-            $new_impl_tag
-        );
-
-        $crate::derive_ffi_traits!(local $T);
-    };
-}
-
-/// Macro to implement `FfiConverterArc<T>` for a UniFfiTag using a different UniFfiTag
-///
-/// This is used for external types
-#[macro_export]
-macro_rules! ffi_converter_arc_forward {
-    ($T:ty, $existing_impl_tag:ty, $new_impl_tag:ty) => {
-        ::uniffi::do_ffi_converter_forward!(
-            FfiConverterArc,
-            ::std::sync::Arc<$T>,
-            $T,
-            $existing_impl_tag,
-            $new_impl_tag
-        );
-
-        // Note: no need to call derive_ffi_traits! because there is a blanket impl for all Arc<T>
-    };
-}
-
-// Generic code between the two macros above
-#[doc(hidden)]
-#[macro_export]
-macro_rules! do_ffi_converter_forward {
-    ($trait:ident, $rust_type:ty, $T:ty, $existing_impl_tag:ty, $new_impl_tag:ty) => {
-        unsafe impl $crate::$trait<$new_impl_tag> for $T {
-            type FfiType = <$T as $crate::$trait<$existing_impl_tag>>::FfiType;
-
-            fn lower(obj: $rust_type) -> Self::FfiType {
-                <$T as $crate::$trait<$existing_impl_tag>>::lower(obj)
-            }
-
-            fn try_lift(v: Self::FfiType) -> $crate::Result<$rust_type> {
-                <$T as $crate::$trait<$existing_impl_tag>>::try_lift(v)
-            }
-
-            fn write(obj: $rust_type, buf: &mut Vec<u8>) {
-                <$T as $crate::$trait<$existing_impl_tag>>::write(obj, buf)
-            }
-
-            fn try_read(buf: &mut &[u8]) -> $crate::Result<$rust_type> {
-                <$T as $crate::$trait<$existing_impl_tag>>::try_read(buf)
-            }
-
-            const TYPE_ID_META: ::uniffi::MetadataBuffer =
-                <$T as $crate::$trait<$existing_impl_tag>>::TYPE_ID_META;
         }
     };
 }

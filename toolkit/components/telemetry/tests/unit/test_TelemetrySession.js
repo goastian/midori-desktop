@@ -55,6 +55,7 @@ ChromeUtils.defineLazyGetter(this, "DATAREPORTING_PATH", function () {
 });
 
 var gClientID = null;
+var gProfileGroupID = null;
 var gMonotonicNow = 0;
 
 function sendPing() {
@@ -80,14 +81,10 @@ function fakeIdleNotification(topic) {
 }
 
 function setupTestData() {
-  Services.startup.interrupted = true;
-  let h2 = Telemetry.getHistogramById("TELEMETRY_TEST_COUNT");
-  h2.add();
-
-  let k1 = Telemetry.getKeyedHistogramById("TELEMETRY_TEST_KEYED_COUNT");
-  k1.add("a");
-  k1.add("a");
-  k1.add("b");
+  Glean.testOnlyIpc.aCounterForHgram.add();
+  Glean.testOnlyIpc.aLabeledCounterForKeyedCountHgram.a.add(1);
+  Glean.testOnlyIpc.aLabeledCounterForKeyedCountHgram.a.add(1);
+  Glean.testOnlyIpc.aLabeledCounterForKeyedCountHgram.b.add(1);
 }
 
 function checkPingFormat(aPing, aType, aHasClientId, aHasEnvironment) {
@@ -143,6 +140,7 @@ function checkPingFormat(aPing, aType, aHasClientId, aHasEnvironment) {
 
   // Check the clientId and environment fields, as needed.
   Assert.equal("clientId" in aPing, aHasClientId);
+  Assert.equal("profileGroupId" in aPing, aHasClientId);
   Assert.equal("environment" in aPing, aHasEnvironment);
 }
 
@@ -330,7 +328,6 @@ function checkPayload(payload, reason, successfulPings) {
   checkPayloadInfo(payload.info, reason);
 
   Assert.ok(payload.simpleMeasurements.totalTime >= 0);
-  Assert.equal(payload.simpleMeasurements.startupInterrupted, 1);
   Assert.equal(payload.simpleMeasurements.shutdownDuration, SHUTDOWN_TIME);
 
   let activeTicks = payload.simpleMeasurements.activeTicks;
@@ -360,29 +357,15 @@ function checkPayload(payload, reason, successfulPings) {
 
   const TELEMETRY_SEND_SUCCESS = "TELEMETRY_SEND_SUCCESS";
   const TELEMETRY_SUCCESS = "TELEMETRY_SUCCESS";
-  const TELEMETRY_TEST_FLAG = "TELEMETRY_TEST_FLAG";
   const TELEMETRY_TEST_COUNT = "TELEMETRY_TEST_COUNT";
-  const TELEMETRY_TEST_KEYED_FLAG = "TELEMETRY_TEST_KEYED_FLAG";
   const TELEMETRY_TEST_KEYED_COUNT = "TELEMETRY_TEST_KEYED_COUNT";
 
   if (successfulPings > 0) {
     Assert.ok(TELEMETRY_SEND_SUCCESS in payload.histograms);
   }
-  Assert.ok(TELEMETRY_TEST_FLAG in payload.histograms);
   Assert.ok(TELEMETRY_TEST_COUNT in payload.histograms);
 
   Assert.ok(!(IGNORE_CLONED_HISTOGRAM in payload.histograms));
-
-  // Flag histograms should automagically spring to life.
-  const expected_flag = {
-    range: [1, 2],
-    bucket_count: 3,
-    histogram_type: 3,
-    values: { 0: 1, 1: 0 },
-    sum: 0,
-  };
-  let flag = payload.histograms[TELEMETRY_TEST_FLAG];
-  Assert.deepEqual(flag, expected_flag);
 
   // We should have a test count.
   const expected_count = {
@@ -430,7 +413,6 @@ function checkPayload(payload, reason, successfulPings) {
 
   Assert.ok("keyedHistograms" in payload);
   let keyedHistograms = payload.keyedHistograms;
-  Assert.ok(!(TELEMETRY_TEST_KEYED_FLAG in keyedHistograms));
   Assert.ok(TELEMETRY_TEST_KEYED_COUNT in keyedHistograms);
 
   const expected_keyed_count = {
@@ -523,13 +505,12 @@ add_task(async function asyncSetup() {
   await TelemetryController.testSetup();
   // Load the client ID from the client ID provider to check for pings sanity.
   gClientID = await ClientID.getClientID();
+  gProfileGroupID = await ClientID.getProfileGroupID();
 });
 
 // Ensures that expired histograms are not part of the payload.
 add_task(async function test_expiredHistogram() {
-  let dummy = Telemetry.getHistogramById("TELEMETRY_TEST_EXPIRED");
-
-  dummy.add(1);
+  Glean.testOnly.expiredHist.accumulateSingleSample(1);
 
   Assert.equal(
     TelemetrySession.getPayload().histograms.TELEMETRY_TEST_EXPIRED,
@@ -710,23 +691,33 @@ add_task(async function test_checkSubsessionScalars() {
   await TelemetryController.testReset();
 
   // Set some scalars.
-  const UINT_SCALAR = "telemetry.test.unsigned_int_kind";
+  const UINT_SCALAR = "telemetry.test.mirror_for_quantity";
   const STRING_SCALAR = "telemetry.test.string_kind";
+  const BOOLEAN_SCALAR = "telemetry.test.mirror_for_unordered_bool";
+  const KEYED_UINT_SCALAR = "telemetry.test.mirror_for_labeled_quantity";
   let expectedUint = 37;
-  let expectedString = "Test value. Yay.";
-  Telemetry.scalarSet(UINT_SCALAR, expectedUint);
-  Telemetry.scalarSet(STRING_SCALAR, expectedString);
+  let expectedString = "decafdec-afde-cafd-ecaf-decafdecafde";
+  Glean.testOnly.meaningOfLife.set(expectedUint);
+  Glean.testOnlyIpc.aUuid.set(expectedString);
+  Glean.testOnlyIpc.anUnorderedBool.set(false);
+  Glean.testOnly.buttonJars.some_random_key.set(12);
 
   // Check that scalars are not available in classic pings but are in subsession
   // pings. Also clear the subsession.
   let classic = TelemetrySession.getPayload();
   let subsession = TelemetrySession.getPayload("environment-change", true);
 
-  const TEST_SCALARS = [UINT_SCALAR, STRING_SCALAR];
+  const TEST_SCALARS = [
+    UINT_SCALAR,
+    STRING_SCALAR,
+    BOOLEAN_SCALAR,
+    KEYED_UINT_SCALAR,
+  ];
   for (let name of TEST_SCALARS) {
     // Scalar must be reported in subsession pings (e.g. main).
     Assert.ok(
-      name in subsession.processes.parent.scalars,
+      name in subsession.processes.parent.scalars ||
+        name in subsession.processes.parent.keyedScalars,
       name + " must be reported in a subsession ping."
     );
   }
@@ -748,6 +739,16 @@ add_task(async function test_checkSubsessionScalars() {
     expectedString,
     STRING_SCALAR + " must contain the expected value."
   );
+  Assert.equal(
+    subsession.processes.parent.scalars[BOOLEAN_SCALAR],
+    false,
+    BOOLEAN_SCALAR + " must contain the expected value."
+  );
+  Assert.deepEqual(
+    subsession.processes.parent.keyedScalars[KEYED_UINT_SCALAR],
+    { some_random_key: 12 },
+    KEYED_UINT_SCALAR + " must contain the expected value."
+  );
 
   // Since we cleared the subsession in the last getPayload(), check that
   // breaking subsessions clears the scalars.
@@ -762,8 +763,10 @@ add_task(async function test_checkSubsessionScalars() {
   // Check if setting the scalars again works as expected.
   expectedUint = 85;
   expectedString = "A creative different value";
-  Telemetry.scalarSet(UINT_SCALAR, expectedUint);
-  Telemetry.scalarSet(STRING_SCALAR, expectedString);
+  Glean.testOnly.meaningOfLife.set(expectedUint);
+  Glean.testOnlyIpc.aUuid.set(expectedString);
+  Glean.testOnlyIpc.anUnorderedBool.set(false);
+  Glean.testOnly.buttonJars.some_random_key.set(12);
   subsession = TelemetrySession.getPayload("environment-change");
   Assert.equal(
     subsession.processes.parent.scalars[UINT_SCALAR],
@@ -774,6 +777,16 @@ add_task(async function test_checkSubsessionScalars() {
     subsession.processes.parent.scalars[STRING_SCALAR],
     expectedString,
     STRING_SCALAR + " must contain the expected value."
+  );
+  Assert.equal(
+    subsession.processes.parent.scalars[BOOLEAN_SCALAR],
+    false,
+    BOOLEAN_SCALAR + " must contain the expected value."
+  );
+  Assert.deepEqual(
+    subsession.processes.parent.keyedScalars[KEYED_UINT_SCALAR],
+    { some_random_key: 12 },
+    KEYED_UINT_SCALAR + " must contain the expected value."
   );
 
   await TelemetryController.testShutdown();
@@ -812,10 +825,10 @@ add_task(async function test_dailyCollection() {
 
   count.clear();
   keyed.clear();
-  count.add(1);
-  keyed.add("a", 1);
-  keyed.add("b", 1);
-  keyed.add("b", 1);
+  Glean.testOnlyIpc.aCounterForHgram.add();
+  Glean.testOnlyIpc.aLabeledCounterForKeyedCountHgram.a.add(1);
+  Glean.testOnlyIpc.aLabeledCounterForKeyedCountHgram.b.add(1);
+  Glean.testOnlyIpc.aLabeledCounterForKeyedCountHgram.b.add(1);
 
   // Make sure the daily ping gets triggered.
   let expectedDate = nowHour;
@@ -859,9 +872,9 @@ add_task(async function test_dailyCollection() {
   Assert.ok(!(KEYED_ID in ping.payload.keyedHistograms));
 
   // Trigger and collect another daily ping, with the histograms being set again.
-  count.add(1);
-  keyed.add("a", 1);
-  keyed.add("b", 1);
+  Glean.testOnlyIpc.aCounterForHgram.add();
+  Glean.testOnlyIpc.aLabeledCounterForKeyedCountHgram.a.add(1);
+  Glean.testOnlyIpc.aLabeledCounterForKeyedCountHgram.b.add(1);
 
   // The daily ping is rescheduled for "tomorrow".
   expectedDate = futureDate(expectedDate, MS_IN_ONE_DAY);
@@ -1033,9 +1046,9 @@ add_task(async function test_environmentChange() {
 
   count.clear();
   keyed.clear();
-  count.add(1);
-  keyed.add("a", 1);
-  keyed.add("b", 1);
+  Glean.testOnlyIpc.aCounterForHgram.add();
+  Glean.testOnlyIpc.aLabeledCounterForKeyedCountHgram.a.add(1);
+  Glean.testOnlyIpc.aLabeledCounterForKeyedCountHgram.b.add(1);
 
   // Trigger and collect environment-change ping.
   gMonotonicNow = fakeMonotonicNow(
@@ -1212,6 +1225,7 @@ add_task(async function test_savedPingsOnShutdown() {
   checkPingFormat(ping, expectedType, true, true);
   Assert.equal(ping.payload.info.reason, expectedReason);
   Assert.equal(ping.clientId, gClientID);
+  Assert.equal(ping.profileGroupId, gProfileGroupID);
 });
 
 add_task(async function test_sendShutdownPing() {
@@ -1260,6 +1274,7 @@ add_task(async function test_sendShutdownPing() {
   checkPingFormat(ping, ping.type, true, true);
   Assert.equal(ping.payload.info.reason, REASON_SHUTDOWN);
   Assert.equal(ping.clientId, gClientID);
+  Assert.equal(ping.profileGroupId, gProfileGroupID);
   // Try again, this time disable ping upload. The PingSender
   // should not be sending any ping!
   PingServer.registerPingHandler(() =>
@@ -1283,6 +1298,7 @@ add_task(async function test_sendShutdownPing() {
   await TelemetryController.testShutdown();
   // After re-enabling FHR, wait for the new client ID
   gClientID = await ClientID.getClientID();
+  gProfileGroupID = await ClientID.getProfileGroupID();
 
   // Check that the "shutdown" ping was correctly saved to disk.
   await checkPendingShutdownPing();
@@ -1354,6 +1370,7 @@ add_task(async function test_sendShutdownPing() {
   checkPingFormat(ping, ping.type, true, true);
   Assert.equal(ping.payload.info.reason, REASON_SHUTDOWN);
   Assert.equal(ping.clientId, gClientID);
+  Assert.equal(ping.profileGroupId, gProfileGroupID);
 
   // Reset the pref and restart Telemetry.
   Services.prefs.setBoolPref(
@@ -1505,6 +1522,7 @@ add_task(async function test_sendFirstShutdownPing() {
   checkPingFormat(ping, "first-shutdown", true, true);
   Assert.equal(ping.payload.info.reason, REASON_SHUTDOWN);
   Assert.equal(ping.clientId, gClientID);
+  Assert.equal(ping.profileGroupId, gProfileGroupID);
 
   await TelemetryStorage.testClearPendingPings();
 
@@ -1532,9 +1550,6 @@ add_task(async function test_savedSessionData() {
   // Create the directory which will contain the data file, if it doesn't already
   // exist.
   await IOUtils.makeDirectory(DATAREPORTING_PATH);
-  getHistogram("TELEMETRY_SESSIONDATA_FAILED_LOAD").clear();
-  getHistogram("TELEMETRY_SESSIONDATA_FAILED_PARSE").clear();
-  getHistogram("TELEMETRY_SESSIONDATA_FAILED_VALIDATION").clear();
 
   // Write test data to the session data file.
   const dataFilePath = PathUtils.join(DATAREPORTING_PATH, "session-state.json");
@@ -1568,9 +1583,6 @@ add_task(async function test_savedSessionData() {
 
   // Start TelemetrySession so that it loads the session data file.
   await TelemetryController.testReset();
-  Assert.equal(0, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_LOAD").sum);
-  Assert.equal(0, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_PARSE").sum);
-  Assert.equal(0, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_VALIDATION").sum);
 
   // Watch a test preference, trigger and environment change and wait for it to propagate.
   // _watchPreferences triggers a subsession notification
@@ -1613,9 +1625,6 @@ add_task(async function test_sessionData_ShortSession() {
 
   // Remove the session state file.
   await IOUtils.remove(SESSION_STATE_PATH, { ignoreAbsent: true });
-  getHistogram("TELEMETRY_SESSIONDATA_FAILED_LOAD").clear();
-  getHistogram("TELEMETRY_SESSIONDATA_FAILED_PARSE").clear();
-  getHistogram("TELEMETRY_SESSIONDATA_FAILED_VALIDATION").clear();
 
   const expectedSessionUUID = "ff602e52-47a1-b7e8-4c1a-ffffffffc87a";
   const expectedSubsessionUUID = "009fd1ad-b85e-4817-b3e5-000000003785";
@@ -1629,10 +1638,6 @@ add_task(async function test_sessionData_ShortSession() {
   TelemetryController.testReset();
   await TelemetryController.testShutdown();
 
-  Assert.equal(1, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_LOAD").sum);
-  Assert.equal(0, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_PARSE").sum);
-  Assert.equal(0, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_VALIDATION").sum);
-
   // Restore the UUID generation functions.
   fakeGenerateUUID(TelemetryUtils.generateUUID, TelemetryUtils.generateUUID);
 
@@ -1645,9 +1650,6 @@ add_task(async function test_sessionData_ShortSession() {
   Assert.equal(payload.info.profileSubsessionCounter, 2);
   Assert.equal(payload.info.previousSessionId, expectedSessionUUID);
   Assert.equal(payload.info.previousSubsessionId, expectedSubsessionUUID);
-  Assert.equal(1, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_LOAD").sum);
-  Assert.equal(0, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_PARSE").sum);
-  Assert.equal(0, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_VALIDATION").sum);
 
   await TelemetryController.testShutdown();
 });
@@ -1656,9 +1658,6 @@ add_task(async function test_invalidSessionData() {
   // Create the directory which will contain the data file, if it doesn't already
   // exist.
   await IOUtils.makeDirectory(DATAREPORTING_PATH);
-  getHistogram("TELEMETRY_SESSIONDATA_FAILED_LOAD").clear();
-  getHistogram("TELEMETRY_SESSIONDATA_FAILED_PARSE").clear();
-  getHistogram("TELEMETRY_SESSIONDATA_FAILED_VALIDATION").clear();
 
   // Write test data to the session data file. This should fail to parse.
   const dataFilePath = PathUtils.join(DATAREPORTING_PATH, "session-state.json");
@@ -1669,11 +1668,6 @@ add_task(async function test_invalidSessionData() {
 
   // Start TelemetryController so that it loads the session data file.
   await TelemetryController.testReset();
-
-  // The session data file should not load. Only expect the current subsession.
-  Assert.equal(0, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_LOAD").sum);
-  Assert.equal(1, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_PARSE").sum);
-  Assert.equal(0, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_VALIDATION").sum);
 
   // Write test data to the session data file. This should fail validation.
   const sessionState = {
@@ -1697,9 +1691,6 @@ add_task(async function test_invalidSessionData() {
 
   let payload = TelemetrySession.getPayload();
   Assert.equal(payload.info.profileSubsessionCounter, expectedSubsessions);
-  Assert.equal(0, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_LOAD").sum);
-  Assert.equal(1, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_PARSE").sum);
-  Assert.equal(1, getSnapshot("TELEMETRY_SESSIONDATA_FAILED_VALIDATION").sum);
 
   await TelemetryController.testShutdown();
 

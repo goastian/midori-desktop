@@ -6,6 +6,7 @@
 
 ChromeUtils.defineESModuleGetters(this, {
   ExtensionPermissions: "resource://gre/modules/ExtensionPermissions.sys.mjs",
+  Schemas: "resource://gre/modules/Schemas.sys.mjs",
 });
 
 var { ExtensionError } = ExtensionUtils;
@@ -15,12 +16,32 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "promptsEnabled",
   "extensions.webextOptionalPermissionPrompts"
 );
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "dataCollectionPermissionsEnabled",
+  "extensions.dataCollectionPermissions.enabled",
+  false
+);
+
+ChromeUtils.defineLazyGetter(this, "OPTIONAL_ONLY_PERMISSIONS", () => {
+  // Schemas.getPermissionNames() depends on API schemas to have been loaded.
+  // This is always the case here - extension APIs can only be called when an
+  // extension has started. And as part of startup, extension schemas are
+  // always parsed, via extension.loadManifest at:
+  // https://searchfox.org/mozilla-central/rev/2deb9bcf801f9de83d4f30c890d442072b9b6595/toolkit/components/extensions/Extension.sys.mjs#2094
+  return new Set(Schemas.getPermissionNames(["OptionalOnlyPermission"]));
+});
 
 function normalizePermissions(perms) {
   perms = { ...perms };
   perms.permissions = perms.permissions.filter(
     perm => !perm.startsWith("internal:") && perm !== "<all_urls>"
   );
+
+  if (!dataCollectionPermissionsEnabled) {
+    delete perms.data_collection;
+  }
+
   return perms;
 }
 
@@ -31,7 +52,11 @@ this.permissions = class extends ExtensionAPIPersistent {
       let callback = (event, change) => {
         if (change.extensionId == extension.id && change.added) {
           let perms = normalizePermissions(change.added);
-          if (perms.permissions.length || perms.origins.length) {
+          if (
+            perms.permissions.length ||
+            perms.origins.length ||
+            (dataCollectionPermissionsEnabled && perms.data_collection.length)
+          ) {
             fire.async(perms);
           }
         }
@@ -52,7 +77,11 @@ this.permissions = class extends ExtensionAPIPersistent {
       let callback = (event, change) => {
         if (change.extensionId == extension.id && change.removed) {
           let perms = normalizePermissions(change.removed);
-          if (perms.permissions.length || perms.origins.length) {
+          if (
+            perms.permissions.length ||
+            perms.origins.length ||
+            (dataCollectionPermissionsEnabled && perms.data_collection.length)
+          ) {
             fire.async(perms);
           }
         }
@@ -76,13 +105,23 @@ this.permissions = class extends ExtensionAPIPersistent {
     return {
       permissions: {
         async request(perms) {
-          let { permissions, origins } = perms;
+          let { permissions, origins, data_collection } = perms;
 
           let { optionalPermissions } = context.extension;
           for (let perm of permissions) {
             if (!optionalPermissions.includes(perm)) {
               throw new ExtensionError(
                 `Cannot request permission ${perm} since it was not declared in optional_permissions`
+              );
+            }
+            if (
+              OPTIONAL_ONLY_PERMISSIONS.has(perm) &&
+              (permissions.length > 1 ||
+                origins.length ||
+                (dataCollectionPermissionsEnabled && data_collection.length))
+            ) {
+              throw new ExtensionError(
+                `Cannot request permission ${perm} with another permission`
               );
             }
           }
@@ -96,6 +135,18 @@ this.permissions = class extends ExtensionAPIPersistent {
             }
           }
 
+          if (dataCollectionPermissionsEnabled) {
+            let { optionalDataCollectionPermissions } = context.extension;
+            for (let perm of data_collection) {
+              if (!optionalDataCollectionPermissions.includes(perm)) {
+                throw new ExtensionError(
+                  `Cannot request data collection permission ${perm} since it ` +
+                    "was not declared in data_collection_permissions.optional"
+                );
+              }
+            }
+          }
+
           if (promptsEnabled) {
             permissions = permissions.filter(
               perm => !context.extension.hasPermission(perm)
@@ -106,8 +157,15 @@ this.permissions = class extends ExtensionAPIPersistent {
                   new MatchPattern(origin)
                 )
             );
+            data_collection = data_collection.filter(
+              perm => !context.extension.dataCollectionPermissions.has(perm)
+            );
 
-            if (!permissions.length && !origins.length) {
+            if (
+              !permissions.length &&
+              !origins.length &&
+              !data_collection.length
+            ) {
               return true;
             }
 
@@ -119,7 +177,7 @@ this.permissions = class extends ExtensionAPIPersistent {
                   name: context.extension.name,
                   id: context.extension.id,
                   icon: context.extension.getPreferredIcon(32),
-                  permissions: { permissions, origins },
+                  permissions: { permissions, origins, data_collection },
                   resolve,
                 },
               };
@@ -163,6 +221,14 @@ this.permissions = class extends ExtensionAPIPersistent {
               )
             ) {
               return false;
+            }
+          }
+
+          if (dataCollectionPermissionsEnabled) {
+            for (let perm of permissions.data_collection) {
+              if (!context.extension.dataCollectionPermissions.has(perm)) {
+                return false;
+              }
             }
           }
 

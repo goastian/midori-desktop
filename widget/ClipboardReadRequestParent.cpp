@@ -10,6 +10,7 @@
 #include "nsComponentManagerUtils.h"
 #include "nsIClipboard.h"
 #include "nsITransferable.h"
+#include "nsThreadManager.h"
 #include "nsWidgetsCID.h"
 
 using mozilla::dom::ContentParent;
@@ -71,9 +72,9 @@ static Result<nsCOMPtr<nsITransferable>, nsresult> CreateTransferable(
 IPCResult ClipboardReadRequestParent::RecvGetData(
     const nsTArray<nsCString>& aFlavors, GetDataResolver&& aResolver) {
   bool valid = false;
-  if (NS_FAILED(mAsyncGetClipboardData->GetValid(&valid)) || !valid) {
+  if (NS_FAILED(mClipboardDataSnapshot->GetValid(&valid)) || !valid) {
     Unused << PClipboardReadRequestParent::Send__delete__(this);
-    aResolver(NS_ERROR_FAILURE);
+    aResolver(NS_ERROR_NOT_AVAILABLE);
     return IPC_OK();
   }
 
@@ -92,7 +93,7 @@ IPCResult ClipboardReadRequestParent::RecvGetData(
                                             manager = mManager](nsresult aRv) {
         if (NS_FAILED(aRv)) {
           bool valid = false;
-          if (NS_FAILED(self->mAsyncGetClipboardData->GetValid(&valid)) ||
+          if (NS_FAILED(self->mClipboardDataSnapshot->GetValid(&valid)) ||
               !valid) {
             Unused << PClipboardReadRequestParent::Send__delete__(self);
           }
@@ -105,10 +106,54 @@ IPCResult ClipboardReadRequestParent::RecvGetData(
             trans, &ipcTransferableData, false /* aInSyncMessage */, manager);
         resolver(std::move(ipcTransferableData));
       });
-  nsresult rv = mAsyncGetClipboardData->GetData(trans, callback);
+  nsresult rv = mClipboardDataSnapshot->GetData(trans, callback);
   if (NS_FAILED(rv)) {
     callback->OnComplete(rv);
   }
+  return IPC_OK();
+}
+
+IPCResult ClipboardReadRequestParent::RecvGetDataSync(
+    const nsTArray<nsCString>& aFlavors,
+    dom::IPCTransferableDataOrError* aTransferableDataOrError) {
+  auto destroySoon = [&] {
+    // Delete this actor, but don't do it in the middle of this sync IPC call
+    // Make sure nothing else gets processed before this deletion, so use
+    // DispatchDirectTaskToCurrentThread()
+    RefPtr<nsIRunnable> task = NS_NewRunnableFunction(
+        "ClipboardReadRequestParent_SyncError", [self = RefPtr{this}]() {
+          Unused << PClipboardReadRequestParent::Send__delete__(self);
+        });
+    nsThreadManager::get().DispatchDirectTaskToCurrentThread(task);
+  };
+
+  bool valid = false;
+  if (NS_FAILED(mClipboardDataSnapshot->GetValid(&valid)) || !valid) {
+    destroySoon();
+    *aTransferableDataOrError = NS_ERROR_NOT_AVAILABLE;
+    return IPC_OK();
+  }
+
+  // Create transferable
+  auto result = CreateTransferable(aFlavors);
+  if (result.isErr()) {
+    *aTransferableDataOrError = result.unwrapErr();
+    return IPC_OK();
+  }
+
+  nsCOMPtr<nsITransferable> trans = result.unwrap();
+  nsresult rv = mClipboardDataSnapshot->GetDataSync(trans);
+  if (NS_FAILED(rv)) {
+    *aTransferableDataOrError = rv;
+    if (NS_FAILED(mClipboardDataSnapshot->GetValid(&valid)) || !valid) {
+      destroySoon();
+    }
+    return IPC_OK();
+  }
+  dom::IPCTransferableData ipcTransferableData;
+  nsContentUtils::TransferableToIPCTransferableData(
+      trans, &ipcTransferableData, true /* aInSyncMessage */, mManager);
+  *aTransferableDataOrError = std::move(ipcTransferableData);
   return IPC_OK();
 }
 

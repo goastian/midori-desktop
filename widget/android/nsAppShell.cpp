@@ -27,6 +27,7 @@
 
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/AppShutdown.h"
+#include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Components.h"
 #include "mozilla/Services.h"
 #include "mozilla/Preferences.h"
@@ -43,6 +44,7 @@
 #include "mozilla/java/GeckoThreadNatives.h"
 #include "mozilla/java/XPCOMEventTargetNatives.h"
 #include "mozilla/widget/ScreenManager.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "prenv.h"
 #include "prtime.h"
 
@@ -110,7 +112,7 @@ class WakeLockListener final : public nsIDOMMozWakeLockListener {
 };
 
 NS_IMPL_ISUPPORTS(WakeLockListener, nsIDOMMozWakeLockListener)
-nsCOMPtr<nsIPowerManagerService> sPowerManagerService = nullptr;
+MOZ_RUNINIT nsCOMPtr<nsIPowerManagerService> sPowerManagerService = nullptr;
 StaticRefPtr<WakeLockListener> sWakeLockListener;
 
 class GeckoThreadSupport final
@@ -335,6 +337,30 @@ class GeckoAppShellSupport final
 
   static bool IsGpuProcessEnabled() {
     return gfx::gfxVars::GPUProcessEnabled();
+  }
+
+  static bool IsInteractiveWidgetDefaultResizesVisual() {
+    return StaticPrefs::dom_interactive_widget_default_resizes_visual();
+  }
+
+  static void OnSystemLocaleChanged() {
+    MOZ_ASSERT(NS_IsMainThread());
+
+    if (PastShutdownPhase(ShutdownPhase::XPCOMShutdown)) {
+      return;
+    }
+
+    intl::OSPreferences::GetInstance()->Refresh();
+  }
+
+  static void OnTimezoneChanged() {
+    MOZ_ASSERT(NS_IsMainThread());
+
+    if (PastShutdownPhase(ShutdownPhase::XPCOMShutdown)) {
+      return;
+    }
+
+    nsBaseAppShell::OnSystemTimezoneChange();
   }
 };
 

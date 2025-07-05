@@ -53,29 +53,30 @@ fileprivate extension RustCallStatus {
 }
 
 private func rustCall<T>(_ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T {
-    try makeRustCall(callback, errorHandler: nil)
+    let neverThrow: ((RustBuffer) throws -> Never)? = nil
+    return try makeRustCall(callback, errorHandler: neverThrow)
 }
 
-private func rustCallWithError<T>(
-    _ errorHandler: @escaping (RustBuffer) throws -> Error,
+private func rustCallWithError<T, E: Swift.Error>(
+    _ errorHandler: @escaping (RustBuffer) throws -> E,
     _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T) throws -> T {
     try makeRustCall(callback, errorHandler: errorHandler)
 }
 
-private func makeRustCall<T>(
+private func makeRustCall<T, E: Swift.Error>(
     _ callback: (UnsafeMutablePointer<RustCallStatus>) -> T,
-    errorHandler: ((RustBuffer) throws -> Error)?
+    errorHandler: ((RustBuffer) throws -> E)?
 ) throws -> T {
-    uniffiEnsureInitialized()
+    {{ ensure_init_fn_name }}()
     var callStatus = RustCallStatus.init()
     let returnedVal = callback(&callStatus)
     try uniffiCheckCallStatus(callStatus: callStatus, errorHandler: errorHandler)
     return returnedVal
 }
 
-private func uniffiCheckCallStatus(
+private func uniffiCheckCallStatus<E: Swift.Error>(
     callStatus: RustCallStatus,
-    errorHandler: ((RustBuffer) throws -> Error)?
+    errorHandler: ((RustBuffer) throws -> E)?
 ) throws {
     switch callStatus.code {
         case CALL_SUCCESS:

@@ -1,0 +1,308 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'DevTools :: Inspector'
+
+devtools.inspector:
+  three_pane_enabled:
+    type: labeled_counter
+    description: >
+      Number of times the DevTools inspector was opened with the 3 pane
+      inspector enabled, keyed by true/false.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.inspector.three_pane_enabled.
+    bugs:
+      - https://bugzil.la/1437881
+      - https://bugzil.la/1566395
+    data_reviews:
+      - https://bugzil.la/1437881
+      - https://bugzil.la/1566395
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - gl@mozilla.com
+      - mbalfanz@mozilla.com
+    expires: never
+    telemetry_mirror: DEVTOOLS_INSPECTOR_THREE_PANE_ENABLED
+
+  node_selection_count:
+    type: counter
+    description: >
+      Number of times a different node is marked as selected in the
+      Inspector regardless of the cause: context menu, manual selection in
+      markup view, etc.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.inspector.node_selection_count.
+    bugs:
+      - https://bugzil.la/1550794
+    data_reviews:
+      - https://bugzil.la/1550794
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - mbalfanz@mozilla.com
+    expires: never
+    telemetry_mirror: DEVTOOLS_INSPECTOR_NODE_SELECTION_COUNT
+
+  new_root_to_reload_delay:
+    type: timing_distribution
+    description: >
+      Time taken (in ms) to update the inspector during a page reload, starting
+      from new-root event.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram DEVTOOLS_INSPECTOR_NEW_ROOT_TO_RELOAD_DELAY_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1405585
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1566392
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1643433
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1405585
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1566392
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1643433
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_INSPECTOR_NEW_ROOT_TO_RELOAD_DELAY_MS
+
+  number_of_css_grids_in_a_page:
+    type: custom_distribution
+    description: >
+      On page load, record the number of CSS Grid elements present on a page
+      when the DevTools is open
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram DEVTOOLS_NUMBER_OF_CSS_GRIDS_IN_A_PAGE.
+    range_min: 1
+    range_max: 30
+    bucket_count: 29
+    histogram_type: linear
+    unit: grid elements
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1373483
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1373483
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_NUMBER_OF_CSS_GRIDS_IN_A_PAGE
+
+  fonteditor_font_type_displayed:
+    type: labeled_counter
+    description: >
+      Indicates if the font editor displayed its UI for a non-variable font or a
+      variable font
+
+      This metric was generated to correspond to the Legacy Telemetry
+      categorical histogram DEVTOOLS_FONTEDITOR_FONT_TYPE_DISPLAYED.
+    labels:
+      - variable
+      - nonvariable
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1523656
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1523656
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - mbalfanz@mozilla.com
+    expires: never
+    telemetry_mirror: h#DEVTOOLS_FONTEDITOR_FONT_TYPE_DISPLAYED
+
+devtools.layout.flexboxhighlighter:
+  opened:
+    type: counter
+    description: >
+      Number of times the DevTools flexbox highlighter was activated from
+      the layout view.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.layout.flexboxhighlighter.opened.
+    bugs:
+      - https://bugzil.la/1509907
+    data_reviews:
+      - https://bugzil.la/1509907
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_LAYOUT_FLEXBOXHIGHLIGHTER_OPENED
+
+devtools.markup.flexboxhighlighter:
+  opened:
+    type: counter
+    description: >
+      Number of times the DevTools flexbox highlighter was activated from
+      the markup view.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.markup.flexboxhighlighter.opened.
+    bugs:
+      - https://bugzil.la/1509907
+    data_reviews:
+      - https://bugzil.la/1509907
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_MARKUP_FLEXBOXHIGHLIGHTER_OPENED
+
+devtools.rules.flexboxhighlighter:
+  opened:
+    type: counter
+    description: >
+      Number of times the DevTools flexbox highlighter was activated from
+      the rules view.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.rules.flexboxhighlighter.opened.
+    bugs:
+      - https://bugzil.la/1509907
+    data_reviews:
+      - https://bugzil.la/1509907
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_RULES_FLEXBOXHIGHLIGHTER_OPENED
+
+devtools.markup.gridinspector:
+  opened:
+    type: counter
+    description: >
+      Number of times the DevTools grid inspector was opened from the
+      markup view.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.markup.gridinspector.opened.
+    bugs:
+      - https://bugzil.la/1509907
+    data_reviews:
+      - https://bugzil.la/1509907
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_MARKUP_GRIDINSPECTOR_OPENED
+
+devtools.rules.gridinspector:
+  opened:
+    type: counter
+    description: >
+      Number of times the DevTools grid inspector was opened from the
+      rules view.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.rules.gridinspector.opened.
+    bugs:
+      - https://bugzil.la/1373483
+    data_reviews:
+      - https://bugzil.la/1373483
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_RULES_GRIDINSPECTOR_OPENED
+
+devtools.grid.gridinspector:
+  opened:
+    type: counter
+    description: >
+      Number of times the DevTools grid inspector was opened from the grid
+      view.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.grid.gridinspector.opened.
+    bugs:
+      - https://bugzil.la/1373483
+    data_reviews:
+      - https://bugzil.la/1373483
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_GRID_GRIDINSPECTOR_OPENED
+
+devtools.shadowdom:
+  shadow_root_displayed:
+    type: boolean
+    description: >
+      Whether the markup view displayed any #shadow-root element in the
+      UI.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.shadowdom.shadow_root_displayed.
+    bugs:
+      - https://bugzil.la/1470128
+      - https://bugzil.la/1566393
+    data_reviews:
+      - https://bugzil.la/1470128
+      - https://bugzil.la/1566393
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - jdescottes@mozilla.com
+    expires: never
+    telemetry_mirror: DEVTOOLS_SHADOWDOM_SHADOW_ROOT_DISPLAYED
+
+  shadow_root_expanded:
+    type: boolean
+    description: >
+      Whether the user expanded any #shadow-root element.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.shadowdom.shadow_root_expanded.
+    bugs:
+      - https://bugzil.la/1470128
+      - https://bugzil.la/1566393
+    data_reviews:
+      - https://bugzil.la/1470128
+      - https://bugzil.la/1566393
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - jdescottes@mozilla.com
+    expires: never
+    telemetry_mirror: DEVTOOLS_SHADOWDOM_SHADOW_ROOT_EXPANDED
+
+  reveal_link_clicked:
+    type: boolean
+    description: >
+      Whether the user clicked on any "reveal" link. "reveal" links are
+      displayed in shadow dom trees in the markup view.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.shadowdom.reveal_link_clicked.
+    bugs:
+      - https://bugzil.la/1470128
+      - https://bugzil.la/1566393
+    data_reviews:
+      - https://bugzil.la/1470128
+      - https://bugzil.la/1566393
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+      - jdescottes@mozilla.com
+    expires: never
+    telemetry_mirror: DEVTOOLS_SHADOWDOM_REVEAL_LINK_CLICKED
+
+devtools.tooltip:
+  shown:
+    type: labeled_counter
+    description: >
+      Number of times a tooltip was shown, keyed by tooltip type.
+      Currently supported types are "image", "font-family", "inactive-
+      css", "css-compatibility", "css-query-container" and "variable."
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.tooltip.shown.
+    bugs:
+      - https://bugzil.la/1553471
+    data_reviews:
+      - https://bugzil.la/1553471
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_TOOLTIP_SHOWN
+
+devtools.markup.scrollable.badge:
+  clicked:
+    type: counter
+    description: >
+      Number of times the scrollable inspector badge has been clicked.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar devtools.markup.scrollable.badge.clicked.
+    bugs:
+      - https://bugzil.la/1660818
+    data_reviews:
+      - https://bugzil.la/1660818
+    notification_emails:
+      - dev-developer-tools@lists.mozilla.org
+    expires: never
+    telemetry_mirror: DEVTOOLS_MARKUP_SCROLLABLE_BADGE_CLICKED

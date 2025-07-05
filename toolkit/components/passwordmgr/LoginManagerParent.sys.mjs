@@ -2,7 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { FirefoxRelayTelemetry } from "resource://gre/modules/FirefoxRelayTelemetry.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const LoginInfo = new Components.Constructor(
@@ -34,7 +33,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   MigrationUtils: "resource:///modules/MigrationUtils.sys.mjs",
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
   WebAuthnFeature: "resource://gre/modules/WebAuthnFeature.sys.mjs",
-  PasswordGenerator: "resource://gre/modules/PasswordGenerator.sys.mjs",
+  PasswordGenerator: "resource://gre/modules/shared/PasswordGenerator.sys.mjs",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
 
@@ -171,9 +170,8 @@ async function getImportableLogins(formOrigin) {
     lazy.LoginHelper.showAutoCompleteImport;
   return state
     ? {
-        browsers: await lazy.ChromeMigrationUtils.getImportableLogins(
-          formOrigin
-        ),
+        browsers:
+          await lazy.ChromeMigrationUtils.getImportableLogins(formOrigin),
         state,
       }
     : null;
@@ -534,13 +532,13 @@ export class LoginManagerParent extends JSWindowActorParent {
   async #getRecipesForHost(origin) {
     let recipes;
     if (origin) {
-      try {
-        const formHost = new URL(origin).host;
-        let recipeManager = await LoginManagerParent.recipeParentPromise;
-        recipes = recipeManager.getRecipesForHost(formHost);
-      } catch (ex) {
+      const formHost = URL.parse(origin)?.host;
+      if (!formHost) {
         // Some schemes e.g. chrome aren't supported by URL
+        return [];
       }
+      let recipeManager = await LoginManagerParent.recipeParentPromise;
+      recipes = recipeManager.getRecipesForHost(formHost);
     }
 
     return recipes ?? [];
@@ -792,7 +790,7 @@ export class LoginManagerParent extends JSWindowActorParent {
     if (!hasBeenTypePassword) {
       autocompleteItems.push(
         ...(await lazy.FirefoxRelay.autocompleteItemsAsync({
-          formOrigin,
+          origin: formOrigin,
           scenarioName,
           hasInput: !!searchStringLower.length,
         }))
@@ -927,11 +925,7 @@ export class LoginManagerParent extends JSWindowActorParent {
 
     generatedPW.autocompleteShown = true;
 
-    Services.telemetry.recordEvent(
-      "pwmgr",
-      "autocomplete_shown",
-      "generatedpassword"
-    );
+    Glean.pwmgr.autocompleteShownGeneratedpassword.record();
   }
 
   /**
@@ -993,7 +987,7 @@ export class LoginManagerParent extends JSWindowActorParent {
       Services.logins.recordPasswordUse(
         login,
         browser && lazy.PrivateBrowsingUtils.isBrowserPrivate(browser),
-        login.username ? "form_login" : "form_password",
+        login.username ? "FormLogin" : "FormPassword",
         !!autoFilledLoginGuid
       );
     }
@@ -1283,11 +1277,7 @@ export class LoginManagerParent extends JSWindowActorParent {
 
         // Record telemetry for the first edit
         if (!generatedPW.edited) {
-          Services.telemetry.recordEvent(
-            "pwmgr",
-            "filled_field_edited",
-            "generatedpassword"
-          );
+          Glean.pwmgr.filledFieldEditedGeneratedpassword.record();
           lazy.log("filled_field_edited telemetry event recorded.");
           generatedPW.edited = true;
         }
@@ -1301,11 +1291,7 @@ export class LoginManagerParent extends JSWindowActorParent {
           );
         }
         // record first use of this generated password
-        Services.telemetry.recordEvent(
-          "pwmgr",
-          "autocomplete_field",
-          "generatedpassword"
-        );
+        Glean.pwmgr.autocompleteFieldGeneratedpassword.record();
         lazy.log("autocomplete_field telemetry event recorded.");
         generatedPW.filled = true;
       }
@@ -1542,11 +1528,10 @@ export class LoginManagerParent extends JSWindowActorParent {
       }
 
       case "PasswordManager:offerRelayIntegration": {
-        FirefoxRelayTelemetry.recordRelayOfferedEvent(
-          "clicked",
-          data.telemetry.flowId,
-          data.telemetry.scenarioName
-        );
+        Glean.relayIntegration.clickedOfferRelay.record({
+          value: data.telemetry.flowId,
+          scenario: data.telemetry.scenarioName,
+        });
         const username = await this.#offerRelayIntegration(this.origin);
         if (username) {
           this.sendAsyncMessage("PasswordManager:FillRelayUsername", username);
@@ -1555,10 +1540,10 @@ export class LoginManagerParent extends JSWindowActorParent {
       }
 
       case "PasswordManager:generateRelayUsername": {
-        FirefoxRelayTelemetry.recordRelayUsernameFilledEvent(
-          "clicked",
-          data.telemetry.flowId
-        );
+        Glean.relayIntegration.clickedFillUsername.record({
+          value: data.telemetry.flowId,
+          error_code: 0,
+        });
         const username = await this.#generateRelayUsername(this.origin);
         if (username) {
           this.sendAsyncMessage("PasswordManager:FillRelayUsername", username);

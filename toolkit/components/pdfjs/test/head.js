@@ -1,14 +1,46 @@
-async function waitForPdfJS(browser, url) {
+function waitForPdfJS(browser, url = null) {
   // Runs tests after all "load" event handlers have fired off
-  let loadPromise = BrowserTestUtils.waitForContentEvent(
-    browser,
-    "documentloaded",
-    false,
-    null,
-    true
-  );
-  BrowserTestUtils.startLoadingURIString(browser, url);
+  const loadPromise = new Promise(resolve => {
+    let pageCounter = 0;
+    const removeEventListener1 = BrowserTestUtils.addContentEventListener(
+      browser,
+      "pagerender",
+      () => {
+        pageCounter += 1;
+      },
+      { capture: false, wantUntrusted: true }
+    );
+    const removeEventListener2 = BrowserTestUtils.addContentEventListener(
+      browser,
+      "textlayerrendered",
+      () => {
+        pageCounter -= 1;
+        if (pageCounter === 0) {
+          removeEventListener1();
+          removeEventListener2();
+          resolve();
+        }
+      },
+      { capture: false, wantUntrusted: true }
+    );
+  });
+  if (url) {
+    BrowserTestUtils.startLoadingURIString(browser, url);
+  }
   return loadPromise;
+}
+
+async function waitForPdfJSClose(browser, closeTab = false) {
+  await SpecialPowers.spawn(browser, [], async () => {
+    const viewer = content.wrappedJSObject.PDFViewerApplication;
+    await viewer.testingClose();
+  });
+  if (closeTab) {
+    const tab = gBrowser.getTabForBrowser(browser);
+    if (tab) {
+      BrowserTestUtils.removeTab(tab);
+    }
+  }
 }
 
 async function waitForPdfJSAnnotationLayer(browser, url) {
@@ -19,8 +51,8 @@ async function waitForPdfJSAnnotationLayer(browser, url) {
     null,
     true
   );
-  BrowserTestUtils.startLoadingURIString(browser, url);
-  return loadPromise;
+  let pagePromise = waitForPdfJS(browser, url);
+  return Promise.all([pagePromise, loadPromise]);
 }
 
 async function waitForPdfJSAllLayers(browser, url, layers) {
@@ -45,9 +77,14 @@ async function waitForPdfJSAllLayers(browser, url, layers) {
     null,
     true
   );
+  let pagePromise = waitForPdfJS(browser, url);
 
-  BrowserTestUtils.startLoadingURIString(browser, url);
-  await Promise.all([loadPromise, annotationPromise, annotationEditorPromise]);
+  await Promise.all([
+    pagePromise,
+    loadPromise,
+    annotationPromise,
+    annotationEditorPromise,
+  ]);
 
   await SpecialPowers.spawn(browser, [layers], async function (layers) {
     const { ContentTaskUtils } = ChromeUtils.importESModule(
@@ -80,8 +117,8 @@ async function waitForPdfJSCanvas(browser, url) {
     null,
     true
   );
-  BrowserTestUtils.startLoadingURIString(browser, url);
-  return loadPromise;
+  const pagePromise = waitForPdfJS(browser, url);
+  return Promise.all([pagePromise, loadPromise]);
 }
 
 async function waitForPdfJSSandbox(browser) {
@@ -95,25 +132,31 @@ async function waitForPdfJSSandbox(browser) {
   return loadPromise;
 }
 
-async function waitForSelector(browser, selector, message) {
+async function waitForSelector(
+  browser,
+  selector,
+  message,
+  checkVisibility = true
+) {
   return SpecialPowers.spawn(
     browser,
-    [selector, message],
-    async function (sel, msg) {
+    [selector, message, checkVisibility],
+    async function (sel, msg, checkVis) {
       const { ContentTaskUtils } = ChromeUtils.importESModule(
         "resource://testing-common/ContentTaskUtils.sys.mjs"
       );
       const { document } = content;
-
       await ContentTaskUtils.waitForCondition(
         () => !!document.querySelector(sel),
         `${sel} must be displayed`
       );
 
-      await ContentTaskUtils.waitForCondition(
-        () => ContentTaskUtils.isVisible(document.querySelector(sel)),
-        msg
-      );
+      if (checkVis) {
+        await ContentTaskUtils.waitForCondition(
+          () => ContentTaskUtils.isVisible(document.querySelector(sel)),
+          msg
+        );
+      }
     }
   );
 }
@@ -145,7 +188,32 @@ async function waitForTelemetry(browser) {
  * @param {Object} browser
  * @param {string} name
  */
-async function enableEditor(browser, name) {
+async function enableEditor(browser, name, expectedPageRendered) {
+  info("Enable editor: " + name);
+  let loadPromise;
+  if (expectedPageRendered !== 0) {
+    loadPromise = new Promise(resolve => {
+      const removeEventListener = BrowserTestUtils.addContentEventListener(
+        browser,
+        "pagerendered",
+        () => {
+          expectedPageRendered -= 1;
+          if (expectedPageRendered === 0) {
+            removeEventListener();
+            resolve();
+          }
+        },
+        { capture: false, wantUntrusted: true }
+      );
+    });
+  }
+
+  const layerPromise = waitForSelector(
+    browser,
+    `.annotationEditorLayer.${name.toLowerCase()}Editing`,
+    "Wait for the annotation editor layer",
+    true
+  );
   const editingModePromise = BrowserTestUtils.waitForContentEvent(
     browser,
     "annotationeditormodechanged",
@@ -153,16 +221,12 @@ async function enableEditor(browser, name) {
     null,
     true
   );
-  const editingStatePromise = BrowserTestUtils.waitForContentEvent(
-    browser,
-    "annotationeditorstateschanged",
-    false,
-    null,
-    true
-  );
   await clickOn(browser, `#editor${name}`);
   await editingModePromise;
-  await editingStatePromise;
+  await layerPromise;
+  if (loadPromise) {
+    await loadPromise;
+  }
   await TestUtils.waitForTick();
 }
 
@@ -232,6 +296,7 @@ async function countElements(browser, selector) {
  * @param {number} n
  */
 async function clickAt(browser, x, y, n = 1) {
+  info(`Click at: (${x}, ${y}), ${n} times`);
   await BrowserTestUtils.synthesizeMouseAtPoint(
     x,
     y,
@@ -289,21 +354,21 @@ function focusEditorLayer(browser) {
  * @returns
  */
 async function focus(browser, selector) {
-  return SpecialPowers.spawn(browser, [selector], function (sel) {
-    const el = content.document.querySelector(sel);
-    if (el === content.document.activeElement) {
-      return Promise.resolve();
-    }
-    const promise = new Promise(resolve => {
-      const listener = () => {
-        el.removeEventListener("focus", listener);
-        resolve();
-      };
-      el.addEventListener("focus", listener);
-    });
-    el.focus();
-    return promise;
-  });
+  info("Focus: " + selector);
+  return SpecialPowers.spawn(
+    browser,
+    [selector],
+    sel =>
+      new Promise(resolve => {
+        const el = content.document.querySelector(sel);
+        if (el === content.document.activeElement) {
+          resolve();
+        } else {
+          el.addEventListener("focus", () => resolve(), { once: true });
+          el.focus();
+        }
+      })
+  );
 }
 
 /**
@@ -326,6 +391,7 @@ async function hitKey(browser, char) {
  * @param {string} text
  */
 async function write(browser, text) {
+  info(`Write: ${text}`);
   for (const char of text.split("")) {
     hitKey(browser, char);
   }
@@ -335,6 +401,7 @@ async function write(browser, text) {
  * Hit escape key.
  */
 async function escape(browser) {
+  info("Escape");
   await hitKey(browser, "KEY_Escape");
 }
 
@@ -345,6 +412,7 @@ async function escape(browser) {
  * @param {Object} box
  */
 async function addFreeText(browser, text, box) {
+  info("Add FreeText: " + text);
   const { x, y, width, height } = box;
   const count = await countElements(browser, ".freeTextEditor");
   await focusEditorLayer(browser);
@@ -356,6 +424,7 @@ async function addFreeText(browser, text, box) {
 }
 
 async function waitForEditors(browser, selector, count) {
+  info(`Wait for ${count} editors`);
   await BrowserTestUtils.waitForCondition(
     async () => (await countElements(browser, selector)) === count
   );
@@ -447,4 +516,44 @@ function makePDFJSHandler() {
   );
 
   info("Pref action: " + handlerInfo.preferredAction);
+}
+
+async function testTelemetryEventExtra(record, expected, clear = true) {
+  await Services.fog.testFlushAllChildren();
+  const values = record.testGetValue();
+  Assert.equal(values.length, expected.length, "Should have the length");
+
+  for (let i = 0; i < expected.length; i++) {
+    const value = values[i];
+    Assert.deepEqual(
+      value?.extra ?? {},
+      expected[i],
+      `Should have the right value at index ${i}`
+    );
+  }
+  if (clear) {
+    Services.fog.testResetFOG();
+  }
+}
+
+function waitForPreviewVisible() {
+  return BrowserTestUtils.waitForCondition(function () {
+    let preview = document.querySelector(".printPreviewBrowser");
+    return preview && BrowserTestUtils.isVisible(preview);
+  });
+}
+
+function closePreview() {
+  EventUtils.synthesizeKey("KEY_Escape");
+  return BrowserTestUtils.waitForCondition(
+    () => !document.querySelector(".printPreviewBrowser")
+  );
+}
+
+function waitForTimeout(browser, n) {
+  return SpecialPowers.spawn(browser, [n], n => {
+    const { promise, resolve } = Promise.withResolvers();
+    content.setTimeout(resolve, n);
+    return promise;
+  });
 }

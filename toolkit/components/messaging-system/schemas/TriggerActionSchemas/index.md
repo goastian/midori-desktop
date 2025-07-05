@@ -36,24 +36,33 @@ let patterns: string[];
 
 ## Available trigger actions
 
-* [openArticleURL](#openarticleurl)
-* [openBookmarkedURL](#openbookmarkedurl)
-* [frequentVisits](#frequentvisits)
-* [openURL](#openurl)
-* [newSavedLogin](#newsavedlogin)
-* [formAutofill](#formautofill)
-* [contentBlocking](#contentblocking)
-* [defaultBrowserCheck](#defaultbrowsercheck)
-* [deeplinkedToWindowsSettingsUI](#deeplinkedtowindowssettingsui)
-* [captivePortalLogin](#captiveportallogin)
-* [preferenceObserver](#preferenceobserver)
-* [featureCalloutCheck](#featurecalloutcheck)
-* [nthTabClosed](#nthtabclosed)
-* [activityAfterIdle](#activityafteridle)
-* [cookieBannerDetected](#cookiebannerdetected)
-* [cookieBannerHandled](#cookiebannerhandled)
-* [messagesLoaded](#messagesloaded)
-* [pageActionInUrlbar](#pageactioninurlbar)
+- [`openArticleURL`](#openarticleurl)
+- [`openBookmarkedURL`](#openbookmarkedurl)
+- [`frequentVisits`](#frequentvisits)
+- [`openURL`](#openurl)
+- [`newSavedLogin`](#newsavedlogin)
+- [`formAutofill`](#formautofill)
+- [`contentBlocking`](#contentblocking)
+- [`defaultBrowserCheck`](#defaultbrowsercheck)
+- [`deeplinkedToWindowsSettingsUI`](#deeplinkedtowindowssettingsui)
+- [`captivePortalLogin`](#captiveportallogin)
+- [`preferenceObserver`](#preferenceobserver)
+- [`featureCalloutCheck`](#featurecalloutcheck)
+- [`pdfJsFeatureCalloutCheck`](#pdfjsfeaturecalloutcheck)
+- [`newtabFeatureCalloutCheck`](#newtabfeaturecalloutcheck)
+- [`nthTabClosed`](#nthtabclosed)
+- [`nthTabOpened`](#nthtabopened)
+- [`tabGroupCreated`](#tabgroupcreated)
+- [`tabGroupSaved`](#tabgroupsaved)
+- [`tabGroupCollapsed`](#tabgroupcollapsed)
+- [`activityAfterIdle`](#activityafteridle)
+- [`cookieBannerDetected`](#cookiebannerdetected)
+- [`cookieBannerHandled`](#cookiebannerhandled)
+- [`messagesLoaded`](#messagesloaded)
+- [`pageActionInUrlbar`](#pageactioninurlbar)
+- [`onSearch`](#onsearch)
+- [`sidebarToolOpened`](#sidebartoolopened)
+- [`elementClicked`](#elementclicked)
 
 ### `openArticleURL`
 
@@ -210,6 +219,102 @@ Happens when the user closes n or more tabs in a session
   targeting: "tabsClosedCount >= 2"
 }
 ```
+```js
+// The trigger also tracks the number of tabs currently open,
+// and the currentTabsOpen context variable can be used in targeting
+// to ensure a minimum number of tabs are open.
+// Here, the message will trigger on the next tab closed
+// after 4 tabs are opened (and remain open).
+{
+  trigger: { id: "nthTabClosed" },
+  targeting: "currentTabsOpen >= 4"
+}
+```
+
+### `nthTabOpened`
+
+Happens when the user opens n or more tabs in a session
+
+```js
+// Register a message with the following trigger and
+// include the tabsOpenedCount context variable in the targeting.
+// Here, the message triggers once two or more tabs are opened,
+// even if the tabs were closed in between.
+{
+  trigger: { id: "nthTabOpened" },
+  targeting: "tabsOpenedCount >= 2"
+}
+```
+```js
+// The trigger also tracks the number of tabs currently open,
+// and the currentTabsOpen context variable can be used in targeting
+// to ensure a minimum number of tabs are open.
+// Here, the message will trigger on the next tab opened
+// while 4 tabs remain open in the browser.
+{
+  trigger: { id: "nthTabOpened" },
+  targeting: "currentTabsOpen >= 4"
+}
+```
+
+### `tabGroupCreated`
+
+Happens whenever a user creates a tab group.
+
+```js
+{
+  trigger: { id: "tabGroupCreated" }
+}
+```
+```js
+// The trigger can also track the number of tab groups created in a
+// session, by including the tabGroupsCreatedCount context variable in targeting.
+// Here, the message triggers once two or more tab groups have been created,
+// even if the tabs were closed in between.
+{
+  trigger: { id: "tabGroupCreated" },
+  targeting: { "tabGroupsCreatedCount >= 2" }
+}
+```
+
+### `tabGroupSaved`
+
+Happens whenever a user uses the "Save and Close" action on a tab group.
+
+```js
+{
+  trigger: { id: "tabGroupSaved" }
+}
+```
+```js
+// The trigger can also track the number of tab groups closed in a
+// session, by including the tabGroupsClosedCount context variable in targeting.
+// Here, the message triggers once two tab groups have been saved and closed.
+{
+  trigger: { id: "tabGroupSaved" },
+  targeting: { "tabGroupsSavedCount >= 2" }
+}
+```
+
+### `tabGroupCollapsed`
+
+Happens whenever a user clicks a tab group label to collapse it. Can be used with the `currentTabGroups` targeting to ensure multiple groups have been collapsed.
+
+```js
+{
+  trigger: { id: "tabGroupCollapsed" }
+}
+```
+```js
+// The trigger can also track the number of tab groups collapsed in a
+// session, by including the tabGroupsCollapsedCount context variable in targeting.
+// Here, the message triggers once four tab groups have been collapsed, or one group
+// has been collapsed four times.
+{
+  trigger: { id: "tabGroupCollapsed" },
+  targeting: { "tabGroupsCollapsedCount >= 4" }
+}
+```
 
 ### `activityAfterIdle`
 
@@ -264,5 +369,53 @@ Happens when a page action appears in the location bar. The specific page action
 {
   trigger: { id: "pageActionInUrlbar" },
   targeting: "pageAction == 'reader-mode-button'"
+}
+```
+
+### `onSearch`
+
+Happens when the user uses the search feature in the awesome bar.
+
+The `isSuggestion` boolean context variable is available in targeting, and will evaluate to true if the search was initiated from a recommendation in the awesomebar.
+
+The `searchSource` string context variable is also available in targeting, and returns the search source. It will be one of four values: `urlbar-handoff` if one of the faux-search inputs were used (such as the one present on the newtab page), `urlbar-searchmode` if the user has selected a search engine, `urlbar-persisted` if the user has changed tabs or windows and come back to their search term in the URL bar, or `urlbar` if the user is doing a standard search by entering a term into the URL bar and pressing enter, or clicking on a search suggestion.
+
+The `isOneOff` boolean context variable is available in targeting, and will be true if one of the one-off search features (typically found at the bottom of the awesomebar's dropdown menu) is used.
+
+```js
+{
+  trigger: { id: "onSearch" },
+  targeting: "isSuggestion && searchSource == 'urlbar-handoff' && isOneOff"
+}
+```
+
+### `sidebarToolOpened`
+
+Happens when the user opens a tool or extension panel in the sidebar
+
+The `view` string context variable is available in targeting, and will correspond with which sidebar tool/extension has been opened (ex: "viewHistorySidebar", "viewBookmarksSidebar", etc).
+
+The `clickCounts` object context variable is also available in targeting, and information about how many time a specific tool or extensions has been opened. The `SIDEBAR_TOOL_SURVEY` callout will be targeted to show if any tool/extension (excluding GenAI chatbot) has been clicked 5 times per-window and per-session. The `SIDEBAR_GENAI_SURVEY` callout will be targeted to show if the GenAI chatbot panel has been opened 2 times per-window and per-session.
+
+```js
+{
+  trigger: { id: "sidebarToolOpened" },
+  targeting: `'sidebar.position_start'|preferenceValue && view != 'viewGenaiChatSidebar' && clickCounts.totalToolsMinusGenai == 5 && !'messaging-system-action.sidebar-tools-microsurvey-complete-or-dismissed'|preferenceValue`
+}
+```
+
+### `elementClicked`
+
+Happens when an element in the browser chrome is clicked. The trigger will only fire if the element that is clicked has an ID that is within the trigger's params array.
+
+The `elementId` string context variable is also available in targeting, and will correspond to the ID of the element that was clicked.
+
+```js
+{
+  trigger: {
+    id: "elementClicked",
+    params: ["element1-id", "element2-id"]
+  },
+  targeting: "elementId == 'element1-id'"
 }
 ```

@@ -3,6 +3,7 @@ import os.path
 import sys
 from subprocess import check_call
 
+import mozinstall
 import mozunit
 import pytest
 from moztest.selftest import fixtures
@@ -10,8 +11,20 @@ from moztest.selftest import fixtures
 MOZ_AUTOMATION = bool(os.getenv("MOZ_AUTOMATION", "0") == "1")
 
 
+# skip tsan while ubuntu 18.04 is the test image, for intermittent startup crashes
+@pytest.mark.skip_mozinfo("tsan")
 def test_grizzly_smoke():
     ffbin = fixtures.binary()
+
+    ffbin = ffbin.replace("$MOZ_FETCHES_DIR", os.getenv("MOZ_FETCHES_DIR", "")).strip(
+        '"'
+    )
+
+    if "Contents/MacOS/firefox" in ffbin and MOZ_AUTOMATION:
+        mozinstall.install(
+            os.path.join(os.getenv("MOZ_FETCHES_DIR", ""), "target.dmg"),
+            os.getenv("MOZ_FETCHES_DIR", ""),
+        )
 
     if MOZ_AUTOMATION:
         assert os.path.exists(
@@ -30,6 +43,7 @@ def test_grizzly_smoke():
             "no-op",
             "--headless",
             "--smoke-test",
+            "--display-launch-failures",
             "--limit",
             "10",
             "--relaunch",

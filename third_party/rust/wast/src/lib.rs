@@ -43,10 +43,15 @@
 //! don't need this (for example you're parsing your own s-expression format)
 //! then this feature can be disabled.
 //!
+//! This crate also has an off-by-default `dwarf` feature which enables using
+//! [`core::EncodeOptions::dwarf`] to embed DWARF debugging information in generated
+//! binaries.
+//!
 //! [`Parse`]: parser::Parse
 //! [`LexError`]: lexer::LexError
 
 #![deny(missing_docs, rustdoc::broken_intra_doc_links)]
+#![cfg_attr(docsrs, feature(doc_auto_cfg))]
 
 /// A macro to create a custom keyword parser.
 ///
@@ -96,7 +101,7 @@ macro_rules! custom_keyword {
         #[allow(non_camel_case_types)]
         #[allow(missing_docs)]
         #[derive(Debug, Copy, Clone)]
-        pub struct $name(pub $crate::token::Span);
+        pub struct $name(#[allow(dead_code)] pub $crate::token::Span);
 
         impl<'a> $crate::parser::Parse<'a> for $name {
             fn parse(parser: $crate::parser::Parser<'a>) -> $crate::parser::Result<Self> {
@@ -317,8 +322,8 @@ macro_rules! annotation {
         impl<'a> $crate::parser::Parse<'a> for $name {
             fn parse(parser: $crate::parser::Parser<'a>) -> $crate::parser::Result<Self> {
                 parser.step(|c| {
-                    if let Some((a, rest)) = c.reserved()? {
-                        if a == concat!("@", $annotation) {
+                    if let Some((a, rest)) = c.annotation()? {
+                        if a == $annotation {
                             return Ok(($name(c.cur_span()), rest));
                         }
                     }
@@ -329,8 +334,8 @@ macro_rules! annotation {
 
         impl $crate::parser::Peek for $name {
             fn peek(cursor: $crate::parser::Cursor<'_>) -> $crate::parser::Result<bool> {
-                Ok(if let Some((a, _rest)) = cursor.reserved()? {
-                    a == concat!("@", $annotation)
+                Ok(if let Some((a, _rest)) = cursor.annotation()? {
+                    a == $annotation
                 } else {
                     false
                 })
@@ -347,12 +352,16 @@ pub mod lexer;
 pub mod parser;
 pub mod token;
 
+#[cfg(feature = "wasm-module")]
 mod encode;
 mod error;
+#[cfg(feature = "wasm-module")]
 mod gensym;
+#[cfg(feature = "wasm-module")]
 mod names;
 pub use self::error::*;
 
+#[cfg(feature = "wasm-module")]
 macro_rules! id {
     ($($t:tt)*) => ($($t)*)
 }
@@ -368,6 +377,10 @@ id! {
     pub mod core;
 
     // Support for component model parsing
+    #[cfg(feature = "component-model")]
+    pub mod component;
+    #[cfg(not(feature = "component-model"))]
+    #[path = "component_disabled.rs"]
     pub mod component;
 }
 
@@ -387,6 +400,7 @@ pub mod kw {
     custom_keyword!(assert_return);
     custom_keyword!(assert_trap);
     custom_keyword!(assert_unlinkable);
+    custom_keyword!(assert_suspension);
     custom_keyword!(before);
     custom_keyword!(binary);
     custom_keyword!(block);
@@ -396,6 +410,8 @@ pub mod kw {
     custom_keyword!(catch_all);
     custom_keyword!(catch_all_ref);
     custom_keyword!(code);
+    custom_keyword!(cont);
+    custom_keyword!(contref);
     custom_keyword!(component);
     custom_keyword!(data);
     custom_keyword!(declare);
@@ -445,16 +461,19 @@ pub mod kw {
     custom_keyword!(modulecode);
     custom_keyword!(nan_arithmetic = "nan:arithmetic");
     custom_keyword!(nan_canonical = "nan:canonical");
+    custom_keyword!(nocont);
     custom_keyword!(nofunc);
     custom_keyword!(noextern);
     custom_keyword!(noexn);
     custom_keyword!(none);
     custom_keyword!(null);
+    custom_keyword!(nullcontref);
     custom_keyword!(nullfuncref);
     custom_keyword!(nullexternref);
     custom_keyword!(nullexnref);
     custom_keyword!(nullref);
     custom_keyword!(offset);
+    custom_keyword!(on);
     custom_keyword!(outer);
     custom_keyword!(own);
     custom_keyword!(pagesize);
@@ -483,6 +502,7 @@ pub mod kw {
     custom_keyword!(shared);
     custom_keyword!(start);
     custom_keyword!(sub);
+    custom_keyword!(switch);
     custom_keyword!(r#final = "final");
     custom_keyword!(table);
     custom_keyword!(then);
@@ -534,7 +554,10 @@ pub mod kw {
     custom_keyword!(export_info = "export-info");
     custom_keyword!(import_info = "import-info");
     custom_keyword!(thread);
+    custom_keyword!(thread_spawn = "thread.spawn");
+    custom_keyword!(thread_hw_concurrency = "thread.hw_concurrency");
     custom_keyword!(wait);
+    custom_keyword!(definition);
 }
 
 /// Common annotations used to parse WebAssembly text files.

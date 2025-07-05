@@ -1,0 +1,252 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Tests for the FxA Menu Message component</title>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="chrome://mochikit/content/tests/SimpleTest/EventUtils.js"></script>
+  <script
+  src="chrome://browser/content/asrouter/components/fxa-menu-message.mjs"
+  type="module"
+></script>
+  <link rel="stylesheet" href="chrome://mochikit/content/tests/SimpleTest/test.css"/>
+  <script>
+    const { BrowserTestUtils } = ChromeUtils.importESModule(
+      "resource://testing-common/BrowserTestUtils.sys.mjs"
+    );
+
+    /**
+     * Tests that the exposed properties of the component are reflected
+     * as expected in the shadow DOM.
+     */
+    add_task(async function test_exposed_properties() {
+      let message = document.createElement("fxa-menu-message");
+      const TEST_IMAGE_URL = "chrome://activity-stream/content/data/content/assets/fox-doodle-waving-static.png";
+      message.imageURL = TEST_IMAGE_URL;
+      const TEST_BUTTON_TEXT = "Howdy, partner! Sign up!";
+      message.buttonText = TEST_BUTTON_TEXT;
+      const PRIMARY_TEXT = "This is the primary text";
+      message.primaryText = PRIMARY_TEXT;
+      const SECONDARY_TEXT = "This is the secondary text";
+      message.secondaryText = SECONDARY_TEXT;
+
+      let content = document.getElementById("content");
+      content.appendChild(message);
+      await message.updateComplete;
+
+      let shadow = message.shadowRoot;
+      let image = shadow.querySelector("img");
+      is(image.src, TEST_IMAGE_URL, "The img element got the expected URL");
+
+      let button = shadow.querySelector("#sign-up-button");
+      is(button.textContent.trim(), TEST_BUTTON_TEXT, "The sign-up button got the right text.");
+
+      let primaryText = shadow.querySelector("#primary");
+      is(primaryText.textContent, PRIMARY_TEXT, "The primary text was correct.");
+
+      let secondaryText = shadow.querySelector("#secondary");
+      is(secondaryText.textContent, SECONDARY_TEXT, "The secondary text was correct.");
+
+      let container = shadow.querySelector("#container");
+      is(container.getAttribute("layout"), "column", "The layout should default to 'column' when no layout is explicitly set.");
+
+      const TEST_ROW_LAYOUT = "row";
+      message.layout = TEST_ROW_LAYOUT
+      await message.updateComplete;
+      is(container.getAttribute("layout"), TEST_ROW_LAYOUT, "The layout attribute should update to 'row' when set.");
+
+      message.remove();
+    });
+
+    /**
+     * Tests that the buttons exposed by the component emit the expected
+     * events.
+     */
+    add_task(async function test_button_properties() {
+      let message = document.createElement("fxa-menu-message");
+      const TEST_BUTTON_TEXT = "Howdy, partner! Sign up!";
+      message.buttonText = TEST_BUTTON_TEXT;
+
+      let content = document.getElementById("content");
+      content.appendChild(message);
+      await message.updateComplete;
+
+      let shadow = message.shadowRoot;
+
+      let signUpEventPromise = BrowserTestUtils.waitForEvent(message, "FxAMenuMessage:SignUp");
+      let signUpButton = shadow.querySelector("#sign-up-button");
+      signUpButton.click();
+      await signUpEventPromise;
+      ok(true, "Got the FxAMenuMessage:SignUp event");
+
+      let closeEventPromise = BrowserTestUtils.waitForEvent(message, "FxAMenuMessage:Close");
+      let closeButton = shadow.querySelector("#close-button");
+      closeButton.click();
+      await closeEventPromise;
+      ok(true, "Got the FxAMenuMessage:Close event");
+
+      message.remove();
+    });
+
+    /**
+     * Tests that the sign-up button is focused by default, and that focus
+     * can be changed via the keyboard.
+     */
+    add_task(async function test_signup_focus() {
+      let message = document.createElement("fxa-menu-message");
+      const TEST_BUTTON_TEXT = "Howdy, partner! Sign up!";
+      message.buttonText = TEST_BUTTON_TEXT;
+
+      let content = document.getElementById("content");
+      content.appendChild(message);
+      await message.updateComplete;
+
+      message.focus();
+
+      let shadow = message.shadowRoot;
+      let signUpButton = shadow.querySelector("#sign-up-button");
+      is(shadow.activeElement, signUpButton, "Sign-up button is focused by default.");
+
+      let closeButton = shadow.querySelector("#close-button");
+      const FOCUS_CHANGING_KEYS = [
+        "ArrowLeft",
+        "ArrowRight",
+        "ArrowUp",
+        "ArrowDown",
+      ];
+
+      for (let keyName of FOCUS_CHANGING_KEYS) {
+        synthesizeKey(`KEY_${keyName}`);
+        // Now the close button should be focused.
+        is(shadow.activeElement, closeButton, "Close button is now focused.");
+
+        synthesizeKey(`KEY_${keyName}`);
+        // And pressing the same key should swap focus back to the sign-up
+        // button.
+        is(shadow.activeElement, signUpButton, "Sign-up button is now focused.");
+      }
+
+      message.remove();
+    });
+
+    /**
+     * Tests that setting no imageURL makes it so that the image element is
+     * not visible, and setting one makes it visible.
+     */
+    add_task(async function test_image_visibility() {
+      let message = document.createElement("fxa-menu-message");
+      const TEST_BUTTON_TEXT = "Howdy, partner! Sign up!";
+      message.buttonText = TEST_BUTTON_TEXT;
+
+      let content = document.getElementById("content");
+      content.appendChild(message);
+      await message.updateComplete;
+
+      let illustrationContainer = message.shadowRoot.querySelector("#illustration-container");
+      ok(isHidden(illustrationContainer), "Illustration container should be hidden.");
+
+      message.imageURL = "some-image.png";
+      await message.updateComplete;
+      ok(!isHidden(illustrationContainer), "Illustration container should be visible.");
+
+      message.remove();
+    });
+
+    async function testIllustrationOffset({
+      layout,
+      offsetVar,
+      cssProperty,
+      checkContainerOffset = false,
+    }) {
+      const TEST_DEFAULT_VALUE = "0px";
+      const TEST_CONTAINER_OFFSET = "10px";
+      const TEST_ILLUSTRATION_OFFSET = "123px";
+      const TEST_IMAGE_URL =
+        "chrome://activity-stream/content/data/content/assets/fox-doodle-waving-static.png";
+
+      let message = document.createElement("fxa-menu-message");
+      message.imageURL = TEST_IMAGE_URL;
+      if (layout) {
+        message.layout = layout;
+      }
+
+      document.getElementById("content").appendChild(message);
+      await message.updateComplete;
+
+      let illustrationContainer = message.shadowRoot.querySelector(
+        "#illustration-container"
+      );
+      ok(
+        !isHidden(illustrationContainer),
+        "Illustration container should not be hidden."
+      );
+
+      let computedStyle = window.getComputedStyle(illustrationContainer);
+      is(
+        computedStyle[cssProperty],
+        TEST_DEFAULT_VALUE,
+        "Illustration offset should default to 0px"
+      );
+
+      message.style.setProperty(offsetVar, TEST_ILLUSTRATION_OFFSET);
+      computedStyle = window.getComputedStyle(illustrationContainer);
+      is(
+        computedStyle[cssProperty],
+        TEST_ILLUSTRATION_OFFSET,
+        "Illustration offset should have been forwarded to the container."
+      );
+
+      if (checkContainerOffset) {
+        const container = message.shadowRoot.querySelector("#container");
+        let containerStyle = window.getComputedStyle(container);
+        is(
+          containerStyle.marginBlockEnd,
+          TEST_DEFAULT_VALUE,
+          "Container offset should default to 0px."
+        );
+        message.style.setProperty(
+          "--container-margin-block-end-offset",
+          TEST_CONTAINER_OFFSET
+        );
+        containerStyle = window.getComputedStyle(container);
+        is(
+          containerStyle.marginBlockEnd,
+          TEST_CONTAINER_OFFSET,
+          "Container offset should have been applied."
+        );
+      }
+      message.remove();
+    }
+
+    /**
+     * Tests that setting the --illustration-margin-block-start-offset forwards that
+     * offset to the illustration container for 'column' layout.
+     */
+    add_task(async function test_column_layout_illustration_offset() {
+      await testIllustrationOffset({
+        layout: null,
+        offsetVar: "--illustration-margin-block-start-offset",
+        cssProperty: "marginBlockStart",
+      });
+    });
+
+    /**
+     * Tests that setting the --illustration-margin-block-end-offset forwards that
+     * offset to the illustration container for 'row' layout.
+     */
+    add_task(async function test_row_layout_illustration_offset() {
+      await testIllustrationOffset({
+        layout: "row",
+        offsetVar: "--illustration-margin-block-end-offset",
+        cssProperty: "marginBlockEnd",
+        checkContainerOffset: true,
+      });
+    });
+  </script>
+</head>
+<body>
+<p id="display"></p>
+<div id="content"></div>
+<pre id="test"></pre>
+</body>
+</html>

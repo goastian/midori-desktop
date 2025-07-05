@@ -40,7 +40,7 @@ import yaml
 # A minor version bump means that there is no breaking change. A major version
 # bump means that the upload is a breaking change. Firefox will only download
 # records that match the TranslationsParent.BERGAMOT_MAJOR_VERSION.
-REMOTE_SETTINGS_VERSION = "1.1"
+REMOTE_SETTINGS_VERSION = "2.0"
 
 COLLECTION_NAME = "translations-wasm"
 DEV_SERVER = "https://remote-settings-dev.allizom.org/v1"
@@ -50,8 +50,10 @@ STAGE_SERVER = "https://remote-settings.allizom.org/v1"
 DIR_PATH = os.path.realpath(os.path.dirname(__file__))
 MOZ_YAML_PATH = os.path.join(DIR_PATH, "moz.yaml")
 THIRD_PARTY_PATH = os.path.join(DIR_PATH, "thirdparty")
-BUILD_PATH = os.path.join(THIRD_PARTY_PATH, "build-wasm")
-WASM_PATH = os.path.join(BUILD_PATH, "bergamot-translator-worker.wasm")
+REPO_PATH = os.path.join(THIRD_PARTY_PATH, "translations")
+INFERENCE_PATH = os.path.join(REPO_PATH, "inference")
+BUILD_PATH = os.path.join(INFERENCE_PATH, "build-wasm")
+WASM_PATH = os.path.join(BUILD_PATH, "bergamot-translator.wasm")
 ROOT_PATH = os.path.join(DIR_PATH, "../../../..")
 BROWSER_VERSION_PATH = os.path.join(ROOT_PATH, "browser/config/version.txt")
 RECORDS_PATH = "/admin/#/buckets/main-workspace/collections/translations-wasm/records"
@@ -87,7 +89,7 @@ class RemoteSettings:
         self.server: str = server
         self.bearer_token: str = bearer_token
 
-        with open(MOZ_YAML_PATH, "r", encoding="utf8") as file:
+        with open(MOZ_YAML_PATH, encoding="utf8") as file:
             moz_yaml_text = file.read()
         self.moz_yaml = yaml.safe_load(moz_yaml_text)
 
@@ -201,7 +203,7 @@ class RemoteSettings:
             print_error("Some of the required record data is not in the moz.yaml file.")
             sys.exit(1)
 
-        with open(BROWSER_VERSION_PATH, "r", encoding="utf8") as file:
+        with open(BROWSER_VERSION_PATH, encoding="utf8") as file:
             fx_release = file.read().strip()
 
         files = [

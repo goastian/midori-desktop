@@ -93,14 +93,14 @@ def load_allowlist():
         allowlist_path = os.path.join(
             telemetry_module_path, "histogram-allowlists.json"
         )
-        with open(allowlist_path, "r") as f:
+        with open(allowlist_path) as f:
             try:
                 allowlists = json.load(f)
                 for name, allowlist in allowlists.items():
                     allowlists[name] = set(allowlist)
             except ValueError:
                 ParserError("Error parsing allowlist: %s" % allowlist_path).handle_now()
-    except IOError:
+    except OSError:
         allowlists = None
         ParserError("Unable to parse allowlist: %s." % allowlist_path).handle_now()
 
@@ -112,7 +112,7 @@ class Histogram:
         """Initialize a histogram named name with the given definition.
         definition is a dict-like object that must contain at least the keys:
 
-         - 'kind': The kind of histogram.  Must be one of 'boolean', 'flag',
+         - 'kind': The kind of histogram.  Must be one of 'boolean',
            'count', 'enumerated', 'linear', or 'exponential'.
          - 'description': A textual description of the histogram.
          - 'strict_type_checks': A boolean indicating whether to use the new, stricter type checks.
@@ -147,7 +147,7 @@ class Histogram:
 
     def kind(self):
         """Return the kind of the histogram.
-        Will be one of 'boolean', 'flag', 'count', 'enumerated', 'categorical', 'linear',
+        Will be one of 'boolean', 'count', 'enumerated', 'categorical', 'linear',
         or 'exponential'."""
         return self._kind
 
@@ -229,7 +229,6 @@ class Histogram:
         """Return an array of lower bounds for each bucket in the histogram."""
         bucket_fns = {
             "boolean": linear_buckets,
-            "flag": linear_buckets,
             "count": linear_buckets,
             "enumerated": linear_buckets,
             "categorical": linear_buckets,
@@ -248,7 +247,6 @@ class Histogram:
     def compute_bucket_parameters(self, definition):
         bucket_fns = {
             "boolean": Histogram.boolean_flag_bucket_parameters,
-            "flag": Histogram.boolean_flag_bucket_parameters,
             "count": Histogram.boolean_flag_bucket_parameters,
             "enumerated": Histogram.enumerated_bucket_parameters,
             "categorical": Histogram.categorical_bucket_parameters,
@@ -269,7 +267,6 @@ class Histogram:
 
         table = {
             "boolean": ALWAYS_ALLOWED_KEYS,
-            "flag": ALWAYS_ALLOWED_KEYS,
             "count": ALWAYS_ALLOWED_KEYS,
             "enumerated": ALWAYS_ALLOWED_KEYS + ["n_values"],
             "categorical": ALWAYS_ALLOWED_KEYS + ["labels", "n_values"],
@@ -285,7 +282,7 @@ class Histogram:
         if kind not in table:
             ParserError(
                 'Unknown kind "%s" for histogram "%s".' % (kind, name)
-            ).handle_later()
+            ).handle_now()
         allowed_keys = table[kind]
 
         self.check_name(name)
@@ -350,10 +347,8 @@ class Histogram:
             and self._strict_type_checks
         ):
             ParserError(
-                (
-                    "Error for histogram {} - invalid {}: {}."
-                    "\nSee: {}#expires-in-version"
-                ).format(name, field, expiration, HISTOGRAMS_DOC_URL)
+                f"Error for histogram {name} - invalid {field}: {expiration}."
+                f"\nSee: {HISTOGRAMS_DOC_URL}#expires-in-version"
             ).handle_later()
 
         expiration = utils.add_expiration_postfix(expiration)
@@ -431,24 +426,12 @@ class Histogram:
                 ).handle_later()
 
     def check_operating_systems(self, name, definition):
-        if not self._strict_type_checks:
+        if not self._strict_type_checks or not "operating_systems" in definition:
             return
 
-        field = "operating_systems"
-        operating_systems = definition.get(field)
-
-        DOC_URL = HISTOGRAMS_DOC_URL + "#operating-systems"
-
-        if not operating_systems:
-            # operating_systems is optional
-            return
-
-        for operating_system in operating_systems:
-            if not utils.is_valid_os(operating_system):
-                ParserError(
-                    'Histogram "%s" has unknown operating system "%s" in %s.\n%s'
-                    % (name, operating_system, field, DOC_URL)
-                ).handle_later()
+        ParserError(
+            f"Histogram {name} uses obsolete field 'operating_systems'."
+        ).handle_later()
 
     def check_record_into_store(self, name, definition):
         if not self._strict_type_checks:
@@ -606,17 +589,13 @@ class Histogram:
                 continue
             if not isinstance(definition[key], key_type):
                 ParserError(
-                    'Value for key "{0}" in histogram "{1}" should be {2}.'.format(
-                        key, name, nice_type_name(key_type)
-                    )
+                    f'Value for key "{key}" in histogram "{name}" should be {nice_type_name(key_type)}.'
                 ).handle_later()
 
         # Make sure the max range is lower than or equal to INT_MAX
         if "high" in definition and not c_int(definition["high"]).value > 0:
             ParserError(
-                'Value for high in histogram "{0}" should be lower or equal to INT_MAX.'.format(
-                    nice_type_name(c_int)
-                )
+                f'Value for high in histogram "{nice_type_name(c_int)}" should be lower or equal to INT_MAX.'
             ).handle_later()
 
         for key, key_type in type_checked_list_fields.items():
@@ -624,8 +603,8 @@ class Histogram:
                 continue
             if not all(isinstance(x, key_type) for x in definition[key]):
                 ParserError(
-                    'All values for list "{0}" in histogram "{1}" should be of type'
-                    " {2}.".format(key, name, nice_type_name(key_type))
+                    f'All values for list "{key}" in histogram "{name}" should be of type'
+                    f" {nice_type_name(key_type)}."
                 ).handle_later()
 
     def check_keys(self, name, definition, allowed_keys):
@@ -690,7 +669,6 @@ class Histogram:
         # Pick a Telemetry implementation type.
         types = {
             "boolean": "BOOLEAN",
-            "flag": "FLAG",
             "count": "COUNT",
             "enumerated": "LINEAR",
             "categorical": "CATEGORICAL",
@@ -739,7 +717,7 @@ def load_histograms_into_dict(ordered_pairs, strict_type_checks):
 # routine to parse that file, and return a dictionary mapping histogram
 # names to histogram parameters.
 def from_json(filename, strict_type_checks):
-    with open(filename, "r") as f:
+    with open(filename) as f:
         try:
 
             def hook(ps):

@@ -1257,9 +1257,14 @@ class MozPromise : public MozPromiseBase {
     }
   }
 
-  bool IsResolved() const { return mValue.IsResolve(); }
-
  protected:
+  // NOTE: Methods like `IsPending()` and `Value()` are intentionally marked as
+  // `protected`, as they are not safe to call from outside of the MozPromise
+  // code.  The only way to inspect the state of a MozPromise is intentionally
+  // to call `->Then` on the promise, and receive an async callback.
+  //
+  // MozPromise has somewhat complex locking and thread safety properties which
+  // can't be extended outside of the code in this file.
   bool IsPending() const { return mValue.IsNothing(); }
 
   ResolveOrRejectValue& Value() {
@@ -1589,7 +1594,7 @@ class MozPromiseHolder
  public:
   using MozPromiseHolderBase<
       PromiseType, MozPromiseHolder<PromiseType>>::MozPromiseHolderBase;
-  static constexpr void Check(){};
+  static constexpr void Check() {};
 };
 
 template <typename PromiseType>

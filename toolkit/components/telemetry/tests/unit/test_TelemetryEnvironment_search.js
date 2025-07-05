@@ -8,14 +8,16 @@ const { SearchTestUtils } = ChromeUtils.importESModule(
   "resource://testing-common/SearchTestUtils.sys.mjs"
 );
 
-const { SearchUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/SearchUtils.sys.mjs"
-);
 const { TelemetryEnvironmentTesting } = ChromeUtils.importESModule(
   "resource://testing-common/TelemetryEnvironmentTesting.sys.mjs"
 );
 
+const { ExtensionTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/ExtensionXPCShellUtils.sys.mjs"
+);
+
 SearchTestUtils.init(this);
+ExtensionTestUtils.init(this);
 
 function promiseNextTick() {
   return new Promise(resolve => executeSoon(resolve));
@@ -28,7 +30,28 @@ var gHttpRoot = null;
 // The URL of the data directory, on the webserver.
 var gDataRoot = null;
 
-add_task(async function setup() {
+const SEARCH_CONFIG = [
+  {
+    identifier: "telemetrySearchIdentifier",
+    base: {
+      name: "telemetrySearchIdentifier",
+      urls: {
+        search: {
+          base: "https://ar.wikipedia.org/wiki/%D8%AE%D8%A7%D8%B5:%D8%A8%D8%AD%D8%AB",
+          params: [
+            {
+              name: "sourceId",
+              value: "Mozilla-search",
+            },
+          ],
+          searchTermParamName: "search",
+        },
+      },
+    },
+  },
+];
+
+add_setup(async function setup() {
   TelemetryEnvironmentTesting.registerFakeSysInfo();
   TelemetryEnvironmentTesting.spoofGfxAdapter();
   do_get_profile();
@@ -36,16 +59,6 @@ add_task(async function setup() {
   // We need to ensure FOG is initialized, otherwise we will panic trying to get test values.
   Services.fog.initializeFOG();
 
-  // The system add-on must be installed before AddonManager is started.
-  const distroDir = FileUtils.getDir("ProfD", ["sysfeatures", "app0"]);
-  distroDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
-  do_get_file("system.xpi").copyTo(
-    distroDir,
-    "tel-system-xpi@tests.mozilla.org.xpi"
-  );
-  let system_addon = FileUtils.File(distroDir.path);
-  system_addon.append("tel-system-xpi@tests.mozilla.org.xpi");
-  system_addon.lastModifiedTime = SYSTEM_ADDON_INSTALL_DATE;
   await loadAddonManager(APP_ID, APP_NAME, APP_VERSION, PLATFORM_VERSION);
 
   TelemetryEnvironmentTesting.init(gAppInfo);
@@ -56,7 +69,7 @@ add_task(async function setup() {
   // there is already a database on disk.  Simulate that here by just
   // restarting the AddonManager.
   await AddonTestUtils.promiseShutdownManager();
-  await AddonTestUtils.overrideBuiltIns({ system: [] });
+  await AddonTestUtils.overrideBuiltIns({ builtins: [] });
   AddonTestUtils.addonStartup.remove(true);
   await AddonTestUtils.promiseStartupManager();
 
@@ -80,7 +93,7 @@ add_task(async function setup() {
 
   await TelemetryEnvironmentTesting.spoofProfileReset();
   await TelemetryEnvironment.delayedInit();
-  await SearchTestUtils.useTestEngines("data", "search-extensions");
+  await SearchTestUtils.setRemoteSettingsConfig(SEARCH_CONFIG);
 
   // Now continue with startup.
   let initPromise = TelemetryEnvironment.onInitialized();
@@ -144,13 +157,9 @@ async function checkDefaultSearch(privateOn, reInitSearchService) {
   Assert.equal(data.settings.defaultSearchEngine, "telemetrySearchIdentifier");
   let expectedSearchEngineData = {
     name: "telemetrySearchIdentifier",
-    loadPath: SearchUtils.newSearchConfigEnabled
-      ? "[app]telemetrySearchIdentifier@search.mozilla.org"
-      : "[addon]telemetrySearchIdentifier@search.mozilla.org",
-    origin: "default",
-    submissionURL: SearchUtils.newSearchConfigEnabled
-      ? "https://ar.wikipedia.org/wiki/%D8%AE%D8%A7%D8%B5:%D8%A8%D8%AD%D8%AB?sourceId=Mozilla-search&search="
-      : "https://ar.wikipedia.org/wiki/%D8%AE%D8%A7%D8%B5:%D8%A8%D8%AD%D8%AB?search=&sourceId=Mozilla-search",
+    loadPath: "[app]telemetrySearchIdentifier",
+    submissionURL:
+      "https://ar.wikipedia.org/wiki/%D8%AE%D8%A7%D8%B5:%D8%A8%D8%AD%D8%AB?sourceId=Mozilla-search&search=",
   };
   Assert.deepEqual(
     data.settings.defaultSearchEngineData,
@@ -227,7 +236,6 @@ async function checkDefaultSearch(privateOn, reInitSearchService) {
   const EXPECTED_SEARCH_ENGINE_DATA = {
     name: SEARCH_ENGINE_ID,
     loadPath: `[addon]${SEARCH_ENGINE_ID}@test.engine`,
-    origin: "verified",
   };
   if (privateOn) {
     Assert.equal(
@@ -258,16 +266,14 @@ async function checkDefaultSearch(privateOn, reInitSearchService) {
 
 add_task(async function test_defaultSearchEngine() {
   await checkDefaultSearch(false);
-
-  // Cleanly install an engine from an xml file, and check if origin is
-  // recorded as "verified".
+  // Cleanly install an engine from an xml file.
   let promise = new Promise(resolve => {
     TelemetryEnvironment.registerChangeListener(
       "testWatch_SearchDefault",
       resolve
     );
   });
-  let engine = await SearchTestUtils.installOpenSearchEngine({
+  await SearchTestUtils.installOpenSearchEngine({
     url: gDataRoot + "engine.xml",
     setAsDefault: true,
     skipReset: true,
@@ -279,26 +285,7 @@ add_task(async function test_defaultSearchEngine() {
   Assert.deepEqual(data.settings.defaultSearchEngineData, {
     name: "engine-telemetry",
     loadPath: "[http]localhost/engine-telemetry.xml",
-    origin: "verified",
   });
-
-  // Now break this engine's load path hash.
-  promise = new Promise(resolve => {
-    TelemetryEnvironment.registerChangeListener(
-      "testWatch_SearchDefault",
-      resolve
-    );
-  });
-  engine.wrappedJSObject.setAttr("loadPathHash", "broken");
-  Services.obs.notifyObservers(
-    null,
-    "browser-search-engine-modified",
-    "engine-default"
-  );
-  await promise;
-  TelemetryEnvironment.unregisterChangeListener("testWatch_SearchDefault");
-  data = TelemetryEnvironment.currentEnvironment;
-  Assert.equal(data.settings.defaultSearchEngineData.origin, "invalid");
 
   const SEARCH_ENGINE_ID = "telemetry_default";
   const EXPECTED_SEARCH_ENGINE = "other-" + SEARCH_ENGINE_ID;
@@ -369,7 +356,6 @@ add_task(async function test_defaultSearchEngine_paramsChanged() {
   Assert.deepEqual(data.settings.defaultSearchEngineData, {
     name: "TestEngine",
     loadPath: "[addon]testengine@tests.mozilla.org",
-    origin: "verified",
     submissionURL: "https://www.google.com/fake1?q=",
   });
 
@@ -397,7 +383,6 @@ add_task(async function test_defaultSearchEngine_paramsChanged() {
   Assert.deepEqual(data.settings.defaultSearchEngineData, {
     name: "TestEngine",
     loadPath: "[addon]testengine@tests.mozilla.org",
-    origin: "verified",
     submissionURL: "https://www.google.com/fake2?q=",
   });
 

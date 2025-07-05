@@ -11,8 +11,7 @@ crashreporter-plea = To help us diagnose and fix the problem, you can send us a 
 crashreporter-information = This application is run after a crash to report the problem to { -vendor-short-name }. It should not be run directly.
 
 crashreporter-error = { -brand-short-name } had a problem and crashed. Unfortunately, the crash reporter is unable to submit a report for this crash.
-# $details (String) - the reason that a crash report cannot be submitted
-crashreporter-error-details = Details: { $details }
+crashreporter-error-details-header = Details:
 
 crashreporter-no-run-message = This application is run after a crash to report the problem to the application vendor. It should not be run directly.
 
@@ -25,11 +24,14 @@ crashreporter-comment-prompt = Add a comment (comments are publicly visible)
 
 crashreporter-report-info = This report also contains technical information about the state of the application when it crashed.
 
-crashreporter-send-report = Tell { -vendor-short-name } about this crash so they can fix it.
+crashreporter-checkbox-test-hardware = Check for hardware and configuration problems on my device.
 
-crashreporter-include-url = Include the address of the page I was on.
+crashreporter-checkbox-send-report = Tell { -vendor-short-name } about this crash so they can fix it.
+
+crashreporter-checkbox-include-url = Include the address of the page I was on.
 
 crashreporter-submit-status = Your crash report will be submitted before you quit or restart.
+crashreporter-submit-waiting-hardware-tests = Checking for hardware and configuration problems…
 crashreporter-submit-in-progress = Submitting your report…
 crashreporter-submit-success = Report submitted successfully!
 crashreporter-submit-failure = There was a problem submitting your report.
@@ -51,7 +53,6 @@ crashreporter-crash-details = You can view details of this crash at { $url }.
 
 # Error strings
 
-crashreporter-error-minidump-analyzer = Failed to run minidump-analyzer
 # $path (String) - the file path
 crashreporter-error-opening-file = Failed to open file ({ $path })
 # $path (String) - the file path
@@ -63,3 +64,4 @@ crashreporter-error-no-home-dir = Missing home directory
 # $to (String) - the destination path
 crashreporter-error-moving-path = Failed to move { $from } to { $to }
 crashreporter-error-version-eol = Version end of life: crash reports are no longer accepted.
+crashreporter-error-failed-to-generate-minidump = The application failed to generate crash information.

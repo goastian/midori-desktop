@@ -32,7 +32,7 @@ add_task(function test_jog_counter_works() {
     "counter",
     "jog_cat",
     "jog_counter",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -46,7 +46,7 @@ add_task(async function test_jog_string_works() {
     "string",
     "jog_cat",
     "jog_string",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -63,7 +63,7 @@ add_task(async function test_jog_string_list_works() {
     "string_list",
     "jog_cat",
     "jog_string_list",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -85,7 +85,7 @@ add_task(async function test_jog_timespan_works() {
     "timespan",
     "jog_cat",
     "jog_timespan",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ time_unit: "millisecond" })
@@ -109,7 +109,7 @@ add_task(async function test_jog_uuid_works() {
     "uuid",
     "jog_cat",
     "jog_uuid",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -128,7 +128,7 @@ add_task(function test_jog_datetime_works() {
     "datetime",
     "jog_cat",
     "jog_datetime",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ time_unit: "nanosecond" })
@@ -145,7 +145,7 @@ add_task(function test_jog_boolean_works() {
     "boolean",
     "jog_cat",
     "jog_bool",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -158,7 +158,7 @@ add_task(async function test_jog_event_works() {
     "event",
     "jog_cat",
     "jog_event_no_extra",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -172,7 +172,7 @@ add_task(async function test_jog_event_works() {
     "event",
     "jog_cat",
     "jog_event",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ allowed_extra_keys: ["extra1", "extra2"] })
@@ -189,7 +189,7 @@ add_task(async function test_jog_event_works() {
     "event",
     "jog_cat",
     "jog_event_with_extra",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({
@@ -230,7 +230,7 @@ add_task(async function test_jog_memory_distribution_works() {
     "memory_distribution",
     "jog_cat",
     "jog_memory_dist",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ memory_unit: "megabyte" })
@@ -254,7 +254,7 @@ add_task(async function test_jog_custom_distribution_works() {
     "custom_distribution",
     "jog_cat",
     "jog_custom_dist",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({
@@ -297,6 +297,8 @@ add_task(async function test_jog_custom_pings() {
     true,
     true,
     [],
+    [],
+    true,
     []
   );
   Assert.ok("jogPing" in GleanPings);
@@ -317,7 +319,7 @@ add_task(async function test_jog_timing_distribution_works() {
     "timing_distribution",
     "jog_cat",
     "jog_timing_dist",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ time_unit: "microsecond" })
@@ -334,6 +336,9 @@ add_task(async function test_jog_timing_distribution_works() {
 
   Glean.jogCat.jogTimingDist.stopAndAccumulate(t2); // 10ms
   Glean.jogCat.jogTimingDist.stopAndAccumulate(t3); // 5ms
+  // samples are measured in microseconds, since that's the unit listed in metrics.yaml
+  Glean.jogCat.jogTimingDist.accumulateSingleSample(5000); // 5ms
+  Glean.jogCat.jogTimingDist.accumulateSamples([2000, 8000]); // 10ms
 
   let data = Glean.jogCat.jogTimingDist.testGetValue();
   const NANOS_IN_MILLIS = 1e6;
@@ -341,14 +346,14 @@ add_task(async function test_jog_timing_distribution_works() {
   const EPSILON = 40000;
 
   // Variance in timing makes getting the sum impossible to know.
-  Assert.greater(data.sum, 15 * NANOS_IN_MILLIS - EPSILON);
+  Assert.greater(data.sum, 30 * NANOS_IN_MILLIS - EPSILON);
 
   // No guarantees from timers means no guarantees on buckets.
-  // But we can guarantee it's only two samples.
+  // But we can guarantee it's only five samples.
   Assert.equal(
-    2,
+    5,
     Object.entries(data.values).reduce((acc, [, count]) => acc + count, 0),
-    "Only two buckets with samples"
+    "Only five buckets with samples"
   );
 });
 
@@ -357,7 +362,7 @@ add_task(async function test_jog_labeled_boolean_works() {
     "labeled_boolean",
     "jog_cat",
     "jog_labeled_bool",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -374,7 +379,7 @@ add_task(async function test_jog_labeled_boolean_works() {
   Assert.equal(undefined, Glean.jogCat.jogLabeledBool.__other__.testGetValue());
   Glean.jogCat.jogLabeledBool.NowValidLabel.set(true);
   Assert.ok(Glean.jogCat.jogLabeledBool.NowValidLabel.testGetValue());
-  Glean.jogCat.jogLabeledBool["1".repeat(72)].set(true);
+  Glean.jogCat.jogLabeledBool["1".repeat(112)].set(true);
   Assert.throws(
     () => Glean.jogCat.jogLabeledBool.__other__.testGetValue(),
     /DataError/,
@@ -387,7 +392,7 @@ add_task(async function test_jog_labeled_boolean_with_static_labels_works() {
     "labeled_boolean",
     "jog_cat",
     "jog_labeled_bool_with_labels",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ ordered_labels: ["label_1", "label_2"] })
@@ -425,7 +430,7 @@ add_task(async function test_jog_labeled_counter_works() {
     "labeled_counter",
     "jog_cat",
     "jog_labeled_counter",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -443,7 +448,7 @@ add_task(async function test_jog_labeled_counter_works() {
     undefined,
     Glean.jogCat.jogLabeledCounter.__other__.testGetValue()
   );
-  Glean.jogCat.jogLabeledCounter["1".repeat(72)].add(1);
+  Glean.jogCat.jogLabeledCounter["1".repeat(112)].add(1);
   Assert.throws(
     () => Glean.jogCat.jogLabeledCounter.__other__.testGetValue(),
     /DataError/,
@@ -456,7 +461,7 @@ add_task(async function test_jog_labeled_counter_with_static_labels_works() {
     "labeled_counter",
     "jog_cat",
     "jog_labeled_counter_with_labels",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ ordered_labels: ["label_1", "label_2"] })
@@ -481,7 +486,7 @@ add_task(async function test_jog_labeled_counter_with_static_labels_works() {
     undefined,
     Glean.jogCat.jogLabeledCounterWithLabels.__other__.testGetValue()
   );
-  Glean.jogCat.jogLabeledCounterWithLabels["1".repeat(72)].add(1);
+  Glean.jogCat.jogLabeledCounterWithLabels["1".repeat(112)].add(1);
   // TODO:(bug 1766515) - This should throw.
   /*Assert.throws(
     () => Glean.jogCat.jogLabeledCounterWithLabels.__other__.testGetValue(),
@@ -499,7 +504,7 @@ add_task(async function test_jog_labeled_string_works() {
     "labeled_string",
     "jog_cat",
     "jog_labeled_string",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -517,7 +522,7 @@ add_task(async function test_jog_labeled_string_works() {
     undefined,
     Glean.jogCat.jogLabeledString.__other__.testGetValue()
   );
-  Glean.jogCat.jogLabeledString["1".repeat(72)].set("valid");
+  Glean.jogCat.jogLabeledString["1".repeat(112)].set("valid");
   Assert.throws(
     () => Glean.jogCat.jogLabeledString.__other__.testGetValue(),
     /DataError/
@@ -529,7 +534,7 @@ add_task(async function test_jog_labeled_string_with_labels_works() {
     "labeled_string",
     "jog_cat",
     "jog_labeled_string_with_labels",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ ordered_labels: ["label_1", "label_2"] })
@@ -554,7 +559,7 @@ add_task(async function test_jog_labeled_string_with_labels_works() {
     undefined,
     Glean.jogCat.jogLabeledStringWithLabels.__other__.testGetValue()
   );
-  Glean.jogCat.jogLabeledStringWithLabels["1".repeat(72)].set("valid");
+  Glean.jogCat.jogLabeledStringWithLabels["1".repeat(112)].set("valid");
   // TODO:(bug 1766515) - This should throw.
   /*Assert.throws(
     () => Glean.jogCat.jogLabeledStringWithLabels.__other__.testGetValue(),
@@ -571,7 +576,7 @@ add_task(function test_jog_quantity_works() {
     "quantity",
     "jog_cat",
     "jog_quantity",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -584,7 +589,7 @@ add_task(function test_jog_rate_works() {
     "rate",
     "jog_cat",
     "jog_rate",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -600,7 +605,7 @@ add_task(function test_jog_rate_works() {
     "denominator",
     "jog_cat",
     "jog_denominator",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({
@@ -608,7 +613,7 @@ add_task(function test_jog_rate_works() {
         {
           name: "jog_rate_ext",
           category: "jog_cat",
-          send_in_pings: ["test-only"],
+          send_in_pings: ["test-ping"],
           lifetime: "ping",
           disabled: false,
         },
@@ -619,7 +624,7 @@ add_task(function test_jog_rate_works() {
     "rate",
     "jog_cat",
     "jog_rate_ext",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -638,7 +643,7 @@ add_task(function test_jog_dotted_categories_work() {
     "counter",
     "jog_cat.dotted",
     "jog_counter",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
@@ -656,7 +661,9 @@ add_task(async function test_jog_ping_works() {
     true,
     true,
     [],
-    [kReason]
+    [kReason],
+    true,
+    []
   );
   let submitted = false;
   GleanPings.myPing.testBeforeNextSubmit(reason => {
@@ -677,7 +684,9 @@ add_task(async function test_jog_noinfo_ping_works() {
     false,
     true,
     [],
-    [kReason]
+    [kReason],
+    true,
+    []
   );
   let submitted = false;
   GleanPings.noinfoPing.testBeforeNextSubmit(reason => {
@@ -700,7 +709,7 @@ add_task(function test_jog_name_collision() {
     "counter",
     "test_only.jog",
     "a_counter",
-    ["store1"],
+    ["test-ping"],
     `"ping"`,
     true // changing the metric to disabled.
   );
@@ -727,7 +736,7 @@ add_task(function test_jog_name_collision() {
     "event",
     "test_only.jog",
     "an_event",
-    ["store1"],
+    ["test-ping"],
     `"ping"`,
     false,
     JSON.stringify({ allowed_extra_keys: ["extra1", "extra2", "extra3"] }) // New extra key just dropped
@@ -754,11 +763,307 @@ add_task(async function test_jog_text_works() {
     "text",
     "test_only.jog",
     "a_text",
-    ["test-only"],
+    ["test-ping"],
     `"ping"`,
     false
   );
   Glean.testOnlyJog.aText.set(kValue);
 
   Assert.equal(kValue, Glean.testOnlyJog.aText.testGetValue());
+});
+
+add_task(async function test_jog_custom_distribution_works() {
+  Services.fog.testRegisterRuntimeMetric(
+    "labeled_custom_distribution",
+    "jog_cat",
+    "jog_labeled_custom_dist",
+    ["test-ping"],
+    `"ping"`,
+    false,
+    JSON.stringify({
+      range_min: 1,
+      range_max: 2147483646,
+      bucket_count: 10,
+      histogram_type: "linear",
+    })
+  );
+  Glean.jogCat.jogLabeledCustomDist.label_1.accumulateSamples([7, 268435458]);
+
+  let data = Glean.jogCat.jogLabeledCustomDist.label_1.testGetValue();
+  Assert.equal(7 + 268435458, data.sum, "Sum's correct");
+  for (let [bucket, count] of Object.entries(data.values)) {
+    Assert.ok(
+      count == 0 || (count == 1 && (bucket == 1 || bucket == 268435456)),
+      `Only two buckets have a sample ${bucket} ${count}`
+    );
+  }
+
+  // Negative values will not be recorded, instead an error is recorded.
+  Glean.jogCat.jogLabeledCustomDist.label_1.accumulateSamples([-7]);
+  Assert.throws(
+    () => Glean.jogCat.jogLabeledCustomDist.label_1.testGetValue(),
+    /DataError/
+  );
+});
+
+add_task(async function test_jog_labeled_memory_distribution_works() {
+  Services.fog.testRegisterRuntimeMetric(
+    "labeled_memory_distribution",
+    "jog_cat",
+    "jog_labeled_memory_dist",
+    ["test-ping"],
+    `"ping"`,
+    false,
+    JSON.stringify({ memory_unit: "megabyte" })
+  );
+  Glean.jogCat.jogLabeledMemoryDist.short_term.accumulate(7);
+  Glean.jogCat.jogLabeledMemoryDist.short_term.accumulate(17);
+
+  let data = Glean.jogCat.jogLabeledMemoryDist.short_term.testGetValue();
+  // `data.sum` is in bytes, but the metric is in MB.
+  Assert.equal(24 * 1024 * 1024, data.sum, "Sum's correct");
+  for (let [bucket, count] of Object.entries(data.values)) {
+    Assert.ok(
+      count == 0 || (count == 1 && (bucket == 17520006 || bucket == 7053950)),
+      "Only two buckets have a sample"
+    );
+  }
+});
+
+add_task(async function test_jog_labeled_timing_distribution_works() {
+  Services.fog.testRegisterRuntimeMetric(
+    "labeled_timing_distribution",
+    "jog_cat",
+    "jog_labeled_timing_dist",
+    ["test-ping"],
+    `"ping"`,
+    false,
+    JSON.stringify({ time_unit: "microsecond" })
+  );
+  let t1 = Glean.jogCat.jogLabeledTimingDist.label1.start();
+  let t2 = Glean.jogCat.jogLabeledTimingDist.label1.start();
+
+  await sleep(5);
+
+  let t3 = Glean.jogCat.jogLabeledTimingDist.label1.start();
+  Glean.jogCat.jogLabeledTimingDist.label1.cancel(t1);
+
+  await sleep(5);
+
+  Glean.jogCat.jogLabeledTimingDist.label1.stopAndAccumulate(t2); // 10ms
+  Glean.jogCat.jogLabeledTimingDist.label1.stopAndAccumulate(t3); // 5ms
+
+  let data = Glean.jogCat.jogLabeledTimingDist.label1.testGetValue();
+  const NANOS_IN_MILLIS = 1e6;
+  // bug 1701949 - Sleep gets close, but sometimes doesn't wait long enough.
+  const EPSILON = 40000;
+
+  // Variance in timing makes getting the sum impossible to know.
+  Assert.greater(data.sum, 15 * NANOS_IN_MILLIS - EPSILON);
+
+  // No guarantees from timers means no guarantees on buckets.
+  // But we can guarantee it's only two samples.
+  Assert.equal(
+    2,
+    Object.entries(data.values).reduce((acc, [, count]) => acc + count, 0),
+    "Only two buckets with samples"
+  );
+});
+
+add_task(async function test_jog_labeled_quantity_works() {
+  Services.fog.testRegisterRuntimeMetric(
+    "labeled_quantity",
+    "jog_cat",
+    "jog_labeled_quantity",
+    ["test-ping"],
+    `"ping"`,
+    false
+  );
+  Assert.equal(
+    undefined,
+    Glean.jogCat.jogLabeledQuantity.label_1.testGetValue(),
+    "New labels with no values should return undefined"
+  );
+  Glean.jogCat.jogLabeledQuantity.label_1.set(9000);
+  Glean.jogCat.jogLabeledQuantity.label_2.set(0);
+  Assert.equal(9000, Glean.jogCat.jogLabeledQuantity.label_1.testGetValue());
+  Assert.equal(0, Glean.jogCat.jogLabeledQuantity.label_2.testGetValue());
+  // What about invalid/__other__?
+  Assert.equal(
+    undefined,
+    Glean.jogCat.jogLabeledQuantity.__other__.testGetValue()
+  );
+  Glean.jogCat.jogLabeledQuantity.NowValidLabel.set(100);
+  Assert.equal(
+    100,
+    Glean.jogCat.jogLabeledQuantity.NowValidLabel.testGetValue()
+  );
+  Glean.jogCat.jogLabeledQuantity["1".repeat(112)].set(true);
+  Assert.throws(
+    () => Glean.jogCat.jogLabeledQuantity.__other__.testGetValue(),
+    /DataError/,
+    "Should throw because of a recording error."
+  );
+});
+
+add_task(function test_disabled_ping_with_test_reset() {
+  Services.fog.testResetFOG();
+  Services.fog.testRegisterRuntimeMetric(
+    "counter",
+    "jog_cat",
+    "jog_counter",
+    ["disabled-ping"],
+    `"ping"`,
+    false
+  );
+  Glean.jogCat.jogCounter.add(1);
+  Assert.equal(
+    undefined,
+    Glean.jogCat.jogCounter.testGetValue(),
+    "Metric in disabled ping stores no value."
+  );
+  GleanPings.disabledPing.setEnabled(true);
+  Glean.jogCat.jogCounter.add(42);
+  Assert.equal(
+    42,
+    Glean.jogCat.jogCounter.testGetValue(),
+    "Metric in now-enabled ping stores its value."
+  );
+});
+
+/*** Tests to cover non-test prefix runtime metric and ping registration API */
+add_task(function jog_register_boolean_works() {
+  Services.fog.registerRuntimeMetric(
+    "boolean",
+    "jog_cat_1",
+    "jog_bool",
+    ["test-ping"],
+    `"ping"`,
+    false
+  );
+  Glean.jogCat1.jogBool.set(false);
+  Assert.equal(false, Glean.jogCat1.jogBool.testGetValue());
+});
+
+add_task(async function jog_register_event_works() {
+  Services.fog.registerRuntimeMetric(
+    "event",
+    "jog_cat",
+    "jog_event_no_extra",
+    ["test-ping"],
+    `"ping"`,
+    false
+  );
+  Glean.jogCat.jogEventNoExtra.record();
+  var events = Glean.jogCat.jogEventNoExtra.testGetValue();
+  Assert.equal(1, events.length);
+  Assert.equal("jog_cat", events[0].category);
+  Assert.equal("jog_event_no_extra", events[0].name);
+
+  Services.fog.registerRuntimeMetric(
+    "event",
+    "jog_cat",
+    "jog_event",
+    ["test-ping"],
+    `"ping"`,
+    false,
+    JSON.stringify({ allowed_extra_keys: ["extra1", "extra2"] })
+  );
+  let extra = { extra1: "can set extras", extra2: "passing more data" };
+  Glean.jogCat.jogEvent.record(extra);
+  events = Glean.jogCat.jogEvent.testGetValue();
+  Assert.equal(1, events.length);
+  Assert.equal("jog_cat", events[0].category);
+  Assert.equal("jog_event", events[0].name);
+  Assert.deepEqual(extra, events[0].extra);
+
+  Services.fog.registerRuntimeMetric(
+    "event",
+    "jog_cat",
+    "jog_event_with_extra",
+    ["test-ping"],
+    `"ping"`,
+    false,
+    JSON.stringify({
+      allowed_extra_keys: ["extra1", "extra2", "extra3_longer_name"],
+    })
+  );
+  let extra2 = {
+    extra1: "can set extras",
+    extra2: 37,
+    extra3_longer_name: false,
+  };
+  Glean.jogCat.jogEventWithExtra.record(extra2);
+  events = Glean.jogCat.jogEventWithExtra.testGetValue();
+  Assert.equal(1, events.length);
+  Assert.equal("jog_cat", events[0].category);
+  Assert.equal("jog_event_with_extra", events[0].name);
+  let expectedExtra = {
+    extra1: "can set extras",
+    extra2: "37",
+    extra3_longer_name: "false",
+  };
+  Assert.deepEqual(expectedExtra, events[0].extra);
+
+  // Invalid extra keys don't crash, the event is not recorded.
+  let extra3 = {
+    extra1_nonexistent_extra: "this does not crash",
+  };
+  Glean.jogCat.jogEventWithExtra.record(extra3);
+  // And test methods throw appropriately
+  Assert.throws(
+    () => Glean.jogCat.jogEventWithExtra.testGetValue(),
+    /DataError/
+  );
+});
+
+/**
+ * Test multiple metrics in same category
+ */
+add_task(function test_multiple_metrics_same_category() {
+  Services.fog.registerRuntimeMetric(
+    "counter",
+    "multi_cat",
+    "metric1",
+    ["test-ping"],
+    `"ping"`,
+    false
+  );
+  Services.fog.registerRuntimeMetric(
+    "boolean",
+    "multi_cat",
+    "metric2",
+    ["test-ping"],
+    `"ping"`,
+    false
+  );
+
+  Glean.multiCat.metric1.add(5);
+  Glean.multiCat.metric2.set(true);
+
+  Assert.equal(5, Glean.multiCat.metric1.testGetValue());
+  Assert.equal(true, Glean.multiCat.metric2.testGetValue());
+});
+
+add_task(async function jog_ping_works() {
+  const kReason = "reason-1";
+  Services.fog.registerRuntimePing(
+    "my-ping",
+    true,
+    true,
+    true,
+    true,
+    true,
+    [],
+    [kReason],
+    true,
+    []
+  );
+  let submitted = false;
+  GleanPings.myPing.testBeforeNextSubmit(reason => {
+    submitted = true;
+    Assert.equal(kReason, reason);
+  });
+  GleanPings.myPing.submit("reason-1");
+  Assert.ok(submitted, "Ping must have been submitted");
 });

@@ -1,0 +1,86 @@
+.ad-banner-wrapper {
+  --billboard-width: 970px;
+  --billboard-height: 250px;
+  --leaderboard-width: 728px;
+  --leaderboard-height: 90px;
+
+  position: relative;
+  grid-column: 1/-1;
+  overflow: hidden;
+  // allow the ad banner to take up full width
+  // of screen rather than card-grid width
+  width: 100%;
+  inset-inline-start: 50%;
+  transform: translate3d(-50%, 0, 0);
+
+  // Adding min-width if .billboard/.leaderboard exist within
+  // .ad-banner-inner to keep the banners from shrinking on smaller screens
+  &:has(.ad-banner-inner.billboard) {
+    min-width: 970px;
+
+    @media (width <= 1015px) {
+      min-width: auto;
+    }
+  }
+
+  &:has(.ad-banner-inner.leaderboard) {
+    min-width: 728px;
+
+    @media (width <= 758px) {
+      min-width: auto;
+    }
+  }
+
+  .ad-banner-inner {
+    margin-inline: auto;
+
+    &.leaderboard {
+      max-width: var(--leaderboard-width);
+
+      .ad-banner-content {
+        height: var(--leaderboard-height);
+      }
+
+      .ad-banner-sponsored {
+        width: var(--leaderboard-width);
+      }
+
+      @media (width <= 758px) {
+        display: none;
+      }
+    }
+
+    &.billboard {
+      width: var(--billboard-width);
+
+      .ad-banner-content {
+        height: var(--billboard-height);
+      }
+
+      .ad-banner-sponsored {
+        width: var(--billboard-width);
+      }
+
+      @media (width <= 1015px) {
+        display: none;
+      }
+    }
+
+    .ad-banner-link {
+      display: inline-block;
+    }
+
+    .ad-banner-sponsored {
+      // Contrast fix for users who have wallpapers set
+      @include wallpaper-contrast-fix;
+
+      margin-block: var(--space-small) 0;
+
+      span {
+        text-transform: uppercase;
+        font-size: var(--font-size-small);
+        color: var(--newtab-contextual-text-secondary-color);
+      }
+    }
+  }
+}

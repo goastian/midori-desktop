@@ -37,16 +37,34 @@ const ENABLED_AUTOFILL_CAPTURE_ON_FORM_REMOVAL_PREF =
   "extensions.formautofill.heuristics.captureOnFormRemoval";
 const ENABLED_AUTOFILL_CAPTURE_ON_PAGE_NAVIGATION_PREF =
   "extensions.formautofill.heuristics.captureOnPageNavigation";
+const ENABLED_AUTOFILL_SAME_ORIGIN_WITH_TOP =
+  "extensions.formautofill.heuristics.autofillSameOriginWithTop";
+const ENABLED_AUTOFILL_DETECT_DYNAMIC_FORM_CHANGES_PREF =
+  "extensions.formautofill.heuristics.detectDynamicFormChanges";
+const AUTOFILL_FILL_ON_DYNAMIC_FORM_CHANGES_TIMEOUT_PREF =
+  "extensions.formautofill.heuristics.fillOnDynamicFormChanges.timeout";
+const AUTOFILL_FILL_ON_DYNAMIC_FORM_CHANGES_PREF =
+  "extensions.formautofill.heuristics.fillOnDynamicFormChanges";
+const AUTOFILL_REFILL_ON_SITE_CLEARING_VALUE_PREF =
+  "extensions.formautofill.heuristics.refillOnSiteClearingFields";
+const AUTOFILL_REFILL_ON_SITE_CLEARING_VALUE_TIMEOUT_PREF =
+  "extensions.formautofill.heuristics.refillOnSiteClearingFields.timeout";
 
 export const FormAutofill = {
   ENABLED_AUTOFILL_ADDRESSES_PREF,
   ENABLED_AUTOFILL_ADDRESSES_CAPTURE_PREF,
   ENABLED_AUTOFILL_CAPTURE_ON_FORM_REMOVAL_PREF,
   ENABLED_AUTOFILL_CAPTURE_ON_PAGE_NAVIGATION_PREF,
+  ENABLED_AUTOFILL_SAME_ORIGIN_WITH_TOP,
   ENABLED_AUTOFILL_CREDITCARDS_PREF,
+  ENABLED_AUTOFILL_DETECT_DYNAMIC_FORM_CHANGES_PREF,
   AUTOFILL_CREDITCARDS_REAUTH_PREF,
   AUTOFILL_CREDITCARDS_AUTOCOMPLETE_OFF_PREF,
   AUTOFILL_ADDRESSES_AUTOCOMPLETE_OFF_PREF,
+  AUTOFILL_FILL_ON_DYNAMIC_FORM_CHANGES_PREF,
+  AUTOFILL_FILL_ON_DYNAMIC_FORM_CHANGES_TIMEOUT_PREF,
+  AUTOFILL_REFILL_ON_SITE_CLEARING_VALUE_PREF,
+  AUTOFILL_REFILL_ON_SITE_CLEARING_VALUE_TIMEOUT_PREF,
 
   _region: null,
 
@@ -80,10 +98,22 @@ export const FormAutofill = {
     }
     return false;
   },
+
+  /**
+   * Return true if address autofill is available for a specific country.
+   */
   isAutofillAddressesAvailableInCountry(country) {
-    return FormAutofill._addressAutofillSupportedCountries.includes(
-      country.toUpperCase()
-    );
+    if (FormAutofill._isAutofillAddressesAvailableInExperiment) {
+      return true;
+    }
+
+    let available = FormAutofill._isAutofillAddressesAvailable;
+    if (country && available == "detect") {
+      return FormAutofill._addressAutofillSupportedCountries.includes(
+        country.toUpperCase()
+      );
+    }
+    return available == "on";
   },
   get isAutofillEnabled() {
     return this.isAutofillAddressesEnabled || this.isAutofillCreditCardsEnabled;
@@ -188,6 +218,10 @@ export const FormAutofill = {
       prefix: logPrefix,
     });
   },
+
+  get isMLExperimentEnabled() {
+    return FormAutofill._isMLEnabled && FormAutofill._isMLExperimentEnabled;
+  },
 };
 
 // TODO: Bug 1747284. Use Region.home instead of reading "browser.serach.region"
@@ -284,11 +318,72 @@ XPCOMUtils.defineLazyPreferenceGetter(
   null,
   val => val?.split(",").filter(v => !!v)
 );
+XPCOMUtils.defineLazyPreferenceGetter(
+  FormAutofill,
+  "autofillSameOriginWithTop",
+  ENABLED_AUTOFILL_SAME_ORIGIN_WITH_TOP
+);
 
 XPCOMUtils.defineLazyPreferenceGetter(
   FormAutofill,
   "_isAutofillAddressesAvailableInExperiment",
   "extensions.formautofill.addresses.experiments.enabled"
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  FormAutofill,
+  "_isMLEnabled",
+  "browser.ml.enable",
+  false
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  FormAutofill,
+  "_isMLExperimentEnabled",
+  "extensions.formautofill.ml.experiment.enabled",
+  false
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  FormAutofill,
+  "MLModelRevision",
+  "extensions.formautofill.ml.experiment.modelRevision",
+  null
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  FormAutofill,
+  "detectDynamicFormChanges",
+  "extensions.formautofill.heuristics.detectDynamicFormChanges",
+  false
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  FormAutofill,
+  "fillOnDynamicFormChanges",
+  "extensions.formautofill.heuristics.fillOnDynamicFormChanges",
+  false
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  FormAutofill,
+  "fillOnDynamicFormChangeTimeout",
+  "extensions.formautofill.heuristics.fillOnDynamicFormChanges.timeout",
+  0
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  FormAutofill,
+  "refillOnSiteClearingFields",
+  "extensions.formautofill.heuristics.refillOnSiteClearingFields",
+  false
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  FormAutofill,
+  "refillOnSiteClearingFieldsTimeout",
+  "extensions.formautofill.heuristics.refillOnSiteClearingFields.timeout",
+  0
 );
 
 ChromeUtils.defineLazyGetter(FormAutofill, "countries", () =>

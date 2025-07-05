@@ -3,6 +3,9 @@ use crate::stream_safe;
 use crate::tables;
 use crate::UnicodeNormalization;
 
+/// QuickCheck quickly determines if a string is normalized, it can return
+/// `Maybe`
+///
 /// The QuickCheck algorithm can quickly determine if a text is or isn't
 /// normalized without any allocations in many cases, but it has to be able to
 /// return `Maybe` when a full decomposition and recomposition is necessary.

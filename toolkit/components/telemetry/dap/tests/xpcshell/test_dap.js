@@ -14,71 +14,63 @@ ChromeUtils.defineESModuleGetters(lazy, {
   DAPTelemetrySender: "resource://gre/modules/DAPTelemetrySender.sys.mjs",
 });
 
-const BinaryOutputStream = Components.Constructor(
-  "@mozilla.org/binaryoutputstream;1",
-  "nsIBinaryOutputStream",
-  "setOutputStream"
-);
-
 const BinaryInputStream = Components.Constructor(
   "@mozilla.org/binaryinputstream;1",
   "nsIBinaryInputStream",
   "setInputStream"
 );
 
-const PREF_LEADER = "toolkit.telemetry.dap_leader";
-const PREF_HELPER = "toolkit.telemetry.dap_helper";
+const PREF_LEADER = "toolkit.telemetry.dap.leader.url";
+const PREF_HELPER = "toolkit.telemetry.dap.helper.url";
 
-let received = false;
+const PREF_DATAUPLOAD = "datareporting.healthreport.uploadEnabled";
+
 let server;
 let server_addr;
 
+// The dummy test server will record report sizes in this list.
+let server_requests = [];
+
+// List of testing task configurations. These are fake IDs for use in this files
+// test server only.
 const tasks = [
   {
-    // this is testing task 1
     id: "QjMD4n8l_MHBoLrbCfLTFi8hC264fC59SKHPviPF0q8",
-    leader_endpoint: null,
-    helper_endpoint: null,
+    vdaf: "sum",
+    bits: 8,
     time_precision: 300,
-    measurement_type: "u8",
   },
   {
-    // this is testing task 2
-    id: "DSZGMFh26hBYXNaKvhL_N4AHA3P5lDn19on1vFPBxJM",
-    leader_endpoint: null,
-    helper_endpoint: null,
+    id: "52TTU9GPOA_eTiPJePk5RNauQI4EWCnzixAXe3LEz7o",
+    vdaf: "sumvec",
+    bits: 1,
+    length: 20,
     time_precision: 300,
-    measurement_type: "vecu8",
+  },
+  {
+    id: "DSZGMFh26hBYXNaKvhL_N4AHA3P5lDn19on1vFPBxJM",
+    vdaf: "sumvec",
+    bits: 8,
+    length: 20,
+    time_precision: 300,
+  },
+  {
+    id: "RnywY1X4s1vtspu6B8C1FOu_jJZhJO6V8L3PT3WepF4",
+    vdaf: "sumvec",
+    bits: 16,
+    length: 20,
+    time_precision: 300,
+  },
+  {
+    id: "o-91EcR2kfxfAmkKPPHifXKqiH7Upm0Ilw5joB3L_pE",
+    vdaf: "histogram",
+    length: 30,
+    time_precision: 300,
   },
 ];
 
-function hpkeConfigHandler(request, response) {
-  if (
-    request.queryString ==
-      "task_id=QjMD4n8l_MHBoLrbCfLTFi8hC264fC59SKHPviPF0q8" ||
-    request.queryString == "task_id=DSZGMFh26hBYXNaKvhL_N4AHA3P5lDn19on1vFPBxJM"
-  ) {
-    let config_bytes;
-    if (request.path.startsWith("/leader")) {
-      config_bytes = new Uint8Array([
-        0, 41, 47, 0, 32, 0, 1, 0, 1, 0, 32, 11, 33, 206, 33, 131, 56, 220, 82,
-        153, 110, 228, 200, 53, 98, 210, 38, 177, 197, 252, 198, 36, 201, 86,
-        121, 169, 238, 220, 34, 143, 112, 177, 10,
-      ]);
-    } else {
-      config_bytes = new Uint8Array([
-        0, 41, 42, 0, 32, 0, 1, 0, 1, 0, 32, 28, 62, 242, 195, 117, 7, 173, 149,
-        250, 15, 139, 178, 86, 241, 117, 143, 75, 26, 57, 60, 88, 130, 199, 175,
-        195, 9, 241, 130, 61, 47, 215, 101,
-      ]);
-    }
-    response.setHeader("Content-Type", "application/dap-hpke-config");
-    let bos = new BinaryOutputStream(response.bodyOutputStream);
-    bos.writeByteArray(config_bytes);
-  } else {
-    Assert.ok(false, `Unknown query string: ${request.queryString}`);
-  }
-}
+// Expected payload sizes of DAP reports for the above tasks.
+const task_report_sizes = [886, 902, 3654, 6566, 1126];
 
 function uploadHandler(request, response) {
   Assert.equal(
@@ -88,36 +80,26 @@ function uploadHandler(request, response) {
   );
 
   let body = new BinaryInputStream(request.bodyInputStream);
-  console.log(body.available());
-  Assert.equal(
-    true,
-    body.available() == 886 || body.available() == 3654,
-    "Wrong request body size."
-  );
-  received = true;
+  server_requests.push(body.available());
+
   response.setStatusLine(request.httpVersion, 200);
 }
 
 add_setup(async function () {
   do_get_profile();
-  Services.fog.initializeFOG();
 
   // Set up a mock server to represent the DAP endpoints.
   server = new HttpServer();
-  server.registerPathHandler("/leader_endpoint/hpke_config", hpkeConfigHandler);
-  server.registerPathHandler("/helper_endpoint/hpke_config", hpkeConfigHandler);
   server.registerPrefixHandler("/leader_endpoint/tasks/", uploadHandler);
   server.start(-1);
-
-  const orig_leader = Services.prefs.getStringPref(PREF_LEADER);
-  const orig_helper = Services.prefs.getStringPref(PREF_HELPER);
   const i = server.identity;
   server_addr = i.primaryScheme + "://" + i.primaryHost + ":" + i.primaryPort;
+
   Services.prefs.setStringPref(PREF_LEADER, server_addr + "/leader_endpoint");
   Services.prefs.setStringPref(PREF_HELPER, server_addr + "/helper_endpoint");
   registerCleanupFunction(() => {
-    Services.prefs.setStringPref(PREF_LEADER, orig_leader);
-    Services.prefs.setStringPref(PREF_HELPER, orig_helper);
+    Services.prefs.clearUserPref(PREF_LEADER);
+    Services.prefs.clearUserPref(PREF_HELPER);
 
     return new Promise(resolve => {
       server.stop(resolve);
@@ -126,24 +108,49 @@ add_setup(async function () {
 });
 
 add_task(async function testVerificationTask() {
-  Services.fog.testResetFOG();
-  let before = Glean.dap.uploadStatus.success.testGetValue() ?? 0;
-  await lazy.DAPTelemetrySender.sendTestReports(tasks, 5000);
-  let after = Glean.dap.uploadStatus.success.testGetValue() ?? 0;
-
-  Assert.equal(before + 2, after, "Successful submissions should be counted.");
-  Assert.ok(received, "Report upload successful.");
+  server_requests = [];
+  await lazy.DAPTelemetrySender.sendTestReports(tasks, { timeout: 5000 });
+  Assert.deepEqual(
+    server_requests,
+    task_report_sizes,
+    "Report upload successful."
+  );
 });
 
 add_task(async function testNetworkError() {
-  Services.fog.testResetFOG();
-  let before = Glean.dap.reportGenerationStatus.failure.testGetValue() ?? 0;
+  const test_leader = Services.prefs.getStringPref(PREF_LEADER);
   Services.prefs.setStringPref(PREF_LEADER, server_addr + "/invalid-endpoint");
-  await lazy.DAPTelemetrySender.sendTestReports(tasks, 5000);
-  let after = Glean.dap.reportGenerationStatus.failure.testGetValue() ?? 0;
-  Assert.equal(
-    before + 2,
-    after,
-    "Failed report generation should be counted."
-  );
+
+  server_requests = [];
+
+  let thrownErr;
+  try {
+    await lazy.DAPTelemetrySender.sendTestReports(tasks, { timeout: 5000 });
+  } catch (e) {
+    thrownErr = e;
+  }
+
+  Assert.deepEqual(server_requests, []);
+  Assert.ok(thrownErr.message.startsWith("Sending failed."));
+
+  Services.prefs.setStringPref(PREF_LEADER, test_leader);
+});
+
+add_task(async function testTelemetryToggle() {
+  // Normal
+  server_requests = [];
+  await lazy.DAPTelemetrySender.sendTestReports(tasks, { timeout: 5000 });
+  Assert.deepEqual(server_requests, task_report_sizes);
+
+  // Telemetry off
+  server_requests = [];
+  Services.prefs.setBoolPref(PREF_DATAUPLOAD, false);
+  await lazy.DAPTelemetrySender.sendTestReports(tasks, { timeout: 5000 });
+  Assert.deepEqual(server_requests, []);
+
+  // Normal
+  server_requests = [];
+  Services.prefs.clearUserPref(PREF_DATAUPLOAD);
+  await lazy.DAPTelemetrySender.sendTestReports(tasks, { timeout: 5000 });
+  Assert.deepEqual(server_requests, task_report_sizes);
 });

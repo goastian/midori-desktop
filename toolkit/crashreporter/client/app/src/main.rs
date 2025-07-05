@@ -33,7 +33,6 @@
 #![cfg_attr(windows, windows_subsystem = "windows")]
 
 use crate::std::sync::Arc;
-use anyhow::Context;
 use config::Config;
 
 // A few macros are defined here to allow use in all submodules via textual scope lookup.
@@ -58,12 +57,15 @@ macro_rules! ekey {
     };
 }
 
+mod analyze;
 mod async_task;
 mod config;
 mod data;
+mod glean;
 mod lang;
 mod logging;
 mod logic;
+mod memory_test;
 mod net;
 mod process;
 mod settings;
@@ -74,38 +76,48 @@ mod ui;
 #[cfg(test)]
 mod test;
 
-#[cfg(not(mock))]
 fn main() {
+    // Determine the mode in which to run. This is very simplistic, but need not be more permissive
+    // nor flexible since we control how the program is invoked. We don't use the mocked version
+    // because we want the actual args.
+    match ::std::env::args_os().nth(1) {
+        Some(s) if s == "--analyze" => analyze::main(),
+        Some(s) if s == "--memtest" => memory_test::main(),
+        _ => report_main(),
+    }
+}
+
+#[cfg(not(mock))]
+fn report_main() {
     let log_target = logging::init();
 
     let mut config = Config::new();
-    let config_result = config.read_from_environment();
     config.log_target = Some(log_target);
+    config.read_from_environment();
 
     let mut config = Arc::new(config);
 
-    let result = config_result.and_then(|()| {
-        let attempted_send = try_run(&mut config)?;
-        if !attempted_send {
-            // Exited without attempting to send the crash report; delete files.
-            config.delete_files();
+    match try_run(&mut config) {
+        Ok(attempted_send) => {
+            if !attempted_send {
+                // Exited without attempting to send the crash report; delete files.
+                config.delete_files();
+            }
         }
-        Ok(())
-    });
-
-    if let Err(message) = result {
-        // TODO maybe errors should also delete files?
-        log::error!("exiting with error: {message}");
-        if !config.auto_submit {
-            // Only show a dialog if auto_submit is disabled.
-            ui::error_dialog(&config, message);
+        Err(message) => {
+            // TODO maybe errors should also delete files?
+            log::error!("exiting with error: {message:#}");
+            if !config.auto_submit {
+                // Only show a dialog if auto_submit is disabled.
+                ui::error_dialog(config, message);
+            }
+            std::process::exit(1);
         }
-        std::process::exit(1);
     }
 }
 
 #[cfg(mock)]
-fn main() {
+fn report_main() {
     // TODO it'd be nice to be able to set these values at runtime in some way when running the
     // mock application.
 
@@ -126,6 +138,7 @@ fn main() {
                             "ServerURL": "https://reports.example",
                             "TelemetryServerURL": "https://telemetry.example",
                             "TelemetryClientId": "telemetry_client",
+                            "TelemetryProfileGroupId": "telemetry_profile_group",
                             "TelemetrySessionId": "telemetry_session",
                             "URL": "https://url.example"
                         }"#;
@@ -136,6 +149,10 @@ fn main() {
     const MOCK_PING_UUID: uuid::Uuid = uuid::Uuid::nil();
     const MOCK_REMOTE_CRASH_ID: &str = "8cbb847c-def2-4f68-be9e-000000000000";
 
+    // Initialize logging but don't set it in the configuration, so that it won't be redirected to
+    // a file (only shown on stderr).
+    logging::init();
+
     // Create a default set of files which allow successful operation.
     let mock_files = MockFiles::new();
     mock_files
@@ -145,10 +162,6 @@ fn main() {
     // Create a default mock environment which allows successful operation.
     let mut mock = mock::builder();
     mock.set(
-        Command::mock("work_dir/minidump-analyzer"),
-        Box::new(|_| Ok(crate::std::process::success_output())),
-    )
-    .set(
         Command::mock("work_dir/pingsender"),
         Box::new(|_| Ok(crate::std::process::success_output())),
     )
@@ -176,7 +189,8 @@ fn main() {
         .unwrap()
         .into(),
     )
-    .set(mock::MockHook::new("ping_uuid"), MOCK_PING_UUID);
+    .set(mock::MockHook::new("ping_uuid"), MOCK_PING_UUID)
+    .set(mock::MockHook::new("enable_glean_pings"), false);
 
     let result = mock.run(|| {
         let mut cfg = Config::new();
@@ -185,7 +199,8 @@ fn main() {
         cfg.ping_dir = Some("ping_dir".into());
         cfg.dump_file = Some("minidump.dmp".into());
         cfg.restart_command = Some("mockfox".into());
-        cfg.strings = Some(lang::load().unwrap());
+        cfg.strings = Some(lang::load());
+
         let mut cfg = Arc::new(cfg);
         try_run(&mut cfg)
     });
@@ -203,36 +218,50 @@ fn try_run(config: &mut Arc<Config>) -> anyhow::Result<bool> {
         } else {
             Ok(false)
         }
+    } else if !config.dump_file().exists() {
+        // Bug 1959875: If the minidump file doesn't exist, it indicates that an error occurred
+        // when generating the minidump, and we should return a specific error message to make
+        // things clear to the user.
+        Err(anyhow::anyhow!(
+            config.string("crashreporter-error-failed-to-generate-minidump")
+        ))
     } else {
-        // Run minidump-analyzer to gather stack traces.
+        // Use minidump-analyzer to gather stack traces.
+        #[cfg(not(mock))]
         {
-            let analyzer_path = config.sibling_program_path("minidump-analyzer");
-            let mut cmd = crate::process::background_command(&analyzer_path);
-            if config.dump_all_threads {
-                cmd.arg("--full");
-            }
-            cmd.arg(config.dump_file());
-            let output = cmd
-                .output()
-                .with_context(|| config.string("crashreporter-error-minidump-analyzer"))?;
-            if !output.status.success() {
-                log::warn!(
-                    "minidump-analyzer failed to run ({});\n\nstderr: {}\n\nstdout: {}",
-                    output.status,
-                    String::from_utf8_lossy(&output.stderr),
-                    String::from_utf8_lossy(&output.stdout),
-                );
+            if let Err(e) = minidump_analyzer::MinidumpAnalyzer::new(config.dump_file())
+                .all_threads(config.dump_all_threads)
+                .analyze()
+            {
+                // Minidump analysis gives optional additional information; if it fails, we should
+                // still proceed.
+                log::warn!("minidump analyzer failed: {e}");
             }
         }
 
         let extra = {
-            // Perform a few things which may change the config, then treat is as immutable.
+            // Perform a few things which may change the config, then treat it as immutable.
             let config = Arc::get_mut(config).expect("unexpected config references");
             let extra = config.load_extra_file()?;
             config.move_crash_data_to_pending()?;
             extra
         };
 
+        // Initialize glean here since it relies on the data directory (which will not change after
+        // this point). We could potentially initialize it even later (only just before we need
+        // it), however we may use it for more than just the crash ping in the future, in which
+        // case it makes more sense to do it as early as possible.
+        //
+        // When we are testing, glean will already be initialized (if needed).
+        #[cfg(not(test))]
+        glean::init(&config);
+
         logic::ReportCrash::new(config.clone(), extra)?.run()
     }
 }
+
+// `std` uses `raw-dylib` to link this dll, but that doesn't work properly on x86 MinGW, so we explicitly
+// have to link it.
+#[cfg(all(target_os = "windows", target_env = "gnu"))]
+#[link(name = "bcryptprimitives")]
+extern "C" {}

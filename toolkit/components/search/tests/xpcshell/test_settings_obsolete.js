@@ -60,24 +60,26 @@ async function checkLoadSettingProperties(settingsFile, engineName) {
  * Test reading from search.json.mozlz4
  */
 add_setup(async function () {
-  await SearchTestUtils.useTestEngines("data1");
-  await AddonTestUtils.promiseStartupManager();
+  SearchTestUtils.setRemoteSettingsConfig([
+    { identifier: "engine1" },
+    { identifier: "engine2" },
+  ]);
 });
 
 add_task(async function test_obsolete_distribution_engine() {
   await checkLoadSettingProperties(
-    "data/search-obsolete-distribution.json",
+    "settings/v1-obsolete-distribution.json",
     "Distribution"
   );
 });
 
 add_task(async function test_obsolete_langpack_engine() {
   await checkLoadSettingProperties(
-    "data/search-obsolete-langpack.json",
+    "settings/v1-obsolete-langpack.json",
     "Langpack"
   );
 });
 
 add_task(async function test_obsolete_app_engine() {
-  await checkLoadSettingProperties("data/search-obsolete-app.json", "App");
+  await checkLoadSettingProperties("settings/v1-obsolete-app.json", "App");
 });

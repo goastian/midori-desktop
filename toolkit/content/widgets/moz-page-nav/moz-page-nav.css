@@ -3,57 +3,72 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 :host {
-  --page-nav-button-border-radius: var(--button-border-radius);
-  --page-nav-button-text-color: var(--button-text-color);
-  --page-nav-button-background-color: transparent;
-  --page-nav-button-background-color-hover: var(--button-background-color-hover);
-  --page-nav-button-background-color-selected: var(--color-accent-primary);
-  --page-nav-button-padding: var(--space-small);
   --page-nav-margin-top: 72px;
-  --page-nav-margin-bottom: 36px;
-  --page-nav-gap: 25px;
+  --page-nav-gap: var(--space-large);
   --page-nav-button-gap: var(--space-xsmall);
-  --page-nav-border-color: var(--border-color);
+  --page-nav-border-color: var(--border-color-transparent);
   --page-nav-focus-outline-inset: var(--focus-outline-inset);
-  --page-nav-width: 240px;
+  --page-nav-heading-logo-size: calc(var(--icon-size-default) + var(--space-small));
+  --page-nav-hr-color: #CFCFD8;
+
   margin-inline-start: 42px;
   position: sticky;
   top: 0;
   height: 100vh;
-  display: block;
-  width: var(--page-nav-width);
+  display: flex;
+  flex-shrink: 0;
+  flex-direction: column;
+  gap: var(--page-nav-gap);
 
   @media (prefers-reduced-motion) {
     /* (See Bug 1610081) Setting border-inline-end to add clear differentiation between side navigation and main content area */
     border-inline-end: 1px solid var(--page-nav-border-color);
+    padding-inline-end: var(--space-small);
   }
 
   @media (max-width: 52rem) {
     grid-template-rows: 1fr auto;
-    --page-nav-width: 118px;
   }
 }
 
 nav {
-  display: grid;
-  grid-template-rows: min-content 1fr auto;
+  display: flex;
+  flex-direction: column;
   gap: var(--page-nav-gap);
-  margin-block: var(--page-nav-margin-top) var(--page-nav-margin-bottom);
-  height: calc(100% - var(--page-nav-margin-top) - var(--page-nav-margin-bottom));
-  @media (max-width: 52rem) {
-    grid-template-rows: 1fr auto;
-  }
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
 }
 
-.page-nav-header {
-  /* Align the header text/icon with the page nav button icons */
-  margin-inline-start: var(--page-nav-button-padding);
-  font-size: var(--font-size-xlarge);
-  font-weight: var(--font-weight-bold);
-  margin-block: 0;
+.page-nav-heading-wrapper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-small);
+  margin-block-start: var(--page-nav-margin-top);
 
-  @media (max-width: 52rem) {
-    display: none;
+  > .logo {
+    display: inline-block;
+    height: var(--page-nav-heading-logo-size);
+    width: var(--page-nav-heading-logo-size);
+    background: image-set(url("chrome://branding/content/about-logo.png"), url("chrome://branding/content/about-logo@2x.png") 2x) no-repeat center;
+    background-size: auto;
+    background-size: var(--page-nav-heading-logo-size);
+    /* heading logo should be centered above button icons */
+    margin-inline-start: calc(var(--space-medium) - ((var(--page-nav-heading-logo-size) - var(--icon-size-default)) / 2));
+
+    @media (max-width: 52rem) {
+      margin-inline-start: 4px;
+    }
+  }
+
+  > .page-nav-heading {
+    font-size: var(--font-size-xlarge);
+    font-weight: var(--font-weight-bold);
+    margin-block: 0;
+
+    @media (max-width: 52rem) {
+      display: none;
+    }
   }
 }
 
@@ -66,12 +81,18 @@ nav {
 
   @media (max-width: 52rem) {
     justify-content: center;
-    grid-template-columns: min-content;
+  }
+
+  &:not(:has(slot:has-slotted)) {
+    display: none;
   }
 }
 
-@media (prefers-contrast) {
-  .primary-nav-group {
-    gap: var(--space-small);
-  }
+hr {
+  width: 100%;
+  margin: 0;
+  height: 1px;
+  border: 0;
+  background-color: var(--page-nav-hr-color);
+  flex-shrink: 0;
 }

@@ -324,9 +324,11 @@ nsresult nsCookieInjector::InjectCookiesFromRules(
             ("Setting cookie: %s, %s, %s, %s\n", c.Host().get(), c.Name().get(),
              c.Path().get(), c.Value().get()));
     rv = cookieManager->AddNative(
-        c.Host(), c.Path(), c.Name(), c.Value(), c.IsSecure(), c.IsHttpOnly(),
-        c.IsSession(), c.Expiry(), &aOriginAttributes, c.SameSite(),
-        static_cast<nsICookie::schemeType>(c.SchemeMap()));
+        nullptr, c.Host(), c.Path(), c.Name(), c.Value(), c.IsSecure(),
+        c.IsHttpOnly(), c.IsSession(), c.Expiry(), &aOriginAttributes,
+        c.SameSite(), static_cast<nsICookie::schemeType>(c.SchemeMap()),
+        /* is partitioned: */ false, /* is from http: */ true, nullptr,
+        [](mozilla::net::CookieStruct&) { return true; });
     NS_ENSURE_SUCCESS(rv, rv);
 
     aHasInjectedCookie = true;

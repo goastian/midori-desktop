@@ -14,6 +14,7 @@
 #include "nsArrayEnumerator.h"
 #include "nsIStringBundle.h"
 #include "nsCocoaUtils.h"
+#include "nsThreadUtils.h"
 #include "mozilla/Preferences.h"
 
 // This must be included last:
@@ -61,7 +62,10 @@ static void SetShowHiddenFileState(NSSavePanel* panel) {
     SEL navViewSelector = @selector(_navView);
     NSMethodSignature* navViewSignature =
         [panel methodSignatureForSelector:navViewSelector];
-    if (!navViewSignature) return;
+    if (!navViewSignature) {
+      return;
+    }
+
     NSInvocation* navViewInvocation =
         [NSInvocation invocationWithMethodSignature:navViewSignature];
     [navViewInvocation setSelector:navViewSelector];
@@ -76,7 +80,10 @@ static void SetShowHiddenFileState(NSSavePanel* panel) {
     SEL showHiddenFilesSelector = @selector(setShowsHiddenFiles:);
     NSMethodSignature* showHiddenFilesSignature =
         [navView methodSignatureForSelector:showHiddenFilesSelector];
-    if (!showHiddenFilesSignature) return;
+    if (!showHiddenFilesSignature) {
+      return;
+    }
+
     NSInvocation* showHiddenFilesInvocation =
         [NSInvocation invocationWithMethodSignature:showHiddenFilesSignature];
     [showHiddenFilesInvocation setSelector:showHiddenFilesSelector];
@@ -88,9 +95,49 @@ static void SetShowHiddenFileState(NSSavePanel* panel) {
   NS_OBJC_END_TRY_IGNORE_BLOCK;
 }
 
-nsFilePicker::nsFilePicker() : mSelectedTypeIndex(0) {}
+/**
+ * A runnable to dispatch from the main thread to the main thread to display
+ * the file picker while letting the showAsync method return right away.
+ */
+class nsFilePicker::AsyncShowFilePicker : public mozilla::Runnable {
+ public:
+  AsyncShowFilePicker(nsFilePicker* aFilePicker,
+                      nsIFilePickerShownCallback* aCallback)
+      : mozilla::Runnable("AsyncShowFilePicker"),
+        mFilePicker(aFilePicker),
+        mCallback(aCallback) {}
 
-nsFilePicker::~nsFilePicker() {}
+  NS_IMETHOD Run() override {
+    NS_ASSERTION(NS_IsMainThread(),
+                 "AsyncShowFilePicker should be on the main thread!");
+
+    if (mFilePicker->MaybeBlockFilePicker(mCallback)) {
+      return NS_OK;
+    }
+
+    // macOS requires require GUI operations to be on the main thread, so that's
+    // why we're not dispatching to another thread and calling back to the main
+    // after it's done.
+    nsIFilePicker::ResultCode result = nsIFilePicker::returnCancel;
+    nsresult rv = mFilePicker->Show(&result);
+    if (NS_FAILED(rv)) {
+      NS_ERROR("FilePicker's Show() implementation failed!");
+    }
+
+    if (mCallback) {
+      mCallback->Done(result);
+    }
+    return NS_OK;
+  }
+
+ private:
+  RefPtr<nsFilePicker> mFilePicker;
+  RefPtr<nsIFilePickerShownCallback> mCallback;
+};
+
+nsFilePicker::nsFilePicker() = default;
+
+nsFilePicker::~nsFilePicker() = default;
 
 void nsFilePicker::InitNative(nsIWidget* aParent, const nsAString& aTitle) {
   mTitle = aTitle;
@@ -156,8 +203,9 @@ NSView* nsFilePicker::GetAccessoryView() {
     [popupButton addItemWithTitle:titleString];
     [titleString release];
   }
-  if (mSelectedTypeIndex >= 0 && (uint32_t)mSelectedTypeIndex < numMenuItems)
+  if (mSelectedTypeIndex >= 0 && (uint32_t)mSelectedTypeIndex < numMenuItems) {
     [popupButton selectItemAtIndex:mSelectedTypeIndex];
+  }
   [popupButton setTag:kSaveTypeControlTag];
   [popupButton sizeToFit];  // we have to do sizeToFit to get the height
                             // calculated for us
@@ -169,8 +217,9 @@ NSView* nsFilePicker::GetAccessoryView() {
   // padding on each side kAccessoryViewPadding pix horizontal padding between
   // controls
   float greatestHeight = [textField frame].size.height;
-  if ([popupButton frame].size.height > greatestHeight)
+  if ([popupButton frame].size.height > greatestHeight) {
     greatestHeight = [popupButton frame].size.height;
+  }
   float totalViewHeight = greatestHeight + kAccessoryViewPadding * 2;
   float totalViewWidth = [textField frame].size.width +
                          [popupButton frame].size.width +
@@ -231,10 +280,23 @@ nsresult nsFilePicker::Show(ResultCode* retval) {
       break;
   }
 
-  if (theFile) mFiles.AppendObject(theFile);
+  if (theFile) {
+    mFiles.AppendObject(theFile);
+  }
 
   *retval = userClicksOK;
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsFilePicker::Open(nsIFilePickerShownCallback* aCallback) {
+  if (MaybeBlockFilePicker(aCallback)) {
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIRunnable> filePickerEvent =
+      new AsyncShowFilePicker(this, aCallback);
+  return NS_DispatchToMainThread(filePickerEvent);
 }
 
 static void UpdatePanelFileTypes(NSOpenPanel* aPanel, NSArray* aFilters) {
@@ -301,10 +363,11 @@ nsIFilePicker::ResultCode nsFilePicker::GetLocalFiles(
   // dir has been set, then use the Applications folder.
   if (!theDir) {
     if (filters && [filters count] == 1 &&
-        [(NSString*)[filters objectAtIndex:0] isEqualToString:@"app"])
+        [(NSString*)[filters objectAtIndex:0] isEqualToString:@"app"]) {
       theDir = @"/Applications/";
-    else
+    } else {
       theDir = @"";
+    }
   }
 
   if (theDir) {
@@ -346,7 +409,9 @@ nsIFilePicker::ResultCode nsFilePicker::GetLocalFiles(
   }
   nsCocoaUtils::CleanUpAfterNativeAppModalDialog();
 
-  if (result == NSModalResponseCancel) return retVal;
+  if (result == NSModalResponseCancel) {
+    return retVal;
+  }
 
   // Converts data from a NSArray of NSURL to the returned format.
   // We should be careful to not call [thePanel URLs] more than once given that
@@ -358,16 +423,16 @@ nsIFilePicker::ResultCode nsFilePicker::GetLocalFiles(
       continue;
     }
 
-    nsCOMPtr<nsIFile> localFile;
-    NS_NewLocalFile(u""_ns, true, getter_AddRefs(localFile));
-    nsCOMPtr<nsILocalFileMac> macLocalFile = do_QueryInterface(localFile);
-    if (macLocalFile &&
-        NS_SUCCEEDED(macLocalFile->InitWithCFURL((CFURLRef)url))) {
-      outFiles.AppendObject(localFile);
+    nsCOMPtr<nsILocalFileMac> macLocalFile;
+    if (NS_SUCCEEDED(NS_NewLocalFileWithCFURL((CFURLRef)url,
+                                              getter_AddRefs(macLocalFile)))) {
+      outFiles.AppendObject(macLocalFile);
     }
   }
 
-  if (outFiles.Count() > 0) retVal = returnOK;
+  if (outFiles.Count() > 0) {
+    retVal = returnOK;
+  }
 
   return retVal;
 
@@ -408,18 +473,17 @@ nsIFilePicker::ResultCode nsFilePicker::GetLocalFolder(nsIFile** outFile) {
   int result = [thePanel runModal];
   nsCocoaUtils::CleanUpAfterNativeAppModalDialog();
 
-  if (result == NSModalResponseCancel) return retVal;
+  if (result == NSModalResponseCancel) {
+    return retVal;
+  }
 
   // get the path for the folder (we allow just 1, so that's all we get)
   NSURL* theURL = [[thePanel URLs] objectAtIndex:0];
   if (theURL) {
-    nsCOMPtr<nsIFile> localFile;
-    NS_NewLocalFile(u""_ns, true, getter_AddRefs(localFile));
-    nsCOMPtr<nsILocalFileMac> macLocalFile = do_QueryInterface(localFile);
-    if (macLocalFile &&
-        NS_SUCCEEDED(macLocalFile->InitWithCFURL((CFURLRef)theURL))) {
-      *outFile = localFile;
-      NS_ADDREF(*outFile);
+    nsCOMPtr<nsILocalFileMac> macLocalFile;
+    if (NS_SUCCEEDED(NS_NewLocalFileWithCFURL((CFURLRef)theURL,
+                                              getter_AddRefs(macLocalFile)))) {
+      macLocalFile.forget(outFile);
       retVal = returnOK;
     }
   }
@@ -494,7 +558,9 @@ nsIFilePicker::ResultCode nsFilePicker::PutLocalFile(nsIFile** outFile) {
   [thePanel setNameFieldStringValue:defaultFilename];
   int result = [thePanel runModal];
   nsCocoaUtils::CleanUpAfterNativeAppModalDialog();
-  if (result == NSModalResponseCancel) return retVal;
+  if (result == NSModalResponseCancel) {
+    return retVal;
+  }
 
   // get the save type
   NSPopUpButton* popupButton = [accessoryView viewWithTag:kSaveTypeControlTag];
@@ -504,20 +570,18 @@ nsIFilePicker::ResultCode nsFilePicker::PutLocalFile(nsIFile** outFile) {
 
   NSURL* fileURL = [thePanel URL];
   if (fileURL) {
-    nsCOMPtr<nsIFile> localFile;
-    NS_NewLocalFile(u""_ns, true, getter_AddRefs(localFile));
-    nsCOMPtr<nsILocalFileMac> macLocalFile = do_QueryInterface(localFile);
-    if (macLocalFile &&
-        NS_SUCCEEDED(macLocalFile->InitWithCFURL((CFURLRef)fileURL))) {
-      *outFile = localFile;
-      NS_ADDREF(*outFile);
+    nsCOMPtr<nsILocalFileMac> macLocalFile;
+    if (NS_SUCCEEDED(NS_NewLocalFileWithCFURL((CFURLRef)fileURL,
+                                              getter_AddRefs(macLocalFile)))) {
+      macLocalFile.forget(outFile);
       // We tell if we are replacing or not by just looking to see if the file
       // exists. The user could not have hit OK and not meant to replace the
       // file.
-      if ([[NSFileManager defaultManager] fileExistsAtPath:[fileURL path]])
+      if ([[NSFileManager defaultManager] fileExistsAtPath:[fileURL path]]) {
         retVal = returnReplace;
-      else
+      } else {
         retVal = returnOK;
+      }
     }
   }
 
@@ -624,7 +688,9 @@ NS_IMETHODIMP nsFilePicker::GetFileURL(nsIURI** aFileURL) {
   NS_ENSURE_ARG_POINTER(aFileURL);
   *aFileURL = nullptr;
 
-  if (mFiles.Count() == 0) return NS_OK;
+  if (mFiles.Count() == 0) {
+    return NS_OK;
+  }
 
   return NS_NewFileURI(aFileURL, mFiles.ObjectAt(0));
 }

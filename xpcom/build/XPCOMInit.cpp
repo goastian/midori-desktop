@@ -30,6 +30,8 @@
 #include "nsXPCOMCIDInternal.h"
 
 #include "mozilla/dom/JSExecutionManager.h"
+#include "mozilla/dom/SharedScriptCache.h"
+#include "mozilla/SharedStyleSheetCache.h"
 #include "mozilla/layers/ImageBridgeChild.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 
@@ -86,7 +88,7 @@
 #include "base/command_line.h"
 #include "base/message_loop.h"
 
-#include "mozilla/ipc/BrowserProcessSubThread.h"
+#include "mozilla/ipc/IOThread.h"
 #include "mozilla/AvailableMemoryTracker.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/CountingAllocatorBase.h"
@@ -111,8 +113,10 @@
 
 #include "gfxPlatform.h"
 
+#include "mozilla/GeckoTrace.h"
+
 using base::AtExitManager;
-using mozilla::ipc::BrowserProcessSubThread;
+using mozilla::ipc::IOThreadParent;
 
 // From toolkit/library/rust/lib.rs
 extern "C" void GkRust_Init();
@@ -123,7 +127,7 @@ namespace {
 static AtExitManager* sExitManager;
 static MessageLoop* sMessageLoop;
 static bool sCommandLineWasInitialized;
-static BrowserProcessSubThread* sIOThread;
+static IOThreadParent* sIOThread;
 static mozilla::BackgroundHangMonitor* sMainHangMonitor;
 
 } /* anonymous namespace */
@@ -212,7 +216,7 @@ class OggReporter final : public nsIMemoryReporter,
                  bool aAnonymize) override {
     MOZ_COLLECT_REPORT(
         "explicit/media/libogg", KIND_HEAP, UNITS_BYTES, MemoryAllocated(),
-        "Memory allocated through libogg for Ogg, Theora, and related media "
+        "Memory allocated through libogg for Ogg, and related media "
         "files.");
 
     return NS_OK;
@@ -247,6 +251,12 @@ static void InitializeJS() {
   }
 }
 
+#define XPCOM_INIT_FATAL(message, res) \
+  if (XRE_IsParentProcess()) {         \
+    return res;                        \
+  }                                    \
+  MOZ_CRASH(message);
+
 // Note that on OSX, aBinDirectory will point to .app/Contents/Resources/browser
 EXPORT_XPCOM_API(nsresult)
 NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
@@ -254,7 +264,7 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
              bool aInitJSContext) {
   static bool sInitialized = false;
   if (sInitialized) {
-    return NS_ERROR_FAILURE;
+    XPCOM_INIT_FATAL("!sInitialized", NS_ERROR_FAILURE)
   }
 
   sInitialized = true;
@@ -305,25 +315,17 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
     messageLoop->set_hang_timeouts(128, 8192);
   }
 
-  if (XRE_IsParentProcess() &&
-      !BrowserProcessSubThread::GetMessageLoop(BrowserProcessSubThread::IO)) {
-    mozilla::UniquePtr<BrowserProcessSubThread> ioThread =
-        mozilla::MakeUnique<BrowserProcessSubThread>(
-            BrowserProcessSubThread::IO);
-
-    base::Thread::Options options;
-    options.message_loop_type = MessageLoop::TYPE_IO;
-    if (NS_WARN_IF(!ioThread->StartWithOptions(options))) {
-      return NS_ERROR_FAILURE;
-    }
-
-    sIOThread = ioThread.release();
+  // Start the IPC I/O thread in the parent process. We'll have already started
+  // the IPC I/O thread if we're in a content process.
+  if (XRE_IsParentProcess()) {
+    sIOThread = new IOThreadParent();
   }
+  MOZ_ASSERT(mozilla::ipc::IOThread::Get(), "An IOThread has been started");
 
   // Establish the main thread here.
   rv = nsThreadManager::get().Init();
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+    XPCOM_INIT_FATAL("nsThreadManager::get().Init()", rv)
   }
 
   // Initialise the profiler
@@ -332,7 +334,7 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
   // Set up the timer globals/timer thread
   rv = nsTimerImpl::Startup();
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+    XPCOM_INIT_FATAL("nsTimerImpl::Startup()", rv)
   }
 
 #ifndef ANDROID
@@ -359,7 +361,7 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
     rv = nsDirectoryService::gService->RegisterProvider(
         aAppFileLocationProvider);
     if (NS_FAILED(rv)) {
-      return rv;
+      XPCOM_INIT_FATAL("nsDirectoryService::gService->RegisterProvider()", rv)
     }
   }
 
@@ -382,7 +384,14 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
     // else you'll probably have to do, please add it to the case in
     // GeckoChildProcessHost.cpp which sets the greomni/appomni flags.
     MOZ_ASSERT(XRE_IsParentProcess() || XRE_IsContentProcess());
-    mozilla::Omnijar::Init();
+
+    // Note that the Omnijar::FallibleInit does not fail but returns NS_OK if
+    // the file is not found at all, as this is an expected possible way of
+    // running with an unpacked modules directory.
+    nsresult rv = mozilla::Omnijar::FallibleInit();
+    if (NS_FAILED(rv)) {
+      XPCOM_INIT_FATAL("Omnijar::Init()", NS_ERROR_OMNIJAR_CORRUPT)
+    }
   }
 
   if ((sCommandLineWasInitialized = !CommandLine::IsInitialized())) {
@@ -394,18 +403,18 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
                                       NS_GET_IID(nsIFile),
                                       getter_AddRefs(binaryFile));
     if (NS_WARN_IF(!binaryFile)) {
-      return NS_ERROR_FAILURE;
+      XPCOM_INIT_FATAL("!binaryFile", NS_ERROR_FAILURE)
     }
 
     rv = binaryFile->AppendNative("nonexistent-executable"_ns);
     if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+      XPCOM_INIT_FATAL("binaryFile->AppendNative()", rv)
     }
 
     nsCString binaryPath;
     rv = binaryFile->GetNativePath(binaryPath);
     if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+      XPCOM_INIT_FATAL("binaryFile->GetNativePath", rv)
     }
 
     static char const* const argv = {strdup(binaryPath.get())};
@@ -422,7 +431,7 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
 
   // Global cycle collector initialization.
   if (!nsCycleCollector_init()) {
-    return NS_ERROR_UNEXPECTED;
+    XPCOM_INIT_FATAL("nsCycleCollector_init()", NS_ERROR_UNEXPECTED)
   }
 
   // And start it up for this thread too.
@@ -448,7 +457,7 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
   rv = nsComponentManagerImpl::gComponentManager->Init();
   if (NS_FAILED(rv)) {
     NS_RELEASE(nsComponentManagerImpl::gComponentManager);
-    return rv;
+    XPCOM_INIT_FATAL("gComponentManager->Init()", rv)
   }
 
   if (aResult) {
@@ -461,6 +470,11 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
   mozilla::InitPHCState();
 #endif
 
+#ifdef MOZ_MEMORY
+  // We did set up our main thread earlier and can read prefs now.
+  mozilla::TaskController::SetupIdleMemoryCleanup();
+#endif
+
   // After autoreg, but before we actually instantiate any components,
   // add any services listed in the "xpcom-directory-providers" category
   // to the directory service.
@@ -469,7 +483,7 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
   // Now that both the profiler and directory services have been started
   // we can find the download directory, where the profiler can write
   // profiles if necessary
-  profiler_lookup_download_directory();
+  profiler_lookup_async_signal_dump_directory();
 
   // Init mozilla::SharedThreadPool (which needs the service manager).
   mozilla::SharedThreadPool::InitStatics();
@@ -489,6 +503,8 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
   RegisterStrongMemoryReporter(new OggReporter());
   xpc::SelfHostedShmem::GetSingleton().InitMemoryReporter();
 
+  mozilla::gecko_trace::Init();
+
   mozilla::Telemetry::Init();
 
   mozilla::BackgroundHangMonitor::Startup();
@@ -506,6 +522,8 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
 
   return NS_OK;
 }
+
+#undef XPCOM_INIT_FATAL
 
 EXPORT_XPCOM_API(nsresult)
 NS_InitMinimalXPCOM() {
@@ -548,6 +566,7 @@ NS_InitMinimalXPCOM() {
   }
 
   mozilla::SharedThreadPool::InitStatics();
+  mozilla::gecko_trace::Init();
   mozilla::Telemetry::Init();
   mozilla::BackgroundHangMonitor::Startup();
 
@@ -709,6 +728,8 @@ nsresult ShutdownXPCOM(nsIServiceManager* aServMgr) {
   // profiling purposes.
   PROFILER_CLEAR_JS_CONTEXT();
 
+  mozilla::dom::SharedScriptCache::PrepareForLastCC();
+
   bool shutdownCollect;
 #ifdef NS_FREE_PERMANENT_DATA
   shutdownCollect = true;
@@ -743,6 +764,9 @@ nsresult ShutdownXPCOM(nsIServiceManager* aServMgr) {
   }
 
   mozilla::ScriptPreloader::DeleteCacheDataSingleton();
+
+  mozilla::dom::SharedScriptCache::DeleteSingleton();
+  mozilla::SharedStyleSheetCache::DeleteSingleton();
 
   // Release shared memory which might be borrowed by the JS engine.
   xpc::SelfHostedShmem::Shutdown();

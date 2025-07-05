@@ -129,11 +129,6 @@
  * implementation is asynchronous, the order in which PlacesTransactions methods
  * is called does guarantee the order in which they are to be invoked.
  *
- * The only exception to this rule is |transact| calls done during a batch (see
- * above).  |transact| calls are serialized with each other (and with undo, redo
- * and clearTransactionsHistory), but they  are, of course, not serialized with
- * batches.
- *
  * The transactions-history structure
  * ----------------------------------
  * The transactions-history is a two-dimensional stack of transactions: the
@@ -156,18 +151,6 @@
  */
 
 const TRANSACTIONS_QUEUE_TIMEOUT_MS = 240000; // 4 Mins.
-
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
-
-// Use a single queue bookmarks transaction manager. This pref exists as an
-// emergency switch-off, it will go away in the future.
-const prefs = {};
-XPCOMUtils.defineLazyPreferenceGetter(
-  prefs,
-  "USE_SINGLE_QUEUE",
-  "places.bookmarks.useSingleQueueTransactionManager",
-  true
-);
 
 import { PlacesUtils } from "resource://gre/modules/PlacesUtils.sys.mjs";
 
@@ -209,9 +192,10 @@ class TransactionsHistoryArray extends Array {
 
   /**
    * Proxify a transaction object for consumers.
+   *
    * @param rawTransaction
    *        the raw transaction object.
-   * @return the proxified transaction object.
+   * @returns the proxified transaction object.
    * @see getRawTransaction for retrieving the raw transaction.
    */
   proxifyTransaction(rawTransaction) {
@@ -229,9 +213,10 @@ class TransactionsHistoryArray extends Array {
 
   /**
    * Check if the given object is a the proxy object for some transaction.
+   *
    * @param aValue
    *        any JS value.
-   * @return true if aValue is the proxy object for some transaction, false
+   * @returns true if aValue is the proxy object for some transaction, false
    * otherwise.
    */
   isProxifiedTransactionObject(value) {
@@ -240,9 +225,10 @@ class TransactionsHistoryArray extends Array {
 
   /**
    * Get the raw transaction for the given proxy.
+   *
    * @param aProxy
    *        the proxy object
-   * @return the transaction proxified by aProxy; |undefined| is returned if
+   * @returns the transaction proxified by aProxy; |undefined| is returned if
    * aProxy is not a proxified transaction.
    */
   getRawTransaction(proxy) {
@@ -366,7 +352,7 @@ export var PlacesTransactions = {
    * position in the transactions history in the reverse order, if any, and
    * adjusts the undo position.
    *
-   * @return {Promises).  The promise always resolves.
+   * @returns {Promise<void>}.  The promise always resolves.
    * @note All undo manager operations are queued. This means that transactions
    * history may change by the time your request is fulfilled.
    */
@@ -380,7 +366,7 @@ export var PlacesTransactions = {
    * position in the transactions history, if any, and adjusts the undo
    * position.
    *
-   * @return {Promises).  The promise always resolves.
+   * @returns {Promise<void>}.  The promise always resolves.
    * @note All undo manager operations are queued. This means that transactions
    * history may change by the time your request is fulfilled.
    */
@@ -393,12 +379,12 @@ export var PlacesTransactions = {
    * Asynchronously clear the undo, redo, or all entries from the transactions
    * history.
    *
-   * @param [optional] undoEntries
-   *        Whether or not to clear undo entries.  Default: true.
-   * @param [optional] redoEntries
-   *        Whether or not to clear undo entries.  Default: true.
+   * @param {boolean} [undoEntries]
+   *   Whether or not to clear undo entries. Default: true.
+   * @param {boolean} [redoEntries]
+   *   Whether or not to clear undo entries. Default: true.
    *
-   * @return {Promises).  The promise always resolves.
+   * @returns {Promise<void>}.  The promise always resolves.
    * @throws if both aUndoEntries and aRedoEntries are false.
    * @note All undo manager operations are queued. This means that transactions
    * history may change by the time your request is fulfilled.
@@ -424,7 +410,7 @@ export var PlacesTransactions = {
    *
    * @param index
    *        the index of the entry to retrieve.
-   * @return an array of transaction objects in their undo order (that is,
+   * @returns an array of transaction objects in their undo order (that is,
    * reversely to the order they were executed).
    * @throw if aIndex is invalid (< 0 or >= length).
    * @note the returned array is a clone of the history entry and is not
@@ -470,7 +456,7 @@ export var PlacesTransactions = {
  * that they are never executed in parallel.
  *
  * In other words: Enqueuer.enqueue(aFunc1); Enqueuer.enqueue(aFunc2) is roughly
- * the same as Task.spawn(aFunc1).then(Task.spawn(aFunc2)).
+ * the same as asyncFunc1.then(asyncFunc2).
  */
 function Enqueuer(name) {
   this._promise = Promise.resolve();
@@ -478,12 +464,11 @@ function Enqueuer(name) {
 }
 Enqueuer.prototype = {
   /**
-   * Spawn a functions once all previous functions enqueued are done running,
-   * and all promises passed to alsoWaitFor are no longer pending.
+   * Spawn a functions once all previous functions enqueued are done running.
    *
    * @param   func
    *          a function returning a promise.
-   * @return  a promise that resolves once aFunc is done running. The promise
+   * @returns  a promise that resolves once aFunc is done running. The promise
    *          "mirrors" the promise returned by aFunc.
    */
   enqueue(func) {
@@ -513,41 +498,6 @@ Enqueuer.prototype = {
   },
 
   /**
-   * Same as above, but for a promise returned by a function that already run.
-   * This is useful, for example, for serializing transact calls with undo calls,
-   * even though transact has its own Enqueuer.
-   *
-   * @param {Promise} otherPromise
-   *        any promise.
-   * @param {string} source
-   *        source for logging purposes
-   */
-  alsoWaitFor(otherPromise, source) {
-    lazy.logger.debug(`${this._name} alsoWaitFor: ${source}`);
-    // We don't care if aPromise resolves or rejects, but just that is not
-    // pending anymore.
-    // If a transaction awaits on a never resolved promise, or is mistakenly
-    // nested, it could hang the transactions queue forever.  Thus we timeout
-    // the execution after a meaningful amount of time, to ensure in any case
-    // we'll proceed after a while.
-    let timeoutPromise = new Promise((resolve, reject) => {
-      setTimeout(
-        () =>
-          reject(
-            new Error(
-              "PlacesTransaction timeout, most likely caused by unresolved pending work."
-            )
-          ),
-        TRANSACTIONS_QUEUE_TIMEOUT_MS
-      );
-    });
-    let promise = Promise.race([otherPromise, timeoutPromise]).catch(
-      console.error
-    );
-    this._promise = Promise.all([this._promise, promise]);
-  },
-
-  /**
    * The promise for this queue.
    */
   get promise() {
@@ -556,10 +506,9 @@ Enqueuer.prototype = {
 };
 
 var TransactionsManager = {
-  // See the documentation at the top of this file. |transact| calls are not
-  // serialized with |batch| calls.
+  // Used to guarantee order of execution.
+  // See the documentation at the top of this file.
   _mainEnqueuer: new Enqueuer("MainEnqueuer"),
-  _transactEnqueuer: new Enqueuer("TransactEnqueuer"),
 
   // Transactions object should never be recycled (that is, |execute| should
   // only be called once (or not at all) after they're constructed.
@@ -571,7 +520,7 @@ var TransactionsManager = {
    *
    * @param {object} txnProxy The proxified transaction to execute.
    * @param {boolean} [inBatch] Whether the transaction is part of a batch.
-   * @param {integer} [batchIndex] The index of the transaction in the batch array.
+   * @param {number} [batchIndex] The index of the transaction in the batch array.
    * @returns {Promise} resolved to the transaction return value once complete.
    */
   transact(txnProxy, inBatch = false, batchIndex = undefined) {
@@ -590,7 +539,10 @@ var TransactionsManager = {
     // sameTxn.transact(); sameTxn.transact();
     this._executedTransactions.add(rawTxn);
 
-    let task = async () => {
+    // TODO: This may be cleaned up by changing transact() to an async function,
+    // but we must check if converting synhronous exceptions to an asynchronous
+    // rejection may cause issues.
+    return (async () => {
       lazy.logger.debug(`transact execute(): ${txnProxy}`);
       // Don't try to catch exceptions. If execute fails, we better not add the
       // transaction to the undo stack.
@@ -601,15 +553,7 @@ var TransactionsManager = {
 
       this._updateCommandsOnActiveWindow();
       return retval;
-    };
-
-    if (prefs.USE_SINGLE_QUEUE) {
-      return task();
-    }
-
-    let promise = this._transactEnqueuer.enqueue(task);
-    this._mainEnqueuer.alsoWaitFor(promise, "transact");
-    return promise;
+    })();
   },
 
   batch(task) {
@@ -641,9 +585,6 @@ var TransactionsManager = {
       lazy.TransactionsHistory._undoPosition++;
       this._updateCommandsOnActiveWindow();
     });
-    if (!prefs.USE_SINGLE_QUEUE) {
-      this._transactEnqueuer.alsoWaitFor(promise, "undo");
-    }
     return promise;
   },
 
@@ -677,9 +618,6 @@ var TransactionsManager = {
       lazy.TransactionsHistory._undoPosition--;
       this._updateCommandsOnActiveWindow();
     });
-    if (!prefs.USE_SINGLE_QUEUE) {
-      this._transactEnqueuer.alsoWaitFor(promise, "redo");
-    }
     return promise;
   },
 
@@ -696,10 +634,6 @@ var TransactionsManager = {
         throw new Error("either aUndoEntries or aRedoEntries should be true");
       }
     });
-
-    if (!prefs.USE_SINGLE_QUEUE) {
-      this._transactEnqueuer.alsoWaitFor(promise, "clearTransactionsHistory");
-    }
     return promise;
   },
 
@@ -710,6 +644,7 @@ var TransactionsManager = {
     try {
       let win = Services.focus.activeWindow;
       if (win) {
+        // @ts-ignore - Bug 1954851
         win.updateCommands("undo");
       }
     } catch (ex) {
@@ -741,10 +676,12 @@ function DefineTransaction(requiredProps = [], optionalProps = []) {
     }
   }
 
+  /** @this {{ execute: Function }} */
   let ctor = function (input) {
     // We want to support both syntaxes:
     // let t = new PlacesTransactions.NewBookmark(),
     // let t = PlacesTransactions.NewBookmark()
+    // @ts-ignore - Typescript is not yet able to identify this correctly.
     if (this == PlacesTransactions) {
       return new ctor(input);
     }
@@ -1023,7 +960,7 @@ DefineTransaction.defineArrayInputProp("children", "child");
  * @note the id, root and charset properties of items in aBookmarksTree are
  *       always ignored.  The index property is ignored for all items but the
  *       root one.
- * @return {Promise}
+ * @returns {Promise}
  * @resolves to the guid of the new item.
  */
 // TODO: Replace most of this with insertTree.
@@ -1100,7 +1037,7 @@ function createItemsFromBookmarksTree(tree, restoring = false) {
  *
  * See the documentation at the top of this file. The valid values for input
  * are also documented there.
- *****************************************************************************/
+ */
 
 var PT = PlacesTransactions;
 
@@ -1116,7 +1053,7 @@ PT.NewBookmark = DefineTransaction(
   ["parentGuid", "url"],
   ["index", "title", "tags"]
 );
-PT.NewBookmark.prototype = Object.seal({
+PT.NewBookmark.prototype = {
   async execute({ parentGuid, url, index, title, tags }) {
     let info = { parentGuid, index, url, title };
     // Filter tags to exclude already existing ones.
@@ -1149,7 +1086,7 @@ PT.NewBookmark.prototype = Object.seal({
   toString() {
     return "NewBookmark";
   },
-});
+};
 
 /**
  * Transaction for creating a folder.
@@ -1163,7 +1100,7 @@ PT.NewFolder = DefineTransaction(
   ["parentGuid", "title"],
   ["index", "children"]
 );
-PT.NewFolder.prototype = Object.seal({
+PT.NewFolder.prototype = {
   async execute({ parentGuid, title, index, children }) {
     let folderGuid;
     let info = {
@@ -1217,7 +1154,7 @@ PT.NewFolder.prototype = Object.seal({
   toString() {
     return "NewFolder";
   },
-});
+};
 
 /**
  * Transaction for creating a separator.
@@ -1229,7 +1166,7 @@ PT.NewFolder.prototype = Object.seal({
  * GUID.
  */
 PT.NewSeparator = DefineTransaction(["parentGuid"], ["index"]);
-PT.NewSeparator.prototype = Object.seal({
+PT.NewSeparator.prototype = {
   async execute(info) {
     info.type = PlacesUtils.bookmarks.TYPE_SEPARATOR;
     info = await PlacesUtils.bookmarks.insert(info);
@@ -1240,7 +1177,7 @@ PT.NewSeparator.prototype = Object.seal({
   toString() {
     return "NewSeparator";
   },
-});
+};
 
 /**
  * Transaction for moving an item.
@@ -1249,7 +1186,7 @@ PT.NewSeparator.prototype = Object.seal({
  * Optional Input Properties  newIndex.
  */
 PT.Move = DefineTransaction(["guids", "newParentGuid"], ["newIndex"]);
-PT.Move.prototype = Object.seal({
+PT.Move.prototype = {
   async execute({ guids, newParentGuid, newIndex }) {
     let originalInfos = [];
     let index = newIndex;
@@ -1286,7 +1223,7 @@ PT.Move.prototype = Object.seal({
   toString() {
     return "Move";
   },
-});
+};
 
 /**
  * Transaction for setting the title for an item.
@@ -1294,7 +1231,7 @@ PT.Move.prototype = Object.seal({
  * Required Input Properties: guid, title.
  */
 PT.EditTitle = DefineTransaction(["guid", "title"]);
-PT.EditTitle.prototype = Object.seal({
+PT.EditTitle.prototype = {
   async execute({ guid, title }) {
     let originalInfo = await PlacesUtils.bookmarks.fetch(guid);
     if (!originalInfo) {
@@ -1316,7 +1253,7 @@ PT.EditTitle.prototype = Object.seal({
   toString() {
     return "EditTitle";
   },
-});
+};
 
 /**
  * Transaction for setting the URI for an item.
@@ -1324,7 +1261,7 @@ PT.EditTitle.prototype = Object.seal({
  * Required Input Properties: guid, url.
  */
 PT.EditUrl = DefineTransaction(["guid", "url"]);
-PT.EditUrl.prototype = Object.seal({
+PT.EditUrl.prototype = {
   async execute({ guid, url }) {
     let originalInfo = await PlacesUtils.bookmarks.fetch(guid);
     if (!originalInfo) {
@@ -1376,13 +1313,13 @@ PT.EditUrl.prototype = Object.seal({
     };
 
     this.redo = async function () {
-      updatedInfo = await updateItem();
+      await updateItem();
     };
   },
   toString() {
     return "EditUrl";
   },
-});
+};
 
 /**
  * Transaction for setting the keyword for a bookmark.
@@ -1394,7 +1331,7 @@ PT.EditKeyword = DefineTransaction(
   ["guid", "keyword"],
   ["postData", "oldKeyword"]
 );
-PT.EditKeyword.prototype = Object.seal({
+PT.EditKeyword.prototype = {
   async execute({ guid, keyword, postData, oldKeyword }) {
     let url;
     let oldKeywordEntry;
@@ -1427,7 +1364,7 @@ PT.EditKeyword.prototype = Object.seal({
   toString() {
     return "EditKeyword";
   },
-});
+};
 
 /**
  * Transaction for sorting a folder by name.
@@ -1459,7 +1396,7 @@ PT.SortByName.prototype = {
     // This is not great, since it does main-thread IO.
     // PromiseBookmarksTree can't be used, since it' won't stop at the first level'.
     let root = PlacesUtils.getFolderContents(guid, false, false).root;
-    for (let i = 0; i < root.childCount; ++i) {
+    for (let i = 0, count = root.childCount; i < count; ++i) {
       let node = root.getChild(i);
       oldOrderGuids.push(node.bookmarkGuid);
       if (PlacesUtils.nodeIsSeparator(node)) {
@@ -1528,13 +1465,16 @@ PT.Remove.prototype = {
     await removeThem();
 
     this.undo = async function () {
+      let createdItems = [];
       for (let info of removedItems) {
         try {
           await createItemsFromBookmarksTree(info, true);
+          createdItems.push(info);
         } catch (ex) {
           console.error(`Unable to undo removal of ${info.guid}`);
         }
       }
+      removedItems = createdItems;
     };
     this.redo = removeThem;
   },
@@ -1664,15 +1604,15 @@ PT.RenameTag.prototype = {
     let urls = new Set();
     await PlacesUtils.bookmarks.fetch({ tags: [oldTag] }, b => urls.add(b.url));
     if (urls.size > 0) {
-      urls = Array.from(urls);
+      let urlsAsArray = Array.from(urls);
       let tagTxn = lazy.TransactionsHistory.getRawTransaction(
-        PT.Tag({ urls, tags: [tag] })
+        PT.Tag({ urls: urlsAsArray, tags: [tag] })
       );
       await tagTxn.execute();
       onUndo.unshift(tagTxn.undo.bind(tagTxn));
       onRedo.push(tagTxn.redo.bind(tagTxn));
       let untagTxn = lazy.TransactionsHistory.getRawTransaction(
-        PT.Untag({ urls, tags: [oldTag] })
+        PT.Untag({ urls: urlsAsArray, tags: [oldTag] })
       );
       await untagTxn.execute();
       onUndo.unshift(untagTxn.undo.bind(untagTxn));

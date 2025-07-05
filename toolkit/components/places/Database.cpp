@@ -8,6 +8,7 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/SpinEventLoopUntil.h"
 #include "mozilla/StaticPrefs_places.h"
+#include "mozilla/glean/PlacesMetrics.h"
 
 #include "Database.h"
 
@@ -41,11 +42,6 @@
 // Time between corrupt database backups.
 #define RECENT_BACKUP_TIME_MICROSEC (int64_t)86400 * PR_USEC_PER_SEC  // 24H
 
-// Filename of the database.
-#define DATABASE_FILENAME u"places.sqlite"_ns
-// Filename of the icons database.
-#define DATABASE_FAVICONS_FILENAME u"favicons.sqlite"_ns
-
 // Set to the database file name when it was found corrupt by a previous
 // maintenance run.
 #define PREF_FORCE_DATABASE_REPLACEMENT \
@@ -53,6 +49,11 @@
 
 // Whether on corruption we should try to fix the database by cloning it.
 #define PREF_DATABASE_CLONEONCORRUPTION "places.database.cloneOnCorruption"
+
+#define PREF_DATABASE_FAVICONS_LASTCORRUPTION \
+  "places.database.lastFaviconsCorruptionInDaysFromEpoch"
+#define PREF_DATABASE_PLACES_LASTCORRUPTION \
+  "places.database.lastPlacesCorruptionInDaysFromEpoch"
 
 // Set to specify the size of the places database growth increments in kibibytes
 #define PREF_GROWTH_INCREMENT_KIB "places.database.growthIncrementKiB"
@@ -102,6 +103,8 @@
 // Legacy item annotation used by the old Sync engine.
 #define SYNC_PARENT_ANNO "sync/parent"
 
+#define USEC_PER_DAY 86400000000LL
+
 using namespace mozilla;
 
 namespace mozilla::places {
@@ -138,6 +141,25 @@ bool isRecentCorruptFile(const nsCOMPtr<nsIFile>& aCorruptFile) {
   return NS_SUCCEEDED(aCorruptFile->GetLastModifiedTime(&lastMod)) &&
          lastMod > 0 && (PR_Now() - lastMod) <= RECENT_BACKUP_TIME_MICROSEC;
 }
+
+// Defines the stages in the process of replacing a corrupt database.
+enum eCorruptDBReplaceStage : int8_t {
+  stage_closing = 0,
+  stage_removing,
+  stage_reopening,
+  stage_replaced,
+  stage_cloning,
+  stage_cloned,
+  stage_count
+};
+
+/**
+ * Maps a database replacement stage (eCorruptDBReplaceStage) to its string
+ * representation.
+ */
+static constexpr nsLiteralCString sCorruptDBStages[stage_count] = {
+    "stage_closing"_ns,  "stage_removing"_ns, "stage_reopening"_ns,
+    "stage_replaced"_ns, "stage_cloning"_ns,  "stage_cloned"_ns};
 
 /**
  * Removes a file, optionally adding a suffix to the file name.
@@ -334,6 +356,18 @@ nsresult AttachDatabase(nsCOMPtr<mozIStorageConnection>& aDBConn,
   Unused << aDBConn->ExecuteSimpleSQL(journalSizePragma);
 
   return NS_OK;
+}
+
+PRTime GetNow() {
+  nsNavHistory* history = nsNavHistory::GetHistoryService();
+  PRTime now;
+  if (history) {
+    // Optimization to avoid calling PR_Now() too often.
+    now = history->GetNow();
+  } else {
+    now = PR_Now();
+  }
+  return now;
 }
 
 }  // namespace
@@ -573,6 +607,12 @@ nsresult Database::EnsureConnection() {
     if (NS_SUCCEEDED(rv) && !databaseExisted) {
       mDatabaseStatus = nsINavHistoryService::DATABASE_STATUS_CREATE;
     } else if (rv == NS_ERROR_FILE_CORRUPTED) {
+      // Set places last corruption time in prefs for troubleshooting.
+      CheckedInt<int32_t> daysSinceEpoch = GetNow() / USEC_PER_DAY;
+      if (daysSinceEpoch.isValid()) {
+        Preferences::SetInt(PREF_DATABASE_PLACES_LASTCORRUPTION,
+                            daysSinceEpoch.value());
+      }
       // The database is corrupt, backup and replace it with a new one.
       rv = BackupAndReplaceDatabaseFile(storage, DATABASE_FILENAME, true, true);
       // Fallback to catch-all handler.
@@ -615,6 +655,16 @@ nsresult Database::EnsureConnection() {
       // Some errors may not indicate a database corruption, for those cases we
       // just bail out without throwing away a possibly valid places.sqlite.
       if (rv == NS_ERROR_FILE_CORRUPTED) {
+        // Set places and favicons last corruption time in prefs for
+        // troubleshooting.
+        CheckedInt<int32_t> daysSinceEpoch = GetNow() / USEC_PER_DAY;
+        if (daysSinceEpoch.isValid()) {
+          Preferences::SetInt(PREF_DATABASE_PLACES_LASTCORRUPTION,
+                              daysSinceEpoch.value());
+          Preferences::SetInt(PREF_DATABASE_FAVICONS_LASTCORRUPTION,
+                              daysSinceEpoch.value());
+        }
+
         // Since we don't know which database is corrupt, we must replace both.
         rv = BackupAndReplaceDatabaseFile(storage, DATABASE_FAVICONS_FILENAME,
                                           false, false);
@@ -684,7 +734,7 @@ nsresult Database::EnsureFaviconsDatabaseAttached(
   bool fileExists = false;
   if (NS_SUCCEEDED(databaseFile->Exists(&fileExists)) && fileExists) {
     return AttachDatabase(mMainConn, NS_ConvertUTF16toUTF8(iconsPath),
-                          "favicons"_ns);
+                          DATABASE_FAVICONS_SCHEMANAME);
   }
 
   // Open the database file, this will also create it.
@@ -744,7 +794,7 @@ nsresult Database::EnsureFaviconsDatabaseAttached(
   }
 
   rv = AttachDatabase(mMainConn, NS_ConvertUTF16toUTF8(iconsPath),
-                      "favicons"_ns);
+                      DATABASE_FAVICONS_SCHEMANAME);
   NS_ENSURE_SUCCESS(rv, rv);
 
   return NS_OK;
@@ -806,14 +856,6 @@ nsresult Database::BackupAndReplaceDatabaseFile(
   // The only thing we can try to do is to replace the database on the next
   // startup, and report the problem through telemetry.
   {
-    enum eCorruptDBReplaceStage : int8_t {
-      stage_closing = 0,
-      stage_removing,
-      stage_reopening,
-      stage_replaced,
-      stage_cloning,
-      stage_cloned
-    };
     eCorruptDBReplaceStage stage = stage_closing;
     auto guard = MakeScopeExit([&]() {
       // In case we failed to close the connection or remove the database file,
@@ -822,9 +864,9 @@ nsresult Database::BackupAndReplaceDatabaseFile(
         Preferences::SetString(PREF_FORCE_DATABASE_REPLACEMENT, aDbFilename);
       }
       // Report the corruption through telemetry.
-      Telemetry::Accumulate(
-          Telemetry::PLACES_DATABASE_CORRUPTION_HANDLING_STAGE,
-          static_cast<int8_t>(stage));
+      glean::places::places_database_corruption_handling_stage
+          .Get(NS_ConvertUTF16toUTF8(aDbFilename))
+          .Set(sCorruptDBStages[stage]);
     });
 
     // Close database connection if open.
@@ -1058,10 +1100,20 @@ nsresult Database::SetupDatabaseConnection(
   }
 #endif
 
+  // Note: attaching new databases may require updating `ConcurrentConnection`.
+
   // Attach the favicons database to the main connection.
   rv = EnsureFaviconsDatabaseAttached(aStorage);
   if (NS_FAILED(rv)) {
-    // The favicons database may be corrupt. Try to replace and reattach it.
+    // The favicons database may be corrupt.
+    // Set last corruption time in prefs for troubleshooting.
+    CheckedInt<int32_t> daysSinceEpoch = GetNow() / USEC_PER_DAY;
+    if (daysSinceEpoch.isValid()) {
+      Preferences::SetInt(PREF_DATABASE_FAVICONS_LASTCORRUPTION,
+                          daysSinceEpoch.value());
+    }
+
+    // Try to replace and reattach it.
     nsCOMPtr<nsIFile> iconsFile;
     rv = NS_GetSpecialDirectory(NS_APP_USER_PROFILE_50_DIR,
                                 getter_AddRefs(iconsFile));
@@ -1081,7 +1133,7 @@ nsresult Database::SetupDatabaseConnection(
   NS_ENSURE_SUCCESS(rv, rv);
 
   // We use our functions during migration, so initialize them now.
-  rv = InitFunctions();
+  rv = InitFunctions(mMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
 
   return NS_OK;
@@ -1269,6 +1321,27 @@ nsresult Database::InitSchema(bool* aDatabaseMigrated) {
 
       // Firefox 125 uses schema version 77
 
+      if (currentSchemaVersion < 78) {
+        rv = MigrateV78Up();
+        NS_ENSURE_SUCCESS(rv, rv);
+      }
+
+      // Firefox 132 uses schema version 78
+
+      if (currentSchemaVersion < 79) {
+        rv = MigrateV79Up();
+        NS_ENSURE_SUCCESS(rv, rv);
+      }
+
+      // Firefox 140 uses schema version 79
+
+      if (currentSchemaVersion < 80) {
+        rv = MigrateV80Up();
+        NS_ENSURE_SUCCESS(rv, rv);
+      }
+
+      // Firefox 140 uses schema version 80
+
       // Schema Upgrades must add migration code here.
       // >>> IMPORTANT! <<<
       // NEVER MIX UP SYNC AND ASYNC EXECUTION IN MIGRATORS, YOU MAY LOCK THE
@@ -1379,6 +1452,19 @@ nsresult Database::InitSchema(bool* aDatabaseMigrated) {
 
     // moz_previews_tombstones
     rv = mMainConn->ExecuteSimpleSQL(CREATE_MOZ_PREVIEWS_TOMBSTONES);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    // moz_newtab_story
+    rv = mMainConn->ExecuteSimpleSQL(CREATE_MOZ_NEWTAB_STORY_CLICK);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = mMainConn->ExecuteSimpleSQL(CREATE_MOZ_NEWTAB_STORY_IMPRESSION);
+    NS_ENSURE_SUCCESS(rv, rv);
+    // Add newtab_story timestamp index.
+    rv = mMainConn->ExecuteSimpleSQL(
+        CREATE_IDX_MOZ_NEWTAB_STORY_CLICK_TIMESTAMP);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv =
+        mMainConn->ExecuteSimpleSQL(CREATE_IDX_MOZ_NEWTAB_IMPRESSION_TIMESTAMP);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // The bookmarks roots get initialized in CheckRoots().
@@ -1591,48 +1677,49 @@ nsresult Database::EnsureBookmarkRoots(const int32_t startPosition,
   return NS_OK;
 }
 
-nsresult Database::InitFunctions() {
+// static
+nsresult Database::InitFunctions(mozIStorageConnection* aMainConn) {
   MOZ_ASSERT(NS_IsMainThread());
 
-  nsresult rv = GetUnreversedHostFunction::create(mMainConn);
+  nsresult rv = GetUnreversedHostFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = MatchAutoCompleteFunction::create(mMainConn);
+  rv = MatchAutoCompleteFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = CalculateFrecencyFunction::create(mMainConn);
+  rv = CalculateFrecencyFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = GenerateGUIDFunction::create(mMainConn);
+  rv = GenerateGUIDFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = IsValidGUIDFunction::create(mMainConn);
+  rv = IsValidGUIDFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = FixupURLFunction::create(mMainConn);
+  rv = FixupURLFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = StoreLastInsertedIdFunction::create(mMainConn);
+  rv = StoreLastInsertedIdFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = HashFunction::create(mMainConn);
+  rv = HashFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = GetQueryParamFunction::create(mMainConn);
+  rv = GetQueryParamFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = GetPrefixFunction::create(mMainConn);
+  rv = GetPrefixFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = GetHostAndPortFunction::create(mMainConn);
+  rv = GetHostAndPortFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = StripPrefixAndUserinfoFunction::create(mMainConn);
+  rv = StripPrefixAndUserinfoFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = IsFrecencyDecayingFunction::create(mMainConn);
+  rv = IsFrecencyDecayingFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = NoteSyncChangeFunction::create(mMainConn);
+  rv = NoteSyncChangeFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = InvalidateDaysOfHistoryFunction::create(mMainConn);
+  rv = InvalidateDaysOfHistoryFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = SHA256HexFunction::create(mMainConn);
+  rv = SHA256HexFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = SetShouldStartFrecencyRecalculationFunction::create(mMainConn);
+  rv = SetShouldStartFrecencyRecalculationFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
-  rv = TargetFolderGuidFunction::create(mMainConn);
+  rv = TargetFolderGuidFunction::create(aMainConn);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (StaticPrefs::places_frecency_pages_alternative_featureGate_AtStartup()) {
-    rv = CalculateAltFrecencyFunction::create(mMainConn);
+    rv = CalculateAltFrecencyFunction::create(aMainConn);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -1704,6 +1791,27 @@ nsresult Database::InitTempEntities() {
 
   rv = mMainConn->ExecuteSimpleSQL(CREATE_PLACES_METADATA_AFTERDELETE_TRIGGER);
   NS_ENSURE_SUCCESS(rv, rv);
+
+  if (StaticPrefs::places_frecency_pages_alternative_featureGate_AtStartup()) {
+    int32_t viewTimeMs =
+        StaticPrefs::
+            places_frecency_pages_alternative_interactions_viewTimeSeconds_AtStartup() *
+        1000;
+    int32_t viewTimeIfManyKeypressesMs =
+        StaticPrefs::
+            places_frecency_pages_alternative_interactions_viewTimeIfManyKeypressesSeconds_AtStartup() *
+        1000;
+    int32_t manyKeypresses = StaticPrefs::
+        places_frecency_pages_alternative_interactions_manyKeypresses_AtStartup();
+
+    rv = mMainConn->ExecuteSimpleSQL(CREATE_PLACES_METADATA_AFTERINSERT_TRIGGER(
+        viewTimeMs, viewTimeIfManyKeypressesMs, manyKeypresses));
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    rv = mMainConn->ExecuteSimpleSQL(CREATE_PLACES_METADATA_AFTERUPDATE_TRIGGER(
+        viewTimeMs, viewTimeIfManyKeypressesMs, manyKeypresses));
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
 
   // Create triggers to remove rows with empty json
   rv = mMainConn->ExecuteSimpleSQL(CREATE_MOZ_PLACES_EXTRA_AFTERUPDATE_TRIGGER);
@@ -2055,6 +2163,50 @@ nsresult Database::MigrateV77Up() {
   nsCOMPtr<mozIStorageStatement> stmt;
   nsresult rv = mMainConn->ExecuteSimpleSQL(
       "UPDATE moz_origins SET recalc_frecency = 1"_ns);
+  NS_ENSURE_SUCCESS(rv, rv);
+  return NS_OK;
+}
+
+nsresult Database::MigrateV78Up() {
+  // Add flags to moz_icons.
+  nsCOMPtr<mozIStorageStatement> stmt;
+  nsresult rv = mMainConn->CreateStatement("SELECT flags FROM moz_icons"_ns,
+                                           getter_AddRefs(stmt));
+  if (NS_FAILED(rv)) {
+    rv = mMainConn->ExecuteSimpleSQL(
+        "ALTER TABLE moz_icons "
+        "ADD COLUMN flags INTEGER NOT NULL DEFAULT 0"_ns);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+  return NS_OK;
+}
+
+nsresult Database::MigrateV79Up() {
+  // Add newtab_story tables for moz_newtab_story_click and
+  // moz_newtab_story_impression
+  nsCOMPtr<mozIStorageStatement> stmt;
+  nsresult rv = mMainConn->CreateStatement(
+      "SELECT feature FROM moz_newtab_story_click"_ns, getter_AddRefs(stmt));
+  if (NS_FAILED(rv)) {
+    nsresult rv = mMainConn->ExecuteSimpleSQL(CREATE_MOZ_NEWTAB_STORY_CLICK);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = mMainConn->ExecuteSimpleSQL(CREATE_MOZ_NEWTAB_STORY_IMPRESSION);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+  return NS_OK;
+}
+
+nsresult Database::MigrateV80Up() {
+  // v79 indices had a typo so we're recreating them here.
+  nsresult rv = mMainConn->ExecuteSimpleSQL(
+      "DROP INDEX IF EXISTS idx_newtab_impression_timestamp"_ns);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = mMainConn->ExecuteSimpleSQL(
+      "DROP INDEX IF EXISTS idx_newtab_click_timestamp"_ns);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = mMainConn->ExecuteSimpleSQL(CREATE_IDX_MOZ_NEWTAB_STORY_CLICK_TIMESTAMP);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = mMainConn->ExecuteSimpleSQL(CREATE_IDX_MOZ_NEWTAB_IMPRESSION_TIMESTAMP);
   NS_ENSURE_SUCCESS(rv, rv);
   return NS_OK;
 }

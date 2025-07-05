@@ -9,14 +9,16 @@
 
 #include "nsBaseFilePicker.h"
 #include "nsString.h"
-#include "nsIFile.h"
 #include "nsCOMArray.h"
 #include "nsTArray.h"
 
+class nsIFile;
 class nsILocalFileMac;
 @class NSArray;
 
-class nsFilePicker : public nsBaseFilePicker {
+class nsFilePicker final : public nsBaseFilePicker {
+  class AsyncShowFilePicker;
+
  public:
   nsFilePicker();
   using nsIFilePicker::ResultCode;
@@ -24,6 +26,7 @@ class nsFilePicker : public nsBaseFilePicker {
   NS_DECL_ISUPPORTS
 
   // nsIFilePicker (less what's in nsBaseFilePicker)
+  NS_IMETHOD Open(nsIFilePickerShownCallback* aCallback) override;
   NS_IMETHOD GetDefaultString(nsAString& aDefaultString) override;
   NS_IMETHOD SetDefaultString(const nsAString& aDefaultString) override;
   NS_IMETHOD GetDefaultExtension(nsAString& aDefaultExtension) override;
@@ -47,7 +50,7 @@ class nsFilePicker : public nsBaseFilePicker {
   virtual ~nsFilePicker();
 
   virtual void InitNative(nsIWidget* aParent, const nsAString& aTitle) override;
-  nsresult Show(ResultCode* _retval) override;
+  nsresult Show(ResultCode* _retval);
 
   // actual implementations of get/put dialogs using NSOpenPanel & NSSavePanel
   // aFile is an existing but unspecified file. These functions must specify it.
@@ -68,7 +71,7 @@ class nsFilePicker : public nsBaseFilePicker {
   nsTArray<nsString> mFilters;
   nsTArray<nsString> mTitles;
 
-  int32_t mSelectedTypeIndex;
+  int32_t mSelectedTypeIndex = 0;
 };
 
 #endif  // nsFilePicker_h_

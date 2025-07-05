@@ -1,0 +1,827 @@
+// Custom font sizing for weather widget
+:root {
+  --newtab-weather-content-font-size: var(--font-size-small);
+  --newtab-weather-sponsor-font-size: 8px;
+}
+
+.weather {
+  font-size: inherit;
+  margin-block-start: var(--space-xlarge);
+  margin-inline-start: var(--space-xlarge);
+  display: inline-block;
+
+  @media (min-width: $break-point-medium) {
+    position: absolute;
+    inset-inline-start: var(--space-xlarge);
+    inset-block-start: var(--space-xlarge);
+    margin-block-start: 0;
+    margin-inline-start: 0;
+    z-index: 1;
+
+    // Bug 1914055 - Layout experiment: logo/search spacing
+    .layout-variant-a &,
+    .layout-variant-b & {
+      inset-inline-start: 24px;
+      inset-block-start: 24px;
+    }
+  }
+
+  // Bug 1914055 - Layout experiment: Position the weather widget absolutely
+  // across all breakpoints to keep logo margins consistent
+  .no-search.layout-variant-a &,
+  .no-search.layout-variant-b &,
+  .layout-variant-a &,
+  .layout-variant-b & {
+    position: absolute;
+    inset-inline-start: var(--space-xlarge);
+    inset-block-start: var(--space-xlarge);
+    margin-block-start: 0;
+    margin-inline-start: 0;
+  }
+
+  // Edge case: users with weather enabled/search disabled
+  .no-search & {
+    position: relative;
+    margin-block-start: var(--space-xlarge);
+    margin-inline-start: var(--space-xlarge);
+
+    @media (min-width: $break-point-medium) {
+      margin-block-start: 0;
+      margin-inline-start: 0;
+    }
+
+    @media (min-width: $break-point-weather) {
+      position: absolute;
+      inset-inline-start: var(--space-xlarge);
+      inset-block-start: var(--space-xlarge);
+      margin-block-start: 0;
+      margin-inline-start: 0;
+    }
+  }
+}
+
+.weather-placeholder {
+  width: 240px;
+  height: 98px;
+  padding: var(--space-small) var(--space-medium);
+  border-radius: var(--border-radius-medium);
+  background: var(--newtab-background-color-secondary);
+  display: flex;
+  overflow: hidden;
+
+  .placeholder-image {
+    height: 100%;
+    width: 80px;
+    margin-inline-end: var(--space-medium);
+    flex-shrink: 0;
+  }
+
+  .placeholder-context {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .placeholder-header {
+    height: 45px;
+    width: 100%;
+    margin-block-end: var(--space-small);
+  }
+
+  .placeholder-description {
+    flex-grow: 1;
+    width: 100%;
+  }
+
+  .placeholder-fill {
+    color: var(--newtab-text-primary-color);
+    background: var(--newtab-button-active-background);
+    border-radius: var(--border-radius-small);
+  }
+
+  &.placeholder-seen {
+    &::before {
+      content: '';
+      display: block;
+      position: absolute;
+      top: 0;
+      inset-inline-start: -100%;
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, rgba(255, 255, 255, 0%) 0%, var(--newtab-background-color-secondary) 50%, rgba(255, 255, 255, 0%) 100%);
+      z-index: 2;
+
+      @media (prefers-reduced-motion: no-preference) {
+        animation: loading 1.5s infinite;
+      }
+    }
+
+    @keyframes loading {
+      0% {
+        inset-inline-start: -100%;
+      }
+
+      // We apply the same frame from 50-100% to account for a delay in a repeating animation.
+      50%, 100% {
+        inset-inline-start: 100%;
+      }
+    }
+  }
+}
+
+// Edge case: users with weather enabled/search disabled
+.has-weather.no-search {
+  .outer-wrapper {
+    padding-top: 0;
+
+    @media (min-width: $break-point-medium) {
+      padding-top: 30px;
+    }
+  }
+}
+
+// Bug 1914055 - Layout experiment: logo/search spacing
+.layout-variant-a.has-weather.no-search,
+.layout-variant-b.has-weather.no-search {
+  .outer-wrapper {
+    padding-top: 24px;
+  }
+}
+
+.no-search.layout-variant-b,
+.layout-variant-b {
+  .weather {
+    position: absolute;
+    inset-inline-start: auto;
+    inset-inline-end: 40px;
+    inset-block-start: 40px;
+    margin-block-start: 0;
+
+    @media (min-width: $break-point-layout-variant) {
+      inset-inline-end: 20px;
+    }
+
+    @media (min-width: $break-point-large) {
+      inset-inline-end: 40px;
+    }
+
+    .weatherSponsorText {
+      float: inline-end;
+
+      span {
+        inset-inline-end: 0;
+      }
+    }
+
+    .context-menu {
+      inset-inline-end: 100%;
+      inset-inline-start: auto;
+      margin-inline-end: 5px;
+    }
+  }
+}
+
+// Bug 1959189 - Show mobile QR code modal toggle next to weather widget
+.has-mobile-download-promo {
+  $mobile-download-promo-width: 32px;
+  // No Variant Layout, Var A Layout
+  .weather, &.layout-variant-a .weather {
+    // Default spacing (--space-xlarge) + width of .mobile-download-promo (32px) + gap
+    @media (min-width: $break-point-medium) {
+      inset-inline-start: calc($mobile-download-promo-width + var(--space-xxlarge));
+    }
+  }
+
+  &.layout-variant-b .weather {
+    // Var B: width of .mobile-download-promo (32px) + gap
+    @media (min-width: $break-point-medium) {
+      inset-inline-start: auto;
+      inset-inline-end: calc($mobile-download-promo-width + var(--space-medium));
+    }
+
+    // Var B offset (40px) + width of .mobile-download-promo (32px) + gap
+    @media (min-width: $break-point-layout-variant) {
+      inset-inline-end: calc(40px + $mobile-download-promo-width + var(--space-medium));
+    }
+  }
+
+  // Layout when search has been turned off. It will show one breakpoint later than `has-search`
+  &.layout-variant-b.no-search .weather {
+    // Var B offset (40px) + width of .mobile-download-promo (32px) + gap
+    @media (min-width: $break-point-large) {
+      inset-inline-end: calc(40px + $mobile-download-promo-width + var(--space-medium));
+    }
+  }
+}
+
+.no-search.layout-variant-b {
+  .weather {
+    inset-inline-end: 20px;
+
+    @media (min-width: $break-point-small) {
+      inset-inline-end: 40px;
+    }
+
+    @media (min-width: $break-point-layout-variant) {
+      inset-inline-end: 20px;
+    }
+
+    @media (min-width: $break-point-large) {
+      inset-inline-end: 40px;
+    }
+  }
+}
+
+// Edge case: users with weather enabled/search enabled
+.has-weather.has-search {
+  .outer-wrapper:not(.only-search) {
+    padding-top: 0;
+
+    @media (min-width: $break-point-medium) {
+      padding-top: 30px;
+    }
+  }
+
+  // Edge case: medium screens where we hide the weather icon and
+  // detail info row for overlap issues
+  .weatherDetailedSummaryRow {
+    display: block;
+
+    @media (min-width: $break-point-medium) {
+      display: none;
+    }
+
+    @media (min-width: $break-point-large) {
+      display: block;
+    }
+  }
+
+  .weatherIconCol {
+    display: flex;
+
+    @media (min-width: $break-point-medium) {
+      display: none;
+    }
+
+    @media (min-width: $break-point-large) {
+      display: flex;
+    }
+  }
+}
+
+// Bug 1914055 - Layout experiment: logo/search spacing
+.layout-variant-a.has-weather.has-search,
+.layout-variant-b.has-weather.has-search {
+  .outer-wrapper:not(.only-search) {
+    padding-top: 24px;
+  }
+}
+
+// Unavailable / Error State
+.weatherNotAvailable {
+  font-size: var(--newtab-weather-content-font-size);
+  display: flex;
+  align-items: center;
+  border-radius: var(--border-radius-medium);
+  height: 52px;
+  max-width: 205px;
+
+  // Bug 1915727 - Layout experiment: hide error message on smallest breakpoint
+  .layout-variant-a & {
+    display: none;
+
+    @media (min-width: $break-point-medium) {
+      display: flex
+    }
+  }
+
+  .layout-variant-b & {
+    display: none;
+
+    @media (min-width: $break-point-large) {
+      display: flex
+    }
+  }
+
+  &:hover {
+    background-color: var(--button-background-color-ghost-hover);
+  }
+
+  &:active {
+    background-color: var(--button-background-color-ghost-active);
+  }
+
+  .icon {
+    margin-inline-start: var(--space-small);
+    min-width: var(--size-item-small);
+  }
+
+  p {
+    margin-inline-start: var(--space-small);
+  }
+
+  .weatherButtonContextMenuWrapper {
+    align-self: stretch;
+    padding-inline: var(--space-small);
+  }
+
+  // Bug 1908010 - This overwrites the design system color because of a
+  // known transparency issue with color-mix syntax when a wallpaper is set
+  .lightWallpaper &,
+  .darkWallpaper & {
+    background-color: var(--newtab-weather-background-color);
+
+    @media (prefers-contrast) {
+      background-color: var(--background-color-box);
+    }
+  }
+}
+
+.weatherCard {
+  margin-block-end: var(--space-xsmall);
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: stretch;
+  border-radius: var(--border-radius-medium);
+  overflow: hidden;
+
+  &:hover, &:focus-within {
+    ~ .weatherSponsorText {
+      visibility: visible;
+    }
+  }
+
+  &:focus-within {
+    overflow: visible;
+  }
+
+  &:hover {
+    box-shadow: var(--box-shadow-card);
+  }
+
+  a {
+    color: var(--text-color);
+  }
+
+}
+
+.weatherSponsorText {
+  visibility: hidden;
+  font-size: var(--newtab-weather-sponsor-font-size);
+  color: var(--newtab-contextual-text-primary-color);
+
+  // Contrast fix for users who have wallpapers set
+  @include wallpaper-contrast-fix;
+
+  span {
+    color: var(--text-color-deemphasized);
+  }
+}
+
+.weatherInfoLink, .weatherButtonContextMenuWrapper {
+  appearance: none;
+  background-color: var(--background-color-ghost);
+  border: 0;
+  padding: var(--space-small);
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--newtab-background-color-secondary);
+
+    &::after {
+      background-color: transparent
+    }
+
+    &:active {
+      background-color: var(--button-background-color-ghost-active);
+    }
+  }
+
+  &:focus-visible {
+    outline: var(--focus-outline);
+  }
+
+  // Bug 1908010 - This overwrites the design system color because of a
+  // known transparency issue with color-mix syntax when a wallpaper is set
+  .lightWallpaper &,
+  .darkWallpaper & {
+    background-color: var(--newtab-weather-background-color);
+
+    &:hover {
+      background-color: var(--newtab-button-static-hover-background);
+    }
+
+    &:hover:active {
+      background-color: var(--newtab-button-static-active-background);
+    }
+
+    @media (prefers-contrast) {
+      background-color: var(--background-color-box);
+    }
+  }
+}
+
+.weatherInfoLink {
+  display: flex;
+  gap: var(--space-medium);
+  padding: var(--space-small) var(--space-medium);
+  border-start-start-radius: var(--border-radius-medium);
+  border-start-end-radius: 0;
+  border-end-end-radius: 0;
+  border-end-start-radius: var(--border-radius-medium);
+  text-decoration: none;
+  color: var(--text-color);;
+  min-width: 130px;
+  max-width: 190px;
+  text-overflow: ellipsis;
+
+  @media(min-width: $break-point-medium) {
+    min-width: unset;
+  }
+
+  &:hover ~.weatherButtonContextMenuWrapper {
+    &::after {
+      background-color: transparent
+    }
+  }
+
+  &:focus-visible {
+    border-radius: var(--border-radius-medium);
+
+    ~ .weatherButtonContextMenuWrapper {
+      &::after {
+        background-color: transparent
+      }
+    }
+  }
+}
+
+.weatherButtonContextMenuWrapper {
+  position: relative;
+  cursor: pointer;
+  border-start-start-radius: 0;
+  border-start-end-radius: var(--border-radius-medium);
+  border-end-end-radius: var(--border-radius-medium);
+  border-end-start-radius: 0;
+  display: flex;
+  align-items: stretch;
+  width: 50px;
+  padding: 0;
+
+  &::after {
+    content: '';
+    inset-inline-start: 0;
+    top: 10px;
+    height: calc(100% - 20px);
+    width: 1px;
+    background-color: var(--newtab-button-static-background);
+    display: block;
+    position: absolute;
+    z-index: 0;
+  }
+
+  &:hover {
+    &::after {
+      background-color: transparent
+    }
+  }
+
+  &:focus-visible {
+    border-radius: var(--border-radius-medium);
+
+    &::after {
+      background-color: transparent
+    }
+  }
+}
+
+.weatherButtonContextMenu {
+  background-image: url('chrome://global/skin/icons/more.svg');
+  background-repeat: no-repeat;
+  background-size: var(--size-item-small) auto;
+  background-position: center;
+  background-color: transparent;
+  cursor: pointer;
+  fill: var(--icon-color);
+  -moz-context-properties: fill;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  appearance: none;
+  min-width: var(--size-item-large);
+}
+
+.weatherText {
+  height: min-content;
+}
+
+.weatherCityRow, .weatherForecastRow, .weatherDetailedSummaryRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--space-small);
+}
+
+.weatherForecastRow {
+  text-transform: uppercase;
+  font-weight: var(--font-weight-bold);
+}
+
+.weatherCityRow {
+  color: var(--text-color-deemphasized);
+}
+
+.weatherCity {
+  -webkit-line-clamp: 1;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  word-break: break-word;
+  font-size: var(--font-size-small);
+}
+
+// Add additional margin if detailed summary is in view
+.weatherCityRow + .weatherDetailedSummaryRow {
+  margin-block-start: var(--space-xsmall);
+}
+
+.weatherDetailedSummaryRow {
+  font-size: var(--newtab-weather-content-font-size);
+  gap: var(--space-large);
+}
+
+.weatherHighLowTemps {
+  display: inline-flex;
+  gap: var(--space-xxsmall);
+  text-transform: uppercase;
+  word-spacing: var(--space-xxsmall);
+  margin-inline-end: var(--space-small);
+}
+
+.weatherTextSummary {
+  display: inline;
+  text-align: center;
+  max-width: 90px;
+}
+
+.weatherTemperature {
+  font-size: var(--font-size-large);
+}
+
+
+// Weather Symbol Icons
+.weatherIconCol {
+  width: var(--size-item-large);
+  height: var(--size-item-large);
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+}
+
+.weatherIcon {
+  width: var(--size-item-large);
+  height: auto;
+  vertical-align: middle;
+
+  @media (prefers-contrast) {
+    -moz-context-properties: fill, stroke;
+    fill: currentColor;
+    stroke: currentColor;
+  }
+
+  &.iconId1 {
+    content: url('chrome://browser/skin/weather/sunny.svg');
+    // height: var(--size-item-large);
+  }
+
+  &.iconId2 {
+    content: url('chrome://browser/skin/weather/mostly-sunny.svg');
+    // height: var(--size-item-large);
+  }
+
+  &:is(.iconId3, .iconId4, .iconId6) {
+    content: url('chrome://browser/skin/weather/partly-sunny.svg');
+    // height: var(--size-item-large);
+  }
+
+  &.iconId5 {
+    content: url('chrome://browser/skin/weather/hazy-sunshine.svg');
+    // height: var(--size-item-large);
+  }
+
+  &:is(.iconId7, .iconId8) {
+    content: url('chrome://browser/skin/weather/cloudy.svg');
+  }
+
+  &.iconId11 {
+    content: url('chrome://browser/skin/weather/fog.svg');
+  }
+
+  &.iconId12 {
+    content: url('chrome://browser/skin/weather/showers.svg');
+  }
+
+  &:is(.iconId13, .iconId14) {
+    content: url('chrome://browser/skin/weather/mostly-cloudy-with-showers.svg');
+    // height: var(--size-item-large);
+  }
+
+  &.iconId15 {
+    content: url('chrome://browser/skin/weather/thunderstorms.svg');
+  }
+
+  &:is(.iconId16, .iconId17) {
+    content: url('chrome://browser/skin/weather/mostly-cloudy-with-thunderstorms.svg');
+  }
+
+  &.iconId18 {
+    content: url('chrome://browser/skin/weather/rain.svg');
+  }
+
+  &:is(.iconId19, .iconId20, .iconId25) {
+    content: url('chrome://browser/skin/weather/flurries.svg');
+  }
+
+  &.iconId21 {
+    content: url('chrome://browser/skin/weather/partly-sunny-with-flurries.svg');
+  }
+
+  &:is(.iconId22, .iconId23) {
+    content: url('chrome://browser/skin/weather/snow.svg');
+  }
+
+  &:is(.iconId24, .iconId31) {
+    content: url('chrome://browser/skin/weather/ice.svg');
+  }
+
+  &:is(.iconId26, .iconId29) {
+    content: url('chrome://browser/skin/weather/freezing-rain.svg');
+  }
+
+  &.iconId30 {
+    content: url('chrome://browser/skin/weather/hot.svg');
+  }
+
+  &.iconId32 {
+    content: url('chrome://browser/skin/weather/windy.svg');
+  }
+
+  &.iconId33 {
+    content: url('chrome://browser/skin/weather/night-clear.svg');
+  }
+
+  &:is(.iconId34, .iconId35, .iconId36, .iconId38) {
+    content: url('chrome://browser/skin/weather/night-mostly-clear.svg');
+  }
+
+  &.iconId37 {
+    content: url('chrome://browser/skin/weather/night-hazy-moonlight.svg');
+  }
+
+  &:is(.iconId39, .iconId40) {
+    content: url('chrome://browser/skin/weather/night-partly-cloudy-with-showers.svg');
+    height: var(--size-item-large);
+  }
+
+  &:is(.iconId41, .iconId42) {
+    content: url('chrome://browser/skin/weather/night-partly-cloudy-with-thunderstorms.svg');
+  }
+
+  &:is(.iconId43, .iconId44) {
+    content: url('chrome://browser/skin/weather/night-mostly-cloudy-with-flurries.svg');
+  }
+}
+
+.location-input-wrapper {
+  background-color: light-dark(var(--color-white), var(--newtab-background-color-secondary));
+  color: var(--newtab-text-primary-color);
+  border-radius: var(--border-radius-medium);
+  padding: var(--space-small);
+  position: relative;
+
+  // Bug 1908010 - This overwrites the design system color because of a
+  // known transparency issue with color-mix syntax when a wallpaper is set
+  .lightWallpaper &,
+  .darkWallpaper & {
+    background-color: var(--newtab-weather-background-color);
+
+    &:hover {
+      background-color: var(--newtab-button-static-hover-background);
+    }
+
+    &:hover:active {
+      background-color: var(--newtab-button-static-active-background);
+    }
+
+    @media (prefers-contrast) {
+      background-color: var(--background-color-box);
+    }
+  }
+
+  .search-icon {
+    content: url('chrome://global/skin/icons/search-glass.svg');
+    -moz-context-properties: fill;
+    fill: var(--icon-color);
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    inset-inline-start: 18px;
+  }
+
+  .close-icon {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    inset-inline-end: var(--space-medium);
+
+    &:focus-visible {
+      outline: var(--focus-outline);
+    }
+  }
+
+  input {
+    border-radius: var(--border-radius-medium);
+    background-color: light-dark(var(--color-white), var(--newtab-background-color-secondary));
+    padding-block: 8px;
+    padding-inline: 30px;
+    border: $border-primary;
+
+    &:focus-visible {
+      outline: 2px solid var(--focus-outline-color);
+    }
+  }
+}
+
+// Bug 1914193 - Only show the temperature on the smallest breakpoint and
+// return to default view on medium breakpoints
+.has-weather.has-search.layout-variant-a,
+.has-weather.has-search.layout-variant-b,
+.layout-variant-a,
+.layout-variant-b  {
+  .weatherCityRow,
+  .weatherButtonContextMenuWrapper {
+    display: none;
+
+    @media(min-width: $break-point-large) {
+      display: flex;
+    }
+  }
+
+  // Edge case: Show weather icon at a later breakpoint
+  // then the temperature and city name
+  .weatherIconCol {
+    display: none;
+
+    @media(min-width: $break-point-widest) {
+      display: flex;
+    }
+  }
+
+  // Edge case: Show detailed view at a later breakpoint
+  // then the temperature and city name
+  .weatherDetailedSummaryRow {
+    display: none;
+
+    @media(min-width: $break-point-widest) {
+      display: block;
+    }
+  }
+
+  .weatherCard {
+    min-height: 55px;
+  }
+
+  .weatherInfoLink {
+    min-width: auto;
+    max-width: none;
+
+    @media(min-width: $break-point-widest) {
+      min-width: 130px;
+      max-width: 190px;
+    }
+  }
+
+  .weatherForecastRow {
+    margin-block: var(--space-small);
+
+    @media(min-width: $break-point-large) {
+      margin-block: unset;
+    }
+  }
+
+  .weatherSponsorText {
+    position: relative;
+
+    span {
+      position: absolute;
+      white-space: nowrap;
+      inset-block-start: var(--space-small);
+
+      @media(min-width: $break-point-large) {
+        inset-block-start: unset;
+        position: relative;
+      }
+    }
+  }
+}

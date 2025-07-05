@@ -88,6 +88,12 @@ class Omnijar {
   static void Init(nsIFile* aGrePath = nullptr, nsIFile* aAppPath = nullptr);
 
   /**
+   * Like `Init`, but returns a failed nsresult instead of crashing on failure.
+   */
+  static nsresult FallibleInit(nsIFile* aGrePath = nullptr,
+                               nsIFile* aAppPath = nullptr);
+
+  /**
    * Initializes the Omnijar API for a child process, given its argument
    * list, if the `-greomni` flag and optionally also the `-appomni` flag
    * is present.  (`-appomni` is absent in the case of a unified jar.)  If
@@ -161,7 +167,7 @@ class Omnijar {
   /**
    * Used internally, respectively by Init() and CleanUp()
    */
-  static void InitOne(nsIFile* aPath, Type aType);
+  static nsresult InitOne(nsIFile* aPath, Type aType);
   static void CleanUpOne(Type aType);
 }; /* class Omnijar */
 

@@ -23,7 +23,7 @@
  * to denote a null-terminated string.
  */
 template <typename T>
-class nsTString : public nsTSubstring<T> {
+class MOZ_GSL_OWNER nsTString : public nsTSubstring<T> {
  public:
   typedef nsTString<T> self_type;
 
@@ -68,7 +68,7 @@ class nsTString : public nsTSubstring<T> {
    * constructors
    */
 
-  nsTString() : substring_type(ClassFlags::NULL_TERMINATED) {}
+  constexpr nsTString() : substring_type(ClassFlags::NULL_TERMINATED) {}
 
   explicit nsTString(const char_type* aData, size_type aLength = size_type(-1))
       : substring_type(ClassFlags::NULL_TERMINATED) {
@@ -166,6 +166,18 @@ class nsTString : public nsTSubstring<T> {
     return this->mData;
   }
 
+#ifdef XP_WIN
+  /**
+   * Returns the string as a wchar_t
+   */
+  template <typename U = T>
+  typename std::enable_if<std::is_same<U, char16_t>::value,
+                          const wchar_t*>::type
+  getW() const {
+    return reinterpret_cast<const wchar_t*>(this->mData);
+  }
+#endif
+
   /**
    * returns character at specified index.
    *
@@ -226,6 +238,10 @@ class nsTString : public nsTSubstring<T> {
 extern template class nsTString<char>;
 extern template class nsTString<char16_t>;
 
+template <typename Char>
+struct fmt::formatter<nsTString<Char>, Char>
+    : fmt::formatter<nsTSubstring<Char>, Char> {};
+
 /**
  * nsTAutoStringN
  *
@@ -239,7 +255,7 @@ extern template class nsTString<char16_t>;
  *   nsAutoCStringN / nsTAutoCString for narrow characters
  */
 template <typename T, size_t N>
-class MOZ_NON_MEMMOVABLE nsTAutoStringN : public nsTString<T> {
+class MOZ_NON_MEMMOVABLE MOZ_GSL_OWNER nsTAutoStringN : public nsTString<T> {
  public:
   typedef nsTAutoStringN<T, N> self_type;
 
@@ -355,6 +371,10 @@ class MOZ_NON_MEMMOVABLE nsTAutoStringN : public nsTString<T> {
 // Externs for the most common nsTAutoStringN variations.
 extern template class nsTAutoStringN<char, 64>;
 extern template class nsTAutoStringN<char16_t, 64>;
+
+template <typename Char, size_t N>
+struct fmt::formatter<nsTAutoStringN<Char, N>, Char>
+    : fmt::formatter<nsTString<Char>, Char> {};
 
 //
 // nsAutoString stores pointers into itself which are invalidated when an

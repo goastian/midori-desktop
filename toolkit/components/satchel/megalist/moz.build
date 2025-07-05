@@ -4,7 +4,8 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-MOCHITEST_CHROME_MANIFESTS += ["content/tests/chrome/chrome.toml"]
+BROWSER_CHROME_MANIFESTS += ["content/tests/browser/browser.toml"]
+XPCSHELL_TESTS_MANIFESTS += ["aggregator/tests/unit/xpcshell.toml"]
 
 DIRS += [
     "aggregator",

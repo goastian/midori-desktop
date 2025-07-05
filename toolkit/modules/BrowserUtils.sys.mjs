@@ -9,8 +9,74 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
-  ReaderMode: "resource://gre/modules/ReaderMode.sys.mjs",
+  PlacesUtils: "resource://gre/modules/PlacesUtils.sys.mjs",
+  ReaderMode: "moz-src:///toolkit/components/reader/ReaderMode.sys.mjs",
   Region: "resource://gre/modules/Region.sys.mjs",
+});
+
+ChromeUtils.defineLazyGetter(lazy, "CatManListenerManager", () => {
+  const CatManListenerManager = {
+    cachedModules: {},
+    cachedListeners: {},
+    // All 3 category manager notifications will have the category name
+    // as the `data` part of the observer notification.
+    observe(_subject, _topic, categoryName) {
+      delete this.cachedListeners[categoryName];
+    },
+    /**
+     * Fetch and parse category manager consumers for a given category name.
+     * Will use cachedListeners for the given category name if they exist.
+     */
+    getListeners(categoryName) {
+      if (Object.hasOwn(this.cachedListeners, categoryName)) {
+        return this.cachedListeners[categoryName];
+      }
+      let rv = Array.from(
+        Services.catMan.enumerateCategory(categoryName),
+        ({ data: module, value }) => {
+          try {
+            let [objName, method] = value.split(".");
+            let fn = (...args) => {
+              if (!Object.hasOwn(this.cachedModules, module)) {
+                this.cachedModules[module] = ChromeUtils.importESModule(module);
+              }
+              let obj = this.cachedModules[module][objName];
+              if (!obj) {
+                throw new Error(
+                  `Could not access ${objName} in ${module}. Is it exported?`
+                );
+              }
+              if (typeof obj[method] != "function") {
+                throw new Error(
+                  `${objName}.${method} in ${module} is not a function.`
+                );
+              }
+              return this.cachedModules[module][objName][method](...args);
+            };
+            fn._descriptiveName = value;
+            return fn;
+          } catch (ex) {
+            console.error(
+              `Error processing category manifest for ${module}: ${value}`,
+              ex
+            );
+            return null;
+          }
+        }
+      );
+      // Remove any null entries.
+      rv = rv.filter(l => !!l);
+      this.cachedListeners[categoryName] = rv;
+      return rv;
+    },
+  };
+  Services.obs.addObserver(
+    CatManListenerManager,
+    "xpcom-category-entry-removed"
+  );
+  Services.obs.addObserver(CatManListenerManager, "xpcom-category-entry-added");
+  Services.obs.addObserver(CatManListenerManager, "xpcom-category-cleared");
+  return CatManListenerManager;
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(
@@ -37,6 +103,13 @@ function stringPrefToSet(prefVal) {
   );
 }
 
+/**
+ * @class BrowserUtils
+ *
+ * A motley collection of utilities (also known as a dumping ground).
+ *
+ * Please avoid expanding this if possible.
+ */
 export var BrowserUtils = {
   /**
    * Return or create a principal with the content of one, and the originAttributes
@@ -44,12 +117,12 @@ export var BrowserUtils = {
    * not to change, that is, we should keep the userContextId, privateBrowsingId,
    * etc. the same when changing the principal).
    *
-   * @param principal
+   * @param {nsIPrincipal} principal
    *        The principal whose content/null/system-ness we want.
-   * @param existingPrincipal
+   * @param {nsIPrincipal} existingPrincipal
    *        The principal whose originAttributes we want, usually the current
    *        principal of a docshell.
-   * @return an nsIPrincipal that matches the content/null/system-ness of the first
+   * @returns {nsIPrincipal} an nsIPrincipal that matches the content/null/system-ness of the first
    *         param, and the originAttributes of the second.
    */
   principalWithMatchingOA(principal, existingPrincipal) {
@@ -80,9 +153,27 @@ export var BrowserUtils = {
   },
 
   /**
+   * Copy a link with a text label to the clipboard.
+   *
+   * @param {string} url
+   *   The URL we're wanting to copy to the clipboard.
+   * @param {string} title
+   *   The label/title of the URL
+   */
+  copyLink(url, title) {
+    // This is a little hacky, but there is a lot of code in Places that handles
+    // clipboard stuff, so it's easier to reuse.
+    let node = {};
+    node.type = 0;
+    node.title = title;
+    node.uri = url;
+    lazy.PlacesUtils.copyNode(node);
+  },
+
+  /**
    * Returns true if |mimeType| is text-based, or false otherwise.
    *
-   * @param mimeType
+   * @param {string} mimeType
    *        The MIME type to check.
    */
   mimeTypeIsTextBased(mimeType) {
@@ -129,7 +220,7 @@ export var BrowserUtils = {
    *
    * @param {string} topic
    *        The topic to observe.
-   * @param {function(nsISupports, string)} [test]
+   * @param {(subject: nsISupports, data: string) => boolean} [test]
    *        An optional test function which, when called with the
    *        observer's subject and data, should return true if this is the
    *        expected notification, false otherwise.
@@ -137,7 +228,7 @@ export var BrowserUtils = {
    */
   promiseObserved(topic, test = () => true) {
     return new Promise(resolve => {
-      let observer = (subject, topic, data) => {
+      let observer = (subject, _topic, data) => {
         if (test(subject, data)) {
           Services.obs.removeObserver(observer, topic);
           resolve({ subject, data });
@@ -158,12 +249,13 @@ export var BrowserUtils = {
   formatURIForDisplay(uri, options = {}) {
     let { showInsecureHTTP = false } = options;
     switch (uri.scheme) {
-      case "view-source":
+      case "view-source": {
         let innerURI = uri.spec.substring("view-source:".length);
         return this.formatURIStringForDisplay(innerURI, options);
+      }
       case "http":
       // Fall through.
-      case "https":
+      case "https": {
         let host = uri.displayHostPort;
         if (!showInsecureHTTP && host.startsWith("www.")) {
           host = Services.eTLD.getSchemelessSite(uri);
@@ -172,6 +264,7 @@ export var BrowserUtils = {
           return "http://" + host;
         }
         return host;
+      }
       case "about":
         return "about:" + uri.filePath;
       case "blob":
@@ -189,12 +282,13 @@ export var BrowserUtils = {
        * logic (shows just "(data)", localized). */
       case "data":
         return lazy.gLocalization.formatValueSync("browser-utils-url-data");
-      case "moz-extension":
+      case "moz-extension": {
         let policy = WebExtensionPolicy.getByURI(uri);
         return lazy.gLocalization.formatValueSync(
           "browser-utils-url-extension",
           { extension: policy?.name.trim() || uri.spec }
         );
+      }
       case "chrome":
       case "resource":
       case "jar":
@@ -250,11 +344,11 @@ export var BrowserUtils = {
   /**
    * Extracts linkNode and href for a click event.
    *
-   * @param event
+   * @param {UIEvent} event
    *        The click event.
-   * @return [href, linkNode, linkPrincipal].
+   * @returns {Array<any>} [href, linkNode, linkPrincipal].
    *
-   * @note linkNode will be null if the click wasn't on an anchor
+   * Note that linkNode will be null if the click wasn't on an anchor
    *       element. This includes SVG links, because callers expect |node|
    *       to behave like an <a> element, which SVG links (XLink) don't.
    */
@@ -332,9 +426,10 @@ export var BrowserUtils = {
    * - Alt can't be used on the bookmarks toolbar because Alt is used for "treat this as something draggable".
    * - The button is ignored for the middle-click-paste-URL feature, since it's always a middle-click.
    *
-   * @param e {Event|Object} Event or JSON Object
-   * @param ignoreButton {Boolean}
-   * @param ignoreAlt {Boolean}
+   * @param {Event|object} e
+   *   Event or JSON Object
+   * @param {boolean} ignoreButton
+   * @param {boolean} ignoreAlt
    * @returns {"current" | "tabshifted" | "tab" | "save" | "window"}
    */
   whereToOpenLink(e, ignoreButton, ignoreAlt) {
@@ -405,6 +500,97 @@ export var BrowserUtils = {
   },
 
   /**
+   * Invoke all the category manager consumers of a given JS consumer.
+   * Similar to the (C++-only) ``NS_CreateServicesFromCategory`` in that it'll
+   * abstract away the actual work of invoking the modules/services.
+   * Different in that it's JS-only and will invoke methods in modules
+   * instead of using XPCOM services.
+   *
+   * More context is available in
+   * https://firefox-source-docs.mozilla.org/browser/CategoryManagerIndirection.html
+   *
+   * @param {object} options
+   * @param {string} options.categoryName
+   *        What category's consumers to call.
+   * @param {boolean} [options.idleDispatch=false]
+   *        If set to true, call each consumer in an idle task.
+   * @param {string} [options.profilerMarker=""]
+   *        If specified, will create a profiler marker with the provided
+   *        identifier for each consumer.
+   * @param {Function} [options.failureHandler]
+   *        If specified, will be called for any exceptions raised, in
+   *        order to do custom failure handling.
+   * @param {...any} args
+   *        Arguments to pass to the consumers.
+   */
+  callModulesFromCategory(
+    {
+      categoryName,
+      profilerMarker = "",
+      idleDispatch = false,
+      failureHandler = null,
+    },
+    ...args
+  ) {
+    // Use an async function for profiler markers and error handling.
+    // Note that we deliberately don't await at the top level, so we
+    // can guarantee all consumers get run/queued.
+    let callSingleListener = async fn => {
+      let startTime = profilerMarker ? Cu.now() : 0;
+      try {
+        await fn(...args);
+      } catch (ex) {
+        console.error(
+          `Error in processing ${categoryName} for ${fn._descriptiveName}`
+        );
+        console.error(ex);
+        try {
+          await failureHandler?.(ex);
+        } catch (nestedEx) {
+          console.error(`Error in handling failure: ${nestedEx}`);
+          // Crash in automation:
+          if (BrowserUtils._inAutomation) {
+            Cc["@mozilla.org/xpcom/debug;1"]
+              .getService(Ci.nsIDebug2)
+              .abort(nestedEx.filename, nestedEx.lineNumber);
+          }
+        }
+      }
+      if (profilerMarker) {
+        ChromeUtils.addProfilerMarker(
+          profilerMarker,
+          startTime,
+          fn._descriptiveName
+        );
+      }
+    };
+
+    for (let listener of lazy.CatManListenerManager.getListeners(
+      categoryName
+    )) {
+      if (idleDispatch) {
+        ChromeUtils.idleDispatch(() => callSingleListener(listener));
+      } else {
+        callSingleListener(listener);
+      }
+    }
+  },
+
+  /**
+   * Returns whether the build is a China repack.
+   *
+   * @returns {boolean} True if the distribution ID is 'MozillaOnline',
+   *                   otherwise false.
+   */
+  isChinaRepack() {
+    return (
+      Services.prefs
+        .getDefaultBranch("")
+        .getCharPref("distribution.id", "default") === "MozillaOnline"
+    );
+  },
+
+  /**
    * An enumeration of the promotion types that can be passed to shouldShowPromo
    */
   PromoType: {
@@ -429,7 +615,7 @@ export var BrowserUtils = {
    *
    * @param {BrowserUtils.PromoType} promoType - What promo are we checking on?
    *
-   * @return {boolean} - should we display this promo now or not?
+   * @returns {boolean} - should we display this promo now or not?
    */
   shouldShowPromo(promoType) {
     switch (promoType) {
@@ -509,7 +695,7 @@ let PromoInfo = {
       supportedRegions: {
         name: "browser.contentblocking.report.vpn_regions",
         default:
-          "ca,my,nz,sg,gb,gg,im,io,je,uk,vg,as,mp,pr,um,us,vi,de,fr,at,be,ch,es,it,ie,nl,se,fi,bg,cy,cz,dk,ee,hr,hu,lt,lu,lv,mt,pl,pt,ro,si,sk",
+          "as,at,au,bd,be,bg,br,ca,ch,cl,co,cy,cz,de,dk,ee,eg,es,fi,fr,gb,gg,gr,hr,hu,id,ie,im,in,io,it,je,ke,kr,lt,lu,lv,ma,mp,mt,mx,my,ng,nl,no,nz,pl,pr,pt,ro,sa,se,sg,si,sk,sn,th,tr,tw,ua,ug,uk,um,us,vg,vi,vn,za",
       },
       disallowedRegions: {
         name: "browser.vpn_promo.disallowed_regions",

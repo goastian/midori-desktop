@@ -10,48 +10,22 @@ use std::fmt::Debug;
 
 use anyhow::{Context, Result};
 use askama::Template;
-use camino::Utf8Path;
+
 use heck::{ToLowerCamelCase, ToShoutySnakeCase, ToUpperCamelCase};
 use serde::{Deserialize, Serialize};
 
 use super::Bindings;
-use crate::backend::TemplateExpression;
-use crate::bindings::swift;
+
 use crate::interface::*;
-use crate::{BindingGenerator, BindingsConfig};
 
 mod callback_interface;
 mod compounds;
 mod custom;
 mod enum_;
-mod external;
 mod miscellany;
 mod object;
 mod primitives;
 mod record;
-
-pub struct SwiftBindingGenerator;
-impl BindingGenerator for SwiftBindingGenerator {
-    type Config = Config;
-
-    fn write_bindings(
-        &self,
-        ci: &ComponentInterface,
-        config: &Config,
-        out_dir: &Utf8Path,
-        try_format_code: bool,
-    ) -> Result<()> {
-        swift::write_bindings(config, ci, out_dir, try_format_code)
-    }
-
-    fn check_library_path(
-        &self,
-        _library_path: &Utf8Path,
-        _cdylib_name: Option<&str>,
-    ) -> Result<()> {
-        Ok(())
-    }
-}
 
 /// A trait tor the implementation.
 trait CodeType: Debug {
@@ -68,7 +42,7 @@ trait CodeType: Debug {
         self.type_label()
     }
 
-    fn literal(&self, _literal: &Literal) -> String {
+    fn literal(&self, _literal: &Literal) -> Result<String> {
         unimplemented!("Unimplemented for {}", self.type_label())
     }
 
@@ -77,33 +51,6 @@ trait CodeType: Debug {
     /// This is the object that contains the lower, write, lift, and read methods for this type.
     fn ffi_converter_name(&self) -> String {
         format!("FfiConverter{}", self.canonical_name())
-    }
-
-    // XXX - the below should be removed and replace with the ffi_converter_name reference in the template.
-    /// An expression for lowering a value into something we can pass over the FFI.
-    fn lower(&self) -> String {
-        format!("{}.lower", self.ffi_converter_name())
-    }
-
-    /// An expression for writing a value into a byte buffer.
-    fn write(&self) -> String {
-        format!("{}.write", self.ffi_converter_name())
-    }
-
-    /// An expression for lifting a value from something we received over the FFI.
-    fn lift(&self) -> String {
-        format!("{}.lift", self.ffi_converter_name())
-    }
-
-    /// An expression for reading a value from a byte buffer.
-    fn read(&self) -> String {
-        format!("{}.read", self.ffi_converter_name())
-    }
-
-    /// A list of imports that are needed if this type is in use.
-    /// Classes are imported exactly once.
-    fn imports(&self) -> Option<Vec<String>> {
-        None
     }
 
     /// Function to run at startup
@@ -214,33 +161,62 @@ pub fn quote_arg_keyword(nm: String) -> String {
 /// since the details of the underlying component are entirely determined by the `ComponentInterface`.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
-    cdylib_name: Option<String>,
-    module_name: Option<String>,
+    pub(super) module_name: Option<String>,
     ffi_module_name: Option<String>,
     ffi_module_filename: Option<String>,
     generate_module_map: Option<bool>,
+    #[serde(default)]
+    omit_checksums: bool,
     omit_argument_labels: Option<bool>,
     generate_immutable_records: Option<bool>,
-    experimental_sendable_value_types: Option<bool>,
+    omit_localized_error_conformance: Option<bool>,
+    generate_case_iterable_conformance: Option<bool>,
+    generate_codable_conformance: Option<bool>,
     #[serde(default)]
     custom_types: HashMap<String, CustomTypeConfig>,
+    #[serde(default)]
+    link_frameworks: Vec<String>,
 }
 
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
+#[serde(default)]
 pub struct CustomTypeConfig {
     imports: Option<Vec<String>>,
     type_name: Option<String>,
-    into_custom: TemplateExpression,
-    from_custom: TemplateExpression,
+    into_custom: String, // b/w compat alias for lift
+    lift: String,
+    from_custom: String, // b/w compat alias for lower
+    lower: String,
+}
+
+// functions replace literal "{}" in strings with a specified value.
+impl CustomTypeConfig {
+    fn lift(&self, name: &str) -> String {
+        let converter = if self.lift.is_empty() {
+            &self.into_custom
+        } else {
+            &self.lift
+        };
+        converter.replace("{}", name)
+    }
+    fn lower(&self, name: &str) -> String {
+        let converter = if self.lower.is_empty() {
+            &self.from_custom
+        } else {
+            &self.lower
+        };
+        converter.replace("{}", name)
+    }
 }
 
 impl Config {
     /// The name of the Swift module containing the high-level foreign-language bindings.
+    /// Panics if the module name hasn't been configured.
     pub fn module_name(&self) -> String {
-        match self.module_name.as_ref() {
-            Some(name) => name.clone(),
-            None => "uniffi".into(),
-        }
+        self.module_name
+            .as_ref()
+            .expect("module name should have been set in update_component_configs")
+            .clone()
     }
 
     /// The name of the lower-level C module containing the FFI declarations.
@@ -269,15 +245,6 @@ impl Config {
         format!("{}.h", self.ffi_module_filename())
     }
 
-    /// The name of the compiled Rust library containing the FFI implementation.
-    pub fn cdylib_name(&self) -> String {
-        if let Some(cdylib_name) = &self.cdylib_name {
-            cdylib_name.clone()
-        } else {
-            "uniffi".into()
-        }
-    }
-
     /// Whether to generate a `.modulemap` file for the lower-level C module with FFI declarations.
     pub fn generate_module_map(&self) -> bool {
         self.generate_module_map.unwrap_or(true)
@@ -293,30 +260,50 @@ impl Config {
         self.generate_immutable_records.unwrap_or(false)
     }
 
-    /// Whether to mark value types as 'Sendable'
-    pub fn experimental_sendable_value_types(&self) -> bool {
-        self.experimental_sendable_value_types.unwrap_or(false)
+    /// Whether to make generated error types conform to `LocalizedError`. Default: false.
+    pub fn omit_localized_error_conformance(&self) -> bool {
+        self.omit_localized_error_conformance.unwrap_or(false)
+    }
+
+    /// Whether to make simple generated enum and error types conform to `CaseIterable`. Default: false.
+    pub fn generate_case_iterable_conformance(&self) -> bool {
+        self.generate_case_iterable_conformance.unwrap_or(false)
+    }
+
+    /// Whether to make generated records, enums and errors conform to `Codable`. Default: false.
+    pub fn generate_codable_conformance(&self) -> bool {
+        self.generate_codable_conformance.unwrap_or(false)
+    }
+
+    /// Extra frameworks to link this Swift module against. This is populated in the modulemap file,
+    /// usually as part of an `xcframework`.
+    pub fn link_frameworks(&self) -> Vec<String> {
+        self.link_frameworks.clone()
     }
 }
 
-impl BindingsConfig for Config {
-    fn update_from_ci(&mut self, ci: &ComponentInterface) {
-        self.module_name
-            .get_or_insert_with(|| ci.namespace().into());
-        self.cdylib_name
-            .get_or_insert_with(|| format!("uniffi_{}", ci.namespace()));
+// Given a trait, work out what the protocol name we generate for it.
+// This differs based on whether the trait supports foreign impls (ie,
+// whether is has a "callback interface".
+fn trait_protocol_name(ci: &ComponentInterface, name: &str) -> Result<String> {
+    let (obj_name, has_callback_interface) = match ci.get_object_definition(name) {
+        Some(obj) => (obj.name(), obj.has_callback_interface()),
+        None => (
+            ci.get_callback_interface_definition(name)
+                .ok_or_else(|| anyhow::anyhow!("no interface {}", name))?
+                .name(),
+            true,
+        ),
+    };
+    let class_name = SwiftCodeOracle.class_name(obj_name);
+    if has_callback_interface {
+        Ok(class_name)
+    } else {
+        Ok(format!("{class_name}Protocol"))
     }
-
-    fn update_from_cdylib_name(&mut self, cdylib_name: &str) {
-        self.cdylib_name
-            .get_or_insert_with(|| cdylib_name.to_string());
-    }
-
-    fn update_from_dependency_configs(&mut self, _config_map: HashMap<&str, &Self>) {}
 }
 
 /// Generate UniFFI component bindings for Swift, as strings in memory.
-///
 pub fn generate_bindings(config: &Config, ci: &ComponentInterface) -> Result<Bindings> {
     let header = BridgingHeader::new(config, ci)
         .render()
@@ -326,7 +313,7 @@ pub fn generate_bindings(config: &Config, ci: &ComponentInterface) -> Result<Bin
         .context("failed to render Swift library")?;
     let modulemap = if config.generate_module_map() {
         Some(
-            ModuleMap::new(config, ci)
+            ModuleMap::new_for_single_component(config, ci)
                 .render()
                 .context("failed to render Swift modulemap")?,
         )
@@ -340,6 +327,37 @@ pub fn generate_bindings(config: &Config, ci: &ComponentInterface) -> Result<Bin
     })
 }
 
+/// Generate the bridging header for a component
+pub fn generate_header(config: &Config, ci: &ComponentInterface) -> Result<String> {
+    BridgingHeader::new(config, ci)
+        .render()
+        .context("failed to render Swift bridging header")
+}
+
+/// Generate the swift source for a component
+pub fn generate_swift(config: &Config, ci: &ComponentInterface) -> Result<String> {
+    SwiftWrapper::new(config.clone(), ci)
+        .render()
+        .context("failed to render Swift library")
+}
+
+/// Generate the modulemap for a set of components
+pub fn generate_modulemap(
+    module_name: String,
+    header_filenames: Vec<String>,
+    xcframework: bool,
+    link_frameworks: Vec<String>,
+) -> Result<String> {
+    ModuleMap {
+        module_name,
+        header_filenames,
+        xcframework,
+        link_frameworks,
+    }
+    .render()
+    .context("failed to render Swift library")
+}
+
 /// Renders Swift helper code for all types
 ///
 /// This template is a bit different than others in that it stores internal state from the render
@@ -349,8 +367,6 @@ pub fn generate_bindings(config: &Config, ci: &ComponentInterface) -> Result<Bin
 pub struct TypeRenderer<'a> {
     config: &'a Config,
     ci: &'a ComponentInterface,
-    // Track included modules for the `include_once()` macro
-    include_once_names: RefCell<HashSet<String>>,
     // Track imports added with the `add_import()` macro
     imports: RefCell<BTreeSet<String>>,
 }
@@ -360,22 +376,11 @@ impl<'a> TypeRenderer<'a> {
         Self {
             config,
             ci,
-            include_once_names: RefCell::new(HashSet::new()),
             imports: RefCell::new(BTreeSet::new()),
         }
     }
 
     // The following methods are used by the `Types.swift` macros.
-
-    // Helper for the including a template, but only once.
-    //
-    // The first time this is called with a name it will return true, indicating that we should
-    // include the template.  Subsequent calls will return false.
-    fn include_once_check(&self, name: &str) -> bool {
-        self.include_once_names
-            .borrow_mut()
-            .insert(name.to_string())
-    }
 
     // Helper to add an import statement
     //
@@ -418,14 +423,21 @@ impl<'config, 'ci> BridgingHeader<'config, 'ci> {
 /// so that it can be imported by the higher-level code in from [`SwiftWrapper`].
 #[derive(Template)]
 #[template(syntax = "c", escape = "none", path = "ModuleMapTemplate.modulemap")]
-pub struct ModuleMap<'config, 'ci> {
-    config: &'config Config,
-    _ci: &'ci ComponentInterface,
+pub struct ModuleMap {
+    module_name: String,
+    header_filenames: Vec<String>,
+    xcframework: bool,
+    link_frameworks: Vec<String>,
 }
 
-impl<'config, 'ci> ModuleMap<'config, 'ci> {
-    pub fn new(config: &'config Config, _ci: &'ci ComponentInterface) -> Self {
-        Self { config, _ci }
+impl ModuleMap {
+    pub fn new_for_single_component(config: &Config, _ci: &ComponentInterface) -> Self {
+        Self {
+            module_name: config.ffi_module_name(),
+            header_filenames: vec![config.header_filename()],
+            xcframework: false,
+            link_frameworks: config.link_frameworks(),
+        }
     }
 }
 
@@ -436,6 +448,7 @@ pub struct SwiftWrapper<'a> {
     ci: &'a ComponentInterface,
     type_helper_code: String,
     type_imports: BTreeSet<String>,
+    ensure_init_fn_name: String,
 }
 impl<'a> SwiftWrapper<'a> {
     pub fn new(config: Config, ci: &'a ComponentInterface) -> Self {
@@ -447,6 +460,10 @@ impl<'a> SwiftWrapper<'a> {
             ci,
             type_helper_code,
             type_imports,
+            ensure_init_fn_name: format!(
+                "uniffiEnsure{}Initialized",
+                ci.crate_name().to_upper_camel_case()
+            ),
         }
     }
 
@@ -455,11 +472,29 @@ impl<'a> SwiftWrapper<'a> {
     }
 
     pub fn initialization_fns(&self) -> Vec<String> {
-        self.ci
-            .iter_types()
+        let init_fns = self
+            .ci
+            .iter_local_types()
             .map(|t| SwiftCodeOracle.find(t))
-            .filter_map(|ct| ct.initialization_fn())
-            .collect()
+            .filter_map(|ct| ct.initialization_fn());
+
+        // Also call global initialization function for any external type we use.
+        // For example, we need to make sure that all callback interface vtables are registered
+        // (#2343).
+        let extern_module_init_fns = self
+            .ci
+            .iter_external_types()
+            .filter_map(|t| t.module_path())
+            .map(|module_path| {
+                format!(
+                    "uniffiEnsure{}Initialized",
+                    module_path.to_upper_camel_case()
+                )
+            })
+            // Collect into a hash set to de-dup
+            .collect::<HashSet<_>>();
+
+        init_fns.chain(extern_module_init_fns).collect()
     }
 }
 
@@ -509,7 +544,6 @@ impl SwiftCodeOracle {
                 key_type,
                 value_type,
             } => Box::new(compounds::MapCodeType::new(*key_type, *value_type)),
-            Type::External { name, .. } => Box::new(external::ExternalCodeType::new(name)),
             Type::Custom { name, .. } => Box::new(custom::CustomCodeType::new(name)),
         }
     }
@@ -519,38 +553,38 @@ impl SwiftCodeOracle {
     }
 
     /// Get the idiomatic Swift rendering of a class name (for enums, records, errors, etc).
-    fn class_name(&self, nm: &str) -> String {
-        nm.to_string().to_upper_camel_case()
+    fn class_name<S: AsRef<str>>(&self, nm: S) -> String {
+        nm.as_ref().to_string().to_upper_camel_case()
     }
 
     /// Get the idiomatic Swift rendering of a function name.
-    fn fn_name(&self, nm: &str) -> String {
-        nm.to_string().to_lower_camel_case()
+    fn fn_name<S: AsRef<str>>(&self, nm: S) -> String {
+        nm.as_ref().to_string().to_lower_camel_case()
     }
 
     /// Get the idiomatic Swift rendering of a variable name.
-    fn var_name(&self, nm: &str) -> String {
-        nm.to_string().to_lower_camel_case()
+    fn var_name<S: AsRef<str>>(&self, nm: S) -> String {
+        nm.as_ref().to_string().to_lower_camel_case()
     }
 
     /// Get the idiomatic Swift rendering of an individual enum variant.
-    fn enum_variant_name(&self, nm: &str) -> String {
-        nm.to_string().to_lower_camel_case()
+    fn enum_variant_name<S: AsRef<str>>(&self, nm: S) -> String {
+        nm.as_ref().to_string().to_lower_camel_case()
     }
 
     /// Get the idiomatic Swift rendering of an FFI callback function name
-    fn ffi_callback_name(&self, nm: &str) -> String {
-        format!("Uniffi{}", nm.to_upper_camel_case())
+    fn ffi_callback_name<S: AsRef<str>>(&self, nm: S) -> String {
+        format!("Uniffi{}", nm.as_ref().to_upper_camel_case())
     }
 
     /// Get the idiomatic Swift rendering of an FFI struct name
-    fn ffi_struct_name(&self, nm: &str) -> String {
-        format!("Uniffi{}", nm.to_upper_camel_case())
+    fn ffi_struct_name<S: AsRef<str>>(&self, nm: S) -> String {
+        format!("Uniffi{}", nm.as_ref().to_upper_camel_case())
     }
 
     /// Get the idiomatic Swift rendering of an if guard name
-    fn if_guard_name(&self, nm: &str) -> String {
-        format!("UNIFFI_FFIDEF_{}", nm.to_shouty_snake_case())
+    fn if_guard_name<S: AsRef<str>>(&self, nm: S) -> String {
+        format!("UNIFFI_FFIDEF_{}", nm.as_ref().to_shouty_snake_case())
     }
 
     fn ffi_type_label(&self, ffi_type: &FfiType) -> String {
@@ -576,6 +610,9 @@ impl SwiftCodeOracle {
             FfiType::Callback(name) => format!("@escaping {}", self.ffi_callback_name(name)),
             FfiType::Struct(name) => self.ffi_struct_name(name),
             FfiType::Reference(inner) => {
+                format!("UnsafePointer<{}>", self.ffi_type_label(inner))
+            }
+            FfiType::MutReference(inner) => {
                 format!("UnsafeMutablePointer<{}>", self.ffi_type_label(inner))
             }
             FfiType::VoidPointer => "UnsafeMutableRawPointer".into(),
@@ -604,10 +641,6 @@ impl SwiftCodeOracle {
             // When we need to use a value for void returns, we use a `u8` placeholder
             None => "0".to_owned(),
         }
-    }
-
-    fn ffi_canonical_name(&self, ffi_type: &FfiType) -> String {
-        self.ffi_type_label(ffi_type)
     }
 
     /// Get the name of the protocol and class name for an object.
@@ -666,27 +699,48 @@ pub mod filters {
         Ok(name)
     }
 
+    // To better support external types, we always call the "public" lift and lower functions for
+    // "named" types, regardless of whether they are being called from a type in the same crate
+    // (ie, a "local" type) or from a different crate (ie, an "external" type)
     pub fn lower_fn(as_type: &impl AsType) -> Result<String, askama::Error> {
-        Ok(oracle().find(&as_type.as_type()).lower())
+        let ty = &as_type.as_type();
+        let ffi_converter_name = oracle().find(ty).ffi_converter_name();
+        Ok(match ty.name() {
+            Some(_) => format!("{}_lower", ffi_converter_name),
+            None => format!("{}.lower", ffi_converter_name),
+        })
     }
 
     pub fn write_fn(as_type: &impl AsType) -> Result<String, askama::Error> {
-        Ok(oracle().find(&as_type.as_type()).write())
+        let ty = &as_type.as_type();
+        let ffi_converter_name = oracle().find(ty).ffi_converter_name();
+        Ok(format!("{}.write", ffi_converter_name))
     }
 
+    // See above re lower_fn - we always use the public version for named types.
     pub fn lift_fn(as_type: &impl AsType) -> Result<String, askama::Error> {
-        Ok(oracle().find(&as_type.as_type()).lift())
+        let ty = &as_type.as_type();
+        let ffi_converter_name = oracle().find(ty).ffi_converter_name();
+        Ok(match ty.name() {
+            Some(_) => format!("{}_lift", ffi_converter_name),
+            None => format!("{}.lift", ffi_converter_name),
+        })
     }
 
     pub fn read_fn(as_type: &impl AsType) -> Result<String, askama::Error> {
-        Ok(oracle().find(&as_type.as_type()).read())
+        let ty = &as_type.as_type();
+        let ffi_converter_name = oracle().find(ty).ffi_converter_name();
+        Ok(format!("{}.read", ffi_converter_name))
     }
 
     pub fn literal_swift(
         literal: &Literal,
         as_type: &impl AsType,
     ) -> Result<String, askama::Error> {
-        Ok(oracle().find(&as_type.as_type()).literal(literal))
+        oracle()
+            .find(&as_type.as_type())
+            .literal(literal)
+            .map_err(|e| to_askama_error(&e))
     }
 
     // Get the idiomatic Swift rendering of an individual enum variant's discriminant
@@ -702,10 +756,6 @@ pub mod filters {
     /// Get the Swift type for an FFIType
     pub fn ffi_type_name(ffi_type: &FfiType) -> Result<String, askama::Error> {
         Ok(oracle().ffi_type_label(ffi_type))
-    }
-
-    pub fn ffi_canonical_name(ffi_type: &FfiType) -> Result<String, askama::Error> {
-        Ok(oracle().ffi_canonical_name(ffi_type))
     }
 
     pub fn ffi_default_value(return_type: Option<FfiType>) -> Result<String, askama::Error> {
@@ -735,7 +785,10 @@ pub mod filters {
                 format!("{} _Nonnull", SwiftCodeOracle.ffi_callback_name(name))
             }
             FfiType::Struct(name) => SwiftCodeOracle.ffi_struct_name(name),
-            FfiType::Reference(inner) => format!("{}* _Nonnull", header_ffi_type_name(inner)?),
+            FfiType::Reference(inner) => {
+                format!("const {}* _Nonnull", header_ffi_type_name(inner)?)
+            }
+            FfiType::MutReference(inner) => format!("{}* _Nonnull", header_ffi_type_name(inner)?),
             FfiType::VoidPointer => "void* _Nonnull".into(),
         })
     }
@@ -766,9 +819,9 @@ pub mod filters {
         Ok(quote_general_keyword(oracle().enum_variant_name(nm)))
     }
 
-    /// Get the idiomatic Swift rendering of an individual enum variant, for contexts (for use in non-declaration contexts where quoting is not needed)
-    pub fn enum_variant_swift(nm: &str) -> Result<String, askama::Error> {
-        Ok(oracle().enum_variant_name(nm))
+    /// Like enum_variant_swift_quoted, but a class name.
+    pub fn error_variant_swift_quoted(nm: &str) -> Result<String, askama::Error> {
+        Ok(quote_general_keyword(oracle().class_name(nm)))
     }
 
     /// Get the idiomatic Swift rendering of an FFI callback function name
@@ -793,28 +846,6 @@ pub mod filters {
 
         let spaces = usize::try_from(*spaces).unwrap_or_default();
         Ok(textwrap::indent(&wrapped, &" ".repeat(spaces)))
-    }
-
-    pub fn error_handler(result: &ResultType) -> Result<String, askama::Error> {
-        Ok(match &result.throws_type {
-            Some(t) => format!("{}.lift", ffi_converter_name(t)?),
-            None => "nil".into(),
-        })
-    }
-
-    /// Name of the callback function to handle an async result
-    pub fn future_callback(result: &ResultType) -> Result<String, askama::Error> {
-        Ok(format!(
-            "uniffiFutureCallbackHandler{}{}",
-            match &result.return_type {
-                Some(t) => SwiftCodeOracle.find(t).canonical_name(),
-                None => "Void".into(),
-            },
-            match &result.throws_type {
-                Some(t) => SwiftCodeOracle.find(t).canonical_name(),
-                None => "".into(),
-            }
-        ))
     }
 
     pub fn object_names(obj: &Object) -> Result<(String, String), askama::Error> {

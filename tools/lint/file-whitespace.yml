@@ -1,16 +1,10 @@
 ---
 file-whitespace:
     description: File content sanity check
-    include:
-        - .
-        - tools/lint/python/black_requirements.txt
-        - tools/lint/python/ruff_requirements.txt
-        - tools/lint/rst/requirements.txt
-        - tools/lint/tox/tox_requirements.txt
-        - tools/lint/spell/codespell_requirements.txt
     exclude:
         - accessible/tests/crashtests
         - accessible/tests/mochitest
+        - browser/extensions/newtab/webext-glue/locales/
         - browser/locales/en-US/chrome/browser/uiDensity.properties
         - build/pgo/blueprint
         - build/pgo/js-input
@@ -104,6 +98,8 @@ file-whitespace:
         - layout/xul/test
         - layout/xul/tree
         - modules/libjar/zipwriter/test/unit/data/test_bug399727.html
+        # Room-generated database schemas for migration
+        - mobile/android/android-components/components/lib/crash/schemas
         - netwerk/test/crashtests
         - netwerk/test/mochitests/test1.css
         - netwerk/test/mochitests/test2.css
@@ -124,7 +120,6 @@ file-whitespace:
         - toolkit/components/passwordmgr/test/mochitest/
         - toolkit/content/tests/chrome
         - toolkit/locales/en-US/chrome/passwordmgr/passwordmgr.properties
-        - tools/jprof/README.html
         - tools/lint/eslint
         - tools/lint/test/test_clang_format.py
         - view/crashtests

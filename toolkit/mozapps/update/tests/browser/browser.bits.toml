@@ -1,8 +1,5 @@
 [DEFAULT]
-run-if = ["os == 'win'"] # "BITS is only available on Windows."
-skip-if = [
-  "msix", # Updater is disabled in MSIX builds
-]
+run-if = ["os == 'win' && !msix"] # "BITS is only available on Windows."
 dupe-manifest = true
 tags = "appupdate bits"
 head = "head.js"
@@ -129,6 +126,8 @@ prefs = [
 ["browser_doorhanger_sp_patch_partialApplyFailure_completeBadSize.js"]
 
 ["browser_doorhanger_sp_patch_partialApplyFailure_complete_staging.js"]
+
+["browser_showWhatsNewPageTest.js"]
 
 # Telemetry Update Ping Tests
 

@@ -57,17 +57,23 @@ export class AddressesDataSource extends DataSourceBase {
   constructor(...args) {
     super(...args);
     this.localizeStrings({
-      headerLabel: "addresses-section-label",
-      nameLabel: "address-name-label",
-      phoneLabel: "address-phone-label",
-      emailLabel: "address-email-label",
-      addressesDisabled: "addresses-disabled",
+      headerLabel: { id: "addresses-section-label" },
+      expandSection: { id: "addresses-expand-section-tooltip" },
+      collapseSection: { id: "addresses-collapse-section-tooltip" },
+      nameLabel: { id: "address-name-label" },
+      phoneLabel: { id: "address-phone-label" },
+      emailLabel: { id: "address-email-label" },
+      addressesDisabled: { id: "addresses-disabled" },
     }).then(strings => {
       const copyCommand = { id: "Copy", label: "command-copy" };
       const editCommand = { id: "Edit", label: "command-edit" };
       const deleteCommand = { id: "Delete", label: "command-delete" };
       this.#addressesDisabledMessage = strings.addressesDisabled;
-      this.#header = this.createHeaderLine(strings.headerLabel);
+      const tooltip = {
+        expand: strings.expandSection,
+        collapse: strings.collapseSection,
+      };
+      this.#header = this.createHeaderLine(strings.headerLabel, tooltip);
       this.#header.commands.push({
         id: "Create",
         label: "addresses-command-create",

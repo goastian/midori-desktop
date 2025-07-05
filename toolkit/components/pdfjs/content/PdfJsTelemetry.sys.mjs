@@ -16,10 +16,27 @@
 export class PdfJsTelemetryContent {
   static onViewerIsUsed() {
     Glean.pdfjs.used.add(1);
+    // GLAM EXPERIMENT
+    // This metric is temporary, disabled by default, and will be enabled only
+    // for the purpose of experimenting with client-side sampling of data for
+    // GLAM use. See Bug 1947604 for more information.
+    Glean.glamExperiment.used.add(1);
   }
 }
 
 export class PdfJsTelemetry {
+  static #fixKeys(data) {
+    for (const [key, values] of Object.entries(data)) {
+      const newKey = key.replaceAll(/([A-Z])/g, c => `_${c.toLowerCase()}`);
+      if (newKey === key) {
+        continue;
+      }
+      data[newKey] = values;
+      delete data[key];
+    }
+    return data;
+  }
+
   static report(aData) {
     const { type } = aData;
     switch (type) {
@@ -55,26 +72,58 @@ export class PdfJsTelemetry {
       return;
     }
 
+    if (!data.type && data.action?.startsWith("pdfjs.image")) {
+      this.onImage(data);
+      return;
+    }
+
     switch (data.type) {
       case "freetext":
       case "ink":
         Glean.pdfjs.editing[data.type].add(1);
         return;
       case "print":
-      case "save":
-        {
-          Glean.pdfjs.editing[data.type].add(1);
-          if (!data.stats) {
-            return;
-          }
+      case "save": {
+        Glean.pdfjs.editing[data.type].add(1);
+        const { stats } = data;
+        if (!stats) {
+          return;
+        }
+        if (data.type === "highlight") {
           const numbers = ["one", "two", "three", "four", "five"];
           Glean.pdfjsEditingHighlight[data.type].add(1);
           Glean.pdfjsEditingHighlight.numberOfColors[
-            numbers[data.stats.highlight.numberOfColors - 1]
+            numbers[stats.highlight.numberOfColors - 1]
           ].add(1);
+          return;
+        }
+        if (stats.stamp) {
+          this.onImage({
+            action: "pdfjs.image.added",
+            data: stats.stamp,
+          });
+        } else if (stats.signature) {
+          this.onSignature({
+            action: "pdfjs.signature.added",
+            data: stats.signature,
+          });
         }
         return;
+      }
+      case "signature":
+        if (data.action === "added") {
+          Glean.pdfjs.editing.signature.add(1);
+          return;
+        }
+
+        this.onSignature(data);
+        return;
       case "stamp":
+        if (data.action.startsWith("pdfjs.image.")) {
+          this.onImage(data);
+          return;
+        }
+
         if (data.action === "added") {
           Glean.pdfjs.editing.stamp.add(1);
           return;
@@ -124,6 +173,110 @@ export class PdfJsTelemetry {
             Glean.pdfjsEditingHighlight.toggleVisibility.add(1);
             break;
         }
+        break;
+    }
+  }
+
+  static onImage({ action, data = {} }) {
+    action = action.split(".").pop();
+
+    switch (action) {
+      // New alt text telemetry.
+      case "info":
+        Glean.pdfjsImageAltText.info.record(data);
+        break;
+      case "ai_generation_check":
+        Glean.pdfjsImageAltText.aiGenerationCheck.record(data);
+        break;
+      case "settings_displayed":
+        Glean.pdfjsImageAltText.settingsDisplayed.record(data);
+        break;
+      case "settings_ai_generation_check":
+        Glean.pdfjsImageAltText.settingsAiGenerationCheck.record(data);
+        break;
+      case "settings_edit_alt_text_check":
+        Glean.pdfjsImageAltText.settingsEditAltTextCheck.record(data);
+        break;
+      case "save":
+        Glean.pdfjsImageAltText.save.record(data);
+        break;
+      case "dismiss":
+        Glean.pdfjsImageAltText.dismiss.record(data);
+        break;
+      case "model_download_start":
+        Glean.pdfjsImageAltText.modelDownloadStart.record(data);
+        break;
+      case "model_download_complete":
+        Glean.pdfjsImageAltText.modelDownloadComplete.record(data);
+        break;
+      case "model_download_error":
+        Glean.pdfjsImageAltText.modelDownloadError.record(data);
+        break;
+      case "model_deleted":
+        Glean.pdfjsImageAltText.modelDeleted.record(data);
+        break;
+      case "model_result":
+        Glean.pdfjsImageAltText.modelResult.record(data);
+        break;
+      case "user_edit":
+        Glean.pdfjsImageAltText.userEdit.record(data);
+        break;
+      case "image_status_label_displayed":
+        Glean.pdfjsImageAltText.imageStatusLabelDisplayed.record(data);
+        break;
+      case "image_status_label_clicked":
+        Glean.pdfjsImageAltText.imageStatusLabelClicked.record(data);
+        break;
+      // Image telemetry.
+      case "icon_click":
+        Glean.pdfjsImage.iconClick.record(data);
+        break;
+      case "add_image_click":
+        Glean.pdfjsImage.addImageClick.record(data);
+        break;
+      case "image_selected":
+        Glean.pdfjsImage.imageSelected.record(data);
+        break;
+      case "image_added":
+        Glean.pdfjsImage.imageAdded.record(data);
+        break;
+      case "added": {
+        const { hasAltText, hasNoAltText } = data;
+        Glean.pdfjsImage.added.with_alt_text.add(hasAltText);
+        Glean.pdfjsImage.added.with_no_alt_text.add(hasNoAltText);
+        break;
+      }
+      case "alt_text_edit":
+        Glean.pdfjsImage.altTextEdit.ask_to_edit.set(data.ask_to_edit);
+        Glean.pdfjsImage.altTextEdit.ai_generation.set(data.ai_generation);
+        break;
+    }
+  }
+
+  static onSignature({ action, data = {} }) {
+    action = action.split(".").pop();
+    data = this.#fixKeys(data);
+
+    switch (action) {
+      case "clear":
+        Glean.pdfjsSignature.clear[data.type].add(1);
+        break;
+      case "delete_saved":
+        Glean.pdfjsSignature.deleteSaved.record(data);
+        break;
+      case "created":
+        Glean.pdfjsSignature.created.record(data);
+        break;
+      case "added":
+        Glean.pdfjsSignature.added.record(data);
+        break;
+      case "inserted":
+        Glean.pdfjsSignature.inserted.record(data);
+        break;
+      case "edit_description":
+        Glean.pdfjsSignature.editDescription[
+          data.has_been_changed ? "saved" : "unsaved"
+        ].add(1);
         break;
     }
   }

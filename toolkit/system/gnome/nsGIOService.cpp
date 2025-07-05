@@ -24,6 +24,7 @@
 
 #include <gio/gio.h>
 #include <gtk/gtk.h>
+#include <gio/gdesktopappinfo.h>
 #ifdef MOZ_ENABLE_DBUS
 #  include <fcntl.h>
 #  include <dlfcn.h>
@@ -32,6 +33,15 @@
 #endif
 
 using namespace mozilla;
+
+#ifdef MOZ_LOGGING
+#  include "mozilla/Logging.h"
+LazyLogModule gGIOServiceLog("GIOService");
+#  define LOG(...) \
+    MOZ_LOG(gGIOServiceLog, mozilla::LogLevel::Debug, (__VA_ARGS__))
+#else
+#  define LOG(...)
+#endif /* MOZ_LOGGING */
 
 class nsFlatpakHandlerApp : public nsIHandlerApp {
  public:
@@ -115,6 +125,95 @@ static nsresult GetCommandFromCommandline(
   }
   aCommand.Assign(argv[0]);
   g_strfreev(argv);
+  return NS_OK;
+}
+
+class nsGIOHandlerApp final : public nsIGIOHandlerApp {
+ public:
+  NS_DECL_ISUPPORTS
+  NS_DECL_NSIHANDLERAPP
+  NS_DECL_NSIGIOHANDLERAPP
+
+  explicit nsGIOHandlerApp(already_AddRefed<GAppInfo> aApp) : mApp(aApp) {}
+
+ private:
+  ~nsGIOHandlerApp() = default;
+  RefPtr<GAppInfo> mApp;
+};
+
+NS_IMPL_ISUPPORTS(nsGIOHandlerApp, nsIGIOHandlerApp, nsIHandlerApp)
+
+NS_IMETHODIMP
+nsGIOHandlerApp::GetId(nsACString& aId) {
+  aId.Assign(g_app_info_get_id(mApp));
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsGIOHandlerApp::GetName(nsAString& aName) {
+  aName.Assign(NS_ConvertUTF8toUTF16(g_app_info_get_name(mApp)));
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsGIOHandlerApp::SetName(const nsAString& aName) {
+  // We don't implement SetName because we're using mGIOMimeApp instance for
+  // obtaining application name
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsGIOHandlerApp::GetDetailedDescription(nsAString& aDetailedDescription) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+nsGIOHandlerApp::SetDetailedDescription(const nsAString& aDetailedDescription) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+nsGIOHandlerApp::Equals(nsIHandlerApp* aHandlerApp, bool* _retval) {
+  // Compare with nsIGIOMimeApp instance by command with stripped arguments
+  nsCOMPtr<nsIGIOHandlerApp> gioMimeApp = do_QueryInterface(aHandlerApp);
+  *_retval = false;
+  if (!gioMimeApp) {
+    return NS_OK;
+  }
+
+  nsAutoCString thisId;
+  nsresult rv = GetId(thisId);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsAutoCString theirId;
+  gioMimeApp->GetId(theirId);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  *_retval = thisId.Equals(theirId);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsGIOHandlerApp::LaunchFile(const nsACString& aFileName) {
+  GFile* gfile = g_file_new_for_path(PromiseFlatCString(aFileName).get());
+  GList* fileList = nullptr;
+  fileList = g_list_append(fileList, gfile);
+  bool retval = g_app_info_launch(mApp, fileList, nullptr, nullptr);
+  g_list_foreach(fileList, (GFunc)g_object_unref, nullptr);
+  g_list_free(fileList);
+  return retval ? NS_OK : NS_ERROR_FAILURE;
+}
+
+NS_IMETHODIMP
+nsGIOHandlerApp::LaunchWithURI(
+    nsIURI* aUri, mozilla::dom::BrowsingContext* aBrowsingContext) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+NS_IMETHODIMP
+nsGIOHandlerApp::GetMozIconURL(nsACString& _retval) {
+  GIcon* icon = g_app_info_get_icon(mApp);
+  _retval.Assign(g_icon_to_string(icon));
   return NS_OK;
 }
 
@@ -472,6 +571,17 @@ nsGIOMimeApp::SetAsDefaultForURIScheme(nsACString const& aURIScheme) {
     return NS_ERROR_FAILURE;
   }
 
+  // Its consistent with the way `gio mime x-scheme-handler/contentType
+  // some.desktop` registers mime types to also add the registered application
+  // to the list of supported applications for the handler.
+  g_app_info_set_as_last_used_for_type(mApp, contentType.get(),
+                                       getter_Transfers(error));
+  if (error) {
+    g_warning("Cannot register as compatible URI scheme handler for %s: %s",
+              PromiseFlatCString(aURIScheme).get(), error->message);
+    return NS_ERROR_FAILURE;
+  }
+
   return NS_OK;
 }
 
@@ -500,14 +610,20 @@ nsGIOService::GetMimeTypeFromExtension(const nsACString& aExtension,
 }
 // used in nsGNOMERegistry
 // -----------------------------------------------------------------------------
+#define OPENURI_BUS_NAME "org.freedesktop.portal.Desktop"
+#define OPENURI_OBJECT_PATH "/org/freedesktop/portal/desktop"
+#define OPENURI_INTERFACE_NAME "org.freedesktop.portal.OpenURI"
+#define SCHEME_SUPPORTED_METHOD "SchemeSupported"
+
 NS_IMETHODIMP
 nsGIOService::GetAppForURIScheme(const nsACString& aURIScheme,
                                  nsIHandlerApp** aApp) {
   *aApp = nullptr;
 
   // Application in flatpak sandbox does not have access to the list
-  // of installed applications on the system. We use generic
-  // nsFlatpakHandlerApp which forwards launch call to the system.
+  // of installed applications on the system. We use SchemeSupported
+  // method to check if the URI scheme is supported and then use
+  // generic nsFlatpakHandlerApp which forwards launch call to the system.
   if (widget::ShouldUsePortal(widget::PortalKind::MimeHandler)) {
     if (mozilla::net::IsLoopbackHostname(aURIScheme)) {
       // When the user writes foo:1234, we try to handle it natively using
@@ -517,6 +633,50 @@ nsGIOService::GetAppForURIScheme(const nsACString& aURIScheme,
       // apps, and we're much better off returning an error here instead.
       return NS_ERROR_FAILURE;
     }
+    GUniquePtr<GError> error;
+
+    RefPtr<GDBusProxy> proxy = dont_AddRef(g_dbus_proxy_new_for_bus_sync(
+        G_BUS_TYPE_SESSION, G_DBUS_PROXY_FLAGS_NONE, nullptr, OPENURI_BUS_NAME,
+        OPENURI_OBJECT_PATH, OPENURI_INTERFACE_NAME,
+        nullptr,  // cancellable
+        getter_Transfers(error)));
+    if (error) {
+      g_warning("Failed to create proxy: %s\n", error->message);
+      return NS_ERROR_FAILURE;
+    }
+    // Construct the dictionary of options (empty in current implementaiton)
+    GVariantBuilder builder;
+    g_variant_builder_init(&builder, G_VARIANT_TYPE_VARDICT);
+
+    RefPtr<GVariant> result = dont_AddRef(g_dbus_proxy_call_sync(
+        proxy, SCHEME_SUPPORTED_METHOD,
+        g_variant_new("(sa{sv})", PromiseFlatCString(aURIScheme).get(),
+                      &builder),
+        G_DBUS_CALL_FLAGS_NONE,
+        -1,       // timeout
+        nullptr,  // cancellable
+        getter_Transfers(error)));
+    if (error) {
+      if (error->code == G_DBUS_ERROR_UNKNOWN_METHOD) {
+        // The method "SchemeSupported" not available, seems like we're running
+        // older portal. Be optimistic about supported scheme handler
+        LOG("SchemeSupported method not found, fallback to flatpak handler");
+        RefPtr<nsFlatpakHandlerApp> mozApp = new nsFlatpakHandlerApp();
+        mozApp.forget(aApp);
+        return NS_OK;
+      }
+      g_warning("Failed to call SchemeSupported method: %s\n", error->message);
+      return NS_ERROR_FAILURE;
+    }
+
+    gboolean supported;
+    g_variant_get(result, "(b)", &supported);
+    if (!supported) {
+      LOG("Scheme '%s' is NOT supported.\n",
+          PromiseFlatCString(aURIScheme).get());
+      return NS_ERROR_FAILURE;
+    }
+    LOG("Scheme '%s' is supported.\n", PromiseFlatCString(aURIScheme).get());
     RefPtr<nsFlatpakHandlerApp> mozApp = new nsFlatpakHandlerApp();
     mozApp.forget(aApp);
     return NS_OK;
@@ -848,11 +1008,10 @@ static void RevealFileViaDBusPortal(nsIFile* aFile) {
 
 nsresult nsGIOService::RevealFile(nsIFile* aFile) {
 #ifdef MOZ_ENABLE_DBUS
-  if (NS_SUCCEEDED(RevealDirectory(aFile, /* aForce = */ false))) {
-    return NS_OK;
-  }
   if (ShouldUsePortal(widget::PortalKind::OpenUri)) {
     RevealFileViaDBusPortal(aFile);
+  } else if (NS_SUCCEEDED(RevealDirectory(aFile, /* aForce = */ false))) {
+    return NS_OK;
   } else {
     RevealFileViaDBusClassic(aFile);
   }
@@ -903,6 +1062,26 @@ nsGIOService::FindAppFromCommand(nsACString const& aCmd,
   }
   RefPtr<nsGIOMimeApp> app = new nsGIOMimeApp(app_info.forget());
   app.forget(aAppInfo);
+  return NS_OK;
+}
+
+/**
+ * Create GIOHandlerApp specified by application id. The id is the basename
+ * of the desktop file including the .desktop extension. For example:
+ * org.mozilla.firefox.desktop
+ */
+NS_IMETHODIMP
+nsGIOService::CreateHandlerAppFromAppId(const char* aAppId,
+                                        nsIGIOHandlerApp** aResult) {
+  RefPtr<GAppInfo> appInfo =
+      dont_AddRef((GAppInfo*)g_desktop_app_info_new(aAppId));
+  if (!appInfo) {
+    g_warning("Appinfo not found for: %s", aAppId);
+    return NS_ERROR_FAILURE;
+  }
+  nsCOMPtr<nsIGIOHandlerApp> mozApp = new nsGIOHandlerApp(appInfo.forget());
+
+  mozApp.forget(aResult);
   return NS_OK;
 }
 

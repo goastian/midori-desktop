@@ -37,7 +37,7 @@
 #include "nsString.h"
 #include "nsThreadUtils.h"
 #include "platform.h"
-#include "shared-libraries.h"
+#include "SharedLibraries.h"
 #include "zlib.h"
 
 #ifndef ANDROID
@@ -469,24 +469,8 @@ nsProfiler::GetProfileDataAsArrayBuffer(double aSinceTime, JSContext* aCx,
       ->Then(
           GetMainThreadSerialEventTarget(), __func__,
           [promise](const mozilla::ProfileAndAdditionalInformation& aResult) {
-            AutoJSAPI jsapi;
-            if (NS_WARN_IF(!jsapi.Init(promise->GetGlobalObject()))) {
-              // We're really hosed if we can't get a JS context for some
-              // reason.
-              promise->MaybeReject(NS_ERROR_DOM_UNKNOWN_ERR);
-              return;
-            }
-
-            JSContext* cx = jsapi.cx();
-            ErrorResult error;
-            JSObject* typedArray =
-                dom::ArrayBuffer::Create(cx, aResult.mProfile, error);
-            if (!error.Failed()) {
-              JS::Rooted<JS::Value> val(cx, JS::ObjectValue(*typedArray));
-              promise->MaybeResolve(val);
-            } else {
-              promise->MaybeReject(std::move(error));
-            }
+            promise->MaybeResolve(
+                dom::TypedArrayCreator<dom::ArrayBuffer>(aResult.mProfile));
           },
           [promise](nsresult aRv) { promise->MaybeReject(aRv); });
 
@@ -582,14 +566,14 @@ nsProfiler::GetProfileDataAsGzippedArrayBuffer(double aSinceTime,
 
             JSContext* cx = jsapi.cx();
             // Get the profile typedArray.
-            ErrorResult error;
-            JSObject* typedArray = dom::ArrayBuffer::Create(cx, outBuff, error);
-            if (error.Failed()) {
-              promise->MaybeReject(std::move(error));
+            JS::Rooted<JS::Value> typedArrayValue(cx);
+            if (!ToJSValue(cx,
+                           dom::TypedArrayCreator<dom::ArrayBuffer>(outBuff),
+                           &typedArrayValue)) {
+              promise->MaybeRejectWithExceptionFromContext(cx);
               return;
             }
-            JS::Rooted<JS::Value> typedArrayValue(cx,
-                                                  JS::ObjectValue(*typedArray));
+
             // Get the additional information object.
             JS::Rooted<JS::Value> additionalInfoVal(cx);
             if (aResult.mAdditionalInformation.isSome()) {
@@ -668,6 +652,44 @@ nsProfiler::DumpProfileToFileAsync(const nsACString& aFilename,
   return NS_OK;
 }
 
+RefPtr<nsProfiler::GatheringPromiseFileDump>
+nsProfiler::DumpProfileToFileAsyncNoJs(const nsACString& aFilename,
+                                       double aSinceTime) {
+  if (!profiler_is_active()) {
+    return GatheringPromiseFileDump::CreateAndReject(NS_ERROR_FAILURE,
+                                                     __func__);
+  }
+
+  nsCString filename(aFilename);
+
+  return StartGathering(aSinceTime)
+      ->Then(
+          GetMainThreadSerialEventTarget(), __func__,
+          [filename](const mozilla::ProfileAndAdditionalInformation& aResult) {
+            if (aResult.mProfile.Length() >=
+                size_t(std::numeric_limits<std::streamsize>::max())) {
+              return GatheringPromiseFileDump::CreateAndReject(
+                  NS_ERROR_FILE_TOO_BIG, __func__);
+            }
+
+            std::ofstream stream;
+            stream.open(filename.get());
+            if (!stream.is_open()) {
+              return GatheringPromiseFileDump::CreateAndReject(
+                  NS_ERROR_FILE_UNRECOGNIZED_PATH, __func__);
+            }
+
+            stream.write(aResult.mProfile.get(),
+                         std::streamsize(aResult.mProfile.Length()));
+            stream.close();
+            return GatheringPromiseFileDump::CreateAndResolve(void_t(),
+                                                              __func__);
+          },
+          [](nsresult aRv) {
+            return GatheringPromiseFileDump::CreateAndReject(aRv, __func__);
+          });
+}
+
 NS_IMETHODIMP
 nsProfiler::GetSymbolTable(const nsACString& aDebugPath,
                            const nsACString& aBreakpadID, JSContext* aCx,
@@ -705,25 +727,30 @@ nsProfiler::GetSymbolTable(const nsACString& aDebugPath,
 
             JSContext* cx = jsapi.cx();
 
-            ErrorResult error;
-            JS::Rooted<JSObject*> addrsArray(
-                cx, dom::Uint32Array::Create(cx, aSymbolTable.mAddrs, error));
-            if (error.Failed()) {
-              promise->MaybeReject(std::move(error));
+            JS::Rooted<JS::Value> addrsArray(cx);
+            if (!ToJSValue(cx,
+                           dom::TypedArrayCreator<dom::Uint32Array>(
+                               aSymbolTable.mAddrs),
+                           &addrsArray)) {
+              promise->MaybeRejectWithExceptionFromContext(cx);
               return;
             }
 
-            JS::Rooted<JSObject*> indexArray(
-                cx, dom::Uint32Array::Create(cx, aSymbolTable.mIndex, error));
-            if (error.Failed()) {
-              promise->MaybeReject(std::move(error));
+            JS::Rooted<JS::Value> indexArray(cx);
+            if (!ToJSValue(cx,
+                           dom::TypedArrayCreator<dom::Uint32Array>(
+                               aSymbolTable.mIndex),
+                           &indexArray)) {
+              promise->MaybeRejectWithExceptionFromContext(cx);
               return;
             }
 
-            JS::Rooted<JSObject*> bufferArray(
-                cx, dom::Uint8Array::Create(cx, aSymbolTable.mBuffer, error));
-            if (error.Failed()) {
-              promise->MaybeReject(std::move(error));
+            JS::Rooted<JS::Value> bufferArray(cx);
+            if (!ToJSValue(cx,
+                           dom::TypedArrayCreator<dom::Uint8Array>(
+                               aSymbolTable.mBuffer),
+                           &bufferArray)) {
+              promise->MaybeRejectWithExceptionFromContext(cx);
               return;
             }
 

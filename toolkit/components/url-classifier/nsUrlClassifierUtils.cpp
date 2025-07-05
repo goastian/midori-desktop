@@ -25,7 +25,7 @@
 #include "mozilla/TextUtils.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/UrlClassifierMetrics.h"
 #include "nsNetUtil.h"
 #include "nsIHttpChannel.h"
 #include "nsIObserverService.h"
@@ -333,7 +333,7 @@ static const struct {
 NS_IMETHODIMP
 nsUrlClassifierUtils::ConvertThreatTypeToListNames(uint32_t aThreatType,
                                                    nsACString& aListNames) {
-  for (uint32_t i = 0; i < ArrayLength(THREAT_TYPE_CONV_TABLE); i++) {
+  for (uint32_t i = 0; i < std::size(THREAT_TYPE_CONV_TABLE); i++) {
     if (aThreatType == THREAT_TYPE_CONV_TABLE[i].mThreatType) {
       if (!aListNames.IsEmpty()) {
         aListNames.AppendLiteral(",");
@@ -348,7 +348,7 @@ nsUrlClassifierUtils::ConvertThreatTypeToListNames(uint32_t aThreatType,
 NS_IMETHODIMP
 nsUrlClassifierUtils::ConvertListNameToThreatType(const nsACString& aListName,
                                                   uint32_t* aThreatType) {
-  for (uint32_t i = 0; i < ArrayLength(THREAT_TYPE_CONV_TABLE); i++) {
+  for (uint32_t i = 0; i < std::size(THREAT_TYPE_CONV_TABLE); i++) {
     if (aListName.EqualsASCII(THREAT_TYPE_CONV_TABLE[i].mListName)) {
       *aThreatType = THREAT_TYPE_CONV_TABLE[i].mThreatType;
       return NS_OK;
@@ -773,8 +773,8 @@ nsUrlClassifierUtils::ParseFindFullHashResponseV4(
   FindFullHashesResponse r;
   if (!r.ParseFromArray(aResponse.BeginReading(), aResponse.Length())) {
     NS_WARNING("Invalid response");
-    Telemetry::Accumulate(Telemetry::URLCLASSIFIER_COMPLETION_ERROR,
-                          PARSING_FAILURE);
+    glean::urlclassifier::completion_error.AccumulateSingleSample(
+        PARSING_FAILURE);
     return NS_ERROR_FAILURE;
   }
 
@@ -799,8 +799,8 @@ nsUrlClassifierUtils::ParseFindFullHashResponseV4(
 
   aCallback->OnResponseParsed(minWaitDuration, negCacheDurationSec);
 
-  Telemetry::Accumulate(Telemetry::URLCLASSIFIER_COMPLETION_ERROR,
-                        hasUnknownThreatType ? UNKNOWN_THREAT_TYPE : SUCCESS);
+  glean::urlclassifier::completion_error.AccumulateSingleSample(
+      hasUnknownThreatType ? UNKNOWN_THREAT_TYPE : SUCCESS);
   return NS_OK;
 }
 

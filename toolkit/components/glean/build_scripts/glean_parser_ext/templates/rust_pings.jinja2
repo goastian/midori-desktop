@@ -13,7 +13,7 @@ use once_cell::sync::Lazy;
 
 {% for obj in all_objs['pings'].values() %}
 #[allow(non_upper_case_globals)]
-/// {{ obj.description|wordwrap() | replace('\n', '\n/// ') }}
+/// {{ obj.description|trim | replace('\n', '\n/// ') }}
 pub static {{ obj.name|snake_case }}: Lazy<Ping> = Lazy::new(|| {
     Ping::new(
         "{{ obj.name }}",
@@ -24,6 +24,8 @@ pub static {{ obj.name|snake_case }}: Lazy<Ping> = Lazy::new(|| {
         {{ obj.enabled|rust }},
         {{ obj.schedules_pings|rust }},
         {{ obj.reason_codes|rust }},
+        {{ obj.follows_collection_enabled|rust }},
+        {{ obj.uploader_capabilities|rust }},
     )
 });
 
@@ -52,37 +54,26 @@ pub fn register_pings(application_id: Option<&str>) {
             {% endfor %}
         }
     }
+    extern "C" {
+        fn JOG_MaybeReload();
+    }
+    unsafe {
+      JOG_MaybeReload();
+    }
 }
 
-/// Schedule pings alongside a parent ping.
+/// Map from pings to the pings scheduled along with them.
 ///
-/// Should be called in `submit` of the parent ping
-/// to also submit pings that should ride along.
-///
-/// # Arguments
-///
-/// `submitted_ping`: The parent ping that is submitted
-/// `reason`: The original reason for the submitted ping.
-///           Will be used for the ride-along ping too.
 #[doc(hidden)]
-pub fn schedule_pings(submitted_ping: &str, reason: Option<&str>) {
-    {% if ping_schedule_reverse_map|length %}
-    match submitted_ping {
-        {% for ping, schedule in ping_schedule_reverse_map.items() %}
-        "{{ping}}" => {
-            log::info!("Submitting pings {{ schedule|join(', ') }} along with {{ping}}");
-            {% for ping_name in schedule %}
-            let _ = {{ ping_name|snake_case }}.submit(reason);
-            {% endfor %}
-        },
-        {% endfor %}
-        _ => {},
-    }
-    {% else %}
-    // Ignore arguments.
-    _ = submitted_ping;
-    _ = reason;
-    {% endif %}
+pub fn ping_schedule() -> std::collections::HashMap<String, Vec<String>> {
+  std::collections::HashMap::from([
+      {% for ping, schedule in ping_schedule_reverse_map.items() %}
+      (
+        {{ ping|rust }},
+        {{ schedule|rust }}
+      ),
+      {% endfor %}
+  ])
 }
 
 #[cfg(feature = "with_gecko")]
@@ -108,4 +99,41 @@ pub(crate) fn submit_ping_by_id(id: u32, reason: Option<&str>) {
             log::error!("Cannot submit unknown ping {} by id.", id);
         }
     }
+}
+
+#[cfg(feature = "with_gecko")]
+pub(crate) fn set_ping_enabled_by_id(id: u32, enabled: bool) {
+    if id & (1 << crate::factory::DYNAMIC_PING_BIT) > 0 {
+        let map = crate::factory::__jog_metric_maps::PING_MAP
+            .read()
+            .expect("Read lock for dynamic ping map was poisoned!");
+        if let Some(ping) = map.get(&id) {
+            ping.set_enabled(enabled);
+        } else {
+            // TODO: instrument this error.
+            log::error!("Cannot set_enabled on unknown dynamic ping {} by id.", id);
+        }
+        return;
+    }
+    match id {
+{% for obj in all_objs['pings'].values() %}
+        {{ obj.name|ping_id }} => {{ obj.name | snake_case }}.set_enabled(enabled),
+{% endfor %}
+        _ => {
+            // TODO: instrument this error.
+            log::error!("Cannot set_enabled on unknown ping {} by id.", id);
+        }
+    }
+}
+
+/// Measure the allocation size of all known pings.
+#[doc(hidden)]
+pub fn fog_ping_alloc_size(ops: &mut malloc_size_of::MallocSizeOfOps) -> usize {
+  use malloc_size_of::MallocSizeOf;
+
+  let mut n = 0;
+  {% for obj in all_objs['pings'].values() %}
+  n += {{ obj.name|snake_case }}.size_of(ops);
+  {% endfor %}
+  n
 }

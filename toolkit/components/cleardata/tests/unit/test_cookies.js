@@ -172,7 +172,7 @@ add_task(async function test_localfile_cookies() {
 });
 
 // The following tests ensure we properly clear (partitioned/unpartitioned)
-// cookies when using deleteDataFromBaseDomain and deleteDataFromHost.
+// cookies when using deleteDataFromSite and deleteDataFromHost.
 
 function getTestCookieName(host, topLevelBaseDomain) {
   if (!topLevelBaseDomain) {
@@ -263,8 +263,9 @@ add_task(async function test_baseDomain_cookies() {
 
   // Clear cookies of example.net including partitions.
   await new Promise(aResolve => {
-    Services.clearData.deleteDataFromBaseDomain(
+    Services.clearData.deleteDataFromSite(
       "example.net",
+      {},
       false,
       Ci.nsIClearDataService.CLEAR_COOKIES,
       aResolve
@@ -352,10 +353,11 @@ add_task(async function test_baseDomain_cookies_subdomain() {
   Services.cookies.removeAll();
   setTestCookies();
 
-  // Clear cookies of test.example.net including partitions.
+  // Clear cookies of example.net including partitions.
   await new Promise(aResolve => {
-    Services.clearData.deleteDataFromBaseDomain(
-      "test.example.net",
+    Services.clearData.deleteDataFromSite(
+      "example.net",
+      {},
       false,
       Ci.nsIClearDataService.CLEAR_COOKIES,
       aResolve
@@ -460,5 +462,19 @@ add_task(async function test_ipv6_cookies() {
   });
 
   // Assert that all cookies were removed.
+  Assert.equal(Services.cookies.cookies.length, 0);
+
+  // bug 1962120 - check that ipv6-host cookies are removed by data cleaner
+  addCookiesForHost("[::1]");
+  Assert.equal(Services.cookies.cookies.length, 1);
+  await new Promise(aResolve => {
+    Services.clearData.deleteDataFromSite(
+      "[::1]",
+      {},
+      false,
+      Ci.nsIClearDataService.CLEAR_COOKIES,
+      aResolve
+    );
+  });
   Assert.equal(Services.cookies.cookies.length, 0);
 });

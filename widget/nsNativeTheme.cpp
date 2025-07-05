@@ -52,18 +52,7 @@ NS_IMPL_ISUPPORTS(nsNativeTheme, nsITimerCallback, nsINamed)
   const bool isXULElement = frameContent->IsXULElement();
   if (isXULElement) {
     if (aAppearance == StyleAppearance::Checkbox ||
-        aAppearance == StyleAppearance::Radio ||
-        aAppearance == StyleAppearance::ToolbarbuttonDropdown ||
-        aAppearance == StyleAppearance::ButtonArrowPrevious ||
-        aAppearance == StyleAppearance::ButtonArrowNext ||
-        aAppearance == StyleAppearance::ButtonArrowUp ||
-#ifdef MOZ_WIDGET_GTK
-        aAppearance == StyleAppearance::MozWindowButtonClose ||
-        aAppearance == StyleAppearance::MozWindowButtonMinimize ||
-        aAppearance == StyleAppearance::MozWindowButtonRestore ||
-        aAppearance == StyleAppearance::MozWindowButtonMaximize ||
-#endif
-        aAppearance == StyleAppearance::ButtonArrowDown) {
+        aAppearance == StyleAppearance::Radio) {
       aFrame = aFrame->GetParent();
       frameContent = aFrame->GetContent();
     }
@@ -116,7 +105,6 @@ NS_IMPL_ISUPPORTS(nsNativeTheme, nsITimerCallback, nsINamed)
         flags |= ElementState::HOVER | ElementState::ACTIVE;
       }
       break;
-    case StyleAppearance::MenulistButton:
     case StyleAppearance::Menulist:
     case StyleAppearance::NumberInput:
     case StyleAppearance::Textfield:
@@ -569,8 +557,6 @@ bool nsNativeTheme::IsWidgetScrollbarPart(StyleAppearance aAppearance) {
     case StyleAppearance::ScrollbarbuttonRight:
     case StyleAppearance::ScrollbarthumbVertical:
     case StyleAppearance::ScrollbarthumbHorizontal:
-    case StyleAppearance::ScrollbartrackHorizontal:
-    case StyleAppearance::ScrollbartrackVertical:
     case StyleAppearance::Scrollcorner:
       return true;
     default:
@@ -583,5 +569,7 @@ bool nsNativeTheme::IsWidgetAlwaysNonNative(nsIFrame* aFrame,
                                             StyleAppearance aAppearance) {
   return IsWidgetScrollbarPart(aAppearance) ||
          aAppearance == StyleAppearance::FocusOutline ||
+         aAppearance == StyleAppearance::SpinnerUpbutton ||
+         aAppearance == StyleAppearance::SpinnerDownbutton ||
          (aFrame && aFrame->StyleUI()->mMozTheme == StyleMozTheme::NonNative);
 }

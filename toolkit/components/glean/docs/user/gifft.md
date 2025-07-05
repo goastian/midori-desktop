@@ -39,14 +39,18 @@ This compatibility table explains which Telemetry probe types can be mirrors for
 | [labeled_string](https://mozilla.github.io/glean/book/reference/metrics/labeled_strings.html) | *No Supported Telemetry Type* |
 | [string_list](https://mozilla.github.io/glean/book/reference/metrics/string_list.html) | [Keyed Scalar of kind: boolean](/toolkit/components/telemetry/collection/scalars.html). The keys are the strings. The values are all `true`. Calling `Set` on the labeled_string is not mirrored (since there's no way to remove keys from a keyed scalar of kind boolean). Doing so will log a warning. |
 | [timespan](https://mozilla.github.io/glean/book/reference/metrics/timespan.html) | [Scalar of kind: uint](/toolkit/components/telemetry/collection/scalars.html). The value is in units of milliseconds. |
-| [timing_distribution](https://mozilla.github.io/glean/book/reference/metrics/timing_distribution.html) | [Histogram of kind "linear" or "exponential"](/toolkit/components/telemetry/collection/histograms.html#exponential). Samples will be in units of milliseconts. |
+| [timing_distribution](https://mozilla.github.io/glean/book/reference/metrics/timing_distribution.html) | [Histogram of kind "linear" or "exponential"](/toolkit/components/telemetry/collection/histograms.html#exponential). Samples will be in `timing_unit` units. |
+| [labeled_timing_distribution](https://mozilla.github.io/glean/book/reference/metrics/labeled_timing_distributions.html) | [Keyed Histogram of kind "linear" or "exponential"](/toolkit/components/telemetry/collection/histograms.html#exponential). Samples will be in units of milliseconds. |
 | [memory_distribution](https://mozilla.github.io/glean/book/reference/metrics/memory_distribution.html) | [Histogram of kind "linear" or "exponential"](/toolkit/components/telemetry/collection/histograms.html#exponential). Samples will be in `memory_unit` units. |
+| [labeled_memory_distribution](https://mozilla.github.io/glean/book/reference/metrics/labeled_memory_distributions.html) | [Keyed Histogram of kind "linear" or "exponential"](/toolkit/components/telemetry/collection/histograms.html#exponential). Samples will be in `memory_unit` units. |
 | [custom_distribution](https://mozilla.github.io/glean/book/reference/metrics/custom_distribution.html) | [Histogram of kind "linear" or "exponential"](/toolkit/components/telemetry/collection/histograms.html#exponential). Samples will be used as is. Ensure the bucket count and range match. |
+| [labeled_custom_distribution](https://mozilla.github.io/glean/book/reference/metrics/labeled_custom_distributions.html) | [Keyed Histogram of kind "linear" or "exponential"](/toolkit/components/telemetry/collection/histograms.html#exponential). Samples will be used as is. Ensure the bucket count and range match. |
 | [uuid](https://mozilla.github.io/glean/book/reference/metrics/uuid.html) | [Scalar of kind: string](/toolkit/components/telemetry/collection/scalars.html). Value will be in canonical 8-4-4-4-12 format. Value is not guaranteed to be valid, and invalid values may be present in the mirrored scalar while the uuid metric remains empty. Calling `GenerateAndSet` on the uuid is not mirrored, and will log a warning. |
 | [url](https://mozilla.github.io/glean/book/reference/metrics/url.html) | [Scalar of kind: string](/toolkit/components/telemetry/collection/scalars.html). The stringified Url will be cropped to the maximum length allowed by the legacy type. |
 | [datetime](https://mozilla.github.io/glean/book/reference/metrics/datetime.html) | [Scalar of kind: string](/toolkit/components/telemetry/collection/scalars.html). Value will be in ISO8601 format. |
 | [events](https://mozilla.github.io/glean/book/reference/metrics/event.html) | [Events](/toolkit/components/telemetry/collection/events.html). The `value` field will be filled by the Glean extra named `value` if defined and present. |
 | [quantity](https://mozilla.github.io/glean/book/reference/metrics/quantity.html) | [Scalar of kind: uint](/toolkit/components/telemetry/collection/scalars.html) |
+| [labeled_quantity](https://mozilla.github.io/glean/book/reference/metrics/labeled_quantity.html) | [Keyed Scalar of kind: uint](/toolkit/components/telemetry/collection/scalars.html) |
 | [rate](https://mozilla.github.io/glean/book/reference/metrics/rate.html) | [Keyed Scalar of kind: uint](/toolkit/components/telemetry/collection/scalars.html). The keys are "numerator" and "denominator". Does not work for `rate` metrics with external denominators. |
 | [text](https://mozilla.github.io/glean/book/reference/metrics/text.html) | *No Supported Telemetry Type* |
 
@@ -129,12 +133,10 @@ the schedules could line up exactly or be entirely unrelated.
 
 ### Labels
 
-Labeled metrics supported by GIFFT
-(`labeled_boolean` and `labeled_counter`)
-adhere to the Glean SDK's
+Labeled metrics supported by GIFFT adhere to the Glean SDK's
 [label format](https://mozilla.github.io/glean/book/reference/metrics/index.html#label-format).
 
-Keyed Scalars, on the other hand, do not have a concept of an "Invalid key".
+Keyed Scalars and Keyed Histograms, on the other hand, do not have a concept of an "Invalid key".
 Firefox Telemetry will accept just about any sequence of bytes as a key.
 
 This means that a label deemed invalid by the Glean SDK may appear in the mirrored probe's data.
@@ -155,15 +157,6 @@ Assert.equal(true, snapshot["telemetry.test.mirror_for_labeled_bool"]["1".repeat
 ### Telemetry Events
 
 A Glean event can be mirrored to a Telemetry Event.
-Telemetry Events must be enabled before they can be recorded to via the API
-`Telemetry.setEventRecordingEnabled(category, enable);`.
-If the Telemetry Event isn't enabled,
-recording to the Glean event will still work,
-and the event will be Summarized in Telemetry as all disabled events are.
-
-See
-[the Telemetry Event docs](/toolkit/components/telemetry/collection/events.rst)
-for details on how disabled Telemetry Events behave.
 
 In order to make use of the `value` field in Telemetry Events, you must
 first define an event extra in the metrics.yaml file with the name "value".
@@ -230,6 +223,14 @@ This shouldn't affect analysis, but it can affect testing, so please
 [bear this difference in mind](./instrumentation_tests.md#general-things-to-bear-in-mind)
 in testing.
 
+#### `labeled_timing_distribution` mirrors: sample-based APIs are not recorded
+
+Values stored with `accumulate_samples` and `accumulate_single_sample` are not
+passed to the Telemetry mirror histogram with GIFFT.
+
+See [bug 1943453](https://bugzilla.mozilla.org/show_bug.cgi?id=1943453)
+for more details.
+
 ### App Shutdown
 
 Telemetry only works up to
@@ -244,4 +245,47 @@ so that's why I'm not being precise.)
 What this means is that, for data recorded later in shutdown,
 Glean will report more complete information than Telemetry will.
 
+### Once-per-session Scalars
+
+Legacy Telemetry Scalars are guaranteed to be submitted in Telemetry "main" pings at least once every session.
+The default metrics transport in Glean,
+the "metrics" ping, is submitted at least once a _day_.
+
+This means if your instrumentation code runs once per session,
+in your Glean metrics later sessions' values will overwrite earlier ones until a Glean "metrics" ping is submitted.
+
+```{admonition} Glean timespan metrics are slightly different
+If your Glean metric is a `timespan`, later sessions' values will not overwrite earlier ones.
+Instead, the earliest one will persist and
+[an `invalid_state` error will be recorded][timespan-errors].
+If you'd prefer it to instead silently overwrite, use a `quantity` instead of a `timespan`.
+```
+
+To preserve all sessions' values, you can use different `metric` types:
+* For `quantity` metrics:
+    * If timing-related, use `timing_distribution`.
+    * If memory-related, use `memory_distribution`.
+    * Otherwise, use `custom_distribution`.
+* For `string`, `uuid`, `url`, or `datetime` metrics, you can use `string_list`.
+    * Note: `string_list` has a [fixed limit on the number of values][stringlist-limit].
+* For `boolean` metrics, use a `labeled_counter` with labels "true" and "false".
+
+To only preserve the session's values for as long as the session is active,
+use `lifetime: application` and apply `no_lint: [GIFFT_NON_PING_LIFETIME]`
+to have Glean [send the value in every "metrics" ping that session,
+clearing it after the session completes][glean-lifetimes].
+
+```{admonition} Legacy Telemetry has no concept of metric lifetimes
+Be careful when using `lifetime: application` in combination with GIFFT.
+Legacy Telemetry has no concept of metric lifetimes.
+You would do well to think through exactly what instrumentation operations are happening,
+and when.
+```
+
+Please do [reach out for assistance][glean-matrix] if you have any questions.
+
 [app-shutdown]: https://searchfox.org/mozilla-central/source/xpcom/base/AppShutdown.cpp#57
+[glean-lifetimes]: https://mozilla.github.io/glean/book/user/metrics/adding-new-metrics.html#when-should-the-glean-sdk-automatically-clear-the-measurement
+[glean-matrix]: https://chat.mozilla.org/#/room/#glean:mozilla.org
+[stringlist-limit]: https://mozilla.github.io/glean/book/reference/metrics/string_list.html#limits-1
+[timespan-errors]: https://mozilla.github.io/glean/book/reference/metrics/timespan.html#recorded-errors

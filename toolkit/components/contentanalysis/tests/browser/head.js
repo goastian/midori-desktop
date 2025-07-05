@@ -3,6 +3,10 @@
 
 "use strict";
 
+ChromeUtils.defineESModuleGetters(this, {
+  ContentAnalysis: "resource:///modules/ContentAnalysis.sys.mjs",
+});
+
 // Wraps the given object in an XPConnect wrapper and, if an interface
 // is passed, queries the result to that interface.
 function xpcWrap(obj, iface) {
@@ -44,7 +48,11 @@ function mockService(serviceNames, contractId, interfaceObj, mockService) {
   const { MockRegistrar } = ChromeUtils.importESModule(
     "resource://testing-common/MockRegistrar.sys.mjs"
   );
-  let cid = MockRegistrar.register(contractId, o);
+  let cid = MockRegistrar.registerEx(
+    contractId,
+    { shouldCreateInstance: false },
+    o
+  );
   registerCleanupFunction(() => {
     MockRegistrar.unregister(cid);
   });
@@ -58,7 +66,16 @@ function mockService(serviceNames, contractId, interfaceObj, mockService) {
  *                    the mock nsIContentAnalysis template object
  * @returns {object}  The newly-mocked service that integrates the template
  */
-function mockContentAnalysisService(mockCAServiceTemplate) {
+async function mockContentAnalysisService(mockCAServiceTemplate) {
+  // Some of the C++ code that tests if CA is active checks this
+  // pref (even though it would perhaps be better to just ask
+  // nsIContentAnalysis)
+  await SpecialPowers.pushPrefEnv({
+    set: [["browser.contentanalysis.enabled", true]],
+  });
+  registerCleanupFunction(async function () {
+    SpecialPowers.popPrefEnv();
+  });
   let realCAService = SpecialPowers.Cc[
     "@mozilla.org/contentanalysis;1"
   ].getService(SpecialPowers.Ci.nsIContentAnalysis);
@@ -72,23 +89,6 @@ function mockContentAnalysisService(mockCAServiceTemplate) {
     mockCAService.realCAService = realCAService;
   }
   return mockCAService;
-}
-
-/**
- * Make an nsIContentAnalysisResponse.
- *
- * @param {number} action The action to take, from the
- *  nsIContentAnalysisResponse.Action enum.
- * @param {string} token The requestToken.
- * @returns {object} An object that conforms to nsIContentAnalysisResponse.
- */
-function makeContentAnalysisResponse(action, token) {
-  return {
-    action,
-    shouldAllowContent: action != Ci.nsIContentAnalysisResponse.eBlock,
-    requestToken: token,
-    acknowledge: _acknowledgement => {},
-  };
 }
 
 async function waitForFileToAlmostMatchSize(filePath, expectedSize) {
@@ -124,21 +124,61 @@ function makeMockContentAnalysis() {
     isActive: true,
     mightBeActive: true,
     errorValue: undefined,
+    waitForEventToFinish: false,
+    // This is a dummy event target that uses custom events for bidirectional
+    // communication between the individual test and the mock CA object.
+    // Events are:
+    //   inAnalyzeContentRequest:
+    //     If waitForEvent was true, this is sent by mock CA when its
+    //     AnalyzeContentRequest is ready to issue a response.  It will wait
+    //     for returnContentAnalysisResponse to be received before issuing
+    //     the response.
+    //  returnContentAnalysisResponse:
+    //     If waitForEvent was true, this must be sent by the test to tell
+    //     AnalyzeContentRequest to issue its response.
+    eventTarget: new EventTarget(),
 
-    setupForTest(shouldAllowRequest) {
+    /**
+     * Sets up the mock CA service
+     *
+     * @param {boolean} shouldAllowRequest Whether requests should be allowed.
+     * @param {boolean} waitForEvent If this is true, a response will not be
+     *                               returned until an event is dispatched by the
+     *                               test. Helpful for testing timing scenarios.
+     * @param {boolean} showDialogs  If this is true, send the messages that will
+     *                               cause dialogs to be shown.
+     */
+    setupForTest(shouldAllowRequest, waitForEvent, showDialogs) {
       this.shouldAllowRequest = shouldAllowRequest;
       this.errorValue = undefined;
+      this.waitForEvent = !!waitForEvent;
+      this.showDialogs = showDialogs;
       this.clearCalls();
+      // If showDialog is true, make sure this mock is called by
+      // CA JS code. Otherwise remove the test-only
+      // content analysis object so it goes back to using the real
+      // one, which means dialogs will not be shown.
+      ContentAnalysis.setMockContentAnalysisForTest(
+        this.showDialogs ? this : undefined
+      );
+      // This is needed so the code will re-check isActive and
+      // set up observer events.
+      ContentAnalysis.initialize(window);
     },
 
     setupForTestWithError(errorValue) {
       this.errorValue = errorValue;
+      this.waitForEvent = false;
+      this.showDialogs = false;
       this.clearCalls();
     },
 
     clearCalls() {
       this.calls = [];
       this.browsingContextsForURIs = [];
+      this.agentCancelCalls = 0;
+      this.cancelledUserActions = [];
+      this.cancelledRequestTokens = [];
     },
 
     getAction() {
@@ -151,42 +191,118 @@ function makeMockContentAnalysis() {
     },
 
     // nsIContentAnalysis methods
-    async analyzeContentRequest(request, _autoAcknowledge) {
-      info(
-        "Mock ContentAnalysis service: analyzeContentRequest, this.shouldAllowRequest=" +
-          this.shouldAllowRequest +
-          ", this.errorValue=" +
-          this.errorValue
+
+    // Use the real counterparts of all public analyze* methods.
+    // They will in turn call our mock analyzeContentRequestPrivate.
+    analyzeContentRequests(requests, autoAcknowledge) {
+      return this.realCAService.analyzeContentRequests(
+        requests,
+        autoAcknowledge
       );
-      this.calls.push(request);
+    },
+    analyzeBatchContentRequest(request, autoAcknowledge) {
+      return this.realCAService.analyzeBatchContentRequest(
+        request,
+        autoAcknowledge
+      );
+    },
+    analyzeContentRequestsCallback(requests, autoAcknowledge, callback) {
       if (this.errorValue) {
+        if (requests.length != 1) {
+          // Sanity testing the test.  Exception-expecting tests don't send
+          // multiple requests.  Don't clutter the log unless we fail.
+          is(
+            requests.length,
+            1,
+            "Test framework doesn't support throwing an exception from a multipart request"
+          );
+        }
+        // If we throw in analyzeContentRequestPrivate then this function is
+        // a lower stack frame and generates an additional test failure that
+        // we can't tell it to expect.
+        // The test framework expects the user action and request token to
+        // be set anyway.  The values don't matter.
+        // We are also required to call the callback.
+        requests[0].userActionId = "user-action-for-error";
+        requests[0].userActionRequestsCount = 1;
+        requests[0].requestToken = "request-token-for-error";
+        this.calls.push(requests[0]);
+        callback.error(this.errorValue);
         throw this.errorValue;
       }
-      // Use setTimeout to simulate an async activity
-      await new Promise(res => setTimeout(res, 0));
-      return makeContentAnalysisResponse(
-        this.getAction(),
-        request.requestToken
+      this.realCAService.analyzeContentRequestsCallback(
+        requests,
+        autoAcknowledge,
+        callback
       );
     },
 
-    analyzeContentRequestCallback(request, autoAcknowledge, callback) {
+    analyzeContentRequestPrivate(request, _autoAcknowledge, callback) {
       info(
-        "Mock ContentAnalysis service: analyzeContentRequestCallback, this.shouldAllowRequest=" +
-          this.shouldAllowRequest +
-          ", this.errorValue=" +
-          this.errorValue
+        `Mock ContentAnalysis service: analyzeContentRequestPrivate, ` +
+          `this.shouldAllowRequest: ${this.shouldAllowRequest} ` +
+          `| this.waitForEvent: ${this.waitForEvent} ` +
+          `| this.showDialogs: ${this.showDialogs}`
       );
-      this.calls.push(request);
+      info(
+        `  Request type: ${request.analysisType} ` +
+          `| reason: ${request.reason} ` +
+          `| operation: ${request.operationTypeForDisplay} ` +
+          `| operation string: '${request.operationDisplayString}'`
+      );
+      info(
+        `  Text content: '${request.textContent}' ` +
+          `| filePath: '${request.filePath}' ` +
+          `| printDataHandle: ${request.printDataHandle} ` +
+          `| printDataSize: ${request.printDataSize}`
+      );
+      info(
+        `  Printer name: '${request.printerName}' ` +
+          `| url: '${request.url ? request.url.spec : ""}' ` +
+          `| Request token: ${request.requestToken} ` +
+          `| user action ID: ${request.userActionId} ` +
+          `| user action count: ${request.userActionRequestsCount}`
+      );
       if (this.errorValue) {
-        throw this.errorValue;
+        // This is just sanity testing the test framework.  Only report if it
+        // fails.
+        ok(
+          !this.errorValue,
+          "can't throw an exception in mock analyzeContentRequestPrivate"
+        );
       }
-      let response = makeContentAnalysisResponse(
-        this.getAction(),
-        request.requestToken
-      );
-      // Use setTimeout to simulate an async activity
-      setTimeout(() => {
+
+      this.calls.push(request);
+      if (this.showDialogs) {
+        Services.obs.notifyObservers(request, "dlp-request-made");
+      }
+
+      // Use setTimeout to simulate an async activity.
+      setTimeout(async () => {
+        if (this.waitForEvent) {
+          let waitPromise = new Promise(res => {
+            this.eventTarget.addEventListener(
+              "returnContentAnalysisResponse",
+              () => {
+                res();
+              },
+              { once: true }
+            );
+          });
+          this.eventTarget.dispatchEvent(
+            new CustomEvent("inAnalyzeContentRequest")
+          );
+          await waitPromise;
+        }
+
+        let response = this.realCAService.makeResponseForTest(
+          this.getAction(),
+          request.requestToken,
+          request.userActionId
+        );
+        if (this.showDialogs) {
+          Services.obs.notifyObservers(response, "dlp-response");
+        }
         callback.contentResult(response);
       }, 0);
     },
@@ -198,6 +314,55 @@ function makeMockContentAnalysis() {
     getURIForBrowsingContext(aBrowsingContext) {
       this.browsingContextsForURIs.push(aBrowsingContext);
       return this.realCAService.getURIForBrowsingContext(aBrowsingContext);
+    },
+
+    setCachedResponse(aURI, aClipboardSequenceNumber, aAction) {
+      return this.realCAService.setCachedResponse(
+        aURI,
+        aClipboardSequenceNumber,
+        aAction
+      );
+    },
+
+    getCachedResponse(aURI, aClipboardSequenceNumber, aAction, aIsValid) {
+      return this.realCAService.getCachedResponse(
+        aURI,
+        aClipboardSequenceNumber,
+        aAction,
+        aIsValid
+      );
+    },
+
+    showBlockedRequestDialog(aRequest) {
+      info(`got showBlockedRequestDialog for request ${aRequest.requestToken}`);
+    },
+
+    sendCancelToAgent(aUserActionId) {
+      info(`got sendCancelToAgent for user action ID ${aUserActionId}`);
+      this.agentCancelCalls = this.agentCancelCalls + 1;
+    },
+
+    async getDiagnosticInfo() {
+      return {
+        connectedToAgent: true,
+        agentPath: "AFakePath",
+        failedSignatureVerification: false,
+        requestCount: this.calls.length,
+      };
+    },
+
+    cancelRequestsByUserAction(aUserActionId) {
+      this.cancelledUserActions.push(aUserActionId);
+    },
+
+    cancelRequestsByRequestToken(aRequestToken) {
+      this.cancelledRequestTokens.push(aRequestToken);
+    },
+
+    cancelAllRequestsAssociatedWithUserAction(aUserActionId) {
+      return this.realCAService.cancelAllRequestsAssociatedWithUserAction(
+        aUserActionId
+      );
     },
   };
 }

@@ -1,20 +1,27 @@
-use parking_lot::Mutex;
-use std::{
-    num::NonZeroU32,
-    ptr,
-    sync::{atomic, Arc},
-    thread, time,
-};
+use alloc::{borrow::ToOwned as _, sync::Arc, vec::Vec};
+use core::{ptr::NonNull, sync::atomic};
+use std::{thread, time};
 
-use super::conv;
+use parking_lot::Mutex;
+
+use super::{conv, PassthroughShader};
 use crate::auxil::map_naga_stage;
+use crate::metal::ShaderModuleSource;
+use crate::TlasInstance;
+
+use metal::{
+    foreign_types::ForeignType, MTLCommandBufferStatus, MTLDepthClipMode, MTLLanguageVersion,
+    MTLMutability, MTLPixelFormat, MTLPrimitiveTopologyClass, MTLResourceID, MTLResourceOptions,
+    MTLSamplerAddressMode, MTLSamplerMipFilter, MTLSize, MTLStorageMode, MTLTextureType,
+    MTLTriangleFillMode, MTLVertexStepFunction, NSRange,
+};
 
 type DeviceResult<T> = Result<T, crate::DeviceError>;
 
 struct CompiledShader {
     library: metal::Library,
     function: metal::Function,
-    wg_size: metal::MTLSize,
+    wg_size: MTLSize,
     wg_memory_sizes: Vec<u32>,
 
     /// Bindings of WGSL `storage` globals that contain variable-sized arrays.
@@ -61,22 +68,31 @@ fn create_depth_stencil_desc(state: &wgt::DepthStencilState) -> metal::DepthSten
 
 const fn convert_vertex_format_to_naga(format: wgt::VertexFormat) -> naga::back::msl::VertexFormat {
     match format {
+        wgt::VertexFormat::Uint8 => naga::back::msl::VertexFormat::Uint8,
         wgt::VertexFormat::Uint8x2 => naga::back::msl::VertexFormat::Uint8x2,
         wgt::VertexFormat::Uint8x4 => naga::back::msl::VertexFormat::Uint8x4,
+        wgt::VertexFormat::Sint8 => naga::back::msl::VertexFormat::Sint8,
         wgt::VertexFormat::Sint8x2 => naga::back::msl::VertexFormat::Sint8x2,
         wgt::VertexFormat::Sint8x4 => naga::back::msl::VertexFormat::Sint8x4,
+        wgt::VertexFormat::Unorm8 => naga::back::msl::VertexFormat::Unorm8,
         wgt::VertexFormat::Unorm8x2 => naga::back::msl::VertexFormat::Unorm8x2,
         wgt::VertexFormat::Unorm8x4 => naga::back::msl::VertexFormat::Unorm8x4,
+        wgt::VertexFormat::Snorm8 => naga::back::msl::VertexFormat::Snorm8,
         wgt::VertexFormat::Snorm8x2 => naga::back::msl::VertexFormat::Snorm8x2,
         wgt::VertexFormat::Snorm8x4 => naga::back::msl::VertexFormat::Snorm8x4,
+        wgt::VertexFormat::Uint16 => naga::back::msl::VertexFormat::Uint16,
         wgt::VertexFormat::Uint16x2 => naga::back::msl::VertexFormat::Uint16x2,
         wgt::VertexFormat::Uint16x4 => naga::back::msl::VertexFormat::Uint16x4,
+        wgt::VertexFormat::Sint16 => naga::back::msl::VertexFormat::Sint16,
         wgt::VertexFormat::Sint16x2 => naga::back::msl::VertexFormat::Sint16x2,
         wgt::VertexFormat::Sint16x4 => naga::back::msl::VertexFormat::Sint16x4,
+        wgt::VertexFormat::Unorm16 => naga::back::msl::VertexFormat::Unorm16,
         wgt::VertexFormat::Unorm16x2 => naga::back::msl::VertexFormat::Unorm16x2,
         wgt::VertexFormat::Unorm16x4 => naga::back::msl::VertexFormat::Unorm16x4,
+        wgt::VertexFormat::Snorm16 => naga::back::msl::VertexFormat::Snorm16,
         wgt::VertexFormat::Snorm16x2 => naga::back::msl::VertexFormat::Snorm16x2,
         wgt::VertexFormat::Snorm16x4 => naga::back::msl::VertexFormat::Snorm16x4,
+        wgt::VertexFormat::Float16 => naga::back::msl::VertexFormat::Float16,
         wgt::VertexFormat::Float16x2 => naga::back::msl::VertexFormat::Float16x2,
         wgt::VertexFormat::Float16x4 => naga::back::msl::VertexFormat::Float16x4,
         wgt::VertexFormat::Float32 => naga::back::msl::VertexFormat::Float32,
@@ -92,73 +108,85 @@ const fn convert_vertex_format_to_naga(format: wgt::VertexFormat) -> naga::back:
         wgt::VertexFormat::Sint32x3 => naga::back::msl::VertexFormat::Sint32x3,
         wgt::VertexFormat::Sint32x4 => naga::back::msl::VertexFormat::Sint32x4,
         wgt::VertexFormat::Unorm10_10_10_2 => naga::back::msl::VertexFormat::Unorm10_10_10_2,
-        _ => unimplemented!(),
+        wgt::VertexFormat::Unorm8x4Bgra => naga::back::msl::VertexFormat::Unorm8x4Bgra,
+
+        wgt::VertexFormat::Float64
+        | wgt::VertexFormat::Float64x2
+        | wgt::VertexFormat::Float64x3
+        | wgt::VertexFormat::Float64x4 => {
+            unimplemented!()
+        }
     }
 }
 
 impl super::Device {
     fn load_shader(
         &self,
-        stage: &crate::ProgrammableStage<super::Api>,
+        stage: &crate::ProgrammableStage<super::ShaderModule>,
         vertex_buffer_mappings: &[naga::back::msl::VertexBufferMapping],
         layout: &super::PipelineLayout,
-        primitive_class: metal::MTLPrimitiveTopologyClass,
+        primitive_class: MTLPrimitiveTopologyClass,
         naga_stage: naga::ShaderStage,
     ) -> Result<CompiledShader, crate::PipelineError> {
+        let naga_shader = if let ShaderModuleSource::Naga(naga) = &stage.module.source {
+            naga
+        } else {
+            panic!("load_shader required a naga shader");
+        };
         let stage_bit = map_naga_stage(naga_stage);
-
         let (module, module_info) = naga::back::pipeline_constants::process_overrides(
-            &stage.module.naga.module,
-            &stage.module.naga.info,
+            &naga_shader.module,
+            &naga_shader.info,
             stage.constants,
         )
-        .map_err(|e| crate::PipelineError::Linkage(stage_bit, format!("MSL: {:?}", e)))?;
+        .map_err(|e| crate::PipelineError::PipelineConstants(stage_bit, format!("MSL: {:?}", e)))?;
 
         let ep_resources = &layout.per_stage_map[naga_stage];
 
-        let bounds_check_policy = if stage.module.runtime_checks {
-            naga::proc::BoundsCheckPolicy::ReadZeroSkipWrite
+        let bounds_check_policy = if stage.module.bounds_checks.bounds_checks {
+            naga::proc::BoundsCheckPolicy::Restrict
         } else {
             naga::proc::BoundsCheckPolicy::Unchecked
         };
 
         let options = naga::back::msl::Options {
             lang_version: match self.shared.private_caps.msl_version {
-                metal::MTLLanguageVersion::V1_0 => (1, 0),
-                metal::MTLLanguageVersion::V1_1 => (1, 1),
-                metal::MTLLanguageVersion::V1_2 => (1, 2),
-                metal::MTLLanguageVersion::V2_0 => (2, 0),
-                metal::MTLLanguageVersion::V2_1 => (2, 1),
-                metal::MTLLanguageVersion::V2_2 => (2, 2),
-                metal::MTLLanguageVersion::V2_3 => (2, 3),
-                metal::MTLLanguageVersion::V2_4 => (2, 4),
-                metal::MTLLanguageVersion::V3_0 => (3, 0),
-                metal::MTLLanguageVersion::V3_1 => (3, 1),
+                MTLLanguageVersion::V1_0 => (1, 0),
+                MTLLanguageVersion::V1_1 => (1, 1),
+                MTLLanguageVersion::V1_2 => (1, 2),
+                MTLLanguageVersion::V2_0 => (2, 0),
+                MTLLanguageVersion::V2_1 => (2, 1),
+                MTLLanguageVersion::V2_2 => (2, 2),
+                MTLLanguageVersion::V2_3 => (2, 3),
+                MTLLanguageVersion::V2_4 => (2, 4),
+                MTLLanguageVersion::V3_0 => (3, 0),
+                MTLLanguageVersion::V3_1 => (3, 1),
             },
             inline_samplers: Default::default(),
             spirv_cross_compatibility: false,
             fake_missing_bindings: false,
             per_entry_point_map: naga::back::msl::EntryPointResourceMap::from([(
-                stage.entry_point.to_string(),
+                stage.entry_point.to_owned(),
                 ep_resources.clone(),
             )]),
             bounds_check_policies: naga::proc::BoundsCheckPolicies {
                 index: bounds_check_policy,
                 buffer: bounds_check_policy,
                 image_load: bounds_check_policy,
-                image_store: naga::proc::BoundsCheckPolicy::Unchecked,
                 // TODO: support bounds checks on binding arrays
                 binding_array: naga::proc::BoundsCheckPolicy::Unchecked,
             },
             zero_initialize_workgroup_memory: stage.zero_initialize_workgroup_memory,
+            force_loop_bounding: stage.module.bounds_checks.force_loop_bounding,
         };
 
         let pipeline_options = naga::back::msl::PipelineOptions {
+            entry_point: Some((naga_stage, stage.entry_point.to_owned())),
             allow_and_force_point_size: match primitive_class {
-                metal::MTLPrimitiveTopologyClass::Point => true,
+                MTLPrimitiveTopologyClass::Point => true,
                 _ => false,
             },
-            vertex_pulling_transform: stage.vertex_pulling_transform,
+            vertex_pulling_transform: true,
             vertex_buffer_mappings: vertex_buffer_mappings.to_vec(),
         };
 
@@ -196,20 +224,22 @@ impl super::Device {
             .position(|ep| ep.stage == naga_stage && ep.name == stage.entry_point)
             .ok_or(crate::PipelineError::EntryPoint(naga_stage))?;
         let ep = &module.entry_points[ep_index];
-        let ep_name = info.entry_point_names[ep_index]
+        let translated_ep_name = info.entry_point_names[0]
             .as_ref()
             .map_err(|e| crate::PipelineError::Linkage(stage_bit, format!("{}", e)))?;
 
-        let wg_size = metal::MTLSize {
+        let wg_size = MTLSize {
             width: ep.workgroup_size[0] as _,
             height: ep.workgroup_size[1] as _,
             depth: ep.workgroup_size[2] as _,
         };
 
-        let function = library.get_function(ep_name, None).map_err(|e| {
-            log::error!("get_function: {:?}", e);
-            crate::PipelineError::EntryPoint(naga_stage)
-        })?;
+        let function = library
+            .get_function(translated_ep_name, None)
+            .map_err(|e| {
+                log::error!("get_function: {:?}", e);
+                crate::PipelineError::EntryPoint(naga_stage)
+            })?;
 
         // collect sizes indices, immutable buffers, and work group memory sizes
         let ep_info = &module_info.get_entry_point(ep_index);
@@ -226,7 +256,7 @@ impl super::Device {
                 }
                 naga::AddressSpace::Uniform | naga::AddressSpace::Storage { .. } => {
                     let br = match var.binding {
-                        Some(ref br) => br.clone(),
+                        Some(br) => br,
                         None => continue,
                     };
                     let storage_access_store = match var.space {
@@ -279,14 +309,14 @@ impl super::Device {
             buffers
                 .object_at(slot as u64)
                 .unwrap()
-                .set_mutability(metal::MTLMutability::Immutable);
+                .set_mutability(MTLMutability::Immutable);
         }
     }
 
     pub unsafe fn texture_from_raw(
         raw: metal::Texture,
         format: wgt::TextureFormat,
-        raw_type: metal::MTLTextureType,
+        raw_type: MTLTextureType,
         array_layers: u32,
         mip_levels: u32,
         copy_size: crate::CopyExtent,
@@ -305,6 +335,7 @@ impl super::Device {
         super::Device {
             shared: Arc::new(super::AdapterShared::new(raw)),
             features,
+            counters: Default::default(),
         }
     }
 
@@ -320,23 +351,18 @@ impl super::Device {
 impl crate::Device for super::Device {
     type A = super::Api;
 
-    unsafe fn exit(self, _queue: super::Queue) {}
-
     unsafe fn create_buffer(&self, desc: &crate::BufferDescriptor) -> DeviceResult<super::Buffer> {
-        let map_read = desc.usage.contains(crate::BufferUses::MAP_READ);
-        let map_write = desc.usage.contains(crate::BufferUses::MAP_WRITE);
+        let map_read = desc.usage.contains(wgt::BufferUses::MAP_READ);
+        let map_write = desc.usage.contains(wgt::BufferUses::MAP_WRITE);
 
-        let mut options = metal::MTLResourceOptions::empty();
+        let mut options = MTLResourceOptions::empty();
         options |= if map_read || map_write {
             // `crate::MemoryFlags::PREFER_COHERENT` is ignored here
-            metal::MTLResourceOptions::StorageModeShared
+            MTLResourceOptions::StorageModeShared
         } else {
-            metal::MTLResourceOptions::StorageModePrivate
+            MTLResourceOptions::StorageModePrivate
         };
-        options.set(
-            metal::MTLResourceOptions::CPUCacheModeWriteCombined,
-            map_write,
-        );
+        options.set(MTLResourceOptions::CPUCacheModeWriteCombined, map_write);
 
         //TODO: HazardTrackingModeUntracked
 
@@ -345,30 +371,35 @@ impl crate::Device for super::Device {
             if let Some(label) = desc.label {
                 raw.set_label(label);
             }
+            self.counters.buffers.add(1);
             Ok(super::Buffer {
                 raw,
                 size: desc.size,
             })
         })
     }
-    unsafe fn destroy_buffer(&self, _buffer: super::Buffer) {}
+    unsafe fn destroy_buffer(&self, _buffer: super::Buffer) {
+        self.counters.buffers.sub(1);
+    }
+
+    unsafe fn add_raw_buffer(&self, _buffer: &super::Buffer) {
+        self.counters.buffers.add(1);
+    }
 
     unsafe fn map_buffer(
         &self,
         buffer: &super::Buffer,
         range: crate::MemoryRange,
     ) -> DeviceResult<crate::BufferMapping> {
-        let ptr = buffer.raw.contents() as *mut u8;
+        let ptr = buffer.raw.contents().cast::<u8>();
         assert!(!ptr.is_null());
         Ok(crate::BufferMapping {
-            ptr: ptr::NonNull::new(unsafe { ptr.offset(range.start as isize) }).unwrap(),
+            ptr: NonNull::new(unsafe { ptr.offset(range.start as isize) }).unwrap(),
             is_coherent: true,
         })
     }
 
-    unsafe fn unmap_buffer(&self, _buffer: &super::Buffer) -> DeviceResult<()> {
-        Ok(())
-    }
+    unsafe fn unmap_buffer(&self, _buffer: &super::Buffer) {}
     unsafe fn flush_mapped_ranges<I>(&self, _buffer: &super::Buffer, _ranges: I) {}
     unsafe fn invalidate_mapped_ranges<I>(&self, _buffer: &super::Buffer, _ranges: I) {}
 
@@ -384,21 +415,21 @@ impl crate::Device for super::Device {
             let descriptor = metal::TextureDescriptor::new();
 
             let mtl_type = match desc.dimension {
-                wgt::TextureDimension::D1 => metal::MTLTextureType::D1,
+                wgt::TextureDimension::D1 => MTLTextureType::D1,
                 wgt::TextureDimension::D2 => {
                     if desc.sample_count > 1 {
                         descriptor.set_sample_count(desc.sample_count as u64);
-                        metal::MTLTextureType::D2Multisample
+                        MTLTextureType::D2Multisample
                     } else if desc.size.depth_or_array_layers > 1 {
                         descriptor.set_array_length(desc.size.depth_or_array_layers as u64);
-                        metal::MTLTextureType::D2Array
+                        MTLTextureType::D2Array
                     } else {
-                        metal::MTLTextureType::D2
+                        MTLTextureType::D2
                     }
                 }
                 wgt::TextureDimension::D3 => {
                     descriptor.set_depth(desc.size.depth_or_array_layers as u64);
-                    metal::MTLTextureType::D3
+                    MTLTextureType::D3
                 }
             };
 
@@ -408,7 +439,7 @@ impl crate::Device for super::Device {
             descriptor.set_mipmap_level_count(desc.mip_level_count as u64);
             descriptor.set_pixel_format(mtl_format);
             descriptor.set_usage(conv::map_texture_usage(desc.format, desc.usage));
-            descriptor.set_storage_mode(metal::MTLStorageMode::Private);
+            descriptor.set_storage_mode(MTLStorageMode::Private);
 
             let raw = self.shared.device.lock().new_texture(&descriptor);
             if raw.as_ptr().is_null() {
@@ -417,6 +448,8 @@ impl crate::Device for super::Device {
             if let Some(label) = desc.label {
                 raw.set_label(label);
             }
+
+            self.counters.textures.add(1);
 
             Ok(super::Texture {
                 raw,
@@ -429,14 +462,20 @@ impl crate::Device for super::Device {
         })
     }
 
-    unsafe fn destroy_texture(&self, _texture: super::Texture) {}
+    unsafe fn destroy_texture(&self, _texture: super::Texture) {
+        self.counters.textures.sub(1);
+    }
+
+    unsafe fn add_raw_texture(&self, _texture: &super::Texture) {
+        self.counters.textures.add(1);
+    }
 
     unsafe fn create_texture_view(
         &self,
         texture: &super::Texture,
         desc: &crate::TextureViewDescriptor,
     ) -> DeviceResult<super::TextureView> {
-        let raw_type = if texture.raw_type == metal::MTLTextureType::D2Multisample {
+        let raw_type = if texture.raw_type == MTLTextureType::D2Multisample {
             texture.raw_type
         } else {
             conv::map_texture_view_dimension(desc.dimension)
@@ -473,11 +512,11 @@ impl crate::Device for super::Device {
                 let raw = texture.raw.new_texture_view_from_slice(
                     raw_format,
                     raw_type,
-                    metal::NSRange {
+                    NSRange {
                         location: desc.range.base_mip_level as _,
                         length: mip_level_count as _,
                     },
-                    metal::NSRange {
+                    NSRange {
                         location: desc.range.base_array_layer as _,
                         length: array_layer_count as _,
                     },
@@ -489,9 +528,14 @@ impl crate::Device for super::Device {
             })
         };
 
+        self.counters.texture_views.add(1);
+
         Ok(super::TextureView { raw, aspects })
     }
-    unsafe fn destroy_texture_view(&self, _view: super::TextureView) {}
+
+    unsafe fn destroy_texture_view(&self, _view: super::TextureView) {
+        self.counters.texture_views.sub(1);
+    }
 
     unsafe fn create_sampler(
         &self,
@@ -504,10 +548,10 @@ impl crate::Device for super::Device {
             descriptor.set_mag_filter(conv::map_filter_mode(desc.mag_filter));
             descriptor.set_mip_filter(match desc.mipmap_filter {
                 wgt::FilterMode::Nearest if desc.lod_clamp == (0.0..0.0) => {
-                    metal::MTLSamplerMipFilter::NotMipmapped
+                    MTLSamplerMipFilter::NotMipmapped
                 }
-                wgt::FilterMode::Nearest => metal::MTLSamplerMipFilter::Nearest,
-                wgt::FilterMode::Linear => metal::MTLSamplerMipFilter::Linear,
+                wgt::FilterMode::Nearest => MTLSamplerMipFilter::Nearest,
+                wgt::FilterMode::Linear => MTLSamplerMipFilter::Linear,
             });
 
             let [s, t, r] = desc.address_modes;
@@ -528,15 +572,15 @@ impl crate::Device for super::Device {
             if let Some(border_color) = desc.border_color {
                 if let wgt::SamplerBorderColor::Zero = border_color {
                     if s == wgt::AddressMode::ClampToBorder {
-                        descriptor.set_address_mode_s(metal::MTLSamplerAddressMode::ClampToZero);
+                        descriptor.set_address_mode_s(MTLSamplerAddressMode::ClampToZero);
                     }
 
                     if t == wgt::AddressMode::ClampToBorder {
-                        descriptor.set_address_mode_t(metal::MTLSamplerAddressMode::ClampToZero);
+                        descriptor.set_address_mode_t(MTLSamplerAddressMode::ClampToZero);
                     }
 
                     if r == wgt::AddressMode::ClampToBorder {
-                        descriptor.set_address_mode_r(metal::MTLSamplerAddressMode::ClampToZero);
+                        descriptor.set_address_mode_r(MTLSamplerAddressMode::ClampToZero);
                     }
                 } else {
                     descriptor.set_border_color(conv::map_border_color(border_color));
@@ -546,40 +590,53 @@ impl crate::Device for super::Device {
             if let Some(label) = desc.label {
                 descriptor.set_label(label);
             }
+            if self.features.contains(wgt::Features::TEXTURE_BINDING_ARRAY) {
+                descriptor.set_support_argument_buffers(true);
+            }
             let raw = self.shared.device.lock().new_sampler(&descriptor);
+
+            self.counters.samplers.add(1);
 
             Ok(super::Sampler { raw })
         })
     }
-    unsafe fn destroy_sampler(&self, _sampler: super::Sampler) {}
+    unsafe fn destroy_sampler(&self, _sampler: super::Sampler) {
+        self.counters.samplers.sub(1);
+    }
 
     unsafe fn create_command_encoder(
         &self,
-        desc: &crate::CommandEncoderDescriptor<super::Api>,
+        desc: &crate::CommandEncoderDescriptor<super::Queue>,
     ) -> Result<super::CommandEncoder, crate::DeviceError> {
+        self.counters.command_encoders.add(1);
         Ok(super::CommandEncoder {
             shared: Arc::clone(&self.shared),
             raw_queue: Arc::clone(&desc.queue.raw),
             raw_cmd_buf: None,
             state: super::CommandState::default(),
             temp: super::Temp::default(),
+            counters: Arc::clone(&self.counters),
         })
     }
-    unsafe fn destroy_command_encoder(&self, _encoder: super::CommandEncoder) {}
 
     unsafe fn create_bind_group_layout(
         &self,
         desc: &crate::BindGroupLayoutDescriptor,
     ) -> DeviceResult<super::BindGroupLayout> {
+        self.counters.bind_group_layouts.add(1);
+
         Ok(super::BindGroupLayout {
             entries: Arc::from(desc.entries),
         })
     }
-    unsafe fn destroy_bind_group_layout(&self, _bg_layout: super::BindGroupLayout) {}
+
+    unsafe fn destroy_bind_group_layout(&self, _bg_layout: super::BindGroupLayout) {
+        self.counters.bind_group_layouts.sub(1);
+    }
 
     unsafe fn create_pipeline_layout(
         &self,
-        desc: &crate::PipelineLayoutDescriptor<super::Api>,
+        desc: &crate::PipelineLayoutDescriptor<super::BindGroupLayout>,
     ) -> DeviceResult<super::PipelineLayout> {
         #[derive(Debug)]
         struct StageInfo {
@@ -654,36 +711,42 @@ impl crate::Device for super::Device {
                     }
 
                     let mut target = naga::back::msl::BindTarget::default();
-                    let count = entry.count.map_or(1, NonZeroU32::get);
-                    target.binding_array_size = entry.count.map(NonZeroU32::get);
-                    match entry.ty {
-                        wgt::BindingType::Buffer { ty, .. } => {
-                            target.buffer = Some(info.counters.buffers as _);
-                            info.counters.buffers += count;
-                            if let wgt::BufferBindingType::Storage { read_only } = ty {
-                                target.mutable = !read_only;
+                    // Bindless path
+                    if let Some(_) = entry.count {
+                        target.buffer = Some(info.counters.buffers as _);
+                        info.counters.buffers += 1;
+                    } else {
+                        match entry.ty {
+                            wgt::BindingType::Buffer { ty, .. } => {
+                                target.buffer = Some(info.counters.buffers as _);
+                                info.counters.buffers += 1;
+                                if let wgt::BufferBindingType::Storage { read_only } = ty {
+                                    target.mutable = !read_only;
+                                }
                             }
+                            wgt::BindingType::Sampler { .. } => {
+                                target.sampler =
+                                    Some(naga::back::msl::BindSamplerTarget::Resource(
+                                        info.counters.samplers as _,
+                                    ));
+                                info.counters.samplers += 1;
+                            }
+                            wgt::BindingType::Texture { .. } => {
+                                target.texture = Some(info.counters.textures as _);
+                                info.counters.textures += 1;
+                            }
+                            wgt::BindingType::StorageTexture { access, .. } => {
+                                target.texture = Some(info.counters.textures as _);
+                                info.counters.textures += 1;
+                                target.mutable = match access {
+                                    wgt::StorageTextureAccess::ReadOnly => false,
+                                    wgt::StorageTextureAccess::WriteOnly => true,
+                                    wgt::StorageTextureAccess::ReadWrite => true,
+                                    wgt::StorageTextureAccess::Atomic => true,
+                                };
+                            }
+                            wgt::BindingType::AccelerationStructure { .. } => unimplemented!(),
                         }
-                        wgt::BindingType::Sampler { .. } => {
-                            target.sampler = Some(naga::back::msl::BindSamplerTarget::Resource(
-                                info.counters.samplers as _,
-                            ));
-                            info.counters.samplers += count;
-                        }
-                        wgt::BindingType::Texture { .. } => {
-                            target.texture = Some(info.counters.textures as _);
-                            info.counters.textures += count;
-                        }
-                        wgt::BindingType::StorageTexture { access, .. } => {
-                            target.texture = Some(info.counters.textures as _);
-                            info.counters.textures += count;
-                            target.mutable = match access {
-                                wgt::StorageTextureAccess::ReadOnly => false,
-                                wgt::StorageTextureAccess::WriteOnly => true,
-                                wgt::StorageTextureAccess::ReadWrite => true,
-                            };
-                        }
-                        wgt::BindingType::AccelerationStructure => unimplemented!(),
                     }
 
                     let br = naga::ResourceBinding {
@@ -736,6 +799,8 @@ impl crate::Device for super::Device {
             resources: info.resources,
         });
 
+        self.counters.pipeline_layouts.add(1);
+
         Ok(super::PipelineLayout {
             bind_group_infos,
             push_constants_infos,
@@ -744,125 +809,254 @@ impl crate::Device for super::Device {
             per_stage_map,
         })
     }
-    unsafe fn destroy_pipeline_layout(&self, _pipeline_layout: super::PipelineLayout) {}
+
+    unsafe fn destroy_pipeline_layout(&self, _pipeline_layout: super::PipelineLayout) {
+        self.counters.pipeline_layouts.sub(1);
+    }
 
     unsafe fn create_bind_group(
         &self,
-        desc: &crate::BindGroupDescriptor<super::Api>,
+        desc: &crate::BindGroupDescriptor<
+            super::BindGroupLayout,
+            super::Buffer,
+            super::Sampler,
+            super::TextureView,
+            super::AccelerationStructure,
+        >,
     ) -> DeviceResult<super::BindGroup> {
-        let mut bg = super::BindGroup::default();
-        for (&stage, counter) in super::NAGA_STAGES.iter().zip(bg.counters.iter_mut()) {
-            let stage_bit = map_naga_stage(stage);
-            let mut dynamic_offsets_count = 0u32;
-            let layout_and_entry_iter = desc.entries.iter().map(|entry| {
-                let layout = desc
-                    .layout
-                    .entries
-                    .iter()
-                    .find(|layout_entry| layout_entry.binding == entry.binding)
-                    .expect("internal error: no layout entry found with binding slot");
-                (entry, layout)
-            });
-            for (entry, layout) in layout_and_entry_iter {
-                let size = layout.count.map_or(1, |c| c.get());
-                if let wgt::BindingType::Buffer {
-                    has_dynamic_offset: true,
-                    ..
-                } = layout.ty
-                {
-                    dynamic_offsets_count += size;
-                }
-                if !layout.visibility.contains(stage_bit) {
-                    continue;
-                }
-                match layout.ty {
-                    wgt::BindingType::Buffer {
-                        ty,
-                        has_dynamic_offset,
-                        ..
-                    } => {
-                        let start = entry.resource_index as usize;
-                        let end = start + size as usize;
-                        bg.buffers
-                            .extend(desc.buffers[start..end].iter().map(|source| {
-                                // Given the restrictions on `BufferBinding::offset`,
-                                // this should never be `None`.
-                                let remaining_size =
-                                    wgt::BufferSize::new(source.buffer.size - source.offset);
-                                let binding_size = match ty {
-                                    wgt::BufferBindingType::Storage { .. } => {
-                                        source.size.or(remaining_size)
-                                    }
-                                    _ => None,
-                                };
-                                super::BufferResource {
-                                    ptr: source.buffer.as_raw(),
-                                    offset: source.offset,
-                                    dynamic_index: if has_dynamic_offset {
-                                        Some(dynamic_offsets_count - 1)
-                                    } else {
-                                        None
-                                    },
-                                    binding_size,
-                                    binding_location: layout.binding,
-                                }
-                            }));
-                        counter.buffers += 1;
-                    }
-                    wgt::BindingType::Sampler { .. } => {
-                        let start = entry.resource_index as usize;
-                        let end = start + size as usize;
-                        bg.samplers
-                            .extend(desc.samplers[start..end].iter().map(|samp| samp.as_raw()));
-                        counter.samplers += size;
-                    }
-                    wgt::BindingType::Texture { .. } | wgt::BindingType::StorageTexture { .. } => {
-                        let start = entry.resource_index as usize;
-                        let end = start + size as usize;
-                        bg.textures.extend(
-                            desc.textures[start..end]
-                                .iter()
-                                .map(|tex| tex.view.as_raw()),
+        objc::rc::autoreleasepool(|| {
+            let mut bg = super::BindGroup::default();
+            for (&stage, counter) in super::NAGA_STAGES.iter().zip(bg.counters.iter_mut()) {
+                let stage_bit = map_naga_stage(stage);
+                let mut dynamic_offsets_count = 0u32;
+                let layout_and_entry_iter = desc.entries.iter().map(|entry| {
+                    let layout = desc
+                        .layout
+                        .entries
+                        .iter()
+                        .find(|layout_entry| layout_entry.binding == entry.binding)
+                        .expect("internal error: no layout entry found with binding slot");
+                    (entry, layout)
+                });
+                for (entry, layout) in layout_and_entry_iter {
+                    // Bindless path
+                    if layout.count.is_some() {
+                        if !layout.visibility.contains(stage_bit) {
+                            continue;
+                        }
+
+                        let count = entry.count;
+
+                        let stages = conv::map_render_stages(layout.visibility);
+                        let uses = conv::map_resource_usage(&layout.ty);
+
+                        // Create argument buffer for this array
+                        let buffer = self.shared.device.lock().new_buffer(
+                            8 * count as u64,
+                            MTLResourceOptions::HazardTrackingModeUntracked
+                                | MTLResourceOptions::StorageModeShared,
                         );
-                        counter.textures += size;
+
+                        let contents: &mut [MTLResourceID] = unsafe {
+                            core::slice::from_raw_parts_mut(
+                                buffer.contents().cast(),
+                                count as usize,
+                            )
+                        };
+
+                        match layout.ty {
+                            wgt::BindingType::Texture { .. }
+                            | wgt::BindingType::StorageTexture { .. } => {
+                                let start = entry.resource_index as usize;
+                                let end = start + count as usize;
+                                let textures = &desc.textures[start..end];
+
+                                for (idx, tex) in textures.iter().enumerate() {
+                                    contents[idx] = tex.view.raw.gpu_resource_id();
+
+                                    let use_info = bg
+                                        .resources_to_use
+                                        .entry(tex.view.as_raw().cast())
+                                        .or_default();
+                                    use_info.stages |= stages;
+                                    use_info.uses |= uses;
+                                    use_info.visible_in_compute |=
+                                        layout.visibility.contains(wgt::ShaderStages::COMPUTE);
+                                }
+                            }
+                            wgt::BindingType::Sampler { .. } => {
+                                let start = entry.resource_index as usize;
+                                let end = start + count as usize;
+                                let samplers = &desc.samplers[start..end];
+
+                                for (idx, &sampler) in samplers.iter().enumerate() {
+                                    contents[idx] = sampler.raw.gpu_resource_id();
+                                    // Samplers aren't resources like buffers and textures, so don't
+                                    // need to be passed to useResource
+                                }
+                            }
+                            _ => {
+                                unimplemented!();
+                            }
+                        }
+
+                        bg.buffers.push(super::BufferResource {
+                            ptr: unsafe { NonNull::new_unchecked(buffer.as_ptr()) },
+                            offset: 0,
+                            dynamic_index: None,
+                            binding_size: None,
+                            binding_location: layout.binding,
+                        });
+                        counter.buffers += 1;
+
+                        bg.argument_buffers.push(buffer)
                     }
-                    wgt::BindingType::AccelerationStructure => unimplemented!(),
+                    // Bindfull path
+                    else {
+                        if let wgt::BindingType::Buffer {
+                            has_dynamic_offset: true,
+                            ..
+                        } = layout.ty
+                        {
+                            dynamic_offsets_count += 1;
+                        }
+                        if !layout.visibility.contains(stage_bit) {
+                            continue;
+                        }
+                        match layout.ty {
+                            wgt::BindingType::Buffer {
+                                ty,
+                                has_dynamic_offset,
+                                ..
+                            } => {
+                                let start = entry.resource_index as usize;
+                                let end = start + 1;
+                                bg.buffers
+                                    .extend(desc.buffers[start..end].iter().map(|source| {
+                                        // Given the restrictions on `BufferBinding::offset`,
+                                        // this should never be `None`.
+                                        let remaining_size = wgt::BufferSize::new(
+                                            source.buffer.size - source.offset,
+                                        );
+                                        let binding_size = match ty {
+                                            wgt::BufferBindingType::Storage { .. } => {
+                                                source.size.or(remaining_size)
+                                            }
+                                            _ => None,
+                                        };
+                                        super::BufferResource {
+                                            ptr: source.buffer.as_raw(),
+                                            offset: source.offset,
+                                            dynamic_index: if has_dynamic_offset {
+                                                Some(dynamic_offsets_count - 1)
+                                            } else {
+                                                None
+                                            },
+                                            binding_size,
+                                            binding_location: layout.binding,
+                                        }
+                                    }));
+                                counter.buffers += 1;
+                            }
+                            wgt::BindingType::Sampler { .. } => {
+                                let start = entry.resource_index as usize;
+                                let end = start + 1;
+                                bg.samplers.extend(
+                                    desc.samplers[start..end].iter().map(|samp| samp.as_raw()),
+                                );
+                                counter.samplers += 1;
+                            }
+                            wgt::BindingType::Texture { .. }
+                            | wgt::BindingType::StorageTexture { .. } => {
+                                let start = entry.resource_index as usize;
+                                let end = start + 1;
+                                bg.textures.extend(
+                                    desc.textures[start..end]
+                                        .iter()
+                                        .map(|tex| tex.view.as_raw()),
+                                );
+                                counter.textures += 1;
+                            }
+                            wgt::BindingType::AccelerationStructure { .. } => unimplemented!(),
+                        }
+                    }
                 }
             }
-        }
 
-        Ok(bg)
+            self.counters.bind_groups.add(1);
+
+            Ok(bg)
+        })
     }
 
-    unsafe fn destroy_bind_group(&self, _group: super::BindGroup) {}
+    unsafe fn destroy_bind_group(&self, _group: super::BindGroup) {
+        self.counters.bind_groups.sub(1);
+    }
 
     unsafe fn create_shader_module(
         &self,
         desc: &crate::ShaderModuleDescriptor,
         shader: crate::ShaderInput,
     ) -> Result<super::ShaderModule, crate::ShaderError> {
+        self.counters.shader_modules.add(1);
+
         match shader {
             crate::ShaderInput::Naga(naga) => Ok(super::ShaderModule {
-                naga,
-                runtime_checks: desc.runtime_checks,
+                source: ShaderModuleSource::Naga(naga),
+                bounds_checks: desc.runtime_checks,
             }),
+            crate::ShaderInput::Msl {
+                shader: source,
+                entry_point,
+                num_workgroups,
+            } => {
+                let options = metal::CompileOptions::new();
+                // Obtain the locked device from shared
+                let device = self.shared.device.lock();
+                let library = device
+                    .new_library_with_source(&source, &options)
+                    .map_err(|e| crate::ShaderError::Compilation(format!("MSL: {:?}", e)))?;
+                let function = library.get_function(&entry_point, None).map_err(|_| {
+                    crate::ShaderError::Compilation(format!(
+                        "Entry point '{}' not found",
+                        entry_point
+                    ))
+                })?;
+
+                Ok(super::ShaderModule {
+                    source: ShaderModuleSource::Passthrough(PassthroughShader {
+                        library,
+                        function,
+                        entry_point,
+                        num_workgroups,
+                    }),
+                    bounds_checks: desc.runtime_checks,
+                })
+            }
             crate::ShaderInput::SpirV(_) => {
                 panic!("SPIRV_SHADER_PASSTHROUGH is not enabled for this backend")
             }
         }
     }
-    unsafe fn destroy_shader_module(&self, _module: super::ShaderModule) {}
+
+    unsafe fn destroy_shader_module(&self, _module: super::ShaderModule) {
+        self.counters.shader_modules.sub(1);
+    }
 
     unsafe fn create_render_pipeline(
         &self,
-        desc: &crate::RenderPipelineDescriptor<super::Api>,
+        desc: &crate::RenderPipelineDescriptor<
+            super::PipelineLayout,
+            super::ShaderModule,
+            super::PipelineCache,
+        >,
     ) -> Result<super::RenderPipeline, crate::PipelineError> {
         objc::rc::autoreleasepool(|| {
             let descriptor = metal::RenderPipelineDescriptor::new();
 
             let raw_triangle_fill_mode = match desc.primitive.polygon_mode {
-                wgt::PolygonMode::Fill => metal::MTLTriangleFillMode::Fill,
-                wgt::PolygonMode::Line => metal::MTLTriangleFillMode::Lines,
+                wgt::PolygonMode::Fill => MTLTriangleFillMode::Fill,
+                wgt::PolygonMode::Line => MTLTriangleFillMode::Lines,
                 wgt::PolygonMode::Point => panic!(
                     "{:?} is not enabled for this backend",
                     wgt::Features::POLYGON_MODE_POINT
@@ -961,8 +1155,7 @@ impl crate::Device for super::Device {
                     // TODO: This is a workaround for what appears to be a Metal validation bug
                     // A pixel format is required even though no attachments are provided
                     if desc.color_targets.is_empty() && desc.depth_stencil.is_none() {
-                        descriptor
-                            .set_depth_attachment_pixel_format(metal::MTLPixelFormat::Depth32Float);
+                        descriptor.set_depth_attachment_pixel_format(MTLPixelFormat::Depth32Float);
                     }
                     (None, None)
                 }
@@ -973,7 +1166,7 @@ impl crate::Device for super::Device {
                 let ct = if let Some(color_target) = ct.as_ref() {
                     color_target
                 } else {
-                    at_descriptor.set_pixel_format(metal::MTLPixelFormat::Invalid);
+                    at_descriptor.set_pixel_format(MTLPixelFormat::Invalid);
                     continue;
                 };
 
@@ -1050,7 +1243,7 @@ impl crate::Device for super::Device {
                             .max()
                             .unwrap_or(0);
                         buffer_desc.set_stride(wgt::math::align_to(stride, 4));
-                        buffer_desc.set_step_function(metal::MTLVertexStepFunction::Constant);
+                        buffer_desc.set_step_function(MTLVertexStepFunction::Constant);
                         buffer_desc.set_step_rate(0);
                     } else {
                         buffer_desc.set_stride(vb.array_stride);
@@ -1094,6 +1287,8 @@ impl crate::Device for super::Device {
                     )
                 })?;
 
+            self.counters.render_pipelines.add(1);
+
             Ok(super::RenderPipeline {
                 raw,
                 vs_lib,
@@ -1106,9 +1301,9 @@ impl crate::Device for super::Device {
                 raw_cull_mode: conv::map_cull_mode(desc.primitive.cull_mode),
                 raw_depth_clip_mode: if self.features.contains(wgt::Features::DEPTH_CLIP_CONTROL) {
                     Some(if desc.primitive.unclipped_depth {
-                        metal::MTLDepthClipMode::Clamp
+                        MTLDepthClipMode::Clamp
                     } else {
-                        metal::MTLDepthClipMode::Clip
+                        MTLDepthClipMode::Clip
                     })
                 } else {
                     None
@@ -1117,22 +1312,57 @@ impl crate::Device for super::Device {
             })
         })
     }
-    unsafe fn destroy_render_pipeline(&self, _pipeline: super::RenderPipeline) {}
+
+    unsafe fn create_mesh_pipeline(
+        &self,
+        _desc: &crate::MeshPipelineDescriptor<
+            <Self::A as crate::Api>::PipelineLayout,
+            <Self::A as crate::Api>::ShaderModule,
+            <Self::A as crate::Api>::PipelineCache,
+        >,
+    ) -> Result<<Self::A as crate::Api>::RenderPipeline, crate::PipelineError> {
+        unreachable!()
+    }
+
+    unsafe fn destroy_render_pipeline(&self, _pipeline: super::RenderPipeline) {
+        self.counters.render_pipelines.sub(1);
+    }
 
     unsafe fn create_compute_pipeline(
         &self,
-        desc: &crate::ComputePipelineDescriptor<super::Api>,
+        desc: &crate::ComputePipelineDescriptor<
+            super::PipelineLayout,
+            super::ShaderModule,
+            super::PipelineCache,
+        >,
     ) -> Result<super::ComputePipeline, crate::PipelineError> {
         objc::rc::autoreleasepool(|| {
             let descriptor = metal::ComputePipelineDescriptor::new();
 
-            let cs = self.load_shader(
-                &desc.stage,
-                &[],
-                desc.layout,
-                metal::MTLPrimitiveTopologyClass::Unspecified,
-                naga::ShaderStage::Compute,
-            )?;
+            let module = desc.stage.module;
+            let cs = if let ShaderModuleSource::Passthrough(desc) = &module.source {
+                CompiledShader {
+                    library: desc.library.clone(),
+                    function: desc.function.clone(),
+                    wg_size: MTLSize::new(
+                        desc.num_workgroups.0 as u64,
+                        desc.num_workgroups.1 as u64,
+                        desc.num_workgroups.2 as u64,
+                    ),
+                    wg_memory_sizes: vec![],
+                    sized_bindings: vec![],
+                    immutable_buffer_mask: 0,
+                }
+            } else {
+                self.load_shader(
+                    &desc.stage,
+                    &[],
+                    desc.layout,
+                    MTLPrimitiveTopologyClass::Unspecified,
+                    naga::ShaderStage::Compute,
+                )?
+            };
+
             descriptor.set_compute_function(Some(&cs.function));
 
             if self.shared.private_caps.supports_mutability {
@@ -1165,6 +1395,8 @@ impl crate::Device for super::Device {
                     )
                 })?;
 
+            self.counters.compute_pipelines.add(1);
+
             Ok(super::ComputePipeline {
                 raw,
                 cs_info,
@@ -1174,15 +1406,18 @@ impl crate::Device for super::Device {
             })
         })
     }
-    unsafe fn destroy_compute_pipeline(&self, _pipeline: super::ComputePipeline) {}
+
+    unsafe fn destroy_compute_pipeline(&self, _pipeline: super::ComputePipeline) {
+        self.counters.compute_pipelines.sub(1);
+    }
 
     unsafe fn create_pipeline_cache(
         &self,
         _desc: &crate::PipelineCacheDescriptor<'_>,
-    ) -> Result<(), crate::PipelineCacheError> {
-        Ok(())
+    ) -> Result<super::PipelineCache, crate::PipelineCacheError> {
+        Ok(super::PipelineCache)
     }
-    unsafe fn destroy_pipeline_cache(&self, (): ()) {}
+    unsafe fn destroy_pipeline_cache(&self, _: super::PipelineCache) {}
 
     unsafe fn create_query_set(
         &self,
@@ -1192,7 +1427,7 @@ impl crate::Device for super::Device {
             match desc.ty {
                 wgt::QueryType::Occlusion => {
                     let size = desc.count as u64 * crate::QUERY_SIZE;
-                    let options = metal::MTLResourceOptions::empty();
+                    let options = MTLResourceOptions::empty();
                     //TODO: HazardTrackingModeUntracked
                     let raw_buffer = self.shared.device.lock().new_buffer(size, options);
                     if let Some(label) = desc.label {
@@ -1207,11 +1442,10 @@ impl crate::Device for super::Device {
                 wgt::QueryType::Timestamp => {
                     let size = desc.count as u64 * crate::QUERY_SIZE;
                     let device = self.shared.device.lock();
-                    let destination_buffer =
-                        device.new_buffer(size, metal::MTLResourceOptions::empty());
+                    let destination_buffer = device.new_buffer(size, MTLResourceOptions::empty());
 
                     let csb_desc = metal::CounterSampleBufferDescriptor::new();
-                    csb_desc.set_storage_mode(metal::MTLStorageMode::Shared);
+                    csb_desc.set_storage_mode(MTLStorageMode::Shared);
                     csb_desc.set_sample_count(desc.count as _);
                     if let Some(label) = desc.label {
                         csb_desc.set_label(label);
@@ -1237,6 +1471,8 @@ impl crate::Device for super::Device {
                             }
                         };
 
+                    self.counters.query_sets.add(1);
+
                     Ok(super::QuerySet {
                         raw_buffer: destination_buffer,
                         counter_sample_buffer: Some(counter_sample_buffer),
@@ -1249,19 +1485,33 @@ impl crate::Device for super::Device {
             }
         })
     }
-    unsafe fn destroy_query_set(&self, _set: super::QuerySet) {}
+
+    unsafe fn destroy_query_set(&self, _set: super::QuerySet) {
+        self.counters.query_sets.add(1);
+    }
 
     unsafe fn create_fence(&self) -> DeviceResult<super::Fence> {
+        self.counters.fences.add(1);
+        let shared_event = if self.shared.private_caps.supports_shared_event {
+            Some(self.shared.device.lock().new_shared_event())
+        } else {
+            None
+        };
         Ok(super::Fence {
             completed_value: Arc::new(atomic::AtomicU64::new(0)),
             pending_command_buffers: Vec::new(),
+            shared_event,
         })
     }
-    unsafe fn destroy_fence(&self, _fence: super::Fence) {}
+
+    unsafe fn destroy_fence(&self, _fence: super::Fence) {
+        self.counters.fences.sub(1);
+    }
+
     unsafe fn get_fence_value(&self, fence: &super::Fence) -> DeviceResult<crate::FenceValue> {
         let mut max_value = fence.completed_value.load(atomic::Ordering::Acquire);
         for &(value, ref cmd_buf) in fence.pending_command_buffers.iter() {
-            if cmd_buf.status() == metal::MTLCommandBufferStatus::Completed {
+            if cmd_buf.status() == MTLCommandBufferStatus::Completed {
                 max_value = value;
             }
         }
@@ -1282,7 +1532,7 @@ impl crate::Device for super::Device {
             .iter()
             .find(|&&(value, _)| value >= wait_value)
         {
-            Some(&(_, ref cmd_buf)) => cmd_buf,
+            Some((_, cmd_buf)) => cmd_buf,
             None => {
                 log::error!("No active command buffers for fence value {}", wait_value);
                 return Err(crate::DeviceError::Lost);
@@ -1291,17 +1541,17 @@ impl crate::Device for super::Device {
 
         let start = time::Instant::now();
         loop {
-            if let metal::MTLCommandBufferStatus::Completed = cmd_buf.status() {
+            if let MTLCommandBufferStatus::Completed = cmd_buf.status() {
                 return Ok(true);
             }
             if start.elapsed().as_millis() >= timeout_ms as u128 {
                 return Ok(false);
             }
-            thread::sleep(time::Duration::from_millis(1));
+            thread::sleep(core::time::Duration::from_millis(1));
         }
     }
 
-    unsafe fn start_capture(&self) -> bool {
+    unsafe fn start_graphics_debugger_capture(&self) -> bool {
         if !self.shared.private_caps.supports_capture_manager {
             return false;
         }
@@ -1313,7 +1563,8 @@ impl crate::Device for super::Device {
         default_capture_scope.begin_scope();
         true
     }
-    unsafe fn stop_capture(&self) {
+
+    unsafe fn stop_graphics_debugger_capture(&self) {
         let shared_capture_manager = metal::CaptureManager::shared();
         if let Some(default_capture_scope) = shared_capture_manager.default_capture_scope() {
             default_capture_scope.end_scope();
@@ -1323,7 +1574,7 @@ impl crate::Device for super::Device {
 
     unsafe fn get_acceleration_structure_build_sizes(
         &self,
-        _desc: &crate::GetAccelerationStructureBuildSizesDescriptor<super::Api>,
+        _desc: &crate::GetAccelerationStructureBuildSizesDescriptor<super::Buffer>,
     ) -> crate::AccelerationStructureBuildSizes {
         unimplemented!()
     }
@@ -1347,5 +1598,19 @@ impl crate::Device for super::Device {
         _acceleration_structure: super::AccelerationStructure,
     ) {
         unimplemented!()
+    }
+
+    fn tlas_instance_to_bytes(&self, _instance: TlasInstance) -> Vec<u8> {
+        unimplemented!()
+    }
+
+    fn get_internal_counters(&self) -> wgt::HalCounters {
+        self.counters.as_ref().clone()
+    }
+
+    fn check_if_oom(&self) -> Result<(), crate::DeviceError> {
+        // TODO: see https://github.com/gfx-rs/wgpu/issues/7460
+
+        Ok(())
     }
 }

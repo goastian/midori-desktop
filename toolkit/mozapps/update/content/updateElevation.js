@@ -52,6 +52,9 @@ const gUpdateElevationDialog = {
     } else {
       link.hidden = true;
     }
+    link.addEventListener("click", event =>
+      gUpdateElevationDialog.openUpdateURL(event)
+    );
 
     let manualLinkLabel = document.getElementById("manualLinkLabel");
     let manualURL = Services.urlFormatter.formatURLPref(
@@ -59,14 +62,29 @@ const gUpdateElevationDialog = {
     );
     manualLinkLabel.value = manualURL;
     manualLinkLabel.setAttribute("url", manualURL);
+    manualLinkLabel.addEventListener("click", event =>
+      gUpdateElevationDialog.openUpdateURL(event)
+    );
 
-    let button = document.getElementById("elevateExtra2");
-    this._setButton(button, "restartLaterButton");
-    button = document.getElementById("elevateExtra1");
-    this._setButton(button, "noThanksButton");
-    button = document.getElementById("elevateAccept");
-    this._setButton(button, "restartNowButton");
-    button.focus();
+    let buttonElevateExtra2 = document.getElementById("elevateExtra2");
+    buttonElevateExtra2.addEventListener("command", () =>
+      gUpdateElevationDialog.onRestartLater()
+    );
+    this._setButton(buttonElevateExtra2, "restartLaterButton");
+
+    let buttonElevateExtra1 = document.getElementById("elevateExtra1");
+    buttonElevateExtra1.addEventListener("command", () =>
+      gUpdateElevationDialog.onNoThanks()
+    );
+    this._setButton(buttonElevateExtra1, "noThanksButton");
+
+    let buttonElevateAccept = document.getElementById("elevateAccept");
+    // note that onRestartNow runs asynchronously
+    buttonElevateAccept.addEventListener("command", () =>
+      gUpdateElevationDialog.onRestartNow()
+    );
+    this._setButton(buttonElevateAccept, "restartNowButton");
+    buttonElevateAccept.focus();
   },
   onRestartLater() {
     window.close();
@@ -89,7 +107,7 @@ const gUpdateElevationDialog = {
     }
     window.close();
   },
-  onRestartNow() {
+  async onRestartNow() {
     // disable the "finish" (Restart) and "extra1" (Later) buttons
     // because the Software Update wizard is still up at the point,
     // and will remain up until we return and we close the
@@ -108,7 +126,7 @@ const gUpdateElevationDialog = {
     let um = Cc["@mozilla.org/updates/update-manager;1"].getService(
       Ci.nsIUpdateManager
     );
-    um.elevationOptedIn();
+    await um.elevationOptedIn();
 
     // Notify all windows that an application quit has been requested.
     let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"].createInstance(
@@ -136,3 +154,5 @@ const gUpdateElevationDialog = {
     );
   },
 };
+
+window.addEventListener("load", () => gUpdateElevationDialog.onLoad());

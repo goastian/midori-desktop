@@ -52,15 +52,6 @@ add_task(async function test() {
 
   info("Pref action: " + handlerInfo.preferredAction);
 
-  await SpecialPowers.pushPrefEnv({
-    set: [
-      ["browser.display.document_color_use", 0],
-      ["browser.display.background_color", "#ff0000"],
-      ["browser.display.foreground_color", "#00ff00"],
-      ["browser.display.use_system_colors", false],
-    ],
-  });
-
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: "about:blank" },
     async function (browser) {
@@ -76,12 +67,18 @@ add_task(async function test() {
 
       // The last pixel must be white and not red.
       Assert.deepEqual(last, [255, 255, 255]);
+
+      await waitForPdfJSClose(browser);
     }
   );
 
-  // Enable HCM.
+  // Force on custom HCM.
   await SpecialPowers.pushPrefEnv({
-    set: [["ui.useAccessibilityTheme", 1]],
+    set: [
+      ["browser.display.background_color", "#ff0000"],
+      ["browser.display.foreground_color", "#00ff00"],
+      ["browser.display.document_color_use", 2],
+    ],
   });
 
   await BrowserTestUtils.withNewTab(
@@ -99,6 +96,10 @@ add_task(async function test() {
 
       // The last pixel must be red.
       Assert.deepEqual(last, [255, 0, 0]);
+
+      await waitForPdfJSClose(browser);
     }
   );
+
+  await SpecialPowers.popPrefEnv();
 });

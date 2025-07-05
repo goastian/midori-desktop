@@ -11,7 +11,7 @@ add_task(async function test_network_markers() {
     "The profiler is not currently active"
   );
 
-  startProfilerForMarkerTests();
+  await ProfilerTestUtils.startProfilerForMarkerTests();
 
   const url = BASE_URL_HTTPS + "simple.html?cacheBust=" + Math.random();
   await BrowserTestUtils.withNewTab(url, async contentBrowser => {
@@ -21,12 +21,13 @@ add_task(async function test_network_markers() {
       () => Services.appinfo.processID
     );
 
-    const { parentThread, contentThread } = await stopProfilerNowAndGetThreads(
-      contentPid
-    );
+    const { parentThread, contentThread } =
+      await stopProfilerNowAndGetThreads(contentPid);
 
-    const parentNetworkMarkers = getInflatedNetworkMarkers(parentThread);
-    const contentNetworkMarkers = getInflatedNetworkMarkers(contentThread);
+    const parentNetworkMarkers =
+      ProfilerTestUtils.getInflatedNetworkMarkers(parentThread);
+    const contentNetworkMarkers =
+      ProfilerTestUtils.getInflatedNetworkMarkers(contentThread);
     info(JSON.stringify(parentNetworkMarkers, null, 2));
     info(JSON.stringify(contentNetworkMarkers, null, 2));
 
@@ -49,6 +50,9 @@ add_task(async function test_network_markers() {
       data: Expect.objectContains({
         status: "STATUS_STOP",
         URI: url,
+        httpVersion: "http/1.1",
+        classOfService: "UrgentStart",
+        requestStatus: "NS_OK",
         requestMethod: "GET",
         contentType: "text/html",
         startTime: Expect.number(),

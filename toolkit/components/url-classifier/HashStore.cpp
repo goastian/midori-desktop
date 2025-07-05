@@ -38,7 +38,6 @@
 #include "zlib.h"
 #include "Classifier.h"
 #include "nsUrlClassifierDBService.h"
-#include "mozilla/Telemetry.h"
 
 // Main store for SafeBrowsing protocol data. We store
 // known add/sub chunks, prefixes and completions in memory
@@ -156,15 +155,7 @@ void TableUpdateV4::NewPrefixes(int32_t aSize, const nsACString& aPrefixes) {
 
   int numOfPrefixes = aPrefixes.Length() / aSize;
 
-  if (aSize > 4) {
-    // TODO Bug 1364043 we may have a better API to record multiple samples into
-    // histograms with one call
-#ifdef NIGHTLY_BUILD
-    for (int i = 0; i < std::min(20, numOfPrefixes); i++) {
-      Telemetry::Accumulate(Telemetry::URLCLASSIFIER_VLPS_LONG_PREFIXES, aSize);
-    }
-#endif
-  } else if (LOG_ENABLED()) {
+  if (aSize <= 4 && LOG_ENABLED()) {
     const uint32_t* p =
         reinterpret_cast<const uint32_t*>(ToNewCString(aPrefixes));
 

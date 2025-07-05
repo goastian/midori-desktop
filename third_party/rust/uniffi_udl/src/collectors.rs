@@ -62,7 +62,8 @@ impl InterfaceCollector {
                     uniffi_meta::CustomTypeMetadata {
                         module_path: module_path.clone(),
                         name: name.clone(),
-                        builtin: (**builtin).clone(),
+                        builtin: *builtin.clone(),
+                        docstring: None,
                     }
                     .into(),
                 );
@@ -172,12 +173,7 @@ impl APIBuilder for weedle::Definition<'_> {
         match self {
             weedle::Definition::Namespace(d) => d.process(ci)?,
             weedle::Definition::Enum(d) => {
-                let mut e: uniffi_meta::EnumMetadata = d.convert(ci)?;
-                // We check if the enum represents an error...
-                let attrs = attributes::EnumAttributes::try_from(d.attributes.as_ref())?;
-                if attrs.contains_error_attr() {
-                    e.forced_flatness = Some(true);
-                }
+                let e: uniffi_meta::EnumMetadata = d.convert(ci)?;
                 ci.add_definition(e.into())?;
             }
             weedle::Definition::Dictionary(d) => {

@@ -41,6 +41,7 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 import { PrivateBrowsingUtils } from "resource://gre/modules/PrivateBrowsingUtils.sys.mjs";
 import { CreditCard } from "resource://gre/modules/CreditCard.sys.mjs";
+import { Logic } from "resource://gre/modules/LoginManager.shared.sys.mjs";
 
 const lazy = {};
 
@@ -52,11 +53,9 @@ ChromeUtils.defineESModuleGetters(lazy, {
   FORM_SUBMISSION_REASON: "resource://gre/actors/FormHandlerChild.sys.mjs",
   InsecurePasswordUtils: "resource://gre/modules/InsecurePasswordUtils.sys.mjs",
   LoginAutoCompleteResult: "resource://gre/modules/LoginAutoComplete.sys.mjs",
-  LoginFormFactory: "resource://gre/modules/LoginFormFactory.sys.mjs",
+  LoginFormFactory: "resource://gre/modules/shared/LoginFormFactory.sys.mjs",
   LoginHelper: "resource://gre/modules/LoginHelper.sys.mjs",
   LoginRecipesContent: "resource://gre/modules/LoginRecipes.sys.mjs",
-  LoginManagerTelemetry: "resource://gre/modules/LoginManagerTelemetry.sys.mjs",
-  NewPasswordModel: "resource://gre/modules/NewPasswordModel.sys.mjs",
 });
 
 XPCOMUtils.defineLazyServiceGetter(
@@ -771,21 +770,21 @@ export class LoginFormState {
    * 2. Only contains one input field whose type is username compatible.
    * 3. The username compatible input field looks like a username field
    *    or the form itself looks like a sign-in or sign-up form.
+   * Additionally, if an input is formless and its autocomplete attribute is
+   * set to 'username' (this check is done in the DOM to avoid firing excessive events),
+   * we construct a FormLike object using this input and perform the same logic
+   * described above to determine if the new FormLike object is username-only.
    *
-   * @param {Element} formElement
+   * @param {FormLike} form
    *                  the form to check.
    * @param {Object}  recipe=null
    *                  A relevant field override recipe to use.
    * @returns {Element} The username field or null (if the form is not a
    *                    username-only form).
    */
-  getUsernameFieldFromUsernameOnlyForm(formElement, recipe = null) {
-    if (!HTMLFormElement.isInstance(formElement)) {
-      return null;
-    }
-
+  getUsernameFieldFromUsernameOnlyForm(form, recipe = null) {
     let candidate = null;
-    for (let element of formElement.elements) {
+    for (let element of form.elements) {
       // We are looking for a username-only form, so if there is a password
       // field in the form, this is NOT a username-only form.
       if (element.hasBeenTypePassword) {
@@ -811,10 +810,9 @@ export class LoginFormState {
       }
       candidate = element;
     }
-
     if (
       candidate &&
-      this.#isProbablyAUsernameLoginForm(formElement, candidate)
+      this.#isProbablyAUsernameLoginForm(form.rootElement, candidate)
     ) {
       return candidate;
     }
@@ -954,22 +952,8 @@ export class LoginFormState {
   }
 
   fillConfirmFieldWithGeneratedPassword(passwordField) {
-    // Fill a nearby password input if it looks like a confirm-password field
-    let form = lazy.LoginFormFactory.createFromField(passwordField);
-    let confirmPasswordInput = null;
-    // The confirm-password field shouldn't be more than 3 form elements away from the password field we filled
-    let MAX_CONFIRM_PASSWORD_DISTANCE = 3;
-
-    let startIndex = form.elements.indexOf(passwordField);
-    if (startIndex == -1) {
-      throw new Error(
-        "Password field is not in the form's elements collection"
-      );
-    }
-
-    // If we've already filled another field with a generated password,
-    // this might be the confirm-password field, so don't try and find another
-    let previousGeneratedPasswordField = form.elements.some(
+    const form = lazy.LoginFormFactory.createFromField(passwordField);
+    const previousGeneratedPasswordField = form.elements.some(
       inp => inp !== passwordField && this.generatedPasswordFields.has(inp)
     );
     if (previousGeneratedPasswordField) {
@@ -977,43 +961,11 @@ export class LoginFormState {
       return;
     }
 
-    // Get a list of input fields to search in.
-    // Pre-filter type=hidden fields; they don't count against the distance threshold
-    let afterFields = form.elements
-      .slice(startIndex + 1)
-      .filter(elem => elem.type !== "hidden");
+    const confirmPasswordInput = Logic.findConfirmationField(
+      passwordField,
+      lazy.LoginFormFactory
+    );
 
-    let acFieldName = passwordField.getAutocompleteInfo()?.fieldName;
-
-    // Match same autocomplete values first
-    if (acFieldName == "new-password") {
-      let matchIndex = afterFields.findIndex(
-        elem =>
-          lazy.LoginHelper.isPasswordFieldType(elem) &&
-          elem.getAutocompleteInfo().fieldName == acFieldName &&
-          !elem.disabled &&
-          !elem.readOnly
-      );
-      if (matchIndex >= 0 && matchIndex < MAX_CONFIRM_PASSWORD_DISTANCE) {
-        confirmPasswordInput = afterFields[matchIndex];
-      }
-    }
-    if (!confirmPasswordInput) {
-      for (
-        let idx = 0;
-        idx < Math.min(MAX_CONFIRM_PASSWORD_DISTANCE, afterFields.length);
-        idx++
-      ) {
-        if (
-          lazy.LoginHelper.isPasswordFieldType(afterFields[idx]) &&
-          !afterFields[idx].disabled &&
-          !afterFields[idx].readOnly
-        ) {
-          confirmPasswordInput = afterFields[idx];
-          break;
-        }
-      }
-    }
     if (confirmPasswordInput && !confirmPasswordInput.value) {
       this._treatAsGeneratedPasswordField(confirmPasswordInput);
       confirmPasswordInput.setUserInput(passwordField.value);
@@ -1109,7 +1061,7 @@ export class LoginFormState {
       }
 
       usernameField = this.getUsernameFieldFromUsernameOnlyForm(
-        form.rootElement,
+        form,
         fieldOverrideRecipe
       );
 
@@ -1449,19 +1401,19 @@ export class LoginManagerChild extends JSWindowActorChild {
         break;
       }
       case "PasswordManager:OnFieldAutoComplete": {
-        const { focusedInput } = lazy.gFormFillService;
+        const { focusedElement } = lazy.gFormFillService;
         const login = lazy.LoginHelper.vanillaObjectToLogin(msg.data);
-        this.onFieldAutoComplete(focusedInput, login);
+        this.onFieldAutoComplete(focusedElement, login);
         break;
       }
       case "PasswordManager:FillGeneratedPassword": {
-        const { focusedInput } = lazy.gFormFillService;
-        this.filledWithGeneratedPassword(focusedInput);
+        const { focusedElement } = lazy.gFormFillService;
+        this.filledWithGeneratedPassword(focusedElement);
         break;
       }
       case "PasswordManager:FillRelayUsername": {
-        const { focusedInput } = lazy.gFormFillService;
-        this.fillRelayUsername(focusedInput, msg.data);
+        const { focusedElement } = lazy.gFormFillService;
+        this.fillRelayUsername(focusedElement, msg.data);
         break;
       }
     }
@@ -1476,7 +1428,7 @@ export class LoginManagerChild extends JSWindowActorChild {
       return;
     }
 
-    if (inputElement != lazy.gFormFillService.focusedInput) {
+    if (inputElement != lazy.gFormFillService.focusedElement) {
       lazy.log("Could not open popup on input that's no longer focused.");
       return;
     }
@@ -1525,8 +1477,8 @@ export class LoginManagerChild extends JSWindowActorChild {
         lazy.InsecurePasswordUtils.reportInsecurePasswords(formLike);
         break;
       }
-      case "DOMFormHasPossibleUsername": {
-        this.#onDOMFormHasPossibleUsername(event);
+      case "DOMPossibleUsernameInputAdded": {
+        this.#onDOMPossibleUsernameInputAdded(event);
         break;
       }
       case "DOMInputPasswordAdded": {
@@ -1797,48 +1749,56 @@ export class LoginManagerChild extends JSWindowActorChild {
     this._fetchLoginsFromParentAndFillForm(formLike);
   }
 
-  #onDOMFormHasPossibleUsername(event) {
+  #onDOMPossibleUsernameInputAdded(event) {
     if (!event.isTrusted) {
       return;
     }
     const isPrimaryPasswordSet = this.#getIsPrimaryPasswordSet();
-    let document = event.target.ownerDocument;
+
+    let document;
+    if (HTMLFormElement.isInstance(event.target)) {
+      document = event.target.ownerDocument;
+    } else {
+      document = event.target;
+    }
 
     lazy.log(
-      `#onDOMFormHasPossibleUsername: visibilityState: ${document.visibilityState}, isPrimaryPasswordSet: ${isPrimaryPasswordSet}.`
+      `#onDomPossibleUsernameInputAdded: visibilityState: ${document.visibilityState}, isPrimaryPasswordSet: ${isPrimaryPasswordSet}.`
     );
 
     // For simplicity, the result of the telemetry is stacked. This means if a
-    // document receives two `DOMFormHasPossibleEvent`, we add one counter to both
+    // document receives two `DOMPossibleUsernameInputAdded`, we add one counter to both
     // bucket 1 & 2.
     let docState = this.stateForDocument(document);
-    Services.telemetry
-      .getHistogramById("PWMGR_NUM_FORM_HAS_POSSIBLE_USERNAME_EVENT_PER_DOC")
-      .add(++docState.numFormHasPossibleUsernameEvent);
 
     // Infer whether a form is a username-only form is expensive, so we restrict the
     // number of form looked up per document.
     if (
-      docState.numFormHasPossibleUsernameEvent >
+      ++docState.numFormHasPossibleUsernameEvent >
       lazy.LoginHelper.usernameOnlyFormLookupThreshold
     ) {
       return;
     }
 
     if (document.visibilityState == "visible" || isPrimaryPasswordSet) {
-      this._processDOMFormHasPossibleUsernameEvent(event);
+      this._processDOMPossibleUsernameInputAddedEvent(event);
     } else {
       // wait until the document becomes visible before handling this event
       this._deferHandlingEventUntilDocumentVisible(event, document, () => {
-        this._processDOMFormHasPossibleUsernameEvent(event);
+        this._processDOMPossibleUsernameInputAddedEvent(event);
       });
     }
   }
 
-  _processDOMFormHasPossibleUsernameEvent(event) {
-    let form = event.target;
-    let formLike = lazy.LoginFormFactory.createFromForm(form);
-
+  _processDOMPossibleUsernameInputAddedEvent(event) {
+    let formLike;
+    if (HTMLFormElement.isInstance(event.target)) {
+      formLike = lazy.LoginFormFactory.createFromForm(event.target);
+    } else {
+      formLike = lazy.LoginFormFactory.createFromDocumentRoot(
+        event.target.documentElement
+      );
+    }
     // If the form contains a passoword field, `getUsernameFieldFromUsernameOnlyForm` returns
     // null, so we don't trigger autofill for those forms here. In this function,
     // we only care about username-only forms. For forms contain a password, they'll be handled
@@ -1847,17 +1807,19 @@ export class LoginManagerChild extends JSWindowActorChild {
     // We specifically set the recipe to empty here to avoid loading site recipes during page loads.
     // This is okay because if we end up finding a username-only form that should be ignore by
     // the site recipe, the form will be skipped while autofilling later.
-    let docState = this.stateForDocument(form.ownerDocument);
-    let usernameField = docState.getUsernameFieldFromUsernameOnlyForm(form, {});
+    let docState = this.stateForDocument(formLike.ownerDocument);
+    let usernameField = docState.getUsernameFieldFromUsernameOnlyForm(
+      formLike,
+      {}
+    );
+
     if (usernameField) {
       // Autofill the username-only form.
       lazy.log("A username-only form is found.");
       this._fetchLoginsFromParentAndFillForm(formLike);
     }
 
-    Services.telemetry
-      .getHistogramById("PWMGR_IS_USERNAME_ONLY_FORM")
-      .add(!!usernameField);
+    Glean.pwmgr.isUsernameOnlyForm[usernameField ? "true" : "false"].add();
   }
 
   #onDOMInputPasswordAdded(event) {
@@ -3076,10 +3038,10 @@ export class LoginManagerChild extends JSWindowActorChild {
       if (!userTriggered) {
         // Ignore fills as a result of user action for this probe.
 
-        lazy.LoginManagerTelemetry.recordAutofillResult(autofillResult);
+        Glean.pwmgr.formAutofillResult[autofillResult].add(1);
 
         if (usernameField) {
-          let focusedElement = lazy.gFormFillService.focusedInput;
+          let focusedElement = lazy.gFormFillService.focusedElement;
           if (
             usernameField == focusedElement &&
             ![
@@ -3129,7 +3091,7 @@ export class LoginManagerChild extends JSWindowActorChild {
   /**
    * Get the search options when searching for autocomplete entries in the parent
    *
-   * @param {HTMLInputElement} input - The input element to search for autocompelte entries
+   * @param {HTMLInputElement} input - The input element to search for autocomplete entries
    * @returns {object} the search options for the input
    */
   getAutoCompleteSearchOption(input, searchString) {
@@ -3147,9 +3109,7 @@ export class LoginManagerChild extends JSWindowActorChild {
       forcePasswordGeneration = this.isPasswordGenerationForcedOn(input);
       // Run the Fathom model only if the password field does not have the
       // autocomplete="new-password" attribute.
-      isProbablyANewPasswordField =
-        autocompleteInfo.fieldName == "new-password" ||
-        this.isProbablyANewPasswordField(input);
+      isProbablyANewPasswordField = Logic.isProbablyANewPasswordField(input);
     }
 
     const scenarioName = lazy.FormScenarios.detect({ input }).signUpForm
@@ -3176,7 +3136,7 @@ export class LoginManagerChild extends JSWindowActorChild {
    * Ask the provider whether it might have autocomplete entry to show
    * for the given input.
    *
-   * @param {HTMLInputElement} input - The input element to search for autocompelte entries
+   * @param {HTMLInputElement} input - The input element to search for autocomplete entries
    * @returns {boolean} true if we shold search for autocomplete entries
    */
   shouldSearchForAutoComplete(input, searchString) {
@@ -3209,7 +3169,7 @@ export class LoginManagerChild extends JSWindowActorChild {
    * Convert the search result to autocomplete results
    *
    * @param {string} searchString - The string to search for
-   * @param {HTMLInputElement} input - The input element to search for autocompelte entries
+   * @param {HTMLInputElement} input - The input element to search for autocomplete entries
    * @param {Array<object>} records - autocomplete records
    * @returns {AutocompleteResult}
    */
@@ -3271,27 +3231,6 @@ export class LoginManagerChild extends JSWindowActorChild {
 
   isLoginManagerField(input) {
     return input.hasBeenTypePassword || this.#interestedInputs.includes(input);
-  }
-
-  #cachedNewPasswordScore = new WeakMap();
-
-  isProbablyANewPasswordField(inputElement) {
-    const threshold = lazy.LoginHelper.generationConfidenceThreshold;
-    if (threshold == -1) {
-      // Fathom is disabled
-      return false;
-    }
-
-    let score = this.#cachedNewPasswordScore.get(inputElement);
-    if (score) {
-      return score >= threshold;
-    }
-
-    const { rules, type } = lazy.NewPasswordModel;
-    const results = rules.against(inputElement);
-    score = results.get(inputElement).scoreFor(type);
-    this.#cachedNewPasswordScore.set(inputElement, score);
-    return score >= threshold;
   }
 
   /**

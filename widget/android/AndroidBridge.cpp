@@ -43,7 +43,6 @@ using namespace mozilla;
 
 AndroidBridge* AndroidBridge::sBridge = nullptr;
 static jobject sGlobalContext = nullptr;
-nsTHashMap<nsStringHashKey, nsString> AndroidBridge::sStoragePaths;
 
 jmethodID AndroidBridge::GetMethodID(JNIEnv* env, jclass jClass,
                                      const char* methodName,
@@ -229,71 +228,6 @@ void AndroidBridge::GetIconForExtension(const nsACString& aFileExt,
   env->ReleaseByteArrayElements(arr.Get(), elements, 0);
 }
 
-namespace mozilla {
-class TracerRunnable : public Runnable {
- public:
-  TracerRunnable() : Runnable("TracerRunnable") {
-    mTracerLock = new Mutex("TracerRunnable");
-    mTracerCondVar = new CondVar(*mTracerLock, "TracerRunnable");
-    mMainThread = do_GetMainThread();
-  }
-  ~TracerRunnable() {
-    delete mTracerCondVar;
-    delete mTracerLock;
-    mTracerLock = nullptr;
-    mTracerCondVar = nullptr;
-  }
-
-  virtual nsresult Run() {
-    MutexAutoLock lock(*mTracerLock);
-    if (!AndroidBridge::Bridge()) return NS_OK;
-
-    mHasRun = true;
-    mTracerCondVar->Notify();
-    return NS_OK;
-  }
-
-  bool Fire() {
-    if (!mTracerLock || !mTracerCondVar) return false;
-    MutexAutoLock lock(*mTracerLock);
-    mHasRun = false;
-    mMainThread->Dispatch(this, NS_DISPATCH_NORMAL);
-    while (!mHasRun) mTracerCondVar->Wait();
-    return true;
-  }
-
-  void Signal() {
-    MutexAutoLock lock(*mTracerLock);
-    mHasRun = true;
-    mTracerCondVar->Notify();
-  }
-
- private:
-  Mutex* mTracerLock;
-  CondVar* mTracerCondVar;
-  bool mHasRun;
-  nsCOMPtr<nsIThread> mMainThread;
-};
-StaticRefPtr<TracerRunnable> sTracerRunnable;
-
-bool InitWidgetTracing() {
-  if (!sTracerRunnable) sTracerRunnable = new TracerRunnable();
-  return true;
-}
-
-void CleanUpWidgetTracing() { sTracerRunnable = nullptr; }
-
-bool FireAndWaitForTracerEvent() {
-  if (sTracerRunnable) return sTracerRunnable->Fire();
-  return false;
-}
-
-void SignalTracerThread() {
-  if (sTracerRunnable) return sTracerRunnable->Signal();
-}
-
-}  // namespace mozilla
-
 void AndroidBridge::GetCurrentBatteryInformation(
     hal::BatteryInformation* aBatteryInfo) {
   ALOG_BRIDGE("AndroidBridge::GetCurrentBatteryInformation");
@@ -349,7 +283,8 @@ jobject AndroidBridge::GetGlobalContextRef() {
 }
 
 /* Implementation file */
-NS_IMPL_ISUPPORTS(nsAndroidBridge, nsIAndroidEventDispatcher, nsIAndroidBridge)
+NS_IMPL_ISUPPORTS(nsAndroidBridge, nsIGeckoViewEventDispatcher,
+                  nsIGeckoViewBridge)
 
 nsAndroidBridge::nsAndroidBridge() {
   if (jni::IsAvailable()) {
@@ -362,7 +297,7 @@ nsAndroidBridge::nsAndroidBridge() {
 
 NS_IMETHODIMP
 nsAndroidBridge::GetDispatcherByName(const char* aName,
-                                     nsIAndroidEventDispatcher** aResult) {
+                                     nsIGeckoViewEventDispatcher** aResult) {
   if (!jni::IsAvailable()) {
     return NS_ERROR_FAILURE;
   }
@@ -375,18 +310,6 @@ nsAndroidBridge::GetDispatcherByName(const char* aName,
 }
 
 nsAndroidBridge::~nsAndroidBridge() {}
-
-hal::ScreenOrientation AndroidBridge::GetScreenOrientation() {
-  ALOG_BRIDGE("AndroidBridge::GetScreenOrientation");
-
-  int16_t orientation = java::GeckoAppShell::GetScreenOrientation();
-
-  return hal::ScreenOrientation(orientation);
-}
-
-uint16_t AndroidBridge::GetScreenAngle() {
-  return java::GeckoAppShell::GetScreenAngle();
-}
 
 nsresult AndroidBridge::GetProxyForURI(const nsACString& aSpec,
                                        const nsACString& aScheme,

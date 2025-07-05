@@ -11,12 +11,19 @@
 
 [package]
 edition = "2021"
-rust-version = "1.74"
+rust-version = "1.82.0"
 name = "wgpu-core"
-version = "0.20.0"
+version = "25.0.0"
 authors = ["gfx-rs developers"]
-description = "WebGPU core logic on wgpu-hal"
+build = "build.rs"
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+description = "Core implementation logic of wgpu, the cross-platform, safe, pure-rust graphics API"
 homepage = "https://wgpu.rs/"
+readme = false
 keywords = ["graphics"]
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/gfx-rs/wgpu"
@@ -37,71 +44,31 @@ targets = [
     "wasm32-unknown-unknown",
 ]
 
-[lib]
-
-[dependencies]
-arrayvec = "0.7"
-bit-vec = "0.6"
-bitflags = "2"
-document-features = "0.2.8"
-indexmap = "2"
-log = "0.4"
-once_cell = "1"
-parking_lot = ">=0.11,<0.13"
-rustc-hash = "1.1"
-smallvec = "1"
-thiserror = "1"
-
-[dependencies.bytemuck]
-version = "1.16"
-optional = true
-
-[dependencies.hal]
-version = "0.20.0"
-path = "../wgpu-hal"
-default-features = false
-package = "wgpu-hal"
-
-[dependencies.naga]
-version = "0.20.0"
-path = "../naga"
-
-[dependencies.profiling]
-version = "1"
-default-features = false
-
-[dependencies.raw-window-handle]
-version = "0.6"
-optional = true
-
-[dependencies.ron]
-version = "0.8"
-optional = true
-
-[dependencies.serde]
-version = "1"
-features = ["serde_derive"]
-optional = true
-
-[dependencies.wgt]
-version = "0.20.0"
-path = "../wgpu-types"
-package = "wgpu-types"
-
-[build-dependencies]
-cfg_aliases = "0.1"
-
 [features]
+angle = ["wgpu-core-deps-apple/angle"]
 api_log_info = []
-dx12 = ["hal/dx12"]
-fragile-send-sync-non-atomic-wasm = [
-    "hal/fragile-send-sync-non-atomic-wasm",
-    "wgt/fragile-send-sync-non-atomic-wasm",
+counters = ["wgpu-types/counters"]
+default = ["std"]
+dx12 = ["wgpu-core-deps-windows-linux-android/dx12"]
+fragile-send-sync-non-atomic-wasm = ["wgpu-hal/fragile-send-sync-non-atomic-wasm"]
+gles = [
+    "wgpu-core-deps-windows-linux-android/gles",
+    "wgpu-core-deps-emscripten/gles",
 ]
-gles = ["hal/gles"]
 glsl = ["naga/glsl-in"]
-metal = ["hal/metal"]
-renderdoc = ["hal/renderdoc"]
+metal = ["wgpu-core-deps-apple/metal"]
+noop = []
+observe_locks = [
+    "std",
+    "dep:ron",
+    "serde/serde_derive",
+]
+portable-atomic = [
+    "dep:portable-atomic",
+    "wgpu-hal/portable-atomic",
+]
+raw-window-handle = ["dep:raw-window-handle"]
+renderdoc = ["wgpu-core-deps-windows-linux-android/renderdoc"]
 replay = [
     "serde",
     "naga/deserialize",
@@ -109,18 +76,156 @@ replay = [
 resource_log_info = []
 serde = [
     "dep:serde",
-    "wgt/serde",
+    "wgpu-types/serde",
     "arrayvec/serde",
+    "hashbrown/serde",
 ]
 spirv = [
     "naga/spv-in",
     "dep:bytemuck",
 ]
-strict_asserts = ["wgt/strict_asserts"]
+static-dxc = ["wgpu-hal/static-dxc"]
+std = []
+strict_asserts = ["wgpu-types/strict_asserts"]
 trace = [
-    "dep:ron",
     "serde",
+    "std",
+    "dep:ron",
     "naga/serialize",
+    "wgpu-types/trace",
+    "dep:bytemuck",
 ]
-vulkan = ["hal/vulkan"]
+vulkan = ["wgpu-core-deps-windows-linux-android/vulkan"]
+vulkan-portability = ["wgpu-core-deps-apple/vulkan-portability"]
+webgl = ["wgpu-core-deps-wasm/webgl"]
 wgsl = ["naga/wgsl-in"]
+
+[lib]
+name = "wgpu_core"
+path = "src/lib.rs"
+
+[dependencies.arrayvec]
+version = "0.7.1"
+default-features = false
+
+[dependencies.bit-set]
+version = "0.8"
+default-features = false
+
+[dependencies.bit-vec]
+version = "0.8"
+default-features = false
+
+[dependencies.bitflags]
+version = "2.9"
+
+[dependencies.bytemuck]
+version = "1.22"
+features = [
+    "extern_crate_alloc",
+    "min_const_generics",
+]
+optional = true
+
+[dependencies.document-features]
+version = "0.2.10"
+
+[dependencies.hashbrown]
+version = "0.15"
+features = [
+    "default-hasher",
+    "inline-more",
+]
+default-features = false
+
+[dependencies.indexmap]
+version = "2.7"
+default-features = false
+
+[dependencies.log]
+version = "0.4.21"
+
+[dependencies.naga]
+version = "25.0.0"
+path = "../naga"
+
+[dependencies.once_cell]
+version = "1.21"
+features = ["std"]
+default-features = false
+
+[dependencies.parking_lot]
+version = "0.12.3"
+
+[dependencies.profiling]
+version = "1"
+default-features = false
+
+[dependencies.raw-window-handle]
+version = "0.6.2"
+optional = true
+default-features = false
+
+[dependencies.ron]
+version = "0.10"
+optional = true
+
+[dependencies.rustc-hash]
+version = "1.1"
+default-features = false
+
+[dependencies.serde]
+version = "1.0.219"
+features = [
+    "default",
+    "derive",
+]
+optional = true
+default-features = false
+
+[dependencies.smallvec]
+version = "1.9"
+
+[dependencies.thiserror]
+version = "2.0.3"
+default-features = false
+
+[dependencies.wgpu-hal]
+version = "25.0.0"
+path = "../wgpu-hal"
+
+[dependencies.wgpu-types]
+version = "25.0.0"
+path = "../wgpu-types"
+
+[build-dependencies.cfg_aliases]
+version = "0.2.1"
+
+[target.'cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))'.dependencies.wgpu-core-deps-wasm]
+version = "25.0.0"
+path = "platform-deps/wasm"
+optional = true
+
+[target.'cfg(any(windows, target_os = "linux", target_os = "android"))'.dependencies.wgpu-core-deps-windows-linux-android]
+version = "25.0.0"
+path = "platform-deps/windows-linux-android"
+optional = true
+
+[target.'cfg(not(target_has_atomic = "64"))'.dependencies.portable-atomic]
+version = "1.2"
+optional = true
+
+[target.'cfg(target_os = "emscripten")'.dependencies.wgpu-core-deps-emscripten]
+version = "25.0.0"
+path = "platform-deps/emscripten"
+optional = true
+
+[target.'cfg(target_vendor = "apple")'.dependencies.wgpu-core-deps-apple]
+version = "25.0.0"
+path = "platform-deps/apple"
+optional = true
+
+[lints.rust.unexpected_cfgs]
+level = "warn"
+priority = 0
+check-cfg = ["cfg(wgpu_validate_locks)"]

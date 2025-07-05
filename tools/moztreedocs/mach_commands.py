@@ -4,7 +4,6 @@
 
 import fnmatch
 import json
-import multiprocessing
 import os
 import re
 import subprocess
@@ -20,7 +19,7 @@ import sentry_sdk
 import yaml
 from mach.decorators import Command, CommandArgument, SubCommand
 from mach.registrar import Registrar
-from mozbuild.util import memoize
+from mozbuild.util import cpu_count, memoize
 from mozfile import load_source
 
 here = os.path.abspath(os.path.dirname(__file__))
@@ -81,7 +80,7 @@ BASE_LINK = "http://gecko-docs.mozilla.org-l1.s3-website.us-west-2.amazonaws.com
 @CommandArgument(
     "-j",
     "--jobs",
-    default=str(multiprocessing.cpu_count()),
+    default=str(cpu_count()),
     dest="jobs",
     help="Distribute the build over N processes in parallel.",
 )
@@ -93,15 +92,10 @@ BASE_LINK = "http://gecko-docs.mozilla.org-l1.s3-website.us-west-2.amazonaws.com
     "--dump-trees", default=None, help="Dump the Sphinx trees to specified file."
 )
 @CommandArgument(
-    "--fatal-warnings",
-    dest="enable_fatal_warnings",
+    "--disable-warnings-check",
+    dest="disable_warnings_check",
     action="store_true",
-    help="Enable fatal warnings.",
-)
-@CommandArgument(
-    "--check-num-warnings",
-    action="store_true",
-    help="Check that the upper bound on the number of warnings is respected.",
+    help="Disable checking for warnings",
 )
 @CommandArgument("--verbose", action="store_true", help="Run Sphinx in verbose mode")
 @CommandArgument(
@@ -123,8 +117,7 @@ def build_docs(
     write_url=None,
     linkcheck=None,
     dump_trees=None,
-    enable_fatal_warnings=False,
-    check_num_warnings=False,
+    disable_warnings_check=False,
     verbose=None,
     no_autodoc=False,
 ):
@@ -182,9 +175,9 @@ def build_docs(
         # We want to verify if the links are valid or not
         fmt = "linkcheck"
     if no_autodoc:
-        if check_num_warnings:
+        if disable_warnings_check:
             return die(
-                "'--no-autodoc' flag may not be used with '--check-num-warnings'"
+                "'--no-autodoc' flag may not be used with '--disable-warnings-check'"
             )
         toggle_no_autodoc()
 
@@ -197,19 +190,17 @@ def build_docs(
         )
     else:
         print("\nGenerated documentation:\n%s" % savedir)
-    msg = ""
 
-    if enable_fatal_warnings:
-        fatal_warnings = _check_sphinx_fatal_warnings(warnings)
-        if fatal_warnings:
-            msg += f"Error: Got fatal warnings:\n{''.join(fatal_warnings)}"
-    if check_num_warnings:
-        [num_new, num_actual] = _check_sphinx_num_warnings(warnings)
-        print("Logged %s warnings\n" % num_actual)
-        if num_new:
-            msg += f"Error: {num_new} new warnings have been introduced compared to the limit in docs/config.yml"
-    if msg:
-        return dieWithTestFailure(msg)
+    if not disable_warnings_check:
+        with open(os.path.join(DOC_ROOT, "config.yml")) as fh:
+            docs_config = yaml.safe_load(fh)
+
+        [fatal_errors, known_errors] = _check_sphinx_warnings(warnings, docs_config)
+
+        if len(known_errors):
+            log_known_errors(known_errors)
+        if len(fatal_errors):
+            return die_with_test_failure(fatal_errors)
 
     # Upload the artifact containing the link to S3
     # This would be used by code-review to post the link to Phabricator
@@ -283,9 +274,7 @@ def _dump_sphinx_backtrace():
         if fnmatch.fnmatch(name, pattern):
             pathFile = os.path.join(tmpdir, name)
             stat = os.stat(pathFile)
-            output += "Name: {0} / Creation date: {1}\n".format(
-                pathFile, time.ctime(stat.st_mtime)
-            )
+            output += f"Name: {pathFile} / Creation date: {time.ctime(stat.st_mtime)}\n"
             with open(pathFile) as f:
                 output += f.read()
     return output
@@ -320,7 +309,7 @@ def _run_sphinx(docdir, savedir, config=None, fmt="html", jobs=None, verbose=Non
         print("Run sphinx with:")
         print(args)
         status = sphinx.cmd.build.build_main(args)
-        with open(warn_path) as warn_file:
+        with open(warn_path, encoding="utf-8") as warn_file:
             warnings = warn_file.readlines()
         return status, warnings
     finally:
@@ -330,25 +319,33 @@ def _run_sphinx(docdir, savedir, config=None, fmt="html", jobs=None, verbose=Non
             print(ex)
 
 
-def _check_sphinx_fatal_warnings(warnings):
-    with open(os.path.join(DOC_ROOT, "config.yml"), "r") as fh:
-        fatal_warnings_src = yaml.safe_load(fh)["fatal warnings"]
-    fatal_warnings_regex = [re.compile(item) for item in fatal_warnings_src]
-    fatal_warnings = []
-    for warning in warnings:
-        if any(item.search(warning) for item in fatal_warnings_regex):
-            fatal_warnings.append(warning)
-    return fatal_warnings
-
-
-def _check_sphinx_num_warnings(warnings):
+def _check_sphinx_warnings(warnings, docs_config):
+    allowed_warnings_regex = [
+        re.compile(item) for item in docs_config["allowed_warnings"]
+    ]
     # warnings file contains other strings as well
-    num_warnings = len([w for w in warnings if "WARNING" in w])
-    with open(os.path.join(DOC_ROOT, "config.yml"), "r") as fh:
-        max_num = yaml.safe_load(fh)["max_num_warnings"]
-    if num_warnings > max_num:
-        return [num_warnings - max_num, num_warnings]
-    return [0, num_warnings]
+    errors = []
+    known_errors = []
+    for warning in warnings:
+        stripped = warning.strip()
+        # Replace slashes so that we can do matching against the Windows paths
+        # whilst not having to change the regexps.
+        stripped_and_slashes_changed = stripped.replace("\\", "/")
+
+        if len(stripped) and any(
+            x in stripped for x in ["ERROR", "CRITICAL", "WARNING"]
+        ):
+            if not (
+                any(
+                    item.search(stripped_and_slashes_changed)
+                    for item in allowed_warnings_regex
+                )
+            ):
+                errors.append(stripped)
+            else:
+                known_errors.append(stripped)
+
+    return [errors, known_errors]
 
 
 def manager():
@@ -439,7 +436,7 @@ def _s3_upload(root, project, unique_id, version=None):
 
     key_prefixes.append(unique_id)
 
-    with open(os.path.join(DOC_ROOT, "config.yml"), "r") as fh:
+    with open(os.path.join(DOC_ROOT, "config.yml")) as fh:
         redirects = yaml.safe_load(fh)["redirects"]
 
     redirects = {k.strip("/"): v.strip("/") for k, v in redirects.items()}
@@ -484,6 +481,7 @@ def generate_telemetry_docs(command_context):
         os.path.join(topsrcdir, "python/mach/docs/"),
         os.path.join(topsrcdir, "python/mach/pings.yaml"),
         os.path.join(topsrcdir, "python/mach/metrics.yaml"),
+        os.path.join(topsrcdir, "python/mozbuild/metrics.yaml"),
     ]
     metrics_paths = [
         handler.metrics_path
@@ -532,8 +530,20 @@ def die(msg, exit_code=1):
     return exit_code
 
 
-def dieWithTestFailure(msg, exit_code=1):
-    for m in msg.split("\n"):
-        msg = "TEST-UNEXPECTED-FAILURE | %s %s | %s" % (sys.argv[0], sys.argv[1], m)
-        print(msg, file=sys.stderr)
+def die_with_test_failure(msgs, exit_code=1):
+    for m in msgs:
+        print(
+            "TEST-UNEXPECTED-FAILURE | %s %s | %s" % (sys.argv[0], sys.argv[1], m),
+            file=sys.stderr,
+        )
+    print("Failures: %d" % len(msgs))
     return exit_code
+
+
+def log_known_errors(msgs):
+    for m in msgs:
+        print(
+            "TEST-KNOWN-FAILURE | %s %s | %s" % (sys.argv[0], sys.argv[1], m),
+            file=sys.stderr,
+        )
+    print("Known Failures: %d" % len(msgs))

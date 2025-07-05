@@ -15,7 +15,11 @@ add_task(async function test_expireAllFavicons() {
   });
 
   // Set a favicon for our test page.
-  await setFaviconForPage(TEST_PAGE_URI, SMALLPNG_DATA_URI);
+  await PlacesTestUtils.setFaviconForPage(
+    TEST_PAGE_URI,
+    SMALLPNG_DATA_URI,
+    SMALLPNG_DATA_URI
+  );
 
   // Add a page with a bookmark.
   await PlacesUtils.bookmarks.insert({
@@ -25,7 +29,11 @@ add_task(async function test_expireAllFavicons() {
   });
 
   // Set a favicon for our bookmark.
-  await setFaviconForPage(BOOKMARKED_PAGE_URI, SMALLPNG_DATA_URI);
+  await PlacesTestUtils.setFaviconForPage(
+    BOOKMARKED_PAGE_URI,
+    SMALLPNG_DATA_URI,
+    SMALLPNG_DATA_URI
+  );
 
   // Start expiration only after data has been saved in the database.
   let promise = promiseTopicObserved(PlacesUtils.TOPIC_FAVICONS_EXPIRED);
@@ -33,6 +41,6 @@ add_task(async function test_expireAllFavicons() {
   await promise;
 
   // Check that the favicons for the pages we added were removed.
-  await promiseFaviconMissingForPage(TEST_PAGE_URI);
-  await promiseFaviconMissingForPage(BOOKMARKED_PAGE_URI);
+  await checkFaviconMissingForPage(TEST_PAGE_URI);
+  await checkFaviconMissingForPage(BOOKMARKED_PAGE_URI);
 });

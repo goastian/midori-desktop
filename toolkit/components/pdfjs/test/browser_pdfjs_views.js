@@ -38,7 +38,7 @@ add_task(async function test() {
         );
 
         // open sidebar
-        var sidebar = content.document.querySelector("button#sidebarToggle");
+        var sidebar = content.document.querySelector("#sidebarToggleButton");
         var outerContainer =
           content.document.querySelector("div#outerContainer");
 
@@ -97,10 +97,9 @@ add_task(async function test() {
         );
 
         sidebar.click();
-
-        var viewer = content.wrappedJSObject.PDFViewerApplication;
-        await viewer.close();
       });
+
+      await waitForPdfJSClose(browser);
     }
   );
 });

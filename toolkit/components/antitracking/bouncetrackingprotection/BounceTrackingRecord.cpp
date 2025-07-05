@@ -37,7 +37,8 @@ void BounceTrackingRecord::AddBounceHost(const nsACString& aHost) {
 }
 
 // static
-nsCString BounceTrackingRecord::DescribeSet(const nsTHashSet<nsCString>& set) {
+nsCString BounceTrackingRecord::DescribeSet(
+    const nsTHashSet<nsCStringHashKey>& set) {
   nsAutoCString setStr;
 
   setStr.AppendLiteral("[");
@@ -61,21 +62,34 @@ void BounceTrackingRecord::AddStorageAccessHost(const nsACString& aHost) {
   mStorageAccessHosts.Insert(aHost);
 }
 
-const nsTHashSet<nsCString>& BounceTrackingRecord::GetBounceHosts() const {
+void BounceTrackingRecord::AddUserActivationHost(const nsACString& aHost) {
+  if (!aHost.IsEmpty()) {
+    mUserActivationHosts.Insert(aHost);
+  }
+}
+
+const nsTHashSet<nsCStringHashKey>& BounceTrackingRecord::GetBounceHosts()
+    const {
   return mBounceHosts;
 }
 
-const nsTHashSet<nsCString>& BounceTrackingRecord::GetStorageAccessHosts()
-    const {
+const nsTHashSet<nsCStringHashKey>&
+BounceTrackingRecord::GetStorageAccessHosts() const {
   return mStorageAccessHosts;
+}
+
+const nsTHashSet<nsCStringHashKey>&
+BounceTrackingRecord::GetUserActivationHosts() const {
+  return mUserActivationHosts;
 }
 
 nsCString BounceTrackingRecord::Describe() {
   return nsPrintfCString(
       "{mInitialHost:%s, mFinalHost:%s, mBounceHosts:%s, "
-      "mStorageAccessHosts:%s}",
+      "mStorageAccessHosts:%s, mUserActivationHosts:%s}",
       mInitialHost.get(), mFinalHost.get(), DescribeSet(mBounceHosts).get(),
-      DescribeSet(mStorageAccessHosts).get());
+      DescribeSet(mStorageAccessHosts).get(),
+      DescribeSet(mUserActivationHosts).get());
 }
 
 }  // namespace mozilla

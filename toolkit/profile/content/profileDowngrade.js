@@ -17,12 +17,12 @@ function init() {
    *  1: A return argument, one of nsIToolkitProfileService.downgradeUIChoice.
    */
   gParams = window.arguments[0].QueryInterface(Ci.nsIDialogParamBlock);
-  if (AppConstants.MOZ_SERVICES_SYNC) {
-    let hasSync = gParams.GetInt(0) & Ci.nsIToolkitProfileService.hasSync;
+  let hasSync =
+    AppConstants.MOZ_SERVICES_SYNC &&
+    gParams.GetInt(0) & Ci.nsIToolkitProfileService.hasSync;
 
-    document.getElementById("sync").hidden = !hasSync;
-    document.getElementById("nosync").hidden = hasSync;
-  }
+  document.getElementById("sync").hidden = !hasSync;
+  document.getElementById("nosync").hidden = hasSync;
 
   document.addEventListener("dialogextra1", createProfile);
   document.addEventListener("dialogaccept", quit);
@@ -37,3 +37,5 @@ function createProfile() {
   gParams.SetInt(1, Ci.nsIToolkitProfileService.createNewProfile);
   window.close();
 }
+
+window.addEventListener("load", () => init());

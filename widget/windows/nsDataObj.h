@@ -121,7 +121,9 @@ class nsDataObj : public IDataObject, public IDataObjectAsyncCapability {
   HRESULT GetText(const nsACString& aDF, FORMATETC& aFE, STGMEDIUM& aSTG);
 
  private:
-  HRESULT GetDib(const nsACString& inFlavor, FORMATETC&, STGMEDIUM& aSTG);
+  enum class DibType { Bmp, Png };
+  HRESULT GetDib(const nsACString& inFlavor, FORMATETC&, STGMEDIUM& aSTG,
+                 DibType aDibType);
 
   HRESULT DropImage(FORMATETC& aFE, STGMEDIUM& aSTG);
   HRESULT DropFile(FORMATETC& aFE, STGMEDIUM& aSTG);
@@ -166,9 +168,8 @@ class nsDataObj : public IDataObject, public IDataObjectAsyncCapability {
  private:
   nsTArray<nsCString> mDataFlavors;
 
-  nsITransferable* mTransferable;  // nsDataObj owns and ref counts
-                                   // nsITransferable, the nsITransferable does
-                                   // know anything about the nsDataObj
+  // the nsITransferable knows nothing about the nsDataObj
+  RefPtr<nsITransferable> mTransferable;
 
  protected:
   CEnumFormatEtc* m_enumFE;  // Ownership Rules:

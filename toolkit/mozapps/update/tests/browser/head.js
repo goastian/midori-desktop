@@ -102,7 +102,7 @@ add_setup(async function setupTestCommon() {
   ds.unregisterProvider(dirProvider);
 
   setUpdateTimerPrefs();
-  reloadUpdateManagerData(true);
+  await reloadUpdateManagerData(true);
   removeUpdateFiles(true);
   UpdateListener.reset();
   AppMenuNotifications.removeNotification(/.*/);
@@ -121,7 +121,7 @@ registerCleanupFunction(async () => {
   Services.env.set("MOZ_TEST_STAGING_ERROR", "");
   UpdateListener.reset();
   AppMenuNotifications.removeNotification(/.*/);
-  reloadUpdateManagerData(true);
+  await reloadUpdateManagerData(true);
   // Pass false when the log files are needed for troubleshooting the tests.
   removeUpdateFiles(true);
   // Always try to restore the original updater files. If none of the updater
@@ -197,20 +197,25 @@ function lockWriteTestFile() {
 }
 
 /**
- * Closes the update mutex handle in nsUpdateService.js if it exists and then
- * creates a new update mutex handle so the update code thinks there is another
- * instance of the application handling updates.
+ * Releases the update mutex if acquired by UpdateService.sys.mjs, and then
+ * acquires it through a fresh nsIUpdateMutex object, so the update code thinks
+ * there is another instance handling updates.
  *
- * @throws If the function is called on a platform other than Windows.
+ * @throws If acquiring the update mutex fails.
  */
 function setOtherInstanceHandlingUpdates() {
-  if (AppConstants.platform != "win") {
-    throw new Error("Windows only test function called");
+  gAUS.observe(null, "test-unlock-update-mutex", "");
+
+  let updateMutex = Cc["@mozilla.org/updates/update-mutex;1"].createInstance(
+    Ci.nsIUpdateMutex
+  );
+  if (!updateMutex.tryLock()) {
+    throw new Error(
+      "Failed to simulate another instance acquiring the update mutex"
+    );
   }
-  gAUS.observe(null, "test-close-handle-update-mutex", "");
-  let handle = createMutex(getPerInstallationMutexName());
   registerCleanupFunction(() => {
-    closeHandle(handle);
+    updateMutex.unlock();
   });
 }
 
@@ -315,10 +320,13 @@ function moveRealUpdater() {
   return (async function () {
     try {
       // Move away the real updater
-      let greBinDir = getGREBinDir();
-      let updater = greBinDir.clone();
+      let updaterBackup = getGREBinDir();
+      let updater = getGREBinDir();
       updater.append(FILE_UPDATER_BIN);
-      updater.moveTo(greBinDir, FILE_UPDATER_BIN_BAK);
+      if (AppConstants.platform == "macosx") {
+        updaterBackup = updaterBackup.parent.parent.parent;
+      }
+      updater.moveTo(updaterBackup, FILE_UPDATER_BIN_BAK);
 
       let greDir = getGREDir();
       let updateSettingsIni = greDir.clone();
@@ -406,6 +414,9 @@ function restoreUpdaterBackup() {
   let greBinDir = getGREBinDir();
   let updater = greBinDir.clone();
   let updaterBackup = greBinDir.clone();
+  if (AppConstants.platform == "macosx") {
+    updaterBackup = updaterBackup.parent.parent.parent;
+  }
   updater.append(FILE_UPDATER_BIN);
   updaterBackup.append(FILE_UPDATER_BIN_BAK);
   if (updaterBackup.exists()) {
@@ -658,7 +669,7 @@ function runDoorhangerUpdateTest(params, steps) {
       // Perform a startup processing doorhanger test.
       writeStatusFile(STATE_FAILED_CRC_ERROR);
       writeUpdatesToXMLFile(getLocalUpdatesXMLString(params.updates), true);
-      reloadUpdateManagerData();
+      await reloadUpdateManagerData();
       await testPostUpdateProcessing();
     }
 

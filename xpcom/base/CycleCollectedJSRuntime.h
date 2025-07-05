@@ -14,6 +14,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/SegmentedVector.h"
+#include "mozilla/Variant.h"
 #include "jsapi.h"
 #include "jsfriendapi.h"
 #include "js/TypeDecls.h"
@@ -84,12 +85,12 @@ class JSZoneParticipant : public nsCycleCollectionParticipant {
 
 class IncrementalFinalizeRunnable;
 
+enum WhichJSHolders { AllJSHolders, JSHoldersRequiredForGrayMarking };
+
 // A map from JS holders to tracer objects, where the values are stored in
 // SegmentedVector to speed up iteration.
 class JSHolderMap {
  public:
-  enum WhichHolders { AllHolders, HoldersRequiredForGrayMarking };
-
   class Iter;
 
   JSHolderMap();
@@ -178,7 +179,7 @@ class JSHolderMap::EntryVectorIter {
 
 class JSHolderMap::Iter {
  public:
-  explicit Iter(JSHolderMap& aMap, WhichHolders aWhich = AllHolders);
+  explicit Iter(JSHolderMap& aMap, WhichJSHolders aWhich = AllJSHolders);
 
   ~Iter() {
     MOZ_RELEASE_ASSERT(mHolderMap.mHasIterator);
@@ -211,6 +212,111 @@ class JSHolderMap::Iter {
   EntryVectorIter mIter;
 };
 
+struct JSHolderListEntry {
+  void* mHolder;
+  JSHolderKey* mKey;
+  nsScriptObjectTracer* mTracer;
+
+  JSHolderListEntry();
+  JSHolderListEntry(void* aHolder, JSHolderKey* aKey,
+                    nsScriptObjectTracer* aTracer);
+};
+
+// A list of JS holders and their tracer objects.
+//
+// This supports the same operations as JSHolderMap but does not use a hash
+// table to look up holders. Instead it requires that entries embed a
+// JSHolderKey, which it uses to store the location of the entry in the list.
+class JSHolderList {
+ public:
+  class Iter;
+
+  JSHolderList();
+  ~JSHolderList() { MOZ_RELEASE_ASSERT(!mHasIterator); }
+
+  bool Has(JSHolderKey* aKey) const;
+  nsScriptObjectTracer* Get(void* aHolder, JSHolderKey* aKey) const;
+  nsScriptObjectTracer* Extract(void* aHolder, JSHolderKey* aKey);
+  void Put(void* aHolder, nsScriptObjectTracer* aTracer, JSHolderKey* aKey);
+
+  size_t SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const;
+
+ private:
+  using Entry = JSHolderListEntry;
+
+  using EntryVector = SegmentedVector<Entry, 256, InfallibleAllocPolicy>;
+
+  class EntryVectorIter;
+
+  bool RemoveEntry(EntryVector& aJSHolders, Entry* aEntry);
+
+  // A vector of holders. These are not associated with a particular zone and
+  // can contain pointers to GC things in more than one zone.
+  EntryVector mJSHolders;
+
+  // Iterators can mutate the element vectors by removing stale elements. Allow
+  // at most one to exist at a time.
+  bool mHasIterator = false;
+};
+
+// An iterator over an EntryVector that skips over removed entries and removes
+// them from the list.
+class JSHolderList::EntryVectorIter {
+ public:
+  EntryVectorIter(JSHolderList& aList, EntryVector& aVector)
+      : mHolderList(aList), mVector(aVector), mIter(aVector.Iter()) {
+    Settle();
+  }
+
+  const EntryVector& Vector() const { return mVector; }
+
+  bool Done() const { return mIter.Done(); }
+  const Entry& Get() const { return mIter.Get(); }
+  void Next() {
+    mIter.Next();
+    Settle();
+  }
+
+  operator const Entry*() const { return &Get(); }
+  const Entry* operator->() const { return &Get(); }
+
+ private:
+  void Settle();
+  friend class JSHolderList::Iter;
+
+  JSHolderList& mHolderList;
+  EntryVector& mVector;
+  EntryVector::IterImpl mIter;
+};
+
+class JSHolderList::Iter {
+ public:
+  explicit Iter(JSHolderList& aList, WhichJSHolders aWhich = AllJSHolders);
+
+  ~Iter() {
+    MOZ_RELEASE_ASSERT(mHolderList.mHasIterator);
+    mHolderList.mHasIterator = false;
+  }
+
+  bool Done() const { return mIter.Done(); }
+  const Entry& Get() const { return mIter.Get(); }
+  void Next() { mIter.Next(); }
+
+  // If the holders have been removed from the list while the iterator is live,
+  // then the iterator may point to a removed entry. Update the iterator to make
+  // sure it points to a valid entry or is done.
+  void UpdateForRemovals();
+
+  operator const Entry*() const { return &Get(); }
+  const Entry* operator->() const { return &Get(); }
+
+  JS::Zone* Zone() const { return nullptr; }
+
+ private:
+  JSHolderList& mHolderList;
+  EntryVectorIter mIter;
+};
+
 class CycleCollectedJSRuntime {
   friend class JSGCThingParticipant;
   friend class JSZoneParticipant;
@@ -234,6 +340,9 @@ class CycleCollectedJSRuntime {
   virtual void CustomOutOfMemoryCallback() {}
 
   CycleCollectedJSContext* GetContext() { return mContext; }
+
+  void TraceNativeBlackRoots(JSTracer* aTracer);
+  virtual void TraceAdditionalNativeBlackRoots(JSTracer* aTracer) {}
 
  private:
   void DescribeGCThing(bool aIsMarked, JS::GCCellPtr aThing,
@@ -268,11 +377,15 @@ class CycleCollectedJSRuntime {
 
   void TraverseNativeRoots(nsCycleCollectionNoteRootCallback& aCb);
 
+  template <typename ContainerT>
+  void TraverseJSHolders(ContainerT& aHolders,
+                         nsCycleCollectionNoteRootCallback& aCb);
+
   static void TraceBlackJS(JSTracer* aTracer, void* aData);
 
   // Trace gray JS roots until budget is exceeded and return whether we
   // finished.
-  static bool TraceGrayJS(JSTracer* aTracer, js::SliceBudget& budget,
+  static bool TraceGrayJS(JSTracer* aTracer, JS::SliceBudget& budget,
                           void* aData);
 
   static void GCCallback(JSContext* aContext, JSGCStatus aStatus,
@@ -289,16 +402,15 @@ class CycleCollectedJSRuntime {
   static void* BeforeWaitCallback(uint8_t* aMemory);
   static void AfterWaitCallback(void* aCookie);
 
-  virtual void TraceNativeBlackRoots(JSTracer* aTracer) {};
-
 #ifdef NS_BUILD_REFCNT_LOGGING
   void TraceAllNativeGrayRoots(JSTracer* aTracer);
 #endif
 
-  bool TraceNativeGrayRoots(JSTracer* aTracer, JSHolderMap::WhichHolders aWhich,
-                            js::SliceBudget& aBudget);
-  bool TraceJSHolders(JSTracer* aTracer, JSHolderMap::Iter& aIter,
-                      js::SliceBudget& aBudget);
+  bool TraceNativeGrayRoots(JSTracer* aTracer, WhichJSHolders aWhich,
+                            JS::SliceBudget& aBudget);
+  template <typename IterT>
+  bool TraceJSHolders(JSTracer* aTracer, IterT& aIter,
+                      JS::SliceBudget& aBudget);
 
  public:
   enum DeferredFinalizeType {
@@ -394,7 +506,10 @@ class CycleCollectedJSRuntime {
  public:
   void AddJSHolder(void* aHolder, nsScriptObjectTracer* aTracer,
                    JS::Zone* aZone);
+  void AddJSHolderWithKey(void* aHolder, nsScriptObjectTracer* aTracer,
+                          JSHolderKey* aKey);
   void RemoveJSHolder(void* aHolder);
+  void RemoveJSHolderWithKey(void* aHolder, JSHolderKey* aKey);
 #ifdef DEBUG
   void AssertNoObjectsToTrace(void* aPossibleJSHolder);
 #endif
@@ -461,8 +576,12 @@ class CycleCollectedJSRuntime {
 
   mozilla::TimeStamp mLatestNurseryCollectionStart;
 
-  JSHolderMap mJSHolders;
-  Maybe<JSHolderMap::Iter> mHolderIter;
+  JSHolderMap mJSHolderMap;
+  JSHolderList mJSHolderList;
+
+  // Holds state for incremental tracing of gray roots between calls to
+  // TraceNativeGrayRoots.
+  Variant<Nothing, JSHolderMap::Iter, JSHolderList::Iter> mTraceState;
 
   using DeferredFinalizerTable = nsTHashMap<DeferredFinalizeFunction, void*>;
   DeferredFinalizerTable mDeferredFinalizerTable;
@@ -502,7 +621,7 @@ class CycleCollectedJSRuntime {
     // complicated garbage-collection scenarios, e.g. a JSContext being killed
     // while we still hold onto an exception thrown from it.
     struct ErrorDetails {
-      nsString mFilename;
+      nsCString mFilename;
       nsString mMessage;
       nsString mStack;
       JSExnType mType;

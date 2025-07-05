@@ -10,67 +10,105 @@ $schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
 $tags:
   - 'Core :: Widget: Win32'
 
-file_dialog:
-  fallback_v2:
-    type: event
+widget:
+  ime_name_on_windows:
+    type: labeled_boolean
     description: >
-      Records the result of an attempt to open and use the out-of-process file
-      dialog when the in-process file-dialog is available as a fallback.
-    metadata:
-      # mostly technical, but includes timing data that may derive from user
-      # interactions
-      data-sensitivity: [technical, interaction]
-    notification_emails:
-      - rkraesig@mozilla.com
+      Locale ID and name of IME which was selected by users on Windows.
+      This does NOT collect legacy IMM-IME names since we cannot get
+      readable names and we do not support IMM-IME so aggressively because
+      IME vendors should've already released TIP for TSF for supporting
+      Windows 8 or later completely.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar widget.ime_name_on_windows.
     bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1872397
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1884221
-    # this event may alternatively be manually expired once bug 1677170 is
-    # closed
-    expires: 135
+      - https://bugzil.la/1215818
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1872397#c7
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1884221#c2
-    extra_keys:
-      succeeded:
-        type: boolean
-        description: >
-          Whether the out-of-process dialog succeeded or failed. (Note that
-          user-induced cancellation is considered a form of success.)
-      time_remote:
-        type: quantity
-        description: >
-          The time between the out-of-process file dialog's instantiation
-          attempt and its conclusion (successful or otherwise), in milliseconds.
-      where_remote:
-        type: string
-        description: >
-          The place (in the source code) where the out-of-process file dialog
-          failed. One of a finite set of strings. Only present when `!succeeded`.
-      why_remote:
-        type: string
-        description: >
-          The failure code produced by the out-of-process file dialog, formatted
-          as eight hexdigits. Only present when `!succeeded`.
-      time_local:
-        type: quantity
-        description: >
-          The time between the in-process file dialog's instantiation attempt
-          and its conclusion (successfully or otherwise), in milliseconds. Only
-          present when `!succeeded`.
-      where_local:
-        type: string
-        description: >
-          The place (in the source code) where the in-process file dialog
-          failed. One of a finite set of strings.
+      - https://bugzil.la/1215818
+    notification_emails:
+      - mnakano.birchill@mozilla.com
+    expires: never
+    telemetry_mirror: WIDGET_IME_NAME_ON_WINDOWS
 
-          Only present when the in-process file dialog fails. (`!succeeded` is
-          necessary but not sufficient.)
-      why_local:
-        type: string
-        description: >
-          The failure code produced by the in-process file dialog, formatted as
-          eight hexdigits.
+  ime_name_on_windows_inserted_crlf:
+    type: labeled_boolean
+    description: >
+      Same data as ime_name_on_windows, but only collecting IME names
+      which inserted CRLF to check whether the feature works.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar widget.ime_name_on_windows_inserted_crlf.
+    bugs:
+      - https://bugzil.la/1865256
+    data_reviews:
+      - https://bugzil.la/1865256
+    notification_emails:
+      - mnakano.birchill@mozilla.com
+    expires: never
+    telemetry_mirror: WIDGET_IME_NAME_ON_WINDOWS_INSERTED_CRLF
 
-          Only present when the in-process file dialog fails. (`!succeeded` is
-          necessary but not sufficient.)
+  touch_enabled_device:
+    type: labeled_counter
+    description: >
+      Boolean indicating if a touch input device is detected.
+
+      This metric was generated to correspond to the Legacy Telemetry boolean
+      histogram TOUCH_ENABLED_DEVICE.
+    labels:
+      - "false"
+      - "true"
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=795307
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1390269
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=795307
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1390269
+    notification_emails:
+      - jimm@mozilla.com
+    expires: never
+    telemetry_mirror: h#TOUCH_ENABLED_DEVICE
+
+windows.security:
+  antivirus:
+    type: string_list
+    description: |
+      Product names of registered antivirus programs.
+      Windows only.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950415
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950415
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - jimm@mozilla.com
+    expires: never
+
+  antispyware:
+    type: string_list
+    description: |
+      Product names of registered antispyware programs.
+      Windows only.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950415
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950415
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - jimm@mozilla.com
+    expires: never
+
+  firewall:
+    type: string_list
+    description: |
+      Product names of registered firewall programs.
+      Windows only.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950415
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950415
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - jimm@mozilla.com
+    expires: never

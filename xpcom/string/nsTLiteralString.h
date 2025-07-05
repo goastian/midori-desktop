@@ -91,8 +91,8 @@ class nsTLiteralString : public mozilla::detail::nsTStringRepr<T> {
 // any non-private use of that constructor would get into the codebase.
 #if defined(__clang__)
  private:
-  friend constexpr auto operator"" _ns(const char* aStr, std::size_t aLen);
-  friend constexpr auto operator"" _ns(const char16_t* aStr, std::size_t aLen);
+  friend constexpr auto operator""_ns(const char* aStr, std::size_t aLen);
+  friend constexpr auto operator""_ns(const char16_t* aStr, std::size_t aLen);
 #else
  public:
 #endif
@@ -112,6 +112,10 @@ class nsTLiteralString : public mozilla::detail::nsTStringRepr<T> {
 
 extern template class nsTLiteralString<char>;
 extern template class nsTLiteralString<char16_t>;
+
+template <typename Char>
+struct fmt::formatter<nsTLiteralString<Char>, Char>
+    : fmt::formatter<mozilla::detail::nsTStringRepr<Char>, Char> {};
 
 namespace mozilla {
 constexpr MOZ_IMPLICIT StaticString::StaticString(nsLiteralCString const& str)

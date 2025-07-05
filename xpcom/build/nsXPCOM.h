@@ -41,7 +41,7 @@ extern bool gXPCOMMainThreadEventsAreDoomed;
 /**
  * Initialises XPCOM. You must call one of the NS_InitXPCOM methods
  * before proceeding to use xpcom. The one exception is that you may
- * call NS_NewLocalFile to create a nsIFile.
+ * call the NS_NewLocalFile family of functions to create an nsIFile.
  *
  * @note Use <CODE>NS_NewLocalFile</CODE> or <CODE>NS_NewNativeLocalFile</CODE>
  *       to create the file object you supply as the bin directory path in this
@@ -131,42 +131,100 @@ XPCOM_API(nsresult) NS_GetComponentManager(nsIComponentManager** aResult);
  */
 XPCOM_API(nsresult) NS_GetComponentRegistrar(nsIComponentRegistrar** aResult);
 
-/**
- * Public Method to create an instance of a nsIFile.  This function
- * may be called prior to NS_InitXPCOM.
- *
- *   @param aPath
- *       A string which specifies a full file path to a
- *       location.  Relative paths will be treated as an
- *       error (NS_ERROR_FILE_UNRECOGNIZED_PATH).
- *       |NS_NewNativeLocalFile|'s path must be in the
- *       filesystem charset.
- *   @param aFollowLinks
- *       This attribute will determine if the nsLocalFile will auto
- *       resolve symbolic links.  By default, this value will be false
- *       on all non unix systems.  On unix, this attribute is effectively
- *       a noop.
- * @param aResult Interface pointer to a new instance of an nsIFile
- *
- * @return NS_OK for success;
- *         other error codes indicate a failure.
- */
-
 #ifdef __cplusplus
 
-XPCOM_API(nsresult)
-NS_NewLocalFile(const nsAString& aPath, bool aFollowLinks, nsIFile** aResult);
+/**
+ * Public method to create an instance of a nsIFile. This function may be called
+ * prior to NS_InitXPCOM.
+ *
+ * @param aPath A string which specifies a full file path to a location.
+ * Relative paths will be treated as an error (NS_ERROR_FILE_UNRECOGNIZED_PATH).
+ * Path must be in UTF-16 encoding.
+ *
+ * @param aResult Interface pointer to a new instance of an nsIFile
+ *
+ * @return NS_OK for success; other error codes indicate a failure.
+ */
+XPCOM_API([[nodiscard]] nsresult)
+NS_NewLocalFile(const nsAString& aPath, nsIFile** aResult);
 
-XPCOM_API(nsresult)
-NS_NewNativeLocalFile(const nsACString& aPath, bool aFollowLinks,
-                      nsIFile** aResult);
+/**
+ * Public method to create an instance of a nsIFile. This function may be called
+ * prior to NS_InitXPCOM.
+ *
+ * @param aPath A string which specifies a full file path to a location.
+ * Relative paths will be treated as an error (NS_ERROR_FILE_UNRECOGNIZED_PATH).
+ * Path must be in the system's code page encoding for Windows and native path
+ * encoding for all other platforms.
+ *
+ * @param aResult Interface pointer to a new instance of an nsIFile
+ *
+ * @return NS_OK for success; other error codes indicate a failure.
+ */
+XPCOM_API([[nodiscard]] nsresult)
+NS_NewNativeLocalFile(const nsACString& aPath, nsIFile** aResult);
 
 // Use NS_NewLocalFile if you already have a UTF-16 string.
 // Otherwise non-ASCII paths will break on some platforms
 // including Windows.
 class NS_ConvertUTF16toUTF8;
 nsresult NS_NewNativeLocalFile(const NS_ConvertUTF16toUTF8& aPath,
-                               bool aFollowLinks, nsIFile** aResult) = delete;
+                               nsIFile** aResult) = delete;
+
+/**
+ * Public method to create an instance of a nsIFile. This function may be called
+ * prior to NS_InitXPCOM.
+ *
+ * @param aPath A string which specifies a full file path to a location.
+ * Relative paths will be treated as an error (NS_ERROR_FILE_UNRECOGNIZED_PATH).
+ * Path must be in UTF-8 encoding.
+ *
+ * @param aResult Interface pointer to a new instance of an nsIFile
+ *
+ * @return NS_OK for success; other error codes indicate a failure.
+ */
+XPCOM_API([[nodiscard]] nsresult)
+NS_NewUTF8LocalFile(const nsACString& aPath, nsIFile** aResult);
+
+/**
+ * Public method to create an instance of a nsIFile. This function may be called
+ * prior to NS_InitXPCOM.
+ *
+ * @param aFile File from which to construct the new file.
+ * @param aResult Interface pointer to a new instance of an nsIFile.
+ *
+ * @return NS_OK for success; other error codes indicate a failure.
+ */
+XPCOM_API([[nodiscard]] nsresult)
+NS_NewLocalFileWithFile(nsIFile* aFile, nsIFile** aResult);
+
+/**
+ * Public method to create an instance of a nsIFile. This function may be called
+ * prior to NS_InitXPCOM.
+ *
+ * @param aFromFile File to which the descriptor is relative.
+ * @param aRelativeDesc Relative descriptor string for file.
+ * @param aResult Interface pointer to a new instance of an nsIFile.
+ *
+ * @return NS_OK for success; other error codes indicate a failure.
+ */
+XPCOM_API([[nodiscard]] nsresult)
+NS_NewLocalFileWithRelativeDescriptor(nsIFile* aFromFile,
+                                      const nsACString& aRelativeDesc,
+                                      nsIFile** aResult);
+
+/**
+ * Public method to create an instance of a nsIFile. This function may be called
+ * prior to NS_InitXPCOM.
+ *
+ * @param aPersistentDescriptor Persistent descriptor string for file.
+ * @param aResult Interface pointer to a new instance of an nsIFile.
+ *
+ * @return NS_OK for success; other error codes indicate a failure.
+ */
+XPCOM_API([[nodiscard]] nsresult)
+NS_NewLocalFileWithPersistentDescriptor(const nsACString& aPersistentDescriptor,
+                                        nsIFile** aResult);
 
 #endif
 
@@ -296,6 +354,9 @@ XPCOM_API(void)
 NS_CycleCollectorSuspect3(void* aPtr, nsCycleCollectionParticipant* aCp,
                           nsCycleCollectingAutoRefCnt* aRefCnt,
                           bool* aShouldDelete);
+
+XPCOM_API(void)
+NS_CycleCollectableHasRefCntZero();
 
 #endif
 

@@ -5,6 +5,7 @@
 
 #include "Common.h"
 #include "LookupCacheV4.h"
+#include "nsICryptoHash.h"
 
 #define EXPIRED_TIME_SEC (PR_Now() / PR_USEC_PER_SEC - 3600)
 #define NOTEXPIRED_TIME_SEC (PR_Now() / PR_USEC_PER_SEC + 3600)
@@ -215,10 +216,14 @@ void TestInvalidateExpiredCacheEntry() {
 }
 
 TEST(UrlClassifierCaching, InvalidateExpiredCacheEntryV2)
-{ TestInvalidateExpiredCacheEntry<LookupCacheV2>(); }
+{
+  TestInvalidateExpiredCacheEntry<LookupCacheV2>();
+}
 
 TEST(UrlClassifierCaching, InvalidateExpiredCacheEntryV4)
-{ TestInvalidateExpiredCacheEntry<LookupCacheV4>(); }
+{
+  TestInvalidateExpiredCacheEntry<LookupCacheV4>();
+}
 
 // This testcase check if an cache entry whose negative cache time is expired
 // and it doesn't have any postive cache entries in it, it should be removed

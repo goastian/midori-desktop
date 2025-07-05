@@ -448,6 +448,23 @@ crash:
     send_in_pings:
       - crash
 
+  utility_actors_name:
+    type: string_list
+    description: >
+      List of IPC actor names running on a utility process instance (if the crashing process was a utility process).
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1923873
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1923873
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
   shutdown_progress:
     type: string
     description: >
@@ -465,6 +482,63 @@ crash:
     send_in_pings:
       - crash
 
+  compressed_store_size:
+    type: memory_distribution
+    description: >
+      Size (in bytes) of the compressed crash store JSON file.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram CRASH_STORE_COMPRESSED_BYTES.
+    memory_unit: byte
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    expires: never
+    telemetry_mirror: CRASH_STORE_COMPRESSED_BYTES
+
+  submit_attempt:
+    type: labeled_counter
+    description: >
+      An attempt to submit a crash. Keyed on the CrashManager Crash.type.
+
+      This metric was generated to correspond to the Legacy Telemetry count
+      histogram PROCESS_CRASH_SUBMIT_ATTEMPT.
+    labels:
+      - main-crash
+      - main-hang
+      - content-crash
+      - content-hang
+      - plugin-crash
+      - plugin-hang
+      - gmplugin-crash
+      - gmplugin-hang
+      - gpu-crash
+      - gpu-hang
+      - vr-crash
+      - vr-hang
+      - rdd-crash
+      - rdd-hang
+      - socket-crash
+      - socket-hang
+      - utility-crash
+      - utility-hang
+      - sandboxbroker-crash
+      - sandboxbroker-hang
+      - forkserver-crash
+      - forkserver-hang
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950710
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    expires: never
+    telemetry_mirror: h#PROCESS_CRASH_SUBMIT_ATTEMPT
 
 crash.windows:
   error_reporting:
@@ -591,6 +665,40 @@ memory:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  js_large_allocation_failure:
+    type: string
+    description: >
+      A large allocation couldn't be satisfied: What was
+      its state when the crash happened.
+    notification_emails:
+      - mgaudet@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1964092
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1964092
+    data_sensitivity:
+      - technical
+    expires: never
+    send_in_pings:
+      - crash
+
+  js_out_of_memory:
+    type: string
+    description: >
+      A small allocation couldn't be satisfied: What was
+      its state when the crash happened.
+    notification_emails:
+      - mgaudet@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1964092
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1964092
     data_sensitivity:
       - technical
     expires: never
@@ -798,18 +906,17 @@ dll_blocklist:
 
 
 environment:
-  experimental_features:
+  nimbus_enrollments:
     type: string_list
     description: >
-      Specifies the enabled experimental features from
-      about:preferences#experimental.
+      The active Nimbus experiments and rollouts, as well as their branches.
     notification_emails:
       - crash-reporting-wg@mozilla.org
       - stability@mozilla.org
     bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950661
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1830098
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1950661
     data_sensitivity:
       - technical
     expires: never
@@ -856,6 +963,7 @@ crash_submission:
   success:
     type: counter
     description: >
+      Number of successfull crash report submissions
     notification_emails:
       - crash-reporting-wg@mozilla.org
       - stability@mozilla.org
@@ -869,6 +977,7 @@ crash_submission:
   failure:
     type: counter
     description: >
+      Number of failed crash report submissions
     notification_emails:
       - crash-reporting-wg@mozilla.org
       - stability@mozilla.org
@@ -882,6 +991,7 @@ crash_submission:
   pending:
     type: counter
     description: >
+      Number of pending crash report submissions
     notification_emails:
       - crash-reporting-wg@mozilla.org
       - stability@mozilla.org
@@ -895,6 +1005,7 @@ crash_submission:
   collector_errors:
     type: labeled_counter
     description: >
+      Amount and error name reported when performing crash submission.
     notification_emails:
       - crash-reporting-wg@mozilla.org
       - stability@mozilla.org
@@ -902,6 +1013,20 @@ crash_submission:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1873956
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1873956
+    data_sensitivity:
+      - technical
+    expires: never
+  channel_status:
+    type: labeled_counter
+    description: >
+      Collecting XHR channel status on error code when statusCode == 0.
+    notification_emails:
+      - crash-reporting-wg@mozilla.org
+      - stability@mozilla.org
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1905633
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1905633
     data_sensitivity:
       - technical
     expires: never

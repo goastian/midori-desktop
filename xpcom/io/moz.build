@@ -60,6 +60,7 @@ else:
     UNIFIED_SOURCES += [
         "nsLocalFileUnix.cpp",
     ]
+    CXXFLAGS += CONFIG["MOZ_GTK3_CFLAGS"]
 
 XPIDL_MODULE = "xpcom_io"
 
@@ -145,6 +146,11 @@ UNIFIED_SOURCES += [
 if CONFIG["MOZ_WIDGET_TOOLKIT"] == "cocoa":
     UNIFIED_SOURCES += [
         "CocoaFileUtils.mm",
+    ]
+
+if CONFIG["OS_ARCH"] == "Darwin":
+    UNIFIED_SOURCES += [
+        "DarwinFileUtils.mm",
     ]
 
 DEFINES["MOZ_APP_BASENAME"] = '"%s"' % CONFIG["MOZ_APP_BASENAME"]

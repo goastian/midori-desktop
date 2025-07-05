@@ -15,7 +15,6 @@
 
 #include "mozilla/AvailableMemoryWatcher.h"
 #include "CustomCocoaEvents.h"
-#include "mozilla/WidgetTraceEvent.h"
 #include "nsAppShell.h"
 #include "gfxPlatform.h"
 #include "nsCOMPtr.h"
@@ -30,7 +29,7 @@
 #include "nsObjCExceptions.h"
 #include "nsCocoaUtils.h"
 #include "nsCocoaFeatures.h"
-#include "nsChildView.h"
+#include "nsCocoaWindow.h"
 #include "nsToolkit.h"
 #include "TextInputHandler.h"
 #include "mozilla/BackgroundHangMonitor.h"
@@ -176,12 +175,6 @@ void OnUncaughtException(NSException* aException) {
 
 - (void)sendEvent:(NSEvent*)anEvent {
   mozilla::BackgroundHangMonitor().NotifyActivity();
-
-  if ([anEvent type] == NSEventTypeApplicationDefined &&
-      [anEvent subtype] == kEventSubtypeTrace) {
-    mozilla::SignalTracerThread();
-    return;
-  }
   [super sendEvent:anEvent];
 }
 
@@ -800,7 +793,7 @@ bool nsAppShell::ProcessNextNativeEvent(bool aMayWait) {
   NS_OBJC_END_TRY_IGNORE_BLOCK;
 
   if (!moreEvents) {
-    nsChildView::UpdateCurrentInputEventCount();
+    nsCocoaWindow::UpdateCurrentInputEventCount();
   }
 
   return moreEvents;

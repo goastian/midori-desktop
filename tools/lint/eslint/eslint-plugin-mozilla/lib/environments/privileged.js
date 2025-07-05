@@ -661,7 +661,6 @@ module.exports = {
     TCPSocket: false,
     TCPSocketErrorEvent: false,
     TCPSocketEvent: false,
-    TelemetryStopwatch: false,
     TestingDeprecatedInterface: false,
     Text: false,
     TextClause: false,
@@ -810,10 +809,11 @@ module.exports = {
     XULTextElement: false,
     console: false,
     // These are hard-coded and available in privileged scopes.
-    // See BackstagePass::Resolve.
+    // See SystemGlobal::Resolve.
     fetch: false,
     crypto: false,
     indexedDB: false,
     structuredClone: false,
+    locks: false,
   },
 };

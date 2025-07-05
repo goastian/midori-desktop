@@ -17,19 +17,20 @@
     --background-color-canvas: Canvas;
 
     /** Border **/
+    --border-color-deemphasized: color-mix(in srgb, currentColor 24%, transparent);
     --border-color-interactive: color-mix(in srgb, currentColor 15%, var(--color-gray-60));
 
     /** Button **/
-    --button-background-color: var(--button-bgcolor); /* TODO Bug 1821203 - Gray use needs to be consolidated */
-    --button-background-color-hover: var(--button-hover-bgcolor);
-    --button-background-color-active: var(--button-active-bgcolor);
-    --button-text-color: var(--button-color);
-    --button-text-color-primary: var(--button-primary-color);
+    --button-background-color: color-mix(in srgb, currentColor 13%, transparent); /* TODO Bug 1821203 - Gray use needs to be consolidated */
+    --button-background-color-hover: color-mix(in srgb, currentColor 17%, transparent);
+    --button-background-color-active: color-mix(in srgb, currentColor 30%, transparent);
+    --button-text-color: currentColor;
+    --button-text-color-primary: AccentColorText;
 
     /** Color **/
-    --color-accent-primary: var(--button-primary-bgcolor, AccentColor);
-    --color-accent-primary-hover: var(--button-primary-hover-bgcolor);
-    --color-accent-primary-active: var(--button-primary-active-bgcolor);
+    --color-accent-primary: AccentColor;
+    --color-accent-primary-hover: color-mix(in srgb, black 10%, var(--color-accent-primary));
+    --color-accent-primary-active: color-mix(in srgb, black 20%, var(--color-accent-primary));
 
     /** Font Size **/
     --font-size-root: unset;
@@ -40,9 +41,12 @@
 
     /** Link **/
     --link-color: LinkText;
-    --link-color-hover: LinkText;
-    --link-color-active: ActiveText;
+    --link-color-hover: color-mix(in srgb, black 10%, var(--link-color));
+    --link-color-active: color-mix(in srgb, black 20%, var(--link-color));
     --link-color-visited: var(--link-color);
+
+    /** Table Row **/
+    --table-row-background-color-alternate: light-dark(rgba(0,0,0,5%), rgba(255,255,255,5%)); /* TODO Bug 1821203 - Gray use needs to be consolidated */
 
     /** Text **/
     --text-color: currentColor;

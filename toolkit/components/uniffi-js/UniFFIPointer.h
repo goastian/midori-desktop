@@ -12,7 +12,7 @@
 #include "nsString.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/TypedArray.h"
-#include "mozilla/dom/UniFFIPointerType.h"
+#include "mozilla/uniffi/PointerType.h"
 
 namespace mozilla::dom {
 
@@ -33,7 +33,9 @@ class UniFFIPointer final : public nsISupports, public nsWrapperCache {
 
   JSObject* WrapObject(JSContext* aCx,
                        JS::Handle<JSObject*> aGivenProto) override;
-  nsISupports* GetParentObject() { return nullptr; }
+  nsISupports* GetParentObject() {
+    return xpc::NativeGlobal(xpc::PrivilegedJunkScope());
+  }
 
   /**
    * Clone the raw pointer that `UniFFIPointer` holds

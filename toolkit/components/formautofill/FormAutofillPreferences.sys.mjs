@@ -8,7 +8,6 @@
 
 // Add addresses enabled flag in telemetry environment for recording the number of
 // users who disable/enable the address autofill feature.
-const BUNDLE_URI = "chrome://formautofill/locale/formautofill.properties";
 const MANAGE_ADDRESSES_URL =
   "chrome://formautofill/content/manageAddresses.xhtml";
 const MANAGE_CREDITCARDS_URL =
@@ -47,9 +46,7 @@ const {
 
 const HTML_NS = "http://www.w3.org/1999/xhtml";
 
-export function FormAutofillPreferences() {
-  this.bundle = Services.strings.createBundle(BUNDLE_URI);
-}
+export function FormAutofillPreferences() {}
 
 FormAutofillPreferences.prototype = {
   /**
@@ -335,8 +332,13 @@ FormAutofillPreferences.prototype = {
             "autofill-creditcard-os-auth-dialog-caption"
           );
           let win = target.ownerGlobal.docShell.chromeEventHandler.ownerGlobal;
+
           // Calling OSKeyStore.ensureLoggedIn() instead of FormAutofillUtils.verifyOSAuth()
-          // since we want to authenticate user each time this stting is changed.
+          // since we want to authenticate user each time this setting is changed.
+
+          // Note on Glean collection: because OSKeyStore.ensureLoggedIn() is not wrapped in
+          // verifyOSAuth(), it will be documenting "success" for unsupported platforms
+          // and won't record "fail_error", only "fail_user_canceled"
           let isAuthorized = (
             await lazy.OSKeyStore.ensureLoggedIn(
               messageText,
@@ -345,6 +347,11 @@ FormAutofillPreferences.prototype = {
               false
             )
           ).authenticated;
+          Glean.formautofill.promptShownOsReauth.record({
+            trigger: "toggle_pref_os_auth",
+            result: isAuthorized ? "success" : "fail_user_canceled",
+          });
+
           if (!isAuthorized) {
             target.checked = !target.checked;
             break;
@@ -355,6 +362,9 @@ FormAutofillPreferences.prototype = {
             AUTOFILL_CREDITCARDS_REAUTH_PREF,
             target.checked
           );
+          Glean.formautofill.requireOsReauthToggle.record({
+            toggle_state: target.checked,
+          });
         } else if (target == this.refs.savedAddressesBtn) {
           target.ownerGlobal.gSubDialog.open(MANAGE_ADDRESSES_URL);
         } else if (target == this.refs.savedCreditCardsBtn) {

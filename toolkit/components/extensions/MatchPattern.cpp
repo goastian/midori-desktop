@@ -30,7 +30,9 @@ template <typename Range, typename AsAtom>
 static AtomSet::ArrayType AtomSetFromRange(Range&& aRange,
                                            AsAtom&& aTransform) {
   AtomSet::ArrayType atoms;
-  atoms.SetCapacity(RangeSize(aRange));
+  if (auto estimate = RangeSizeEstimate(aRange)) {
+    atoms.SetCapacity(estimate);
+  }
   std::transform(aRange.begin(), aRange.end(), MakeBackInserter(atoms),
                  std::forward<AsAtom>(aTransform));
 
@@ -80,7 +82,7 @@ bool AtomSet::Intersects(const AtomSet& aOther) const {
     return atomSet.forget();                         \
   }
 
-DEFINE_STATIC_ATOM_SET(PermittedSchemes, nsGkAtoms::http, nsGkAtoms::https, nsGkAtoms::about,
+DEFINE_STATIC_ATOM_SET(PermittedSchemes, nsGkAtoms::http, nsGkAtoms::https,
                        nsGkAtoms::ws, nsGkAtoms::wss, nsGkAtoms::file,
                        nsGkAtoms::ftp, nsGkAtoms::data);
 
@@ -119,7 +121,7 @@ nsAtom* URLInfo::Scheme() const {
   if (!mScheme) {
     nsCString scheme;
     if (NS_SUCCEEDED(mURI->GetScheme(scheme))) {
-      mScheme = NS_AtomizeMainThread(NS_ConvertASCIItoUTF16(scheme));
+      mScheme = NS_Atomize(scheme);
     }
   }
   return mScheme;
@@ -196,6 +198,7 @@ bool URLInfo::InheritsPrincipal() const {
 }
 
 bool URLInfo::IsNonOpaqueURL() const {
+  MOZ_ASSERT(NS_IsMainThread());
   if (!mIsNonOpaqueURL.isSome()) {
     RefPtr<AtomSet> nonOpaqueSchemes = NonOpaqueSchemes();
     mIsNonOpaqueURL.emplace(nonOpaqueSchemes->Contains(Scheme()));

@@ -24,16 +24,20 @@ impl TabsStore {
         }
     }
 
+    // Closes connection to the tabs DB, this is named slightly
+    // different since Kotlin implements AutoClosable and doesn't
+    // want us using close
+    pub fn close_connection(&self) {
+        self.storage.lock().unwrap().close()
+    }
+
     pub fn set_local_tabs(&self, local_state: Vec<RemoteTab>) {
         self.storage.lock().unwrap().update_local_state(local_state);
     }
 
     // like remote_tabs, but serves the uniffi layer
     pub fn get_all(&self) -> Vec<ClientRemoteTabs> {
-        match self.remote_tabs() {
-            Some(list) => list,
-            None => vec![],
-        }
+        self.remote_tabs().unwrap_or_default()
     }
 
     pub fn remote_tabs(&self) -> Option<Vec<ClientRemoteTabs>> {

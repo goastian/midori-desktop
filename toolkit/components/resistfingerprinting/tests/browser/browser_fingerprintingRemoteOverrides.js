@@ -13,12 +13,12 @@ const COLLECTION_NAME = "fingerprinting-protection-overrides";
 // The javascript bitwise operator only support 32bits. So, we only test
 // RFPTargets that is under low 32 bits.
 const TARGET_DEFAULT = extractLow32Bits(
-  Services.rfp.enabledFingerprintingProtections
+  Services.rfp.enabledFingerprintingProtections.low
 );
-const TARGET_PointerEvents = 0x00000002;
-const TARGET_CanvasRandomization = 0x000000100;
-const TARGET_WindowOuterSize = 0x002000000;
-const TARGET_Gamepad = 0x00800000;
+const TARGET_PointerEvents = 1 << 2;
+const TARGET_CanvasRandomization = 1 << 9;
+const TARGET_WindowOuterSize = 1 << 26;
+const TARGET_Gamepad = 1 << 24;
 
 const TEST_PAGE =
   getRootDirectory(gTestPath).replace(
@@ -284,24 +284,25 @@ add_setup(async function () {
   });
 });
 
+const client = RemoteSettings(COLLECTION_NAME);
+const db = client.db;
+async function addRemoteOverrides(entries) {
+  const promise = promiseObserver("fpp-test:set-overrides-finishes");
+  await client.db.clear();
+  await client.db.importChanges({}, Date.now(), entries);
+
+  await client.emit("sync", {});
+  await promise;
+}
+
 add_task(async function test_remote_settings() {
   // Add initial empty record.
-  let db = RemoteSettings(COLLECTION_NAME).db;
   await db.importChanges({}, Date.now(), []);
 
   for (let test of TEST_CASES) {
     info(`Testing with entry ${JSON.stringify(test.entires)}`);
 
-    // Create a promise for waiting the overrides get updated.
-    let promise = promiseObserver("fpp-test:set-overrides-finishes");
-
-    // Trigger the fingerprinting overrides update by a remote settings sync.
-    await RemoteSettings(COLLECTION_NAME).emit("sync", {
-      data: {
-        current: test.entires,
-      },
-    });
-    await promise;
+    await addRemoteOverrides(test.entires);
 
     ok(true, "Got overrides update");
 
@@ -309,7 +310,7 @@ add_task(async function test_remote_settings() {
       // Get the addition and subtraction flags for the domain.
       try {
         let overrides = extractLow32Bits(
-          Services.rfp.getFingerprintingOverrides(expect.domain)
+          Services.rfp.getFingerprintingOverrides(expect.domain + ",0").low
         );
 
         // Verify if the flags are matching to expected values.
@@ -325,7 +326,6 @@ add_task(async function test_remote_settings() {
 
 add_task(async function test_remote_settings_pref() {
   // Add initial empty record.
-  let db = RemoteSettings(COLLECTION_NAME).db;
   await db.importChanges({}, Date.now(), []);
 
   for (let test of TEST_CASES) {
@@ -338,23 +338,13 @@ add_task(async function test_remote_settings_pref() {
       ],
     });
 
-    // Create a promise for waiting the overrides get updated.
-    let promise = promiseObserver("fpp-test:set-overrides-finishes");
-
-    // Trigger the fingerprinting overrides update by a remote settings sync.
-    await RemoteSettings(COLLECTION_NAME).emit("sync", {
-      data: {
-        current: test.entires,
-      },
-    });
-    await promise;
-
+    await addRemoteOverrides(test.entires);
     ok(true, "Got overrides update");
 
     for (let expect of test.expects) {
       try {
         // Check for the existance of RFP overrides
-        Services.rfp.getFingerprintingOverrides(expect.domain);
+        Services.rfp.getFingerprintingOverrides(expect.domain + ",0").low;
         ok(
           false,
           "This line should never run as the override should not exist and the previous line would throw an exception"
@@ -392,7 +382,7 @@ add_task(async function test_pref() {
       try {
         // Get the addition and subtraction flags for the domain.
         let overrides = extractLow32Bits(
-          Services.rfp.getFingerprintingOverrides(expect.domain)
+          Services.rfp.getFingerprintingOverrides(expect.domain + ",0").low
         );
 
         // Verify if the flags are matching to expected values.
@@ -411,23 +401,17 @@ add_task(async function test_pref_override_remote_settings() {
   await db.importChanges({}, Date.now(), []);
 
   // Trigger a remote settings sync.
-  let promise = promiseObserver("fpp-test:set-overrides-finishes");
-  await RemoteSettings(COLLECTION_NAME).emit("sync", {
-    data: {
-      current: [
-        {
-          id: "1",
-          last_modified: 1000000000000001,
-          overrides: "+WindowOuterSize",
-          firstPartyDomain: "example.org",
-        },
-      ],
+  await addRemoteOverrides([
+    {
+      id: "1",
+      last_modified: 1000000000000001,
+      overrides: "+WindowOuterSize",
+      firstPartyDomain: "example.org",
     },
-  });
-  await promise;
+  ]);
 
   // Then, setting the pref.
-  promise = promiseObserver("fpp-test:set-overrides-finishes");
+  const promise = promiseObserver("fpp-test:set-overrides-finishes");
   await SpecialPowers.pushPrefEnv({
     set: [
       [
@@ -447,7 +431,7 @@ add_task(async function test_pref_override_remote_settings() {
 
   // Get the addition and subtraction flags for the domain.
   let overrides = extractLow32Bits(
-    Services.rfp.getFingerprintingOverrides("example.org")
+    Services.rfp.getFingerprintingOverrides("example.org,0").low
   );
 
   // Verify if the flags are matching to the pref settings.

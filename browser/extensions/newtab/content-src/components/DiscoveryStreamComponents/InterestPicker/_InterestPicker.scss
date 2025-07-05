@@ -1,0 +1,88 @@
+.inline-selection-wrapper.ds-section {
+  // Maintain the gap between the inline topic picker and the next section
+  // in line with how sections are spaced from each other.
+
+  @include wallpaper-contrast-fix;
+
+  .section-heading {
+    margin-block: var(--space-medium);
+  }
+
+  .section-subtitle {
+    color: var(--newtab-contextual-text-primary-color);
+  }
+
+  // Make sure the "Learn how..." link at the bottom of the block
+  // doesn't push the next section down too much.
+  .learn-more-copy {
+    margin-block-end: 0;
+  }
+
+  // A flat list of topics
+  .topic-list {
+    list-style: none;
+    display: flex;
+    flex-wrap: wrap;
+    row-gap: calc(1.25 * var(--space-small));
+    column-gap: var(--space-small);
+    justify-content: flex-start;
+    margin: var(--space-small) 0;
+    padding-inline-start: 0;
+    width: fit-content;
+
+    li {
+      align-items: center;
+      display: flex;
+      justify-self: flex-start;
+      max-width: fit-content;
+      position: relative;
+    }
+
+    // Labels play the role of visible button-like elements with topic names.
+    // The colours deviate slightly from New Tab theme colours:
+    // there is a sharper contrast between background and text colors.
+    li>label {
+      background-color: var(--background-color-canvas);
+      border: var(--border-width) solid var(--border-color-interactive);
+      border-radius: var(--border-radius-circle);
+      color: var(--newtab-contextual-text-primary-color);
+      padding: var(--space-small) calc(1.25 * var(--space-small)) var(--space-small) var(--space-xsmall);
+
+      input[type='checkbox'] {
+        outline: none;
+        appearance: none;
+      }
+
+      .topic-item-icon {
+        -moz-context-properties: fill;
+        fill: currentColor;
+        margin-inline-start: var(--space-small);
+        margin-block-start: calc(-0.75 * var(--space-xsmall));
+      }
+
+      &:hover {
+        background-color: var(--newtab-button-static-hover-background);
+        cursor: pointer;
+      }
+
+      &:hover:active {
+        background-color: var(--newtab-button-static-active-background);
+      }
+
+      &:has(input:checked) {
+        background-color: var(--color-accent-primary);
+        border-color: var(--color-accent-primary);
+        color: var(--button-text-color-primary);
+      }
+
+      &:has(input:checked) .topic-item-icon {
+        color: var(--button-text-color-primary);
+      }
+
+      &:focus-within {
+        outline-offset: var(--focus-outline-offset);
+        outline: var(--focus-outline);
+      }
+    }
+  }
+}

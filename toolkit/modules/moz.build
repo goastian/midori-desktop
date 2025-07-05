@@ -108,14 +108,11 @@ with Files("PrivateBrowsingUtils.sys.mjs"):
 with Files("Promise*.sys.mjs"):
     BUG_COMPONENT = ("Toolkit", "Async Tooling")
 
-with Files("ResponsivenessMonitor.sys.mjs"):
-    BUG_COMPONENT = ("Firefox", "Migration")
-
 with Files("ShortcutUtils.sys.mjs"):
     BUG_COMPONENT = ("Firefox", "Toolbars and Customization")
 
 with Files("Sqlite.sys.mjs"):
-    BUG_COMPONENT = ("Toolkit", "Storage")
+    BUG_COMPONENT = ("Core", "SQLite and Embedded Database Bindings")
 
 with Files("SubDialog.sys.mjs"):
     BUG_COMPONENT = ("Toolkit", "Content Prompts")
@@ -172,6 +169,7 @@ EXTRA_JS_MODULES += [
     "FinderHighlighter.sys.mjs",
     "FinderIterator.sys.mjs",
     "FinderParent.sys.mjs",
+    "FinderSound.sys.mjs",
     "FirstStartup.sys.mjs",
     "FormLikeFactory.sys.mjs",
     "Geometry.sys.mjs",
@@ -201,7 +199,6 @@ EXTRA_JS_MODULES += [
     "Region.sys.mjs",
     "RemotePageAccessManager.sys.mjs",
     "ResetProfile.sys.mjs",
-    "ResponsivenessMonitor.sys.mjs",
     "SelectionUtils.sys.mjs",
     "ServiceRequest.sys.mjs",
     "ShortcutUtils.sys.mjs",
@@ -233,11 +230,10 @@ EXTRA_JS_MODULES.sessionstore += [
 
 EXTRA_JS_MODULES.third_party.fathom += ["third_party/fathom/fathom.mjs"]
 
-if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("windows", "gtk"):
-    DEFINES["MENUBAR_CAN_AUTOHIDE"] = 1
-
 if CONFIG["MOZ_WIDGET_TOOLKIT"] in ("windows", "gtk", "cocoa"):
-    DEFINES["HAVE_SHELL_SERVICE"] = 1
+    DEFINES["HAVE_SHELL_SERVICE_BOOL"] = "true"
+else:
+    DEFINES["HAVE_SHELL_SERVICE_BOOL"] = "false"
 
 EXTRA_PP_JS_MODULES += [
     "AppConstants.sys.mjs",
@@ -286,16 +282,62 @@ for var in (
 
 for var in (
     "MOZ_ALLOW_ADDON_SIDELOAD",
+    "MOZ_FOLD_LIBS",
     "MOZ_SYSTEM_NSS",
     "MOZ_SYSTEM_POLICIES",
     "MOZ_UNSIGNED_APP_SCOPE",
     "MOZ_UNSIGNED_SYSTEM_SCOPE",
-    "MOZ_UPDATE_AGENT",
     "MOZ_UPDATER",
     "MOZ_WEBEXT_WEBIDL_ENABLED",
 ):
     if CONFIG[var]:
         DEFINES[var] = True
+
+for var in (
+    "NIGHTLY_BUILD",
+    "ENABLE_EXPLICIT_RESOURCE_MANAGEMENT",
+    "RELEASE_OR_BETA",
+    "EARLY_BETA_OR_EARLIER",
+    "MOZ_ESR",
+    "ACCESSIBILITY",
+    "MOZILLA_OFFICIAL",
+    "MOZ_OFFICIAL_BRANDING",
+    "MOZ_DEV_EDITION",
+    "MOZ_SERVICES_SYNC",
+    "MOZ_DATA_REPORTING",
+    "MOZ_SANDBOX",
+    "MOZ_UPDATER",
+    "MOZ_WEBRTC",
+    "MOZ_WMF_CDM",
+    "MOZ_CRASHREPORTER",
+    "MOZ_NORMANDY",
+    "MOZ_MAINTENANCE_SERVICE",
+    "MOZ_BACKGROUNDTASKS",
+    "MOZ_UPDATE_AGENT",
+    "MOZ_BITS_DOWNLOAD",
+    "MOZ_DEBUG",
+    "MOZ_ASAN",
+    "MOZ_ASAN_REPORTER",
+    "MOZ_TSAN",
+    "MOZ_SYSTEM_NSS",
+    "MOZ_PLACES",
+    "MOZ_REQUIRE_SIGNING",
+    "MOZ_UNSIGNED_APP_SCOPE",
+    "MOZ_UNSIGNED_SYSTEM_SCOPE",
+    "MOZ_ALLOW_ADDON_SIDELOAD",
+    "MOZ_WEBEXT_WEBIDL_ENABLED",
+    "MOZ_GECKOVIEW_HISTORY",
+    "MOZ_GECKO_PROFILER",
+    "MOZ_CODE_COVERAGE",
+    "ENABLE_WEBDRIVER",
+    "MOZ_GLEAN_ANDROID",
+    "MOZ_JXL",
+    "MOZ_SYSTEM_POLICIES",
+    "MOZ_SELECTABLE_PROFILES",
+    "BROWSER_NEWTAB_AS_ADDON",
+    "USE_LIBZ_RS",
+):
+    DEFINES[f"{var}_BOOL"] = "true" if CONFIG[var] else "false"
 
 JAR_MANIFESTS += ["jar.mn"]
 

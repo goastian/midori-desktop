@@ -160,7 +160,7 @@
 //! ```
 
 use anyhow::Result;
-use uniffi_meta::Checksum;
+use uniffi_meta::{Checksum, EnumShape};
 
 use super::record::Field;
 use super::{AsType, Literal, Type, TypeIterator};
@@ -174,26 +174,10 @@ use super::{AsType, Literal, Type, TypeIterator};
 pub struct Enum {
     pub(super) name: String,
     pub(super) module_path: String,
+    pub(super) remote: bool,
     pub(super) discr_type: Option<Type>,
     pub(super) variants: Vec<Variant>,
-    // NOTE: `flat` is a misleading name and to make matters worse, has 2 different
-    // meanings depending on the context :(
-    // * When used as part of Rust scaffolding generation, it means "is this enum
-    //   used with an Error, and that error should we lowered to foreign bindings
-    //   by converting each variant to a string and lowering the variant with that
-    //   string?". In that context, it should probably be called `lowered_as_string` or
-    //   similar.
-    // * When used as part of bindings generation, it means "does this enum have only
-    //   variants with no associated data"? The foreign binding generators are likely
-    //   to generate significantly different versions of the enum based on that value.
-    //
-    // The reason it is described as "has 2 different meanings" by way of example:
-    // * For an Enum described as being a flat error, but the enum itself has variants with data,
-    //   `flat` will be `true` for the Enum when generating scaffolding and `false` when
-    //   generating bindings.
-    // * For an Enum not used as an error but which has no variants with data, `flat` will be
-    //   false when generating the scaffolding but `true` when generating bindings.
-    pub(super) flat: bool,
+    pub(super) shape: EnumShape,
     pub(super) non_exhaustive: bool,
     #[checksum_ignore]
     pub(super) docstring: Option<String>,
@@ -202,6 +186,14 @@ pub struct Enum {
 impl Enum {
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn rename(&mut self, name: String) {
+        self.name = name;
+    }
+
+    pub fn remote(&self) -> bool {
+        self.remote
     }
 
     pub fn variants(&self) -> &[Variant] {
@@ -217,14 +209,20 @@ impl Enum {
     // in those cases, so by the time this get's run we can be confident these
     // error cases can't exist.
     pub fn variant_discr(&self, variant_index: usize) -> Result<Literal> {
-        if variant_index >= self.variants.len() {
-            anyhow::bail!("Invalid variant index {variant_index}");
+        for (i, lit) in self.variant_discr_iter().enumerate() {
+            let lit = lit?;
+            if i == variant_index {
+                return Ok(lit);
+            }
         }
+        anyhow::bail!("Invalid variant index {variant_index}");
+    }
+
+    // Iterate over variant discriminants
+    fn variant_discr_iter(&self) -> impl Iterator<Item = Result<Literal>> + '_ {
         let mut next = 0;
-        let mut this;
-        let mut this_lit = Literal::new_uint(0);
-        for v in self.variants().iter().take(variant_index + 1) {
-            (this, this_lit) = match v.discr {
+        self.variants().iter().map(move |v| {
+            let (this, this_lit) = match v.discr {
                 None => (
                     next,
                     if (next as i64) < 0 {
@@ -239,8 +237,8 @@ impl Enum {
                 _ => anyhow::bail!("Invalid literal type {v:?}"),
             };
             next = this.wrapping_add(1);
-        }
-        Ok(this_lit)
+            Ok(this_lit)
+        })
     }
 
     pub fn variant_discr_type(&self) -> &Option<Type> {
@@ -248,7 +246,10 @@ impl Enum {
     }
 
     pub fn is_flat(&self) -> bool {
-        self.flat
+        match self.shape {
+            EnumShape::Error { flat } => flat,
+            EnumShape::Enum => self.variants.iter().all(|v| v.fields.is_empty()),
+        }
     }
 
     pub fn is_non_exhaustive(&self) -> bool {
@@ -263,23 +264,26 @@ impl Enum {
         self.docstring.as_deref()
     }
 
-    // Sadly can't use TryFrom due to the 'is_flat' complication.
-    pub fn try_from_meta(meta: uniffi_meta::EnumMetadata, flat: bool) -> Result<Self> {
-        // This is messy - error enums are considered "flat" if the user
-        // opted in via a special attribute, regardless of whether the enum
-        // is actually flat.
-        // Real enums are considered flat iff they are actually flat.
-        // We don't have that context here, so this is handled by our caller.
+    pub fn contains_variant_fields(&self) -> bool {
+        self.variants().iter().any(|v| v.has_fields())
+    }
+}
+
+impl TryFrom<uniffi_meta::EnumMetadata> for Enum {
+    type Error = anyhow::Error;
+
+    fn try_from(meta: uniffi_meta::EnumMetadata) -> Result<Self> {
         Ok(Self {
             name: meta.name,
             module_path: meta.module_path,
+            remote: meta.remote,
             discr_type: meta.discr_type,
             variants: meta
                 .variants
                 .into_iter()
                 .map(TryInto::try_into)
                 .collect::<Result<_>>()?,
-            flat,
+            shape: meta.shape,
             non_exhaustive: meta.non_exhaustive,
             docstring: meta.docstring.clone(),
         })
@@ -310,6 +314,10 @@ pub struct Variant {
 impl Variant {
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn rename(&mut self, new_name: String) {
+        self.name = new_name;
     }
 
     pub fn fields(&self) -> &[Field] {
@@ -414,6 +422,7 @@ mod test {
         // The enum with associated data.
         let ed = ci.get_enum_definition("TestEnumWithData").unwrap();
         assert!(!ed.is_flat());
+        assert_eq!(ed.shape, EnumShape::Enum);
         assert_eq!(ed.variants().len(), 3);
         assert_eq!(
             ed.variants().iter().map(|v| v.name()).collect::<Vec<_>>(),
@@ -462,6 +471,8 @@ mod test {
         );
         assert_eq!(ewd.variants()[0].fields().len(), 0);
         assert_eq!(ewd.variants()[1].fields().len(), 0);
+        assert!(ewd.is_flat());
+        assert_eq!(ewd.shape, EnumShape::Enum);
 
         // Flat enums pass over the FFI as bytebuffers.
         // (It might be nice to optimize these to pass as plain integers, but that's
@@ -474,17 +485,17 @@ mod test {
                 module_path: "crate_name".into()
             }
         );
-        assert_eq!(
+        assert!(matches!(
             farg.ffi_func().arguments()[0].type_(),
-            FfiType::RustBuffer(None)
-        );
+            FfiType::RustBuffer(_)
+        ));
         let fret = ci.get_function_definition("returns_an_enum").unwrap();
         assert!(
             matches!(fret.return_type(), Some(Type::Enum { name, .. }) if name == "TestEnum" && !ci.is_name_used_as_error(name))
         );
         assert!(matches!(
             fret.ffi_func().return_type(),
-            Some(FfiType::RustBuffer(None))
+            Some(FfiType::RustBuffer(_))
         ));
 
         // Enums with associated data pass over the FFI as bytebuffers.
@@ -498,10 +509,10 @@ mod test {
                 module_path: "crate_name".into()
             }
         );
-        assert_eq!(
+        assert!(matches!(
             farg.ffi_func().arguments()[0].type_(),
-            FfiType::RustBuffer(None)
-        );
+            FfiType::RustBuffer(_)
+        ));
         let fret = ci
             .get_function_definition("returns_an_enum_with_data")
             .unwrap();
@@ -510,7 +521,7 @@ mod test {
         );
         assert!(matches!(
             fret.ffi_func().return_type(),
-            Some(FfiType::RustBuffer(None))
+            Some(FfiType::RustBuffer(_))
         ));
     }
 
@@ -667,9 +678,10 @@ mod test {
         let mut e = Enum {
             module_path: "test".to_string(),
             name: "test".to_string(),
+            remote: false,
             discr_type: None,
             variants: vec![],
-            flat: false,
+            shape: EnumShape::Enum,
             non_exhaustive: false,
             docstring: None,
         };

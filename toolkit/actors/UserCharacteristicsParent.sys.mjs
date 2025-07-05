@@ -20,15 +20,51 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIUserCharacteristicsPageService"
 );
 
-export class UserCharacteristicsParent extends JSWindowActorParent {
+function mapToObjectReplacer(_key, value) {
+  if (value instanceof Map) {
+    return Object.fromEntries(value);
+  }
+  return value;
+}
+
+class UserCharacteristicsParent extends JSWindowActorParent {
   receiveMessage(aMessage) {
-    lazy.console.debug("Got ", aMessage.name);
-    if (aMessage.name == "UserCharacteristics::PageReady") {
-      lazy.console.debug("Got pageReady");
-      lazy.UserCharacteristicsPageService.pageLoaded(
-        this.browsingContext,
-        aMessage.data
-      );
+    lazy.console.debug("Actor Parent: Got ", aMessage.name);
+    switch (aMessage.name) {
+      case "UserCharacteristics::PageReady":
+        lazy.console.debug("Actor Parent: Got pageReady");
+        lazy.UserCharacteristicsPageService.pageLoaded(
+          this.browsingContext,
+          aMessage.data
+        );
+        break;
+      case "ScreenInfo:Populated":
+        Services.obs.notifyObservers(
+          null,
+          "user-characteristics-screen-info-done",
+          JSON.stringify(aMessage.data, mapToObjectReplacer)
+        );
+        break;
+      case "PointerInfo:Populated":
+        Services.obs.notifyObservers(
+          null,
+          "user-characteristics-pointer-info-done",
+          JSON.stringify(aMessage.data, mapToObjectReplacer)
+        );
+        break;
+      case "WindowInfo::Done":
+        Services.obs.notifyObservers(
+          null,
+          "user-characteristics-window-info-done",
+          aMessage.data
+        );
+        break;
     }
   }
 }
+
+export {
+  UserCharacteristicsParent,
+  UserCharacteristicsParent as UserCharacteristicsWindowInfoParent,
+  UserCharacteristicsParent as UserCharacteristicsCanvasRenderingParent,
+};

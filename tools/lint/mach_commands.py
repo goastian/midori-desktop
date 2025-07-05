@@ -23,7 +23,7 @@ if os.path.exists(thunderbird_excludes):
 
 GLOBAL_EXCLUDES = ["**/node_modules", "tools/lint/test/files", ".hg", ".git"]
 
-VALID_FORMATTERS = {"black", "clang-format", "rustfmt"}
+VALID_FORMATTERS = {"black", "clang-format", "eslint", "rustfmt"}
 VALID_ANDROID_FORMATTERS = {"android-format"}
 
 # Code-review bot must index issues from the whole codebase when pushing
@@ -62,7 +62,7 @@ def get_global_excludes(**lintargs):
         return excludes
 
     for path in EXCLUSION_FILES + EXCLUSION_FILES_OPTIONAL:
-        with open(os.path.join(topsrcdir, path), "r") as fh:
+        with open(os.path.join(topsrcdir, path)) as fh:
             excludes.extend([f.strip() for f in fh.readlines()])
 
     return excludes
@@ -157,6 +157,35 @@ def eslint(command_context, paths, extra_args=[], **kwargs):
 
 
 @Command(
+    "prettier",
+    category="devenv",
+    description="Run prettier to reformat the relevant files.",
+)
+@CommandArgument(
+    "paths",
+    default=None,
+    nargs="*",
+    help="Paths to file or directories to lint, like "
+    "'browser/' Defaults to the "
+    "current directory if not given.",
+)
+@CommandArgument(
+    "extra_args",
+    nargs=argparse.REMAINDER,
+    help="Extra args that will be forwarded to prettier.",
+)
+def prettier(command_context, paths, extra_args=[], **kwargs):
+    command_context._mach_context.commands.dispatch(
+        "format",
+        command_context._mach_context,
+        linters=["eslint"],
+        paths=paths,
+        argv=extra_args,
+        **kwargs
+    )
+
+
+@Command(
     "format",
     category="devenv",
     description="Format files, alternative to 'lint --fix' ",
@@ -179,11 +208,13 @@ def format_files(command_context, paths, extra_args=[], **kwargs):
                 "Note that only the following linters are valid formatters:"
             )
             print("\n".join(sorted(formatters)))
+            print("Further note that for eslint, only prettier will run.")
             return 1
 
     kwargs["linters"] = list(linters)
 
     kwargs["fix"] = True
+    kwargs["formatonly"] = True
     command_context._mach_context.commands.dispatch(
         "lint", command_context._mach_context, paths=paths, argv=extra_args, **kwargs
     )

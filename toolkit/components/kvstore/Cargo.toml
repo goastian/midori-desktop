@@ -1,8 +1,9 @@
 [package]
 name = "kvstore"
 version = "0.1.0"
-authors = ["Myk Melez <myk@mykzilla.org>"]
+authors = ["Myk Melez <myk@mykzilla.org>", "Lina Butler <lina@yakshaving.ninja>"]
 license = "MPL-2.0"
+edition = "2021"
 
 [dependencies]
 atomic_refcell = "0.1"
@@ -20,3 +21,12 @@ xpcom = { path = "../../../xpcom/rust/xpcom" }
 tempfile = "3"
 thin-vec = { version = "0.2.1", features = ["gecko-ffi"] }
 thiserror = "1"
+rusqlite = "0.33.0"
+hashbrown = "0.13"
+futures = "0.3"
+serde = "1"
+serde_json = { version = "1", features = ["float_roundtrip"] }
+chrono = "0.4"
+
+[features]
+gtest = []

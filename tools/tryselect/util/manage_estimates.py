@@ -8,7 +8,6 @@ import os
 from datetime import datetime, timedelta
 
 import requests
-import six
 
 TASK_DURATION_URL = (
     "https://storage.googleapis.com/mozilla-mach-data/task_duration_history.json"
@@ -70,11 +69,7 @@ def download_task_history_data(cache_dir):
         r.raise_for_status()
     except requests.exceptions.RequestException as exc:
         # This is fine, the durations just won't be in the preview window.
-        print(
-            "Error fetching task duration cache from {}: {}".format(
-                TASK_DURATION_URL, exc
-            )
-        )
+        print(f"Error fetching task duration cache from {TASK_DURATION_URL}: {exc}")
         return
 
     # The data retrieved from google storage is a newline-separated
@@ -95,14 +90,12 @@ def download_task_history_data(cache_dir):
     except requests.exceptions.RequestException as exc:
         # This is fine, the percentile just won't be in the preview window.
         print(
-            "Error fetching task group percentiles from {}: {}".format(
-                GRAPH_QUANTILES_URL, exc
-            )
+            f"Error fetching task group percentiles from {GRAPH_QUANTILES_URL}: {exc}"
         )
         return
 
     with open(graph_quantile_cache, "w") as f:
-        f.write(six.ensure_text(r.content))
+        f.write(r.text)
 
     with open(task_duration_tag_file, "w") as f:
         json.dump({"download_date": datetime.now().strftime("%Y-%m-%d")}, f, indent=4)

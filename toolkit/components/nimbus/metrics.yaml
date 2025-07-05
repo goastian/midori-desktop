@@ -10,6 +10,696 @@ $schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
 $tags:
   - "Firefox :: Nimbus Desktop Client"
 
+# The `nimbus_targeting_environment` category contains metrics that relate to
+# the targeting context, but are not present in it verbatim.
+#
+# For example, pref values, which are accessed by the `|preferenceValue` filter.
+#
+# Also included are the metrics used to debug targeting context evaluation:
+#
+# * `targeting_context_value`
+# * `pref_type_errors`
+# * `attr_eval_errors`
+nimbus_targeting_environment:
+  targeting_context_value:
+    bugs: &targeting_context_bugs
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1928107
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1937207
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898394
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1949813
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1963160
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1963183
+    data_reviews: &targeting_context_data_reviews
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1928107
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1937207
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898394
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1949813
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1963160
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1963183
+    notification_emails: &targeting_context_notification_emails
+      - beth@mozilla.com
+      - project-nimbus@mozilla.com
+    expires: &targeting_context_expiry never
+    send_in_pings: &targeting_context_pings
+      - nimbus-targeting-context
+    disabled: true
+    description: >
+      The entirety of the Nimbus targeting context as a stringified JSON object.
+
+      This is disabled by default and only intended to be enabled via server knobs to debug
+      recording failures in individual nimbus_targeting_context metric values.
+    data_sensitivity:
+      - stored_content
+    type: text
+
+  pref_type_errors:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: >
+      When a pref in `nimbus_targeting_environment.pref_values` cannot
+      be recorded because the type in the metric does not match the type of the
+      pref, it is recorded in this metric.
+    data_sensitivity:
+      - technical
+    type: labeled_counter
+    labels:
+      - "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons"
+      - "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features"
+      - "browser.newtabpage.activity-stream.feeds.section.highlights"
+      - "browser.newtabpage.activity-stream.feeds.section.topstories"
+      - "browser.newtabpage.activity-stream.feeds.topsites"
+      - "browser.newtabpage.activity-stream.showSearch"
+      - "browser.newtabpage.activity-stream.showSponsoredTopSites"
+      - "browser.newtabpage.enabled"
+      - "browser.toolbars.bookmarks.visibility"
+      - "browser.urlbar.quicksuggest.dataCollection.enabled"
+      - "browser.urlbar.showSearchSuggestionsFirst"
+      - "browser.urlbar.suggest.quicksuggest.sponsored"
+      - "media.videocontrols.picture-in-picture.enabled"
+      - "media.videocontrols.picture-in-picture.video-toggle.enabled"
+      - "media.videocontrols.picture-in-picture.video-toggle.has-used"
+      - "messaging-system-action.testday"
+      - "network.trr.mode"
+      - "nimbus.qa.pref-1"
+      - "nimbus.qa.pref-2"
+      - "security.sandbox.content.level"
+      - "trailhead.firstrun.didSeeAboutWelcome"
+
+  attr_eval_errors:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: >
+      When a metric in `nimbus_targeting_context` cannot be recorded because an
+      exception was thrown during evaluation of the targeting context attribute
+      the name of the attribute is recorded in this metric.
+    type: labeled_counter
+    labels:
+      - "activeExperiments"
+      - "activeRollouts"
+      - "addonsInfo"
+      - "addressesSaved"
+      - "archBits"
+      - "attributionData"
+      - "browserSettings"
+      - "buildId"
+      - "currentDate"
+      - "defaultPDFHandler"
+      - "distributionId"
+      - "doesAppNeedPin"
+      - "enrollmentsMap"
+      - "firefoxVersion"
+      - "hasActiveEnterprisePolicies"
+      - "homePageSettings"
+      - "isDefaultBrowser"
+      - "isDefaultHandler"
+      - "isFirstStartup"
+      - "isFxAEnabled"
+      - "isFxASignedIn"
+      - "isMSIX"
+      - "locale"
+      - "memoryMB"
+      - "os"
+      - "primaryResolution"
+      - "profileAgeCreated"
+      - "region"
+      - "totalBookmarksCount"
+      - "userMonthlyActivity"
+      - "userPrefersReducedMotion"
+      - "usesFirefoxSync"
+      - "version"
+
+  user_set_prefs:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: An array of preferences that are user set.
+    data_sensitivity:
+      - interaction
+    type: object
+    structure:
+      type: array
+      items:
+        type: string
+
+  pref_values:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Values of specific preferences we want to target on.
+    data_sensitivity:
+      - technical
+      - interaction
+    type: object
+    structure:
+      type: object
+      properties:
+        browser__newtabpage__activity_stream__asrouter__userprefs__cfr__addons:
+          type: boolean
+        browser__newtabpage__activity_stream__asrouter__userprefs__cfr__features:
+          type: boolean
+        browser__newtabpage__activity_stream__feeds__section__highlights:
+          type: boolean
+        browser__newtabpage__activity_stream__feeds__section__topstories:
+          type: boolean
+        browser__newtabpage__activity_stream__feeds__topsites:
+          type: boolean
+        browser__newtabpage__activity_stream__showSearch:
+          type: boolean
+        browser__newtabpage__activity_stream__showSponsoredTopSites:
+          type: boolean
+        browser__newtabpage__enabled:
+          type: boolean
+        browser__toolbars__bookmarks__visibility:
+          type: string
+        browser__urlbar__quicksuggest__dataCollection__enabled:
+          type: boolean
+        browser__urlbar__showSearchSuggestionsFirst:
+          type: boolean
+        browser__urlbar__suggest__quicksuggest__sponsored:
+          type: boolean
+        media__videocontrols__picture_in_picture__enabled:
+          type: boolean
+        media__videocontrols__picture_in_picture__video_toggle__enabled:
+          type: boolean
+        media__videocontrols__picture_in_picture__video_toggle__has_used:
+          type: boolean
+        messaging_system_action__testday:
+          type: string
+        network__trr__mode:
+          type: number
+        security__sandbox__content__level:
+          type: number
+        trailhead__firstrun__didSeeAboutWelcome:
+          type: boolean
+
+        # Prefs used by Nimbus for QA.
+        nimbus__qa__pref_1:
+          type: string
+        nimbus__qa__pref_2:
+          type: string
+
+# The nimbus_targeting_context category contains metrics that directly
+# correspond to individual fields in the targeting context.
+#
+# The fields may be transformed in some way (e.g., by converting dates to ISO
+# 8601 strings) so that they can be recorded by Glean.
+nimbus_targeting_context:
+  active_experiments:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: The slugs of the actively enrolled experiments
+    data_sensitivity:
+      - interaction
+    type: object
+    structure:
+      type: array
+      items:
+        type: string
+
+  active_rollouts:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: The slugs of the actively enrolled rollouts
+    data_sensitivity:
+      - interaction
+    type: object
+    structure:
+      type: array
+      items:
+        type: string
+
+  addons_info:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Information about installed addons.
+    data_sensitivity:
+      - interaction
+    type: object
+    structure:
+      type: object
+      properties:
+        # The IDs of installed addons.
+        addons:
+          type: array
+          items:
+            type: string
+        # Has the user installed addons beyond the built in and system addons?
+        hasInstalledAddons:
+          type: boolean
+
+  addresses_saved:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: The number of addresses the user has saved.
+    data_sensitivity:
+      - interaction
+    type: quantity
+    unit: addresses
+
+  arch_bits:
+    no_lint:
+      - UNIT_IN_NAME # metric name must match the targeting context attribute
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: The architecture of the user's CPU (32-bit or 64-bit)
+    data_sensitivity:
+      - technical
+    type: quantity
+    unit: bits
+
+  attribution_data:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: >
+      Attribution data.
+    data_sensitivity:
+      - interaction
+    type: object
+    structure:
+      type: object
+      properties:
+        medium:
+          type: string
+        source:
+          type: string
+        ua:
+          type: string
+
+  browser_settings:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Information about the browser's update channel.
+    data_sensitivity:
+      - technical
+    type: object
+    structure:
+      type: object
+      properties:
+        update:
+          type: object
+          properties:
+            channel:
+              type: string
+
+  build_id:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: The Build ID.
+    data_sensitivity:
+      - technical
+    type: quantity
+    unit: build ID
+
+  current_date:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: >
+      The current date, as an ISO-8601 string.
+    data_sensitivity:
+      - technical
+    type: string
+
+  default_pdf_handler:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: >
+      Information about the system's default PDF handler.
+    data_sensitivity:
+      - interaction
+    type: object
+    structure:
+      type: object
+      properties:
+        # Is the system default PDF handler a known browser?
+        knownBrowser:
+          type: boolean
+        # Is there a system default PDF handler registered?
+        registered:
+          type: boolean
+
+  distribution_id:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: >
+      The installation's distribution ID.
+    data_sensitivity:
+      - technical
+    type: string
+
+  does_app_need_pin:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Does the app need pinning (i.e., is the app not pinned).
+    data_sensitivity:
+      - interaction
+    type: boolean
+
+  enrollments_map:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: >
+      Information about historic enrollments, including the branches enrolled.
+    data_sensitivity:
+      - technical
+    type: object
+    structure:
+      type: array
+      items:
+        type: object
+        properties:
+          experimentSlug:
+            type: string
+          branchSlug:
+            type: string
+
+  firefox_version:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: The Firefox major version number.
+    data_sensitivity:
+      - technical
+    type: quantity
+    unit: major version
+
+  has_active_enterprise_policies:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Whether the profile has any active enterprise policies.
+    data_sensitivity:
+      - technical
+    type: boolean
+
+  home_page_settings:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Information about the user's home page settings.
+    data_sensitivity:
+      - interaction
+    type: object
+    structure:
+      type: object
+      properties:
+        # Is the user's home page a custom URL?
+        isCustomUrl:
+          type: boolean
+        # Is the user's home page the default?
+        isDefault:
+          type: boolean
+        # Is the user's home page locked?
+        isLocked:
+          type: boolean
+        # Is the user's home page a web extension URL?
+        isWebExt:
+          type: boolean
+
+  is_default_browser:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Whether the current browser is the default browser.
+    data_sensitivity:
+      - interaction
+    type: boolean
+
+  is_default_handler:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: >
+      Whether the current browser is registered as the default handler for various
+      filetypes.
+    data_sensitivity:
+      - interaction
+    type: object
+    structure:
+      type: object
+      properties:
+        html:
+          type: boolean
+        pdf:
+          type: boolean
+
+  is_first_startup:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: >
+      Is this the first startup of the browser on this install? (NB: Must have been
+      explicitly launched with the --first-startup commandline flag.)
+    data_sensitivity:
+      - technical
+    type: boolean
+
+  is_fx_a_enabled:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Whether Firefox Accounts and Sync are enabled.
+    data_sensitivity:
+      - interaction
+    type: boolean
+
+  is_fx_a_signed_in:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Whether the user is logged in to Firefox Accounts.
+    data_sensitivity:
+      - interaction
+    type: boolean
+
+  is_msix:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Is this copy of Firefox installed from an MSIX installer?
+    data_sensitivity:
+      - technical
+    type: boolean
+
+  locale:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: What is the active locale of the browser?
+    data_sensitivity:
+      - technical
+    type: string
+
+  memory_mb:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: The amount of system memory, in mebibytes (MiB).
+    data_sensitivity:
+      - technical
+    type: quantity
+    unit: MiB
+
+  os:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Information about the operating system.
+    data_sensitivity:
+      - technical
+    type: object
+    structure:
+      type: object
+      properties:
+        isLinux:
+          type: boolean
+        isMac:
+          type: boolean
+        isWindows:
+          type: boolean
+        windowsBuildNumber:
+          type: number
+        windowsVersion:
+          type: number
+
+  primary_resolution:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: The resolution of the primary display.
+    data_sensitivity:
+      - technical
+    type: object
+    structure:
+      type: object
+      properties:
+        height:
+          type: number
+        width:
+          type: number
+
+  profile_age_created:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: The UNIX timestamp of when the profile was created.
+    data_sensitivity:
+      - technical
+    type: quantity
+    unit: seconds since UNIX epoch
+
+  region:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: What region is the browser located in?
+    data_sensitivity:
+      - technical
+    type: string
+
+  total_bookmarks_count:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: The number of bookmarks.
+    data_sensitivity:
+      - technical
+    type: quantity
+    unit: bookmarks
+
+  user_monthly_activity:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Information about the user's activity over the last 28 days.
+    data_sensitivity:
+      - interaction
+    type: object
+    structure:
+      type: array
+      items:
+        type: object
+        properties:
+          numberOfURLsVisited:
+            type: number
+          date:
+            type: string
+
+  user_prefers_reduced_motion:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Whether the user prefers reduced motion.
+    data_sensitivity:
+      - interaction
+    type: boolean
+
+  uses_firefox_sync:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: Whether the user uses Firefox Sync.
+    data_sensitivity:
+      - interaction
+    type: boolean
+
+  version:
+    bugs: *targeting_context_bugs
+    data_reviews: *targeting_context_data_reviews
+    expires: *targeting_context_expiry
+    notification_emails: *targeting_context_notification_emails
+    send_in_pings: *targeting_context_pings
+    description: The full Firefox version string.
+    data_sensitivity:
+      - technical
+    type: string
+
 nimbus_events:
   enrollment:
     type: event
@@ -27,7 +717,7 @@ nimbus_events:
         description: The branch slug/identifier that was randomly chosen
       experiment_type:
         type: string
-        description: Indicates whether this is an experiemnt or rollout
+        description: Indicates whether this is an experiment or rollout
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1773563
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1781953
@@ -196,15 +886,20 @@ nimbus_events:
       reason:
         type: string
         description: >
-          Why validation failed (one of "invalid-recipe", "invalid-branch",
-          "invalid-reason", "missing-locale", or "missing-l10n-entry").
+          Why the validation failed.
+
+          This will be one of the following reasons:
+
+          - "invalid-recipe": the recipe failed schema validation;
+          - "invalid-branch": a branch value failed schema validation;
+          - "l10n-missing-locale": the recipe is missing localizations for a
+            specific locale;
+          - "l10n-missing-entry": the recipe is missing specific localization
+            entries for a specific locale;
       branch:
         type: string
         description: >
           If reason == invalid-branch, the branch that failed validation.
-      feature:
-        type: string
-        description: If reason == invalid-feature, the invalid feature ID.
       locale:
         type: string
         description: >
@@ -215,21 +910,25 @@ nimbus_events:
       l10n_ids:
         type: string
         description: >
-          If reason == missing-l10n-entry, a comma-sparated list of missing
+          If reason == missing-l10n-entry, a comma-separated list of missing
           localization entries.
-
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1762652
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1781953
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1821092
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1928476
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1953530
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1762652
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1781953
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1821092
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1928476
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1953530
     data_sensitivity:
       - technical
     notification_emails:
-      - barret@mozilla.com
+      - beth@mozilla.com
+      - project-nimbus@mozilla.com
     expires: never
     send_in_pings:
       - background-update
@@ -275,12 +974,326 @@ nimbus_events:
         description: If the enrollment hit a feature conflict, the slug of the conflicting experiment/rollout
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1817481
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955169
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1817481
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955169
     data_sensitivity:
       - technical
     notification_emails:
       - chumphreys@mozilla.com
       - project-nimbus@mozilla.com
     expires: never
-    disabled: true
+
+  migration:
+    type: event
+    description: >
+      Triggered whenever a Nimbus migration is attempted, whether or not it succeeds.
+    extra_keys:
+      migration_id:
+        type: string
+        description: >
+          The name of the migration that ran.
+
+      success:
+        type: boolean
+        description: Whether or not the migration succeeded.
+
+      error_reason:
+        type: string
+        description: >
+          A string describing the error that occurred.
+
+          Reasons include:
+
+          - "unknown": an unknown exception occurred.
+
+      enrollments:
+        type: string
+        description: >
+          An optional string that includes any enrollments triggered by this relation
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1937169
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1937169
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - beth@mozilla.com
+      - project-nimbus@mozilla.com
+    expires: never
+
+  startup_database_consistency:
+    type: event
+    description: >
+      Emitted during ExperimentManager startup with details about the
+      ExperimentDataStore compared to the NimbusEnrollments database table.
+    extra_keys:
+      total_db_count:
+        description: >
+         The total number of enrollments in the NimbusEnrollments table.
+        type: quantity
+        unit: enrollments
+
+      total_store_count:
+        description: >
+         The total number of enrollments in the ExperimentStore JSON file.
+        type: quantity
+        unit: enrollments
+
+      db_active_count:
+        description: >
+         The number of active enrollments in the NimbusEnrollments table.
+        type: quantity
+        unit: enrollments
+
+      store_active_count:
+        description: >
+         The number of active enrollments in the ExperimentStore JSON file.
+        type: quantity
+        unit: enrollments
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956079
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956080
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956079
+    notification_emails:
+      - beth@mozilla.com
+      - project-nimbus@mozilla.com
+    data_sensitivity:
+     - technical
+    expires: never
+
+  database_write:
+    type: event
+    description: >
+      Emitted when writing to the NimbusEnrollments database table.
+    extra_keys:
+      success:
+        type: boolean
+        description: Whether or not the write suceeded.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956079
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956080
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956079
+    notification_emails:
+      - beth@mozilla.com
+      - project-nimbus@mozilla.com
+    data_sensitivity:
+     - technical
+    expires: never
+
+
+normandy:
+  expose_nimbus_experiment:
+    type: event
+    description: >
+      This records an event at the moment the user is exposed to an
+      experiment treatment. The event is triggered either by the code
+      checking that a certain experiment feature is enabled or when that
+      feature value is used. This is different from enrollment or
+      experiment activation because it registers when a user actually gets
+      exposed to the experiment feature.
+      This event was generated to correspond to the Legacy Telemetry event
+      normandy.expose#nimbus_experiment.
+    bugs:
+      - https://bugzil.la/1675104
+    data_reviews:
+      - https://bugzil.la/1675104
+    notification_emails:
+      - ujet@mozilla.com
+    expires: never
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+          The experiment slug.
+        type: string
+      branchSlug:
+        description: >
+          The slug for the branch the user is enrolled in.
+        type: string
+      featureId:
+        description: >
+          The type of experiment variant the user was enrolled into.
+        type: string
+    telemetry_mirror: Normandy_Expose_NimbusExperiment
+
+heartbeat:
+  flow_id:
+    type: uuid
+    description: |
+      An identifier for the rating flow, generated on the client.
+    bugs:
+      - https://bugzilla.mozilla.org/1963706
+    data_reviews:
+      - https://bugzilla.mozilla.org/1963706
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - normandy-notifications@mozilla.com
+    expires: never
+    send_in_pings:
+      - heartbeat
+
+  offered:
+    type: datetime
+    time_unit: millisecond
+    description: |
+      When the survey was shown to the user.
+    bugs:
+      - https://bugzilla.mozilla.org/1963706
+    data_reviews:
+      - https://bugzilla.mozilla.org/1963706
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - normandy-notifications@mozilla.com
+    expires: never
+    send_in_pings:
+      - heartbeat
+
+  learn_more:
+    type: datetime
+    time_unit: millisecond
+    description: |
+      When the user clicked on the "Learn More" link.
+    bugs:
+      - https://bugzilla.mozilla.org/1963706
+    data_reviews:
+      - https://bugzilla.mozilla.org/1963706
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - normandy-notifications@mozilla.com
+    expires: never
+    send_in_pings:
+      - heartbeat
+
+  voted:
+    type: datetime
+    time_unit: millisecond
+    description: |
+      When the user voted.
+    bugs:
+      - https://bugzilla.mozilla.org/1963706
+    data_reviews:
+      - https://bugzilla.mozilla.org/1963706
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - normandy-notifications@mozilla.com
+    expires: never
+    send_in_pings:
+      - heartbeat
+
+  engaged:
+    type: datetime
+    time_unit: millisecond
+    description: |
+      When the user clicked on the survey-provided button
+      (alternative to voting feature).
+    bugs:
+      - https://bugzilla.mozilla.org/1963706
+    data_reviews:
+      - https://bugzilla.mozilla.org/1963706
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - normandy-notifications@mozilla.com
+    expires: never
+    send_in_pings:
+      - heartbeat
+
+  closed:
+    type: datetime
+    time_unit: millisecond
+    description: |
+      When the Heartbeat notification bar was closed.
+    bugs:
+      - https://bugzilla.mozilla.org/1963706
+    data_reviews:
+      - https://bugzilla.mozilla.org/1963706
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - normandy-notifications@mozilla.com
+    expires: never
+    send_in_pings:
+      - heartbeat
+
+  expired:
+    type: datetime
+    time_unit: millisecond
+    description: |
+      When the survey expired, after 2 hours of no interaction.
+      (threshold regulated by `browser.uitour.surveyDuration` pref.)
+    bugs:
+      - https://bugzilla.mozilla.org/1963706
+    data_reviews:
+      - https://bugzilla.mozilla.org/1963706
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - normandy-notifications@mozilla.com
+    expires: never
+    send_in_pings:
+      - heartbeat
+
+  window_closed:
+    type: datetime
+    time_unit: millisecond
+    description: |
+      When the user closed the Firefox window containing the survey,
+      or when the whole browser is shut down during the survey,
+      thus ending it.
+    bugs:
+      - https://bugzilla.mozilla.org/1963706
+    data_reviews:
+      - https://bugzilla.mozilla.org/1963706
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - normandy-notifications@mozilla.com
+    expires: never
+    send_in_pings:
+      - heartbeat
+
+  score:
+    type: quantity
+    unit: star rating
+    description: |
+      The user's rating.
+    bugs:
+      - https://bugzilla.mozilla.org/1963706
+    data_reviews:
+      - https://bugzilla.mozilla.org/1963706
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - normandy-notifications@mozilla.com
+    expires: never
+    send_in_pings:
+      - heartbeat
+
+  survey_id:
+    type: string
+    description: |
+      Identifies the specific survey.
+      May contain a `::` followed by the Normandy client id if the Heartbeat
+      recipe asks for it to be included.
+      e.g. "hb-out-of-date-en" or "new-user-survey-en-us::<the Normandy client id>"
+    bugs:
+      - https://bugzilla.mozilla.org/1963706
+    data_reviews:
+      - https://bugzilla.mozilla.org/1963706
+    data_sensitivity:
+      - technical
+      - highly_sensitive
+    notification_emails:
+      - normandy-notifications@mozilla.com
+    expires: never
+    send_in_pings:
+      - heartbeat

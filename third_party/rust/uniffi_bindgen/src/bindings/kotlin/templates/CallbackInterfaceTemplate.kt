@@ -1,4 +1,4 @@
-{%- let cbi = ci|get_callback_interface_definition(name) %}
+{%- let cbi = ci.get_callback_interface_definition(name).unwrap() %}
 {%- let ffi_init_callback = cbi.ffi_init_callback() %}
 {%- let interface_name = cbi|type_name(ci) %}
 {%- let interface_docstring = cbi.docstring() %}
@@ -9,5 +9,9 @@
 {% include "Interface.kt" %}
 {% include "CallbackInterfaceImpl.kt" %}
 
-// The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
+/**
+ * The ffiConverter which transforms the Callbacks in to handles to pass to Rust.
+ *
+ * @suppress
+ */
 public object {{ ffi_converter_name }}: FfiConverterCallbackInterface<{{ interface_name }}>()

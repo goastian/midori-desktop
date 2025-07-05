@@ -8,30 +8,19 @@
 @namespace html "http://www.w3.org/1999/xhtml";
 @namespace xul "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
-/* TODO(bug 1845150): Remove notification-message from the host selectors in
- * this file */
-
-:host(:is(.anonymous-content-host, notification-message)),
+:host(.anonymous-content-host),
 :root {
   --in-content-page-color: rgb(21, 20, 26);
   --in-content-page-background: var(--background-color-canvas);
   --in-content-text-color: var(--in-content-page-color);
-  --in-content-box-background: var(--background-color-box);
-  --in-content-box-background-odd: rgba(12, 12, 13, 0.05); /* grey 90 a05 */
   --in-content-box-border-color: color-mix(in srgb, currentColor 41%, transparent);
   --in-content-box-info-background: #f0f0f4;
   --in-content-item-hover: color-mix(in srgb, var(--in-content-primary-button-background) 20%, transparent);
   --in-content-item-hover-text: var(--in-content-page-color);
   --in-content-item-selected: var(--in-content-primary-button-background);
   --in-content-item-selected-text: var(--in-content-primary-button-text-color);
-  --in-content-icon-color: rgb(91,91,102);
-  --in-content-accent-color: var(--in-content-primary-button-background);
-  --in-content-accent-color-active: var(--in-content-primary-button-background-hover);
-  --in-content-border-hover: var(--grey-90-a50);
   --in-content-border-invalid: var(--red-50);
   --in-content-border-color: #d7d7db;
-  --in-content-warning-icon-color: #ffa436;
-  --in-content-success-icon-color: #2ac3a2;
   --in-content-button-text-color: var(--in-content-text-color);
   --in-content-button-text-color-hover: var(--in-content-text-color);
   --in-content-button-text-color-active: var(--in-content-button-text-color-hover);
@@ -44,15 +33,15 @@
   --in-content-primary-button-text-color: rgb(251,251,254);
   --in-content-primary-button-text-color-hover: var(--in-content-primary-button-text-color);
   --in-content-primary-button-text-color-active: var(--in-content-primary-button-text-color);
-  --in-content-primary-button-background: #0061e0;
-  --in-content-primary-button-background-hover: #0250bb;
-  --in-content-primary-button-background-active: #053e94;
+  --in-content-primary-button-background: var(--button-background-color-primary);
+  --in-content-primary-button-background-hover: var(--button-background-color-primary-hover);
+  --in-content-primary-button-background-active: var(--button-background-color-primary-active);
   --in-content-primary-button-border-color: transparent;
   --in-content-primary-button-border-hover: transparent;
   --in-content-primary-button-border-active: transparent;
-  --in-content-danger-button-background: #e22850;
-  --in-content-danger-button-background-hover: #c50042;
-  --in-content-danger-button-background-active: #810220;
+  --in-content-danger-button-background: var(--button-background-color-destructive);
+  --in-content-danger-button-background-hover: var(--button-background-color-destructive-hover);
+  --in-content-danger-button-background-active: var(--button-background-color-destructive-active);
   --in-content-focus-outline-color: var(--focus-outline-color);
   --in-content-focus-outline-width: var(--focus-outline-width);
   --in-content-focus-outline-offset: var(--focus-outline-offset);
@@ -63,7 +52,7 @@
   --in-content-table-border-color: var(--in-content-box-border-color);
   --in-content-table-header-background: var(--in-content-primary-button-background);
   --in-content-table-header-color: var(--in-content-primary-button-text-color);
-  --in-content-sidebar-width: 240px;
+  --in-content-sidebar-width: 280px;
 
   --dialog-warning-text-color: var(--red-60);
 
@@ -75,9 +64,7 @@
   --grey-90-a10: rgba(12, 12, 13, 0.1);
   --grey-90-a20: rgba(12, 12, 13, 0.2);
   --grey-90-a30: rgba(12, 12, 13, 0.3);
-  --grey-90-a50: rgba(12, 12, 13, 0.5);
   --grey-90-a60: rgba(12, 12, 13, 0.6);
-  --green-60: #12bc00;
   --green-70: #058b00;
   --orange-50: #ff9400;
   --red-40: #ff4f5e;
@@ -88,21 +75,17 @@
   --yellow-60-a30: rgba(215, 182, 0, 0.3);
   --yellow-90: #3e2800;
 
-  --shadow-10: 0 1px 4px var(--grey-90-a10);
-  --shadow-30: 0 4px 16px var(--grey-90-a10);
-
   --card-padding: 16px;
-  --card-shadow: var(--shadow-10);
-  --card-outline-color: var(--grey-30);
-  --card-shadow-hover: var(--card-shadow), 0 0 0 5px var(--card-outline-color);
 
   -moz-theme: non-native;
-  accent-color: var(--in-content-accent-color);
   color-scheme: light dark;
+  @media not (forced-colors) {
+    accent-color: var(--color-accent-primary);
+  }
 }
 
 @media (prefers-color-scheme: dark) {
-  :host(:is(.anonymous-content-host, notification-message)),
+  :host(.anonymous-content-host),
   :root {
     /* Keep these in sync with:
      *
@@ -116,30 +99,14 @@
      * in-content privileged pages and plain-text documents). */
     --in-content-page-color: rgb(251,251,254);
 
-    --in-content-box-background-odd: rgba(249,249,250,0.05);
     --in-content-box-info-background: rgba(249,249,250,0.15);
 
     --in-content-border-color: rgba(249,249,250,0.2);
-    --in-content-border-hover: rgba(249,249,250,0.3);
     --in-content-border-invalid: rgb(255,132,139);
 
-    --in-content-warning-icon-color: #ffbd4f;
-    --in-content-success-icon-color: #54FFBD;
-
-    --in-content-icon-color: rgb(251,251,254);
-
     --in-content-primary-button-text-color: rgb(43,42,51);
-    --in-content-primary-button-background: rgb(0,221,255);
-    --in-content-primary-button-background-hover: rgb(128,235,255);
-    --in-content-primary-button-background-active: rgb(170,242,255);
-
-    --in-content-danger-button-background: #ff848b;
-    --in-content-danger-button-background-hover: #ffbdc5;
-    --in-content-danger-button-background-active: #ffdfe7;
 
     --in-content-table-background: rgb(35, 34, 43);
-
-    --card-outline-color: var(--grey-60);
 
     --dialog-warning-text-color: var(--red-40);
 
@@ -157,29 +124,23 @@
 }
 
 @media (forced-colors) {
-  :host(:is(.anonymous-content-host, notification-message)),
+  :host(.anonymous-content-host),
   :root {
     --in-content-page-color: CanvasText;
 
-    --in-content-box-background-odd: var(--in-content-box-background);
     --in-content-box-border-color: -moz-DialogText;
-    --in-content-box-info-background: var(--in-content-box-background);
+    --in-content-box-info-background: var(--background-color-box);
 
     --in-content-item-hover: SelectedItem;
     --in-content-item-hover-text: SelectedItemText;
     --in-content-item-selected: SelectedItem;
     --in-content-item-selected-text: SelectedItemText;
-    --in-content-icon-color: -moz-DialogText;
 
-    --in-content-accent-color: SelectedItem;
-    --in-content-accent-color-active: SelectedItem;
-
-    --in-content-border-hover: ThreeDShadow;
     /* This is not great, but there is no suitable keyword for this.
      * In theory, we shouldn't be conveying invalid state just with a colour
      * change... */
     --in-content-border-invalid: ThreeDShadow;
-    --in-content-border-color: var(--border-color);
+    --in-content-border-color: CanvasText;
 
     --in-content-button-text-color: ButtonText;
     --in-content-button-text-color-hover: SelectedItemText;
@@ -243,70 +204,63 @@ html|hr {
 /* tabpanels and tabs */
 
 xul|tabpanels {
-  appearance: none;
   border: none;
   padding: 0;
-  background-color: transparent;
-  color: inherit;
-  color-scheme: unset;
 }
 
 xul|tabs {
   margin-bottom: 10px;
   border-bottom: 1px solid var(--in-content-border-color);
-  background-color: transparent;
-  color: inherit;
 }
 
 xul|tab {
-  appearance: none;
-  margin: 0;
   padding: 2px 20px 0;
   min-height: 44px;
-  color: inherit;
-  background-color: transparent;
   border-bottom: 2px solid transparent;
   transition: background-color 50ms ease 0s;
-  color-scheme: unset;
-}
 
-xul|tab:where(:hover) {
-  border-bottom-color: var(--in-content-border-color);
-  background-color: var(--in-content-button-background-hover);
-  color: var(--in-content-button-text-color-hover);
-}
-
-xul|tab:where(:hover:active) {
-  background-color: var(--in-content-button-background-active);
-  color: var(--in-content-button-text-color-active);
-}
-
-xul|tab[selected] {
-  color: var(--in-content-accent-color);
-  border-bottom-color: currentColor;
-}
-
-xul|tab[selected]:hover {
-  background-color: var(--in-content-button-background-hover);
-}
-
-xul|tab[selected]:hover:active {
-  background-color: var(--in-content-button-background-active);
-}
-
-@media (forced-colors) {
-  xul|tab:hover,
-  xul|tab:hover:active {
-    border-bottom-color: currentColor;
-  }
-
-  xul|tab[selected]:hover {
+  &:where(:hover) {
+    border-bottom-color: var(--in-content-border-color);
+    background-color: var(--in-content-button-background-hover);
     color: var(--in-content-button-text-color-hover);
   }
 
-  xul|tab[selected]:hover:active {
+  &:where(:hover:active) {
+    background-color: var(--in-content-button-background-active);
     color: var(--in-content-button-text-color-active);
   }
+
+  &[selected] {
+    color: var(--color-accent-primary);
+    border-bottom-color: currentColor;
+    &:hover {
+      background-color: var(--in-content-button-background-hover);
+    }
+    &:hover:active {
+      background-color: var(--in-content-button-background-active);
+    }
+  }
+
+  @media (forced-colors) {
+    &:hover,
+    &:hover:active {
+      border-bottom-color: currentColor;
+    }
+    &[selected]:hover {
+      color: var(--in-content-button-text-color-hover);
+    }
+    &[selected]:hover:active {
+      color: var(--in-content-button-text-color-active);
+    }
+  }
+}
+
+.tabs-left {
+  flex: 0;
+}
+
+.tabs-right {
+  flex: 1;
 }
 
 /* html buttons */
@@ -354,10 +308,6 @@ xul|button > .button-box > .button-text {
 button {
   /* Use the same margin of other elements for the alignment */
   margin-inline: 4px;
-}
-
-::-moz-focus-inner {
-  border: none;
 }
 
 button:focus-visible,
@@ -410,7 +360,7 @@ html|select:not([size], [multiple]):dir(rtl) {
 }
 
 html|select:not([size], [multiple]) > html|option {
-  background-color: var(--in-content-box-background);
+  background-color: var(--background-color-box);
   color: var(--in-content-text-color);
 }
 
@@ -539,7 +489,7 @@ xul|menulist > xul|menupopup {
 
   --panel-border-color: var(--in-content-box-border-color);
   --panel-border-radius: 2px;
-  --panel-background: var(--in-content-box-background);
+  --panel-background: var(--background-color-box);
   --panel-color: var(--in-content-text-color);
   --panel-padding: 0;
 }
@@ -589,7 +539,7 @@ xul|search-textbox {
   border: 1px solid var(--in-content-box-border-color);
   border-radius: 4px;
   color: inherit;
-  background-color: var(--in-content-box-background);
+  background-color: var(--background-color-box);
 }
 
 xul|search-textbox {
@@ -637,30 +587,35 @@ xul|search-textbox[disabled="true"] {
 /* Links */
 
 html|a,
-.text-link {
+.text-link,
+::part(support-link) {
   cursor: pointer;
   color: var(--link-color);
 }
 
-html|a:visited {
+html|a:visited,
+::part(support-link):visited {
   color: var(--link-color-visited);
 }
 
 html|a:hover,
 .text-link:hover,
-button.text-link:is(:not([disabled="true"]), :enabled):hover {
+button.text-link:is(:not([disabled="true"]), :enabled):hover,
+::part(support-link):hover {
   color: var(--link-color-hover);
 }
 
 html|a:hover:active,
 .text-link:hover:active,
-button.text-link:is(:not([disabled="true"]), :enabled):hover:active {
+button.text-link:is(:not([disabled="true"]), :enabled):hover:active,
+::part(support-link):hover:active {
   color: var(--link-color-active);
   text-decoration: none;
 }
 
 html|a:focus-visible,
-.text-link:focus-visible {
+.text-link:focus-visible,
+::part(support-link):focus-visible {
   outline: var(--focus-outline);
   outline-offset: var(--link-focus-outline-offset);
   border-radius: 4px;
@@ -791,7 +746,7 @@ html|*#categories > html|*.category:dir(rtl) {
 @media not (forced-colors) {
   #categories > .category[selected],
   #categories > .category.selected {
-    color: var(--in-content-accent-color);
+    color: var(--color-accent-primary);
   }
 
   #categories > .category[selected]:not(:hover) {
@@ -801,7 +756,7 @@ html|*#categories > html|*.category:dir(rtl) {
 
   #categories > .category[selected]:hover:active,
   #categories > .category.selected:hover:active {
-    color: var(--in-content-accent-color-active);
+    color: var(--color-accent-primary-active);
   }
 }
 
@@ -909,7 +864,7 @@ xul|listheader,
 xul|richlistbox {
   appearance: none;
   margin-inline: 0;
-  background-color: var(--in-content-box-background);
+  background-color: var(--background-color-box);
   border: 1px solid var(--in-content-box-border-color);
   border-radius: 4px;
   color: var(--in-content-text-color);
@@ -938,7 +893,7 @@ xul|treechildren::-moz-tree-row {
 }
 
 xul|treechildren::-moz-tree-row(multicol, odd) {
-  background-color: var(--in-content-box-background-odd);
+  background-color: var(--table-row-background-color-alternate);
 }
 
 html|select[size][multiple] > html|option:hover,
@@ -980,7 +935,7 @@ xul|richlistitem[selected] xul|menulist:focus-visible {
 }
 
 xul|panel[type="autocomplete-richlistbox"] {
-  background-color: var(--in-content-box-background);
+  background-color: var(--background-color-box);
   border: 1px solid var(--in-content-box-border-color);
   color: var(--in-content-text-color);
 }
@@ -992,7 +947,7 @@ xul|tree {
   font-size: 1em;
   border: 1px solid var(--in-content-box-border-color);
   border-radius: 4px;
-  background-color: var(--in-content-box-background);
+  background-color: var(--background-color-box);
   color: inherit;
   margin: 0;
 }
@@ -1138,11 +1093,11 @@ input[type="text"][warning]:enabled:not(:focus) {
 /* Cards */
 
 .card {
-  background: var(--in-content-box-background);
+  background: var(--background-color-box);
   /* Needed for high-contrast where the border will appear. */
-  border: 1px solid transparent;
+  border: 1px solid var(--border-color-card);
   border-radius: 4px;
-  box-shadow: var(--card-shadow);
+  box-shadow: var(--box-shadow-card);
   margin: 0 0 8px;
   /* Remove the border from the overall padding. */
   padding: calc(var(--card-padding) - 1px);
@@ -1150,7 +1105,7 @@ input[type="text"][warning]:enabled:not(:focus) {
 }
 
 .card:not(.card-no-hover):hover {
-  box-shadow: var(--card-shadow-hover);
+  box-shadow: var(--box-shadow-card-hover);
 }
 
 .card-heading-image {
@@ -1282,12 +1237,4 @@ xul|*.addons-icon {
 .back-button:-moz-locale-dir(rtl),
 .back-button:dir(rtl) {
   transform: scaleX(-1);
-}
-
-/* Adjust vertical margins for buttons in dialogs. We do this here because
- * this sheet gets inserted into the Shadow DOM for the button box in the dialog,
- * so can actually affect the button styling that way.  */
-:host(dialog[subdialog]) .dialog-button-box > button {
-  margin: 0 4px;
-  min-width: auto;
 }

@@ -142,10 +142,6 @@ namespace {
  * This scheme is similar to using signalfd(), except it's portable and it
  * doesn't require the use of sigprocmask, which is problematic because it
  * masks signals received by child processes.
- *
- * In theory, we could use Chromium's MessageLoopForIO::CatchSignal() for this.
- * But that uses libevent, which does not handle the realtime signals (bug
- * 794074).
  */
 
 // It turns out that at least on some systems, SIGRTMIN is not a compile-time
@@ -615,12 +611,7 @@ nsMemoryInfoDumper::DumpMemoryReportsToNamedFile(
   // Create the file.
 
   nsCOMPtr<nsIFile> reportsFile;
-  nsresult rv = NS_NewLocalFile(aFilename, false, getter_AddRefs(reportsFile));
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  reportsFile->InitWithPath(aFilename);
+  nsresult rv = NS_NewLocalFile(aFilename, getter_AddRefs(reportsFile));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -690,7 +681,7 @@ nsMemoryInfoDumper::DumpMemoryInfoToTempDir(const nsAString& aIdentifier,
 }
 
 #ifdef MOZ_DMD
-dmd::DMDFuncs::Singleton dmd::DMDFuncs::sSingleton;
+MOZ_RUNINIT dmd::DMDFuncs::Singleton dmd::DMDFuncs::sSingleton;
 
 nsresult nsMemoryInfoDumper::OpenDMDFile(const nsAString& aIdentifier, int aPid,
                                          FILE** aOutFile) {

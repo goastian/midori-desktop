@@ -3,15 +3,14 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* eslint-disable mozilla/valid-lazy */
 
-import { computeSha1HashAsString } from "resource://gre/modules/addons/crypto-utils.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
+import { ExtensionTaskScheduler } from "resource://gre/modules/ExtensionTaskScheduler.sys.mjs";
+import { ExtensionUtils } from "resource://gre/modules/ExtensionUtils.sys.mjs";
 
-/** @type {Lazy} */
-const lazy = {};
-
-ChromeUtils.defineESModuleGetters(lazy, {
+const lazy = XPCOMUtils.declareLazy({
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   AddonManagerPrivate: "resource://gre/modules/AddonManager.sys.mjs",
   Extension: "resource://gre/modules/Extension.sys.mjs",
@@ -19,22 +18,12 @@ ChromeUtils.defineESModuleGetters(lazy, {
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
   JSONFile: "resource://gre/modules/JSONFile.sys.mjs",
   KeyValueService: "resource://gre/modules/kvstore.sys.mjs",
+  StartupCache: "resource://gre/modules/ExtensionParent.sys.mjs",
+  Management: () => lazy.ExtensionParent.apiManager,
 });
 
-ChromeUtils.defineLazyGetter(
-  lazy,
-  "StartupCache",
-  () => lazy.ExtensionParent.StartupCache
-);
-
-ChromeUtils.defineLazyGetter(
-  lazy,
-  "Management",
-  () => lazy.ExtensionParent.apiManager
-);
-
 function emptyPermissions() {
-  return { permissions: [], origins: [] };
+  return { permissions: [], origins: [], data_collection: [] };
 }
 
 const DEFAULT_VALUE = JSON.stringify(emptyPermissions());
@@ -51,6 +40,8 @@ const RKV_DIRNAME = "extension-store-permissions";
 const VERSION_KEY = "_version";
 
 const VERSION_VALUE = 1;
+
+const WEB_SCHEMES = ["http", "https"];
 
 // Bug 1646182: remove once we fully migrate to rkv
 let prefs;
@@ -319,7 +310,21 @@ function createStore(useRkv = AppConstants.NIGHTLY_BUILD) {
 
 let store = createStore();
 
+// The public ExtensionPermissions.add, get, remove, removeAll methods may
+// interact with the same underlying data source. These methods are not
+// designed with concurrent modifications in mind, and therefore we
+// explicitly synchronize each operation, by processing them sequentially.
+const extPermAccessQueues = new ExtensionTaskScheduler();
+
 export var ExtensionPermissions = {
+  /**
+   * A per-extension container for origins requested at runtime, not in the
+   * manifest. This is only preserved in memory for UI consistency.
+   *
+   * @type {Map<string, Set>}
+   */
+  tempOrigins: new ExtensionUtils.DefaultMap(() => new Set()),
+
   async _update(extensionId, perms) {
     await store.put(extensionId, perms);
     return lazy.StartupCache.permissions.set(extensionId, perms);
@@ -341,12 +346,16 @@ export var ExtensionPermissions = {
    * back to data from the disk (and cache the result in the StartupCache).
    *
    * @param {string} extensionId The extensionId
-   * @returns {object} An object with "permissions" and "origins" array.
+   * @returns {Promise<object>} Object with "permissions" and "origins" arrays.
    *   The object may be a direct reference to the storage or cache, so its
    *   value should immediately be used and not be modified by callers.
    */
   get(extensionId) {
-    return this._getCached(extensionId);
+    return extPermAccessQueues.runReadTask(extensionId, () =>
+      this._getCached(extensionId).then(perms =>
+        this._fixupDataCollection(perms)
+      )
+    );
   },
 
   /**
@@ -358,6 +367,7 @@ export var ExtensionPermissions = {
    * @typedef {object} Perms
    * @property {string[]} origins
    * @property {string[]} permissions
+   * @property {string[]} [data_collection]
    *
    * @param {Perms} perms api permissions and origins to be added/removed.
    * @param {Perms} optional permissions and origins from the manifest.
@@ -403,6 +413,13 @@ export var ExtensionPermissions = {
     }
   },
 
+  _fixupDataCollection(perms) {
+    if (!perms.data_collection) {
+      perms.data_collection = [];
+    }
+    return perms;
+  },
+
   /**
    * Add new permissions for the given extension.  `permissions` is
    * in the format that is passed to browser.permissions.request().
@@ -414,34 +431,56 @@ export var ExtensionPermissions = {
    * @param {EventEmitter} [emitter] optional object implementing emitter interfaces
    */
   async add(extensionId, perms, emitter) {
-    let { permissions, origins } = await this._get(extensionId);
+    return extPermAccessQueues.runWriteTask(extensionId, async () => {
+      let {
+        permissions,
+        origins,
+        data_collection = [],
+      } = await this._get(extensionId);
 
-    let added = emptyPermissions();
+      let added = emptyPermissions();
 
-    this._fixupAllUrlsPerms(perms);
+      this._fixupAllUrlsPerms(perms);
+      this._fixupDataCollection(perms);
 
-    for (let perm of perms.permissions) {
-      if (!permissions.includes(perm)) {
-        added.permissions.push(perm);
-        permissions.push(perm);
+      for (let perm of perms.permissions) {
+        if (!permissions.includes(perm)) {
+          added.permissions.push(perm);
+          permissions.push(perm);
+        }
       }
-    }
 
-    for (let origin of perms.origins) {
-      origin = new MatchPattern(origin, { ignorePath: true }).pattern;
-      if (!origins.includes(origin)) {
-        added.origins.push(origin);
-        origins.push(origin);
+      for (let origin of perms.origins) {
+        origin = new MatchPattern(origin, { ignorePath: true }).pattern;
+        if (!origins.includes(origin)) {
+          added.origins.push(origin);
+          origins.push(origin);
+        }
       }
-    }
 
-    if (added.permissions.length || added.origins.length) {
-      await this._update(extensionId, { permissions, origins });
-      lazy.Management.emit("change-permissions", { extensionId, added });
-      if (emitter) {
-        emitter.emit("add-permissions", added);
+      for (let perm of perms.data_collection) {
+        if (!data_collection.includes(perm)) {
+          added.data_collection.push(perm);
+          data_collection.push(perm);
+        }
       }
-    }
+
+      if (
+        added.permissions.length ||
+        added.origins.length ||
+        added.data_collection.length
+      ) {
+        await this._update(extensionId, {
+          permissions,
+          origins,
+          data_collection,
+        });
+        lazy.Management.emit("change-permissions", { extensionId, added });
+        if (emitter) {
+          emitter.emit("add-permissions", added);
+        }
+      }
+    });
   },
 
   /**
@@ -453,47 +492,78 @@ export var ExtensionPermissions = {
    * @param {EventEmitter} [emitter] optional object implementing emitter interfaces
    */
   async remove(extensionId, perms, emitter) {
-    let { permissions, origins } = await this._get(extensionId);
+    return extPermAccessQueues.runWriteTask(extensionId, async () => {
+      let {
+        permissions,
+        origins,
+        data_collection = [],
+      } = await this._get(extensionId);
 
-    let removed = emptyPermissions();
+      let removed = emptyPermissions();
 
-    this._fixupAllUrlsPerms(perms);
+      this._fixupAllUrlsPerms(perms);
+      this._fixupDataCollection(perms);
 
-    for (let perm of perms.permissions) {
-      let i = permissions.indexOf(perm);
-      if (i >= 0) {
-        removed.permissions.push(perm);
-        permissions.splice(i, 1);
+      for (let perm of perms.permissions) {
+        let i = permissions.indexOf(perm);
+        if (i >= 0) {
+          removed.permissions.push(perm);
+          permissions.splice(i, 1);
+        }
       }
-    }
 
-    for (let origin of perms.origins) {
-      origin = new MatchPattern(origin, { ignorePath: true }).pattern;
+      for (let origin of perms.origins) {
+        origin = new MatchPattern(origin, { ignorePath: true }).pattern;
 
-      let i = origins.indexOf(origin);
-      if (i >= 0) {
-        removed.origins.push(origin);
-        origins.splice(i, 1);
+        let i = origins.indexOf(origin);
+        if (i >= 0) {
+          removed.origins.push(origin);
+          origins.splice(i, 1);
+        }
       }
-    }
 
-    if (removed.permissions.length || removed.origins.length) {
-      await this._update(extensionId, { permissions, origins });
-      lazy.Management.emit("change-permissions", { extensionId, removed });
-      if (emitter) {
-        emitter.emit("remove-permissions", removed);
+      for (let perm of perms.data_collection) {
+        let i = data_collection.indexOf(perm);
+        if (i >= 0) {
+          removed.data_collection.push(perm);
+          data_collection.splice(i, 1);
+        }
       }
-    }
+
+      if (
+        removed.permissions.length ||
+        removed.origins.length ||
+        removed.data_collection.length
+      ) {
+        await this._update(extensionId, {
+          permissions,
+          origins,
+          data_collection,
+        });
+        lazy.Management.emit("change-permissions", { extensionId, removed });
+        if (emitter) {
+          emitter.emit("remove-permissions", removed);
+        }
+      }
+
+      let temp = this.tempOrigins.get(extensionId);
+      for (let origin of removed.origins) {
+        temp.add(origin);
+      }
+    });
   },
 
   async removeAll(extensionId) {
-    lazy.StartupCache.permissions.delete(extensionId);
+    return extPermAccessQueues.runWriteTask(extensionId, async () => {
+      this.tempOrigins.delete(extensionId);
+      lazy.StartupCache.permissions.delete(extensionId);
 
-    let removed = store.get(extensionId);
-    await store.delete(extensionId);
-    lazy.Management.emit("change-permissions", {
-      extensionId,
-      removed: await removed,
+      let removed = store.get(extensionId);
+      await store.delete(extensionId);
+      lazy.Management.emit("change-permissions", {
+        extensionId,
+        removed: await removed,
+      });
     });
   },
 
@@ -535,7 +605,39 @@ export var ExtensionPermissions = {
 };
 
 export var OriginControls = {
-  allDomains: new MatchPattern("*://*/*"),
+  /**
+   * @typedef {object} NativeTab
+   * @property {XULBrowserElement} linkedBrowser
+   */
+
+  /**
+   * Determine if the given Manifest V3 extension has a host permissions for
+   * the given tab which was one expected to be granted at install time (by
+   * being listed in host_permissions or derived from match patterns for
+   * content scripts declared in the manifest).
+   *
+   * NOTE: this helper method is only used for additional checks only hit for
+   * MV3 extensions, but the implementation is technically not strictly MV3
+   * specific.
+   *
+   * @param {WebExtensionPolicy} policy
+   * @param {NativeTab} nativeTab
+   * @returns {boolean} Whether the extension has a non optional host
+   * permission for the given tab.
+   */
+  hasMV3RequestedOrigin(policy, nativeTab) {
+    const uri = nativeTab.linkedBrowser?.currentURI;
+
+    if (!uri) {
+      return false;
+    }
+
+    // Determine if that are host permissions that would have been granted
+    // as install time that are matching the tab URI.
+    const manifestOrigins =
+      policy.extension.getManifestOriginsMatchPatternSet();
+    return manifestOrigins.matches(uri);
+  },
 
   /**
    * @typedef {object} OriginControlState
@@ -556,9 +658,14 @@ export var OriginControls = {
    */
   getState(policy, nativeTab) {
     // Note: don't use the nativeTab directly because it's different on mobile.
-    let tab = policy?.extension?.tabManager.getWrapper(nativeTab);
-    let temporaryAccess = tab?.hasActiveTabPermission;
+    let tab = policy?.extension?.tabManager?.getWrapper(nativeTab);
+    let tabHasActiveTabPermission = tab?.hasActiveTabPermission;
     let uri = tab?.browser.currentURI;
+    return this._getStateInternal(policy, { uri, tabHasActiveTabPermission });
+  },
+
+  _getStateInternal(policy, { uri, tabHasActiveTabPermission }) {
+    let temporaryAccess = tabHasActiveTabPermission;
 
     if (!uri) {
       return { noAccess: true };
@@ -596,7 +703,7 @@ export var OriginControls = {
 
     if (
       quarantined ||
-      !this.allDomains.matches(uri) ||
+      (uri.scheme !== "https" && uri.scheme !== "http") ||
       WebExtensionPolicy.isRestrictedURI(uri) ||
       (!couldRequest && !hasAccess && !activeTab)
     ) {
@@ -606,7 +713,7 @@ export var OriginControls = {
     if (!couldRequest && !hasAccess && activeTab) {
       return { whenClicked: true, temporaryAccess };
     }
-    if (policy.allowedOrigins.subsumes(this.allDomains)) {
+    if (policy.allowedOrigins.matchesAllWebUrls) {
       return { allDomains: true, hasAccess };
     }
 
@@ -631,14 +738,18 @@ export var OriginControls = {
    */
   getAttentionState(policy, window) {
     if (policy?.manifestVersion >= 3) {
-      const state = this.getState(policy, window.gBrowser.selectedTab);
+      const { selectedTab } = window.gBrowser;
+      const state = this.getState(policy, selectedTab);
       // Request attention when the extension cannot access the current tab,
       // but has a host permission that could be granted.
       // Quarantined is always false when the feature is disabled.
       const quarantined = !!state.quarantined;
-      const attention =
+      let attention =
         quarantined ||
-        (!!state.alwaysOn && !state.hasAccess && !state.temporaryAccess);
+        (!!state.alwaysOn &&
+          !state.hasAccess &&
+          !state.temporaryAccess &&
+          this.hasMV3RequestedOrigin(policy, selectedTab));
 
       return { attention, quarantined };
     }
@@ -656,7 +767,53 @@ export var OriginControls = {
     if (!policy.active) {
       return;
     }
-    let perms = { permissions: [], origins: ["*://" + uri.host] };
+
+    // Already granted.
+    if (policy.allowedOrigins.matches(uri)) {
+      return;
+    }
+
+    // Only try to compute the per-host host permissions on web scheme urls (http/https).
+    if (!WEB_SCHEMES.includes(uri.scheme)) {
+      return;
+    }
+
+    // Determine which one from the 3 set of granted host permissions
+    // (granting access to the given url's host and scheme) are subsumed
+    // by the optional host permissions declared by the extension.
+    let originPatterns = [];
+    const originPatternsChoices = [
+      // Single wildcard scheme permission for the current host.
+      [`*://${uri.host}/*`],
+      // Two separate scheme-specific permission for the current host.
+      WEB_SCHEMES.map(scheme => `${scheme}://${uri.host}/*`),
+      // One scheme-specific permission for the current host and scheme.
+      [`${uri.scheme}://${uri.host}/*`],
+    ];
+    for (const originPatternsChoice of originPatternsChoices) {
+      const choiceMatchPatternSet = new MatchPatternSet(originPatternsChoice);
+      const choiceSubsumed = choiceMatchPatternSet.patterns.every(mp =>
+        policy.extension.optionalOrigins.subsumes(mp)
+      );
+      if (choiceSubsumed) {
+        originPatterns = originPatternsChoice;
+        break;
+      }
+    }
+
+    // Nothing to grant.
+    if (!originPatterns.length) {
+      // This shouldn't be ever hit outside of unit tests and so we log an error
+      // to prevent it from being silently hit (and make it easier to investigate
+      // potential bugs in our OriginControls.getState logic that could leave to
+      // this).
+      Cu.reportError(
+        `Unxpected no host permission patterns to grant found for ${policy.debugName} on ${uri.spec}`
+      );
+      return;
+    }
+
+    let perms = { permissions: [], origins: originPatterns };
     return ExtensionPermissions.add(policy.id, perms, policy.extension);
   },
 
@@ -665,7 +822,46 @@ export var OriginControls = {
     if (!policy.active) {
       return;
     }
-    let perms = { permissions: [], origins: ["*://" + uri.host] };
+
+    // Return earlier if the extension doesn't really have access to the
+    // given url.
+    if (!policy.allowedOrigins.matches(uri)) {
+      return;
+    }
+
+    // Only try to revoke per-host host permissions on web scheme urls (http/https).
+    if (!WEB_SCHEMES.includes(uri.scheme)) {
+      // TODO: once we have introduce a user-controlled opt-in for file urls
+      // we could consider to remove that internal permission to revoke
+      // to the extension access to file urls (and the user would be able
+      // to grant it back from the addon manager).
+      return;
+    }
+
+    // NOTE: all urls wouldn't be currently be revoked and so in that case
+    // setWhenClicked is going to be a no-op.
+    const matchHost = new MatchPattern(`*://${uri.host}/*`);
+    const patternsToRevoke = policy.allowedOrigins.patterns
+      .filter(mp => mp.overlaps(matchHost))
+      .map(mp => mp.pattern)
+      .filter(pattern => !lazy.Extension.isAllSitesPermission(pattern));
+
+    // Nothing to revoke.
+    if (!patternsToRevoke.length) {
+      // This shouldn't be ever hit outside of unit tests and so we log an error
+      // to prevent it from being silently hit (and make it easier to investigate
+      // potential bugs in our OriginControls.getState logic that could leave to
+      // this).
+      Cu.reportError(
+        `Unxpected no host permission patterns to revoke found for ${policy.debugName} on ${uri.spec}`
+      );
+      return;
+    }
+
+    let perms = {
+      permissions: [],
+      origins: patternsToRevoke,
+    };
     return ExtensionPermissions.remove(policy.id, perms, policy.extension);
   },
 
@@ -768,36 +964,16 @@ export var QuarantinedDomains = {
       onUserAllowedPrefChanged
     );
 
-    const onUpdatedDomainsListTelemetry =
-      this._onUpdatedDomainsListTelemetry.bind(this);
     XPCOMUtils.defineLazyPreferenceGetter(
       this,
       "currentDomainsList",
       this.PREF_DOMAINSLIST_NAME,
       "",
-      onUpdatedDomainsListTelemetry,
+      null,
       value => this._transformDomainsListPrefValue(value || "")
-    );
-    // Collect it at least once per session (and update it when the pref value changes).
-    onUpdatedDomainsListTelemetry();
-
-    const onAMRemoteSettingsSetPref =
-      this._onAMRemoteSettingsSetPref.bind(this);
-    Services.obs.addObserver(
-      onAMRemoteSettingsSetPref,
-      "am-remote-settings-setpref"
     );
 
     this._initialized = true;
-  },
-  async _onAMRemoteSettingsSetPref(subject, _topic) {
-    const { prefName, prefValue } = subject?.wrappedJSObject ?? {};
-    if (prefName !== this.PREF_DOMAINSLIST_NAME) {
-      return;
-    }
-    Glean.extensionsQuarantinedDomains.remotehash.set(
-      computeSha1HashAsString(prefValue || "")
-    );
   },
   async _onUserAllowedPrefChanged(_subject, _topic, prefName) {
     let addonId = prefName.slice(this.PREF_ADDONS_BRANCH_NAME.length);
@@ -816,21 +992,9 @@ export var QuarantinedDomains = {
       ]);
     }
   },
-  _onUpdatedDomainsListTelemetry(_subject, _topic, _prefName) {
-    Glean.extensionsQuarantinedDomains.listsize.set(
-      this.currentDomainsList.set.size
-    );
-    Glean.extensionsQuarantinedDomains.listhash.set(
-      this.currentDomainsList.hash
-    );
-  },
   _transformDomainsListPrefValue(value) {
     try {
       return {
-        // NOTE: using a sha1 hash to make sure the resulting string will fit into the
-        // unified telemetry scalar string the glean metrics is mirrored to (which is
-        // limited to 50 characters).
-        hash: computeSha1HashAsString(value || ""),
         set: new Set(
           value
             .split(",")

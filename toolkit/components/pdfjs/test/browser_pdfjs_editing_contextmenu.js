@@ -173,25 +173,16 @@ add_task(async function test_copy_paste_undo_redo() {
       await waitAndCheckEmptyContextMenu(browser);
       const spanBox = await getSpanBox(browser, "and found references");
 
-      await enableEditor(browser, "FreeText");
+      await enableEditor(browser, "FreeText", 1);
       await addFreeText(browser, "hello", spanBox);
-
-      await BrowserTestUtils.waitForCondition(
-        async () => (await countElements(browser, ".freeTextEditor")) !== 0
-      );
-
-      await TestUtils.waitForTick();
-
-      // The PDF already has a text annotation.
-      Assert.equal(await countElements(browser, ".freeTextEditor"), 2);
 
       // Unselect.
       await escape(browser);
 
+      info("Wait for the editor to be unselected");
       await BrowserTestUtils.waitForCondition(
         async () => (await countElements(browser, ".selectedEditor")) !== 1
       );
-
       Assert.equal(await countElements(browser, ".selectedEditor"), 0);
 
       let menuitems = await getContextMenuItems(browser, spanBox);
@@ -355,11 +346,8 @@ add_task(async function test_copy_paste_undo_redo() {
         "All the FreeText editors must have been deleted"
       );
 
-      await SpecialPowers.spawn(browser, [], async function () {
-        var viewer = content.wrappedJSObject.PDFViewerApplication;
-        viewer.pdfDocument.annotationStorage.resetModified();
-        await viewer.close();
-      });
+      await waitForPdfJSClose(browser);
+      await SpecialPowers.popPrefEnv();
     }
   );
 });
@@ -371,10 +359,7 @@ add_task(async function test_highlight_selection() {
     { gBrowser, url: "about:blank" },
     async function (browser) {
       await SpecialPowers.pushPrefEnv({
-        set: [
-          ["pdfjs.annotationEditorMode", 0],
-          ["pdfjs.enableHighlightEditor", true],
-        ],
+        set: [["pdfjs.annotationEditorMode", 0]],
       });
 
       await waitAndCheckEmptyContextMenu(browser);
@@ -421,11 +406,7 @@ add_task(async function test_highlight_selection() {
         "An highlight editor must have been added"
       );
 
-      await SpecialPowers.spawn(browser, [], async function () {
-        var viewer = content.wrappedJSObject.PDFViewerApplication;
-        viewer.pdfDocument.annotationStorage.resetModified();
-        await viewer.close();
-      });
+      await waitForPdfJSClose(browser);
     }
   );
 });

@@ -40,9 +40,10 @@ async function runTests() {
                         .getService(SpecialPowers.Ci.nsIFind);
 
   var display = window.document.getElementById("display");
+  var testNode = window.document.getElementById("test");
   var searchRange = window.document.createRange();
   searchRange.setStart(display, 0);
-  searchRange.setEnd(display, display.childNodes.length);
+  searchRange.setEnd(testNode, testNode.childNodes.length);
   var startPt = searchRange;
   var endPt = searchRange;
 
@@ -145,23 +146,26 @@ async function runTests() {
   ok(retRange, "\"" + searchValue + "\" not found");
 
   // Set new start point (to end of last search).
-  startPt = retRange.endContainer.ownerDocument.createRange();
-  startPt.setStart(retRange.endContainer, retRange.endOffset);
-  startPt.setEnd(retRange.endContainer, retRange.endOffset);
+  let newStartPt = retRange.endContainer.ownerDocument.createRange();
+  newStartPt.setStart(retRange.endContainer, retRange.endOffset);
+  newStartPt.setEnd(retRange.endContainer, retRange.endOffset);
 
   searchValue = "t";
-  retRange = rf.Find(searchValue, searchRange, startPt, endPt);
+  retRange = rf.Find(searchValue, searchRange, newStartPt, endPt);
   ok(retRange, "\"" + searchValue + "\" not found (forward)");
 
   searchValue = "the";
-  retRange = rf.Find(searchValue, searchRange, startPt, endPt);
+  retRange = rf.Find(searchValue, searchRange, newStartPt, endPt);
   ok(!retRange, "\"" + searchValue + "\" found (forward)");
 
   rf.findBackwards = true;
 
   // searchValue = "the";
-  retRange = rf.Find(searchValue, searchRange, startPt, endPt);
-  ok(retRange, "\"" + searchValue + "\" not found (backward)");
+  retRange = rf.Find(searchValue, searchRange, newStartPt, endPt);
+  ok(!retRange, "\"" + searchValue + "\" found in second sub range (backward)");
+
+  retRange = rf.Find(searchValue, searchRange, startPt, newStartPt);
+  ok(retRange, "\"" + searchValue + "\" not found in first sub range (backward)");
 
   // Curly quotes and straight quotes should match.
 
@@ -274,6 +278,49 @@ async function runTests() {
   assertNotFound(quotes, "Tardigrade");
   assertNotFound(quotes, "Amoeba");
 
+  // hidden=until-found content is found
+  // https://html.spec.whatwg.org/#attr-hidden-until-found
+  const hiddenUntilFound = document.querySelector("#hidden-until-found");
+  // Create a promise that resolves when the beforematch event fires.
+  const beforematchPromise = new Promise(resolve => {
+    hiddenUntilFound.onbeforematch = () => resolve();
+  });
+  is(
+    getComputedStyle(hiddenUntilFound).contentVisibility,
+    "hidden",
+    "hidden=until-found content has content-visibility: hidden before being found"
+  );
+  assertFound(document.body, "hidden until found");
+
+  await beforematchPromise;
+  await new Promise(resolve => requestAnimationFrame(resolve));
+
+  is(
+    getComputedStyle(hiddenUntilFound).contentVisibility,
+    "visible",
+    "hidden=until-found content has content-visibility: visible after being found"
+  );
+
+  // https://html.spec.whatwg.org/#interaction-with-details-and-hidden=until-found
+  const hiddenHiddenUntilFound = document.querySelector("div#hidden-until-found-inside-hidden");
+  hiddenHiddenUntilFound.onbeforematch = () => ok(
+    false,
+    "Beforematch must not be fired for a hidden=until-found element which is inside a content-visibility:hidden element."
+  );
+  assertNotFound(document.body, "hidden because of content-visibility: hidden outside of hidden=until-found");
+
+  const nestedHiddenInHiddenUntilFound = document.querySelector("div#hidden-until-found-with-inner-hidden");
+  nestedHiddenInHiddenUntilFound.onbeforematch = () => ok(
+    false,
+    "Beforematch must not be fired for a hidden=until-found element if the matched content is content-visibility:hidden"
+  );
+  assertNotFound(document.body, "nested hidden block should not be found");
+  assertNotFound(document.body, "nested visibility:hidden should not be found");
+
+  assertNotFound(document.body, "hidden content in details");
+  assertFound(document.body, "auto-expanding details");
+  assertNotFound(document.body, "hidden details from outer node");
+
   // Simple checks for behavior of the entireWord option.
   var entireWord = document.getElementById("entireWord");
   rf.entireWord = true;
@@ -306,6 +353,24 @@ async function runTests() {
   assertFound(table, "whole");
   assertFound(table, "words");
   rf.entireWord = false;
+
+  // Bug 1943846: Searching for U+2000D should not match space.
+  var nonspace = document.getElementById("nonspace");
+  assertFound(nonspace, "\u{2000D}");
+  assertFound(nonspace, "\u{10000A}");
+  assertNotFound(nonspace, "\u{3000D}");
+  assertNotFound(nonspace, "\u{3000A}");
+
+  var space = document.getElementById("space");
+  assertFound(space, " ");
+  assertFound(space, "\n");
+  assertFound(space, "\r");
+  assertFound(space, "\t");
+  assertFound(space, "\u00A0");
+  assertNotFound(space, "\u{2000D}");
+  assertNotFound(space, "\u{10000A}");
+  assertNotFound(space, "\u{3000D}");
+  assertNotFound(space, "\u{3000A}");
 
   // Do these test at the end since they trigger failure screenshots in
   // the test harness, and we want as much information as possible about
@@ -384,6 +449,29 @@ async function runTests() {
     Tardigrade
     <div>Amoeba</div>
 </div>
+<div id="hidden-until-found" hidden="until-found">hidden <span>until</span> found</div>
+<div style="content-visibility: hidden;">
+  <div id="hidden-until-found-inside-hidden" hidden="until-found">
+    hidden because of content-visibility: hidden outside of hidden=until-found
+  </div>
+</div>
+<div id="hidden-until-found-with-inner-hidden" hidden="until-found">
+  <div style="content-visibility: hidden;">
+    nested hidden block should not be found
+  </div>
+  <div style="visibility: hidden;">nested visibility:hidden should not be found</div>
+</div>
+<details>
+  <summary>Content below should be found</summary>
+  auto-expanding details
+  <div style="content-visibility: hidden;">hidden content in details</div>
+</details>
+<div style="content-visibility: hidden;">
+  <details>
+    <summary>Invisible details</summary>
+    hidden details from outer node
+  </details>
+</div>
 <div id="entireWord"><p>(one)</p><p>[two] [three]</p><p>-foo -bar</p></div>
 <div id="content" style="display: none">
 
@@ -393,6 +481,8 @@ async function runTests() {
   <div><div></div><div></div><div>several whole words</div></div>
   <div><div>one</div><div>more</div><div>row</div></div>
 </div>
+<p id="nonspace">&#x2000D;&#x10000A;</p>
+<p id="space"> <br>&nbsp;</p>
 <pre id="test">
 </pre>
 </body>

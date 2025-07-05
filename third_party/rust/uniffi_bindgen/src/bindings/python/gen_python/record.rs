@@ -3,7 +3,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use super::CodeType;
-use crate::backend::Literal;
 
 #[derive(Debug)]
 pub struct RecordCodeType {
@@ -22,10 +21,6 @@ impl CodeType for RecordCodeType {
     }
 
     fn canonical_name(&self) -> String {
-        format!("Type{}", self.id)
-    }
-
-    fn literal(&self, _literal: &Literal) -> String {
-        unreachable!();
+        format!("Type{}", self.type_label())
     }
 }

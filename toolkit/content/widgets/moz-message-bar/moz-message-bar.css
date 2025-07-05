@@ -11,14 +11,13 @@
   /* Container */
   --message-bar-container-min-height: var(--size-item-large);
 
-  /* Border */
-  --message-bar-border-color: color-mix(in srgb, currentColor 9%, transparent);
+ /* Border */
+  --message-bar-border-color: oklch(from var(--message-bar-icon-color) l c h / 20%);
   --message-bar-border-radius: var(--border-radius-small);
   --message-bar-border-width: var(--border-width);
 
   /* Text */
   --message-bar-text-color: var(--text-color);
-  --message-bar-text-line-height: 1.5em;
 
   /* Background */
   --message-bar-background-color: var(--background-color-information);
@@ -45,10 +44,10 @@
 
 .container {
   display: flex;
-  gap: 8px;
+  gap: var(--space-small);
   min-height: var(--message-bar-container-min-height);
-  padding-inline: 16px 8px;
-  padding-block: 8px;
+  padding-inline: var(--space-medium) var(--space-small);
+  padding-block: var(--space-small);
 }
 
 .content {
@@ -56,32 +55,31 @@
   flex-grow: 1;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px 12px;
-  margin-inline-start: 24px;
+  gap: var(--space-small) var(--space-medium);
+  margin-inline-start: var(--message-bar-icon-size);
 }
 
 .text-container {
   display: flex;
-  gap: 4px 8px;
-  padding-block: calc((var(--message-bar-container-min-height) - var(--message-bar-text-line-height)) / 2);
+  gap: var(--space-xsmall) var(--space-small);
+  padding-block: calc((var(--message-bar-container-min-height) - 1lh) / 2);
 }
 
 .text-content {
   display: inline-flex;
-  gap: 4px 8px;
+  gap: var(--space-xsmall) var(--space-small);
   flex-wrap: wrap;
   word-break: break-word;
-  line-height: var(--message-bar-text-line-height);
 }
 
 /* MozMessageBar icon style */
 
 .icon-container {
-  height: var(--message-bar-text-line-height);
+  height: 1lh;
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-inline-start: -24px;
+  margin-inline-start: calc(-1 * var(--message-bar-icon-size));
 }
 
 .icon {
@@ -103,8 +101,8 @@
 
 /* MozMessageBar message style */
 
-.message {
-  margin-inline-end: 4px;
+.message.has-link-after {
+  margin-inline-end: var(--space-xsmall);
 }
 
 /* MozMessageBar link style */
@@ -114,7 +112,7 @@
 }
 
 .link ::slotted(a) {
-  margin-inline-end: 4px;
+  margin-inline-end: var(--space-xsmall);
 }
 
 /* MozMessageBar actions style */
@@ -125,7 +123,7 @@
 
 .actions.active {
   display: inline-flex;
-  gap: 8px;
+  gap: var(--space-small);
 }
 
 .actions ::slotted(button) {
@@ -133,7 +131,7 @@
   min-width: fit-content !important;
 
   margin: 0 !important;
-  padding: 4px 16px !important;
+  padding: var(--space-xsmall) var(--space-large) !important;
 }
 
 /* Close icon styles */
@@ -144,30 +142,19 @@ moz-button::part(button) {
 
 @media not (prefers-contrast) {
   /* MozMessageBar colors by message type */
-  /* Colors from: https://www.figma.com/file/zd3B9UyknB2XNZNdrYLm2W/Outreachy?type=design&node-id=59-1921&mode=design&t=ZYS4e6pAbAlXGvun-4 */
-
   :host([type=warning]) {
     --message-bar-background-color: var(--background-color-warning);
-
-    .icon {
-      --message-bar-icon-color: var(--icon-color-warning);
-    }
+    --message-bar-icon-color: var(--icon-color-warning);
   }
 
   :host([type=success]) {
     --message-bar-background-color: var(--background-color-success);
-
-    .icon {
-      --message-bar-icon-color: var(--icon-color-success);
-    }
+    --message-bar-icon-color: var(--icon-color-success);
   }
 
   :host([type=error]),
   :host([type=critical]) {
     --message-bar-background-color: var(--background-color-critical);
-
-    .icon {
-      --message-bar-icon-color: var(--icon-color-critical);
-    }
+    --message-bar-icon-color: var(--icon-color-critical);
   }
 }

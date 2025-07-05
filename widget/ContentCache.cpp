@@ -16,6 +16,7 @@
 #include "mozilla/IMEStateManager.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/Logging.h"
+#include "mozilla/MiscEvents.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/TextComposition.h"
 #include "mozilla/dom/BrowserParent.h"
@@ -107,7 +108,7 @@ void ContentCache::AssertIfInvalid() const {
           ? "Nothing"
           : nsPrintfCString("%u", mCompositionStart.value()).get());
   CrashReporter::AppendAppNotesToCrashReport(info);
-  MOZ_DIAGNOSTIC_ASSERT(false, "Invalid ContentCache data");
+  MOZ_DIAGNOSTIC_CRASH("Invalid ContentCache data");
 #endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
 }
 
@@ -1419,15 +1420,65 @@ void ContentCacheInParent::OnSelectionEvent(
   mPendingSetSelectionEventNeedingAck++;
 }
 
+void ContentCacheInParent::OnContentCommandEvent(
+    const WidgetContentCommandEvent& aContentCommandEvent) {
+  MOZ_LOG(sContentCacheLog, LogLevel::Info,
+          ("0x%p OnContentCommandEvent(aEvent={ "
+           "mMessage=%s, mString=\"%s\", mSelection={ mReplaceSrcString=\"%s\" "
+           "mOffset=%u, mPreventSetSelection=%s }, mOnlyEnabledCheck=%s })",
+           this, ToChar(aContentCommandEvent.mMessage),
+           ToString(aContentCommandEvent.mString).c_str(),
+           ToString(aContentCommandEvent.mSelection.mReplaceSrcString).c_str(),
+           aContentCommandEvent.mSelection.mOffset,
+           GetBoolName(aContentCommandEvent.mSelection.mPreventSetSelection),
+           GetBoolName(aContentCommandEvent.mOnlyEnabledCheck)));
+
+  MOZ_ASSERT(!aContentCommandEvent.mOnlyEnabledCheck);
+
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED && !defined(FUZZING_SNAPSHOT)
+  mDispatchedEventMessages.AppendElement(aContentCommandEvent.mMessage);
+#endif  // MOZ_DIAGNOSTIC_ASSERT_ENABLED
+
+  mPendingContentCommandEventNeedingAck++;
+}
+
 void ContentCacheInParent::OnEventNeedingAckHandled(nsIWidget* aWidget,
                                                     EventMessage aMessage,
                                                     uint32_t aCompositionId) {
-  // This is called when the child process receives WidgetCompositionEvent or
-  // WidgetSelectionEvent.
+  // This is called when the child process receives WidgetCompositionEvent,
+  // WidgetSelectionEvent or WidgetContentCommandEvent.
+
+  const bool isCompositionEvent = [&]() {
+    switch (aMessage) {
+      case eCompositionStart:
+      case eCompositionEnd:
+      case eCompositionChange:
+      case eCompositionCommitAsIs:
+      case eCompositionCommit:
+      case eCompositionCommitRequestHandled:
+        return true;
+      case eSetSelection:
+      case eContentCommandCut:
+      case eContentCommandCopy:
+      case eContentCommandPaste:
+      case eContentCommandDelete:
+      case eContentCommandUndo:
+      case eContentCommandRedo:
+      case eContentCommandInsertText:
+      case eContentCommandReplaceText:
+        return false;
+      default:
+        NS_ASSERTION(
+            false, nsPrintfCString(
+                       "%s message is NOT expected in OnEventNeedingAckHandled",
+                       ToChar(aMessage))
+                       .get());
+        return false;
+    }
+  }();
 
   HandlingCompositionData* handlingCompositionData =
-      aMessage != eSetSelection ? GetHandlingCompositionData(aCompositionId)
-                                : nullptr;
+      isCompositionEvent ? GetHandlingCompositionData(aCompositionId) : nullptr;
 
   MOZ_LOG(sContentCacheLog, LogLevel::Info,
           ("0x%p OnEventNeedingAckHandled(aWidget=0x%p, aMessage=%s, "
@@ -1443,7 +1494,7 @@ void ContentCacheInParent::OnEventNeedingAckHandled(nsIWidget* aWidget,
 
   // If we receive composition event messages for older one or invalid one,
   // we should ignore them.
-  if (NS_WARN_IF(aMessage != eSetSelection && !handlingCompositionData)) {
+  if (NS_WARN_IF(isCompositionEvent && !handlingCompositionData)) {
     return;
   }
 
@@ -1587,6 +1638,21 @@ void ContentCacheInParent::OnEventNeedingAckHandled(nsIWidget* aWidget,
 #endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
     } else {
       mPendingSetSelectionEventNeedingAck--;
+    }
+  } else if (aMessage >= eContentCommandEventFirst &&
+             aMessage <= eContentCommandEventLast) {
+    if (NS_WARN_IF(!mPendingContentCommandEventNeedingAck)) {
+#if MOZ_DIAGNOSTIC_ASSERT_ENABLED && !defined(FUZZING_SNAPSHOT)
+      nsAutoCString info(
+          "\nThere is no pending content command events but received from the "
+          "remote child\n\n");
+      AppendEventMessageLog(info);
+      CrashReporter::AppendAppNotesToCrashReport(info);
+      MOZ_DIAGNOSTIC_ASSERT(
+          false, "No pending event message but received unexpected event");
+#endif  // #if MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    } else {
+      mPendingContentCommandEventNeedingAck--;
     }
   }
 

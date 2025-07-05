@@ -10,7 +10,7 @@
  * of nsILoginManager and nsILoginManagerStorage.
  */
 
-import { Logic } from "resource://gre/modules/LoginManager.shared.mjs";
+import { Logic } from "resource://gre/modules/LoginManager.shared.sys.mjs";
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 const lazy = {};
@@ -408,8 +408,6 @@ export const LoginHelper = {
     // Watch for pref changes to update cached pref values.
     Services.prefs.addObserver("signon.", () => this.updateSignonPrefs());
     this.updateSignonPrefs();
-    Services.telemetry.setEventRecordingEnabled("pwmgr", true);
-    Services.telemetry.setEventRecordingEnabled("form_autocomplete", true);
 
     // Watch for FXA Logout to reset signon.firefoxRelay to 'available'
     // Using hard-coded value for FxAccountsCommon.ONLOGOUT_NOTIFICATION because
@@ -429,6 +427,7 @@ export const LoginHelper = {
     );
     this.debug = Services.prefs.getBoolPref("signon.debug");
     this.enabled = Services.prefs.getBoolPref("signon.rememberSignons");
+    Glean.pwmgr.savingEnabled.set(this.enabled);
     this.storageEnabled = Services.prefs.getBoolPref(
       "signon.storeSignons",
       true
@@ -441,9 +440,6 @@ export const LoginHelper = {
     );
     this.generationAvailable = Services.prefs.getBoolPref(
       "signon.generation.available"
-    );
-    this.generationConfidenceThreshold = parseFloat(
-      Services.prefs.getStringPref("signon.generation.confidenceThreshold")
     );
     this.generationEnabled = Services.prefs.getBoolPref(
       "signon.generation.enabled"
@@ -675,40 +671,11 @@ export const LoginHelper = {
    * Strip out things like the userPass portion and handle javascript:.
    */
   getLoginOrigin(uriString, allowJS = false) {
-    try {
-      const mozProxyRegex = /^moz-proxy:\/\//i;
-      const isMozProxy = !!uriString.match(mozProxyRegex);
-      if (isMozProxy) {
-        // Special handling because uri.displayHostPort throws on moz-proxy://
-        return (
-          "moz-proxy://" +
-          Services.io.newURI(uriString.replace(mozProxyRegex, "https://"))
-            .displayHostPort
-        );
-      }
-
-      const uri = Services.io.newURI(uriString);
-      if (allowJS && uri.scheme == "javascript") {
-        return "javascript:";
-      }
-
-      // Build this manually instead of using prePath to avoid including the userPass portion.
-      return uri.scheme + "://" + uri.displayHostPort;
-    } catch {
-      return null;
-    }
+    return Logic.getLoginOrigin(uriString, allowJS);
   },
 
   getFormActionOrigin(form) {
-    let uriString = form.action;
-
-    // A blank or missing action submits to where it came from.
-    if (uriString == "") {
-      // ala bug 297761
-      uriString = form.baseURI;
-    }
-
-    return this.getLoginOrigin(uriString, true);
+    return Logic.getFormActionOrigin(form);
   },
 
   /**
@@ -1296,29 +1263,7 @@ export const LoginHelper = {
    *                    be treated as a password input
    */
   isPasswordFieldType(element, { ignoreConnect = false } = {}) {
-    if (!HTMLInputElement.isInstance(element)) {
-      return false;
-    }
-
-    if (!element.isConnected && !ignoreConnect) {
-      // If the element isn't connected then it isn't visible to the user so
-      // shouldn't be considered. It must have been connected in the past.
-      return false;
-    }
-
-    if (!element.hasBeenTypePassword) {
-      return false;
-    }
-
-    // Ensure the element is of a type that could have autocomplete.
-    // These include the types with user-editable values. If not, even if it used to be
-    // a type=password, we can't treat it as a password input now
-    let acInfo = element.getAutocompleteInfo();
-    if (!acInfo) {
-      return false;
-    }
-
-    return true;
+    return Logic.isPasswordFieldType(element, { ignoreConnect });
   },
 
   /**
@@ -1334,41 +1279,7 @@ export const LoginHelper = {
    *                    of the username types.
    */
   isUsernameFieldType(element, { ignoreConnect = false } = {}) {
-    if (!HTMLInputElement.isInstance(element)) {
-      return false;
-    }
-
-    if (!element.isConnected && !ignoreConnect) {
-      // If the element isn't connected then it isn't visible to the user so
-      // shouldn't be considered. It must have been connected in the past.
-      return false;
-    }
-
-    if (element.hasBeenTypePassword) {
-      return false;
-    }
-
-    if (!Logic.inputTypeIsCompatibleWithUsername(element)) {
-      return false;
-    }
-
-    let acFieldName = element.getAutocompleteInfo().fieldName;
-    if (
-      !(
-        acFieldName == "username" ||
-        acFieldName == "webauthn" ||
-        // Bug 1540154: Some sites use tel/email on their username fields.
-        acFieldName == "email" ||
-        acFieldName == "tel" ||
-        acFieldName == "tel-national" ||
-        acFieldName == "off" ||
-        acFieldName == "on" ||
-        acFieldName == ""
-      )
-    ) {
-      return false;
-    }
-    return true;
+    return Logic.isUsernameFieldType(element, { ignoreConnect });
   },
 
   /**
@@ -1429,7 +1340,7 @@ export const LoginHelper = {
    * @returns {boolean} True if any of the rules matches
    */
   isInferredNonUsernameField(element) {
-    const expr = /search|code|add/i;
+    const expr = /\b(search|code|add)\b/i;
 
     if (
       Logic.elementAttrsMatchRegex(element, expr) ||
@@ -1691,13 +1602,15 @@ export const LoginHelper = {
    * @param expirationTime Optional timestamp indicating next required re-authentication
    * @param messageText Formatted and localized string to be displayed when the OS auth dialog is used.
    * @param captionText Formatted and localized string to be displayed when the OS auth dialog is used.
+   * @param reason The reason for requesting reauthentication, used for telemetry.
    */
   async requestReauth(
     browser,
     OSReauthEnabled,
     expirationTime,
     messageText,
-    captionText
+    captionText,
+    reason
   ) {
     let isAuthorized = false;
     let telemetryEvent;
@@ -1712,8 +1625,8 @@ export const LoginHelper = {
     if (expirationTime && Date.now() < expirationTime) {
       isAuthorized = true;
       telemetryEvent = {
-        object: token.hasPassword ? "master_password" : "os_auth",
-        method: "reauthenticate",
+        name:
+          "reauthenticate" + (token.hasPassword ? "MasterPassword" : "OsAuth"),
         value: "success_no_prompt",
       };
       return {
@@ -1726,8 +1639,7 @@ export const LoginHelper = {
     if (!token.hasPassword && !OSReauthEnabled) {
       isAuthorized = true;
       telemetryEvent = {
-        object: "os_auth",
-        method: "reauthenticate",
+        name: "reauthenticateOsAuth",
         value: "success_disabled",
       };
       return {
@@ -1737,20 +1649,31 @@ export const LoginHelper = {
     }
     // Use the OS auth dialog if there is no primary password
     if (!token.hasPassword && OSReauthEnabled) {
-      let isAuthorized = await this.verifyUserOSAuth(
-        OS_AUTH_FOR_PASSWORDS_PREF,
-        messageText,
-        captionText,
-        browser.ownerGlobal,
-        false
-      );
+      let result;
+      try {
+        isAuthorized = await this.verifyUserOSAuth(
+          OS_AUTH_FOR_PASSWORDS_PREF,
+          messageText,
+          captionText,
+          browser.ownerGlobal,
+          false
+        );
+        result = isAuthorized ? "success" : "fail_user_canceled";
+      } catch (ex) {
+        result = "fail_error";
+        throw ex;
+      } finally {
+        Glean.pwmgr.promptShownOsReauth.record({
+          trigger: reason,
+          result,
+        });
+      }
       let value = lazy.OSKeyStore.canReauth()
         ? "success"
         : "success_unsupported_platform";
 
       telemetryEvent = {
-        object: "os_auth",
-        method: "reauthenticate",
+        name: "reauthenticateOsAuth",
         value: isAuthorized ? value : "fail",
       };
       return {
@@ -1782,8 +1705,7 @@ export const LoginHelper = {
     }
     isAuthorized = token.isLoggedIn();
     telemetryEvent = {
-      object: "master_password",
-      method: "reauthenticate",
+      name: "reauthenticateMasterPassword",
       value: isAuthorized ? "success" : "fail",
     };
     return {

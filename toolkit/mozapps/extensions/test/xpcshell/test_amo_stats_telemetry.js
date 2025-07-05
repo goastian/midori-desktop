@@ -16,7 +16,7 @@ AddonTestUtils.createAppInfo(
   "42"
 );
 
-add_task(async function setup() {
+add_setup(async () => {
   // We need to set this pref to `true` in order to collect add-ons Telemetry
   // data (which is considered extended data and disabled in CI).
   const overridePreReleasePref = "toolkit.telemetry.testing.overridePreRelease";
@@ -63,6 +63,8 @@ add_task(async function test_ping_payload_and_environment() {
     await extension.startup();
   }
 
+  // Note: This returns null on Android because toolkit.telemetry.unified=false
+  // and there is no equivalent Glean telemetry to compare with (bug 1866520).
   const { payload, environment } = TelemetryController.getCurrentPingData();
 
   // Important: `payload.info.addons` is being used for AMO usage stats.

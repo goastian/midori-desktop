@@ -34,14 +34,13 @@ requesttimeoutfactor = 2
 # will pick up newSearchConfig.enabled=true from Nimbus Settings but not
 # immediately, we need to turn the PREF on for this test to prevent failures
 # in the merge from central to Beta 127.
+
 ["test_ebay.js"]
 prefs = ["browser.search.newSearchConfig.enabled=true"]
 
 ["test_ecosia.js"]
 
 ["test_google.js"]
-
-["test_mailru.js"]
 
 ["test_qwant.js"]
 
@@ -51,12 +50,8 @@ prefs = ["browser.search.newSearchConfig.enabled=true"]
 support-files = [
   "../../../schema/search-config-icons-schema.json",
   "../../../schema/search-config-icons-ui-schema.json",
-  "../../../schema/search-config-overrides-schema.json",
-  "../../../schema/search-config-overrides-ui-schema.json",
   "../../../schema/search-config-overrides-v2-schema.json",
   "../../../schema/search-config-overrides-v2-ui-schema.json",
-  "../../../schema/search-config-schema.json",
-  "../../../schema/search-config-ui-schema.json",
   "../../../schema/search-config-v2-schema.json",
   "../../../schema/search-config-v2-ui-schema.json",
   "../../../schema/search-default-override-allowlist-schema.json",
@@ -66,9 +61,7 @@ support-files = [
 ["test_searchconfig_validates.js"]
 support-files = [
   "../../../schema/search-config-icons-schema.json",
-  "../../../schema/search-config-overrides-schema.json",
   "../../../schema/search-config-overrides-v2-schema.json",
-  "../../../schema/search-config-schema.json",
   "../../../schema/search-config-v2-schema.json",
   "../../../schema/search-default-override-allowlist-schema.json",
 ]
@@ -78,5 +71,3 @@ support-files = [
 ["test_wikipedia.js"]
 
 ["test_yahoojp.js"]
-
-["test_yandex.js"]

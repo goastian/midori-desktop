@@ -39,7 +39,7 @@
 #include "mozilla/TaskController.h"
 #include "nsXPCOMPrivate.h"
 #include "mozilla/ChaosMode.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/XpcomMetrics.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/DocGroup.h"
@@ -109,10 +109,6 @@ static LazyLogModule sThreadLog("nsThread");
 NS_DECL_CI_INTERFACE_GETTER(nsThread)
 
 Array<char, nsThread::kRunnableNameBufSize> nsThread::sMainThreadRunnableName;
-
-#ifdef EARLY_BETA_OR_EARLIER
-const uint32_t kTelemetryWakeupCountLimit = 100;
-#endif
 
 //-----------------------------------------------------------------------------
 // Because we do not have our own nsIFactory, we have to implement nsIClassInfo
@@ -552,9 +548,6 @@ nsThread::nsThread(NotNull<SynchronizedEventQueue*> aQueue,
       mIsUiThread(aOptions.isUiThread),
       mIsAPoolThreadFree(nullptr),
       mCanInvokeJS(false),
-#ifdef EARLY_BETA_OR_EARLIER
-      mLastWakeupCheckTime(TimeStamp::Now()),
-#endif
       mPerformanceCounterState(mNestedEventLoopDepth, mIsMainThread,
                                aOptions.longTaskLength) {
 #if !(defined(XP_WIN) || defined(XP_MACOSX))
@@ -584,9 +577,6 @@ nsThread::nsThread()
       mUseHangMonitor(false),
       mIsUiThread(false),
       mCanInvokeJS(false),
-#ifdef EARLY_BETA_OR_EARLIER
-      mLastWakeupCheckTime(TimeStamp::Now()),
-#endif
       mPerformanceCounterState(mNestedEventLoopDepth) {
   MOZ_ASSERT(!NS_IsMainThread());
 }
@@ -793,14 +783,6 @@ nsThread::GetLastLongTaskEnd(TimeStamp* _retval) {
 NS_IMETHODIMP
 nsThread::GetLastLongNonIdleTaskEnd(TimeStamp* _retval) {
   *_retval = mPerformanceCounterState.LastLongNonIdleTaskEnd();
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsThread::SetNameForWakeupTelemetry(const nsACString& aName) {
-#ifdef EARLY_BETA_OR_EARLIER
-  mNameForWakeupTelemetry = aName;
-#endif
   return NS_OK;
 }
 
@@ -1094,6 +1076,10 @@ nsThread::ProcessNextEvent(bool aMayWait, bool* aResult) {
     DoMainThreadSpecificProcessing();
   }
 
+#ifdef DEBUG
+  BlockingResourceBase::AssertSafeToProcessEventLoop();
+#endif
+
   ++mNestedEventLoopDepth;
 
   // We only want to create an AutoNoJSAPI on threads that actually do DOM
@@ -1106,13 +1092,6 @@ nsThread::ProcessNextEvent(bool aMayWait, bool* aResult) {
   }
 
   DrainDirectTasks();
-
-#ifdef EARLY_BETA_OR_EARLIER
-  // Need to capture mayWaitForWakeup state before OnProcessNextEvent,
-  // since on the main thread OnProcessNextEvent ends up waiting for the new
-  // events.
-  bool mayWaitForWakeup = reallyWait && !mEvents->HasPendingEvent();
-#endif
 
   nsCOMPtr<nsIThreadObserver> obs = mEvents->GetObserverOnThread();
   if (obs) {
@@ -1129,12 +1108,12 @@ nsThread::ProcessNextEvent(bool aMayWait, bool* aResult) {
 #endif
   nsresult rv = NS_OK;
 
+  bool usingTaskController = mIsMainThread;
   {
     // Scope for |event| to make sure that its destructor fires while
     // mNestedEventLoopDepth has been incremented, since that destructor can
     // also do work.
     nsCOMPtr<nsIRunnable> event;
-    bool usingTaskController = mIsMainThread;
     if (usingTaskController) {
       event = TaskController::Get()->GetRunnableForMTTask(reallyWait);
     } else {
@@ -1144,30 +1123,6 @@ nsThread::ProcessNextEvent(bool aMayWait, bool* aResult) {
     *aResult = (event.get() != nullptr);
 
     if (event) {
-#ifdef EARLY_BETA_OR_EARLIER
-      if (mayWaitForWakeup && mThread) {
-        ++mWakeupCount;
-        if (mWakeupCount == kTelemetryWakeupCountLimit) {
-          TimeStamp now = TimeStamp::Now();
-          double ms = (now - mLastWakeupCheckTime).ToMilliseconds();
-          if (ms < 0) {
-            ms = 0;
-          }
-          const char* name = !mNameForWakeupTelemetry.IsEmpty()
-                                 ? mNameForWakeupTelemetry.get()
-                                 : PR_GetThreadName(mThread);
-          if (!name) {
-            name = mIsMainThread ? "MainThread" : "(nameless thread)";
-          }
-          nsDependentCString key(name);
-          Telemetry::Accumulate(Telemetry::THREAD_WAKEUP, key,
-                                static_cast<uint32_t>(ms));
-          mLastWakeupCheckTime = now;
-          mWakeupCount = 0;
-        }
-      }
-#endif
-
       LOG(("THRD(%p) running [%p]\n", this, event.get()));
 
       Maybe<LogRunnable::Run> log;
@@ -1225,6 +1180,24 @@ nsThread::ProcessNextEvent(bool aMayWait, bool* aResult) {
   }
 
   DrainDirectTasks();
+
+#ifdef MOZ_MEMORY
+  if (usingTaskController) {
+    // Check if there are any outstanding purges we should process. The purge
+    // logic asserts to only ever be run on the main thread, which is the case
+    // when using TaskController.
+    // Translates to a No-Op if the pref memory.lazypurge.enable == false.
+    //
+    // In theory this is not perfect, as we cannot guarantee that some lonely
+    // thread running will not cause an arena to want a new cleanup while the
+    // main thread never awakes after it went idle. But in practice we assume
+    // that most if not all activity on other threads will bounce back to the
+    // main thread soon and/or other events hit the main thread regularly
+    // enough in those processes we activate lazy purge for, such that this
+    // does not matter.
+    TaskController::Get()->MayScheduleIdleMemoryCleanup();
+  }
+#endif
 
   NOTIFY_EVENT_OBSERVERS(EventQueue()->EventObservers(), AfterProcessNextEvent,
                          (this, *aResult));
@@ -1520,8 +1493,8 @@ void PerformanceCounterState::MaybeReportAccumulatedTime(const nsCString& aName,
   TimeDuration duration = aNow - mCurrentTimeSliceStart;
 #ifdef MOZ_COLLECTING_RUNNABLE_TELEMETRY
   if (mIsMainThread && duration.ToMilliseconds() > LONGTASK_TELEMETRY_MS) {
-    Telemetry::Accumulate(Telemetry::EVENT_LONGTASK, aName,
-                          duration.ToMilliseconds());
+    glean::event::longtask.MaybeTruncateAndGet(aName).AccumulateRawDuration(
+        duration);
   }
 #endif
 

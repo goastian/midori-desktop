@@ -26,6 +26,10 @@
 #include <dlfcn.h>
 #include <gtk/gtk.h>
 
+#ifdef MOZ_WAYLAND
+#  include "nsWaylandDisplay.h"
+#endif  // MOZ_WAYLAND
+
 namespace mozilla::widget {
 
 using GtkMenuPopupAtRect = void (*)(GtkMenu* menu, GdkWindow* rect_window,
@@ -232,9 +236,11 @@ class MenuModelGMenu final : public MenuModel {
 
 NS_IMPL_ISUPPORTS(MenuModel, nsIMutationObserver)
 
-void MenuModel::ContentRemoved(nsIContent* aChild, nsIContent*) {
+void MenuModel::ContentWillBeRemoved(nsIContent* aChild,
+                                     const BatchRemovalState* aState) {
   if (NodeIsRelevant(*aChild)) {
-    DirtyModel();
+    nsContentUtils::AddScriptRunner(NewRunnableMethod(
+        "MenuModel::ContentWillBeRemoved", this, &MenuModel::DirtyModel));
   }
 }
 
@@ -738,9 +744,8 @@ void DBusMenuBar::OnNameOwnerChanged() {
     if (!StaticPrefs::widget_gtk_global_menu_wayland_enabled()) {
       return;
     }
-    xdg_dbus_annotation_manager_v1* annotationManager =
-        display->GetXdgDbusAnnotationManager();
-    if (NS_WARN_IF(!annotationManager)) {
+    org_kde_kwin_appmenu_manager* appMenuManager = display->GetAppMenuManager();
+    if (NS_WARN_IF(!appMenuManager)) {
       return;
     }
 
@@ -755,12 +760,14 @@ void DBusMenuBar::OnNameOwnerChanged() {
       return;
     }
 
-    // FIXME(emilio, bug 1883209): Nothing deletes this as of right now.
-    mAnnotation = xdg_dbus_annotation_manager_v1_create_surface(
-        annotationManager, "com.canonical.dbusmenu", surface);
+    if (!mAppMenu) {
+      mAppMenu = org_kde_kwin_appmenu_manager_create(appMenuManager, surface);
+    }
 
-    xdg_dbus_annotation_v1_set_address(mAnnotation, myServiceName,
-                                       mObjectPath.get());
+    // Mostly for consistency with the X11 path.
+    mMenuModel->Element()->SetBoolAttr(nsGkAtoms::hidden, true);
+    org_kde_kwin_appmenu_set_address(mAppMenu, myServiceName,
+                                     mObjectPath.get());
     return;
   }
 #  endif
@@ -819,7 +826,7 @@ RefPtr<DBusMenuBar> DBusMenuBar::Create(dom::Element* aElement) {
 
 DBusMenuBar::~DBusMenuBar() {
 #  ifdef MOZ_WAYLAND
-  MozClearPointer(mAnnotation, xdg_dbus_annotation_v1_destroy);
+  MozClearPointer(mAppMenu, org_kde_kwin_appmenu_release);
 #  endif
 }
 #endif

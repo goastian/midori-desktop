@@ -8,6 +8,19 @@ ChromeUtils.defineESModuleGetters(lazy, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
 
+function NotificationCallbacks(browser) {
+  this._browser = browser;
+}
+NotificationCallbacks.prototype = {
+  QueryInterface: ChromeUtils.generateQI(["nsIInterfaceRequestor"]),
+  getInterface(iid) {
+    if (iid.equals(Ci.nsILoadContext)) {
+      return this._browser.browsingContext;
+    }
+    throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
+  },
+};
+
 // This object implements the JS parts of nsIWebNavigation.
 export class RemoteWebNavigation {
   constructor(aBrowser) {
@@ -15,6 +28,7 @@ export class RemoteWebNavigation {
     this._cancelContentJSEpoch = 1;
     this._currentURI = null;
     this._canGoBack = false;
+    this._canGoBackIgnoringUserInteraction = false;
     this._canGoForward = false;
     this.referringURI = null;
   }
@@ -34,9 +48,18 @@ export class RemoteWebNavigation {
 
   get canGoBack() {
     if (Services.appinfo.sessionHistoryInParent) {
-      return this._browser.browsingContext.sessionHistory?.index > 0;
+      const sessionHistory = this._browser.browsingContext.sessionHistory;
+      return sessionHistory?.canGoBackFromEntryAtIndex(sessionHistory?.index);
     }
     return this._canGoBack;
+  }
+
+  get canGoBackIgnoringUserInteraction() {
+    if (Services.appinfo.sessionHistoryInParent) {
+      const sessionHistory = this._browser.browsingContext.sessionHistory;
+      return sessionHistory?.index > 0;
+    }
+    return this._canGoBackIgnoringUserInteraction;
   }
 
   get canGoForward() {
@@ -99,7 +122,12 @@ export class RemoteWebNavigation {
             attrs
           );
         }
-        Services.io.speculativeConnect(uri, principal, null, false);
+        Services.io.speculativeConnect(
+          uri,
+          principal,
+          new NotificationCallbacks(this._browser),
+          false
+        );
       }
     } catch (ex) {
       // Can't setup speculative connection for this uri for some

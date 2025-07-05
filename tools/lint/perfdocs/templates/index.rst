@@ -35,10 +35,6 @@ Here are the active PerfTest components/modules and their respective owners:
         - Owner: Sparky
         - Co-owner: Jmaher
         - Description: Provides tooling to build, and obtain profiles that are preconditioned in some way.
-    * fxrecord
-        - Owner: Sparky
-        - Co-owners: Kash, Andrej
-        - Description: Tool for measuring startup performance for Firefox Desktop
     * Infrastructure
         - Owner: Sparky
         - Co-owners: Kash, Andrej
@@ -85,3 +81,14 @@ the `#perftest <https://matrix.to/#/#perftest:mozilla.org>`_ channel on matrix
 
 For more information about the performance testing team,
 `visit the wiki page <https://wiki.mozilla.org/TestEngineering/Performance>`_.
+
+
+Critical Performance Tests
+--------------------------
+
+Some of our performance tests are marked as critical tests. These are ones where we do not want to regress their metric under any circumstances unless the regression is explicitly approved by appropriate parties. When one of these tests regress, the regressor patch is backed out immediately by sheriffs after it has been found and confirmed.
+
+The following list contains all of our existing critical tests:
+
+    * `Speedometer 3 on Windows 11 <https://treeherder.mozilla.org/perfherder/graphs?highlightAlerts=1&highlightChangelogData=1&highlightCommonAlerts=0&replicates=0&series=autoland,5257591,1,13&timerange=2592000>`_
+    * `NewsSite Applink Startup on Android A55 <https://treeherder.mozilla.org/perfherder/graphs?highlightAlerts=1&highlightChangelogData=1&highlightCommonAlerts=0&replicates=0&series=autoland,5310509,1,15&timerange=2592000>`_

@@ -1,6 +1,9 @@
-use super::{conv, Command as C};
+use alloc::string::String;
+use core::{mem, ops::Range};
+
 use arrayvec::ArrayVec;
-use std::{mem, ops::Range};
+
+use super::{conv, Command as C};
 
 #[derive(Clone, Copy, Debug, Default)]
 struct TextureSlotDesc {
@@ -81,9 +84,7 @@ impl super::CommandBuffer {
     }
 
     fn add_push_constant_data(&mut self, data: &[u32]) -> Range<u32> {
-        let data_raw = unsafe {
-            std::slice::from_raw_parts(data.as_ptr() as *const _, mem::size_of_val(data))
-        };
+        let data_raw = bytemuck::cast_slice(data);
         let start = self.data_bytes.len();
         assert!(start < u32::MAX as usize);
         self.data_bytes.extend_from_slice(data_raw);
@@ -97,6 +98,7 @@ impl Drop for super::CommandEncoder {
     fn drop(&mut self) {
         use crate::CommandEncoder;
         unsafe { self.discard_encoding() }
+        self.counters.command_encoders.sub(1);
     }
 }
 
@@ -189,7 +191,7 @@ impl super::CommandEncoder {
             if dirty_textures & (1 << texture_index) != 0
                 || slot
                     .sampler_index
-                    .map_or(false, |si| dirty_samplers & (1 << si) != 0)
+                    .is_some_and(|si| dirty_samplers & (1 << si) != 0)
             {
                 let sampler = slot
                     .sampler_index
@@ -259,7 +261,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
 
     unsafe fn begin_encoding(&mut self, label: crate::Label) -> Result<(), crate::DeviceError> {
         self.state = State::default();
-        self.cmd_buffer.label = label.map(str::to_string);
+        self.cmd_buffer.label = label.map(String::from);
         Ok(())
     }
     unsafe fn discard_encoding(&mut self) {
@@ -274,7 +276,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
 
     unsafe fn transition_buffers<'a, T>(&mut self, barriers: T)
     where
-        T: Iterator<Item = crate::BufferBarrier<'a, super::Api>>,
+        T: Iterator<Item = crate::BufferBarrier<'a, super::Buffer>>,
     {
         if !self
             .private_caps
@@ -284,22 +286,18 @@ impl crate::CommandEncoder for super::CommandEncoder {
         }
         for bar in barriers {
             // GLES only synchronizes storage -> anything explicitly
-            if !bar
-                .usage
-                .start
-                .contains(crate::BufferUses::STORAGE_READ_WRITE)
-            {
+            if !bar.usage.from.contains(wgt::BufferUses::STORAGE_READ_WRITE) {
                 continue;
             }
             self.cmd_buffer
                 .commands
-                .push(C::BufferBarrier(bar.buffer.raw.unwrap(), bar.usage.end));
+                .push(C::BufferBarrier(bar.buffer.raw.unwrap(), bar.usage.to));
         }
     }
 
     unsafe fn transition_textures<'a, T>(&mut self, barriers: T)
     where
-        T: Iterator<Item = crate::TextureBarrier<'a, super::Api>>,
+        T: Iterator<Item = crate::TextureBarrier<'a, super::Texture>>,
     {
         if !self
             .private_caps
@@ -308,19 +306,19 @@ impl crate::CommandEncoder for super::CommandEncoder {
             return;
         }
 
-        let mut combined_usage = crate::TextureUses::empty();
+        let mut combined_usage = wgt::TextureUses::empty();
         for bar in barriers {
             // GLES only synchronizes storage -> anything explicitly
             if !bar
                 .usage
-                .start
-                .contains(crate::TextureUses::STORAGE_READ_WRITE)
+                .from
+                .contains(wgt::TextureUses::STORAGE_READ_WRITE)
             {
                 continue;
             }
             // unlike buffers, there is no need for a concrete texture
             // object to be bound anywhere for a barrier
-            combined_usage |= bar.usage.end;
+            combined_usage |= bar.usage.to;
         }
 
         if !combined_usage.is_empty() {
@@ -365,7 +363,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
     #[cfg(webgl)]
     unsafe fn copy_external_image_to_texture<T>(
         &mut self,
-        src: &wgt::ImageCopyExternalImage,
+        src: &wgt::CopyExternalImageSourceInfo,
         dst: &super::Texture,
         dst_premultiplication: bool,
         regions: T,
@@ -390,7 +388,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
     unsafe fn copy_texture_to_texture<T>(
         &mut self,
         src: &super::Texture,
-        _src_usage: crate::TextureUses,
+        _src_usage: wgt::TextureUses,
         dst: &super::Texture,
         regions: T,
     ) where
@@ -436,7 +434,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
     unsafe fn copy_texture_to_buffer<T>(
         &mut self,
         src: &super::Texture,
-        _src_usage: crate::TextureUses,
+        _src_usage: wgt::TextureUses,
         dst: &super::Buffer,
         regions: T,
     ) where
@@ -495,7 +493,10 @@ impl crate::CommandEncoder for super::CommandEncoder {
 
     // render
 
-    unsafe fn begin_render_pass(&mut self, desc: &crate::RenderPassDescriptor<super::Api>) {
+    unsafe fn begin_render_pass(
+        &mut self,
+        desc: &crate::RenderPassDescriptor<super::QuerySet, super::TextureView>,
+    ) -> Result<(), crate::DeviceError> {
         debug_assert!(self.state.end_of_pass_timestamp.is_none());
         if let Some(ref t) = desc.timestamp_writes {
             if let Some(index) = t.beginning_of_pass_write_index {
@@ -556,6 +557,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
                         self.cmd_buffer.commands.push(C::BindAttachment {
                             attachment,
                             view: cat.target.view.clone(),
+                            depth_slice: cat.depth_slice,
                         });
                         if let Some(ref rat) = cat.resolve_target {
                             self.state
@@ -577,6 +579,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
                     self.cmd_buffer.commands.push(C::BindAttachment {
                         attachment,
                         view: dsat.target.view.clone(),
+                        depth_slice: None,
                     });
                     if aspects.contains(crate::FormatAspects::DEPTH)
                         && !dsat.depth_ops.contains(crate::AttachmentOps::STORE)
@@ -664,6 +667,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
                     .push(C::ClearStencil(dsat.clear_value.1));
             }
         }
+        Ok(())
     }
     unsafe fn end_render_pass(&mut self) {
         for (attachment, dst) in self.state.resolve_attachments.drain(..) {
@@ -979,7 +983,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
 
     unsafe fn set_index_buffer<'a>(
         &mut self,
-        binding: crate::BufferBinding<'a, super::Api>,
+        binding: crate::BufferBinding<'a, super::Buffer>,
         format: wgt::IndexFormat,
     ) {
         self.state.index_offset = binding.offset;
@@ -991,7 +995,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
     unsafe fn set_vertex_buffer<'a>(
         &mut self,
         index: u32,
-        binding: crate::BufferBinding<'a, super::Api>,
+        binding: crate::BufferBinding<'a, super::Buffer>,
     ) {
         self.state.dirty_vbuf_mask |= 1 << index;
         let (_, ref mut vb) = self.state.vertex_buffers[index as usize];
@@ -1072,6 +1076,14 @@ impl crate::CommandEncoder for super::CommandEncoder {
             first_instance_location: self.state.first_instance_location.clone(),
         });
     }
+    unsafe fn draw_mesh_tasks(
+        &mut self,
+        _group_count_x: u32,
+        _group_count_y: u32,
+        _group_count_z: u32,
+    ) {
+        unreachable!()
+    }
     unsafe fn draw_indirect(
         &mut self,
         buffer: &super::Buffer,
@@ -1081,7 +1093,7 @@ impl crate::CommandEncoder for super::CommandEncoder {
         self.prepare_draw(0);
         for draw in 0..draw_count as wgt::BufferAddress {
             let indirect_offset =
-                offset + draw * mem::size_of::<wgt::DrawIndirectArgs>() as wgt::BufferAddress;
+                offset + draw * size_of::<wgt::DrawIndirectArgs>() as wgt::BufferAddress;
             #[allow(clippy::clone_on_copy)] // False positive when cloning glow::UniformLocation
             self.cmd_buffer.commands.push(C::DrawIndirect {
                 topology: self.state.topology,
@@ -1103,8 +1115,8 @@ impl crate::CommandEncoder for super::CommandEncoder {
             wgt::IndexFormat::Uint32 => glow::UNSIGNED_INT,
         };
         for draw in 0..draw_count as wgt::BufferAddress {
-            let indirect_offset = offset
-                + draw * mem::size_of::<wgt::DrawIndexedIndirectArgs>() as wgt::BufferAddress;
+            let indirect_offset =
+                offset + draw * size_of::<wgt::DrawIndexedIndirectArgs>() as wgt::BufferAddress;
             #[allow(clippy::clone_on_copy)] // False positive when cloning glow::UniformLocation
             self.cmd_buffer.commands.push(C::DrawIndexedIndirect {
                 topology: self.state.topology,
@@ -1114,6 +1126,14 @@ impl crate::CommandEncoder for super::CommandEncoder {
                 first_instance_location: self.state.first_instance_location.clone(),
             });
         }
+    }
+    unsafe fn draw_mesh_tasks_indirect(
+        &mut self,
+        _buffer: &<Self::A as crate::Api>::Buffer,
+        _offset: wgt::BufferAddress,
+        _draw_count: u32,
+    ) {
+        unreachable!()
     }
     unsafe fn draw_indirect_count(
         &mut self,
@@ -1135,10 +1155,20 @@ impl crate::CommandEncoder for super::CommandEncoder {
     ) {
         unreachable!()
     }
+    unsafe fn draw_mesh_tasks_indirect_count(
+        &mut self,
+        _buffer: &<Self::A as crate::Api>::Buffer,
+        _offset: wgt::BufferAddress,
+        _count_buffer: &<Self::A as crate::Api>::Buffer,
+        _count_offset: wgt::BufferAddress,
+        _max_count: u32,
+    ) {
+        unreachable!()
+    }
 
     // compute
 
-    unsafe fn begin_compute_pass(&mut self, desc: &crate::ComputePassDescriptor<super::Api>) {
+    unsafe fn begin_compute_pass(&mut self, desc: &crate::ComputePassDescriptor<super::QuerySet>) {
         debug_assert!(self.state.end_of_pass_timestamp.is_none());
         if let Some(ref t) = desc.timestamp_writes {
             if let Some(index) = t.beginning_of_pass_write_index {
@@ -1171,6 +1201,10 @@ impl crate::CommandEncoder for super::CommandEncoder {
     }
 
     unsafe fn dispatch(&mut self, count: [u32; 3]) {
+        // Empty dispatches are invalid in OpenGL, but valid in WebGPU.
+        if count.contains(&0) {
+            return;
+        }
         self.cmd_buffer.commands.push(C::Dispatch(count));
     }
     unsafe fn dispatch_indirect(&mut self, buffer: &super::Buffer, offset: wgt::BufferAddress) {
@@ -1186,7 +1220,13 @@ impl crate::CommandEncoder for super::CommandEncoder {
         _descriptors: T,
     ) where
         super::Api: 'a,
-        T: IntoIterator<Item = crate::BuildAccelerationStructureDescriptor<'a, super::Api>>,
+        T: IntoIterator<
+            Item = crate::BuildAccelerationStructureDescriptor<
+                'a,
+                super::Buffer,
+                super::AccelerationStructure,
+            >,
+        >,
     {
         unimplemented!()
     }
@@ -1194,6 +1234,23 @@ impl crate::CommandEncoder for super::CommandEncoder {
     unsafe fn place_acceleration_structure_barrier(
         &mut self,
         _barriers: crate::AccelerationStructureBarrier,
+    ) {
+        unimplemented!()
+    }
+
+    unsafe fn copy_acceleration_structure_to_acceleration_structure(
+        &mut self,
+        _src: &super::AccelerationStructure,
+        _dst: &super::AccelerationStructure,
+        _copy: wgt::AccelerationStructureCopy,
+    ) {
+        unimplemented!()
+    }
+
+    unsafe fn read_acceleration_structure_compact_size(
+        &mut self,
+        _acceleration_structure: &super::AccelerationStructure,
+        _buf: &super::Buffer,
     ) {
         unimplemented!()
     }

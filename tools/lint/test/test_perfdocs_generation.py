@@ -92,9 +92,9 @@ def test_perfdocs_generator_generate_perfdocs_metrics_pass(
             verifier = Verifier(top_dir)
             verifier.validate_tree()
 
-            verifier._gatherer.framework_gatherers[
-                "raptor"
-            ]._descriptions = sample_test_list_result
+            verifier._gatherer.framework_gatherers["raptor"]._descriptions = (
+                sample_test_list_result
+            )
 
         generator = Generator(verifier, generate=True, workspace=top_dir)
         with temp_file(
@@ -171,7 +171,7 @@ def test_perfdocs_generator_needed_update(logger, structured_logger, perfdocs_sa
         generator.generate_perfdocs()
 
     expected = (
-        "PerfDocs are outdated, run ./mach lint -l perfdocs --fix .` to update them. "
+        "PerfDocs are outdated, run `./mach lint -l perfdocs --outgoing --fix` to update them. "
         "You can also apply the perfdocs.diff patch file produced from this "
         "reviewbot test to fix the issue."
     )
@@ -232,7 +232,7 @@ def test_perfdocs_generator_update_with_no_changes(structured_logger, perfdocs_s
         generator.generate_perfdocs()
 
     expected = (
-        "PerfDocs are outdated, run ./mach lint -l perfdocs --fix .` to update them. "
+        "PerfDocs are outdated, run `./mach lint -l perfdocs --outgoing --fix` to update them. "
         "You can also apply the perfdocs.diff patch file produced from this "
         "reviewbot test to fix the issue."
     )

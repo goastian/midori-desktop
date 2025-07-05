@@ -161,7 +161,7 @@ static int diagCall64(uint64_t aMode, void* aBuf) {
 class RaplDomain final : public BaseProfilerCount {
  public:
   explicit RaplDomain(const char* aLabel, const char* aDescription)
-      : BaseProfilerCount(aLabel, nullptr, nullptr, "power", aDescription),
+      : BaseProfilerCount(aLabel, "power", aDescription),
         mSample(0),
         mEnergyStatusUnits(0),
         mWrapAroundCount(0),
@@ -350,7 +350,10 @@ class RAPL {
     }
   }
 
-  ~RAPL() { free(mPkes); }
+  ~RAPL() {
+    free(mPkes);
+    mPkes = nullptr;
+  }
 
   void Sample() {
     constexpr uint64_t kSupportedVersion = 1;

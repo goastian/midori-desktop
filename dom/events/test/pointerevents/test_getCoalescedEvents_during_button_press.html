@@ -1,0 +1,125 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+  <meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Test getCoalescedEvents() while a button is pressed</title>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css">
+</head>
+<body>
+<!-- DO NOT PUT any text before the test target to avoid fractional coordinates! -->
+<div id="target0" style="width: 50px; height: 50px; background: green"></div>
+<script>
+"use strict";
+
+SimpleTest.waitForExplicitFinish();
+SimpleTest.waitForFocus(async () => {
+  await SpecialPowers.pushPrefEnv({"set": [
+    ["dom.events.coalesce.mousemove", true],
+    ["test.events.async.enabled", true],
+  ]});
+
+  const target0 = window.document.getElementById("target0");
+  const utils = SpecialPowers.getDOMWindowUtils(window);
+  utils.advanceTimeAndRefresh(0);
+
+  await new Promise(resolve => SimpleTest.executeSoon(resolve));
+
+  const waitForPointerMove = new Promise(resolve => {
+    target0.addEventListener("pointermove", (ev) => {
+      let length = ev.getCoalescedEvents().length;
+      ok(length >= 1, "Coalesced events should >= 1, got " + length);
+
+      let rect = target0.getBoundingClientRect();
+      let prevOffsetX = undefined;
+      let prevOffsetY = undefined;
+
+      function isExpectedOffset(aNewOffset, aPrevOffset) {
+        if (aPrevOffset === undefined) {
+          const roundedOffset = 5 * Math.max(Math.round(aNewOffset / 5), 1);
+          return aNewOffset >= roundedOffset - 1 && aNewOffset <= roundedOffset + 1;
+        }
+        let candidateOffset = aPrevOffset + 5;
+        const toleranceError = navigator.userAgent.includes("Android") ? 0.31 : 0.1;
+        while (candidateOffset < 25) {
+          if (
+            aNewOffset >= candidateOffset - toleranceError &&
+            aNewOffset <= candidateOffset + toleranceError
+          ) {
+            return true;
+          }
+          candidateOffset += 5;
+        }
+        return false;
+      }
+
+      for (let i = 0; i < length; ++i) {
+        let coalescedEvent = ev.getCoalescedEvents()[i];
+        isnot(coalescedEvent.timeStamp, 0, "getCoalescedEvents()[" + i + "].timeStamp");
+        is(coalescedEvent.type, "pointermove", "getCoalescedEvents()[" + i + "].type");
+        is(coalescedEvent.pointerId, ev.pointerId, "getCoalescedEvents()[" + i + "].pointerId");
+        is(coalescedEvent.pointerType, ev.pointerType, "getCoalescedEvents()[" + i + "].pointerType");
+        is(coalescedEvent.isPrimary, ev.isPrimary, "getCoalescedEvents()[" + i + "].isPrimary");
+        is(coalescedEvent.target, ev.target, "getCoalescedEvents()[" + i + "].target");
+        is(coalescedEvent.currentTarget, null, "getCoalescedEvents()[" + i + "].currentTarget");
+        is(coalescedEvent.eventPhase, Event.NONE, "getCoalescedEvents()[" + i + "].eventPhase");
+        is(coalescedEvent.cancelable, false, "getCoalescedEvents()[" + i + "].cancelable");
+        is(coalescedEvent.bubbles, false, "getCoalescedEvents()[" + i + "].bubbles");
+        is(coalescedEvent.buttons, 1, `getCoalescedEvents()[${i}].buttons should be 1`);
+        is(coalescedEvent.pressure, 0.5, `getCoalescedEvents()[${i}].pressure should be 0.5 when buttons is not 0`);
+
+        ok(
+          isExpectedOffset(coalescedEvent.offsetX, prevOffsetX),
+          `getCoalescedEvents()[${i}].offsetX (${
+            coalescedEvent.offsetX
+          }) should be 5 * n + previous offsetX (${prevOffsetX})`
+        );
+        ok(
+          isExpectedOffset(coalescedEvent.offsetY, prevOffsetY),
+          `getCoalescedEvents()[${i}].offsetY (${
+            coalescedEvent.offsetY
+          }) should be 5 * n + previous offsetY (${prevOffsetY})`
+        );
+
+        prevOffsetX = coalescedEvent.offsetX;
+        prevOffsetY = coalescedEvent.offsetY;
+
+        let x = rect.left + prevOffsetX;
+        let y = rect.top + prevOffsetY;
+        // coordinates may change slightly due to rounding
+        ok((coalescedEvent.clientX <= x+2) && (coalescedEvent.clientX >= x-2), "getCoalescedEvents()[" + i + "].clientX");
+        ok((coalescedEvent.clientY <= y+2) && (coalescedEvent.clientY >= y-2), "getCoalescedEvents()[" + i + "].clientY");
+      }
+      resolve();
+    }, { once: true });
+  });
+
+  info(`mozInnerScreen={${SpecialPowers.wrap(window).mozInnerScreenX}, ${SpecialPowers.wrap(window).mozInnerScreenY}}`);
+  info(`devicePixelRatio=${window.devicePixelRatio}`);
+  try {
+    info(`top.mozInnerScreen={${SpecialPowers.wrap(window.top).mozInnerScreenX}, ${SpecialPowers.wrap(window.top).mozInnerScreenY}}`);
+    info(`top.getResolution()=${SpecialPowers.wrap(window.top).windowUtils.getResolution()}`);
+  } catch (e) {}
+  info(`target0.getBoundingClientRect()={${target0.getBoundingClientRect().x}, ${target0.getBoundingClientRect().y}}`);
+
+  info("Synthesizing mouse moves....");
+  synthesizeMouse(target0, 5, 5, {type: "mousemove", buttons: 1});
+  synthesizeMouse(target0, 10, 10, {type: "mousemove", buttons: 1});
+  synthesizeMouse(target0, 15, 15, {type: "mousemove", buttons: 1});
+  synthesizeMouse(target0, 20, 20, {type: "mousemove", buttons: 1});
+  utils.restoreNormalRefresh();
+  await waitForPointerMove;
+
+  target0.addEventListener("pointerup", (ev) => {
+    SimpleTest.finish();
+  }, { once: true });
+
+  info("Synthesizing a click....");
+  synthesizeMouse(target0, 20, 20, {});
+});
+
+</script>
+</body>
+</html>

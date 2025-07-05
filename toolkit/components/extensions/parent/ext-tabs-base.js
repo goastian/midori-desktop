@@ -5,8 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-/* globals EventEmitter */
-
 ChromeUtils.defineESModuleGetters(this, {
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.sys.mjs",
 });
@@ -111,16 +109,24 @@ class TabBase {
       resetScrollPosition
     );
 
-    let doc = Services.appShell.hiddenDOMWindow.document;
-    let canvas = doc.createElement("canvas");
-    canvas.width = image.width;
-    canvas.height = image.height;
+    let canvas = new OffscreenCanvas(image.width, image.height);
 
-    let ctx = canvas.getContext("2d", { alpha: false });
-    ctx.drawImage(image, 0, 0);
-    image.close();
+    let ctx = canvas.getContext("bitmaprenderer", { alpha: false });
+    ctx.transferFromImageBitmap(image);
 
-    return canvas.toDataURL(`image/${options?.format}`, options?.quality / 100);
+    let blob = await canvas.convertToBlob({
+      type: `image/${options?.format ?? "png"}`,
+      quality: options?.quality / 100,
+    });
+
+    let dataURL = await new Promise((resolve, reject) => {
+      let reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+
+    return dataURL;
   }
 
   /**
@@ -519,6 +525,15 @@ class TabBase {
   }
 
   /**
+   * @property {integer} groupId
+   *        @readonly
+   *        @abstract
+   */
+  get groupId() {
+    throw new Error("Not implemented");
+  }
+
+  /**
    * Returns true if this tab matches the the given query info object. Omitted
    * or null have no effect on the match.
    *
@@ -559,6 +574,8 @@ class TabBase {
    *        than an exact value match, and will do so in the future.
    * @param {MatchPattern} [queryInfo.url]
    *        Requires the tab's URL to match the given MatchPattern object.
+   * @param {integer} [queryInfo.groupId]
+   *        Matches against the exact value of the tab's `groupId` attribute.
    *
    * @returns {boolean}
    *        True if the tab matches the query.
@@ -575,6 +592,7 @@ class TabBase {
       "openerTabId",
       "pinned",
       "status",
+      "groupId",
     ];
 
     function checkProperty(prop, obj) {
@@ -659,6 +677,7 @@ class TabBase {
       isInReaderMode: this.isInReaderMode,
       sharingState: this.sharingState,
       successorTabId: this.successorTabId,
+      groupId: this.groupId,
       cookieStoreId: this.cookieStoreId,
     };
 
@@ -1594,7 +1613,7 @@ class WindowTrackerBase extends EventEmitter {
    *
    * @param {integer} id
    *        The ID of the window to return.
-   * @param {BaseContext} context
+   * @param {BaseContext} [context]
    *        The extension context for which the matching is being performed.
    *        Used to determine the current window for relevant properties.
    * @param {boolean} [strict = true]

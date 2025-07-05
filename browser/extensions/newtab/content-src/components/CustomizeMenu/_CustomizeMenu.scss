@@ -1,0 +1,526 @@
+.personalizeButtonWrapper {
+  margin: 0;
+  padding: 0;
+  // z-index note: menu should cover fixed search bar and asrouter dev tools toggle button
+  z-index: 5;
+
+  @media (height < 700px) {
+    position: absolute;
+    inset-block-start: var(--space-xlarge);
+    inset-inline-end: var(--space-xlarge);
+  }
+
+  @media (height >= 700px) {
+    position: fixed;
+    inset-block-start: var(--space-xlarge);
+    inset-inline-end: var(--space-xlarge);
+  }
+}
+
+.layout-variant-b {
+  .personalizeButtonWrapper {
+    position: fixed;
+    inset-block-start: auto;
+    inset-block-end: var(--space-xlarge);
+  }
+}
+
+.layout-variant-b + .discoverystream-admin-toggle {
+  inset-block-start: auto;
+  inset-block-end: 50px;
+}
+
+.personalize-button {
+  border: 0;
+  border-radius: var(--border-radius-small);
+  background-color: transparent;
+  padding: 15px;
+  position: relative;
+  background-size: var(--icon-size-default);
+  background-position: center;
+
+  // Contrast fix for users who have wallpapers set
+  &:not(:hover, :active) {
+    @include wallpaper-contrast-fix;
+  }
+
+  &:hover {
+    background-color: var(--newtab-element-hover-color);
+  }
+
+  &:active {
+    background-color: var(--newtab-element-active-color);
+  }
+
+  &:focus-visible {
+    @include ds-focus;
+  }
+
+  &.personalize-animate-exit-done {
+    visibility: hidden;
+  }
+}
+
+.customize-menu {
+  color: var(--newtab-text-primary-color);
+  background-color: var(--newtab-background-color-secondary);
+  width: 432px;
+  height: 100%;
+  position: fixed;
+  inset-block: 0;
+  inset-inline-end: 0;
+  z-index: 1001;
+  padding-block: 0 var(--space-large);
+  padding-inline: var(--space-large);
+  overflow: auto;
+  transform: translateX(435px);
+  visibility: hidden;
+  cursor: default;
+
+  @media (prefers-reduced-motion: no-preference) {
+    // We need customize-animate-enter and customize-animate-exit to fix bug 1868232
+    // These first 2 classes happen only while the element is animating.
+    &.customize-animate-enter,
+    &.customize-animate-exit,
+    // We only add these so the css is visible for inspecting while not animating.
+    // Otherwise it's difficult to see and inspect this css because the transition is so fast.
+    &.customize-animate-enter-done,
+    &.customize-animate-exit-done {
+      transition: transform 250ms $customize-menu-slide-bezier, visibility 250ms;
+    }
+  }
+
+  @media (forced-colors: active) {
+    border-inline-start: solid 1px;
+  }
+
+  &:dir(rtl) {
+    transform: translateX(-435px);
+  }
+
+  &.customize-animate-enter-done,
+  &.customize-animate-enter-active {
+    box-shadow: $shadow-large;
+    visibility: visible;
+    transform: translateX(0);
+  }
+
+  &.customize-animate-exit-active {
+    box-shadow: $shadow-large;
+  }
+
+  .close-button-wrapper {
+    position: sticky;
+    top: 0;
+    padding-block-start: var(--space-large);
+    background-color: var(--newtab-background-color-secondary);
+    z-index: 1;
+  }
+
+  .close-button {
+    margin-inline-start: auto;
+    margin-inline-end: var(--space-large);
+    white-space: nowrap;
+    display: block;
+    background-color: var(--newtab-element-secondary-color);
+    padding: 8px 10px;
+    border: $customize-menu-border-tint;
+    border-radius: var(--border-radius-small);
+    color: var(--newtab-text-primary-color);
+    font-size: var(--font-size-small);
+    font-weight: var(--font-weight-bold);
+  }
+
+  .close-button:hover {
+    background-color: var(--newtab-element-secondary-hover-color);
+  }
+
+  .close-button:hover:active {
+    background-color: var(--newtab-element-secondary-active-color);
+  }
+}
+
+.grid-skip {
+  display: contents;
+}
+
+.home-section {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-template-rows: repeat(4, auto);
+  grid-row-gap: 32px;
+  padding: var(--space-large);
+
+  .wallpapers-section h2 {
+    font-size: inherit;
+  }
+
+  .settings-toggles {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-xlarge);
+  }
+
+  [slot='nested'] {
+    margin-block-start: 0;
+  }
+
+  .section {
+    .customize-menu-checkbox-label {
+      font-size: inherit;
+      margin-inline-start: 5px;
+    }
+
+    .check-wrapper {
+      position: relative;
+      display: flex;
+    }
+
+    .customize-menu-checkbox {
+      margin-inline-start: 2px;
+      width: 16px;
+      height: 16px;
+      vertical-align: middle;
+      border: $customize-menu-border-tint;
+      box-sizing: border-box;
+      border-radius: var(--border-radius-small);
+      appearance: none;
+      background-color: var(--newtab-element-secondary-color);
+      flex-shrink: 0;
+
+      &:hover {
+        background-color: var(--newtab-element-secondary-hover-color);
+      }
+    }
+
+    .customize-menu-checkbox:checked {
+      -moz-context-properties: fill;
+      fill: var(--newtab-primary-element-text-color);
+      background: url('chrome://global/skin/icons/check.svg') center no-repeat;
+      background-color: var(--newtab-primary-action-background);
+
+      &:hover {
+        background-color: var(--newtab-primary-element-hover-color);
+      }
+
+      &:active {
+        background-color: var(--newtab-primary-element-active-color);
+      }
+
+      @media (forced-colors: active) {
+        fill: $black;
+      }
+    }
+
+    .customize-menu-checkbox:active + .checkmark {
+      fill: var(--newtab-element-secondary-color);
+    }
+
+    .selector {
+      color: var(--newtab-text-primary-color);
+      width: 118px;
+      display: block;
+      border: 1px solid var(--newtab-border-color);
+      border-radius: var(--border-radius-small);
+      appearance: none;
+      padding-block: 7px;
+      padding-inline: 10px 13px;
+      margin-inline-start: 2px;
+      margin-bottom: 2px;
+      -moz-context-properties: fill;
+      fill: var(--newtab-text-primary-color);
+      background: url('chrome://global/skin/icons/arrow-down-12.svg') right no-repeat;
+      background-size: 8px;
+      background-origin: content-box;
+      background-color: var(--newtab-background-color-secondary);
+
+      &:hover {
+        background-color: var(--newtab-element-secondary-hover-color);
+      }
+
+      &:dir(rtl) {
+        background-position-x: left;
+      }
+    }
+
+    .more-info-top-wrapper,
+    .more-info-pocket-wrapper {
+      margin-inline-start: -2px;
+      overflow: hidden;
+
+      .more-information {
+        position: relative;
+        transition: margin-top 250ms $customize-menu-expand-bezier;
+      }
+    }
+
+    .more-info-pocket-wrapper {
+      .more-information {
+        // Note: This is necessary so the follow/block topics panel can
+        // be positioned absolutely across the entire Customize menu
+        position: static;
+      }
+
+      .check-wrapper {
+        margin-block-end: var(--space-small);
+      }
+    }
+
+    .more-info-top-wrapper {
+      .check-wrapper {
+        margin-block-start: var(--space-large);
+      }
+    }
+  }
+
+  .sponsored-content-info {
+    display: flex;
+    gap: var(--space-small);
+    font-size: var(--font-size-small);
+    border-radius: var(--border-radius-medium);
+    background-color: var(--newtab-element-secondary-color);
+    padding: var(--space-small) var(--space-large);
+
+    .icon-help {
+      flex-shrink: 0;
+      color: var(--color-accent-primary);
+      height: 20px;
+    }
+
+    a {
+      color: var(--newtab-primary-action-background);
+    }
+  }
+
+  .divider {
+    border-top: 1px var(--newtab-border-color) solid;
+    margin: 0 -16px;
+  }
+
+  .external-link {
+    -moz-context-properties: fill;
+    background: url('chrome://global/skin/icons/settings.svg') left no-repeat;
+    background-size: 16px;
+    border: 1px solid transparent;
+    border-radius: var(--border-radius-small);
+    color: var(--link-color);
+    cursor: pointer;
+    fill: var(--newtab-text-primary-color);
+    font-size: var(--font-size-small);
+    margin-bottom: 20px;
+    padding-inline-start: 21px;
+    text-decoration: underline;
+
+    &:hover {
+      color: var(--link-color-hover);
+      text-decoration: none;
+    }
+
+    &:active {
+      color: var(--link-color-active);
+    }
+
+    @media (forced-colors: active) {
+      padding: 8px 10px;
+      padding-inline-start: 21px;
+    }
+
+    &:dir(rtl) {
+      background-position-x: right;
+    }
+  }
+
+  .external-link:hover {
+    text-decoration: none;
+  }
+}
+
+.external-link:focus-visible,
+.close-button:focus-visible {
+  border: 1px solid var(--newtab-primary-action-background);
+  outline: 0;
+  box-shadow: $shadow-focus;
+}
+
+// Make sure form elements under the "Shortcuts" subsection don't change position on focus
+// by always having a 2px box shadow around them - one that blends in with the background.
+.home-section .section {
+  .customize-menu-checkbox, .selector {
+    outline: 0;
+    box-shadow: 0 0 0 2px light-dark(var(--newtab-background-color), var(--newtab-background-color-dark));
+  }
+}
+
+// Move the Shortcuts dropdown slightly down so that the box shadow is not cut off at the top
+// in active & focus states.
+.home-section .section .selector {
+  margin-block-start: var(--space-xxsmall)
+}
+
+// Improve accessibility of shortcuts dropdown and sponsored shortcuts checkbox
+// by setting a bright 2px box shadow in active and focus states.
+.home-section .section
+{
+  .customize-menu-checkbox, .selector {
+    &:is(:focus-visible) {
+      box-shadow: 0 0 0 2px var(--color-accent-primary);
+      outline: var(--focus-outline); // For Windows high-contrast mode
+    }
+
+    &:is(:active) {
+      box-shadow: 0 0 0 2px var(--color-accent-primary-active);
+      outline: 0;
+    }
+  }
+}
+
+.sections-mgmt-panel {
+  /* XXXdholbert The 32px subtraction here is to account for our 16px of
+  * margin on top and bottom. Ideally this should change to use
+  * 'height: stretch' when bug 1789477 lands. */
+  height: calc(100% - var(--space-xxlarge));
+  // Width of panel minus the margins
+  inset-inline-start: var(--space-xlarge);
+  position: absolute;
+  top: 0;
+  width: 380px;
+  z-index: 2;
+  transform: translateX(100%);
+  margin-block: var(--space-large) 0;
+  padding: 0;
+  background-color: var(--newtab-background-color-secondary);
+
+  &:dir(rtl) {
+    transform: translateX(-100%);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    &.sections-mgmt-panel-enter,
+    &.sections-mgmt-panel-exit,
+    &.sections-mgmt-panel-enter-done,
+    &.sections-mgmt-panel-exit-done {
+      transition: transform 300ms;
+    }
+  }
+
+  &.sections-mgmt-panel-enter-done,
+  &.sections-mgmt-panel-enter-active {
+    transform: translateX(0);
+  }
+
+  // Typography
+  h3 {
+    font-size: inherit;
+    margin-block: 0 var(--space-small);
+  }
+
+  // List
+  .topic-list {
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-small);
+    margin-block: 0 var(--space-xxlarge);
+    padding-inline: 0;
+    width: 100%;
+
+    li {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+  }
+
+  .topic-list-empty-state {
+    display: block;
+    margin-block-end: var(--space-xxlarge);
+    color: var(--text-color-deemphasized);
+  }
+
+  // Buttons
+  .arrow-button {
+    background: url('chrome://global/skin/icons/arrow-left.svg') no-repeat left center;
+
+    &:dir(rtl) {
+      background: url('chrome://global/skin/icons/arrow-right.svg') no-repeat right center;
+    }
+
+    border: none;
+    cursor: pointer;
+    margin-block-end: var(--space-xlarge);
+    padding-inline-start: var(--space-xlarge);
+    -moz-context-properties: fill;
+    fill: currentColor;
+    min-height: var(--space-large);
+
+    h1 {
+      font-size: var(--font-size-root);
+      margin-block: 0;
+      font-weight: var(--button-font-weight);
+    }
+
+  }
+
+  // Follow / Unfollow and Block / Unblock Buttons
+  .section-block,
+  .section-follow {
+    .section-button-blocked-text,
+    .section-button-following-text {
+      display: none;
+    }
+
+    .section-button-unblock-text,
+    .section-button-unfollow-text {
+      display: none;
+    }
+
+    &.following {
+      .section-button-follow-text {
+        display: none;
+      }
+
+      .section-button-following-text {
+        display: block;
+      }
+    }
+
+    &.following:not(:hover) {
+      moz-button {
+        --button-background-color-destructive: var(--button-background-color);
+        --button-text-color-destructive: var(--button-text-color);
+        --button-border-color-destructive: var(--button-border-color);
+      }
+    }
+
+    &.following:hover {
+      .section-button-following-text {
+        display: none;
+      }
+
+      .section-button-unfollow-text {
+        display: block;
+      }
+    }
+
+    &.blocked {
+      .section-button-block-text {
+        display: none;
+      }
+
+      .section-button-blocked-text {
+        display: block;
+      }
+    }
+
+    &.blocked:hover {
+      .section-button-blocked-text {
+        display: none;
+      }
+
+      .section-button-unblock-text {
+        display: block;
+      }
+    }
+  }
+
+}

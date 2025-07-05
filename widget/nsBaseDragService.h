@@ -64,12 +64,10 @@ class nsBaseDragSession : public nsIDragSession {
   int32_t TakeChildProcessDragAction();
 
   void SetDragEndPoint(nsIntPoint aEndDragPoint) {
-    mEndDragPoint =
-        mozilla::LayoutDeviceIntPoint::FromUnknownPoint(aEndDragPoint);
+    SetDragEndPoint(
+        mozilla::LayoutDeviceIntPoint::FromUnknownPoint(aEndDragPoint));
   }
-  void SetDragEndPoint(mozilla::LayoutDeviceIntPoint aEndDragPoint) {
-    mEndDragPoint = aEndDragPoint;
-  }
+  void SetDragEndPoint(mozilla::LayoutDeviceIntPoint aEndDragPoint);
 
   uint16_t GetInputSource() { return mInputSource; }
 
@@ -90,7 +88,8 @@ class nsBaseDragSession : public nsIDragSession {
       nsIPrincipal* aPrincipal, nsIContentSecurityPolicy* aCsp,
       nsICookieJarSettings* aCookieJarSettings, nsIArray* aTransferableArray,
       uint32_t aActionType, mozilla::dom::DragEvent* aDragEvent,
-      mozilla::dom::DataTransfer* aDataTransfer, bool aIsSynthesizedForTests);
+      mozilla::dom::DataTransfer* aDataTransfer, nsINode* aTargetContent,
+      bool aIsSynthesizedForTests);
 
   // The nsIDragService uses this to create nsIDragSessions when dragging
   // from anywhere else.
@@ -197,11 +196,12 @@ class nsBaseDragSession : public nsIDragSession {
    */
   void OpenDragPopup();
 
-    // Data from a prior call to EndDragSession.
+  // Data from a prior call to EndDragSession.
   struct EndDragSessionData {
     bool mDoneDrag = false;
     uint32_t mKeyModifiers = 0;
   };
+
   // When we delay a drop event in a content process, if we subsequently need to
   // also delay an EndDragSession call, this records the parameters to that
   // call.
@@ -212,6 +212,7 @@ class nsBaseDragSession : public nsIDragSession {
   // When we delay a drop event in a content process, this is the nsIFrame that
   // would handle the drop.
   WeakFrame mDelayedDropFrame;
+
   // Parent process PBrowser with a the remote drag session that corresponds to
   // this one and is currently delayed.
   RefPtr<mozilla::dom::BrowserParent> mDelayedDropBrowserParent;

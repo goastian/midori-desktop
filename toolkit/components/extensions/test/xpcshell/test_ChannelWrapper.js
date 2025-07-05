@@ -45,7 +45,6 @@ const EXPECTATION_BASIC_FETCH = {
   remoteAddress: null, // Not set at start of request
   loadInfo: EXPECT_TRUTHY,
   isServiceWorkerScript: false,
-  isSystemLoad: false, // To be removed in bug 1825882.
   originURL: "http://origin.example.net/home",
   documentURL: "http://origin.example.net/home",
   originURI: EXPECT_TRUTHY,
@@ -103,7 +102,6 @@ const EXPECTATION_INVALID_CHANNEL = {
   remoteAddress: null,
   loadInfo: null,
   isServiceWorkerScript: false,
-  isSystemLoad: false, // To be removed in bug 1825882.
   originURL: "",
   documentURL: "",
   originURI: null,
@@ -438,6 +436,7 @@ add_task(async function ChannelWrapper_blob_url() {
 
 add_task(async function ChannelWrapper_data_url() {
   const channel = createChannel("data:,");
+  Assert.ok(channel instanceof Ci.nsIDataChannel, "Is nsIDataChannel");
   assertChannelWrapperUnsupportedForChannel(channel);
 });
 

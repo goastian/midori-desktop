@@ -13,6 +13,12 @@
 #include "nsObjCExceptions.h"
 #include "nsNativeThemeColors.h"
 #include "nsString.h"
+#include "imgLoader.h"
+#include "MOZIconHelper.h"
+#include "mozilla/MacStringHelpers.h"
+#include "mozilla/SVGImageContext.h"
+#include "nsISVGPaintContext.h"
+#include "nsIFile.h"
 
 NS_IMPL_ISUPPORTS(nsMacDockSupport, nsIMacDockSupport, nsITaskbarProgress)
 
@@ -71,7 +77,9 @@ NS_IMPL_ISUPPORTS(nsMacDockSupport, nsIMacDockSupport, nsITaskbarProgress)
 @end
 
 nsMacDockSupport::nsMacDockSupport()
-    : mDockTileWrapperView(nil),
+    : mHasBadgeImage(false),
+      mDockTileWrapperView(nil),
+      mDockBadgeView(nil),
       mProgressDockOverlayView(nil),
       mProgressState(STATE_NO_PROGRESS),
       mProgressFraction(0.0) {}
@@ -80,6 +88,10 @@ nsMacDockSupport::~nsMacDockSupport() {
   if (mDockTileWrapperView) {
     [mDockTileWrapperView release];
     mDockTileWrapperView = nil;
+  }
+  if (mDockBadgeView) {
+    [mDockBadgeView release];
+    mDockBadgeView = nil;
   }
   if (mProgressDockOverlayView) {
     [mProgressDockOverlayView release];
@@ -117,14 +129,18 @@ nsMacDockSupport::SetBadgeText(const nsAString& aBadgeText) {
 
   NSDockTile* tile = [[NSApplication sharedApplication] dockTile];
   mBadgeText = aBadgeText;
-  if (aBadgeText.IsEmpty())
+  if (aBadgeText.IsEmpty()) {
     [tile setBadgeLabel:nil];
-  else
+  } else {
+    SetBadgeImage(nullptr, nullptr);
+
     [tile
         setBadgeLabel:[NSString
                           stringWithCharacters:reinterpret_cast<const unichar*>(
                                                    mBadgeText.get())
                                         length:mBadgeText.Length()]];
+  }
+
   return NS_OK;
 
   NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);
@@ -134,6 +150,45 @@ NS_IMETHODIMP
 nsMacDockSupport::GetBadgeText(nsAString& aBadgeText) {
   aBadgeText = mBadgeText;
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsMacDockSupport::SetBadgeImage(imgIContainer* aImage,
+                                nsISVGPaintContext* aPaintContext) {
+  if (!aImage) {
+    mHasBadgeImage = false;
+    if (mDockBadgeView) {
+      mDockBadgeView.image = nullptr;
+    }
+
+    return UpdateDockTile();
+  }
+
+  if (!mBadgeText.IsEmpty()) {
+    mBadgeText.Truncate();
+    NSDockTile* tile = [[NSApplication sharedApplication] dockTile];
+    [tile setBadgeLabel:nil];
+  }
+
+  NS_OBJC_BEGIN_TRY_BLOCK_RETURN
+
+  mHasBadgeImage = true;
+  BuildDockTile();
+
+  mozilla::SVGImageContext svgContext;
+  mozilla::SVGImageContext::MaybeStoreContextPaint(svgContext, aPaintContext,
+                                                   aImage);
+  NSImage* image =
+      [MOZIconHelper iconImageFromImageContainer:aImage
+                                        withSize:NSMakeSize(256, 256)
+                                      svgContext:&svgContext
+                                     scaleFactor:0.0];
+  image.resizingMode = NSImageResizingModeStretch;
+  mDockBadgeView.image = image;
+
+  return UpdateDockTile();
+
+  NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE)
 }
 
 NS_IMETHODIMP
@@ -158,46 +213,67 @@ nsMacDockSupport::SetProgressState(nsTaskbarProgressState aState,
   return UpdateDockTile();
 }
 
+void nsMacDockSupport::BuildDockTile() {
+  if (!mDockTileWrapperView) {
+    // Create the following NSView hierarchy:
+    // * mDockTileWrapperView (NSView)
+    //    * imageView (NSImageView) <- has the application icon
+    //    * mDockBadgeView (NSImageView) <- has the dock badge
+    //    * mProgressDockOverlayView (MOZProgressDockOverlayView) <- draws the
+    //    progress bar
+
+    mDockTileWrapperView =
+        [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 32, 32)];
+    mDockTileWrapperView.autoresizingMask =
+        NSViewWidthSizable | NSViewHeightSizable;
+
+    NSImageView* imageView =
+        [[NSImageView alloc] initWithFrame:[mDockTileWrapperView bounds]];
+    imageView.image = [NSImage imageNamed:@"NSApplicationIcon"];
+    imageView.imageScaling = NSImageScaleAxesIndependently;
+    imageView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [mDockTileWrapperView addSubview:imageView];
+
+    mDockBadgeView =
+        [[NSImageView alloc] initWithFrame:NSMakeRect(19.5, 19.5, 12, 12)];
+    mDockBadgeView.imageScaling = NSImageScaleProportionallyUpOrDown;
+    mDockBadgeView.autoresizingMask = NSViewMinXMargin | NSViewWidthSizable |
+                                      NSViewMaxXMargin | NSViewMinYMargin |
+                                      NSViewHeightSizable | NSViewMaxYMargin;
+    [mDockTileWrapperView addSubview:mDockBadgeView];
+
+    mProgressDockOverlayView = [[MOZProgressDockOverlayView alloc]
+        initWithFrame:NSMakeRect(1, 3, 30, 4)];
+    mProgressDockOverlayView.autoresizingMask =
+        NSViewMinXMargin | NSViewWidthSizable | NSViewMaxXMargin |
+        NSViewMinYMargin | NSViewHeightSizable | NSViewMaxYMargin;
+    [mDockTileWrapperView addSubview:mProgressDockOverlayView];
+  }
+}
+
 nsresult nsMacDockSupport::UpdateDockTile() {
   NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
 
-  if (mProgressState == STATE_NORMAL || mProgressState == STATE_INDETERMINATE) {
-    if (!mDockTileWrapperView) {
-      // Create the following NSView hierarchy:
-      // * mDockTileWrapperView (NSView)
-      //    * imageView (NSImageView) <- has the application icon
-      //    * mProgressDockOverlayView (MOZProgressDockOverlayView) <- draws the
-      //    progress bar
+  if (mProgressState == STATE_NORMAL || mProgressState == STATE_INDETERMINATE ||
+      mHasBadgeImage) {
+    BuildDockTile();
 
-      mDockTileWrapperView =
-          [[NSView alloc] initWithFrame:NSMakeRect(0, 0, 32, 32)];
-      mDockTileWrapperView.autoresizingMask =
-          NSViewWidthSizable | NSViewHeightSizable;
-
-      NSImageView* imageView =
-          [[NSImageView alloc] initWithFrame:[mDockTileWrapperView bounds]];
-      imageView.image = [NSImage imageNamed:@"NSApplicationIcon"];
-      imageView.imageScaling = NSImageScaleAxesIndependently;
-      imageView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
-      [mDockTileWrapperView addSubview:imageView];
-
-      mProgressDockOverlayView = [[MOZProgressDockOverlayView alloc]
-          initWithFrame:NSMakeRect(1, 3, 30, 4)];
-      mProgressDockOverlayView.autoresizingMask =
-          NSViewMinXMargin | NSViewWidthSizable | NSViewMaxXMargin |
-          NSViewMinYMargin | NSViewHeightSizable | NSViewMaxYMargin;
-      [mDockTileWrapperView addSubview:mProgressDockOverlayView];
-    }
     if (NSApp.dockTile.contentView != mDockTileWrapperView) {
       NSApp.dockTile.contentView = mDockTileWrapperView;
     }
 
+    mDockBadgeView.hidden = !mHasBadgeImage;
+
     if (mProgressState == STATE_NORMAL) {
       mProgressDockOverlayView.fractionValue = mProgressFraction;
-    } else {
+      mProgressDockOverlayView.hidden = false;
+    } else if (mProgressState == STATE_INDETERMINATE) {
       // Indeterminate states are rare. Just fill the entire progress bar in
       // that case.
       mProgressDockOverlayView.fractionValue = 1.0;
+      mProgressDockOverlayView.hidden = false;
+    } else {
+      mProgressDockOverlayView.hidden = true;
     }
     [NSApp.dockTile display];
   } else if (NSApp.dockTile.contentView) {
@@ -219,7 +295,7 @@ CFURLRef _CFURLCreateFromPropertyListRepresentation(
 
 namespace {
 
-const NSArray* const browserAppNames = [NSArray
+MOZ_RUNINIT const NSArray* const browserAppNames = [NSArray
     arrayWithObjects:@"Firefox.app", @"Firefox Beta.app",
                      @"Firefox Nightly.app", @"Safari.app", @"WebKit.app",
                      @"Google Chrome.app", @"Google Chrome Canary.app",
@@ -430,6 +506,46 @@ nsresult nsMacDockSupport::EnsureAppIsPinnedToDock(
   RefreshDock(dockPlist);
 
   *aIsInDock = true;
+  return NS_OK;
+
+  NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);
+}
+
+nsresult nsMacDockSupport::LaunchAppBundle(
+    nsIFile* aAppBundle, const nsTArray<nsString>& aArgs,
+    nsIAppBundleLaunchOptions* aLaunchOptions) {
+  NS_OBJC_BEGIN_TRY_BLOCK_RETURN;
+
+  nsString bundlePath;
+  nsresult rv = aAppBundle->GetPath(bundlePath);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  NSString* launchPath = mozilla::XPCOMStringToNSString(bundlePath);
+  NSMutableArray* arguments = [NSMutableArray arrayWithCapacity:aArgs.Length()];
+
+  for (const auto& arg : aArgs) {
+    [arguments addObject:mozilla::XPCOMStringToNSString(arg)];
+  }
+
+  NSWorkspaceOpenConfiguration* config =
+      [NSWorkspaceOpenConfiguration configuration];
+  [config setArguments:arguments];
+  [config setCreatesNewApplicationInstance:YES];
+  [config setEnvironment:[[NSProcessInfo processInfo] environment]];
+
+  if (aLaunchOptions) {
+    bool val = false;
+    if (NS_SUCCEEDED(aLaunchOptions->GetAddsToRecentItems(&val))) {
+      [config setAddsToRecentItems:val];
+    }
+  }
+
+  [[NSWorkspace sharedWorkspace]
+      openApplicationAtURL:[NSURL fileURLWithPath:launchPath]
+             configuration:config
+         completionHandler:^(NSRunningApplication* aChild, NSError* aError){
+         }];
+
   return NS_OK;
 
   NS_OBJC_END_TRY_BLOCK_RETURN(NS_ERROR_FAILURE);

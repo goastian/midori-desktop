@@ -42,9 +42,6 @@ if CONFIG["MOZ_MEMORY"]:
 if CONFIG["MOZ_PLACES"]:
     gkrust_features += ["moz_places"]
 
-if CONFIG["JS_ENABLE_SMOOSH"]:
-    gkrust_features += ["smoosh"]
-
 if CONFIG["MOZ_GECKO_PROFILER"]:
     gkrust_features += ["gecko_profiler"]
 
@@ -66,9 +63,6 @@ gkrust_features += ["glean_with_gecko"]
 if not CONFIG["MOZILLA_OFFICIAL"]:
     gkrust_features += ["glean_disable_upload"]
 
-if CONFIG["OS_TARGET"] != "Android":
-    gkrust_features += ["glean_million_queue"]
-
 if CONFIG["MOZ_ENABLE_DBUS"]:
     gkrust_features += ["with_dbus"]
 
@@ -85,6 +79,9 @@ if CONFIG["MOZ_UNIFFI_FIXTURES"]:
 
 if CONFIG["MOZ_ICU4X"]:
     gkrust_features += ["icu4x"]
+
+if CONFIG["USE_LIBZ_RS"]:
+    gkrust_features += ["libz-rs-sys"]
 
 # This must remain last.
 gkrust_features = ["gkrust-shared/%s" % f for f in gkrust_features]

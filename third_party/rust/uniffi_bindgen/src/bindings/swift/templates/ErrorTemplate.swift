@@ -1,5 +1,5 @@
 {%- call swift::docstring(e, 0) %}
-public enum {{ type_name }} {
+public enum {{ type_name }}: Swift.Error {
 
     {% if e.is_flat() %}
     {% for variant in e.variants() %}
@@ -19,6 +19,9 @@ public enum {{ type_name }} {
 }
 
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
     typealias SwiftType = {{ type_name }}
 
@@ -37,9 +40,13 @@ public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
         {% else %}
 
         {% for variant in e.variants() %}
-        case {{ loop.index }}: return .{{ variant.name()|class_name }}{% if variant.has_fields() -%}(
+        case {{ loop.index }}: return .{{ variant.name()|error_variant_swift_quoted }}{% if variant.has_fields() %}(
             {% for field in variant.fields() -%}
+            {%-     if variant.has_nameless_fields() -%}
+            try {{ field|read_fn }}(from: &buf)
+            {%-     else -%}
             {{ field.name()|var_name }}: try {{ field|read_fn }}(from: &buf)
+            {%-     endif -%}
             {%- if !loop.last %}, {% endif %}
             {% endfor -%}
         ){% endif -%}
@@ -64,10 +71,10 @@ public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
 
         {% for variant in e.variants() %}
         {% if variant.has_fields() %}
-        case let .{{ variant.name()|class_name }}({% for field in variant.fields() %}{{ field.name()|var_name }}{%- if loop.last -%}{%- else -%},{%- endif -%}{% endfor %}):
+        case let .{{ variant.name()|error_variant_swift_quoted }}({% for field in variant.fields() %}{%- call swift::field_name(field, loop.index) -%}{%- if loop.last -%}{%- else -%},{%- endif -%}{% endfor %}):
             writeInt(&buf, Int32({{ loop.index }}))
             {% for field in variant.fields() -%}
-            {{ field|write_fn }}({{ field.name()|var_name }}, into: &buf)
+            {{ field|write_fn }}({% call swift::field_name(field, loop.index) %}, into: &buf)
             {% endfor -%}
         {% else %}
         case .{{ variant.name()|class_name }}:
@@ -80,7 +87,39 @@ public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
     }
 }
 
+{#
+We always write these public functions just in case the error is used as
+an external type by another crate.
+#}
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func {{ ffi_converter_name }}_lift(_ buf: RustBuffer) throws -> {{ type_name }} {
+    return try {{ ffi_converter_name }}.lift(buf)
+}
+
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
+public func {{ ffi_converter_name }}_lower(_ value: {{ type_name }}) -> RustBuffer {
+    return {{ ffi_converter_name }}.lower(value)
+}
+
 {% if !contains_object_references %}
 extension {{ type_name }}: Equatable, Hashable {}
+{% if config.generate_codable_conformance() %}
+extension {{ type_name }}: Codable {}
 {% endif %}
-extension {{ type_name }}: Error { }
+{% endif %}
+
+{% if !config.omit_localized_error_conformance() %}
+extension {{ type_name }}: Foundation.LocalizedError {
+    public var errorDescription: String? {
+        String(reflecting: self)
+    }
+}
+{% endif %}
+
+{% if config.generate_case_iterable_conformance() && !e.is_flat() && !e.contains_variant_fields() %}
+extension {{ type_name }}: CaseIterable {}
+{% endif %}

@@ -23,7 +23,6 @@
 
 import ctypes
 import errno
-import io
 import os
 import platform
 import re
@@ -45,6 +44,7 @@ from mozbuild.util import memoize
 from mozpack import executables
 from mozpack.copier import FileRegistry
 from mozpack.manifests import InstallManifest, UnreadableInstallManifest
+from variables import get_buildid
 
 # Utility classes
 
@@ -377,13 +377,13 @@ def validate_install_manifests(install_manifest_args):
             )
         manifest_file, destination = [os.path.abspath(b) for b in bits]
         if not os.path.isfile(manifest_file):
-            raise IOError(errno.ENOENT, "Manifest file not found", manifest_file)
+            raise OSError(errno.ENOENT, "Manifest file not found", manifest_file)
         if not os.path.isdir(destination):
-            raise IOError(errno.ENOENT, "Install directory not found", destination)
+            raise OSError(errno.ENOENT, "Install directory not found", destination)
         try:
             manifest = InstallManifest(manifest_file)
         except UnreadableInstallManifest:
-            raise IOError(errno.EINVAL, "Error parsing manifest file", manifest_file)
+            raise OSError(errno.EINVAL, "Error parsing manifest file", manifest_file)
         args.append((manifest, destination))
     return args
 
@@ -408,7 +408,7 @@ def get_generated_file_s3_path(filename, rel_path, bucket):
     GetVCSFilename but representing a file available in an s3 bucket."""
     with open(filename, "rb") as f:
         path = get_filename_with_digest(rel_path, f.read())
-        return "s3:{bucket}:{path}:".format(bucket=bucket, path=path)
+        return f"s3:{bucket}:{path}:"
 
 
 def GetPlatformSpecificDumper(**kwargs):
@@ -591,9 +591,8 @@ class Dumper:
             )
 
         # Add the build ID if it's present
-        path = os.path.join(buildconfig.topobjdir, "buildid.h")
         try:
-            buildid = io.open(path, "r", encoding="utf-8").read().split()[2]
+            buildid = get_buildid()
             cmdline.extend(
                 [
                     "--extra-info",
@@ -1132,7 +1131,7 @@ to canonical locations in the source repository. Specify
 
     try:
         manifests = validate_install_manifests(options.install_manifests)
-    except (IOError, ValueError) as e:
+    except (OSError, ValueError) as e:
         parser.error(str(e))
         sys.exit(1)
     file_mapping = make_file_mapping(manifests)

@@ -11,22 +11,27 @@
 #include "mozilla/dom/RootedDictionary.h"
 #include "mozilla/dom/TypedArray.h"
 #include "mozilla/dom/UniFFIBinding.h"
+#include "mozilla/dom/UniFFIBindingFwd.h"
 
 namespace mozilla::dom {
-
-using UniFFIScaffoldingValue = OwningDoubleOrArrayBufferOrUniFFIPointer;
 
 // Handle functions defined in UniFFIScaffolding.webidl
 class UniFFIScaffolding {
  public:
-  static already_AddRefed<Promise> CallAsync(
-      const GlobalObject& aGlobal, uint64_t aId,
-      const Sequence<UniFFIScaffoldingValue>& aArgs, ErrorResult& aErrorResult);
-
   static void CallSync(
       const GlobalObject& aGlobal, uint64_t aId,
-      const Sequence<UniFFIScaffoldingValue>& aArgs,
+      const Sequence<OwningUniFFIScaffoldingValue>& aArgs,
       RootedDictionary<UniFFIScaffoldingCallResult>& aReturnValue,
+      ErrorResult& aErrorResult);
+
+  static already_AddRefed<Promise> CallAsync(
+      const GlobalObject& aGlobal, uint64_t aId,
+      const Sequence<OwningUniFFIScaffoldingValue>& aArgs,
+      ErrorResult& aErrorResult);
+
+  static already_AddRefed<Promise> CallAsyncWrapper(
+      const GlobalObject& aGlobal, uint64_t aId,
+      const Sequence<OwningUniFFIScaffoldingValue>& aArgs,
       ErrorResult& aErrorResult);
 
   static already_AddRefed<UniFFIPointer> ReadPointer(

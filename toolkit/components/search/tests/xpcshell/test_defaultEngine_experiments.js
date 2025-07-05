@@ -2,7 +2,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
 /*
- * Test that defaultEngine property can be set and yields the proper events and\
+ * Test that defaultEngine property can be set and yields the proper events and
  * behavior (search results)
  */
 
@@ -12,13 +12,53 @@ ChromeUtils.defineESModuleGetters(this, {
   NimbusFeatures: "resource://nimbus/ExperimentAPI.sys.mjs",
 });
 
+const CONFIG = [
+  { identifier: "engine1" },
+  { identifier: "engine2" },
+  {
+    identifier: "exp2",
+    variants: [
+      {
+        environment: { allRegionsAndLocales: true, experiment: "exp2" },
+      },
+    ],
+  },
+  {
+    identifier: "exp3",
+    variants: [
+      {
+        environment: { allRegionsAndLocales: true, experiment: "exp3" },
+      },
+    ],
+  },
+  {
+    recordType: "defaultEngines",
+    globalDefault: "engine1",
+    globalDefaultPrivate: "engine1",
+    specificDefaults: [
+      {
+        environment: { experiment: "exp1" },
+        default: "engine2",
+      },
+      {
+        environment: { experiment: "exp2" },
+        defaultPrivate: "exp2",
+      },
+      {
+        environment: { experiment: "exp3" },
+        default: "exp3",
+      },
+    ],
+  },
+];
+
 let getVariableStub;
 
 let defaultGetVariable = name => {
-  if (name == "seperatePrivateDefaultUIEnabled") {
+  if (name == "separatePrivateDefaultUIEnabled") {
     return true;
   }
-  if (name == "seperatePrivateDefaultUrlbarResultEnabled") {
+  if (name == "separatePrivateDefaultUrlbarResultEnabled") {
     return false;
   }
   return undefined;
@@ -45,29 +85,26 @@ add_setup(async () => {
   do_get_profile();
   Services.fog.initializeFOG();
 
-  await SearchTestUtils.useTestEngines("data1");
+  SearchTestUtils.setRemoteSettingsConfig(CONFIG);
 
-  await AddonTestUtils.promiseStartupManager();
-
-  let promiseSaved = promiseSaveSettingsData();
+  let promiseSaved = promiseAfterSettings();
   await Services.search.init();
   await promiseSaved;
+
+  registerCleanupFunction(async () => {
+    sinon.restore();
+  });
 });
 
 async function switchExperiment(newExperiment) {
   let promiseReloaded =
     SearchTestUtils.promiseSearchNotification("engines-reloaded");
-  let promiseSaved = promiseSaveSettingsData();
+  let promiseSaved = promiseAfterSettings();
 
-  // Stub getVariable to populate the cache with our expected data
-  getVariableStub.callsFake(name => {
-    if (name == "experiment") {
-      return newExperiment;
-    }
-    return defaultGetVariable(name);
-  });
-  for (let call of NimbusFeatures.searchConfiguration.onUpdate.getCalls()) {
-    call.args[0]();
+  if (newExperiment) {
+    Services.prefs.setStringPref("browser.search.experiment", newExperiment);
+  } else {
+    Services.prefs.clearUserPref("browser.search.experiment");
   }
 
   await promiseReloaded;
@@ -128,7 +165,7 @@ add_task(async function test_experiment_setting_to_same_as_user() {
       "defaultEngineId",
       Services.search.defaultEngine.isAppProvided
     ),
-    "engine2@search.mozilla.orgdefault"
+    "engine2"
   );
 
   // Start the experiment, ensure user default is maintained.
@@ -138,7 +175,7 @@ add_task(async function test_experiment_setting_to_same_as_user() {
       "defaultEngineId",
       Services.search.defaultEngine.isAppProvided
     ),
-    "engine2@search.mozilla.orgdefault"
+    "engine2"
   );
 
   Assert.equal(
@@ -170,7 +207,7 @@ add_task(async function test_experiment_setting_to_same_as_user() {
       "defaultEngineId",
       Services.search.defaultEngine.isAppProvided
     ),
-    "engine2@search.mozilla.orgdefault",
+    "engine2",
     "Should have kept the saved attribute as the user's preference"
   );
 });
@@ -221,7 +258,7 @@ add_task(async function test_experiment_setting_user_changed_back_during() {
       "defaultEngineId",
       Services.search.defaultEngine.isAppProvided
     ),
-    "engine1@search.mozilla.orgdefault"
+    "engine1"
   );
 
   // Ending the experiment should keep the original default and reset the
@@ -296,7 +333,7 @@ add_task(async function test_experiment_setting_user_changed_back_private() {
       "privateDefaultEngineId",
       Services.search.defaultPrivateEngine.isAppProvided
     ),
-    "engine1@search.mozilla.orgdefault"
+    "engine1"
   );
 
   // Ending the experiment should keep the original default and reset the
@@ -365,7 +402,7 @@ add_task(async function test_experiment_setting_user_changed_to_other_during() {
       "defaultEngineId",
       Services.search.defaultEngine.isAppProvided
     ),
-    "engine2@search.mozilla.orgdefault",
+    "engine2",
     "Should have correctly set the user's default in settings"
   );
 
@@ -388,21 +425,12 @@ add_task(async function test_experiment_setting_user_changed_to_other_during() {
       "defaultEngineId",
       Services.search.defaultEngine.isAppProvided
     ),
-    "engine2@search.mozilla.orgdefault",
+    "engine2",
     "Should have kept the user's choice in settings"
   );
 });
 
 add_task(async function test_experiment_setting_user_hid_app_default_during() {
-  // Add all the test engines to be general search engines. This is important
-  // for the test, as the removed experiment engine needs to be a general search
-  // engine, and the first in the list (aided by the orderHint in
-  // data1/engines.json).
-  SearchUtils.GENERAL_SEARCH_ENGINE_IDS.add("engine1@search.mozilla.org");
-  SearchUtils.GENERAL_SEARCH_ENGINE_IDS.add("engine2@search.mozilla.org");
-  SearchUtils.GENERAL_SEARCH_ENGINE_IDS.add("exp2@search.mozilla.org");
-  SearchUtils.GENERAL_SEARCH_ENGINE_IDS.add("exp3@search.mozilla.org");
-
   Services.prefs.setBoolPref(
     SearchUtils.BROWSER_SEARCH_PREF + "separatePrivateDefault",
     false
@@ -474,7 +502,7 @@ add_task(async function test_experiment_setting_user_hid_app_default_during() {
       "defaultEngineId",
       Services.search.defaultEngine.isAppProvided
     ),
-    "engine2@search.mozilla.orgdefault",
+    "engine2",
     "Should have saved the choice in settings"
   );
 });

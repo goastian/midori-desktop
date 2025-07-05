@@ -1,0 +1,32 @@
+{
+  "triagers": {
+    "Jonathan Sudiaman": {
+      "bzmail": "jsudiaman@mozilla.com"
+    },
+    "Kelly Cochrane": {
+      "bzmail": "kcochrane@mozilla.com"
+    },
+    "Nikki Sharpley": {
+      "bzmail": "nsharpley@mozilla.com"
+    },
+    "Sam Foster": {
+      "bzmail": "sfoster@mozilla.com"
+    },
+    "Sarah Clements": {
+      "bzmail": "sclements@mozilla.com"
+    }
+  },
+  "duty-start-dates": {
+    "2025-04-10": "Nikki Sharpley",
+    "2025-06-01": "Kelly Cochrane",
+    "2025-08-01": "Jonathan Sudiaman",
+    "2025-10-01": "Sam Foster",
+    "2025-12-01": "Sarah Clements",
+    "2026-02-01": "Nikki Sharpley",
+    "2026-04-01": "Kelly Cochrane",
+    "2026-06-01": "Jonathan Sudiaman",
+    "2026-08-01": "Sam Foster",
+    "2026-10-01": "Sarah Clements",
+    "2026-12-01": "Nikki Sharpley"
+  }
+}

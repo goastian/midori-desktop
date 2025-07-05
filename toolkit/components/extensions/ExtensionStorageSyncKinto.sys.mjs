@@ -3,6 +3,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* eslint-disable mozilla/valid-lazy */
 
 // TODO:
 // * find out how the Chrome implementation deals with conflicts
@@ -15,7 +16,6 @@ const KINTO_PROD_SERVER_URL =
   "https://webextensions.settings.services.mozilla.com/v1";
 const KINTO_DEFAULT_SERVER_URL = KINTO_PROD_SERVER_URL;
 
-const STORAGE_SYNC_ENABLED_PREF = "webextensions.storage.sync.enabled";
 const STORAGE_SYNC_SERVER_URL_PREF = "webextensions.storage.sync.serverURL";
 const STORAGE_SYNC_SCOPE = "sync:addon_storage";
 const STORAGE_SYNC_CRYPTO_COLLECTION_NAME = "storage-sync-crypto";
@@ -32,10 +32,7 @@ import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 import { ExtensionUtils } from "resource://gre/modules/ExtensionUtils.sys.mjs";
 
-/** @type {Lazy} */
-const lazy = {};
-
-ChromeUtils.defineESModuleGetters(lazy, {
+const lazy = XPCOMUtils.declareLazy({
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   BulkKeyBundle: "resource://services-sync/keys.sys.mjs",
   CollectionKeyManager: "resource://services-sync/record.sys.mjs",
@@ -47,6 +44,21 @@ ChromeUtils.defineESModuleGetters(lazy, {
   KintoHttpClient: "resource://services-common/kinto-http-client.sys.mjs",
   Observers: "resource://services-common/observers.sys.mjs",
   Utils: "resource://services-sync/util.sys.mjs",
+  prefStorageSyncServerURL: {
+    pref: STORAGE_SYNC_SERVER_URL_PREF,
+    default: KINTO_DEFAULT_SERVER_URL,
+  },
+  fxAccounts() {
+    return ChromeUtils.importESModule(
+      "resource://gre/modules/FxAccounts.sys.mjs"
+    ).getFxAccountsSingleton();
+  },
+  WeaveCrypto() {
+    let { WeaveCrypto } = ChromeUtils.importESModule(
+      "resource://services-crypto/WeaveCrypto.sys.mjs"
+    );
+    return new WeaveCrypto();
+  },
 });
 
 /**
@@ -56,31 +68,6 @@ ChromeUtils.defineESModuleGetters(lazy, {
  * @typedef {any} KeyBundle
  * @typedef {any} SyncResultObject
  */
-
-ChromeUtils.defineLazyGetter(lazy, "fxAccounts", () => {
-  return ChromeUtils.importESModule(
-    "resource://gre/modules/FxAccounts.sys.mjs"
-  ).getFxAccountsSingleton();
-});
-
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "prefPermitsStorageSync",
-  STORAGE_SYNC_ENABLED_PREF,
-  true
-);
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "prefStorageSyncServerURL",
-  STORAGE_SYNC_SERVER_URL_PREF,
-  KINTO_DEFAULT_SERVER_URL
-);
-ChromeUtils.defineLazyGetter(lazy, "WeaveCrypto", function () {
-  let { WeaveCrypto } = ChromeUtils.importESModule(
-    "resource://services-crypto/WeaveCrypto.sys.mjs"
-  );
-  return new WeaveCrypto();
-});
 
 const { DefaultMap } = ExtensionUtils;
 
@@ -592,6 +579,7 @@ class CryptoCollection {
    */
   async getKeyRing() {
     const cryptoKeyRecord = await this.getKeyRingRecord();
+    /** @type {CollectionKeyManager & {uuid?}} */
     const collectionKeys = new lazy.CollectionKeyManager();
     if (cryptoKeyRecord.keys) {
       collectionKeys.setContents(
@@ -735,6 +723,7 @@ export class ExtensionStorageSyncKinto {
     this._fxaService = fxaService;
     this.cryptoCollection = new CryptoCollection(fxaService);
     this.listeners = new WeakMap();
+    this.backend = "kinto";
   }
 
   /**
@@ -907,9 +896,8 @@ export class ExtensionStorageSyncKinto {
         // Our token might have expired. Refresh and retry.
         log.info("Token might have expired");
         await this._fxaService.removeCachedOAuthToken({ token: fxaToken });
-        const newToken = await this._fxaService.getOAuthToken(
-          FXA_OAUTH_OPTIONS
-        );
+        const newToken =
+          await this._fxaService.getOAuthToken(FXA_OAUTH_OPTIONS);
 
         // If this fails too, let it go.
         return f(newToken);
@@ -1203,11 +1191,6 @@ export class ExtensionStorageSyncKinto {
    * @returns {Promise<Collection>}
    */
   getCollection(extension, context) {
-    if (lazy.prefPermitsStorageSync !== true) {
-      return Promise.reject({
-        message: `Please set ${STORAGE_SYNC_ENABLED_PREF} to true in about:config`,
-      });
-    }
     this.registerInUse(extension, context);
     return openCollection(extension);
   }

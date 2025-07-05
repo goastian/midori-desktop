@@ -64,8 +64,10 @@ add_task(async function test_clientid_reset_after_reenabling() {
   let ping = await PingServer.promiseNextPing();
   Assert.equal(ping.type, TEST_PING_TYPE, "The ping must be a test ping");
   Assert.ok("clientId" in ping);
+  Assert.ok("profileGroupId" in ping);
 
   let firstClientId = ping.clientId;
+  let firstProfileGroupId = ping.profileGroupId;
   Assert.notEqual(
     TelemetryUtils.knownClientID,
     firstClientId,
@@ -85,8 +87,20 @@ add_task(async function test_clientid_reset_after_reenabling() {
     "The ping must be a deletion-request ping"
   );
   Assert.equal(ping.clientId, firstClientId);
+  Assert.equal(ping.profileGroupId, firstProfileGroupId);
   let clientId = await ClientID.getClientID();
   Assert.equal(TelemetryUtils.knownClientID, clientId);
+  let profileGroupId = await ClientID.getProfileGroupID();
+  Assert.notEqual(
+    firstProfileGroupId,
+    profileGroupId,
+    "The profile group ID should have been reset."
+  );
+  Assert.notEqual(
+    profileGroupId,
+    clientId,
+    "The profile group ID should not match the new client ID."
+  );
 
   // Now shutdown the instance
   await TelemetryController.testShutdown();
@@ -108,6 +122,22 @@ add_task(async function test_clientid_reset_after_reenabling() {
     firstClientId,
     newClientId,
     "Client ID should be newly generated"
+  );
+  let newProfileGroupId = await ClientID.getProfileGroupID();
+  Assert.notEqual(
+    TelemetryUtils.knownProfileGroupID,
+    newProfileGroupId,
+    "The profile group ID should be valid and random"
+  );
+  Assert.notEqual(
+    firstProfileGroupId,
+    newProfileGroupId,
+    "The profile group ID should have been reset."
+  );
+  Assert.notEqual(
+    newProfileGroupId,
+    newClientId,
+    "The profile group ID should not match the client ID."
   );
 });
 
@@ -131,12 +161,24 @@ add_task(async function test_clientid_canary_after_disabling() {
   let ping = await PingServer.promiseNextPing();
   Assert.equal(ping.type, TEST_PING_TYPE, "The ping must be a test ping");
   Assert.ok("clientId" in ping);
+  Assert.ok("profileGroupId" in ping);
 
   let firstClientId = ping.clientId;
+  let firstProfileGroupId = ping.profileGroupId;
   Assert.notEqual(
     TelemetryUtils.knownClientID,
     firstClientId,
     "Client ID should be valid and random"
+  );
+  Assert.notEqual(
+    TelemetryUtils.knownProfileGroupID,
+    firstProfileGroupId,
+    "Profile Group ID should be valid and random"
+  );
+  Assert.notEqual(
+    firstClientId,
+    firstProfileGroupId,
+    "Profile Group ID should be valid and not match the client ID"
   );
 
   // Disable FHR upload: this should trigger a deletion-request ping.
@@ -152,8 +194,11 @@ add_task(async function test_clientid_canary_after_disabling() {
     "The ping must be a deletion-request ping"
   );
   Assert.equal(ping.clientId, firstClientId);
+  Assert.equal(ping.profileGroupId, firstProfileGroupId);
   let clientId = await ClientID.getClientID();
   Assert.equal(TelemetryUtils.knownClientID, clientId);
+  let profileGroupId = await ClientID.getProfileGroupID();
+  Assert.equal(TelemetryUtils.knownProfileGroupID, profileGroupId);
 
   Services.prefs.setBoolPref(TelemetryUtils.Preferences.FhrUploadEnabled, true);
   await sendPing();
@@ -163,6 +208,16 @@ add_task(async function test_clientid_canary_after_disabling() {
     firstClientId,
     ping.clientId,
     "Client ID should be newly generated"
+  );
+  Assert.notEqual(
+    firstProfileGroupId,
+    ping.profileGroupId,
+    "Profile group ID should be newly generated"
+  );
+  Assert.notEqual(
+    ping.profileGroupId,
+    ping.clientId,
+    "Profile group ID should not match the client ID"
   );
 
   // Now shutdown the instance
@@ -183,6 +238,12 @@ add_task(async function test_clientid_canary_after_disabling() {
     TelemetryUtils.knownClientID,
     newClientId,
     "Client ID should be a canary when upload disabled"
+  );
+  let newProfileGroupId = await ClientID.getProfileGroupID();
+  Assert.equal(
+    TelemetryUtils.knownProfileGroupID,
+    newProfileGroupId,
+    "Profile group ID should be a canary when upload disabled"
   );
 });
 

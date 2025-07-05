@@ -15,24 +15,12 @@ async function getColorFromAppliedTheme() {
     "resource://gre/modules/LightweightThemeConsumer.sys.mjs"
   );
 
-  const { ThemeVariableMap } = ChromeUtils.importESModule(
-    "resource:///modules/ThemeVariableMap.sys.mjs"
-  );
-
   // The LightweightThemeConsumer class expects a document (browser.xhtml), so
-  // create a minimal one that looks like it:
+  // create a minimal one that looks like it. A blank document works because the
+  // module does not have any other requirements for the document - the last
+  // requirement (expecting some elements to exist) was removed in bug 1905726.
   const browser = Services.appShell.createWindowlessBrowser(true);
   const document = browser.document;
-  // The _setProperties function in LightweightThemeConsumer.sys.mjs expects
-  // some elements to exist in order to apply the style. Make sure that these
-  // exist to prevent doc.getElementById(optionalElementID) from returning null.
-  for (let [, { optionalElementID }] of ThemeVariableMap) {
-    if (optionalElementID) {
-      let elem = document.createElement("div");
-      elem.id = optionalElementID;
-      document.body.append(elem);
-    }
-  }
 
   let promise = new Promise(resolve => {
     // Will be invoked by LightweightThemeConsumer

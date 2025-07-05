@@ -17,6 +17,7 @@ const peggy = require("peggy");
 const HEADER = `/**
  * NOTE: Do not modify this file by hand.
  * Content was generated from xpc.msg and error_list.json.
+ * If you're updating some of the sources, see README for instructions.
  */
 `;
 
@@ -27,6 +28,9 @@ const XPC_MSG_GRAMMAR = `
   Definition = 'XPC_MSG_DEF(' @$[A-Z0-9_]+ [ ]* ', "' @$[^"]+ '")' NL
   NL = @$[ ]* '\\n'
 `;
+
+// JSDoc doesn't support keyof, so we export values separately.
+const nsIXPCComponents_JSDoc = `type nsIXPCComponents_Values = nsIXPCComponents_Results[keyof nsIXPCComponents_Results];\n`;
 
 function main(lib_dts, xpc_msg, errors_json) {
   let parser = peggy.generate(XPC_MSG_GRAMMAR);
@@ -47,6 +51,7 @@ function main(lib_dts, xpc_msg, errors_json) {
     "interface nsIXPCComponents_Results {",
     lines.join("\n").replaceAll("\n\n\n", "\n\n"),
     "}\n",
+    nsIXPCComponents_JSDoc,
   ].join("\n");
 
   console.log(`[INFO] ${lib_dts} (${dts.length.toLocaleString()} bytes)`);

@@ -88,7 +88,7 @@ interface nsIXULRuntime : nsISupports
     MissingRemoteWebGL = 5,
     MissingNonNativeTheming = 6,
     DisabledByEnvVar = 7,  // - MOZ_ENABLE_WIN32K is set
-    DisabledBySafeMode = 8,
+    //DisabledBySafeMode = 8,
     DisabledByE10S = 9,      // - E10S is disabled for whatever reason
     DisabledByUserPref = 10,  // - The user manually set
                              // security.sandbox.content.win32k-disable to false
@@ -117,12 +117,6 @@ interface nsIXULRuntime : nsISupports
   // mapping in aboutSupport.js
   cenum FissionDecisionStatus : 8 {
     eFissionStatusUnknown = 0,
-    // Fission is disabled because the user is in the control group of a
-    // Normandy experiment.
-    eFissionExperimentControl = 1,
-    // Fission is enabled because the user is in the treatment group of a
-    // Normandy experiment.
-    eFissionExperimentTreatment = 2,
     // Fission is disabled because the `MOZ_FORCE_DISABLE_E10S` environment
     // variable is set.
     eFissionDisabledByE10sEnv = 3,
@@ -146,8 +140,6 @@ interface nsIXULRuntime : nsISupports
     eFissionDisabledByUserPref = 10,
     // Fission is disabled because e10s is disabled for some other reason.
     eFissionDisabledByE10sOther = 11,
-    // Fission is enabled by a Normandy phased rollout.
-    eFissionEnabledByRollout = 12,
   };
 
   /**
@@ -223,7 +215,6 @@ interface nsIXULRuntime : nsISupports
   const unsigned long PROCESS_TYPE_VR = 6;
   const unsigned long PROCESS_TYPE_RDD = 7;
   const unsigned long PROCESS_TYPE_SOCKET = 8;
-  const unsigned long PROCESS_TYPE_REMOTESANDBOXBROKER = 9;
   const unsigned long PROCESS_TYPE_FORKSERVER = 10;
   const unsigned long PROCESS_TYPE_UTILITY = 11;
 
@@ -299,15 +290,6 @@ interface nsIXULRuntime : nsISupports
   void invalidateCachesOnRestart();
 
   /**
-   * Starts a child process. This method is intented to pre-start a
-   * content child process so that when it is actually needed, it is
-   * ready to go.
-   *
-   * @throw NS_ERROR_NOT_AVAILABLE if not available.
-   */
-  void ensureContentProcess();
-
-  /**
    * Modification time of the profile lock before the profile was locked on
    * this startup. Used to know the last time the profile was used and not
    * closed cleanly. This is set to 0 if there was no existing profile lock.
@@ -336,6 +318,9 @@ interface nsIXULRuntime : nsISupports
    */
   readonly attribute boolean restartedByOS;
 
+  /** Whether the desktop environment uses a native menubar */
+  readonly attribute boolean nativeMenubar;
+
   /** Whether the chrome color-scheme is dark */
   readonly attribute boolean chromeColorSchemeIsDark;
 
@@ -347,6 +332,12 @@ interface nsIXULRuntime : nsISupports
 
   /** Whether we should draw over the titlebar */
   readonly attribute boolean drawInTitlebar;
+
+  /** Number of times the caret blinks (-1 for "never stop blinking") */
+  readonly attribute int32_t caretBlinkCount;
+
+  /** Time for half the caret blink cycle, in ms. negative for "don't blink". */
+  readonly attribute int32_t caretBlinkTime;
 
   /** Returns the desktop environment identifier. Only meaningful on GTK */
   readonly attribute ACString desktopEnvironment;

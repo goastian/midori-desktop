@@ -5,18 +5,21 @@
 
 #include "nsUserCharacteristics.h"
 
+#include "nsICryptoHash.h"
 #include "nsID.h"
+#include "nsIGfxInfo.h"
 #include "nsIUUIDGenerator.h"
 #include "nsIUserCharacteristicsPageService.h"
 #include "nsServiceManagerUtils.h"
 
 #include "mozilla/Logging.h"
 #include "mozilla/glean/GleanPings.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/ResistfingerprintingMetrics.h"
 
 #include "jsapi.h"
 #include "mozilla/Components.h"
 #include "mozilla/dom/Promise-inl.h"
+#include "mozilla/Variant.h"
 
 #include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/StaticPrefs_dom.h"
@@ -24,6 +27,7 @@
 #include "mozilla/StaticPrefs_media.h"
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/StaticPrefs_widget.h"
+#include "mozilla/StaticPrefs_privacy.h"
 
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/PreferenceSheet.h"
@@ -35,6 +39,8 @@
 #include "mozilla/widget/ScreenManager.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/MouseEvents.h"
+#include "mozilla/TouchEvents.h"
 #include "nsPIDOMWindow.h"
 #include "nsIAppWindow.h"
 #include "nsIDocShellTreeOwner.h"
@@ -43,10 +49,11 @@
 #include "mozilla/dom/MediaDeviceInfoBinding.h"
 #include "mozilla/MozPromise.h"
 #include "nsThreadUtils.h"
-#include "CubebDeviceEnumerator.h"
-#include "mozilla/media/MediaUtils.h"
 #include "mozilla/dom/Navigator.h"
 #include "nsIGSettingsService.h"
+#include "nsIPropertyBag2.h"
+#include "nsITimer.h"
+#include "gfxConfig.h"
 
 #include "gfxPlatformFontList.h"
 #include "prsystem.h"
@@ -59,6 +66,7 @@
 #elif defined(XP_MACOSX)
 #  include "nsMacUtilsImpl.h"
 #  include <CoreFoundation/CoreFoundation.h>
+#  include "CFTypeRefPtr.h"
 #endif
 
 using namespace mozilla;
@@ -82,22 +90,42 @@ int MaxTouchPoints() {
 }  // extern "C"
 };  // namespace testing
 
-using VoidPromise = MozPromise<void_t, void_t, true>::Private;
+using FunctionName = nsCString;
+using AdditionalContext = nsCString;
+using PopulatePromiseBase =
+    MozPromise<void_t, std::tuple<FunctionName, nsresult, AdditionalContext>,
+               false>;
+using PopulatePromise = PopulatePromiseBase::Private;
+
+#define REJECT(aPromise, aFuncName, aRv, aError)                          \
+  aPromise->Reject(std::tuple<FunctionName, nsresult, AdditionalContext>( \
+                       aFuncName, aRv, aError),                           \
+                   __func__);
+
+#define REJECT_AND_FORGET(aPromise, aFuncName, aRv, aError) \
+  REJECT(aPromise, aFuncName, aRv, aError);                 \
+  return (aPromise).forget();
+
+#define REJECT_VOID(aPromise, aFuncName, aRv, aError) \
+  REJECT(aPromise, aFuncName, aRv, aError);           \
+  return;
 
 // ==================================================================
 // ==================================================================
-RefPtr<VoidPromise> ContentPageStuff() {
+already_AddRefed<PopulatePromise> ContentPageStuff() {
   nsCOMPtr<nsIUserCharacteristicsPageService> ucp =
       do_GetService("@mozilla.org/user-characteristics-page;1");
   MOZ_ASSERT(ucp);
 
-  RefPtr<VoidPromise> voidPromise = new VoidPromise(__func__);
+  RefPtr<PopulatePromise> populatePromise = new PopulatePromise(__func__);
   RefPtr<mozilla::dom::Promise> promise;
-  nsresult rv = ucp->CreateContentPage(getter_AddRefs(promise));
+  nsresult rv = ucp->CreateContentPage(
+      nsContentUtils::GetFingerprintingProtectionPrincipal(),
+      getter_AddRefs(promise));
   if (NS_FAILED(rv)) {
     MOZ_LOG(gUserCharacteristicsLog, mozilla::LogLevel::Error,
             ("Could not create Content Page"));
-    return nullptr;
+    REJECT_AND_FORGET(populatePromise, __func__, rv, "CREATION_FAILED");
   }
   MOZ_LOG(gUserCharacteristicsLog, mozilla::LogLevel::Debug,
           ("Created Content Page"));
@@ -105,18 +133,23 @@ RefPtr<VoidPromise> ContentPageStuff() {
   if (promise) {
     promise->AddCallbacksWithCycleCollectedArgs(
         [=](JSContext*, JS::Handle<JS::Value>, mozilla::ErrorResult&) {
-          voidPromise->Resolve(void_t(), __func__);
+          populatePromise->Resolve(void_t(), __func__);
         },
-        [=](JSContext*, JS::Handle<JS::Value>, mozilla::ErrorResult&) {
-          voidPromise->Reject(void_t(), __func__);
+        [=](JSContext*, JS::Handle<JS::Value>, mozilla::ErrorResult& error) {
+          if (error.Failed()) {
+            REJECT_VOID(populatePromise, "ContentPageStuff",
+                        error.StealNSResult(), "REJECTED_WITH_ERROR");
+          }
+          REJECT(populatePromise, "ContentPageStuff", NS_ERROR_FAILURE,
+                 "REJECTED_WITHOUT_ERROR");
         });
   } else {
     MOZ_LOG(gUserCharacteristicsLog, mozilla::LogLevel::Error,
             ("Did not get a Promise back from ContentPageStuff"));
-    voidPromise->Reject(void_t(), __func__);
+    REJECT(populatePromise, __func__, NS_ERROR_FAILURE, "NO_PROMISE");
   }
 
-  return voidPromise;
+  return populatePromise.forget();
 }
 
 void PopulateCSSProperties() {
@@ -180,65 +213,67 @@ void PopulateCSSProperties() {
 }
 
 void PopulateScreenProperties() {
+  nsCString screensMetrics = "["_ns;
+
   auto& screenManager = widget::ScreenManager::GetSingleton();
-  RefPtr<widget::Screen> screen = screenManager.GetPrimaryScreen();
-  MOZ_ASSERT(screen);
+  const auto& screens = screenManager.CurrentScreenList();
+  for (const auto& screen : screens) {
+    int32_t left, top, width, height;
 
-  dom::ScreenColorGamut colorGamut;
-  screen->GetColorGamut(&colorGamut);
-  glean::characteristics::color_gamut.Set((int)colorGamut);
+    screen->GetRect(&left, &top, &width, &height);
+    screensMetrics.AppendPrintf(R"({"rect":[%d,%d,%d,%d],)", left, top, width,
+                                height);
 
-  int32_t colorDepth;
-  screen->GetColorDepth(&colorDepth);
-  glean::characteristics::color_depth.Set(colorDepth);
-  glean::characteristics::pixel_depth.Set(screen->GetPixelDepth());
+    screen->GetAvailRect(&left, &top, &width, &height);
+    screensMetrics.AppendPrintf(R"("availRect":[%d,%d,%d,%d],)", left, top,
+                                width, height);
 
-  LayoutDeviceIntRect availRect = screen->GetAvailRect();
-  glean::characteristics::avail_height.Set(availRect.Height());
-  glean::characteristics::avail_width.Set(availRect.Width());
-  glean::characteristics::orientation_angle.Set(screen->GetOrientationAngle());
+    screensMetrics.AppendPrintf(R"("colorDepth":%d,)", screen->GetColorDepth());
+    screensMetrics.AppendPrintf(R"("pixelDepth":%d,)", screen->GetPixelDepth());
+    screensMetrics.AppendPrintf(R"("oAngle":%d,)",
+                                screen->GetOrientationAngle());
+    screensMetrics.AppendPrintf(
+        R"("oType":%d,)", static_cast<uint32_t>(screen->GetOrientationType()));
+    screensMetrics.AppendPrintf(R"("hdr":%d,)", screen->GetIsHDR());
+    screensMetrics.AppendPrintf(R"("scaleFactor":%f})",
+                                screen->GetContentsScaleFactor());
 
-  glean::characteristics::color_gamut.Set((int)colorGamut);
-  glean::characteristics::color_depth.Set(colorDepth);
-  const LayoutDeviceIntRect rect = screen->GetRect();
-  glean::characteristics::screen_height.Set(rect.Height());
-  glean::characteristics::screen_width.Set(rect.Width());
+    if (&screen != &screens.LastElement()) {
+      screensMetrics.Append(",");
+    }
+  }
+
+  screensMetrics.Append("]");
+
+  glean::characteristics::screens.Set(screensMetrics);
+
+  glean::characteristics::target_frame_rate.Set(gfxPlatform::TargetFrameRate());
 
   nsCOMPtr<nsPIDOMWindowInner> innerWindow =
       do_QueryInterface(dom::GetEntryGlobal());
-
-  double outerHeight, outerWidth;
-  innerWindow->GetInnerHeight(&outerHeight);
-
-  innerWindow->GetInnerWidth(&outerWidth);
-  glean::characteristics::outer_height.Set(static_cast<int64_t>(outerHeight));
-  glean::characteristics::outer_width.Set(static_cast<int64_t>(outerWidth));
+  if (!innerWindow) {
+    return;
+  }
 
   nsCOMPtr<nsIDocShellTreeOwner> treeOwner;
   innerWindow->GetDocShell()->GetTreeOwner(getter_AddRefs(treeOwner));
+  if (!treeOwner) {
+    return;
+  }
+
   nsCOMPtr<nsIBaseWindow> treeOwnerAsWin(do_QueryInterface(treeOwner));
-
-  LayoutDeviceIntSize contentSize;
-  treeOwner->GetPrimaryContentSize(&contentSize.width, &contentSize.height);
-
-  CSSToLayoutDeviceScale cssToDevScale =
-      treeOwnerAsWin->UnscaledDevicePixelsPerCSSPixel();
-  CSSIntSize contentSizeCSS = RoundedToInt(contentSize / cssToDevScale);
-  glean::characteristics::inner_height.Set(contentSizeCSS.height);
-  glean::characteristics::inner_width.Set(contentSizeCSS.width);
-
-  glean::characteristics::video_dynamic_range.Set(screen->GetIsHDR());
-
-  glean::characteristics::posx.Set(rect.X());
-  glean::characteristics::posy.Set(rect.Y());
+  if (!treeOwnerAsWin) {
+    return;
+  }
 
   nsCOMPtr<nsIWidget> mainWidget;
   treeOwnerAsWin->GetMainWidget(getter_AddRefs(mainWidget));
+  if (!mainWidget) {
+    return;
+  }
+
   nsSizeMode sizeMode = mainWidget ? mainWidget->SizeMode() : nsSizeMode_Normal;
   glean::characteristics::size_mode.Set(sizeMode);
-
-  mozilla::glean::characteristics::screen_orientation.Set(
-      (int)screen->GetOrientationType());
 }
 
 void PopulateMissingFonts() {
@@ -246,6 +281,102 @@ void PopulateMissingFonts() {
   gfxPlatformFontList::PlatformFontList()->GetMissingFonts(aMissingFonts);
 
   glean::characteristics::missing_fonts.Set(aMissingFonts);
+}
+
+nsresult ProcessFingerprintedFonts(const char* aFonts[],
+                                   nsCString& aOutAllowlistedHex,
+                                   nsCString& aOutNonAllowlistedHex) {
+  nsresult rv;
+  // Create hashes
+  nsCOMPtr<nsICryptoHash> allowlisted =
+      do_CreateInstance(NS_CRYPTO_HASH_CONTRACTID, &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+  nsCOMPtr<nsICryptoHash> nonallowlisted =
+      do_CreateInstance(NS_CRYPTO_HASH_CONTRACTID, &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // Init hashes
+  rv = allowlisted->Init(nsICryptoHash::SHA256);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = nonallowlisted->Init(nsICryptoHash::SHA256);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // Iterate over fonts and update hashes
+  for (size_t i = 0; aFonts[i] != nullptr; ++i) {
+    nsCString font(aFonts[i]);
+    bool found = false;
+    FontVisibility visibility =
+        gfxPlatformFontList::PlatformFontList()->GetFontVisibility(font, found);
+    if (!found) {
+      continue;
+    }
+
+    if (visibility == FontVisibility::Base ||
+        visibility == FontVisibility::LangPack) {
+      allowlisted->Update(reinterpret_cast<const uint8_t*>(font.get()),
+                          font.Length());
+    } else {
+      nonallowlisted->Update(reinterpret_cast<const uint8_t*>(font.get()),
+                             font.Length());
+    }
+  }
+
+  // Finish hashes
+  nsAutoCString allowlistedDigest;
+  nsAutoCString nonallowlistedDigest;
+  allowlisted->Finish(false, allowlistedDigest);
+  nonallowlisted->Finish(false, nonallowlistedDigest);
+
+  // Convert to hex
+  const char HEX[] = "0123456789abcdef";
+  for (size_t i = 0; i < 32; ++i) {
+    uint8_t b = allowlistedDigest[i];
+    aOutAllowlistedHex.Append(HEX[(b >> 4) & 0xF]);
+    aOutAllowlistedHex.Append(HEX[b & 0xF]);
+
+    b = nonallowlistedDigest[i];
+    aOutNonAllowlistedHex.Append(HEX[(b >> 4) & 0xF]);
+    aOutNonAllowlistedHex.Append(HEX[b & 0xF]);
+  }
+
+  return NS_OK;
+}
+
+already_AddRefed<PopulatePromise> PopulateFingerprintedFonts() {
+  RefPtr<PopulatePromise> populatePromise = new PopulatePromise(__func__);
+
+#include "FingerprintedFonts.inc"
+
+#define FONT_PAIR(list, metric)                                   \
+  {                                                               \
+    list, {                                                       \
+      glean::characteristics::fonts_##metric##_allowlisted,       \
+          glean::characteristics::fonts_##metric##_nonallowlisted \
+    }                                                             \
+  }
+  std::pair<const char**,
+            std::pair<glean::impl::StringMetric, glean::impl::StringMetric>>
+      fontLists[] = {FONT_PAIR(fpjs, fpjs), FONT_PAIR(variantA, variant_a),
+                     FONT_PAIR(variantB, variant_b)};
+
+#undef FONT_PAIR
+
+  for (const auto& [fontList, metrics] : fontLists) {
+    nsCString allowlistedHex;
+    nsCString nonallowlistedHex;
+    nsresult rv =
+        ProcessFingerprintedFonts(fontList, allowlistedHex, nonallowlistedHex);
+    if (NS_FAILED(rv)) {
+      REJECT_AND_FORGET(populatePromise, __func__, rv,
+                        "ProcessFingerprintedFonts"_ns.AsString());
+    }
+
+    metrics.first.Set(allowlistedHex);
+    metrics.second.Set(nonallowlistedHex);
+  }
+
+  populatePromise->Resolve(void_t(), __func__);
+  return populatePromise.forget();
 }
 
 void PopulatePrefs() {
@@ -279,6 +410,18 @@ void PopulatePrefs() {
 
   glean::characteristics::prefs_network_cookie_cookiebehavior.Set(
       StaticPrefs::network_cookie_cookieBehavior());
+}
+
+void PopulateKeyboardLayout() {
+  nsAutoCString layoutName;
+
+  nsresult rv = LookAndFeel::GetKeyboardLayout(layoutName);
+
+  if (NS_FAILED(rv) || layoutName.IsEmpty()) {
+    return;
+  }
+
+  glean::characteristics::keyboard_layout.Set(layoutName);
 }
 
 template <typename StringMetric, typename QuantityMetric>
@@ -391,27 +534,8 @@ void PopulateFontPrefs() {
       Preferences::HasUserValue("font.name-list.emoji"));
 }
 
-void PopulateScaling() {
-  nsCString output = "["_ns;
-
-  auto& screenManager = widget::ScreenManager::GetSingleton();
-  const auto& screens = screenManager.CurrentScreenList();
-  for (const auto& screen : screens) {
-    // Technically, not the same as (display resolution / shown resolution), but
-    // this is the value the fingerprinters can access/compute.
-    output.Append(std::to_string(screen->GetContentsScaleFactor()));
-    if (&screen != &screens.LastElement()) {
-      output.Append(",");
-    }
-  }
-
-  output.Append("]");
-
-  glean::characteristics::scalings.Set(output);
-}
-
-RefPtr<VoidPromise> PopulateMediaDevices() {
-  RefPtr<VoidPromise> voidPromise = new VoidPromise(__func__);
+already_AddRefed<PopulatePromise> PopulateMediaDevices() {
+  RefPtr<PopulatePromise> populatePromise = new PopulatePromise(__func__);
   MediaManager::Get()->GetPhysicalDevices()->Then(
       GetCurrentSerialEventTarget(), __func__,
       [=](const RefPtr<const MediaManager::MediaDeviceSetRefCnt>& aDevices) {
@@ -437,86 +561,24 @@ RefPtr<VoidPromise> PopulateMediaDevices() {
           }
         }
 
-        nsCString json;
-        json.AppendPrintf(
-            R"({"cameraCount": %u, "microphoneCount": %u, "speakerCount": %u, "groupCount": %zu, "groupCountWoSpeakers": %zu})",
-            cameraCount, microphoneCount, speakerCount, groupIds.size(),
-            groupIdsWoSpeakers.size());
-        glean::characteristics::media_devices.Set(json);
-        voidPromise->Resolve(void_t(), __func__);
+        glean::characteristics::camera_count.Set(cameraCount);
+        glean::characteristics::microphone_count.Set(microphoneCount);
+        glean::characteristics::speaker_count.Set(speakerCount);
+        glean::characteristics::group_count.Set(
+            static_cast<int64_t>(groupIds.size()));
+        glean::characteristics::group_count_wo_speakers.Set(
+            static_cast<int64_t>(groupIdsWoSpeakers.size()));
+
+        populatePromise->Resolve(void_t(), __func__);
       },
       [=](RefPtr<MediaMgrError>&& reason) {
-        voidPromise->Reject(void_t(), __func__);
+        // GetPhysicalDevices() never rejects but we'll add the following
+        // just in case it changes in the future
+        reason->mMessage.StripChar(',');
+        REJECT(populatePromise, "PopulateMediaDevices", NS_ERROR_FAILURE,
+               reason->mMessage);
       });
-  return voidPromise;
-}
-
-RefPtr<VoidPromise> PopulateAudioDeviceProperties() {
-  RefPtr<VoidPromise> voidPromise = new VoidPromise(__func__);
-
-  NS_DispatchBackgroundTask(
-      NS_NewRunnableFunction("PopulateAudioDeviceProperties", [=]() {
-        RefPtr<CubebDeviceEnumerator> enumerator =
-            CubebDeviceEnumerator::GetInstance();
-        RefPtr<const CubebDeviceEnumerator::AudioDeviceSet> devices;
-
-        nsCString output = "{"_ns;
-
-        nsCString list = "["_ns;
-        devices = enumerator->EnumerateAudioInputDevices();
-        for (const auto& deviceInfo : *devices) {
-          uint32_t maxChannels;
-          deviceInfo->GetMaxChannels(&maxChannels);
-
-          list.AppendPrintf(R"({"rate":%d,"channels":%d)",
-                            deviceInfo->DefaultRate(), maxChannels);
-          if (deviceInfo->Preferred()) {
-            list.Append(",\"default\":1");
-          }
-          list.Append("}");
-
-          if (&deviceInfo != &devices->LastElement()) {
-            list.Append(',');
-          }
-        }
-        list.Append(']');
-
-        output.AppendPrintf(R"("devices":%s,)", list.get());
-
-        double inputMean, inputStdDev, outputMean, outputStdDev;
-        CubebUtils::EstimatedLatencyDefaultDevices(&inputMean, &inputStdDev,
-                                                   CubebUtils::Side::Input);
-        CubebUtils::EstimatedLatencyDefaultDevices(&outputMean, &outputStdDev,
-                                                   CubebUtils::Side::Output);
-
-        cubeb_stream_params output_params;
-        output_params.format = CUBEB_SAMPLE_FLOAT32NE;
-        output_params.rate = CubebUtils::PreferredSampleRate(false);
-        output_params.channels = 2;
-        output_params.layout = CUBEB_LAYOUT_UNDEFINED;
-        output_params.prefs =
-            CubebUtils::GetDefaultStreamPrefs(CUBEB_DEVICE_TYPE_OUTPUT);
-
-        uint32_t latencyFrames =
-            CubebUtils::GetCubebMTGLatencyInFrames(&output_params);
-        RefPtr<AudioDeviceInfo> defaultOutputDevice =
-            enumerator->DefaultDevice(CubebDeviceEnumerator::Side::OUTPUT);
-        output.AppendPrintf(
-            R"("latency":[%f,%f,%f,%f],"latFrames":%d,"rate":%u,"channels":%u)",
-            inputMean, inputStdDev, outputMean, outputStdDev, latencyFrames,
-            defaultOutputDevice->DefaultRate(),
-            defaultOutputDevice->MaxChannels());
-
-        output.Append("}");
-
-        glean::characteristics::audio_devices.Set(output);
-
-        NS_DispatchToMainThread(NS_NewRunnableFunction(
-            "PopulateAudioDeviceProperties",
-            [=]() { voidPromise->Resolve(void_t(), __func__); }));
-      }));
-
-  return voidPromise;
+  return populatePromise.forget();
 }
 
 void PopulateLanguages() {
@@ -553,13 +615,19 @@ void PopulateTextAntiAliasing() {
   }
 #elif defined(XP_MACOSX)
   uint32_t value = 2;  // default = medium
-  CFNumberRef prefValue = (CFNumberRef)CFPreferencesCopyAppValue(
-      CFSTR("AppleFontSmoothing"), kCFPreferencesAnyApplication);
+  auto prefValue = CFTypeRefPtr<CFPropertyListRef>::WrapUnderCreateRule(
+      CFPreferencesCopyAppValue(CFSTR("AppleFontSmoothing"),
+                                kCFPreferencesAnyApplication));
   if (prefValue) {
-    if (!CFNumberGetValue(prefValue, kCFNumberIntType, &value)) {
-      value = 2;
+    if (CFGetTypeID(prefValue.get()) == CFNumberGetTypeID()) {
+      if (!CFNumberGetValue(static_cast<CFNumberRef>(prefValue.get()),
+                            kCFNumberIntType, &value)) {
+        value = 2;  // default = medium
+      }
+    } else if (CFGetTypeID(prefValue.get()) == CFStringGetTypeID()) {
+      // For some reason, the value can be a string
+      value = CFStringGetIntValue(static_cast<CFStringRef>(prefValue.get()));
     }
-    CFRelease(prefValue);
   }
   levels.AppendElement(value);
 #elif defined(XP_LINUX)
@@ -596,106 +664,189 @@ void PopulateTextAntiAliasing() {
   glean::characteristics::text_anti_aliasing.Set(output);
 }
 
+void PopulateErrors(
+    const PopulatePromise::AllSettledPromiseType::ResolveOrRejectValue&
+        results) {
+  nsCString errors;
+  for (const auto& result : results.ResolveValue()) {
+    if (!result.IsReject()) {
+      continue;
+    }
+
+    const auto& errorVar = result.RejectValue();
+    nsCString funcName = std::get<0>(errorVar);
+    nsresult rv = std::get<1>(errorVar);
+    nsCString additionalCtx = std::get<2>(errorVar);
+
+    errors.AppendPrintf("%s:%" PRIu32 ":%s", funcName.get(),
+                        static_cast<uint32_t>(rv), additionalCtx.get());
+    MOZ_LOG(gUserCharacteristicsLog, mozilla::LogLevel::Error,
+            ("Error encountered: %s:%" PRIu32 ":%s", funcName.get(),
+             static_cast<uint32_t>(rv), additionalCtx.get()));
+
+    errors.Append(",");
+  }
+  if (errors.Length() > 0) {
+    errors.Cut(errors.Length() - 1, 1);
+  }
+  glean::characteristics::errors.Set(errors);
+}
+
+void PopulateProcessorCount() {
+  int32_t processorCount = 0;
+#if defined(XP_MACOSX)
+  if (nsMacUtilsImpl::IsTCSMAvailable()) {
+    // On failure, zero is returned from GetPhysicalCPUCount()
+    // and we fallback to PR_GetNumberOfProcessors below.
+    processorCount = nsMacUtilsImpl::GetPhysicalCPUCount();
+  }
+#endif
+  if (processorCount == 0) {
+    processorCount = PR_GetNumberOfProcessors();
+  }
+  glean::characteristics::processor_count.Set(processorCount);
+}
+
+void PopulateMisc(bool worksInGtest) {
+  if (worksInGtest) {
+    glean::characteristics::max_touch_points.Set(testing::MaxTouchPoints());
+    nsCOMPtr<nsIGfxInfo> gfxInfo = components::GfxInfo::Service();
+    if (gfxInfo) {
+      bool isUsingAcceleratedCanvas = false;
+      gfxInfo->GetUsingAcceleratedCanvas(&isUsingAcceleratedCanvas);
+      glean::characteristics::using_accelerated_canvas.Set(
+          isUsingAcceleratedCanvas);
+      auto& feature = mozilla::gfx::gfxConfig::GetFeature(
+          mozilla::gfx::Feature::ACCELERATED_CANVAS2D);
+      nsCString status = feature.GetValue() == gfx::FeatureStatus::Blocklisted
+                             ? "#BLOCKLIST_SPECIFIC"_ns
+                             : feature.GetStatusAndFailureIdString();
+      glean::characteristics::canvas_feature_status.Set(status);
+    }
+  } else {
+    // System Locale
+    nsAutoCString locale;
+    intl::OSPreferences::GetInstance()->GetSystemLocale(locale);
+    glean::characteristics::system_locale.Set(locale);
+  }
+}
+
+already_AddRefed<PopulatePromise> PopulateTimeZone() {
+  RefPtr<PopulatePromise> populatePromise = new PopulatePromise(__func__);
+
+  AutoTArray<char16_t, 128> tzBuffer;
+  auto result = intl::TimeZone::GetDefaultTimeZone(tzBuffer);
+  if (result.isOk()) {
+    NS_ConvertUTF16toUTF8 timeZone(
+        nsDependentString(tzBuffer.Elements(), tzBuffer.Length()));
+    glean::characteristics::timezone.Set(timeZone);
+    populatePromise->Resolve(void_t(), __func__);
+  } else {
+    REJECT(populatePromise, __func__, NS_ERROR_FAILURE,
+           nsPrintfCString("ICUError=%" PRIu8,
+                           static_cast<uint8_t>(result.unwrapErr())));
+  }
+
+  return populatePromise.forget();
+}
+
+void PopulateModelName() {
+  nsCString modelName("null");
+
+  nsCOMPtr<nsIPropertyBag2> sysInfo =
+      do_GetService("@mozilla.org/system-info;1");
+  NS_ENSURE_TRUE_VOID(sysInfo);
+
+#if defined(XP_MACOSX)
+  sysInfo->GetPropertyAsACString(u"appleModelId"_ns, modelName);
+#elif defined(MOZ_WIDGET_ANDROID)
+  sysInfo->GetPropertyAsACString(u"manufacturer"_ns, modelName);
+  modelName.AppendLiteral(" ");
+  nsCString temp;
+  sysInfo->GetPropertyAsACString(u"device"_ns, temp);
+  modelName.Append(temp);
+#elif defined(XP_WIN)
+  sysInfo->GetPropertyAsACString(u"winModelId"_ns, modelName);
+#elif defined(XP_LINUX)
+  sysInfo->GetPropertyAsACString(u"linuxProductSku"_ns, modelName);
+  if (modelName.IsEmpty()) {
+    sysInfo->GetPropertyAsACString(u"linuxProductName"_ns, modelName);
+  }
+#endif
+
+  glean::characteristics::machine_model_name.Set(modelName);
+}
+
+const RefPtr<PopulatePromise>& TimoutPromise(
+    const RefPtr<PopulatePromise>& promise, uint32_t delay,
+    const nsCString& funcName) {
+  nsCOMPtr<nsITimer> timeout;
+  nsresult rv = NS_NewTimerWithCallback(
+      getter_AddRefs(timeout),
+      [=](auto) {
+        // NOTE: has no effect if `promise` has already been resolved.
+        REJECT(promise, funcName, NS_ERROR_FAILURE, "TIMEOUT");
+      },
+      delay, nsITimer::TYPE_ONE_SHOT, "UserCharacteristicsPromiseTimeout");
+  if (NS_FAILED(rv)) {
+    REJECT(promise, funcName, rv, "TIMEOUT_CREATION");
+  }
+
+  auto cancelTimeoutRes = [timeout = std::move(timeout)]() {
+    timeout->Cancel();
+  };
+  auto cancelTimeoutRej = cancelTimeoutRes;
+  promise->Then(GetCurrentSerialEventTarget(), __func__,
+                std::move(cancelTimeoutRes), std::move(cancelTimeoutRej));
+
+  return promise;
+}
+
 // ==================================================================
 // The current schema of the data. Anytime you add a metric, or change how a
 // metric is set, this variable should be incremented. It'll be a lot. It's
 // okay. We're going to need it to know (including during development) what is
 // the source of the data we are looking at.
-const int kSubmissionSchema = 3;
+const int kSubmissionSchema = 27;
+
+const auto* const kUUIDPref =
+    "toolkit.telemetry.user_characteristics_ping.uuid";
 
 const auto* const kLastVersionPref =
     "toolkit.telemetry.user_characteristics_ping.last_version_sent";
 const auto* const kCurrentVersionPref =
     "toolkit.telemetry.user_characteristics_ping.current_version";
+const auto* const kOptOutPref =
+    "toolkit.telemetry.user_characteristics_ping.opt-out";
+const auto* const kSendOncePref =
+    "toolkit.telemetry.user_characteristics_ping.send-once";
+const auto* const kFingerprintingProtectionOverridesPref =
+    "privacy.fingerprintingProtection.overrides";
+const auto* const kBaselineFPPOverridesPref =
+    "privacy.baselineFingerprintingProtection.overrides";
 
-/* static */
-void nsUserCharacteristics::MaybeSubmitPing() {
-  MOZ_LOG(gUserCharacteristicsLog, LogLevel::Debug, ("In MaybeSubmitPing()"));
-  MOZ_ASSERT(XRE_IsParentProcess());
+namespace {
 
-  /**
-   * There are two preferences at play here:
-   *  - Last Version Sent - preference containing the last version sent by the
-   * user to Mozilla
-   *  - Current Version - preference containing the version Mozilla would like
-   * the user to send
-   *
-   * A point of complexity arises in that these two values _may_ be changed
-   * by the user, even though neither is intended to be.
-   *
-   * When Current Version > Last Version Sent, we intend for the user to submit
-   * a new ping, which will include the schema version. Then update Last Version
-   * Sent = Current Version.
-   *
-   */
-  auto lastSubmissionVersion = Preferences::GetInt(kLastVersionPref, 0);
-  auto currentVersion = Preferences::GetInt(kCurrentVersionPref, 0);
+// A helper function to get the current version from the pref. The current
+// version value is decided by both the default value and the user value. We use
+// the one with a greater number as the current version. The reason is that the
+// current value pref could be modified by either Nimbus or Firefox pref change.
+// Nimbus changes the user value and the Firefox pref change controls the
+// default value. To ensure changing the pref can successfully alter the current
+// version, we only consider the one with a larger version number as the current
+// version.
+int32_t GetCurrentVersion() {
+  auto userValue = Preferences::GetInt(kCurrentVersionPref, 0);
+  auto defaultValue =
+      Preferences::GetInt(kCurrentVersionPref, 0, PrefValueKind::Default);
 
-  MOZ_ASSERT(currentVersion == -1 || lastSubmissionVersion <= currentVersion,
-             "lastSubmissionVersion is somehow greater than currentVersion "
-             "- did you edit prefs improperly?");
-
-  if (lastSubmissionVersion < 0) {
-    // This is a way for users to opt out of this ping specifically.
-    MOZ_LOG(gUserCharacteristicsLog, LogLevel::Debug,
-            ("Returning, User Opt-out"));
-    return;
-  }
-  if (currentVersion == 0) {
-    // Do nothing. We do not want any pings.
-    MOZ_LOG(gUserCharacteristicsLog, LogLevel::Debug,
-            ("Returning, currentVersion == 0"));
-    return;
-  }
-  if (currentVersion == -1) {
-    // currentVersion = -1 is a development value to force a ping submission
-    MOZ_LOG(gUserCharacteristicsLog, LogLevel::Debug,
-            ("Force-Submitting Ping"));
-    PopulateDataAndEventuallySubmit(false);
-    return;
-  }
-  if (lastSubmissionVersion > currentVersion) {
-    // This is an unexpected scneario that indicates something is wrong. We
-    // asserted against it (in debug, above) We will try to sanity-correct
-    // ourselves by setting it to the current version.
-    Preferences::SetInt(kLastVersionPref, currentVersion);
-    MOZ_LOG(gUserCharacteristicsLog, LogLevel::Warning,
-            ("Returning, lastSubmissionVersion > currentVersion"));
-    return;
-  }
-  if (lastSubmissionVersion == currentVersion) {
-    // We are okay, we've already submitted the most recent ping
-    MOZ_LOG(gUserCharacteristicsLog, LogLevel::Warning,
-            ("Returning, lastSubmissionVersion == currentVersion"));
-    return;
-  }
-  if (lastSubmissionVersion < currentVersion) {
-    MOZ_LOG(gUserCharacteristicsLog, LogLevel::Warning, ("Ping requested"));
-    PopulateDataAndEventuallySubmit(true);
-  } else {
-    MOZ_ASSERT_UNREACHABLE("Should never reach here");
-  }
+  return std::max(userValue, defaultValue);
 }
 
-const auto* const kUUIDPref =
-    "toolkit.telemetry.user_characteristics_ping.uuid";
+}  // anonymous namespace
 
-/* static */
-void nsUserCharacteristics::PopulateDataAndEventuallySubmit(
-    bool aUpdatePref /* = true */, bool aTesting /* = false */
-) {
-  MOZ_LOG(gUserCharacteristicsLog, LogLevel::Warning, ("Populating Data"));
-  MOZ_ASSERT(XRE_IsParentProcess());
-
-  nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
-  if (!obs) {
-    return;
-  }
-
-  // This notification tells us to register the actor
-  obs->NotifyObservers(nullptr, "user-characteristics-populating-data",
-                       nullptr);
-
+// We don't submit a ping if this function fails
+nsresult PopulateEssentials() {
   glean::characteristics::submission_schema.Set(kSubmissionSchema);
 
   nsAutoCString uuidString;
@@ -704,7 +855,7 @@ void nsUserCharacteristics::PopulateDataAndEventuallySubmit(
     nsCOMPtr<nsIUUIDGenerator> uuidgen =
         do_GetService("@mozilla.org/uuid-generator;1", &rv);
     if (NS_FAILED(rv)) {
-      return;
+      return rv;
     }
 
     nsIDToCString id(nsID::GenerateUUID());
@@ -713,88 +864,184 @@ void nsUserCharacteristics::PopulateDataAndEventuallySubmit(
   }
 
   glean::characteristics::client_identifier.Set(uuidString);
+  return NS_OK;
+}
 
-  glean::characteristics::max_touch_points.Set(testing::MaxTouchPoints());
+void AfterPingSentSteps(bool aUpdatePref) {
+  if (aUpdatePref) {
+    MOZ_LOG(gUserCharacteristicsLog, mozilla::LogLevel::Debug,
+            ("Updating preference"));
+    auto current_version = GetCurrentVersion();
+    Preferences::SetInt(kLastVersionPref, current_version);
+    if (Preferences::GetBool(kSendOncePref, false)) {
+      Preferences::SetBool(kSendOncePref, false);
+    }
+  }
+}
+
+/*
+  We allow users to send one voluntary ping by setting kSendOncePref to true.
+  We also use this to force submit a ping as a dev.
+
+  We allow users users to opt-out of this ping by setting kOptOutPref to true.
+  Note that kSendOncePref takes precedence over kOptOutPref. This allows user
+  to send only a single ping without modifying their opt-out preference.
+
+  We only send pings if the conditions above are met and kCurrentVersionPref >
+  kLastVersionPref.
+*/
+bool nsUserCharacteristics::ShouldSubmit() {
+  // User opted out of this ping specifically
+  bool optOut = Preferences::GetBool(kOptOutPref, false);
+  bool sendOnce = Preferences::GetBool(kSendOncePref, false);
+
+  if (optOut && sendOnce) {
+    MOZ_LOG(gUserCharacteristicsLog, LogLevel::Warning,
+            ("BOTH OPT-OUT AND SEND-ONCE IS SET TO TRUE. OPT-OUT HAS PRIORITY "
+             "OVER SEND-ONCE. THE PING WON'T BE SEND."));
+  }
+
+  if (optOut) {
+    return false;
+  }
+
+  if (StaticPrefs::privacy_resistFingerprinting_DoNotUseDirectly() ||
+      StaticPrefs::privacy_resistFingerprinting_pbmode_DoNotUseDirectly()) {
+    // If resistFingerprinting is enabled, we don't want to send the ping
+    // as it will mess up data.
+    return false;
+  }
+
+  nsAutoString overrides;
+  nsresult rv =
+      Preferences::GetString(kFingerprintingProtectionOverridesPref, overrides);
+  if (NS_FAILED(rv) || !overrides.IsEmpty()) {
+    // If there are any overrides, we don't want to send the ping
+    // as it will mess up data.
+    return false;
+  }
+
+  rv = Preferences::GetString(kBaselineFPPOverridesPref, overrides);
+  if (NS_FAILED(rv) || !overrides.IsEmpty()) {
+    // If there are any baseline overrides, we don't want to send the ping
+    // as it will mess up data.
+    return false;
+  }
+
+  // User asked to send a ping regardless of the version
+  if (sendOnce) {
+    return true;
+  }
+
+  int32_t currentVersion = GetCurrentVersion();
+  int32_t lastSubmissionVersion = Preferences::GetInt(kLastVersionPref, 0);
+  MOZ_ASSERT(lastSubmissionVersion <= currentVersion,
+             "lastSubmissionVersion is somehow greater than currentVersion "
+             "- did you edit prefs improperly?");
+
+  if (currentVersion == 0) {
+    // Do nothing. We do not want any pings.
+    MOZ_LOG(gUserCharacteristicsLog, LogLevel::Debug,
+            ("Returning, currentVersion == 0"));
+    return false;
+  }
+
+  if (lastSubmissionVersion > currentVersion) {
+    // This is an unexpected scenario that indicates something is wrong. We
+    // asserted against it (in debug, above) We will try to sanity-correct
+    // ourselves by setting it to the current version.
+    Preferences::SetInt(kLastVersionPref, currentVersion);
+    MOZ_LOG(gUserCharacteristicsLog, LogLevel::Warning,
+            ("Returning, lastSubmissionVersion > currentVersion"));
+    return false;
+  }
+
+  if (lastSubmissionVersion == currentVersion) {
+    // We are okay, we've already submitted the most recent ping
+    MOZ_LOG(gUserCharacteristicsLog, LogLevel::Warning,
+            ("Returning, lastSubmissionVersion == currentVersion"));
+    return false;
+  }
+
+  MOZ_LOG(gUserCharacteristicsLog, LogLevel::Warning, ("Ping requested"));
+
+  return true;
+}
+
+/* static */
+void nsUserCharacteristics::MaybeSubmitPing() {
+  MOZ_LOG(gUserCharacteristicsLog, LogLevel::Debug, ("In MaybeSubmitPing()"));
+  MOZ_ASSERT(XRE_IsParentProcess());
+
+  // Check user's preferences and submit only if (the user hasn't opted-out AND
+  // lastSubmissionVersion < currentVersion) OR send-once is true.
+  if (ShouldSubmit()) {
+    PopulateDataAndEventuallySubmit(true);
+  }
+}
+
+/* static */
+void nsUserCharacteristics::PopulateDataAndEventuallySubmit(
+    bool aUpdatePref /* = true */, bool aTesting /* = false */
+) {
+  MOZ_LOG(gUserCharacteristicsLog, LogLevel::Warning, ("Populating Data"));
+  MOZ_ASSERT(XRE_IsParentProcess());
+
+  if (NS_FAILED(PopulateEssentials())) {
+    // We couldn't populate important metrics. Don't submit a ping.
+    AfterPingSentSteps(false);
+    return;
+  }
 
   // ------------------------------------------------------------------------
 
-  nsTArray<RefPtr<MozPromise<mozilla::void_t, mozilla::void_t, true>>> promises;
+  nsTArray<RefPtr<PopulatePromiseBase>> promises;
   if (!aTesting) {
     // Many of the later peices of data do not work in a gtest
     // so skip populating them
 
     // ------------------------------------------------------------------------
 
+    promises.AppendElement(PopulateMediaDevices());
+    promises.AppendElement(PopulateTimeZone());
+    promises.AppendElement(PopulateFingerprintedFonts());
     PopulateMissingFonts();
     PopulateCSSProperties();
     PopulateScreenProperties();
     PopulatePrefs();
     PopulateFontPrefs();
-    PopulateScaling();
-    promises.AppendElement(PopulateMediaDevices());
-    promises.AppendElement(PopulateAudioDeviceProperties());
+    PopulateKeyboardLayout();
     PopulateLanguages();
     PopulateTextAntiAliasing();
-
-    glean::characteristics::target_frame_rate.Set(
-        gfxPlatform::TargetFrameRate());
-
-    int32_t processorCount = 0;
-#if defined(XP_MACOSX)
-    if (nsMacUtilsImpl::IsTCSMAvailable()) {
-      // On failure, zero is returned from GetPhysicalCPUCount()
-      // and we fallback to PR_GetNumberOfProcessors below.
-      processorCount = nsMacUtilsImpl::GetPhysicalCPUCount();
-    }
-#endif
-    if (processorCount == 0) {
-      processorCount = PR_GetNumberOfProcessors();
-    }
-    glean::characteristics::processor_count.Set(processorCount);
-
-    AutoTArray<char16_t, 128> tzBuffer;
-    auto result = intl::TimeZone::GetDefaultTimeZone(tzBuffer);
-    if (result.isOk()) {
-      NS_ConvertUTF16toUTF8 timeZone(
-          nsDependentString(tzBuffer.Elements(), tzBuffer.Length()));
-      glean::characteristics::timezone.Set(timeZone);
-    } else {
-      glean::characteristics::timezone.Set("<error>"_ns);
-    }
-
-    nsAutoCString locale;
-    intl::OSPreferences::GetInstance()->GetSystemLocale(locale);
-    glean::characteristics::system_locale.Set(locale);
+    PopulateProcessorCount();
+    PopulateModelName();
+    PopulateMisc(false);
   }
 
   promises.AppendElement(ContentPageStuff());
+  PopulateMisc(true);
 
   // ------------------------------------------------------------------------
 
   auto fulfillSteps = [aUpdatePref, aTesting]() {
     MOZ_LOG(gUserCharacteristicsLog, mozilla::LogLevel::Debug,
-            ("ContentPageStuff Promise Resolved"));
+            ("All promises Resolved"));
 
     if (!aTesting) {
       nsUserCharacteristics::SubmitPing();
     }
 
-    if (aUpdatePref) {
-      MOZ_LOG(gUserCharacteristicsLog, mozilla::LogLevel::Debug,
-              ("Updating preference"));
-      auto current_version =
-          mozilla::Preferences::GetInt(kCurrentVersionPref, 0);
-      mozilla::Preferences::SetInt(kLastVersionPref, current_version);
-    }
+    AfterPingSentSteps(aUpdatePref);
   };
 
-  VoidPromise::All(GetCurrentSerialEventTarget(), promises)
-      ->Then(
-          GetCurrentSerialEventTarget(), __func__, [=]() { fulfillSteps(); },
-          []() {
-            MOZ_LOG(gUserCharacteristicsLog, mozilla::LogLevel::Error,
-                    ("One of the promises rejected."));
-          });
+  PopulatePromise::AllSettled(GetCurrentSerialEventTarget(), promises)
+      ->Then(GetCurrentSerialEventTarget(), __func__,
+             [=](const PopulatePromise::AllSettledPromiseType::
+                     ResolveOrRejectValue& results) {
+               PopulateErrors(results);
+
+               fulfillSteps();
+             });
 }
 
 /* static */

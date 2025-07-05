@@ -229,10 +229,7 @@ class MultiTouchInput : public InputData {
 
   void Translate(const ScreenPoint& aTranslation);
 
-  WidgetTouchEvent ToWidgetEvent(
-      nsIWidget* aWidget,
-      uint16_t aInputSource =
-          /* MouseEvent_Binding::MOZ_SOURCE_TOUCH = */ 5) const;
+  WidgetTouchEvent ToWidgetEvent(nsIWidget* aWidget) const;
 
   // Return the index into mTouches of the SingleTouchData with the given
   // identifier, or -1 if there is no such SingleTouchData.
@@ -252,6 +249,7 @@ class MultiTouchInput : public InputData {
   // WidgetMouseEventBase, except mButton defaults to -1 to follow PointerEvent.
   int16_t mButton = eNotPressed;
   int16_t mButtons = 0;
+  uint16_t mInputSource = /* MouseEvent_Binding::MOZ_SOURCE_TOUCH = */ 5;
 };
 
 class MouseInput : public InputData {
@@ -272,6 +270,10 @@ class MouseInput : public InputData {
       MOUSE_UP,
       MOUSE_DRAG_START,
       MOUSE_DRAG_END,
+      MOUSE_DRAG_ENTER,
+      MOUSE_DRAG_OVER,
+      MOUSE_DRAG_EXIT,
+      MOUSE_DROP,
       MOUSE_WIDGET_ENTER,
       MOUSE_WIDGET_EXIT,
       MOUSE_HITTEST,
@@ -296,7 +298,9 @@ class MouseInput : public InputData {
   bool IsLeftButton() const;
 
   bool TransformToLocal(const ScreenToParentLayerMatrix4x4& aTransform);
-  WidgetMouseEvent ToWidgetEvent(nsIWidget* aWidget) const;
+  [[nodiscard]] bool IsPointerEventType() const;
+  template <typename WidgetMouseOrPointerEvent>
+  WidgetMouseOrPointerEvent ToWidgetEvent(nsIWidget* aWidget) const;
 
   // Warning, this class is serialized and sent over IPC. Any change to its
   // fields must be reflected in its ParamTraits<>, in nsGUIEventIPC.h
@@ -312,6 +316,8 @@ class MouseInput : public InputData {
    * event or following "mouseup", set to true.
    */
   bool mPreventClickEvent;
+  bool mIgnoreCapturingContent;
+  bool mSynthesizeMoveAfterDispatch;
 };
 
 /**
@@ -532,7 +538,7 @@ class PinchGestureInput : public InputData {
       MOUSEWHEEL // Synthesized from modifier+mousewheel
 
       // If adding more items here, increase n_values for the
-      // APZ_ZOOM_PINCHSOURCE Telemetry metric.
+      // APZ_ZOOM_PINCHSOURCE Telemetry and glean::apz_zoom::pinchsource metrics.
   ));
   // clang-format on
 

@@ -10,7 +10,9 @@ add_task(async function browser_test_profile_slow_capture() {
   info(
     "Start the profiler to test the page information with single frame page."
   );
-  await startProfiler({ threads: ["GeckoMain", "test-debug-child-slow-json"] });
+  await ProfilerTestUtils.startProfiler({
+    threads: ["GeckoMain", "test-debug-child-slow-json"],
+  });
 
   info("Open a tab with single_frame.html in it.");
   const url = BASE_URL_HTTPS + "single_frame.html";
@@ -24,7 +26,7 @@ add_task(async function browser_test_profile_slow_capture() {
     const activeTabID = win.gBrowser.selectedBrowser.browsingContext.browserId;
 
     info("Capture the profile data.");
-    const profile = await waitSamplingAndStopAndGetProfile();
+    const profile = await ProfilerTestUtils.waitSamplingAndStopAndGetProfile();
 
     let pageFound = false;
     // We need to find the correct content process for that tab.
@@ -57,15 +59,20 @@ add_task(async function browser_test_profile_slow_capture() {
     Assert.equal(pageFound, true);
 
     info("Flush slow processes with a quick profile.");
-    await startProfiler();
+    await ProfilerTestUtils.startProfiler();
     for (let i = 0; i < 10; ++i) {
       await Services.profiler.waitOnePeriodicSampling();
     }
-    await stopNowAndGetProfile();
+    await ProfilerTestUtils.stopNowAndGetProfile();
   });
 });
 
 add_task(async function browser_test_profile_very_slow_capture() {
+  await SpecialPowers.pushPrefEnv({
+    // Use a small value for a faster test.
+    set: [["devtools.performance.recording.child.timeout_s", 1]],
+  });
+
   Assert.ok(!Services.profiler.IsActive());
   info("Clear the previous pages just in case we still some open tabs.");
   await Services.profiler.ClearAllPages();
@@ -73,7 +80,7 @@ add_task(async function browser_test_profile_very_slow_capture() {
   info(
     "Start the profiler to test the page information with single frame page."
   );
-  await startProfiler({
+  await ProfilerTestUtils.startProfiler({
     threads: ["GeckoMain", "test-debug-child-very-slow-json"],
   });
 
@@ -85,7 +92,7 @@ add_task(async function browser_test_profile_very_slow_capture() {
     });
 
     info("Capture the profile data.");
-    const profile = await waitSamplingAndStopAndGetProfile();
+    const profile = await ProfilerTestUtils.waitSamplingAndStopAndGetProfile();
 
     info("Check that the content process is missing.");
 
@@ -95,10 +102,10 @@ add_task(async function browser_test_profile_very_slow_capture() {
     Assert.equal(contentProcessIndex, -1);
 
     info("Flush slow processes with a quick profile.");
-    await startProfiler();
+    await ProfilerTestUtils.startProfiler();
     for (let i = 0; i < 10; ++i) {
       await Services.profiler.waitOnePeriodicSampling();
     }
-    await stopNowAndGetProfile();
+    await ProfilerTestUtils.stopNowAndGetProfile();
   });
 });

@@ -6,34 +6,42 @@
 #ifndef NSWINDOW_H_
 #define NSWINDOW_H_
 
+#include <CoreFoundation/CoreFoundation.h>
+
+#include "mozilla/widget/IOSView.h"
 #include "nsBaseWidget.h"
 #include "gfxPoint.h"
 
 #include "nsTArray.h"
 
-@class UIWindow;
-@class UIView;
+#ifdef __OBJC__
 @class ChildView;
+#else
+typedef struct objc_object ChildView;
+#endif
 
 namespace mozilla::widget {
+class EventDispatcher;
 class TextInputHandler;
-}
+}  // namespace mozilla::widget
+
+#define NS_WINDOW_IID \
+  {0x5e6fd559, 0xb3f9, 0x40c9, {0x92, 0xd1, 0xef, 0x80, 0xb4, 0xf9, 0x69, 0xe9}}
 
 class nsWindow final : public nsBaseWidget {
-  typedef nsBaseWidget Inherited;
-
  public:
   nsWindow();
 
-  NS_INLINE_DECL_REFCOUNTING_INHERITED(nsWindow, Inherited)
+  NS_INLINE_DECL_STATIC_IID(NS_WINDOW_IID)
+
+  NS_DECL_ISUPPORTS_INHERITED
 
   //
   // nsIWidget
   //
 
   [[nodiscard]] nsresult Create(
-      nsIWidget* aParent, nsNativeWidget aNativeParent,
-      const LayoutDeviceIntRect& aRect,
+      nsIWidget* aParent, const LayoutDeviceIntRect& aRect,
       mozilla::widget::InitData* aInitData = nullptr) override;
   void Destroy() override;
   void Show(bool aState) override;
@@ -98,6 +106,16 @@ class nsWindow final : public nsBaseWidget {
                       void* aCallbackData) override;
   */
 
+  mozilla::widget::EventDispatcher* GetEventDispatcher() const;
+
+  static already_AddRefed<nsWindow> From(nsPIDOMWindowOuter* aDOMWindow);
+  static already_AddRefed<nsWindow> From(nsIWidget* aWidget);
+
+  void SetIOSView(already_AddRefed<mozilla::widget::IOSView>&& aView) {
+    mIOSView = aView;
+  }
+  mozilla::widget::IOSView* GetIOSView() const { return mIOSView; }
+
  protected:
   virtual ~nsWindow();
   void BringToFront();
@@ -116,6 +134,7 @@ class nsWindow final : public nsBaseWidget {
 
   mozilla::widget::InputContext mInputContext;
   RefPtr<mozilla::widget::TextInputHandler> mTextInputHandler;
+  RefPtr<mozilla::widget::IOSView> mIOSView;
 
   void OnSizeChanged(const mozilla::gfx::IntSize& aSize);
 

@@ -1,4 +1,4 @@
-{%- let rec = ci|get_record_definition(name) %}
+{%- let rec = ci.get_record_definition(name).unwrap() %}
 {%- call swift::docstring(rec, 0) %}
 public struct {{ type_name }} {
     {%- for field in rec.fields() %}
@@ -15,8 +15,11 @@ public struct {{ type_name }} {
     }
 }
 
+#if compiler(>=6)
+extension {{ type_name }}: Sendable {}
+#endif
+
 {% if !contains_object_references %}
-{% if config.experimental_sendable_value_types() %}extension {{ type_name }}: Sendable {} {% endif %}
 extension {{ type_name }}: Equatable, Hashable {
     public static func ==(lhs: {{ type_name }}, rhs: {{ type_name }}) -> Bool {
         {%- for field in rec.fields() %}
@@ -33,8 +36,14 @@ extension {{ type_name }}: Equatable, Hashable {
         {%- endfor %}
     }
 }
+{% if config.generate_codable_conformance() %}
+extension {{ type_name }}: Codable {}
+{% endif %}
 {% endif %}
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
     public static func read(from buf: inout (data: Data, offset: Data.Index)) throws -> {{ type_name }} {
         return {%- if rec.has_fields() %}
@@ -60,10 +69,16 @@ public struct {{ ffi_converter_name }}: FfiConverterRustBuffer {
 We always write these public functions just in case the struct is used as
 an external type by another crate.
 #}
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 public func {{ ffi_converter_name }}_lift(_ buf: RustBuffer) throws -> {{ type_name }} {
     return try {{ ffi_converter_name }}.lift(buf)
 }
 
+#if swift(>=5.8)
+@_documentation(visibility: private)
+#endif
 public func {{ ffi_converter_name }}_lower(_ value: {{ type_name }}) -> RustBuffer {
     return {{ ffi_converter_name }}.lower(value)
 }

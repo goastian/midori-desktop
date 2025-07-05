@@ -5,219 +5,315 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include <windows.h>
+#include <winternl.h>
 #include <winuser.h>
 #include <wtsapi32.h>
+#include <dbt.h>
 
 #include "WinEventObserver.h"
 
+#include "InputDeviceUtils.h"
+#include "ScreenHelperWin.h"
+#include "WindowsUIUtils.h"
+#include "WinWindowOcclusionTracker.h"
+
+#include "gfxDWriteFonts.h"
+#include "gfxPlatform.h"
+#include "mozilla/Assertions.h"
 #include "mozilla/ClearOnShutdown.h"
 #include "mozilla/Logging.h"
-#include "mozilla/StaticPtr.h"
-#include "nsHashtablesFwd.h"
+#include "mozilla/LookAndFeel.h"
+#include "mozilla/WindowsVersion.h"
+#include "nsLookAndFeel.h"
+#include "nsStringFwd.h"
+#include "nsWindowDbg.h"
 #include "nsdefs.h"
+#include "nsXULAppAPI.h"
+
+// borrowed from devblogs.microsoft.com/oldnewthing/20041025-00/?p=37483, by way
+// of the Chromium sandboxing code's "current_module.h"
+extern "C" IMAGE_DOS_HEADER __ImageBase;
+#define CURRENT_MODULE() reinterpret_cast<HMODULE>(&__ImageBase)
 
 namespace mozilla::widget {
 
-LazyLogModule gWinEventObserverLog("WinEventObserver");
-#define LOG(...) MOZ_LOG(gWinEventObserverLog, LogLevel::Info, (__VA_ARGS__))
+LazyLogModule gWinEventWindowLog("WinEventWindow");
+#define OBS_LOG(...) \
+  MOZ_LOG(gWinEventWindowLog, ::mozilla::LogLevel::Info, (__VA_ARGS__))
 
-// static
-StaticRefPtr<WinEventHub> WinEventHub::sInstance;
+namespace {
+namespace evtwin_details {
+static HWND sHiddenWindow = nullptr;
+static bool sHiddenWindowShutdown = false;
+HDEVNOTIFY sDeviceNotifyHandle = nullptr;
+}  // namespace evtwin_details
+}  // namespace
 
-// static
-bool WinEventHub::Ensure() {
-  if (sInstance) {
-    return true;
+/* static */
+void WinEventWindow::Ensure() {
+  MOZ_RELEASE_ASSERT(XRE_IsParentProcess());
+  MOZ_RELEASE_ASSERT(NS_IsMainThread());
+
+  using namespace evtwin_details;
+
+  if (sHiddenWindow) return;
+  if (sHiddenWindowShutdown) return;
+
+  HMODULE const hSelf = CURRENT_MODULE();
+  WNDCLASSW const wc = {.lpfnWndProc = WinEventWindow::WndProc,
+                        .hInstance = hSelf,
+                        .lpszClassName = kClassNameHidden};
+  ATOM const atom = ::RegisterClassW(&wc);
+  if (!atom) {
+    // This is known to be possible when the atom table no longer has free
+    // entries, which unfortunately happens more often than one might expect.
+    // See bug 1571516.
+    auto volatile const err [[maybe_unused]] = ::GetLastError();
+    MOZ_CRASH("could not register broadcast-receiver window-class");
   }
 
-  LOG("WinEventHub::Ensure()");
+  sHiddenWindow =
+      ::CreateWindowW((LPCWSTR)(uintptr_t)atom, L"WinEventWindow", 0, 0, 0, 0,
+                      0, nullptr, nullptr, hSelf, nullptr);
 
-  RefPtr<WinEventHub> instance = new WinEventHub();
-  if (!instance->Initialize()) {
-    MOZ_ASSERT_UNREACHABLE("unexpected to be called");
-    return false;
-  }
-  sInstance = instance;
-  ClearOnShutdown(&sInstance);
-  return true;
-}
-
-WinEventHub::WinEventHub() {
-  MOZ_ASSERT(NS_IsMainThread());
-  LOG("WinEventHub::WinEventHub()");
-}
-
-WinEventHub::~WinEventHub() {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(mObservers.IsEmpty());
-  LOG("WinEventHub::~WinEventHub()");
-
-  if (mHWnd) {
-    ::DestroyWindow(mHWnd);
-    mHWnd = nullptr;
-  }
-}
-
-bool WinEventHub::Initialize() {
-  WNDCLASSW wc;
-  HMODULE hSelf = ::GetModuleHandle(nullptr);
-
-  if (!GetClassInfoW(hSelf, L"MozillaWinEventHubClass", &wc)) {
-    ZeroMemory(&wc, sizeof(WNDCLASSW));
-    wc.hInstance = hSelf;
-    wc.lpfnWndProc = WinEventProc;
-    wc.lpszClassName = L"MozillaWinEventHubClass";
-    RegisterClassW(&wc);
+  if (!sHiddenWindow) {
+    MOZ_CRASH("could not create broadcast-receiver window");
   }
 
-  mHWnd = ::CreateWindowW(L"MozillaWinEventHubClass", L"WinEventHub", 0, 0, 0,
-                          0, 0, nullptr, nullptr, hSelf, nullptr);
-  if (!mHWnd) {
-    return false;
-  }
+  sDeviceNotifyHandle = InputDeviceUtils::RegisterNotification(sHiddenWindow);
 
-  return true;
+  // It should be harmless to leak this window until destruction -- but other
+  // parts of Gecko may expect all windows to be destroyed, so do that.
+  mozilla::RunOnShutdown([]() {
+    InputDeviceUtils::UnregisterNotification(sDeviceNotifyHandle);
+
+    sHiddenWindowShutdown = true;
+    ::DestroyWindow(sHiddenWindow);
+    sHiddenWindow = nullptr;
+  });
+};
+
+/* static */
+HWND WinEventWindow::GetHwndForTestingOnly() {
+  return evtwin_details::sHiddenWindow;
 }
 
-// static
-LRESULT CALLBACK WinEventHub::WinEventProc(HWND aHwnd, UINT aMsg,
-                                           WPARAM aWParam, LPARAM aLParam) {
-  if (sInstance) {
-    sInstance->ProcessWinEventProc(aHwnd, aMsg, aWParam, aLParam);
-  }
-  return ::DefWindowProc(aHwnd, aMsg, aWParam, aLParam);
+// Callbacks for individual event types. These are private and internal
+// implementation details of WinEventWindow.
+namespace {
+namespace evtwin_details {
+
+static void NotifyThemeChanged(ThemeChangeKind aKind) {
+  LookAndFeel::NotifyChangedAllWindows(aKind);
 }
 
-void WinEventHub::ProcessWinEventProc(HWND aHwnd, UINT aMsg, WPARAM aWParam,
-                                      LPARAM aLParam) {
-  for (const auto& observer : mObservers) {
-    observer->OnWinEventProc(aHwnd, aMsg, aWParam, aLParam);
-  }
-}
+static void OnSessionChange(WPARAM wParam, LPARAM lParam) {
+  if (wParam == WTS_SESSION_LOCK || wParam == WTS_SESSION_UNLOCK) {
+    DWORD currentSessionId;
+    BOOL const rv =
+        ::ProcessIdToSessionId(::GetCurrentProcessId(), &currentSessionId);
+    if (!rv) {
+      // A process should always have the relevant access privileges for itself,
+      // but the above call could still fail if, e.g., someone's playing games
+      // with function imports. If so, just assert and/or skip out.
+      //
+      // Should this turn out to somehow be a real concern, we could do
+      // ```
+      //    DWORD const currentSessionId =
+      //       ::NtCurrentTeb()->ProcessEnvironmentBlock->SessionId;
+      // ```
+      // instead, which is actually documented (albeit abjured against).
+      MOZ_ASSERT(false, "::ProcessIdToSessionId() failed");
+      return;
+    }
 
-void WinEventHub::AddObserver(WinEventObserver* aObserver) {
-  LOG("WinEventHub::AddObserver() aObserver %p", aObserver);
+    OBS_LOG("WinEventWindow OnSessionChange(): wParam=%zu lParam=%" PRIdLPTR
+            " currentSessionId=%lu",
+            wParam, lParam, currentSessionId);
 
-  mObservers.Insert(aObserver);
-}
+    // Ignore lock/unlock messages for other sessions -- which Windows actually
+    // _does_ send in some scenarios; see review of Chromium changeset 1929489:
+    //
+    // https://chromium-review.googlesource.com/c/chromium/src/+/1929489
+    if (currentSessionId != (DWORD)lParam) {
+      return;
+    }
 
-void WinEventHub::RemoveObserver(WinEventObserver* aObserver) {
-  LOG("WinEventHub::RemoveObserver() aObserver %p", aObserver);
-
-  mObservers.Remove(aObserver);
-}
-
-WinEventObserver::~WinEventObserver() {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(mDestroyed);
-}
-
-void WinEventObserver::Destroy() {
-  LOG("WinEventObserver::Destroy() this %p", this);
-
-  WinEventHub::Get()->RemoveObserver(this);
-  mDestroyed = true;
-}
-
-// static
-already_AddRefed<DisplayStatusObserver> DisplayStatusObserver::Create(
-    DisplayStatusListener* aListener) {
-  if (!WinEventHub::Ensure()) {
-    return nullptr;
-  }
-  RefPtr<DisplayStatusObserver> observer = new DisplayStatusObserver(aListener);
-  WinEventHub::Get()->AddObserver(observer);
-  return observer.forget();
-}
-
-DisplayStatusObserver::DisplayStatusObserver(DisplayStatusListener* aListener)
-    : mListener(aListener) {
-  MOZ_ASSERT(NS_IsMainThread());
-  LOG("DisplayStatusObserver::DisplayStatusObserver() this %p", this);
-
-  mDisplayStatusHandle = ::RegisterPowerSettingNotification(
-      WinEventHub::Get()->GetWnd(), &GUID_SESSION_DISPLAY_STATUS,
-      DEVICE_NOTIFY_WINDOW_HANDLE);
-}
-
-DisplayStatusObserver::~DisplayStatusObserver() {
-  MOZ_ASSERT(NS_IsMainThread());
-  LOG("DisplayStatusObserver::~DisplayStatusObserver() this %p", this);
-
-  if (mDisplayStatusHandle) {
-    ::UnregisterPowerSettingNotification(mDisplayStatusHandle);
-    mDisplayStatusHandle = nullptr;
+    if (auto* wwot = WinWindowOcclusionTracker::Get()) {
+      wwot->OnSessionChange(wParam);
+    }
   }
 }
 
-void DisplayStatusObserver::OnWinEventProc(HWND aHwnd, UINT aMsg,
-                                           WPARAM aWParam, LPARAM aLParam) {
-  if (aMsg == WM_POWERBROADCAST && aWParam == PBT_POWERSETTINGCHANGE) {
-    POWERBROADCAST_SETTING* setting = (POWERBROADCAST_SETTING*)aLParam;
-    if (setting &&
-        ::IsEqualGUID(setting->PowerSetting, GUID_SESSION_DISPLAY_STATUS) &&
+static void OnPowerBroadcast(WPARAM wParam, LPARAM lParam) {
+  if (wParam == PBT_POWERSETTINGCHANGE) {
+    POWERBROADCAST_SETTING* setting = (POWERBROADCAST_SETTING*)lParam;
+    MOZ_ASSERT(setting);
+
+    if (::IsEqualGUID(setting->PowerSetting, GUID_SESSION_DISPLAY_STATUS) &&
         setting->DataLength == sizeof(DWORD)) {
-      bool displayOn = PowerMonitorOff !=
-                       static_cast<MONITOR_DISPLAY_STATE>(setting->Data[0]);
+      MONITOR_DISPLAY_STATE state{};
+      errno_t const err =
+          ::memcpy_s(&state, sizeof(state), setting->Data, setting->DataLength);
+      if (err) {
+        MOZ_ASSERT(false, "bad data in POWERBROADCAST_SETTING in lParam");
+        return;
+      }
 
-      LOG("DisplayStatusObserver::OnWinEventProc() displayOn %d this %p",
-          displayOn, this);
-      mListener->OnDisplayStateChanged(displayOn);
+      bool const displayOn = MONITOR_DISPLAY_STATE::PowerMonitorOff != state;
+
+      OBS_LOG("WinEventWindow OnPowerBroadcast(): displayOn=%d",
+              int(displayOn ? 1 : 0));
+
+      if (auto* wwot = WinWindowOcclusionTracker::Get()) {
+        wwot->OnDisplayStateChanged(displayOn);
+      }
     }
   }
 }
+
+static void OnSettingsChange(WPARAM wParam, LPARAM lParam) {
+  switch (wParam) {
+    case SPI_SETCLIENTAREAANIMATION:
+    case SPI_SETKEYBOARDDELAY:
+    case SPI_SETMOUSEVANISH:
+    case MOZ_SPI_SETCURSORSIZE:
+      // These need to update LookAndFeel cached values.
+      //
+      // They affect reduced motion settings / caret blink count / show pointer
+      // while typing / tooltip offset, so no need to invalidate style / layout.
+      NotifyThemeChanged(widget::ThemeChangeKind::MediaQueriesOnly);
+      return;
+
+    case SPI_SETFONTSMOOTHING:
+    case SPI_SETFONTSMOOTHINGTYPE:
+      gfxDWriteFont::UpdateSystemTextVars();
+      return;
+
+    case SPI_SETWORKAREA:
+      // NB: We also refresh screens on WM_DISPLAYCHANGE, but the rcWork
+      // values are sometimes wrong at that point.  This message then arrives
+      // soon afterward, when we can get the right rcWork values.
+      ScreenHelperWin::RefreshScreens();
+      return;
+
+    default:
+      break;
+  }
+
+  if (lParam == 0) {
+    return;
+  }
+  nsDependentString lParamString{reinterpret_cast<const wchar_t*>(lParam)};
+
+  if (lParamString == u"ImmersiveColorSet"_ns) {
+    // This affects system colors (-moz-win-accentcolor), so gotta pass the
+    // style flag.
+    NotifyThemeChanged(widget::ThemeChangeKind::Style);
+    return;
+  }
+
+  // UserInteractionMode, ConvertibleSlateMode, and SystemDockMode may cause
+  // @media(pointer) queries to change, which layout needs to know about.
+  //
+  // The former two of those also imply that the current tablet-mode state needs
+  // to be updated.
+
+  if (lParamString == u"UserInteractionMode"_ns) {
+    // Documentation implies, and testing shows, that this is seen on Win10
+    // only.
+    Unused << NS_WARN_IF(mozilla::IsWin11OrLater());
+    WindowsUIUtils::UpdateInWin10TabletMode();
+    NotifyThemeChanged(widget::ThemeChangeKind::MediaQueriesOnly);
+    return;
+  }
+
+  if (lParamString == u"ConvertibleSlateMode"_ns) {
+    // Documentation implies, and testing shows, that this is not seen on Win10.
+    Unused << NS_WARN_IF(!mozilla::IsWin11OrLater());
+    WindowsUIUtils::UpdateInWin11TabletMode();
+    NotifyThemeChanged(widget::ThemeChangeKind::MediaQueriesOnly);
+    return;
+  }
+
+  if (lParamString == u"SystemDockMode"_ns) {
+    NotifyThemeChanged(widget::ThemeChangeKind::MediaQueriesOnly);
+    return;
+  }
+}
+
+static void OnDeviceChange(WPARAM wParam, LPARAM lParam) {
+  if (wParam == DBT_DEVICEARRIVAL || wParam == DBT_DEVICEREMOVECOMPLETE) {
+    DEV_BROADCAST_HDR* hdr = reinterpret_cast<DEV_BROADCAST_HDR*>(lParam);
+    // Check dbch_devicetype explicitly since we will get other device types
+    // (e.g. DBT_DEVTYP_VOLUME) for some reason, even if we specify
+    // DBT_DEVTYP_DEVICEINTERFACE in the filter for RegisterDeviceNotification.
+    if (hdr->dbch_devicetype == DBT_DEVTYP_DEVICEINTERFACE) {
+      // This can only change media queries (any-hover/any-pointer).
+      NotifyThemeChanged(widget::ThemeChangeKind::MediaQueriesOnly);
+    }
+  }
+}
+
+}  // namespace evtwin_details
+}  // namespace
 
 // static
-already_AddRefed<SessionChangeObserver> SessionChangeObserver::Create(
-    SessionChangeListener* aListener) {
-  if (!WinEventHub::Ensure()) {
-    return nullptr;
-  }
-  RefPtr<SessionChangeObserver> observer = new SessionChangeObserver(aListener);
-  WinEventHub::Get()->AddObserver(observer);
-  return observer.forget();
-}
+LRESULT CALLBACK WinEventWindow::WndProc(HWND hwnd, UINT msg, WPARAM wParam,
+                                         LPARAM lParam) {
+  NativeEventLogger eventLogger("WinEventWindow", hwnd, msg, wParam, lParam);
 
-SessionChangeObserver::SessionChangeObserver(SessionChangeListener* aListener)
-    : mListener(aListener) {
-  MOZ_ASSERT(NS_IsMainThread());
-  LOG("SessionChangeObserver::SessionChangeObserver() this %p", this);
+  switch (msg) {
+    case WM_WINDOWPOSCHANGING: {
+      // prevent rude external programs from making hidden window visible
+      LPWINDOWPOS info = (LPWINDOWPOS)lParam;
+      info->flags &= ~SWP_SHOWWINDOW;
+    } break;
 
-  auto hwnd = WinEventHub::Get()->GetWnd();
-  DebugOnly<BOOL> wtsRegistered =
-      ::WTSRegisterSessionNotification(hwnd, NOTIFY_FOR_THIS_SESSION);
-  NS_ASSERTION(wtsRegistered, "WTSRegisterSessionNotification failed!\n");
-}
-SessionChangeObserver::~SessionChangeObserver() {
-  MOZ_ASSERT(NS_IsMainThread());
-  LOG("SessionChangeObserver::~SessionChangeObserver() this %p", this);
+    case WM_WTSSESSION_CHANGE: {
+      evtwin_details::OnSessionChange(wParam, lParam);
+    } break;
 
-  auto hwnd = WinEventHub::Get()->GetWnd();
-  // Unregister notifications from terminal services
-  ::WTSUnRegisterSessionNotification(hwnd);
-}
+    case WM_POWERBROADCAST: {
+      evtwin_details::OnPowerBroadcast(wParam, lParam);
+    } break;
 
-void SessionChangeObserver::OnWinEventProc(HWND aHwnd, UINT aMsg,
-                                           WPARAM aWParam, LPARAM aLParam) {
-  if (aMsg == WM_WTSSESSION_CHANGE &&
-      (aWParam == WTS_SESSION_LOCK || aWParam == WTS_SESSION_UNLOCK)) {
-    Maybe<bool> isCurrentSession;
-    DWORD currentSessionId = 0;
-    if (!::ProcessIdToSessionId(::GetCurrentProcessId(), &currentSessionId)) {
-      isCurrentSession = Nothing();
-    } else {
-      LOG("SessionChangeObserver::OnWinEventProc() aWParam %zu aLParam "
-          "%" PRIdLPTR
-          " "
-          "currentSessionId %lu this %p",
-          aWParam, aLParam, currentSessionId, this);
+    case WM_SYSCOLORCHANGE: {
+      // No need to invalidate layout for system color changes, but we need to
+      // invalidate style.
+      evtwin_details::NotifyThemeChanged(widget::ThemeChangeKind::Style);
+    } break;
 
-      isCurrentSession = Some(static_cast<DWORD>(aLParam) == currentSessionId);
+    case WM_THEMECHANGED: {
+      // We assume pretty much everything could've changed here.
+      evtwin_details::NotifyThemeChanged(
+          widget::ThemeChangeKind::StyleAndLayout);
+    } break;
+
+    case WM_FONTCHANGE: {
+      // update the global font list
+      gfxPlatform::GetPlatform()->UpdateFontList();
+    } break;
+
+    case WM_SETTINGCHANGE: {
+      evtwin_details::OnSettingsChange(wParam, lParam);
+    } break;
+
+    case WM_DEVICECHANGE: {
+      evtwin_details::OnDeviceChange(wParam, lParam);
+    } break;
+
+    case WM_DISPLAYCHANGE: {
+      ScreenHelperWin::RefreshScreens();
+      break;
     }
-    mListener->OnSessionChange(aWParam, isCurrentSession);
   }
+
+  LRESULT const ret = ::DefWindowProcW(hwnd, msg, wParam, lParam);
+  eventLogger.SetResult(ret, false);
+  return ret;
 }
 
-#undef LOG
+#undef OBS_LOG
 
 }  // namespace mozilla::widget

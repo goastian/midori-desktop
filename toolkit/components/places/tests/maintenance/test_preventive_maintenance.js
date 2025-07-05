@@ -2610,13 +2610,10 @@ tests.push({
     });
 
     PlacesUtils.tagging.tagURI(this._uri1, ["testtag"]);
-    PlacesUtils.favicons.setAndFetchFaviconForPage(
+    await PlacesTestUtils.setFaviconForPage(
       this._uri2,
       SMALLPNG_DATA_URI,
-      false,
-      PlacesUtils.favicons.FAVICON_LOAD_NON_PRIVATE,
-      null,
-      Services.scriptSecurityManager.getSystemPrincipal()
+      SMALLPNG_DATA_URI
     );
     await PlacesUtils.keywords.insert({
       url: this._uri1.spec,
@@ -2657,12 +2654,8 @@ tests.push({
     });
     Assert.equal(pageInfo.annotations.get("anno"), "anno");
 
-    await new Promise(resolve => {
-      PlacesUtils.favicons.getFaviconURLForPage(this._uri2, aFaviconURI => {
-        Assert.ok(aFaviconURI.equals(SMALLPNG_DATA_URI));
-        resolve();
-      });
-    });
+    let favicon = await PlacesTestUtils.getFaviconForPage(this._uri2);
+    Assert.equal(favicon.uri.spec, SMALLPNG_DATA_URI.spec);
   },
 });
 

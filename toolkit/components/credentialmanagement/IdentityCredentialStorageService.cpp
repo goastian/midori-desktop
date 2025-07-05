@@ -34,7 +34,7 @@
 #include "prtime.h"
 
 #define ACCOUNT_STATE_FILENAME "credentialstate.sqlite"_ns
-#define SCHEMA_VERSION 1
+#define SCHEMA_VERSION 2
 #define MODIFIED_NOW PR_Now()
 
 namespace mozilla {
@@ -180,19 +180,19 @@ nsresult IdentityCredentialStorageService::Init() {
                                nsresult rv = self->GetDiskDatabaseConnection();
                                if (NS_WARN_IF(NS_FAILED(rv))) {
                                  self->mErrored.Flip();
-                                 self->mMonitor.Notify();
+                                 self->mMonitor.NotifyAll();
                                  return;
                                }
 
                                rv = self->LoadMemoryTableFromDisk();
                                if (NS_WARN_IF(NS_FAILED(rv))) {
                                  self->mErrored.Flip();
-                                 self->mMonitor.Notify();
+                                 self->mMonitor.NotifyAll();
                                  return;
                                }
 
                                self->mInitialized.Flip();
-                               self->mMonitor.Notify();
+                               self->mMonitor.NotifyAll();
                              }),
       NS_DISPATCH_EVENT_MAY_BLOCK);
 
@@ -240,18 +240,18 @@ nsresult IdentityCredentialStorageService::ValidatePrincipal(
 
 nsresult IdentityCredentialStorageService::GetMemoryDatabaseConnection() {
   return IdentityCredentialStorageService::GetDatabaseConnectionInternal(
-      getter_AddRefs(mMemoryDatabaseConnection), nullptr);
+      getter_AddRefs(mMemoryDatabaseConnection), nullptr, false);
 }
 
 nsresult IdentityCredentialStorageService::GetDiskDatabaseConnection() {
   NS_ENSURE_TRUE(mDatabaseFile, NS_ERROR_NULL_POINTER);
   return IdentityCredentialStorageService::GetDatabaseConnectionInternal(
-      getter_AddRefs(mDiskDatabaseConnection), mDatabaseFile);
+      getter_AddRefs(mDiskDatabaseConnection), mDatabaseFile, true);
 }
 
 // static
 nsresult IdentityCredentialStorageService::GetDatabaseConnectionInternal(
-    mozIStorageConnection** aDatabase, nsIFile* aFile) {
+    mozIStorageConnection** aDatabase, nsIFile* aFile, bool aRetry) {
   NS_ENSURE_TRUE(aDatabase, NS_ERROR_UNEXPECTED);
   NS_ENSURE_STATE(!(*aDatabase));
   nsCOMPtr<mozIStorageService> storage =
@@ -279,7 +279,14 @@ nsresult IdentityCredentialStorageService::GetDatabaseConnectionInternal(
   NS_ENSURE_TRUE(*aDatabase, NS_ERROR_UNEXPECTED);
   bool ready = false;
   (*aDatabase)->GetConnectionReady(&ready);
-  NS_ENSURE_TRUE(ready, NS_ERROR_UNEXPECTED);
+  if (!ready && aRetry) {
+    rv = aFile->Remove(false);
+    NS_ENSURE_SUCCESS(rv, rv);
+    return IdentityCredentialStorageService::GetDatabaseConnectionInternal(
+        aDatabase, aFile, false);
+  } else {
+    NS_ENSURE_TRUE(ready, NS_ERROR_UNEXPECTED);
+  }
   rv = EnsureTable(*aDatabase);
   NS_ENSURE_SUCCESS(rv, rv);
   return NS_OK;
@@ -315,11 +322,8 @@ nsresult IdentityCredentialStorageService::EnsureTable(
   tableExists = false;
   aDatabase->TableExists("lightweight_identity"_ns, &tableExists);
   if (!tableExists) {
-    // Currently there is only one schema version, so we just need to create the
-    // table. The definition uses no explicit rowid column, instead primary
-    // keying on the tuple defined in the spec. We store two bits and some
-    // additional data to make integration with the ClearDataService
-    // easier/possible.
+    // The definition uses no explicit rowid column, instead primary
+    // keying on the tuple defined in the spec.
     nsresult rv = aDatabase->SetSchemaVersion(SCHEMA_VERSION);
     NS_ENSURE_SUCCESS(rv, rv);
     rv = aDatabase->ExecuteSimpleSQL(
@@ -331,11 +335,32 @@ nsresult IdentityCredentialStorageService::EnsureTable(
         ",originAllowlist TEXT"
         ",dynamicAllowEndpoint TEXT"
         ",userDataExpireTime INTEGER"
+        ",token TEXT"
+        ",effectiveType TEXT"
         ",modificationTime INTEGER"
         ",idpBaseDomain TEXT"
         ",PRIMARY KEY (idpOrigin, credentialId)"
         ")"_ns);
     NS_ENSURE_SUCCESS(rv, rv);
+    return NS_OK;
+  }
+
+  // Ensure the schema is up to date if the table already exists
+  int32_t schema;
+  nsresult rv = aDatabase->GetSchemaVersion(&schema);
+  NS_ENSURE_SUCCESS(rv, rv);
+  switch (schema) {
+    case 1:
+      rv = aDatabase->ExecuteSimpleSQL(
+          "ALTER TABLE lightweight_identity ADD COLUMN token TEXT;"_ns);
+      NS_ENSURE_SUCCESS(rv, rv);
+      rv = aDatabase->ExecuteSimpleSQL(
+          "ALTER TABLE lightweight_identity ADD COLUMN effectiveType TEXT;"_ns);
+      NS_ENSURE_SUCCESS(rv, rv);
+      [[fallthrough]];
+    default:
+      rv = aDatabase->SetSchemaVersion(SCHEMA_VERSION);
+      NS_ENSURE_SUCCESS(rv, rv);
   }
   return NS_OK;
 }
@@ -347,14 +372,16 @@ IdentityCredentialStorageService::LoadLightweightMemoryTableFromDisk() {
   auto constexpr selectAllQuery =
       "SELECT idpOrigin, credentialId, name, iconDataURL, "
       "originAllowlist, dynamicAllowEndpoint, userDataExpireTime,"
+      "token, effectiveType,"
       "modificationTime, idpBaseDomain FROM lightweight_identity;"_ns;
   auto constexpr insertQuery =
       "INSERT INTO lightweight_identity(idpOrigin, credentialId, "
       "name, iconDataURL, originAllowlist, dynamicAllowEndpoint, "
-      "userDataExpireTime,"
+      "userDataExpireTime, token, effectiveType,"
       "modificationTime, idpBaseDomain) VALUES (:idpOrigin, :credentialId, "
-      ":name, "
-      ":iconDataURL, :originAllowlist, :dynamicAllowEndpoint, :userDataExpireTime, :modificationTime, :idpBaseDomain);"_ns;
+      ":name, :iconDataURL, :originAllowlist, :dynamicAllowEndpoint, "
+      ":userDataExpireTime,"
+      ":token, :effectiveType, :modificationTime, :idpBaseDomain);"_ns;
 
   nsCOMPtr<mozIStorageStatement> writeStmt;
   nsresult rv = mMemoryDatabaseConnection->CreateStatement(
@@ -368,50 +395,56 @@ IdentityCredentialStorageService::LoadLightweightMemoryTableFromDisk() {
 
   bool hasResult;
   while (NS_SUCCEEDED(readStmt->ExecuteStep(&hasResult)) && hasResult) {
-    int64_t modificationTime, userDataExpireTime;
-    nsCString idpOrigin, credentialId, idpBaseDomain, name, iconDataURL,
-        originAllowlist, dynamicAllowEndpoint;
+    nsCOMPtr<nsIVariant> modificationTime, userDataExpireTime, idpOrigin,
+        credentialId, idpBaseDomain, name, iconDataURL, originAllowlist,
+        dynamicAllowEndpoint, token, effectiveType;
 
     // Read values from disk query
-    rv = readStmt->GetUTF8String(0, idpOrigin);
+    rv = readStmt->GetVariant(0, getter_AddRefs(idpOrigin));
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = readStmt->GetUTF8String(1, credentialId);
+    rv = readStmt->GetVariant(1, getter_AddRefs(credentialId));
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = readStmt->GetUTF8String(2, name);
+    rv = readStmt->GetVariant(2, getter_AddRefs(name));
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = readStmt->GetUTF8String(3, iconDataURL);
+    rv = readStmt->GetVariant(3, getter_AddRefs(iconDataURL));
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = readStmt->GetUTF8String(4, originAllowlist);
+    rv = readStmt->GetVariant(4, getter_AddRefs(originAllowlist));
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = readStmt->GetUTF8String(5, dynamicAllowEndpoint);
+    rv = readStmt->GetVariant(5, getter_AddRefs(dynamicAllowEndpoint));
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = readStmt->GetInt64(6, &userDataExpireTime);
+    rv = readStmt->GetVariant(6, getter_AddRefs(userDataExpireTime));
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = readStmt->GetInt64(7, &modificationTime);
+    rv = readStmt->GetVariant(7, getter_AddRefs(token));
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = readStmt->GetUTF8String(8, idpBaseDomain);
+    rv = readStmt->GetVariant(8, getter_AddRefs(effectiveType));
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = readStmt->GetVariant(9, getter_AddRefs(modificationTime));
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = readStmt->GetVariant(10, getter_AddRefs(idpBaseDomain));
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Write values to memory database
-    rv = writeStmt->BindUTF8StringByName("idpOrigin"_ns, idpOrigin);
+    rv = writeStmt->BindByName("idpOrigin"_ns, idpOrigin);
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = writeStmt->BindUTF8StringByName("credentialId"_ns, credentialId);
+    rv = writeStmt->BindByName("credentialId"_ns, credentialId);
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = writeStmt->BindUTF8StringByName("name"_ns, name);
+    rv = writeStmt->BindByName("name"_ns, name);
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = writeStmt->BindUTF8StringByName("iconDataURL"_ns, iconDataURL);
+    rv = writeStmt->BindByName("iconDataURL"_ns, iconDataURL);
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = writeStmt->BindUTF8StringByName("originAllowlist"_ns, originAllowlist);
+    rv = writeStmt->BindByName("originAllowlist"_ns, originAllowlist);
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = writeStmt->BindUTF8StringByName("dynamicAllowEndpoint"_ns,
-                                         dynamicAllowEndpoint);
+    rv = writeStmt->BindByName("dynamicAllowEndpoint"_ns, dynamicAllowEndpoint);
     NS_ENSURE_SUCCESS(rv, rv);
-    rv =
-        writeStmt->BindInt64ByName("userDataExpireTime"_ns, userDataExpireTime);
+    rv = writeStmt->BindByName("userDataExpireTime"_ns, userDataExpireTime);
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = writeStmt->BindInt64ByName("modificationTime"_ns, modificationTime);
+    rv = writeStmt->BindByName("token"_ns, token);
     NS_ENSURE_SUCCESS(rv, rv);
-    rv = writeStmt->BindUTF8StringByName("idpBaseDomain"_ns, idpBaseDomain);
+    rv = writeStmt->BindByName("effectiveType"_ns, effectiveType);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = writeStmt->BindByName("modificationTime"_ns, modificationTime);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = writeStmt->BindByName("idpBaseDomain"_ns, idpBaseDomain);
     NS_ENSURE_SUCCESS(rv, rv);
     rv = writeStmt->Execute();
     NS_ENSURE_SUCCESS(rv, rv);
@@ -582,6 +615,34 @@ nsresult IdentityCredentialStorageService::DeleteData(
 }
 
 // static
+nsresult IdentityCredentialStorageService::DisconnectData(
+    mozIStorageConnection* aDatabaseConnection, nsIPrincipal* aRPPrincipal,
+    nsIPrincipal* aIDPPrincipal) {
+  NS_ENSURE_ARG_POINTER(aDatabaseConnection);
+  NS_ENSURE_ARG_POINTER(aRPPrincipal);
+  NS_ENSURE_ARG_POINTER(aIDPPrincipal);
+  auto constexpr deleteQuery =
+      "DELETE FROM identity WHERE rpOrigin=?1 AND idpOrigin=?2"_ns;
+  nsCOMPtr<mozIStorageStatement> stmt;
+  nsresult rv =
+      aDatabaseConnection->CreateStatement(deleteQuery, getter_AddRefs(stmt));
+  NS_ENSURE_SUCCESS(rv, rv);
+  nsCString rpOrigin;
+  rv = aRPPrincipal->GetOrigin(rpOrigin);
+  NS_ENSURE_SUCCESS(rv, rv);
+  nsCString idpOrigin;
+  rv = aIDPPrincipal->GetOrigin(idpOrigin);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = stmt->BindUTF8StringByIndex(0, rpOrigin);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = stmt->BindUTF8StringByIndex(1, idpOrigin);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = stmt->Execute();
+  NS_ENSURE_SUCCESS(rv, rv);
+  return NS_OK;
+}
+
+// static
 nsresult IdentityCredentialStorageService::UpsertLightweightData(
     mozIStorageConnection* aDatabaseConnection,
     const dom::IPCIdentityCredential& aData) {
@@ -591,17 +652,20 @@ nsresult IdentityCredentialStorageService::UpsertLightweightData(
   constexpr auto upsertQuery =
       "INSERT INTO lightweight_identity(idpOrigin, credentialId, "
       "name, iconDataURL, originAllowlist, dynamicAllowEndpoint, "
-      "userDataExpireTime,"
+      "userDataExpireTime, token, effectiveType,"
       "modificationTime, idpBaseDomain) VALUES (:idpOrigin, :credentialId, "
       ":name, "
       ":iconDataURL, :originAllowlist, :dynamicAllowEndpoint, "
-      ":userDataExpireTime, :modificationTime, :idpBaseDomain)"
+      ":userDataExpireTime, :token, :effectiveType,"
+      ":modificationTime, :idpBaseDomain)"
       "ON CONFLICT(idpOrigin, credentialId)"
       "DO UPDATE SET name=excluded.name, "
       "iconDataURL=excluded.iconDataURL, "
       "originAllowlist=excluded.originAllowlist, "
       "dynamicAllowEndpoint=excluded.dynamicAllowEndpoint, "
       "userDataExpireTime=excluded.userDataExpireTime, "
+      "token=excluded.token, "
+      "effectiveType=excluded.effectiveType, "
       "modificationTime=excluded.modificationTime"_ns;
 
   nsCOMPtr<mozIStorageStatement> stmt;
@@ -642,6 +706,20 @@ nsresult IdentityCredentialStorageService::UpsertLightweightData(
                                     aData.effectiveQueryURL().value());
   } else {
     rv = stmt->BindNullByName("dynamicAllowEndpoint"_ns);
+  }
+  NS_ENSURE_SUCCESS(rv, rv);
+  if (aData.effectiveType().isSome()) {
+    rv = stmt->BindUTF8StringByName("effectiveType"_ns,
+                                    aData.effectiveType().value());
+  } else {
+    rv = stmt->BindNullByName("effectiveType"_ns);
+  }
+  NS_ENSURE_SUCCESS(rv, rv);
+  if (aData.token().isSome()) {
+    rv = stmt->BindUTF8StringByName(
+        "token"_ns, NS_ConvertUTF16toUTF8(aData.token().value()));
+  } else {
+    rv = stmt->BindNullByName("token"_ns);
   }
   NS_ENSURE_SUCCESS(rv, rv);
   if (aData.infoExpiresAt().isSome() &&
@@ -946,6 +1024,176 @@ NS_IMETHODIMP IdentityCredentialStorageService::Delete(
   return NS_OK;
 }
 
+NS_IMETHODIMP IdentityCredentialStorageService::Connected(
+    nsIPrincipal* aRPPrincipal, nsIPrincipal* aIDPPrincipal, bool* aConnected) {
+  AssertIsOnMainThread();
+  NS_ENSURE_ARG_POINTER(aRPPrincipal);
+  NS_ENSURE_ARG_POINTER(aIDPPrincipal);
+  *aConnected = false;
+
+  nsresult rv;
+  rv = WaitForInitialization();
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = IdentityCredentialStorageService::ValidatePrincipal(aRPPrincipal);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = IdentityCredentialStorageService::ValidatePrincipal(aIDPPrincipal);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  auto constexpr selectQuery =
+      "SELECT registered FROM identity WHERE rpOrigin=?1 AND "
+      "idpOrigin=?2"_ns;
+  nsCOMPtr<mozIStorageStatement> stmt;
+  rv = mMemoryDatabaseConnection->CreateStatement(selectQuery,
+                                                  getter_AddRefs(stmt));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  nsCString rpOrigin;
+  nsCString idpOrigin;
+  rv = aRPPrincipal->GetOrigin(rpOrigin);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = aIDPPrincipal->GetOrigin(idpOrigin);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = stmt->BindUTF8StringByIndex(0, rpOrigin);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = stmt->BindUTF8StringByIndex(1, idpOrigin);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  bool hasResult;
+  // If we find a result, return it
+  if (NS_SUCCEEDED(stmt->ExecuteStep(&hasResult)) && hasResult) {
+    int64_t registeredInt;
+    rv = stmt->GetInt64(0, &registeredInt);
+    NS_ENSURE_SUCCESS(rv, rv);
+    *aConnected = true;
+    return NS_OK;
+  }
+
+  *aConnected = false;
+  return NS_OK;
+}
+
+NS_IMETHODIMP IdentityCredentialStorageService::Disconnect(
+    nsIPrincipal* aRPPrincipal, nsIPrincipal* aIDPPrincipal) {
+  AssertIsOnMainThread();
+  NS_ENSURE_ARG_POINTER(aRPPrincipal);
+  NS_ENSURE_ARG_POINTER(aIDPPrincipal);
+
+  nsresult rv;
+  rv = WaitForInitialization();
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = IdentityCredentialStorageService::ValidatePrincipal(aRPPrincipal);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = IdentityCredentialStorageService::ValidatePrincipal(aIDPPrincipal);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = DisconnectData(mMemoryDatabaseConnection, aRPPrincipal, aIDPPrincipal);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  IncrementPendingWrites();
+  RefPtr<IdentityCredentialStorageService> self = this;
+  RefPtr<nsIPrincipal> rpPrincipal = aRPPrincipal;
+  RefPtr<nsIPrincipal> idpPrincipal = aIDPPrincipal;
+  mBackgroundThread->Dispatch(
+      NS_NewRunnableFunction("IdentityCredentialStorageService::Init",
+                             [self, rpPrincipal, idpPrincipal]() {
+                               nsresult rv =
+                                   DisconnectData(self->mDiskDatabaseConnection,
+                                                  rpPrincipal, idpPrincipal);
+                               self->DecrementPendingWrites();
+                               NS_ENSURE_SUCCESS_VOID(rv);
+                             }),
+      NS_DISPATCH_EVENT_MAY_BLOCK);
+
+  return NS_OK;
+}
+
+// Helper function to get credentials from the database and put them into an
+// array of IPCIdentityCredentials. aStmt must be a SELECT query that give
+// fields SELECT credentialId, name, iconDataURL, userDataExpireTime,
+// originAllowList, dynamicAllowEndpoint, effectiveType, token, and [idpOrigin
+// if aIDPPrincipal is null]
+nsresult GetCredentialsHelper(
+    const nsCOMPtr<mozIStorageStatement>& aStmt,
+    const RefPtr<nsIPrincipal>& aIDPPrincipal,
+    nsTArray<mozilla::dom::IPCIdentityCredential>& aResult) {
+  bool hasResult;
+  nsresult rv;
+  // For each result, we append it to the array to return
+  while (NS_SUCCEEDED(aStmt->ExecuteStep(&hasResult)) && hasResult) {
+    nsAutoString id, name, iconDataURL, originAllowList, dynamicAllowEndpoint,
+        effectiveType, token, matchedOrigin;
+    int64_t userDataExpireTime;
+    rv = aStmt->GetString(0, id);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = aStmt->GetString(1, name);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = aStmt->GetString(2, iconDataURL);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = aStmt->GetInt64(3, &userDataExpireTime);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = aStmt->GetString(4, originAllowList);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = aStmt->GetString(5, dynamicAllowEndpoint);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = aStmt->GetString(6, effectiveType);
+    NS_ENSURE_SUCCESS(rv, rv);
+    rv = aStmt->GetString(7, token);
+    NS_ENSURE_SUCCESS(rv, rv);
+    if (!aIDPPrincipal) {
+      rv = aStmt->GetString(8, matchedOrigin);
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
+
+    Maybe<nsCString> resultName, resultIconDataURL, resultDynamicAllowEndpoint,
+        resultEffectiveType;
+    Maybe<nsString> resultToken;
+    nsTArray<nsCString> allowListArray;
+    Maybe<int64_t> resultUserDataExpireTime;
+    RefPtr<nsIPrincipal> idpPrincipal;
+
+    if (!name.IsVoid() && name.Length()) {
+      resultName = Some(NS_ConvertUTF16toUTF8(name));
+    }
+    if (!iconDataURL.IsVoid() && iconDataURL.Length()) {
+      resultIconDataURL = Some(NS_ConvertUTF16toUTF8(iconDataURL));
+    }
+    if (!effectiveType.IsVoid() && effectiveType.Length()) {
+      resultEffectiveType = Some(NS_ConvertUTF16toUTF8(effectiveType));
+    }
+    if (!token.IsVoid() && token.Length()) {
+      resultToken = Some(token);
+    }
+    for (const auto& origin : originAllowList.Split('|')) {
+      allowListArray.AppendElement(NS_ConvertUTF16toUTF8(origin));
+    }
+    if (!dynamicAllowEndpoint.IsVoid() && dynamicAllowEndpoint.Length()) {
+      resultDynamicAllowEndpoint =
+          Some(NS_ConvertUTF16toUTF8(dynamicAllowEndpoint));
+    }
+    if (!aStmt->IsNull(3) && userDataExpireTime > 0) {
+      resultUserDataExpireTime = Some(userDataExpireTime);
+    }
+    if (aIDPPrincipal) {
+      idpPrincipal = aIDPPrincipal;
+    } else {
+      nsIScriptSecurityManager* ssm = nsContentUtils::GetSecurityManager();
+      NS_ENSURE_TRUE(ssm, NS_ERROR_NOT_AVAILABLE);
+      rv = ssm->CreateContentPrincipalFromOrigin(
+          NS_ConvertUTF16toUTF8(matchedOrigin), getter_AddRefs(idpPrincipal));
+      NS_ENSURE_SUCCESS(rv, rv);
+    }
+
+    dom::IPCIdentityCredential result(
+        id, resultToken, resultName, resultIconDataURL, allowListArray,
+        resultDynamicAllowEndpoint, resultEffectiveType,
+        resultUserDataExpireTime, idpPrincipal);
+    aResult.AppendElement(result);
+  }
+
+  return NS_OK;
+}
+
 NS_IMETHODIMP IdentityCredentialStorageService::
     IdentityCredentialStorageService::GetIdentityCredentials(
         nsTArray<RefPtr<nsIPrincipal>> const& aIDPPrincipals,
@@ -955,7 +1203,7 @@ NS_IMETHODIMP IdentityCredentialStorageService::
   nsresult rv = WaitForInitialization();
   NS_ENSURE_SUCCESS(rv, rv);
   auto constexpr selectQuery =
-      "SELECT credentialId, name, iconDataURL, userDataExpireTime, originAllowList, dynamicAllowEndpoint FROM lightweight_identity WHERE idpOrigin=?1"_ns;
+      "SELECT credentialId, name, iconDataURL, userDataExpireTime, originAllowList, dynamicAllowEndpoint, effectiveType, token FROM lightweight_identity WHERE idpOrigin=?1"_ns;
   nsCOMPtr<mozIStorageStatement> stmt;
   rv = mMemoryDatabaseConnection->CreateStatement(selectQuery,
                                                   getter_AddRefs(stmt));
@@ -972,50 +1220,32 @@ NS_IMETHODIMP IdentityCredentialStorageService::
     rv = stmt->BindUTF8StringByIndex(0, idpOrigin);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    bool hasResult;
-    // For each result, we append it to the array to return
-    while (NS_SUCCEEDED(stmt->ExecuteStep(&hasResult)) && hasResult) {
-      nsAutoString id, name, iconDataURL, originAllowList, dynamicAllowEndpoint;
-      int64_t userDataExpireTime;
-      rv = stmt->GetString(0, id);
-      NS_ENSURE_SUCCESS(rv, rv);
-      rv = stmt->GetString(1, name);
-      NS_ENSURE_SUCCESS(rv, rv);
-      rv = stmt->GetString(2, iconDataURL);
-      NS_ENSURE_SUCCESS(rv, rv);
-      rv = stmt->GetInt64(3, &userDataExpireTime);
-      NS_ENSURE_SUCCESS(rv, rv);
-      rv = stmt->GetString(4, originAllowList);
-      NS_ENSURE_SUCCESS(rv, rv);
-      rv = stmt->GetString(5, dynamicAllowEndpoint);
-      NS_ENSURE_SUCCESS(rv, rv);
-
-      Maybe<nsCString> resultName, resultIconDataURL,
-          resultDynamicAllowEndpoint;
-      nsTArray<nsCString> allowListArray;
-      Maybe<int64_t> resultUserDataExpireTime;
-      if (!name.IsVoid()) {
-        resultName = Some(NS_ConvertUTF16toUTF8(name));
-      }
-      if (!iconDataURL.IsVoid()) {
-        resultIconDataURL = Some(NS_ConvertUTF16toUTF8(iconDataURL));
-      }
-      for (const auto& origin : originAllowList.Split('|')) {
-        allowListArray.AppendElement(NS_ConvertUTF16toUTF8(origin));
-      }
-      if (!dynamicAllowEndpoint.IsVoid()) {
-        resultDynamicAllowEndpoint =
-            Some(NS_ConvertUTF16toUTF8(dynamicAllowEndpoint));
-      }
-      if (!stmt->IsNull(3) && userDataExpireTime >= 0) {
-        resultUserDataExpireTime = Some(userDataExpireTime);
-      }
-      dom::IPCIdentityCredential result(
-          id, Nothing(), resultName, resultIconDataURL, allowListArray,
-          resultDynamicAllowEndpoint, resultUserDataExpireTime, idpPrincipal);
-      aResult.AppendElement(result);
-    }
+    rv = GetCredentialsHelper(stmt, idpPrincipal, aResult);
+    NS_ENSURE_SUCCESS(rv, rv);
   }
+  return NS_OK;
+}
+
+NS_IMETHODIMP IdentityCredentialStorageService::
+    IdentityCredentialStorageService::GetIdentityCredentialsOfType(
+        const nsACString& aType,
+        nsTArray<mozilla::dom::IPCIdentityCredential>& aResult) {
+  AssertIsOnMainThread();
+
+  nsresult rv = WaitForInitialization();
+  NS_ENSURE_SUCCESS(rv, rv);
+  auto constexpr selectQuery =
+      "SELECT credentialId, name, iconDataURL, userDataExpireTime, originAllowList, dynamicAllowEndpoint, effectiveType, token, idpOrigin FROM lightweight_identity WHERE effectiveType=?1"_ns;
+  nsCOMPtr<mozIStorageStatement> stmt;
+  rv = mMemoryDatabaseConnection->CreateStatement(selectQuery,
+                                                  getter_AddRefs(stmt));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = stmt->BindUTF8StringByIndex(0, aType);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = GetCredentialsHelper(stmt, nullptr, aResult);
+  NS_ENSURE_SUCCESS(rv, rv);
   return NS_OK;
 }
 

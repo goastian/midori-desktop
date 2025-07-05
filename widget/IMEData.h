@@ -425,6 +425,7 @@ struct InputContext final {
     mHTMLInputMode.Truncate();
     mActionHint.Truncate();
     mAutocapitalize.Truncate();
+    mAutocorrect = true;
   }
 
   bool IsPasswordEditor() const {
@@ -467,6 +468,11 @@ struct InputContext final {
            // enterkeyhint is only supported by Android IME API and iOS API.
            mActionHint != aOldContext.mActionHint ||
 #endif
+#if defined(ANDROID) || defined(XP_DARWIN)
+           // autocorrect is only supported by Android IME API, macOS text
+           // substitution and iOS API.
+           mAutocorrect != aOldContext.mAutocorrect ||
+#endif
            false;
   }
 
@@ -486,6 +492,9 @@ struct InputContext final {
 
   /* A hint for autocapitalize */
   nsString mAutocapitalize;
+
+  /* A hint for autocorrect */
+  bool mAutocorrect = true;  // on-by-default
 
   /**
    * mOrigin indicates whether this focus event refers to main or remote
@@ -1053,17 +1062,6 @@ struct IMENotification final {
     MOZ_RELEASE_ASSERT(mMessage == NOTIFY_IME_OF_TEXT_CHANGE);
     mTextChangeData = aTextChangeData;
   }
-};
-
-struct CandidateWindowPosition {
-  // Upper left corner of the candidate window if mExcludeRect is false.
-  // Otherwise, the position currently interested.  E.g., caret position.
-  LayoutDeviceIntPoint mPoint;
-  // Rect which shouldn't be overlapped with the candidate window.
-  // This is valid only when mExcludeRect is true.
-  LayoutDeviceIntRect mRect;
-  // See explanation of mPoint and mRect.
-  bool mExcludeRect;
 };
 
 std::ostream& operator<<(std::ostream& aStream, const IMEEnabled& aEnabled);

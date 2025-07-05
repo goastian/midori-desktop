@@ -1,6 +1,9 @@
 //! RenderDoc integration - <https://renderdoc.org/>
+#![cfg_attr(not(any(feature = "gles", feature = "vulkan")), allow(dead_code))]
 
-use std::{ffi, os, ptr};
+use alloc::format;
+use alloc::string::String;
+use core::{ffi, ptr};
 
 /// The dynamically loaded RenderDoc API function table
 #[repr(C)]
@@ -69,12 +72,13 @@ impl RenderDoc {
         };
 
         let get_api: libloading::Symbol<GetApiFn> =
-            match unsafe { renderdoc_lib.get(b"RENDERDOC_GetAPI\0") } {
+            match unsafe { renderdoc_lib.get(c"RENDERDOC_GetAPI".to_bytes()) } {
                 Ok(api) => api,
                 Err(e) => {
                     return RenderDoc::NotAvailable {
                         reason: format!(
-                            "Unable to get RENDERDOC_GetAPI from renderdoc library '{renderdoc_filename}': {e:?}"
+                            "Unable to get RENDERDOC_GetAPI from renderdoc library '{}': {e:?}",
+                            renderdoc_filename
                         ),
                     }
                 }
@@ -83,13 +87,14 @@ impl RenderDoc {
         match unsafe { get_api(10401, &mut obj) } {
             1 => RenderDoc::Available {
                 api: RenderDocApi {
-                    api: unsafe { *(obj as *mut renderdoc_sys::RENDERDOC_API_1_4_1) },
+                    api: unsafe { *obj.cast::<renderdoc_sys::RENDERDOC_API_1_4_1>() },
                     lib: renderdoc_lib,
                 },
             },
             return_value => RenderDoc::NotAvailable {
                 reason: format!(
-                    "Unable to get API from renderdoc library '{renderdoc_filename}': {return_value}"
+                    "Unable to get API from renderdoc library '{}': {}",
+                    renderdoc_filename, return_value
                 ),
             },
         }
@@ -106,8 +111,8 @@ impl Default for RenderDoc {
         unsafe { Self::new() }
     }
 }
-/// A implementation specific handle
-pub type Handle = *mut os::raw::c_void;
+/// An implementation specific handle
+pub type Handle = *mut ffi::c_void;
 
 impl RenderDoc {
     /// Start a RenderDoc frame capture

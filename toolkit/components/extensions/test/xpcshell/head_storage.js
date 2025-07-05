@@ -4,8 +4,6 @@
 
 /* import-globals-from head.js */
 
-const STORAGE_SYNC_PREF = "webextensions.storage.sync.enabled";
-
 // Test implementations and utility functions that are used against multiple
 // storage areas (eg, a test which is run against browser.storage.local and
 // browser.storage.sync, or a test against browser.storage.sync but needs to
@@ -76,49 +74,6 @@ async function checkGetImpl(areaName, prop, value) {
   );
 }
 
-function test_config_flag_needed() {
-  async function testFn() {
-    function background() {
-      let promises = [];
-      let apiTests = [
-        { method: "get", args: ["foo"] },
-        { method: "set", args: [{ foo: "bar" }] },
-        { method: "remove", args: ["foo"] },
-        { method: "clear", args: [] },
-      ];
-      apiTests.forEach(testDef => {
-        promises.push(
-          browser.test.assertRejects(
-            browser.storage.sync[testDef.method](...testDef.args),
-            "Please set webextensions.storage.sync.enabled to true in about:config",
-            `storage.sync.${testDef.method} is behind a flag`
-          )
-        );
-      });
-
-      Promise.all(promises).then(() => browser.test.notifyPass("flag needed"));
-    }
-
-    ok(
-      !Services.prefs.getBoolPref(STORAGE_SYNC_PREF, false),
-      "The `${STORAGE_SYNC_PREF}` should be set to false"
-    );
-
-    let extension = ExtensionTestUtils.loadExtension({
-      manifest: {
-        permissions: ["storage"],
-      },
-      background,
-    });
-
-    await extension.startup();
-    await extension.awaitFinish("flag needed");
-    await extension.unload();
-  }
-
-  return runWithPrefs([[STORAGE_SYNC_PREF, false]], testFn);
-}
-
 async function test_storage_after_reload(areaName, { expectPersistency }) {
   // Just some random extension ID that we can re-use
   const extensionId = "my-extension-id@1";
@@ -169,15 +124,8 @@ async function test_storage_after_reload(areaName, { expectPersistency }) {
   await extension2.unload();
 }
 
-function test_sync_reloading_extensions_works() {
-  return runWithPrefs([[STORAGE_SYNC_PREF, true]], async () => {
-    ok(
-      Services.prefs.getBoolPref(STORAGE_SYNC_PREF, false),
-      "The `${STORAGE_SYNC_PREF}` should be set to true"
-    );
-
-    await test_storage_after_reload("sync", { expectPersistency: true });
-  });
+async function test_sync_reloading_extensions_works() {
+  await test_storage_after_reload("sync", { expectPersistency: true });
 }
 
 async function test_background_page_storage(testAreaName) {
@@ -701,7 +649,7 @@ async function test_background_page_storage(testAreaName) {
   await extension.unload();
 }
 
-function test_storage_sync_requires_real_id() {
+async function test_storage_sync_requires_real_id() {
   async function testFn() {
     async function background() {
       const EXCEPTION_MESSAGE =
@@ -732,7 +680,7 @@ function test_storage_sync_requires_real_id() {
     await extension.unload();
   }
 
-  return runWithPrefs([[STORAGE_SYNC_PREF, true]], testFn);
+  return await testFn();
 }
 
 // Test for storage areas which don't support getBytesInUse() nor QUOTA
@@ -1397,4 +1345,59 @@ async function test_storage_change_event_page(areaName) {
   }
 
   return runWithPrefs([["extensions.eventPages.enabled", true]], testFn);
+}
+
+async function test_storage_sync_telemetry_quota(backend, enforced = false) {
+  Services.fog.testResetFOG();
+  let id = "my-extension-id@23";
+
+  // Repeat twice to get the glean events "before" and "after".
+  for (let i = 0; i < 2; i++) {
+    let ext = ExtensionTestUtils.loadExtension({
+      manifest: {
+        browser_specific_settings: { gecko: { id: id } },
+        permissions: ["storage"],
+      },
+      background() {
+        browser.test.onMessage.addListener(async enforced => {
+          await browser.storage.sync.set({
+            a: "1",
+            b: "x".repeat(enforced ? 1_000 : 10_000),
+          });
+          browser.test.notifyPass("done");
+        });
+      },
+    });
+
+    await ext.startup();
+    ext.sendMessage(enforced);
+    await ext.awaitFinish("done");
+    await ext.unload();
+  }
+
+  let events = Glean.extensionsData.syncUsageQuotas.testGetValue();
+  events = events.filter(e => e.extra?.addon_id === id);
+
+  Assert.deepEqual(
+    events[0].extra,
+    {
+      addon_id: id,
+      total_size_bytes: 0,
+      items_count: 0,
+      items_over_quota: 0,
+      backend: backend,
+    },
+    "Expected event values before setting sync storage"
+  );
+  Assert.deepEqual(
+    events[1].extra,
+    {
+      addon_id: id,
+      total_size_bytes: enforced ? 1_007 : 10_007,
+      items_count: 2,
+      items_over_quota: enforced ? 0 : 1,
+      backend: backend,
+    },
+    "Expected event values after setting sync storage"
+  );
 }

@@ -11,7 +11,7 @@
 
 #import <objc/message.h>
 
-#include "nsChildView.h"
+#include "nsCocoaWindow.h"
 #include "mozilla/StaticPrefs_widget.h"
 
 using namespace mozilla;
@@ -21,12 +21,14 @@ using namespace mozilla;
 }
 - (instancetype)initWithFrame:(NSRect)aRect
                  vibrancyType:(VibrancyType)aVibrancyType;
+- (void)prefChanged;
 @end
 
 static NSVisualEffectState VisualEffectStateForVibrancyType(
     VibrancyType aType) {
   switch (aType) {
     case VibrancyType::Titlebar:
+    case VibrancyType::Sidebar:
       break;
   }
   return NSVisualEffectStateFollowsWindowActiveState;
@@ -35,6 +37,8 @@ static NSVisualEffectState VisualEffectStateForVibrancyType(
 static NSVisualEffectMaterial VisualEffectMaterialForVibrancyType(
     VibrancyType aType) {
   switch (aType) {
+    case VibrancyType::Sidebar:
+      return NSVisualEffectMaterialSidebar;
     case VibrancyType::Titlebar:
       return NSVisualEffectMaterialTitlebar;
   }
@@ -43,6 +47,10 @@ static NSVisualEffectMaterial VisualEffectMaterialForVibrancyType(
 static NSVisualEffectBlendingMode VisualEffectBlendingModeForVibrancyType(
     VibrancyType aType) {
   switch (aType) {
+    case VibrancyType::Sidebar:
+      return StaticPrefs::widget_macos_sidebar_blend_mode_behind_window()
+                 ? NSVisualEffectBlendingModeBehindWindow
+                 : NSVisualEffectBlendingModeWithinWindow;
     case VibrancyType::Titlebar:
       return StaticPrefs::widget_macos_titlebar_blend_mode_behind_window()
                  ? NSVisualEffectBlendingModeBehindWindow
@@ -67,14 +75,46 @@ static NSVisualEffectBlendingMode VisualEffectBlendingModeForVibrancyType(
   // This view must be transparent to mouse events.
   return nil;
 }
+
+- (void)prefChanged {
+  self.blendingMode = VisualEffectBlendingModeForVibrancyType(mType);
+}
 @end
 
-VibrancyManager::VibrancyManager(const nsChildView& aCoordinateConverter,
+static void PrefChanged(const char* aPref, void* aClosure) {
+  static_cast<VibrancyManager*>(aClosure)->PrefChanged();
+}
+
+static constexpr nsLiteralCString kObservedPrefs[] = {
+    "widget.macos.sidebar-blend-mode.behind-window"_ns,
+    "widget.macos.titlebar-blend-mode.behind-window"_ns,
+};
+
+VibrancyManager::VibrancyManager(const nsCocoaWindow& aCoordinateConverter,
                                  NSView* aContainerView)
     : mCoordinateConverter(aCoordinateConverter),
-      mContainerView(aContainerView) {}
+      mContainerView(aContainerView) {
+  for (const auto& pref : kObservedPrefs) {
+    Preferences::RegisterCallback(::PrefChanged, pref, this);
+  }
+}
 
-VibrancyManager::~VibrancyManager() = default;
+VibrancyManager::~VibrancyManager() {
+  for (const auto& pref : kObservedPrefs) {
+    Preferences::UnregisterCallback(::PrefChanged, pref, this);
+  }
+}
+
+void VibrancyManager::PrefChanged() {
+  for (auto& region : mVibrantRegions) {
+    if (!region) {
+      continue;
+    }
+    for (NSView* view : region->Views()) {
+      [static_cast<MOZVibrantView*>(view) prefChanged];
+    }
+  }
+}
 
 bool VibrancyManager::UpdateVibrantRegion(
     VibrancyType aType, const LayoutDeviceIntRegion& aRegion) {

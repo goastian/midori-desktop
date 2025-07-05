@@ -20,6 +20,7 @@
 #include "mozilla/ProfilerThreadSleep.h"
 #include "mozilla/Unused.h"
 #include "mozilla/GUniquePtr.h"
+#include "mozilla/StaticPrefs_widget.h"
 #include "mozilla/WidgetUtils.h"
 #include "nsIPowerManagerService.h"
 #ifdef MOZ_ENABLE_DBUS
@@ -51,8 +52,9 @@ LazyLogModule gWidgetLog("Widget");
 LazyLogModule gWidgetDragLog("WidgetDrag");
 LazyLogModule gWidgetWaylandLog("WidgetWayland");
 LazyLogModule gWidgetPopupLog("WidgetPopup");
-LazyLogModule gWidgetVsync("WidgetVsync");
+LazyLogModule gWidgetVsync("WidgetVSync");
 LazyLogModule gDmabufLog("Dmabuf");
+LazyLogModule gWidgetCompositorLog("WidgetCompositor");
 
 static GPollFunc sPollFunc;
 
@@ -418,8 +420,7 @@ nsresult nsAppShell::Init() {
     gchar* name = gdk_pixbuf_format_get_name(format);
     if (strcmp(name, "jpeg") && strcmp(name, "png") && strcmp(name, "gif") &&
         strcmp(name, "bmp") && strcmp(name, "ico") && strcmp(name, "xpm") &&
-        strcmp(name, "svg") && strcmp(name, "webp") && strcmp(name, "avif") &&
-        strcmp(name, "jxl")) {
+        strcmp(name, "svg") && strcmp(name, "webp") && strcmp(name, "avif")) {
       gdk_pixbuf_format_set_disabled(format, TRUE);
     }
     g_free(name);

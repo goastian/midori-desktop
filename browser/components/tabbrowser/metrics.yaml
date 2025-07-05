@@ -1,0 +1,760 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'Firefox :: Tabbed Browser'
+
+browser.engagement:
+  tab_unload_count:
+    type: counter
+    description: >
+      The count of tab unload events by TabUnloader due to a low-memory
+      situation.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.tab_unload_count.
+    bugs:
+      - https://bugzil.la/1715858
+    data_reviews:
+      - https://bugzil.la/1715858
+    notification_emails:
+      - dao@mozilla.com
+      - rtestard@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_TAB_UNLOAD_COUNT
+
+  tab_reload_count:
+    type: counter
+    description: >
+      The count of tab reload events by the user after unloaded.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.engagement.tab_reload_count.
+    bugs:
+      - https://bugzil.la/1715858
+    data_reviews:
+      - https://bugzil.la/1715858
+    notification_emails:
+      - dao@mozilla.com
+      - rtestard@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_ENGAGEMENT_TAB_RELOAD_COUNT
+
+  tab_explicit_unload:
+    type: event
+    description: >
+      Recorded when the user explicitly unloads tab(s) from memory via
+      the tab context menu.
+    notification_emails:
+      - gstoll@mozilla.com
+      - haftandilian@mozilla.com
+    bugs:
+      - https://bugzil.la/1926390
+    data_reviews:
+      - https://bugzil.la/1926390
+    data_sensitivity:
+      - interaction
+    extra_keys:
+      unload_selected_tab:
+        description: whether the currently-selected tab is unloaded
+        type: boolean
+      all_tabs_unloaded:
+        description: whether all tabs in the window were unloaded
+        type: boolean
+      tabs_unloaded:
+        description: The number of tabs unloaded in this operation
+        type: quantity
+      memory_before:
+        description: Memory usage before unloading tabs (in bytes)
+        type: quantity
+      memory_after:
+        description: Memory usage after unloading tabs (in bytes)
+        type: quantity
+      time_to_unload_in_ms:
+        description: Time to unload tabs (in ms)
+        type: quantity
+    expires: never
+
+  tab_unload_to_reload:
+    type: timing_distribution
+    description: >
+      How long (sec) a tab had been unloaded until it was reloaded.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TAB_UNLOAD_TO_RELOAD.
+    time_unit: second
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1715858
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1715858
+    notification_emails:
+      - tkikuchi@mozilla.com
+    expires: never
+    telemetry_mirror: TAB_UNLOAD_TO_RELOAD
+
+browser.ui.interaction:
+  all_tabs_panel_dragstart_tab_event_count:
+    type: counter
+    description: >
+      Records a count of how many times a drag event started for a tab
+      within the All Tabs panel.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar
+      browser.ui.interaction.all_tabs_panel_dragstart_tab_event_count.
+    bugs:
+      - https://bugzil.la/1804722
+    data_reviews:
+      - https://bugzil.la/1804722
+    notification_emails:
+      - shong@mozilla.com
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_ALL_TABS_PANEL_DRAGSTART_TAB_EVENT_COUNT
+    no_lint:
+      - COMMON_PREFIX
+
+  all_tabs_panel_entrypoint:
+    type: labeled_counter
+    description: >
+      Records a count of how many times the All Tabs Panel was opened,
+      keyed on a string describing the entrypoint.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.all_tabs_panel_entrypoint.
+    bugs:
+      - https://bugzil.la/1804722
+    data_reviews:
+      - https://bugzil.la/1804722
+    notification_emails:
+      - shong@mozilla.com
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_ALL_TABS_PANEL_ENTRYPOINT
+    no_lint:
+      - COMMON_PREFIX
+
+tabgroup:
+  create_group:
+    type: event
+    description: >
+      Recorded when the user creates a new tab group via
+      the tab context menu or through drag and drop.
+    notification_emails:
+      - dao@mozilla.com
+      - jswinarton@mozilla.com
+    bugs:
+      - https://bugzil.la/1938423
+      - https://bugzil.la/1954500
+    data_reviews:
+      - https://bugzil.la/1938423
+      - https://bugzil.la/1954500
+    data_sensitivity:
+      - interaction
+    extra_keys:
+      source:
+        description: The means by which the tab group was created
+        type: string
+      tabs:
+        description: The number of tabs in the group when it was created
+        type: quantity
+      layout:
+        description: The layout of the tab strip when the group was created (either "horizontal" or "vertical")
+        type: string
+      id:
+        description: The ID of the created tab group
+        type: string
+    expires: never
+
+  reopen:
+    type: event
+    description: >
+      Recorded when a user reopens a saved tab group
+    notification_emails:
+      - dao@mozilla.com
+      - dwalker@mozilla.com
+      - jswinarton@mozilla.com
+      - dwalker@mozilla.com
+    bugs:
+      - https://bugzil.la/1938425
+    data_reviews:
+      - https://bugzil.la/1938425
+    extra_keys:
+      source:
+        description: The surface used to find and recall the saved group
+        type: string
+      layout:
+        description: The tabs layout (horizontal or vertical)
+        type: string
+      id:
+        description: The ID of the tab group. Tab group IDs are derived from their creation timestamps and have no other relationship to any tab group metadata.
+        type: string
+      type:
+        description: Whether the user reopened a saved group or a deleted group.
+        type: string
+    expires: never
+
+  add_tab:
+    type: event
+    disabled: true # To be controlled by server knobs during Firefox 138 launch due to expected high volume
+    description: >
+      Recorded when the user adds one or more ungrouped tabs to an existing tab group
+    notification_emails:
+      - dao@mozilla.com
+      - jswinarton@mozilla.com
+      - sthompson@mozilla.com
+    bugs:
+      - https://bugzil.la/1938424
+    data_reviews:
+      - https://bugzil.la/1938424
+    data_sensitivity:
+      - interaction
+    extra_keys:
+      source:
+        description: The system, surface, or control the user used to add the tab(s) to the tab group
+        type: string
+      tabs:
+        description: The number of tabs added to the tab group
+        type: quantity
+      layout:
+        description: The layout of the tab strip when the tabs were added (either "horizontal" or "vertical")
+        type: string
+    expires: never
+
+  active_groups:
+    type: labeled_quantity
+    description: >
+      Records the number of groups present in the tab bar, split by expanded or collapsed.
+    notification_emails:
+      - dao@mozilla.com
+      - jswinarton@mozilla.com
+    bugs:
+      - https://bugzil.la/1938397
+      - https://bugzil.la/1954500
+    data_reviews:
+      - https://bugzil.la/1938397
+      - https://bugzil.la/1954500
+    expires: never
+    unit: tab groups
+    labels:
+      - expanded
+      - collapsed
+
+  tabs_per_active_group:
+    type: labeled_quantity
+    description: >
+      Records statistics about the number of tabs per active group: max, median, average and min.
+    notification_emails:
+      - dao@mozilla.com
+      - jswinarton@mozilla.com
+    bugs:
+      - https://bugzil.la/1938397
+      - https://bugzil.la/1954500
+    data_reviews:
+      - https://bugzil.la/1938397
+      - https://bugzil.la/1954500
+    expires: never
+    unit: tabs
+    labels:
+      - max
+      - median
+      - average
+      - min
+
+  saved_groups:
+    type: quantity
+    description: >
+      Records the number of saved tab groups present in the user's session
+    notification_emails:
+      - dao@mozilla.com
+      - jswinarton@mozilla.com
+      - sthompson@mozilla.com
+    bugs:
+      - https://bugzil.la/1938398
+    data_reviews:
+      - https://bugzil.la/1938398
+    expires: never
+    unit: tab groups
+
+  tabs_per_saved_group:
+    type: labeled_quantity
+    description: >
+      Records statistics about the number of tabs per saved tab group: max, median, average and min.
+    notification_emails:
+      - dao@mozilla.com
+      - jswinarton@mozilla.com
+      - sthompson@mozilla.com
+    bugs:
+      - https://bugzil.la/1938398
+    data_reviews:
+      - https://bugzil.la/1938398
+    expires: never
+    unit: tabs
+    labels:
+      - max
+      - median
+      - average
+      - min
+
+  tab_count_in_groups:
+    type: labeled_quantity
+    description: >
+      Records the latest number of tabs in the tab bar, split by being inside a group or outside.
+    notification_emails:
+      - dao@mozilla.com
+      - jswinarton@mozilla.com
+    bugs:
+      - https://bugzil.la/1938397
+      - https://bugzil.la/1954500
+    data_reviews:
+      - https://bugzil.la/1938397
+      - https://bugzil.la/1954500
+    expires: never
+    unit: tabs
+    labels:
+      - inside
+      - outside
+
+  save:
+    type: event
+    description: >
+      Recorded when the user saves a tab group
+    notification_emails:
+      - dao@mozilla.com
+      - jswinarton@mozilla.com
+    bugs:
+      - https://bugzil.la/1938426
+    data_reviews:
+      - https://bugzil.la/1938426
+    expires: never
+    extra_keys:
+      user_triggered:
+        description: >
+          Whether the user explicitly chose to save the tab group, or the group
+          was automatically saved as a result of browser operations (e.g. the
+          user closed a window that has open tab groups).
+        type: boolean
+      id:
+        description: The ID of the saved tab group
+        type: string
+
+  delete:
+    type: event
+    description: >
+      Recorded when the user deletes a tab group
+    notification_emails:
+      - dao@mozilla.com
+      - jswinarton@mozilla.com
+      - sthompson@mozilla.com
+    bugs:
+      - https://bugzil.la/1938430
+    data_reviews:
+      - https://bugzil.la/1938430
+    data_sensitivity:
+      - interaction
+    extra_keys:
+      source:
+        description: The system, surface, or control the user used to delete the tab group
+        type: string
+      id:
+        description: Tab group ID of the tab group being deleted. Tab group IDs are derived from their creation timestamps and have no other relationship to any tab group metadata.
+        type: string
+    expires: never
+
+  ungroup:
+    type: event
+    description: >
+      Recorded when the user ungroups all tabs of a tab group
+    notification_emails:
+      - dao@mozilla.com
+      - jswinarton@mozilla.com
+      - sthompson@mozilla.com
+    bugs:
+      - https://bugzil.la/1963713
+    data_reviews:
+      - https://bugzil.la/1963713
+    data_sensitivity:
+      - interaction
+    extra_keys:
+      source:
+        description: The system, surface, or control the user used to ungroup the tabs of the tab group
+        type: string
+    expires: never
+
+  tab_interactions:
+    type: labeled_counter
+    description: >
+      Records interactions with tabs related to a group: open, add tab to
+      group, duplicate, create a new tab, close a tab, reorder, and remove from
+      group
+    notification_emails:
+      - dao@mozilla.com
+      - jswinarton@mozilla.com
+      - sthompson@mozilla.com
+    bugs:
+      - https://bugzil.la/1938405
+      - https://bugzil.la/1960360
+      - https://bugzil.la/1961161
+    data_reviews:
+      - https://bugzil.la/1938405
+      - https://bugzil.la/1960360
+      - https://bugzil.la/1961161
+    data_sensitivity:
+      - interaction
+    labels:
+      - activate
+      - add
+      - duplicate
+      - new
+      - close_tabstrip
+      - close_tabmenu
+      - close_tab_other
+      - reorder
+      - remove_same_window
+      - remove_other_window
+      - remove_new_window
+    expires: never
+
+  group_interactions:
+    type: labeled_counter
+    description: >
+      Records interactions with tab groups: expand/collapse; rename, change
+      color; save/reopen/delete; ungroup tabs; open from tab menu/recent/
+      Awesomebar; move to another window
+    notification_emails:
+      - dao@mozilla.com
+      - jswinarton@mozilla.com
+      - sthompson@mozilla.com
+    bugs:
+      - https://bugzil.la/1938401
+    data_reviews:
+      - https://bugzil.la/1938401
+    data_sensitivity:
+      - interaction
+    labels:
+      - expand
+      - collapse
+      - rename
+      - change_color
+      - save
+      - reopen
+      - open_tabmenu
+      - open_recent
+      - open_suggest
+      - delete
+      - ungroup
+      - move_window
+    expires: never
+
+
+  smart_tab_optin:
+    type: event
+    description: >
+      Recorded when onboards to smart tab grouping through opt-in UI
+    notification_emails:
+      - rrando@mozilla.com
+      - vbaungally@mozilla.com
+    bugs:
+      - https://bugzil.la/1956073
+    data_reviews:
+      - https://bugzil.la/1956073
+    data_sensitivity:
+      - interaction
+    extra_keys:
+      step:
+        description: step and description of opt-in screen interaction
+        type: string
+    expires: never
+    no_lint:
+      - COMMON_PREFIX
+
+  smart_tab_topic:
+    type: event
+    description: >
+      Recorded when the user saves a tab group label with the ml topic
+      model
+    notification_emails:
+      - rrando@mozilla.com
+      - vbaungally@mozilla.com
+    bugs:
+      - https://bugzil.la/1949010
+      - https://bugzil.la/1961641
+    data_reviews:
+      - https://bugzil.la/1949010
+      - https://bugzil.la/1961641
+    data_sensitivity:
+      - interaction
+    extra_keys:
+      action:
+        description: >
+          whether the user saved or canceled generating a label
+        type: string
+      tabs_in_group:
+        description: >
+          number of tabs in the group for which model is generating a
+          label
+        type: quantity
+      ml_label_length:
+        description: length of label suggested by model
+        type: quantity
+      user_label_length:
+        description: length of label saved by the user
+        type: quantity
+      levenshtein_distance:
+        description: >
+          Levenshtein distance between label suggested by model
+          and saved by user
+        type: quantity
+      model_revision:
+        description: topic model version currently running
+        type: string
+      id:
+        description: The ID of the created tab group
+        type: string
+      label_reason:
+        description: Whether the model suggested no label due to low probability or dissimilar tabs
+        type: string
+    expires: never
+    no_lint:
+      - COMMON_PREFIX
+
+  smart_tab_suggest:
+    type: event
+    description: >
+      Recorded when the user saves suggested tabs using the ml
+      embedding model
+    notification_emails:
+      - rrando@mozilla.com
+      - vbaungally@mozilla.com
+    bugs:
+      - https://bugzil.la/1949010
+    data_reviews:
+      - https://bugzil.la/1949010
+    data_sensitivity:
+      - interaction
+    extra_keys:
+      action:
+        description: whether the user saved or canceled
+        type: string
+      tabs_in_window:
+        description: number of tabs in current window
+        type: quantity
+      tabs_in_group:
+        description: number of tabs in the current group
+        type: quantity
+      tabs_suggested:
+        description: number of tabs suggested by the ml model
+        type: quantity
+      tabs_approved:
+        description: number of tabs the user saved from the suggestions
+        type: quantity
+      tabs_removed:
+        description: >
+          number of tabs the user removed from the
+          suggestions
+        type: quantity
+      model_revision:
+        description: embedding model version currently running
+        type: string
+      id:
+        description: The ID of the created tab group
+        type: string
+    expires: never
+    no_lint:
+      - COMMON_PREFIX
+
+  smart_tab:
+    type: event
+    description: >
+      Recorded when any pref cause smart tabs to be enabled / disabled
+    notification_emails:
+      - rrando@mozilla.com
+      - vbaungally@mozilla.com
+    bugs:
+      - https://bugzil.la/1962228
+    data_reviews:
+      - https://bugzil.la/1962228
+    data_sensitivity:
+      - interaction
+    extra_keys:
+      enabled:
+        description: whether the preference was enabled or disabled in any way
+        type: boolean
+    expires: never
+    no_lint:
+      - COMMON_PREFIX
+
+  smart_tab_enabled:
+    # metrics
+    type: boolean
+    lifetime: application
+    description: >
+      Records if the user has smart tab groups enabled
+    notification_emails:
+      - rrando@mozilla.com
+      - vbaungally@mozilla.com
+    bugs:
+      - https://bugzil.la/1962228
+    data_reviews:
+      - https://bugzil.la/1962228
+    data_sensitivity:
+      - interaction
+    expires: never
+    send_in_pings:
+      - metrics
+    no_lint:
+      - COMMON_PREFIX
+
+browser.tabswitch:
+  update:
+    type: timing_distribution
+    description: >
+      Firefox: Time in ms spent updating UI in response to a tab switch
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_TAB_SWITCH_UPDATE_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    notification_emails:
+      - perf-telemetry-alerts@mozilla.com
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: FX_TAB_SWITCH_UPDATE_MS
+
+  total:
+    type: timing_distribution
+    description: >
+      Firefox: Time in ms between tab selection and tab content paint in e10s
+      windows
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_TAB_SWITCH_TOTAL_E10S_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1156592
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1156592
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1489524
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: FX_TAB_SWITCH_TOTAL_E10S_MS
+
+  spinner_visible:
+    type: timing_distribution
+    description: >
+      Firefox: If the spinner interstitial displays during tab switching,
+      records the time in ms the graphic is visible
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_TAB_SWITCH_SPINNER_VISIBLE_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1156592
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1156592
+    notification_emails:
+      - mconley@mozilla.com
+      - dothayer@mozilla.com
+    expires: never
+    telemetry_mirror: FX_TAB_SWITCH_SPINNER_VISIBLE_MS
+
+  spinner_visible_trigger:
+    type: labeled_counter
+    description: >
+      Diagnostic probe to aid in categorizing tab switch spinners. Records what
+      most recently set the loadTimer to null if a spinner was displayed.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      categorical histogram FX_TAB_SWITCH_SPINNER_VISIBLE_TRIGGER.
+    labels:
+      - none
+      - preActions
+      - postActions
+      - onLoadTimeout
+      - onLayersReady
+      - onSizeModeOrOcc
+      - onEndSwapDocShells
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1442068
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1442068
+    notification_emails:
+      - dothayer@mozilla.com
+    expires: never
+    telemetry_mirror: h#FX_TAB_SWITCH_SPINNER_VISIBLE_TRIGGER
+
+browser.tabclose:
+  time_anim:
+    type: timing_distribution
+    description: >
+      Firefox: Time taken from the point of closing a tab (with animation), to
+      the browser element being removed from the DOM. (ms).
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_TAB_CLOSE_TIME_ANIM_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1340842
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1488952
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1340842
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1488952
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: FX_TAB_CLOSE_TIME_ANIM_MS
+
+  time_no_anim:
+    type: timing_distribution
+    description: >
+      Firefox: Time taken from the point of closing a tab (without animation) to
+      the browser element being removed from the DOM. (ms).
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_TAB_CLOSE_TIME_NO_ANIM_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1340842
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1714255
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1730041
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1754640
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1340842
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1714255
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1730041
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1754640
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: FX_TAB_CLOSE_TIME_NO_ANIM_MS
+
+  permit_unload_time:
+    type: timing_distribution
+    description: >
+      Firefox: Time taken to run permitUnload on a browser during tab close to
+      see whether or not we're allowed to close the tab (ms).
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram FX_TAB_CLOSE_PERMIT_UNLOAD_TIME_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1340842
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1714255
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1730041
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1754640
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1340842
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1714255
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1730041
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1754640
+    notification_emails:
+      - mconley@mozilla.com
+    expires: never
+    telemetry_mirror: FX_TAB_CLOSE_PERMIT_UNLOAD_TIME_MS

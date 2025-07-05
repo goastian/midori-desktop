@@ -8,19 +8,29 @@
 #import <UIKit/UIWindow.h>
 #import <UIKit/UIViewController.h>
 
+#include "gfxPlatform.h"
 #include "nsAppShell.h"
 #include "nsCOMPtr.h"
 #include "nsDirectoryServiceDefs.h"
+#include "nsObjCExceptions.h"
 #include "nsString.h"
 #include "nsIRollupListener.h"
 #include "nsIWidget.h"
 #include "nsThreadUtils.h"
 #include "nsMemoryPressure.h"
 #include "nsServiceManagerUtils.h"
+#include "mozilla/widget/ScreenManager.h"
+#include "ScreenHelperUIKit.h"
+#include "mozilla/Hal.h"
+#include "HeadlessScreenHelper.h"
+
+using namespace mozilla;
+using namespace mozilla::widget;
 
 nsAppShell* nsAppShell::gAppShell = NULL;
 UIWindow* nsAppShell::gWindow = nil;
-NSMutableArray* nsAppShell::gTopLevelViews = [[NSMutableArray alloc] init];
+MOZ_RUNINIT NSMutableArray* nsAppShell::gTopLevelViews =
+    [[NSMutableArray alloc] init];
 
 #define ALOG(args...)    \
   fprintf(stderr, args); \
@@ -106,6 +116,7 @@ nsAppShell::nsAppShell()
       mDelegate(NULL),
       mCFRunLoop(NULL),
       mCFRunLoopSource(NULL),
+      mRunningEventLoop(false),
       mTerminated(false),
       mNotifiedWillTerminate(false) {
   gAppShell = this;
@@ -153,6 +164,18 @@ nsresult nsAppShell::Init() {
 
   ::CFRunLoopAddSource(mCFRunLoop, mCFRunLoopSource, kCFRunLoopCommonModes);
 
+  hal::Init();
+
+  if (XRE_IsParentProcess()) {
+    ScreenManager& screenManager = ScreenManager::GetSingleton();
+
+    if (gfxPlatform::IsHeadless()) {
+      screenManager.SetHelper(mozilla::MakeUnique<HeadlessScreenHelper>());
+    } else {
+      screenManager.SetHelper(mozilla::MakeUnique<ScreenHelperUIKit>());
+    }
+  }
+
   return nsBaseAppShell::Init();
 }
 
@@ -164,6 +187,9 @@ nsresult nsAppShell::Init() {
 // protected static
 void nsAppShell::ProcessGeckoEvents(void* aInfo) {
   nsAppShell* self = static_cast<nsAppShell*>(aInfo);
+  if (self->mRunningEventLoop) {
+    self->mRunningEventLoop = false;
+  }
   self->NativeEventCallback();
   self->Release();
 }
@@ -200,24 +226,31 @@ void nsAppShell::ScheduleNativeEventCallback() {
 //
 // protected virtual
 bool nsAppShell::ProcessNextNativeEvent(bool aMayWait) {
+  NS_OBJC_BEGIN_TRY_IGNORE_BLOCK;
+
   if (mTerminated) return false;
 
+  bool wasRunningEventLoop = mRunningEventLoop;
+  mRunningEventLoop = aMayWait;
   NSString* currentMode = nil;
   NSDate* waitUntil = nil;
   if (aMayWait) waitUntil = [NSDate distantFuture];
   NSRunLoop* currentRunLoop = [NSRunLoop currentRunLoop];
 
-  BOOL eventProcessed = NO;
   do {
     currentMode = [currentRunLoop currentMode];
     if (!currentMode) currentMode = NSDefaultRunLoopMode;
 
-    if (aMayWait)
-      eventProcessed = [currentRunLoop runMode:currentMode
-                                    beforeDate:waitUntil];
-    else
+    if (aMayWait) {
+      [currentRunLoop runMode:currentMode beforeDate:waitUntil];
+    } else {
       [currentRunLoop acceptInputForMode:currentMode beforeDate:waitUntil];
-  } while (eventProcessed && aMayWait);
+    }
+  } while (mRunningEventLoop);
+
+  mRunningEventLoop = wasRunningEventLoop;
+
+  NS_OBJC_END_TRY_IGNORE_BLOCK;
 
   return false;
 }
@@ -228,10 +261,17 @@ bool nsAppShell::ProcessNextNativeEvent(bool aMayWait) {
 NS_IMETHODIMP
 nsAppShell::Run(void) {
   ALOG("nsAppShell::Run");
-  char argv[1][4] = {"app"};
-  UIApplicationMain(1, (char**)argv, nil, @"AppShellDelegate");
-  // UIApplicationMain doesn't exit. :-(
-  return NS_OK;
+
+  nsresult rv = NS_OK;
+  if (XRE_UseNativeEventProcessing()) {
+    char argv[1][4] = {"app"};
+    UIApplicationMain(1, (char**)argv, nil, @"AppShellDelegate");
+    // UIApplicationMain doesn't exit. :-(
+  } else {
+    rv = nsBaseAppShell::Run();
+  }
+
+  return rv;
 }
 
 NS_IMETHODIMP

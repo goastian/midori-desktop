@@ -1,5 +1,11 @@
 "use strict";
 
+// ScotchBonnet being enabled changes some of the styling that is being
+// tested here.
+let scotchBonnet = Services.prefs.getBoolPref(
+  "browser.urlbar.scotchBonnet.enableOverride"
+);
+
 // This test checks whether applied WebExtension themes that attempt to change
 // popup properties are applied correctly to the autocomplete bar.
 const POPUP_COLOR_DARK = "#00A400";
@@ -9,10 +15,14 @@ const POPUP_TEXT_COLOR_BRIGHT = "#ffffff";
 const POPUP_SELECTED_COLOR = "#9400ff";
 const POPUP_SELECTED_TEXT_COLOR = "#09b9a6";
 
-const POPUP_URL_COLOR_DARK = "#0061e0";
-const POPUP_ACTION_COLOR_DARK = "#5b5b66";
-const POPUP_URL_COLOR_BRIGHT = "#00ddff";
-const POPUP_ACTION_COLOR_BRIGHT = "#bfbfc9";
+const POPUP_URL_COLOR_DARK = "oklch(0.55 0.24 260)";
+const POPUP_ACTION_COLOR_DARK = scotchBonnet
+  ? POPUP_TEXT_COLOR_DARK
+  : "#5b5b66";
+const POPUP_URL_COLOR_BRIGHT = "oklch(0.76 0.14 205)";
+const POPUP_ACTION_COLOR_BRIGHT = scotchBonnet
+  ? POPUP_TEXT_COLOR_BRIGHT
+  : "#bfbfc9";
 
 const SEARCH_TERM = "urlbar-reflows-" + Date.now();
 
@@ -20,6 +30,13 @@ ChromeUtils.defineESModuleGetters(this, {
   PlacesTestUtils: "resource://testing-common/PlacesTestUtils.sys.mjs",
   UrlbarTestUtils: "resource://testing-common/UrlbarTestUtils.sys.mjs",
 });
+
+function getComputedColorValue(color) {
+  if (color.startsWith("oklch")) {
+    return color;
+  }
+  return `rgb(${hexToRGB(color).join(", ")})`;
+}
 
 add_setup(async function () {
   await PlacesUtils.history.clear();
@@ -104,13 +121,13 @@ add_task(async function test_popup_url() {
 
   Assert.equal(
     resultCS.backgroundColor,
-    `rgb(${hexToRGB(POPUP_SELECTED_COLOR).join(", ")})`,
+    getComputedColorValue(POPUP_SELECTED_COLOR),
     `Popup highlight background color should be set to ${POPUP_SELECTED_COLOR}`
   );
 
   Assert.equal(
     resultCS.color,
-    `rgb(${hexToRGB(POPUP_SELECTED_TEXT_COLOR).join(", ")})`,
+    getComputedColorValue(POPUP_SELECTED_TEXT_COLOR),
     `Popup highlight color should be set to ${POPUP_SELECTED_TEXT_COLOR}`
   );
 
@@ -120,13 +137,13 @@ add_task(async function test_popup_url() {
 
   Assert.equal(
     window.getComputedStyle(urlResult.element.url).color,
-    `rgb(${hexToRGB(POPUP_URL_COLOR_DARK).join(", ")})`,
+    getComputedColorValue(POPUP_URL_COLOR_DARK),
     `Urlbar popup url color should be set to ${POPUP_URL_COLOR_DARK}`
   );
 
   Assert.equal(
     window.getComputedStyle(actionResult.element.action).color,
-    `rgb(${hexToRGB(POPUP_ACTION_COLOR_DARK).join(", ")})`,
+    getComputedColorValue(POPUP_ACTION_COLOR_DARK),
     `Urlbar popup action color should be set to ${POPUP_ACTION_COLOR_DARK}`
   );
 
@@ -159,13 +176,13 @@ add_task(async function test_popup_url() {
 
   Assert.equal(
     window.getComputedStyle(urlResult.element.url).color,
-    `rgb(${hexToRGB(POPUP_URL_COLOR_BRIGHT).join(", ")})`,
+    getComputedColorValue(POPUP_URL_COLOR_BRIGHT),
     `Urlbar popup url color should be set to ${POPUP_URL_COLOR_BRIGHT}`
   );
 
   Assert.equal(
     window.getComputedStyle(actionResult.element.action).color,
-    `rgb(${hexToRGB(POPUP_ACTION_COLOR_BRIGHT).join(", ")})`,
+    getComputedColorValue(POPUP_ACTION_COLOR_BRIGHT),
     `Urlbar popup action color should be set to ${POPUP_ACTION_COLOR_BRIGHT}`
   );
 

@@ -13,7 +13,6 @@ import sqlite3
 import subprocess
 
 import requests
-import six
 from mach.util import get_state_dir
 from mozbuild.base import MozbuildObject
 from mozpack.files import FileFinder
@@ -37,9 +36,10 @@ def setup_globals():
     build = MozbuildObject.from_environment(cwd=here)
     vcs = get_repository_object(build.topsrcdir)
 
-    root_hash = hashlib.sha256(
-        six.ensure_binary(os.path.abspath(build.topsrcdir))
-    ).hexdigest()
+    topsrcdir = build.topsrcdir
+    if isinstance(topsrcdir, str):
+        topsrcdir = topsrcdir.encode()
+    root_hash = hashlib.sha256(os.path.abspath(topsrcdir)).hexdigest()
     cache_dir = os.path.join(get_state_dir(), "cache", root_hash, "chunk_mapping")
     if not os.path.isdir(cache_dir):
         os.makedirs(cache_dir)
@@ -142,13 +142,11 @@ def download_coverage_mapping(base_revision):
     delta = datetime.timedelta(days=PUSH_HISTORY_DAYS)
     start_time = (datetime.datetime.now() - delta).strftime("%Y-%m-%d")
     pushes_url = JSON_PUSHES_URL_TEMPLATE.format(start_time)
-    pushes_data = requests.get(pushes_url + "&tochange={}".format(base_revision)).json()
+    pushes_data = requests.get(pushes_url + f"&tochange={base_revision}").json()
     if "error" in pushes_data:
         if "unknown revision" in pushes_data["error"]:
             print(
-                "unknown revision {}, trying with latest mozilla-central".format(
-                    base_revision
-                )
+                f"unknown revision {base_revision}, trying with latest mozilla-central"
             )
             pushes_data = requests.get(pushes_url).json()
 
@@ -162,7 +160,7 @@ def download_coverage_mapping(base_revision):
     for push_id in sorted(pushes.keys())[::-1]:
         rev = pushes[push_id]["changesets"][0]
         url = CHUNK_MAPPING_URL_TEMPLATE.format(rev)
-        print("push id: {},\trevision: {}".format(push_id, rev))
+        print(f"push id: {push_id},\trevision: {rev}")
 
         r = requests.head(url)
         if not r.ok:
@@ -313,20 +311,12 @@ def _print_found_tests(files_covered, files_no_coverage, test_files, test_chunks
     test_chunks = sorted(test_chunks)
 
     if files_covered:
-        print(
-            "Found {} modified source files with test coverage:".format(
-                len(files_covered)
-            )
-        )
+        print(f"Found {len(files_covered)} modified source files with test coverage:")
         for covered in files_covered:
             print("\t", covered)
 
     if files_no_coverage:
-        print(
-            "Found {} modified source files with no coverage:".format(
-                len(files_no_coverage)
-            )
-        )
+        print(f"Found {len(files_no_coverage)} modified source files with no coverage:")
         for f in files_no_coverage:
             print("\t", f)
 
@@ -336,12 +326,12 @@ def _print_found_tests(files_covered, files_no_coverage, test_files, test_chunks
         print("All modified source files are covered by tests.")
 
     if test_files:
-        print("Running {} individual test files.".format(len(test_files)))
+        print(f"Running {len(test_files)} individual test files.")
     else:
         print("Could not find any individual tests to run.")
 
     if test_chunks:
-        print("Running {} test chunks.".format(len(test_chunks)))
+        print(f"Running {len(test_chunks)} test chunks.")
         for platform, chunk in test_chunks:
             print("\t", platform, chunk)
     else:
@@ -395,6 +385,7 @@ def run(
     message="{msg}",
     closed_tree=False,
     push_to_lando=False,
+    push_to_vcs=False,
 ):
     setup_globals()
     download_coverage_mapping(vcs.base_ref)
@@ -430,11 +421,7 @@ def run(
     print("Found " + test_count_message)
 
     # Set the test paths to be run by setting MOZHARNESS_TEST_PATHS.
-    path_env = {
-        "MOZHARNESS_TEST_PATHS": six.ensure_text(
-            json.dumps(resolve_tests_by_suite(test_files))
-        )
-    }
+    path_env = {"MOZHARNESS_TEST_PATHS": json.dumps(resolve_tests_by_suite(test_files))}
     try_config_params.setdefault("try_task_config", {}).setdefault("env", {}).update(
         path_env
     )
@@ -449,4 +436,5 @@ def run(
         dry_run=dry_run,
         closed_tree=closed_tree,
         push_to_lando=push_to_lando,
+        push_to_vcs=push_to_vcs,
     )

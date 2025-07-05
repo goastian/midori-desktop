@@ -1,0 +1,87 @@
+# -*- Mode: python; indent-tabs-mode: nil; tab-width: 40 -*-
+# vim: set filetype=python:
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+
+@depends(
+    "LDFLAGS",
+    linker_flags,
+    linker_ldflags,
+    pack_relative_relocs_flags,
+    android_flags,
+    thumb_option,
+)
+@imports(_from="mozbuild.shellutil", _import="split")
+def os_ldflags(
+    env_ldflags,
+    linker_flags,
+    linker_ldflags,
+    pack_relative_relocs_flags,
+    android_flags,
+    thumb_option,
+):
+    flags = []
+    if android_flags:
+        flags.extend(android_flags.ldflags)
+    if thumb_option:
+        flags.extend(thumb_option)
+    if env_ldflags:
+        flags.extend(split(env_ldflags[0]))
+    flags.extend(linker_flags.ldflags)
+    if linker_ldflags:
+        flags.extend(linker_ldflags)
+    if pack_relative_relocs_flags:
+        flags.extend(pack_relative_relocs_flags)
+    return flags
+
+
+set_config("OS_LDFLAGS", os_ldflags)
+
+
+set_config("MOZ_OPTIMIZE_FLAGS", moz_optimize_flags, when=~js_build)
+
+
+@depends(
+    linker_optimize_flags,
+    "MOZ_OPTIMIZE_FLAGS",
+    lto,
+    c_compiler,
+)
+@imports(_from="mozbuild.shellutil", _import="split")
+def moz_optimize_ldflags(linker_optimize_flags, env_optimize_flags, lto, c_compiler):
+    flags = []
+    if linker_optimize_flags:
+        flags += linker_optimize_flags.ldflags
+
+    if env_optimize_flags:
+        flags += split(env_optimize_flags[0])
+
+    # When using llvm-based LTO, non numeric optimization levels are
+    # not supported by the linker, so force the linker to use -O2 (
+    # which doesn't influence the level compilation units are actually
+    # compiled at).
+    if lto and lto.enabled and c_compiler.type == "clang":
+        flags = ["-O2" if flag in ("-Oz", "-Os") else flag for flag in flags]
+    return flags
+
+
+set_config("MOZ_OPTIMIZE_LDFLAGS", moz_optimize_ldflags)
+
+
+@depends(
+    try_compile(
+        includes=["stdio.h"],
+        body='puts("demat");',
+        flags=moz_optimize_flags,
+        language="C",
+        check_msg="for valid C compiler optimization flags",
+    ),
+    moz_optimize_flags,
+    when=moz_optimize,
+)
+@imports(_from="mozbuild.shellutil", _import="quote")
+def check_optimization_flags(check_result, moz_optimize_flags):
+    if not check_result:
+        die(f"Invalid C compiler optimization flags: {quote(*moz_optimize_flags)}")

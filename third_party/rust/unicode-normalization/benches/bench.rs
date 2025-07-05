@@ -7,9 +7,9 @@ use std::fs;
 use test::Bencher;
 use unicode_normalization::UnicodeNormalization;
 
-const ASCII: &'static str = "all types of normalized";
-const NFC: &'static str = "Introducci\u{00f3}n a Unicode.pdf";
-const NFD: &'static str = "Introduccio\u{0301}n a Unicode.pdf";
+const ASCII: &str = "all types of normalized";
+const NFC: &str = "Introducci\u{00f3}n a Unicode.pdf";
+const NFD: &str = "Introduccio\u{0301}n a Unicode.pdf";
 
 #[bench]
 fn bench_is_nfc_ascii(b: &mut Bencher) {

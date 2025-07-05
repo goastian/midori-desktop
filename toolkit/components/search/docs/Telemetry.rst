@@ -43,6 +43,9 @@ Keyed Scalars
 browser.searchinit.engine_invalid_webextension
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+  NOTE: This telemetry is no longer reported to legacy Telemetry. See changelog
+  below.
+
   Records the WebExtension ID of a search engine where the saved search engine
   settings do not match the WebExtension.
 
@@ -51,6 +54,15 @@ browser.searchinit.engine_invalid_webextension
   1. Associated WebExtension is not installed.
   2. Associated WebExtension is disabled.
   3. The submission URL of the associated WebExtension is different to that of the saved settings.
+
+  Changelog
+    Firefox 134
+      Legacy ``browser.searchinit.engine_invalid_webextension`` telemetry
+      mirrored to Glean. (See bug 1927093)
+
+    Firefox 139
+      Legacy ``browser.searchinit.engine_invalid_webextension`` telemetry
+      removed completely. (See bug 1958170)
 
 Histograms
 ----------
@@ -77,18 +89,28 @@ systems:
 
 Glean Telemetry
 ---------------
-`These search service fields are documented via Glean dictionary <https://dictionary.telemetry.mozilla.org/apps/firefox_desktop?page=1&search=search.service>`__.
+`These search service fields are documented via Glean dictionary <https://dictionary.telemetry.mozilla.org/apps/firefox_desktop?search=tags%3A%22Firefox%20%3A%3A%20Search%22>`__.
 
 search.service.startup_time
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   The time duration it takes for the search service to start up.
 
-search.service.initializaitonStatus
+search.service.initializationStatus
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
   A labeled counter for the type of initialization statuses that can occur on
   start up. Labels include: ``failedSettings``, ``failedFetchEngines``,
-  ``failedLoadEngines``, ``success``.
+  ``failedLoadEngines``, ``failedLoadSettingsAddonManager``, ``settingsCorrupt``,
+  ``success``.
 
   A counter for initialization successes on start up.
+
+search.suggestions.*
+~~~~~~~~~~~~~~~~~~~~
+
+  Labeled counters to count the number of suggestion requests sent from app-
+  provided search engines. There are three separate counters for the number of
+  successful, aborted and failed requests. Aborted requests can happen when
+  users type faster than the search engine responds and failed requests when
+  there is an HTTP or network error.

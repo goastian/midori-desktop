@@ -209,7 +209,8 @@ async def download_builds(verifyConfig):
                     continue
                 uri = uri.replace("%locale%", locale)
                 # /ja-JP-mac/ locale is replaced with /ja/ for updater packages
-                uri = uri.replace("ja-JP-mac", "ja")
+                if reference == "updater_package":
+                    uri = uri.replace("ja-JP-mac", "ja")
                 updaterUrls.add(f"{ftpServerFrom}{uri}")
 
     log.info(f"About to download {len(updaterUrls)} updater packages")
@@ -341,12 +342,10 @@ async def _download_from_config(verifyConfig):
 
     # Log cache
     log.info("Cache index urls.list contents:")
-    with open(cacheIndexPath, "r") as cache:
+    with open(cacheIndexPath) as cache:
         for ln, url in enumerate(cache.readlines()):
             line = url.replace("\n", "")
             log.info(f"Line {ln+1}: {line}")
-
-    return None
 
 
 def download_from_config(verifyConfig):

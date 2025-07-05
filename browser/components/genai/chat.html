@@ -1,0 +1,51 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this file,
+   - You can obtain one at http://mozilla.org/MPL/2.0/. -->
+<!doctype html>
+<html xmlns="http://www.w3.org/1999/xhtml" role="document">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src resource: chrome:; object-src 'none'; img-src data: chrome:;"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <title data-l10n-id="genai-chatbot-title"></title>
+    <link rel="localization" href="branding/brand.ftl" />
+    <link rel="localization" href="browser/newtab/onboarding.ftl" />
+    <link rel="localization" href="browser/genai.ftl" />
+    <link
+      rel="stylesheet"
+      href="chrome://browser/content/sidebar/sidebar.css"
+    />
+    <link rel="stylesheet" href="chrome://global/skin/in-content/common.css" />
+    <link
+      rel="stylesheet"
+      href="chrome://browser/content/aboutwelcome/aboutwelcome.css"
+    />
+    <link rel="stylesheet" href="chrome://browser/content/genai/chat.css" />
+    <script src="chrome://global/content/vendor/react.js"></script>
+    <script src="chrome://global/content/vendor/react-dom.js"></script>
+    <script src="chrome://browser/content/contentTheme.js"></script>
+    <script src="chrome://browser/content/genai/chat.js"></script>
+  </head>
+  <body>
+    <div id="header">
+      <select data-l10n-id="genai-header-provider-menu" id="provider"></select>
+      <moz-button
+        data-l10n-id="genai-header-options-button"
+        iconsrc="chrome://global/skin/icons/more.svg"
+        aria-haspopup="menu"
+        aria-expanded="false"
+        id="header-more"
+        type="icon ghost"
+      ></moz-button>
+      <moz-button
+        data-l10n-id="genai-header-close-button"
+        iconsrc="chrome://global/skin/icons/close.svg"
+        id="header-close"
+        type="icon ghost"
+      ></moz-button>
+    </div>
+  </body>
+</html>

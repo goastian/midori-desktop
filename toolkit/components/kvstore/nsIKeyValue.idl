@@ -5,6 +5,8 @@
 #include "nsISupports.idl"
 #include "nsIVariant.idl"
 
+interface nsIKeyValueImporter;
+interface nsIKeyValueDatabaseImportOptions;
 interface nsIKeyValueDatabaseCallback;
 interface nsIKeyValueEnumeratorCallback;
 interface nsIKeyValuePairCallback;
@@ -16,7 +18,7 @@ interface nsIKeyValuePair;
  * The nsIKeyValue* interfaces provide a simple, asynchronous API to a key/value
  * storage engine.  Basic put/get/has/delete operations are supported, as is
  * enumeration of key/value pairs and the use of multiple named databases within
- * a single storage file.  Operations have ACID semantics.
+ * a single storage directory.  Operations have ACID semantics.
  *
  * This API does not (yet) support transactions, so it will not be appropriate
  * for all use cases.  Extension of this API to support transactions is tracked
@@ -44,20 +46,159 @@ interface nsIKeyValueService : nsISupports {
      * at the specified path and with the given name.
      *
      * The service supports multiple named databases at the same path
-     * (i.e. within the same storage file), so you can call this method
+     * (i.e. within the same storage directory), so you can call this method
      * multiple times with the same path and different names to retrieve
      * multiple databases stored in the same location on disk.
      */
     void getOrCreate(
         in nsIKeyValueDatabaseCallback callback,
-        in AUTF8String path,
+        in AString path,
         in AUTF8String name);
 
     void getOrCreateWithOptions(
         in nsIKeyValueDatabaseCallback callback,
-        in AUTF8String path,
+        in AString path,
         in AUTF8String name,
         [optional] in nsIKeyValueService_RecoveryStrategy recoveryStrategy);
+
+    /**
+     * Create an importer that copies one or more databases of the given type
+     * into the destination storage directory at the specified path.
+     */
+    nsIKeyValueImporter createImporter(
+        in AUTF8String type,
+        in AString path);
+};
+
+/** Configures a directory containing one or more databases to import. */
+[scriptable, builtinclass, rust_sync, uuid(ed0980f5-64e8-4ca6-af97-b49a766fe016)]
+interface nsIKeyValueImportSourceSpec : nsISupports {
+    /** The path to this directory. */
+    readonly attribute AString path;
+
+    /**
+     * Configure the importer to import all key-value pairs
+     * from a named database in this directory.
+     *
+     * `addDatabase()` may be called multiple times, if you want to
+     * import multiple databases. Duplicate `addDatabase()` calls are
+     * also allowed, and will import all key-value pairs from that
+     * database again. The importer will import named databases
+     * in order of `addDatabase()` calls.
+     *
+     * Throws if `addAllDatabases()` was already called on this spec.
+     */
+    nsIKeyValueDatabaseImportOptions addDatabase(in AUTF8String name);
+
+    /**
+     * Configure the importer to import all key-value pairs
+     * from all databases in this directory.
+     *
+     * Throws if `addDatabase()` or `addAllDatabases()`
+     * was already called on this spec.
+     */
+    nsIKeyValueDatabaseImportOptions addAllDatabases();
+};
+
+/**
+ * Imports key-value pairs from databases of a different type.
+ *
+ * An importer can be configured to import all or some databases, from
+ * one or more storage directories.
+ *
+ * To import databases of a different type that are already in the destination
+ * directory, call `importer.addDatabase()` or `importer.addAllDatabases()`.
+ * To import databases of a different type from another storage directory, call
+ * `importer.addPath()` to get a spec for that directory, then call
+ * `spec.addDatabase()` or `spec.addAllDatabases()`.
+ *
+ * After you've configured the importer, call `importer.import()` to
+ * import the databases.
+ *
+ * Imports are atomic for all databases in a storage directory, but not
+ * across multiple directories. That is:
+ *
+ *   - Either all configured databases in a storage directory will be
+ *     imported successfully, or none will.
+ *   - If the importer successfully imports databases from some directories,
+ *     then encounters an error in another directory, the successfully
+ *     imported databases will remain.
+ */
+[scriptable, builtinclass, rust_sync, uuid(470d71c0-d601-4867-8c09-810af7ffa67e)]
+interface nsIKeyValueImporter : nsIKeyValueImportSourceSpec {
+    /**
+     * The action to take when a key already exists and has a different value.
+     */
+    cenum ConflictPolicy : 8 {
+        /**
+         * Fail the import with an error, and roll back any key-value pairs
+         * that have been imported so far.
+         */
+        ERROR_ON_CONFLICT,
+
+        /** Keep the existing value for the key, and continue the import. */
+        IGNORE_ON_CONFLICT,
+
+        /**
+         * Overwrite the existing value for the key with the value from
+         * the other database, and continue the import.
+         */
+        REPLACE_ON_CONFLICT,
+    };
+
+    /** The action to take after a successful import. */
+    cenum CleanupPolicy : 8 {
+        /** Keep all key-value pairs in the other database. */
+        KEEP_AFTER_IMPORT,
+
+        /** Delete all key-value pairs from the other database. */
+        DELETE_AFTER_IMPORT,
+    };
+
+    /** The type of databases that this importer will import. */
+    readonly attribute AUTF8String type;
+
+    /**
+     * Configure the importer to import databases from another
+     * storage directory.
+     *
+     * `addPath()` may be called multiple times, if you want to
+     * import databases from multiple directories. Duplicate `addPath()`
+     * calls are also allowed; you can use this to import databases from
+     * different directories in a specific order. The importer will import
+     * databases in order of `addPath()` calls.
+     */
+    nsIKeyValueImportSourceSpec addPath(in AString path);
+
+    /** Import all key-value pairs from all configured databases. */
+    void import(in nsIKeyValueVoidCallback callback);
+};
+
+/**
+ * Configures the import behavior for one or more databases.
+ *
+ * All `nsIKeyValueDatabaseImportOptions` methods mutate and return the same
+ * options object, to allow for method chaining.
+ */
+[scriptable, builtinclass, rust_sync, uuid(8e983362-fb16-4811-b1fe-8f9921932fd5)]
+interface nsIKeyValueDatabaseImportOptions : nsISupports {
+    /**
+     * Set the action to take when a key in the source database already exists
+     * and has a different value in the destination database.
+     *
+     * Defaults to `ConflictPolicy::ERROR_ON_CONFLICT` if not set.
+     */
+    nsIKeyValueDatabaseImportOptions setConflictPolicy(
+        in nsIKeyValueImporter_ConflictPolicy conflictPolicy);
+
+    /**
+     * Set the cleanup behavior for successfully imported pairs in the
+     * source database.
+     *
+     * Defaults to `CleanupPolicy::KEEP_AFTER_IMPORT` if not set.
+     */
+    nsIKeyValueDatabaseImportOptions setCleanupPolicy(
+        in nsIKeyValueImporter_CleanupPolicy cleanupPolicy);
 };
 
 /**
@@ -69,6 +210,21 @@ interface nsIKeyValueService : nsISupports {
  */
 [scriptable, builtinclass, rust_sync, uuid(c449398e-174c-425b-8195-da6aa0ccd9a5)]
 interface nsIKeyValueDatabase : nsISupports {
+    /**
+     * Determine whether or not the database is empty.
+     */
+    void isEmpty(in nsIKeyValueVariantCallback callback);
+
+    /**
+     * Count the number of key/value pairs in the database.
+     */
+    void count(in nsIKeyValueVariantCallback callback);
+
+    /**
+     * Calculate the size, in bytes, of all keys and values in the database.
+     */
+    void size(in nsIKeyValueVariantCallback callback);
+
     /**
      * Write the specified key/value pair to the database.
      */
@@ -136,6 +292,20 @@ interface nsIKeyValueDatabase : nsISupports {
         in AUTF8String key);
 
     /**
+     * Remove all key/value pairs in a lexicographical range from the database,
+     * including the "from" key and excluding the "to" key.
+     *
+     * If either key is omitted, the range extends to the first or last key
+     * in the database. If both keys are omitted, `deleteRange()` behaves
+     * the same as `clear()`. If the "from" key is greater than the "to" key,
+     * `deleteRange()` does nothing.
+     */
+    void deleteRange(
+        in nsIKeyValueVoidCallback callback,
+        [optional] in AUTF8String fromKey,
+        [optional] in AUTF8String toKey);
+
+    /**
      * Clear all the key/value pairs from the database.
      */
     void clear(in nsIKeyValueVoidCallback callback);
@@ -146,12 +316,26 @@ interface nsIKeyValueDatabase : nsISupports {
      * less than the "to" key (exclusive) sorted lexicographically.
      *
      * If either key is omitted, the range extends to the first and/or last key
-     * in the database.
+     * in the database. If the "from" key is greater than the "to" key,
+     * no pairs are enumerated.
      */
     void enumerate(
         in nsIKeyValueEnumeratorCallback callback,
         [optional] in AUTF8String fromKey,
         [optional] in AUTF8String toKey);
+
+    /**
+     * Close the database.
+     *
+     * Subsequent attempts to read from or write to the database will fail.
+     * If the database is already closed, closing it again succeeds
+     * without effect.
+     *
+     * This operation always succeeds if the implementation supports
+     * closing a database (that is, it's not possible for a database to
+     * fail to close), and always fails if it doesn't.
+     */
+    void close(in nsIKeyValueVoidCallback callback);
 };
 
 /**

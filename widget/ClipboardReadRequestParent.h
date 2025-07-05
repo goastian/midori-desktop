@@ -18,20 +18,23 @@ class ClipboardReadRequestParent final : public PClipboardReadRequestParent {
 
  public:
   ClipboardReadRequestParent(ContentParent* aManager,
-                             nsIAsyncGetClipboardData* aAsyncGetClipboardData)
-      : mManager(aManager), mAsyncGetClipboardData(aAsyncGetClipboardData) {}
+                             nsIClipboardDataSnapshot* aClipboardDataSnapshot)
+      : mManager(aManager), mClipboardDataSnapshot(aClipboardDataSnapshot) {}
 
   NS_INLINE_DECL_REFCOUNTING(ClipboardReadRequestParent, override)
 
   // PClipboardReadRequestParent
   IPCResult RecvGetData(const nsTArray<nsCString>& aFlavors,
                         GetDataResolver&& aResolver);
+  IPCResult RecvGetDataSync(
+      const nsTArray<nsCString>& aFlavors,
+      dom::IPCTransferableDataOrError* aTransferableDataOrError);
 
  private:
   ~ClipboardReadRequestParent() = default;
 
   RefPtr<ContentParent> mManager;
-  nsCOMPtr<nsIAsyncGetClipboardData> mAsyncGetClipboardData;
+  nsCOMPtr<nsIClipboardDataSnapshot> mClipboardDataSnapshot;
 };
 
 }  // namespace mozilla

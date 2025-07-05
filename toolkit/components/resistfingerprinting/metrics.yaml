@@ -10,13 +10,14 @@ $tags:
   - 'Core :: Privacy: Anti-Tracking'
 
 fingerprinting.protection:
-  canvas_noise_calculate_time:
+  canvas_noise_calculate_time_2:
     type: timing_distribution
-    time_unit: millisecond
+    time_unit: nanosecond
     description: >
       Counts how long to generate canvas random noises.
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1838856
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1933797
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1838856#c1
     notification_emails:
@@ -24,7 +25,6 @@ fingerprinting.protection:
       - tom@mozilla.com
       - tschuster@mozilla.com
     expires: never
-    telemetry_mirror: FINGERPRINTING_PROTECTION_CANVAS_NOISE_CALCULATE_TIME_MS
 
 
 characteristics:
@@ -87,25 +87,6 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879156
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879156#c4
-    expires: never
-    data_sensitivity:
-      - technical
-
-  video_dynamic_range:
-    type: boolean
-    description: >
-      What LookAndFeel(VideoDynamicRange) reports. Note that CSSVideoDynamicRange
-      has an additional dependency on Color Depth.
-    lifetime: application
-    send_in_pings:
-      - user-characteristics
-    notification_emails:
-      - tom@mozilla.com
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879624
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879624#c4
     expires: never
     data_sensitivity:
       - technical
@@ -188,44 +169,6 @@ characteristics:
     unit: enum mozilla::ColorScheme value
     description: >
       The Color Scheme used for Content, from ContentPrefs() Preference Sheet.
-    lifetime: application
-    send_in_pings:
-      - user-characteristics
-    notification_emails:
-      - tom@mozilla.com
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879624
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879624#c4
-    expires: never
-    data_sensitivity:
-      - technical
-
-  color_gamut:
-    type: quantity
-    unit: enum dom::ScreenColorGamut value
-    description: >
-      The Color Gamut reported by CSS
-    lifetime: application
-    send_in_pings:
-      - user-characteristics
-    notification_emails:
-      - tom@mozilla.com
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879624
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879624#c4
-    expires: never
-    data_sensitivity:
-      - technical
-
-  color_depth:
-    type: quantity
-    unit: bits
-    description: >
-      The Color Depth reported by CSS
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -422,63 +365,6 @@ characteristics:
       # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
       # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
       - highly_sensitive
-
-  screen_width:
-    type: quantity
-    unit: pixels
-    description: >
-      Width of the primary screen in pixels.
-    lifetime: application
-    send_in_pings:
-      - user-characteristics
-    notification_emails:
-      - tom@mozilla.com
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1881749
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1881749#c5
-    expires: never
-    data_sensitivity:
-      - technical
-
-  screen_orientation:
-    type: quantity
-    unit: enum hal::ScreenOrientation value
-    description: >
-      Orientation of the primary screen.
-    lifetime: application
-    send_in_pings:
-      - user-characteristics
-    notification_emails:
-      - tom@mozilla.com
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1881749
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1881749#c5
-    expires: never
-    data_sensitivity:
-      - technical
-
-  screen_height:
-    type: quantity
-    unit: pixels
-    description: >
-      Height of the primary screen in pixels.
-    lifetime: application
-    send_in_pings:
-      - user-characteristics
-    notification_emails:
-      - tom@mozilla.com
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1881749
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1881749#c5
-    expires: never
-    data_sensitivity:
-      - technical
 
   processor_count:
     type: quantity
@@ -1048,9 +934,9 @@ characteristics:
       - interaction
 
   canvasdata1:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a canvas. The image is a simple organge box and used as a control image
+      The sha1 hash of an image rendered on a canvas. The image is a simple organge box and used as a control image
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1060,17 +946,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
   canvasdata2:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a canvas. The image is a bordered triage, and used to test point interpolation
+      The sha1 hash of an image rendered on a canvas. The image is a bordered triage, and used to test point interpolation
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1080,17 +964,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
   canvasdata3:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a canvas. The image is a stretched photographic image, used to test image operations.
+      The sha1 hash of an image rendered on a canvas. The image is a stretched photographic image, used to test image operations.
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1100,17 +982,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
   canvasdata4:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a canvas. The image is two rotated, semi-transparenct overlapping squares, used to test transparency and point interpolation.
+      The sha1 hash of an image rendered on a canvas. The image is two rotated, semi-transparenct overlapping squares, used to test transparency and point interpolation.
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1120,17 +1000,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
   canvasdata5:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a canvas. The image is a local font rendered normally.
+      The sha1 hash of an image rendered on a canvas. The image is a local font rendered normally.
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1140,17 +1018,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
   canvasdata6:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a canvas. The image is a local font rendered with italics, rotation, and shadow-blur.
+      The sha1 hash of an image rendered on a canvas. The image is a local font rendered with italics, rotation, and shadow-blur.
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1160,17 +1036,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
   canvasdata7:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a canvas. The image is a system-ui font rendered normally.
+      The sha1 hash of an image rendered on a canvas. The image is a system-ui font rendered normally.
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1180,17 +1054,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
   canvasdata8:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a canvas. The image is a system-ui font rendered with italics, rotation, and shadow-blur.
+      The sha1 hash of an image rendered on a canvas. The image is a system-ui font rendered with italics, rotation, and shadow-blur.
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1200,17 +1072,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
   canvasdata9:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a canvas. The image is a font shipped with Firefox rendered normally.
+      The sha1 hash of an image rendered on a canvas. The image is a font shipped with Firefox rendered normally.
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1220,17 +1090,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
   canvasdata10:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a canvas. The image is a font shipped with Firefox rendered with italics, rotation, and shadow-blur.
+      The sha1 hash of an image rendered on a canvas. The image is a font shipped with Firefox rendered with italics, rotation, and shadow-blur.
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1240,17 +1108,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
   canvasdata11_webgl:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a WebGL canvas (instead of Canvas2D). IT is a RGB gradient cube.
+      The sha1 hash of an image rendered on a WebGL canvas (instead of Canvas2D). IT is a RGB gradient cube.
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1260,17 +1126,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
   canvasdata12_fingerprintjs1:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a canvas, it is a copy of fingerprintjs' text canvas
+      The sha1 hash of an image rendered on a canvas, it is a copy of fingerprintjs' text canvas
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1280,17 +1144,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
   canvasdata13_fingerprintjs2:
-    type: text
+    type: string
     description: >
-      The base64 encoded form of an image rendered on a canvas, it is a copy of fingerprintjs' geometry canvas
+      The sha1 hash of an image rendered on a canvas, it is a copy of fingerprintjs' geometry canvas
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1300,12 +1162,261 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1894958#c11
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
+
+  canvasdata1software:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a canvas. The image is a simple organge box and used as a control image
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvasdata2software:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a canvas. The image is a bordered triage, and used to test point interpolation
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvasdata3software:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a canvas. The image is a stretched photographic image, used to test image operations.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvasdata4software:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a canvas. The image is two rotated, semi-transparenct overlapping squares, used to test transparency and point interpolation.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvasdata5software:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a canvas. The image is a local font rendered normally.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvasdata6software:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a canvas. The image is a local font rendered with italics, rotation, and shadow-blur.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvasdata7software:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a canvas. The image is a system-ui font rendered normally.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvasdata8software:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a canvas. The image is a system-ui font rendered with italics, rotation, and shadow-blur.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvasdata9software:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a canvas. The image is a font shipped with Firefox rendered normally.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvasdata10software:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a canvas. The image is a font shipped with Firefox rendered with italics, rotation, and shadow-blur.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvasdata11_webglsoftware:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a WebGL canvas (instead of Canvas2D). IT is a RGB gradient cube.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvasdata12_fingerprintjs1software:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a canvas, it is a copy of fingerprintjs' text canvas
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvasdata13_fingerprintjs2software:
+    type: string
+    description: >
+      The sha1 hash of an image rendered on a canvas, it is a copy of fingerprintjs' geometry canvas
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900828#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvas_dpr:
+    type: string
+    description: >
+      The device pixel ratio of the canvas rendering context
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1945296
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1945296#c1
+    expires: never
+    data_sensitivity:
+      - technical
 
   font_size_monospace_modified:
     type: quantity
@@ -1449,42 +1560,6 @@ characteristics:
     data_sensitivity:
       - interaction
 
-  font_name_list_cursive_modified:
-    type: quantity
-    unit: int
-    description: >
-      The number of modified font.name-list.cursive. prefs.
-    lifetime: application
-    send_in_pings:
-      - user-characteristics
-    notification_emails:
-      - tom@mozilla.com
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1887658
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1887658#c4
-    expires: never
-    data_sensitivity:
-      - interaction
-
-  font_name_list_emoji_modified:
-    type: quantity
-    unit: int
-    description: >
-      The number of modified font.name-list.cursive. prefs.
-    lifetime: application
-    send_in_pings:
-      - user-characteristics
-    notification_emails:
-      - tom@mozilla.com
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1887658
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1887658#c4
-    expires: never
-    data_sensitivity:
-      - interaction
-
   font_name_list_emoji_modified:
     type: boolean
     description: >
@@ -1501,6 +1576,1082 @@ characteristics:
     expires: never
     data_sensitivity:
       - interaction
+
+  gl_extensions:
+    type: text
+    description: >
+      The list of OpenGL extensions supported by the user's system.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_extensions_raw:
+    type: text
+    description: >
+      The raw list of OpenGL extensions supported by the user's system.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_renderer:
+    type: string
+    description: >
+      The OpenGL renderer string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_renderer_raw:
+    type: string
+    description: >
+      The raw OpenGL renderer string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_vendor:
+    type: string
+    description: >
+      The OpenGL vendor string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_vendor_raw:
+    type: string
+    description: >
+      The raw OpenGL vendor string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_version_raw:
+    type: string
+    description: >
+      The raw OpenGL version string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_fragment_shader:
+    type: string
+    description: >
+      Hash of the transformed source of the fragment shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_vertex_shader:
+    type: string
+    description: >
+      Hash of the transformed source of the vertex shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_minimal_source:
+    type: text
+    description: >
+      Transformed source of the minimal shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_params_extensions:
+    type: text
+    description: >
+      The list of GL parameters of the extensions.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_params:
+    type: text
+    description: >
+      The list of GL parameters of GL1.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_precision_fragment:
+    type: text
+    description: >
+      Precisions of the fragment shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_precision_vertex:
+    type: text
+    description: >
+      Precisions of the vertex shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c5
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_context_type:
+    type: string
+    description: >
+      The type of the GL context (EGL, GLX, WGL, etc).
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c17
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_extensions_software:
+    type: text
+    description: >
+      The list of OpenGL extensions supported by the user's system.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_extensions_raw_software:
+    type: text
+    description: >
+      The raw list of OpenGL extensions supported by the user's system.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_renderer_software:
+    type: string
+    description: >
+      The OpenGL renderer string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_renderer_raw_software:
+    type: string
+    description: >
+      The raw OpenGL renderer string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_vendor_software:
+    type: string
+    description: >
+      The OpenGL vendor string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_vendor_raw_software:
+    type: string
+    description: >
+      The raw OpenGL vendor string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_version_raw_software:
+    type: string
+    description: >
+      The raw OpenGL version string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_fragment_shader_software:
+    type: string
+    description: >
+      Hash of the transformed source of the fragment shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_vertex_shader_software:
+    type: string
+    description: >
+      Hash of the transformed source of the vertex shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl_minimal_source_software:
+    type: text
+    description: >
+      Transformed source of the minimal shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_params_extensions_software:
+    type: text
+    description: >
+      The list of GL parameters of the extensions.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_params_software:
+    type: text
+    description: >
+      The list of GL parameters of GL1.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_precision_fragment_software:
+    type: text
+    description: >
+      Precisions of the fragment shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_precision_vertex_software:
+    type: text
+    description: >
+      Precisions of the vertex shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c15
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl_context_type_software:
+    type: string
+    description: >
+      The type of the GL context (EGL, GLX, WGL, etc).
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1922506#c17
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_extensions:
+    type: text
+    description: >
+      The list of OpenGL extensions supported by the user's system.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_extensions_raw:
+    type: text
+    description: >
+      The raw list of OpenGL extensions supported by the user's system.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_renderer:
+    type: string
+    description: >
+      The OpenGL renderer string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_renderer_raw:
+    type: string
+    description: >
+      The raw OpenGL renderer string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_vendor:
+    type: string
+    description: >
+      The OpenGL vendor string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_vendor_raw:
+    type: string
+    description: >
+      The raw OpenGL vendor string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_version_raw:
+    type: string
+    description: >
+      The raw OpenGL version string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_fragment_shader:
+    type: string
+    description: >
+      Hash of the transformed source of the fragment shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_vertex_shader:
+    type: string
+    description: >
+      Hash of the transformed source of the vertex shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_minimal_source:
+    type: text
+    description: >
+      Transformed source of the minimal shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_params_extensions:
+    type: text
+    description: >
+      The list of GL parameters of the extensions.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_params:
+    type: text
+    description: >
+      The list of GL parameters of GL2.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_precision_fragment:
+    type: text
+    description: >
+      Precisions of the fragment shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_precision_vertex:
+    type: text
+    description: >
+      Precisions of the vertex shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_context_type:
+    type: string
+    description: >
+      The type of the GL context (EGL, GLX, WGL, etc).
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_extensions_software:
+    type: text
+    description: >
+      The list of OpenGL extensions supported by the user's system.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_extensions_raw_software:
+    type: text
+    description: >
+      The raw list of OpenGL extensions supported by the user's system.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_renderer_software:
+    type: string
+    description: >
+      The OpenGL renderer string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_renderer_raw_software:
+    type: string
+    description: >
+      The raw OpenGL renderer string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_vendor_software:
+    type: string
+    description: >
+      The OpenGL vendor string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_vendor_raw_software:
+    type: string
+    description: >
+      The raw OpenGL vendor string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_version_raw_software:
+    type: string
+    description: >
+      The raw OpenGL version string.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_fragment_shader_software:
+    type: string
+    description: >
+      Hash of the transformed source of the fragment shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_vertex_shader_software:
+    type: string
+    description: >
+      Hash of the transformed source of the vertex shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  gl2_minimal_source_software:
+    type: text
+    description: >
+      Transformed source of the minimal shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_params_extensions_software:
+    type: text
+    description: >
+      The list of GL parameters of the extensions.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_params_software:
+    type: text
+    description: >
+      The list of GL parameters of GL2.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_precision_fragment_software:
+    type: text
+    description: >
+      Precisions of the fragment shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_precision_vertex_software:
+    type: text
+    description: >
+      Precisions of the vertex shader.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  gl2_context_type_software:
+    type: string
+    description: >
+      The type of the GL context (EGL, GLX, WGL, etc).
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943627#c1
+    expires: never
+    data_sensitivity:
+      - technical
 
   prefs_network_cookie_cookiebehavior: # network.cookie.cookieBehavior
     type: quantity
@@ -1520,10 +2671,11 @@ characteristics:
     data_sensitivity:
       - interaction
 
-  voices:
-    type: text
+  voices_count:
+    type: quantity
+    unit: int
     description: >
-      Available speechSynthesis voices.
+      Number of speechSynthesis voices available to the user.
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1531,14 +2683,143 @@ characteristics:
       - tom@mozilla.com
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1886387
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1886387#c4
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  voices_local_count:
+    type: quantity
+    unit: int
+    description: >
+      Number of local speechSynthesis voices available to the user.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  voices_default:
+    type: string
+    description: >
+      The default speechSynthesis voice.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  voices_sample:
+    type: text
+    description: >
+      Names of 5 sample speechSynthesis voices.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c3
     expires: never
     data_sensitivity:
       # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
       # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
       - highly_sensitive
+
+  voices_sha1:
+    type: text
+    description: >
+      SHA1 hash of all the voices.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c3
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  voices_all_ssdeep:
+    type: string
+    description: >
+      ssdeep hash of all speechSynthesis voices.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  voices_local_ssdeep:
+    type: string
+    description: >
+      ssdeep hash of local speechSynthesis voices.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  voices_nonlocal_ssdeep:
+    type: string
+    description: >
+      ssdeep hash of non-local speechSynthesis voices.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c3
+    expires: never
+    data_sensitivity:
+      - technical
 
   zoom_count:
     type: quantity
@@ -1559,42 +2840,6 @@ characteristics:
     data_sensitivity:
       - interaction
 
-  scalings:
-    type: string
-    description: >
-      Screen(s) scaling/zoom level
-    lifetime: application
-    send_in_pings:
-      - user-characteristics
-    notification_emails:
-      - tom@mozilla.com
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898744
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898744#c4
-    expires: never
-    data_sensitivity:
-      - interaction
-
-  pixel_depth:
-    type: quantity
-    unit: int
-    description: >
-      Screen pixel depth property
-    lifetime: application
-    send_in_pings:
-      - user-characteristics
-    notification_emails:
-      - tom@mozilla.com
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898291
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
-    expires: never
-    data_sensitivity:
-      - technical
-
   avail_height:
     type: quantity
     unit: int
@@ -1609,7 +2854,7 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1898291
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898291#c3
     expires: never
     data_sensitivity:
       - technical
@@ -1650,6 +2895,24 @@ characteristics:
     data_sensitivity:
       - interaction
 
+  screen_height:
+    type: quantity
+    unit: int
+    description: >
+      Screen height from a window.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956273
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956273#c2
+    expires: never
+    data_sensitivity:
+      - interaction
+
   outer_width:
     type: quantity
     unit: int
@@ -1686,40 +2949,20 @@ characteristics:
     data_sensitivity:
       - interaction
 
-  posx:
+  screen_width:
     type: quantity
     unit: int
     description: >
-      window.screen.left value. Provides us the position of the browser
-      and the width of any possible task/menu bar
+      Screen width from a window.
     lifetime: application
     send_in_pings:
       - user-characteristics
     notification_emails:
       - tom@mozilla.com
     bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1886177
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956273
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1886177#c4
-    expires: never
-    data_sensitivity:
-      - interaction
-
-  posy:
-    type: quantity
-    unit: int
-    description: >
-      window.screen.top value. Provides us the position of the browser
-      and the height of any possible task/menu bar
-    lifetime: application
-    send_in_pings:
-      - user-characteristics
-    notification_emails:
-      - tom@mozilla.com
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1886177
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1886177#c4
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956273#c2
     expires: never
     data_sensitivity:
       - interaction
@@ -1756,16 +2999,16 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1898291
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898291#c3
     expires: never
     data_sensitivity:
       - technical
 
-  orientation_angle:
+  camera_count:
     type: quantity
     unit: int
     description: >
-      Orientation angle of the screen
+      Number of cameras available on the device.
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1773,18 +3016,18 @@ characteristics:
       - tom@mozilla.com
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1898291
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c2
     expires: never
     data_sensitivity:
       - technical
 
-  media_devices:
-    type: text
+  microphone_count:
+    type: quantity
+    unit: int
     description: >
-      A JSON object containing the number of audio input/output, video input and
-      the number of unique group ids.
+      Number of microphones available on the device.
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1792,19 +3035,75 @@ characteristics:
       - tom@mozilla.com
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1896736
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1896736#c4
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c2
     expires: never
     data_sensitivity:
-      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
-      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
-      - highly_sensitive
+      - technical
 
-  audio_devices:
-    type: text
+  speaker_count:
+    type: quantity
+    unit: int
     description: >
-      A JSON object containing sample rate and max channel count of every audio device, and output latency of default device
+      Number of speakers available on the device.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c2
+    expires: never
+    data_sensitivity:
+      - technical
+
+  group_count:
+    type: quantity
+    unit: int
+    description: >
+      Number of device groups reported by the device.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c2
+    expires: never
+    data_sensitivity:
+      - technical
+
+  group_count_wo_speakers:
+    type: quantity
+    unit: int
+    description: >
+      Number of device groups without speakers reported by the device.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c2
+    expires: never
+    data_sensitivity:
+      - technical
+
+  audio_frames:
+    type: quantity
+    unit: int
+    description: >
+      Audio frames
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1817,7 +3116,45 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1896490#c3
     expires: never
     data_sensitivity:
-      - highly_sensitive
+      - technical
+
+  audio_rate:
+    type: quantity
+    unit: int
+    description: >
+      Audio sampling rate
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1896490
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1896490#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  audio_channels:
+    type: quantity
+    unit: int
+    description: >
+      Audio sampling rate
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1896490
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1896490#c3
+    expires: never
+    data_sensitivity:
+      - technical
 
   languages:
     type: string
@@ -1855,19 +3192,76 @@ characteristics:
     data_sensitivity:
       - interaction
 
-  media_capabilities:
+  media_capabilities_unsupported:
     type: text
     description: >
-      Which, if any, media types are not supported, and whether they can be run smoothly and power-efficiently.
+      Which, if any, media types are not supported.
     lifetime: application
     send_in_pings:
       - user-characteristics
     notification_emails:
       - tom@mozilla.com
     bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1899181
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1899181#c3
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  media_capabilities_not_smooth:
+    type: text
+    description: >
+      Which, if any, media types are not smooth.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  media_capabilities_not_efficient:
+    type: text
+    description: >
+      Which, if any, media types are not power efficient.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  media_capabilities_h264:
+    type: text
+    description: >
+      Levels of support for H264 codec.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c1
     expires: never
     data_sensitivity:
       # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
@@ -1905,17 +3299,15 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1900801
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900801#c5
     expires: never
     data_sensitivity:
       - technical
 
   pixel_ratio:
-    type: quantity
-    unit: int
+    type: string
     description: >
-      The value of window.devicePixelRatio multiplied by 100
-      to include some of the decimal places
+      The value of window.devicePixelRatio
     lifetime: application
     send_in_pings:
       - user-characteristics
@@ -1925,7 +3317,7 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1900844
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900844#c6
     expires: never
     data_sensitivity:
       - technical
@@ -1942,7 +3334,7 @@ characteristics:
     bugs:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1900082
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900082#c6
     expires: never
     data_sensitivity:
       - interaction
@@ -1960,7 +3352,1532 @@ characteristics:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1879151
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1900691
     data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=xxx
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1900691#c6
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  math_ops_fdlibm:
+    type: text
+    description: >
+      Windows only fdlibm math operation results
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1945182
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1945182#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  keyboard_layout:
+    type: string
+    description: >
+      Name of the current keyboard layout.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tihuang@mozilla.com
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1886178
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1886178
+    expires: never
+    data_sensitivity:
+      - interaction
+
+  errors:
+    type: text
+    description: >
+      Errors occured on C++ side of data collection
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1897271
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1897271#c5
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  js_errors:
+    type: text
+    description: >
+      Errors occured on JavaScript side of data collection
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1897271
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1897271#c5
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  pointer_type:
+    type: quantity
+    unit: enum mozilla::PointerCapabilities values
+    description: >
+      Pointer type of the user's primary pointer device.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901799
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901799#c2
+    expires: never
+    data_sensitivity:
+      - technical
+
+  any_pointer_type:
+    type: quantity
+    unit: enum mozilla::PointerCapabilities values
+    description: >
+      Union of pointers available. We apply union to determine
+      if the user have both coarse and fine pointer.
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901799
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901799#c2
+    expires: never
+    data_sensitivity:
+      - technical
+
+  ice_order:
+    type: quantity
+    unit: int
+    description: >
+      Unique ICE foundations occurrence count
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  ice_sd:
+    type: quantity
+    unit: int
+    description: >
+      ICE foundation discovery latency standard deviation sum multiplied by 1000
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1919090#c4
+    expires: never
+    data_sensitivity:
+      - technical
+
+  pointer_height:
+    type: quantity
+    unit: int
+    description: >
+      Height of user's pointer
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  pointer_width:
+    type: quantity
+    unit: int
+    description: >
+      Width of user's pointer
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  pointer_pressure:
+    type: string
+    description: >
+      Pressure of user's pointer
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  pointer_tangentinal_pressure:
+    type: string
+    description: >
+      Tangential Pressure of user's pointer
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  pointer_tiltx:
+    type: quantity
+    unit: int
+    description: >
+      TiltX of user's pointer
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  pointer_tilty:
+    type: quantity
+    unit: int
+    description: >
+      TiltY of user's pointer
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  pointer_twist:
+    type: quantity
+    unit: int
+    description: >
+      Twist of user's pointer
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902086#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  touch_rotation_angle:
+    type: string
+    description: >
+      Rotation angle of user's touch
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902364
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902364#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  motion_decimals:
+    type: quantity
+    unit: int
+    description: >
+      devicemotion event's decimal places count
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902671
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902364#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  orientation_decimals:
+    type: quantity
+    unit: int
+    description: >
+      deviceorientation event's decimal places count
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902671
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902364#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  orientationabs_decimals:
+    type: quantity
+    unit: int
+    description: >
+      deviceorientationabsolute event's decimal places count
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902671
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902364#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  motion_freq:
+    type: quantity
+    unit: int
+    description: >
+      devicemotion event's frequency
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902671
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902364#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  orientation_freq:
+    type: quantity
+    unit: int
+    description: >
+      deviceorientation event's frequency
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902671
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902364#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  orientationabs_freq:
+    type: quantity
+    unit: int
+    description: >
+      deviceorientationabsolute event's frequency
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902671
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1902364#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  version:
+    type: string
+    description: >
+      Firefox build version
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901260
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901260#c2
+    expires: never
+    data_sensitivity:
+      - technical
+
+  channel:
+    type: string
+    description: >
+      Firefox build channel
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901260
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901260#c2
+    expires: never
+    data_sensitivity:
+      - technical
+
+  build_date:
+    type: quantity
+    unit: int
+    description: >
+      Firefox build's build date in unix time
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901260
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901260#c2
+    expires: never
+    data_sensitivity:
+      - technical
+
+  os_name:
+    type: string
+    description: >
+      User's OS name
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901260
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901260#c2
+    expires: never
+    data_sensitivity:
+      - technical
+
+  os_version:
+    type: string
+    description: >
+      User's OS version
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901260
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901260#c2
+    expires: never
+    data_sensitivity:
+      - technical
+
+  cpu_model:
+    type: string
+    description: >
+      CPU model of the user's device
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901291
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1901291#c2
+    expires: never
+    data_sensitivity:
+      - technical
+
+  cpu_arch:
+    type: string
+    description: >
+      Arch of the user's device
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944933
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944933#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  mathml1:
+    type: string
+    description: >
+      Width of the drawn MathML element
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  mathml2:
+    type: string
+    description: >
+      Width of the drawn MathML element
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+
+  mathml3:
+    type: string
+    description: >
+      Width of the drawn MathML element
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+
+  mathml4:
+    type: string
+    description: >
+      Width of the drawn MathML element
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  mathml5:
+    type: string
+    description: >
+      Width of the drawn MathML element
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  mathml6:
+    type: string
+    description: >
+      Width of the drawn MathML element
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  mathml7:
+    type: string
+    description: >
+      Width of the drawn MathML element
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  mathml8:
+    type: string
+    description: >
+      Width of the drawn MathML element
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  mathml9:
+    type: string
+    description: >
+      Width of the drawn MathML element
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  mathml10:
+    type: string
+    description: >
+      Width of the drawn MathML element
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907654#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  monochrome:
+    type: boolean
+    description: >
+      Whether the user's device is monochrome
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907164
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907164#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  oscpu:
+    type: string
+    description: >
+      User's OS CPU reported by the navigator
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907170
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907170#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  pdf_viewer:
+    type: boolean
+    description: >
+      PDF viewer support reported by the navigator
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907170
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907170#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  platform:
+    type: string
+    description: >
+      Platform reported by the navigator
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907170
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907170#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  using_accelerated_canvas:
+    type: boolean
+    description: >
+      Whether the user's device is using accelerated canvas
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1931573
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1931573#c0
+    expires: never
+    data_sensitivity:
+      - technical
+
+  canvas_feature_status:
+    type: string
+    description: >
+      Status of and failure id (if failed) of ACCELERATED_CANVAS2D feature
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935712
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1935712#c0
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_missing_features:
+    type: string
+    description: >
+      Missing features of WebGPU as a bitset
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c2
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxtexturedimension1d:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxTextureDimension1D
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxtexturedimension2d:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxTextureDimension2D
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxtexturedimension3d:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxTextureDimension3D
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxtexturearraylayers:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxTextureArrayLayers
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxbindgroups:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxBindGroups
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxbindgroupsplusvertexbuffers:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxBindGroupsPlusVertexBuffers
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxbindingsperbindgroup:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxBindingsPerBindGroup
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxdynamicuniformbuffersperpipelinelayout:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxDynamicUniformBuffersPerPipelineLayout
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxdynamicstoragebuffersperpipelinelayout:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxDynamicStorageBuffersPerPipelineLayout
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxsampledtexturespershaderstage:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxSampledTexturesPerShaderStage
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxsamplerspershaderstage:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxSamplersPerShaderStage
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxstoragebufferspershaderstage:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxStorageBuffersPerShaderStage
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxstoragetexturespershaderstage:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxStorageTexturesPerShaderStage
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxuniformbufferspershaderstage:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxUniformBuffersPerShaderStage
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxuniformbufferbindingsize:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxUniformBufferBindingSize
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxstoragebufferbindingsize:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxStorageBufferBindingSize
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_minuniformbufferoffsetalignment:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit minUniformBufferOffsetAlignment
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_minstoragebufferoffsetalignment:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit minStorageBufferOffsetAlignment
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxvertexbuffers:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxVertexBuffers
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxbuffersize:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxBufferSize
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxvertexattributes:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxVertexAttributes
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxvertexbufferarraystride:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxVertexBufferArrayStride
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxinterstageshadervariables:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxInterStageShaderVariables
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxcolorattachments:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxColorAttachments
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxcolorattachmentbytespersample:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxColorAttachmentBytesPerSample
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxcomputeworkgroupstoragesize:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxComputeWorkgroupStorageSize
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxcomputeinvocationsperworkgroup:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxComputeInvocationsPerWorkgroup
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxcomputeworkgroupsizex:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxComputeWorkgroupSizeX
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxcomputeworkgroupsizey:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxComputeWorkgroupSizeY
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxcomputeworkgroupsizez:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxComputeWorkgroupSizeZ
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  wgpu_maxcomputeworkgroupsperdimension:
+    type: quantity
+    unit: uint
+    description: >
+      WebGPU limit maxComputeWorkgroupsPerDimension
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1939903#c3
+    expires: never
+    data_sensitivity:
+      - technical
+
+  user_agent:
+    # I don't think it can be longer than 255 characters
+    # but let's be safe
+    type: text
+    description: >
+      User agent string
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944552
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944552#c1
+    expires: never
+    data_sensitivity:
+      # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this
+      # is more like 'technical' (per the Data Review), I'm marking highly sensitive.
+      - highly_sensitive
+
+  machine_model_name:
+    type: string
+    description: >
+      Machine model name
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1952006
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1952006#c5
+    expires: never
+    data_sensitivity:
+      - stored_content
+
+  fonts_fpjs_allowlisted:
+    type: string
+    description: >
+      SHA256 of allowlisted fonts queried by FPJS
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955332
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955332#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  fonts_fpjs_nonallowlisted:
+    type: string
+    description: >
+      SHA256 of non-allowlisted fonts queried by FPJS
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955332
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955332#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  fonts_variant_a_allowlisted:
+    type: string
+    description: >
+      SHA256 of allowlisted fonts queried of variant A
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955332
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955332#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  fonts_variant_a_nonallowlisted:
+    type: string
+    description: >
+      SHA256 of non-allowlisted fonts queried of variant A
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955332
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955332#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  fonts_variant_b_allowlisted:
+    type: string
+    description: >
+      SHA256 of allowlisted fonts queried of variant B
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955332
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955332#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  fonts_variant_b_nonallowlisted:
+    type: string
+    description: >
+      SHA256 of non-allowlisted fonts queried of variant B
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955332
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1955332#c1
+    expires: never
+    data_sensitivity:
+      - technical
+
+  screens:
+    type: text
+    description: >
+      JSON string of screen properties
+    lifetime: application
+    send_in_pings:
+      - user-characteristics
+    notification_emails:
+      - tom@mozilla.com
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956273
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956273#c1
     expires: never
     data_sensitivity:
       # Text metrics are _required_ to be web_activity or highly_sensitive, so even though this

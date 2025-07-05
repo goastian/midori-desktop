@@ -107,7 +107,7 @@ class MockBarrier {
 export var MockAsyncShutdown = {
   profileBeforeChange: new MockBarrier("profileBeforeChange"),
   profileChangeTeardown: new MockBarrier("profileChangeTeardown"),
-  quitApplicationGranted: new MockBarrier("quitApplicationGranted"),
+  appShutdownConfirmed: new MockBarrier("appShutdownConfirmed"),
   // We can use the real Barrier
   Barrier: AsyncShutdown.Barrier,
 };
@@ -552,6 +552,24 @@ export var AddonTestUtils = {
     this.appInfo = lazy.getAppInfo();
   },
 
+  updateAppInfo(appInfoProps = {}) {
+    const {
+      ID = "xpcshell@tests.mozilla.org",
+      name = "XPCShell",
+      version = "1",
+      platformVersion = "1.0",
+    } = appInfoProps;
+    lazy.updateAppInfo({
+      ID,
+      name,
+      version,
+      platformVersion,
+      crashReporter: true,
+      ...appInfoProps,
+    });
+    this.appInfo = lazy.getAppInfo();
+  },
+
   getManifestURI(file) {
     if (file.isDirectory()) {
       file.leafName = "manifest.json";
@@ -895,10 +913,11 @@ export var AddonTestUtils = {
     Services.obs.notifyObservers(null, "test-load-xpi-database");
 
     // Note: the code here used to trigger observer notifications such as
-    // "quit-application-granted". That was removed because of unwanted side
-    // effects in other components. The MockAsyncShutdown triggers here are very
-    // specific and only affect the AddonManager/XPIProvider internals.
-    await MockAsyncShutdown.quitApplicationGranted.trigger();
+    // "quit-application-granted". That was changed in bug 1845352 because of
+    // unwanted side effects in other components. The MockAsyncShutdown
+    // triggers here are very specific and only affect the AddonManager/
+    // XPIProvider internals.
+    await MockAsyncShutdown.appShutdownConfirmed.trigger();
 
     // If XPIDatabase.asyncLoadDB() has been called before, then _dbPromise is
     // a promise, potentially still pending. Wait for it to settle before
@@ -1395,6 +1414,22 @@ export var AddonTestUtils = {
       };
 
       AddonManager.addInstallListener(listener);
+    });
+  },
+
+  promiseManagerEvent(event, checkFn) {
+    return new Promise(resolve => {
+      let listener = {
+        [event](...args) {
+          if (typeof checkFn == "function" && !checkFn(...args)) {
+            return;
+          }
+          AddonManager.removeManagerListener(listener);
+          resolve(args);
+        },
+      };
+
+      AddonManager.addManagerListener(listener);
     });
   },
 

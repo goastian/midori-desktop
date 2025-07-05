@@ -80,8 +80,6 @@ elif toolkit == "gtk":
 elif toolkit == "windows":
     XPIDL_SOURCES += [
         "nsIJumpListBuilder.idl",
-        "nsILegacyJumpListBuilder.idl",
-        "nsILegacyJumpListItem.idl",
         "nsIPrintSettingsWin.idl",
         "nsITaskbarOverlayIconController.idl",
         "nsITaskbarPreview.idl",
@@ -92,6 +90,10 @@ elif toolkit == "windows":
         "nsITaskbarWindowPreview.idl",
         "nsIWindowsUIUtils.idl",
         "nsIWinTaskbar.idl",
+    ]
+elif toolkit in ("android", "uikit"):
+    XPIDL_SOURCES += [
+        "nsIGeckoViewBridge.idl",
     ]
 
 if CONFIG["NS_PRINTING"]:
@@ -152,6 +154,7 @@ EXPORTS += [
     "InputData.h",
     "nsBaseAppShell.h",
     "nsBaseClipboard.h",
+    "nsBaseColorPicker.h",
     "nsBaseDragService.h",
     "nsBaseFilePicker.h",
     "nsBaseWidget.h",
@@ -202,6 +205,13 @@ EXPORTS.mozilla += [
 
 EXPORTS.mozilla.widget += [
     "CompositorWidget.h",
+    "GfxInfoDeviceVendorDefs.h",
+    "GfxInfoDriverVendorDefs.h",
+    "GfxInfoDriverVersionCmpDefs.h",
+    "GfxInfoFeatureDefs.h",
+    "GfxInfoFeatureStatusDefs.h",
+    "GfxInfoOperatingSystemDefs.h",
+    "GfxInfoWindowProtocolDefs.h",
     "IconLoader.h",
     "IMEData.h",
     "InitData.h",
@@ -249,7 +259,6 @@ UNIFIED_SOURCES += [
     "nsHTMLFormatConverter.cpp",
     "nsIBaseWindow.cpp",
     "nsIDeviceContextSpec.cpp",
-    "nsIWidgetListener.cpp",
     "nsPrimitiveHelpers.cpp",
     "nsPrintSettingsImpl.cpp",
     "nsTransferable.cpp",
@@ -312,11 +321,6 @@ SOURCES += [
     "ScreenManager.cpp",
 ]
 
-if CONFIG["MOZ_INSTRUMENT_EVENT_LOOP"]:
-    EXPORTS.mozilla += [
-        "WidgetTraceEvent.h",
-    ]
-
 EXPORTS.ipc = [
     "nsGUIEventIPC.h",
 ]
@@ -327,6 +331,11 @@ if CONFIG["MOZ_X11"] or CONFIG["MOZ_WAYLAND"]:
 if toolkit in {"gtk", "cocoa", "windows", "android", "uikit"}:
     UNIFIED_SOURCES += [
         "nsBaseFilePicker.cpp",
+    ]
+
+if toolkit in {"gtk", "cocoa", "windows"}:
+    UNIFIED_SOURCES += [
+        "nsBaseColorPicker.cpp",
     ]
 
 if toolkit in ("gtk", "windows", "cocoa", "uikit", "android"):

@@ -4,9 +4,54 @@
 
 use inherent::inherent;
 
-use super::{CommonMetricData, MetricId};
+use super::{BaseMetricId, CommonMetricData};
 
 use crate::ipc::need_ipc;
+
+#[cfg(feature = "with_gecko")]
+use super::profiler_utils::{
+    stream_identifiers_by_id, truncate_string_for_marker, TelemetryProfilerCategory,
+};
+
+#[cfg(feature = "with_gecko")]
+#[derive(serde::Serialize, serde::Deserialize, Debug)]
+struct UrlMetricMarker {
+    id: BaseMetricId,
+    val: String,
+}
+
+#[cfg(feature = "with_gecko")]
+impl gecko_profiler::ProfilerMarker for UrlMetricMarker {
+    fn marker_type_name() -> &'static str {
+        "UrlMetric"
+    }
+
+    fn marker_type_display() -> gecko_profiler::MarkerSchema {
+        use gecko_profiler::schema::*;
+        let mut schema = MarkerSchema::new(&[Location::MarkerChart, Location::MarkerTable]);
+        schema.set_tooltip_label("{marker.data.cat}.{marker.data.id} {marker.data.val}");
+        schema.set_table_label("{marker.data.cat}.{marker.data.id}: {marker.data.val}");
+        schema.add_key_label_format_searchable(
+            "cat",
+            "Category",
+            Format::UniqueString,
+            Searchable::Searchable,
+        );
+        schema.add_key_label_format_searchable(
+            "id",
+            "Metric",
+            Format::UniqueString,
+            Searchable::Searchable,
+        );
+        schema.add_key_label_format_searchable("val", "Value", Format::Url, Searchable::Searchable);
+        schema
+    }
+
+    fn stream_json_marker_data(&self, json_writer: &mut gecko_profiler::JSONWriter) {
+        stream_identifiers_by_id::<UrlMetric>(&self.id.into(), json_writer);
+        json_writer.string_property("val", self.val.as_str());
+    }
+}
 
 /// Developer-facing API for recording URL metrics.
 ///
@@ -15,26 +60,39 @@ use crate::ipc::need_ipc;
 /// registered in the metrics.yaml file.
 #[derive(Clone)]
 pub enum UrlMetric {
-    Parent(glean::private::UrlMetric),
+    Parent {
+        /// The metric's ID. Used for testing and profiler markers. URL
+        /// metrics canot be labeled, so we only store a BaseMetricId. If this
+        /// changes, this should be changed to a MetricId to distinguish
+        /// between metrics and sub-metrics.
+        id: BaseMetricId,
+        inner: glean::private::UrlMetric,
+    },
     Child(UrlMetricIpc),
 }
 #[derive(Clone, Debug)]
 pub struct UrlMetricIpc;
 
+crate::define_metric_metadata_getter!(UrlMetric, URL_MAP);
+crate::define_metric_namer!(UrlMetric, PARENT_ONLY);
+
 impl UrlMetric {
     /// Create a new Url metric.
-    pub fn new(_id: MetricId, meta: CommonMetricData) -> Self {
+    pub fn new(id: BaseMetricId, meta: CommonMetricData) -> Self {
         if need_ipc() {
             UrlMetric::Child(UrlMetricIpc)
         } else {
-            UrlMetric::Parent(glean::private::UrlMetric::new(meta))
+            UrlMetric::Parent {
+                id,
+                inner: glean::private::UrlMetric::new(meta),
+            }
         }
     }
 
     #[cfg(test)]
     pub(crate) fn child_metric(&self) -> Self {
         match self {
-            UrlMetric::Parent(_) => UrlMetric::Child(UrlMetricIpc),
+            UrlMetric::Parent { .. } => UrlMetric::Child(UrlMetricIpc),
             UrlMetric::Child(_) => panic!("Can't get a child metric from a child metric"),
         }
     }
@@ -44,7 +102,20 @@ impl UrlMetric {
 impl glean::traits::Url for UrlMetric {
     pub fn set<S: Into<std::string::String>>(&self, value: S) {
         match self {
-            UrlMetric::Parent(p) => p.set(value),
+            #[allow(unused)]
+            UrlMetric::Parent { id, inner } => {
+                let value: String = value.into();
+                #[cfg(feature = "with_gecko")]
+                gecko_profiler::lazy_add_marker!(
+                    "Url::set",
+                    TelemetryProfilerCategory,
+                    UrlMetricMarker {
+                        id: *id,
+                        val: truncate_string_for_marker(value.clone()),
+                    }
+                );
+                inner.set(value)
+            }
             UrlMetric::Child(_) => {
                 log::error!(
                     "Unable to set Url metric in non-main process. This operation will be ignored."
@@ -63,7 +134,7 @@ impl glean::traits::Url for UrlMetric {
     ) -> Option<std::string::String> {
         let ping_name = ping_name.into().map(|s| s.to_string());
         match self {
-            UrlMetric::Parent(p) => p.test_get_value(ping_name),
+            UrlMetric::Parent { inner, .. } => inner.test_get_value(ping_name),
             UrlMetric::Child(_) => {
                 panic!("Cannot get test value for Url metric in non-main process!")
             }
@@ -72,7 +143,7 @@ impl glean::traits::Url for UrlMetric {
 
     pub fn test_get_num_recorded_errors(&self, error: glean::ErrorType) -> i32 {
         match self {
-            UrlMetric::Parent(p) => p.test_get_num_recorded_errors(error),
+            UrlMetric::Parent { inner, .. } => inner.test_get_num_recorded_errors(error),
             UrlMetric::Child(_) => panic!(
                 "Cannot get the number of recorded errors for Url metric in non-main process!"
             ),
@@ -94,7 +165,7 @@ mod test {
 
         assert_eq!(
             "https://example.com",
-            metric.test_get_value("store1").unwrap()
+            metric.test_get_value("test-ping").unwrap()
         );
     }
 
@@ -122,7 +193,7 @@ mod test {
         assert!(ipc::replay_from_buf(&ipc::take_buf().unwrap()).is_ok());
 
         assert!(
-            "https://example.com/parent" == parent_metric.test_get_value("store1").unwrap(),
+            "https://example.com/parent" == parent_metric.test_get_value("test-ping").unwrap(),
             "Url metrics should only work in the parent process"
         );
     }

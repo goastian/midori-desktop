@@ -290,6 +290,12 @@ Download.prototype = {
   launcherPath: null,
 
   /**
+   * This contains application id to be used to launch the file,
+   * or null if the file is not meant to be launched with GIOHandlerApp.
+   */
+  launcherId: null,
+
+  /**
    * Raises the onchange notification.
    */
   _notifyChange: function D_notifyChange() {
@@ -662,9 +668,9 @@ Download.prototype = {
     }
 
     if (this.error?.becauseBlockedByReputationCheck) {
-      Services.telemetry
-        .getKeyedHistogramById("DOWNLOADS_USER_ACTION_ON_BLOCKED_DOWNLOAD")
-        .add(this.error.reputationCheckVerdict, 2); // unblock
+      Glean.downloads.userActionOnBlockedDownload[
+        this.error.reputationCheckVerdict
+      ].accumulateSingleSample(2); // unblock
     }
 
     if (
@@ -753,9 +759,9 @@ Download.prototype = {
       // and confirmBlock here. The former is for cases where users click
       // "Remove file" in the download panel and the latter is when
       // users click "X" button in about:downloads.
-      Services.telemetry
-        .getKeyedHistogramById("DOWNLOADS_USER_ACTION_ON_BLOCKED_DOWNLOAD")
-        .add(this.error.reputationCheckVerdict, 1); // confirm block
+      Glean.downloads.userActionOnBlockedDownload[
+        this.error.reputationCheckVerdict
+      ].accumulateSingleSample(1); // confirm block
     }
 
     if (!this.hasBlockedData) {
@@ -782,7 +788,7 @@ Download.prototype = {
    * Launches the file after download has completed. This can open
    * the file with the default application for the target MIME type
    * or file extension, or with a custom application if launcherPath
-   * is set.
+   * or launcherId is set.
    *
    * @param options.openWhere  Optional string indicating how to open when handling
    *                           download by opening the target file URI.
@@ -806,7 +812,7 @@ Download.prototype = {
     }
 
     if (this._launchedFromPanel) {
-      Services.telemetry.scalarAdd("downloads.file_opened", 1);
+      Glean.downloads.fileOpened.add(1);
     }
 
     return lazy.DownloadIntegration.launchDownload(this, options);
@@ -1185,11 +1191,15 @@ Download.prototype = {
    *        Number of bytes transferred until now.
    * @param aTotalBytes
    *        Total number of bytes to be transferred, or -1 if unknown.
-   * @param aHasPartialData
+   * @param [aHasPartialData]
    *        Indicates whether the partially downloaded data can be used when
    *        restarting the download if it fails or is canceled.
    */
-  _setBytes: function D_setBytes(aCurrentBytes, aTotalBytes, aHasPartialData) {
+  _setBytes: function D_setBytes(
+    aCurrentBytes,
+    aTotalBytes,
+    aHasPartialData = false
+  ) {
     let changeMade = this.hasPartialData != aHasPartialData;
     this.hasPartialData = aHasPartialData;
 
@@ -1335,6 +1345,7 @@ const kPlainSerializableDownloadProperties = [
   "hasBlockedData",
   "tryToKeepPartialData",
   "launcherPath",
+  "launcherId",
   "launchWhenSucceeded",
   "contentType",
   "handleInternally",
@@ -1816,13 +1827,15 @@ DownloadTarget.fromSerializable = function (aSerializable) {
  *        Object which may contain any of the following properties:
  *          {
  *            result: Result error code, defaulting to Cr.NS_ERROR_FAILURE
- *            message: String error message to be displayed, or null to use the
- *                     message associated with the result code.
+ *            message: String error message to be displayed in the console, or
+ *                     null to use the message associated with the result code.
  *            inferCause: If true, attempts to determine if the cause of the
  *                        download is a network failure or a local file failure,
  *                        based on a set of known values of the result code.
  *                        This is useful when the error is received by a
  *                        component that handles both aspects of the download.
+ *            localizedReason: If available, is a localized reason for the error
+ *                             that can be directly displayed in the UI.
  *          }
  *        The properties object may also contain any of the DownloadError's
  *        because properties, which will be set accordingly in the error object.
@@ -1835,6 +1848,7 @@ export var DownloadError = function (aProperties) {
   // Set the error name used by the Error object prototype first.
   this.name = "DownloadError";
   this.result = aProperties.result || Cr.NS_ERROR_FAILURE;
+  this.localizedReason = aProperties.localizedReason;
   if (aProperties.message) {
     this.message = aProperties.message;
   } else if (
@@ -1949,6 +1963,7 @@ DownloadError.prototype = {
   toSerializable() {
     let serializable = {
       result: this.result,
+      localizedReason: this.localizedReason,
       message: this.message,
       becauseSourceFailed: this.becauseSourceFailed,
       becauseTargetFailed: this.becauseTargetFailed,
@@ -2565,9 +2580,9 @@ DownloadCopySaver.prototype = {
     let { shouldBlock, verdict } =
       await lazy.DownloadIntegration.shouldBlockForReputationCheck(download);
     if (shouldBlock) {
-      Services.telemetry
-        .getKeyedHistogramById("DOWNLOADS_USER_ACTION_ON_BLOCKED_DOWNLOAD")
-        .add(verdict, 0);
+      Glean.downloads.userActionOnBlockedDownload[
+        verdict
+      ].accumulateSingleSample(0);
 
       let newProperties = { progress: 100, hasPartialData: false };
 
@@ -2855,16 +2870,22 @@ DownloadLegacySaver.prototype = {
   /**
    * Called by the nsITransfer implementation when the request has finished.
    *
-   * @param aStatus
+   * @param {nsresult} status
    *        Status code received by the nsITransfer implementation.
+   * @param {string} [localizedReason]
+   *        Optional localized error message associated with a failure
    */
-  onTransferFinished: function DLS_onTransferFinished(aStatus) {
-    if (Components.isSuccessCode(aStatus)) {
+  onTransferFinished(status, localizedReason) {
+    if (Components.isSuccessCode(status)) {
       this.deferExecuted.resolve();
     } else {
       // Infer the origin of the error from the failure code, because more
       // specific data is not available through the nsITransfer implementation.
-      let properties = { result: aStatus, inferCause: true };
+      let properties = {
+        result: status,
+        inferCause: true,
+        localizedReason,
+      };
       this.deferExecuted.reject(new DownloadError(properties));
     }
   },

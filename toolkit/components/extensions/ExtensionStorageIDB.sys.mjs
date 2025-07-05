@@ -1,14 +1,12 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* eslint-disable mozilla/valid-lazy */
 
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { IndexedDB } from "resource://gre/modules/IndexedDB.sys.mjs";
 
-/** @type {Lazy} */
-const lazy = {};
-
-ChromeUtils.defineESModuleGetters(lazy, {
+const lazy = XPCOMUtils.declareLazy({
   ExtensionStorage: "resource://gre/modules/ExtensionStorage.sys.mjs",
   ExtensionUtils: "resource://gre/modules/ExtensionUtils.sys.mjs",
   getTrimmedString: "resource://gre/modules/ExtensionTelemetry.sys.mjs",
@@ -45,13 +43,6 @@ var ErrorsTelemetry = {
       return;
     }
     this.initialized = true;
-
-    // Ensure that these telemetry events category is enabled.
-    Services.telemetry.setEventRecordingEnabled("extensions.data", true);
-
-    this.resultHistogram = Services.telemetry.getHistogramById(
-      IDB_MIGRATE_RESULT_HISTOGRAM
-    );
   },
 
   /**
@@ -116,9 +107,9 @@ var ErrorsTelemetry = {
       } = telemetryData;
 
       this.lazyInit();
-      this.resultHistogram.add(histogramCategory);
+      Glean.extensionsData.migrateResultCount[histogramCategory].add(1);
 
-      const extra = { backend };
+      const extra = { addon_id: lazy.getTrimmedString(extensionId), backend };
 
       if (dataMigrated != null) {
         extra.data_migrated = dataMigrated ? "y" : "n";
@@ -136,22 +127,7 @@ var ErrorsTelemetry = {
         extra.error_name = this.getErrorName(error);
       }
 
-      let addon_id = lazy.getTrimmedString(extensionId);
-      Services.telemetry.recordEvent(
-        "extensions.data",
-        "migrateResult",
-        "storageLocal",
-        addon_id,
-        extra
-      );
-      Glean.extensionsData.migrateResult.record({
-        addon_id,
-        backend: extra.backend,
-        data_migrated: extra.data_migrated,
-        has_jsonfile: extra.has_jsonfile,
-        has_olddata: extra.has_olddata,
-        error_name: extra.error_name,
-      });
+      Glean.extensionsData.migrateResult.record(extra);
     } catch (err) {
       // Report any telemetry error on the browser console, but
       // we treat it as a non-fatal error and we don't re-throw
@@ -174,20 +150,11 @@ var ErrorsTelemetry = {
    */
   recordStorageLocalError({ extensionId, storageMethod, error }) {
     this.lazyInit();
-    let addon_id = lazy.getTrimmedString(extensionId);
-    let error_name = this.getErrorName(error);
 
-    Services.telemetry.recordEvent(
-      "extensions.data",
-      "storageLocalError",
-      storageMethod,
-      addon_id,
-      { error_name }
-    );
     Glean.extensionsData.storageLocalError.record({
-      addon_id,
+      addon_id: lazy.getTrimmedString(extensionId),
       method: storageMethod,
-      error_name,
+      error_name: this.getErrorName(error),
     });
   },
 };
@@ -201,7 +168,11 @@ class ExtensionStorageLocalIDB extends IndexedDB {
 
   static openForPrincipal(storagePrincipal) {
     // The db is opened using an extension principal isolated in a reserved user context id.
-    return super.openForPrincipal(storagePrincipal, IDB_NAME, IDB_VERSION);
+    return /** @type {Promise<ExtensionStorageLocalIDB>} */ (
+      super.openForPrincipal(storagePrincipal, IDB_NAME, {
+        version: IDB_VERSION,
+      })
+    );
   }
 
   async isEmpty() {

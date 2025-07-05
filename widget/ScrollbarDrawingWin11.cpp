@@ -11,8 +11,6 @@
 #include "nsLayoutUtils.h"
 #include "Theme.h"
 #include "nsNativeTheme.h"
-#include "nsContentUtils.h"
-
 
 using mozilla::gfx::sRGBColor;
 
@@ -190,7 +188,7 @@ bool ScrollbarDrawingWin11::PaintScrollbarButton(
   const float polygonSize = style == Style::Overlay
                                 ? float(kDefaultWinOverlayScrollbarSize)
                                 : float(kDefaultWinScrollbarSize);
-  const int32_t arrowNumPoints = ArrayLength(arrowPolygonX);
+  const int32_t arrowNumPoints = std::size(arrowPolygonX);
 
   if (aElementState.HasState(ElementState::ACTIVE)) {
     arrowX = arrowPolygonXActive;
@@ -354,11 +352,6 @@ bool ScrollbarDrawingWin11::PaintScrollbarThumb(
 
 void ScrollbarDrawingWin11::RecomputeScrollbarParams() {
   ScrollbarDrawingWin::RecomputeScrollbarParams();
-  if (nsContentUtils::ShouldResistFingerprinting("No context available",
-                                                 RFPTarget::CSSResolution)) {
-    // Do not distinguish sizes between windows 10 and 11.
-    return;
-  }
   // TODO(emilio): Maybe make this configurable? Though this doesn't respect
   // classic Windows registry settings, and cocoa overlay scrollbars also don't
   // respect the override it seems, so this should be fine.

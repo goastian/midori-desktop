@@ -19,15 +19,17 @@ extern crate thiserror;
 extern crate xpcom;
 
 mod error;
+mod fs;
 mod owned_value;
+pub mod skv;
 mod task;
 
 use atomic_refcell::AtomicRefCell;
 use error::KeyValueError;
 use libc::c_void;
 use moz_task::{create_background_task_queue, DispatchOptions, TaskRunnable};
-use nserror::{nsresult, NS_ERROR_FAILURE, NS_OK};
-use nsstring::{nsACString, nsCString};
+use nserror::{nsresult, NS_ERROR_FAILURE, NS_ERROR_NOT_IMPLEMENTED, NS_OK};
+use nsstring::{nsACString, nsAString, nsCString, nsString};
 use owned_value::{owned_to_variant, variant_to_owned};
 use rkv::backend::{RecoveryStrategy, SafeModeDatabase, SafeModeEnvironment};
 use rkv::OwnedValue;
@@ -44,8 +46,8 @@ use thin_vec::ThinVec;
 use xpcom::{
     getter_addrefs,
     interfaces::{
-        nsIKeyValueDatabaseCallback, nsIKeyValueEnumeratorCallback, nsIKeyValuePair,
-        nsIKeyValueService, nsIKeyValueVariantCallback, nsIKeyValueVoidCallback,
+        nsIKeyValueDatabaseCallback, nsIKeyValueEnumeratorCallback, nsIKeyValueImporter,
+        nsIKeyValuePair, nsIKeyValueService, nsIKeyValueVariantCallback, nsIKeyValueVoidCallback,
         nsISerialEventTarget, nsIVariant,
     },
     nsIID, xpcom, xpcom_method, RefPtr,
@@ -100,7 +102,7 @@ impl KeyValueService {
     xpcom_method!(
         get_or_create => GetOrCreate(
             callback: *const nsIKeyValueDatabaseCallback,
-            path: *const nsACString,
+            path: *const nsAString,
             name: *const nsACString
         )
     );
@@ -108,12 +110,12 @@ impl KeyValueService {
     fn get_or_create(
         &self,
         callback: &nsIKeyValueDatabaseCallback,
-        path: &nsACString,
+        path: &nsAString,
         name: &nsACString,
     ) -> Result<(), nsresult> {
         let task = Box::new(GetOrCreateWithOptionsTask::new(
             RefPtr::new(callback),
-            nsCString::from(path),
+            nsString::from(path),
             nsCString::from(name),
             RecoveryStrategy::Error,
         ));
@@ -125,7 +127,7 @@ impl KeyValueService {
     xpcom_method!(
         get_or_create_with_options => GetOrCreateWithOptions(
             callback: *const nsIKeyValueDatabaseCallback,
-            path: *const nsACString,
+            path: *const nsAString,
             name: *const nsACString,
             strategy: u8
         )
@@ -134,7 +136,7 @@ impl KeyValueService {
     fn get_or_create_with_options(
         &self,
         callback: &nsIKeyValueDatabaseCallback,
-        path: &nsACString,
+        path: &nsAString,
         name: &nsACString,
         xpidl_strategy: u8,
     ) -> Result<(), nsresult> {
@@ -146,13 +148,28 @@ impl KeyValueService {
         };
         let task = Box::new(GetOrCreateWithOptionsTask::new(
             RefPtr::new(callback),
-            nsCString::from(path),
+            nsString::from(path),
             nsCString::from(name),
             strategy,
         ));
 
         TaskRunnable::new("KVService::GetOrCreateWithOptions", task)?
             .dispatch_background_task_with_options(DispatchOptions::default().may_block(true))
+    }
+
+    xpcom_method!(
+        create_importer => CreateImporter(
+            type_: *const nsACString,
+            path: *const nsAString
+        ) -> *const nsIKeyValueImporter
+    );
+
+    fn create_importer(
+        &self,
+        _type: &nsACString,
+        _path: &nsAString,
+    ) -> Result<RefPtr<nsIKeyValueImporter>, nsresult> {
+        Err(nserror::NS_ERROR_NOT_IMPLEMENTED)
     }
 }
 
@@ -174,6 +191,36 @@ impl KeyValueDatabase {
             store,
             queue,
         }))
+    }
+
+    xpcom_method!(
+        is_empty => IsEmpty(
+            callback: *const nsIKeyValueVariantCallback
+        )
+    );
+
+    fn is_empty(&self, _callback: &nsIKeyValueVariantCallback) -> Result<(), nsresult> {
+        Err(NS_ERROR_NOT_IMPLEMENTED)
+    }
+
+    xpcom_method!(
+        count => Count(
+            callback: *const nsIKeyValueVariantCallback
+        )
+    );
+
+    fn count(&self, _callback: &nsIKeyValueVariantCallback) -> Result<(), nsresult> {
+        Err(NS_ERROR_NOT_IMPLEMENTED)
+    }
+
+    xpcom_method!(
+        size => Size(
+            callback: *const nsIKeyValueVariantCallback
+        )
+    );
+
+    fn size(&self, _callback: &nsIKeyValueVariantCallback) -> Result<(), nsresult> {
+        Err(NS_ERROR_NOT_IMPLEMENTED)
     }
 
     xpcom_method!(
@@ -302,6 +349,23 @@ impl KeyValueDatabase {
     }
 
     xpcom_method!(
+        delete_range => DeleteRange(
+            callback: *const nsIKeyValueVoidCallback,
+            from_key: *const nsACString,
+            to_key: *const nsACString
+        )
+    );
+
+    fn delete_range(
+        &self,
+        _callback: &nsIKeyValueVoidCallback,
+        _from_key: &nsACString,
+        _to_key: &nsACString,
+    ) -> Result<(), nsresult> {
+        Err(NS_ERROR_NOT_IMPLEMENTED)
+    }
+
+    xpcom_method!(
         clear => Clear(callback: *const nsIKeyValueVoidCallback)
     );
 
@@ -341,6 +405,16 @@ impl KeyValueDatabase {
             TaskRunnable::new("KVDatabase::Enumerate", task)?,
             &self.queue,
         )
+    }
+
+    xpcom_method!(
+        close => Close(
+            callback: *const nsIKeyValueVoidCallback
+        )
+    );
+
+    fn close(&self, _callback: &nsIKeyValueVoidCallback) -> Result<(), nsresult> {
+        Err(NS_ERROR_NOT_IMPLEMENTED)
     }
 }
 

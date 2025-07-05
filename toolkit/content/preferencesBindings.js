@@ -34,6 +34,7 @@ const Preferences = (window.Preferences = (function () {
 
   const Preferences = {
     _all: {},
+    _settings: new Map(),
 
     _add(prefInfo) {
       if (this._all[prefInfo.id]) {
@@ -64,6 +65,14 @@ const Preferences = (window.Preferences = (function () {
 
     getAll() {
       return Object.values(this._all);
+    },
+
+    addSetting(settingConfig) {
+      this._settings.set(settingConfig.id, settingConfig);
+    },
+
+    getSetting(settingId) {
+      return new Setting(settingId, this._settings.get(settingId));
     },
 
     defaultBranch: Services.prefs.getDefaultBranch(""),
@@ -432,6 +441,7 @@ const Preferences = (window.Preferences = (function () {
       }
       if (
         aElement.localName == "checkbox" ||
+        aElement.localName == "moz-checkbox" ||
         (aElement.localName == "input" && aElement.type == "checkbox")
       ) {
         setValue(aElement, "checked", val);
@@ -469,6 +479,7 @@ const Preferences = (window.Preferences = (function () {
       let value;
       if (
         aElement.localName == "checkbox" ||
+        aElement.localName == "moz-checkbox" ||
         (aElement.localName == "input" && aElement.type == "checkbox")
       ) {
         value = getValue(aElement, "checked");
@@ -495,6 +506,7 @@ const Preferences = (window.Preferences = (function () {
         case "textarea":
         case "menulist":
         case "moz-toggle":
+        case "moz-checkbox":
           return true;
       }
       return false;
@@ -668,6 +680,52 @@ const Preferences = (window.Preferences = (function () {
       }
       if (!this.batching) {
         Services.prefs.savePrefFile(null);
+      }
+    }
+  }
+
+  class Setting extends EventEmitter {
+    constructor(id, config) {
+      super();
+      this.id = id;
+      this.config = config;
+      this.pref = config.pref && Preferences.get(config.pref);
+      if (this.pref) {
+        this.pref.on("change", this.onChange);
+      }
+    }
+
+    onChange = () => {
+      this.emit("change");
+    };
+
+    get value() {
+      let prefVal = this.pref?.value;
+      if (this.config.get) {
+        return this.config.get(prefVal);
+      }
+      return prefVal;
+    }
+
+    set value(val) {
+      let newVal = this.config.set ? this.config.set(val) : val;
+      if (this.pref) {
+        this.pref.value = newVal;
+      }
+    }
+
+    get locked() {
+      return this.pref?.locked ?? false;
+    }
+
+    get visible() {
+      return this.config.visible ? this.config.visible() : true;
+    }
+
+    userChange(val) {
+      this.value = val;
+      if (this.config.onUserChange) {
+        this.config.onUserChange(val);
       }
     }
   }

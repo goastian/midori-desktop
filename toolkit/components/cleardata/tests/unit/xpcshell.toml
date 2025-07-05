@@ -19,6 +19,8 @@ skip-if = ["condprof"] # Bug 1893058
 
 ["test_clear_data_service_flags.js"]
 
+["test_content_preferences.js"]
+
 ["test_cookie_banner_handling.js"]
 
 ["test_cookies.js"]
@@ -32,13 +34,13 @@ skip-if = ["condprof"] # Bug 1893058
 ["test_network_cache.js"]
 skip-if = ["condprof"]  # Bug 1769154 - expected fail w/condprof
 
-["test_passwords.js"]
-
 ["test_permissions.js"]
 
 ["test_quota.js"]
 
 ["test_security_settings.js"]
+
+["test_shutdown_exception_permission.js"]
 
 ["test_storage_permission.js"]
 

@@ -9,5 +9,9 @@ FINAL_TARGET_FILES.actors = [
     "ReportBrokenSiteParent.sys.mjs",
 ]
 
+DIRS += [
+    "tests",
+]
+
 with Files("**"):
     BUG_COMPONENT = ("Web Compatibility", "Tooling & Investigations")

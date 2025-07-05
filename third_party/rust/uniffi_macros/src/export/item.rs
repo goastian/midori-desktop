@@ -8,8 +8,7 @@ use proc_macro2::{Ident, Span};
 use quote::ToTokens;
 
 use super::attributes::{
-    ExportFnArgs, ExportImplArgs, ExportStructArgs, ExportTraitArgs, ExportedImplFnArgs,
-    ExportedImplFnAttributes,
+    ExportFnArgs, ExportImplArgs, ExportStructArgs, ExportTraitArgs, ExportedImplFnAttributes,
 };
 use crate::util::extract_docstring;
 use uniffi_meta::UniffiTraitDiscriminants;
@@ -23,6 +22,7 @@ pub(super) enum ExportItem {
         self_ident: Ident,
         items: Vec<ImplItem>,
         args: ExportImplArgs,
+        trait_: Option<syn::Path>,
     },
     Trait {
         self_ident: Ident,
@@ -127,6 +127,7 @@ impl ExportItem {
             items,
             self_ident: self_ident.to_owned(),
             args,
+            trait_: item.trait_.map(|t| t.1),
         })
     }
 
@@ -170,7 +171,7 @@ impl ExportItem {
                     ImplItem::Method(FnSignature::new_trait_method(
                         self_ident.clone(),
                         tim.sig,
-                        ExportedImplFnArgs::default(),
+                        ExportFnArgs::default(),
                         i as u32,
                         docstring,
                     )?)

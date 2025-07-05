@@ -66,7 +66,7 @@ class TestDLLLoadObserver : public nsIObserver {
   explicit TestDLLLoadObserver(DLLFilter dllFilter)
       : mDllFilter(std::move(dllFilter)),
         mMainThreadNotificationsCount(0),
-        mNonMainThreadNotificationsCount(0){};
+        mNonMainThreadNotificationsCount(0) {};
 
   NS_DECL_THREADSAFE_ISUPPORTS
 
@@ -329,7 +329,7 @@ TEST(TestDllBlocklist, BlocklistIntegrity)
 
   EXPECT_FALSE(pLast->mName || pLast->mMaxVersion || pLast->mFlags);
 
-  for (size_t i = 0; i < mozilla::ArrayLength(gWindowsDllBlocklist) - 1; ++i) {
+  for (size_t i = 0; i < std::size(gWindowsDllBlocklist) - 1; ++i) {
     auto pEntry = pFirst + i;
 
     // Validate name

@@ -1,0 +1,78 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <script src="/tests/SimpleTest/SimpleTest.js"></script>
+    <link rel="stylesheet" href="/tests/SimpleTest/test.css" />
+  </head>
+  <body>
+    <script>
+      ok(
+        SpecialPowers.getBoolPref("dom.webgpu.enabled"),
+        "Pref should be enabled."
+      );
+
+      async function testBody() {
+        const canvas = document.createElement("canvas");
+        const context = canvas.getContext("webgpu");
+
+        // The first two tests here are redundant with the CTS test
+        // webgpu:web_platform,canvas,configure:device:*, but when
+        // they were added, that CTS test had additional checks that
+        // were still failing.
+        let expectedError;
+        try {
+          context.configure({});
+        } catch (error) {
+          expectedError = error;
+        }
+        is(
+          expectedError?.name,
+          "TypeError",
+          "Canvas configure without a device should generate a TypeError."
+        );
+
+        const adapter = await navigator.gpu.requestAdapter({});
+        const device = await adapter.requestDevice({});
+        const format = navigator.gpu.getPreferredCanvasFormat(adapter);
+
+        expectedError = undefined;
+        try {
+          context.getCurrentTexture();
+        } catch (error) {
+          expectedError = error;
+        }
+        is(
+          expectedError?.name,
+          "InvalidStateError",
+          "getCurrentTexture on unconfigured canvas should generate an InvalidStateError."
+        );
+
+        // Attempt to configure with a too-large canvas, which should
+        // fail due to device texture limits.
+        canvas.width = 1970696937;
+        expectedError = undefined;
+        try {
+          context.configure({
+            device,
+            format,
+          });
+        } catch (error) {
+          expectedError = error;
+        }
+        // Bug 1967833: This should become an "is". Or possibly it
+        // should expect a validation error (asynchronously) instead.
+        todo_is(
+          expectedError?.name,
+          "TypeError",
+          "Failed configure should generate a TypeError."
+        );
+      }
+
+      SimpleTest.waitForExplicitFinish();
+      testBody()
+        .catch(e => ok(false, "Unhandled exception " + e))
+        .finally(() => SimpleTest.finish());
+    </script>
+  </body>
+</html>

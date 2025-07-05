@@ -433,7 +433,9 @@ static void TestRunnableFactory(bool aNamed) {
 }
 
 TEST(ThreadUtils, NewRunnableFunction)
-{ TestRunnableFactory<BasicRunnableFactory>(/*aNamed*/ false); }
+{
+  TestRunnableFactory<BasicRunnableFactory>(/*aNamed*/ false);
+}
 
 TEST(ThreadUtils, NewNamedRunnableFunction)
 {
@@ -450,7 +452,9 @@ TEST(ThreadUtils, NewNamedRunnableFunction)
 }
 
 TEST(ThreadUtils, NewCancelableRunnableFunction)
-{ TestRunnableFactory<CancelableRunnableFactory>(/*aNamed*/ false); }
+{
+  TestRunnableFactory<CancelableRunnableFactory>(/*aNamed*/ false);
+}
 
 TEST(ThreadUtils, NewNamedCancelableRunnableFunction)
 {
@@ -595,7 +599,9 @@ static void TestNewRunnableMethod(bool aNamed) {
 }
 
 TEST(ThreadUtils, RunnableMethod)
-{ TestNewRunnableMethod(/* aNamed */ false); }
+{
+  TestNewRunnableMethod(/* aNamed */ false);
+}
 
 TEST(ThreadUtils, NamedRunnableMethod)
 {
@@ -647,7 +653,7 @@ class IdleObject final {
  public:
   NS_INLINE_DECL_REFCOUNTING(IdleObject)
   IdleObject() {
-    for (uint32_t index = 0; index < ArrayLength(mRunnableExecuted); ++index) {
+    for (uint32_t index = 0; index < std::size(mRunnableExecuted); ++index) {
       mRunnableExecuted[index] = false;
       mSetIdleDeadlineCalled = false;
     }
@@ -661,7 +667,7 @@ class IdleObject final {
       << aKey << ": Method" << index << " should've executed";
     }
 
-    for (; index < ArrayLength(mRunnableExecuted); ++index) {
+    for (; index < std::size(mRunnableExecuted); ++index) {
       ASSERT_FALSE(mRunnableExecuted[index])
       << aKey << ": Method" << index << " shouldn't have executed";
     }
@@ -876,12 +882,8 @@ TEST(ThreadUtils, IdleTaskRunner)
 }
 
 // {9e70a320-be02-11d1-8031-006008159b5a}
-#define NS_IFOO_IID                                  \
-  {                                                  \
-    0x9e70a320, 0xbe02, 0x11d1, {                    \
-      0x80, 0x31, 0x00, 0x60, 0x08, 0x15, 0x9b, 0x5a \
-    }                                                \
-  }
+#define NS_IFOO_IID \
+  {0x9e70a320, 0xbe02, 0x11d1, {0x80, 0x31, 0x00, 0x60, 0x08, 0x15, 0x9b, 0x5a}}
 
 TEST(ThreadUtils, TypeTraits)
 {
@@ -1049,17 +1051,16 @@ struct Spy {
 };
 
 struct ISpyWithISupports : public nsISupports {
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_IFOO_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_IFOO_IID)
   NS_IMETHOD_(nsrefcnt) RefCnt() = 0;
   NS_IMETHOD_(int32_t) ID() = 0;
 };
-NS_DEFINE_STATIC_IID_ACCESSOR(ISpyWithISupports, NS_IFOO_IID)
 struct SpyWithISupports : public ISpyWithISupports, public Spy {
  private:
   virtual ~SpyWithISupports() = default;
 
  public:
-  explicit SpyWithISupports(int aID) : Spy(aID){};
+  explicit SpyWithISupports(int aID) : Spy(aID) {};
   NS_DECL_ISUPPORTS
   NS_IMETHOD_(nsrefcnt) RefCnt() override { return mRefCnt; }
   NS_IMETHOD_(int32_t) ID() override { return mID; }
@@ -1068,13 +1069,11 @@ NS_IMPL_ISUPPORTS(SpyWithISupports, ISpyWithISupports)
 
 class IThreadUtilsObject : public nsISupports {
  public:
-  NS_DECLARE_STATIC_IID_ACCESSOR(NS_IFOO_IID)
+  NS_INLINE_DECL_STATIC_IID(NS_IFOO_IID)
 
   NS_IMETHOD_(nsrefcnt) RefCnt() = 0;
   NS_IMETHOD_(int32_t) ID() = 0;
 };
-
-NS_DEFINE_STATIC_IID_ACCESSOR(IThreadUtilsObject, NS_IFOO_IID)
 
 struct ThreadUtilsObjectNonRefCountedBase {
   virtual void MethodFromNonRefCountedBase() {}

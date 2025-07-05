@@ -159,10 +159,6 @@ Preferences
   sending them to the parent process.
   Default is 2000 (milliseconds).
 
-``toolkit.telemetry.pioneerId``
-
-  If a user has opted into the Pioneer program, this will contain their Pioneer ID.
-
 Data-choices notification
 -------------------------
 
@@ -230,10 +226,6 @@ The following prefs are for testing purpose only.
 ``toolkit.telemetry.idleTimeout``
 
   Timeout until we decide whether a user is idle or not (seconds).
-
-``toolkit.telemetry.modulesPing.interval``
-
-  Interval between "modules" ping transmissions.
 
 ``toolkit.telemetry.send.overrideOfficialCheck``
 

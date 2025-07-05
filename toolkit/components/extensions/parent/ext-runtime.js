@@ -35,6 +35,8 @@ this.runtime = class extends ExtensionAPIPersistent {
     // - runtime.onConnectExternal
     // - runtime.onMessage
     // - runtime.onMessageExternal
+    // - runtime.onUserScriptMessage
+    // - runtime.onUserScriptConnect
     // For details, see bug 1852317 and test_ext_eventpage_messaging_wakeup.js.
 
     onInstalled({ fire }) {
@@ -356,10 +358,8 @@ this.runtime = class extends ExtensionAPIPersistent {
             return Promise.resolve();
           }
 
-          let uri;
-          try {
-            uri = new URL(url);
-          } catch (e) {
+          let uri = URL.parse(url);
+          if (!uri) {
             return Promise.reject({
               message: `Invalid URL: ${JSON.stringify(url)}`,
             });

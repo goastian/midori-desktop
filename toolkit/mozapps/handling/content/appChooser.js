@@ -68,6 +68,13 @@ let dialog = {
     this._itemChoose = document.getElementById("item-choose");
     this._rememberCheck = document.getElementById("remember");
 
+    let items = document.getElementById("items");
+    items.addEventListener("dblclick", () => this.onDblClick());
+    items.addEventListener("select", () => this.updateAcceptButton());
+    document
+      .getElementById("choose-app-btn")
+      .addEventListener("command", () => this.chooseApplication());
+
     // Register event listener for the checkbox hint.
     this._rememberCheck.addEventListener("change", () => this.onCheck());
 
@@ -124,7 +131,9 @@ let dialog = {
 
       // We defer loading the favicon so it doesn't delay load. The dialog is
       // opened in a SubDialog which will only show on window load.
-      if (app instanceof Ci.nsILocalHandlerApp) {
+      if (app instanceof Ci.nsIGIOHandlerApp) {
+        elm.setAttribute("image", "moz-icon://" + app.id + "?size=32");
+      } else if (app instanceof Ci.nsILocalHandlerApp) {
         // See if we have an nsILocalHandlerApp and set the icon
         let uri = Services.io.newFileURI(app.executable);
         elm.setAttribute("image", "moz-icon://" + uri.spec + "?size=32");

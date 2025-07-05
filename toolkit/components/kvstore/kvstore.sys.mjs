@@ -2,16 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const gKeyValueService = Cc["@mozilla.org/key-value-service;1"].getService(
-  Ci.nsIKeyValueService
-);
-
-function promisify(fn, ...args) {
-  return new Promise((resolve, reject) => {
-    fn({ resolve, reject }, ...args);
-  });
-}
-
 /**
  * This module wraps the nsIKeyValue* interfaces in a Promise-based API.
  * To use it, import it, then call the KeyValueService.getOrCreate() method
@@ -27,32 +17,104 @@ function promisify(fn, ...args) {
  * for key/value storage.
  */
 
+function promisify(fn, ...args) {
+  return new Promise((resolve, reject) => {
+    fn({ resolve, reject }, ...args);
+  });
+}
+
 export class KeyValueService {
   static RecoveryStrategy = {
-    ERROR: gKeyValueService.ERROR,
-    DISCARD: gKeyValueService.DISCARD,
-    RENAME: gKeyValueService.RENAME,
+    ERROR: Ci.nsIKeyValueService.ERROR,
+    DISCARD: Ci.nsIKeyValueService.DISCARD,
+    RENAME: Ci.nsIKeyValueService.RENAME,
   };
+
+  static #service = Cc["@mozilla.org/key-value-service;1"].getService(
+    Ci.nsIKeyValueService
+  );
 
   static async getOrCreate(dir, name) {
     return new KeyValueDatabase(
-      await promisify(gKeyValueService.getOrCreate, dir, name)
+      await promisify(this.#service.getOrCreate, dir, name)
     );
   }
 
   static async getOrCreateWithOptions(
     dir,
     name,
-    { strategy = gKeyValueService.RENAME } = {}
+    { strategy = Ci.nsIKeyValueService.RENAME } = {}
   ) {
     return new KeyValueDatabase(
-      await promisify(
-        gKeyValueService.getOrCreateWithOptions,
-        dir,
-        name,
-        strategy
-      )
+      await promisify(this.#service.getOrCreateWithOptions, dir, name, strategy)
     );
+  }
+}
+
+/**
+ * An experimental key-value storage service that uses
+ * SQLite for persistence.
+ */
+export class SQLiteKeyValueService {
+  static Importer = {
+    RKV_SAFE_MODE: "rkv-safe-mode",
+  };
+
+  static #service = Cc["@mozilla.org/sqlite-key-value-service;1"].getService(
+    Ci.nsIKeyValueService
+  );
+
+  static async getOrCreate(dir, name) {
+    return new KeyValueDatabase(
+      await promisify(this.#service.getOrCreate, dir, name)
+    );
+  }
+
+  static createImporter(type, dir) {
+    return new KeyValueImporter(this.#service.createImporter(type, dir));
+  }
+}
+
+export class KeyValueImporter {
+  static ConflictPolicy = {
+    ERROR: Ci.nsIKeyValueImporter.ERROR_ON_CONFLICT,
+    IGNORE: Ci.nsIKeyValueImporter.IGNORE_ON_CONFLICT,
+    REPLACE: Ci.nsIKeyValueImporter.REPLACE_ON_CONFLICT,
+  };
+
+  static CleanupPolicy = {
+    KEEP: Ci.nsIKeyValueImporter.KEEP_AFTER_IMPORT,
+    DELETE: Ci.nsIKeyValueImporter.DELETE_AFTER_IMPORT,
+  };
+
+  #importer;
+
+  constructor(importer) {
+    this.#importer = importer;
+  }
+
+  get type() {
+    return this.#importer.type;
+  }
+
+  get path() {
+    return this.#importer.path;
+  }
+
+  addPath(dir) {
+    return this.#importer.addPath(dir);
+  }
+
+  addDatabase(name) {
+    return this.#importer.addDatabase(name);
+  }
+
+  addAllDatabases() {
+    return this.#importer.addAllDatabases();
+  }
+
+  import() {
+    return promisify(this.#importer.import);
   }
 }
 
@@ -94,6 +156,18 @@ export class KeyValueService {
 class KeyValueDatabase {
   constructor(database) {
     this.database = database;
+  }
+
+  isEmpty() {
+    return promisify(this.database.isEmpty);
+  }
+
+  count() {
+    return promisify(this.database.count);
+  }
+
+  size() {
+    return promisify(this.database.size);
   }
 
   put(key, value) {
@@ -168,14 +242,22 @@ class KeyValueDatabase {
     return promisify(this.database.delete, key);
   }
 
+  deleteRange(fromKey, toKey) {
+    return promisify(this.database.deleteRange, fromKey, toKey);
+  }
+
   clear() {
     return promisify(this.database.clear);
   }
 
-  async enumerate(from_key, to_key) {
+  async enumerate(fromKey, toKey) {
     return new KeyValueEnumerator(
-      await promisify(this.database.enumerate, from_key, to_key)
+      await promisify(this.database.enumerate, fromKey, toKey)
     );
+  }
+
+  async close() {
+    return promisify(this.database.close);
   }
 }
 

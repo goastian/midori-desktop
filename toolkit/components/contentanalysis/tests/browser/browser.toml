@@ -5,6 +5,22 @@ support-files = [
 ]
 
 ["browser_clipboard_content_analysis.js"]
+skip-if = ["os == 'win' && os_version == '11.26100' && opt"] # Bug 1948449
+
+["browser_clipboard_paste_changingclipboardexternal_content_analysis.js"]
+support-files = [
+  "clipboard_paste_changingclipboardexternal.html",
+]
+
+["browser_clipboard_paste_changingclipboardinternal_content_analysis.js"]
+support-files = [
+  "clipboard_paste_changingclipboardinternal.html",
+]
+
+["browser_clipboard_paste_chat_shortcuts.js"]
+support-files = [
+  "clipboard_paste_chat_shortcuts.html",
+]
 
 ["browser_clipboard_paste_file_content_analysis.js"]
 support-files = [
@@ -32,10 +48,19 @@ support-files = [
   "clipboard_paste_prompt.html",
 ]
 
+["browser_clipboard_paste_redirect_focus_in_paste_event_listener.js"]
+support-files = [
+  "clipboard_paste_redirect_focus_in_paste_event_listener.html",
+]
+
 ["browser_clipboard_read_async_content_analysis.js"]
 support-files = [
   "clipboard_read_async.html",
 ]
+
+["browser_content_analysis_block_dialog.js"]
+
+["browser_content_analysis_busy_dialog.js"]
 
 ["browser_content_analysis_dnd_diff_origin.js"]
 support-files = [
@@ -43,12 +68,25 @@ support-files = [
   "!/dom/events/test/browser_dragdrop_inner.html",
   "!/dom/events/test/browser_dragdrop_outer.html",
 ]
+
 ["browser_content_analysis_dnd_same_origin.js"]
 support-files = [
   "!/dom/events/test/browser_dragdrop_impl.js",
   "!/dom/events/test/browser_dragdrop_inner.html",
   "!/dom/events/test/browser_dragdrop_outer.html",
 ]
+
+["browser_content_analysis_dnd_shadow.js"]
+support-files = [
+  "!/dom/events/test/browser_dragdrop_impl.js",
+  "!/dom/events/test/browser_dragdrop_shadow_inner.html",
+  "!/dom/events/test/browser_dragdrop_shadow_outer.html",
+]
+skip-if = ["true"] # bug 1932955
+
+["browser_content_analysis_policies.js"]
+
+["browser_content_analysis_quit_confirmation_dialog.js"]
 
 ["browser_print_changing_page_content_analysis.js"]
 support-files = [
@@ -62,6 +100,7 @@ support-files = [
   "!/toolkit/components/printing/tests/longerArticle.html",
   "!/toolkit/components/printing/tests/simplifyArticleSample.html",
 ]
+skip-if = ["win11_2009"] # Bug 1890792
 
 ["browser_print_iframe_content_analysis.js"]
 support-files = [
@@ -76,6 +115,7 @@ support-files = [
   "browser_print_pdf_content_analysis_impl.js",
   "file_pdf.pdf",
 ]
+
 ["browser_print_pdf_remote_content_analysis.js"]
 support-files = [
   "!/toolkit/components/printing/tests/head.js",

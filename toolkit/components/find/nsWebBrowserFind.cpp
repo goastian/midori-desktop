@@ -19,7 +19,6 @@
 #include "mozilla/dom/Document.h"
 #include "nsISelectionController.h"
 #include "nsIFrame.h"
-#include "nsITextControlFrame.h"
 #include "nsReadableUtils.h"
 #include "nsIContent.h"
 #include "nsIObserverService.h"
@@ -32,7 +31,6 @@
 #include "mozilla/Services.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Selection.h"
-#include "nsISimpleEnumerator.h"
 #include "nsComponentManagerUtils.h"
 #include "nsContentUtils.h"
 #include "nsGenericHTMLElement.h"
@@ -326,14 +324,16 @@ void nsWebBrowserFind::SetSelectionAndScroll(nsPIDOMWindowOuter* aWindow,
 
   // since the match could be an anonymous textnode inside a
   // <textarea> or text <input>, we need to get the outer frame
-  nsITextControlFrame* tcFrame = nullptr;
+  nsIFrame* tcFrame = nullptr;
   for (; content; content = content->GetParent()) {
     if (!content->IsInNativeAnonymousSubtree()) {
       nsIFrame* f = content->GetPrimaryFrame();
       if (!f) {
         return;
       }
-      tcFrame = do_QueryFrame(f);
+      if (f->IsTextInputFrame()) {
+        tcFrame = f;
+      }
       break;
     }
   }
@@ -341,80 +341,50 @@ void nsWebBrowserFind::SetSelectionAndScroll(nsPIDOMWindowOuter* aWindow,
   selCon->SetDisplaySelection(nsISelectionController::SELECTION_ON);
   RefPtr<Selection> selection =
       selCon->GetSelection(nsISelectionController::SELECTION_NORMAL);
-  if (selection) {
-    selection->RemoveAllRanges(IgnoreErrors());
-    selection->AddRangeAndSelectFramesAndNotifyListeners(*aRange,
-                                                         IgnoreErrors());
+  if (!selection) {
+    return;
+  }
+  selection->RemoveAllRanges(IgnoreErrors());
+  selection->AddRangeAndSelectFramesAndNotifyListeners(*aRange, IgnoreErrors());
 
-    if (RefPtr<nsFocusManager> fm = nsFocusManager::GetFocusManager()) {
-      if (tcFrame) {
-        RefPtr<Element> newFocusedElement = Element::FromNode(content);
-        fm->SetFocus(newFocusedElement, nsIFocusManager::FLAG_NOSCROLL);
-      } else {
-        RefPtr<Element> result;
-        fm->MoveFocus(aWindow, nullptr, nsIFocusManager::MOVEFOCUS_CARET,
-                      nsIFocusManager::FLAG_NOSCROLL, getter_AddRefs(result));
-      }
+  if (RefPtr<nsFocusManager> fm = nsFocusManager::GetFocusManager()) {
+    if (tcFrame) {
+      RefPtr<Element> newFocusedElement = Element::FromNode(content);
+      fm->SetFocus(newFocusedElement, nsIFocusManager::FLAG_NOSCROLL);
+    } else {
+      RefPtr<Element> result;
+      fm->MoveFocus(aWindow, nullptr, nsIFocusManager::MOVEFOCUS_CARET,
+                    nsIFocusManager::FLAG_NOSCROLL, getter_AddRefs(result));
     }
-
-    // Scroll if necessary to make the selection visible:
-    // Must be the last thing to do - bug 242056
-
-    // After ScrollSelectionIntoView(), the pending notifications might be
-    // flushed and PresShell/PresContext/Frames may be dead. See bug 418470.
-    selCon->ScrollSelectionIntoView(
-        nsISelectionController::SELECTION_NORMAL,
-        nsISelectionController::SELECTION_WHOLE_SELECTION,
-        nsISelectionController::SCROLL_CENTER_VERTICALLY |
-            nsISelectionController::SCROLL_SYNCHRONOUS);
-  }
-}
-
-// Adapted from TextServicesDocument::GetDocumentContentRootNode
-nsresult nsWebBrowserFind::GetRootNode(Document* aDoc, Element** aNode) {
-  NS_ENSURE_ARG_POINTER(aDoc);
-  NS_ENSURE_ARG_POINTER(aNode);
-  *aNode = 0;
-
-  if (aDoc->IsHTMLOrXHTML()) {
-    Element* body = aDoc->GetBody();
-    NS_ENSURE_ARG_POINTER(body);
-    NS_ADDREF(*aNode = body);
-    return NS_OK;
   }
 
-  // For non-HTML documents, the content root node will be the doc element.
-  Element* root = aDoc->GetDocumentElement();
-  NS_ENSURE_ARG_POINTER(root);
-  NS_ADDREF(*aNode = root);
-  return NS_OK;
+  // Scroll if necessary to make the selection visible:
+  // Must be the last thing to do - bug 242056
+
+  // After ScrollSelectionIntoView(), the pending notifications might be
+  // flushed and PresShell/PresContext/Frames may be dead. See bug 418470.
+  // FIXME(emilio): Any reason this couldn't do selection->ScrollIntoView()
+  // directly, rather than re-requesting the selection?
+  selCon->ScrollSelectionIntoView(
+      SelectionType::eNormal, nsISelectionController::SELECTION_WHOLE_SELECTION,
+      ScrollAxis(WhereToScroll::Center), ScrollAxis(), ScrollFlags::None,
+      SelectionScrollMode::SyncFlush);
 }
 
 nsresult nsWebBrowserFind::SetRangeAroundDocument(nsRange* aSearchRange,
                                                   nsRange* aStartPt,
                                                   nsRange* aEndPt,
                                                   Document* aDoc) {
-  RefPtr<Element> bodyContent;
-  nsresult rv = GetRootNode(aDoc, getter_AddRefs(bodyContent));
-  NS_ENSURE_SUCCESS(rv, rv);
-  NS_ENSURE_ARG_POINTER(bodyContent);
+  NS_ENSURE_ARG_POINTER(aDoc);
+  uint32_t childCount = aDoc->GetChildCount();
 
-  uint32_t childCount = bodyContent->GetChildCount();
+  aSearchRange->SetStart(*aDoc, 0, IgnoreErrors());
+  aSearchRange->SetEnd(*aDoc, childCount, IgnoreErrors());
 
-  aSearchRange->SetStart(*bodyContent, 0, IgnoreErrors());
-  aSearchRange->SetEnd(*bodyContent, childCount, IgnoreErrors());
-
-  if (mFindBackwards) {
-    aStartPt->SetStart(*bodyContent, childCount, IgnoreErrors());
-    aStartPt->SetEnd(*bodyContent, childCount, IgnoreErrors());
-    aEndPt->SetStart(*bodyContent, 0, IgnoreErrors());
-    aEndPt->SetEnd(*bodyContent, 0, IgnoreErrors());
-  } else {
-    aStartPt->SetStart(*bodyContent, 0, IgnoreErrors());
-    aStartPt->SetEnd(*bodyContent, 0, IgnoreErrors());
-    aEndPt->SetStart(*bodyContent, childCount, IgnoreErrors());
-    aEndPt->SetEnd(*bodyContent, childCount, IgnoreErrors());
-  }
+  aStartPt->SetStart(*aDoc, 0, IgnoreErrors());
+  aStartPt->SetEnd(*aDoc, 0, IgnoreErrors());
+  aEndPt->SetStart(*aDoc, childCount, IgnoreErrors());
+  aEndPt->SetEnd(*aDoc, childCount, IgnoreErrors());
 
   return NS_OK;
 }
@@ -434,13 +404,9 @@ nsresult nsWebBrowserFind::GetSearchLimits(nsRange* aSearchRange,
     return SetRangeAroundDocument(aSearchRange, aStartPt, aEndPt, aDoc);
   }
 
-  // Need bodyContent, for the start/end of the document
-  RefPtr<Element> bodyContent;
-  nsresult rv = GetRootNode(aDoc, getter_AddRefs(bodyContent));
-  NS_ENSURE_SUCCESS(rv, rv);
-  NS_ENSURE_ARG_POINTER(bodyContent);
+  NS_ENSURE_ARG_POINTER(aDoc);
 
-  uint32_t childCount = bodyContent->GetChildCount();
+  uint32_t childCount = aDoc->GetChildCount();
 
   // There are four possible range endpoints we might use:
   // DocumentStart, SelectionStart, SelectionEnd, DocumentEnd.
@@ -469,11 +435,11 @@ nsresult nsWebBrowserFind::GetSearchLimits(nsRange* aSearchRange,
     offset = range->EndOffset();
 
     aSearchRange->SetStart(*node, offset, IgnoreErrors());
-    aSearchRange->SetEnd(*bodyContent, childCount, IgnoreErrors());
+    aSearchRange->SetEnd(*aDoc, childCount, IgnoreErrors());
     aStartPt->SetStart(*node, offset, IgnoreErrors());
     aStartPt->SetEnd(*node, offset, IgnoreErrors());
-    aEndPt->SetStart(*bodyContent, childCount, IgnoreErrors());
-    aEndPt->SetEnd(*bodyContent, childCount, IgnoreErrors());
+    aEndPt->SetStart(*aDoc, childCount, IgnoreErrors());
+    aEndPt->SetEnd(*aDoc, childCount, IgnoreErrors());
   }
   // Backward, not wrapping: DocStart to SelStart
   else if (mFindBackwards && !aWrap) {
@@ -487,12 +453,12 @@ nsresult nsWebBrowserFind::GetSearchLimits(nsRange* aSearchRange,
     }
     offset = range->StartOffset();
 
-    aSearchRange->SetStart(*bodyContent, 0, IgnoreErrors());
-    aSearchRange->SetEnd(*bodyContent, childCount, IgnoreErrors());
-    aStartPt->SetStart(*node, offset, IgnoreErrors());
-    aStartPt->SetEnd(*node, offset, IgnoreErrors());
-    aEndPt->SetStart(*bodyContent, 0, IgnoreErrors());
-    aEndPt->SetEnd(*bodyContent, 0, IgnoreErrors());
+    aSearchRange->SetStart(*aDoc, 0, IgnoreErrors());
+    aSearchRange->SetEnd(*aDoc, childCount, IgnoreErrors());
+    aStartPt->SetStart(*aDoc, 0, IgnoreErrors());
+    aStartPt->SetEnd(*aDoc, 0, IgnoreErrors());
+    aEndPt->SetStart(*node, offset, IgnoreErrors());
+    aEndPt->SetEnd(*node, offset, IgnoreErrors());
   }
   // Forward, wrapping: DocStart to SelEnd
   else if (!mFindBackwards && aWrap) {
@@ -506,10 +472,10 @@ nsresult nsWebBrowserFind::GetSearchLimits(nsRange* aSearchRange,
     }
     offset = range->EndOffset();
 
-    aSearchRange->SetStart(*bodyContent, 0, IgnoreErrors());
-    aSearchRange->SetEnd(*bodyContent, childCount, IgnoreErrors());
-    aStartPt->SetStart(*bodyContent, 0, IgnoreErrors());
-    aStartPt->SetEnd(*bodyContent, 0, IgnoreErrors());
+    aSearchRange->SetStart(*aDoc, 0, IgnoreErrors());
+    aSearchRange->SetEnd(*aDoc, childCount, IgnoreErrors());
+    aStartPt->SetStart(*aDoc, 0, IgnoreErrors());
+    aStartPt->SetEnd(*aDoc, 0, IgnoreErrors());
     aEndPt->SetStart(*node, offset, IgnoreErrors());
     aEndPt->SetEnd(*node, offset, IgnoreErrors());
   }
@@ -525,12 +491,12 @@ nsresult nsWebBrowserFind::GetSearchLimits(nsRange* aSearchRange,
     }
     offset = range->StartOffset();
 
-    aSearchRange->SetStart(*bodyContent, 0, IgnoreErrors());
-    aSearchRange->SetEnd(*bodyContent, childCount, IgnoreErrors());
-    aStartPt->SetStart(*bodyContent, childCount, IgnoreErrors());
-    aStartPt->SetEnd(*bodyContent, childCount, IgnoreErrors());
-    aEndPt->SetStart(*node, offset, IgnoreErrors());
-    aEndPt->SetEnd(*node, offset, IgnoreErrors());
+    aSearchRange->SetStart(*aDoc, 0, IgnoreErrors());
+    aSearchRange->SetEnd(*aDoc, childCount, IgnoreErrors());
+    aStartPt->SetStart(*node, offset, IgnoreErrors());
+    aStartPt->SetEnd(*node, offset, IgnoreErrors());
+    aEndPt->SetStart(*aDoc, childCount, IgnoreErrors());
+    aEndPt->SetEnd(*aDoc, childCount, IgnoreErrors());
   }
   return NS_OK;
 }

@@ -48,27 +48,17 @@ pub fn run(fields: &mut Vec<ModuleField>) {
                     }
                     // If data is defined inline insert an explicit `data` module
                     // field here instead, switching this to a `Normal` memory.
-                    MemoryKind::Inline { is_32, ref data } => {
-                        let len = data.iter().map(|l| l.len()).sum::<usize>() as u32;
+                    MemoryKind::Inline { is64, ref data } => {
+                        let len = data.iter().map(|l| l.len()).sum::<usize>() as u64;
                         let pages = (len + default_page_size() - 1) / default_page_size();
-                        let kind = MemoryKind::Normal(if is_32 {
-                            MemoryType::B32 {
-                                limits: Limits {
-                                    min: pages,
-                                    max: Some(pages),
-                                },
-                                shared: false,
-                                page_size_log2: None,
-                            }
-                        } else {
-                            MemoryType::B64 {
-                                limits: Limits64 {
-                                    min: u64::from(pages),
-                                    max: Some(u64::from(pages)),
-                                },
-                                shared: false,
-                                page_size_log2: None,
-                            }
+                        let kind = MemoryKind::Normal(MemoryType {
+                            limits: Limits {
+                                is64,
+                                min: pages,
+                                max: Some(pages),
+                            },
+                            shared: false,
+                            page_size_log2: None,
                         });
                         let data = match mem::replace(&mut m.kind, kind) {
                             MemoryKind::Inline { data, .. } => data,
@@ -81,14 +71,11 @@ pub fn run(fields: &mut Vec<ModuleField>) {
                             name: None,
                             kind: DataKind::Active {
                                 memory: Index::Id(id),
-                                offset: Expression {
-                                    instrs: Box::new([if is_32 {
-                                        Instruction::I32Const(0)
-                                    } else {
-                                        Instruction::I64Const(0)
-                                    }]),
-                                    branch_hints: Vec::new(),
-                                },
+                                offset: Expression::one(if is64 {
+                                    Instruction::I64Const(0)
+                                } else {
+                                    Instruction::I32Const(0)
+                                }),
                             },
                             data,
                         }));
@@ -116,9 +103,16 @@ pub fn run(fields: &mut Vec<ModuleField>) {
                             },
                         });
                     }
-                    // If data is defined inline insert an explicit `data` module
-                    // field here instead, switching this to a `Normal` memory.
-                    TableKind::Inline { payload, elem } => {
+                    // If data is defined inline insert an explicit `data`
+                    // module field here instead, switching this to a `Normal`
+                    // memory.
+                    TableKind::Inline {
+                        payload,
+                        elem,
+                        shared,
+                        is64,
+                    } => {
+                        let is64 = *is64;
                         let len = match payload {
                             ElemPayload::Indices(v) => v.len(),
                             ElemPayload::Exprs { exprs, .. } => exprs.len(),
@@ -126,10 +120,12 @@ pub fn run(fields: &mut Vec<ModuleField>) {
                         let kind = TableKind::Normal {
                             ty: TableType {
                                 limits: Limits {
-                                    min: len as u32,
-                                    max: Some(len as u32),
+                                    min: len as u64,
+                                    max: Some(len as u64),
+                                    is64,
                                 },
                                 elem: *elem,
+                                shared: *shared,
                             },
                             init_expr: None,
                         };
@@ -143,11 +139,12 @@ pub fn run(fields: &mut Vec<ModuleField>) {
                             id: None,
                             name: None,
                             kind: ElemKind::Active {
-                                table: Index::Id(id),
-                                offset: Expression {
-                                    instrs: Box::new([Instruction::I32Const(0)]),
-                                    branch_hints: Vec::new(),
-                                },
+                                table: Some(Index::Id(id)),
+                                offset: Expression::one(if is64 {
+                                    Instruction::I64Const(0)
+                                } else {
+                                    Instruction::I32Const(0)
+                                }),
                             },
                             payload,
                         }));
@@ -214,7 +211,7 @@ pub fn run(fields: &mut Vec<ModuleField>) {
         fields.push(item);
     }
 
-    fn default_page_size() -> u32 {
+    fn default_page_size() -> u64 {
         1 << 16
     }
 }

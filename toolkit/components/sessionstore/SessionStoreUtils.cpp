@@ -19,6 +19,7 @@
 #include "mozilla/dom/CustomElementRegistry.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/DocumentInlines.h"
+#include "mozilla/dom/ElementBinding.h"
 #include "mozilla/dom/FormData.h"
 #include "mozilla/dom/FragmentOrElement.h"
 #include "mozilla/dom/HTMLElement.h"
@@ -33,6 +34,7 @@
 #include "mozilla/dom/SessionStoreUtils.h"
 #include "mozilla/dom/SessionStoreUtilsBinding.h"
 #include "mozilla/dom/ToJSValue.h"
+#include "mozilla/dom/TrustedHTML.h"
 #include "mozilla/dom/UnionTypes.h"
 #include "mozilla/dom/sessionstore/SessionStoreTypes.h"
 #include "mozilla/dom/txIXPathContext.h"
@@ -562,11 +564,11 @@ static uint32_t SizeOfFormEntry(const FormEntryValue& aValue) {
               formDataSize += entry.name().Length();
               const auto& entryValue = entry.value();
               switch (entryValue.type()) {
-                case FormDataValue::TBlobImpl:
+                case IPCFormDataValue::TBlobImpl:
                   formDataSize +=
                       entryValue.get_BlobImpl()->GetAllocationSize();
                   break;
-                case FormDataValue::TnsString:
+                case IPCFormDataValue::TnsString:
                   formDataSize += entryValue.get_nsString().Length();
                   break;
                 default:
@@ -658,9 +660,8 @@ static uint32_t CollectInputElement(Document* aDocument,
   uint32_t length = inputlist->Length();
   for (uint32_t i = 0; i < length; ++i) {
     MOZ_ASSERT(inputlist->Item(i), "null item in node list!");
-    nsCOMPtr<nsIFormControl> formControl =
-        do_QueryInterface(inputlist->Item(i));
-    if (formControl) {
+    if (const auto* formControl =
+            nsIFormControl::FromNodeOrNull(inputlist->Item(i))) {
       auto controlType = formControl->ControlType();
       if (controlType == FormControlType::InputPassword ||
           controlType == FormControlType::InputHidden ||
@@ -916,9 +917,8 @@ void SessionStoreUtils::CollectFromInputElement(Document& aDocument,
   uint32_t length = inputlist->Length(true);
   for (uint32_t i = 0; i < length; ++i) {
     MOZ_ASSERT(inputlist->Item(i), "null item in node list!");
-    nsCOMPtr<nsIFormControl> formControl =
-        do_QueryInterface(inputlist->Item(i));
-    if (formControl) {
+    if (const auto* formControl =
+            nsIFormControl::FromNodeOrNull(inputlist->Item(i))) {
       auto controlType = formControl->ControlType();
       if (controlType == FormControlType::InputPassword ||
           controlType == FormControlType::InputHidden ||
@@ -1299,12 +1299,12 @@ static void SetSessionData(JSContext* aCx, Element* aElement,
   }
 }
 
-MOZ_CAN_RUN_SCRIPT
-static void SetInnerHTML(Document& aDocument, const nsString& aInnerHTML) {
+MOZ_CAN_RUN_SCRIPT static void SetInnerHTML(Document& aDocument,
+                                            const nsAString& aInnerHTML) {
   RefPtr<Element> bodyElement = aDocument.GetBody();
   if (bodyElement && bodyElement->IsInDesignMode()) {
     IgnoredErrorResult rv;
-    bodyElement->SetInnerHTML(aInnerHTML, aDocument.NodePrincipal(), rv);
+    bodyElement->SetInnerHTMLTrusted(aInnerHTML, aDocument.NodePrincipal(), rv);
     if (!rv.Failed()) {
       nsContentUtils::DispatchInputEvent(bodyElement);
     }
@@ -1675,8 +1675,7 @@ void SessionStoreUtils::RestoreDocShellState(
   if (aDocShell) {
     nsCOMPtr<nsIURI> currentUri;
     nsDocShell::Cast(aDocShell)->GetCurrentURI(getter_AddRefs(currentUri));
-    if (aState.URI() &&
-        (!currentUri || mozilla::net::SchemeIsAbout(currentUri))) {
+    if (aState.URI() && (!currentUri || currentUri->SchemeIs("about"))) {
       aDocShell->SetCurrentURIForSessionStore(aState.URI());
     }
     RestoreDocShellCapabilities(aDocShell, aState.docShellCaps());

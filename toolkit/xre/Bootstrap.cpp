@@ -13,6 +13,7 @@
 #endif  // XP_WIN && _M_X64 && MOZ_DIAGNOSTIC_ASSERT_ENABLED
 
 #ifdef MOZ_WIDGET_ANDROID
+#  include "mozilla/jni/Utils.h"
 #  ifdef MOZ_PROFILE_GENERATE
 extern "C" int __llvm_profile_dump(void);
 #  endif
@@ -35,10 +36,6 @@ class BootstrapImpl final : public Bootstrap {
 
   virtual void NS_LogTerm() override { ::NS_LogTerm(); }
 
-  virtual void XRE_TelemetryAccumulate(int aID, uint32_t aSample) override {
-    ::XRE_TelemetryAccumulate(aID, aSample);
-  }
-
   virtual void XRE_StartupTimelineRecord(int aEvent,
                                          mozilla::TimeStamp aWhen) override {
     ::XRE_StartupTimelineRecord(aEvent, aWhen);
@@ -58,14 +55,6 @@ class BootstrapImpl final : public Bootstrap {
     return ::XRE_XPCShellMain(argc, argv, envp, aShellData);
   }
 
-  virtual GeckoProcessType XRE_GetProcessType() override {
-    return ::XRE_GetProcessType();
-  }
-
-  virtual void XRE_SetProcessType(const char* aProcessTypeString) override {
-    ::XRE_SetProcessType(aProcessTypeString);
-  }
-
   virtual nsresult XRE_InitChildProcess(
       int argc, char* argv[], const XREChildData* aChildData) override {
     return ::XRE_InitChildProcess(argc, argv, aChildData);
@@ -76,14 +65,11 @@ class BootstrapImpl final : public Bootstrap {
   }
 
 #ifdef MOZ_WIDGET_ANDROID
-  virtual void GeckoStart(JNIEnv* aEnv, char** argv, int argc,
-                          const StaticXREAppData& aAppData, bool xpcshell,
-                          const char* outFilePath) override {
-    ::GeckoStart(aEnv, argv, argc, aAppData, xpcshell, outFilePath);
+  virtual void XRE_SetGeckoThreadEnv(JNIEnv* aEnv) override {
+    mozilla::jni::SetGeckoThreadEnv(aEnv);
   }
 
-  virtual void XRE_SetAndroidChildFds(
-      JNIEnv* aEnv, const XRE_AndroidChildFds& aFds) override {
+  virtual void XRE_SetAndroidChildFds(JNIEnv* aEnv, jintArray aFds) override {
     ::XRE_SetAndroidChildFds(aEnv, aFds);
   }
 

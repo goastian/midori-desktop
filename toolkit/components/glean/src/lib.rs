@@ -17,9 +17,14 @@
 //! [privacy-policy]: https://www.mozilla.org/privacy/
 //! [docs]: https://firefox-source-docs.mozilla.org/toolkit/components/glean/
 
-use firefox_on_glean::{ipc, metrics, pings};
+#[cfg(target_os = "android")]
+use firefox_on_glean::pings;
+use firefox_on_glean::{ipc, metrics};
 use nserror::{nsresult, NS_ERROR_FAILURE, NS_OK};
-use nsstring::{nsACString, nsCString};
+use nsstring::{nsACString, nsAString, nsCString};
+use std::cell::UnsafeCell;
+use std::fs;
+use std::io::ErrorKind;
 use thin_vec::ThinVec;
 
 #[macro_use]
@@ -28,9 +33,10 @@ extern crate cstr;
 extern crate xpcom;
 
 mod init;
-mod ohttp_pings;
 
 pub use init::fog_init;
+
+use glean::{AttributionMetrics, DistributionMetrics};
 
 #[no_mangle]
 pub extern "C" fn fog_shutdown() {
@@ -39,10 +45,32 @@ pub extern "C" fn fog_shutdown() {
 
 #[no_mangle]
 pub extern "C" fn fog_register_pings() {
-    pings::register_pings(None);
+    #[cfg(not(target_os = "android"))]
+    log::warn!("fog_register_pings on not-Android has no effect.");
+
+    #[cfg(target_os = "android")]
+    pings::register_pings(Some("gecko"));
 }
 
-static mut PENDING_BUF: Vec<u8> = Vec::new();
+// Enough of unstable std::cell::SyncUnsafeCell for our needs, and
+// compatible enough such that it can just be replaced with
+// std::cell::SynUnsafeCell when it's stabilized.
+#[repr(transparent)]
+pub struct SyncUnsafeCell<T>(UnsafeCell<T>);
+
+unsafe impl<T: Sync> Sync for SyncUnsafeCell<T> {}
+
+impl<T> SyncUnsafeCell<T> {
+    pub const fn new(value: T) -> Self {
+        SyncUnsafeCell(UnsafeCell::new(value))
+    }
+
+    pub const fn get(&self) -> *mut T {
+        self.0.get()
+    }
+}
+
+static PENDING_BUF: SyncUnsafeCell<Vec<u8>> = SyncUnsafeCell::new(Vec::new());
 
 // IPC serialization/deserialization methods
 // Crucially important that the first two not be called on multiple threads.
@@ -52,11 +80,12 @@ static mut PENDING_BUF: Vec<u8> = Vec::new();
 /// fog_give_ipc_buf on).
 #[no_mangle]
 pub unsafe extern "C" fn fog_serialize_ipc_buf() -> usize {
+    let pending_buf = &mut *PENDING_BUF.get();
     if let Some(buf) = ipc::take_buf() {
-        PENDING_BUF = buf;
-        PENDING_BUF.len()
+        *pending_buf = buf;
+        pending_buf.len()
     } else {
-        PENDING_BUF = vec![];
+        *pending_buf = vec![];
         0
     }
 }
@@ -67,12 +96,13 @@ pub unsafe extern "C" fn fog_serialize_ipc_buf() -> usize {
 /// least buf_len bytes.
 #[no_mangle]
 pub unsafe extern "C" fn fog_give_ipc_buf(buf: *mut u8, buf_len: usize) -> usize {
-    let pending_len = PENDING_BUF.len();
+    let pending_buf = &mut *PENDING_BUF.get();
+    let pending_len = pending_buf.len();
     if buf.is_null() || buf_len < pending_len {
         return 0;
     }
-    std::ptr::copy_nonoverlapping(PENDING_BUF.as_ptr(), buf, pending_len);
-    PENDING_BUF = Vec::new();
+    std::ptr::copy_nonoverlapping(pending_buf.as_ptr(), buf, pending_len);
+    *pending_buf = Vec::new();
     pending_len
 }
 
@@ -105,7 +135,10 @@ pub extern "C" fn fog_set_debug_view_tag(value: &nsACString) -> nsresult {
 /// Submits a ping by name.
 #[no_mangle]
 pub extern "C" fn fog_submit_ping(ping_name: &nsACString) -> nsresult {
-    glean::submit_ping_by_name(&ping_name.to_string(), None);
+    let ping_name = ping_name.to_string();
+    #[cfg(feature = "with_gecko")]
+    firefox_on_glean::pings::record_profiler_ping_marker(&ping_name);
+    glean::submit_ping_by_name(&ping_name, None);
     NS_OK
 }
 
@@ -211,4 +244,121 @@ pub extern "C" fn fog_apply_server_knobs_config(config_json: &nsACString) {
 #[no_mangle]
 pub extern "C" fn fog_internal_glean_handle_client_inactive() {
     glean::handle_client_inactive();
+}
+
+/// Apply a serverknobs config from the given path.
+#[no_mangle]
+pub extern "C" fn fog_apply_serverknobs(serverknobs_path: &nsAString) -> bool {
+    let config_json = match fs::read_to_string(serverknobs_path.to_string()) {
+        Ok(c) => c,
+        Err(e) if e.kind() == ErrorKind::NotFound => {
+            // not logging anything if the file is missing.
+            return false;
+        }
+        Err(e) => {
+            log::error!(
+                "Boo, couldn't open serverknobs file at {}, Error: {:?}",
+                serverknobs_path.to_string(),
+                e,
+            );
+            return false;
+        }
+    };
+
+    log::trace!("Loaded serverknobs config. Applying.");
+    glean::glean_apply_server_knobs_config(config_json);
+
+    true
+}
+
+#[repr(C)]
+pub struct FogAttributionMetrics {
+    source: nsCString,
+    medium: nsCString,
+    campaign: nsCString,
+    term: nsCString,
+    content: nsCString,
+}
+
+impl FogAttributionMetrics {
+    fn take(&mut self, other: AttributionMetrics) {
+        if let Some(source) = other.source {
+            self.source = source.into();
+        }
+        if let Some(medium) = other.medium {
+            self.medium = medium.into();
+        }
+        if let Some(campaign) = other.campaign {
+            self.campaign = campaign.into();
+        }
+        if let Some(term) = other.term {
+            self.term = term.into();
+        }
+        if let Some(content) = other.content {
+            self.content = content.into();
+        }
+    }
+}
+
+impl From<&FogAttributionMetrics> for AttributionMetrics {
+    fn from(value: &FogAttributionMetrics) -> Self {
+        let to_opt_string = |s: &nsCString| {
+            if s.is_empty() {
+                None
+            } else {
+                Some(s.to_utf8().into_owned())
+            }
+        };
+
+        AttributionMetrics {
+            source: to_opt_string(&value.source),
+            medium: to_opt_string(&value.medium),
+            campaign: to_opt_string(&value.campaign),
+            term: to_opt_string(&value.term),
+            content: to_opt_string(&value.content),
+        }
+    }
+}
+
+#[repr(C)]
+pub struct FogDistributionMetrics {
+    name: nsCString,
+}
+
+impl FogDistributionMetrics {
+    fn take(&mut self, other: DistributionMetrics) {
+        if let Some(name) = other.name {
+            self.name = name.into();
+        }
+    }
+}
+
+impl From<&FogDistributionMetrics> for DistributionMetrics {
+    fn from(value: &FogDistributionMetrics) -> Self {
+        let name = if value.name.is_empty() {
+            None
+        } else {
+            Some(value.name.to_utf8().into_owned())
+        };
+        DistributionMetrics { name }
+    }
+}
+#[no_mangle]
+pub extern "C" fn fog_update_attribution(attr: &FogAttributionMetrics) {
+    glean::update_attribution(attr.into());
+}
+
+#[no_mangle]
+pub extern "C" fn fog_test_get_attribution(value: &mut FogAttributionMetrics) {
+    value.take(glean::test_get_attribution());
+}
+
+#[no_mangle]
+pub extern "C" fn fog_update_distribution(dist: &FogDistributionMetrics) {
+    glean::update_distribution(dist.into());
+}
+
+#[no_mangle]
+pub extern "C" fn fog_test_get_distribution(value: &mut FogDistributionMetrics) {
+    value.take(glean::test_get_distribution());
 }

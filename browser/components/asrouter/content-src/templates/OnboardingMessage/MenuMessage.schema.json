@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2019-09/schema",
+  "$id": "file:///MenuMessage.schema.json",
+  "title": "MenuMessage",
+  "description": "A template for messages that appear within our menus.",
+  "allOf": [
+    {
+      "$ref": "file:///FxMSCommon.schema.json#/$defs/Message"
+    }
+  ],
+  "type": "object",
+  "properties": {
+    "content": {
+      "type": "object",
+      "properties": {
+        "messageType": {
+          "type": "string",
+          "description": "The subtype of the message.",
+          "enum": ["fxa_cta"]
+        },
+        "primaryText": {
+          "$ref": "file:///FxMSCommon.schema.json#/$defs/localizableText",
+          "description": "The primary text for the message, which offers the value proposition to the user."
+        },
+        "secondaryText": {
+          "$ref": "file:///FxMSCommon.schema.json#/$defs/localizableText",
+          "description": "The second text for the message, which offers more detail on the value proposition to the user."
+        },
+        "closeAction": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Action dispatched by the button."
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": true,
+          "description": "The action to take upon clicking the close button."
+        },
+        "primaryAction": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "description": "Action dispatched by the button."
+            },
+            "data": {
+              "type": "object"
+            }
+          },
+          "required": ["type"],
+          "additionalProperties": true,
+          "description": "The action to take upon clicking the primary action button."
+        },
+        "primaryActionText": {
+          "$ref": "file:///FxMSCommon.schema.json#/$defs/localizableText",
+          "description": "The label for the primary action."
+        },
+        "imageURL": {
+          "type": "string",
+          "description": "URL for image to use with the content."
+        },
+        "imageWidth": {
+          "type": "number",
+          "description": "The image width in pixels. Default is 120px."
+        },
+        "imageVerticalTopOffset": {
+          "type": "number",
+          "description": "The margin-block-start value to apply to the image in pixels, used in 'column' layouts."
+        },
+        "imageVerticalBottomOffset": {
+          "type": "number",
+          "description": "The margin-block-end value to apply to the image in pixels, used in 'row' layouts."
+        },
+        "containerVerticalBottomOffset": {
+          "type": "number",
+          "description": "The container's margin-block-end value in pixels. Used to visually offset the image in 'row' layouts when 'imageVerticalBottomOffset' is applied."
+        },
+        "layout": {
+          "type": "string",
+          "description": "The layout of the message content and illustration. Row displays the image to the inline to the right of the text, column displays the image above the text.",
+          "enum": ["row", "column"]
+        }
+      }
+    },
+    "template": {
+      "type": "string",
+      "const": "menu_message"
+    },
+    "testingTriggerContext": {
+      "type": "string",
+      "enum": ["app_menu", "pxi_menu"]
+    }
+  },
+  "additionalProperties": true
+}

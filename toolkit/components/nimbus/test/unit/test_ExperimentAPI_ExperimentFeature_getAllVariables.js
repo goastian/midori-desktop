@@ -1,23 +1,5 @@
 "use strict";
 
-const { ExperimentAPI, _ExperimentFeature: ExperimentFeature } =
-  ChromeUtils.importESModule("resource://nimbus/ExperimentAPI.sys.mjs");
-const { ExperimentFakes } = ChromeUtils.importESModule(
-  "resource://testing-common/NimbusTestUtils.sys.mjs"
-);
-
-const { cleanupStorePrefCache } = ExperimentFakes;
-
-async function setupForExperimentFeature() {
-  const sandbox = sinon.createSandbox();
-  const manager = ExperimentFakes.manager();
-  await manager.onStartup();
-
-  sandbox.stub(ExperimentAPI, "_store").get(() => manager.store);
-
-  return { sandbox, manager };
-}
-
 const FEATURE_ID = "aboutwelcome";
 const TEST_FALLBACK_PREF = "browser.aboutwelcome.screens";
 const FAKE_FEATURE_MANIFEST = {
@@ -34,7 +16,7 @@ const FAKE_FEATURE_MANIFEST = {
 
 add_task(
   async function test_ExperimentFeature_getAllVariables_prefsOverDefaults() {
-    const { sandbox } = await setupForExperimentFeature();
+    const { cleanup } = await NimbusTestUtils.setupTest();
 
     const featureInstance = new ExperimentFeature(
       FEATURE_ID,
@@ -58,26 +40,24 @@ add_task(
     );
 
     Services.prefs.clearUserPref(TEST_FALLBACK_PREF);
-    sandbox.restore();
+
+    await cleanup();
   }
 );
 
 add_task(
   async function test_ExperimentFeature_getAllVariables_experimentOverPref() {
-    const { sandbox, manager } = await setupForExperimentFeature();
-    const recipe = ExperimentFakes.experiment("awexperiment", {
-      branch: {
-        slug: "treatment",
-        features: [
-          {
-            featureId: "aboutwelcome",
-            value: { screens: ["test-value"] },
-          },
-        ],
-      },
-    });
+    const { manager, cleanup } = await NimbusTestUtils.setupTest();
+    const recipe = NimbusTestUtils.factories.recipe.withFeatureConfig(
+      "awexperiment",
+      {
+        branchSlug: "treatment",
+        featureId: "aboutwelcome",
+        value: { screens: ["test-value"] },
+      }
+    );
 
-    await manager.store.addEnrollment(recipe);
+    await manager.enroll(recipe, "test");
 
     const featureInstance = new ExperimentFeature(
       FEATURE_ID,
@@ -104,7 +84,7 @@ add_task(
       "should return the AW experiment value"
     );
 
-    await ExperimentFakes.cleanupAll([recipe.slug], { manager });
+    await NimbusTestUtils.cleanupManager([recipe.slug], { manager });
     Assert.deepEqual(
       featureInstance.getAllVariables().screens.length,
       0,
@@ -112,84 +92,72 @@ add_task(
     );
 
     Services.prefs.clearUserPref(TEST_FALLBACK_PREF);
-    sandbox.restore();
+
+    await cleanup();
   }
 );
 
 add_task(
   async function test_ExperimentFeature_getAllVariables_experimentOverRemote() {
     Services.prefs.clearUserPref(TEST_FALLBACK_PREF);
-    const { manager } = await setupForExperimentFeature();
+    const { manager, cleanup } = await NimbusTestUtils.setupTest();
     const featureInstance = new ExperimentFeature(
       FEATURE_ID,
       FAKE_FEATURE_MANIFEST
     );
-    const recipe = ExperimentFakes.experiment("aw-experiment", {
-      branch: {
-        slug: "treatment",
-        features: [
-          {
-            featureId: FEATURE_ID,
-            value: { screens: ["test-value"] },
-          },
-        ],
+
+    const recipe = NimbusTestUtils.factories.recipe.withFeatureConfig(
+      "aw-experiment",
+      {
+        branchSlug: "treatment",
+        featureId: FEATURE_ID,
+        value: { screens: ["test-value"] },
+      }
+    );
+    const rollout = NimbusTestUtils.factories.recipe.withFeatureConfig(
+      "aw-rollout",
+      {
+        branchSlug: "treatment",
+        featureId: FEATURE_ID,
+        value: { screens: [], source: "rollout" },
       },
-    });
-    const rollout = ExperimentFakes.rollout("aw-rollout", {
-      branch: {
-        slug: "treatment",
-        features: [
-          { featureId: FEATURE_ID, value: { screens: [], source: "rollout" } },
-        ],
-      },
-    });
+      { isRollout: true }
+    );
     // We're using the store in this test we need to wait for it to load
     await manager.store.ready();
 
-    const rolloutPromise = new Promise(resolve =>
-      featureInstance.onUpdate((feature, reason) => {
-        if (reason === "rollout-updated") {
-          resolve();
-        }
-      })
-    );
-    const experimentPromise = new Promise(resolve =>
-      featureInstance.onUpdate((feature, reason) => {
-        if (reason === "experiment-updated") {
-          resolve();
-        }
-      })
-    );
-    manager.store.addEnrollment(recipe);
-    manager.store.addEnrollment(rollout);
-    await rolloutPromise;
-    await experimentPromise;
+    await manager.enroll(recipe, "test");
+    await manager.enroll(rollout, "test");
 
-    let allVariables = featureInstance.getAllVariables();
+    const allVariables = featureInstance.getAllVariables();
 
     Assert.equal(allVariables.screens.length, 1, "Returns experiment value");
     Assert.ok(!allVariables.source, "Does not include rollout value");
 
-    await ExperimentFakes.cleanupAll([recipe.slug], { manager });
-    cleanupStorePrefCache();
+    await NimbusTestUtils.cleanupManager([recipe.slug, rollout.slug], {
+      manager,
+    });
+
+    await cleanup();
   }
 );
 
 add_task(
   async function test_ExperimentFeature_getAllVariables_rolloutOverPrefDefaults() {
-    const { manager } = await setupForExperimentFeature();
+    const { manager, cleanup } = await NimbusTestUtils.setupTest();
     const featureInstance = new ExperimentFeature(
       FEATURE_ID,
       FAKE_FEATURE_MANIFEST
     );
-    const rollout = ExperimentFakes.rollout("foo-aw", {
-      branch: {
-        slug: "getAllVariables",
-        features: [{ featureId: FEATURE_ID, value: { screens: [] } }],
+    const rollout = NimbusTestUtils.factories.recipe.withFeatureConfig(
+      "foo-aw",
+      {
+        branchSlug: "getAllVariables",
+        featureId: FEATURE_ID,
+        value: { screens: [] },
       },
-    });
-    // We're using the store in this test we need to wait for it to load
-    await manager.store.ready();
+      { isRollout: true }
+    );
 
     Services.prefs.clearUserPref(TEST_FALLBACK_PREF);
 
@@ -199,14 +167,7 @@ add_task(
       "Pref is not set"
     );
 
-    const updatePromise = new Promise(resolve =>
-      featureInstance.onUpdate(resolve)
-    );
-    // Load remote defaults
-    manager.store.addEnrollment(rollout);
-
-    // Wait for feature to load the rollout
-    await updatePromise;
+    await manager.enroll(rollout, "test");
 
     Assert.deepEqual(
       featureInstance.getAllVariables().screens?.length,
@@ -223,19 +184,19 @@ add_task(
     );
 
     Services.prefs.clearUserPref(TEST_FALLBACK_PREF);
-    cleanupStorePrefCache();
+
+    await manager.unenroll(rollout.slug);
+    await cleanup();
   }
 );
 
 add_task(
   async function test_ExperimentFeature_getAllVariables_defaultValuesParam() {
-    const { manager } = await setupForExperimentFeature();
+    const { cleanup } = await NimbusTestUtils.setupTest();
     const featureInstance = new ExperimentFeature(
       FEATURE_ID,
       FAKE_FEATURE_MANIFEST
     );
-    // We're using the store in this test we need to wait for it to load
-    await manager.store.ready();
 
     Services.prefs.clearUserPref(TEST_FALLBACK_PREF);
 
@@ -245,5 +206,27 @@ add_task(
       null,
       "should return defaultValues param over default pref settings"
     );
+
+    await cleanup();
   }
 );
+
+add_task(async function testGetAllVariablesCoenrolling() {
+  const cleanupFeature = NimbusTestUtils.addTestFeatures(
+    new ExperimentFeature("foo", {
+      allowCoenrollment: true,
+      variables: {
+        bar: {
+          type: "string",
+        },
+      },
+    })
+  );
+
+  Assert.throws(
+    () => NimbusFeatures.foo.getAllVariables(),
+    /Co-enrolling features must use the getAllEnrollments API/
+  );
+
+  cleanupFeature();
+});

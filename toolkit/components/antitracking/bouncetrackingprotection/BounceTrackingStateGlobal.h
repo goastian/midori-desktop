@@ -7,10 +7,12 @@
 #ifndef mozilla_BounceTrackingStateGlobal_h
 #define mozilla_BounceTrackingStateGlobal_h
 
+#include "BounceTrackingMapEntry.h"
 #include "BounceTrackingProtectionStorage.h"
 #include "mozilla/WeakPtr.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsTHashMap.h"
+#include "nsTArray.h"
 #include "nsISupports.h"
 
 namespace mozilla {
@@ -31,8 +33,7 @@ class BounceTrackingStateGlobal final {
                             const OriginAttributes& aAttrs);
 
   bool IsPrivateBrowsing() const {
-    return mOriginAttributes.mPrivateBrowsingId !=
-           nsIScriptSecurityManager::DEFAULT_PRIVATE_BROWSING_ID;
+    return mOriginAttributes.IsPrivateBrowsing();
   }
 
   bool ShouldPersistToDisk() const { return !IsPrivateBrowsing(); }
@@ -63,9 +64,18 @@ class BounceTrackingStateGlobal final {
                                              PRTime aTime,
                                              bool aSkipStorage = false);
 
+  // Record the fact that we have purged state for a bounce tracker. This is
+  // used in the purged trackers log.
+  [[nodiscard]] nsresult RecordPurgedTracker(
+      const RefPtr<BounceTrackingPurgeEntry>& aEntry);
+
   // Remove one or many bounce trackers identified by site host.
   [[nodiscard]] nsresult RemoveBounceTrackers(
       const nsTArray<nsCString>& aSiteHosts);
+
+  // Clear user activation or bounce tracker map.
+  [[nodiscard]] nsresult ClearByType(
+      BounceTrackingProtectionStorage::EntryType aType, bool aSkipStorage);
 
   [[nodiscard]] nsresult ClearSiteHost(const nsACString& aSiteHost,
                                        bool aSkipStorage = false);
@@ -81,6 +91,12 @@ class BounceTrackingStateGlobal final {
 
   const nsTHashMap<nsCStringHashKey, PRTime>& BounceTrackersMapRef() {
     return mBounceTrackers;
+  }
+
+  const nsTHashMap<nsCStringHashKey,
+                   nsTArray<RefPtr<BounceTrackingPurgeEntry>>>&
+  RecentPurgesMapRef() {
+    return mRecentPurges;
   }
 
   // Create a string that describes this object. Used for logging.
@@ -103,13 +119,19 @@ class BounceTrackingStateGlobal final {
   // Map of site hosts to moments. The moments represent the most recent wall
   // clock time at which the user activated a top-level document on the
   // associated site host.
-  nsTHashMap<nsCStringHashKey, PRTime> mUserActivation{};
+  nsTHashMap<nsCStringHashKey, PRTime> mUserActivation;
 
   // Map of site hosts to moments. The moments represent the first wall clock
   // time since the last execution of the bounce tracking timer at which a page
   // on the given site host performed an action that could indicate stateful
   // bounce tracking took place.
-  nsTHashMap<nsCStringHashKey, PRTime> mBounceTrackers{};
+  nsTHashMap<nsCStringHashKey, PRTime> mBounceTrackers;
+
+  // Log of purges which happened since application startup. Keyed by site host.
+  // The log is used for both troubleshooting purposes and for logging warnings
+  // to the web console for affected sites.
+  nsTHashMap<nsCStringHashKey, nsTArray<RefPtr<BounceTrackingPurgeEntry>>>
+      mRecentPurges;
 
   // Helper to create a string representation of a siteHost -> timestamp map.
   static nsCString DescribeMap(

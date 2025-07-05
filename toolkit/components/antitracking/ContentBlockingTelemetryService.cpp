@@ -10,7 +10,7 @@
 #include "mozilla/PermissionManager.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPtr.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/AntitrackingMetrics.h"
 
 #include "AntiTrackingLog.h"
 #include "prtime.h"
@@ -57,7 +57,7 @@ void ContentBlockingTelemetryService::ReportStoragePermissionExpire() {
 
   LOG(("Start to report storage permission expire."));
 
-  PermissionManager* permManager = PermissionManager::GetInstance();
+  RefPtr<PermissionManager> permManager = PermissionManager::GetInstance();
   if (NS_WARN_IF(!permManager)) {
     LOG(("Permission manager is null, bailing out early"));
     return;
@@ -83,7 +83,7 @@ void ContentBlockingTelemetryService::ReportStoragePermissionExpire() {
     return;
   }
 
-  nsTArray<uint32_t> records;
+  nsTArray<uint64_t> records;
 
   for (const auto& permission : permissions) {
     if (!permission) {
@@ -126,6 +126,7 @@ void ContentBlockingTelemetryService::ReportStoragePermissionExpire() {
   }
 
   if (!records.IsEmpty()) {
-    Telemetry::Accumulate(Telemetry::STORAGE_ACCESS_REMAINING_DAYS, records);
+    glean::contentblocking::storage_access_remaining_days.AccumulateSamples(
+        records);
   }
 }

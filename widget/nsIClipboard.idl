@@ -49,7 +49,7 @@ interface nsIAsyncClipboardRequestCallback : nsISupports
 };
 
 [scriptable, builtinclass, uuid(c18ea2f7-6b6f-4a38-9ab3-a8781fdfcc39)]
-interface nsIAsyncGetClipboardData : nsISupports {
+interface nsIClipboardDataSnapshot : nsISupports {
   /**
    * Determines whether this request is still valid (e.g., the clipboard content
    * associated with this request is not stale).
@@ -77,15 +77,28 @@ interface nsIAsyncGetClipboardData : nsISupports {
    */
   void getData(in nsITransferable aTransferable,
                in nsIAsyncClipboardRequestCallback aCallback);
+
+  /**
+   * Filters the flavors that `aTransferable` can import (see
+   * `nsITransferable::flavorsTransferableCanImport`). Every specified flavors
+   * must exist in `flavorList`, or the request will be rejected. If the request
+   * remains valid, it retrieves the data for the first flavor. The data is then
+   * set for `aTransferable`.
+   *
+   * @param  aTransferable
+   *         The transferable which contains the flavors to be read.
+   * @result NS_OK if no errors
+   */
+  void getDataSync(in nsITransferable aTransferable);
 };
 
 [scriptable, uuid(ce23c1c4-58fd-4c33-8579-fa0796d9652c)]
-interface nsIAsyncClipboardGetCallback : nsISupports
+interface nsIClipboardGetDataSnapshotCallback : nsISupports
 {
   /**
    * Indicates that the clipboard get request has succeeded.
    */
-  void onSuccess(in nsIAsyncGetClipboardData aAsyncGetClipboardData);
+  void onSuccess(in nsIClipboardDataSnapshot aClipboardDataSnapshot);
 
   /**
    * Indicates that the clipboard get request has rejected.
@@ -99,11 +112,13 @@ interface nsIAsyncClipboardGetCallback : nsISupports
 [scriptable, builtinclass, uuid(ceaa0047-647f-4b8e-ad1c-aff9fa62aa51)]
 interface nsIClipboard : nsISupports
 {
-    const long kSelectionClipboard = 0;
-    const long kGlobalClipboard = 1;
-    const long kFindClipboard = 2;
+  cenum ClipboardType : 32 {
+    kSelectionClipboard = 0,
+    kGlobalClipboard = 1,
+    kFindClipboard = 2,
     // Used to cache current selection on (nsClipboard) for macOS service menu.
-    const long kSelectionCache = 3;
+    kSelectionCache = 3,
+  };
 
 %{ C++
     static const uint32_t kClipboardTypeCount = kSelectionCache + 1;
@@ -123,7 +138,7 @@ interface nsIClipboard : nsISupports
     */
 
     void setData (in nsITransferable aTransferable, in nsIClipboardOwner anOwner,
-                  in long aWhichClipboard, [optional] in WindowContext aSettingWindowContext);
+                  in nsIClipboard_ClipboardType aWhichClipboard, [optional] in WindowContext aSettingWindowContext);
 
     /**
      * Requests setting data to the native clipboard. The actual set occurs
@@ -143,14 +158,14 @@ interface nsIClipboard : nsISupports
      *         The write request object. The actual write will occur when the
      *         data is provided by calling nsIAsyncSetClipboardData::setData().
      */
-    nsIAsyncSetClipboardData asyncSetData(in long aWhichClipboard,
+    nsIAsyncSetClipboardData asyncSetData(in nsIClipboard_ClipboardType aWhichClipboard,
                                           [optional] in WindowContext aSettingWindowContext,
                                           [optional] in nsIAsyncClipboardRequestCallback aCallback);
 
    /**
     * Filters the flavors aTransferable can import (see
     * `nsITransferable::flavorsTransferableCanImport`) and gets the data for the
-    * first flavor. That data is set for aTransferable.
+    * first available flavor. That data is set for aTransferable.
     *
     * @param  aTransferable The transferable
     * @param  aWhichClipboard Specifies the clipboard to which this operation applies.
@@ -163,7 +178,7 @@ interface nsIClipboard : nsISupports
     * @result NS_OK if no errors
     */
 
-    void getData ( in nsITransferable aTransferable, in long aWhichClipboard, [optional] in WindowContext aRequestingWindowContext) ;
+    void getData ( in nsITransferable aTransferable, in nsIClipboard_ClipboardType aWhichClipboard, [optional] in WindowContext aRequestingWindowContext) ;
 
     /**
      * Requests getting data asynchronously from the native clipboard. This does
@@ -181,11 +196,11 @@ interface nsIClipboard : nsISupports
      *         The callback object that will be notified upon completion.
      * @result NS_OK if no errors
      */
-    void asyncGetData(in Array<ACString> aFlavorList,
-                      in long aWhichClipboard,
-                      in WindowContext aRequestingWindowContext,
-                      in nsIPrincipal aRequestingPrincipal,
-                      in nsIAsyncClipboardGetCallback aCallback);
+    void getDataSnapshot(in Array<ACString> aFlavorList,
+                         in nsIClipboard_ClipboardType aWhichClipboard,
+                         in WindowContext aRequestingWindowContext,
+                         in nsIPrincipal aRequestingPrincipal,
+                         in nsIClipboardGetDataSnapshotCallback aCallback);
 
     /**
      * Requests getting data from the native clipboard. This does not actually
@@ -208,8 +223,8 @@ interface nsIClipboard : nsISupports
      * @return nsIAsyncSetClipboardData if successful.
      * @throws if the request can not be made.
      */
-    nsIAsyncGetClipboardData getDataSnapshotSync(in Array<ACString> aFlavorList,
-                                                 in long aWhichClipboard,
+    nsIClipboardDataSnapshot getDataSnapshotSync(in Array<ACString> aFlavorList,
+                                                 in nsIClipboard_ClipboardType aWhichClipboard,
                                                  [optional] in WindowContext aRequestingWindowContext);
 
    /**
@@ -220,7 +235,7 @@ interface nsIClipboard : nsISupports
     * @result NS_OK if successful.
     */
 
-    void emptyClipboard ( in long aWhichClipboard ) ;
+    void emptyClipboard ( in nsIClipboard_ClipboardType aWhichClipboard ) ;
 
    /**
     * This provides a way to give correct UI feedback about, for instance, a paste
@@ -234,7 +249,7 @@ interface nsIClipboard : nsISupports
     * @result NS_OK if successful.
     */
     boolean hasDataMatchingFlavors ( in Array<ACString> aFlavorList,
-                                     in long aWhichClipboard ) ;
+                                     in nsIClipboard_ClipboardType aWhichClipboard ) ;
 
     /**
      * Allows clients to determine if the implementation supports the concept of a
@@ -245,5 +260,5 @@ interface nsIClipboard : nsISupports
      * @result  NS_OK if successful.
      */
     [infallible]
-    boolean isClipboardTypeSupported(in long aWhichClipboard);
+    boolean isClipboardTypeSupported(in nsIClipboard_ClipboardType aWhichClipboard);
 };

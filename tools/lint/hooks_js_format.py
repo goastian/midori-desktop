@@ -33,7 +33,7 @@ def run_js_format(hooktype, changedFiles):
         # No files have been touched
         return
 
-    extensions = (".js", ".jsx", ".jsm", ".json", ".mjs", "sjs", "html", "xhtml")
+    extensions = (".js", ".jsx", ".json", ".mjs", ".sjs", ".html", ".xhtml", ".ts")
     path_list = []
     for filename in sorted(changedFiles):
         # Ignore files unsupported in eslint and prettier
@@ -57,7 +57,7 @@ def run_js_format(hooktype, changedFiles):
         vcs.add_remove_files(*path_list)
 
         return False
-    print("warning: '{}' is not a valid js-format hooktype".format(hooktype))
+    print(f"warning: '{hooktype}' is not a valid js-format hooktype")
     return False
 
 

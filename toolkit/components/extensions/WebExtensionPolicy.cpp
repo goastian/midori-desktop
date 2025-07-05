@@ -283,6 +283,10 @@ bool WebExtensionPolicyCore::QuarantinedFromURI(const URLInfo& aURI) const {
   return !IgnoreQuarantine() && WebExtensionPolicy::IsQuarantinedURI(aURI);
 }
 
+bool WebExtensionPolicyCore::PrivateBrowsingAllowed() const {
+  return HasPermission(nsGkAtoms::privateBrowsingAllowedPermission);
+}
+
 /*****************************************************************************
  * WebExtensionPolicy
  *****************************************************************************/
@@ -490,10 +494,7 @@ void WebExtensionPolicy::SetAllowedOrigins(MatchPatternSet& aAllowedOrigins) {
 }
 
 void WebExtensionPolicy::InjectContentScripts(ErrorResult& aRv) {
-  nsresult rv = EPS().InjectContentScripts(this);
-  if (NS_FAILED(rv)) {
-    aRv.Throw(rv);
-  }
+  EPS().InjectContentScripts(this, aRv);
 }
 
 /* static */
@@ -510,7 +511,7 @@ bool WebExtensionPolicy::IsExtensionProcess(GlobalObject& aGlobal) {
 bool WebExtensionPolicy::BackgroundServiceWorkerEnabled(GlobalObject& aGlobal) {
   // When MOZ_WEBEXT_WEBIDL_ENABLED is not set at compile time, extension APIs
   // are not available to extension service workers. To avoid confusion, the
-  // extensions.backgroundServiceWorkerEnabled.enabled pref is locked to false
+  // extensions.backgroundServiceWorker.enabled pref is locked to false
   // in modules/libpref/init/all.js when MOZ_WEBEXT_WEBIDL_ENABLED is not set.
   return StaticPrefs::extensions_backgroundServiceWorker_enabled_AtStartup();
 }
@@ -600,10 +601,6 @@ void WebExtensionPolicy::GetContentScripts(
   aScripts.AppendElements(mContentScripts);
 }
 
-bool WebExtensionPolicy::PrivateBrowsingAllowed() const {
-  return HasPermission(nsGkAtoms::privateBrowsingAllowedPermission);
-}
-
 bool WebExtensionPolicy::CanAccessContext(nsILoadContext* aContext) const {
   MOZ_ASSERT(aContext);
   return PrivateBrowsingAllowed() || !aContext->UsePrivateBrowsing();
@@ -611,13 +608,7 @@ bool WebExtensionPolicy::CanAccessContext(nsILoadContext* aContext) const {
 
 bool WebExtensionPolicy::CanAccessWindow(
     const dom::WindowProxyHolder& aWindow) const {
-  if (PrivateBrowsingAllowed()) {
-    return true;
-  }
-  // match browsing mode with policy
-  nsIDocShell* docShell = aWindow.get()->GetDocShell();
-  nsCOMPtr<nsILoadContext> loadContext = do_QueryInterface(docShell);
-  return !(loadContext && loadContext->UsePrivateBrowsing());
+  return PrivateBrowsingAllowed() || !aWindow.get()->UsePrivateBrowsing();
 }
 
 void WebExtensionPolicy::GetReadyPromise(
@@ -703,11 +694,20 @@ WebExtensionContentScript::Constructor(GlobalObject& aGlobal,
   return script.forget();
 }
 
+void WebExtensionContentScript::GetWorldId(nsAString& aWorldId) const {
+  if (!mWorldId.IsNull()) {
+    aWorldId = mWorldId.Value();
+  } else {
+    SetDOMStringToNull(aWorldId);
+  }
+}
+
 MozDocumentMatcher::MozDocumentMatcher(GlobalObject& aGlobal,
                                        const dom::MozDocumentMatcherInit& aInit,
                                        bool aRestricted, ErrorResult& aRv)
     : mHasActiveTabPermission(aInit.mHasActiveTabPermission),
       mRestricted(aRestricted),
+      mIsUserScript(aInit.mIsUserScript),
       mAllFrames(aInit.mAllFrames),
       mCheckPermissions(aInit.mCheckPermissions),
       mFrameID(aInit.mFrameID),
@@ -764,7 +764,8 @@ WebExtensionContentScript::WebExtensionContentScript(
                          !aExtension.HasPermission(nsGkAtoms::mozillaAddons),
                          aRv),
       mRunAt(aInit.mRunAt),
-      mWorld(aInit.mWorld) {
+      mWorld(aInit.mWorld),
+      mWorldId(aInit.mWorldId) {
   mCssPaths.Assign(aInit.mCssPaths);
   mJsPaths.Assign(aInit.mJsPaths);
   mExtension = &aExtension;
@@ -773,6 +774,12 @@ WebExtensionContentScript::WebExtensionContentScript(
   if (mExtension->ManifestVersion() >= 3) {
     mCheckPermissions = true;
   }
+
+  // The USER_SCRIPT world is not supported for regular content scripts.
+  MOZ_ASSERT_IF(!mIsUserScript,
+                mWorld != ContentScriptExecutionWorld::USER_SCRIPT);
+  // User scripts should never run in privileged content script worlds.
+  MOZ_ASSERT_IF(mIsUserScript, mWorld != ContentScriptExecutionWorld::ISOLATED);
 }
 
 bool MozDocumentMatcher::Matches(const DocInfo& aDoc,
@@ -812,15 +819,18 @@ bool MozDocumentMatcher::Matches(const DocInfo& aDoc,
     return false;
   }
 
+  if (mIsUserScript && mExtension &&
+      !mExtension->HasPermission(nsGkAtoms::userScripts)) {
+    // The "userScripts" permission can be revoked after script registration.
+    return false;
+  }
+
   // Top-level about:blank is a special case. Unlike about:blank frames/windows
   // opened by web pages, these do not have an origin that could be matched by
   // a match pattern (they have a null principal instead). To allow extensions
   // that intend to run scripts "everywhere", consider the document matched if
   // the match pattern describe a very broad pattern (such as "<all_urls>").
   if (mMatchAboutBlank && aDoc.IsTopLevelOpaqueAboutBlank()) {
-    if (StaticPrefs::extensions_script_about_blank_without_permission()) {
-      return true;
-    }
     if (mHasActiveTabPermission) {
       return true;
     }
@@ -878,15 +888,31 @@ bool MozDocumentMatcher::MatchesURI(const URLInfo& aURL,
                                     bool aIgnorePermissions) const {
   MOZ_ASSERT((!mRestricted && !mCheckPermissions) || mExtension);
 
-  if (!mMatches->Matches(aURL)) {
-    return false;
+  if (MOZ_LIKELY(!mIsUserScript)) {
+    // mMatches must always match for normal content scripts.
+    if (!mMatches->Matches(aURL)) {
+      return false;
+    }
+    // mIncludeGlobs is optional, but if specified must match.
+    if (!mIncludeGlobs.IsNull() &&
+        !mIncludeGlobs.Value().Matches(aURL.CSpec())) {
+      return false;
+    }
+  } else {
+    // Unlike normal content scripts that match by (mMatches AND mIncludeGlobs),
+    // user scripts accept if there is any match: (mMatches OR mIncludeGlobs).
+    // This implies that mMatches does not have to be specified.
+    // mMatches is not a Nullable because we want it to be specified for content
+    // scripts (which is by far the most common case). An empty MatchPatternSet
+    // is equivalent to an unspecified (non-matching) mMatches.
+    if (!mMatches->Matches(aURL) &&
+        (mIncludeGlobs.IsNull() ||
+         !mIncludeGlobs.Value().Matches(aURL.CSpec()))) {
+      return false;
+    }
   }
 
   if (mExcludeMatches && mExcludeMatches->Matches(aURL)) {
-    return false;
-  }
-
-  if (!mIncludeGlobs.IsNull() && !mIncludeGlobs.Value().Matches(aURL.CSpec())) {
     return false;
   }
 

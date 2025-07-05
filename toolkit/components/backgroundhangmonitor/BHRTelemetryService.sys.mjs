@@ -125,12 +125,28 @@ BHRTelemetryService.prototype = Object.freeze({
     // errors) while avoiding timeouts caused by invoking `pingsender` during
     // testing.
     if (
-      Services.prefs.getBoolPref("toolkit.telemetry.bhrPing.enabled", false)
+      Services.prefs.getBoolPref("toolkit.telemetry.bhrPing.enabled", false) &&
+      this.payload.hangs.length
     ) {
       this.payload.timeSinceLastPing = new Date() - this.startTime;
       lazy.TelemetryController.submitExternalPing("bhr", this.payload, {
         addEnvironment: true,
       });
+
+      Glean.hangs.modules.set(this.payload.modules);
+      let gleanHangs = this.payload.hangs.map(
+        ({ stack, duration, ...restOfHang }) => ({
+          stack: stack.map(frame =>
+            typeof frame == "string"
+              ? { frame }
+              : { module: frame[0], frame: frame[1] }
+          ),
+          duration: Math.round(duration),
+          ...restOfHang,
+        })
+      );
+      Glean.hangs.reports.set(gleanHangs);
+      GleanPings.hangReport.submit();
     }
     this.resetPayload();
   },

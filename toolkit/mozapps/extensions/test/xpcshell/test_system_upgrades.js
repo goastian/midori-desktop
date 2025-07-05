@@ -88,31 +88,12 @@ async function promiseInstallSystemProfileAddon(id, version) {
   return install.install();
 }
 
-async function promiseUpdateSystemAddon(id, version, waitForStartup = true) {
-  let xpi = createWebExtensionFile(id, version);
-  let xml = buildSystemAddonUpdates([
-    {
-      id: ADDON_ID,
-      version,
-      path: xpi.leafName,
-      xpi,
-    },
-  ]);
-  // If we're not expecting a startup we need to wait for install to end.
-  let promises = [];
-  if (!waitForStartup) {
-    promises.push(AddonTestUtils.promiseAddonEvent("onInstalled"));
-  }
-  promises.push(installSystemAddons(xml, waitForStartup ? [ADDON_ID] : []));
-  return Promise.all(promises);
-}
-
 async function promiseClearSystemAddons() {
   let xml = buildSystemAddonUpdates([]);
   return installSystemAddons(xml, []);
 }
 
-const builtInOverride = { system: [ADDON_ID] };
+const builtInOverride = { system: [ADDON_ID], builtins: [] };
 
 async function checkAddon(version, reason, startReason = reason) {
   let addons = await AddonManager.getAddonsByTypes(["extension"]);
@@ -289,27 +270,11 @@ async function _test_builtin_addon_override() {
   Services.prefs.clearUserPref(PREF_SYSTEM_ADDON_SET);
 }
 
-add_task(async function test_system_addon_upgrades() {
-  await AddonTestUtils.overrideBuiltIns(builtInOverride);
-  await promiseInstallDefaultSystemAddon(ADDON_ID, "1.0");
-  await AddonTestUtils.promiseStartupManager();
-  await checkAddon("1.0", BOOTSTRAP_REASONS.ADDON_INSTALL);
-
-  await _test_builtin_addon_override();
-
-  // cleanup the system addon in the default location
-  await AddonTestUtils.manuallyUninstall(systemDefaults, ADDON_ID);
-  // If we don't restart (to clean up the uninstall above) and we
-  // clear BootstrapMonitor, BootstrapMonitor asserts on the next AOM startup.
-  await AddonTestUtils.promiseRestartManager();
-
-  await AddonTestUtils.promiseShutdownManager();
-  BootstrapMonitor.clear(ADDON_ID);
-});
-
 // Run the test again, but starting from a "builtin" addon location
-add_task(async function test_builtin_addon_upgrades() {
+add_task(async function test_manually_installed_builtin_addon_upgrades() {
   builtInOverride.system = [];
+  builtInOverride.builtins = [];
+  await AddonTestUtils.overrideBuiltIns(builtInOverride);
 
   await AddonTestUtils.promiseStartupManager();
   await Promise.all([
@@ -327,49 +292,55 @@ add_task(async function test_builtin_addon_upgrades() {
 
   await _test_builtin_addon_override();
 
+  // cleanup the builtin addon manually installed in the builtin location.
   let addon = await AddonManager.getAddonByID(ADDON_ID);
   await addon.uninstall();
   await AddonTestUtils.promiseShutdownManager();
   BootstrapMonitor.clear(ADDON_ID);
 });
 
-add_task(async function test_system_addon_precedence() {
-  builtInOverride.system = [ADDON_ID];
+// Run the test again, but starting from a "builtin" addon location
+add_task(async function test_auto_installed_builtin_addon_upgrades() {
+  const ADDON_VERSION = "1.0";
+  const builtinExtensionDefinitions = {
+    manifest: {
+      version: ADDON_VERSION,
+      browser_specific_settings: {
+        gecko: { id: ADDON_ID },
+      },
+    },
+  };
+  await setupBuiltinExtension(builtinExtensionDefinitions, "test-builtin-ext");
+
+  builtInOverride.system = [];
+  builtInOverride.builtins = [
+    {
+      addon_id: ADDON_ID,
+      addon_version: ADDON_VERSION,
+      res_url: "resource://test-builtin-ext/",
+    },
+  ];
   await AddonTestUtils.overrideBuiltIns(builtInOverride);
-  await promiseInstallDefaultSystemAddon(ADDON_ID, "1.0");
-  await AddonTestUtils.promiseStartupManager();
-  await checkAddon("1.0", BOOTSTRAP_REASONS.ADDON_INSTALL);
 
-  /////
-  // Upgrade to a system addon in the profile location, "app-system-addons"
-  /////
-  await promiseUpdateSystemAddon(ADDON_ID, "2.0");
-  await checkAddon("2.0", BOOTSTRAP_REASONS.ADDON_UPGRADE);
+  await Promise.all([
+    AddonTestUtils.promiseWebExtensionStartup(ADDON_ID),
+    AddonTestUtils.promiseStartupManager(),
+  ]);
+  await checkAddon(ADDON_VERSION, BOOTSTRAP_REASONS.ADDON_INSTALL);
 
-  /////
-  // Builtin system addon is changed, it has precedence because when this
-  // happens we remove all prior system addon upgrades.
-  /////
-  await AddonTestUtils.promiseShutdownManager();
-  await AddonTestUtils.overrideBuiltIns(builtInOverride);
-  await promiseInstallDefaultSystemAddon(ADDON_ID, "1.5");
-  await AddonTestUtils.promiseStartupManager("2");
-  await checkAddon(
-    "1.5",
-    BOOTSTRAP_REASONS.ADDON_DOWNGRADE,
-    BOOTSTRAP_REASONS.APP_STARTUP
-  );
+  await _test_builtin_addon_override();
 
-  // cleanup the system addon in the default location
-  await AddonTestUtils.manuallyUninstall(systemDefaults, ADDON_ID);
+  // cleanup the system addon auto-installed in the locked system builtin location
+  await AddonTestUtils.overrideBuiltIns({ system: [], builtins: [] });
   await AddonTestUtils.promiseRestartManager();
-
   await AddonTestUtils.promiseShutdownManager();
   BootstrapMonitor.clear(ADDON_ID);
 });
 
 add_task(async function test_builtin_addon_version_precedence() {
   builtInOverride.system = [];
+  builtInOverride.builtins = [];
+  await AddonTestUtils.overrideBuiltIns(builtInOverride);
 
   await AddonTestUtils.promiseStartupManager();
   await Promise.all([
@@ -410,8 +381,88 @@ add_task(async function test_builtin_addon_version_precedence() {
   ]);
   await checkAddon("2.0", BOOTSTRAP_REASONS.ADDON_UPGRADE);
 
+  // Uninstall the system addon update.
   let addon = await AddonManager.getAddonByID(ADDON_ID);
   await addon.uninstall();
+  // Uninstall the addon version 1.5 manually installed in the builtin location.
+  addon = await AddonManager.getAddonByID(ADDON_ID);
+  Assert.equal(
+    addon?.version,
+    "1.5",
+    "Expect builtin addon v1.5 to become visible"
+  );
+  await addon.uninstall();
+  await AddonTestUtils.promiseShutdownManager();
+  BootstrapMonitor.clear(ADDON_ID);
+});
+
+// Same as test_system_addon_precedence but with the system addon
+// bundled in the omni jar instead of an xpi installed in the
+// app-system-defaults directory location.
+add_task(async function test_systembuiltin_addon_version_precedence() {
+  const ADDON_VERSION = "1.0";
+  const builtinExtensionDefinitions = {
+    manifest: {
+      version: ADDON_VERSION,
+      browser_specific_settings: {
+        gecko: { id: ADDON_ID },
+      },
+    },
+  };
+  await setupBuiltinExtension(builtinExtensionDefinitions, "test-builtin-ext");
+
+  builtInOverride.system = [];
+  builtInOverride.builtins = [
+    {
+      addon_id: ADDON_ID,
+      addon_version: ADDON_VERSION,
+      res_url: "resource://test-builtin-ext/",
+    },
+  ];
+  await AddonTestUtils.overrideBuiltIns(builtInOverride);
+
+  await Promise.all([
+    AddonTestUtils.promiseWebExtensionStartup(ADDON_ID),
+    AddonTestUtils.promiseStartupManager("1"),
+  ]);
+
+  await checkAddon("1.0", BOOTSTRAP_REASONS.ADDON_INSTALL);
+
+  /////
+  // Upgrade to a system addon in the profile location, "app-system-addons"
+  /////
+  await promiseUpdateSystemAddon(ADDON_ID, "2.0");
+  await checkAddon("2.0", BOOTSTRAP_REASONS.ADDON_UPGRADE);
+
+  /////
+  // Prepare an updated system builtin version to mock an app update.
+  /////
+  builtinExtensionDefinitions.manifest.version = "1.5";
+  await setupBuiltinExtension(builtinExtensionDefinitions, "test-builtin-ext");
+  builtInOverride.builtins[0].addon_version = "1.5";
+  await AddonTestUtils.overrideBuiltIns(builtInOverride);
+
+  /////
+  // Builtin system addon is changed, it has precedence because when this
+  // happens we remove all prior system addon upgrades.
+  /////
+  await AddonTestUtils.promiseShutdownManager();
+  await AddonTestUtils.overrideBuiltIns(builtInOverride);
+  await promiseInstallDefaultSystemAddon(ADDON_ID, "1.5");
+  await AddonTestUtils.promiseStartupManager("2");
+  await checkAddon(
+    "1.5",
+    BOOTSTRAP_REASONS.ADDON_DOWNGRADE,
+    BOOTSTRAP_REASONS.APP_STARTUP
+  );
+
+  // Mock a new system addon update check
+  await promiseUpdateSystemAddon(ADDON_ID, "2.0");
+  await checkAddon("2.0", BOOTSTRAP_REASONS.ADDON_UPGRADE);
+
+  // cleanup the system addon auto-installed in the locked system builtin location
+  await AddonTestUtils.overrideBuiltIns({ system: [], builtins: [] });
+  await AddonTestUtils.promiseRestartManager();
   await AddonTestUtils.promiseShutdownManager();
   BootstrapMonitor.clear(ADDON_ID);
 });

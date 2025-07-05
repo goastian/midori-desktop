@@ -11,17 +11,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
   AddonRollouts: "resource://normandy/lib/AddonRollouts.sys.mjs",
   AddonStudies: "resource://normandy/lib/AddonStudies.sys.mjs",
   CleanupManager: "resource://normandy/lib/CleanupManager.sys.mjs",
-  ExperimentManager: "resource://nimbus/lib/ExperimentManager.sys.mjs",
+  ExperimentAPI: "resource://nimbus/ExperimentAPI.sys.mjs",
   LogManager: "resource://normandy/lib/LogManager.sys.mjs",
   NormandyMigrations: "resource://normandy/NormandyMigrations.sys.mjs",
   PreferenceExperiments:
     "resource://normandy/lib/PreferenceExperiments.sys.mjs",
   PreferenceRollouts: "resource://normandy/lib/PreferenceRollouts.sys.mjs",
   RecipeRunner: "resource://normandy/lib/RecipeRunner.sys.mjs",
-  RemoteSettingsExperimentLoader:
-    "resource://nimbus/lib/RemoteSettingsExperimentLoader.sys.mjs",
   ShieldPreferences: "resource://normandy/lib/ShieldPreferences.sys.mjs",
-  TelemetryEvents: "resource://normandy/lib/TelemetryEvents.sys.mjs",
 });
 
 const UI_AVAILABLE_NOTIFICATION = "sessionstore-windows-restored";
@@ -86,12 +83,6 @@ export var Normandy = {
   },
 
   async finishInit() {
-    try {
-      lazy.TelemetryEvents.init();
-    } catch (err) {
-      log.error("Failed to initialize telemetry events:", err);
-    }
-
     await lazy.PreferenceRollouts.recordOriginalValues(
       this.rolloutPrefsChanged
     );
@@ -111,17 +102,7 @@ export var Normandy = {
       )
     );
 
-    try {
-      await lazy.ExperimentManager.onStartup();
-    } catch (err) {
-      log.error("Failed to initialize ExperimentManager:", err);
-    }
-
-    try {
-      await lazy.RemoteSettingsExperimentLoader.init();
-    } catch (err) {
-      log.error("Failed to initialize RemoteSettingsExperimentLoader:", err);
-    }
+    await lazy.ExperimentAPI.init();
 
     try {
       await lazy.AddonStudies.init();

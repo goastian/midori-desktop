@@ -114,7 +114,7 @@ static StorageAccess InternalStorageAllowedCheck(
     }
 
     // Check if we are in private browsing, and record that fact
-    if (nsContentUtils::IsInPrivateBrowsing(document)) {
+    if (document && document->IsInPrivateBrowsing()) {
       access = StorageAccess::ePrivateBrowsing;
     }
 
@@ -161,13 +161,25 @@ static StorageAccess InternalStorageAllowedCheck(
   bool disabled = true;
   if (aWindow) {
     nsIURI* documentURI = aURI ? aURI : aWindow->GetDocumentURI();
-    disabled = !documentURI ||
-               !ShouldAllowAccessFor(aWindow, documentURI, &aRejectedReason);
+    disabled = !documentURI || !ShouldAllowAccessFor(aWindow, documentURI, true,
+                                                     &aRejectedReason);
+
+    // If the window is a third-party tracker, we should set the rejected reason
+    // to partitioned tracker.
+    uint32_t rejectedReason = aRejectedReason;
+    if (aRejectedReason ==
+            static_cast<uint32_t>(
+                nsIWebProgressListener::STATE_COOKIES_PARTITIONED_FOREIGN) &&
+        nsContentUtils::IsThirdPartyTrackingResourceWindow(aWindow)) {
+      rejectedReason =
+          nsIWebProgressListener::STATE_COOKIES_PARTITIONED_TRACKER;
+    }
+
     ContentBlockingNotifier::OnDecision(
         aWindow,
         disabled ? ContentBlockingNotifier::BlockingDecision::eBlock
                  : ContentBlockingNotifier::BlockingDecision::eAllow,
-        aRejectedReason);
+        rejectedReason);
   } else if (aChannel) {
     disabled = false;
     nsCOMPtr<nsIURI> uri;
@@ -175,11 +187,27 @@ static StorageAccess InternalStorageAllowedCheck(
     if (!NS_WARN_IF(NS_FAILED(rv))) {
       disabled = !ShouldAllowAccessFor(aChannel, uri, &aRejectedReason);
     }
+
+    // If the channel is a third-party tracker, we should set the rejected
+    // reason to partitioned tracker.
+    uint32_t rejectedReason = aRejectedReason;
+    nsCOMPtr<nsIClassifiedChannel> classifiedChannel =
+        do_QueryInterface(aChannel);
+
+    if (classifiedChannel &&
+        classifiedChannel->IsThirdPartyTrackingResource() &&
+        aRejectedReason ==
+            static_cast<uint32_t>(
+                nsIWebProgressListener::STATE_COOKIES_PARTITIONED_FOREIGN)) {
+      rejectedReason =
+          nsIWebProgressListener::STATE_COOKIES_PARTITIONED_TRACKER;
+    }
+
     ContentBlockingNotifier::OnDecision(
         aChannel,
         disabled ? ContentBlockingNotifier::BlockingDecision::eBlock
                  : ContentBlockingNotifier::BlockingDecision::eAllow,
-        aRejectedReason);
+        rejectedReason);
   } else {
     MOZ_ASSERT(aPrincipal);
     nsCOMPtr<nsICookieJarSettings> cookieJarSettings = aCookieJarSettings;
@@ -194,6 +222,8 @@ static StorageAccess InternalStorageAllowedCheck(
   }
 
   // We want to have a partitioned storage only for trackers.
+  // XXX: We should probably remove the check here because this was added for
+  //      partitioned tracker only. This was never shipped.
   if (aRejectedReason ==
           static_cast<uint32_t>(
               nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER) ||
@@ -263,8 +293,8 @@ StorageAccess StorageAllowedForWindow(nsPIDOMWindowInner* aWindow,
   if (Document* document = aWindow->GetExtantDoc()) {
     nsCOMPtr<nsIPrincipal> principal = document->NodePrincipal();
     // Note that GetChannel() below may return null, but that's OK, since the
-    // callee is able to deal with a null channel argument, and if passed null,
-    // will only fail to notify the UI in case storage gets blocked.
+    // callee is able to deal with a null channel argument, and if passed
+    // null, will only fail to notify the UI in case storage gets blocked.
     nsIChannel* channel = document->GetChannel();
     return InternalStorageAllowedCheckCached(
         principal, aWindow, nullptr, channel, document->CookieJarSettings(),
@@ -274,7 +304,7 @@ StorageAccess StorageAllowedForWindow(nsPIDOMWindowInner* aWindow,
   // No document? Try checking Private Browsing Mode without document
   if (const nsCOMPtr<nsIGlobalObject> global = aWindow->AsGlobal()) {
     if (const nsCOMPtr<nsIPrincipal> principal = global->PrincipalOrNull()) {
-      if (principal->GetPrivateBrowsingId() > 0) {
+      if (principal->GetIsInPrivateBrowsing()) {
         return StorageAccess::ePrivateBrowsing;
       }
     }
@@ -286,7 +316,10 @@ StorageAccess StorageAllowedForWindow(nsPIDOMWindowInner* aWindow,
 
 StorageAccess StorageAllowedForDocument(const Document* aDoc) {
   StorageAccess cookieAllowed = CookieAllowedForDocument(aDoc);
-  if (StaticPrefs::
+  // If this isn't a top-level window, check if we should apply the policy to
+  // always partition non-cookie storage.
+  if (!aDoc->IsTopLevelContentDocument() &&
+      StaticPrefs::
           privacy_partition_always_partition_third_party_non_cookie_storage() &&
       cookieAllowed > StorageAccess::eDeny) {
     return StorageAccess::ePartitionForeignOrDeny;
@@ -300,8 +333,8 @@ StorageAccess CookieAllowedForDocument(const Document* aDoc) {
   if (nsPIDOMWindowInner* inner = aDoc->GetInnerWindow()) {
     nsCOMPtr<nsIPrincipal> principal = aDoc->NodePrincipal();
     // Note that GetChannel() below may return null, but that's OK, since the
-    // callee is able to deal with a null channel argument, and if passed null,
-    // will only fail to notify the UI in case storage gets blocked.
+    // callee is able to deal with a null channel argument, and if passed
+    // null, will only fail to notify the UI in case storage gets blocked.
     nsIChannel* channel = aDoc->GetChannel();
 
     uint32_t rejectedReason = 0;
@@ -451,7 +484,7 @@ int32_t CookiesBehavior(nsIPrincipal* aPrincipal,
 }
 
 bool ShouldAllowAccessFor(nsPIDOMWindowInner* aWindow, nsIURI* aURI,
-                          uint32_t* aRejectedReason) {
+                          bool aCookies, uint32_t* aRejectedReason) {
   MOZ_ASSERT(aWindow);
   MOZ_ASSERT(aURI);
 
@@ -507,8 +540,9 @@ bool ShouldAllowAccessFor(nsPIDOMWindowInner* aWindow, nsIURI* aURI,
 
   // As a performance optimization, we only perform this check for
   // BEHAVIOR_REJECT_FOREIGN and BEHAVIOR_LIMIT_FOREIGN.  For
-  // BEHAVIOR_REJECT_TRACKER and BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN,
-  // third-partiness is implicily checked later below.
+  // BEHAVIOR_REJECT_TRACKER and
+  // BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN, third-partiness is
+  // implicily checked later below.
   if (behavior != nsICookieService::BEHAVIOR_REJECT_TRACKER &&
       behavior !=
           nsICookieService::BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN) {
@@ -521,10 +555,10 @@ bool ShouldAllowAccessFor(nsPIDOMWindowInner* aWindow, nsIURI* aURI,
 
   if (behavior == nsICookieService::BEHAVIOR_REJECT_FOREIGN ||
       behavior == nsICookieService::BEHAVIOR_LIMIT_FOREIGN) {
-    // XXX For non-cookie forms of storage, we handle BEHAVIOR_LIMIT_FOREIGN by
-    // simply rejecting the request to use the storage. In the future, if we
-    // change the meaning of BEHAVIOR_LIMIT_FOREIGN to be one which makes sense
-    // for non-cookie storage types, this may change.
+    // XXX For non-cookie forms of storage, we handle BEHAVIOR_LIMIT_FOREIGN
+    // by simply rejecting the request to use the storage. In the future, if
+    // we change the meaning of BEHAVIOR_LIMIT_FOREIGN to be one which makes
+    // sense for non-cookie storage types, this may change.
     LOG(("Nothing more to do due to the behavior code %d", int(behavior)));
     *aRejectedReason = nsIWebProgressListener::STATE_COOKIES_BLOCKED_FOREIGN;
     return false;
@@ -563,7 +597,12 @@ bool ShouldAllowAccessFor(nsPIDOMWindowInner* aWindow, nsIURI* aURI,
   } else if (behavior ==
              nsICookieService::BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN) {
     if (nsContentUtils::IsThirdPartyTrackingResourceWindow(aWindow)) {
-      // fall through
+      // fall through, but remember that we're partitioned for trackers if
+      // it's instructed by the pref.
+      if (!StaticPrefs::network_cookie_cookieBehavior_trackerCookieBlocking()) {
+        blockedReason =
+            nsIWebProgressListener::STATE_COOKIES_PARTITIONED_FOREIGN;
+      }
     } else if (AntiTrackingUtils::IsThirdPartyWindow(aWindow, aURI)) {
       LOG(("We're in the third-party context, storage should be partitioned"));
       // fall through, but remember that we're partitioning.
@@ -574,7 +613,8 @@ bool ShouldAllowAccessFor(nsPIDOMWindowInner* aWindow, nsIURI* aURI,
     }
   } else {
     MOZ_ASSERT_UNREACHABLE(
-        "This should be an exhaustive list of cookie behaviors possible here.");
+        "This should be an exhaustive list of cookie behaviors possible "
+        "here.");
   }
 
   Document* doc = aWindow->GetExtantDoc();
@@ -585,10 +625,13 @@ bool ShouldAllowAccessFor(nsPIDOMWindowInner* aWindow, nsIURI* aURI,
     return false;
   }
 
+  // "Storage access granted" only affects cookie access for third party
+  // documents. So if we are looking if we should allow access for cookies,
+  // then test if that permission is enabled on this document.
   // Document::UsingStorageAccess first checks if storage access granted is
   // cached in the inner window, if no, it then checks the storage permission
   // flag in the channel's loadinfo
-  bool allowed = document->UsingStorageAccess();
+  bool allowed = aCookies && document->UsingStorageAccess();
 
   if (!allowed) {
     *aRejectedReason = blockedReason;
@@ -705,10 +748,10 @@ bool ShouldAllowAccessFor(nsIChannel* aChannel, nsIURI* aURI,
 
   if (behavior == nsICookieService::BEHAVIOR_REJECT_FOREIGN ||
       behavior == nsICookieService::BEHAVIOR_LIMIT_FOREIGN) {
-    // XXX For non-cookie forms of storage, we handle BEHAVIOR_LIMIT_FOREIGN by
-    // simply rejecting the request to use the storage. In the future, if we
-    // change the meaning of BEHAVIOR_LIMIT_FOREIGN to be one which makes sense
-    // for non-cookie storage types, this may change.
+    // XXX For non-cookie forms of storage, we handle BEHAVIOR_LIMIT_FOREIGN
+    // by simply rejecting the request to use the storage. In the future, if
+    // we change the meaning of BEHAVIOR_LIMIT_FOREIGN to be one which makes
+    // sense for non-cookie storage types, this may change.
     LOG(("Nothing more to do due to the behavior code %d", int(behavior)));
     *aRejectedReason = nsIWebProgressListener::STATE_COOKIES_BLOCKED_FOREIGN;
     return false;
@@ -750,7 +793,12 @@ bool ShouldAllowAccessFor(nsIChannel* aChannel, nsIURI* aURI,
              nsICookieService::BEHAVIOR_REJECT_TRACKER_AND_PARTITION_FOREIGN) {
     if (classifiedChannel &&
         classifiedChannel->IsThirdPartyTrackingResource()) {
-      // fall through
+      // fall through, but remember that we're partitioned for trackers if
+      // it's instructed by the pref.
+      if (!StaticPrefs::network_cookie_cookieBehavior_trackerCookieBlocking()) {
+        blockedReason =
+            nsIWebProgressListener::STATE_COOKIES_PARTITIONED_FOREIGN;
+      }
     } else if (AntiTrackingUtils::IsThirdPartyChannel(aChannel)) {
       LOG(("We're in the third-party context, storage should be partitioned"));
       // fall through but remember that we're partitioning.
@@ -761,7 +809,8 @@ bool ShouldAllowAccessFor(nsIChannel* aChannel, nsIURI* aURI,
     }
   } else {
     MOZ_ASSERT_UNREACHABLE(
-        "This should be an exhaustive list of cookie behaviors possible here.");
+        "This should be an exhaustive list of cookie behaviors possible "
+        "here.");
   }
 
   RefPtr<BrowsingContext> targetBC;
@@ -771,18 +820,18 @@ bool ShouldAllowAccessFor(nsIChannel* aChannel, nsIURI* aURI,
     return false;
   }
 
-  // If we cannot get the target browsing context from the loadInfo, the channel
-  // could be a fetch request from a worker scope. In this case, we get the
-  // target browsing context from the worker associated browsing context
-  // instead.
+  // If we cannot get the target browsing context from the loadInfo, the
+  // channel could be a fetch request from a worker scope. In this case, we
+  // get the target browsing context from the worker associated browsing
+  // context instead.
   if (!targetBC) {
     rv = loadInfo->GetWorkerAssociatedBrowsingContext(getter_AddRefs(targetBC));
   }
 
   // We could have no target BC for the channel if it's for loading the script
-  // for remote workers, i.e. shared workers and service workers. In this case,
-  // we also don't have document, so we can skip the sandbox and the document
-  // check.
+  // for remote workers, i.e. shared workers and service workers. In this
+  // case, we also don't have document, so we can skip the sandbox and the
+  // document check.
   if (!targetBC) {
     LOG(("No browsing context is available for the channel."));
   }
@@ -797,7 +846,8 @@ bool ShouldAllowAccessFor(nsIChannel* aChannel, nsIURI* aURI,
   // Let's see if we have to grant the access for this particular channel.
 
   // UsingStorageAccess only applies to channels that load
-  // documents, for sub-resources loads, just returns the result from loadInfo.
+  // documents, for sub-resources loads, just returns the result from
+  // loadInfo.
   bool isDocument = false;
   aChannel->GetIsDocument(&isDocument);
 
@@ -835,61 +885,4 @@ bool ShouldAllowAccessFor(nsIPrincipal* aPrincipal,
   return behavior != nsICookieService::BEHAVIOR_REJECT;
 }
 
-/* static */
-bool ApproximateAllowAccessForWithoutChannel(
-    nsPIDOMWindowInner* aFirstPartyWindow, nsIURI* aURI) {
-  MOZ_ASSERT(aFirstPartyWindow);
-  MOZ_ASSERT(aURI);
-
-  LOG_SPEC(
-      ("Computing a best guess as to whether window %p has access to URI %s",
-       aFirstPartyWindow, _spec),
-      aURI);
-
-  Document* parentDocument =
-      nsGlobalWindowInner::Cast(aFirstPartyWindow)->GetExtantDoc();
-  if (NS_WARN_IF(!parentDocument)) {
-    LOG(("Failed to get the first party window's document"));
-    return false;
-  }
-
-  if (!CookiesBehaviorRejectsThirdPartyContexts(parentDocument)) {
-    LOG(("Disabled by the pref (%d), bail out early",
-         CookiesBehavior(parentDocument)));
-    return true;
-  }
-
-  if (ContentBlockingAllowList::Check(aFirstPartyWindow)) {
-    return true;
-  }
-
-  if (!AntiTrackingUtils::IsThirdPartyWindow(aFirstPartyWindow, aURI)) {
-    LOG(("Our window isn't a third-party window"));
-    return true;
-  }
-
-  uint32_t cookiePermission = detail::CheckCookiePermissionForPrincipal(
-      parentDocument->CookieJarSettings(), parentDocument->NodePrincipal());
-  if (cookiePermission != nsICookiePermission::ACCESS_DEFAULT) {
-    LOG(
-        ("CheckCookiePermissionForPrincipal() returned a non-default access "
-         "code (%d), returning %s",
-         int(cookiePermission),
-         cookiePermission != nsICookiePermission::ACCESS_DENY ? "success"
-                                                              : "failure"));
-    return cookiePermission != nsICookiePermission::ACCESS_DENY;
-  }
-
-  nsIPrincipal* parentPrincipal = parentDocument->NodePrincipal();
-
-  nsCOMPtr<nsIPrincipal> principal = BasePrincipal::CreateContentPrincipal(
-      aURI, parentPrincipal->OriginAttributesRef());
-
-  nsAutoCString type;
-  AntiTrackingUtils::CreateStoragePermissionKey(principal, type);
-
-  return AntiTrackingUtils::CheckStoragePermission(
-      parentPrincipal, type,
-      nsContentUtils::IsInPrivateBrowsing(parentDocument), nullptr, 0);
-}
 }  // namespace mozilla

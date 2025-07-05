@@ -9,7 +9,8 @@
 "use strict";
 
 ChromeUtils.defineESModuleGetters(this, {
-  SearchEngineSelector: "resource://gre/modules/SearchEngineSelector.sys.mjs",
+  SearchEngineSelector:
+    "moz-src:///toolkit/components/search/SearchEngineSelector.sys.mjs",
 });
 
 const CONFIG_EVERYWHERE = [
@@ -65,14 +66,9 @@ const CONFIG_EVERYWHERE = [
       },
     ],
   },
-  {
-    recordType: "defaultEngines",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
-  },
+  // We use en-CA as a locale in the test, so we need to add that as an
+  // available locale to avoid falling back to en-US.
+  { recordType: "availableLocales", locales: ["en-CA", "en-GB", "en-US"] },
 ];
 
 const CONFIG_EXPERIMENT = [
@@ -88,14 +84,6 @@ const CONFIG_EXPERIMENT = [
         },
       },
     ],
-  },
-  {
-    recordType: "defaultEngines",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
   },
 ];
 
@@ -162,14 +150,6 @@ const CONFIG_LOCALES_AND_REGIONS = [
         },
       },
     ],
-  },
-  {
-    recordType: "defaultEngines",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
   },
 ];
 
@@ -238,14 +218,6 @@ const CONFIG_DISTRIBUTION = [
       },
     ],
   },
-  {
-    recordType: "defaultEngines",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
-  },
 ];
 
 const CONFIG_CHANNEL_APPLICATION = [
@@ -274,14 +246,6 @@ const CONFIG_CHANNEL_APPLICATION = [
         },
       },
     ],
-  },
-  {
-    recordType: "defaultEngines",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
   },
 ];
 
@@ -327,14 +291,6 @@ const CONFIG_OPTIONAL = [
       },
     ],
   },
-  {
-    recordType: "defaultEngines",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
-  },
 ];
 
 const CONFIG_VERSIONS = [
@@ -378,14 +334,6 @@ const CONFIG_VERSIONS = [
       },
     ],
   },
-  {
-    recordType: "defaultEngines",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
-  },
 ];
 
 const CONFIG_DEVICE_TYPE_LAYOUT = [
@@ -427,21 +375,19 @@ const CONFIG_DEVICE_TYPE_LAYOUT = [
       },
     ],
   },
-  {
-    recordType: "defaultEngines",
-    specificDefaults: [],
-  },
-  {
-    recordType: "engineOrders",
-    orders: [],
-  },
 ];
 
 const engineSelector = new SearchEngineSelector();
-let settings;
-let settingOverrides;
-let configStub;
-let overrideStub;
+
+add_setup(async () => {
+  // In this test we have not specified the combinations of default search engine
+  // according to the environment. This causes the selector to fall back to the first
+  // engine in the list and throw an error about it. For the purposes of this test,
+  // this is not an issue.
+  consoleAllowList.push(
+    "Could not find a matching default engine, using the first one in the list"
+  );
+});
 
 /**
  * This function asserts if the actual engine identifiers returned equals
@@ -463,22 +409,20 @@ async function assertActualEnginesEqualsExpected(
   message
 ) {
   engineSelector._configuration = null;
-  configStub.returns(config);
+  SearchTestUtils.setRemoteSettingsConfig(config, []);
 
-  let { engines } = await engineSelector.fetchEngineConfiguration(userEnv);
-  let actualEngines = engines.map(engine => engine.identifier);
-  Assert.deepEqual(actualEngines, expectedEngines, message);
+  if (expectedEngines.length) {
+    let { engines } = await engineSelector.fetchEngineConfiguration(userEnv);
+    let actualEngines = engines.map(engine => engine.identifier);
+    Assert.deepEqual(actualEngines, expectedEngines, message);
+  } else {
+    await Assert.rejects(
+      engineSelector.fetchEngineConfiguration(userEnv),
+      /Could not find any engines in the filtered configuration/,
+      message
+    );
+  }
 }
-
-add_setup(async function () {
-  settings = await RemoteSettings(SearchUtils.NEW_SETTINGS_KEY);
-  configStub = sinon.stub(settings, "get");
-  settingOverrides = await RemoteSettings(
-    SearchUtils.NEW_SETTINGS_OVERRIDES_KEY
-  );
-  overrideStub = sinon.stub(settingOverrides, "get");
-  overrideStub.returns([]);
-});
 
 add_task(async function test_selector_match_experiment() {
   await assertActualEnginesEqualsExpected(
@@ -511,12 +455,19 @@ add_task(async function test_everywhere_and_excluded_locale() {
       locale: "en-GB",
       region: "GB",
     },
-    [
-      "engine-everywhere",
-      "engine-everywhere-except-en-US",
-      "engine-everywhere-except-FI",
-      "engine-everywhere-except-en-CA-and-CA",
-    ],
+    SearchUtils.rustSelectorFeatureGate
+      ? [
+          "engine-everywhere",
+          "engine-everywhere-except-FI",
+          "engine-everywhere-except-en-CA-and-CA",
+          "engine-everywhere-except-en-US",
+        ]
+      : [
+          "engine-everywhere",
+          "engine-everywhere-except-en-CA-and-CA",
+          "engine-everywhere-except-en-US",
+          "engine-everywhere-except-FI",
+        ],
     "Should match the engines for all locales and regions."
   );
 
@@ -526,11 +477,17 @@ add_task(async function test_everywhere_and_excluded_locale() {
       locale: "en-US",
       region: "US",
     },
-    [
-      "engine-everywhere",
-      "engine-everywhere-except-FI",
-      "engine-everywhere-except-en-CA-and-CA",
-    ],
+    SearchUtils.rustSelectorFeatureGate
+      ? [
+          "engine-everywhere",
+          "engine-everywhere-except-FI",
+          "engine-everywhere-except-en-CA-and-CA",
+        ]
+      : [
+          "engine-everywhere",
+          "engine-everywhere-except-en-CA-and-CA",
+          "engine-everywhere-except-FI",
+        ],
     "Should match engines that do not exclude user's locale."
   );
 
@@ -542,8 +499,8 @@ add_task(async function test_everywhere_and_excluded_locale() {
     },
     [
       "engine-everywhere",
-      "engine-everywhere-except-en-US",
       "engine-everywhere-except-en-CA-and-CA",
+      "engine-everywhere-except-en-US",
     ],
     "Should match engines that do not exclude user's region."
   );
@@ -554,11 +511,17 @@ add_task(async function test_everywhere_and_excluded_locale() {
       locale: "en-CA",
       region: "CA",
     },
-    [
-      "engine-everywhere",
-      "engine-everywhere-except-en-US",
-      "engine-everywhere-except-FI",
-    ],
+    SearchUtils.rustSelectorFeatureGate
+      ? [
+          "engine-everywhere",
+          "engine-everywhere-except-FI",
+          "engine-everywhere-except-en-US",
+        ]
+      : [
+          "engine-everywhere",
+          "engine-everywhere-except-en-US",
+          "engine-everywhere-except-FI",
+        ],
     "Should match engine that do not exclude user's region and locale."
   );
 });
@@ -745,6 +708,7 @@ add_task(async function test_engine_selector_match_applications() {
       locale: "en-CA",
       region: "CA",
       channel: "esr",
+      appName: "firefox-android",
     },
     ["engine-channel"],
     "Should match engine for esr channel."

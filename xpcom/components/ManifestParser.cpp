@@ -153,10 +153,9 @@ void LogMessageWithContext(FileLocation& aFile, uint32_t aLineNumber,
   }
 
   nsresult rv = error->Init(
-      NS_ConvertUTF8toUTF16(formatted.get()), NS_ConvertUTF8toUTF16(file),
-      u""_ns, aLineNumber, 0, nsIScriptError::warningFlag,
-      "chrome registration"_ns, false /* from private window */,
-      true /* from chrome context */);
+      NS_ConvertUTF8toUTF16(formatted.get()), file, aLineNumber, 0,
+      nsIScriptError::warningFlag, "chrome registration"_ns,
+      false /* from private window */, true /* from chrome context */);
   if (NS_FAILED(rv)) {
     return;
   }
@@ -521,7 +520,7 @@ void ParseManifest(NSLocationType aType, FileLocation& aFile, char* aBuf,
 
     const ManifestDirective* directive = nullptr;
     for (const ManifestDirective* d = kParsingTable;
-         d < ArrayEnd(kParsingTable); ++d) {
+         d < std::end(kParsingTable); ++d) {
       if (!strcmp(d->directive, token)) {
         directive = d;
         break;

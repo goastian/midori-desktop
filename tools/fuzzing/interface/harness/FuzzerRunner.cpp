@@ -17,7 +17,7 @@ namespace mozilla {
 // fuzzerRunner is initialized to nullptr but if this file is linked in,
 // then fuzzerRunner will be set here indicating that
 // we want to call into either LibFuzzer's main or the AFL entrypoint.
-class _InitFuzzer {
+MOZ_RUNINIT class _InitFuzzer {
  public:
   _InitFuzzer() { fuzzerRunner = new FuzzerRunner(); }
   void InitXPCOM() { mScopedXPCOM = new ScopedXPCOM("Fuzzer"); }
@@ -54,6 +54,16 @@ int FuzzerRunner::Run(int* argc, char*** argv) {
   }
 
   std::string moduleNameStr(fuzzerEnv);
+
+  // FUZZER=list will display available fuzzing targets and exit.
+  if (moduleNameStr == "list") {
+    printf("FUZZER=list detected, listing targets...\n");
+    printf("===== Targets =====\n");
+    FuzzerRegistry::getInstance().printModuleNames();
+    printf("===== End of list =====\n");
+    exit(0);
+  }
+
   FuzzerFunctions funcs =
       FuzzerRegistry::getInstance().getModuleFunctions(moduleNameStr);
   FuzzerInitFunc initFunc = funcs.first;

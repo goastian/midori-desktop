@@ -20,12 +20,10 @@ ChromeUtils.defineESModuleGetters(lazy, {
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
-const TARGETING_EVENT_CATEGORY = "messaging_experiments";
-const TARGETING_EVENT_METHOD = "targeting";
 const DEFAULT_TIMEOUT = 5000;
 const ERROR_TYPES = {
-  ATTRIBUTE_ERROR: "attribute_error",
-  TIMEOUT: "attribute_timeout",
+  ATTRIBUTE_ERROR: "AttributeError",
+  TIMEOUT: "AttributeTimeout",
 };
 
 const TargetingEnvironment = {
@@ -82,9 +80,6 @@ export class TargetingContext {
 
     // Used in telemetry to report where the targeting expression is coming from
     this.#telemetrySource = options.source;
-
-    // Enable event recording
-    Services.telemetry.setEventRecordingEnabled(TARGETING_EVENT_CATEGORY, true);
   }
 
   setTelemetrySource(source) {
@@ -93,23 +88,13 @@ export class TargetingContext {
     }
   }
 
-  _sendUndesiredEvent(eventData) {
+  _sendUndesiredEvent({ event, value }) {
+    let extra = { value };
     if (this.#telemetrySource) {
-      Services.telemetry.recordEvent(
-        TARGETING_EVENT_CATEGORY,
-        TARGETING_EVENT_METHOD,
-        eventData.event,
-        eventData.value,
-        { source: this.#telemetrySource }
-      );
-    } else {
-      Services.telemetry.recordEvent(
-        TARGETING_EVENT_CATEGORY,
-        TARGETING_EVENT_METHOD,
-        eventData.event,
-        eventData.value
-      );
+      extra.source = this.#telemetrySource;
     }
+
+    Glean.messagingExperiments["targeting" + event].record(extra);
   }
 
   /**

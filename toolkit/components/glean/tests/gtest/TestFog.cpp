@@ -5,7 +5,7 @@
 #include "FOGFixture.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
-#include "mozilla/glean/GleanMetrics.h"
+#include "mozilla/glean/GleanTestsTestMetrics.h"
 #include "mozilla/glean/GleanPings.h"
 #include "mozilla/glean/fog_ffi_generated.h"
 #include "mozilla/Maybe.h"
@@ -125,13 +125,14 @@ using std::tuple;
 
 TEST_F(FOGFixture, TestCppEventWorks) {
   test_only_ipc::no_extra_event.Record();
-  ASSERT_TRUE(test_only_ipc::no_extra_event.TestGetValue("store1"_ns)
+  ASSERT_TRUE(test_only_ipc::no_extra_event.TestGetValue("test-ping"_ns)
                   .unwrap()
                   .isSome());
 
   AnEventExtra extra = {.extra1 = Some("can set extras"_ns)};
   test_only_ipc::an_event.Record(Some(extra));
-  auto optEvents = test_only_ipc::an_event.TestGetValue("store1"_ns).unwrap();
+  auto optEvents =
+      test_only_ipc::an_event.TestGetValue("test-ping"_ns).unwrap();
   ASSERT_TRUE(optEvents.isSome());
 
   auto events = optEvents.extract();
@@ -149,7 +150,7 @@ TEST_F(FOGFixture, TestCppEventsWithDifferentExtraTypes) {
                                .extra3LongerName = Some(false)};
   test_only_ipc::event_with_extra.Record(Some(extra));
   auto optEvents =
-      test_only_ipc::event_with_extra.TestGetValue("store1"_ns).unwrap();
+      test_only_ipc::event_with_extra.TestGetValue("test-ping"_ns).unwrap();
   ASSERT_TRUE(optEvents.isSome());
 
   auto events = optEvents.extract();
@@ -197,7 +198,7 @@ TEST_F(FOGFixture, TestCppCustomDistWorks) {
   test_only_ipc::a_custom_dist.AccumulateSamples({7, 268435458});
 
   DistributionData data =
-      test_only_ipc::a_custom_dist.TestGetValue("store1"_ns).unwrap().ref();
+      test_only_ipc::a_custom_dist.TestGetValue("test-ping"_ns).unwrap().ref();
   ASSERT_EQ(data.sum, 7UL + 268435458);
   ASSERT_EQ(data.count, 2UL);
   for (const auto& entry : data.values) {
@@ -210,17 +211,33 @@ TEST_F(FOGFixture, TestCppCustomDistWorks) {
 }
 
 TEST_F(FOGFixture, TestCppPings) {
-  test_only::one_ping_one_bool.Set(false);
   const auto& ping = mozilla::glean_pings::OnePingOnly;
-  bool submitted = false;
-  ping.TestBeforeNextSubmit([&submitted](const nsACString& aReason) {
-    submitted = true;
-    ASSERT_EQ(false,
-              test_only::one_ping_one_bool.TestGetValue().unwrap().ref());
-  });
-  ping.Submit();
-  ASSERT_TRUE(submitted)
-  << "Must have actually called the lambda.";
+
+  test_only::one_ping_one_bool.Set(false);
+
+  {
+    bool submitted = false;
+
+    ping.TestBeforeNextSubmit([&submitted](const nsACString& aReason) {
+      submitted = true;
+      ASSERT_EQ(false,
+                test_only::one_ping_one_bool.TestGetValue().unwrap().ref());
+    });
+    ping.Submit();
+
+    ASSERT_TRUE(submitted)
+    << "Must have actually called the lambda.";
+  }
+
+  test_only::one_ping_one_bool.Set(false);
+
+  ASSERT_TRUE(ping.TestSubmission(
+      [](const nsACString& aReason) {
+        ASSERT_EQ(false,
+                  test_only::one_ping_one_bool.TestGetValue().unwrap().ref());
+      },
+      [&]() { ping.Submit(); }))
+  << "Must submit ping";
 }
 
 TEST_F(FOGFixture, TestCppStringLists) {
@@ -286,6 +303,42 @@ TEST_F(FOGFixture, TestCppTimingDistNegativeDuration) {
 
   ASSERT_EQ(mozilla::Nothing(),
             test_only::what_time_is_it.TestGetValue().unwrap());
+}
+
+TEST_F(FOGFixture, TestCppTimingDistMeasure) {
+  // Let's test Measure and its RAII AutoTimer
+  {
+    auto t1 = test_only::what_time_is_it.Measure();
+    auto t2 = test_only::what_time_is_it.Measure();
+    PR_Sleep(PR_MillisecondsToInterval(5));
+    {
+      auto t3 = test_only::what_time_is_it.Measure();
+      t1.Cancel();
+      PR_Sleep(PR_MillisecondsToInterval(5));
+    }
+  }
+  DistributionData data =
+      test_only::what_time_is_it.TestGetValue().unwrap().ref();
+
+  // Cancelled timers should not increase count.
+  ASSERT_EQ(data.count, 2UL);
+
+  const uint64_t NANOS_IN_MILLIS = 1e6;
+
+  // bug 1701847 - Sleeps don't necessarily round up as you'd expect.
+  // Give ourselves a 200000ns (0.2ms) window to be off on fast machines.
+  const uint64_t EPSILON = 200000;
+
+  // We don't know exactly how long those sleeps took, only that it was at
+  // least 15ms total.
+  ASSERT_GT(data.sum, (uint64_t)(15 * NANOS_IN_MILLIS) - EPSILON);
+
+  // We also can't guarantee the buckets, but we can guarantee two samples.
+  uint64_t sampleCount = 0;
+  for (const auto& value : data.values.Values()) {
+    sampleCount += value;
+  }
+  ASSERT_EQ(sampleCount, (uint64_t)2);
 }
 
 TEST_F(FOGFixture, TestLabeledBooleanWorks) {
@@ -471,7 +524,7 @@ TEST_F(FOGFixture, TestCppUrlWorks) {
   mozilla::glean::test_only_ipc::a_url.Set(kValue);
 
   ASSERT_STREQ(kValue.get(),
-               mozilla::glean::test_only_ipc::a_url.TestGetValue("store1"_ns)
+               mozilla::glean::test_only_ipc::a_url.TestGetValue("test-ping"_ns)
                    .unwrap()
                    .value()
                    .get());
@@ -488,11 +541,137 @@ TEST_F(FOGFixture, TestCppTextWorks) {
                    .get());
 }
 
+TEST_F(FOGFixture, TestLabeledCustomDistributionWorks) {
+  ASSERT_EQ(mozilla::Nothing(),
+            test_only::mabels_custom_label_lengths.Get("officeSupplies"_ns)
+                .TestGetValue()
+                .unwrap());
+  test_only::mabels_custom_label_lengths.Get("officeSupplies"_ns)
+      .AccumulateSamples({7, 268435458});
+
+  DistributionData data =
+      test_only::mabels_custom_label_lengths.Get("officeSupplies"_ns)
+          .TestGetValue()
+          .unwrap()
+          .ref();
+  ASSERT_EQ(data.sum, 7UL + 268435458);
+  ASSERT_EQ(data.count, 2UL);
+  for (const auto& entry : data.values) {
+    const uint64_t bucket = entry.GetKey();
+    const uint64_t count = entry.GetData();
+    ASSERT_TRUE(count == 0 ||
+                (count == 1 && (bucket == 1 || bucket == 268435456)))
+    << "Only two occupied buckets";
+  }
+}
+
+TEST_F(FOGFixture, TestLabeledMemoryDistWorks) {
+  test_only::what_do_you_remember.Get("bittersweet"_ns).Accumulate(7);
+  test_only::what_do_you_remember.Get("bittersweet"_ns).Accumulate(17);
+
+  DistributionData data = test_only::what_do_you_remember.Get("bittersweet"_ns)
+                              .TestGetValue()
+                              .unwrap()
+                              .ref();
+  // Sum is in bytes, test_only::what_do_you_remember is in megabytes. So
+  // multiplication ahoy!
+  ASSERT_EQ(data.sum, 24UL * 1024 * 1024);
+  ASSERT_EQ(data.count, 2UL);
+  for (const auto& entry : data.values) {
+    const uint64_t bucket = entry.GetKey();
+    const uint64_t count = entry.GetData();
+    ASSERT_TRUE(count == 0 ||
+                (count == 1 && (bucket == 17520006 || bucket == 7053950)))
+    << "Only two occupied buckets";
+  }
+}
+
+TEST_F(FOGFixture, TestLabeledTimingDistWorks) {
+  auto id1 = test_only::where_has_the_time_gone.Get("UTC"_ns).Start();
+  auto id2 = test_only::where_has_the_time_gone.Get("UTC"_ns).Start();
+  PR_Sleep(PR_MillisecondsToInterval(5));
+  auto id3 = test_only::where_has_the_time_gone.Get("UTC"_ns).Start();
+  test_only::where_has_the_time_gone.Get("UTC"_ns).Cancel(std::move(id1));
+  PR_Sleep(PR_MillisecondsToInterval(5));
+  test_only::where_has_the_time_gone.Get("UTC"_ns).StopAndAccumulate(
+      std::move(id2));
+  test_only::where_has_the_time_gone.Get("UTC"_ns).StopAndAccumulate(
+      std::move(id3));
+
+  DistributionData data = test_only::where_has_the_time_gone.Get("UTC"_ns)
+                              .TestGetValue()
+                              .unwrap()
+                              .ref();
+
+  // Cancelled timers should not increase count.
+  ASSERT_EQ(data.count, 2UL);
+
+  const uint64_t NANOS_IN_MILLIS = 1e6;
+
+  // bug 1701847 - Sleeps don't necessarily round up as you'd expect.
+  // Give ourselves a 200000ns (0.2ms) window to be off on fast machines.
+  const uint64_t EPSILON = 200000;
+
+  // We don't know exactly how long those sleeps took, only that it was at
+  // least 15ms total.
+  ASSERT_GT(data.sum, (uint64_t)(15 * NANOS_IN_MILLIS) - EPSILON);
+
+  // We also can't guarantee the buckets, but we can guarantee two samples.
+  uint64_t sampleCount = 0;
+  for (const auto& value : data.values.Values()) {
+    sampleCount += value;
+  }
+  ASSERT_EQ(sampleCount, (uint64_t)2);
+}
+
+TEST_F(FOGFixture, TestLabeledTimingDistTruncateGet) {
+  auto longKey =
+      "this is a label that is longer than the new label limit of 111 characters introduced in bug 1959696 in April of 2025."_ns;
+
+  auto sec = TimeDuration::FromMilliseconds(1);
+  test_only::where_has_the_time_gone.MaybeTruncateAndGet(longKey)
+      .AccumulateRawDuration(sec);
+
+  DistributionData data =
+      test_only::where_has_the_time_gone.MaybeTruncateAndGet(longKey)
+          .TestGetValue()
+          .unwrap()
+          .ref();
+
+  const uint64_t NANOS_IN_MILLIS = 1e6;
+  ASSERT_EQ(data.sum, (uint64_t)(1 * NANOS_IN_MILLIS));
+
+  // Double-check that short labels aren't transformed.
+  auto shortKey = "some key"_ns;
+  test_only::where_has_the_time_gone.MaybeTruncateAndGet(shortKey)
+      .AccumulateRawDuration(sec);
+
+  data = test_only::where_has_the_time_gone.Get(shortKey)
+             .TestGetValue()
+             .unwrap()
+             .ref();
+  ASSERT_EQ(data.sum, (uint64_t)(1 * NANOS_IN_MILLIS));
+
+  // Let's make sure the long key correctly errors.
+  test_only::where_has_the_time_gone.Get(longKey).AccumulateRawDuration(sec);
+  ASSERT_TRUE(test_only::where_has_the_time_gone.MaybeTruncateAndGet(longKey)
+                  .TestGetValue()
+                  .isErr());
+}
+
+TEST_F(FOGFixture, TestLabeledQuantityWorks) {
+  ASSERT_EQ(mozilla::Nothing(),
+            test_only::button_jars.Get("shirt"_ns).TestGetValue().unwrap());
+  test_only::button_jars.Get("shirt"_ns).Set(42);
+  test_only::button_jars.Get("push"_ns).Set(0);
+  ASSERT_EQ(
+      42, test_only::button_jars.Get("shirt"_ns).TestGetValue().unwrap().ref());
+  ASSERT_EQ(
+      0, test_only::button_jars.Get("push"_ns).TestGetValue().unwrap().ref());
+}
+
 extern "C" void Rust_TestRustInGTest();
 TEST_F(FOGFixture, TestRustInGTest) { Rust_TestRustInGTest(); }
 
 extern "C" void Rust_TestJogfile();
 TEST_F(FOGFixture, TestJogfile) { Rust_TestJogfile(); }
-
-extern "C" void Rust_TestRideAlongPing();
-TEST_F(FOGFixture, TestRustRideAlongPing) { Rust_TestRideAlongPing(); }

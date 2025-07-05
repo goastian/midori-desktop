@@ -103,3 +103,222 @@ first_startup:
     expires: never
     send_in_pings:
       - first-startup
+
+service_request:
+  bypass_proxy_info:
+    type: event
+    description: >
+      This event is recorded by a small set of services when a proxy
+      failure causes a service to re-request with a proxy bypass.  It
+      records some basic information such as the type of proxy
+      configuration, and the source of the proxy configuration.  The value
+      of the event is the name of the service that triggers the event
+      (e.g. telemetry, remote-settings).
+      This event was generated to correspond to the Legacy Telemetry event
+      service_request.bypass#proxy_info.
+    bugs:
+      - https://bugzil.la/1732792
+      - https://bugzil.la/1732793
+      - https://bugzil.la/1733481
+      - https://bugzil.la/1733994
+      - https://bugzil.la/1732388
+    data_reviews:
+      - https://bugzil.la/1732792
+      - https://bugzil.la/1732793
+      - https://bugzil.la/1733481
+      - https://bugzil.la/1733994
+      - https://bugzil.la/1732388
+    notification_emails:
+      - scaraveo@mozilla.com
+    expires: never
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+        type: string
+      source:
+        description: >
+          the source of the proxy configuration.  e.g. policy, prefs or extension_id
+        type: string
+      type:
+        description: >
+          the type for the proxy configuration source.  e.g. api or string version of nsIProtocolProxyService.proxyConfigType
+        type: string
+    telemetry_mirror: Service_request_Bypass_ProxyInfo
+
+jsonfile:
+  load_logins:
+    type: event
+    description: >
+      Records when JSONFile.sys.mjs consumers are trying to access a
+      missing or corrupt json file. For example, Login Store trying to
+      access logins.json when it has gone missing or corrupt.
+      This event was generated to correspond to the Legacy Telemetry event
+      jsonfile.load#logins.
+    bugs: &jsonfile_load_bugs
+      - https://bugzil.la/1599567
+    data_reviews: &jsonfile_load_data_reviews
+      - https://bugzil.la/1599567
+    notification_emails: &jsonfile_load_emails
+      - prathiksha@mozilla.com
+      - passwords-dev@mozilla.org
+    expires: never
+    extra_keys: &jsonfile_load_extra
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter.
+        type: string
+    telemetry_mirror: Jsonfile_Load_Logins
+    no_lint:
+      - COMMON_PREFIX
+
+  load_autofillprofiles:
+    type: event
+    description: >
+      Records when JSONFile.sys.mjs consumers are trying to access a
+      missing or corrupt json file. For example, Login Store trying to
+      access logins.json when it has gone missing or corrupt.
+      This event was generated to correspond to the Legacy Telemetry event
+      jsonfile.load#autofillprofiles.
+    bugs: *jsonfile_load_bugs
+    data_reviews: *jsonfile_load_data_reviews
+    notification_emails: *jsonfile_load_emails
+    expires: never
+    extra_keys: *jsonfile_load_extra
+    telemetry_mirror: Jsonfile_Load_Autofillprofiles
+    no_lint:
+      - COMMON_PREFIX
+
+os.environment:
+  allowed_app_sources:
+    type: string
+    description: >
+      Indicates what sources the OS is currently configured to allow apps
+      to be installed from. Possible values are "Anywhere",
+      "Recommendations", "PreferStore", "StoreOnly", "NoSuchFeature", or
+      "Error". "Recommendations" allows installs from anywhere, but
+      recommends a comparable app from the store, if available.
+      "NoSuchFeature" will be reported on versions of Windows that do not
+      have an app source setting.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar os.environment.allowed_app_sources.
+    bugs:
+      - https://bugzil.la/1659157
+    data_reviews:
+      - https://bugzil.la/1659157
+    notification_emails:
+      - rtestard@mozilla.com
+    expires: never
+    telemetry_mirror: OS_ENVIRONMENT_ALLOWED_APP_SOURCES
+
+newtab_page:
+  pinned_sites_count:
+    type: custom_distribution
+    description: >
+      Number of pinned sites on the new tab page.
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram NEWTAB_PAGE_PINNED_SITES_COUNT.
+    range_min: 0
+    range_max: 9
+    bucket_count: 10
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - activity-stream@mozilla.com
+    expires: never
+    telemetry_mirror: NEWTAB_PAGE_PINNED_SITES_COUNT
+
+  blocked_sites_count:
+    type: custom_distribution
+    description: >
+      Number of sites blocked from the new tab page.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram NEWTAB_PAGE_BLOCKED_SITES_COUNT.
+    range_min: 1
+    range_max: 100
+    bucket_count: 10
+    histogram_type: exponential
+    unit: sites
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1944631
+    notification_emails:
+      - activity-stream@mozilla.com
+    expires: never
+    telemetry_mirror: NEWTAB_PAGE_BLOCKED_SITES_COUNT
+
+popup_notification:
+  stats:
+    type: labeled_custom_distribution
+    description: >
+      (Bug 1207089) Usage of popup notifications, keyed by ID (0 = Offered, 1..4
+      = Action (3 is unused), 5 = Click outside (unused), 6 = Leave page, 7 =
+      Use 'X' (unused), 8 = Not now (unused), 10 = Open submenu, 11 = Learn
+      more. Add 20 if happened after reopen.)
+
+      This metric was generated to correspond to the Legacy Telemetry enumerated
+      histogram POPUP_NOTIFICATION_STATS.
+    range_min: 0
+    range_max: 40
+    bucket_count: 41
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1207089
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1536454
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1584554
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1207089
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1536454
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1584554
+    notification_emails:
+      - emz@mozilla.com
+    expires: never
+    telemetry_mirror: POPUP_NOTIFICATION_STATS
+
+  main_action:
+    type: labeled_timing_distribution
+    description: >
+      (Bug 1207089) Time in ms between initially requesting a popup notification
+      and triggering the main action, keyed by ID
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram POPUP_NOTIFICATION_MAIN_ACTION_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1207089
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1584554
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1207089
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1584554
+    notification_emails:
+      - emz@mozilla.com
+    expires: never
+    telemetry_mirror: POPUP_NOTIFICATION_MAIN_ACTION_MS
+
+  dismissal:
+    type: labeled_timing_distribution
+    description: >
+      (Bug 1207089) Time in ms between displaying a popup notification and
+      dismissing it without an action the first time, keyed by ID
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram POPUP_NOTIFICATION_DISMISSAL_MS.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1207089
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1584554
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1207089
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1584554
+    notification_emails:
+      - emz@mozilla.com
+    expires: never
+    telemetry_mirror: POPUP_NOTIFICATION_DISMISSAL_MS

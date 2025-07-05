@@ -41,7 +41,7 @@ Try to update it:
 def parse_issues(config, output, paths):
     RustfmtDiff = namedtuple("RustfmtDiff", ["file", "line", "diff"])
     issues = []
-    diff_line = re.compile("^Diff in (.*) at line ([0-9]*):")
+    diff_line = re.compile("^Diff in (.*)(?: at line |:)([0-9]*):")
     file = ""
     line_no = 0
     diff = ""
@@ -142,9 +142,7 @@ def lint(paths, config, fix=None, **lintargs):
     min_version = Version(min_version_str)
     actual_version = get_rustfmt_version(binary)
     log.debug(
-        "Found version: {}. Minimal expected version: {}".format(
-            actual_version, min_version
-        )
+        f"Found version: {actual_version}. Minimal expected version: {min_version}"
     )
 
     if actual_version < min_version:

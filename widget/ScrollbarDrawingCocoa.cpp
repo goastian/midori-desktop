@@ -6,14 +6,9 @@
 
 #include "ScrollbarDrawingCocoa.h"
 
-#include "mozilla/gfx/Helpers.h"
 #include "mozilla/RelativeLuminanceUtils.h"
-#include "mozilla/StaticPrefs_widget.h"
-#include "nsContainerFrame.h"
-#include "nsAlgorithm.h"
 #include "nsIFrame.h"
 #include "nsLayoutUtils.h"
-#include "nsLookAndFeel.h"
 #include "nsNativeTheme.h"
 
 using namespace mozilla::gfx;
@@ -56,8 +51,7 @@ static ScrollbarParams ComputeScrollbarParams(nsIFrame* aFrame,
                                               const ThemeColors& aColors,
                                               ScrollbarKind aScrollbarKind) {
   ScrollbarParams params;
-  params.isOverlay =
-      nsLookAndFeel::GetInt(LookAndFeel::IntID::UseOverlayScrollbars) != 0;
+  params.isOverlay = aFrame->PresContext()->UseOverlayScrollbars();
   params.isRolledOver = ScrollbarDrawing::IsParentScrollbarRolledOver(aFrame);
   params.isSmall =
       aStyle.StyleUIReset()->ScrollbarWidth() == StyleScrollbarWidth::Thin;
@@ -88,9 +82,7 @@ LayoutDeviceIntSize ScrollbarDrawingCocoa::GetMinimumWidgetSize(
       case StyleAppearance::ScrollbarthumbVertical:
         return {0, 26};
       case StyleAppearance::ScrollbarVertical:
-      case StyleAppearance::ScrollbarHorizontal:
-      case StyleAppearance::ScrollbartrackVertical:
-      case StyleAppearance::ScrollbartrackHorizontal: {
+      case StyleAppearance::ScrollbarHorizontal: {
         ComputedStyle* style = nsLayoutUtils::StyleForScrollbar(aFrame);
         auto scrollbarWidth = style->StyleUIReset()->ScrollbarWidth();
         auto size = GetCSSScrollbarSize(
@@ -114,16 +106,19 @@ LayoutDeviceIntSize ScrollbarDrawingCocoa::GetMinimumWidgetSize(
 
 static ThumbRect GetThumbRect(const LayoutDeviceRect& aRect,
                               const ScrollbarParams& aParams, float aScale) {
-  // Compute the thumb thickness. This varies based on aParams.small,
-  // aParams.overlay and aParams.rolledOver. non-overlay: 6 / 8, overlay
-  // non-hovered: 5 / 7, overlay hovered: 9 / 11
+  // Compute the thumb thickness. This varies based on aParams.isSmall,
+  // aParams.isOverlay and aParams.isRolledOver.
+  //   non-overlay: 6 / 8, overlay non-hovered: 5 / 7, overlay hovered: 7 / 11
+  // Note that this is drawn inside the rect of a size as specified by
+  // ConfigureScrollbarSize().
   float thickness = aParams.isSmall ? 6.0f : 8.0f;
   if (aParams.isOverlay) {
     thickness -= 1.0f;
     if (aParams.isRolledOver) {
-      thickness += 4.0f;
+      thickness = aParams.isSmall ? 7.0f : 11.0f;
     }
   }
+
   thickness *= aScale;
 
   // Compute the thumb rect.
@@ -170,7 +165,7 @@ static ThumbRect GetThumbRect(const LayoutDeviceRect& aRect,
     // For the default alpha of 128 we want to end up with 48 in the outline.
     constexpr float kAlphaScaling = 48.0f / 128.0f;
     const uint8_t strokeAlpha =
-        uint8_t(clamped(NS_GET_A(faceColor) * kAlphaScaling, 0.0f, 48.0f));
+        uint8_t(std::clamp(NS_GET_A(faceColor) * kAlphaScaling, 0.0f, 48.0f));
     if (strokeAlpha) {
       strokeOutset = (aParams.isDark ? 0.3f : 0.5f) * aScale;
       strokeWidth = (aParams.isDark ? 0.6f : 0.8f) * aScale;
@@ -214,11 +209,6 @@ static ScrollbarTrackDecorationColors ComputeScrollbarTrackDecorationColors(
 static bool GetScrollbarTrackRects(const LayoutDeviceRect& aRect,
                                    const ScrollbarParams& aParams, float aScale,
                                    ScrollbarTrackRects& aRects) {
-  if (aParams.isOverlay && !aParams.isRolledOver) {
-    // Non-hovered overlay scrollbars don't have a track. Draw nothing.
-    return false;
-  }
-
   nscolor trackColor;
   if (aParams.isCustom) {
     trackColor = aParams.trackColor;
@@ -390,39 +380,49 @@ bool ScrollbarDrawingCocoa::PaintScrollbarThumb(
 }
 
 template <typename PaintBackendData>
-void ScrollbarDrawingCocoa::DoPaintScrollbarTrack(
+void ScrollbarDrawingCocoa::DoPaintScrollbar(
     PaintBackendData& aPaintData, const LayoutDeviceRect& aRect,
     ScrollbarKind aScrollbarKind, nsIFrame* aFrame, const ComputedStyle& aStyle,
-    const DocumentState& aDocumentState, const Colors& aColors,
-    const DPIRatio& aDpiRatio) {
+    const ElementState& aElementState, const DocumentState& aDocumentState,
+    const Colors& aColors, const DPIRatio& aDpiRatio) {
   ScrollbarParams params =
       ComputeScrollbarParams(aFrame, aStyle, aColors, aScrollbarKind);
+  if (params.isOverlay && !params.isRolledOver) {
+    // Non-hovered overlay scrollbars don't have a track. Draw nothing.
+    return;
+  }
+
+  // Paint our track.
+  const auto color =
+      ComputeScrollbarTrackColor(aFrame, aStyle, aDocumentState, aColors);
+  ThemeDrawing::FillRect(aPaintData, aRect, color);
+
+  // Paint our decorations.
   ScrollbarTrackRects rects;
-  if (GetScrollbarTrackRects(aRect, params, aDpiRatio.scale, rects)) {
-    for (const auto& rect : rects) {
-      ThemeDrawing::FillRect(aPaintData, rect.mRect,
-                             sRGBColor::FromABGR(rect.mColor));
-    }
+  GetScrollbarTrackRects(aRect, params, aDpiRatio.scale, rects);
+  for (const auto& rect : rects) {
+    ThemeDrawing::FillRect(aPaintData, rect.mRect,
+                           sRGBColor::FromABGR(rect.mColor));
   }
 }
 
-bool ScrollbarDrawingCocoa::PaintScrollbarTrack(
-    DrawTarget& aDt, const LayoutDeviceRect& aRect,
+bool ScrollbarDrawingCocoa::PaintScrollbar(
+    DrawTarget& aDrawTarget, const LayoutDeviceRect& aRect,
     ScrollbarKind aScrollbarKind, nsIFrame* aFrame, const ComputedStyle& aStyle,
-    const DocumentState& aDocumentState, const Colors& aColors,
-    const DPIRatio& aDpiRatio) {
-  DoPaintScrollbarTrack(aDt, aRect, aScrollbarKind, aFrame, aStyle,
-                        aDocumentState, aColors, aDpiRatio);
+    const ElementState& aElementState, const DocumentState& aDocumentState,
+    const Colors& aColors, const DPIRatio& aDpiRatio) {
+  DoPaintScrollbar(aDrawTarget, aRect, aScrollbarKind, aFrame, aStyle,
+                   aElementState, aDocumentState, aColors, aDpiRatio);
   return true;
 }
 
-bool ScrollbarDrawingCocoa::PaintScrollbarTrack(
+bool ScrollbarDrawingCocoa::PaintScrollbar(
     WebRenderBackendData& aWrData, const LayoutDeviceRect& aRect,
     ScrollbarKind aScrollbarKind, nsIFrame* aFrame, const ComputedStyle& aStyle,
-    const DocumentState& aDocumentState, const Colors& aColors,
-    const DPIRatio& aDpiRatio) {
-  DoPaintScrollbarTrack(aWrData, aRect, aScrollbarKind, aFrame, aStyle,
-                        aDocumentState, aColors, aDpiRatio);
+    const ElementState& aElementState, const DocumentState& aDocumentState,
+    const Colors& aColors, const DPIRatio& aDpiRatio) {
+  DoPaintScrollbar(aWrData, aRect, aScrollbarKind, aFrame, aStyle,
+                   aElementState, aDocumentState, aColors, aDpiRatio);
   return true;
 }
 
@@ -470,7 +470,7 @@ void ScrollbarDrawingCocoa::RecomputeScrollbarParams() {
   ConfigureScrollbarSize(StyleScrollbarWidth::Auto, Overlay::No, 15);
   ConfigureScrollbarSize(StyleScrollbarWidth::Thin, Overlay::No, 11);
   ConfigureScrollbarSize(StyleScrollbarWidth::Auto, Overlay::Yes, 16);
-  ConfigureScrollbarSize(StyleScrollbarWidth::Thin, Overlay::Yes, 14);
+  ConfigureScrollbarSize(StyleScrollbarWidth::Thin, Overlay::Yes, 12);
 }
 
 }  // namespace mozilla::widget

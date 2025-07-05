@@ -37,18 +37,6 @@ const DISALLOWED = {
   // "remote":
   //   checked manually, since its default value will
   //   depend on whether or not e10s is enabled by default.
-  alwaysLowered: {
-    flag: Ci.nsIWebBrowserChrome.CHROME_WINDOW_LOWERED,
-    defaults_to: false,
-  },
-  "z-lock": {
-    flag: Ci.nsIWebBrowserChrome.CHROME_WINDOW_LOWERED, // Renamed to alwaysLowered
-    defaults_to: false,
-  },
-  alwaysRaised: {
-    flag: Ci.nsIWebBrowserChrome.CHROME_WINDOW_RAISED,
-    defaults_to: false,
-  },
   alwaysOnTop: {
     flag: Ci.nsIWebBrowserChrome.CHROME_ALWAYS_ON_TOP,
     defaults_to: false,
@@ -120,9 +108,8 @@ function getContentChromeFlags(win) {
         .QueryInterface(Ci.nsIWebBrowserChrome).chromeFlags;
     } catch (e) {
       // This must be a non-remote browser...
-      return docShell.treeOwner.QueryInterface(
-        Ci.nsIWebBrowserChrome
-      ).chromeFlags;
+      return docShell.treeOwner.QueryInterface(Ci.nsIWebBrowserChrome)
+        .chromeFlags;
     }
   });
 }

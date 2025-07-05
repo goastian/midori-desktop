@@ -442,6 +442,8 @@ export var SpellCheckHelper = {
   // specifically for spellcheck.
   SPELLCHECKABLE: 0x100,
 
+  SEARCHENGINE: 0x200,
+
   isTargetAKeywordField(aNode, window) {
     if (!window.HTMLInputElement.isInstance(aNode)) {
       return false;
@@ -471,9 +473,42 @@ export var SpellCheckHelper = {
     );
   },
 
-  // Returns the computed style attribute for the given element.
-  getComputedStyle(aElem, aProp) {
-    return aElem.ownerGlobal.getComputedStyle(aElem).getPropertyValue(aProp);
+  /**
+   * Returns whether the element is counted as a search engine field.
+   *
+   * @param {HTMLInputElement} aNode
+   *   The input to check.
+   * @param {Window} window
+   *   The element's window.
+   * @returns {boolean}
+   *   Whether it should count as a search engine field.
+   */
+  isTargetASearchEngineField(aNode, window) {
+    if (
+      !window.HTMLInputElement.isInstance(aNode) ||
+      (aNode.type != "text" && aNode.type != "search") ||
+      aNode.readOnly ||
+      !aNode.name ||
+      !aNode.form
+    ) {
+      return false;
+    }
+
+    let form = aNode.form;
+    let method = form.method.toUpperCase();
+
+    return (
+      // Forms without an explicit action often don't work, see Bug 1960237.
+      form.hasAttribute("action") &&
+      // The other methods are post and dialog.
+      // Post forms are rarely search forms, see discussion in Bug 1964507.
+      // Dialog forms are not supported for obvious reasons.
+      method == "GET" &&
+      // SearchEngine objects currently only support urlencoded requests.
+      form.enctype == "application/x-www-form-urlencoded" &&
+      // Don't allow forms with file inputs.
+      new FormData(form).values().every(v => typeof v == "string")
+    );
   },
 
   isEditable(element, window) {
@@ -500,6 +535,9 @@ export var SpellCheckHelper = {
         if (this.isTargetAKeywordField(element, window)) {
           flags |= this.KEYWORD;
         }
+        if (this.isTargetASearchEngineField(element, window)) {
+          flags |= this.SEARCHENGINE;
+        }
         if (element.type == "password") {
           flags |= this.PASSWORD;
         }
@@ -519,7 +557,7 @@ export var SpellCheckHelper = {
           var editingSession = win.docShell.editingSession;
           if (
             editingSession.windowIsEditable(win) &&
-            this.getComputedStyle(element, "-moz-user-modify") == "read-write"
+            element.matches(":read-write")
           ) {
             isSpellcheckable = true;
           }

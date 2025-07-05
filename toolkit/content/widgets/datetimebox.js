@@ -246,7 +246,7 @@ this.DateTimeBoxWidget = class {
 
   generateContent() {
     const parser = new this.window.DOMParser();
-    let parserDoc = parser.parseFromString(
+    let parserDoc = parser.parseFromSafeString(
       `<div class="datetimebox" xmlns="http://www.w3.org/1999/xhtml" role="none">
         <link rel="stylesheet" type="text/css" href="chrome://global/content/bindings/datetimebox.css" />
         <div class="datetime-input-box-wrapper" id="input-box-wrapper" role="presentation">
@@ -274,11 +274,12 @@ this.DateTimeBoxWidget = class {
   }
 
   get FIELD_EVENTS() {
-    return ["focus", "blur", "copy", "cut", "paste"];
+    return ["focus", "copy", "cut", "paste"];
   }
 
   get CONTROL_EVENTS() {
     return [
+      "MozDateTimeWillBlur",
       "MozDateTimeValueChanged",
       "MozNotifyMinMaxStepAttrChanged",
       "MozDateTimeAttributeChanged",
@@ -301,7 +302,7 @@ this.DateTimeBoxWidget = class {
         eventName,
         this,
         { mozSystemGroup: true },
-        false
+        /* wantsUntrusted = */ false
       );
     });
   }
@@ -433,6 +434,7 @@ this.DateTimeBoxWidget = class {
   setPickerState(aIsOpen) {
     this.log("picker is now " + (aIsOpen ? "opened" : "closed"));
     this.mIsPickerOpen = aIsOpen;
+    this.mInputElement.setDateTimePickerState(aIsOpen);
     // Calendar button's expanded state mirrors this.mIsPickerOpen
     this.updateCalendarButtonState(this.mIsPickerOpen);
   }
@@ -556,8 +558,9 @@ this.DateTimeBoxWidget = class {
         this.onFocus(aEvent);
         break;
       }
-      case "blur": {
-        this.onBlur(aEvent);
+      case "MozDateTimeWillBlur": {
+        // The event detail is the blur event.
+        this.onWillBlur(aEvent.detail);
         break;
       }
       case "mousedown":
@@ -591,9 +594,9 @@ this.DateTimeBoxWidget = class {
     }
   }
 
-  onBlur(aEvent) {
+  onWillBlur(aEvent) {
     this.log(
-      "onBlur originalTarget: " +
+      "onWillBlur originalTarget: " +
         aEvent.originalTarget +
         " target: " +
         aEvent.target +
@@ -604,7 +607,16 @@ this.DateTimeBoxWidget = class {
     );
 
     let target = aEvent.originalTarget;
+    if (
+      target.getRootNode() !== this.shadowRoot ||
+      !target.matches(".datetime-edit-field")
+    ) {
+      // We only care about the blurring of our inner fields.
+      return;
+    }
+
     target.setAttribute("typeBuffer", "");
+
     this.setInputValueFromFields();
     // No need to set and unset the focus state (or closing the picker) if the
     // focus is staying within our input.
@@ -1171,9 +1183,6 @@ this.DateTimeBoxWidget = class {
         this.advanceToNextField();
       }
       targetField.setAttribute("typeBuffer", buffer);
-      if (!this.isAnyFieldEmpty()) {
-        this.setInputValueFromFields();
-      }
     }
   }
 

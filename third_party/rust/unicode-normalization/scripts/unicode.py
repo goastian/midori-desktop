@@ -20,8 +20,9 @@
 # out-of-line and check the tables.rs and normalization_tests.rs files into git.
 import collections
 import urllib.request
+from itertools import batched
 
-UNICODE_VERSION = "15.0.0"
+UNICODE_VERSION = "16.0.0"
 UCD_URL = "https://www.unicode.org/Public/%s/ucd/" % UNICODE_VERSION
 
 PREAMBLE = """// Copyright 2012-2018 The Rust Project Developers. See the COPYRIGHT
@@ -354,20 +355,26 @@ def is_first_and_last(first, last):
         return False
     return first[1:-8] == last[1:-7]
 
-def gen_mph_data(name, d, kv_type, kv_callback):
+def gen_mph_data(name, d, kv_type, kv_callback, kv_row_width):
     (salt, keys) = minimal_perfect_hash(d)
-    out.write("pub(crate) const %s_SALT: &[u16] = &[\n" % name.upper())
-    for s in salt:
-        out.write("    0x{:x},\n".format(s))
+    out.write(f"\npub(crate) const {name.upper()}_SALT: &[u16] = &[\n")
+    for s_row in batched(salt, 13):
+        out.write("   ")
+        for s in s_row:
+            out.write(f" 0x{s:03X},")
+        out.write("\n")
     out.write("];\n")
-    out.write("pub(crate) const {}_KV: &[{}] = &[\n".format(name.upper(), kv_type))
-    for k in keys:
-        out.write("    {},\n".format(kv_callback(k)))
-    out.write("];\n\n")
+    out.write(f"pub(crate) const {name.upper()}_KV: &[{kv_type}] = &[\n")
+    for k_row in batched(keys, kv_row_width):
+        out.write("   ")
+        for k in k_row:
+            out.write(f" {kv_callback(k)},")
+        out.write("\n")
+    out.write("];\n")
 
 def gen_combining_class(combining_classes, out):
     gen_mph_data('canonical_combining_class', combining_classes, 'u32',
-        lambda k: "0x{:X}".format(int(combining_classes[k]) | (k << 8)))
+        lambda k: f"0x{int(combining_classes[k]) | (k << 8):07X}", 8)
 
 def gen_composition_table(canon_comp, out):
     table = {}
@@ -376,12 +383,12 @@ def gen_composition_table(canon_comp, out):
             table[(c1 << 16) | c2] = c3
     (salt, keys) = minimal_perfect_hash(table)
     gen_mph_data('COMPOSITION_TABLE', table, '(u32, char)',
-        lambda k: "(0x%s, '\\u{%s}')" % (hexify(k), hexify(table[k])))
+        lambda k: f"(0x{k:08X}, '\\u{{{table[k]:06X}}}')", 1)
 
     out.write("pub(crate) fn composition_table_astral(c1: char, c2: char) -> Option<char> {\n")
     out.write("    match (c1, c2) {\n")
     for (c1, c2), c3 in sorted(canon_comp.items()):
-        if c1 >= 0x10000 and c2 >= 0x10000:
+        if c1 >= 0x10000 or c2 >= 0x10000:
             out.write("        ('\\u{%s}', '\\u{%s}') => Some('\\u{%s}'),\n" % (hexify(c1), hexify(c2), hexify(c3)))
 
     out.write("        _ => None,\n")
@@ -403,7 +410,7 @@ def gen_decomposition_tables(canon_decomp, compat_decomp, cjk_compat_variants_de
         assert offset < 65536
         out.write("];\n")
         gen_mph_data(name + '_decomposed', table, "(u32, (u16, u16))",
-            lambda k: "(0x{:x}, ({}, {}))".format(k, offsets[k], len(table[k])))
+            lambda k: f"(0x{k:05X}, (0x{offsets[k]:03X}, 0x{len(table[k]):X}))", 1)
 
 def gen_qc_match(prop_table, out):
     out.write("    match c {\n")
@@ -412,7 +419,7 @@ def gen_qc_match(prop_table, out):
         assert data in ('N', 'M')
         result = "No" if data == 'N' else "Maybe"
         if high:
-            out.write(r"        '\u{%s}'...'\u{%s}' => %s," % (low, high, result))
+            out.write(r"        '\u{%s}'..='\u{%s}' => %s," % (low, high, result))
         else:
             out.write(r"        '\u{%s}' => %s," % (low, result))
         out.write("\n")
@@ -421,7 +428,7 @@ def gen_qc_match(prop_table, out):
     out.write("    }\n")
 
 def gen_nfc_qc(prop_tables, out):
-    out.write("#[inline]\n")
+    out.write("\n#[inline]\n")
     out.write("#[allow(ellipsis_inclusive_range_patterns)]\n")
     out.write("pub fn qc_nfc(c: char) -> IsNormalized {\n")
     gen_qc_match(prop_tables['NFC_QC'], out)
@@ -450,7 +457,7 @@ def gen_nfkd_qc(prop_tables, out):
 
 def gen_combining_mark(general_category_mark, out):
     gen_mph_data('combining_mark', general_category_mark, 'u32',
-        lambda k: '0x{:04x}'.format(k))
+        lambda k: '0x{:05X}'.format(k), 10)
 
 def gen_public_assigned(general_category_public_assigned, out):
     # This could be done as a hash but the table is somewhat small.
@@ -464,17 +471,16 @@ def gen_public_assigned(general_category_public_assigned, out):
             out.write("        ")
             start = False
         else:
-            out.write("        | ")
+            out.write("\n        | ")
         if first == last:
-            out.write("'\\u{%s}'\n" % hexify(first))
+            out.write("'\\u{%s}'" % hexify(first))
         else:
-            out.write("'\\u{%s}'..='\\u{%s}'\n" % (hexify(first), hexify(last)))
-    out.write("        => true,\n")
+            out.write("'\\u{%s}'..='\\u{%s}'" % (hexify(first), hexify(last)))
+    out.write(" => true,\n")
 
     out.write("        _ => false,\n")
     out.write("    }\n")
     out.write("}\n")
-    out.write("\n")
 
 def gen_stream_safe(leading, trailing, out):
     # This could be done as a hash but the table is very small.
@@ -488,10 +494,9 @@ def gen_stream_safe(leading, trailing, out):
     out.write("        _ => 0,\n")
     out.write("    }\n")
     out.write("}\n")
-    out.write("\n")
 
     gen_mph_data('trailing_nonstarters', trailing, 'u32',
-        lambda k: "0x{:X}".format(int(trailing[k]) | (k << 8)))
+        lambda k: f"0x{int(trailing[k]) | (k << 8):07X}", 8)
 
 def gen_tests(tests, out):
     out.write("""#[derive(Debug)]
@@ -585,36 +590,27 @@ if __name__ == '__main__':
 
         version = "(%s, %s, %s)" % tuple(UNICODE_VERSION.split("."))
         out.write("#[allow(unused)]\n")
-        out.write("pub const UNICODE_VERSION: (u8, u8, u8) = %s;\n\n" % version)
+        out.write("pub const UNICODE_VERSION: (u8, u8, u8) = %s;\n" % version)
 
         gen_combining_class(data.combining_classes, out)
-        out.write("\n")
 
         gen_composition_table(data.canon_comp, out)
-        out.write("\n")
 
         gen_decomposition_tables(data.canon_fully_decomp, data.compat_fully_decomp, data.cjk_compat_variants_fully_decomp, out)
 
         gen_combining_mark(data.general_category_mark, out)
-        out.write("\n")
 
         gen_public_assigned(data.general_category_public_assigned, out)
-        out.write("\n")
 
         gen_nfc_qc(data.norm_props, out)
-        out.write("\n")
 
         gen_nfkc_qc(data.norm_props, out)
-        out.write("\n")
 
         gen_nfd_qc(data.norm_props, out)
-        out.write("\n")
 
         gen_nfkd_qc(data.norm_props, out)
-        out.write("\n")
 
         gen_stream_safe(data.ss_leading, data.ss_trailing, out)
-        out.write("\n")
 
     with open("normalization_tests.rs", "w", newline = "\n") as out:
         out.write(PREAMBLE)

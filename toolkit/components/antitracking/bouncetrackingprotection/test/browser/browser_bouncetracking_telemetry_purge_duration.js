@@ -7,7 +7,14 @@ let bounceTrackingProtection;
 
 async function test_purge_duration(isDryRunMode) {
   await SpecialPowers.pushPrefEnv({
-    set: [["privacy.bounceTrackingProtection.enableDryRunMode", isDryRunMode]],
+    set: [
+      [
+        "privacy.bounceTrackingProtection.mode",
+        isDryRunMode
+          ? Ci.nsIBounceTrackingProtection.MODE_ENABLED_DRY_RUN
+          : Ci.nsIBounceTrackingProtection.MODE_ENABLED,
+      ],
+    ],
   });
 
   is(
@@ -45,6 +52,10 @@ async function test_purge_duration(isDryRunMode) {
 add_setup(async function () {
   await SpecialPowers.pushPrefEnv({
     set: [
+      [
+        "privacy.bounceTrackingProtection.mode",
+        Ci.nsIBounceTrackingProtection.MODE_ENABLED,
+      ],
       ["privacy.bounceTrackingProtection.requireStatefulBounces", true],
       ["privacy.bounceTrackingProtection.bounceTrackingGracePeriodSec", 0],
     ],

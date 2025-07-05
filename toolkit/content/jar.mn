@@ -5,21 +5,20 @@ toolkit.jar:
    content/global/autocomplete.css
    content/global/aboutAbout.js
    content/global/aboutAbout.html
-   content/global/aboutLogging.js
-   content/global/aboutLogging.html
+   content/global/aboutLogging/aboutLogging.html (aboutLogging/aboutLogging.html)
+   content/global/aboutLogging/aboutLogging.css (aboutLogging/aboutLogging.css)
+   content/global/aboutLogging/aboutLogging.mjs (aboutLogging/aboutLogging.mjs)
+   content/global/aboutLogging/jwt.mjs (aboutLogging/jwt.mjs)
+   content/global/aboutLogging/profileSaveUploadLogic.mjs (aboutLogging/profileSaveUploadLogic.mjs)
    content/global/aboutNetError.mjs
    content/global/aboutNetError.html
+   content/global/aboutNetErrorHelpers.mjs
+   content/global/net-error-card.mjs
    content/global/aboutNetworking.js
    content/global/aboutNetworking.html
 #ifndef ANDROID
    content/global/aboutProfiles.js
    content/global/aboutProfiles.xhtml
-#endif
-   content/global/aboutRights.js
-#ifdef MOZILLA_OFFICIAL
-   content/global/aboutRights.xhtml
-#else
-   content/global/aboutRights.xhtml           (aboutRights-unbranded.xhtml)
 #endif
    content/global/aboutServiceWorkers.js
    content/global/aboutServiceWorkers.xhtml
@@ -79,7 +78,7 @@ toolkit.jar:
    content/global/elements/autocomplete-input.js              (widgets/autocomplete-input.js)
    content/global/elements/autocomplete-popup.js              (widgets/autocomplete-popup.js)
    content/global/elements/autocomplete-richlistitem.js       (widgets/autocomplete-richlistitem.js)
-   content/global/elements/browser-custom-element.js          (widgets/browser-custom-element.js)
+   content/global/elements/browser-custom-element.mjs         (widgets/browser-custom-element.mjs)
    content/global/elements/button.js           (widgets/button.js)
    content/global/elements/checkbox.js         (widgets/checkbox.js)
    content/global/elements/datetimebox.js      (widgets/datetimebox.js)
@@ -89,16 +88,34 @@ toolkit.jar:
    content/global/elements/general.js          (widgets/general.js)
    content/global/elements/menu.js             (widgets/menu.js)
    content/global/elements/menupopup.js        (widgets/menupopup.js)
+   content/global/elements/menupopup.css       (widgets/menupopup.css)
+   content/global/elements/moz-box-common.css    (widgets/moz-box-common.css)
+   content/global/elements/moz-box-button.css    (widgets/moz-box-button/moz-box-button.css)
+   content/global/elements/moz-box-button.mjs    (widgets/moz-box-button/moz-box-button.mjs)
+   content/global/elements/moz-box-group.css    (widgets/moz-box-group/moz-box-group.css)
+   content/global/elements/moz-box-group.mjs    (widgets/moz-box-group/moz-box-group.mjs)
+   content/global/elements/moz-box-item.css    (widgets/moz-box-item/moz-box-item.css)
+   content/global/elements/moz-box-item.mjs    (widgets/moz-box-item/moz-box-item.mjs)
+   content/global/elements/moz-box-link.css    (widgets/moz-box-link/moz-box-link.css)
+   content/global/elements/moz-box-link.mjs    (widgets/moz-box-link/moz-box-link.mjs)
    content/global/elements/moz-button.css    (widgets/moz-button/moz-button.css)
    content/global/elements/moz-button.mjs    (widgets/moz-button/moz-button.mjs)
    content/global/elements/moz-button-group.css    (widgets/moz-button-group/moz-button-group.css)
    content/global/elements/moz-button-group.mjs    (widgets/moz-button-group/moz-button-group.mjs)
    content/global/elements/moz-card.css         (widgets/moz-card/moz-card.css)
    content/global/elements/moz-card.mjs         (widgets/moz-card/moz-card.mjs)
-   content/global/elements/moz-checkbox.css    (widgets/moz-checkbox/moz-checkbox.css)
    content/global/elements/moz-checkbox.mjs    (widgets/moz-checkbox/moz-checkbox.mjs)
+   content/global/elements/moz-input-color.css         (widgets/moz-input-color/moz-input-color.css)
+   content/global/elements/moz-input-color.mjs         (widgets/moz-input-color/moz-input-color.mjs)
    content/global/elements/moz-fieldset.css    (widgets/moz-fieldset/moz-fieldset.css)
    content/global/elements/moz-fieldset.mjs    (widgets/moz-fieldset/moz-fieldset.mjs)
+   content/global/elements/moz-input-common.css       (widgets/moz-input-common.css)
+   content/global/elements/moz-input-folder.css    (widgets/moz-input-folder/moz-input-folder.css)
+   content/global/elements/moz-input-folder.mjs    (widgets/moz-input-folder/moz-input-folder.mjs)
+   content/global/elements/moz-input-password.mjs    (widgets/moz-input-password/moz-input-password.mjs)
+   content/global/elements/moz-input-search.mjs    (widgets/moz-input-search/moz-input-search.mjs)
+   content/global/elements/moz-input-text.css    (widgets/moz-input-text/moz-input-text.css)
+   content/global/elements/moz-input-text.mjs    (widgets/moz-input-text/moz-input-text.mjs)
    content/global/elements/moz-page-nav.css    (widgets/moz-page-nav/moz-page-nav.css)
    content/global/elements/moz-page-nav-button.css    (widgets/moz-page-nav/moz-page-nav-button.css)
    content/global/elements/moz-page-nav.mjs    (widgets/moz-page-nav/moz-page-nav.mjs)
@@ -109,12 +126,14 @@ toolkit.jar:
    content/global/elements/moz-label.mjs       (widgets/moz-label/moz-label.mjs)
    content/global/elements/moz-message-bar.css    (widgets/moz-message-bar/moz-message-bar.css)
    content/global/elements/moz-message-bar.mjs    (widgets/moz-message-bar/moz-message-bar.mjs)
-   content/global/elements/moz-radio.css          (widgets/moz-radio-group/moz-radio.css)
-   content/global/elements/moz-radio-group.css    (widgets/moz-radio-group/moz-radio-group.css)
    content/global/elements/moz-radio-group.mjs    (widgets/moz-radio-group/moz-radio-group.mjs)
+   content/global/elements/moz-select.css    (widgets/moz-select/moz-select.css)
+   content/global/elements/moz-select.mjs    (widgets/moz-select/moz-select.mjs)
    content/global/elements/moz-support-link.mjs    (widgets/moz-support-link/moz-support-link.mjs)
    content/global/elements/moz-toggle.css      (widgets/moz-toggle/moz-toggle.css)
    content/global/elements/moz-toggle.mjs      (widgets/moz-toggle/moz-toggle.mjs)
+   content/global/elements/moz-visual-picker-item.css    (widgets/moz-visual-picker/moz-visual-picker-item.css)
+   content/global/elements/moz-visual-picker.mjs    (widgets/moz-visual-picker/moz-visual-picker.mjs)
    content/global/elements/named-deck.js       (widgets/named-deck.js)
    content/global/elements/infobar.css         (widgets/infobar.css)
    content/global/elements/notificationbox.js  (widgets/notificationbox.js)
@@ -140,6 +159,7 @@ toolkit.jar:
    content/global/elements/wizard.js           (widgets/wizard.js)
    content/global/vendor/lit.all.mjs           (widgets/vendor/lit.all.mjs)
    content/global/lit-utils.mjs                (widgets/lit-utils.mjs)
+   content/global/lit-select-control.mjs        (widgets/lit-select-control.mjs)
    content/global/neterror/aboutNetErrorCodes.js                    (neterror/aboutNetErrorCodes.js)
    content/global/neterror/supportpages/connection-not-secure.html  (neterror/supportpages/connection-not-secure.html)
    content/global/neterror/supportpages/time-errors.html            (neterror/supportpages/time-errors.html)
@@ -153,3 +173,17 @@ toolkit.jar:
 # Third party files
    content/global/third_party/d3/d3.js                (/third_party/js/d3/d3.js)
    content/global/third_party/cfworker/json-schema.js (/third_party/js/cfworker/json-schema.js)
+
+# React and Redux vendor libraries
+   content/global/vendor/Redux.sys.mjs (vendor/react/Redux.sys.mjs)
+   content/global/vendor/react.js (vendor/react/react.js)
+   content/global/vendor/react-dom.js (vendor/react/react-dom.js)
+   content/global/vendor/react-dom-server.js (vendor/react/react-dom-server.js)
+#ifndef RELEASE_OR_BETA
+   content/global/vendor/react-dev.js (vendor/react/react-dev.js)
+   content/global/vendor/react-dom-dev.js (vendor/react/react-dom-dev.js)
+#endif
+   content/global/vendor/prop-types.js (vendor/react/prop-types.js)
+   content/global/vendor/react-transition-group.js (vendor/react/react-transition-group.js)
+   content/global/vendor/redux.js (vendor/react/redux.js)
+   content/global/vendor/react-redux.js (vendor/react/react-redux.js)

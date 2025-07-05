@@ -9,7 +9,7 @@ const TESTROOT = "http://example.com/browser/" + RELATIVE_DIR;
 const TESTS = [
   {
     action: {
-      selector: "button#zoomIn",
+      selector: "#zoomInButton",
       event: "click",
     },
     expectedZoom: 1, // 1 - zoom in
@@ -18,7 +18,7 @@ const TESTS = [
 
   {
     action: {
-      selector: "button#zoomOut",
+      selector: "#zoomOutButton",
       event: "click",
     },
     expectedZoom: -1, // -1 - zoom out
@@ -185,11 +185,9 @@ add_task(async function test() {
 
             previousWidth = actualWidth;
           }
-
-          var viewer = content.wrappedJSObject.PDFViewerApplication;
-          await viewer.close();
         }
       );
+      await waitForPdfJSClose(newTabBrowser);
     }
   );
 });
@@ -239,9 +237,20 @@ add_task(async function test_browser_zoom() {
   await BrowserTestUtils.withNewTab(
     { gBrowser, url: "about:blank" },
     async function (newTabBrowser) {
-      await waitForPdfJS(newTabBrowser, TESTROOT + "file_pdfjs_test.pdf");
+      const promise = waitForPdfJS(
+        newTabBrowser,
+        TESTROOT + "file_pdfjs_test.pdf"
+      );
+      await BrowserTestUtils.waitForContentEvent(
+        newTabBrowser,
+        "documentloaded",
+        false,
+        null,
+        true
+      );
 
       const initialWidth = await waitForRenderAndGetWidth(newTabBrowser);
+      await promise;
 
       // Zoom in
       let newWidthPromise = waitForRenderAndGetWidth(newTabBrowser);
@@ -270,10 +279,7 @@ add_task(async function test_browser_zoom() {
       );
 
       // Clean-up after the PDF viewer.
-      await SpecialPowers.spawn(newTabBrowser, [], function () {
-        const viewer = content.wrappedJSObject.PDFViewerApplication;
-        return viewer.close();
-      });
+      await waitForPdfJSClose(newTabBrowser);
     }
   );
 });

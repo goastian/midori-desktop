@@ -1,12 +1,16 @@
-use crate::{
-    device::bgl,
-    id::{markers::Buffer, Id},
-    FastHashMap, FastHashSet,
+use alloc::{
+    boxed::Box,
+    string::{String, ToString as _},
+    vec::Vec,
 };
+use core::fmt;
+
 use arrayvec::ArrayVec;
-use std::{collections::hash_map::Entry, fmt};
+use hashbrown::hash_map::Entry;
 use thiserror::Error;
 use wgt::{BindGroupLayoutEntry, BindingType};
+
+use crate::{device::bgl, resource::InvalidResourceError, FastHashMap, FastHashSet};
 
 #[derive(Debug)]
 enum ResourceType {
@@ -21,6 +25,40 @@ enum ResourceType {
     Sampler {
         comparison: bool,
     },
+    AccelerationStructure {
+        vertex_return: bool,
+    },
+}
+
+#[derive(Clone, Debug)]
+pub enum BindingTypeName {
+    Buffer,
+    Texture,
+    Sampler,
+    AccelerationStructure,
+}
+
+impl From<&ResourceType> for BindingTypeName {
+    fn from(ty: &ResourceType) -> BindingTypeName {
+        match ty {
+            ResourceType::Buffer { .. } => BindingTypeName::Buffer,
+            ResourceType::Texture { .. } => BindingTypeName::Texture,
+            ResourceType::Sampler { .. } => BindingTypeName::Sampler,
+            ResourceType::AccelerationStructure { .. } => BindingTypeName::AccelerationStructure,
+        }
+    }
+}
+
+impl From<&BindingType> for BindingTypeName {
+    fn from(ty: &BindingType) -> BindingTypeName {
+        match ty {
+            BindingType::Buffer { .. } => BindingTypeName::Buffer,
+            BindingType::Texture { .. } => BindingTypeName::Texture,
+            BindingType::StorageTexture { .. } => BindingTypeName::Texture,
+            BindingType::Sampler { .. } => BindingTypeName::Sampler,
+            BindingType::AccelerationStructure { .. } => BindingTypeName::AccelerationStructure,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -132,57 +170,8 @@ struct EntryPoint {
 #[derive(Debug)]
 pub struct Interface {
     limits: wgt::Limits,
-    features: wgt::Features,
     resources: naga::Arena<Resource>,
     entry_points: FastHashMap<(naga::ShaderStage, String), EntryPoint>,
-}
-
-#[derive(Clone, Debug, Error)]
-#[error(
-    "Usage flags {actual:?} for buffer {id:?} do not contain required usage flags {expected:?}"
-)]
-pub struct MissingBufferUsageError {
-    pub(crate) id: Id<Buffer>,
-    pub(crate) actual: wgt::BufferUsages,
-    pub(crate) expected: wgt::BufferUsages,
-}
-
-/// Checks that the given buffer usage contains the required buffer usage,
-/// returns an error otherwise.
-pub fn check_buffer_usage(
-    id: Id<Buffer>,
-    actual: wgt::BufferUsages,
-    expected: wgt::BufferUsages,
-) -> Result<(), MissingBufferUsageError> {
-    if !actual.contains(expected) {
-        Err(MissingBufferUsageError {
-            id,
-            actual,
-            expected,
-        })
-    } else {
-        Ok(())
-    }
-}
-
-#[derive(Clone, Debug, Error)]
-#[error("Texture usage is {actual:?} which does not contain required usage {expected:?}")]
-pub struct MissingTextureUsageError {
-    pub(crate) actual: wgt::TextureUsages,
-    pub(crate) expected: wgt::TextureUsages,
-}
-
-/// Checks that the given texture usage contains the required texture usage,
-/// returns an error otherwise.
-pub fn check_texture_usage(
-    actual: wgt::TextureUsages,
-    expected: wgt::TextureUsages,
-) -> Result<(), MissingTextureUsageError> {
-    if !actual.contains(expected) {
-        Err(MissingTextureUsageError { actual, expected })
-    } else {
-        Ok(())
-    }
 }
 
 #[derive(Clone, Debug, Error)]
@@ -192,15 +181,25 @@ pub enum BindingError {
     Missing,
     #[error("Visibility flags don't include the shader stage")]
     Invisible,
-    #[error("Type on the shader side does not match the pipeline binding")]
-    WrongType,
+    #[error(
+        "Type on the shader side ({shader:?}) does not match the pipeline binding ({binding:?})"
+    )]
+    WrongType {
+        binding: BindingTypeName,
+        shader: BindingTypeName,
+    },
     #[error("Storage class {binding:?} doesn't match the shader {shader:?}")]
     WrongAddressSpace {
         binding: naga::AddressSpace,
         shader: naga::AddressSpace,
     },
-    #[error("Buffer structure size {0}, added to one element of an unbound array, if it's the last field, ended up greater than the given `min_binding_size`")]
-    WrongBufferSize(wgt::BufferSize),
+    #[error("Address space {space:?} is not a valid Buffer address space")]
+    WrongBufferAddressSpace { space: naga::AddressSpace },
+    #[error("Buffer structure size {buffer_size}, added to one element of an unbound array, if it's the last field, ended up greater than the given `min_binding_size`, which is {min_binding_size}")]
+    WrongBufferSize {
+        buffer_size: wgt::BufferSize,
+        min_binding_size: wgt::BufferSize,
+    },
     #[error("View dimension {dim:?} (is array: {is_array}) doesn't match the binding {binding:?}")]
     WrongTextureViewDimension {
         dim: naga::ImageDimension,
@@ -218,10 +217,6 @@ pub enum BindingError {
     InconsistentlyDerivedType,
     #[error("Texture format {0:?} is not supported for storage use")]
     BadStorageFormat(wgt::TextureFormat),
-    #[error(
-        "Storage texture with access {0:?} doesn't have a matching supported `StorageTextureAccess`"
-    )]
-    UnsupportedTextureStorageAccess(naga::StorageAccess),
 }
 
 #[derive(Clone, Debug, Error)]
@@ -250,8 +245,6 @@ pub enum InputError {
 #[derive(Clone, Debug, Error)]
 #[non_exhaustive]
 pub enum StageError {
-    #[error("Shader module is invalid")]
-    InvalidModule,
     #[error(
         "Shader entry point's workgroup size {current:?} ({current_total} total invocations) must be less or equal to the per-dimension limit {limit:?} and the total invocation limit {total}"
     )]
@@ -281,8 +274,6 @@ pub enum StageError {
         #[source]
         error: InputError,
     },
-    #[error("Location[{location}] is provided by the previous stage output but is not consumed as input by this stage.")]
-    InputNotConsumed { location: wgt::ShaderLocation },
     #[error(
         "Unable to select an entry point: no entry point was found in the provided shader module"
     )]
@@ -293,9 +284,11 @@ pub enum StageError {
         but no entry point was specified"
     )]
     MultipleEntryPointsFound,
+    #[error(transparent)]
+    InvalidResource(#[from] InvalidResourceError),
 }
 
-fn map_storage_format_to_naga(format: wgt::TextureFormat) -> Option<naga::StorageFormat> {
+pub fn map_storage_format_to_naga(format: wgt::TextureFormat) -> Option<naga::StorageFormat> {
     use naga::StorageFormat as Sf;
     use wgt::TextureFormat as Tf;
 
@@ -327,8 +320,9 @@ fn map_storage_format_to_naga(format: wgt::TextureFormat) -> Option<naga::Storag
 
         Tf::Rgb10a2Uint => Sf::Rgb10a2Uint,
         Tf::Rgb10a2Unorm => Sf::Rgb10a2Unorm,
-        Tf::Rg11b10Float => Sf::Rg11b10Float,
+        Tf::Rg11b10Ufloat => Sf::Rg11b10Ufloat,
 
+        Tf::R64Uint => Sf::R64Uint,
         Tf::Rg32Uint => Sf::Rg32Uint,
         Tf::Rg32Sint => Sf::Rg32Sint,
         Tf::Rg32Float => Sf::Rg32Float,
@@ -351,7 +345,7 @@ fn map_storage_format_to_naga(format: wgt::TextureFormat) -> Option<naga::Storag
     })
 }
 
-fn map_storage_format_from_naga(format: naga::StorageFormat) -> wgt::TextureFormat {
+pub fn map_storage_format_from_naga(format: naga::StorageFormat) -> wgt::TextureFormat {
     use naga::StorageFormat as Sf;
     use wgt::TextureFormat as Tf;
 
@@ -383,8 +377,9 @@ fn map_storage_format_from_naga(format: naga::StorageFormat) -> wgt::TextureForm
 
         Sf::Rgb10a2Uint => Tf::Rgb10a2Uint,
         Sf::Rgb10a2Unorm => Tf::Rgb10a2Unorm,
-        Sf::Rg11b10Float => Tf::Rg11b10Float,
+        Sf::Rg11b10Ufloat => Tf::Rg11b10Ufloat,
 
+        Sf::R64Uint => Tf::R64Uint,
         Sf::Rg32Uint => Tf::Rg32Uint,
         Sf::Rg32Sint => Tf::Rg32Sint,
         Sf::Rg32Float => Tf::Rg32Float,
@@ -433,11 +428,19 @@ impl Resource {
                         }
                         min_binding_size
                     }
-                    _ => return Err(BindingError::WrongType),
+                    _ => {
+                        return Err(BindingError::WrongType {
+                            binding: (&entry.ty).into(),
+                            shader: (&self.ty).into(),
+                        })
+                    }
                 };
                 match min_size {
                     Some(non_zero) if non_zero < size => {
-                        return Err(BindingError::WrongBufferSize(size))
+                        return Err(BindingError::WrongBufferSize {
+                            buffer_size: size,
+                            min_binding_size: non_zero,
+                        })
                     }
                     _ => (),
                 }
@@ -448,7 +451,12 @@ impl Resource {
                         return Err(BindingError::WrongSamplerComparison);
                     }
                 }
-                _ => return Err(BindingError::WrongType),
+                _ => {
+                    return Err(BindingError::WrongType {
+                        binding: (&entry.ty).into(),
+                        shader: (&self.ty).into(),
+                    })
+                }
             },
             ResourceType::Texture {
                 dim,
@@ -523,14 +531,26 @@ impl Resource {
                         let naga_access = match access {
                             wgt::StorageTextureAccess::ReadOnly => naga::StorageAccess::LOAD,
                             wgt::StorageTextureAccess::WriteOnly => naga::StorageAccess::STORE,
-                            wgt::StorageTextureAccess::ReadWrite => naga::StorageAccess::all(),
+                            wgt::StorageTextureAccess::ReadWrite => {
+                                naga::StorageAccess::LOAD | naga::StorageAccess::STORE
+                            }
+                            wgt::StorageTextureAccess::Atomic => {
+                                naga::StorageAccess::ATOMIC
+                                    | naga::StorageAccess::LOAD
+                                    | naga::StorageAccess::STORE
+                            }
                         };
                         naga::ImageClass::Storage {
                             format: naga_format,
                             access: naga_access,
                         }
                     }
-                    _ => return Err(BindingError::WrongType),
+                    _ => {
+                        return Err(BindingError::WrongType {
+                            binding: (&entry.ty).into(),
+                            shader: (&self.ty).into(),
+                        })
+                    }
                 };
                 if class != expected_class {
                     return Err(BindingError::WrongTextureClass {
@@ -539,12 +559,26 @@ impl Resource {
                     });
                 }
             }
+            ResourceType::AccelerationStructure { vertex_return } => match entry.ty {
+                BindingType::AccelerationStructure {
+                    vertex_return: entry_vertex_return,
+                } if vertex_return == entry_vertex_return => (),
+                _ => {
+                    return Err(BindingError::WrongType {
+                        binding: (&entry.ty).into(),
+                        shader: (&self.ty).into(),
+                    })
+                }
+            },
         };
 
         Ok(())
     }
 
-    fn derive_binding_type(&self) -> Result<BindingType, BindingError> {
+    fn derive_binding_type(
+        &self,
+        is_reffed_by_sampler_in_entrypoint: bool,
+    ) -> Result<BindingType, BindingError> {
         Ok(match self.ty {
             ResourceType::Buffer { size } => BindingType::Buffer {
                 ty: match self.class {
@@ -552,7 +586,7 @@ impl Resource {
                     naga::AddressSpace::Storage { access } => wgt::BufferBindingType::Storage {
                         read_only: access == naga::StorageAccess::LOAD,
                     },
-                    _ => return Err(BindingError::WrongType),
+                    _ => return Err(BindingError::WrongBufferAddressSpace { space: self.class }),
                 },
                 has_dynamic_offset: false,
                 min_binding_size: Some(size),
@@ -578,9 +612,9 @@ impl Resource {
                 match class {
                     naga::ImageClass::Sampled { multi, kind } => BindingType::Texture {
                         sample_type: match kind {
-                            naga::ScalarKind::Float => {
-                                wgt::TextureSampleType::Float { filterable: true }
-                            }
+                            naga::ScalarKind::Float => wgt::TextureSampleType::Float {
+                                filterable: is_reffed_by_sampler_in_entrypoint,
+                            },
                             naga::ScalarKind::Sint => wgt::TextureSampleType::Sint,
                             naga::ScalarKind::Uint => wgt::TextureSampleType::Uint,
                             naga::ScalarKind::AbstractInt
@@ -597,11 +631,15 @@ impl Resource {
                     },
                     naga::ImageClass::Storage { format, access } => BindingType::StorageTexture {
                         access: {
-                            const LOAD_STORE: naga::StorageAccess = naga::StorageAccess::all();
+                            const LOAD_STORE: naga::StorageAccess =
+                                naga::StorageAccess::LOAD.union(naga::StorageAccess::STORE);
                             match access {
                                 naga::StorageAccess::LOAD => wgt::StorageTextureAccess::ReadOnly,
                                 naga::StorageAccess::STORE => wgt::StorageTextureAccess::WriteOnly,
                                 LOAD_STORE => wgt::StorageTextureAccess::ReadWrite,
+                                _ if access.contains(naga::StorageAccess::ATOMIC) => {
+                                    wgt::StorageTextureAccess::Atomic
+                                }
                                 _ => unreachable!(),
                             }
                         },
@@ -616,6 +654,9 @@ impl Resource {
                     },
                 }
             }
+            ResourceType::AccelerationStructure { vertex_return } => {
+                BindingType::AccelerationStructure { vertex_return }
+            }
         })
     }
 }
@@ -626,7 +667,7 @@ impl NumericType {
         use wgt::VertexFormat as Vf;
 
         let (dim, scalar) = match format {
-            Vf::Uint32 => (NumericDimension::Scalar, Scalar::U32),
+            Vf::Uint8 | Vf::Uint16 | Vf::Uint32 => (NumericDimension::Scalar, Scalar::U32),
             Vf::Uint8x2 | Vf::Uint16x2 | Vf::Uint32x2 => {
                 (NumericDimension::Vector(Vs::Bi), Scalar::U32)
             }
@@ -634,7 +675,7 @@ impl NumericType {
             Vf::Uint8x4 | Vf::Uint16x4 | Vf::Uint32x4 => {
                 (NumericDimension::Vector(Vs::Quad), Scalar::U32)
             }
-            Vf::Sint32 => (NumericDimension::Scalar, Scalar::I32),
+            Vf::Sint8 | Vf::Sint16 | Vf::Sint32 => (NumericDimension::Scalar, Scalar::I32),
             Vf::Sint8x2 | Vf::Sint16x2 | Vf::Sint32x2 => {
                 (NumericDimension::Vector(Vs::Bi), Scalar::I32)
             }
@@ -642,7 +683,9 @@ impl NumericType {
             Vf::Sint8x4 | Vf::Sint16x4 | Vf::Sint32x4 => {
                 (NumericDimension::Vector(Vs::Quad), Scalar::I32)
             }
-            Vf::Float32 => (NumericDimension::Scalar, Scalar::F32),
+            Vf::Unorm8 | Vf::Unorm16 | Vf::Snorm8 | Vf::Snorm16 | Vf::Float16 | Vf::Float32 => {
+                (NumericDimension::Scalar, Scalar::F32)
+            }
             Vf::Unorm8x2
             | Vf::Snorm8x2
             | Vf::Unorm16x2
@@ -656,7 +699,8 @@ impl NumericType {
             | Vf::Snorm16x4
             | Vf::Float16x4
             | Vf::Float32x4
-            | Vf::Unorm10_10_10_2 => (NumericDimension::Vector(Vs::Quad), Scalar::F32),
+            | Vf::Unorm10_10_10_2
+            | Vf::Unorm8x4Bgra => (NumericDimension::Vector(Vs::Quad), Scalar::F32),
             Vf::Float64 => (NumericDimension::Scalar, Scalar::F64),
             Vf::Float64x2 => (NumericDimension::Vector(Vs::Bi), Scalar::F64),
             Vf::Float64x3 => (NumericDimension::Vector(Vs::Tri), Scalar::F64),
@@ -684,6 +728,7 @@ impl NumericType {
             Tf::Rg8Unorm | Tf::Rg8Snorm | Tf::Rg16Float | Tf::Rg32Float => {
                 (NumericDimension::Vector(Vs::Bi), Scalar::F32)
             }
+            Tf::R64Uint => (NumericDimension::Scalar, Scalar::U64),
             Tf::Rg8Uint | Tf::Rg16Uint | Tf::Rg32Uint => {
                 (NumericDimension::Vector(Vs::Bi), Scalar::U32)
             }
@@ -707,7 +752,7 @@ impl NumericType {
             Tf::Rgba8Sint | Tf::Rgba16Sint | Tf::Rgba32Sint => {
                 (NumericDimension::Vector(Vs::Quad), Scalar::I32)
             }
-            Tf::Rg11b10Float => (NumericDimension::Vector(Vs::Tri), Scalar::F32),
+            Tf::Rg11b10Ufloat => (NumericDimension::Vector(Vs::Tri), Scalar::F32),
             Tf::Stencil8
             | Tf::Depth16Unorm
             | Tf::Depth32Float
@@ -770,19 +815,6 @@ impl NumericType {
             _ => false,
         }
     }
-
-    fn is_compatible_with(&self, other: &NumericType) -> bool {
-        if self.scalar.kind != other.scalar.kind {
-            return false;
-        }
-        match (self.dim, other.dim) {
-            (NumericDimension::Scalar, NumericDimension::Scalar) => true,
-            (NumericDimension::Scalar, NumericDimension::Vector(_)) => true,
-            (NumericDimension::Vector(_), NumericDimension::Vector(_)) => true,
-            (NumericDimension::Matrix(..), NumericDimension::Matrix(..)) => true,
-            _ => false,
-        }
-    }
 }
 
 /// Return true if the fragment `format` is covered by the provided `output`.
@@ -802,7 +834,7 @@ pub enum BindingLayoutSource<'a> {
     /// The binding layout is derived from the pipeline layout.
     ///
     /// This will be filled in by the shader binding validation, as it iterates the shader's interfaces.
-    Derived(ArrayVec<bgl::EntryMap, { hal::MAX_BIND_GROUPS }>),
+    Derived(Box<ArrayVec<bgl::EntryMap, { hal::MAX_BIND_GROUPS }>>),
     /// The binding layout is provided by the user in BGLs.
     ///
     /// This will be validated against the shader's interfaces.
@@ -815,7 +847,7 @@ impl<'a> BindingLayoutSource<'a> {
         for _ in 0..limits.max_bind_groups {
             array.push(Default::default());
         }
-        BindingLayoutSource::Derived(array)
+        BindingLayoutSource::Derived(Box::new(array))
     }
 }
 
@@ -884,17 +916,12 @@ impl Interface {
         list.push(varying);
     }
 
-    pub fn new(
-        module: &naga::Module,
-        info: &naga::valid::ModuleInfo,
-        limits: wgt::Limits,
-        features: wgt::Features,
-    ) -> Self {
+    pub fn new(module: &naga::Module, info: &naga::valid::ModuleInfo, limits: wgt::Limits) -> Self {
         let mut resources = naga::Arena::new();
         let mut resource_mapping = FastHashMap::default();
         for (var_handle, var) in module.global_variables.iter() {
             let bind = match var.binding {
-                Some(ref br) => br.clone(),
+                Some(br) => br,
                 _ => continue,
             };
             let naga_ty = &module.types[var.ty].inner;
@@ -915,6 +942,9 @@ impl Interface {
                     class,
                 },
                 naga::TypeInner::Sampler { comparison } => ResourceType::Sampler { comparison },
+                naga::TypeInner::AccelerationStructure { vertex_return } => {
+                    ResourceType::AccelerationStructure { vertex_return }
+                }
                 ref other => ResourceType::Buffer {
                     size: wgt::BufferSize::new(other.size(module.to_ctx()) as u64).unwrap(),
                 },
@@ -967,7 +997,6 @@ impl Interface {
 
         Self {
             limits,
-            features,
             resources,
             entry_points,
         }
@@ -1031,7 +1060,7 @@ impl Interface {
                     BindingLayoutSource::Provided(layouts) => {
                         // update the required binding size for this buffer
                         if let ResourceType::Buffer { size } = res.ty {
-                            match shader_binding_sizes.entry(res.bind.clone()) {
+                            match shader_binding_sizes.entry(res.bind) {
                                 Entry::Occupied(e) => {
                                     *e.into_mut() = size.max(*e.get());
                                 }
@@ -1060,7 +1089,12 @@ impl Interface {
                             break 'err Err(BindingError::Missing);
                         };
 
-                        let ty = match res.derive_binding_type() {
+                        let ty = match res.derive_binding_type(
+                            entry_point
+                                .sampling_pairs
+                                .iter()
+                                .any(|&(im, _samp)| im == handle),
+                        ) {
                             Ok(ty) => ty,
                             Err(error) => break 'err Err(error),
                         };
@@ -1086,7 +1120,7 @@ impl Interface {
                 }
             };
             if let Err(error) = result {
-                return Err(StageError::Binding(res.bind.clone(), error));
+                return Err(StageError::Binding(res.bind, error));
             }
         }
 
@@ -1127,8 +1161,8 @@ impl Interface {
 
                 if let Some(error) = error {
                     return Err(StageError::Filtering {
-                        texture: texture_bind.clone(),
-                        sampler: sampler_bind.clone(),
+                        texture: *texture_bind,
+                        sampler: *sampler_bind,
                         error,
                     });
                 }
@@ -1144,7 +1178,7 @@ impl Interface {
             ];
             let total_invocations = entry_point.workgroup_size.iter().product::<u32>();
 
-            if entry_point.workgroup_size.iter().any(|&s| s == 0)
+            if entry_point.workgroup_size.contains(&0)
                 || total_invocations > self.limits.max_compute_invocations_per_workgroup
                 || entry_point.workgroup_size[0] > max_workgroup_size_limits[0]
                 || entry_point.workgroup_size[1] > max_workgroup_size_limits[1]
@@ -1174,8 +1208,10 @@ impl Interface {
                                     // For vertex attributes, there are defaults filled out
                                     // by the driver if data is not provided.
                                     naga::ShaderStage::Vertex => {
+                                        let is_compatible =
+                                            iv.ty.scalar.kind == provided.ty.scalar.kind;
                                         // vertex inputs don't count towards inter-stage
-                                        (iv.ty.is_compatible_with(&provided.ty), 0)
+                                        (is_compatible, 0)
                                     }
                                     naga::ShaderStage::Fragment => {
                                         if iv.interpolation != provided.interpolation {
@@ -1194,6 +1230,9 @@ impl Interface {
                                         )
                                     }
                                     naga::ShaderStage::Compute => (false, 0),
+                                    naga::ShaderStage::Task | naga::ShaderStage::Mesh => {
+                                        unreachable!()
+                                    }
                                 };
                                 if compatible {
                                     Ok(num_components)
@@ -1215,27 +1254,6 @@ impl Interface {
                     }
                 }
                 Varying::BuiltIn(_) => {}
-            }
-        }
-
-        // Check all vertex outputs and make sure the fragment shader consumes them.
-        // This requirement is removed if the `SHADER_UNUSED_VERTEX_OUTPUT` feature is enabled.
-        if shader_stage == naga::ShaderStage::Fragment
-            && !self
-                .features
-                .contains(wgt::Features::SHADER_UNUSED_VERTEX_OUTPUT)
-        {
-            for &index in inputs.keys() {
-                // This is a linear scan, but the count should be low enough
-                // that this should be fine.
-                let found = entry_point.inputs.iter().any(|v| match *v {
-                    Varying::Local { location, .. } => location == index,
-                    Varying::BuiltIn(_) => false,
-                });
-
-                if !found {
-                    return Err(StageError::InputNotConsumed { location: index });
-                }
             }
         }
 
@@ -1299,7 +1317,7 @@ pub fn validate_color_attachment_bytes_per_sample(
     attachment_formats: impl Iterator<Item = Option<wgt::TextureFormat>>,
     limit: u32,
 ) -> Result<(), u32> {
-    let mut total_bytes_per_sample = 0;
+    let mut total_bytes_per_sample: u32 = 0;
     for format in attachment_formats {
         let Some(format) = format else {
             continue;
@@ -1308,10 +1326,7 @@ pub fn validate_color_attachment_bytes_per_sample(
         let byte_cost = format.target_pixel_byte_cost().unwrap();
         let alignment = format.target_component_alignment().unwrap();
 
-        let rem = total_bytes_per_sample % alignment;
-        if rem != 0 {
-            total_bytes_per_sample += alignment - rem;
-        }
+        total_bytes_per_sample = total_bytes_per_sample.next_multiple_of(alignment);
         total_bytes_per_sample += byte_cost;
     }
 

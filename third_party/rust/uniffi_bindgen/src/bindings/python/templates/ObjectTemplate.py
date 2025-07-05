@@ -1,20 +1,37 @@
-{%- let obj = ci|get_object_definition(name) %}
-{%- let (protocol_name, impl_name) = obj|object_names %}
+{%- let obj = ci.get_object_definition(name).unwrap() %}
 {%- let methods = obj.methods() %}
+{%- let protocol_name = format!("{type_name}Protocol") %}
 {%- let protocol_docstring = obj.docstring() %}
+{%- let protocol_base_class = "typing.Protocol" %}
+{%- include "Protocol.py" %}
 
-{% include "Protocol.py" %}
+{%- let impl_name %}
+{%- if obj.has_callback_interface() %}
+# {{ type_name }} is a foreign trait so treated like a callback interface, where the
+# primary use-case is the trait being implemented locally.
+# It is a base-class local implementations might subclass.
+{# We reuse "Protocol.py" for this, even though here we are not generating a protocol #}
+{%-     let protocol_name = format!("{type_name}") %}
+{%-     let protocol_base_class = "" %}
+{%      include "Protocol.py" %}
 
-{% if ci.is_name_used_as_error(name) %}
+{%-     let impl_name = format!("{type_name}Impl") %}
+# `{{ impl_name }}` is the implementation for a Rust implemented version.
+{%- else %}
+# {{ type_name }} is a Rust-only trait - it's a wrapper around a Rust implementation.
+{%-     let impl_name = type_name.clone() %}
+{%- endif %}
+
+{%- if ci.is_name_used_as_error(name) %}
 class {{ impl_name }}(Exception):
 {%- else %}
-class {{ impl_name }}:
+class {{ impl_name }}({% for t in obj.trait_impls() %}{{ t.trait_name }},{% endfor %}):
 {%- endif %}
     {%- call py::docstring(obj, 4) %}
     _pointer: ctypes.c_void_p
 
 {%- match obj.primary_constructor() %}
-{%-     when Some with (cons) %}
+{%-     when Some(cons) %}
 {%-         if cons.is_async() %}
     def __init__(self, *args, **kw):
         raise ValueError("async constructors not supported.")
@@ -34,10 +51,10 @@ class {{ impl_name }}:
         # In case of partial initialization of instances.
         pointer = getattr(self, "_pointer", None)
         if pointer is not None:
-            _rust_call(_UniffiLib.{{ obj.ffi_object_free().name() }}, pointer)
+            _uniffi_rust_call(_UniffiLib.{{ obj.ffi_object_free().name() }}, pointer)
 
     def _uniffi_clone_pointer(self):
-        return _rust_call(_UniffiLib.{{ obj.ffi_object_clone().name() }}, self._pointer)
+        return _uniffi_rust_call(_UniffiLib.{{ obj.ffi_object_clone().name() }}, self._pointer)
 
     # Used by alternative constructors or any methods which return this type.
     @classmethod
@@ -49,10 +66,9 @@ class {{ impl_name }}:
         return inst
 
 {%- for cons in obj.alternate_constructors() %}
-
     @classmethod
 {%-  if cons.is_async() %}
-    async def {{ cons.name()|fn_name }}(cls, {% call py::arg_list_decl(cons) %}):
+    async def {{ cons.name() }}(cls, {% call py::arg_list_decl(cons) %}):
         {%- call py::docstring(cons, 8) %}
         {%- call py::setup_args_extra_indent(cons) %}
 
@@ -65,7 +81,7 @@ class {{ impl_name }}:
             {% call py::error_ffi_converter(cons) %}
         )
 {%-  else %}
-    def {{ cons.name()|fn_name }}(cls, {% call py::arg_list_decl(cons) %}):
+    def {{ cons.name() }}(cls, {% call py::arg_list_decl(cons) %}):
         {%- call py::docstring(cons, 8) %}
         {%- call py::setup_args_extra_indent(cons) %}
         # Call the (fallible) function before creating any half-baked object instances.
@@ -75,7 +91,7 @@ class {{ impl_name }}:
 {% endfor %}
 
 {%- for meth in obj.methods() -%}
-    {%- call py::method_decl(meth.name()|fn_name, meth) %}
+    {%- call py::method_decl(meth.name(), meth) %}
 {%- endfor %}
 {%- for tm in obj.uniffi_traits() -%}
 {%-     match tm %}

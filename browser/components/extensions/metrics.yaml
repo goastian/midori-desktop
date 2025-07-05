@@ -1,0 +1,174 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'WebExtensions :: General'
+
+extensions_button:
+  prefers_hidden_button:
+    type: boolean
+    description: >
+      Records whether the user prefers the Extensions Button to be hidden.
+      Corresponds to the inverse value of the
+      `exceptions.unifiedExtensions.button.always_visible` pref.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966935
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966935
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - addons-dev-internal@mozilla.com
+      - rwu@mozilla.com
+    expires: 150
+
+  toggle_visibility:
+    type: event
+    description: |
+      When a user changes the preferred visibility of the Extensions Button,
+      through the "Remove from Toolbar" or "Always Show in Toolbar" menu items.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966935
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966935
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - addons-dev-internal@mozilla.com
+      - rwu@mozilla.com
+    expires: 150
+    extra_keys:
+      is_customizing:
+        description: Whether the change was made in Customize Mode.
+        type: boolean
+      is_extensions_panel_empty:
+        description: |
+          Whether the Extensions Panel is unable to show any extensions.
+        type: boolean
+      is_temporarily_shown:
+        description: |
+          Whether the Extensions Button is or was temporarily shown when the
+          user toggled the visibility.
+
+          If is_temporarily_shown is true and should_hide is false, this means
+          that the button stayed visible after the user tried to hide it.
+
+          If is_temporarily_shown is true and should_hide is true, this means
+          that the button was temporarily visible when the user made it
+          permanently visible again.
+        type: boolean
+      should_hide:
+        description: Whether the user wants the button to be hidden.
+        type: boolean
+
+  open_via_app_menu:
+    type: event
+    description: |
+      When the user prefers the Extensions Button to be hidden, the default
+      "Extensions and Themes" item in the Application Menu is replaced with an
+      "Extensions" item, which serves as an alternative trigger for the
+      Extensions Button.
+
+      This event records when the user clicks on this "Extensions" menu item.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966935
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966935
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - addons-dev-internal@mozilla.com
+      - rwu@mozilla.com
+    expires: 150
+    extra_keys:
+      is_extensions_panel_empty:
+        description: |
+          Whether the Extensions Panel is unable to show any extensions.
+
+          When false, the Extensions Panel is opened.
+
+          When true, about:addons is opened, at least until an empty state is
+          added (https://bugzilla.mozilla.org/show_bug.cgi?id=1814871). When
+          that bug is resolved, the Extensions Panel is always opened.
+        type: boolean
+      is_extensions_button_visible:
+        description: |
+          Whether the Extensions Button is visible. Although the appmenu item
+          is only shown when the user prefers the button to be hidden, it is
+          possible for the button to be shown despite the user's preference if
+          there was a reason to show the button temporarily.
+
+          If true, this could be a sign that the user is confused about the
+          function of the appmenu item, because the Extensions Button offers
+          exactly the same functionality, except in a more visible location
+          (on the toolbar).
+        type: boolean
+
+  temporarily_unhidden:
+    type: labeled_counter
+    description: >
+      Counts how often the hidden Extensions Button is temporarily shown.
+      There are multiple possible triggers for showing the extensions button,
+      only the first that would trigger the transition from hidden to shown is
+      going to be counted. For example, if the button is shown because the
+      "attention" dot is shown, and a permission prompt is shown, then we only
+      count the trigger for the attention dot, not the permission prompt.
+
+      customize is when the user entered Customize Mode, which causes the
+      Extensions Button to show unconditionally until the user exits the mode.
+
+      addon_install_doorhanger covers notifications related to add-on
+      installations, including blocked installations, add-on download progress,
+      and failed installations. Permission prompts are NOT part of this, but
+      covered by extension_permission_prompt. A typical installation flow
+      triggers both addon_install_doorhanger and extension_permission_prompt.
+
+      extension_controlled_setting is when a notification is anchored to the
+      Extensions Button that notifies the user of an extension-triggered change
+      (new tab page, home page, first use of tabs.hide()). This is shown on
+      first use of the relevant feature after the installation of an extension.
+
+      browser_action_open_popup is when the browserAction popup is opened. This
+      is usually user-triggered (shortcut, context menu) or via the
+      `action.openPopup()` API.
+
+      extension_permission_prompt is when an extension permission prompt is
+      shown. This does not distinguish between install-time permission prompts,
+      permission prompts on update or optional permission prompts at runtime.
+
+      extensions_panel_showing is when the Extensions Panel is being shown,
+      for example via the Extensions appmenu item.
+
+      attention_blocklist is when the browser wants to draw attention to the
+      fact that one of the add-ons has been blocklisted.
+
+      attention_permission_denied is when the browser wants to draw attention
+      to the fact that one of the extensions was denied access to the page in
+      the currently displayed tab. The access request is not a strong signal:
+      a MV3 extension with content scripts whose permissions have been revoked
+      by the user could trigger such an attention request on all websites.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966935
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966935
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - addons-dev-internal@mozilla.com
+      - rwu@mozilla.com
+    expires: 150
+    labels:
+      - customize
+      - addon_install_doorhanger
+      - extension_controlled_setting
+      - extension_permission_prompt
+      - extensions_panel_showing
+      - extension_browser_action_popup
+      - attention_blocklist
+      - attention_permission_denied

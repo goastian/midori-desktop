@@ -253,44 +253,8 @@ class PresentableSharedImage {
     return true;
   }
 
-  bool PresentToWindow(HWND aWindowHandle, TransparencyMode aTransparencyMode,
+  bool PresentToWindow(HWND aWindowHandle,
                        Span<const IpcSafeRect> aDirtyRects) {
-    if (aTransparencyMode == TransparencyMode::Transparent) {
-      // If our window is a child window or a child-of-a-child, the window
-      // that needs to be updated is the top level ancestor of the tree
-      HWND topLevelWindow = WinUtils::GetTopLevelHWND(aWindowHandle, true);
-      MOZ_ASSERT(::GetWindowLongPtr(topLevelWindow, GWL_EXSTYLE) &
-                 WS_EX_LAYERED);
-
-      BLENDFUNCTION bf = {AC_SRC_OVER, 0, 255, AC_SRC_ALPHA};
-      POINT srcPos = {0, 0};
-      RECT clientRect = {};
-      if (!::GetClientRect(aWindowHandle, &clientRect)) {
-        return false;
-      }
-      MOZ_ASSERT(clientRect.left == 0);
-      MOZ_ASSERT(clientRect.top == 0);
-      int32_t width = clientRect.right;
-      int32_t height = clientRect.bottom;
-      SIZE winSize = {width, height};
-      // Window resize could cause the client area to be different than
-      // mSharedImage's size. If the client area doesn't match,
-      // PresentToWindow() returns false without calling UpdateLayeredWindow().
-      // Another call to UpdateLayeredWindow() will follow shortly, since the
-      // resize will eventually force the backbuffer to repaint itself again.
-      // When client area is larger than mSharedImage's size,
-      // UpdateLayeredWindow() draws the window completely invisible. But it
-      // does not return false.
-      if (width != mSharedImage.GetWidth() ||
-          height != mSharedImage.GetHeight()) {
-        return false;
-      }
-
-      return !!::UpdateLayeredWindow(
-          topLevelWindow, nullptr /*paletteDC*/, nullptr /*newPos*/, &winSize,
-          mDeviceContext, &srcPos, 0 /*colorKey*/, &bf, ULW_ALPHA);
-    }
-
     gfx::IntRect sharedImageRect{0, 0, mSharedImage.GetWidth(),
                                  mSharedImage.GetHeight()};
 
@@ -388,8 +352,7 @@ Provider::~Provider() {
   }
 }
 
-bool Provider::Initialize(HWND aWindowHandle, DWORD aTargetProcessId,
-                          TransparencyMode aTransparencyMode) {
+bool Provider::Initialize(HWND aWindowHandle, DWORD aTargetProcessId) {
   MOZ_ASSERT(aWindowHandle);
   MOZ_ASSERT(aTargetProcessId);
 
@@ -441,13 +404,7 @@ bool Provider::Initialize(HWND aWindowHandle, DWORD aTargetProcessId,
       PR_USER_THREAD, [](void* p) { static_cast<Provider*>(p)->ThreadMain(); },
       this, PR_PRIORITY_NORMAL, PR_GLOBAL_THREAD, PR_JOINABLE_THREAD,
       0 /*default stack size*/);
-  if (!mServiceThread) {
-    return false;
-  }
-
-  mTransparencyMode = uint32_t(aTransparencyMode);
-
-  return true;
+  return !!mServiceThread;
 }
 
 Maybe<RemoteBackbufferHandles> Provider::CreateRemoteHandles() {
@@ -455,10 +412,6 @@ Maybe<RemoteBackbufferHandles> Provider::CreateRemoteHandles() {
       RemoteBackbufferHandles(ipc::FileDescriptor(mFileMapping),
                               ipc::FileDescriptor(mRequestReadyEvent),
                               ipc::FileDescriptor(mResponseReadyEvent)));
-}
-
-void Provider::UpdateTransparencyMode(TransparencyMode aTransparencyMode) {
-  mTransparencyMode = uint32_t(aTransparencyMode);
 }
 
 void Provider::ThreadMain() {
@@ -575,8 +528,7 @@ void Provider::HandlePresentRequest(const PresentRequestData& aRequestData,
   }
 
   if (!mBackbuffer->PresentToWindow(
-          mWindowHandle, GetTransparencyMode(),
-          rectSpan.First(aRequestData.lenDirtyRects))) {
+          mWindowHandle, rectSpan.First(aRequestData.lenDirtyRects))) {
     return;
   }
 

@@ -33,9 +33,12 @@ fail-if = ["os == 'android'"]
 
 ["test_bug1434856.js"]
 
-["test_console_service_callFunctionAndLogException.js"]
-
 ["test_debugger_malloc_size_of.js"]
+
+["test_error_iserror.js"]
+prefs = [
+  "javascript.options.experimental.error_iserror=true",
+]
 
 ["test_file_createUnique.js"]
 
@@ -59,7 +62,7 @@ fail-if = ["os == 'android'"]
 ["test_localfile.js"]
 
 ["test_logFromPreference.js"]
-skip-if = "(os == 'android' && release_or_beta)" # bug 1841818
+skip-if = ["(os == 'android' && release_or_beta)"] # bug 1841818
 
 ["test_mac_bundle.js"]
 

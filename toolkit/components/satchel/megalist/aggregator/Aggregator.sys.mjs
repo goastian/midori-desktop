@@ -66,8 +66,10 @@ export class Aggregator {
     );
 
     if (source && source[functionName]) {
-      source[functionName](params);
+      return source[functionName](params);
     }
+
+    return null;
   }
 
   /**
@@ -86,6 +88,18 @@ export class Aggregator {
 
       setLayout(layout) {
         aggregator.forEachViewModel(vm => vm.setLayout(layout));
+      },
+
+      setNotification(notification) {
+        aggregator.forEachViewModel(vm => vm.setNotification(notification));
+      },
+
+      setDisplayMode(displayMode) {
+        aggregator.forEachViewModel(vm => vm.setDisplayMode(displayMode));
+      },
+
+      discardChangesConfirmed() {
+        aggregator.forEachViewModel(vm => vm.discardChangesConfirmed());
       },
     };
   }

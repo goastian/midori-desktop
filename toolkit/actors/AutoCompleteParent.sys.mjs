@@ -2,19 +2,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
+import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
 
 const lazy = {};
 
-XPCOMUtils.defineLazyPreferenceGetter(
-  lazy,
-  "DELEGATE_AUTOCOMPLETE",
-  "toolkit.autocomplete.delegate",
-  false
-);
-
 ChromeUtils.defineESModuleGetters(lazy, {
   GeckoViewAutocomplete: "resource://gre/modules/GeckoViewAutocomplete.sys.mjs",
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
 
@@ -180,6 +174,11 @@ export class AutoCompleteParent extends JSWindowActorParent {
           selectedIndex != -1
             ? AutoCompleteResultView.getStyleAt(selectedIndex)
             : "";
+
+        // Normally preview is cleared after selecting/hovering on a different
+        // entry. However, we also need to clear the preview when a pop is closed.
+        this.clearAutoCompletePreview();
+
         this.sendAsyncMessage("AutoComplete:PopupClosed", {
           selectedRowComment,
           selectedRowStyle,
@@ -326,7 +325,9 @@ export class AutoCompleteParent extends JSWindowActorParent {
       return accumulated;
     }, rawExtraData);
 
-    // Convert extra values to strings since recordEvent requires that.
+    // Even though Glean events do not require converting extra values to
+    // strings, keep doing it so booleans keep being encoded as they were for
+    // Telemetry recordEvent.
     let extraStrings = Object.fromEntries(
       Object.entries(rawExtraData).map(([key, val]) => {
         let stringVal = "";
@@ -339,14 +340,8 @@ export class AutoCompleteParent extends JSWindowActorParent {
       })
     );
 
-    Services.telemetry.recordEvent(
-      "form_autocomplete",
-      "show",
-      "logins",
-      // Convert to a string
-      duration + "",
-      extraStrings
-    );
+    extraStrings.value = duration;
+    Glean.formAutocomplete.showLogins.record(extraStrings);
   }
 
   invalidate(results) {
@@ -377,7 +372,7 @@ export class AutoCompleteParent extends JSWindowActorParent {
 
     if (
       !browser ||
-      (!lazy.DELEGATE_AUTOCOMPLETE && !browser.autoCompletePopup)
+      (!AppConstants.MOZ_GECKOVIEW && !browser.autoCompletePopup)
     ) {
       // If there is no browser or popup, just make sure that the popup has been closed.
       if (this.openedPopup) {
@@ -397,7 +392,7 @@ export class AutoCompleteParent extends JSWindowActorParent {
       // to the parent to indicate that an autocomplete entry is selected.
       case "AutoComplete:SelectEntry": {
         if (this.openedPopup) {
-          this.selectEntry(this.openedPopup.selectedIndex);
+          this.selectAutoCompleteEntry(this.openedPopup.selectedIndex);
         }
         break;
       }
@@ -413,7 +408,7 @@ export class AutoCompleteParent extends JSWindowActorParent {
       case "AutoComplete:MaybeOpenPopup": {
         let { results, rect, dir, inputElementIdentifier, formOrigin } =
           message.data;
-        if (lazy.DELEGATE_AUTOCOMPLETE) {
+        if (AppConstants.MOZ_GECKOVIEW) {
           lazy.GeckoViewAutocomplete.delegateSelection({
             browsingContext: this.browsingContext,
             options: results,
@@ -423,6 +418,10 @@ export class AutoCompleteParent extends JSWindowActorParent {
         } else {
           this.showPopupWithResults({ results, rect, dir });
           this.notifyListeners();
+
+          this.notifyAutoCompletePopupOpened(
+            JSON.stringify(inputElementIdentifier)
+          );
         }
         break;
       }
@@ -434,7 +433,7 @@ export class AutoCompleteParent extends JSWindowActorParent {
       }
 
       case "AutoComplete:ClosePopup": {
-        if (lazy.DELEGATE_AUTOCOMPLETE) {
+        if (AppConstants.MOZ_GECKOVIEW) {
           lazy.GeckoViewAutocomplete.delegateDismiss();
           break;
         }
@@ -473,10 +472,19 @@ export class AutoCompleteParent extends JSWindowActorParent {
     );
     items.forEach(item => (item.disabled = true));
 
-    lazy.setTimeout(
-      () => items.forEach(item => (item.disabled = false)),
-      popupDelay
-    );
+    let timerId;
+    const delay = () => {
+      if (timerId) {
+        lazy.clearTimeout(timerId);
+      }
+      timerId = lazy.setTimeout(() => {
+        items.forEach(item => (item.disabled = false));
+        this.openedPopup?.removeEventListener("click", delay);
+      }, popupDelay);
+    };
+
+    this.openedPopup.addEventListener("click", delay);
+    delay();
   }
 
   notifyListeners() {
@@ -560,29 +568,91 @@ export class AutoCompleteParent extends JSWindowActorParent {
     return this.browsingContext.currentWindowGlobal.getActor(name);
   }
 
-  previewEntry(index) {
-    this.selectEntry(index, true);
+  /**
+   * When an autocomplete popup is opened, we notify all the autocomplete
+   * entry providers that have an entry displayed in this popup.
+   *
+   * @param {ElementIdentifier} elementId The element with which the autocomplete popup is associated
+   */
+  notifyAutoCompletePopupOpened(elementId) {
+    const actors = new Set();
+    for (const result of AutoCompleteResultView.results) {
+      try {
+        const { fillMessageName } = JSON.parse(result.comment);
+        if (!fillMessageName) {
+          continue;
+        }
+
+        actors.add(this.#getActorByMessagePrefix(fillMessageName));
+      } catch {}
+    }
+
+    for (const actor of actors) {
+      actor.onAutoCompletePopupOpened?.(elementId);
+    }
+  }
+
+  /**
+   * Clear the autocomplete preview
+   */
+  clearAutoCompletePreview() {
+    const selectedIndex = this.openedPopup?.selectedIndex;
+    const result = AutoCompleteResultView.results[selectedIndex];
+    if (!result) {
+      return;
+    }
+
+    const { fillMessageName, fillMessageData } = JSON.parse(
+      result.comment || "{}"
+    );
+    if (!fillMessageName) {
+      return;
+    }
+
+    const actor = this.#getActorByMessagePrefix(fillMessageName);
+    actor?.onAutoCompleteEntryClearPreview?.(fillMessageName, fillMessageData);
+  }
+
+  /**
+   * Show the autocomplete preview for the current selected entry.
+   */
+  previewAutoCompleteEntry() {
+    const selectedIndex = this.openedPopup?.selectedIndex;
+    const result = AutoCompleteResultView.results[selectedIndex];
+    if (!result) {
+      return;
+    }
+
+    const { fillMessageName, fillMessageData } = JSON.parse(
+      result.comment || "{}"
+    );
+    if (!fillMessageName) {
+      return;
+    }
+
+    const actor = this.#getActorByMessagePrefix(fillMessageName);
+    actor?.onAutoCompleteEntryHovered?.(fillMessageName, fillMessageData);
   }
 
   /**
    * When an autocomplete entry is selected, notify the actor that provides the entry
    */
-  selectEntry(index, hover = false) {
-    const result = AutoCompleteResultView.results[index];
+  selectAutoCompleteEntry() {
+    const selectedIndex = this.openedPopup?.selectedIndex;
+    const result = AutoCompleteResultView.results[selectedIndex];
+    if (!result) {
+      return;
+    }
 
-    try {
-      const { fillMessageName, fillMessageData } = JSON.parse(result.comment);
-      if (!fillMessageName) {
-        return;
-      }
+    const { fillMessageName, fillMessageData } = JSON.parse(
+      result.comment || "{}"
+    );
+    if (!fillMessageName) {
+      return;
+    }
 
-      const actor = this.#getActorByMessagePrefix(fillMessageName);
-      if (hover) {
-        actor?.onAutoCompleteEntryHovered(fillMessageName, fillMessageData);
-      } else {
-        actor?.onAutoCompleteEntrySelected(fillMessageName, fillMessageData);
-      }
-    } catch {}
+    const actor = this.#getActorByMessagePrefix(fillMessageName);
+    actor?.onAutoCompleteEntrySelected?.(fillMessageName, fillMessageData);
   }
 
   /**

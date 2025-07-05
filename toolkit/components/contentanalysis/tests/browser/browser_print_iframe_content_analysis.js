@@ -15,7 +15,7 @@ const PSSVC = Cc["@mozilla.org/gfx/printsettings-service;1"].getService(
 let mockCA = makeMockContentAnalysis();
 
 add_setup(async function test_setup() {
-  mockCA = mockContentAnalysisService(mockCA);
+  mockCA = await mockContentAnalysisService(mockCA);
 });
 
 const TEST_PAGE_URL =
@@ -80,6 +80,11 @@ function assertContentAnalysisRequest(request, expectedUrl) {
     "request has print analysisType"
   );
   is(
+    request.reason,
+    Ci.nsIContentAnalysisRequest.ePrintPreviewPrint,
+    "request has correct reason"
+  );
+  is(
     request.operationTypeForDisplay,
     Ci.nsIContentAnalysisRequest.eOperationPrint,
     "request has print operationTypeForDisplay"
@@ -88,6 +93,12 @@ function assertContentAnalysisRequest(request, expectedUrl) {
   is(request.filePath, "", "request filePath should be empty");
   isnot(request.printDataHandle, 0, "request printDataHandle should not be 0");
   isnot(request.printDataSize, 0, "request printDataSize should not be 0");
+  is(
+    request.userActionRequestsCount,
+    1,
+    "request userActionRequestsCount should match"
+  );
+  ok(!!request.userActionId.length, "request userActionId should not be empty");
   ok(!!request.requestToken.length, "request requestToken should not be empty");
 }
 

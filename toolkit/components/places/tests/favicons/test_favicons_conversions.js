@@ -43,25 +43,35 @@ async function checkFaviconDataConversion(
   });
   let faviconURI = NetUtil.newURI("http://places.test/icon/" + aFileName);
   let fileData = readFileOfLength(aFileName, aFileLength);
-  let fileDataURL = await fileDataToDataURL(fileData, aFileMimeType);
+  let fileDataURL = await PlacesTestUtils.fileDataToDataURL(
+    fileData,
+    aFileMimeType
+  );
   await PlacesTestUtils.setFaviconForPage(
     pageURI.spec,
     faviconURI.spec,
     fileDataURL
   );
 
-  await new Promise(resolve => {
-    if (!aExpectConversion) {
-      checkFaviconDataForPage(pageURI, aFileMimeType, fileData, resolve);
-    } else if (!aVaryOnWindows || !isWindows) {
-      let expectedFile = do_get_file("expected-" + aFileName + ".png");
-      let expectedData = readFileData(expectedFile);
-      checkFaviconDataForPage(pageURI, "image/png", expectedData, resolve);
-    } else {
-      // Not check the favicon data.
-      checkFaviconDataForPage(pageURI, "image/png", null, resolve);
+  if (!aExpectConversion) {
+    await checkFaviconDataForPage(pageURI, aFileMimeType, fileData);
+  } else if (!aVaryOnWindows || !isWindows) {
+    let allowMissing = AppConstants.USE_LIBZ_RS;
+    let expectedFile = do_get_file(
+      "expected-" +
+        aFileName +
+        (AppConstants.USE_LIBZ_RS ? ".libz-rs.png" : ".png"),
+      allowMissing
+    );
+    if (!expectedFile.exists()) {
+      expectedFile = do_get_file("expected-" + aFileName + ".png");
     }
-  });
+    let expectedData = readFileData(expectedFile);
+    await checkFaviconDataForPage(pageURI, "image/png", expectedData);
+  } else {
+    // Not check the favicon data.
+    await checkFaviconDataForPage(pageURI, "image/png", null);
+  }
 }
 
 add_task(async function test_storing_a_normal_16x16_icon() {

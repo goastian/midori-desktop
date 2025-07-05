@@ -265,6 +265,17 @@ bool CrashGenerationServer::Start() {
   return true;
 }
 
+void CrashGenerationServer::SetPath(const wchar_t* dump_path) {
+  AutoCriticalSection lock(&sync_);
+  std::wstring local_path(dump_path);
+  dump_path_ = local_path;
+}
+
+std::wstring CrashGenerationServer::GetPath() {
+  AutoCriticalSection lock(&sync_);
+  return dump_path_;
+}
+
 // If the server thread serving clients ever gets into the
 // ERROR state, reset the event, close the pipe and remain
 // in the error state forever. Error state means something
@@ -364,7 +375,7 @@ void CrashGenerationServer::HandleConnectedState() {
   assert(server_state_ == IPC_SERVER_STATE_CONNECTED);
 
   DWORD bytes_count = 0;
-  memset(&msg_, 0, sizeof(msg_));
+  msg_.reset();
   bool success = ReadFile(pipe_,
                           &msg_,
                           sizeof(msg_),
@@ -953,7 +964,7 @@ bool CrashGenerationServer::GenerateDump(const ClientInfo& client,
                                          !include_context_heap_);
   }
 
-  MinidumpGenerator dump_generator(dump_path_,
+  MinidumpGenerator dump_generator(GetPath(),
                                    client.process_handle(),
                                    client.pid(),
                                    client_thread_id,

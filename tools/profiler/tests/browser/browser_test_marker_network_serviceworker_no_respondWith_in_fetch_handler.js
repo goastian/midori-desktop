@@ -57,7 +57,7 @@ add_task(async function test_network_markers_service_worker_use() {
     "The profiler is not currently active"
   );
 
-  startProfilerForMarkerTests();
+  await ProfilerTestUtils.startProfilerForMarkerTests();
 
   const url = `${BASE_URL_HTTPS}serviceworkers/serviceworker_page.html`;
   await BrowserTestUtils.withNewTab(url, async contentBrowser => {
@@ -67,22 +67,24 @@ add_task(async function test_network_markers_service_worker_use() {
       () => Services.appinfo.processID
     );
 
-    const { parentThread, contentThread } = await stopProfilerNowAndGetThreads(
-      contentPid
-    );
+    const { parentThread, contentThread } =
+      await stopProfilerNowAndGetThreads(contentPid);
 
     // By logging a few information about the threads we make debugging easier.
     logInformationForThread("parentThread information", parentThread);
     logInformationForThread("contentThread information", contentThread);
 
-    const parentNetworkMarkers = getInflatedNetworkMarkers(parentThread)
+    const parentNetworkMarkers = ProfilerTestUtils.getInflatedNetworkMarkers(
+      parentThread
+    )
       // When we load a page, Firefox will check the service worker freshness
       // after a few seconds. So when the test lasts a long time (with some test
       // environments) we might see spurious markers about that that we're not
       // interesting in in this part of the test. They're only present in the
       // parent process.
       .filter(marker => !marker.data.URI.includes(serviceWorkerFileName));
-    const contentNetworkMarkers = getInflatedNetworkMarkers(contentThread);
+    const contentNetworkMarkers =
+      ProfilerTestUtils.getInflatedNetworkMarkers(contentThread);
 
     // Here are some logs to ease debugging.
     info(
@@ -93,8 +95,11 @@ add_task(async function test_network_markers_service_worker_use() {
         JSON.stringify(contentNetworkMarkers, null, 2)
     );
 
-    const parentPairs = getPairsOfNetworkMarkers(parentNetworkMarkers);
-    const contentPairs = getPairsOfNetworkMarkers(contentNetworkMarkers);
+    const parentPairs =
+      ProfilerTestUtils.getPairsOfNetworkMarkers(parentNetworkMarkers);
+    const contentPairs = ProfilerTestUtils.getPairsOfNetworkMarkers(
+      contentNetworkMarkers
+    );
 
     // First, make sure we properly matched all start with stop markers. This
     // means that both arrays should contain only arrays of 2 elements.
@@ -201,7 +206,11 @@ add_task(async function test_network_markers_service_worker_use() {
         type: "Network",
         status: "STATUS_STOP",
         URI: expectedFile,
+        httpVersion: "http/1.1",
+        classOfService: "Unset",
+        requestStatus: "NS_OK",
         requestMethod: "GET",
+        responseStatus: 200,
         contentType: Expect.stringMatches(/^(text\/html|image\/svg\+xml)$/),
         startTime: Expect.number(),
         endTime: Expect.number(),
@@ -211,6 +220,7 @@ add_task(async function test_network_markers_service_worker_use() {
         domainLookupStart: Expect.number(),
         domainLookupEnd: Expect.number(),
         connectStart: Expect.number(),
+        secureConnectionStart: Expect.number(),
         tcpConnectEnd: Expect.number(),
         connectEnd: Expect.number(),
         requestStart: Expect.number(),
@@ -223,6 +233,8 @@ add_task(async function test_network_markers_service_worker_use() {
         status: "STATUS_REDIRECT",
         URI: expectedFile,
         RedirectURI: expectedFile,
+        classOfService: "Unset",
+        requestStatus: "NS_OK",
         requestMethod: "GET",
         contentType: null,
         startTime: Expect.number(),
@@ -246,17 +258,23 @@ add_task(async function test_network_markers_service_worker_use() {
           // "Missed" when the cache answered before we get a result from the network.
           // "Unresolved" when we got a response from the network before the cache subsystem.
           cache: Expect.stringMatches(/^(Missed|Unresolved)$/),
+          classOfService: "UrgentStart",
         });
-        Assert.objectContainsOnly(contentStopMarker.data, commonDataProperties);
+        Assert.objectContainsOnly(contentStopMarker.data, {
+          ...commonDataProperties,
+          classOfService: "UrgentStart",
+        });
 
         Assert.objectContainsOnly(parentRedirectMarkerIntercept.data, {
           ...commonRedirectProperties,
           redirectId: parentRedirectMarkerReset.data.id,
           cache: "Unresolved",
+          classOfService: "UrgentStart",
         });
         Assert.objectContainsOnly(parentRedirectMarkerReset.data, {
           ...commonRedirectProperties,
           redirectId: parentStopMarker.data.id,
+          classOfService: "UrgentStart",
         });
 
         // Note: there's no check for the contentRedirectMarker, because there's

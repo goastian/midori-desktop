@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "StartupTimeline.h"
-#include "mozilla/Telemetry.h"
+#include "mozilla/glean/StartupMetrics.h"
 #include "mozilla/TimeStamp.h"
 #include "nsXULAppAPI.h"
 
@@ -43,13 +43,18 @@ void StartupTimeline::RecordOnce(Event ev, const TimeStamp& aWhen) {
 
   Record(ev, aWhen);
 
-  // Record first paint timestamp as a scalar.
+  // Record first paint timestamp as a scalar in the parent process.
+  if (!XRE_IsParentProcess()) {
+    return;
+  }
+
   if (ev == FIRST_PAINT || ev == FIRST_PAINT2) {
     uint32_t firstPaintTime =
         (uint32_t)(aWhen - TimeStamp::ProcessCreation()).ToMilliseconds();
-    Telemetry::ScalarSet(ev == FIRST_PAINT
-                             ? Telemetry::ScalarID::TIMESTAMPS_FIRST_PAINT
-                             : Telemetry::ScalarID::TIMESTAMPS_FIRST_PAINT_TWO,
-                         firstPaintTime);
+    if (ev == FIRST_PAINT) {
+      glean::timestamps::first_paint.Set(firstPaintTime);
+    } else {
+      glean::timestamps::first_paint_two.Set(firstPaintTime);
+    }
   }
 }

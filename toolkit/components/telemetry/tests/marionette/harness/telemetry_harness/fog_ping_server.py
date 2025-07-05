@@ -11,7 +11,7 @@ from mozlog import get_default_logger
 from six.moves.urllib import parse as urlparse
 
 
-class FOGPingServer(object):
+class FOGPingServer:
     """HTTP server for receiving Firefox on Glean pings."""
 
     def __init__(self, server_root, url):
@@ -36,17 +36,24 @@ class FOGPingServer(object):
 
             request_url = request.route_match.copy()
 
-            self.pings.append(
-                {
-                    "request_url": request_url,
-                    "payload": json.loads(request_data),
-                    "debug_tag": request.headers.get("X-Debug-ID"),
-                }
-            )
+            ping = {
+                "request_url": request_url,
+                "payload": json.loads(request_data),
+                "debug_tag": request.headers.get("X-Debug-ID"),
+            }
 
-            self._logger.info(
-                "pings_handler received '{}' ping".format(request_url["doc_type"])
-            )
+            self.pings.append(ping)
+
+            doc_type = request_url["doc_type"]
+            log_message = f"pings_handler received '{doc_type}' ping"
+
+            ping_info = ping["payload"].get("ping_info")
+            if ping_info:
+                reason = ping_info.get("reason")
+                seq = ping_info.get("seq")
+                log_message = f"{log_message} with reason '{reason}', seq {seq}"
+
+            self._logger.info(log_message)
 
             status_code = 200
             content = "OK"

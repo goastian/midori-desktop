@@ -4,7 +4,6 @@ subsuite = "mozlint"
 ["test_android_format.py"]
 
 ["test_black.py"]
-requirements = "tools/lint/python/black_requirements.txt"
 
 ["test_clang_format.py"]
 
@@ -34,6 +33,8 @@ skip-if = ["os == 'win'"]
 
 ["test_manifest_toml.py"]
 
+["test_node_package_names.py"]
+
 ["test_perfdocs.py"]
 
 ["test_perfdocs_generation.py"]
@@ -41,10 +42,8 @@ skip-if = ["os == 'win'"]
 ["test_perfdocs_helpers.py"]
 
 ["test_rst.py"]
-requirements = "tools/lint/rst/requirements.txt"
 
 ["test_ruff.py"]
-requirements = "tools/lint/python/ruff_requirements.txt"
 
 ["test_rustfmt.py"]
 

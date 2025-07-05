@@ -154,8 +154,9 @@ class ProfileBufferGlobalController final {
 };
 
 /* static */
-DataMutexBase<ProfileBufferGlobalController::ParentChunkManagerAndPendingUpdate,
-              baseprofiler::detail::BaseProfilerMutex>
+MOZ_RUNINIT DataMutexBase<
+    ProfileBufferGlobalController::ParentChunkManagerAndPendingUpdate,
+    baseprofiler::detail::BaseProfilerMutex>
     ProfileBufferGlobalController::sParentChunkManagerAndPendingUpdate{
         "ProfileBufferGlobalController::sParentChunkManagerAndPendingUpdate"};
 
@@ -206,12 +207,10 @@ class ProfilerParentTracker final {
   Maybe<ProfileBufferGlobalController> mMaybeController;
 };
 
-static const Json::StaticString logRoot{"bufferGlobalController"};
-
 template <typename F>
 void ProfileBufferGlobalController::Log(F&& aF) {
   ProfilingLog::Access([&](Json::Value& aLog) {
-    Json::Value& root = aLog[logRoot];
+    Json::Value& root = aLog[Json::StaticString{"bufferGlobalController"}];
     if (!root.isObject()) {
       root = Json::Value(Json::objectValue);
       root[Json::StaticString{"logBegin" TIMESTAMP_JSON_SUFFIX}] =
@@ -507,13 +506,13 @@ ProfilerParentTracker* ProfilerParentTracker::GetInstance() {
 
   // The main instance pointer, it will be initialized at most once, before
   // XPCOMShutdownThreads.
-  static UniquePtr<ProfilerParentTracker> instance = nullptr;
+  static StaticAutoPtr<ProfilerParentTracker> instance;
   if (MOZ_UNLIKELY(!instance)) {
     if (PastShutdownPhase(ShutdownPhase::XPCOMShutdownThreads)) {
       return nullptr;
     }
 
-    instance = MakeUnique<ProfilerParentTracker>();
+    instance = new ProfilerParentTracker();
 
     // The tracker should get destroyed before threads are shutdown, because its
     // destruction closes extant channels, which could trigger promise

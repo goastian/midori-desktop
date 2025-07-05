@@ -222,9 +222,18 @@ when the object is constructed, and later recording the marker when the object i
 of its C++ scope.
 This is especially useful if there are multiple scope exit points.
 
-``AUTO_PROFILER_MARKER_TEXT`` is `the only one implemented <https://searchfox.org/mozilla-central/search?q=id%3AAUTO_PROFILER_MARKER_TEXT`_ at this time.
+``AUTO_PROFILER_MARKER_UNTYPED`` and ``AUTO_PROFILER_MARKER_TEXT`` are the `only <https://searchfox.org/mozilla-central/search?q=id%3AAUTO_PROFILER_MARKER_UNTYPED>`_
+`ones <https://searchfox.org/mozilla-central/search?q=id%3AAUTO_PROFILER_MARKER_TEXT>`_
+implemented at this time.
 
 .. code-block:: cpp
+
+    void MaybeDoTimedWork(bool aDoIt) {
+      AUTO_PROFILER_MARKER_UNTYPED("Timed work", OTHER);
+      if (!aDoIt) { /* Marker recorded here... */ return; }
+      DoWork();
+      /* ... or here. */
+    }
 
     void MaybeDoTimedWork(bool aDoIt) {
       AUTO_PROFILER_MARKER_TEXT("Timed work", OTHER, "Details");
@@ -259,6 +268,21 @@ such as URLs can be leaked during the profile sharing step. profiler.firefox.com
 access the information programmatically. It won't get the formatting benefits of the
 built-in marker schema. Please consider using a custom marker type to separate and
 better present the data.
+
+{fmt} Markers
+^^^^^^^^^^^^^
+
+``{fmt}`` markers are similar to the text markers, but the string is formatted
+using the `{fmt} </xpcom/fmt-in-gecko.html>`_ library.
+
+.. code-block:: cpp
+
+  PROFILER_MARKER_FMT("Marker Name", MEDIA_PLAYBACK, {},
+                      "Three numbers: {} {} {}", 1, 2, 3);
+
+The same caveat as the Text Marker (described in the previous paragraph) apply
+here. The string formatting isn't performed if the marker wouldn't otherwise
+be recorded, the most typical instance being that the profiler isn't running.
 
 Other Typed Markers
 ^^^^^^^^^^^^^^^^^^^

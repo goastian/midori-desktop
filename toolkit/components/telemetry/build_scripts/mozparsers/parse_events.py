@@ -267,6 +267,10 @@ class EventData:
                 ).handle_later()
 
         # Check operating_systems.
+        if strict_type_checks and "operating_systems" in definition:
+            ParserError(
+                f"{self.identifier}: Uses obsolete field 'operating_systems'."
+            ).handle_later()
         operating_systems = definition.get("operating_systems", [])
         for operating_system in operating_systems:
             if not utils.is_valid_os(operating_system):
@@ -309,9 +313,7 @@ class EventData:
             and self._strict_type_checks
         ):
             ParserError(
-                "{}: invalid expiry_version: {}.".format(
-                    self.identifier, expiry_version
-                )
+                f"{self.identifier}: invalid expiry_version: {expiry_version}."
             ).handle_now()
         definition["expiry_version"] = utils.add_expiration_postfix(expiry_version)
 
@@ -422,9 +424,9 @@ def load_events(filename, strict_type_checks):
     # Parse the event definitions from the YAML file.
     events = None
     try:
-        with open(filename, "r") as f:
+        with open(filename) as f:
             events = yaml.safe_load(f)
-    except IOError as e:
+    except OSError as e:
         ParserError("Error opening " + filename + ": " + str(e) + ".").handle_now()
     except ParserError as e:
         ParserError(

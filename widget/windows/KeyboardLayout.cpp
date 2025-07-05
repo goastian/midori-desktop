@@ -547,7 +547,7 @@ static const nsCString GetMessageName(UINT aMessage) {
 }
 
 static const nsCString GetVirtualKeyCodeName(WPARAM aVK) {
-  if (aVK >= ArrayLength(kVirtualKeyName)) {
+  if (aVK >= std::size(kVirtualKeyName)) {
     return nsPrintfCString("Invalid (0x%08zX)", aVK);
   }
   return nsCString(kVirtualKeyName[aVK]);
@@ -889,6 +889,7 @@ void ModifierKeyState::InitInputEvent(WidgetInputEvent& aInputEvent) const {
 
   switch (aInputEvent.mClass) {
     case eMouseEventClass:
+    case ePointerEventClass:
     case eMouseScrollEventClass:
     case eWheelEventClass:
     case eDragEventClass:
@@ -902,6 +903,7 @@ void ModifierKeyState::InitInputEvent(WidgetInputEvent& aInputEvent) const {
 
 void ModifierKeyState::InitMouseEvent(WidgetInputEvent& aMouseEvent) const {
   NS_ASSERTION(aMouseEvent.mClass == eMouseEventClass ||
+                   aMouseEvent.mClass == ePointerEventClass ||
                    aMouseEvent.mClass == eWheelEventClass ||
                    aMouseEvent.mClass == eDragEventClass ||
                    aMouseEvent.mClass == eSimpleGestureEventClass,
@@ -1105,7 +1107,7 @@ void VirtualKey::SetNormalChars(ShiftState aShiftState, const char16_t* aChars,
         (aChars[index] >= 0x20) ? aChars[index] : 0;
   }
 
-  uint32_t len = ArrayLength(mShiftStates[aShiftState].Normal.Chars);
+  uint32_t len = std::size(mShiftStates[aShiftState].Normal.Chars);
   for (uint32_t index = aNumOfChars; index < len; index++) {
     mShiftStates[aShiftState].Normal.Chars[index] = 0;
   }
@@ -1179,7 +1181,7 @@ UniCharsAndModifiers VirtualKey::GetNativeUniChars(
     return result;
   }
 
-  uint32_t len = ArrayLength(mShiftStates[kShiftStateIndex].Normal.Chars);
+  uint32_t len = std::size(mShiftStates[kShiftStateIndex].Normal.Chars);
   for (uint32_t i = 0;
        i < len && mShiftStates[kShiftStateIndex].Normal.Chars[i]; i++) {
     result.Append(mShiftStates[kShiftStateIndex].Normal.Chars[i], modifiers);
@@ -1598,7 +1600,9 @@ void NativeKey::InitWithKeyOrChar() {
       MOZ_LOG(gKeyLog, LogLevel::Info,
               ("%p   NativeKey::InitWithKeyOrChar(), removed char message, %s",
                this, ToString(charMsg).get()));
-      Unused << NS_WARN_IF(charMsg.hwnd != mMsg.hwnd);
+      NS_WARNING_ASSERTION(
+          charMsg.hwnd == mMsg.hwnd,
+          "The retrieved char message was targeted to differnet window");
       mFollowingCharMsgs.AppendElement(charMsg);
     }
     if (mFollowingCharMsgs.Length() == 1) {
@@ -1636,14 +1640,15 @@ void NativeKey::InitWithKeyOrChar() {
                "surrogate input, but received lone low surrogate input",
                this));
         }
-      } else {
+      } else if (MOZ_UNLIKELY(pendingHighSurrogate)) {
         MOZ_LOG(gKeyLog, LogLevel::Warning,
                 ("%p   NativeKey::InitWithKeyOrChar(), there is pending "
                  "high surrogate input, but received non-surrogate input.  "
                  "The high surrogate input is discarded",
                  this));
       }
-    } else if (pendingHighSurrogate && !mFollowingCharMsgs.IsEmpty()) {
+    } else if (MOZ_UNLIKELY(pendingHighSurrogate &&
+                            !mFollowingCharMsgs.IsEmpty())) {
       MOZ_LOG(gKeyLog, LogLevel::Warning,
               ("%p   NativeKey::InitWithKeyOrChar(), there is pending "
                "high surrogate input, but received 2 or more character input.  "
@@ -3159,8 +3164,7 @@ bool NativeKey::GetFollowingCharMessage(MSG& aCharMsg) {
             gKeyLog, LogLevel::Warning,
             ("%p   NativeKey::GetFollowingCharMessage(), WARNING, failed to "
              "remove a char message and next key message becomes differnt "
-             "key's "
-             "char message, nextKeyMsgInAllWindows=%s, nextKeyMsg=%s, "
+             "key's char message, nextKeyMsgInAllWindows=%s, nextKeyMsg=%s, "
              "kFoundCharMsg=%s",
              this, ToString(nextKeyMsgInAllWindows).get(),
              ToString(nextKeyMsg).get(), ToString(kFoundCharMsg).get()));
@@ -3305,10 +3309,11 @@ bool NativeKey::GetFollowingCharMessage(MSG& aCharMsg) {
       continue;
     }
 
-    // Typically, this case occurs with WM_DEADCHAR.  If the removed message's
-    // wParam becomes 0, that means that the key event shouldn't cause text
+    // wParam of WM_DEADCHAR may be 0, but for the other char messages, this is
+    // an odd case because it means that the key event shouldn't cause text
     // input.  So, let's ignore the strange char message.
-    if (removedMsg.message == nextKeyMsg.message && !removedMsg.wParam) {
+    if (removedMsg.message != WM_DEADCHAR &&
+        removedMsg.message == nextKeyMsg.message && !removedMsg.wParam) {
       MOZ_LOG(
           gKeyLog, LogLevel::Warning,
           ("%p   NativeKey::GetFollowingCharMessage(), WARNING, succeeded to "
@@ -3365,6 +3370,41 @@ bool NativeKey::GetFollowingCharMessage(MSG& aCharMsg) {
       return true;
     }
 
+    const auto nextKeyMsgAfter = [&]() -> Maybe<MSG> {
+      MSG nextKeyMsgAfter;
+      if (WinUtils::PeekMessage(&nextKeyMsgAfter, mMsg.hwnd, WM_KEYFIRST,
+                                WM_KEYLAST, PM_NOREMOVE | PM_NOYIELD)) {
+        return Some(nextKeyMsgAfter);
+      }
+      return Nothing();
+    }();
+
+    // We have some crash reports for Ethiopic Syllable.  In the case, we found
+    // a WM_DEADCHAR whose wParam may be not NULL, first.  Then, we remove the
+    // message from the queue.  However, the keyboard or IME makes us to remove
+    // a dummy message whose wParam (inputting character) is NULL and scancode
+    // is 0. Finally, the found message keeps staying in the queue.  The crash
+    // report comes after we started accepting WM_DEADCHAR with NULL character
+    // above. However, we haven't handled only a part of dead key sequence but
+    // the user tried to input Ethiopic Syllable.  Therefore, it's hard to guess
+    // that the user starts using Firefox with the keyboard/IME at the timing
+    // and the the user keeps using Firefox with unfunctional keyboard/IME.
+    // Perhaps the keyboard/IME does something different hack for us to make
+    // itself available on Firefox.  Therefore, we should just return `false` to
+    // make the caller give up removing the following messages.
+    if (IsDeadCharMessage(removedMsg.message) && !removedMsg.wParam &&
+        !WinUtils::GetScanCode(removedMsg.lParam) && nextKeyMsgAfter.isSome() &&
+        MayBeSameCharMessage(nextKeyMsgAfter.ref(), nextKeyMsg)) {
+      MOZ_LOG(
+          gKeyLog, LogLevel::Warning,
+          ("%p   NativeKey::GetFollowingCharMessage(), WARNING, succeeded to "
+           "remove a dead char message, but the removed message's wParam is 0 "
+           "and the found message still in the queue, nextKeyMsg=%s but "
+           "removedMsg=%s",
+           this, ToString(nextKeyMsg).get(), ToString(removedMsg).get()));
+      return false;
+    }
+
     // NOTE: Although, we don't know when this case occurs, the scan code value
     //       in lParam may be changed from 0 to something.  The changed value
     //       is different from the scan code of handling keydown message.
@@ -3387,13 +3427,11 @@ bool NativeKey::GetFollowingCharMessage(MSG& aCharMsg) {
         ToString(kFoundCharMsg).get(), ToString(removedMsg).get());
     CrashReporter::AppendAppNotesToCrashReport(info);
     // What's the next key message?
-    MSG nextKeyMsgAfter;
-    if (WinUtils::PeekMessage(&nextKeyMsgAfter, mMsg.hwnd, WM_KEYFIRST,
-                              WM_KEYLAST, PM_NOREMOVE | PM_NOYIELD)) {
+    if (nextKeyMsgAfter.isSome()) {
       nsPrintfCString info(
           "\nNext key message after unexpected char message "
           "removed: %s, ",
-          ToString(nextKeyMsgAfter).get());
+          ToString(nextKeyMsgAfter.ref()).get());
       CrashReporter::AppendAppNotesToCrashReport(info);
     } else {
       CrashReporter::AppendAppNotesToCrashReport(
@@ -4121,13 +4159,13 @@ bool KeyboardLayout::MaybeInitNativeKeyAsDeadKey(NativeKey& aNativeKey) {
 
   // When keydown message is followed by a dead char message, it should be
   // initialized as dead key.
-  bool isDeadKeyDownEvent =
+  const bool isDeadKeyDownEvent =
       aNativeKey.IsKeyDownMessage() && aNativeKey.IsFollowedByDeadCharMessage();
 
   // When keyup message is received, let's check if it's one of preceding
   // dead keys because keydown message order and keyup message order may be
   // different.
-  bool isDeadKeyUpEvent =
+  const bool isDeadKeyUpEvent =
       !aNativeKey.IsKeyDownMessage() &&
       mActiveDeadKeys.Contains(aNativeKey.GenericVirtualKeyCode());
 
@@ -4399,10 +4437,10 @@ void KeyboardLayout::LoadLayout(HKL aLayout) {
       if (vki < 0) {
         continue;
       }
-      NS_ASSERTION(uint32_t(vki) < ArrayLength(mVirtualKeys), "invalid index");
+      NS_ASSERTION(uint32_t(vki) < std::size(mVirtualKeys), "invalid index");
       char16_t uniChars[5];
       int32_t ret = ::ToUnicodeEx(virtualKey, 0, kbdState, (LPWSTR)uniChars,
-                                  ArrayLength(uniChars), 0, mKeyboardLayout);
+                                  std::size(uniChars), 0, mKeyboardLayout);
       // dead-key
       if (ret < 0) {
         shiftStatesWithDeadKeys |= (1 << shiftState);
@@ -4410,7 +4448,7 @@ void KeyboardLayout::LoadLayout(HKL aLayout) {
         // representation.
         char16_t deadChar[2];
         ret = ::ToUnicodeEx(virtualKey, 0, kbdState, (LPWSTR)deadChar,
-                            ArrayLength(deadChar), 0, mKeyboardLayout);
+                            std::size(deadChar), 0, mKeyboardLayout);
         NS_ASSERTION(ret == 2, "Expecting twice repeated dead-key character");
         mVirtualKeys[vki].SetDeadChar(shiftState, deadChar[0]);
 
@@ -4486,7 +4524,7 @@ void KeyboardLayout::LoadLayout(HKL aLayout) {
     MOZ_LOG(gKeyLog, LogLevel::Verbose,
             ("Logging virtual keycode values for scancode (0x%p)...",
              mKeyboardLayout));
-    for (uint32_t i = 0; i < ArrayLength(kExtendedScanCode); i++) {
+    for (uint32_t i = 0; i < std::size(kExtendedScanCode); i++) {
       for (uint32_t j = 1; j <= 0xFF; j++) {
         UINT scanCode = kExtendedScanCode[i] + j;
         UINT virtualKeyCode =
@@ -4593,7 +4631,7 @@ bool KeyboardLayout::EnsureDeadKeyActive(bool aIsActive, uint8_t aDeadKey,
     char16_t dummyChars[5];
     ret =
         ::ToUnicodeEx(aDeadKey, 0, (PBYTE)aDeadKeyKbdState, (LPWSTR)dummyChars,
-                      ArrayLength(dummyChars), 0, mKeyboardLayout);
+                      std::size(dummyChars), 0, mKeyboardLayout);
     // returned values:
     // <0 - Dead key state is active. The keyboard driver will wait for next
     //      character.
@@ -4679,7 +4717,7 @@ uint32_t KeyboardLayout::GetDeadKeyCombinations(
         char16_t compositeChars[5];
         int32_t ret =
             ::ToUnicodeEx(virtualKey, 0, kbdState, (LPWSTR)compositeChars,
-                          ArrayLength(compositeChars), 0, mKeyboardLayout);
+                          std::size(compositeChars), 0, mKeyboardLayout);
         switch (ret) {
           case 0:
             // This key combination does not produce any characters. The
@@ -4688,7 +4726,7 @@ uint32_t KeyboardLayout::GetDeadKeyCombinations(
           case 1: {
             char16_t baseChars[5];
             ret = ::ToUnicodeEx(virtualKey, 0, kbdState, (LPWSTR)baseChars,
-                                ArrayLength(baseChars), 0, mKeyboardLayout);
+                                std::size(baseChars), 0, mKeyboardLayout);
             if (entries < aDeadKeyArray.Capacity()) {
               switch (ret) {
                 case 1:
@@ -4715,9 +4753,9 @@ uint32_t KeyboardLayout::GetDeadKeyCombinations(
                     break;
                   }
                   for (int32_t i = 0; i < 5; ++i) {
-                    ret = ::ToUnicodeEx(
-                        virtualKey, 0, kbdState, (LPWSTR)baseChars,
-                        ArrayLength(baseChars), 0, mKeyboardLayout);
+                    ret = ::ToUnicodeEx(virtualKey, 0, kbdState,
+                                        (LPWSTR)baseChars, std::size(baseChars),
+                                        0, mKeyboardLayout);
                     if (ret >= 0) {
                       break;
                     }

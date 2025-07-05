@@ -1,0 +1,155 @@
+/* stylelint-disable max-nesting-depth */
+
+.collapsible-section {
+  padding: $section-vertical-padding $section-horizontal-padding;
+
+  .section-title-container {
+    margin: 0;
+
+    &.has-subtitle {
+      display: flex;
+      flex-direction: column;
+
+      @media (min-width: $break-point-large) {
+        flex-direction: row;
+        align-items: baseline;
+        justify-content: space-between;
+      }
+    }
+  }
+
+  .section-title {
+    font-size: $section-title-font-size;
+    font-weight: var(--font-weight-bold);
+    color: var(--newtab-text-primary-color);
+
+    &.grey-title {
+      color: var(--newtab-text-primary-color);
+      display: inline-block;
+      fill: var(--newtab-text-primary-color);
+      vertical-align: middle;
+    }
+
+    .section-title-contents {
+      // Center "What's Pocket?" for "mobile" viewport
+      @media (max-width: $break-point-medium - 1) {
+        display: block;
+
+        .learn-more-link-wrapper {
+          display: block;
+          text-align: center;
+
+          .learn-more-link {
+            margin-inline-start: 0;
+          }
+        }
+      }
+
+      vertical-align: top;
+    }
+  }
+
+  .section-sub-title {
+    font-size: inherit;
+    color: var(--newtab-text-secondary-color);
+    opacity: 0.3;
+  }
+
+  .section-top-bar {
+    min-height: 19px;
+    margin-bottom: 13px;
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    @media (max-width: $break-point-medium - 1) {
+      flex-direction: column;
+      gap: var(--space-small);
+      align-items: flex-start;
+    }
+  }
+
+  &.active {
+    background: var(--newtab-element-hover-color);
+    border-radius: var(--border-radius-small);
+  }
+
+  .learn-more-link {
+    font-size: var(--font-size-small);
+    margin-inline-start: 12px;
+
+    a {
+      color: var(--newtab-primary-action-background);
+    }
+  }
+
+  .section-body-fallback {
+    height: $card-height;
+  }
+
+  .section-body {
+    // This is so the top sites favicon and card dropshadows don't get clipped during animation:
+    $horizontal-padding: 7px;
+
+    margin: 0 (-$horizontal-padding);
+    padding: 0 $horizontal-padding;
+
+    &.animating {
+      overflow: hidden;
+      pointer-events: none;
+    }
+  }
+
+  &[data-section-id='topsites'] {
+    .section-top-bar {
+      display: none;
+    }
+  }
+
+  // Hide first story card for the medium breakpoint to prevent orphaned third story
+  &[data-section-id='topstories'] .card-outer:first-child {
+    @media (min-width: $break-point-medium) and (max-width: $break-point-large - 1) {
+      display: none;
+    }
+  }
+
+  // Bug 1914195 - Only show the topic selection button/modal on larger and wider breakpoints
+  .layout-variant-a &,
+  .layout-variant-b & {
+    .button-topic-selection {
+      display: none;
+
+      @media(min-width: $break-point-layout-variant) {
+        display: block;
+      }
+    }
+  }
+
+  .button-topic-selection {
+    // Note: the 'primary' theme uses a solid color and does not need this override
+    moz-button[type='default'] {
+      // Bug 1908010 - This overwrites the design system color because of a
+      // known transparency issue with color-mix syntax when a wallpaper is set
+      .lightWallpaper &,
+      .darkWallpaper & {
+        &::part(button) {
+          background-color: var(--newtab-weather-background-color);
+
+          &:hover {
+            background-color: var(--newtab-button-static-hover-background);
+          }
+
+          &:hover:active {
+            background-color: var(--newtab-button-static-active-background);
+          }
+
+          @media (prefers-contrast) {
+            background-color: var(--background-color-box);
+          }
+        }
+
+      }
+    }
+  }
+}

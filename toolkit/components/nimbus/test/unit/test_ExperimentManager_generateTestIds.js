@@ -1,7 +1,4 @@
 "use strict";
-const { ExperimentManager } = ChromeUtils.importESModule(
-  "resource://nimbus/lib/ExperimentManager.sys.mjs"
-);
 
 const TEST_CONFIG = {
   slug: "test-experiment",
@@ -26,7 +23,7 @@ const TEST_CONFIG = {
 };
 
 add_task(async function test_generateTestIds() {
-  let result = await ExperimentManager.generateTestIds(TEST_CONFIG);
+  let result = await ExperimentAPI.manager.generateTestIds(TEST_CONFIG);
 
   Assert.ok(result, "should return object");
   Assert.ok(result.notInExperiment, "should have a id for no experiment");
@@ -37,7 +34,7 @@ add_task(async function test_generateTestIds() {
 
 add_task(async function test_generateTestIds_bucketConfig() {
   const { slug, branches, namespace, start, count, total } = TEST_CONFIG;
-  const result = await ExperimentManager.generateTestIds({
+  const result = await ExperimentAPI.manager.generateTestIds({
     slug,
     branches,
     bucketConfig: { namespace, start, count, total },
@@ -51,7 +48,7 @@ add_task(async function test_generateTestIds_bucketConfig() {
 });
 
 add_task(async function test_generateTestIds_withoutNot() {
-  const result = await ExperimentManager.generateTestIds({
+  const result = await ExperimentAPI.manager.generateTestIds({
     ...TEST_CONFIG,
     count: TEST_CONFIG.total,
   });
@@ -70,7 +67,7 @@ add_task(async function test_generateTestIds_withoutNot() {
 add_task(async function test_generateTestIds_input_errors() {
   const { slug, branches, namespace, start, count, total } = TEST_CONFIG;
   await Assert.rejects(
-    ExperimentManager.generateTestIds({
+    ExperimentAPI.manager.generateTestIds({
       branches,
       namespace,
       start,
@@ -82,13 +79,19 @@ add_task(async function test_generateTestIds_input_errors() {
   );
 
   await Assert.rejects(
-    ExperimentManager.generateTestIds({ slug, branches, start, count, total }),
+    ExperimentAPI.manager.generateTestIds({
+      slug,
+      branches,
+      start,
+      count,
+      total,
+    }),
     /slug, namespace not in expected format/,
     "should throw because of missing namespace"
   );
 
   await Assert.rejects(
-    ExperimentManager.generateTestIds({
+    ExperimentAPI.manager.generateTestIds({
       slug,
       branches,
       namespace,
@@ -100,7 +103,7 @@ add_task(async function test_generateTestIds_input_errors() {
   );
 
   await Assert.rejects(
-    ExperimentManager.generateTestIds({
+    ExperimentAPI.manager.generateTestIds({
       slug,
       branches,
       namespace,
@@ -112,7 +115,7 @@ add_task(async function test_generateTestIds_input_errors() {
   );
 
   await Assert.rejects(
-    ExperimentManager.generateTestIds({
+    ExperimentAPI.manager.generateTestIds({
       slug,
       branches,
       namespace,
@@ -130,7 +133,7 @@ add_task(async function test_generateTestIds_input_errors() {
   ];
 
   await Assert.rejects(
-    ExperimentManager.generateTestIds({
+    ExperimentAPI.manager.generateTestIds({
       slug,
       branches: invalidBranches,
       namespace,

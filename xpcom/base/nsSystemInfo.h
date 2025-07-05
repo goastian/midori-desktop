@@ -56,6 +56,9 @@ struct ProcessInfo {
   bool isWindowsSMode = false;
   int32_t cpuCount = 0;
   int32_t cpuCores = 0;
+  int32_t cpuPCount = 0;
+  int32_t cpuMCount = 0;
+  int32_t cpuECount = 0;
   nsCString cpuVendor;
   nsCString cpuName;
   int32_t cpuFamily = 0;
@@ -120,11 +123,7 @@ class nsSystemInfo final : public nsISystemInfo, public nsHashPropertyBag {
 };
 
 #define NS_SYSTEMINFO_CONTRACTID "@mozilla.org/system-info;1"
-#define NS_SYSTEMINFO_CID                            \
-  {                                                  \
-    0xd962398a, 0x99e5, 0x49b2, {                    \
-      0x85, 0x7a, 0xc1, 0x59, 0x04, 0x9c, 0x7f, 0x6c \
-    }                                                \
-  }
+#define NS_SYSTEMINFO_CID \
+  {0xd962398a, 0x99e5, 0x49b2, {0x85, 0x7a, 0xc1, 0x59, 0x04, 0x9c, 0x7f, 0x6c}}
 
 #endif /* _NSSYSTEMINFO_H_ */

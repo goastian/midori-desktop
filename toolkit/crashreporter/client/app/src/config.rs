@@ -7,6 +7,7 @@
 use crate::std::borrow::Cow;
 use crate::std::ffi::{OsStr, OsString};
 use crate::std::path::{Path, PathBuf};
+use crate::std::process::Command;
 use crate::{lang, logging::LogTarget, std};
 use anyhow::Context;
 use once_cell::sync::Lazy;
@@ -17,6 +18,52 @@ const MINIDUMP_PRUNE_SAVE_COUNT: usize = 10;
 #[cfg(test)]
 pub mod test {
     pub const MINIDUMP_PRUNE_SAVE_COUNT: usize = super::MINIDUMP_PRUNE_SAVE_COUNT;
+
+    cfg_if::cfg_if! {
+        if #[cfg(target_os = "linux")] {
+            use crate::std::{mock, env};
+
+            fn cfg_get_data_dir_root() -> crate::std::path::PathBuf {
+                let cfg = super::Config::new();
+                cfg.get_data_dir_root("vendor").unwrap()
+            }
+
+            #[test]
+            fn data_dir_root_xdg_default() {
+                mock::builder()
+                    .set(env::MockHomeDir, "home_dir".into())
+                    .run(|| {
+                        let path = cfg_get_data_dir_root();
+                        assert_eq!(path, crate::std::path::PathBuf::from("home_dir/.config/vendor"));
+                     });
+            }
+
+            #[test]
+            fn data_dir_root_xdg_home() {
+                mock::builder()
+                    .set(env::MockEnv("XDG_CONFIG_HOME".into()), "home_dir/xdg/config".into())
+                    .run(|| {
+                        let path = cfg_get_data_dir_root();
+                        assert_eq!(path, crate::std::path::PathBuf::from("home_dir/xdg/config/vendor"));
+                    });
+            }
+
+            #[test]
+            fn data_dir_root_legacy_force() {
+                mock::builder()
+                    .set(env::MockHomeDir, "home_dir".into())
+                    .set(env::MockEnv("MOZ_LEGACY_HOME".into()), "1".into())
+                    .run(|| {
+                        let path = cfg_get_data_dir_root();
+                        assert_eq!(path, crate::std::path::PathBuf::from("home_dir/.vendor"));
+                    });
+            }
+        }
+    }
+}
+
+mod buildid_section {
+    include!(concat!(env!("OUT_DIR"), "/buildid_section.rs"));
 }
 
 const VENDOR_KEY: &str = "Vendor";
@@ -32,12 +79,16 @@ pub struct Config {
     pub dump_all_threads: bool,
     /// Whether to delete the dump files after submission.
     pub delete_dump: bool,
+    /// Whether to run memtest while ui is shown
+    pub run_memtest: bool,
     /// The data directory.
     pub data_dir: Option<PathBuf>,
     /// The events directory.
     pub events_dir: Option<PathBuf>,
     /// The ping directory.
     pub ping_dir: Option<PathBuf>,
+    /// The profile directory in use when the crash occurred.
+    pub profile_dir: Option<PathBuf>,
     /// The dump file.
     ///
     /// If missing, an error dialog is displayed.
@@ -66,10 +117,7 @@ impl<'a> ConfigStringBuilder<'a> {
 
     /// Get the localized string.
     pub fn get(self) -> String {
-        self.0
-            .get()
-            .context("failed to get localized string")
-            .unwrap()
+        self.0.get()
     }
 }
 
@@ -81,14 +129,17 @@ impl Config {
 
     /// Load a configuration from the application environment.
     #[cfg_attr(mock, allow(unused))]
-    pub fn read_from_environment(&mut self) -> anyhow::Result<()> {
+    pub fn read_from_environment(&mut self) {
         self.auto_submit = env_bool(ekey!("AUTO_SUBMIT"));
         self.dump_all_threads = env_bool(ekey!("DUMP_ALL_THREADS"));
         self.delete_dump = !env_bool(ekey!("NO_DELETE_DUMP"));
+        self.run_memtest = env_bool(ekey!("RUN_MEMTEST"));
         self.data_dir = env_path(ekey!("DATA_DIRECTORY"));
         self.events_dir = env_path(ekey!("EVENTS_DIRECTORY"));
         self.ping_dir = env_path(ekey!("PING_DIRECTORY"));
         self.app_file = std::env::var_os(ekey!("RESTART_XUL_APP_FILE"));
+
+        self.update_log_file();
 
         // Only support `MOZ_APP_LAUNCHER` on linux and macos.
         if cfg!(not(target_os = "windows")) {
@@ -97,12 +148,12 @@ impl Config {
 
         if self.restart_command.is_none() {
             self.restart_command = Some(
-                self.sibling_program_path(mozbuild::config::MOZ_APP_NAME)
+                self.installation_program_path(mozbuild::config::MOZ_APP_NAME)
                     .into(),
             )
         }
 
-        // We no longer use don't use `MOZ_CRASHREPORTER_RESTART_ARG_0`, see bug 1872920.
+        // We no longer use `MOZ_CRASHREPORTER_RESTART_ARG_0`, see bug 1872920.
         self.restart_args = (1..)
             .into_iter()
             .map_while(|arg_num| std::env::var_os(format!("{}_{}", ekey!("RESTART_ARG"), arg_num)))
@@ -120,9 +171,7 @@ impl Config {
             log::warn!("ignoring extraneous argument: {}", arg.to_string_lossy());
         }
 
-        self.strings = Some(lang::load().context("failed to load localized strings")?);
-
-        Ok(())
+        self.strings = Some(lang::load());
     }
 
     /// Get the localized string for the given index.
@@ -173,10 +222,14 @@ impl Config {
         }
 
         // Set the data dir if not already set.
+        // TODO bug 1910736: if we don't need to support VENDOR_KEY and PRODUCT_KEY in the extra
+        // file, it'd simplify the data_dir logic and things like glean initialization (which
+        // relies on the data dir).
         if self.data_dir.is_none() {
             let vendor = extra[VENDOR_KEY].as_str().unwrap_or(DEFAULT_VENDOR);
             let product = extra[PRODUCT_KEY].as_str().unwrap_or(DEFAULT_PRODUCT);
             self.data_dir = Some(self.get_data_dir(vendor, product)?);
+            self.update_log_file();
         }
 
         // Clear the restart command if WER handled the crash. This prevents restarting the
@@ -185,7 +238,38 @@ impl Config {
             self.restart_command = None;
         }
 
+        self.load_profile_directory_from_extra(&extra);
+
         Ok(extra)
+    }
+
+    /// Load the profile directory from the extra file information.
+    ///
+    /// This also loads the following information that relies on the profile directory:
+    /// * localization strings from langpacks
+    fn load_profile_directory_from_extra(&mut self, extra: &serde_json::Value) {
+        let Some(profile_dir) = extra
+            .get("ProfileDirectory")
+            .and_then(|v| v.as_str())
+            .map(PathBuf::from)
+        else {
+            return;
+        };
+        if !profile_dir.exists() {
+            return;
+        }
+
+        self.profile_dir = Some(profile_dir);
+
+        // Update the localization information.
+        if let Some(strings) = self.strings.as_mut() {
+            if let Err(e) = strings.add_langpack(
+                self.profile_dir.as_deref().unwrap(),
+                extra.get("useragent_locale").and_then(|v| v.as_str()),
+            ) {
+                log::warn!("failed to read localization information from profile: {e:#}")
+            }
+        }
     }
 
     /// Get the path to the extra file.
@@ -363,27 +447,66 @@ impl Config {
         Ok(())
     }
 
-    /// Get the path of a program that is a sibling of the crashreporter.
-    ///
-    /// On MacOS, this assumes that the crashreporter is its own application bundle within the main
-    /// program bundle. On other platforms this assumes siblings reside in the same directory as
-    /// the crashreporter.
+    /// Restart the program based on the configured restart command.
+    pub fn restart_process(&self) {
+        if self.restart_command.is_none() {
+            // The restart button should be hidden in this case, so this error should not occur.
+            log::error!("no process configured for restart");
+            return;
+        }
+
+        let mut cmd = Command::new(self.restart_command.as_ref().unwrap());
+        cmd.args(&self.restart_args)
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        if let Some(xul_app_file) = &self.app_file {
+            cmd.env("XUL_APP_FILE", xul_app_file);
+        }
+        log::debug!("restarting process: {:?}", cmd);
+        if let Err(e) = cmd.spawn() {
+            log::error!("failed to restart process: {e}");
+        }
+    }
+
+    /// Get the path of a program in the installation.
     ///
     /// The returned path isn't guaranteed to exist.
     // This method could be standalone rather than living in `Config`; it's here because it makes
     // sense that if it were to rely on anything, it would be the `Config` (and that may change in
     // the future).
-    pub fn sibling_program_path<N: AsRef<OsStr>>(&self, program: N) -> PathBuf {
+    pub fn installation_program_path<N: AsRef<OsStr>>(&self, program: N) -> PathBuf {
         let self_path = self_path();
         let exe_extension = self_path.extension().unwrap_or_default();
+        let mut p = program.as_ref().to_os_string();
         if !exe_extension.is_empty() {
-            let mut p = program.as_ref().to_os_string();
             p.push(".");
             p.push(exe_extension);
-            sibling_path(p)
-        } else {
-            sibling_path(program)
         }
+        installation_path().join(p)
+    }
+
+    /// Update the log file based on the current configured data_dir.
+    fn update_log_file(&self) {
+        if let (Some(log_target), Some(data_dir)) = (&self.log_target, &self.data_dir) {
+            log_target.set_file(&data_dir.join("submit.log"));
+        }
+    }
+
+    #[cfg(all(target_os = "linux", any(not(mock), test)))]
+    fn get_data_dir_root(&self, vendor: &str) -> anyhow::Result<PathBuf> {
+        // home_dir is deprecated due to incorrect behavior on windows, but we only use it on linux
+        #[allow(deprecated)]
+        let data_path = if std::env::var_os("MOZ_LEGACY_HOME").is_some() {
+            std::env::home_dir().map(|h| h.join(format!(".{}", vendor.to_lowercase())))
+        } else {
+            std::env::var_os("XDG_CONFIG_HOME")
+                .map(PathBuf::from)
+                .or_else(|| std::env::home_dir().map(|home| home.join(".config")))
+                .map(|h| h.join(format!("{}", vendor.to_lowercase())))
+        }
+        .with_context(|| self.string("crashreporter-error-no-home-dir"))?;
+        Ok(data_path)
     }
 
     cfg_if::cfg_if! {
@@ -397,11 +520,7 @@ impl Config {
             }
         } else if #[cfg(target_os = "linux")] {
             fn get_data_dir(&self, vendor: &str, product: &str) -> anyhow::Result<PathBuf> {
-                // home_dir is deprecated due to incorrect behavior on windows, but we only use it on linux
-                #[allow(deprecated)]
-                let mut data_path =
-                    std::env::home_dir().with_context(|| self.string("crashreporter-error-no-home-dir"))?;
-                data_path.push(format!(".{}", vendor.to_lowercase()));
+            let mut data_path = self.get_data_dir_root(vendor)?;
                 data_path.push(product.to_lowercase());
                 data_path.push("Crash Reports");
                 Ok(data_path)
@@ -488,36 +607,74 @@ impl Config {
     }
 }
 
-/// Get the path of a file that is a sibling of the crashreporter.
+/// Get the path of resources for the Firefox installation containing the crashreporter.
+pub fn installation_resource_path() -> &'static Path {
+    static PATH: Lazy<PathBuf> = Lazy::new(|| {
+        if cfg!(all(not(mock), target_os = "macos")) {
+            installation_path().parent().unwrap().join("Resources")
+        } else {
+            installation_path().to_owned()
+        }
+    });
+    &*PATH
+}
+
+/// Get the path of the Firefox installation containing the crashreporter.
 ///
 /// On MacOS, this assumes that the crashreporter is its own application bundle within the main
-/// program bundle. On other platforms this assumes siblings reside in the same directory as
-/// the crashreporter.
-///
-/// The returned path isn't guaranteed to exist.
-pub fn sibling_path<N: AsRef<OsStr>>(file: N) -> PathBuf {
-    // Expect shouldn't panic as we don't invoke the program without a parent directory.
-    let dir_path = self_path().parent().expect("program invoked based on PATH");
+/// program bundle. It returns the MacOS directory of the Firefox application bundle.
+pub fn installation_path() -> &'static Path {
+    static PATH: Lazy<&'static Path> = Lazy::new(|| {
+        // Expect shouldn't panic as we don't invoke the program without a parent directory.
+        let dir_path = self_path().parent().expect("program invoked based on PATH");
 
-    let mut path = dir_path.join(file.as_ref());
+        if cfg!(all(not(mock), target_os = "macos")) {
+            // On macOS the crash reporter client is shipped as an application bundle contained
+            // within Firefox's main application bundle. So when it's invoked its current working
+            // directory looks like:
+            // Firefox.app/Contents/MacOS/crashreporter.app/Contents/MacOS/
 
-    if !path.exists() && cfg!(all(not(mock), target_os = "macos")) {
-        // On macOS the crash reporter client is shipped as an application bundle contained
-        // within Firefox's main application bundle. So when it's invoked its current working
-        // directory looks like:
-        // Firefox.app/Contents/MacOS/crashreporter.app/Contents/MacOS/
-        // The other applications we ship with Firefox are stored in the main bundle
-        // (Firefox.app/Contents/MacOS/) so we we need to go back three directories
-        // to reach them.
-
-        // 3rd ancestor (the 0th element of ancestors has no paths removed) to remove
-        // `crashreporter.app/Contents/MacOS`.
-        if let Some(ancestor) = dir_path.ancestors().nth(3) {
-            path = ancestor.join(file.as_ref());
+            // 3rd ancestor (the 0th element of ancestors has no paths removed) to remove
+            // `crashreporter.app/Contents/MacOS`.
+            if let Some(ancestor) = dir_path.ancestors().nth(3) {
+                return ancestor;
+            }
         }
-    }
 
-    path
+        dir_path
+    });
+    &*PATH
+}
+
+/// Read the buildid from the installation.
+///
+/// This may fail if installation files are not found.
+pub fn buildid() -> Option<&'static str> {
+    static BUILDID: Lazy<Option<String>> = Lazy::new(|| {
+        let section_name = buildid_section::MOZ_BUILDID_SECTION_NAME.to_str().ok()?;
+        let xul_path = installation_path().join(if cfg!(target_os = "macos") {
+            "XUL"
+        } else if cfg!(target_os = "windows") {
+            "xul.dll"
+        } else {
+            "libxul.so"
+        });
+        #[cfg(mock)]
+        let xul_path = xul_path.as_ref();
+        match buildid_reader::BuildIdReader::new(&xul_path)
+            .and_then(|mut reader| reader.read_string_build_id(section_name))
+        {
+            Ok(s) => {
+                log::info!("read build id from XUL: {s}");
+                Some(s)
+            }
+            Err(e) => {
+                log::warn!("failed to read build id from XUL: {e}");
+                None
+            }
+        }
+    });
+    BUILDID.as_deref()
 }
 
 fn self_path() -> &'static Path {

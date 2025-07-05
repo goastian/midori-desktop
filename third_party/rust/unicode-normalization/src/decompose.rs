@@ -8,7 +8,7 @@
 // option. This file may not be copied, modified, or distributed
 // except according to those terms.
 use core::fmt::{self, Write};
-use core::iter::Fuse;
+use core::iter::{Fuse, FusedIterator};
 use core::ops::Range;
 use tinyvec::TinyVec;
 
@@ -36,23 +36,33 @@ pub struct Decompositions<I> {
     ready: Range<usize>,
 }
 
-#[inline]
-pub fn new_canonical<I: Iterator<Item = char>>(iter: I) -> Decompositions<I> {
-    Decompositions {
-        kind: self::DecompositionType::Canonical,
-        iter: iter.fuse(),
-        buffer: TinyVec::new(),
-        ready: 0..0,
+impl<I: Iterator<Item = char>> Decompositions<I> {
+    /// Create a new decomposition iterator for canonical decompositions (NFD)
+    ///
+    /// Note that this iterator can also be obtained by directly calling [`.nfd()`](crate::UnicodeNormalization::nfd)
+    /// on the iterator.
+    #[inline]
+    pub fn new_canonical(iter: I) -> Decompositions<I> {
+        Decompositions {
+            kind: self::DecompositionType::Canonical,
+            iter: iter.fuse(),
+            buffer: TinyVec::new(),
+            ready: 0..0,
+        }
     }
-}
 
-#[inline]
-pub fn new_compatible<I: Iterator<Item = char>>(iter: I) -> Decompositions<I> {
-    Decompositions {
-        kind: self::DecompositionType::Compatible,
-        iter: iter.fuse(),
-        buffer: TinyVec::new(),
-        ready: 0..0,
+    /// Create a new decomposition iterator for compatability decompositions (NFkD)
+    ///
+    /// Note that this iterator can also be obtained by directly calling [`.nfd()`](crate::UnicodeNormalization::nfd)
+    /// on the iterator.
+    #[inline]
+    pub fn new_compatible(iter: I) -> Decompositions<I> {
+        Decompositions {
+            kind: self::DecompositionType::Compatible,
+            iter: iter.fuse(),
+            buffer: TinyVec::new(),
+            ready: 0..0,
+        }
     }
 }
 
@@ -150,6 +160,8 @@ impl<I: Iterator<Item = char>> Iterator for Decompositions<I> {
         (lower, None)
     }
 }
+
+impl<I: Iterator<Item = char> + FusedIterator> FusedIterator for Decompositions<I> {}
 
 impl<I: Iterator<Item = char> + Clone> fmt::Display for Decompositions<I> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {

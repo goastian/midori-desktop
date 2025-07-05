@@ -1,0 +1,57 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+:host {
+  --avatar-size: 40px;
+  --avatar-img-size: 20px;
+
+  box-sizing: border-box;
+  border-radius: var(--border-radius-circle);
+}
+
+.avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  appearance: none;
+  background-color: transparent;
+  padding: 0;
+  width: var(--avatar-size);
+  height: var(--avatar-size);
+  border-radius: var(--border-radius-circle);
+
+  > img {
+    width: var(--avatar-img-size);
+    height: var(--avatar-img-size);
+    -moz-context-properties: fill, stroke;
+    fill: transparent;
+    stroke: currentColor;
+  }
+
+  &:hover {
+    background-color: var(--button-background-color-hover);
+  }
+
+
+
+  @media (forced-colors) {
+    &:hover {
+      border-color: SelectedItem;
+
+      > img {
+        stroke: SelectedItem;
+      }
+    }
+
+    :host([checked]) & {
+      border-color: SelectedItemText;
+      background-color: SelectedItem;
+
+      > img {
+        fill: SelectedItem;
+        stroke: SelectedItemText;
+      }
+    }
+  }
+}

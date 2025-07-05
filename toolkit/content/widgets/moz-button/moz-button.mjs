@@ -5,6 +5,9 @@
 import { html, ifDefined, classMap } from "../vendor/lit.all.mjs";
 import { MozLitElement } from "../lit-utils.mjs";
 
+// eslint-disable-next-line import/no-unassigned-import
+import "chrome://global/content/elements/moz-label.mjs";
+
 /**
  * A button with multiple types and two sizes.
  *
@@ -22,8 +25,17 @@ import { MozLitElement } from "../lit-utils.mjs";
  * @property {string} iconSrc - Path to the icon that should be displayed in the button.
  * @property {string} ariaLabelAttribute - Internal, map aria-label attribute to the ariaLabel JS property.
  * @property {string} hasVisibleLabel - Internal, tracks whether or not the button has a visible label.
+ * @property {boolean} attention - Show a dot notification on the button if true.
+ * @property {string} iconPosition - The icon's position relative to the button label.
+ *   Options: start, end.
  * @property {HTMLButtonElement} buttonEl - The internal button element in the shadow DOM.
  * @property {HTMLButtonElement} slotEl - The internal slot element in the shadow DOM.
+ * @cssproperty [--button-outer-padding-inline] - Used to set the outer inline padding of toolbar style buttons
+ * @csspropert [--button-outer-padding-block] - Used to set the outer block padding of toolbar style buttons.
+ * @cssproperty [--button-outer-padding-inline-start] - Used to set the outer inline-start padding of toolbar style buttons
+ * @cssproperty [--button-outer-padding-inline-end] - Used to set the outer inline-end padding of toolbar style buttons
+ * @cssproperty [--button-outer-padding-block-start] - Used to set the outer block-start padding of toolbar style buttons
+ * @cssproperty [--button-outer-padding-block-end] - Used to set the outer block-end padding of toolbar style buttons
  * @slot default - The button's content, overrides label property.
  * @fires click - The click event.
  */
@@ -34,26 +46,24 @@ export default class MozButton extends MozLitElement {
   };
 
   static properties = {
-    label: { type: String, reflect: true },
+    label: { type: String, reflect: true, fluent: true },
     type: { type: String, reflect: true },
     size: { type: String, reflect: true },
     disabled: { type: Boolean, reflect: true },
-    title: { type: String, state: true },
-    titleAttribute: { type: String, attribute: "title", reflect: true },
-    tooltipText: { type: String },
-    ariaLabelAttribute: {
-      type: String,
-      attribute: "aria-label",
-      reflect: true,
-    },
-    ariaLabel: { type: String, state: true },
+    title: { type: String, mapped: true },
+    tooltipText: { type: String, fluent: true },
+    ariaLabel: { type: String, mapped: true },
     iconSrc: { type: String },
     hasVisibleLabel: { type: Boolean, state: true },
+    accessKey: { type: String, mapped: true },
+    attention: { type: Boolean },
+    iconPosition: { type: String },
   };
 
   static queries = {
     buttonEl: "button",
     slotEl: "slot",
+    backgroundEl: ".button-background",
   };
 
   constructor() {
@@ -62,17 +72,8 @@ export default class MozButton extends MozLitElement {
     this.size = "default";
     this.disabled = false;
     this.hasVisibleLabel = !!this.label;
-  }
-
-  willUpdate(changes) {
-    if (changes.has("titleAttribute")) {
-      this.title = this.titleAttribute;
-      this.titleAttribute = null;
-    }
-    if (changes.has("ariaLabelAttribute")) {
-      this.ariaLabel = this.ariaLabelAttribute;
-      this.ariaLabelAttribute = null;
-    }
+    this.attention = false;
+    this.iconPosition = "start";
   }
 
   // Delegate clicks on host to the button element.
@@ -93,6 +94,13 @@ export default class MozButton extends MozLitElement {
     return html`<slot @slotchange=${this.checkForLabelText}></slot>`;
   }
 
+  iconTemplate(position) {
+    if (this.iconSrc && position == this.iconPosition) {
+      return html`<img src=${this.iconSrc} role="presentation" />`;
+    }
+    return null;
+  }
+
   render() {
     return html`
       <link
@@ -100,18 +108,32 @@ export default class MozButton extends MozLitElement {
         href="chrome://global/content/elements/moz-button.css"
       />
       <button
-        type=${this.type}
-        size=${this.size}
         ?disabled=${this.disabled}
         title=${ifDefined(this.title || this.tooltipText)}
         aria-label=${ifDefined(this.ariaLabel)}
-        part="button"
-        class=${classMap({ labelled: this.label || this.hasVisibleLabel })}
+        accesskey=${ifDefined(this.accessKey)}
       >
-        ${this.iconSrc
-          ? html`<img src=${this.iconSrc} role="presentation" />`
-          : ""}
-        ${this.labelTemplate()}
+        <span
+          class=${classMap({
+            labelled: this.label || this.hasVisibleLabel,
+            "button-background": true,
+            badged:
+              (this.iconSrc || this.type.includes("icon")) && this.attention,
+          })}
+          part="button"
+          type=${this.type}
+          size=${this.size}
+        >
+          ${this.iconTemplate("start")}
+          <label
+            is="moz-label"
+            shownaccesskey=${ifDefined(this.accessKey)}
+            part="moz-button-label"
+          >
+            ${this.labelTemplate()}
+          </label>
+          ${this.iconTemplate("end")}
+        </span>
       </button>
     `;
   }

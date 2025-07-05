@@ -9,6 +9,7 @@
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsIWidget.h"
 
+#include "nsArrayEnumerator.h"
 #include "nsIStringBundle.h"
 #include "nsString.h"
 #include "nsCOMArray.h"
@@ -18,13 +19,14 @@
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/Element.h"
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/Components.h"
 #include "mozilla/StaticPrefs_widget.h"
 #include "WidgetUtils.h"
 #include "nsSimpleEnumerator.h"
-#include "nsThreadUtils.h"
 #include "nsContentUtils.h"
+#include "nsThreadUtils.h"
 
 #include "nsBaseFilePicker.h"
 
@@ -66,46 +68,6 @@ nsresult LocalFileToDirectoryOrBlob(nsPIDOMWindowInner* aWindow,
 }
 
 }  // anonymous namespace
-
-#ifndef XP_WIN
-/**
- * A runnable to dispatch from the main thread to the main thread to display
- * the file picker while letting the showAsync method return right away.
- *
- * Not needed on Windows, where nsFilePicker::Open() is fully async.
- */
-class nsBaseFilePicker::AsyncShowFilePicker : public mozilla::Runnable {
- public:
-  AsyncShowFilePicker(nsBaseFilePicker* aFilePicker,
-                      nsIFilePickerShownCallback* aCallback)
-      : mozilla::Runnable("AsyncShowFilePicker"),
-        mFilePicker(aFilePicker),
-        mCallback(aCallback) {}
-
-  NS_IMETHOD Run() override {
-    NS_ASSERTION(NS_IsMainThread(),
-                 "AsyncShowFilePicker should be on the main thread!");
-
-    // It's possible that some widget implementations require GUI operations
-    // to be on the main thread, so that's why we're not dispatching to another
-    // thread and calling back to the main after it's done.
-    nsIFilePicker::ResultCode result = nsIFilePicker::returnCancel;
-    nsresult rv = mFilePicker->Show(&result);
-    if (NS_FAILED(rv)) {
-      NS_ERROR("FilePicker's Show() implementation failed!");
-    }
-
-    if (mCallback) {
-      mCallback->Done(result);
-    }
-    return NS_OK;
-  }
-
- private:
-  RefPtr<nsBaseFilePicker> mFilePicker;
-  RefPtr<nsIFilePickerShownCallback> mCallback;
-};
-#endif
 
 class nsBaseFilePickerEnumerator : public nsSimpleEnumerator {
  public:
@@ -152,8 +114,7 @@ class nsBaseFilePickerEnumerator : public nsSimpleEnumerator {
   nsIFilePicker::Mode mMode;
 };
 
-nsBaseFilePicker::nsBaseFilePicker()
-    : mAddToRecentDocs(true), mMode(nsIFilePicker::modeOpen) {}
+nsBaseFilePicker::nsBaseFilePicker() = default;
 
 nsBaseFilePicker::~nsBaseFilePicker() = default;
 
@@ -161,9 +122,7 @@ NS_IMETHODIMP nsBaseFilePicker::Init(BrowsingContext* aBrowsingContext,
                                      const nsAString& aTitle,
                                      nsIFilePicker::Mode aMode) {
   MOZ_ASSERT(XRE_IsParentProcess());
-  MOZ_ASSERT(aBrowsingContext,
-             "Null bc passed to filepicker, no file "
-             "picker for you!");
+  NS_ENSURE_ARG_POINTER(aBrowsingContext);
 
   nsCOMPtr<nsIWidget> widget =
       aBrowsingContext->Canonical()->GetParentProcessWidgetContaining();
@@ -199,40 +158,27 @@ nsBaseFilePicker::IsModeSupported(nsIFilePicker::Mode aMode, JSContext* aCx,
   return NS_OK;
 }
 
-#ifndef XP_WIN
-NS_IMETHODIMP
-nsBaseFilePicker::Open(nsIFilePickerShownCallback* aCallback) {
-  if (MaybeBlockFilePicker(aCallback)) {
-    return NS_OK;
-  }
-
-  nsCOMPtr<nsIRunnable> filePickerEvent =
-      new AsyncShowFilePicker(this, aCallback);
-  return NS_DispatchToMainThread(filePickerEvent);
-}
-#endif
-
-NS_IMETHODIMP
-nsBaseFilePicker::Close() {
-  NS_WARNING("Unimplemented nsFilePicker::Close");
-  return NS_OK;
-}
-
 NS_IMETHODIMP
 nsBaseFilePicker::AppendFilters(int32_t aFilterMask) {
   nsCOMPtr<nsIStringBundleService> stringService =
       mozilla::components::StringBundle::Service();
-  if (!stringService) return NS_ERROR_FAILURE;
+  if (!stringService) {
+    return NS_ERROR_FAILURE;
+  }
 
   nsCOMPtr<nsIStringBundle> titleBundle, filterBundle;
 
   nsresult rv = stringService->CreateBundle(FILEPICKER_TITLES,
                                             getter_AddRefs(titleBundle));
-  if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_FAILURE;
+  }
 
   rv = stringService->CreateBundle(FILEPICKER_FILTERS,
                                    getter_AddRefs(filterBundle));
-  if (NS_FAILED(rv)) return NS_ERROR_FAILURE;
+  if (NS_FAILED(rv)) {
+    return NS_ERROR_FAILURE;
+  }
 
   nsAutoString title;
   nsAutoString filter;
@@ -348,7 +294,10 @@ NS_IMETHODIMP nsBaseFilePicker::SetDisplayDirectory(nsIFile* aDirectory) {
   }
   nsCOMPtr<nsIFile> directory;
   nsresult rv = aDirectory->Clone(getter_AddRefs(directory));
-  if (NS_FAILED(rv)) return rv;
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+
   mDisplayDirectory = directory;
   return NS_OK;
 }
@@ -363,7 +312,10 @@ NS_IMETHODIMP nsBaseFilePicker::GetDisplayDirectory(nsIFile** aDirectory) {
     return NS_OK;
   }
 
-  if (!mDisplayDirectory) return NS_OK;
+  if (!mDisplayDirectory) {
+    return NS_OK;
+  }
+
   nsCOMPtr<nsIFile> directory;
   nsresult rv = mDisplayDirectory->Clone(getter_AddRefs(directory));
   if (NS_FAILED(rv)) {
@@ -392,15 +344,18 @@ NS_IMETHODIMP nsBaseFilePicker::SetDisplaySpecialDirectory(
 
 bool nsBaseFilePicker::MaybeBlockFilePicker(
     nsIFilePickerShownCallback* aCallback) {
-  if (!mozilla::StaticPrefs::widget_disable_file_pickers()) {
-    return false;
-  }
+  MOZ_ASSERT(mBrowsingContext);
+  MOZ_ASSERT(XRE_IsParentProcess());
 
-  if (aCallback) {
-    // File pickers are disabled, so we answer the callback with returnCancel.
-    aCallback->Done(nsIFilePicker::returnCancel);
-  }
-  if (mBrowsingContext) {
+  if (mozilla::StaticPrefs::widget_disable_file_pickers()) {
+    if (aCallback) {
+      // File pickers are disabled, so we answer the callback with returnCancel.
+      NS_DispatchToCurrentThread(
+          mozilla::NewRunnableMethod<nsIFilePicker::ResultCode>(
+              "nsBaseFilePicker::CallbackWithCancelResult", aCallback,
+              &nsIFilePickerShownCallback::Done, nsIFilePicker::returnCancel));
+    }
+
     RefPtr<Element> topFrameElement = mBrowsingContext->GetTopFrameElement();
     if (topFrameElement) {
       // Dispatch an event that the frontend may use.
@@ -408,6 +363,21 @@ bool nsBaseFilePicker::MaybeBlockFilePicker(
           topFrameElement->OwnerDoc(), topFrameElement, u"FilePickerBlocked"_ns,
           mozilla::CanBubble::eYes, mozilla::Cancelable::eNo);
     }
+
+    return true;
+  }
+
+  if (mBrowsingContext->Canonical()->CanOpenModalPicker()) {
+    return false;
+  }
+
+  if (aCallback) {
+    // File pickers are not allowed to open, so we respond to the callback with
+    // returnCancel.
+    NS_DispatchToCurrentThread(
+        mozilla::NewRunnableMethod<nsIFilePicker::ResultCode>(
+            "nsBaseFilePicker::CallbackWithCancelResult", aCallback,
+            &nsIFilePickerShownCallback::Done, nsIFilePicker::returnCancel));
   }
 
   return true;
@@ -506,4 +476,9 @@ nsBaseFilePicker::GetDomFileOrDirectoryEnumerator(
 
   retIter.forget(aValue);
   return NS_OK;
+}
+
+NS_IMETHODIMP
+nsBaseFilePicker::GetDomFilesInWebKitDirectory(nsISimpleEnumerator** aValue) {
+  return NS_ERROR_NOT_IMPLEMENTED;
 }

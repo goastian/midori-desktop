@@ -7,6 +7,8 @@
 "use strict";
 
 const searchParams = new URLSearchParams(document.documentURI.split("?")[1]);
+const clickjackingDelay = RPMGetIntPref("security.dialog_enable_delay", 1000);
+let clickjackingTimeout;
 
 function initPage() {
   if (!searchParams.get("e")) {
@@ -29,11 +31,11 @@ function initPage() {
   document
     .getElementById("learnMoreLink")
     .setAttribute("href", baseSupportURL + "https-only-prefs");
-
-    document
+  document
     .getElementById("mixedContentLearnMoreLink")
     .setAttribute("href", baseSupportURL + "mixed-content");
 
+  const isTopLevel = window.top == window;
   if (!isTopLevel) {
     for (const id of ["explanation-continue", "goBack", "openInsecure"]) {
       document.getElementById(id).remove();
@@ -45,20 +47,15 @@ function initPage() {
   document
     .getElementById("openInsecure")
     .addEventListener("click", onOpenInsecureButtonClick);
-
-    document
+  document
     .getElementById("goBack")
     .addEventListener("click", onReturnButtonClick);
 
-
-  const delay = RPMGetIntPref("security.dialog_enable_delay", 1000);
-  setTimeout(() => {
-    document.getElementById("openInsecure").removeAttribute("inert");
-  }, delay);
+  document.addEventListener("blur", onBlur);
+  document.addEventListener("focus", onFocus);
 
   addAutofocus("#goBack", "beforeend");
 
-  const isTopLevel = window.top == window;
   const hasWWWPrefix = pageUrl.href.startsWith("https://www.");
   if (!hasWWWPrefix) {
     // HTTPS-Only generally simply replaces http: with https:;
@@ -114,12 +111,31 @@ function openSecureWWWButtonClick() {
   RPMOpenSecureWWWLink();
 }
 
-function onOpenInsecureButtonClick() {
-  document.reloadWithHttpsOnlyException();
+function onOpenInsecureButtonClick(e) {
+  if (e.target.classList.contains("disabled")) {
+    e.stopPropagation();
+    e.preventDefault();
+    resetClickjackingTimeout();
+  } else {
+    document.reloadWithHttpsOnlyException();
+  }
 }
 
 function onReturnButtonClick() {
   RPMSendAsyncMessage("goBack");
+}
+
+/* Focus Events */
+
+function onFocus() {
+  resetClickjackingTimeout();
+}
+
+function onBlur() {
+  clearClickjackingTimeout();
+  if (!document.getElementById("openInsecure").classList.contains("disabled")) {
+    document.getElementById("openInsecure").classList.add("disabled");
+  }
 }
 
 /*  Utils */
@@ -133,6 +149,23 @@ function addAutofocus(selector, position = "afterbegin") {
   button.remove();
   button.setAttribute("autofocus", "true");
   parent.insertAdjacentElement(position, button);
+}
+
+function resetClickjackingTimeout() {
+  if (clickjackingTimeout) {
+    clearTimeout(clickjackingTimeout);
+  }
+  clickjackingTimeout = setTimeout(() => {
+    document.getElementById("openInsecure").classList.remove("disabled");
+    clickjackingTimeout = undefined;
+  }, clickjackingDelay);
+}
+
+function clearClickjackingTimeout() {
+  if (clickjackingTimeout) {
+    clearTimeout(clickjackingTimeout);
+    clickjackingTimeout = undefined;
+  }
 }
 
 /* Initialize Page */

@@ -1,67 +1,31 @@
 #![allow(clippy::let_unit_value)] // `let () =` being used to constrain result type
 
-use std::{mem, os::raw::c_void, ptr::NonNull, sync::Once, thread};
+use alloc::borrow::ToOwned as _;
+use core::mem::ManuallyDrop;
+use core::ptr::NonNull;
+use std::thread;
 
 use core_graphics_types::{
     base::CGFloat,
     geometry::{CGRect, CGSize},
 };
+use metal::{foreign_types::ForeignType, MTLTextureType};
 use objc::{
-    class,
-    declare::ClassDecl,
-    msg_send,
-    rc::autoreleasepool,
-    runtime::{Class, Object, Sel, BOOL, NO, YES},
+    class, msg_send,
+    rc::{autoreleasepool, StrongPtr},
+    runtime::{Object, BOOL, NO, YES},
     sel, sel_impl,
 };
 use parking_lot::{Mutex, RwLock};
 
-#[cfg(target_os = "macos")]
+use crate::metal::layer_observer::new_observer_layer;
+
 #[link(name = "QuartzCore", kind = "framework")]
-extern "C" {
-    #[allow(non_upper_case_globals)]
-    static kCAGravityTopLeft: *mut Object;
-}
-
-extern "C" fn layer_should_inherit_contents_scale_from_window(
-    _: &Class,
-    _: Sel,
-    _layer: *mut Object,
-    _new_scale: CGFloat,
-    _from_window: *mut Object,
-) -> BOOL {
-    YES
-}
-
-static CAML_DELEGATE_REGISTER: Once = Once::new();
-
-#[derive(Debug)]
-pub struct HalManagedMetalLayerDelegate(&'static Class);
-
-impl HalManagedMetalLayerDelegate {
-    pub fn new() -> Self {
-        let class_name = format!("HalManagedMetalLayerDelegate@{:p}", &CAML_DELEGATE_REGISTER);
-
-        CAML_DELEGATE_REGISTER.call_once(|| {
-            type Fun = extern "C" fn(&Class, Sel, *mut Object, CGFloat, *mut Object) -> BOOL;
-            let mut decl = ClassDecl::new(&class_name, class!(NSObject)).unwrap();
-            #[allow(trivial_casts)] // false positive
-            unsafe {
-                decl.add_class_method(
-                    sel!(layer:shouldInheritContentsScale:fromWindow:),
-                    layer_should_inherit_contents_scale_from_window as Fun,
-                );
-            }
-            decl.register();
-        });
-        Self(Class::get(&class_name).unwrap())
-    }
-}
+extern "C" {}
 
 impl super::Surface {
-    fn new(view: Option<NonNull<Object>>, layer: metal::MetalLayer) -> Self {
+    fn new(layer: metal::MetalLayer) -> Self {
         Self {
-            view,
             render_layer: Mutex::new(layer),
             swapchain_format: RwLock::new(None),
             extent: RwLock::new(wgt::Extent3d::default()),
@@ -70,85 +34,78 @@ impl super::Surface {
         }
     }
 
-    pub unsafe fn dispose(self) {
-        if let Some(view) = self.view {
-            let () = msg_send![view.as_ptr(), release];
-        }
-    }
-
     /// If not called on the main thread, this will panic.
     #[allow(clippy::transmute_ptr_to_ref)]
-    pub unsafe fn from_view(
-        view: *mut c_void,
-        delegate: Option<&HalManagedMetalLayerDelegate>,
-    ) -> Self {
-        let view = view as *mut Object;
-        let render_layer = {
-            let layer = unsafe { Self::get_metal_layer(view, delegate) };
-            unsafe { mem::transmute::<_, &metal::MetalLayerRef>(layer) }
-        }
-        .to_owned();
-        let _: *mut c_void = msg_send![view, retain];
-        Self::new(NonNull::new(view), render_layer)
+    pub unsafe fn from_view(view: NonNull<Object>) -> Self {
+        let layer = unsafe { Self::get_metal_layer(view) };
+        let layer = ManuallyDrop::new(layer);
+        // SAFETY: The layer is an initialized instance of `CAMetalLayer`, and
+        // we transfer the retain count to `MetalLayer` using `ManuallyDrop`.
+        let layer = unsafe { metal::MetalLayer::from_ptr(layer.cast()) };
+        Self::new(layer)
     }
 
     pub unsafe fn from_layer(layer: &metal::MetalLayerRef) -> Self {
         let class = class!(CAMetalLayer);
         let proper_kind: BOOL = msg_send![layer, isKindOfClass: class];
         assert_eq!(proper_kind, YES);
-        Self::new(None, layer.to_owned())
+        Self::new(layer.to_owned())
     }
 
-    /// If not called on the main thread, this will panic.
-    pub(crate) unsafe fn get_metal_layer(
-        view: *mut Object,
-        delegate: Option<&HalManagedMetalLayerDelegate>,
-    ) -> *mut Object {
-        if view.is_null() {
-            panic!("window does not have a valid contentView");
-        }
-
+    /// Get or create a new `CAMetalLayer` associated with the given `NSView`
+    /// or `UIView`.
+    ///
+    /// # Panics
+    ///
+    /// If called from a thread that is not the main thread, this will panic.
+    ///
+    /// # Safety
+    ///
+    /// The `view` must be a valid instance of `NSView` or `UIView`.
+    pub(crate) unsafe fn get_metal_layer(view: NonNull<Object>) -> StrongPtr {
         let is_main_thread: BOOL = msg_send![class!(NSThread), isMainThread];
         if is_main_thread == NO {
             panic!("get_metal_layer cannot be called in non-ui thread.");
         }
 
-        let main_layer: *mut Object = msg_send![view, layer];
-        let class = class!(CAMetalLayer);
-        let is_valid_layer: BOOL = msg_send![main_layer, isKindOfClass: class];
+        // Ensure that the view is layer-backed.
+        // Views are always layer-backed in UIKit.
+        #[cfg(target_os = "macos")]
+        let () = msg_send![view.as_ptr(), setWantsLayer: YES];
 
-        if is_valid_layer == YES {
-            main_layer
+        let root_layer: *mut Object = msg_send![view.as_ptr(), layer];
+        // `-[NSView layer]` can return `NULL`, while `-[UIView layer]` should
+        // always be available.
+        assert!(!root_layer.is_null(), "failed making the view layer-backed");
+
+        // NOTE: We explicitly do not touch properties such as
+        // `layerContentsPlacement`, `needsDisplayOnBoundsChange` and
+        // `contentsGravity` etc. on the root layer, both since we would like
+        // to give the user full control over them, and because the default
+        // values suit us pretty well (especially the contents placement being
+        // `NSViewLayerContentsRedrawDuringViewResize`, which allows the view
+        // to receive `drawRect:`/`updateLayer` calls).
+
+        let is_metal_layer: BOOL = msg_send![root_layer, isKindOfClass: class!(CAMetalLayer)];
+        if is_metal_layer == YES {
+            // The view has a `CAMetalLayer` as the root layer, which can
+            // happen for example if user overwrote `-[NSView layerClass]` or
+            // the view is `MTKView`.
+            //
+            // This is easily handled: We take "ownership" over the layer, and
+            // render directly into that; after all, the user passed a view
+            // with an explicit Metal layer to us, so this is very likely what
+            // they expect us to do.
+            unsafe { StrongPtr::retain(root_layer) }
         } else {
-            // If the main layer is not a CAMetalLayer, we create a CAMetalLayer and use it.
-            let new_layer: *mut Object = msg_send![class, new];
-            let frame: CGRect = msg_send![main_layer, bounds];
-            let () = msg_send![new_layer, setFrame: frame];
-            #[cfg(target_os = "ios")]
-            {
-                // Unlike NSView, UIView does not allow to replace main layer.
-                let () = msg_send![main_layer, addSublayer: new_layer];
-                // On iOS, "from_view" may be called before the application initialization is complete,
-                // `msg_send![view, window]` and `msg_send![window, screen]` will get null.
-                let screen: *mut Object = msg_send![class!(UIScreen), mainScreen];
-                let scale_factor: CGFloat = msg_send![screen, nativeScale];
-                let () = msg_send![view, setContentScaleFactor: scale_factor];
-            };
-            #[cfg(target_os = "macos")]
-            {
-                let () = msg_send![view, setLayer: new_layer];
-                let () = msg_send![view, setWantsLayer: YES];
-                let () = msg_send![new_layer, setContentsGravity: unsafe { kCAGravityTopLeft }];
-                let window: *mut Object = msg_send![view, window];
-                if !window.is_null() {
-                    let scale_factor: CGFloat = msg_send![window, backingScaleFactor];
-                    let () = msg_send![new_layer, setContentsScale: scale_factor];
-                }
-            };
-            if let Some(delegate) = delegate {
-                let () = msg_send![new_layer, setDelegate: delegate.0];
-            }
-            new_layer
+            // The view does not have a `CAMetalLayer` as the root layer (this
+            // is the default for most views).
+            //
+            // This case is trickier! We cannot use the existing layer with
+            // Metal, so we must do something else. There are a few options,
+            // we do the same as outlined in:
+            // https://docs.rs/raw-window-metal/1.1.0/raw_window_metal/#reasoning-behind-creating-a-sublayer
+            unsafe { new_observer_layer(root_layer) }
         }
     }
 
@@ -184,7 +141,7 @@ impl crate::Surface for super::Surface {
         *self.extent.write() = config.extent;
 
         let render_layer = self.render_layer.lock();
-        let framebuffer_only = config.usage == crate::TextureUses::COLOR_TARGET;
+        let framebuffer_only = config.usage == wgt::TextureUses::COLOR_TARGET;
         let display_sync = match config.present_mode {
             wgt::PresentMode::Fifo => true,
             wgt::PresentMode::Immediate => false,
@@ -199,18 +156,6 @@ impl crate::Surface for super::Surface {
         }
 
         let device_raw = device.shared.device.lock();
-        // On iOS, unless the user supplies a view with a CAMetalLayer, we
-        // create one as a sublayer. However, when the view changes size,
-        // its sublayers are not automatically resized, and we must resize
-        // it here. The drawable size and the layer size don't correlate
-        #[cfg(target_os = "ios")]
-        {
-            if let Some(view) = self.view {
-                let main_layer: *mut Object = msg_send![view.as_ptr(), layer];
-                let bounds: CGRect = msg_send![main_layer, bounds];
-                let () = msg_send![*render_layer, setFrame: bounds];
-            }
-        }
         render_layer.set_device(&device_raw);
         render_layer.set_pixel_format(caps.map_format(config.format));
         render_layer.set_framebuffer_only(framebuffer_only);
@@ -241,7 +186,7 @@ impl crate::Surface for super::Surface {
 
     unsafe fn acquire_texture(
         &self,
-        _timeout_ms: Option<std::time::Duration>, //TODO
+        _timeout_ms: Option<core::time::Duration>, //TODO
         _fence: &super::Fence,
     ) -> Result<Option<crate::AcquiredSurfaceTexture<super::Api>>, crate::SurfaceError> {
         let render_layer = self.render_layer.lock();
@@ -260,7 +205,7 @@ impl crate::Surface for super::Surface {
             texture: super::Texture {
                 raw: texture,
                 format: swapchain_format,
-                raw_type: metal::MTLTextureType::D2,
+                raw_type: MTLTextureType::D2,
                 array_layers: 1,
                 mip_levels: 1,
                 copy_size: crate::CopyExtent {

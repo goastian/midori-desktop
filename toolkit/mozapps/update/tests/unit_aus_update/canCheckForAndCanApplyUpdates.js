@@ -3,7 +3,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-function run_test() {
+async function run_test() {
   setupTestCommon();
 
   // Verify write access to the custom app dir
@@ -15,48 +15,64 @@ function run_test() {
   testFile.remove(false);
   Assert.ok(!testFile.exists(), MSG_SHOULD_NOT_EXIST);
 
-  if (AppConstants.platform == "win") {
-    // Create a mutex to prevent being able to check for or apply updates.
-    debugDump("attempting to create mutex");
-    let handle = createMutex(getPerInstallationMutexName());
-    Assert.ok(!!handle, "the update mutex should have been created");
+  let testUpdateMutexes = [
+    new TestUpdateMutexInProcess(),
+    new TestUpdateMutexCrossProcess(),
+  ];
 
-    // Check if available updates cannot be checked for when there is a mutex
-    // for this installation.
+  // Acquire the update mutex(es) to prevent the current instance from being
+  // able to check for or apply updates -- and check that it can't.
+  for (let testUpdateMutex of testUpdateMutexes) {
+    debugDump(
+      "attempting to acquire the " + testUpdateMutex.kind + " update mutex"
+    );
     Assert.ok(
-      !gAUS.canCheckForUpdates,
-      "should not be able to check for " +
-        "updates when there is an update mutex"
+      await testUpdateMutex.expectAcquire(),
+      "should be able to acquire the " + testUpdateMutex.kind + " update mutex"
     );
 
-    // Check if updates cannot be applied when there is a mutex for this
-    // installation.
-    Assert.ok(
-      !gAUS.canApplyUpdates,
-      "should not be able to apply updates when there is an update mutex"
-    );
+    try {
+      // Check that available updates cannot be checked for when the update
+      // mutex for this installation path is acquired.
+      Assert.ok(
+        !gAUS.canCheckForUpdates,
+        "should not be able to check for updates when the " +
+          testUpdateMutex.kind +
+          " update mutex is acquired"
+      );
 
-    debugDump("destroying mutex");
-    closeHandle(handle);
+      // Check if updates cannot be applied when the update mutex for this
+      // installation path is acquired.
+      Assert.ok(
+        !gAUS.canApplyUpdates,
+        "should not be able to apply updates when the " +
+          testUpdateMutex.kind +
+          " update mutex is acquired"
+      );
+    } finally {
+      debugDump("releasing the " + testUpdateMutex.kind + " update mutex");
+      await testUpdateMutex.release();
+    }
   }
 
-  // Check if available updates can be checked for
+  // Check that available updates can be checked for
   Assert.ok(gAUS.canCheckForUpdates, "should be able to check for updates");
-  // Check if updates can be applied
+  // Check that updates can be applied
   Assert.ok(gAUS.canApplyUpdates, "should be able to apply updates");
 
-  if (AppConstants.platform == "win") {
-    // Attempt to create a mutex when application update has already created one
-    // with the same name.
-    debugDump("attempting to create mutex");
-    let handle = createMutex(getPerInstallationMutexName());
-
+  // Attempt to acquire the update mutex(es) now that the current instance has
+  // acquired it.
+  for (let testUpdateMutex of testUpdateMutexes) {
+    debugDump(
+      "attempting to acquire the " + testUpdateMutex.kind + " update mutex"
+    );
     Assert.ok(
-      !handle,
-      "should not be able to create the update mutex when " +
-        "the application has created the update mutex"
+      await testUpdateMutex.expectFailToAcquire(),
+      "should not be able to acquire the " +
+        testUpdateMutex.kind +
+        " update mutex when the current instance has already acquired it"
     );
   }
 
-  doTestFinish();
+  await doTestFinish();
 }

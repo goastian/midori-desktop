@@ -1,0 +1,9 @@
+[DEFAULT]
+head = "head.js"
+tags = "inc-origin-init"
+
+["test_databaseWorkStarted.js"]
+
+["test_slowDatabaseInitialization.js"]
+
+["test_slowStorageInitialization.js"]

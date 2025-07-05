@@ -1,5 +1,7 @@
+use alloc::string::String;
 use std::{ffi::OsString, os::windows::ffi::OsStringExt};
-use winapi::shared::dxgiformat;
+
+use windows::Win32::Graphics::Dxgi;
 
 // Helper to convert DXGI adapter name to a normal string
 pub fn map_adapter_name(name: [u16; 128]) -> String {
@@ -8,9 +10,11 @@ pub fn map_adapter_name(name: [u16; 128]) -> String {
     name.to_string_lossy().into_owned()
 }
 
-pub fn map_texture_format_failable(format: wgt::TextureFormat) -> Option<dxgiformat::DXGI_FORMAT> {
+pub fn map_texture_format_failable(
+    format: wgt::TextureFormat,
+) -> Option<Dxgi::Common::DXGI_FORMAT> {
     use wgt::TextureFormat as Tf;
-    use winapi::shared::dxgiformat::*;
+    use Dxgi::Common::*;
 
     Some(match format {
         Tf::R8Unorm => DXGI_FORMAT_R8_UNORM,
@@ -44,7 +48,8 @@ pub fn map_texture_format_failable(format: wgt::TextureFormat) -> Option<dxgifor
         Tf::Rgb9e5Ufloat => DXGI_FORMAT_R9G9B9E5_SHAREDEXP,
         Tf::Rgb10a2Uint => DXGI_FORMAT_R10G10B10A2_UINT,
         Tf::Rgb10a2Unorm => DXGI_FORMAT_R10G10B10A2_UNORM,
-        Tf::Rg11b10Float => DXGI_FORMAT_R11G11B10_FLOAT,
+        Tf::Rg11b10Ufloat => DXGI_FORMAT_R11G11B10_FLOAT,
+        Tf::R64Uint => DXGI_FORMAT_R32G32_UINT, // R64 emulated by R32G32
         Tf::Rg32Uint => DXGI_FORMAT_R32G32_UINT,
         Tf::Rg32Sint => DXGI_FORMAT_R32G32_SINT,
         Tf::Rg32Float => DXGI_FORMAT_R32G32_FLOAT,
@@ -94,7 +99,7 @@ pub fn map_texture_format_failable(format: wgt::TextureFormat) -> Option<dxgifor
     })
 }
 
-pub fn map_texture_format(format: wgt::TextureFormat) -> dxgiformat::DXGI_FORMAT {
+pub fn map_texture_format(format: wgt::TextureFormat) -> Dxgi::Common::DXGI_FORMAT {
     match map_texture_format_failable(format) {
         Some(f) => f,
         None => unreachable!(),
@@ -103,10 +108,10 @@ pub fn map_texture_format(format: wgt::TextureFormat) -> dxgiformat::DXGI_FORMAT
 
 // Note: DXGI doesn't allow sRGB format on the swapchain,
 // but creating RTV of swapchain buffers with sRGB works.
-pub fn map_texture_format_nosrgb(format: wgt::TextureFormat) -> dxgiformat::DXGI_FORMAT {
+pub fn map_texture_format_nosrgb(format: wgt::TextureFormat) -> Dxgi::Common::DXGI_FORMAT {
     match format {
-        wgt::TextureFormat::Bgra8UnormSrgb => dxgiformat::DXGI_FORMAT_B8G8R8A8_UNORM,
-        wgt::TextureFormat::Rgba8UnormSrgb => dxgiformat::DXGI_FORMAT_R8G8B8A8_UNORM,
+        wgt::TextureFormat::Bgra8UnormSrgb => Dxgi::Common::DXGI_FORMAT_B8G8R8A8_UNORM,
+        wgt::TextureFormat::Rgba8UnormSrgb => Dxgi::Common::DXGI_FORMAT_R8G8B8A8_UNORM,
         _ => map_texture_format(format),
     }
 }
@@ -116,29 +121,29 @@ pub fn map_texture_format_nosrgb(format: wgt::TextureFormat) -> dxgiformat::DXGI
 pub fn map_texture_format_for_srv_uav(
     format: wgt::TextureFormat,
     aspect: crate::FormatAspects,
-) -> Option<dxgiformat::DXGI_FORMAT> {
+) -> Option<Dxgi::Common::DXGI_FORMAT> {
     Some(match (format, aspect) {
         (wgt::TextureFormat::Depth16Unorm, crate::FormatAspects::DEPTH) => {
-            dxgiformat::DXGI_FORMAT_R16_UNORM
+            Dxgi::Common::DXGI_FORMAT_R16_UNORM
         }
         (wgt::TextureFormat::Depth32Float, crate::FormatAspects::DEPTH) => {
-            dxgiformat::DXGI_FORMAT_R32_FLOAT
+            Dxgi::Common::DXGI_FORMAT_R32_FLOAT
         }
         (wgt::TextureFormat::Depth32FloatStencil8, crate::FormatAspects::DEPTH) => {
-            dxgiformat::DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS
+            Dxgi::Common::DXGI_FORMAT_R32_FLOAT_X8X24_TYPELESS
         }
         (
             wgt::TextureFormat::Depth24Plus | wgt::TextureFormat::Depth24PlusStencil8,
             crate::FormatAspects::DEPTH,
-        ) => dxgiformat::DXGI_FORMAT_R24_UNORM_X8_TYPELESS,
+        ) => Dxgi::Common::DXGI_FORMAT_R24_UNORM_X8_TYPELESS,
 
         (wgt::TextureFormat::Depth32FloatStencil8, crate::FormatAspects::STENCIL) => {
-            dxgiformat::DXGI_FORMAT_X32_TYPELESS_G8X24_UINT
+            Dxgi::Common::DXGI_FORMAT_X32_TYPELESS_G8X24_UINT
         }
         (
             wgt::TextureFormat::Stencil8 | wgt::TextureFormat::Depth24PlusStencil8,
             crate::FormatAspects::STENCIL,
-        ) => dxgiformat::DXGI_FORMAT_X24_TYPELESS_G8_UINT,
+        ) => Dxgi::Common::DXGI_FORMAT_X24_TYPELESS_G8_UINT,
 
         (_, crate::FormatAspects::DEPTH)
         | (_, crate::FormatAspects::STENCIL)
@@ -152,22 +157,22 @@ pub fn map_texture_format_for_srv_uav(
 pub fn map_texture_format_for_copy(
     format: wgt::TextureFormat,
     aspect: crate::FormatAspects,
-) -> Option<dxgiformat::DXGI_FORMAT> {
+) -> Option<Dxgi::Common::DXGI_FORMAT> {
     Some(match (format, aspect) {
         (wgt::TextureFormat::Depth16Unorm, crate::FormatAspects::DEPTH) => {
-            dxgiformat::DXGI_FORMAT_R16_UNORM
+            Dxgi::Common::DXGI_FORMAT_R16_UNORM
         }
         (
             wgt::TextureFormat::Depth32Float | wgt::TextureFormat::Depth32FloatStencil8,
             crate::FormatAspects::DEPTH,
-        ) => dxgiformat::DXGI_FORMAT_R32_FLOAT,
+        ) => Dxgi::Common::DXGI_FORMAT_R32_FLOAT,
 
         (
             wgt::TextureFormat::Stencil8
             | wgt::TextureFormat::Depth24PlusStencil8
             | wgt::TextureFormat::Depth32FloatStencil8,
             crate::FormatAspects::STENCIL,
-        ) => dxgiformat::DXGI_FORMAT_R8_UINT,
+        ) => Dxgi::Common::DXGI_FORMAT_R8_UINT,
 
         (format, crate::FormatAspects::COLOR) => map_texture_format(format),
 
@@ -177,12 +182,12 @@ pub fn map_texture_format_for_copy(
 
 pub fn map_texture_format_for_resource(
     format: wgt::TextureFormat,
-    usage: crate::TextureUses,
+    usage: wgt::TextureUses,
     has_view_formats: bool,
     casting_fully_typed_format_supported: bool,
-) -> dxgiformat::DXGI_FORMAT {
+) -> Dxgi::Common::DXGI_FORMAT {
     use wgt::TextureFormat as Tf;
-    use winapi::shared::dxgiformat::*;
+    use Dxgi::Common::*;
 
     if casting_fully_typed_format_supported {
         map_texture_format(format)
@@ -202,9 +207,10 @@ pub fn map_texture_format_for_resource(
     // We might view this resource as SRV/UAV but also as DSV
     } else if format.is_depth_stencil_format()
         && usage.intersects(
-            crate::TextureUses::RESOURCE
-                | crate::TextureUses::STORAGE_READ
-                | crate::TextureUses::STORAGE_READ_WRITE,
+            wgt::TextureUses::RESOURCE
+                | wgt::TextureUses::STORAGE_READ_ONLY
+                | wgt::TextureUses::STORAGE_WRITE_ONLY
+                | wgt::TextureUses::STORAGE_READ_WRITE,
         )
     {
         match format {
@@ -219,18 +225,22 @@ pub fn map_texture_format_for_resource(
     }
 }
 
-pub fn map_index_format(format: wgt::IndexFormat) -> dxgiformat::DXGI_FORMAT {
+pub fn map_index_format(format: wgt::IndexFormat) -> Dxgi::Common::DXGI_FORMAT {
     match format {
-        wgt::IndexFormat::Uint16 => dxgiformat::DXGI_FORMAT_R16_UINT,
-        wgt::IndexFormat::Uint32 => dxgiformat::DXGI_FORMAT_R32_UINT,
+        wgt::IndexFormat::Uint16 => Dxgi::Common::DXGI_FORMAT_R16_UINT,
+        wgt::IndexFormat::Uint32 => Dxgi::Common::DXGI_FORMAT_R32_UINT,
     }
 }
 
-pub fn map_vertex_format(format: wgt::VertexFormat) -> dxgiformat::DXGI_FORMAT {
+pub fn map_vertex_format(format: wgt::VertexFormat) -> Dxgi::Common::DXGI_FORMAT {
     use wgt::VertexFormat as Vf;
-    use winapi::shared::dxgiformat::*;
+    use Dxgi::Common::*;
 
     match format {
+        Vf::Unorm8 => DXGI_FORMAT_R8_UNORM,
+        Vf::Snorm8 => DXGI_FORMAT_R8_SNORM,
+        Vf::Uint8 => DXGI_FORMAT_R8_UINT,
+        Vf::Sint8 => DXGI_FORMAT_R8_SINT,
         Vf::Unorm8x2 => DXGI_FORMAT_R8G8_UNORM,
         Vf::Snorm8x2 => DXGI_FORMAT_R8G8_SNORM,
         Vf::Uint8x2 => DXGI_FORMAT_R8G8_UINT,
@@ -239,6 +249,11 @@ pub fn map_vertex_format(format: wgt::VertexFormat) -> dxgiformat::DXGI_FORMAT {
         Vf::Snorm8x4 => DXGI_FORMAT_R8G8B8A8_SNORM,
         Vf::Uint8x4 => DXGI_FORMAT_R8G8B8A8_UINT,
         Vf::Sint8x4 => DXGI_FORMAT_R8G8B8A8_SINT,
+        Vf::Unorm16 => DXGI_FORMAT_R16_UNORM,
+        Vf::Snorm16 => DXGI_FORMAT_R16_SNORM,
+        Vf::Uint16 => DXGI_FORMAT_R16_UINT,
+        Vf::Sint16 => DXGI_FORMAT_R16_SINT,
+        Vf::Float16 => DXGI_FORMAT_R16_FLOAT,
         Vf::Unorm16x2 => DXGI_FORMAT_R16G16_UNORM,
         Vf::Snorm16x2 => DXGI_FORMAT_R16G16_SNORM,
         Vf::Uint16x2 => DXGI_FORMAT_R16G16_UINT,
@@ -262,10 +277,18 @@ pub fn map_vertex_format(format: wgt::VertexFormat) -> dxgiformat::DXGI_FORMAT {
         Vf::Sint32x4 => DXGI_FORMAT_R32G32B32A32_SINT,
         Vf::Float32x4 => DXGI_FORMAT_R32G32B32A32_FLOAT,
         Vf::Unorm10_10_10_2 => DXGI_FORMAT_R10G10B10A2_UNORM,
+        Vf::Unorm8x4Bgra => DXGI_FORMAT_B8G8R8A8_UNORM,
         Vf::Float64 | Vf::Float64x2 | Vf::Float64x3 | Vf::Float64x4 => unimplemented!(),
     }
 }
 
-pub fn map_acomposite_alpha_mode(_mode: wgt::CompositeAlphaMode) -> d3d12::AlphaMode {
-    d3d12::AlphaMode::Ignore
+pub fn map_acomposite_alpha_mode(mode: wgt::CompositeAlphaMode) -> Dxgi::Common::DXGI_ALPHA_MODE {
+    match mode {
+        wgt::CompositeAlphaMode::PreMultiplied => Dxgi::Common::DXGI_ALPHA_MODE_PREMULTIPLIED,
+        wgt::CompositeAlphaMode::PostMultiplied => Dxgi::Common::DXGI_ALPHA_MODE_STRAIGHT,
+        wgt::CompositeAlphaMode::Opaque => Dxgi::Common::DXGI_ALPHA_MODE_IGNORE,
+        wgt::CompositeAlphaMode::Auto | wgt::CompositeAlphaMode::Inherit => {
+            Dxgi::Common::DXGI_ALPHA_MODE_UNSPECIFIED
+        }
+    }
 }

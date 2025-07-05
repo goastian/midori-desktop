@@ -14,6 +14,8 @@ const STARTUP_MODULES = new Set([
   "resource://gre/modules/ExtensionPermissions.sys.mjs",
   "resource://gre/modules/ExtensionProcessScript.sys.mjs",
   "resource://gre/modules/ExtensionUtils.sys.mjs",
+  // ExtensionTaskScheduler imported via ExtensionPermissions.sys.mjs:
+  "resource://gre/modules/ExtensionTaskScheduler.sys.mjs",
   "resource://gre/modules/ExtensionTelemetry.sys.mjs",
 ]);
 
@@ -56,9 +58,9 @@ add_task(async function test_loaded_scripts() {
     "No extra APIs should be loaded at startup for a simple extension"
   );
 
-  let loadedModules = Cu.loadedJSModules
-    .concat(Cu.loadedESModules)
-    .filter(url => url.startsWith("resource://gre/modules/Extension"));
+  let loadedModules = Cu.loadedESModules.filter(url =>
+    url.startsWith("resource://gre/modules/Extension")
+  );
 
   deepEqual(
     loadedModules.sort(),

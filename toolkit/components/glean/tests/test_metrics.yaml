@@ -311,6 +311,84 @@ test_only:
     send_in_pings:
       - test-ping
 
+  mabels_custom_label_lengths:
+    type: labeled_custom_distribution
+    range_min: 1
+    range_max: 2147483646
+    bucket_count: 10
+    histogram_type: linear
+    description: |
+      Mabel wants to track the length of their new label maker's labels.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907945
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907945
+    data_sensitivity:
+      - technical
+    expires: never
+    notification_emails:
+      - glean-team@mozilla.com
+    send_in_pings:
+      - test-ping
+    telemetry_mirror: TELEMETRY_TEST_KEYED_LINEAR
+
+  what_do_you_remember:
+    type: labeled_memory_distribution
+    memory_unit: megabyte
+    description: |
+      What do they say is the second thing to go?
+      This is a test-only metric.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907945
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907945
+    data_sensitivity:
+      - technical
+    expires: never
+    notification_emails:
+      - glean-team@mozilla.com
+    send_in_pings:
+      - test-ping
+    telemetry_mirror: TELEMETRY_TEST_MIRROR_FOR_LABELED_MEMORY
+
+  where_has_the_time_gone:
+    type: labeled_timing_distribution
+    time_unit: microsecond
+    description: |
+      Time is different in different places.
+      This is a test-only metric.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907945
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1907945
+    data_sensitivity:
+      - technical
+    expires: never
+    notification_emails:
+      - glean-team@mozilla.com
+    send_in_pings:
+      - test-ping
+    telemetry_mirror: TELEMETRY_TEST_MIRROR_FOR_LABELED_TIMING
+
+  button_jars:
+    type: labeled_quantity
+    unit: buttons
+    description: |
+      The number of buttons in each button jar.
+      This is a test-only metric.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1929979
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1929979
+    data_sensitivity:
+      - technical
+    expires: never
+    notification_emails:
+      - glean-team@mozilla.com
+    send_in_pings:
+      - test-ping
+    telemetry_mirror: TELEMETRY_TEST_MIRROR_FOR_LABELED_QUANTITY
+
   mirror_time:
     type: timespan
     time_unit: nanosecond
@@ -463,6 +541,272 @@ test_only:
               end_addr:
                 type: string
 
+  main_only:
+    type: quantity
+    unit: test value
+    description: >
+      This is a test uint type with only the main store.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.main_only.
+    bugs:
+      - https://bugzil.la/1498164
+    data_reviews:
+      - https://bugzil.la/1498164
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_MAIN_ONLY
+
+  impression_id_only:
+    type: string
+    description: >
+      This is a test uint type with only the deletion-request store.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.impression_id_only.
+    bugs:
+      - https://bugzil.la/1602064
+    data_reviews:
+      - https://bugzil.la/1602064
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+      - najiang@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_IMPRESSION_ID_ONLY
+
+  expired:
+    type: counter
+    description: >
+      This mirrors to an expired testing scalar.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.expired.
+    bugs:
+      - https://bugzil.la/1276190
+    data_reviews:
+      - https://bugzil.la/1276190
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_EXPIRED
+
+  keyed_expired:
+    type: labeled_counter
+    description: >
+      This mirrors to an expired testing scalar.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.keyed_expired.
+    bugs:
+      - https://bugzil.la/1277806
+    data_reviews:
+      - https://bugzil.la/1277806
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_KEYED_EXPIRED
+
+  unexpired:
+    type: counter
+    description: >
+      This is an unexpired testing scalar; not meant to be touched.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.unexpired.
+    bugs:
+      - https://bugzil.la/1276190
+    data_reviews:
+      - https://bugzil.la/1276190
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: 375
+    telemetry_mirror: TELEMETRY_TEST_UNEXPIRED
+
+  release_optin:
+    type: counter
+    description: >
+      A testing scalar; not meant to be touched.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.release_optin.
+    bugs:
+      - https://bugzil.la/1276190
+    data_reviews:
+      - https://bugzil.la/1276190
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_RELEASE_OPTIN
+
+  release_optout:
+    type: counter
+    description: >
+      A testing scalar; not meant to be touched.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.release_optout.
+    bugs:
+      - https://bugzil.la/1276190
+    data_reviews:
+      - https://bugzil.la/1276190
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_RELEASE_OPTOUT
+
+  keyed_release_optin:
+    type: labeled_counter
+    description: >
+      A testing scalar; not meant to be touched.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.keyed_release_optin.
+    bugs:
+      - https://bugzil.la/1277806
+    data_reviews:
+      - https://bugzil.la/1277806
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_KEYED_RELEASE_OPTIN
+
+  keyed_release_optout:
+    type: labeled_counter
+    description: >
+      A testing scalar; not meant to be touched.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.keyed_release_optout.
+    bugs:
+      - https://bugzil.la/1277806
+    data_reviews:
+      - https://bugzil.la/1277806
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_KEYED_RELEASE_OPTOUT
+
+  default_products:
+    type: counter
+    description: >
+      A testing uint scalar; not meant to be touched
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.default_products.
+    bugs:
+      - https://bugzil.la/1452552
+    data_reviews:
+      - https://bugzil.la/1452552
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_DEFAULT_PRODUCTS
+
+  desktop_only:
+    type: counter
+    description: >
+      A testing uint scalar; not meant to be touched
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.desktop_only.
+    bugs:
+      - https://bugzil.la/1452552
+    data_reviews:
+      - https://bugzil.la/1452552
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_DESKTOP_ONLY
+
+  multiproduct:
+    type: counter
+    description: >
+      A testing uint scalar; not meant to be touched
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.multiproduct.
+    bugs:
+      - https://bugzil.la/1452552
+    data_reviews:
+      - https://bugzil.la/1452552
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_MULTIPRODUCT
+
+  mobile_only:
+    type: counter
+    description: >
+      A testing uint scalar; not meant to be touched
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.mobile_only.
+    bugs:
+      - https://bugzil.la/1452552
+    data_reviews:
+      - https://bugzil.la/1452552
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_MOBILE_ONLY
+
+  keyed_mobile_only:
+    type: labeled_counter
+    description: >
+      A keyed testing uint scalar; not meant to be touched
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar telemetry.test.keyed_mobile_only.
+    bugs:
+      - https://bugzil.la/1452552
+    data_reviews:
+      - https://bugzil.la/1452552
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_KEYED_MOBILE_ONLY
+
+  disabled_counter:
+    type: counter
+    description: |
+      Number of times we count.
+      This is a test-only metric.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=TODO
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=TODO#c1
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+    expires: never
+    send_in_pings:
+      - disabled-ping
+
+  collection_disabled_counter:
+    type: counter
+    description: |
+      Number of times we count.
+      This is a test-only metric.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=TODO
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=TODO#c1
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+    expires: never
+    send_in_pings:
+      - collection-disabled-ping
+
+  expired_hist:
+    type: custom_distribution
+    description: >
+      a testing histogram; not meant to be touched
+
+      This metric was generated to correspond to the Legacy Telemetry linear
+      histogram TELEMETRY_TEST_EXPIRED.
+    range_min: 1
+    range_max: 10
+    bucket_count: 3
+    histogram_type: linear
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956726
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1956726
+    notification_emails:
+      - telemetry-client-dev@mozilla.com
+    expires: never
+    telemetry_mirror: TELEMETRY_TEST_EXPIRED
+
 test_only.ipc:
   a_counter:
     type: counter
@@ -480,10 +824,117 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     telemetry_mirror: TELEMETRY_TEST_MIRROR_FOR_COUNTER
+
+  a_counter_for_hgram:
+    type: counter
+    description: |
+      This is a test-only metric.
+      Just counting things.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1646165
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1685406
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1646165#c1
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+    expires: never
+    send_in_pings:
+      - test-ping
+    no_lint:
+      - COMMON_PREFIX
+    telemetry_mirror: h#TELEMETRY_TEST_COUNT
+
+  a_labeled_counter_for_hgram:
+    type: labeled_counter
+    description: |
+      This is a test-only metric.
+      Just counting things.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1646165
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1685406
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1646165#c1
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+    expires: never
+    send_in_pings:
+      - test-ping
+    no_lint:
+      - COMMON_PREFIX
+    labels:
+      - "false"
+      - "true"
+    telemetry_mirror: h#TELEMETRY_TEST_BOOLEAN
+
+  a_labeled_counter_for_keyed_count_hgram:
+    type: labeled_counter
+    description: |
+      This is a test-only metric.
+      Just counting things.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1938226
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1646165#c1
+    data_sensitivity: [ "technical" ]
+    notification_emails: [ "glean-team@mozilla.com" ]
+    expires: never
+    send_in_pings: [ "test-ping" ]
+    no_lint:
+      - COMMON_PREFIX
+    telemetry_mirror: h#TELEMETRY_TEST_KEYED_COUNT
+
+  a_labeled_counter_for_categorical:
+    type: labeled_counter
+    description: |
+      This is a test-only metric.
+      Just counting things.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1938226
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1646165#c1
+    data_sensitivity: [ "technical" ]
+    notification_emails: [ "glean-team@mozilla.com" ]
+    expires: never
+    send_in_pings:
+      - test-ping
+    no_lint:
+      - COMMON_PREFIX
+    labels:
+      - "CommonLabel"
+      - "Label4"
+      - "Label5"
+      - "Label6"
+    telemetry_mirror: h#TELEMETRY_TEST_CATEGORICAL_OPTOUT
+
+  an_unordered_bool:
+    type: boolean
+    description: |
+      This is a test-only metric.
+      Just flagging things unorderedly in child processes.
+    metadata:
+      permit_non_commutative_operations_over_ipc: true
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1923035
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1646165#c1
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+    expires: never
+    send_in_pings:
+      - test-ping
+    no_lint:
+      - COMMON_PREFIX
+    telemetry_mirror: TELEMETRY_TEST_MIRROR_FOR_UNORDERED_BOOL
   a_bool:
     type: boolean
     description: |
@@ -500,10 +951,31 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     telemetry_mirror: TELEMETRY_TEST_BOOLEAN_KIND
+  an_unordered_labeled_boolean:
+    type: labeled_boolean
+    description: |
+      This is a test-only metric.
+      Just flagging labeled things unorderedly in child processes.
+    metadata:
+      permit_non_commutative_operations_over_ipc: true
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1923035
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1688281#c1
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - glean-team@mozilla.com
+    expires: never
+    send_in_pings:
+      - test-ping
+    no_lint:
+      - COMMON_PREFIX
+    telemetry_mirror: TELEMETRY_TEST_MIRROR_FOR_UNORDERED_LABELED_BOOL
   a_date:
     type: datetime
     time_unit: second
@@ -521,7 +993,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     telemetry_mirror: TELEMETRY_TEST_MIRROR_FOR_DATE
@@ -541,7 +1013,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     telemetry_mirror: TELEMETRY_TEST_MULTIPLE_STORES_STRING
@@ -560,7 +1032,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
   a_memory_dist:
@@ -580,7 +1052,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     telemetry_mirror: TELEMETRY_TEST_LINEAR
@@ -600,7 +1072,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     telemetry_mirror: TELEMETRY_TEST_EXPONENTIAL
@@ -619,7 +1091,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     range_min: 1
@@ -643,7 +1115,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     telemetry_mirror: TELEMETRY_TEST_KEYED_BOOLEAN_KIND
@@ -673,7 +1145,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     telemetry_mirror: TelemetryTest_MirrorWithExtra_Object1
@@ -689,6 +1161,9 @@ test_only.ipc:
       extra3_longer_name:
         type: boolean
         description: "Some extra data again. Also tests extras with underscores"
+      extra4CamelCase:
+        type: boolean
+        description: "Some extra data again. Also tests extras with Capitals."
     description: |
       This is a test-only metric.
       Just recording some events.
@@ -703,7 +1178,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
   no_extra_event:
@@ -722,7 +1197,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     telemetry_mirror: TelemetryTest_NotExpiredOptout_Object1
   a_uuid:
     type: uuid
@@ -740,7 +1215,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     telemetry_mirror: TELEMETRY_TEST_STRING_KIND
@@ -760,7 +1235,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     telemetry_mirror: TELEMETRY_TEST_ANOTHER_MIRROR_FOR_LABELED_COUNTER
@@ -781,7 +1256,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     telemetry_mirror: TELEMETRY_TEST_MIRROR_FOR_LABELED_COUNTER
@@ -801,7 +1276,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
   irate:
@@ -819,7 +1294,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     telemetry_mirror: TELEMETRY_TEST_MIRROR_FOR_RATE
   rate_with_external_denominator:
     type: rate
@@ -837,7 +1312,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
   an_external_denominator:
     type: counter
     description: |
@@ -853,7 +1328,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
   a_url:
@@ -871,7 +1346,7 @@ test_only.ipc:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
     no_lint:
       - COMMON_PREFIX
     telemetry_mirror: TELEMETRY_TEST_MIRROR_FOR_URL
@@ -893,7 +1368,7 @@ test_only.jog:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping
 
   an_event:
     type: event
@@ -918,4 +1393,4 @@ test_only.jog:
       - glean-team@mozilla.com
     expires: never
     send_in_pings:
-      - store1
+      - test-ping

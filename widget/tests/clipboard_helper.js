@@ -164,34 +164,34 @@ function getClipboardDataSnapshotSync(aClipboardType) {
   );
 }
 
-function asyncGetClipboardData(
+function getClipboardDataSnapshot(
   aClipboardType,
   aFormats = ["text/plain", "text/html", "image/png"]
 ) {
   return new Promise((resolve, reject) => {
     try {
-      clipboard.asyncGetData(
+      clipboard.getDataSnapshot(
         aFormats,
         aClipboardType,
         null,
         SpecialPowers.Services.scriptSecurityManager.getSystemPrincipal(),
         {
           QueryInterface: SpecialPowers.ChromeUtils.generateQI([
-            "nsIAsyncClipboardGetCallback",
+            "nsIClipboardGetDataSnapshotCallback",
           ]),
-          // nsIAsyncClipboardGetCallback
-          onSuccess: SpecialPowers.wrapCallback(function (
-            aAsyncGetClipboardData
-          ) {
-            resolve(aAsyncGetClipboardData);
-          }),
+          // nsIClipboardGetDataSnapshotCallback
+          onSuccess: SpecialPowers.wrapCallback(
+            function (aAsyncGetClipboardData) {
+              resolve(aAsyncGetClipboardData);
+            }
+          ),
           onError: SpecialPowers.wrapCallback(function (aResult) {
             reject(aResult);
           }),
         }
       );
     } catch (e) {
-      ok(false, `asyncGetData should not throw`);
+      ok(false, `getDataSnapshot should not throw`);
       reject(e);
     }
   });
@@ -234,7 +234,37 @@ function asyncClipboardRequestGetData(aRequest, aFlavor, aThrows = false) {
           aThrows ? "throw" : "success"
         }`
       );
-      reject(e);
+      reject(e.result);
     }
   });
+}
+
+function syncClipboardRequestGetData(aRequest, aFlavor, aResult = Cr.NS_OK) {
+  var trans = Cc["@mozilla.org/widget/transferable;1"].createInstance(
+    Ci.nsITransferable
+  );
+  trans.init(null);
+  trans.addDataFlavor(aFlavor);
+  let result = Cr.NS_OK;
+  try {
+    aRequest.getDataSync(trans);
+    try {
+      var data = SpecialPowers.createBlankObject();
+      trans.getTransferData(aFlavor, data);
+      return data.value.QueryInterface(Ci.nsISupportsString).data;
+    } catch (ex) {
+      // should widget set empty string to transferable when there no
+      // data in system clipboard?
+      return "";
+    }
+  } catch (e) {
+    result = e.result;
+  } finally {
+    is(
+      result,
+      aResult,
+      `nsIAsyncGetClipboardData.getData should ${aResult == Cr.NS_OK ? "throw" : "success"}`
+    );
+  }
+  return "";
 }

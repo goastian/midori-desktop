@@ -1,0 +1,178 @@
+/* stylelint-disable max-nesting-depth */
+
+.modalOverlayOuter.active:has(.topic-selection-container) {
+  background-color: rgba(21, 20, 26, 50%);
+}
+
+.topic-selection-container {
+  --transition: 0.6s opacity, 0.6s scale, 0.6s rotate, 0.6s translate;
+
+  position: relative;
+  border-radius: var(--space-small);
+  box-shadow: $shadow-large;
+  padding: var(--size-item-large);
+  max-width: 745px;
+  height: auto;
+
+  .dismiss-button {
+    position: absolute;
+    appearance: none;
+    border: none;
+    z-index: 2;
+    top: 0;
+    inset-inline: auto 0;
+    border-radius: var(--border-radius-small);
+    padding: 0;
+    margin: var(--space-small);
+    display: block;
+    float: inline-end;
+    background: url('chrome://global/skin/icons/close.svg') no-repeat center / 16px;
+    height: var(--size-item-large);
+    width: var(--size-item-large);
+    align-self: end;
+    // override default min-height and min-width for buttons
+    min-height: var(--size-item-large);
+    min-width: var(--size-item-large);
+    -moz-context-properties: fill;
+    fill: currentColor;
+    transition: var(--transition);
+
+    &:hover {
+      background-color: var(--button-background-color-hover);
+
+      &:active {
+        background-color: var(--button-background-color-active)
+      }
+    }
+
+  }
+
+  .title {
+    text-align: center;
+    font-size: var(--font-size-xlarge);
+    font-weight: var(--font-weight-bold);
+    margin-block-end: var(--space-small);
+  }
+
+  .subtitle {
+    text-align: center;
+    margin-block: 0 var(--space-xlarge);
+  }
+
+  .modal-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    > a {
+      color: var(--link-color);
+
+      &:hover {
+        color: var(--link-color-hover);
+      }
+
+      &:hover:active {
+        color: var(--link-color-active);
+      }
+
+      &:visited {
+        color: var(--link-color-visited);
+      }
+    }
+
+    .button-group {
+      gap: var(--space-medium);
+      display: flex;
+    }
+  }
+}
+
+.topic-list {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-item-small);
+  margin: var(--size-item-large) auto;
+  justify-content: center;
+  width: fit-content;
+
+  .topic-item {
+    align-items: center;
+    border-radius: var(--border-radius-circle);
+    border: var(--border-width) solid var(--border-color-interactive);
+    display: flex;
+    justify-self: center;
+    max-width: fit-content;
+    padding-block: 6px;
+    padding-inline: 6px var(--size-item-small);
+    position: relative;
+
+    &:hover {
+      cursor: pointer;
+      background-color: var(--button-background-color-hover);
+    }
+
+    &:active {
+      background-color: var(--button-background-color-active);
+    }
+
+    &:has(input:checked) {
+      border-color: var(--color-accent-primary);
+    }
+
+    &:focus-within {
+      outline-offset: 2px;
+      outline: 2px solid var(--color-accent-primary);
+    }
+
+    .topic-item-label {
+      margin-inline-end: var(--space-small);
+    }
+
+    .topic-custom-checkbox {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 42px;
+      height: 42px;
+      border-radius: var(--border-radius-circle);
+      background-color: var(--newtab-button-static-background);
+      margin-inline-end: var(--space-large);
+
+      .topic-icon {
+        font-size: var(--font-size-xlarge);
+      }
+
+      .topic-checked {
+        display: none;
+      }
+    }
+
+    input[type='checkbox'] {
+      height: 100%;
+      opacity: 0;
+      position: absolute;
+      width: 90%;
+
+      &:checked~.topic-custom-checkbox {
+        background-color: var(--color-accent-primary);
+        position: relative;
+
+        .topic-icon {
+          display: none;
+        }
+
+        .topic-checked {
+          color: var(--color-white);
+          -moz-context-properties: fill;
+          display: block;
+          fill: currentColor;
+          background: url('chrome://global/skin/icons/check.svg');
+          background-size: cover;
+          width: 26px;
+          height: 26px;
+        }
+      }
+    }
+  }
+}

@@ -6,7 +6,6 @@ module.exports = {
     browser: true,
     "mozilla/browser-window": true,
     "mozilla/simpletest": true,
-    // "node": true
   },
 
   // All globals made available in the test environment.
@@ -16,7 +15,6 @@ module.exports = {
     Assert: false,
     BrowserTestUtils: false,
     ContentTask: false,
-    ContentTaskUtils: false,
     EventUtils: false,
     IOUtils: false,
     PathUtils: false,
@@ -26,7 +24,10 @@ module.exports = {
     addLoadEvent: false,
     add_setup: false,
     add_task: false,
+    afterEach: false,
+    beforeEach: false,
     content: false,
+    describe: false,
     executeSoon: false,
     expectUncaughtException: false,
     export_assertions: false,
@@ -42,6 +43,7 @@ module.exports = {
     info: false,
     is: false,
     isnot: false,
+    it: false,
     ok: false,
     record: false,
     registerCleanupFunction: false,
@@ -57,35 +59,15 @@ module.exports = {
     waitForFocus: false,
   },
 
-  overrides: [
-    {
-      // Some directories have multiple kinds of tests, and some rules
-      // don't work well for plain mochitests, so disable those.
-      files: ["*.html", "*.xhtml"],
-      // plain/chrome mochitests don't automatically include Assert, so
-      // autofixing `ok()` to Assert.something is bad.
-      rules: {
-        "mozilla/no-comparison-or-assignment-inside-ok": "off",
-      },
-    },
-  ],
-
-  plugins: ["mozilla", "@microsoft/sdl"],
+  name: "mozilla/browser-test",
+  plugins: ["mozilla"],
 
   rules: {
-    "mozilla/import-content-task-globals": "error",
-    "mozilla/import-headjs-globals": "error",
-    "mozilla/mark-test-function-used": "error",
     "mozilla/no-addtask-setup": "error",
-    "mozilla/no-arbitrary-setTimeout": "error",
     "mozilla/no-comparison-or-assignment-inside-ok": "error",
     "mozilla/no-redeclare-with-import-autofix": [
       "error",
       { errorForNonImports: false },
     ],
-    // Turn off no-unsanitized for tests, as we do want to be able to use
-    // these for testing.
-    "no-unsanitized/method": "off",
-    "no-unsanitized/property": "off",
   },
 };

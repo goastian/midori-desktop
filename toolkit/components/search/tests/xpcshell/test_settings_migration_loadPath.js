@@ -33,8 +33,10 @@ add_setup(async function () {
   );
   policies.observe(null, "policies-startup", null);
 
-  await SearchTestUtils.useTestEngines("data1");
-  await AddonTestUtils.promiseStartupManager();
+  SearchTestUtils.setRemoteSettingsConfig([
+    { identifier: "engine1" },
+    { identifier: "engine2" },
+  ]);
   await EnterprisePolicyTesting.setupPolicyEngineWithJson(enterprisePolicy);
   // Setting the enterprise policy starts the search service initialising,
   // so we wait for that to complete before starting the test, we can
@@ -50,7 +52,7 @@ add_setup(async function () {
  */
 add_task(async function test_load_and_check_settings() {
   let settingsTemplate = await readJSONFile(
-    do_get_file("data/search-legacy-old-loadPaths.json")
+    do_get_file("settings/v7-loadPath-migration.json")
   );
 
   Assert.less(

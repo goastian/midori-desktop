@@ -47,7 +47,7 @@ interface nsIClearDataService : nsISupports
    * @param aFlags List of flags. See below the accepted values.
    * @param aCallback this callback will be executed when the operation is
    *                  completed.
-   * @deprecated Use deleteDataFromBaseDomain instead.
+   * @deprecated Use deleteDataFromSite instead.
    */
   void deleteDataFromHost(in AUTF8String aHost,
                           in boolean aIsUserRequest,
@@ -55,15 +55,20 @@ interface nsIClearDataService : nsISupports
                           in nsIClearDataCallback aCallback);
 
   /**
-   * Delete data owned by or partitioned under a baseDomain (eTLD+1). For
-   * instance: mozilla.org. Deletes data across all origin attributes. For
-   * partitioned storage we clear both, data of the baseDomain in 1st-party and
-   * 3rd-party context.
+   * Delete data from cookie jars associated with the given schemeless site
+   * aSchemelessSite.
+   * In addition to regular first-party data this includes data of aSchemelessSite in a
+   * third-party context and data from other sites partitioned under aSchemelessSite.
+   * You can use Services.eTLD.getSchemelessSite to extract the site portion of a URI.
+   * See https://html.spec.whatwg.org/#obtain-a-site for details.
+   * If you have an nsIPrincipal object you can simply pass in
+   * principal.baseDomain.
    * When handling user requests for clearing data using this method is
    * preferred over deleteDataFromPrincipal, since origins may share information
    * with their site (e.g. cookies) that are not deleted by principal.
-   * @param aDomainOrHost the domain or host to be used. Will be converted to
-   *        baseDomain if needed.
+   * @param aSchemelessSite the site to be cleared excluding scheme.
+   * @param aOriginAttributesPatternString optional pattern to filter OriginAttributes
+   *        by. If not passed all entries matching aSchemelessSite are cleared.
    * @param aIsUserRequest true if this request comes from a user interaction.
    *        This information is important because if true, it's probably better
    *        to remove more than less, for privacy reason. If false (e.g.
@@ -72,13 +77,23 @@ interface nsIClearDataService : nsISupports
    * @param aFlags List of flags. See below the accepted values.
    * @param aCallback this callback will be executed when the operation is
    *                  completed.
-   * @throws Throws if base domain can't be computed from aDomainOrHost. Callers
-   * may fall back to clearing by principal or host.
    */
-  void deleteDataFromBaseDomain(in AUTF8String aDomainOrHost,
+  void deleteDataFromSite(in AUTF8String aSchemelessSite,
+                                in jsval aOriginAttributesPattern,
                                 in boolean aIsUserRequest,
                                 in uint32_t aFlags,
                                 in nsIClearDataCallback aCallback);
+
+  /**
+   * Variant of deleteDataFromSite that accepts a JSON string for the OriginAttributesPattern.
+   * This is helpful for native callers because they don't have to construct a jsval.
+   * From JS prefer calling deleteDataFromSite directly.
+   */
+  void deleteDataFromSiteAndOriginAttributesPatternString(in AUTF8String aSchemelessSite,
+                              in AString aOriginAttributesPatternString,
+                              in boolean aIsUserRequest,
+                              in uint32_t aFlags,
+                              in nsIClearDataCallback aCallback);
 
   /**
    * Delete data owned by a principal.
@@ -158,6 +173,17 @@ interface nsIClearDataService : nsISupports
    */
   void cleanupAfterDeletionAtShutdown(in uint32_t aFlags, in nsIClearDataCallback aCallback);
 
+  /**
+   * Match a host and OriginAttributes against a schemeless site and
+   * OriginAttributesPattern.
+   * Also considers partitioned state by inspecting OriginAttributes
+   * partitionKey.
+   * This is a helper method for external callers that need to do
+   * filtering for data clearing.
+   */
+  boolean hostMatchesSite(in AUTF8String aHost, in jsval aOriginAttributes, in AUTF8String aSchemelessSite, [optional] in jsval aOriginAttributesPattern);
+
+
   /**************************************************************************
    * Listed below are the various flags which may be or'd together.
    */
@@ -178,14 +204,16 @@ interface nsIClearDataService : nsISupports
   const uint32_t CLEAR_IMAGE_CACHE = 1 << 2;
 
   /**
+   * In-memory JS cache.
+   */
+  const uint32_t CLEAR_JS_CACHE = 1 << 3;
+
+  /**
    * Completed downloads.
    */
   const uint32_t CLEAR_DOWNLOADS = 1 << 4;
 
-  /**
-   * Stored passwords.
-   */
-  const uint32_t CLEAR_PASSWORDS = 1 << 5;
+  // Free bit here.
 
   /**
    * Media devices.
@@ -213,9 +241,9 @@ interface nsIClearDataService : nsISupports
   const uint32_t CLEAR_HISTORY = 1 << 10;
 
   /**
-   * Session history
+   * Messaging Layer Security state
    */
-  const uint32_t CLEAR_SESSION_HISTORY = 1 << 11;
+  const uint32_t CLEAR_MESSAGING_LAYER_SECURITY_STATE = 1 << 11;
 
   /**
    * Auth tokens
@@ -228,9 +256,9 @@ interface nsIClearDataService : nsISupports
   const uint32_t CLEAR_AUTH_CACHE = 1 << 13;
 
   /**
-   * Site permissions
+   * Clear Site permissions. Excludes permissions which are used as shutdown data clearing exceptions.
    */
-  const uint32_t CLEAR_PERMISSIONS = 1 << 14;
+  const uint32_t CLEAR_SITE_PERMISSIONS = 1 << 14;
 
   /**
    * Site preferences
@@ -313,6 +341,13 @@ interface nsIClearDataService : nsISupports
   const uint32_t CLEAR_STORAGE_PERMISSIONS = 1 << 30;
 
   /**
+   * Clear permissions of type "cookie" used for manual cookie rules and shutdown exceptions
+   *
+   * TODO: Bug 1767271: move clear-on-shutdown exceptions to its own permission type and switch this cleaner over to clear the new permission type, not the "cookie" permissions.
+   */
+  const uint32_t CLEAR_SHUTDOWN_EXCEPTIONS = 1 << 31;
+
+  /**
    * Use this value to delete all the data.
    */
   const uint32_t CLEAR_ALL = 0xFFFFFFFF;
@@ -323,10 +358,15 @@ interface nsIClearDataService : nsISupports
    */
 
   /**
+   * Helper flag for clearing ALL permissions from the permission manager.
+   */
+  const uint32_t CLEAR_PERMISSIONS = CLEAR_SITE_PERMISSIONS | CLEAR_SHUTDOWN_EXCEPTIONS;
+
+  /**
    * Delete all the possible caches.
    */
   const uint32_t CLEAR_ALL_CACHES = CLEAR_NETWORK_CACHE | CLEAR_IMAGE_CACHE |
-    CLEAR_CSS_CACHE | CLEAR_PREFLIGHT_CACHE | CLEAR_HSTS;
+    CLEAR_JS_CACHE | CLEAR_CSS_CACHE | CLEAR_PREFLIGHT_CACHE | CLEAR_HSTS;
 
   /**
    * Delete all DOM storages
@@ -337,14 +377,14 @@ interface nsIClearDataService : nsISupports
    * Helper flag for forget about site
    */
   const uint32_t CLEAR_FORGET_ABOUT_SITE =
-    CLEAR_HISTORY | CLEAR_SESSION_HISTORY | CLEAR_ALL_CACHES |
+    CLEAR_HISTORY | CLEAR_ALL_CACHES |
     CLEAR_COOKIES | CLEAR_EME | CLEAR_DOWNLOADS |
     CLEAR_PERMISSIONS | CLEAR_DOM_STORAGES | CLEAR_CONTENT_PREFERENCES |
     CLEAR_PREDICTOR_NETWORK_DATA | CLEAR_DOM_PUSH_NOTIFICATIONS |
     CLEAR_CLIENT_AUTH_REMEMBER_SERVICE | CLEAR_REPORTS | CLEAR_CERT_EXCEPTIONS |
     CLEAR_CREDENTIAL_MANAGER_STATE | CLEAR_COOKIE_BANNER_EXCEPTION |
     CLEAR_COOKIE_BANNER_EXECUTED_RECORD | CLEAR_FINGERPRINTING_PROTECTION_STATE |
-    CLEAR_BOUNCE_TRACKING_PROTECTION_STATE;
+    CLEAR_BOUNCE_TRACKING_PROTECTION_STATE | CLEAR_MESSAGING_LAYER_SECURITY_STATE;
 
   /**
    * Helper flag for clearing cookies and site data.
@@ -353,11 +393,19 @@ interface nsIClearDataService : nsISupports
    * offers site data clearing this is almost always what you want.
    * If you need more granular control please use more specific
    * flags like CLEAR_COOKIES and CLEAR_DOM_STORAGES.
+   * This flag does not clear caches.
    */
   const uint32_t CLEAR_COOKIES_AND_SITE_DATA =
     CLEAR_COOKIES | CLEAR_COOKIE_BANNER_EXECUTED_RECORD | CLEAR_DOM_STORAGES | CLEAR_HSTS |
     CLEAR_EME | CLEAR_AUTH_TOKENS | CLEAR_AUTH_CACHE | CLEAR_FINGERPRINTING_PROTECTION_STATE |
-    CLEAR_BOUNCE_TRACKING_PROTECTION_STATE | CLEAR_STORAGE_PERMISSIONS;
+    CLEAR_BOUNCE_TRACKING_PROTECTION_STATE | CLEAR_STORAGE_PERMISSIONS | CLEAR_MESSAGING_LAYER_SECURITY_STATE;
+
+  /**
+  * Helper flag for tracker purging
+  */
+  const uint32_t CLEAR_STATE_FOR_TRACKER_PURGING =
+    CLEAR_ALL_CACHES |  CLEAR_COOKIES_AND_SITE_DATA | CLEAR_CLIENT_AUTH_REMEMBER_SERVICE | CLEAR_MEDIA_DEVICES | CLEAR_STORAGE_ACCESS;
+
 };
 
 /**

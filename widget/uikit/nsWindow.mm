@@ -19,6 +19,8 @@
 
 #include "nsWindow.h"
 #include "nsAppShell.h"
+#include "nsIAppWindow.h"
+#include "nsIWindowWatcher.h"
 #ifdef ACCESSIBILITY
 #  include "nsAccessibilityService.h"
 #  include "mozilla/a11y/LocalAccessible.h"
@@ -33,17 +35,20 @@
 #include "gfxImageSurface.h"
 #include "gfxContext.h"
 #include "nsObjCExceptions.h"
+#include "nsQueryObject.h"
 #include "nsRegion.h"
 #include "nsTArray.h"
 #include "TextInputHandler.h"
 #include "UIKitUtils.h"
 
 #include "mozilla/BasicEvents.h"
+#include "mozilla/EventForwards.h"
 #include "mozilla/ProfilerLabels.h"
 #include "mozilla/TouchEvents.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/MouseEventBinding.h"
 #include "mozilla/gfx/Logging.h"
+#include "mozilla/widget/GeckoViewSupport.h"
 #ifdef ACCESSIBILITY
 #  include "mozilla/a11y/MUIRootAccessibleProtocol.h"
 #endif
@@ -51,6 +56,7 @@
 using namespace mozilla;
 using namespace mozilla::gfx;
 using namespace mozilla::layers;
+using namespace mozilla::widget;
 using mozilla::dom::Touch;
 using mozilla::widget::UIKitUtils;
 
@@ -216,8 +222,10 @@ class nsAutoRetainUIKitObject {
 - (void)sendMouseEvent:(EventMessage)aType
                  point:(LayoutDeviceIntPoint)aPoint
                 widget:(nsWindow*)aWindow {
-  WidgetMouseEvent event(true, aType, aWindow, WidgetMouseEvent::eReal,
-                         WidgetMouseEvent::eNormal);
+  MOZ_DIAGNOSTIC_ASSERT(
+      aType != eContextMenu,
+      "eContextMenu event may need to be dispatched as WidgetPointerEvent");
+  WidgetMouseEvent event(true, aType, aWindow, WidgetMouseEvent::eReal);
 
   event.mRefPoint = aPoint;
   event.mClickCount = 1;
@@ -518,7 +526,7 @@ class nsAutoRetainUIKitObject {
     return NO;
   }
   widget::InputContext context = mGeckoChild->GetInputContext();
-  if (context.mIMEState.mEnabled == mozilla::widget::IMEEnabled::Disabled) {
+  if (context.mIMEState.mEnabled == IMEEnabled::Disabled) {
     return NO;
   }
   return YES;
@@ -545,6 +553,15 @@ class nsAutoRetainUIKitObject {
     return UITextAutocapitalizationTypeNone;
   }
   return UIKitUtils::GetUITextAutocapitalizationType(
+      mGeckoChild->GetInputContext());
+}
+
+- (UITextAutocorrectionType)autocorrectionType {
+  if (!mGeckoChild || mGeckoChild->Destroyed()) {
+    return UITextAutocorrectionTypeDefault;
+  }
+
+  return UIKitUtils::GetUITextAutocorrectionType(
       mGeckoChild->GetInputContext());
 }
 
@@ -665,6 +682,8 @@ class nsAutoRetainUIKitObject {
 
 @end
 
+NS_IMPL_ISUPPORTS_INHERITED(nsWindow, nsBaseWidget, nsWindow);
+
 nsWindow::nsWindow()
     : mNativeView(nullptr),
       mVisible(false),
@@ -695,16 +714,11 @@ bool nsWindow::IsTopLevel() {
 // nsIWidget
 //
 
-nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
-                          const LayoutDeviceIntRect& aRect,
+nsresult nsWindow::Create(nsIWidget* aParent, const LayoutDeviceIntRect& aRect,
                           widget::InitData* aInitData) {
-  ALOG("nsWindow[%p]::Create %p/%p [%d %d %d %d]", (void*)this, (void*)aParent,
-       (void*)aNativeParent, aRect.x, aRect.y, aRect.width, aRect.height);
+  ALOG("nsWindow[%p]::Create %p [%d %d %d %d]", (void*)this, (void*)aParent,
+       aRect.x, aRect.y, aRect.width, aRect.height);
   nsWindow* parent = (nsWindow*)aParent;
-  ChildView* nativeParent = (ChildView*)aNativeParent;
-
-  if (parent == nullptr && nativeParent) parent = nativeParent->mGeckoChild;
-  if (parent && nativeParent == nullptr) nativeParent = parent->mNativeView;
 
   mBounds = aRect;
 
@@ -715,7 +729,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
   mWindowType = WindowType::TopLevel;
   mBorderStyle = BorderStyle::Default;
 
-  Inherited::BaseCreate(aParent, aInitData);
+  nsBaseWidget::BaseCreate(aParent, aInitData);
 
   NS_ASSERTION(IsTopLevel() || parent,
                "non top level window doesn't have a parent!");
@@ -730,8 +744,8 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
     mParent = parent;
   }
 
-  if (nativeParent) {
-    [nativeParent addSubview:mNativeView];
+  if (parent && parent->mNativeView) {
+    [parent->mNativeView addSubview:mNativeView];
   } else if (nsAppShell::gWindow) {
     [nsAppShell::gWindow.rootViewController.view addSubview:mNativeView];
   } else {
@@ -746,7 +760,7 @@ nsresult nsWindow::Create(nsIWidget* aParent, nsNativeWidget aNativeParent,
 void nsWindow::Destroy() {
   for (uint32_t i = 0; i < mChildren.Length(); ++i) {
     // why do we still have children?
-    mChildren[i]->SetParent(nullptr);
+    mChildren[i]->ClearParent();
   }
 
   if (mParent) mParent->mChildren.RemoveElement(this);
@@ -757,6 +771,8 @@ void nsWindow::Destroy() {
   mTextInputHandler = nullptr;
 
   [mNativeView widgetDestroyed];
+
+  nsCOMPtr<nsIWidget> kungFuDeathGrip(this);
 
   nsBaseWidget::Destroy();
 
@@ -1054,6 +1070,13 @@ int32_t nsWindow::RoundsWidgetCoordinatesTo() {
   return 1;
 }
 
+EventDispatcher* nsWindow::GetEventDispatcher() const {
+  if (mIOSView) {
+    return mIOSView->mEventDispatcher;
+  }
+  return nullptr;
+}
+
 already_AddRefed<nsIWidget> nsIWidget::CreateTopLevelWindow() {
   nsCOMPtr<nsIWidget> window = new nsWindow();
   return window.forget();
@@ -1062,4 +1085,108 @@ already_AddRefed<nsIWidget> nsIWidget::CreateTopLevelWindow() {
 already_AddRefed<nsIWidget> nsIWidget::CreateChildWindow() {
   nsCOMPtr<nsIWidget> window = new nsWindow();
   return window.forget();
+}
+
+/* static */
+already_AddRefed<nsWindow> nsWindow::From(nsPIDOMWindowOuter* aDOMWindow) {
+  nsCOMPtr<nsIWidget> widget = WidgetUtils::DOMWindowToWidget(aDOMWindow);
+  return From(widget);
+}
+
+/* static */
+already_AddRefed<nsWindow> nsWindow::From(nsIWidget* aWidget) {
+  RefPtr<nsWindow> window = do_QueryObject(aWidget);
+  return window.forget();
+}
+
+NS_IMPL_ISUPPORTS(IOSView, nsIGeckoViewEventDispatcher, nsIGeckoViewView)
+
+IOSView::~IOSView() { [mInitData release]; }
+
+nsresult IOSView::GetInitData(JSContext* aCx,
+                              JS::MutableHandle<JS::Value> aOut) {
+  return NS_ERROR_NOT_IMPLEMENTED;
+}
+
+@interface GeckoViewWindowImpl : NSObject <GeckoViewWindow> {
+ @public
+  RefPtr<nsWindow> mWindow;
+  nsCOMPtr<nsPIDOMWindowOuter> mOuterWindow;
+}
+
+@end
+
+@implementation GeckoViewWindowImpl
+- (UIView*)view {
+  return mWindow ? (UIView*)mWindow->GetNativeData(NS_NATIVE_WIDGET) : nil;
+}
+
+- (void)close {
+  if (mWindow) {
+    if (IOSView* iosView = mWindow->GetIOSView()) {
+      iosView->mEventDispatcher->Detach();
+    }
+    mWindow = nullptr;
+  }
+
+  if (mOuterWindow) {
+    mOuterWindow->ForceClose();
+    mOuterWindow = nullptr;
+  }
+}
+@end
+
+id<GeckoViewWindow> GeckoViewOpenWindow(NSString* aId,
+                                        id<SwiftEventDispatcher> aDispatcher,
+                                        id aInitData, bool aPrivateMode) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  AUTO_PROFILER_LABEL("GeckoViewOpenWindows", OTHER);
+
+  nsCOMPtr<nsIWindowWatcher> ww = do_GetService(NS_WINDOWWATCHER_CONTRACTID);
+  MOZ_RELEASE_ASSERT(ww);
+
+  nsAutoCString url;
+  nsresult rv = Preferences::GetCString("toolkit.defaultChromeURI", url);
+  if (NS_FAILED(rv)) {
+    url = "chrome://geckoview/content/geckoview.xhtml"_ns;
+  }
+
+  // Prepare an nsIGeckoViewView to pass as argument to the window.
+  RefPtr<IOSView> iosView = new IOSView();
+  iosView->mEventDispatcher->Attach(aDispatcher);
+  iosView->mInitData = [aInitData retain];
+
+  nsAutoCString chromeFlags("chrome,dialog=0,remote,resizable,scrollbars");
+  if (aPrivateMode) {
+    chromeFlags += ",private";
+  }
+
+  nsCOMPtr<mozIDOMWindowProxy> domWindow;
+  ww->OpenWindow(
+      nullptr, url,
+      nsDependentCString([aId UTF8String],
+                         [aId lengthOfBytesUsingEncoding:NSUTF8StringEncoding]),
+      chromeFlags, iosView, getter_AddRefs(domWindow));
+  MOZ_RELEASE_ASSERT(domWindow);
+
+  nsCOMPtr<nsPIDOMWindowOuter> pdomWindow = nsPIDOMWindowOuter::From(domWindow);
+  const RefPtr<nsWindow> window = nsWindow::From(pdomWindow);
+  MOZ_ASSERT(window);
+
+  window->SetIOSView(iosView.forget());
+
+  if (nsIWidgetListener* widgetListener = window->GetWidgetListener()) {
+    nsCOMPtr<nsIAppWindow> appWindow(widgetListener->GetAppWindow());
+    if (appWindow) {
+      // Our window is not intrinsically sized, so tell AppWindow to
+      // not set a size for us.
+      appWindow->SetIntrinsicallySized(false);
+    }
+  }
+
+  GeckoViewWindowImpl* gvWindow = [[GeckoViewWindowImpl alloc] init];
+  gvWindow->mOuterWindow = pdomWindow;
+  gvWindow->mWindow = window;
+  return [gvWindow autorelease];
 }

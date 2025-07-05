@@ -1,0 +1,59 @@
+[DEFAULT]
+support-files = ["head.js"]
+
+prefs = ["browser.profiles.enabled=true","browser.profiles.created=false",]
+
+["browser_activate.js"]
+run-if = [
+  "os != 'linux'",
+] # This seems to mess up focus on Linux for some reason.
+
+["browser_appmenu_menuitem_updates.js"]
+head = "../unit/head.js head.js"
+
+["browser_create_profile_page_test.js"]
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug", # Bug 1942961
+  "os == 'win' && os_version == '11.26100' && debug", # Bug 1942961
+  "os == 'win' && os_version == '11.2009' && debug", # Bug 1942961
+]
+
+["browser_delete_profile_page_test.js"]
+
+["browser_edit_profile_test.js"]
+skip-if = [
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && debug", # Bug 1942961
+  "os == 'win' && os_version == '11.26100' && debug", # Bug 1942961
+  "os == 'win' && os_version == '11.2009' && debug", # Bug 1942961
+]
+
+["browser_empty_name_beforeunload_test.js"]
+
+["browser_menubar_profiles.js"]
+head = "../unit/head.js head.js"
+
+["browser_notify_changes.js"]
+run-if = ["os != 'linux'"] # Linux clients cannot remote themselves.
+skip-if = ["os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt && !socketprocess_networking"] # Bug 1929273
+
+["browser_preferences.js"]
+fail-if = ["a11y_checks"] # Bug 1955503
+
+["browser_test_current_theme_from_amo.js"]
+
+["browser_test_last_tab.js"]
+
+["browser_test_nimbus_feature.js"]
+
+["browser_test_profile_selector.js"]
+
+["browser_update_profile_on_window_switch.js"]
+skip-if = [
+  "os == 'win' && os_version == '11.26100' && opt", # Bug 1948374
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64' && opt", # Bug 1948374
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64' && opt", # Bug 1948374
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64' && opt", # Bug 1948374
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64' && opt", # Bug 1948374
+]
+
+["browser_window_title_test.js"]

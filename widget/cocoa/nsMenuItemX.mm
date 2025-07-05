@@ -79,9 +79,9 @@ nsMenuItemX::nsMenuItemX(nsMenuX* aParent, const nsString& aLabel,
   } else {
     NSString* newCocoaLabelString =
         nsMenuUtilsX::GetTruncatedCocoaLabel(aLabel);
-    mNativeMenuItem = [[NSMenuItem alloc] initWithTitle:newCocoaLabelString
-                                                 action:nil
-                                          keyEquivalent:@""];
+    mNativeMenuItem = [[GeckoNSMenuItem alloc] initWithTitle:newCocoaLabelString
+                                                      action:nil
+                                               keyEquivalent:@""];
 
     mIsChecked = mContent->AsElement()->AttrValueIs(
         kNameSpaceID_None, nsGkAtoms::checked, nsGkAtoms::_true, eCaseMatters);
@@ -406,8 +406,7 @@ bool IsMenuStructureElement(nsIContent* aContent) {
 
 void nsMenuItemX::ObserveContentRemoved(dom::Document* aDocument,
                                         nsIContent* aContainer,
-                                        nsIContent* aChild,
-                                        nsIContent* aPreviousSibling) {
+                                        nsIContent* aChild) {
   MOZ_RELEASE_ASSERT(mMenuGroupOwner);
   MOZ_RELEASE_ASSERT(mMenuParent);
 

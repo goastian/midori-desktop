@@ -2,9 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/**
+ * This module contains `HiddenFrame`, a class which creates a windowless browser,
+ * and `HiddenBrowserManager` which is a singleton that can be used to manage
+ * creating and using multiple hidden frames.
+ */
+
 const XUL_PAGE = Services.io.newURI("chrome://global/content/win.xhtml");
 
 const gAllHiddenFrames = new Set();
+
+// The screen sizes to use for the background browser created by
+// `HiddenBrowserManager`.
+const BACKGROUND_WIDTH = 1024;
+const BACKGROUND_HEIGHT = 768;
 
 let cleanupRegistered = false;
 function ensureCleanupRegistered() {
@@ -19,101 +30,184 @@ function ensureCleanupRegistered() {
 }
 
 /**
- * An hidden frame object. It takes care of creating a windowless browser and
+ * A hidden frame class. It takes care of creating a windowless browser and
  * passing the window containing a blank XUL <window> back.
  */
-export function HiddenFrame() {}
-
-HiddenFrame.prototype = {
-  _frame: null,
-  _browser: null,
-  _listener: null,
-  _webProgress: null,
-  _deferred: null,
+export class HiddenFrame {
+  #frame = null;
+  #browser = null;
+  #listener = null;
+  #webProgress = null;
+  #deferred = null;
 
   /**
    * Gets the |contentWindow| of the hidden frame. Creates the frame if needed.
-   * @returns Promise Returns a promise which is resolved when the hidden frame has finished
+   *
+   * @returns {Promise} Returns a promise which is resolved when the hidden frame has finished
    *          loading.
    */
   get() {
-    if (!this._deferred) {
-      this._deferred = Promise.withResolvers();
-      this._create();
+    if (!this.#deferred) {
+      this.#deferred = Promise.withResolvers();
+      this.#create();
     }
 
-    return this._deferred.promise;
-  },
+    return this.#deferred.promise;
+  }
 
   /**
    * Fetch a sync ref to the window inside the frame (needed for the add-on SDK).
+   *
+   * @returns {DOMWindow}
    */
   getWindow() {
     this.get();
-    return this._browser.document.ownerGlobal;
-  },
+    return this.#browser.document.ownerGlobal;
+  }
 
+  /**
+   * Destroys the browser, freeing resources.
+   */
   destroy() {
-    if (this._browser) {
-      if (this._listener) {
-        this._webProgress.removeProgressListener(this._listener);
-        this._listener = null;
-        this._webProgress = null;
+    if (this.#browser) {
+      if (this.#listener) {
+        this.#webProgress.removeProgressListener(this.#listener);
+        this.#listener = null;
+        this.#webProgress = null;
       }
-      this._frame = null;
-      this._deferred = null;
+      this.#frame = null;
+      this.#deferred = null;
 
       gAllHiddenFrames.delete(this);
-      this._browser.close();
-      this._browser = null;
+      this.#browser.close();
+      this.#browser = null;
     }
-  },
+  }
 
-  _create() {
+  #create() {
     ensureCleanupRegistered();
     let chromeFlags = Ci.nsIWebBrowserChrome.CHROME_REMOTE_WINDOW;
     if (Services.appinfo.fissionAutostart) {
       chromeFlags |= Ci.nsIWebBrowserChrome.CHROME_FISSION_WINDOW;
     }
-    this._browser = Services.appShell.createWindowlessBrowser(
+    this.#browser = Services.appShell.createWindowlessBrowser(
       true,
       chromeFlags
     );
-    this._browser.QueryInterface(Ci.nsIInterfaceRequestor);
+    this.#browser.QueryInterface(Ci.nsIInterfaceRequestor);
     gAllHiddenFrames.add(this);
-    this._webProgress = this._browser.getInterface(Ci.nsIWebProgress);
-    this._listener = {
+    this.#webProgress = this.#browser.getInterface(Ci.nsIWebProgress);
+    this.#listener = {
       QueryInterface: ChromeUtils.generateQI([
         "nsIWebProgressListener",
         "nsIWebProgressListener2",
         "nsISupportsWeakReference",
       ]),
     };
-    this._listener.onStateChange = (wbp, request, stateFlags) => {
+    this.#listener.onStateChange = (wbp, request, stateFlags) => {
       if (!request) {
         return;
       }
       if (stateFlags & Ci.nsIWebProgressListener.STATE_STOP) {
-        this._webProgress.removeProgressListener(this._listener);
-        this._listener = null;
-        this._webProgress = null;
+        this.#webProgress.removeProgressListener(this.#listener);
+        this.#listener = null;
+        this.#webProgress = null;
         // Get the window reference via the document.
-        this._frame = this._browser.document.ownerGlobal;
-        this._deferred.resolve(this._frame);
+        this.#frame = this.#browser.document.ownerGlobal;
+        this.#deferred.resolve(this.#frame);
       }
     };
-    this._webProgress.addProgressListener(
-      this._listener,
+    this.#webProgress.addProgressListener(
+      this.#listener,
       Ci.nsIWebProgress.NOTIFY_STATE_DOCUMENT
     );
-    let docShell = this._browser.docShell;
+    let docShell = this.#browser.docShell;
     let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
     docShell.createAboutBlankDocumentViewer(systemPrincipal, systemPrincipal);
-    let browsingContext = this._browser.browsingContext;
+    let browsingContext = this.#browser.browsingContext;
     browsingContext.useGlobalHistory = false;
     let loadURIOptions = {
       triggeringPrincipal: systemPrincipal,
     };
-    this._browser.loadURI(XUL_PAGE, loadURIOptions);
-  },
-};
+    this.#browser.loadURI(XUL_PAGE, loadURIOptions);
+  }
+}
+
+/**
+ * A manager for hidden browsers. Responsible for creating and destroying a
+ * hidden frame to hold them.
+ */
+export const HiddenBrowserManager = new (class HiddenBrowserManager {
+  /**
+   * The hidden frame if one has been created.
+   *
+   * @type {HiddenFrame | null}
+   */
+  #frame = null;
+  /**
+   * The number of hidden browser elements currently in use.
+   *
+   * @type {number}
+   */
+  #browsers = 0;
+
+  /**
+   * Creates and returns a new hidden browser.
+   *
+   * @returns {Browser}
+   */
+  async #acquireBrowser() {
+    this.#browsers++;
+    if (!this.#frame) {
+      this.#frame = new HiddenFrame();
+    }
+
+    let frame = await this.#frame.get();
+    let doc = frame.document;
+    let browser = doc.createXULElement("browser");
+    browser.setAttribute("remote", "true");
+    browser.setAttribute("type", "content");
+    browser.style.width = `${BACKGROUND_WIDTH}px`;
+    browser.style.minWidth = `${BACKGROUND_WIDTH}px`;
+    browser.style.height = `${BACKGROUND_HEIGHT}px`;
+    browser.style.minHeight = `${BACKGROUND_HEIGHT}px`;
+    browser.setAttribute("maychangeremoteness", "true");
+    doc.documentElement.appendChild(browser);
+
+    return browser;
+  }
+
+  /**
+   * Releases the given hidden browser.
+   *
+   * @param {Browser} browser
+   *   The hidden browser element.
+   */
+  #releaseBrowser(browser) {
+    browser.remove();
+
+    this.#browsers--;
+    if (this.#browsers == 0) {
+      this.#frame.destroy();
+      this.#frame = null;
+    }
+  }
+
+  /**
+   * Calls a callback function with a new hidden browser.
+   * This function will return whatever the callback function returns.
+   *
+   * @param {Callback} callback
+   *   The callback function will be called with the browser element and may
+   *   be asynchronous.
+   * @returns {T}
+   */
+  async withHiddenBrowser(callback) {
+    let browser = await this.#acquireBrowser();
+    try {
+      return await callback(browser);
+    } finally {
+      this.#releaseBrowser(browser);
+    }
+  }
+})();

@@ -1,5 +1,3 @@
-# -*- coding: utf-8 -*-
-
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -56,8 +54,10 @@ PING_INDEX_BITS = 16
 # This ensures the algorithm finds empty slots in the buckets
 # with the number of metrics we now have in-tree.
 # toolkit/components/telemetry uses 1024, some others 512.
+# FOG is bigger.
 # See https://bugzilla.mozilla.org/show_bug.cgi?id=1822477
-PHF_SIZE = 1024
+# And https://bugzilla.mozilla.org/show_bug.cgi?id=1923973
+PHF_SIZE = 2048
 
 
 def ping_entry(ping_id, ping_string_index):
@@ -140,11 +140,18 @@ def output_js(objs, output_fd_h, output_fd_cpp, options={}):
         )
     else:
         write_metrics(
-            get_metrics(objs), output_fd_cpp, "js.jinja2", output_fd_h, "js_h.jinja2"
+            get_metrics(objs),
+            output_fd_cpp,
+            "js.jinja2",
+            output_fd_h,
+            "js_h.jinja2",
+            options,
         )
 
 
-def write_metrics(objs, output_fd, template_filename, output_fd_h, template_filename_h):
+def write_metrics(
+    objs, output_fd, template_filename, output_fd_h, template_filename_h, options
+):
     """
     Given a tree of objects `objs`, output metrics-only code for the JS API to the
     file-like object `output_fd` using template `template_filename`
@@ -158,7 +165,7 @@ def write_metrics(objs, output_fd, template_filename, output_fd_h, template_file
         INDEX_BITS + TYPE_BITS + ID_BITS <= ENTRY_WIDTH
     ), "INDEX_BITS, TYPE_BITS, or ID_BITS are larger than allowed"
 
-    get_metric_id = generate_metric_ids(objs)
+    get_metric_id = generate_metric_ids(objs, options)
     # Mapping from a metric's identifier to the entry (metric ID | type id | index)
     metric_id_mapping = {}
     categories = []

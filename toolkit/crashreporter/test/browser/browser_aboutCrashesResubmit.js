@@ -87,8 +87,9 @@ function check_submit_pending(tab, crashes) {
 
       return { id: CrashID, url: CrashURL, result };
     }).then(({ id, url, result }) => {
-      // Likewise, this is discarded before it gets to the server
+      // These should have been discarded before being sent.
       delete SubmittedCrash.extra.ServerURL;
+      delete SubmittedCrash.extra.DefinitelyNotAnAnnotationKey;
 
       CrashID = id;
       CrashURL = url;
@@ -183,7 +184,8 @@ function test() {
       ServerURL:
         "http://example.com/browser/toolkit/crashreporter/test/browser/crashreport.sjs",
       ProductName: "Test App",
-      Foo: "ABC=XYZ", // test that we don't truncat eat = (bug 512853)
+      TestKey: "ABC=XYZ", // test that we don't truncate at = (bug 512853)
+      DefinitelyNotAnAnnotationKey: "foobar", // test that we remove non-existent annotations
     })
   );
   crashes.sort((a, b) => b.date - a.date);
@@ -195,6 +197,9 @@ function test() {
   );
 
   BrowserTestUtils.openNewForegroundTab(gBrowser, "about:crashes").then(tab => {
+    // Mark the first entry as having been interacted with.
+    content.document.notifyUserGestureActivation();
+
     SpecialPowers.spawn(tab.linkedBrowser, [crashes], check_crash_list).then(
       () => check_submit_pending(tab, crashes)
     );

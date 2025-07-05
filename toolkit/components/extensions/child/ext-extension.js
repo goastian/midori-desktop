@@ -8,7 +8,7 @@ this.extension = class extends ExtensionAPI {
   getAPI(context) {
     let api = {
       getURL(url) {
-        return context.extension.baseURI.resolve(url);
+        return context.extension.getURL(url);
       },
 
       get lastError() {
@@ -44,7 +44,7 @@ this.extension = class extends ExtensionAPI {
               let bc = view.contentWindow?.docShell?.browserChild;
               let windowId =
                 view.viewType !== "background"
-                  ? bc?.chromeOuterWindowID ?? -1
+                  ? (bc?.chromeOuterWindowID ?? -1)
                   : -1;
               if (windowId !== fetchProperties.windowId) {
                 continue;

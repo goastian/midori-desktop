@@ -3,8 +3,14 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 toolkit.jar:
-  content/global/megalist/Dialog.mjs          (megalist/content/Dialog.mjs)
   content/global/megalist/megalist.css        (megalist/content/megalist.css)
   content/global/megalist/megalist.html       (megalist/content/megalist.html)
-  content/global/megalist/MegalistView.mjs    (megalist/content/MegalistView.mjs)
-  content/global/megalist/VirtualizedList.mjs (megalist/content/VirtualizedList.mjs)
+  content/global/megalist/MegalistAlpha.mjs   (megalist/content/MegalistAlpha.mjs)
+  content/global/megalist/components/password-card/password-card.mjs    (megalist/content/components/password-card/password-card.mjs)
+  content/global/megalist/components/password-card/password-card.css    (megalist/content/components/password-card/password-card.css)
+  content/global/megalist/components/login-form/login-form.mjs    (megalist/content/components/login-form/login-form.mjs)
+  content/global/megalist/components/login-form/login-form.css    (megalist/content/components/login-form/login-form.css)
+  content/global/megalist/components/login-line/login-line.mjs    (megalist/content/components/login-line/login-line.mjs)
+  content/global/megalist/components/login-line/login-line.css    (megalist/content/components/login-line/login-line.css)
+  content/global/megalist/components/notification-message-bar/notification-message-bar.mjs    (megalist/content/components/notification-message-bar/notification-message-bar.mjs)
+  content/global/megalist/icons/cpm-fox-illustration.svg    (megalist/content/icons/cpm-fox-illustration.svg)

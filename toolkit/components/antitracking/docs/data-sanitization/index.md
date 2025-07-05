@@ -23,7 +23,7 @@ All browsers allow fine grained control over website cookies and storages via th
 
 This is a browser UX feature and is therefore not standardized. It is not part of the web platform.
 
-There is a standardized HTTP header that sites can send to clear associated browser cache, cookies and storage: [Clear-Site-Data](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Clear-Site-Data). However, Firefox no longer allows sites to clear caches via the header since [Bug 1671182](https://bugzilla.mozilla.org/show_bug.cgi?id=1671182).
+There is a standardized HTTP header that sites can send to clear associated browser cache, cookies and storage: [Clear-Site-Data](https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Clear-Site-Data). However, Firefox no longer allows sites to clear caches via the header since [Bug 1671182](https://bugzilla.mozilla.org/show_bug.cgi?id=1671182).
 
 ### How does it fit into our vision of “Zero Privacy Leaks?”
 
@@ -66,7 +66,6 @@ Important outstanding bugs:
 
 | Pref | Description |
 | ---- | ----------- |
-| places.forgetThisSite.clearByBaseDomain | Switches “Forget about this site” to clear for the whole base domain rather than just the host. |
 | privacy.sanitize.sanitizeOnShutdown | Whether to clear data on Firefox shutdown. |
 | privacy.clearOnShutdown.* | Categories of data to be cleared on shutdown. True = clear category. Data is only cleared if privacy.sanitize.sanitizeOnShutdown is enabled.|
 | privacy.clearHistory.* | Categories of data to be cleared in the clear history or browser context. True = clear category.|

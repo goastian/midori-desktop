@@ -1,6 +1,7 @@
-{%- let cbi = ci|get_callback_interface_definition(name) %}
+{%- let cbi = ci.get_callback_interface_definition(name).unwrap() %}
 {%- let ffi_init_callback = cbi.ffi_init_callback() %}
 {%- let protocol_name = type_name.clone() %}
+{%- let protocol_base_class = "typing.Protocol" %}
 {%- let protocol_docstring = cbi.docstring() %}
 {%- let vtable = cbi.vtable() %}
 {%- let methods = cbi.methods() %}
@@ -10,4 +11,4 @@
 {% include "CallbackInterfaceImpl.py" %}
 
 # The _UniffiConverter which transforms the Callbacks in to Handles to pass to Rust.
-{{ ffi_converter_name }} = UniffiCallbackInterfaceFfiConverter()
+{{ ffi_converter_name }} = _UniffiCallbackInterfaceFfiConverter()

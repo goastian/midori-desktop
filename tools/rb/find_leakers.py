@@ -11,8 +11,6 @@
 
 import sys
 
-import six
-
 
 def print_output(allocation, obj_to_class):
     """Formats and prints output."""
@@ -20,7 +18,7 @@ def print_output(allocation, obj_to_class):
     for (
         obj,
         count,
-    ) in six.iteritems(allocation):
+    ) in allocation.items():
         # Adding items to a list, so we can sort them.
         items.append((obj, count))
     # Sorting by count.
@@ -30,11 +28,7 @@ def print_output(allocation, obj_to_class):
         obj,
         count,
     ) in items:
-        print(
-            "{obj} ({count}) @ {class_name}".format(
-                obj=obj, count=count, class_name=obj_to_class[obj]
-            )
-        )
+        print(f"{obj} ({count}) @ {obj_to_class[obj]}")
 
 
 def process_log(log_lines):
@@ -104,7 +98,7 @@ def main():
         process_log(sys.stdin.readlines())
     elif len(sys.argv) == 2:
         # Reading log from file.
-        with open(sys.argv[1], "r") as log_file:
+        with open(sys.argv[1]) as log_file:
             log_lines = log_file.readlines()
         process_log(log_lines)
     else:

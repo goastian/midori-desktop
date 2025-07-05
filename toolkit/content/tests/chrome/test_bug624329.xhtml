@@ -135,18 +135,12 @@ function openContextMenu() {
 
         ok(x < mouseX,
            "menu left " + x + " should be left of click point " + mouseX);
-        var right = x + menu.getBoundingClientRect().width;
 
-        if (platformIsMac) {
-          // Rather than be constrained by the right hand screen edge, OSX menus flip
-          // horizontally and appear to the left of the mouse pointer
-          ok(right < mouseX,
-             "menu right " + right + " should be left of click point " + mouseX);
-        }
-        else {
-          ok(right > mouseX,
-             "menu right " + right + " should be right of click point " + mouseX);
-        }
+        var right = menu.getBoundingClientRect().right + parseFloat(getComputedStyle(menu).marginRight);
+
+        // Context menus flip horizontally and appear to the left of the mouse pointer
+        ok(right < mouseX,
+           "menu right " + right + " should be left of click point " + mouseX);
 
         clearTimeout(timeoutID);
         finish();

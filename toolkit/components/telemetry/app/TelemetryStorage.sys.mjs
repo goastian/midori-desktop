@@ -10,7 +10,6 @@ import { TelemetryUtils } from "resource://gre/modules/TelemetryUtils.sys.mjs";
 const LOGGER_NAME = "Toolkit.Telemetry";
 const LOGGER_PREFIX = "TelemetryStorage::";
 
-const Telemetry = Services.telemetry;
 const Utils = TelemetryUtils;
 
 // Compute the path of the pings archive on the first use.
@@ -707,7 +706,7 @@ var TelemetryStorageImpl = {
       type: internString(ping.type),
     });
 
-    Telemetry.getHistogramById("TELEMETRY_ARCHIVE_SESSION_PING_COUNT").add();
+    Glean.telemetry.archiveSessionPingCount.add(1);
     return undefined;
   },
 
@@ -737,12 +736,10 @@ var TelemetryStorageImpl = {
     let checkSize = async function (path) {
       const fileSize = await IOUtils.stat(path).then(info => info.size);
       if (fileSize > PING_FILE_MAXIMUM_SIZE_BYTES) {
-        Telemetry.getHistogramById(
-          "TELEMETRY_DISCARDED_ARCHIVED_PINGS_SIZE_MB"
-        ).add(Math.floor(fileSize / 1024 / 1024));
-        Telemetry.getHistogramById(
-          "TELEMETRY_PING_SIZE_EXCEEDED_ARCHIVED"
-        ).add();
+        Glean.telemetry.discardedArchivedPingsSize.accumulate(
+          Math.floor(fileSize / 1024 / 1024)
+        );
+        Glean.telemetry.pingSizeExceededArchived.add(1);
         await IOUtils.remove(path, { ignoreAbsent: true });
         throw new Error(
           `loadArchivedPing - exceeded the maximum ping size: ${fileSize}`
@@ -798,7 +795,6 @@ var TelemetryStorageImpl = {
         `_saveSessionData - Failed to write session data to ${filePath}`,
         e
       );
-      Telemetry.getHistogramById("TELEMETRY_SESSIONDATA_FAILED_SAVE").add(1);
     }
   },
 
@@ -822,7 +818,6 @@ var TelemetryStorageImpl = {
       content = await IOUtils.readUTF8(dataFile);
     } catch (ex) {
       this._log.info("_loadSessionData - can not load session data file", ex);
-      Telemetry.getHistogramById("TELEMETRY_SESSIONDATA_FAILED_LOAD").add(1);
       return null;
     }
 
@@ -831,7 +826,6 @@ var TelemetryStorageImpl = {
       data = JSON.parse(content);
     } catch (ex) {
       this._log.error("_loadSessionData - failed to parse session data", ex);
-      Telemetry.getHistogramById("TELEMETRY_SESSIONDATA_FAILED_PARSE").add(1);
       return null;
     }
 
@@ -976,13 +970,13 @@ var TelemetryStorageImpl = {
     const endTimeStamp = Policy.now().getTime();
 
     // Save the time it takes to evict old directories and the eviction count.
-    Telemetry.getHistogramById("TELEMETRY_ARCHIVE_EVICTED_OLD_DIRS").add(
+    Glean.telemetry.archiveEvictedOldDirs.accumulateSingleSample(
       evictedDirsCount
     );
-    Telemetry.getHistogramById("TELEMETRY_ARCHIVE_EVICTING_DIRS_MS").add(
+    Glean.telemetry.archiveEvictingDirs.accumulateSingleSample(
       Math.ceil(endTimeStamp - startTimeStamp)
     );
-    Telemetry.getHistogramById("TELEMETRY_ARCHIVE_OLDEST_DIRECTORY_AGE").add(
+    Glean.telemetry.archiveOldestDirectoryAge.accumulateSingleSample(
       maxDirAgeInMonths
     );
   },
@@ -1052,12 +1046,10 @@ var TelemetryStorageImpl = {
             "_enforceArchiveQuota - failed to remove archived ping" + ping.id
           )
         );
-        Telemetry.getHistogramById(
-          "TELEMETRY_DISCARDED_ARCHIVED_PINGS_SIZE_MB"
-        ).add(Math.floor(fileSize / 1024 / 1024));
-        Telemetry.getHistogramById(
-          "TELEMETRY_PING_SIZE_EXCEEDED_ARCHIVED"
-        ).add();
+        Glean.telemetry.discardedArchivedPingsSize.accumulate(
+          Math.floor(fileSize / 1024 / 1024)
+        );
+        Glean.telemetry.pingSizeExceededArchived.add(1);
         continue;
       }
 
@@ -1074,18 +1066,18 @@ var TelemetryStorageImpl = {
     }
 
     // Save the time it takes to check if the archive is over-quota.
-    Telemetry.getHistogramById("TELEMETRY_ARCHIVE_CHECKING_OVER_QUOTA_MS").add(
+    Glean.telemetry.archiveCheckingOverQuota.accumulateSingleSample(
       Math.round(Policy.now().getTime() - startTimeStamp)
     );
 
     let submitProbes = (sizeInMB, evictedPings, elapsedMs) => {
-      Telemetry.getHistogramById("TELEMETRY_ARCHIVE_SIZE_MB").add(sizeInMB);
-      Telemetry.getHistogramById("TELEMETRY_ARCHIVE_EVICTED_OVER_QUOTA").add(
+      Glean.telemetry.archiveSize.accumulate(sizeInMB);
+      Glean.telemetry.archiveEvictedOverQuota.accumulateSingleSample(
         evictedPings
       );
-      Telemetry.getHistogramById(
-        "TELEMETRY_ARCHIVE_EVICTING_OVER_QUOTA_MS"
-      ).add(elapsedMs);
+      Glean.telemetry.archiveEvictingOverQuota.accumulateSingleSample(
+        elapsedMs
+      );
     };
 
     // Check if we're using too much space. If not, submit the archive size and bail out.
@@ -1226,20 +1218,18 @@ var TelemetryStorageImpl = {
     }
 
     // Save the time it takes to check if the pending pings are over-quota.
-    Telemetry.getHistogramById("TELEMETRY_PENDING_CHECKING_OVER_QUOTA_MS").add(
+    Glean.telemetry.pendingCheckingOverQuota.accumulateSingleSample(
       Math.round(Policy.now().getTime() - startTimeStamp)
     );
 
     let recordHistograms = (sizeInMB, evictedPings, elapsedMs) => {
-      Telemetry.getHistogramById("TELEMETRY_PENDING_PINGS_SIZE_MB").add(
-        sizeInMB
+      Glean.telemetry.pendingPingsSize.accumulate(sizeInMB);
+      Glean.telemetry.pendingPingsEvictedOverQuota.accumulateSingleSample(
+        evictedPings
       );
-      Telemetry.getHistogramById(
-        "TELEMETRY_PENDING_PINGS_EVICTED_OVER_QUOTA"
-      ).add(evictedPings);
-      Telemetry.getHistogramById(
-        "TELEMETRY_PENDING_EVICTING_OVER_QUOTA_MS"
-      ).add(elapsedMs);
+      Glean.telemetry.pendingEvictingOverQuota.accumulateSingleSample(
+        elapsedMs
+      );
     };
 
     // Check if we're using too much space. If not, bail out.
@@ -1333,12 +1323,8 @@ var TelemetryStorageImpl = {
     this._log.trace("_scanArchive");
 
     let submitProbes = (pingCount, dirCount) => {
-      Telemetry.getHistogramById("TELEMETRY_ARCHIVE_SCAN_PING_COUNT").add(
-        pingCount
-      );
-      Telemetry.getHistogramById("TELEMETRY_ARCHIVE_DIRECTORIES_COUNT").add(
-        dirCount
-      );
+      Glean.telemetry.archiveScanPingCount.accumulateSingleSample(pingCount);
+      Glean.telemetry.archiveDirectoriesCount.accumulateSingleSample(dirCount);
     };
 
     if (!(await IOUtils.exists(lazy.gPingsArchivePath))) {
@@ -1505,10 +1491,10 @@ var TelemetryStorageImpl = {
     // Purge pings which are too big.
     if (fileSize > PING_FILE_MAXIMUM_SIZE_BYTES) {
       await this.removePendingPing(id);
-      Telemetry.getHistogramById(
-        "TELEMETRY_DISCARDED_PENDING_PINGS_SIZE_MB"
-      ).add(Math.floor(fileSize / 1024 / 1024));
-      Telemetry.getHistogramById("TELEMETRY_PING_SIZE_EXCEEDED_PENDING").add();
+      Glean.telemetry.discardedPendingPingsSize.accumulate(
+        Math.floor(fileSize / 1024 / 1024)
+      );
+      Glean.telemetry.pingSizeExceededPending.add(1);
 
       // Currently we don't have the ping type available without loading the ping from disk.
       // Bug 1384903 will fix that.
@@ -1525,11 +1511,9 @@ var TelemetryStorageImpl = {
     } catch (e) {
       // If we failed to load the ping, check what happened and update the histogram.
       if (e instanceof PingReadError) {
-        Telemetry.getHistogramById("TELEMETRY_PENDING_LOAD_FAILURE_READ").add();
+        Glean.telemetry.pendingLoadFailureRead.add(1);
       } else if (e instanceof PingParseError) {
-        Telemetry.getHistogramById(
-          "TELEMETRY_PENDING_LOAD_FAILURE_PARSE"
-        ).add();
+        Glean.telemetry.pendingLoadFailureParse.add(1);
       }
 
       // Remove the ping from the cache, so we don't try to load it again.
@@ -1832,12 +1816,10 @@ var TelemetryStorageImpl = {
             ex
           );
         } finally {
-          Telemetry.getHistogramById(
-            "TELEMETRY_DISCARDED_PENDING_PINGS_SIZE_MB"
-          ).add(Math.floor(info.size / 1024 / 1024));
-          Telemetry.getHistogramById(
-            "TELEMETRY_PING_SIZE_EXCEEDED_PENDING"
-          ).add();
+          Glean.telemetry.discardedPendingPingsSize.accumulate(
+            Math.floor(info.size / 1024 / 1024)
+          );
+          Glean.telemetry.pingSizeExceededPending.add(1);
 
           // Currently we don't have the ping type available without loading the ping from disk.
           // Bug 1384903 will fix that.

@@ -33,7 +33,7 @@
 //!   it is among its youngest lock's permitted followers. Thus, as a thread
 //!   acquires locks, it must be traversing a path through the graph along its
 //!   edges.
-//!  
+//!
 //! - Because there are no cycles in the graph, whenever one thread is blocked
 //!   waiting to acquire a lock, that lock must be held by a different thread: if
 //!   you were allowed to acquire a lock you already hold, that would be a cycle in
@@ -55,17 +55,16 @@
 //!
 //! [`lock::rank`]: crate::lock::rank
 
+use core::{cell::Cell, fmt, ops, panic::Location};
+
 use super::rank::LockRank;
-use std::{cell::Cell, panic::Location};
 
 /// A `Mutex` instrumented for deadlock prevention.
 ///
 /// This is just a wrapper around a [`parking_lot::Mutex`], along with
 /// its rank in the `wgpu_core` lock ordering.
 ///
-/// For details, see [the module documentation][mod].
-///
-/// [mod]: crate::lock::ranked
+/// For details, see [the module documentation][self].
 pub struct Mutex<T> {
     inner: parking_lot::Mutex<T>,
     rank: LockRank,
@@ -76,15 +75,13 @@ pub struct Mutex<T> {
 /// This is just a wrapper around a [`parking_lot::MutexGuard`], along
 /// with the state needed to track lock acquisition.
 ///
-/// For details, see [the module documentation][mod].
-///
-/// [mod]: crate::lock::ranked
+/// For details, see [the module documentation][self].
 pub struct MutexGuard<'a, T> {
     inner: parking_lot::MutexGuard<'a, T>,
     saved: LockStateGuard,
 }
 
-thread_local! {
+std::thread_local! {
     static LOCK_STATE: Cell<LockState> = const { Cell::new(LockState::INITIAL) };
 }
 
@@ -144,12 +141,12 @@ fn acquire(new_rank: LockRank, location: &'static Location<'static>) -> LockStat
              last locked {:<35} at {}\n\
              now locking {:<35} at {}\n\
              Locking {} after locking {} is not permitted.",
-            last_rank.bit.name(),
+            last_rank.bit.member_name(),
             last_location,
-            new_rank.bit.name(),
+            new_rank.bit.member_name(),
             location,
-            new_rank.bit.name(),
-            last_rank.bit.name(),
+            new_rank.bit.member_name(),
+            last_rank.bit.member_name(),
         );
     }
     LOCK_STATE.set(LockState {
@@ -195,7 +192,7 @@ impl<T> Mutex<T> {
     }
 }
 
-impl<'a, T> std::ops::Deref for MutexGuard<'a, T> {
+impl<'a, T> ops::Deref for MutexGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -203,14 +200,14 @@ impl<'a, T> std::ops::Deref for MutexGuard<'a, T> {
     }
 }
 
-impl<'a, T> std::ops::DerefMut for MutexGuard<'a, T> {
+impl<'a, T> ops::DerefMut for MutexGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner.deref_mut()
     }
 }
 
-impl<T: std::fmt::Debug> std::fmt::Debug for Mutex<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: fmt::Debug> fmt::Debug for Mutex<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.inner.fmt(f)
     }
 }
@@ -220,9 +217,7 @@ impl<T: std::fmt::Debug> std::fmt::Debug for Mutex<T> {
 /// This is just a wrapper around a [`parking_lot::RwLock`], along with
 /// its rank in the `wgpu_core` lock ordering.
 ///
-/// For details, see [the module documentation][mod].
-///
-/// [mod]: crate::lock::ranked
+/// For details, see [the module documentation][self].
 pub struct RwLock<T> {
     inner: parking_lot::RwLock<T>,
     rank: LockRank,
@@ -233,9 +228,7 @@ pub struct RwLock<T> {
 /// This is just a wrapper around a [`parking_lot::RwLockReadGuard`], along with
 /// the state needed to track lock acquisition.
 ///
-/// For details, see [the module documentation][mod].
-///
-/// [mod]: crate::lock::ranked
+/// For details, see [the module documentation][self].
 pub struct RwLockReadGuard<'a, T> {
     inner: parking_lot::RwLockReadGuard<'a, T>,
     saved: LockStateGuard,
@@ -246,9 +239,7 @@ pub struct RwLockReadGuard<'a, T> {
 /// This is just a wrapper around a [`parking_lot::RwLockWriteGuard`], along
 /// with the state needed to track lock acquisition.
 ///
-/// For details, see [the module documentation][mod].
-///
-/// [mod]: crate::lock::ranked
+/// For details, see [the module documentation][self].
 pub struct RwLockWriteGuard<'a, T> {
     inner: parking_lot::RwLockWriteGuard<'a, T>,
     saved: LockStateGuard,
@@ -290,13 +281,13 @@ impl<'a, T> RwLockWriteGuard<'a, T> {
     }
 }
 
-impl<T: std::fmt::Debug> std::fmt::Debug for RwLock<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+impl<T: fmt::Debug> fmt::Debug for RwLock<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         self.inner.fmt(f)
     }
 }
 
-impl<'a, T> std::ops::Deref for RwLockReadGuard<'a, T> {
+impl<'a, T> ops::Deref for RwLockReadGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -304,7 +295,7 @@ impl<'a, T> std::ops::Deref for RwLockReadGuard<'a, T> {
     }
 }
 
-impl<'a, T> std::ops::Deref for RwLockWriteGuard<'a, T> {
+impl<'a, T> ops::Deref for RwLockWriteGuard<'a, T> {
     type Target = T;
 
     fn deref(&self) -> &Self::Target {
@@ -312,7 +303,7 @@ impl<'a, T> std::ops::Deref for RwLockWriteGuard<'a, T> {
     }
 }
 
-impl<'a, T> std::ops::DerefMut for RwLockWriteGuard<'a, T> {
+impl<'a, T> ops::DerefMut for RwLockWriteGuard<'a, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.inner.deref_mut()
     }
@@ -391,7 +382,7 @@ fn non_stack_like() {
 
     // Avoid a double panic from dropping this while unwinding due to the panic
     // we're testing for.
-    std::mem::forget(guard2);
+    core::mem::forget(guard2);
 
     drop(guard1);
 }

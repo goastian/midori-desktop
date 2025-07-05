@@ -28,7 +28,7 @@ ClipboardWriteRequestParent::ClipboardWriteRequestParent(
 ClipboardWriteRequestParent::~ClipboardWriteRequestParent() = default;
 
 nsresult ClipboardWriteRequestParent::Init(
-    const int32_t& aClipboardType,
+    const nsIClipboard::ClipboardType aClipboardType,
     mozilla::dom::WindowContext* aSettingWindowContext) {
   nsCOMPtr<nsIClipboard> clipboard(do_GetService(kCClipboardCID));
   if (!clipboard) {
@@ -61,9 +61,9 @@ IPCResult ClipboardWriteRequestParent::RecvSetData(
     const IPCTransferable& aTransferable) {
   if (!mManager->ValidatePrincipal(
           aTransferable.dataPrincipal(),
-          {ContentParent::ValidatePrincipalOptions::AllowNullPtr,
-           ContentParent::ValidatePrincipalOptions::AllowExpanded,
-           ContentParent::ValidatePrincipalOptions::AllowSystem})) {
+          {dom::ValidatePrincipalOptions::AllowNullPtr,
+           dom::ValidatePrincipalOptions::AllowExpanded,
+           dom::ValidatePrincipalOptions::AllowSystem})) {
     ContentParent::LogAndAssertFailedPrincipalValidationInfo(
         aTransferable.dataPrincipal(), __func__);
   }

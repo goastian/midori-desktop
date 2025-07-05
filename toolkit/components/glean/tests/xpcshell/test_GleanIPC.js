@@ -61,6 +61,7 @@ add_task({ skip_if: () => runningInParent }, async function run_child_stuff() {
 
   Glean.testOnly.whatTimeIsIt.stopAndAccumulate(t2); // 10ms
   Glean.testOnly.whatTimeIsIt.stopAndAccumulate(t3); // 5ms
+  // Note: Sample-based APIs don't have non-main-process impls.
 
   Glean.testOnlyIpc.aCustomDist.accumulateSamples([3, 4]);
 
@@ -71,10 +72,33 @@ add_task({ skip_if: () => runningInParent }, async function run_child_stuff() {
     COUNTERS_WITH_JUNK_ON_THEM
   );
 
-  Glean.testOnly.mabelsBathroomCounters["1".repeat(72)].add(INVALID_COUNTERS);
+  Glean.testOnly.mabelsBathroomCounters["1".repeat(112)].add(INVALID_COUNTERS);
 
   Glean.testOnlyIpc.irate.addToNumerator(44);
   Glean.testOnlyIpc.irate.addToDenominator(14);
+
+  Glean.testOnly.mabelsCustomLabelLengths.serif.accumulateSamples([5, 6]);
+
+  for (let memory of MEMORIES) {
+    Glean.testOnly.whatDoYouRemember.trivia.accumulate(memory);
+  }
+
+  let l1 = Glean.testOnly.whereHasTheTimeGone.relatively.start();
+  let l2 = Glean.testOnly.whereHasTheTimeGone.relatively.start();
+
+  await sleep(5);
+
+  let l3 = Glean.testOnly.whereHasTheTimeGone.relatively.start();
+  Glean.testOnly.whereHasTheTimeGone.relatively.cancel(l1);
+
+  await sleep(5);
+
+  Glean.testOnly.whereHasTheTimeGone.relatively.stopAndAccumulate(l2); // 10ms
+  Glean.testOnly.whereHasTheTimeGone.relatively.stopAndAccumulate(l3); // 5ms
+
+  Glean.testOnlyIpc.anUnorderedBool.set(true);
+
+  Glean.testOnlyIpc.anUnorderedLabeledBoolean.aLabel.set(true);
 });
 
 add_task(
@@ -99,7 +123,7 @@ add_task(
       Assert.ok(count == 1 && MEMORY_BUCKETS.includes(bucket));
     }
 
-    const customData = Glean.testOnlyIpc.aCustomDist.testGetValue("store1");
+    const customData = Glean.testOnlyIpc.aCustomDist.testGetValue("test-ping");
     Assert.equal(3 + 4, customData.sum, "Sum's correct");
     for (let [bucket, count] of Object.entries(customData.values)) {
       Assert.ok(
@@ -149,6 +173,46 @@ add_task(
     Assert.deepEqual(
       { numerator: 44, denominator: 14 },
       Glean.testOnlyIpc.irate.testGetValue()
+    );
+
+    const serifData =
+      Glean.testOnly.mabelsCustomLabelLengths.serif.testGetValue();
+    Assert.equal(5 + 6, serifData.sum, "Sum's correct");
+
+    const labeledData = Glean.testOnly.whatDoYouRemember.trivia.testGetValue();
+    Assert.equal(
+      MEMORIES.reduce((a, b) => a + b, 0) * 1024 * 1024,
+      labeledData.sum
+    );
+    for (let [bucket, count] of Object.entries(labeledData.values)) {
+      // We could assert instead, but let's skip to save the logspam.
+      if (count == 0) {
+        continue;
+      }
+      Assert.ok(count == 1 && MEMORY_BUCKETS.includes(bucket));
+    }
+
+    const labeledTimes =
+      Glean.testOnly.whereHasTheTimeGone.relatively.testGetValue();
+    Assert.greater(labeledTimes.sum, 15 * NANOS_IN_MILLIS - EPSILON);
+    // We can't guarantee any specific time values (thank you clocks),
+    // but we can assert there are only two samples.
+    Assert.equal(
+      2,
+      Object.entries(labeledTimes.values).reduce(
+        (acc, [, count]) => acc + count,
+        0
+      )
+    );
+
+    Assert.ok(
+      Glean.testOnlyIpc.anUnorderedBool.testGetValue(),
+      "IPC works for boolean metrics that ask for it."
+    );
+
+    Assert.ok(
+      Glean.testOnlyIpc.anUnorderedLabeledBoolean.aLabel.testGetValue(),
+      "IPC works for labeled_boolean metrics that ask for it."
     );
   }
 );

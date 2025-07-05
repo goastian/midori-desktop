@@ -9,15 +9,15 @@
 ///    the server timestamp of the resource,  etc) and a field called `payload`.
 ///    A bso is serialized to and from JSON.
 /// * There's a "cleartext" bso:
-/// ** The payload is a String, which itself is JSON encoded (ie, this string `payload` is
-///    always double JSON encoded in a server record)
-/// ** This supplies helper methods for working with the "content" (some arbitrary <T>) in the
-///    payload.
+///   * The payload is a String, which itself is JSON encoded (ie, this string `payload` is
+///      always double JSON encoded in a server record)
+///   * This supplies helper methods for working with the "content" (some arbitrary <T>) in the
+///      payload.
 /// * There's an "encrypted" bso
-/// ** The payload is an [crate::enc_payload::EncryptedPayload]
-/// ** Only clients use this; as soon as practical we decrypt and as late as practical we encrypt
-///    to and from encrypted bsos.
-/// ** The encrypted bsos etc are all in the [crypto] module and require the `crypto` feature.
+///   * The payload is an [crate::enc_payload::EncryptedPayload]
+///   * Only clients use this; as soon as practical we decrypt and as late as practical we encrypt
+///     to and from encrypted bsos.
+///    * The encrypted bsos etc are all in the [crypto] module and require the `crypto` feature.
 ///
 /// Let's look at some real-world examples:
 /// # meta/global
@@ -168,21 +168,21 @@ impl OutgoingBso {
     }
 }
 
-/// We also have the concept of "content", which helps work with a `T` which
-/// is represented inside the payload. Real-world examples of a `T` include
-/// Bookmarks or Tabs.
-/// See the content module for the implementations.
-///
-/// So this all flows together in the following way:
-/// * Incoming encrypted data:
-///   EncryptedIncomingBso -> IncomingBso -> [specific engine] -> IncomingContent<T>
-/// * Incoming cleartext data:
-///   IncomingBso -> IncomingContent<T>
-///   (Note that incoming cleartext only happens for a few collections managed by
-///   the sync client and never by specific engines - engine BSOs are always encryted)
-/// * Outgoing encrypted data:
-///   OutgoingBso (created in the engine) -> [this crate] -> EncryptedOutgoingBso
-///  * Outgoing cleartext data: just an OutgoingBso with no conversions needed.
+// We also have the concept of "content", which helps work with a `T` which
+// is represented inside the payload. Real-world examples of a `T` include
+// Bookmarks or Tabs.
+// See the content module for the implementations.
+//
+// So this all flows together in the following way:
+// * Incoming encrypted data:
+//   EncryptedIncomingBso -> IncomingBso -> [specific engine] -> IncomingContent<T>
+// * Incoming cleartext data:
+//   IncomingBso -> IncomingContent<T>
+//   (Note that incoming cleartext only happens for a few collections managed by
+//   the sync client and never by specific engines - engine BSOs are always encryted)
+// * Outgoing encrypted data:
+//   OutgoingBso (created in the engine) -> [this crate] -> EncryptedOutgoingBso
+//  * Outgoing cleartext data: just an OutgoingBso with no conversions needed.
 
 /// [IncomingContent] is the result of converting an [IncomingBso] into
 /// some <T> - it consumes the Bso, so you get the envelope, and the [IncomingKind]

@@ -5,7 +5,6 @@
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   TranslationsParent: "resource://gre/actors/TranslationsParent.sys.mjs",
-  EngineProcess: "chrome://global/content/ml/EngineProcess.sys.mjs",
 });
 
 /**
@@ -15,40 +14,72 @@ ChromeUtils.defineESModuleGetters(lazy, {
 export class AboutTranslationsParent extends JSWindowActorParent {
   #isDestroyed = false;
 
+  /**
+   * A dedicated handle to this.#observe.bind(this), which we need to register non-static
+   * per-instance observers when the actor is created as well as remove when it is destroyed.
+   *
+   * @type {Function | null}
+   *
+   * @see {AboutTranslationsParent.actorCreated}
+   * @see {AboutTranslationsParent.didDestroy}
+   */
+  #boundObserve = null;
+
+  actorCreated() {
+    this.#boundObserve = this.#observe.bind(this);
+    Services.obs.addObserver(
+      this.#boundObserve,
+      "translations:model-records-changed"
+    );
+  }
+
   didDestroy() {
+    if (this.#boundObserve) {
+      Services.obs.removeObserver(
+        this.#boundObserve,
+        "translations:model-records-changed"
+      );
+      this.#boundObserve = null;
+    }
     this.#isDestroyed = true;
+  }
+
+  #observe(subject, topic) {
+    switch (topic) {
+      case "translations:model-records-changed": {
+        this.sendAsyncMessage("AboutTranslations:RebuildTranslator");
+      }
+    }
   }
 
   async receiveMessage({ name, data }) {
     switch (name) {
       case "AboutTranslations:GetTranslationsPort": {
-        const { fromLanguage, toLanguage } = data;
-        const translationsEngineParent =
-          await lazy.EngineProcess.getTranslationsEngineParent();
         if (this.#isDestroyed) {
           return undefined;
         }
-        const { port1, port2 } = new MessageChannel();
-        translationsEngineParent.startTranslation(
-          fromLanguage,
-          toLanguage,
-          port1,
-          this.browsingContext.top.embedderElement.innerWindowID
-        );
 
-        // At the time of writing, you can't return a port via the `sendQuery` API,
-        // so results can't just be returned. The `sendAsyncMessage` method must be
-        // invoked. Additionally, in the AboutTranslationsChild, the port must
-        // be transfered to the content page with `postMessage`.
-        this.sendAsyncMessage(
-          "AboutTranslations:SendTranslationsPort",
-          {
-            fromLanguage,
-            toLanguage,
-            port: port2,
-          },
-          [port2] // Mark the port as transerable.
-        );
+        const { languagePair } = data;
+        try {
+          const port =
+            await lazy.TranslationsParent.requestTranslationsPort(languagePair);
+
+          // At the time of writing, you can't return a port via the `sendQuery` API,
+          // so results can't just be returned. The `sendAsyncMessage` method must be
+          // invoked. Additionally, in the AboutTranslationsChild, the port must
+          // be transferred to the content page with `postMessage`.
+          this.sendAsyncMessage(
+            "AboutTranslations:SendTranslationsPort",
+            {
+              languagePair,
+              port,
+            },
+            [port] // Mark the port as transferable.
+          );
+        } catch (error) {
+          console.error(error);
+        }
+
         return undefined;
       }
       case "AboutTranslations:GetSupportedLanguages": {
@@ -56,6 +87,23 @@ export class AboutTranslationsParent extends JSWindowActorParent {
       }
       case "AboutTranslations:IsTranslationsEngineSupported": {
         return lazy.TranslationsParent.getIsTranslationsEngineSupported();
+      }
+      case "AboutTranslations:Telemetry": {
+        const { telemetryFunctionName, telemetryData } = data;
+        const aboutTranslationsTelemetry =
+          lazy.TranslationsParent.telemetry().aboutTranslationsPage();
+        const telemetryFunction =
+          aboutTranslationsTelemetry[telemetryFunctionName];
+
+        if (typeof telemetryFunction !== "function") {
+          throw new Error(
+            `Unknown AboutTranslationsTelemetry function name '${telemetryFunctionName}'`
+          );
+        }
+
+        aboutTranslationsTelemetry[telemetryFunctionName](telemetryData);
+
+        return undefined;
       }
       default:
         throw new Error("Unknown AboutTranslations message: " + name);

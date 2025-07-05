@@ -7,6 +7,7 @@
 #ifndef PerfStats_h
 #define PerfStats_h
 
+#include "mozilla/Atomics.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/StaticMutex.h"
 #include "mozilla/StaticPtr.h"
@@ -38,6 +39,7 @@
   MACRO(Rasterizing)                              \
   MACRO(WrDisplayListBuilding)                    \
   MACRO(LayerTransactions)                        \
+  MACRO(FrameBuilding)                            \
   MACRO(Compositing)                              \
   MACRO(Reflowing)                                \
   MACRO(Styling)                                  \
@@ -63,7 +65,21 @@
   MACRO(MajorGC)                                  \
   MACRO(NonIdleMajorGC)                           \
   MACRO(A11Y_DoInitialUpdate)                     \
-  MACRO(A11Y_ProcessQueuedCacheUpdate)
+  MACRO(A11Y_ProcessQueuedCacheUpdate)            \
+  MACRO(A11Y_ContentRemovedNode)                  \
+  MACRO(A11Y_ContentRemovedAcc)                   \
+  MACRO(A11Y_PruneOrInsertSubtree)                \
+  MACRO(A11Y_ShutdownChildrenInSubtree)           \
+  MACRO(A11Y_ShowEvent)                           \
+  MACRO(A11Y_RecvCache)                           \
+  MACRO(A11Y_ProcessShowEvent)                    \
+  MACRO(A11Y_CoalesceEvents)                      \
+  MACRO(A11Y_CoalesceMutationEvents)              \
+  MACRO(A11Y_ProcessHideEvent)                    \
+  MACRO(A11Y_SendCache)                           \
+  MACRO(A11Y_WillRefresh)                         \
+  MACRO(A11Y_AccessibilityServiceInit)            \
+  MACRO(A11Y_PlatformShowHideEvent)
 
 namespace mozilla {
 
@@ -76,7 +92,7 @@ class PerfStats {
  public:
   typedef MozPromise<nsCString, bool, true> PerfStatsPromise;
 
-  enum class Metric : uint32_t {
+  enum class Metric : uint64_t {
 #define DECLARE_ENUM(metric) metric,
     FOR_EACH_PERFSTATS_METRIC(DECLARE_ENUM)
 #undef DECLARE_ENUM
@@ -153,16 +169,17 @@ class PerfStats {
   RefPtr<PerfStatsPromise> CollectPerfStatsJSONInternal();
   nsCString CollectLocalPerfStatsJSONInternal();
 
-  static MetricMask sCollectionMask;
+  static Atomic<MetricMask, MemoryOrdering::Relaxed> sCollectionMask;
   static StaticMutex sMutex MOZ_UNANNOTATED;
   static StaticAutoPtr<PerfStats> sSingleton;
-  TimeStamp mRecordedStarts[static_cast<size_t>(Metric::Max)];
-  double mRecordedTimes[static_cast<size_t>(Metric::Max)];
-  uint32_t mRecordedCounts[static_cast<size_t>(Metric::Max)];
+  TimeStamp mRecordedStarts[static_cast<uint64_t>(Metric::Max)];
+  double mRecordedTimes[static_cast<uint64_t>(Metric::Max)];
+  uint32_t mRecordedCounts[static_cast<uint64_t>(Metric::Max)];
   nsTArray<nsCString> mStoredPerfStats;
 };
 
-static_assert(1 << (static_cast<uint64_t>(PerfStats::Metric::Max) - 1) <=
+static_assert(static_cast<uint64_t>(1)
+                      << (static_cast<uint64_t>(PerfStats::Metric::Max) - 1) <=
                   std::numeric_limits<PerfStats::MetricMask>::max(),
               "More metrics than can fit into sCollectionMask bitmask");
 

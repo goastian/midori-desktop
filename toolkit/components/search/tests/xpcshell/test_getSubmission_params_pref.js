@@ -1,7 +1,7 @@
 /* Any copyright is dedicated to the Public Domain.
  * http://creativecommons.org/publicdomain/zero/1.0/ */
 
-/* Test that MozParam condition="pref" values used in search URLs are from the
+/* Test that preference parameters used in search URLs are from the
  * default branch, and that their special characters are URL encoded. */
 
 "use strict";
@@ -13,12 +13,38 @@ const { AppConstants } = ChromeUtils.importESModule(
 const defaultBranch = Services.prefs.getDefaultBranch(
   SearchUtils.BROWSER_SEARCH_PREF
 );
-const baseURL = "https://www.google.com/search?q=foo";
+const baseURL = "https://example.com/search?";
+
+const CONFIG = [
+  {
+    identifier: "preferenceEngine",
+    base: {
+      urls: {
+        search: {
+          base: "https://example.com/search",
+          params: [
+            {
+              name: "code",
+              enterpriseValue: "enterprise",
+            },
+            {
+              name: "code",
+              experimentConfig: "code",
+            },
+            {
+              name: "test",
+              experimentConfig: "test",
+            },
+          ],
+          searchTermParamName: "q",
+        },
+      },
+    },
+  },
+];
 
 add_setup(async function () {
-  // The test engines used in this test need to be recognized as 'default'
-  // engines, or their MozParams will be ignored.
-  await SearchTestUtils.useTestEngines("enterprise");
+  SearchTestUtils.setRemoteSettingsConfig(CONFIG);
 });
 
 add_task(async function test_pref_initial_value() {
@@ -34,13 +60,13 @@ add_task(async function test_pref_initial_value() {
     );
   }
 
-  await AddonTestUtils.promiseStartupManager();
   await Services.search.init();
 
-  const engine = Services.search.getEngineByName("engine-pref");
+  const engine = Services.search.getEngineById("preferenceEngine");
   let expectedCode =
-    SearchUtils.MODIFIED_APP_CHANNEL == "esr" ? "enterprise" : "good";
+    SearchUtils.MODIFIED_APP_CHANNEL == "esr" ? "enterprise" : "good&id=unique";
   let searchParams = new URL(engine.getSubmission("foo").uri.spec).searchParams;
+
   Assert.equal(
     searchParams.get("code"),
     expectedCode,
@@ -59,11 +85,11 @@ add_task(async function test_pref_updated() {
   // Update the pref without re-init nor restart.
   defaultBranch.setCharPref("param.code", "supergood&id=unique123456");
 
-  const engine = Services.search.getEngineByName("engine-pref");
+  const engine = Services.search.getEngineById("preferenceEngine");
   let expectedCode =
     SearchUtils.MODIFIED_APP_CHANNEL == "esr"
       ? "enterprise"
-      : "supergood%26id%3Dunique123456";
+      : "supergood&id=unique123456";
   let searchParams = new URL(engine.getSubmission("foo").uri.spec).searchParams;
 
   Assert.equal(
@@ -73,32 +99,32 @@ add_task(async function test_pref_updated() {
   );
 });
 
-add_task(async function test_pref_cleared() {
-  // Update the pref without re-init nor restart.
-  // Note you can't delete a preference from the default branch.
-  defaultBranch.setCharPref("param.code", "");
-
-  let engine = Services.search.getEngineByName("engine-pref");
+add_task(
   // ESR always has an enterprise code
-  if (SearchUtils.MODIFIED_APP_CHANNEL != "esr") {
+  { skip_if: () => SearchUtils.MODIFIED_APP_CHANNEL == "esr" },
+  async function test_pref_cleared() {
+    // Update the pref without re-init nor restart.
+    // Note you can't delete a preference from the default branch.
+    defaultBranch.setCharPref("param.code", "");
+
+    let engine = Services.search.getEngineById("preferenceEngine");
     Assert.equal(
       engine.getSubmission("foo").uri.spec,
-      baseURL,
+      baseURL + "q=foo",
       "Should have just the base URL after the pref was cleared"
     );
   }
-});
+);
 
 add_task(async function test_pref_updated_enterprise() {
   // Set the pref to some value and enable enterprise mode at the same time.
   defaultBranch.setCharPref("param.code", "supergood&id=unique123456");
   await enableEnterprise();
 
-  const engine = Services.search.getEngineByName("engine-pref");
-  let searchParams = new URL(engine.getSubmission("foo").uri.spec).searchParams;
+  const engine = Services.search.getEngineById("preferenceEngine");
   Assert.equal(
-    searchParams.get("code"),
-    "enterprise",
-    "Should have the correct code in the submissionURL"
+    engine.getSubmission("foo").uri.spec,
+    baseURL + "code=enterprise&q=foo",
+    "Enterprise parameter should override experiment config."
   );
 });

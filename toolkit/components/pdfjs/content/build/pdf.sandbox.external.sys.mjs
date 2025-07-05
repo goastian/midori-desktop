@@ -1,4 +1,4 @@
-/* Copyright 2023 Mozilla Foundation
+/* Copyright 2024 Mozilla Foundation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -36,6 +36,9 @@ export class SandboxSupportBase {
     throw new Error("Not implemented");
   }
   callSandboxFunction(name, args) {
+    if (!this.commFun) {
+      return;
+    }
     try {
       args = this.exportValueToSandbox(args);
       this.commFun(name, args);

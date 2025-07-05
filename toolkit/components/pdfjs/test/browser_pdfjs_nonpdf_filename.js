@@ -58,7 +58,7 @@ add_task(async function test_filename_nonpdf_extension() {
 
       info("Clicking on the download button...");
       await SpecialPowers.spawn(newTab.linkedBrowser, [], () => {
-        content.document.getElementById("download").click();
+        content.document.getElementById("downloadButton").click();
       });
       info("Waiting for a filename to be picked from the file picker");
       let defaultName = await filepickerNamePromise;
@@ -67,7 +67,9 @@ add_task(async function test_filename_nonpdf_extension() {
         "Fido-2022-04-28.pdf",
         "Should have gotten the provided filename with pdf suffixed."
       );
-      BrowserTestUtils.removeTab(newTab);
+      await waitForPdfJSClose(newTab.linkedBrowser, /* closeTab = */ true);
     }
   );
+
+  await SpecialPowers.popPrefEnv();
 });

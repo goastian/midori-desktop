@@ -43,10 +43,7 @@ let nonPrivateLoadContext = Cu.createLoadContext();
 let privateLoadContext = Cu.createPrivateLoadContext();
 
 var observer = {
-  QueryInterface: ChromeUtils.generateQI([
-    "nsIObserver",
-    "nsISupportsWeakReference",
-  ]),
+  QueryInterface: ChromeUtils.generateQI(["nsIObserver"]),
 
   observe(aSubject, aTopic) {
     switch (aTopic) {
@@ -58,31 +55,25 @@ var observer = {
         if (Services.prefs.prefHasUserValue(LAST_DIR_PREF)) {
           Services.prefs.clearUserPref(LAST_DIR_PREF);
         }
-        // Ensure that purging session history causes both the session-only PB cache
-        // and persistent prefs to be cleared.
-        let promises = [
-          new Promise(resolve =>
-            lazy.cps2.removeByName(LAST_DIR_PREF, nonPrivateLoadContext, {
-              handleCompletion: resolve,
-            })
-          ),
-          new Promise(resolve =>
-            lazy.cps2.removeByName(LAST_DIR_PREF, privateLoadContext, {
-              handleCompletion: resolve,
-            })
-          ),
-        ];
+        // Ensure that purging session history causes both the session-only PB
+        // cache and persistent prefs to be cleared. Passing loadContext=null to
+        // cps will clear both.
+        let promise = new Promise(resolve =>
+          lazy.cps2.removeByName(LAST_DIR_PREF, null, {
+            handleCompletion: resolve,
+          })
+        );
         // This is for testing purposes.
         if (aSubject && typeof subject == "object") {
-          aSubject.promise = Promise.all(promises);
+          aSubject.promise = promise;
         }
         break;
     }
   },
 };
 
-Services.obs.addObserver(observer, "last-pb-context-exited", true);
-Services.obs.addObserver(observer, "browser:purge-session-history", true);
+Services.obs.addObserver(observer, "last-pb-context-exited");
+Services.obs.addObserver(observer, "browser:purge-session-history");
 
 function readLastDirPref() {
   try {

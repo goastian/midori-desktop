@@ -53,7 +53,24 @@ export const PERMISSIONS_WITH_MESSAGE = new Set([
   "tabs",
   "tabHide",
   "topSites",
+  "trialML",
+  "userScripts",
   "webNavigation",
+]);
+
+export const DATA_COLLECTION_PERMISSIONS = new Set([
+  "authenticationInfo",
+  "bookmarksInfo",
+  "browsingActivity",
+  "financialAndPaymentInfo",
+  "healthInfo",
+  "locationInfo",
+  "personalCommunications",
+  "personallyIdentifyingInfo",
+  "searchTerms",
+  "technicalAndInteraction",
+  "websiteActivity",
+  "websiteContent",
 ]);
 
 /**
@@ -74,9 +91,20 @@ export const PERMISSION_L10N_ID_OVERRIDES = new Map();
  * may be overridden by entries in `PERMISSION_L10N_ID_OVERRIDES`.
  *
  * @param {string} permission
+ *                 A permission name.
+ * @param {boolean} [short=false] short
+ *                                An optional parameter to indicate whether to
+ *                                get l10n IDs for short-form or long-form
+ *                                strings. The default is to return short-form
+ *                                string IDs.
  * @returns {string | null}
  */
-export function permissionToL10nId(permission) {
+export function permissionToL10nId(permission, short = false) {
+  if (DATA_COLLECTION_PERMISSIONS.has(permission)) {
+    const prefix = short ? "short" : "long";
+    return `webext-perms-description-data-${prefix}-${permission}`;
+  }
+
   if (!PERMISSIONS_WITH_MESSAGE.has(permission)) {
     return null;
   }

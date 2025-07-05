@@ -428,12 +428,12 @@ Result<nsCOMPtr<nsIFile>, nsresult> Addon::FullPath() {
 
   // First check for an absolute path, in case we have a proxy file.
   nsCOMPtr<nsIFile> file;
-  if (NS_SUCCEEDED(NS_NewLocalFile(path, false, getter_AddRefs(file)))) {
+  if (NS_SUCCEEDED(NS_NewLocalFile(path, getter_AddRefs(file)))) {
     return std::move(file);
   }
 
   // If not an absolute path, fall back to a relative path from the location.
-  MOZ_TRY(NS_NewLocalFile(mLocation.Path(), false, getter_AddRefs(file)));
+  MOZ_TRY(NS_NewLocalFile(mLocation.Path(), getter_AddRefs(file)));
 
   MOZ_TRY(file->AppendRelativePath(path));
   return std::move(file);
@@ -561,7 +561,7 @@ nsresult AddonManagerStartup::EncodeBlob(JS::Handle<JS::Value> value,
   MOZ_TRY_VAR(lz4, EncodeLZ4(scData, STRUCTURED_CLONE_MAGIC));
 
   JS::Rooted<JSObject*> obj(cx, dom::ArrayBuffer::Create(cx, lz4, rv));
-  ENSURE_SUCCESS(rv, rv.StealNSResult());
+  RETURN_NSRESULT_ON_FAILURE(rv);
 
   result.set(JS::ObjectValue(*obj));
   return NS_OK;
@@ -825,7 +825,6 @@ AddonManagerStartup::RegisterChrome(nsIURI* manifestURI,
     } else if (type.EqualsLiteral("content")) {
       if (vals.Length() == 3 &&
           vals[2].EqualsLiteral("contentaccessible=yes")) {
-        NS_ENSURE_TRUE(xpc::IsInAutomation(), NS_ERROR_INVALID_ARG);
         vals.RemoveElementAt(2);
         content.AppendElement(ContentEntry(
             std::move(vals), nsChromeRegistry::CONTENT_ACCESSIBLE));

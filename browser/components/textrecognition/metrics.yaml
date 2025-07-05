@@ -1,0 +1,89 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'Firefox :: General'
+
+browser.ui.interaction:
+  textrecognition_error:
+    type: counter
+    description: >
+      Recorded when text recognition in images fails for some unknown
+      reason.
+      This metric was generated to correspond to the Legacy Telemetry
+      scalar browser.ui.interaction.textrecognition_error.
+    bugs:
+      - https://bugzil.la/1783261
+    data_reviews:
+      - https://bugzil.la/1783261
+    notification_emails:
+      - gtatum@mozilla.com
+      - nordzilla@mozilla.com
+    expires: never
+    telemetry_mirror: BROWSER_UI_INTERACTION_TEXTRECOGNITION_ERROR
+
+text_recognition:
+  api_performance:
+    type: timing_distribution
+    description: >
+      The milliseconds of time the text recognition results took to display,
+      including the UI time and OS response time.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TEXT_RECOGNITION_API_PERFORMANCE.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1783261
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1783261
+    notification_emails:
+      - gtatum@mozilla.com
+      - nordzilla@mozilla.com
+    expires: never
+    telemetry_mirror: TEXT_RECOGNITION_API_PERFORMANCE
+
+  interaction_timing:
+    type: timing_distribution
+    description: >
+      The milliseconds of time that a user viewed the text results.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TEXT_RECOGNITION_INTERACTION_TIMING.
+    time_unit: millisecond
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1783261
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1783261
+    notification_emails:
+      - gtatum@mozilla.com
+      - nordzilla@mozilla.com
+    expires: never
+    telemetry_mirror: TEXT_RECOGNITION_INTERACTION_TIMING
+
+  text_length:
+    type: custom_distribution
+    description: >
+      Measures the length of the text that was recognized, in code units.
+
+      This metric was generated to correspond to the Legacy Telemetry
+      exponential histogram TEXT_RECOGNITION_TEXT_LENGTH.
+    range_min: 1
+    range_max: 50000
+    bucket_count: 20
+    histogram_type: exponential
+    unit: code units
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1783261
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1783261
+    notification_emails:
+      - gtatum@mozilla.com
+      - nordzilla@mozilla.com
+    expires: never
+    telemetry_mirror: TEXT_RECOGNITION_TEXT_LENGTH

@@ -1,0 +1,41 @@
+# 'nightly' contains things that are in nightly mozconfigs and allowed to be missing from release builds.
+# Other keys in allowlist contain things are in that branches mozconfigs and allowed to be missing from nightly builds.
+allowlist = {
+    'release': {},
+    'nightly': {},
+    }
+
+all_platforms = ['win64', 'win64-aarch64', 'win32', 'linux32', 'linux64', 'macosx64']
+
+for platform in all_platforms:
+    allowlist['nightly'][platform] = [
+        'ac_add_options --with-branding=browser/branding/nightly',
+    ]
+
+allowlist['nightly']['macosx64'] += [
+    'ac_add_options --enable-instruments',
+    'ac_add_options --enable-dtrace',
+    'if test `uname -s` != Linux; then',
+    'fi',
+]
+
+allowlist['nightly']['win64'] += [
+    '. "$topsrcdir/browser/config/mozconfigs/win64/common-win64"',
+]
+
+for platform in all_platforms:
+    allowlist['release'][platform] = [
+        'ac_add_options --enable-update-channel=release',
+        'ac_add_options --enable-official-branding',
+    ]
+
+allowlist['release']['linux32'] += [
+    'export MOZILLA_OFFICIAL=1',
+]
+allowlist['release']['linux64'] += [
+    'export MOZILLA_OFFICIAL=1',
+]
+
+if __name__ == '__main__':
+    import pprint
+    pprint.pprint(allowlist)

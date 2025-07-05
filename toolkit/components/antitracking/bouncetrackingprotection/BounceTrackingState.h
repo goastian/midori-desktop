@@ -11,7 +11,6 @@
 #include "mozilla/WeakPtr.h"
 #include "mozilla/OriginAttributes.h"
 #include "nsIPrincipal.h"
-#include "nsIWeakReferenceUtils.h"
 #include "nsStringFwd.h"
 #include "nsIWebProgressListener.h"
 #include "nsWeakReference.h"
@@ -50,14 +49,25 @@ class BounceTrackingState : public nsIWebProgressListener,
   // Reset state for all BounceTrackingState instances this includes resetting
   // BounceTrackingRecords and cancelling any running timers.
   static void ResetAll();
+
+  // Resets and destroys all BounceTrackingState objects. This is used when the
+  // feature gets disabled.
+  static void DestroyAll();
+
+  // Reset BounceTrackingState objects matching OriginAttributes.
   static void ResetAllForOriginAttributes(
       const OriginAttributes& aOriginAttributes);
+  // Same as above but for a pattern.
   static void ResetAllForOriginAttributesPattern(
       const OriginAttributesPattern& aPattern);
 
   const Maybe<BounceTrackingRecord>& GetBounceTrackingRecord();
 
   void ResetBounceTrackingRecord();
+
+  // The top level BrowsingContext and its BrowsingContextWebProgress are
+  // discarded (e.g. tab closed).
+  void OnBrowsingContextDiscarded();
 
   // Callback for when we received a response from the server and are about to
   // create a document for the response. Calls into
@@ -85,12 +95,14 @@ class BounceTrackingState : public nsIWebProgressListener,
   static bool ShouldTrackPrincipal(nsIPrincipal* aPrincipal);
 
   // Check if there is a BounceTrackingState which current browsing context is
-  // associated with aSiteHost.
+  // associated with aSiteHost. Also takes OriginAttributes into account for
+  // isolation between normal browsing, private browsing and containers.
   // This is an approximation for checking if a given site is currently loaded
   // in the top level context, e.g. in a tab. See Bug 1842047 for adding a more
   // accurate check that calls into the browser implementations.
   [[nodiscard]] static nsresult HasBounceTrackingStateForSite(
-      const nsACString& aSiteHost, bool& aResult);
+      const nsACString& aSiteHost, const OriginAttributes& aOriginAttributes,
+      bool& aResult);
 
   // Get the currently associated BrowsingContext. Returns nullptr if it has not
   // been attached yet.
@@ -106,6 +118,10 @@ class BounceTrackingState : public nsIWebProgressListener,
   // Record sites which have accessed storage in the current extended
   // navigation.
   [[nodiscard]] nsresult OnStorageAccess(nsIPrincipal* aPrincipal);
+
+  // Record sites which have user activation in the current extended
+  // navigation.
+  [[nodiscard]] nsresult OnUserActivation(const nsACString& aSiteHost);
 
  private:
   explicit BounceTrackingState();

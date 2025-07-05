@@ -8,6 +8,7 @@
 #define ETWTools_h
 
 #include "mozilla/BaseProfilerMarkers.h"
+#include "mozilla/Flow.h"
 #include "mozilla/TimeStamp.h"
 #include "nsString.h"
 
@@ -30,6 +31,10 @@ TRACELOGGING_DECLARE_PROVIDER(kFirefoxTraceLoggingProvider);
 
 void Init();
 void Shutdown();
+static inline bool IsProfilingGroup(
+    mozilla::MarkerSchema::ETWMarkerGroup aGroup) {
+  return gETWCollectionMask & uint64_t(aGroup);
+}
 
 template <typename T, typename = void>
 struct MarkerHasPayload : std::false_type {};
@@ -207,6 +212,13 @@ static inline void CreateDataDescForPayloadNonPOD(
 
 static inline void CreateDataDescForPayloadNonPOD(
     PayloadBuffer& aBuffer, EVENT_DATA_DESCRIPTOR& aDescriptor,
+    const Flow& aFlow) {
+  // TODO: we could use a custom schema à la TraceLoggingCustom
+  CreateDataDescForPayloadPOD(aBuffer, aDescriptor, aFlow.Id());
+}
+
+static inline void CreateDataDescForPayloadNonPOD(
+    PayloadBuffer& aBuffer, EVENT_DATA_DESCRIPTOR& aDescriptor,
     const mozilla::TimeStamp& aPayload) {
   if (aPayload.RawQueryPerformanceCounterValue().isNothing()) {
     // This should never happen?
@@ -329,8 +341,8 @@ static inline void EmitETWMarker(const mozilla::ProfilerString8View& aName,
       return;
     }
 
-    static const __declspec(allocate(_tlgSegMetadataEvents)) __declspec(
-        align(1)) constexpr StaticMetaData<MarkerType>
+    static const __declspec(allocate(_tlgSegMetadataEvents))
+    __declspec(align(1)) constexpr StaticMetaData<MarkerType>
         staticData;
 
     // Allocate the exact amount of descriptors required by this event.
@@ -402,6 +414,9 @@ void OutputMarkerSchema(void* aContext, MarkerType aMarkerType,
 namespace ETW {
 static inline void Init() {}
 static inline void Shutdown() {}
+static inline bool IsProfilingGroup(mozilla::MarkerSchema::ETWMarkerGroup) {
+  return false;
+}
 template <typename MarkerType, typename... PayloadArguments>
 static inline void EmitETWMarker(const mozilla::ProfilerString8View& aName,
                                  const mozilla::MarkerCategory& aCategory,

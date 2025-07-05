@@ -22,7 +22,7 @@ LIBZSTD_MK_INCLUDED := 1
 
 # By default, library's directory is same as this included makefile
 LIB_SRCDIR ?= $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
-LIB_BINDIR ?= $(LIBSRC_DIR)
+LIB_BINDIR ?= $(LIB_SRCDIR)
 
 # ZSTD_LIB_MINIFY is a helper variable that
 # configures a bunch of other variables to space-optimized defaults.
@@ -206,7 +206,7 @@ endif
 endif
 CPPFLAGS  += -DZSTD_LEGACY_SUPPORT=$(ZSTD_LEGACY_SUPPORT)
 
-UNAME := $(shell uname)
+UNAME := $(shell sh -c 'MSYSTEM="MSYS" uname')
 
 ifndef BUILD_DIR
 ifeq ($(UNAME), Darwin)

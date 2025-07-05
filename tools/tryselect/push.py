@@ -8,7 +8,6 @@ import os
 import sys
 import traceback
 
-import six
 from mach.util import get_state_dir
 from mozbuild.base import MozbuildObject
 from mozversioncontrol import MissingVCSExtension, get_repository_object
@@ -48,6 +47,12 @@ ERROR please commit changes before continuing
 
 MAX_HISTORY = 10
 
+MACH_TRY_PUSH_TO_VCS = os.getenv("MACH_TRY_PUSH_TO_VCS") == "1"
+
+TREEHERDER_LANDO_TRY_RUN_URL = (
+    "https://treeherder.mozilla.org/jobs?repo=try&landoCommitID={job_id}"
+)
+
 here = os.path.abspath(os.path.dirname(__file__))
 build = MozbuildObject.from_environment(cwd=here)
 vcs = get_repository_object(build.topsrcdir)
@@ -55,14 +60,6 @@ vcs = get_repository_object(build.topsrcdir)
 history_path = os.path.join(
     get_state_dir(specific_to_topsrcdir=True), "history", "try_task_configs.json"
 )
-
-
-def write_task_config(try_task_config):
-    config_path = os.path.join(vcs.path, "try_task_config.json")
-    with open(config_path, "w") as fh:
-        json.dump(try_task_config, fh, indent=4, separators=(",", ": "), sort_keys=True)
-        fh.write("\n")
-    return config_path
 
 
 def write_task_config_history(msg, try_task_config):
@@ -172,9 +169,9 @@ def display_push_estimates(try_task_config):
     if "percentile" in durations:
         percentile = durations["percentile"]
         if percentile > 50:
-            print("estimates: In the longest {}% of durations".format(100 - percentile))
+            print(f"estimates: In the longest {100 - percentile}% of durations")
         else:
-            print("estimates: In the shortest {}% of durations".format(percentile))
+            print(f"estimates: In the shortest {percentile}% of durations")
     print(
         "estimates: Should take about {} (Finished around {})".format(
             durations["wall_duration_seconds"],
@@ -208,8 +205,10 @@ def push_to_try(
     files_to_change=None,
     allow_log_capture=False,
     push_to_lando=False,
+    push_to_vcs=False,
 ):
     push = not stage_changes and not dry_run
+    push_to_vcs |= MACH_TRY_PUSH_TO_VCS
     check_working_directory(push)
 
     if try_task_config and method not in ("auto", "empty"):
@@ -223,53 +222,64 @@ def push_to_try(
     closed_tree_string = " ON A CLOSED TREE" if closed_tree else ""
     the_cmdline = get_sys_argv()
     full_commandline_entry = f"mach try command: `{the_cmdline}`"
-    commit_message = "{}{}\n\n{}\n\nPushed via `mach try {}`".format(
-        msg,
-        closed_tree_string,
-        full_commandline_entry,
-        method,
-    )
+    commit_message = f"{msg}{closed_tree_string}\n\n{full_commandline_entry}\n\nPushed via `mach try {method}`"
 
-    config_path = None
-    changed_files = []
+    changed_files = {}
+
     if try_task_config:
+        changed_files["try_task_config.json"] = (
+            json.dumps(
+                try_task_config, indent=4, separators=(",", ": "), sort_keys=True
+            )
+            + "\n"
+        )
         if push and method not in ("again", "auto", "empty"):
             write_task_config_history(msg, try_task_config)
-        config_path = write_task_config(try_task_config)
-        changed_files.append(config_path)
 
     if (push or stage_changes) and files_to_change:
-        for path, content in files_to_change.items():
-            path = os.path.join(vcs.path, path)
-            with open(path, "wb") as fh:
-                fh.write(six.ensure_binary(content))
-            changed_files.append(path)
+        changed_files.update(files_to_change.items())
+
+    if not push:
+        print("Commit message:")
+        print(commit_message)
+        config = changed_files.pop("try_task_config.json", None)
+        if config:
+            print("Calculated try_task_config.json:")
+            print(config)
+        if stage_changes:
+            vcs.stage_changes(changed_files)
+
+        return
+
+    if push_to_lando or not push_to_vcs:
+        print("Note: `--push-to-lando` is now the default behaviour of `mach try`.")
+        print("Note: Use `--push-to-vcs` to push changes to try directly.")
 
     try:
-        if not push:
-            print("Commit message:")
-            print(commit_message)
-            if config_path:
-                print("Calculated try_task_config.json:")
-                with open(config_path) as fh:
-                    print(fh.read())
-            return
+        if push_to_vcs:
+            vcs.push_to_try(
+                commit_message,
+                changed_files=changed_files,
+                allow_log_capture=allow_log_capture,
+            )
+        else:
+            job_id = push_to_lando_try(vcs, commit_message, changed_files)
+            print(
+                f"Follow the progress of your build on Treeherder: "
+                f"{TREEHERDER_LANDO_TRY_RUN_URL.format(job_id=job_id)}"
+            )
 
-        vcs.add_remove_files(*changed_files)
-
-        try:
-            if push_to_lando:
-                push_to_lando_try(vcs, commit_message)
-            else:
-                vcs.push_to_try(commit_message, allow_log_capture=allow_log_capture)
-        except MissingVCSExtension as e:
-            if e.ext == "push-to-try":
-                print(HG_PUSH_TO_TRY_NOT_FOUND)
-            elif e.ext == "cinnabar":
-                print(GIT_CINNABAR_NOT_FOUND)
-            else:
-                raise
-            sys.exit(1)
+            return job_id
+    except MissingVCSExtension as e:
+        if e.ext == "push-to-try":
+            print(HG_PUSH_TO_TRY_NOT_FOUND)
+        elif e.ext == "cinnabar":
+            print(GIT_CINNABAR_NOT_FOUND)
+        else:
+            raise
+        sys.exit(1)
     finally:
-        if config_path and os.path.isfile(config_path):
-            os.remove(config_path)
+        if "try_task_config.json" in changed_files and os.path.isfile(
+            "try_task_config.json"
+        ):
+            os.remove("try_task_config.json")

@@ -8,6 +8,7 @@ support-files = [
   "crasher_subprocess_head.js",
   "crasher_subprocess_tail.js",
 ]
+tags = "os_integration"
 
 ["test_crash_AsyncShutdown.js"]
 
@@ -77,30 +78,6 @@ head = "head_crashreporter.js head_win64cfi.js"
 run-if = ["os == 'win' && bits == 64"]
 reason = "Windows test specific to the x86-64 architecture"
 
-["test_crash_win64cfi_infinite_code_chain.js"]
-head = "head_crashreporter.js head_win64cfi.js"
-run-if = ["os == 'win' && bits == 64"]
-reason = "Windows test specific to the x86-64 architecture"
-support-files = ["test_crash_win64cfi_infinite_code_chain.exe"]
-
-["test_crash_win64cfi_infinite_entry_chain.js"]
-head = "head_crashreporter.js head_win64cfi.js"
-run-if = ["os == 'win' && bits == 64"]
-reason = "Windows test specific to the x86-64 architecture"
-support-files = ["test_crash_win64cfi_infinite_entry_chain.exe"]
-
-["test_crash_win64cfi_invalid_exception_rva.js"]
-head = "head_crashreporter.js head_win64cfi.js"
-run-if = ["os == 'win' && bits == 64"]
-reason = "Windows test specific to the x86-64 architecture"
-support-files = ["test_crash_win64cfi_invalid_exception_rva.exe"]
-
-["test_crash_win64cfi_not_a_pe.js"]
-head = "head_crashreporter.js head_win64cfi.js"
-run-if = ["os == 'win' && bits == 64"]
-reason = "Windows test specific to the x86-64 architecture"
-support-files = ["test_crash_win64cfi_not_a_pe.exe"]
-
 ["test_crash_win64cfi_push_nonvol.js"]
 head = "head_crashreporter.js head_win64cfi.js"
 run-if = ["os == 'win' && bits == 64"]
@@ -126,11 +103,6 @@ head = "head_crashreporter.js head_win64cfi.js"
 run-if = ["os == 'win' && bits == 64"]
 reason = "Windows test specific to the x86-64 architecture"
 
-["test_crash_win64cfi_unknown_op.js"]
-head = "head_crashreporter.js head_win64cfi.js"
-run-if = ["os == 'win' && bits == 64"]
-reason = "Windows test specific to the x86-64 architecture"
-
 ["test_crash_with_memory_report.js"]
 
 ["test_crashreporter.js"]
@@ -139,8 +111,10 @@ reason = "Windows test specific to the x86-64 architecture"
 # we need to skip this due to bug 838613
 skip-if = [
   "os == 'android'",
-  "apple_silicon",
-  "apple_catalina",
+  "os == 'mac' && os_version == '10.15' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '14.70' && processor == 'x86_64'",
+  "os == 'mac' && os_version == '11.20' && arch == 'aarch64'",
+  "os == 'mac' && os_version == '15.30' && arch == 'aarch64'",
   "os == 'linux' && os_version == '18.04' && bits == 32",
 ]
 

@@ -2,7 +2,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-mod bridge;
+pub(crate) mod bridge;
 mod incoming;
 mod outgoing;
 
@@ -17,7 +17,6 @@ use serde_derive::*;
 use sql_support::ConnExt;
 use sync_guid::Guid as SyncGuid;
 
-pub use bridge::BridgedEngine;
 use incoming::IncomingAction;
 
 type JsonMap = serde_json::Map<String, serde_json::Value>;
@@ -54,7 +53,7 @@ fn merge(
         for (key, parent_value) in parent.into_iter() {
             if let Some(incoming_value) = other.remove(&key) {
                 if incoming_value != parent_value {
-                    log::trace!(
+                    trace!(
                         "merge: key {} was updated in incoming - copying value locally",
                         key
                     );
@@ -72,7 +71,7 @@ fn merge(
             } else {
                 // Key was not present in incoming value.
                 // Another client must have deleted it.
-                log::trace!(
+                trace!(
                     "merge: key {} no longer present in incoming - removing it locally",
                     key
                 );
@@ -90,7 +89,7 @@ fn merge(
         // the ones where a corresponding key does not exist in
         // parent, so it is a new key, and we need to add it.
         for (key, incoming_value) in other.into_iter() {
-            log::trace!(
+            trace!(
                 "merge: key {} doesn't occur in parent - copying from incoming",
                 key
             );
@@ -104,7 +103,7 @@ fn merge(
     } else {
         // No parent. Server wins. Overwrite every key in ours with
         // the corresponding value in other.
-        log::trace!("merge: no parent - copying all keys from incoming");
+        trace!("merge: no parent - copying all keys from incoming");
         for (key, incoming_value) in other.into_iter() {
             let old_value = ours.remove(&key);
             let new_value = Some(incoming_value.clone());
@@ -163,7 +162,8 @@ pub struct SyncedExtensionChange {
 pub fn get_synced_changes(db: &StorageDb) -> Result<Vec<SyncedExtensionChange>> {
     let signal = db.begin_interrupt_scope()?;
     let sql = "SELECT ext_id, changes FROM temp.storage_sync_applied";
-    db.conn().query_rows_and_then(sql, [], |row| -> Result<_> {
+    let conn = db.get_connection()?;
+    conn.query_rows_and_then(sql, [], |row| -> Result<_> {
         signal.err_if_interrupted()?;
         Ok(SyncedExtensionChange {
             ext_id: row.get("ext_id")?,
@@ -179,9 +179,10 @@ pub mod test {
     use crate::schema::create_empty_sync_temp_tables;
 
     pub fn new_syncable_mem_db() -> StorageDb {
-        let _ = env_logger::try_init();
+        error_support::init_for_tests();
         let db = new_mem_db();
-        create_empty_sync_temp_tables(&db).expect("should work");
+        let conn = db.get_connection().expect("should retrieve connection");
+        create_empty_sync_temp_tables(conn).expect("should work");
         db
     }
 }
@@ -382,7 +383,8 @@ mod tests {
     #[test]
     fn test_get_synced_changes() -> Result<()> {
         let db = new_syncable_mem_db();
-        db.execute_batch(&format!(
+        let conn = db.get_connection()?;
+        conn.execute_batch(&format!(
             r#"INSERT INTO temp.storage_sync_applied (ext_id, changes)
                 VALUES
                 ('an-extension', '{change1}'),

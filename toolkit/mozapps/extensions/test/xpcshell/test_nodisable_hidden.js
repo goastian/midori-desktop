@@ -9,6 +9,10 @@ const distroDir = FileUtils.getDir("ProfD", ["sysfeatures"]);
 distroDir.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);
 registerDirectory("XREAppFeat", distroDir);
 
+// Enable SCOPE_APPLICATION for builtin testing.  Default in tests is only SCOPE_PROFILE.
+let scopes = AddonManager.SCOPE_PROFILE | AddonManager.SCOPE_APPLICATION;
+Services.prefs.setIntPref("extensions.enabledScopes", scopes);
+
 const NORMAL_ID = "normal@tests.mozilla.org";
 const SYSTEM_ID = "system@tests.mozilla.org";
 
@@ -59,17 +63,28 @@ add_task(async function () {
   await promiseShutdownManager();
 });
 
-// system add-ons can never be user disabled.
-add_task(async function () {
-  let xpi = createTempWebExtensionFile({
-    manifest: {
-      name: "Test disabling hidden add-ons, hidden system add-on case.",
-      version: "1.0",
-      browser_specific_settings: { gecko: { id: SYSTEM_ID } },
+// system add-ons installed in the system builtin location can never be user disabled.
+add_task(async function test_legacy_system_defaults_builtin_location() {
+  const addon_res_url_path = "test-builtin-systemaddon";
+  await setupBuiltinExtension(
+    {
+      manifest: {
+        name: "Test disabling hidden add-ons, hidden system add-on case.",
+        version: "1.0",
+        browser_specific_settings: { gecko: { id: SYSTEM_ID } },
+      },
     },
+    addon_res_url_path
+  );
+  await overrideBuiltIns({
+    builtins: [
+      {
+        addon_id: SYSTEM_ID,
+        addon_version: "1.0",
+        res_url: `resource://${addon_res_url_path}/`,
+      },
+    ],
   });
-  xpi.copyTo(distroDir, `${SYSTEM_ID}.xpi`);
-  await overrideBuiltIns({ system: [SYSTEM_ID] });
 
   await promiseStartupManager();
 

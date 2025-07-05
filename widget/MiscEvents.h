@@ -49,7 +49,7 @@ class WidgetContentCommandEvent : public WidgetGUIEvent {
     return nullptr;
   }
 
-  // eContentCommandInsertText
+  // eContentCommandInsertText and eContentCommandReplaceText
   mozilla::Maybe<nsString> mString;  // [in]
 
   // eContentCommandPasteTransferable
@@ -68,9 +68,30 @@ class WidgetContentCommandEvent : public WidgetGUIEvent {
     bool mIsHorizontal;  // [in]
   } mScroll;
 
+  // eContentCommandReplaceText
+  struct Selection {
+    // Replacement source string. If not matched, failed
+    nsString mReplaceSrcString;  // [in]
+    // Start offset of selection
+    uint32_t mOffset = 0;  // [in]
+    // false if selection is end of replaced string
+    bool mPreventSetSelection = false;  // [in]
+  } mSelection;
+
+  // If set to true, the event checks whether the command is enabled in the
+  // process or not without executing the command.  I.e., if it's in the parent
+  // process when a remote process has focus, mIsEnabled may be different from
+  // the latest state of the command in the remote process.
   bool mOnlyEnabledCheck;  // [in]
 
   bool mSucceeded;  // [out]
+
+  // If the command is enabled, set to true.  Otherwise, false. This is set
+  // synchronously in the process.  If it's in the parent process when a remote
+  // process has focus, this returns the command state in the parent process
+  // which may be different from the remote process.
+  // XXX When mOnlyEnabledCheck is set to true, this may be always set to true
+  // even when the command is disabled in the parent process.
   bool mIsEnabled;  // [out]
 
   void AssignContentCommandEventData(const WidgetContentCommandEvent& aEvent,
@@ -79,6 +100,7 @@ class WidgetContentCommandEvent : public WidgetGUIEvent {
 
     mString = aEvent.mString;
     mScroll = aEvent.mScroll;
+    mSelection = aEvent.mSelection;
     mOnlyEnabledCheck = aEvent.mOnlyEnabledCheck;
     mSucceeded = aEvent.mSucceeded;
     mIsEnabled = aEvent.mIsEnabled;

@@ -1,39 +1,44 @@
-#[cfg(feature = "trace")]
-use crate::device::trace;
-use crate::{
-    device::{
-        bgl, Device, DeviceError, MissingDownlevelFlags, MissingFeatures, SHADER_STAGE_COUNT,
-    },
-    error::{ErrorFormatter, PrettyError},
-    hal_api::HalApi,
-    id::{BindGroupLayoutId, BufferId, SamplerId, TextureId, TextureViewId},
-    init_tracker::{BufferInitTrackerAction, TextureInitTrackerAction},
-    resource::{Resource, ResourceInfo, ResourceType},
-    resource_log,
-    snatch::{SnatchGuard, Snatchable},
-    track::{BindGroupStates, UsageConflict},
-    validation::{MissingBufferUsageError, MissingTextureUsageError},
-    Label,
+use alloc::{
+    borrow::{Cow, ToOwned},
+    boxed::Box,
+    string::String,
+    sync::{Arc, Weak},
+    vec::Vec,
 };
+use core::{fmt, mem::ManuallyDrop, ops::Range};
 
 use arrayvec::ArrayVec;
+use thiserror::Error;
 
 #[cfg(feature = "serde")]
 use serde::Deserialize;
 #[cfg(feature = "serde")]
 use serde::Serialize;
 
-use std::{borrow::Cow, ops::Range, sync::Arc};
-
-use thiserror::Error;
+use crate::{
+    device::{
+        bgl, Device, DeviceError, MissingDownlevelFlags, MissingFeatures, SHADER_STAGE_COUNT,
+    },
+    id::{BindGroupLayoutId, BufferId, SamplerId, TextureViewId, TlasId},
+    init_tracker::{BufferInitTrackerAction, TextureInitTrackerAction},
+    pipeline::{ComputePipeline, RenderPipeline},
+    resource::{
+        Buffer, DestroyedResourceError, InvalidResourceError, Labeled, MissingBufferUsageError,
+        MissingTextureUsageError, ResourceErrorIdent, Sampler, TextureView, Tlas, TrackingData,
+    },
+    resource_log,
+    snatch::{SnatchGuard, Snatchable},
+    track::{BindGroupStates, ResourceUsageCompatibilityError},
+    Label,
+};
 
 #[derive(Clone, Debug, Error)]
 #[non_exhaustive]
 pub enum BindGroupLayoutEntryError {
     #[error("Cube dimension is not expected for texture storage")]
     StorageTextureCube,
-    #[error("Read-write and read-only storage textures are not allowed by webgpu, they require the native only feature TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES")]
-    StorageTextureReadWrite,
+    #[error("Atomic storage textures are not allowed by baseline webgpu, they require the native only feature TEXTURE_ADAPTER_SPECIFIC_FORMAT_FEATURES")]
+    StorageTextureAtomic,
     #[error("Arrays of bindings unsupported for this type of binding")]
     ArrayUnsupported,
     #[error("Multisampled binding with sample type `TextureSampleType::Float` must have filterable set to false.")]
@@ -61,7 +66,11 @@ pub enum CreateBindGroupLayoutError {
     },
     #[error(transparent)]
     TooManyBindings(BindingTypeMaxCountError),
-    #[error("Binding index {binding} is greater than the maximum index {maximum}")]
+    #[error("Bind groups may not contain both a binding array and a dynamically offset buffer")]
+    ContainsBothBindingArrayAndDynamicOffsetArray,
+    #[error("Bind groups may not contain both a binding array and a uniform buffer")]
+    ContainsBothBindingArrayAndUniformBuffer,
+    #[error("Binding index {binding} is greater than the maximum number {maximum}")]
     InvalidBindingIndex { binding: u32, maximum: u32 },
     #[error("Invalid visibility {0:?}")]
     InvalidVisibility(wgt::ShaderStages),
@@ -74,16 +83,8 @@ pub enum CreateBindGroupLayoutError {
 pub enum CreateBindGroupError {
     #[error(transparent)]
     Device(#[from] DeviceError),
-    #[error("Bind group layout is invalid")]
-    InvalidLayout,
-    #[error("Buffer {0:?} is invalid or destroyed")]
-    InvalidBuffer(BufferId),
-    #[error("Texture view {0:?} is invalid")]
-    InvalidTextureView(TextureViewId),
-    #[error("Texture {0:?} is invalid")]
-    InvalidTexture(TextureId),
-    #[error("Sampler {0:?} is invalid")]
-    InvalidSampler(SamplerId),
+    #[error(transparent)]
+    DestroyedResource(#[from] DestroyedResourceError),
     #[error(
         "Binding count declared with at most {expected} items, but {actual} items were provided"
     )]
@@ -94,20 +95,20 @@ pub enum CreateBindGroupError {
     BindingArrayLengthMismatch { actual: usize, expected: usize },
     #[error("Array binding provided zero elements")]
     BindingArrayZeroLength,
-    #[error("Bound buffer range {range:?} does not fit in buffer of size {size}")]
+    #[error("The bound range {range:?} of {buffer} overflows its size ({size})")]
     BindingRangeTooLarge {
-        buffer: BufferId,
+        buffer: ResourceErrorIdent,
         range: Range<wgt::BufferAddress>,
         size: u64,
     },
-    #[error("Buffer binding size {actual} is less than minimum {min}")]
+    #[error("Binding size {actual} of {buffer} is less than minimum {min}")]
     BindingSizeTooSmall {
-        buffer: BufferId,
+        buffer: ResourceErrorIdent,
         actual: u64,
         min: u64,
     },
-    #[error("Buffer binding size is zero")]
-    BindingZeroSize(BufferId),
+    #[error("{0} binding size is zero")]
+    BindingZeroSize(ResourceErrorIdent),
     #[error("Number of bindings in bind group descriptor ({actual}) does not match the number of bindings defined in the bind group layout ({expected})")]
     BindingsNumMismatch { actual: usize, expected: usize },
     #[error("Binding {0} is used at least twice in the descriptor")]
@@ -145,11 +146,18 @@ pub enum CreateBindGroupError {
         layout_multisampled: bool,
         view_samples: u32,
     },
-    #[error("Texture binding {binding} expects sample type = {layout_sample_type:?}, but given a view with format = {view_format:?}")]
+    #[error(
+        "Texture binding {} expects sample type {:?}, but was given a view with format {:?} (sample type {:?})",
+        binding,
+        layout_sample_type,
+        view_format,
+        view_sample_type
+    )]
     InvalidTextureSampleType {
         binding: u32,
         layout_sample_type: wgt::TextureSampleType,
         view_format: wgt::TextureFormat,
+        view_sample_type: wgt::TextureSampleType,
     },
     #[error("Texture binding {binding} expects dimension = {layout_dimension:?}, but given a view with dimension = {view_dimension:?}")]
     InvalidTextureDimension {
@@ -177,39 +185,22 @@ pub enum CreateBindGroupError {
         layout_flt: bool,
         sampler_flt: bool,
     },
+    #[error("TLAS binding {binding} is required to support vertex returns but is missing flag AccelerationStructureFlags::ALLOW_RAY_HIT_VERTEX_RETURN")]
+    MissingTLASVertexReturn { binding: u32 },
     #[error("Bound texture views can not have both depth and stencil aspects enabled")]
     DepthStencilAspect,
-    #[error("The adapter does not support read access for storages texture of format {0:?}")]
+    #[error("The adapter does not support read access for storage textures of format {0:?}")]
     StorageReadNotSupported(wgt::TextureFormat),
+    #[error("The adapter does not support atomics for storage textures of format {0:?}")]
+    StorageAtomicNotSupported(wgt::TextureFormat),
+    #[error("The adapter does not support write access for storage textures of format {0:?}")]
+    StorageWriteNotSupported(wgt::TextureFormat),
+    #[error("The adapter does not support read-write access for storage textures of format {0:?}")]
+    StorageReadWriteNotSupported(wgt::TextureFormat),
     #[error(transparent)]
-    ResourceUsageConflict(#[from] UsageConflict),
-}
-
-impl PrettyError for CreateBindGroupError {
-    fn fmt_pretty(&self, fmt: &mut ErrorFormatter) {
-        fmt.error(self);
-        match *self {
-            Self::BindingZeroSize(id) => {
-                fmt.buffer_label(&id);
-            }
-            Self::BindingRangeTooLarge { buffer, .. } => {
-                fmt.buffer_label(&buffer);
-            }
-            Self::BindingSizeTooSmall { buffer, .. } => {
-                fmt.buffer_label(&buffer);
-            }
-            Self::InvalidBuffer(id) => {
-                fmt.buffer_label(&id);
-            }
-            Self::InvalidTextureView(id) => {
-                fmt.texture_view_label(&id);
-            }
-            Self::InvalidSampler(id) => {
-                fmt.sampler_label(&id);
-            }
-            _ => {}
-        };
-    }
+    ResourceUsageCompatibility(#[from] ResourceUsageCompatibilityError),
+    #[error(transparent)]
+    InvalidResource(#[from] InvalidResourceError),
 }
 
 #[derive(Clone, Debug, Error)]
@@ -238,6 +229,8 @@ pub enum BindingTypeMaxCountErrorKind {
     StorageBuffers,
     StorageTextures,
     UniformBuffers,
+    BindingArrayElements,
+    BindingArraySamplerElements,
 }
 
 impl BindingTypeMaxCountErrorKind {
@@ -258,6 +251,12 @@ impl BindingTypeMaxCountErrorKind {
                 "max_storage_textures_per_shader_stage"
             }
             BindingTypeMaxCountErrorKind::UniformBuffers => "max_uniform_buffers_per_shader_stage",
+            BindingTypeMaxCountErrorKind::BindingArrayElements => {
+                "max_binding_array_elements_per_shader_stage"
+            }
+            BindingTypeMaxCountErrorKind::BindingArraySamplerElements => {
+                "max_binding_array_elements_per_shader_stage"
+            }
         }
     }
 }
@@ -331,42 +330,59 @@ pub(crate) struct BindingTypeMaxCountValidator {
     storage_buffers: PerStageBindingTypeCounter,
     storage_textures: PerStageBindingTypeCounter,
     uniform_buffers: PerStageBindingTypeCounter,
+    acceleration_structures: PerStageBindingTypeCounter,
+    binding_array_elements: PerStageBindingTypeCounter,
+    binding_array_sampler_elements: PerStageBindingTypeCounter,
+    has_bindless_array: bool,
 }
 
 impl BindingTypeMaxCountValidator {
     pub(crate) fn add_binding(&mut self, binding: &wgt::BindGroupLayoutEntry) {
         let count = binding.count.map_or(1, |count| count.get());
-        match binding.ty {
-            wgt::BindingType::Buffer {
-                ty: wgt::BufferBindingType::Uniform,
-                has_dynamic_offset,
-                ..
-            } => {
-                self.uniform_buffers.add(binding.visibility, count);
-                if has_dynamic_offset {
-                    self.dynamic_uniform_buffers += count;
+
+        if binding.count.is_some() {
+            self.binding_array_elements.add(binding.visibility, count);
+            self.has_bindless_array = true;
+
+            if let wgt::BindingType::Sampler(_) = binding.ty {
+                self.binding_array_sampler_elements
+                    .add(binding.visibility, count);
+            }
+        } else {
+            match binding.ty {
+                wgt::BindingType::Buffer {
+                    ty: wgt::BufferBindingType::Uniform,
+                    has_dynamic_offset,
+                    ..
+                } => {
+                    self.uniform_buffers.add(binding.visibility, count);
+                    if has_dynamic_offset {
+                        self.dynamic_uniform_buffers += count;
+                    }
+                }
+                wgt::BindingType::Buffer {
+                    ty: wgt::BufferBindingType::Storage { .. },
+                    has_dynamic_offset,
+                    ..
+                } => {
+                    self.storage_buffers.add(binding.visibility, count);
+                    if has_dynamic_offset {
+                        self.dynamic_storage_buffers += count;
+                    }
+                }
+                wgt::BindingType::Sampler { .. } => {
+                    self.samplers.add(binding.visibility, count);
+                }
+                wgt::BindingType::Texture { .. } => {
+                    self.sampled_textures.add(binding.visibility, count);
+                }
+                wgt::BindingType::StorageTexture { .. } => {
+                    self.storage_textures.add(binding.visibility, count);
+                }
+                wgt::BindingType::AccelerationStructure { .. } => {
+                    self.acceleration_structures.add(binding.visibility, count);
                 }
             }
-            wgt::BindingType::Buffer {
-                ty: wgt::BufferBindingType::Storage { .. },
-                has_dynamic_offset,
-                ..
-            } => {
-                self.storage_buffers.add(binding.visibility, count);
-                if has_dynamic_offset {
-                    self.dynamic_storage_buffers += count;
-                }
-            }
-            wgt::BindingType::Sampler { .. } => {
-                self.samplers.add(binding.visibility, count);
-            }
-            wgt::BindingType::Texture { .. } => {
-                self.sampled_textures.add(binding.visibility, count);
-            }
-            wgt::BindingType::StorageTexture { .. } => {
-                self.storage_textures.add(binding.visibility, count);
-            }
-            wgt::BindingType::AccelerationStructure => todo!(),
         }
     }
 
@@ -378,6 +394,12 @@ impl BindingTypeMaxCountValidator {
         self.storage_buffers.merge(&other.storage_buffers);
         self.storage_textures.merge(&other.storage_textures);
         self.uniform_buffers.merge(&other.uniform_buffers);
+        self.acceleration_structures
+            .merge(&other.acceleration_structures);
+        self.binding_array_elements
+            .merge(&other.binding_array_elements);
+        self.binding_array_sampler_elements
+            .merge(&other.binding_array_sampler_elements);
     }
 
     pub(crate) fn validate(&self, limits: &wgt::Limits) -> Result<(), BindingTypeMaxCountError> {
@@ -401,10 +423,6 @@ impl BindingTypeMaxCountValidator {
             limits.max_sampled_textures_per_shader_stage,
             BindingTypeMaxCountErrorKind::SampledTextures,
         )?;
-        self.storage_buffers.validate(
-            limits.max_storage_buffers_per_shader_stage,
-            BindingTypeMaxCountErrorKind::StorageBuffers,
-        )?;
         self.samplers.validate(
             limits.max_samplers_per_shader_stage,
             BindingTypeMaxCountErrorKind::Samplers,
@@ -421,34 +439,108 @@ impl BindingTypeMaxCountValidator {
             limits.max_uniform_buffers_per_shader_stage,
             BindingTypeMaxCountErrorKind::UniformBuffers,
         )?;
+        self.binding_array_elements.validate(
+            limits.max_binding_array_elements_per_shader_stage,
+            BindingTypeMaxCountErrorKind::BindingArrayElements,
+        )?;
+        self.binding_array_sampler_elements.validate(
+            limits.max_binding_array_sampler_elements_per_shader_stage,
+            BindingTypeMaxCountErrorKind::BindingArraySamplerElements,
+        )?;
+        Ok(())
+    }
+
+    /// Validate that the bind group layout does not contain both a binding array and a dynamic offset array.
+    ///
+    /// This allows us to use `UPDATE_AFTER_BIND` on vulkan for bindless arrays. Vulkan does not allow
+    /// `UPDATE_AFTER_BIND` on dynamic offset arrays. See <https://github.com/gfx-rs/wgpu/issues/6737>
+    pub(crate) fn validate_binding_arrays(&self) -> Result<(), CreateBindGroupLayoutError> {
+        let has_dynamic_offset_array =
+            self.dynamic_uniform_buffers > 0 || self.dynamic_storage_buffers > 0;
+        let has_uniform_buffer = self.uniform_buffers.max().1 > 0;
+        if self.has_bindless_array && has_dynamic_offset_array {
+            return Err(CreateBindGroupLayoutError::ContainsBothBindingArrayAndDynamicOffsetArray);
+        }
+        if self.has_bindless_array && has_uniform_buffer {
+            return Err(CreateBindGroupLayoutError::ContainsBothBindingArrayAndUniformBuffer);
+        }
         Ok(())
     }
 }
 
 /// Bindable resource and the slot to bind it to.
+/// cbindgen:ignore
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct BindGroupEntry<'a> {
+pub struct BindGroupEntry<'a, B = BufferId, S = SamplerId, TV = TextureViewId, TLAS = TlasId>
+where
+    [BufferBinding<B>]: ToOwned,
+    [S]: ToOwned,
+    [TV]: ToOwned,
+    <[BufferBinding<B>] as ToOwned>::Owned: fmt::Debug,
+    <[S] as ToOwned>::Owned: fmt::Debug,
+    <[TV] as ToOwned>::Owned: fmt::Debug,
+{
     /// Slot for which binding provides resource. Corresponds to an entry of the same
     /// binding index in the [`BindGroupLayoutDescriptor`].
     pub binding: u32,
+    #[cfg_attr(
+        feature = "serde",
+        serde(bound(deserialize = "BindingResource<'a, B, S, TV, TLAS>: Deserialize<'de>"))
+    )]
     /// Resource to attach to the binding
-    pub resource: BindingResource<'a>,
+    pub resource: BindingResource<'a, B, S, TV, TLAS>,
 }
+
+/// cbindgen:ignore
+pub type ResolvedBindGroupEntry<'a> =
+    BindGroupEntry<'a, Arc<Buffer>, Arc<Sampler>, Arc<TextureView>, Arc<Tlas>>;
 
 /// Describes a group of bindings and the resources to be bound.
 #[derive(Clone, Debug)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct BindGroupDescriptor<'a> {
+pub struct BindGroupDescriptor<
+    'a,
+    BGL = BindGroupLayoutId,
+    B = BufferId,
+    S = SamplerId,
+    TV = TextureViewId,
+    TLAS = TlasId,
+> where
+    [BufferBinding<B>]: ToOwned,
+    [S]: ToOwned,
+    [TV]: ToOwned,
+    <[BufferBinding<B>] as ToOwned>::Owned: fmt::Debug,
+    <[S] as ToOwned>::Owned: fmt::Debug,
+    <[TV] as ToOwned>::Owned: fmt::Debug,
+    [BindGroupEntry<'a, B, S, TV, TLAS>]: ToOwned,
+    <[BindGroupEntry<'a, B, S, TV, TLAS>] as ToOwned>::Owned: fmt::Debug,
+{
     /// Debug label of the bind group.
     ///
     /// This will show up in graphics debuggers for easy identification.
     pub label: Label<'a>,
     /// The [`BindGroupLayout`] that corresponds to this bind group.
-    pub layout: BindGroupLayoutId,
+    pub layout: BGL,
+    #[cfg_attr(
+        feature = "serde",
+        serde(bound(
+            deserialize = "<[BindGroupEntry<'a, B, S, TV, TLAS>] as ToOwned>::Owned: Deserialize<'de>"
+        ))
+    )]
     /// The resources to bind to this bind group.
-    pub entries: Cow<'a, [BindGroupEntry<'a>]>,
+    pub entries: Cow<'a, [BindGroupEntry<'a, B, S, TV, TLAS>]>,
 }
+
+/// cbindgen:ignore
+pub type ResolvedBindGroupDescriptor<'a> = BindGroupDescriptor<
+    'a,
+    Arc<BindGroupLayout>,
+    Arc<Buffer>,
+    Arc<Sampler>,
+    Arc<TextureView>,
+    Arc<Tlas>,
+>;
 
 /// Describes a [`BindGroupLayout`].
 #[derive(Clone, Debug)]
@@ -462,11 +554,43 @@ pub struct BindGroupLayoutDescriptor<'a> {
     pub entries: Cow<'a, [wgt::BindGroupLayoutEntry]>,
 }
 
+/// Used by [`BindGroupLayout`]. It indicates whether the BGL must be
+/// used with a specific pipeline. This constraint only happens when
+/// the BGLs have been derived from a pipeline without a layout.
+#[derive(Debug)]
+pub(crate) enum ExclusivePipeline {
+    None,
+    Render(Weak<RenderPipeline>),
+    Compute(Weak<ComputePipeline>),
+}
+
+impl fmt::Display for ExclusivePipeline {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ExclusivePipeline::None => f.write_str("None"),
+            ExclusivePipeline::Render(p) => {
+                if let Some(p) = p.upgrade() {
+                    p.error_ident().fmt(f)
+                } else {
+                    f.write_str("RenderPipeline")
+                }
+            }
+            ExclusivePipeline::Compute(p) => {
+                if let Some(p) = p.upgrade() {
+                    p.error_ident().fmt(f)
+                } else {
+                    f.write_str("ComputePipeline")
+                }
+            }
+        }
+    }
+}
+
 /// Bind group layout.
 #[derive(Debug)]
-pub struct BindGroupLayout<A: HalApi> {
-    pub(crate) raw: Option<A::BindGroupLayout>,
-    pub(crate) device: Arc<Device<A>>,
+pub struct BindGroupLayout {
+    pub(crate) raw: ManuallyDrop<Box<dyn hal::DynBindGroupLayout>>,
+    pub(crate) device: Arc<Device>,
     pub(crate) entries: bgl::EntryMap,
     /// It is very important that we know if the bind group comes from the BGL pool.
     ///
@@ -475,52 +599,35 @@ pub struct BindGroupLayout<A: HalApi> {
     /// We cannot unconditionally remove from the pool, as BGLs that don't come from the pool
     /// (derived BGLs) must not be removed.
     pub(crate) origin: bgl::Origin,
+    pub(crate) exclusive_pipeline: crate::OnceCellOrLock<ExclusivePipeline>,
     #[allow(unused)]
     pub(crate) binding_count_validator: BindingTypeMaxCountValidator,
-    pub(crate) info: ResourceInfo<BindGroupLayout<A>>,
+    /// The `label` from the descriptor used to create the resource.
     pub(crate) label: String,
 }
 
-impl<A: HalApi> Drop for BindGroupLayout<A> {
+impl Drop for BindGroupLayout {
     fn drop(&mut self) {
+        resource_log!("Destroy raw {}", self.error_ident());
         if matches!(self.origin, bgl::Origin::Pool) {
             self.device.bgl_pool.remove(&self.entries);
         }
-        if let Some(raw) = self.raw.take() {
-            #[cfg(feature = "trace")]
-            if let Some(t) = self.device.trace.lock().as_mut() {
-                t.add(trace::Action::DestroyBindGroupLayout(self.info.id()));
-            }
-
-            resource_log!("Destroy raw BindGroupLayout {:?}", self.info.label());
-            unsafe {
-                use hal::Device;
-                self.device.raw().destroy_bind_group_layout(raw);
-            }
+        // SAFETY: We are in the Drop impl and we don't use self.raw anymore after this point.
+        let raw = unsafe { ManuallyDrop::take(&mut self.raw) };
+        unsafe {
+            self.device.raw().destroy_bind_group_layout(raw);
         }
     }
 }
 
-impl<A: HalApi> Resource for BindGroupLayout<A> {
-    const TYPE: ResourceType = "BindGroupLayout";
+crate::impl_resource_type!(BindGroupLayout);
+crate::impl_labeled!(BindGroupLayout);
+crate::impl_parent_device!(BindGroupLayout);
+crate::impl_storage_item!(BindGroupLayout);
 
-    type Marker = crate::id::markers::BindGroupLayout;
-
-    fn as_info(&self) -> &ResourceInfo<Self> {
-        &self.info
-    }
-
-    fn as_info_mut(&mut self) -> &mut ResourceInfo<Self> {
-        &mut self.info
-    }
-
-    fn label(&self) -> &str {
-        &self.label
-    }
-}
-impl<A: HalApi> BindGroupLayout<A> {
-    pub(crate) fn raw(&self) -> &A::BindGroupLayout {
-        self.raw.as_ref().unwrap()
+impl BindGroupLayout {
+    pub(crate) fn raw(&self) -> &dyn hal::DynBindGroupLayout {
+        self.raw.as_ref()
     }
 }
 
@@ -529,8 +636,6 @@ impl<A: HalApi> BindGroupLayout<A> {
 pub enum CreatePipelineLayoutError {
     #[error(transparent)]
     Device(#[from] DeviceError),
-    #[error("Bind group layout {0:?} is invalid")]
-    InvalidBindGroupLayout(BindGroupLayoutId),
     #[error(
         "Push constant at index {index} has range bound {bound} not aligned to {}",
         wgt::PUSH_CONSTANT_ALIGNMENT
@@ -554,15 +659,8 @@ pub enum CreatePipelineLayoutError {
     TooManyBindings(BindingTypeMaxCountError),
     #[error("Bind group layout count {actual} exceeds device bind group limit {max}")]
     TooManyGroups { actual: usize, max: usize },
-}
-
-impl PrettyError for CreatePipelineLayoutError {
-    fn fmt_pretty(&self, fmt: &mut ErrorFormatter) {
-        fmt.error(self);
-        if let Self::InvalidBindGroupLayout(id) = *self {
-            fmt.bind_group_layout_label(&id);
-        };
-    }
+    #[error(transparent)]
+    InvalidResource(#[from] InvalidResourceError),
 }
 
 #[derive(Clone, Debug, Error)]
@@ -601,14 +699,23 @@ pub enum PushConstantUploadError {
 /// A `PipelineLayoutDescriptor` can be used to create a pipeline layout.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PipelineLayoutDescriptor<'a> {
+#[cfg_attr(feature = "serde", serde(bound = "BGL: Serialize"))]
+pub struct PipelineLayoutDescriptor<'a, BGL = BindGroupLayoutId>
+where
+    [BGL]: ToOwned,
+    <[BGL] as ToOwned>::Owned: fmt::Debug,
+{
     /// Debug label of the pipeline layout.
     ///
     /// This will show up in graphics debuggers for easy identification.
     pub label: Label<'a>,
     /// Bind groups that this pipeline uses. The first entry will provide all the bindings for
     /// "set = 0", second entry will provide all the bindings for "set = 1" etc.
-    pub bind_group_layouts: Cow<'a, [BindGroupLayoutId]>,
+    #[cfg_attr(
+        feature = "serde",
+        serde(bound(deserialize = "<[BGL] as ToOwned>::Owned: Deserialize<'de>"))
+    )]
+    pub bind_group_layouts: Cow<'a, [BGL]>,
     /// Set of push constant ranges this pipeline uses. Each shader stage that
     /// uses push constants must define the range in push constant memory that
     /// corresponds to its single `layout(push_constant)` uniform block.
@@ -619,36 +726,33 @@ pub struct PipelineLayoutDescriptor<'a> {
     pub push_constant_ranges: Cow<'a, [wgt::PushConstantRange]>,
 }
 
+/// cbindgen:ignore
+pub type ResolvedPipelineLayoutDescriptor<'a> = PipelineLayoutDescriptor<'a, Arc<BindGroupLayout>>;
+
 #[derive(Debug)]
-pub struct PipelineLayout<A: HalApi> {
-    pub(crate) raw: Option<A::PipelineLayout>,
-    pub(crate) device: Arc<Device<A>>,
-    pub(crate) info: ResourceInfo<PipelineLayout<A>>,
-    pub(crate) bind_group_layouts: ArrayVec<Arc<BindGroupLayout<A>>, { hal::MAX_BIND_GROUPS }>,
+pub struct PipelineLayout {
+    pub(crate) raw: ManuallyDrop<Box<dyn hal::DynPipelineLayout>>,
+    pub(crate) device: Arc<Device>,
+    /// The `label` from the descriptor used to create the resource.
+    pub(crate) label: String,
+    pub(crate) bind_group_layouts: ArrayVec<Arc<BindGroupLayout>, { hal::MAX_BIND_GROUPS }>,
     pub(crate) push_constant_ranges: ArrayVec<wgt::PushConstantRange, { SHADER_STAGE_COUNT }>,
 }
 
-impl<A: HalApi> Drop for PipelineLayout<A> {
+impl Drop for PipelineLayout {
     fn drop(&mut self) {
-        if let Some(raw) = self.raw.take() {
-            resource_log!("Destroy raw PipelineLayout {:?}", self.info.label());
-
-            #[cfg(feature = "trace")]
-            if let Some(t) = self.device.trace.lock().as_mut() {
-                t.add(trace::Action::DestroyPipelineLayout(self.info.id()));
-            }
-
-            unsafe {
-                use hal::Device;
-                self.device.raw().destroy_pipeline_layout(raw);
-            }
+        resource_log!("Destroy raw {}", self.error_ident());
+        // SAFETY: We are in the Drop impl and we don't use self.raw anymore after this point.
+        let raw = unsafe { ManuallyDrop::take(&mut self.raw) };
+        unsafe {
+            self.device.raw().destroy_pipeline_layout(raw);
         }
     }
 }
 
-impl<A: HalApi> PipelineLayout<A> {
-    pub(crate) fn raw(&self) -> &A::PipelineLayout {
-        self.raw.as_ref().unwrap()
+impl PipelineLayout {
+    pub(crate) fn raw(&self) -> &dyn hal::DynPipelineLayout {
+        self.raw.as_ref()
     }
 
     pub(crate) fn get_binding_maps(&self) -> ArrayVec<&bgl::EntryMap, { hal::MAX_BIND_GROUPS }> {
@@ -737,59 +841,78 @@ impl<A: HalApi> PipelineLayout<A> {
     }
 }
 
-impl<A: HalApi> Resource for PipelineLayout<A> {
-    const TYPE: ResourceType = "PipelineLayout";
-
-    type Marker = crate::id::markers::PipelineLayout;
-
-    fn as_info(&self) -> &ResourceInfo<Self> {
-        &self.info
-    }
-
-    fn as_info_mut(&mut self) -> &mut ResourceInfo<Self> {
-        &mut self.info
-    }
-}
+crate::impl_resource_type!(PipelineLayout);
+crate::impl_labeled!(PipelineLayout);
+crate::impl_parent_device!(PipelineLayout);
+crate::impl_storage_item!(PipelineLayout);
 
 #[repr(C)]
 #[derive(Clone, Debug, Hash, Eq, PartialEq)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct BufferBinding {
-    pub buffer_id: BufferId,
+pub struct BufferBinding<B = BufferId> {
+    pub buffer: B,
     pub offset: wgt::BufferAddress,
     pub size: Option<wgt::BufferSize>,
 }
+
+pub type ResolvedBufferBinding = BufferBinding<Arc<Buffer>>;
 
 // Note: Duplicated in `wgpu-rs` as `BindingResource`
 // They're different enough that it doesn't make sense to share a common type
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum BindingResource<'a> {
-    Buffer(BufferBinding),
-    BufferArray(Cow<'a, [BufferBinding]>),
-    Sampler(SamplerId),
-    SamplerArray(Cow<'a, [SamplerId]>),
-    TextureView(TextureViewId),
-    TextureViewArray(Cow<'a, [TextureViewId]>),
+pub enum BindingResource<'a, B = BufferId, S = SamplerId, TV = TextureViewId, TLAS = TlasId>
+where
+    [BufferBinding<B>]: ToOwned,
+    [S]: ToOwned,
+    [TV]: ToOwned,
+    <[BufferBinding<B>] as ToOwned>::Owned: fmt::Debug,
+    <[S] as ToOwned>::Owned: fmt::Debug,
+    <[TV] as ToOwned>::Owned: fmt::Debug,
+{
+    Buffer(BufferBinding<B>),
+    #[cfg_attr(
+        feature = "serde",
+        serde(bound(deserialize = "<[BufferBinding<B>] as ToOwned>::Owned: Deserialize<'de>"))
+    )]
+    BufferArray(Cow<'a, [BufferBinding<B>]>),
+    Sampler(S),
+    #[cfg_attr(
+        feature = "serde",
+        serde(bound(deserialize = "<[S] as ToOwned>::Owned: Deserialize<'de>"))
+    )]
+    SamplerArray(Cow<'a, [S]>),
+    TextureView(TV),
+    #[cfg_attr(
+        feature = "serde",
+        serde(bound(deserialize = "<[TV] as ToOwned>::Owned: Deserialize<'de>"))
+    )]
+    TextureViewArray(Cow<'a, [TV]>),
+    AccelerationStructure(TLAS),
 }
+
+pub type ResolvedBindingResource<'a> =
+    BindingResource<'a, Arc<Buffer>, Arc<Sampler>, Arc<TextureView>, Arc<Tlas>>;
 
 #[derive(Clone, Debug, Error)]
 #[non_exhaustive]
 pub enum BindError {
     #[error(
-        "Bind group {group} expects {expected} dynamic offset{s0}. However {actual} dynamic offset{s1} were provided.",
+        "{bind_group} {group} expects {expected} dynamic offset{s0}. However {actual} dynamic offset{s1} were provided.",
         s0 = if *.expected >= 2 { "s" } else { "" },
         s1 = if *.actual >= 2 { "s" } else { "" },
     )]
     MismatchedDynamicOffsetCount {
+        bind_group: ResourceErrorIdent,
         group: u32,
         actual: usize,
         expected: usize,
     },
     #[error(
-        "Dynamic binding index {idx} (targeting bind group {group}, binding {binding}) with value {offset}, does not respect device's requested `{limit_name}` limit: {alignment}"
+        "Dynamic binding index {idx} (targeting {bind_group} {group}, binding {binding}) with value {offset}, does not respect device's requested `{limit_name}` limit: {alignment}"
     )]
     UnalignedDynamicBinding {
+        bind_group: ResourceErrorIdent,
         idx: usize,
         group: u32,
         binding: u32,
@@ -798,10 +921,11 @@ pub enum BindError {
         limit_name: &'static str,
     },
     #[error(
-        "Dynamic binding offset index {idx} with offset {offset} would overrun the buffer bound to bind group {group} -> binding {binding}. \
+        "Dynamic binding offset index {idx} with offset {offset} would overrun the buffer bound to {bind_group} {group} -> binding {binding}. \
          Buffer size is {buffer_size} bytes, the binding binds bytes {binding_range:?}, meaning the maximum the binding can be offset is {maximum_dynamic_offset} bytes",
     )]
     DynamicBindingOutOfBounds {
+        bind_group: ResourceErrorIdent,
         idx: usize,
         group: u32,
         binding: u32,
@@ -848,59 +972,72 @@ pub(crate) fn buffer_binding_type_alignment(
     }
 }
 
+pub(crate) fn buffer_binding_type_bounds_check_alignment(
+    alignments: &hal::Alignments,
+    binding_type: wgt::BufferBindingType,
+) -> wgt::BufferAddress {
+    match binding_type {
+        wgt::BufferBindingType::Uniform => alignments.uniform_bounds_check_alignment.get(),
+        wgt::BufferBindingType::Storage { .. } => wgt::COPY_BUFFER_ALIGNMENT,
+    }
+}
+
 #[derive(Debug)]
-pub struct BindGroup<A: HalApi> {
-    pub(crate) raw: Snatchable<A::BindGroup>,
-    pub(crate) device: Arc<Device<A>>,
-    pub(crate) layout: Arc<BindGroupLayout<A>>,
-    pub(crate) info: ResourceInfo<BindGroup<A>>,
-    pub(crate) used: BindGroupStates<A>,
-    pub(crate) used_buffer_ranges: Vec<BufferInitTrackerAction<A>>,
-    pub(crate) used_texture_ranges: Vec<TextureInitTrackerAction<A>>,
+pub struct BindGroup {
+    pub(crate) raw: Snatchable<Box<dyn hal::DynBindGroup>>,
+    pub(crate) device: Arc<Device>,
+    pub(crate) layout: Arc<BindGroupLayout>,
+    /// The `label` from the descriptor used to create the resource.
+    pub(crate) label: String,
+    pub(crate) tracking_data: TrackingData,
+    pub(crate) used: BindGroupStates,
+    pub(crate) used_buffer_ranges: Vec<BufferInitTrackerAction>,
+    pub(crate) used_texture_ranges: Vec<TextureInitTrackerAction>,
     pub(crate) dynamic_binding_info: Vec<BindGroupDynamicBindingData>,
     /// Actual binding sizes for buffers that don't have `min_binding_size`
     /// specified in BGL. Listed in the order of iteration of `BGL.entries`.
     pub(crate) late_buffer_binding_sizes: Vec<wgt::BufferSize>,
 }
 
-impl<A: HalApi> Drop for BindGroup<A> {
+impl Drop for BindGroup {
     fn drop(&mut self) {
         if let Some(raw) = self.raw.take() {
-            resource_log!("Destroy raw BindGroup {:?}", self.info.label());
-
-            #[cfg(feature = "trace")]
-            if let Some(t) = self.device.trace.lock().as_mut() {
-                t.add(trace::Action::DestroyBindGroup(self.info.id()));
-            }
-
+            resource_log!("Destroy raw {}", self.error_ident());
             unsafe {
-                use hal::Device;
                 self.device.raw().destroy_bind_group(raw);
             }
         }
     }
 }
 
-impl<A: HalApi> BindGroup<A> {
-    pub(crate) fn raw(&self, guard: &SnatchGuard) -> Option<&A::BindGroup> {
+impl BindGroup {
+    pub(crate) fn try_raw<'a>(
+        &'a self,
+        guard: &'a SnatchGuard,
+    ) -> Result<&'a dyn hal::DynBindGroup, DestroyedResourceError> {
         // Clippy insist on writing it this way. The idea is to return None
         // if any of the raw buffer is not valid anymore.
         for buffer in &self.used_buffer_ranges {
-            let _ = buffer.buffer.raw(guard)?;
+            buffer.buffer.try_raw(guard)?;
         }
         for texture in &self.used_texture_ranges {
-            let _ = texture.texture.raw(guard)?;
+            texture.texture.try_raw(guard)?;
         }
-        self.raw.get(guard)
+
+        self.raw
+            .get(guard)
+            .map(|raw| raw.as_ref())
+            .ok_or_else(|| DestroyedResourceError(self.error_ident()))
     }
+
     pub(crate) fn validate_dynamic_bindings(
         &self,
         bind_group_index: u32,
         offsets: &[wgt::DynamicOffset],
-        limits: &wgt::Limits,
     ) -> Result<(), BindError> {
         if self.dynamic_binding_info.len() != offsets.len() {
             return Err(BindError::MismatchedDynamicOffsetCount {
+                bind_group: self.error_ident(),
                 group: bind_group_index,
                 expected: self.dynamic_binding_info.len(),
                 actual: offsets.len(),
@@ -913,9 +1050,11 @@ impl<A: HalApi> BindGroup<A> {
             .zip(offsets.iter())
             .enumerate()
         {
-            let (alignment, limit_name) = buffer_binding_type_alignment(limits, info.binding_type);
+            let (alignment, limit_name) =
+                buffer_binding_type_alignment(&self.device.limits, info.binding_type);
             if offset as wgt::BufferAddress % alignment as u64 != 0 {
                 return Err(BindError::UnalignedDynamicBinding {
+                    bind_group: self.error_ident(),
                     group: bind_group_index,
                     binding: info.binding_idx,
                     idx,
@@ -927,6 +1066,7 @@ impl<A: HalApi> BindGroup<A> {
 
             if offset as wgt::BufferAddress > info.maximum_dynamic_offset {
                 return Err(BindError::DynamicBindingOutOfBounds {
+                    bind_group: self.error_ident(),
                     group: bind_group_index,
                     binding: info.binding_idx,
                     idx,
@@ -942,27 +1082,19 @@ impl<A: HalApi> BindGroup<A> {
     }
 }
 
-impl<A: HalApi> Resource for BindGroup<A> {
-    const TYPE: ResourceType = "BindGroup";
-
-    type Marker = crate::id::markers::BindGroup;
-
-    fn as_info(&self) -> &ResourceInfo<Self> {
-        &self.info
-    }
-
-    fn as_info_mut(&mut self) -> &mut ResourceInfo<Self> {
-        &mut self.info
-    }
-}
+crate::impl_resource_type!(BindGroup);
+crate::impl_labeled!(BindGroup);
+crate::impl_parent_device!(BindGroup);
+crate::impl_storage_item!(BindGroup);
+crate::impl_trackable!(BindGroup);
 
 #[derive(Clone, Debug, Error)]
 #[non_exhaustive]
 pub enum GetBindGroupLayoutError {
-    #[error("Pipeline is invalid")]
-    InvalidPipeline,
     #[error("Invalid group index {0}")]
     InvalidGroupIndex(u32),
+    #[error(transparent)]
+    InvalidResource(#[from] InvalidResourceError),
 }
 
 #[derive(Clone, Debug, Error, Eq, PartialEq)]

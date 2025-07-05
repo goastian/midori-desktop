@@ -32,10 +32,10 @@ def test_no_metrics_expired():
 
     (This also checks other lints, as a treat.)
     """
-    with open("browser/config/version.txt", "r") as version_file:
+    with open("browser/config/version.txt") as version_file:
         app_version = version_file.read().strip()
 
-    options = run_glean_parser.get_parser_options(app_version)
+    options = run_glean_parser.get_parser_options(app_version, False)
     paths = [Path(x) for x in metrics_yamls] + [Path(x) for x in tags_yamls]
     all_objs = parser.parse_objects(paths, options)
     assert not util.report_validation_errors(all_objs)

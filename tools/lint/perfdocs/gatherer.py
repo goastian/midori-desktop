@@ -28,7 +28,7 @@ frameworks = {
 ALLOWED_STATIC_FILETYPES = ("rst", "png")
 
 
-class Gatherer(object):
+class Gatherer:
     """
     Gatherer produces the tree of the perfdoc's entries found
     and can obtain manifest-based test lists. Used by the Verifier.
@@ -104,7 +104,7 @@ class Gatherer(object):
                     matched["static"].append(file)
 
             # Append to structdocs if all the searched files were found
-            if all(val for val in matched.values() if not type(val) == list):
+            if all(val for val in matched.values() if type(val) is not list):
                 self._perfdocs_tree.append(matched)
 
         logger.log(
@@ -148,10 +148,10 @@ class Gatherer(object):
             framework_gatherer_cls = frameworks[framework["name"]]
 
         # Get and then store the frameworks tests
-        framework_gatherer = self.framework_gatherers[
-            framework["name"]
-        ] = framework_gatherer_cls(
-            framework["yml_path"], self.workspace_dir, self.taskgraph
+        framework_gatherer = self.framework_gatherers[framework["name"]] = (
+            framework_gatherer_cls(
+                framework["yml_path"], self.workspace_dir, self.taskgraph
+            )
         )
 
         if not yaml_content["static-only"]:

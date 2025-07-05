@@ -258,6 +258,7 @@ function DatePicker(context) {
     _attachEventListeners() {
       window.addEventListener("message", this);
       document.addEventListener("mouseup", this, { passive: true });
+      document.addEventListener("pointerdown", this, { passive: true });
       document.addEventListener("mousedown", this);
       document.addEventListener("keydown", this);
     },
@@ -326,10 +327,15 @@ function DatePicker(context) {
           }
           break;
         }
+        case "pointerdown": {
+          if (event.pointerType == "mouse") {
+            event.target.setPointerCapture(event.pointerId);
+          }
+          break;
+        }
         case "mousedown": {
           // Use preventDefault to keep focus on input boxes
           event.preventDefault();
-          event.target.setPointerCapture(event.pointerId);
 
           if (event.target == this.context.buttonClear) {
             event.target.classList.add("active");
@@ -595,3 +601,19 @@ function DatePicker(context) {
     },
   };
 }
+
+document.addEventListener("DOMContentLoaded", () => {
+  // Create a DatePicker instance and prepare to be initialized
+  // by the "PickerInit" message.
+  const root = document.getElementById("date-picker");
+  new DatePicker({
+    monthYearNav: root.querySelector(".month-year-nav"),
+    monthYear: root.querySelector(".month-year"),
+    monthYearView: root.querySelector(".month-year-view"),
+    buttonPrev: root.querySelector(".prev"),
+    buttonNext: root.querySelector(".next"),
+    weekHeader: root.querySelector(".week-header"),
+    daysView: root.querySelector(".days-view"),
+    buttonClear: document.getElementById("clear-button"),
+  });
+});

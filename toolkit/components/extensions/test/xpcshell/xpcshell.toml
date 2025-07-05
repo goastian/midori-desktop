@@ -43,13 +43,9 @@ run-if = ["os == 'android'"] # Android has no remote extensions, Bug 1535365
 
 ["test_ExtensionShortcutKeyMap.js"]
 
-["test_ExtensionStorageSync_migration_kinto.js"]
-skip-if = [
-  "os == 'android'", # Not shipped on Android
-  "condprof", # Bug 1769184 - by design for now
-]
-
 ["test_MatchPattern.js"]
+
+["test_OriginControls.js"]
 
 ["test_StorageSyncService.js"]
 skip-if = ["os == 'android' && processor == 'x86_64'"]
@@ -124,6 +120,8 @@ run-sequentially = "very high failure rate in parallel"
 ["test_ext_test_wrapper.js"]
 
 ["test_ext_unknown_permissions.js"]
+
+["test_ext_webRequest_handlerBehaviorChanged.js"]
 
 ["test_ext_webRequest_urlclassification.js"]
 

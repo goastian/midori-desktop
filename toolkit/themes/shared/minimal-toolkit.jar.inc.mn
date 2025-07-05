@@ -15,6 +15,8 @@ toolkit.jar:
 % skin global classic/1.0 %skin/classic/global/
 
 # images and CSS we need for widgets like video controls
+  skin/classic/global/icons/eye.svg                        (../../shared/icons/eye.svg)
+  skin/classic/global/icons/eye-slash.svg                  (../../shared/icons/eye-slash.svg)
   skin/classic/global/icons/resizer.svg                    (../../shared/icons/resizer.svg)
 
   skin/classic/global/media/imagedoc-lightnoise.png        (../../shared/media/imagedoc-lightnoise.png)
@@ -45,3 +47,6 @@ toolkit.jar:
 # Text recognition widget
 
   skin/classic/global/media/textrecognition.css            (../../shared/media/textrecognition.css)
+
+# used in about:logging on Android
+  skin/classic/global/icons/open-in-new.svg                (../../shared/icons/open-in-new.svg)

@@ -36,14 +36,8 @@ pub struct SpooledTempFile {
 ///
 /// ```
 /// use tempfile::spooled_tempfile;
-/// use std::io::{self, Write};
+/// use std::io::Write;
 ///
-/// # fn main() {
-/// #     if let Err(_) = run() {
-/// #         ::std::process::exit(1);
-/// #     }
-/// # }
-/// # fn run() -> Result<(), io::Error> {
 /// let mut file = spooled_tempfile(15);
 ///
 /// writeln!(file, "short line")?;
@@ -54,9 +48,7 @@ pub struct SpooledTempFile {
 /// // and the in-memory buffer will be dropped
 /// writeln!(file, "marvin gardens")?;
 /// assert!(file.is_rolled());
-///
-/// # Ok(())
-/// # }
+/// # Ok::<(), std::io::Error>(())
 /// ```
 #[inline]
 pub fn spooled_tempfile(max_size: usize) -> SpooledTempFile {
@@ -96,7 +88,7 @@ impl SpooledTempFile {
     }
 
     pub fn set_len(&mut self, size: u64) -> Result<(), io::Error> {
-        if size as usize > self.max_size {
+        if size > self.max_size as u64 {
             self.roll()?; // does nothing if already rolled over
         }
         match &mut self.inner {
@@ -157,7 +149,7 @@ impl Write for SpooledTempFile {
         // roll over to file if necessary
         if matches! {
             &self.inner, SpooledData::InMemory(cursor)
-            if cursor.position() as usize + buf.len() > self.max_size
+            if cursor.position().saturating_add(buf.len() as u64) > self.max_size as u64
         } {
             self.roll()?;
         }
@@ -173,8 +165,10 @@ impl Write for SpooledTempFile {
         if matches! {
             &self.inner, SpooledData::InMemory(cursor)
             // Borrowed from the rust standard library.
-            if cursor.position() as usize + bufs.iter()
-                .fold(0usize, |a, b| a.saturating_add(b.len())) > self.max_size
+            if bufs
+                .iter()
+                .fold(cursor.position(), |a, b| a.saturating_add(b.len() as u64))
+                > self.max_size as u64
         } {
             self.roll()?;
         }

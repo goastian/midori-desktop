@@ -29,7 +29,7 @@ use serde_json::Value as JsonValue;
 /// connection with our sync engines - ie, these engines also hold an Arc<>
 /// around the same object.
 pub struct WebExtStorageStore {
-    db: Arc<ThreadSafeStorageDb>,
+    pub(crate) db: Arc<ThreadSafeStorageDb>,
 }
 
 impl WebExtStorageStore {
@@ -59,8 +59,9 @@ impl WebExtStorageStore {
     /// Sets one or more JSON key-value pairs for an extension ID. Returns a
     /// list of changes, with existing and new values for each key in `val`.
     pub fn set(&self, ext_id: &str, val: JsonValue) -> Result<StorageChanges> {
-        let db = self.db.lock();
-        let tx = db.unchecked_transaction()?;
+        let db = &self.db.lock();
+        let conn = db.get_connection()?;
+        let tx = conn.unchecked_transaction()?;
         let result = api::set(&tx, ext_id, val)?;
         tx.commit()?;
         Ok(result)
@@ -68,8 +69,9 @@ impl WebExtStorageStore {
 
     /// Returns information about per-extension usage
     pub fn usage(&self) -> Result<Vec<crate::UsageInfo>> {
-        let db = self.db.lock();
-        api::usage(&db)
+        let db = &self.db.lock();
+        let conn = db.get_connection()?;
+        api::usage(conn)
     }
 
     /// Returns the values for one or more keys `keys` can be:
@@ -90,8 +92,9 @@ impl WebExtStorageStore {
     /// `serde_json::Value::Object`).
     pub fn get(&self, ext_id: &str, keys: JsonValue) -> Result<JsonValue> {
         // Don't care about transactions here.
-        let db = self.db.lock();
-        api::get(&db, ext_id, keys)
+        let db = &self.db.lock();
+        let conn = db.get_connection()?;
+        api::get(conn, ext_id, keys)
     }
 
     /// Deletes the values for one or more keys. As with `get`, `keys` can be
@@ -99,8 +102,9 @@ impl WebExtStorageStore {
     /// of changes, where each change contains the old value for each deleted
     /// key.
     pub fn remove(&self, ext_id: &str, keys: JsonValue) -> Result<StorageChanges> {
-        let db = self.db.lock();
-        let tx = db.unchecked_transaction()?;
+        let db = &self.db.lock();
+        let conn = db.get_connection()?;
+        let tx = conn.unchecked_transaction()?;
         let result = api::remove(&tx, ext_id, keys)?;
         tx.commit()?;
         Ok(result)
@@ -110,8 +114,9 @@ impl WebExtStorageStore {
     /// a list of changes, where each change contains the old value for each
     /// deleted key.
     pub fn clear(&self, ext_id: &str) -> Result<StorageChanges> {
-        let db = self.db.lock();
-        let tx = db.unchecked_transaction()?;
+        let db = &self.db.lock();
+        let conn = db.get_connection()?;
+        let tx = conn.unchecked_transaction()?;
         let result = api::clear(&tx, ext_id)?;
         tx.commit()?;
         Ok(result)
@@ -119,45 +124,16 @@ impl WebExtStorageStore {
 
     /// Returns the bytes in use for the specified items (which can be null,
     /// a string, or an array)
-    pub fn get_bytes_in_use(&self, ext_id: &str, keys: JsonValue) -> Result<usize> {
-        let db = self.db.lock();
-        api::get_bytes_in_use(&db, ext_id, keys)
-    }
-
-    /// Returns a bridged sync engine for Desktop for this store.
-    pub fn bridged_engine(&self) -> sync::BridgedEngine {
-        sync::BridgedEngine::new(&self.db)
+    pub fn get_bytes_in_use(&self, ext_id: &str, keys: JsonValue) -> Result<u64> {
+        let db = &self.db.lock();
+        let conn = db.get_connection()?;
+        Ok(api::get_bytes_in_use(conn, ext_id, keys)? as u64)
     }
 
     /// Closes the store and its database connection. See the docs for
     /// `StorageDb::close` for more details on when this can fail.
-    pub fn close(self) -> Result<()> {
-        // Even though this consumes `self`, the fact we use an Arc<> means
-        // we can't guarantee we can actually consume the inner DB - so do
-        // the best we can.
-        let shared: ThreadSafeStorageDb = match Arc::try_unwrap(self.db) {
-            Ok(shared) => shared,
-            _ => {
-                // The only way this is possible is if the sync engine has an operation
-                // running - but that shouldn't be possible in practice because desktop
-                // uses a single "task queue" such that the close operation can't possibly
-                // be running concurrently with any sync or storage tasks.
-
-                // If this *could* get hit, rusqlite will attempt to close the DB connection
-                // as it is dropped, and if that close fails, then rusqlite 0.28.0 and earlier
-                // would panic - but even that only happens if prepared statements are
-                // not finalized, which ruqlite also does.
-
-                // tl;dr - this should be impossible. If it was possible, rusqlite might panic,
-                // but we've never seen it panic in practice other places we don't close
-                // connections, and the next rusqlite version will not panic anyway.
-                // So this-is-fine.jpg
-                log::warn!("Attempting to close a store while other DB references exist.");
-                return Err(Error::OtherConnectionReferencesExist);
-            }
-        };
-        // consume the mutex and get back the inner.
-        let db = shared.into_inner();
+    pub fn close(&self) -> Result<()> {
+        let mut db = self.db.lock();
         db.close()
     }
 
@@ -177,14 +153,15 @@ impl WebExtStorageStore {
     ///
     /// Note that `filename` isn't normalized or canonicalized.
     pub fn migrate(&self, filename: impl AsRef<Path>) -> Result<()> {
-        let db = self.db.lock();
-        let tx = db.unchecked_transaction()?;
+        let db = &self.db.lock();
+        let conn = db.get_connection()?;
+        let tx = conn.unchecked_transaction()?;
         let result = migrate(&tx, filename.as_ref())?;
         tx.commit()?;
         // Failing to store this information should not cause migration failure.
-        if let Err(e) = result.store(&db) {
+        if let Err(e) = result.store(conn) {
             debug_assert!(false, "Migration error: {:?}", e);
-            log::warn!("Failed to record migration telmetry: {}", e);
+            warn!("Failed to record migration telmetry: {}", e);
         }
         Ok(())
     }
@@ -192,8 +169,9 @@ impl WebExtStorageStore {
     /// Read-and-delete (e.g. `take` in rust parlance, see Option::take)
     /// operation for any MigrationInfo stored in this database.
     pub fn take_migration_info(&self) -> Result<Option<MigrationInfo>> {
-        let db = self.db.lock();
-        let tx = db.unchecked_transaction()?;
+        let db = &self.db.lock();
+        let conn = db.get_connection()?;
+        let tx = conn.unchecked_transaction()?;
         let result = MigrationInfo::take(&tx)?;
         tx.commit()?;
         Ok(result)

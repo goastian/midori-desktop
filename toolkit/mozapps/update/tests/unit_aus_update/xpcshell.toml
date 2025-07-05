@@ -1,7 +1,10 @@
 [DEFAULT]
 tags = "appupdate"
 head = "head_update.js"
-skip-if = ["os == 'win' && (ccov || msix)"] # Our updater is disabled in MSIX builds
+skip-if = [
+  "os == 'win' && ccov",
+  "msix", # Our updater is disabled in MSIX builds
+]
 prefs = [
   "app.update.staging.enabled=false",
   "app.update.langpack.enabled=false",
@@ -21,13 +24,7 @@ support-files = [
 
 ["canCheckForAndCanApplyUpdates.js"]
 
-["cleanupDownloadingForDifferentChannel.js"]
-
-["cleanupDownloadingForOlderAppVersion.js"]
-
-["cleanupDownloadingForSameVersionAndBuildID.js"]
-
-["cleanupDownloadingIncorrectStatus.js"]
+["cleanupDownloading.js"]
 
 ["cleanupPendingVersionFileIncorrectStatus.js"]
 
@@ -40,6 +37,19 @@ skip-if = ["socketprocess_networking"] # Bug 1759035
 
 ["disableBackgroundUpdatesNonBackgroundTask.js"]
 skip-if = ["socketprocess_networking"] # Bug 1759035
+
+["downloadExtrasFirefox.js"]
+firefox-appdir = "browser"
+skip-if = [
+  "socketprocess_networking", # Bug 1759035
+  "appname != 'firefox'"
+]
+
+["downloadExtrasNotFirefox.js"]
+skip-if = [
+  "socketprocess_networking", # Bug 1759035
+  "appname == 'firefox'"
+]
 
 ["downloadInterruptedNoRecovery.js"]
 skip-if = ["socketprocess_networking"] # Bug 1759035
@@ -56,8 +66,14 @@ skip-if = ["socketprocess_networking"] # Bug 1759035
 run-if = ["os == 'win' && appname == 'firefox'"]
 reason = "Feature is Firefox-specific and Windows-specific."
 
+["initWithPendingUpdate.js"]
+
+["initialStateValidation.js"]
+
 ["languagePackUpdates.js"]
 skip-if = ["socketprocess_networking"] # Bug 1759035
+
+["mixedUnsupported.js"]
 
 ["multiUpdate.js"]
 skip-if = ["socketprocess_networking"] # Bug 1759035
@@ -81,6 +97,8 @@ run-if = ["os == 'win'"]
 reason = "Update directory migration is currently Windows only"
 
 ["updateEnabledTelemetry.js"]
+
+["updateFailureFallBack.js"]
 
 ["updateManagerXML.js"]
 

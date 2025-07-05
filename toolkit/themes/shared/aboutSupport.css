@@ -37,8 +37,8 @@ td.integer {
   --codec-bg-supported-odd: #54ffbd;
   --codec-bg-unsupported-even: #ffdfe7;
   --codec-bg-unsupported-odd: #ffbdc5;
-  --codec-text-name-even: var(--in-content-box-background);
-  --codec-text-name-odd: var(--in-content-box-background-odd);
+  --codec-text-name-even: var(--table-row-background-color);
+  --codec-text-name-odd: var(--table-row-background-color-alternate);
   --codec-text-other: var(--in-content-text-color);
   --codec-text-supported: #15141a;
   --codec-text-unsupported: #15141a;
@@ -108,11 +108,11 @@ td.integer {
 }
 
 #codec-table tr:nth-child(even) > td.lack-of-extension {
-  background-color: var(--in-content-box-background-even);
+  background-color: var(--table-row-background-color);
 }
 
 #codec-table tr:nth-child(odd) > td.lack-of-extension {
-  background-color: var(--in-content-box-background-odd);
+  background-color: var(--table-row-background-color-alternate);
 }
 
 #update-dir-row > td:dir(rtl),
@@ -173,4 +173,12 @@ td.integer {
 
 .hidden {
   display: none;
+}
+
+#sandbox-tbody tr > td.feature-unavailable {
+  background-color: var(--background-color-critical);
+}
+
+#sandbox-tbody tr > td.feature-unavailable > .user-namespaces-unavailabe-support-link {
+  margin: 0 5px
 }

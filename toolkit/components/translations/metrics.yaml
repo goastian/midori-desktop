@@ -8,25 +8,9 @@
 ---
 $schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
 $tags:
-  - 'Firefox :: Translation'
+  - 'Firefox :: Translations'
 
 translations:
-  requests_count:
-    type: counter
-    description: >
-      The count of translation requests.
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1836436
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1836436
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
-    data_sensitivity:
-      - technical
-    notification_emails:
-      - translations-telemetry-alerts@mozilla.com
-    expires: 139
-
   request_count:
     type: labeled_counter
     labels:
@@ -38,24 +22,6 @@ translations:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1900432
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1900432
-    data_sensitivity:
-      - technical
-    notification_emails:
-      - translations-telemetry-alerts@mozilla.com
-    expires: never
-
-
-  error_rate:
-    type: rate
-    description: >
-      The rate of failed translations requests.
-    denominator_metric: translations.requests_count
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1836436
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
-    data_reviews:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1836436
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
     data_sensitivity:
       - technical
     notification_emails:
@@ -156,6 +122,39 @@ translations:
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1845428
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1861319
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+  engine_performance:
+    type: event
+    description: >
+      Metrics related to the performance of the TranslationsEngine.
+    extra_keys:
+      flow_id: *flow_id
+      from_language: *from_language
+      to_language: *to_language
+      average_words_per_request:
+        type: quantity
+        description: The average count of words that this engine translated per request.
+      average_words_per_second:
+        type: quantity
+        description: The average words per second that this engine translated per request.
+      total_completed_requests:
+        type: quantity
+        description: The count of translation requests that were completed by this engine.
+      total_inference_seconds:
+        type: quantity
+        description: The total seconds this engine spent in active translation inference.
+      total_translated_words:
+        type: quantity
+        description: The total number of words translated by this engine.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943132
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1943132
     data_sensitivity:
       - interaction
     notification_emails:
@@ -879,6 +878,23 @@ translations.select_translations_panel:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
     data_reviews:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1870367
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - translations-telemetry-alerts@mozilla.com
+    expires: never
+
+translations.about_translations_page:
+  open:
+    type: event
+    description: >
+      Triggers when the about-translations page is opened.
+    extra_keys:
+      flow_id: *flow_id
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1814195
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1814195
     data_sensitivity:
       - interaction
     notification_emails:

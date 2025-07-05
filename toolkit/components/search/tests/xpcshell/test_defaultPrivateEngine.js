@@ -8,6 +8,71 @@
 
 "use strict";
 
+const CONFIG = [
+  {
+    identifier: "appDefault",
+    base: {
+      name: "Application Default",
+      urls: {
+        search: { base: "https://example.org", searchTermParamName: "q1" },
+      },
+    },
+  },
+  {
+    identifier: "appDefaultPrivate",
+    base: {
+      name: "Application Default Private",
+      urls: {
+        search: {
+          base: "https://example.org",
+          params: [{ name: "pc", value: "{partnerCode}" }],
+          searchTermParamName: "q2",
+        },
+      },
+    },
+    variants: [
+      {
+        environment: {
+          allLocalesAndRegions: true,
+        },
+        telemetrySuffix: "123",
+        partnerCode: "foo",
+      },
+    ],
+  },
+  {
+    identifier: "otherEngine1",
+    base: {
+      name: "Other Engine 1",
+      urls: {
+        search: {
+          base: "https://example.org/engine1/",
+          searchTermParamName: "q",
+        },
+      },
+    },
+  },
+  {
+    identifier: "otherEngine2",
+    base: {
+      name: "Other Engine 2",
+      urls: {
+        search: {
+          base: "https://example.org/engine2/",
+          searchTermParamName: "q",
+        },
+      },
+    },
+  },
+  { globalDefault: "appDefault", globalDefaultPrivate: "appDefaultPrivate" },
+];
+
+const CONFIG_NO_PRIVATE = [
+  { identifier: "appDefault" },
+  { identifier: "other" },
+  { globalDefault: "appDefault" },
+];
+
 let engine1;
 let engine2;
 let appDefault;
@@ -17,7 +82,7 @@ add_setup(async () => {
   do_get_profile();
   Services.fog.initializeFOG();
 
-  await SearchTestUtils.useTestEngines();
+  SearchTestUtils.setRemoteSettingsConfig(CONFIG);
 
   Services.prefs.setCharPref(SearchUtils.BROWSER_SEARCH_PREF + "region", "US");
   Services.prefs.setBoolPref(
@@ -29,47 +94,46 @@ add_setup(async () => {
     true
   );
 
-  useHttpServer("opensearch");
-  await AddonTestUtils.promiseStartupManager();
+  useHttpServer();
 
   await Services.search.init();
 
-  appDefault = Services.search.appDefaultEngine;
-  appPrivateDefault = Services.search.appPrivateDefaultEngine;
-  engine1 = Services.search.getEngineByName("engine-rel-searchform-purpose");
-  engine2 = Services.search.getEngineByName("engine-chromeicon");
+  appDefault = Services.search.getEngineById("appDefault");
+  appPrivateDefault = Services.search.getEngineById("appDefaultPrivate");
+  engine1 = Services.search.getEngineById("otherEngine1");
+  engine2 = Services.search.getEngineById("otherEngine2");
 });
 
 add_task(async function test_defaultPrivateEngine() {
   Assert.equal(
-    Services.search.defaultPrivateEngine,
-    appPrivateDefault,
+    Services.search.defaultPrivateEngine.identifier,
+    appPrivateDefault.identifier,
     "Should have the app private default as the default private engine"
   );
   Assert.equal(
-    Services.search.defaultEngine,
-    appDefault,
+    Services.search.defaultEngine.identifier,
+    appDefault.identifier,
     "Should have the app default as the default engine"
   );
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine",
-      displayName: "Test search engine",
-      loadPath: SearchUtils.newSearchConfigEnabled
-        ? "[app]engine@search.mozilla.org"
-        : "[addon]engine@search.mozilla.org",
-      submissionUrl: "https://www.google.com/search?q=",
-      verified: "default",
+      providerId: "appDefault",
+      partnerCode: "",
+      overriddenByThirdParty: false,
+      engineId: "appDefault",
+      displayName: "Application Default",
+      loadPath: "[app]appDefault",
+      submissionUrl: "https://example.org/?q1=",
     },
     private: {
-      engineId: "engine-pref",
-      displayName: "engine-pref",
-      loadPath: SearchUtils.newSearchConfigEnabled
-        ? "[app]engine-pref@search.mozilla.org"
-        : "[addon]engine-pref@search.mozilla.org",
-      submissionUrl: "https://www.google.com/search?q=",
-      verified: "default",
+      providerId: "appDefaultPrivate",
+      partnerCode: "foo",
+      overriddenByThirdParty: false,
+      engineId: "appDefaultPrivate-123",
+      displayName: "Application Default Private",
+      loadPath: "[app]appDefaultPrivate",
+      submissionUrl: "https://example.org/?pc=foo&q2=",
     },
   });
 
@@ -94,24 +158,22 @@ add_task(async function test_defaultPrivateEngine() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine",
-      displayName: "Test search engine",
-      loadPath: SearchUtils.newSearchConfigEnabled
-        ? "[app]engine@search.mozilla.org"
-        : "[addon]engine@search.mozilla.org",
-      submissionUrl: "https://www.google.com/search?q=",
-      verified: "default",
+      providerId: "appDefault",
+      partnerCode: "",
+      overriddenByThirdParty: false,
+      engineId: "appDefault",
+      displayName: "Application Default",
+      loadPath: "[app]appDefault",
+      submissionUrl: "https://example.org/?q1=",
     },
     private: {
-      engineId: "engine-rel-searchform-purpose",
-      displayName: "engine-rel-searchform-purpose",
-      loadPath: SearchUtils.newSearchConfigEnabled
-        ? "[app]engine-rel-searchform-purpose@search.mozilla.org"
-        : "[addon]engine-rel-searchform-purpose@search.mozilla.org",
-      submissionUrl: SearchUtils.newSearchConfigEnabled
-        ? "https://www.google.com/search?channel=sb&q="
-        : "https://www.google.com/search?q=&channel=sb",
-      verified: "default",
+      providerId: "otherEngine1",
+      partnerCode: "",
+      overriddenByThirdParty: false,
+      engineId: "otherEngine1",
+      displayName: "Other Engine 1",
+      loadPath: "[app]otherEngine1",
+      submissionUrl: "https://example.org/engine1/?q=",
     },
   });
 
@@ -147,22 +209,22 @@ add_task(async function test_defaultPrivateEngine() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine",
-      displayName: "Test search engine",
-      loadPath: SearchUtils.newSearchConfigEnabled
-        ? "[app]engine@search.mozilla.org"
-        : "[addon]engine@search.mozilla.org",
-      submissionUrl: "https://www.google.com/search?q=",
-      verified: "default",
+      providerId: "appDefault",
+      partnerCode: "",
+      overriddenByThirdParty: false,
+      engineId: "appDefault",
+      displayName: "Application Default",
+      loadPath: "[app]appDefault",
+      submissionUrl: "https://example.org/?q1=",
     },
     private: {
-      engineId: "engine-chromeicon",
-      displayName: "engine-chromeicon",
-      loadPath: SearchUtils.newSearchConfigEnabled
-        ? "[app]engine-chromeicon@search.mozilla.org"
-        : "[addon]engine-chromeicon@search.mozilla.org",
-      submissionUrl: "https://www.google.com/search?q=",
-      verified: "default",
+      providerId: "otherEngine2",
+      partnerCode: "",
+      overriddenByThirdParty: false,
+      engineId: "otherEngine2",
+      displayName: "Other Engine 2",
+      loadPath: "[app]otherEngine2",
+      submissionUrl: "https://example.org/engine2/?q=",
     },
   });
 
@@ -184,10 +246,12 @@ add_task(async function test_defaultPrivateEngine() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine",
+      providerId: "appDefault",
+      engineId: "appDefault",
     },
     private: {
-      engineId: "engine-rel-searchform-purpose",
+      providerId: "otherEngine1",
+      engineId: "otherEngine1",
     },
   });
 
@@ -205,10 +269,12 @@ add_task(async function test_defaultPrivateEngine() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine",
+      providerId: "appDefault",
+      engineId: "appDefault",
     },
     private: {
-      engineId: "engine-pref",
+      providerId: "appDefaultPrivate",
+      engineId: "appDefaultPrivate-123",
     },
   });
 
@@ -222,10 +288,12 @@ add_task(async function test_defaultPrivateEngine() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-rel-searchform-purpose",
+      providerId: "otherEngine1",
+      engineId: "otherEngine1",
     },
     private: {
-      engineId: "engine-pref",
+      providerId: "appDefaultPrivate",
+      engineId: "appDefaultPrivate-123",
     },
   });
 
@@ -234,20 +302,28 @@ add_task(async function test_defaultPrivateEngine() {
 
 add_task(async function test_telemetry_private_empty_submission_url() {
   await SearchTestUtils.installOpenSearchEngine({
-    url: `${gDataUrl}simple.xml`,
+    url: `${gHttpURL}/opensearch/simple.xml`,
     setAsDefaultPrivate: true,
+    // We don't want it to reset to the default at the test end, as we
+    // reset the search service in a later test in this file.
+    skipReset: true,
   });
 
   await assertGleanDefaultEngine({
     normal: {
+      providerId: "appDefault",
+      partnerCode: "",
+      overriddenByThirdParty: false,
       engineId: appDefault.telemetryId,
     },
     private: {
+      providerId: "other",
+      partnerCode: "",
+      overriddenByThirdParty: false,
       engineId: "other-simple",
       displayName: "simple",
       loadPath: "[http]localhost/simple.xml",
       submissionUrl: "blank:",
-      verified: "verified",
     },
   });
 
@@ -260,10 +336,12 @@ add_task(async function test_defaultPrivateEngine_turned_off() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine",
+      providerId: "appDefault",
+      engineId: "appDefault",
     },
     private: {
-      engineId: "engine-rel-searchform-purpose",
+      providerId: "otherEngine1",
+      engineId: "otherEngine1",
     },
   });
 
@@ -280,9 +358,11 @@ add_task(async function test_defaultPrivateEngine_turned_off() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine",
+      providerId: "appDefault",
+      engineId: "appDefault",
     },
     private: {
+      providerId: "",
       engineId: "",
     },
   });
@@ -313,9 +393,11 @@ add_task(async function test_defaultPrivateEngine_turned_off() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-rel-searchform-purpose",
+      providerId: "otherEngine1",
+      engineId: "otherEngine1",
     },
     private: {
+      providerId: "",
       engineId: "",
     },
   });
@@ -348,10 +430,12 @@ add_task(async function test_defaultPrivateEngine_turned_off() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-rel-searchform-purpose",
+      providerId: "otherEngine1",
+      engineId: "otherEngine1",
     },
     private: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
   });
 
@@ -375,10 +459,12 @@ add_task(async function test_defaultPrivateEngine_turned_off() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-rel-searchform-purpose",
+      providerId: "otherEngine1",
+      engineId: "otherEngine1",
     },
     private: {
-      engineId: "engine-rel-searchform-purpose",
+      providerId: "otherEngine1",
+      engineId: "otherEngine1",
     },
   });
 });
@@ -396,10 +482,12 @@ add_task(async function test_defaultPrivateEngine_ui_turned_off() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
     private: {
-      engineId: "engine-rel-searchform-purpose",
+      providerId: "otherEngine1",
+      engineId: "otherEngine1",
     },
   });
 
@@ -416,9 +504,11 @@ add_task(async function test_defaultPrivateEngine_ui_turned_off() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
     private: {
+      providerId: "",
       engineId: "",
     },
   });
@@ -438,9 +528,11 @@ add_task(async function test_defaultPrivateEngine_ui_turned_off() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-rel-searchform-purpose",
+      providerId: "otherEngine1",
+      engineId: "otherEngine1",
     },
     private: {
+      providerId: "",
       engineId: "",
     },
   });
@@ -462,10 +554,12 @@ add_task(async function test_defaultPrivateEngine_same_engine_toggle_pref() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
     private: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
   });
 
@@ -487,9 +581,11 @@ add_task(async function test_defaultPrivateEngine_same_engine_toggle_pref() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
     private: {
+      providerId: "",
       engineId: "",
     },
   });
@@ -512,10 +608,12 @@ add_task(async function test_defaultPrivateEngine_same_engine_toggle_pref() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
     private: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
   });
 });
@@ -536,10 +634,12 @@ add_task(async function test_defaultPrivateEngine_same_engine_toggle_ui_pref() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
     private: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
   });
 
@@ -561,9 +661,11 @@ add_task(async function test_defaultPrivateEngine_same_engine_toggle_ui_pref() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
     private: {
+      providerId: "",
       engineId: "",
     },
   });
@@ -586,10 +688,53 @@ add_task(async function test_defaultPrivateEngine_same_engine_toggle_ui_pref() {
 
   await assertGleanDefaultEngine({
     normal: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
     private: {
-      engineId: "engine-chromeicon",
+      providerId: "otherEngine2",
+      engineId: "otherEngine2",
     },
   });
+});
+
+add_task(async function test_no_private_default_falls_back_to_normal_default() {
+  SearchTestUtils.setRemoteSettingsConfig(CONFIG_NO_PRIVATE);
+  Services.search.wrappedJSObject.reset();
+  await Services.search.init();
+
+  Services.prefs.setBoolPref(
+    SearchUtils.BROWSER_SEARCH_PREF + "separatePrivateDefault.ui.enabled",
+    true
+  );
+  Services.prefs.setBoolPref(
+    SearchUtils.BROWSER_SEARCH_PREF + "separatePrivateDefault",
+    true
+  );
+  Services.prefs.setCharPref(SearchUtils.BROWSER_SEARCH_PREF + "region", "US");
+
+  await Services.search.init();
+
+  Assert.ok(Services.search.isInitialized, "search initialized");
+
+  Assert.equal(
+    Services.search.appDefaultEngine.name,
+    "appDefault",
+    "Should have the expected engine as app default"
+  );
+  Assert.equal(
+    Services.search.defaultEngine.name,
+    "appDefault",
+    "Should have the expected engine as default"
+  );
+  Assert.equal(
+    Services.search.appPrivateDefaultEngine.name,
+    "appDefault",
+    "Should have the same engine for the app private default"
+  );
+  Assert.equal(
+    Services.search.defaultPrivateEngine.name,
+    "appDefault",
+    "Should have the same engine for the private default"
+  );
 });

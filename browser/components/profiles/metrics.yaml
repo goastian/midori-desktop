@@ -1,0 +1,425 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'Toolkit :: Startup and Profile System'
+
+profiles.default:
+  updated:
+    type: event
+    description: >
+      Recorded when a new profile from a profile group becomes the default
+      startup profile for the group. This may happen when a profile other
+      than the current default is launched from the profile selector window,
+      or when the user has multiple profiles running at the same time and
+      switches app focus to a profile other than the current default. An
+      event is not recorded if the current default profile is launched or
+      gains app focus.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1918813
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1918813
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_Default_Updated
+
+profiles.delete:
+  cancel:
+    type: event
+    description: >
+      Recorded when the user clicks the "Cancel" button on the
+      about:deleteprofile page, canceling deletion of the current profile
+      and closing the page.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927608
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927608
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_Delete_Cancel
+  confirm:
+    type: event
+    description: >
+      Recorded when the user clicks the "Delete" button on the
+      about:deleteprofile page, triggering deletion of the current profile.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927608
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927608
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_Delete_Confirm
+  displayed:
+    type: event
+    description: Recorded when the about:deleteprofile page is loaded.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927608
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927608
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_Delete_Displayed
+
+profiles.existing:
+  alert:
+    type: event
+    description: >
+      Recorded when the user tries to close the about:editprofile page without
+      setting a name. A beforeunload alert is then displayed. We record the
+      user's decision to stay on the page or leave in the `extra` value.
+    extra_keys:
+      value:
+        description:
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter. The `value` is `leave` if the user chose
+          to leave the page, and `cancel` if the user chose to stay on the
+          page.
+        type: string
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_Existing_Alert
+  avatar:
+    type: event
+    description: Recorded when the user selects a different avatar.
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter. The `value` is the name of the avatar.
+        type: string
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_Existing_Avatar
+  closed:
+    type: event
+    description: Recorded when the page is closed.
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter. If the user clicked the "Done Editing"
+          button, the `value` will be `done_editing`. Otherwise, the user
+          navigated away or closed the tab, and the `value` will be `pagehide`.
+        type: string
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_Existing_Closed
+  deleted:
+    type: event
+    description: Recorded when the user clicks the delete button.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_Existing_Deleted
+  displayed:
+    type: event
+    description: Recorded when the page is loaded.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_Existing_Displayed
+  learn_more:
+    type: event
+    description: Recorded when the "explore more addons" link is clicked.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_Existing_LearnMore
+  name:
+    type: event
+    description: >
+      Recorded when the name is changed. This event is fired either after the
+      user has stopped typing in the name input field for 2 seconds, or if
+      they have edited the name, then quickly closed the tab.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_Existing_Name
+  theme:
+    type: event
+    description: Recorded when the user selects a different theme.
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event (name of the theme). Mirrors to the Legacy
+          Telemetry event's `value` parameter. The `value` is the ID of the
+          theme, which may be the ID of a built-in theme or a third-party
+          theme. The map of IDs to profile names must be added elsewhere.
+        type: string
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927607
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_Existing_Theme
+
+profiles.new:
+  alert:
+    type: event
+    description: >
+      Recorded when the user tries to close the about:newprofile page without
+      setting a name. A beforeunload alert is then displayed. We record the
+      user's decision to stay on the page or leave in the `extra` value.
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter. The `value` is `leave` if the user chose
+          to leave the page, and `cancel` if the user chose to stay on the
+          page.
+        type: string
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_New_Alert
+  avatar:
+    type: event
+    description: Recorded when the user selects a different avatar.
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter. The `value` is the name of the avatar.
+        type: string
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_New_Avatar
+  closed:
+    type: event
+    description: Recorded when the page is closed.
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter. If the user clicked the "Done Editing"
+          button, the `value` will be `done_editing`. Otherwise, the user
+          navigated away or closed the tab, and the `value` will be `pagehide`.
+        type: string
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_New_Closed
+  deleted:
+    type: event
+    description: Recorded when the user clicks the delete button.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_New_Deleted
+  displayed:
+    type: event
+    description: Recorded when the page is loaded.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_New_Displayed
+  learn_more:
+    type: event
+    description: Recorded when the "explore more addons" link is clicked.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_New_LearnMore
+  name:
+    type: event
+    description: >
+      Recorded when the name is changed. This event is fired either after the
+      user has stopped typing in the name input field for 2 seconds, or if
+      they have edited the name, then quickly closed the tab.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_New_Name
+  theme:
+    type: event
+    description: Recorded when the user selects a different theme.
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event (name of the theme). Mirrors to the Legacy
+          Telemetry event's `value` parameter. The `value` is the ID of the
+          theme, which may be the ID of a built-in theme or a third-party
+          theme. The map of IDs to profile names must be added elsewhere.
+        type: string
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1941698
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_New_Theme
+
+profiles.selector_window:
+  launch:
+    type: event
+    description: >
+      Recorded when the user clicks a profile card in the profile selector
+      window, launching the profile in a new Firefox instance.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927605
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927605
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_SelectorWindow_Launch
+  show_at_startup:
+    type: event
+    description: >
+      Recorded when the user toggles the checkbox that determines if the
+      profile selector window is shown at startup.
+    extra_keys:
+      value:
+        description: >
+          The `value` of the event. Mirrors to the Legacy Telemetry
+          event's `value` parameter. If the user checked the checkbox, the
+          `value` will be `enabled`. If the user unchecked the checkbox,
+          the `value` will be `disabled`.
+        type: string
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927605
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1927605
+    notification_emails:
+      - cmkm@mozilla.com
+      - dtownsend@mozilla.com
+      - jhirsch@mozilla.com
+      - nbaumgardner@mozilla.com
+    expires: never
+    telemetry_mirror: Profiles_SelectorWindow_ShowAtStartup

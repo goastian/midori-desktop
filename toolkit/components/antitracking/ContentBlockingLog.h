@@ -92,11 +92,11 @@ class ContentBlockingLog final {
       const nsACString& aOrigin, uint32_t aType, bool aBlocked,
       const Maybe<
           ContentBlockingNotifier::StorageAccessPermissionGrantedReason>&
-          aReason,
-      const nsTArray<nsCString>& aTrackingFullHashes,
+          aReason = Nothing(),
+      const nsTArray<nsCString>& aTrackingFullHashes = nsTArray<nsCString>(),
       const Maybe<ContentBlockingNotifier::CanvasFingerprinter>&
-          aCanvasFingerprinter,
-      const Maybe<bool> aCanvasFingerprinterKnownText);
+          aCanvasFingerprinter = Nothing(),
+      const Maybe<bool> aCanvasFingerprinterKnownText = Nothing());
 
   void RecordLog(
       const nsACString& aOrigin, uint32_t aType, bool aBlocked,
@@ -107,8 +107,9 @@ class ContentBlockingLog final {
     RecordLogInternal(aOrigin, aType, aBlocked, aReason, aTrackingFullHashes);
   }
 
-  void ReportLog(nsIPrincipal* aFirstPartyPrincipal);
-  void ReportCanvasFingerprintingLog(nsIPrincipal* aFirstPartyPrincipal);
+  void ReportLog();
+  void ReportCanvasFingerprintingLog(nsIPrincipal* aFirstPartyPrincipal,
+                                     bool aShouldReport);
   void ReportFontFingerprintingLog(nsIPrincipal* aFirstPartyPrincipal);
   void ReportEmailTrackingLog(nsIPrincipal* aFirstPartyPrincipal);
 
@@ -248,7 +249,9 @@ class ContentBlockingLog final {
       }
 
       for (const auto& item : entry.mData->mLogs) {
-        if (item.mBlocked) {
+        if (item.mBlocked ||
+            item.mType &
+                nsIWebProgressListener::STATE_ALLOWED_TRACKING_CONTENT) {
           events |= item.mType;
         }
       }

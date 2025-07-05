@@ -1,5 +1,6 @@
 {%- let object = ci.get_object_definition(name).unwrap() -%}
-export class {{ object.nm() }} {
+{{ object.js_docstring(0) -}}
+export class {{ object.js_name() }} {
     // Use `init` to instantiate this class.
     // DO NOT USE THIS CONSTRUCTOR DIRECTLY
     constructor(opts) {
@@ -7,36 +8,24 @@ export class {{ object.nm() }} {
             throw new UniFFIError("Attempting to construct an object using the JavaScript constructor directly" +
             "Please use a UDL defined constructor, or the init function for the primary constructor")
         }
-        if (!opts[constructUniffiObject] instanceof UniFFIPointer) {
+        if (!(opts[constructUniffiObject] instanceof UniFFIPointer)) {
             throw new UniFFIError("Attempting to create a UniFFI object with a pointer that is not an instance of UniFFIPointer")
         }
         this[uniffiObjectPtr] = opts[constructUniffiObject];
     }
 
     {%- for cons in object.constructors() %}
-    {%- if object.is_constructor_async(config) %}
-    /**
-     * An async constructor for {{ object.nm() }}.
-     * 
-     * @returns {Promise<{{ object.nm() }}>}: A promise that resolves
-     *      to a newly constructed {{ object.nm() }}
-     */
-    {%- else %}
-    /**
-     * A constructor for {{ object.nm() }}.
-     * 
-     * @returns { {{ object.nm() }} }
-     */
-    {%- endif %}
-    static {{ cons.nm() }}({{cons.arg_names()}}) {
-        {%- call js::call_constructor(cons, type_, object.is_constructor_async(config)) -%}
+    {{ cons.js_docstring(4) -}}
+    static {{ cons.js_name() }}({{cons.js_arg_names()}}) {
+        {%- call js::call_constructor(cons, type_, object.call_style_for_constructor(cons, config)) -%}
     }
     {%- endfor %}
 
     {%- for meth in object.methods() %}
 
-    {{ meth.nm() }}({{ meth.arg_names() }}) {
-        {%- call js::call_method(meth, type_, object.is_method_async(meth, config)) %}
+    {{ meth.js_docstring(4) -}}
+    {{ meth.js_name() }}({{ meth.js_arg_names() }}) {
+        {%- call js::call_method(meth, type_, object.call_style_for_method(meth, config)) %}
     }
     {%- endfor %}
 
@@ -47,23 +36,23 @@ export class {{ ffi_converter }} extends FfiConverter {
     static lift(value) {
         const opts = {};
         opts[constructUniffiObject] = value;
-        return new {{ object.nm() }}(opts);
+        return new {{ object.js_name() }}(opts);
     }
 
     static lower(value) {
         const ptr = value[uniffiObjectPtr];
         if (!(ptr instanceof UniFFIPointer)) {
-            throw new UniFFITypeError("Object is not a '{{ object.nm() }}' instance");
+            throw new UniFFITypeError("Object is not a '{{ object.js_name() }}' instance");
         }
         return ptr;
     }
 
     static read(dataStream) {
-        return this.lift(dataStream.readPointer{{ object.nm() }}());
+        return this.lift(dataStream.readPointer{{ object.js_name() }}());
     }
 
     static write(dataStream, value) {
-        dataStream.writePointer{{ object.nm() }}(value[uniffiObjectPtr]);
+        dataStream.writePointer{{ object.js_name() }}(value[uniffiObjectPtr]);
     }
 
     static computeSize(value) {

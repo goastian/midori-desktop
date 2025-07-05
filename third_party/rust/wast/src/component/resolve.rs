@@ -1,5 +1,5 @@
 use crate::component::*;
-use crate::core::{self, ValType};
+use crate::core::{self, resolve::ResolveCoreType, ValType};
 use crate::kw;
 use crate::names::Namespace;
 use crate::token::Span;
@@ -155,9 +155,10 @@ impl<'a> Resolver<'a> {
             ComponentField::CoreModule(m) => self.core_module(m),
             ComponentField::CoreInstance(i) => self.core_instance(i),
             ComponentField::CoreType(t) => self.core_ty(t),
+            ComponentField::CoreRec(t) => self.core_rec(t),
             ComponentField::Component(c) => self.component(c),
             ComponentField::Instance(i) => self.instance(i),
-            ComponentField::Alias(a) => self.alias(a, false),
+            ComponentField::Alias(a) => self.alias(a),
             ComponentField::Type(t) => self.ty(t),
             ComponentField::CanonicalFunc(f) => self.canonical_func(f),
             ComponentField::CoreFunc(_) => unreachable!("should be expanded already"),
@@ -256,7 +257,10 @@ impl<'a> Resolver<'a> {
             ItemSigKind::Instance(t) => self.component_type_use(t),
             ItemSigKind::Value(t) => self.component_val_type(&mut t.0),
             ItemSigKind::Type(b) => match b {
-                TypeBounds::Eq(i) => self.resolve_ns(i, Ns::Type),
+                TypeBounds::Eq(i) => {
+                    self.resolve_ns(i, Ns::Type)?;
+                    Ok(())
+                }
                 TypeBounds::SubResource => Ok(()),
             },
         }
@@ -288,7 +292,6 @@ impl<'a> Resolver<'a> {
         index: &mut Index<'a>,
         kind: T,
         span: Span,
-        enclosing_only: bool,
     ) -> Result<(), Error> {
         // Short-circuit when both indices are already resolved as this
         // helps to write tests for invalid modules where wasmparser should
@@ -328,13 +331,6 @@ impl<'a> Resolver<'a> {
             ));
         }
 
-        if enclosing_only && depth > 1 {
-            return Err(Error::new(
-                span,
-                "only the local or enclosing scope can be aliased".to_string(),
-            ));
-        }
-
         *outer = Index::Num(depth, span);
 
         // Resolve `index` within the computed scope depth.
@@ -344,42 +340,59 @@ impl<'a> Resolver<'a> {
         Ok(())
     }
 
-    fn alias(&mut self, alias: &mut Alias<'a>, enclosing_only: bool) -> Result<(), Error> {
+    fn alias(&mut self, alias: &mut Alias<'a>) -> Result<(), Error> {
         match &mut alias.target {
             AliasTarget::Export {
                 instance,
                 name: _,
                 kind: _,
-            } => self.resolve_ns(instance, Ns::Instance),
+            } => {
+                self.resolve_ns(instance, Ns::Instance)?;
+            }
             AliasTarget::CoreExport {
                 instance,
                 name: _,
                 kind: _,
-            } => self.resolve_ns(instance, Ns::CoreInstance),
+            } => {
+                self.resolve_ns(instance, Ns::CoreInstance)?;
+            }
             AliasTarget::Outer { outer, index, kind } => {
-                self.outer_alias(outer, index, *kind, alias.span, enclosing_only)
+                self.outer_alias(outer, index, *kind, alias.span)?;
             }
         }
+        Ok(())
     }
 
     fn canonical_func(&mut self, func: &mut CanonicalFunc<'a>) -> Result<(), Error> {
-        let opts = match &mut func.kind {
+        match &mut func.kind {
             CanonicalFuncKind::Lift { ty, info } => {
                 self.component_type_use(ty)?;
                 self.core_item_ref(&mut info.func)?;
-                &mut info.opts
+                self.canon_opts(&mut info.opts)?;
             }
             CanonicalFuncKind::Lower(info) => {
                 self.component_item_ref(&mut info.func)?;
-                &mut info.opts
+                self.canon_opts(&mut info.opts)?;
             }
-            CanonicalFuncKind::ResourceNew(info) => return self.resolve_ns(&mut info.ty, Ns::Type),
-            CanonicalFuncKind::ResourceRep(info) => return self.resolve_ns(&mut info.ty, Ns::Type),
+            CanonicalFuncKind::ResourceNew(info) => {
+                self.resolve_ns(&mut info.ty, Ns::Type)?;
+            }
+            CanonicalFuncKind::ResourceRep(info) => {
+                self.resolve_ns(&mut info.ty, Ns::Type)?;
+            }
             CanonicalFuncKind::ResourceDrop(info) => {
-                return self.resolve_ns(&mut info.ty, Ns::Type)
+                self.resolve_ns(&mut info.ty, Ns::Type)?;
             }
-        };
+            CanonicalFuncKind::ThreadSpawn(info) => {
+                self.resolve_ns(&mut info.ty, Ns::CoreType)?;
+            }
+            CanonicalFuncKind::ThreadHwConcurrency(_) => {}
+        }
 
+        Ok(())
+    }
+
+    fn canon_opts(&mut self, opts: &mut [CanonOpt<'a>]) -> Result<(), Error> {
         for opt in opts {
             match opt {
                 CanonOpt::StringUtf8 | CanonOpt::StringUtf16 | CanonOpt::StringLatin1Utf16 => {}
@@ -475,7 +488,10 @@ impl<'a> Resolver<'a> {
 
     fn component_val_type(&mut self, ty: &mut ComponentValType<'a>) -> Result<(), Error> {
         match ty {
-            ComponentValType::Ref(idx) => self.resolve_ns(idx, Ns::Type),
+            ComponentValType::Ref(idx) => {
+                self.resolve_ns(idx, Ns::Type)?;
+                Ok(())
+            }
             ComponentValType::Inline(ComponentDefinedType::Primitive(_)) => Ok(()),
             ComponentValType::Inline(_) => unreachable!("should be expanded by now"),
         }
@@ -483,13 +499,32 @@ impl<'a> Resolver<'a> {
 
     fn core_ty(&mut self, field: &mut CoreType<'a>) -> Result<(), Error> {
         match &mut field.def {
-            CoreTypeDef::Def(_) => {}
+            CoreTypeDef::Def(ty) => {
+                // See comments in `module_type` for why registration of ids happens
+                // here for core types early.
+                self.current().core_types.register(field.id, "core type")?;
+                self.current().resolve_type_def(ty)?;
+                assert!(self.aliases_to_insert.is_empty());
+            }
             CoreTypeDef::Module(t) => {
                 self.stack.push(ComponentState::new(field.id));
                 self.module_type(t)?;
                 self.stack.pop();
             }
         }
+        Ok(())
+    }
+
+    fn core_rec(&mut self, rec: &mut core::Rec<'a>) -> Result<(), Error> {
+        // See comments in `module_type` for why registration of ids happens
+        // here for core types early.
+        for ty in rec.types.iter() {
+            self.current().core_types.register(ty.id, "core type")?;
+        }
+        for ty in rec.types.iter_mut() {
+            self.current().resolve_type(ty)?;
+        }
+        assert!(self.aliases_to_insert.is_empty());
         Ok(())
     }
 
@@ -521,18 +556,7 @@ impl<'a> Resolver<'a> {
                 match &mut r.rep {
                     ValType::I32 | ValType::I64 | ValType::F32 | ValType::F64 | ValType::V128 => {}
                     ValType::Ref(r) => match &mut r.heap {
-                        core::HeapType::Func
-                        | core::HeapType::Extern
-                        | core::HeapType::Exn
-                        | core::HeapType::Any
-                        | core::HeapType::Eq
-                        | core::HeapType::Array
-                        | core::HeapType::I31
-                        | core::HeapType::Struct
-                        | core::HeapType::None
-                        | core::HeapType::NoFunc
-                        | core::HeapType::NoExtern
-                        | core::HeapType::NoExn => {}
+                        core::HeapType::Abstract { .. } => {}
                         core::HeapType::Concrete(id) => {
                             self.resolve_ns(id, Ns::Type)?;
                         }
@@ -550,7 +574,7 @@ impl<'a> Resolver<'a> {
         self.resolve_prepending_aliases(
             &mut c.decls,
             |resolver, decl| match decl {
-                ComponentTypeDecl::Alias(alias) => resolver.alias(alias, false),
+                ComponentTypeDecl::Alias(alias) => resolver.alias(alias),
                 ComponentTypeDecl::CoreType(ty) => resolver.core_ty(ty),
                 ComponentTypeDecl::Type(ty) => resolver.ty(ty),
                 ComponentTypeDecl::Import(import) => resolver.item_sig(&mut import.item),
@@ -583,7 +607,7 @@ impl<'a> Resolver<'a> {
         self.resolve_prepending_aliases(
             &mut c.decls,
             |resolver, decl| match decl {
-                InstanceTypeDecl::Alias(alias) => resolver.alias(alias, false),
+                InstanceTypeDecl::Alias(alias) => resolver.alias(alias),
                 InstanceTypeDecl::CoreType(ty) => resolver.core_ty(ty),
                 InstanceTypeDecl::Type(ty) => resolver.ty(ty),
                 InstanceTypeDecl::Export(export) => resolver.item_sig(&mut export.item),
@@ -686,7 +710,7 @@ impl<'a> Resolver<'a> {
         Ok(())
     }
 
-    fn resolve_ns(&mut self, idx: &mut Index<'a>, ns: Ns) -> Result<(), Error> {
+    fn resolve_ns(&mut self, idx: &mut Index<'a>, ns: Ns) -> Result<u32, Error> {
         // Perform resolution on a local clone walking up the stack of components
         // that we have. Note that a local clone is used since we don't want to use
         // the parent's resolved index if a parent matches, instead we want to use
@@ -704,7 +728,7 @@ impl<'a> Resolver<'a> {
             // return success.
             if depth == 0 {
                 *idx = idx_clone;
-                return Ok(());
+                return Ok(found);
             }
             let id = match idx {
                 Index::Id(id) => *id,
@@ -727,7 +751,7 @@ impl<'a> Resolver<'a> {
             let local_index = self.current().register_alias(&alias)?;
             self.aliases_to_insert.push(alias);
             *idx = Index::Num(local_index, span);
-            return Ok(());
+            return Ok(local_index);
         }
 
         // If resolution in any parent failed then simply return the error from our
@@ -740,8 +764,41 @@ impl<'a> Resolver<'a> {
         return self.resolve_prepending_aliases(
             &mut ty.decls,
             |resolver, decl| match decl {
-                ModuleTypeDecl::Alias(alias) => resolver.alias(alias, true),
-                ModuleTypeDecl::Type(_) => Ok(()),
+                ModuleTypeDecl::Alias(alias) => resolver.alias(alias),
+
+                // For types since the GC proposal to core wasm they're allowed
+                // to both refer to themselves and additionally a recursion
+                // group can define a set of types that all refer to one
+                // another. That means that the type names must be registered
+                // first before the type is resolved so the type's own name is
+                // in scope for itself.
+                //
+                // Note though that this means that aliases cannot be injected
+                // automatically for references to outer types. We don't know
+                // how many aliases are going to be created so we otherwise
+                // don't know the type index to register.
+                //
+                // As a compromise for now core types don't support
+                // auto-injection of aliases from outer scopes. They must be
+                // explicitly aliased in. Also note that the error message isn't
+                // great either. This may be something we want to improve in the
+                // future with a better error message or a pass that goes over
+                // everything first to inject aliases and then afterwards all
+                // other names are registered.
+                ModuleTypeDecl::Type(t) => {
+                    resolver.current().core_types.register(t.id, "type")?;
+                    resolver.current().resolve_type(t)
+                }
+                ModuleTypeDecl::Rec(t) => {
+                    for t in t.types.iter_mut() {
+                        resolver.current().core_types.register(t.id, "type")?;
+                    }
+                    for t in t.types.iter_mut() {
+                        resolver.current().resolve_type(t)?;
+                    }
+                    Ok(())
+                }
+
                 ModuleTypeDecl::Import(import) => resolve_item_sig(resolver, &mut import.item),
                 ModuleTypeDecl::Export(_, item) => resolve_item_sig(resolver, item),
             },
@@ -750,9 +807,8 @@ impl<'a> Resolver<'a> {
                     ModuleTypeDecl::Alias(alias) => {
                         state.register_alias(alias)?;
                     }
-                    ModuleTypeDecl::Type(ty) => {
-                        state.core_types.register(ty.id, "type")?;
-                    }
+                    // These were registered above already
+                    ModuleTypeDecl::Type(_) | ModuleTypeDecl::Rec(_) => {}
                     // Only the type namespace is populated within the module type
                     // namespace so these are ignored here.
                     ModuleTypeDecl::Import(_) | ModuleTypeDecl::Export(..) => {}
@@ -785,7 +841,7 @@ impl<'a> Resolver<'a> {
 }
 
 impl<'a> ComponentState<'a> {
-    fn resolve(&mut self, ns: Ns, idx: &mut Index<'a>) -> Result<u32, Error> {
+    fn resolve(&self, ns: Ns, idx: &mut Index<'a>) -> Result<u32, Error> {
         match ns {
             Ns::CoreFunc => self.core_funcs.resolve(idx, "core func"),
             Ns::CoreGlobal => self.core_globals.resolve(idx, "core global"),
@@ -810,7 +866,11 @@ impl<'a> ComponentState<'a> {
             ComponentField::CoreInstance(i) => {
                 self.core_instances.register(i.id, "core instance")?
             }
-            ComponentField::CoreType(t) => self.core_types.register(t.id, "core type")?,
+            ComponentField::CoreType(ty) => match &ty.def {
+                CoreTypeDef::Def(_) => 0, // done above in `core_rec`
+                CoreTypeDef::Module(_) => self.core_types.register(ty.id, "core type")?,
+            },
+            ComponentField::CoreRec(_) => 0, // done above in `core_rec`
             ComponentField::Component(c) => self.components.register(c.id, "component")?,
             ComponentField::Instance(i) => self.instances.register(i.id, "instance")?,
             ComponentField::Alias(a) => self.register_alias(a)?,
@@ -820,7 +880,9 @@ impl<'a> ComponentState<'a> {
                 CanonicalFuncKind::Lower(_)
                 | CanonicalFuncKind::ResourceNew(_)
                 | CanonicalFuncKind::ResourceRep(_)
-                | CanonicalFuncKind::ResourceDrop(_) => {
+                | CanonicalFuncKind::ResourceDrop(_)
+                | CanonicalFuncKind::ThreadSpawn(_)
+                | CanonicalFuncKind::ThreadHwConcurrency(_) => {
                     self.core_funcs.register(f.id, "core func")?
                 }
             },
@@ -884,6 +946,12 @@ impl<'a> ComponentState<'a> {
                 }
             },
         }
+    }
+}
+
+impl<'a> ResolveCoreType<'a> for ComponentState<'a> {
+    fn resolve_type_name(&mut self, name: &mut Index<'a>) -> Result<u32, Error> {
+        self.resolve(Ns::CoreType, name)
     }
 }
 

@@ -7,11 +7,14 @@
 #include "mozilla/glean/bindings/Timespan.h"
 
 #include "nsString.h"
+#include "mozilla/AppShutdown.h"
 #include "mozilla/Components.h"
+#include "mozilla/ClearOnShutdown.h"
 #include "mozilla/ResultVariant.h"
 #include "mozilla/dom/GleanMetricsBinding.h"
 #include "mozilla/glean/bindings/ScalarGIFFTMap.h"
 #include "mozilla/glean/fog_ffi_generated.h"
+#include "GIFFTFwd.h"
 
 namespace mozilla::glean {
 
@@ -115,7 +118,7 @@ void TimespanMetric::Stop() const {
         } else if (MOZ_UNLIKELY(delta < 0)) {
           theDelta = 0;
         }
-        Telemetry::ScalarSet(scalarId, theDelta);
+        TelemetryScalar::Set(scalarId, theDelta);
       }
     });
   }
@@ -136,7 +139,7 @@ void TimespanMetric::SetRaw(uint32_t aDuration) const {
   auto optScalarId = ScalarIdForMetric(mId);
   if (optScalarId) {
     auto scalarId = optScalarId.extract();
-    Telemetry::ScalarSet(scalarId, aDuration);
+    TelemetryScalar::Set(scalarId, aDuration);
   }
   fog_timespan_set_raw(mId, aDuration);
 }

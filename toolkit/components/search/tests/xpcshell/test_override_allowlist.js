@@ -16,7 +16,7 @@ const kOverriddenEngineName = "Simple Engine";
 const allowlist = [
   {
     thirdPartyId: "test@thirdparty.example.com",
-    overridesId: "simple@search.mozilla.org",
+    overridesAppIdv2: "simple",
     urls: [],
   },
 ];
@@ -220,60 +220,20 @@ const tests = [
       overridesEngine: false,
     },
   },
-  {
-    title: "test_overriding_default_engine_search_form",
-    startupReason: "ADDON_INSTALL",
-    search_provider: {
-      is_default: true,
-      name: kOverriddenEngineName,
-      keyword: "MozSearch",
-      search_url: kBaseURL,
-      search_form: "https://example.com/form",
-    },
-    allowlistUrls: [
-      {
-        search_url: kBaseURL,
-        search_form: "https://example.com/form",
-      },
-    ],
-    expected: {
-      switchToDefaultAllowed: true,
-      canInstallEngine: false,
-      overridesEngine: true,
-      searchUrl: `${kBaseURL}`,
-      searchForm: "https://example.com/form",
-    },
-  },
-  {
-    title: "test_overriding_default_engine_different_search_form",
-    startupReason: "ADDON_INSTALL",
-    search_provider: {
-      is_default: true,
-      name: kOverriddenEngineName,
-      keyword: "MozSearch",
-      search_url: kBaseURL,
-      search_form: "https://example.com/forma",
-    },
-    allowlistUrls: [
-      {
-        search_url: kBaseURL,
-        search_form: "https://example.com/form",
-      },
-    ],
-    expected: {
-      switchToDefaultAllowed: true,
-      canInstallEngine: false,
-      overridesEngine: false,
-    },
-  },
 ];
 
 let baseExtension;
 let remoteSettingsStub;
 
 add_setup(async function () {
-  await SearchTestUtils.useTestEngines("simple-engines");
-  await AddonTestUtils.promiseStartupManager();
+  SearchTestUtils.setRemoteSettingsConfig([
+    { identifier: "originalDefault" },
+    {
+      identifier: "simple",
+      base: { name: kOverriddenEngineName },
+    },
+  ]);
+  await SearchTestUtils.initXPCShellAddonManager();
   await Services.search.init();
 
   baseExtension = ExtensionTestUtils.loadExtension({
@@ -293,6 +253,7 @@ add_setup(async function () {
 
   registerCleanupFunction(async () => {
     await baseExtension.unload();
+    sinon.restore();
   });
 });
 
@@ -349,14 +310,6 @@ for (const test of tests) {
         "Should have set the correct url on an overriden engine"
       );
 
-      if (test.expected.search_form) {
-        Assert.equal(
-          engine.wrappedJSObject._searchForm,
-          test.expected.searchForm,
-          "Should have overridden the search form."
-        );
-      }
-
       if (test.expected.postData) {
         let sis = Cc["@mozilla.org/scriptableinputstream;1"].createInstance(
           Ci.nsIScriptableInputStream
@@ -381,11 +334,8 @@ for (const test of tests) {
         {
           defaultSearchEngine: "simple-addon",
           defaultSearchEngineData: {
-            loadPath: SearchUtils.newSearchConfigEnabled
-              ? "[app]simple@search.mozilla.org"
-              : "[addon]simple@search.mozilla.org",
+            loadPath: "[app]simple",
             name: "Simple Engine",
-            origin: "default",
             submissionURL: test.expected.searchUrl.replace("{searchTerms}", ""),
           },
         },

@@ -10,6 +10,7 @@ with Files("**"):
 XPIDL_SOURCES += [
     "nsIBounceTrackingMapEntry.idl",
     "nsIBounceTrackingProtection.idl",
+    "nsIBTPRemoteExceptionList.idl",
 ]
 
 XPIDL_MODULE = "toolkit_antitracking"
@@ -17,6 +18,10 @@ XPIDL_MODULE = "toolkit_antitracking"
 
 XPCOM_MANIFESTS += [
     "components.conf",
+]
+
+EXTRA_JS_MODULES += [
+    "BTPRemoteExceptionList.sys.mjs",
 ]
 
 EXPORTS.mozilla += [
@@ -29,6 +34,7 @@ EXPORTS.mozilla += [
     "BounceTrackingStateGlobal.h",
     "BounceTrackingStorageObserver.h",
     "ClearDataCallback.h",
+    "PromiseNativeWrapper.h",
 ]
 
 UNIFIED_SOURCES += [
@@ -41,6 +47,7 @@ UNIFIED_SOURCES += [
     "BounceTrackingStateGlobal.cpp",
     "BounceTrackingStorageObserver.cpp",
     "ClearDataCallback.cpp",
+    "PromiseNativeWrapper.cpp",
 ]
 
 include("/ipc/chromium/chromium-config.mozbuild")

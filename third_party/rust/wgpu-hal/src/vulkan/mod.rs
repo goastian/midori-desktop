@@ -7,7 +7,6 @@ Ash expects slices, which we don't generally have available.
 We cope with this requirement by the combination of the following ways:
   - temporarily allocating `Vec` on heap, where overhead is permitted
   - growing temporary local storage
-  - using `implace_it` on iterators
 
 ## Framebuffers and Render passes
 
@@ -29,20 +28,21 @@ mod adapter;
 mod command;
 mod conv;
 mod device;
+mod drm;
 mod instance;
+mod sampler;
 
-use std::{
-    borrow::Borrow,
-    collections::HashSet,
-    ffi::{CStr, CString},
-    fmt, mem,
-    num::NonZeroU32,
-    sync::Arc,
-};
+use alloc::{boxed::Box, ffi::CString, sync::Arc, vec::Vec};
+use core::{borrow::Borrow, ffi::CStr, fmt, mem, num::NonZeroU32, ops::DerefMut};
 
 use arrayvec::ArrayVec;
 use ash::{ext, khr, vk};
+use bytemuck::{Pod, Zeroable};
+use hashbrown::HashSet;
 use parking_lot::{Mutex, RwLock};
+
+use naga::FastHashMap;
+use wgt::InternalCounter;
 
 const MILLIS_TO_NANOS: u64 = 1_000_000;
 const MAX_TOTAL_ATTACHMENTS: usize = crate::MAX_COLOR_ATTACHMENTS * 2 + 1;
@@ -77,6 +77,31 @@ impl crate::Api for Api {
     type RenderPipeline = RenderPipeline;
     type ComputePipeline = ComputePipeline;
 }
+
+crate::impl_dyn_resource!(
+    Adapter,
+    AccelerationStructure,
+    BindGroup,
+    BindGroupLayout,
+    Buffer,
+    CommandBuffer,
+    CommandEncoder,
+    ComputePipeline,
+    Device,
+    Fence,
+    Instance,
+    PipelineCache,
+    PipelineLayout,
+    QuerySet,
+    Queue,
+    RenderPipeline,
+    Sampler,
+    ShaderModule,
+    Surface,
+    SurfaceTexture,
+    Texture,
+    TextureView
+);
 
 struct DebugUtils {
     extension: ext::debug_utils::Instance,
@@ -127,6 +152,7 @@ pub struct InstanceShared {
     extensions: Vec<&'static CStr>,
     drop_guard: Option<crate::DropGuard>,
     flags: wgt::InstanceFlags,
+    memory_budget_thresholds: wgt::MemoryBudgetThresholds,
     debug_utils: Option<DebugUtils>,
     get_physical_device_properties: Option<khr::get_physical_device_properties2::Instance>,
     entry: ash::Entry,
@@ -314,12 +340,10 @@ impl SwapchainImageSemaphores {
 
 struct Swapchain {
     raw: vk::SwapchainKHR,
-    raw_flags: vk::SwapchainCreateFlagsKHR,
     functor: khr::swapchain::Device,
     device: Arc<DeviceShared>,
     images: Vec<vk::Image>,
     config: crate::SurfaceConfiguration,
-    view_formats: Vec<wgt::TextureFormat>,
     /// One wait semaphore per swapchain image. This will be associated with the
     /// surface texture, and later collected during submission.
     ///
@@ -330,6 +354,13 @@ struct Swapchain {
     /// index as the image index, but we need to specify the semaphore as an argument
     /// to the acquire_next_image function which is what tells us which image to use.
     next_semaphore_index: usize,
+    /// The present timing information which will be set in the next call to [`present()`](crate::Queue::present()).
+    ///
+    /// # Safety
+    ///
+    /// This must only be set if [`wgt::Features::VULKAN_GOOGLE_DISPLAY_TIMING`] is enabled, and
+    /// so the VK_GOOGLE_display_timing extension is present.
+    next_present_time: Option<vk::PresentTimeGOOGLE>,
 }
 
 impl Swapchain {
@@ -350,6 +381,53 @@ pub struct Surface {
     swapchain: RwLock<Option<Swapchain>>,
 }
 
+impl Surface {
+    /// Get the raw Vulkan swapchain associated with this surface.
+    ///
+    /// Returns [`None`] if the surface is not configured.
+    pub fn raw_swapchain(&self) -> Option<vk::SwapchainKHR> {
+        let read = self.swapchain.read();
+        read.as_ref().map(|it| it.raw)
+    }
+
+    /// Set the present timing information which will be used for the next [presentation](crate::Queue::present()) of this surface,
+    /// using [VK_GOOGLE_display_timing].
+    ///
+    /// This can be used to give an id to presentations, for future use of [`vk::PastPresentationTimingGOOGLE`].
+    /// Note that `wgpu-hal` does *not* provide a way to use that API - you should manually access this through [`ash`].
+    ///
+    /// This can also be used to add a "not before" timestamp to the presentation.
+    ///
+    /// The exact semantics of the fields are also documented in the [specification](https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPresentTimeGOOGLE.html) for the extension.
+    ///
+    /// # Panics
+    ///
+    /// - If the surface hasn't been configured.
+    /// - If the device doesn't [support present timing](wgt::Features::VULKAN_GOOGLE_DISPLAY_TIMING).
+    ///
+    /// [VK_GOOGLE_display_timing]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_GOOGLE_display_timing.html
+    #[track_caller]
+    pub fn set_next_present_time(&self, present_timing: vk::PresentTimeGOOGLE) {
+        let mut swapchain = self.swapchain.write();
+        let swapchain = swapchain
+            .as_mut()
+            .expect("Surface should have been configured");
+        let features = wgt::Features::VULKAN_GOOGLE_DISPLAY_TIMING;
+        if swapchain.device.features.contains(features) {
+            swapchain.next_present_time = Some(present_timing);
+        } else {
+            // Ideally we'd use something like `device.required_features` here, but that's in `wgpu-core`, which we are a dependency of
+            panic!(
+                concat!(
+                    "Tried to set display timing properties ",
+                    "without the corresponding feature ({:?}) enabled."
+                ),
+                features
+            );
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct SurfaceTexture {
     index: u32,
@@ -357,8 +435,16 @@ pub struct SurfaceTexture {
     surface_semaphores: Arc<Mutex<SwapchainImageSemaphores>>,
 }
 
+impl crate::DynSurfaceTexture for SurfaceTexture {}
+
 impl Borrow<Texture> for SurfaceTexture {
     fn borrow(&self) -> &Texture {
+        &self.texture
+    }
+}
+
+impl Borrow<dyn crate::DynTexture> for SurfaceTexture {
+    fn borrow(&self) -> &dyn crate::DynTexture {
         &self.texture
     }
 }
@@ -369,7 +455,7 @@ pub struct Adapter {
     //queue_families: Vec<vk::QueueFamilyProperties>,
     known_memory_flags: vk::MemoryPropertyFlags,
     phd_capabilities: adapter::PhysicalDeviceProperties,
-    //phd_features: adapter::PhysicalDeviceFeatures,
+    phd_features: adapter::PhysicalDeviceFeatures,
     downlevel_flags: wgt::DownlevelFlags,
     private_caps: PrivateCapabilities,
     workarounds: Workarounds,
@@ -388,6 +474,7 @@ struct DeviceExtensionFunctions {
     draw_indirect_count: Option<khr::draw_indirect_count::Device>,
     timeline_semaphore: Option<ExtensionFn<khr::timeline_semaphore::Device>>,
     ray_tracing: Option<RayTracingDeviceExtensionFunctions>,
+    mesh_shading: Option<ext::mesh_shader::Device>,
 }
 
 struct RayTracingDeviceExtensionFunctions {
@@ -399,11 +486,6 @@ struct RayTracingDeviceExtensionFunctions {
 /// device geometry, but affect the code paths taken internally.
 #[derive(Clone, Debug)]
 struct PrivateCapabilities {
-    /// Y-flipping is implemented with either `VK_AMD_negative_viewport_height` or `VK_KHR_maintenance1`/1.1+. The AMD extension for negative viewport height does not require a Y shift.
-    ///
-    /// This flag is `true` if the device has `VK_KHR_maintenance1`/1.1+ and `false` otherwise (i.e. in the case of `VK_AMD_negative_viewport_height`).
-    flip_y_requires_shift: bool,
-    imageless_framebuffers: bool,
     image_view_usage: bool,
     timeline_semaphores: bool,
     texture_d24: bool,
@@ -412,12 +494,48 @@ struct PrivateCapabilities {
     /// Ability to present contents to any screen. Only needed to work around broken platform configurations.
     can_present: bool,
     non_coherent_map_mask: wgt::BufferAddress,
+
+    /// True if this adapter advertises the [`robustBufferAccess`][vrba] feature.
+    ///
+    /// Note that Vulkan's `robustBufferAccess` is not sufficient to implement
+    /// `wgpu_hal`'s guarantee that shaders will not access buffer contents via
+    /// a given bindgroup binding outside that binding's [accessible
+    /// region][ar]. Enabling `robustBufferAccess` does ensure that
+    /// out-of-bounds reads and writes are not undefined behavior (that's good),
+    /// but still permits out-of-bounds reads to return data from anywhere
+    /// within the buffer, not just the accessible region.
+    ///
+    /// [ar]: ../struct.BufferBinding.html#accessible-region
+    /// [vrba]: https://registry.khronos.org/vulkan/specs/1.3-extensions/html/vkspec.html#features-robustBufferAccess
     robust_buffer_access: bool,
+
     robust_image_access: bool,
+
+    /// True if this adapter supports the [`VK_EXT_robustness2`] extension's
+    /// [`robustBufferAccess2`] feature.
+    ///
+    /// This is sufficient to implement `wgpu_hal`'s [required bounds-checking][ar] of
+    /// shader accesses to buffer contents. If this feature is not available,
+    /// this backend must have Naga inject bounds checks in the generated
+    /// SPIR-V.
+    ///
+    /// [`VK_EXT_robustness2`]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_EXT_robustness2.html
+    /// [`robustBufferAccess2`]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkPhysicalDeviceRobustness2FeaturesEXT.html#features-robustBufferAccess2
+    /// [ar]: ../struct.BufferBinding.html#accessible-region
     robust_buffer_access2: bool,
+
     robust_image_access2: bool,
     zero_initialize_workgroup_memory: bool,
     image_format_list: bool,
+    maximum_samplers: u32,
+
+    /// True if this adapter supports the [`VK_KHR_shader_integer_dot_product`] extension
+    /// (promoted to Vulkan 1.3).
+    ///
+    /// This is used to generate optimized code for WGSL's `dot4{I, U}8Packed`.
+    ///
+    /// [`VK_KHR_shader_integer_dot_product`]: https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VK_KHR_shader_integer_dot_product.html
+    shader_integer_dot_product: bool,
 }
 
 bitflags::bitflags!(
@@ -492,29 +610,12 @@ struct RenderPassKey {
     multiview: Option<NonZeroU32>,
 }
 
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-struct FramebufferAttachment {
-    /// Can be NULL if the framebuffer is image-less
-    raw: vk::ImageView,
-    raw_image_flags: vk::ImageCreateFlags,
-    view_usage: crate::TextureUses,
-    view_format: wgt::TextureFormat,
-    raw_view_formats: Vec<vk::Format>,
-}
-
-#[derive(Clone, Eq, Hash, PartialEq)]
-struct FramebufferKey {
-    attachments: ArrayVec<FramebufferAttachment, { MAX_TOTAL_ATTACHMENTS }>,
-    extent: wgt::Extent3d,
-    sample_count: u32,
-}
-
 struct DeviceShared {
     raw: ash::Device,
     family_index: u32,
     queue_index: u32,
     raw_queue: vk::Queue,
-    handle_is_owned: bool,
+    drop_guard: Option<crate::DropGuard>,
     instance: Arc<InstanceShared>,
     physical_device: vk::PhysicalDevice,
     enabled_extensions: Vec<&'static CStr>,
@@ -525,8 +626,20 @@ struct DeviceShared {
     private_caps: PrivateCapabilities,
     workarounds: Workarounds,
     features: wgt::Features,
-    render_passes: Mutex<rustc_hash::FxHashMap<RenderPassKey, vk::RenderPass>>,
-    framebuffers: Mutex<rustc_hash::FxHashMap<FramebufferKey, vk::Framebuffer>>,
+    render_passes: Mutex<FastHashMap<RenderPassKey, vk::RenderPass>>,
+    sampler_cache: Mutex<sampler::SamplerCache>,
+    memory_allocations_counter: InternalCounter,
+}
+
+impl Drop for DeviceShared {
+    fn drop(&mut self) {
+        for &raw in self.render_passes.lock().values() {
+            unsafe { self.raw.destroy_render_pass(raw, None) };
+        }
+        if self.drop_guard.is_none() {
+            unsafe { self.raw.destroy_device(None) };
+        }
+    }
 }
 
 pub struct Device {
@@ -538,6 +651,14 @@ pub struct Device {
     naga_options: naga::back::spv::Options<'static>,
     #[cfg(feature = "renderdoc")]
     render_doc: crate::auxil::renderdoc::RenderDoc,
+    counters: Arc<wgt::HalCounters>,
+}
+
+impl Drop for Device {
+    fn drop(&mut self) {
+        unsafe { self.mem_allocator.lock().cleanup(&*self.shared) };
+        unsafe { self.desc_allocator.lock().cleanup(&*self.shared) };
+    }
 }
 
 /// Semaphores for forcing queue submissions to run in order.
@@ -621,6 +742,19 @@ pub struct Queue {
     device: Arc<DeviceShared>,
     family_index: u32,
     relay_semaphores: Mutex<RelaySemaphores>,
+    signal_semaphores: Mutex<(Vec<vk::Semaphore>, Vec<u64>)>,
+}
+
+impl Queue {
+    pub fn as_raw(&self) -> vk::Queue {
+        self.raw
+    }
+}
+
+impl Drop for Queue {
+    fn drop(&mut self) {
+        unsafe { self.relay_semaphores.lock().destroy(&self.device.raw) };
+    }
 }
 
 #[derive(Debug)]
@@ -629,24 +763,29 @@ pub struct Buffer {
     block: Option<Mutex<gpu_alloc::MemoryBlock<vk::DeviceMemory>>>,
 }
 
+impl crate::DynBuffer for Buffer {}
+
 #[derive(Debug)]
 pub struct AccelerationStructure {
     raw: vk::AccelerationStructureKHR,
     buffer: vk::Buffer,
     block: Mutex<gpu_alloc::MemoryBlock<vk::DeviceMemory>>,
+    compacted_size_query: Option<vk::QueryPool>,
 }
+
+impl crate::DynAccelerationStructure for AccelerationStructure {}
 
 #[derive(Debug)]
 pub struct Texture {
     raw: vk::Image,
     drop_guard: Option<crate::DropGuard>,
+    external_memory: Option<vk::DeviceMemory>,
     block: Option<gpu_alloc::MemoryBlock<vk::DeviceMemory>>,
-    usage: crate::TextureUses,
     format: wgt::TextureFormat,
-    raw_flags: vk::ImageCreateFlags,
     copy_size: crate::CopyExtent,
-    view_formats: Vec<wgt::TextureFormat>,
 }
+
+impl crate::DynTexture for Texture {}
 
 impl Texture {
     /// # Safety
@@ -659,10 +798,16 @@ impl Texture {
 
 #[derive(Debug)]
 pub struct TextureView {
+    raw_texture: vk::Image,
     raw: vk::ImageView,
     layers: NonZeroU32,
-    attachment: FramebufferAttachment,
+    format: wgt::TextureFormat,
+    raw_format: vk::Format,
+    base_mip_level: u32,
+    dimension: wgt::TextureViewDimension,
 }
+
+impl crate::DynTextureView for TextureView {}
 
 impl TextureView {
     /// # Safety
@@ -676,7 +821,10 @@ impl TextureView {
 #[derive(Debug)]
 pub struct Sampler {
     raw: vk::Sampler,
+    create_info: vk::SamplerCreateInfo<'static>,
 }
+
+impl crate::DynSampler for Sampler {}
 
 #[derive(Debug)]
 pub struct BindGroupLayout {
@@ -687,16 +835,22 @@ pub struct BindGroupLayout {
     binding_arrays: Vec<(u32, NonZeroU32)>,
 }
 
+impl crate::DynBindGroupLayout for BindGroupLayout {}
+
 #[derive(Debug)]
 pub struct PipelineLayout {
     raw: vk::PipelineLayout,
     binding_arrays: naga::back::spv::BindingMap,
 }
 
+impl crate::DynPipelineLayout for PipelineLayout {}
+
 #[derive(Debug)]
 pub struct BindGroup {
     set: gpu_descriptor::DescriptorSet<vk::DescriptorSet>,
 }
+
+impl crate::DynBindGroup for BindGroup {}
 
 /// Miscellaneous allocation recycling pool for `CommandAllocator`.
 #[derive(Default)]
@@ -711,7 +865,6 @@ impl Temp {
         self.marker.clear();
         self.buffer_barriers.clear();
         self.image_barriers.clear();
-        //see also - https://github.com/NotIntMan/inplace_it/issues/8
     }
 
     fn make_c_str(&mut self, name: &str) -> &CStr {
@@ -720,6 +873,21 @@ impl Temp {
         self.marker.push(0);
         unsafe { CStr::from_bytes_with_nul_unchecked(&self.marker) }
     }
+}
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+struct FramebufferKey {
+    raw_pass: vk::RenderPass,
+    attachments: ArrayVec<vk::ImageView, { MAX_TOTAL_ATTACHMENTS }>,
+    extent: wgt::Extent3d,
+}
+
+#[derive(Clone, Eq, Hash, PartialEq)]
+struct TempTextureViewKey {
+    texture: vk::Image,
+    format: vk::Format,
+    mip_level: u32,
+    depth_slice: u32,
 }
 
 pub struct CommandEncoder {
@@ -757,6 +925,42 @@ pub struct CommandEncoder {
     /// If set, the end of the next render/compute pass will write a timestamp at
     /// the given pool & location.
     end_of_pass_timer_query: Option<(vk::QueryPool, u32)>,
+
+    framebuffers: FastHashMap<FramebufferKey, vk::Framebuffer>,
+    temp_texture_views: FastHashMap<TempTextureViewKey, vk::ImageView>,
+
+    counters: Arc<wgt::HalCounters>,
+}
+
+impl Drop for CommandEncoder {
+    fn drop(&mut self) {
+        // SAFETY:
+        //
+        // VUID-vkDestroyCommandPool-commandPool-00041: wgpu_hal requires that a
+        // `CommandBuffer` must live until its execution is complete, and that a
+        // `CommandBuffer` must not outlive the `CommandEncoder` that built it.
+        // Thus, we know that none of our `CommandBuffers` are in the "pending"
+        // state.
+        //
+        // The other VUIDs are pretty obvious.
+        unsafe {
+            // `vkDestroyCommandPool` also frees any command buffers allocated
+            // from that pool, so there's no need to explicitly call
+            // `vkFreeCommandBuffers` on `cmd_encoder`'s `free` and `discarded`
+            // fields.
+            self.device.raw.destroy_command_pool(self.raw, None);
+        }
+
+        for (_, fb) in self.framebuffers.drain() {
+            unsafe { self.device.raw.destroy_framebuffer(fb, None) };
+        }
+
+        for (_, view) in self.temp_texture_views.drain() {
+            unsafe { self.device.raw.destroy_image_view(view, None) };
+        }
+
+        self.counters.command_encoders.sub(1);
+    }
 }
 
 impl CommandEncoder {
@@ -781,35 +985,47 @@ pub struct CommandBuffer {
     raw: vk::CommandBuffer,
 }
 
+impl crate::DynCommandBuffer for CommandBuffer {}
+
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum ShaderModule {
     Raw(vk::ShaderModule),
     Intermediate {
         naga_shader: crate::NagaShader,
-        runtime_checks: bool,
+        runtime_checks: wgt::ShaderRuntimeChecks,
     },
 }
+
+impl crate::DynShaderModule for ShaderModule {}
 
 #[derive(Debug)]
 pub struct RenderPipeline {
     raw: vk::Pipeline,
 }
 
+impl crate::DynRenderPipeline for RenderPipeline {}
+
 #[derive(Debug)]
 pub struct ComputePipeline {
     raw: vk::Pipeline,
 }
+
+impl crate::DynComputePipeline for ComputePipeline {}
 
 #[derive(Debug)]
 pub struct PipelineCache {
     raw: vk::PipelineCache,
 }
 
+impl crate::DynPipelineCache for PipelineCache {}
+
 #[derive(Debug)]
 pub struct QuerySet {
     raw: vk::QueryPool,
 }
+
+impl crate::DynQuerySet for QuerySet {}
 
 /// The [`Api::Fence`] type for [`vulkan::Api`].
 ///
@@ -860,6 +1076,8 @@ pub enum Fence {
     },
 }
 
+impl crate::DynFence for Fence {}
+
 impl Fence {
     /// Return the highest [`FenceValue`] among the signalled fences in `active`.
     ///
@@ -876,7 +1094,11 @@ impl Fence {
     ) -> Result<crate::FenceValue, crate::DeviceError> {
         for &(value, raw) in active.iter() {
             unsafe {
-                if value > last_completed && device.get_fence_status(raw)? {
+                if value > last_completed
+                    && device
+                        .get_fence_status(raw)
+                        .map_err(map_host_device_oom_and_lost_err)?
+                {
                     last_completed = value;
                 }
             }
@@ -895,8 +1117,12 @@ impl Fence {
         match *self {
             Self::TimelineSemaphore(raw) => unsafe {
                 Ok(match *extension.unwrap() {
-                    ExtensionFn::Extension(ref ext) => ext.get_semaphore_counter_value(raw)?,
-                    ExtensionFn::Promoted => device.get_semaphore_counter_value(raw)?,
+                    ExtensionFn::Extension(ref ext) => ext
+                        .get_semaphore_counter_value(raw)
+                        .map_err(map_host_device_oom_and_lost_err)?,
+                    ExtensionFn::Promoted => device
+                        .get_semaphore_counter_value(raw)
+                        .map_err(map_host_device_oom_and_lost_err)?,
                 })
             },
             Self::FencePool {
@@ -936,7 +1162,8 @@ impl Fence {
                 }
                 if free.len() != base_free {
                     active.retain(|&(value, _)| value > latest);
-                    unsafe { device.reset_fences(&free[base_free..]) }?
+                    unsafe { device.reset_fences(&free[base_free..]) }
+                        .map_err(map_device_oom_err)?
                 }
                 *last_completed = latest;
             }
@@ -1002,6 +1229,15 @@ impl crate::Queue for Queue {
             signal_values.push(!0);
         }
 
+        let mut guards = self.signal_semaphores.lock();
+        let (ref mut pending_signal_semaphores, ref mut pending_signal_semaphore_values) =
+            guards.deref_mut();
+        assert!(pending_signal_semaphores.len() == pending_signal_semaphore_values.len());
+        if !pending_signal_semaphores.is_empty() {
+            signal_semaphores.append(pending_signal_semaphores);
+            signal_values.append(pending_signal_semaphore_values);
+        }
+
         // In order for submissions to be strictly ordered, we encode a dependency between each submission
         // using a pair of semaphores. This adds a wait if it is needed, and signals the next semaphore.
         let semaphore_state = self.relay_semaphores.lock().advance(&self.device)?;
@@ -1031,7 +1267,8 @@ impl crate::Queue for Queue {
                     None => unsafe {
                         self.device
                             .raw
-                            .create_fence(&vk::FenceCreateInfo::default(), None)?
+                            .create_fence(&vk::FenceCreateInfo::default(), None)
+                            .map_err(map_host_device_oom_err)?
                     },
                 };
                 active.push((signal_value, fence_raw));
@@ -1062,7 +1299,8 @@ impl crate::Queue for Queue {
         unsafe {
             self.device
                 .raw
-                .queue_submit(self.raw, &[vk_info], fence_raw)?
+                .queue_submit(self.raw, &[vk_info], fence_raw)
+                .map_err(map_host_device_oom_and_lost_err)?
         };
         Ok(())
     }
@@ -1083,13 +1321,32 @@ impl crate::Queue for Queue {
             .image_indices(&image_indices)
             .wait_semaphores(swapchain_semaphores.get_present_wait_semaphores());
 
+        let mut display_timing;
+        let present_times;
+        let vk_info = if let Some(present_time) = ssc.next_present_time.take() {
+            debug_assert!(
+                ssc.device
+                    .features
+                    .contains(wgt::Features::VULKAN_GOOGLE_DISPLAY_TIMING),
+                "`next_present_time` should only be set if `VULKAN_GOOGLE_DISPLAY_TIMING` is enabled"
+            );
+            present_times = [present_time];
+            display_timing = vk::PresentTimesInfoGOOGLE::default().times(&present_times);
+            // SAFETY: We know that VK_GOOGLE_display_timing is present because of the safety contract on `next_present_time`.
+            vk_info.push_next(&mut display_timing)
+        } else {
+            vk_info
+        };
+
         let suboptimal = {
             profiling::scope!("vkQueuePresentKHR");
             unsafe { self.swapchain_fn.queue_present(self.raw, &vk_info) }.map_err(|error| {
                 match error {
                     vk::Result::ERROR_OUT_OF_DATE_KHR => crate::SurfaceError::Outdated,
                     vk::Result::ERROR_SURFACE_LOST_KHR => crate::SurfaceError::Lost,
-                    _ => crate::DeviceError::from(error).into(),
+                    // We don't use VK_EXT_full_screen_exclusive
+                    // VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT
+                    _ => map_host_device_oom_and_lost_err(error).into(),
                 }
             })?
         };
@@ -1109,29 +1366,129 @@ impl crate::Queue for Queue {
     }
 }
 
-impl From<vk::Result> for crate::DeviceError {
-    fn from(result: vk::Result) -> Self {
-        #![allow(unreachable_code)]
-        match result {
-            vk::Result::ERROR_OUT_OF_HOST_MEMORY | vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => {
-                #[cfg(feature = "oom_panic")]
-                panic!("Out of memory ({result:?})");
-
-                Self::OutOfMemory
-            }
-            vk::Result::ERROR_DEVICE_LOST => {
-                #[cfg(feature = "device_lost_panic")]
-                panic!("Device lost");
-
-                Self::Lost
-            }
-            _ => {
-                #[cfg(feature = "internal_error_panic")]
-                panic!("Internal error: {result:?}");
-
-                log::warn!("Unrecognized device error {result:?}");
-                Self::Lost
-            }
-        }
+impl Queue {
+    pub fn raw_device(&self) -> &ash::Device {
+        &self.device.raw
     }
+
+    pub fn add_signal_semaphore(&self, semaphore: vk::Semaphore, semaphore_value: Option<u64>) {
+        let mut guards = self.signal_semaphores.lock();
+        let (ref mut semaphores, ref mut semaphore_values) = guards.deref_mut();
+        semaphores.push(semaphore);
+        semaphore_values.push(semaphore_value.unwrap_or(!0));
+    }
+}
+
+/// Maps
+///
+/// - VK_ERROR_OUT_OF_HOST_MEMORY
+/// - VK_ERROR_OUT_OF_DEVICE_MEMORY
+fn map_host_device_oom_err(err: vk::Result) -> crate::DeviceError {
+    match err {
+        vk::Result::ERROR_OUT_OF_HOST_MEMORY | vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => {
+            get_oom_err(err)
+        }
+        e => get_unexpected_err(e),
+    }
+}
+
+/// Maps
+///
+/// - VK_ERROR_OUT_OF_HOST_MEMORY
+/// - VK_ERROR_OUT_OF_DEVICE_MEMORY
+/// - VK_ERROR_DEVICE_LOST
+fn map_host_device_oom_and_lost_err(err: vk::Result) -> crate::DeviceError {
+    match err {
+        vk::Result::ERROR_DEVICE_LOST => get_lost_err(),
+        other => map_host_device_oom_err(other),
+    }
+}
+
+/// Maps
+///
+/// - VK_ERROR_OUT_OF_HOST_MEMORY
+/// - VK_ERROR_OUT_OF_DEVICE_MEMORY
+/// - VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR
+fn map_host_device_oom_and_ioca_err(err: vk::Result) -> crate::DeviceError {
+    // We don't use VK_KHR_buffer_device_address
+    // VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR
+    map_host_device_oom_err(err)
+}
+
+/// Maps
+///
+/// - VK_ERROR_OUT_OF_HOST_MEMORY
+fn map_host_oom_err(err: vk::Result) -> crate::DeviceError {
+    match err {
+        vk::Result::ERROR_OUT_OF_HOST_MEMORY => get_oom_err(err),
+        e => get_unexpected_err(e),
+    }
+}
+
+/// Maps
+///
+/// - VK_ERROR_OUT_OF_DEVICE_MEMORY
+fn map_device_oom_err(err: vk::Result) -> crate::DeviceError {
+    match err {
+        vk::Result::ERROR_OUT_OF_DEVICE_MEMORY => get_oom_err(err),
+        e => get_unexpected_err(e),
+    }
+}
+
+/// Maps
+///
+/// - VK_ERROR_OUT_OF_HOST_MEMORY
+/// - VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR
+fn map_host_oom_and_ioca_err(err: vk::Result) -> crate::DeviceError {
+    // We don't use VK_KHR_buffer_device_address
+    // VK_ERROR_INVALID_OPAQUE_CAPTURE_ADDRESS_KHR
+    map_host_oom_err(err)
+}
+
+/// Maps
+///
+/// - VK_ERROR_OUT_OF_HOST_MEMORY
+/// - VK_ERROR_OUT_OF_DEVICE_MEMORY
+/// - VK_PIPELINE_COMPILE_REQUIRED_EXT
+/// - VK_ERROR_INVALID_SHADER_NV
+fn map_pipeline_err(err: vk::Result) -> crate::DeviceError {
+    // We don't use VK_EXT_pipeline_creation_cache_control
+    // VK_PIPELINE_COMPILE_REQUIRED_EXT
+    // We don't use VK_NV_glsl_shader
+    // VK_ERROR_INVALID_SHADER_NV
+    map_host_device_oom_err(err)
+}
+
+/// Returns [`crate::DeviceError::Unexpected`] or panics if the `internal_error_panic`
+/// feature flag is enabled.
+fn get_unexpected_err(_err: vk::Result) -> crate::DeviceError {
+    #[cfg(feature = "internal_error_panic")]
+    panic!("Unexpected Vulkan error: {_err:?}");
+
+    #[allow(unreachable_code)]
+    crate::DeviceError::Unexpected
+}
+
+/// Returns [`crate::DeviceError::OutOfMemory`].
+fn get_oom_err(_err: vk::Result) -> crate::DeviceError {
+    crate::DeviceError::OutOfMemory
+}
+
+/// Returns [`crate::DeviceError::Lost`] or panics if the `device_lost_panic`
+/// feature flag is enabled.
+fn get_lost_err() -> crate::DeviceError {
+    #[cfg(feature = "device_lost_panic")]
+    panic!("Device lost");
+
+    #[allow(unreachable_code)]
+    crate::DeviceError::Lost
+}
+
+#[derive(Clone, Copy, Pod, Zeroable)]
+#[repr(C)]
+struct RawTlasInstance {
+    transform: [f32; 12],
+    custom_data_and_mask: u32,
+    shader_binding_table_record_offset_and_flags: u32,
+    acceleration_structure_reference: u64,
 }

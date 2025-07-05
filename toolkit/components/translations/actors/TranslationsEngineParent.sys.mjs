@@ -5,14 +5,20 @@
 const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   TranslationsParent: "resource://gre/actors/TranslationsParent.sys.mjs",
-  EngineProcess: "chrome://global/content/ml/EngineProcess.sys.mjs",
+  TranslationsTelemetry:
+    "chrome://global/content/translations/TranslationsTelemetry.sys.mjs",
 });
+
+/**
+ * @typedef {import("../translations").LanguagePair} LanguagePair
+ * @typedef {import("../translations").TranslationsEnginePayload} TranslationsEnginePayload
+ */
 
 /**
  * The translations engine is in its own content process. This actor handles the
  * marshalling of the data such as the engine payload and port passing.
  */
-export class TranslationsEngineParent extends JSWindowActorParent {
+export class TranslationsEngineParent extends JSProcessActorParent {
   /**
    * Keep track of the live actors by InnerWindowID.
    *
@@ -20,27 +26,53 @@ export class TranslationsEngineParent extends JSWindowActorParent {
    */
   #translationsParents = new Map();
 
+  /**
+   * Set by EngineProcess when creating the TranslationsEngineParent.
+   * Keeps the "inference" process alive until it is cleared.
+   *
+   * NOTE: Invalidating this keepAlive does not guarantee that the process will
+   * exit, and this actor may be re-used if it does not (e.g. because the
+   * inference process was kept alive by MLEngine).
+   *
+   * @type {nsIContentParentKeepAlive | null}
+   */
+  processKeepAlive = null;
+
   async receiveMessage({ name, data }) {
+    if (this.#isDestroyed) {
+      return undefined;
+    }
+
     switch (name) {
-      case "TranslationsEngine:Ready":
-        if (!lazy.EngineProcess.resolveTranslationsEngineParent) {
-          throw new Error(
-            "Unable to find the resolve function for when the translations engine is ready."
-          );
-        }
-        lazy.EngineProcess.resolveTranslationsEngineParent(this);
-        return undefined;
       case "TranslationsEngine:RequestEnginePayload": {
-        const { fromLanguage, toLanguage } = data;
+        const { languagePair } = data;
+
+        /** @type {Promise<TranslationsEnginePayload>} */
         const payloadPromise =
-          lazy.TranslationsParent.getTranslationsEnginePayload(
-            fromLanguage,
-            toLanguage
-          );
+          lazy.TranslationsParent.getTranslationsEnginePayload(languagePair);
+
         payloadPromise.catch(error => {
           lazy.TranslationsParent.telemetry().onError(String(error));
         });
+
         return payloadPromise;
+      }
+      case "TranslationsEngine:ReportEnginePerformance": {
+        const {
+          sourceLanguage,
+          targetLanguage,
+          totalInferenceSeconds,
+          totalTranslatedWords,
+          totalCompletedRequests,
+        } = data;
+        lazy.TranslationsTelemetry.onReportEnginePerformance({
+          sourceLanguage,
+          targetLanguage,
+          totalInferenceSeconds,
+          totalTranslatedWords,
+          totalCompletedRequests,
+        });
+        return undefined;
       }
       case "TranslationsEngine:ReportEngineStatus": {
         const { innerWindowId, status } = data;
@@ -62,35 +94,33 @@ export class TranslationsEngineParent extends JSWindowActorParent {
         }
         return undefined;
       }
-      case "TranslationsEngine:DestroyEngineProcess":
-        lazy.EngineProcess.destroyTranslationsEngine().catch(error =>
-          console.error(error)
-        );
+      case "TranslationsEngine:DestroyEngineProcess": {
+        if (this.processKeepAlive) {
+          ChromeUtils.addProfilerMarker(
+            "EngineProcess",
+            {},
+            `Dropping TranslationsEngine "inference" process keep-alive`
+          );
+          this.processKeepAlive.invalidateKeepAlive();
+          this.processKeepAlive = null;
+        }
         return undefined;
-      default:
+      }
+      default: {
         return undefined;
+      }
     }
   }
 
   /**
-   * @param {string} fromLanguage
-   * @param {string} toLanguage
+   * @param {LanguagePair} languagePair
    * @param {MessagePort} port
-   * @param {number} innerWindowId
    * @param {TranslationsParent} [translationsParent]
    */
-  startTranslation(
-    fromLanguage,
-    toLanguage,
-    port,
-    innerWindowId,
-    translationsParent
-  ) {
+  startTranslation(languagePair, port, translationsParent) {
+    const innerWindowId = translationsParent?.innerWindowId;
     if (translationsParent) {
-      this.#translationsParents.set(
-        translationsParent.innerWindowId,
-        translationsParent
-      );
+      this.#translationsParents.set(innerWindowId, translationsParent);
     }
     if (this.#isDestroyed) {
       throw new Error("The translation engine process was already destroyed.");
@@ -99,8 +129,7 @@ export class TranslationsEngineParent extends JSWindowActorParent {
     this.sendAsyncMessage(
       "TranslationsEngine:StartTranslation",
       {
-        fromLanguage,
-        toLanguage,
+        languagePair,
         innerWindowId,
         port,
       },
@@ -116,6 +145,10 @@ export class TranslationsEngineParent extends JSWindowActorParent {
    */
   discardTranslations(innerWindowId) {
     this.#translationsParents.delete(innerWindowId);
+    if (this.#isDestroyed) {
+      return;
+    }
+
     this.sendAsyncMessage("TranslationsEngine:DiscardTranslations", {
       innerWindowId,
     });

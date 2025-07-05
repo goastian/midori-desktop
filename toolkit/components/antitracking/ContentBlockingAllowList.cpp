@@ -112,7 +112,7 @@ ContentBlockingAllowList::ComputeContentBlockingAllowListPrincipal(
 nsresult ContentBlockingAllowList::Check(
     nsIPrincipal* aContentBlockingAllowListPrincipal, bool aIsPrivateBrowsing,
     bool& aIsAllowListed) {
-  MOZ_ASSERT(XRE_IsParentProcess());
+  MOZ_ASSERT(NS_IsMainThread());
   aIsAllowListed = false;
 
   if (!aContentBlockingAllowListPrincipal) {
@@ -124,7 +124,7 @@ nsresult ContentBlockingAllowList::Check(
             _spec),
            aContentBlockingAllowListPrincipal);
 
-  PermissionManager* permManager = PermissionManager::GetInstance();
+  RefPtr<PermissionManager> permManager = PermissionManager::GetInstance();
   NS_ENSURE_TRUE(permManager, NS_ERROR_FAILURE);
 
   // Check both the normal mode and private browsing mode user override
@@ -271,7 +271,7 @@ nsresult ContentBlockingAllowListCache::CheckForBaseDomain(
   nsresult rv = EnsureInit();
   NS_ENSURE_SUCCESS(rv, rv);
 
-  if (aOriginAttributes.mPrivateBrowsingId > 0) {
+  if (aOriginAttributes.IsPrivateBrowsing()) {
     aIsAllowListed = mEntriesPrivateBrowsing.Contains(aBaseDomain);
   } else {
     aIsAllowListed = mEntries.Contains(aBaseDomain);
@@ -317,7 +317,7 @@ nsresult ContentBlockingAllowListCache::EnsureInit() {
   mIsInitialized = true;
 
   // 1. Get all permissions representing allow-list entries.
-  PermissionManager* permManager = PermissionManager::GetInstance();
+  RefPtr<PermissionManager> permManager = PermissionManager::GetInstance();
   NS_ENSURE_TRUE(permManager, NS_ERROR_FAILURE);
 
   nsTArray<nsCString> types = GetAllowListPermissionTypes();
@@ -351,7 +351,7 @@ nsresult ContentBlockingAllowListCache::EnsureInit() {
     NS_ENSURE_SUCCESS(rv, rv);
 
     // Sort base domains into sets for normal / private browsing.
-    if (principal->OriginAttributesRef().mPrivateBrowsingId > 0) {
+    if (principal->OriginAttributesRef().IsPrivateBrowsing()) {
       mEntriesPrivateBrowsing.Insert(baseDomain);
     } else {
       mEntries.Insert(baseDomain);

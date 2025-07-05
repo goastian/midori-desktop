@@ -5,14 +5,12 @@ codespell:
         - browser/base/content/docs/
         - browser/branding/
         - browser/components/asrouter/docs/
-        - browser/components/newtab/docs/
         - browser/components/places/docs/
         - browser/components/search/docs/
         - browser/components/search/schema/
         - browser/components/touchbar/docs/
         - browser/components/urlbar/docs/
-        - browser/extensions/formautofill/locales/en-US/
-        - browser/extensions/report-site-issue/locales/en-US/
+        - browser/extensions/newtab/docs/
         - browser/installer/windows/docs/
         - browser/locales/en-US/
         - build/docs/
@@ -76,7 +74,6 @@ codespell:
     # + localization files
     extensions:
         - js
-        - jsm
         - jxs
         - mjs
         - xml
@@ -94,5 +91,4 @@ codespell:
     support-files:
         - 'tools/lint/spell/**'
     type: external
-    setup: spell:setup
     payload: spell:lint

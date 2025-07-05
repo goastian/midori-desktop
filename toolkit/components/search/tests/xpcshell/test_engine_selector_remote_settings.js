@@ -1,93 +1,63 @@
 /* Any copyright is dedicated to the Public Domain.
  *    http://creativecommons.org/publicdomain/zero/1.0/ */
 
+/**
+ * This tests that the engine selector works handles various remote settings
+ * scenarios correctly, e.g. configuration updates, bad databases.
+ */
+
 "use strict";
 
-ChromeUtils.defineESModuleGetters(this, {
-  SearchEngineSelectorOld:
-    "resource://gre/modules/SearchEngineSelectorOld.sys.mjs",
-});
-
-const TEST_CONFIG = [
+let TEST_CONFIG = [
   {
-    engineName: "aol",
-    orderHint: 500,
-    webExtension: {
-      locales: ["default"],
-    },
-    appliesTo: [
-      {
-        included: { everywhere: true },
-      },
-      {
-        included: { regions: ["us"] },
-        webExtension: {
-          locales: ["$USER_LOCALE"],
-        },
-      },
-    ],
+    recordType: "defaultEngines",
+    globalDefault: "lycos",
+    specificDefaults: [],
   },
   {
-    engineName: "lycos",
-    orderHint: 1000,
-    default: "yes",
-    appliesTo: [
-      {
-        included: { everywhere: true },
-        excluded: { locales: { matches: ["zh-CN"] } },
-      },
-    ],
-  },
-  {
-    engineName: "altavista",
-    orderHint: 2000,
-    defaultPrivate: "yes",
-    appliesTo: [
-      {
-        included: { locales: { matches: ["en-US"] } },
-      },
-      {
-        included: { regions: ["default"] },
-      },
-    ],
-  },
-  {
-    engineName: "excite",
-    default: "yes-if-no-other",
-    appliesTo: [
-      {
-        included: { everywhere: true },
-        excluded: { regions: ["us"] },
-      },
-      {
-        included: { everywhere: true },
-        cohort: "acohortid",
-      },
-    ],
-  },
-  {
-    engineName: "askjeeves",
+    orders: [],
+    recordType: "engineOrders",
   },
 ];
+
+for (let engineName of ["lycos", "altavista", "aol", "excite"]) {
+  TEST_CONFIG.push({
+    base: {
+      name: engineName,
+      urls: {
+        search: {
+          base: `https://example.com/${engineName}`,
+          searchTermParamName: "q",
+        },
+      },
+    },
+    identifier: engineName,
+    recordType: "engine",
+  });
+}
 
 let getStub;
 
 add_setup(async function () {
-  const searchConfigSettings = await RemoteSettings(
-    SearchUtils.OLD_SETTINGS_KEY
-  );
+  const searchConfigSettings = await RemoteSettings(SearchUtils.SETTINGS_KEY);
   getStub = sinon.stub(searchConfigSettings, "get");
+
+  TEST_CONFIG = SearchTestUtils.expandPartialConfig(TEST_CONFIG);
 
   // We expect this error from remove settings as we're invalidating the
   // signature.
   consoleAllowList.push("Invalid content signature (abc)");
   // We also test returning an empty configuration.
   consoleAllowList.push("Received empty search configuration");
+
+  registerCleanupFunction(async () => {
+    sinon.restore();
+  });
 });
 
 add_task(async function test_selector_basic_get() {
   const listenerSpy = sinon.spy();
-  const engineSelector = new SearchEngineSelectorOld(listenerSpy);
+  const engineSelector = new SearchEngineSelector(listenerSpy);
   getStub.onFirstCall().returns(TEST_CONFIG);
 
   const { engines } = await engineSelector.fetchEngineConfiguration({
@@ -96,7 +66,7 @@ add_task(async function test_selector_basic_get() {
   });
 
   Assert.deepEqual(
-    engines.map(e => e.engineName),
+    engines.map(e => e.name),
     ["lycos", "altavista", "aol", "excite"],
     "Should have obtained the correct data from the database."
   );
@@ -105,7 +75,7 @@ add_task(async function test_selector_basic_get() {
 
 add_task(async function test_selector_get_reentry() {
   const listenerSpy = sinon.spy();
-  const engineSelector = new SearchEngineSelectorOld(listenerSpy);
+  const engineSelector = new SearchEngineSelector(listenerSpy);
   let promise = Promise.withResolvers();
   getStub.resetHistory();
   getStub.onFirstCall().returns(promise.promise);
@@ -144,13 +114,13 @@ add_task(async function test_selector_get_reentry() {
 
   await Promise.all([firstCallPromise, secondCallPromise]);
   Assert.deepEqual(
-    firstResult.map(e => e.engineName),
+    firstResult.map(e => e.name),
     ["lycos", "altavista", "aol", "excite"],
     "Should have returned the correct data to the first call"
   );
 
   Assert.deepEqual(
-    secondResult.map(e => e.engineName),
+    secondResult.map(e => e.name),
     ["lycos", "altavista", "aol", "excite"],
     "Should have returned the correct data to the second call"
   );
@@ -159,7 +129,7 @@ add_task(async function test_selector_get_reentry() {
 
 add_task(async function test_selector_config_update() {
   const listenerSpy = sinon.spy();
-  const engineSelector = new SearchEngineSelectorOld(listenerSpy);
+  const engineSelector = new SearchEngineSelector(listenerSpy);
   getStub.resetHistory();
   getStub.onFirstCall().returns(TEST_CONFIG);
 
@@ -169,26 +139,33 @@ add_task(async function test_selector_config_update() {
   });
 
   Assert.deepEqual(
-    engines.map(e => e.engineName),
+    engines.map(e => e.name),
     ["lycos", "altavista", "aol", "excite"],
     "Should have got the correct configuration"
   );
 
   Assert.ok(listenerSpy.notCalled, "Should not have called the listener yet");
 
-  const NEW_DATA = [
+  const NEW_DATA = SearchTestUtils.expandPartialConfig([
     {
-      default: "yes",
-      engineName: "askjeeves",
-      appliesTo: [{ included: { everywhere: true } }],
-      schema: 1553857697843,
-      last_modified: 1553859483588,
+      recordType: "engine",
+      identifier: "askjeeves",
+      base: { name: "askjeeves" },
     },
-  ];
+    {
+      recordType: "defaultEngines",
+      globalDefault: "askjeeves",
+      specificDefaults: [],
+    },
+    {
+      orders: [],
+      recordType: "engineOrders",
+    },
+  ]);
 
   getStub.resetHistory();
   getStub.onFirstCall().returns(NEW_DATA);
-  await RemoteSettings(SearchUtils.OLD_SETTINGS_KEY).emit("sync", {
+  await RemoteSettings(SearchUtils.SETTINGS_KEY).emit("sync", {
     data: {
       current: NEW_DATA,
     },
@@ -202,25 +179,26 @@ add_task(async function test_selector_config_update() {
   });
 
   Assert.deepEqual(
-    result.engines.map(e => e.engineName),
+    result.engines.map(e => e.name),
     ["askjeeves"],
     "Should have updated the configuration with the new data"
   );
 });
 
 add_task(async function test_selector_db_modification() {
-  const engineSelector = new SearchEngineSelectorOld();
+  const engineSelector = new SearchEngineSelector();
   // Fill the database with some values that we can use to test that it is cleared.
-  const db = RemoteSettings(SearchUtils.OLD_SETTINGS_KEY).db;
+  const db = RemoteSettings(SearchUtils.SETTINGS_KEY).db;
   await db.importChanges(
     {},
     Date.now(),
     [
       {
-        id: "85e1f268-9ca5-4b52-a4ac-922df5c07264",
-        default: "yes",
-        engineName: "askjeeves",
-        appliesTo: [{ included: { everywhere: true } }],
+        recordType: "engine",
+        id: "b70edfdd-1c3f-4b7b-ab55-38cb048636c0",
+        identifier: "askjeeves",
+        base: { name: "askjeeves" },
+        variants: [{ environment: { allRegionsAndLocales: "true" } }],
       },
     ],
     { clear: true }
@@ -248,25 +226,37 @@ add_task(async function test_selector_db_modification() {
   Assert.equal(databaseEntries.length, 0, "Should have cleared the database.");
 
   Assert.deepEqual(
-    result.engines.map(e => e.engineName),
+    result.engines.map(e => e.name),
     ["lycos", "altavista", "aol", "excite"],
     "Should have returned the correct data."
   );
 });
 
 add_task(async function test_selector_db_modification_never_succeeds() {
-  const engineSelector = new SearchEngineSelectorOld();
+  const engineSelector = new SearchEngineSelector();
   // Fill the database with some values that we can use to test that it is cleared.
-  const db = RemoteSettings(SearchUtils.OLD_SETTINGS_KEY).db;
+  const db = RemoteSettings(SearchUtils.SETTINGS_KEY).db;
   await db.importChanges(
     {},
     Date.now(),
     [
       {
+        recordType: "engine",
         id: "b70edfdd-1c3f-4b7b-ab55-38cb048636c0",
-        default: "yes",
-        engineName: "askjeeves",
-        appliesTo: [{ included: { everywhere: true } }],
+        identifier: "askjeeves",
+        base: { name: "askjeeves" },
+        variants: [{ environment: { allRegionsAndLocales: "true" } }],
+      },
+      {
+        recordType: "defaultEngines",
+        id: "b70edfdd-1c3f-4b7b-ab55-38cb048636c1",
+        globalDefault: "lycos",
+        specificDefaults: [],
+      },
+      {
+        id: "b70edfdd-1c3f-4b7b-ab55-38cb048636c2",
+        orders: [],
+        recordType: "engineOrders",
       },
     ],
     {
@@ -299,18 +289,19 @@ add_task(async function test_selector_db_modification_never_succeeds() {
 
 add_task(async function test_empty_results() {
   // Check that returning an empty result re-tries.
-  const engineSelector = new SearchEngineSelectorOld();
+  const engineSelector = new SearchEngineSelector();
   // Fill the database with some values that we can use to test that it is cleared.
-  const db = RemoteSettings(SearchUtils.OLD_SETTINGS_KEY).db;
+  const db = RemoteSettings(SearchUtils.SETTINGS_KEY).db;
   await db.importChanges(
     {},
     Date.now(),
     [
       {
-        id: "df5655ca-e045-4f8c-a7ee-047eeb654722",
-        default: "yes",
-        engineName: "askjeeves",
-        appliesTo: [{ included: { everywhere: true } }],
+        recordType: "engine",
+        id: "b70edfdd-1c3f-4b7b-ab55-38cb048636c0",
+        identifier: "askjeeves",
+        base: { name: "askjeeves" },
+        variants: [{ environment: { allRegionsAndLocales: "true" } }],
       },
     ],
     {
@@ -338,7 +329,7 @@ add_task(async function test_empty_results() {
   Assert.equal(databaseEntries.length, 0, "Should have cleared the database.");
 
   Assert.deepEqual(
-    result.engines.map(e => e.engineName),
+    result.engines.map(e => e.name),
     ["lycos", "altavista", "aol", "excite"],
     "Should have returned the correct data."
   );

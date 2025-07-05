@@ -4,7 +4,7 @@
 
 use inherent::inherent;
 
-use super::{CommonMetricData, MetricId};
+use super::{BaseMetricId, ChildMetricMeta, CommonMetricData};
 
 use glean::traits::StringList;
 
@@ -16,22 +16,24 @@ use crate::ipc::{need_ipc, with_ipc_payload};
 #[derive(Clone)]
 pub enum StringListMetric {
     Parent {
-        /// The metric's ID.
-        ///
-        /// **TEST-ONLY** - Do not use unless gated with `#[cfg(test)]`.
-        id: MetricId,
+        /// The metric's ID. Used for testing and profiler markers. String
+        /// list metrics canot be labeled, so we only store a BaseMetricId. If
+        /// this changes, this should be changed to a MetricId to
+        /// distinguish between metrics and sub-metrics.
+        id: BaseMetricId,
         inner: glean::private::StringListMetric,
     },
-    Child(StringListMetricIpc),
+    Child(ChildMetricMeta),
 }
-#[derive(Clone, Debug)]
-pub struct StringListMetricIpc(MetricId);
+
+crate::define_metric_metadata_getter!(StringListMetric, STRING_LIST_MAP);
+crate::define_metric_namer!(StringListMetric);
 
 impl StringListMetric {
     /// Create a new string list metric.
-    pub fn new(id: MetricId, meta: CommonMetricData) -> Self {
+    pub fn new(id: BaseMetricId, meta: CommonMetricData) -> Self {
         if need_ipc() {
-            StringListMetric::Child(StringListMetricIpc(id))
+            StringListMetric::Child(ChildMetricMeta::from_common_metric_data(id, meta))
         } else {
             let inner = glean::private::StringListMetric::new(meta);
             StringListMetric::Parent { id, inner }
@@ -41,8 +43,8 @@ impl StringListMetric {
     #[cfg(test)]
     pub(crate) fn child_metric(&self) -> Self {
         match self {
-            StringListMetric::Parent { id, .. } => {
-                StringListMetric::Child(StringListMetricIpc(*id))
+            StringListMetric::Parent { id, inner } => {
+                StringListMetric::Child(ChildMetricMeta::from_metric_identifier(*id, inner))
             }
             StringListMetric::Child(_) => panic!("Can't get a child metric from a child metric"),
         }
@@ -63,16 +65,27 @@ impl StringList for StringListMetric {
     /// See [String list metric limits](https://mozilla.github.io/glean/book/user/metrics/string_list.html#limits).
     pub fn add<S: Into<String>>(&self, value: S) {
         match self {
-            StringListMetric::Parent { inner, .. } => {
-                inner.add(value.into());
+            #[allow(unused)]
+            StringListMetric::Parent { id, inner } => {
+                let value = value.into();
+                #[cfg(feature = "with_gecko")]
+                gecko_profiler::lazy_add_marker!(
+                    "StringList::add",
+                    super::profiler_utils::TelemetryProfilerCategory,
+                    super::profiler_utils::StringLikeMetricMarker::<StringListMetric>::new(
+                        (*id).into(),
+                        &value
+                    )
+                );
+                inner.add(value);
             }
-            StringListMetric::Child(c) => {
+            StringListMetric::Child(meta) => {
                 with_ipc_payload(move |payload| {
-                    if let Some(v) = payload.string_lists.get_mut(&c.0) {
+                    if let Some(v) = payload.string_lists.get_mut(&meta.id) {
                         v.push(value.into());
                     } else {
                         let v = vec![value.into()];
-                        payload.string_lists.insert(c.0, v);
+                        payload.string_lists.insert(meta.id, v);
                     }
                 });
             }
@@ -92,13 +105,23 @@ impl StringList for StringListMetric {
     /// Truncates any value in the list if it is longer than `MAX_STRING_LENGTH` and logs an error.
     pub fn set(&self, value: Vec<String>) {
         match self {
-            StringListMetric::Parent { inner, .. } => {
+            #[allow(unused)]
+            StringListMetric::Parent { id, inner } => {
+                #[cfg(feature = "with_gecko")]
+                gecko_profiler::lazy_add_marker!(
+                    "StringList::set",
+                    super::profiler_utils::TelemetryProfilerCategory,
+                    super::profiler_utils::StringLikeMetricMarker::<StringListMetric>::new_owned(
+                        (*id).into(),
+                        format!("[{}]", value.clone().join(","))
+                    )
+                );
                 inner.set(value);
             }
-            StringListMetric::Child(c) => {
+            StringListMetric::Child(meta) => {
                 log::error!(
                     "Unable to set string list metric {:?} in non-main process. This operation will be ignored.",
-                    c.0
+                    meta.id
                 );
                 // If we're in automation we can panic so the instrumentor knows they've gone wrong.
                 // This is a deliberate violation of Glean's "metric APIs must not throw" design.assert!(!crate::ipc::is_in_automation());
@@ -127,8 +150,11 @@ impl StringList for StringListMetric {
         let ping_name = ping_name.into().map(|s| s.to_string());
         match self {
             StringListMetric::Parent { inner, .. } => inner.test_get_value(ping_name),
-            StringListMetric::Child(c) => {
-                panic!("Cannot get test value for {:?} in non-parent process!", c.0)
+            StringListMetric::Child(meta) => {
+                panic!(
+                    "Cannot get test value for {:?} in non-parent process!",
+                    meta.id
+                )
             }
         }
     }
@@ -149,9 +175,9 @@ impl StringList for StringListMetric {
     pub fn test_get_num_recorded_errors(&self, error: glean::ErrorType) -> i32 {
         match self {
             StringListMetric::Parent { inner, .. } => inner.test_get_num_recorded_errors(error),
-            StringListMetric::Child(c) => panic!(
+            StringListMetric::Child(meta) => panic!(
                 "Cannot get the number of recorded errors for {:?} in non-parent process!",
-                c.0
+                meta.id
             ),
         }
     }
@@ -173,7 +199,7 @@ mod test {
 
         assert_eq!(
             vec!["test_string_value", "another test value"],
-            metric.test_get_value("store1").unwrap()
+            metric.test_get_value("test-ping").unwrap()
         );
     }
 
@@ -206,7 +232,7 @@ mod test {
         assert!(ipc::replay_from_buf(&ipc::take_buf().unwrap()).is_ok());
         assert_eq!(
             vec!["test_string_value", "another test value"],
-            parent_metric.test_get_value("store1").unwrap()
+            parent_metric.test_get_value("test-ping").unwrap()
         );
     }
 }

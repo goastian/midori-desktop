@@ -3,9 +3,78 @@
 
 // See also browser/base/content/test/newtab/.
 
-const { AppConstants } = ChromeUtils.importESModule(
-  "resource://gre/modules/AppConstants.sys.mjs"
+const { NewTabUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/NewTabUtils.sys.mjs"
 );
+const { PlacesTestUtils } = ChromeUtils.importESModule(
+  "resource://testing-common/PlacesTestUtils.sys.mjs"
+);
+const { PlacesUtils } = ChromeUtils.importESModule(
+  "resource://gre/modules/PlacesUtils.sys.mjs"
+);
+
+// const SEARCH_SHORTCUTS_EXPERIMENT_PREF =
+//   "browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts";
+// Services.prefs.setBoolPref(SEARCH_SHORTCUTS_EXPERIMENT_PREF, false);
+
+// use time at the start of the tests, changing it inside timeDaysAgo()
+// may cause tiny time differences, which break expected sql ordering
+const TIME_NOW = new Date().getTime();
+
+// utility function to compute past timestamp in microseconds
+function timeDaysAgo(numDays) {
+  return (TIME_NOW - numDays * 24 * 60 * 60 * 1000) * 1000;
+}
+
+// tests that timestamp falls within 10 days of now
+function isVisitDateOK(timestampMS) {
+  let range = 10 * 24 * 60 * 60 * 1000;
+  return Math.abs(Date.now() - timestampMS) < range;
+}
+
+// a set up function to prep the activity stream provider
+function setUpActivityStreamTest() {
+  return (async function () {
+    await PlacesUtils.history.clear();
+    await PlacesUtils.bookmarks.eraseEverything();
+    let faviconExpiredPromise = new Promise(resolve => {
+      Services.obs.addObserver(resolve, "places-favicons-expired");
+    });
+    PlacesUtils.favicons.expireAllFavicons();
+    await faviconExpiredPromise;
+  })();
+}
+
+function do_check_links(actualLinks, expectedLinks) {
+  Assert.ok(Array.isArray(actualLinks));
+  Assert.equal(actualLinks.length, expectedLinks.length);
+  for (let i = 0; i < expectedLinks.length; i++) {
+    let expected = expectedLinks[i];
+    let actual = actualLinks[i];
+    Assert.equal(actual.url, expected.url);
+    Assert.equal(actual.title, expected.title);
+    Assert.equal(actual.frecency, expected.frecency);
+    Assert.equal(actual.lastVisitDate, expected.lastVisitDate);
+  }
+}
+
+function makeLinks(frecRangeStart, frecRangeEnd, step) {
+  let links = [];
+  // Remember, links are ordered by frecency descending.
+  for (let i = frecRangeEnd; i > frecRangeStart; i -= step) {
+    links.push(makeLink(i));
+  }
+  return links;
+}
+
+function makeLink(frecency) {
+  return {
+    url: "http://example" + frecency + ".com/",
+    title: "My frecency is " + frecency,
+    frecency,
+    lastVisitDate: 0,
+  };
+}
 
 // A small 1x1 test png
 const image1x1 =
@@ -1509,3 +1578,164 @@ TestProvider.prototype = {
     }
   },
 };
+
+const puny = "xn--kpry57d";
+const idn = "台灣";
+
+add_task(async function test_shortURL() {
+  Assert.equal(
+    NewTabUtils.shortURL({ url: false }),
+    "",
+    "Should return a blank string if url is falsey"
+  );
+  Assert.equal(
+    NewTabUtils.shortURL({ url: "" }),
+    "",
+    "Should return a blank string if url is empty"
+  );
+  Assert.equal(
+    NewTabUtils.shortURL({}),
+    "",
+    "Should return a blank string if url is missing"
+  );
+
+  const invalidURLs = [
+    true,
+    "something",
+    "http:",
+    "http::double",
+    "http://badport:65536/",
+  ];
+  invalidURLs.forEach(url =>
+    Assert.equal(
+      NewTabUtils.shortURL({ url }),
+      url,
+      `Should return the invalid url as-is: ${url}`
+    )
+  );
+
+  Assert.equal(
+    NewTabUtils.shortURL({ url: "http://com.blah.com" }),
+    "com.blah",
+    "Should remove the eTLD"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortURL({ url: `http://${puny}.blah.com` }),
+    `${idn}.blah`,
+    "Should convert punycode to IDN"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortURL({ url: "http://bar.com" }),
+    "bar",
+    "Should get the hostname from .url"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortURL({ url: "http://foo.www.com" }),
+    "foo.www",
+    "Should not strip out www if not the first subdomain"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortURL({ url: "HTTP://FOO.COM" }),
+    "foo",
+    "Should convert to lowercase"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortURL({ url: "http://foo.com:8888" }),
+    "foo",
+    "Should not include the port"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortURL({ url: "file:///foo/bar.txt" }),
+    "/foo/bar.txt",
+    "Should return the path for file: URLs"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortURL({ url: "about:newtab" }),
+    "newtab",
+    "Should return the content for about: URLs"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortURL({ url: "about:" }),
+    "about:",
+    "Should fall back to full URL as a last resort"
+  );
+});
+
+add_task(async function test_shortHostname() {
+  Assert.equal(
+    NewTabUtils.shortHostname(""),
+    "",
+    "Should return a blank string if hostname is empty"
+  );
+
+  const invalidHostnames = ["something/something", "http:", "http::double"];
+  invalidHostnames.forEach(host =>
+    Assert.equal(
+      NewTabUtils.shortHostname(host),
+      host,
+      `Should return the input for invalid hostnames: ${host}`
+    )
+  );
+
+  Assert.equal(
+    NewTabUtils.shortHostname("com.blah.com"),
+    "com.blah",
+    "Should remove the eTLD"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortHostname("foo.com/bar"),
+    "foo",
+    "Should remove eTLD and path"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortHostname("http://foo.com/"),
+    "http://foo",
+    "Should remove eTLD and keep protocol"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortHostname(`${puny}.blah.com`),
+    `${idn}.blah`,
+    "Should convert punycode to IDN"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortHostname("foo.www.com"),
+    "foo.www",
+    "Should not strip out www if not the first subdomain"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortHostname("FOO.COM"),
+    "foo",
+    "Should convert to lowercase"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortHostname("127.0.0.1"),
+    "127.0.0.1",
+    "Should return hostname for IP address"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortHostname("www.gov.uk"),
+    "gov.uk",
+    "Should return the eTLD for www-only non-eTLD"
+  );
+
+  Assert.equal(
+    NewTabUtils.shortHostname(`www.${puny}`),
+    idn,
+    "Should return IDN for www-only non-eTLD"
+  );
+});

@@ -5,8 +5,7 @@
 export var ForgetAboutSite = {
   /**
    * Clear data associated with a base domain. This includes partitioned storage
-   * associated with the domain. If a base domain can not be computed from
-   * aDomainOrHost, data will be cleared by host instead.
+   * associated with the domain.
    *
    * @param {string} aDomainOrHost - Domain or host to clear data for. Will be
    * converted to base domain if needed.
@@ -18,96 +17,16 @@ export var ForgetAboutSite = {
       throw new Error("aDomainOrHost can not be empty.");
     }
 
-    let baseDomain;
-    try {
-      baseDomain = Services.eTLD.getBaseDomainFromHost(aDomainOrHost);
-    } catch (e) {}
-
-    let errorCount;
-    if (baseDomain) {
-      errorCount = await new Promise(resolve => {
-        Services.clearData.deleteDataFromBaseDomain(
-          baseDomain,
-          true /* user request */,
-          Ci.nsIClearDataService.CLEAR_FORGET_ABOUT_SITE,
-          errorCode => resolve(bitCounting(errorCode))
-        );
-      });
-    } else {
-      // If we can't get a valid base domain for aDomainOrHost, fall back to
-      // delete by host.
-      errorCount = await new Promise(resolve => {
-        Services.clearData.deleteDataFromHost(
-          aDomainOrHost,
-          true /* user request */,
-          Ci.nsIClearDataService.CLEAR_FORGET_ABOUT_SITE,
-          errorCode => resolve(bitCounting(errorCode))
-        );
-      });
-    }
-
-    if (errorCount !== 0) {
-      throw new Error(
-        `There were a total of ${errorCount} errors during removal`
+    let schemelessSite = Services.eTLD.getSchemelessSiteFromHost(aDomainOrHost);
+    let errorCount = await new Promise(resolve => {
+      Services.clearData.deleteDataFromSite(
+        schemelessSite,
+        {},
+        true /* user request */,
+        Ci.nsIClearDataService.CLEAR_FORGET_ABOUT_SITE,
+        errorCode => resolve(bitCounting(errorCode))
       );
-    }
-  },
-
-  /**
-   * @deprecated This is a legacy method which clears by host only. Also it does
-   * not clear all storage partitioned via dFPI. Use removeDataFromBaseDomain
-   * instead.
-   */
-  async removeDataFromDomain(aDomain) {
-    let promises = [
-      new Promise(resolve =>
-        Services.clearData.deleteDataFromHost(
-          aDomain,
-          true /* user request */,
-          Ci.nsIClearDataService.CLEAR_FORGET_ABOUT_SITE,
-          errorCode => resolve(bitCounting(errorCode))
-        )
-      ),
-    ];
-
-    try {
-      let baseDomain = Services.eTLD.getBaseDomainFromHost(aDomain);
-
-      let cookies = Services.cookies.cookies;
-      let hosts = new Set();
-      for (let cookie of cookies) {
-        if (Services.eTLD.hasRootDomain(cookie.rawHost, baseDomain)) {
-          hosts.add(cookie.rawHost);
-        }
-      }
-
-      for (let host of hosts) {
-        promises.push(
-          new Promise(resolve =>
-            Services.clearData.deleteDataFromHost(
-              host,
-              true /* user request */,
-              Ci.nsIClearDataService.CLEAR_COOKIES,
-              errorCode => resolve(bitCounting(errorCode))
-            )
-          )
-        );
-      }
-    } catch (e) {
-      // - NS_ERROR_HOST_IS_IP_ADDRESS: the host is in ipv4/ipv6.
-      // - NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS: not enough domain parts to extract,
-      //   i.e. the host is on the PSL.
-      // In both these cases we should probably not try to use the host as a base
-      // domain to remove more data, but we can still (try to) continue deleting the host.
-      if (
-        e.result != Cr.NS_ERROR_HOST_IS_IP_ADDRESS &&
-        e.result != Cr.NS_ERROR_INSUFFICIENT_DOMAIN_LEVELS
-      ) {
-        throw e;
-      }
-    }
-
-    let errorCount = (await Promise.all(promises)).reduce((a, b) => a + b);
+    });
 
     if (errorCount !== 0) {
       throw new Error(

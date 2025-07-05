@@ -1,10 +1,14 @@
 
-// The cleaner interface for Object finalization code to run.
-// This is the entry point to any implementation that we're using.
-//
-// The cleaner registers objects and returns cleanables, so now we are
-// defining a `UniffiCleaner` with a `UniffiClenaer.Cleanable` to abstract the
-// different implmentations available at compile time.
+/**
+ * The cleaner interface for Object finalization code to run.
+ * This is the entry point to any implementation that we're using.
+ *
+ * The cleaner registers objects and returns cleanables, so now we are
+ * defining a `UniffiCleaner` with a `UniffiClenaer.Cleanable` to abstract the
+ * different implmentations available at compile time.
+ *
+ * @suppress
+ */
 interface UniffiCleaner {
     interface Cleanable {
         fun clean()
@@ -29,6 +33,9 @@ private class UniffiJnaCleanable(
     override fun clean() = cleanable.clean()
 }
 
+{% if config.disable_java_cleaner() %}
+private fun UniffiCleaner.Companion.create(): UniffiCleaner = UniffiJnaCleaner()
+{% else %}
 // We decide at uniffi binding generation time whether we were
 // using Android or not.
 // There are further runtime checks to chose the correct implementation
@@ -37,4 +44,5 @@ private class UniffiJnaCleanable(
 {%-   include "ObjectCleanerHelperAndroid.kt" %}
 {%- else %}
 {%-   include "ObjectCleanerHelperJvm.kt" %}
+{%- endif %}
 {%- endif %}

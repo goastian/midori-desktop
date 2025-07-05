@@ -93,11 +93,7 @@ export var Heartbeat = class {
     }
 
     if (options.learnMoreUrl) {
-      try {
-        options.learnMoreUrl = new URL(options.learnMoreUrl);
-      } catch (e) {
-        options.learnMoreUrl = null;
-      }
+      options.learnMoreUrl = URL.parse(options.learnMoreUrl);
     }
 
     this.chromeWindow = chromeWindow;
@@ -150,34 +146,25 @@ export var Heartbeat = class {
 
     // Build the heartbeat stars
     if (!this.options.engagementButtonLabel) {
-      const numStars = this.options.engagementButtonLabel ? 0 : 5;
       this.ratingContainer = this.chromeWindow.document.createElement("span");
-      this.ratingContainer.id = "star-rating-container";
 
-      for (let i = 0; i < numStars; i++) {
-        // create a star rating element
-        const ratingElement =
-          this.chromeWindow.document.createXULElement("toolbarbutton");
+      const fiveStarElement =
+        this.chromeWindow.document.createElement("moz-five-star");
 
-        // style it
-        const starIndex = numStars - i;
-        ratingElement.className = "plain star-x";
-        ratingElement.id = "star" + starIndex;
-        ratingElement.setAttribute("data-score", starIndex);
+      fiveStarElement.selectable = true;
 
-        // Add the click handler
-        ratingElement.addEventListener("click", ev => {
-          const rating = parseInt(ev.target.getAttribute("data-score"));
-          this.maybeNotifyHeartbeat("Voted", { score: rating });
-          this.userEngaged({
-            type: "stars",
-            score: rating,
-            flowId: this.options.flowId,
-          });
+      // Add the click handler
+      fiveStarElement.addEventListener("select", ev => {
+        const rating = ev.detail.rating;
+        this.maybeNotifyHeartbeat("Voted", { score: rating });
+        this.userEngaged({
+          type: "stars",
+          score: rating,
+          flowId: this.options.flowId,
         });
+      });
 
-        this.ratingContainer.appendChild(ratingElement);
-      }
+      this.ratingContainer.appendChild(fiveStarElement);
     }
 
     this.notificationBox = this.chromeWindow.gNotificationBox;
@@ -297,6 +284,16 @@ export var Heartbeat = class {
         addClientId: true,
         addEnvironment: true,
       });
+
+      const gleanOmittedFields = ["version", "surveyVersion", "testing"];
+      for (const [k, v] of Object.entries(payload)) {
+        if (gleanOmittedFields.includes(k)) {
+          continue;
+        }
+        const metricName = k.endsWith("TS") ? k.slice(0, -2) : k;
+        Glean.heartbeat[metricName].set(v);
+      }
+      GleanPings.heartbeat.submit();
 
       // only for testing
       this.eventEmitter.emit("TelemetrySent", payload);

@@ -25,10 +25,6 @@ export class FormScenarios {
   static detect({ input, form }) {
     const scenarios = {};
 
-    if (!FormScenarios.signupDetectionEnabled) {
-      return scenarios;
-    }
-
     // Running simple heuristics first, because running the SignUpFormRuleset is expensive
     if (
       input &&
@@ -55,15 +51,16 @@ export class FormScenarios {
   static #isProbablyASignUpForm(formElement) {
     let score = FormScenarios.#cachedSignUpFormScore.get(formElement);
     if (!score) {
-      TelemetryStopwatch.start("PWMGR_SIGNUP_FORM_DETECTION_MS");
+      let timerId = Glean.pwmgr.signupFormDetection.start();
       try {
         const { rules, type } = SignUpFormRuleset;
         const results = rules.against(formElement);
         score = results.get(formElement).scoreFor(type);
-        TelemetryStopwatch.finish("PWMGR_SIGNUP_FORM_DETECTION_MS");
+        Glean.pwmgr.signupFormDetection.stopAndAccumulate(timerId);
+        timerId = null;
       } finally {
-        if (TelemetryStopwatch.running("PWMGR_SIGNUP_FORM_DETECTION_MS")) {
-          TelemetryStopwatch.cancel("PWMGR_SIGNUP_FORM_DETECTION_MS");
+        if (timerId) {
+          Glean.pwmgr.signupFormDetection.cancel(timerId);
         }
       }
       FormScenarios.#cachedSignUpFormScore.set(formElement, score);
@@ -78,10 +75,4 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "signupDetectionConfidenceThreshold",
   "signon.signupDetection.confidenceThreshold",
   "0.75"
-);
-XPCOMUtils.defineLazyPreferenceGetter(
-  FormScenarios,
-  "signupDetectionEnabled",
-  "signon.signupDetection.enabled",
-  true
 );

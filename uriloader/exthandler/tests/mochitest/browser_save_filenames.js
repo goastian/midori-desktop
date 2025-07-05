@@ -27,6 +27,8 @@ let types = {
   zip: "application/zip",
   json: "application/json",
   tar: "application/x-tar",
+  mp2: "audio/mpeg",
+  wav: "audio/x-wav",
 };
 
 const PNG_DATA = atob(
@@ -387,30 +389,22 @@ if (AppConstants.platform == "win" && imageAsFileEnabled) {
         continue;
       }
 
-      let data = await SpecialPowers.spawn(
-        gBrowser.selectedBrowser,
-        [idx, PROMISE_FILENAME_TYPE],
-        (imagenum, type) => {
-          // No need to wait for the data to be really on the clipboard, we only
-          // need the promise data added when the command is performed.
-          SpecialPowers.setCommandNode(
-            content,
-            content.document.getElementById("i" + imagenum)
-          );
-          SpecialPowers.doCommand(content, "cmd_copyImageContents");
-
-          return SpecialPowers.getClipboardData(type);
-        }
-      );
-
-      is(
-        data,
+      await SimpleTest.promiseClipboardChange(
         expectedItems[idx].filename,
-        "i" +
-          idx +
-          " " +
-          expectedItems[idx].filename +
-          " was saved with the correct name when copying"
+        () => {
+          return SpecialPowers.spawn(
+            gBrowser.selectedBrowser,
+            [idx],
+            imagenum => {
+              SpecialPowers.setCommandNode(
+                content,
+                content.document.getElementById("i" + imagenum)
+              );
+              SpecialPowers.doCommand(content, "cmd_copyImageContents");
+            }
+          );
+        },
+        PROMISE_FILENAME_TYPE
       );
     }
   });

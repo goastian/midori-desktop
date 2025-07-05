@@ -13,6 +13,10 @@ SOURCES += [
     "workmonitor.cpp",
 ]
 
+UNIFIED_SOURCES += [
+    "/mfbt/Poison.cpp",
+]
+
 USE_LIBS += [
     "updatecommon",
 ]
@@ -23,14 +27,16 @@ if CONFIG["DISABLE_UPDATER_AUTHENTICODE_CHECK"]:
 DEFINES["UNICODE"] = True
 DEFINES["_UNICODE"] = True
 DEFINES["NS_NO_XPCOM"] = True
+DEFINES["IMPL_MFBT"] = True
 
 # Pick up nsWindowsRestart.cpp
 LOCAL_INCLUDES += [
+    "/mfbt/",
     "/toolkit/mozapps/update/common",
     "/toolkit/xre",
 ]
 
-USE_STATIC_LIBS = True
+USE_STATIC_MSVCRT = True
 
 if CONFIG["CC_TYPE"] == "clang-cl":
     WIN32_EXE_LDFLAGS += ["-ENTRY:wmainCRTStartup"]

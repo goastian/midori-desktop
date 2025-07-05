@@ -4,7 +4,7 @@ License, v. 2.0. If a copy of the MPL was not distributed with this
 
 use anyhow::{bail, Result};
 use camino::{Utf8Path, Utf8PathBuf};
-use cargo_metadata::{Message, Metadata, MetadataCommand, Package, Target};
+use cargo_metadata::{CrateType, Message, Metadata, MetadataCommand, Package, Target};
 use fs_err as fs;
 use once_cell::sync::Lazy;
 use std::{
@@ -37,17 +37,15 @@ static CARGO_BUILD_MESSAGES: Lazy<Vec<Message>> = Lazy::new(get_cargo_build_mess
 ///   - The fixture crate produces a cdylib library
 ///   - The fixture crate, and any external-crates, has 1 UDL file in it's src/ directory
 pub struct UniFFITestHelper {
-    name: String,
-    package: Package,
+    crate_name: String,
+    cdylib: Utf8PathBuf,
 }
 
 impl UniFFITestHelper {
-    pub fn new(name: &str) -> Result<Self> {
-        let package = Self::find_package(name)?;
-        Ok(Self {
-            name: name.to_string(),
-            package,
-        })
+    pub fn new(package_name: &str) -> Result<Self> {
+        let package = Self::find_package(package_name)?;
+        let (crate_name, cdylib) = Self::find_name_and_cdylib_path(&package)?;
+        Ok(Self { crate_name, cdylib })
     }
 
     fn find_package(name: &str) -> Result<Package> {
@@ -62,16 +60,17 @@ impl UniFFITestHelper {
         }
     }
 
-    fn find_cdylib_path(package: &Package) -> Result<Utf8PathBuf> {
+    fn find_name_and_cdylib_path(package: &Package) -> Result<(String, Utf8PathBuf)> {
         let cdylib_targets: Vec<&Target> = package
             .targets
             .iter()
-            .filter(|t| t.crate_types.iter().any(|t| t == "cdylib"))
+            .filter(|t| t.crate_types.iter().any(|t| *t == CrateType::CDyLib))
             .collect();
         let target = match cdylib_targets.len() {
             1 => cdylib_targets[0],
             n => bail!("Found {n} cdylib targets for {}", package.name),
         };
+        let target_name = target.name.replace('-', "_");
 
         let artifacts = CARGO_BUILD_MESSAGES
             .iter()
@@ -97,7 +96,7 @@ impl UniFFITestHelper {
             .collect();
 
         match cdylib_files.len() {
-            1 => Ok(cdylib_files[0].to_owned()),
+            1 => Ok((target_name, cdylib_files[0].to_owned())),
             n => bail!("Found {n} cdylib files for {}", package.name),
         }
     }
@@ -119,7 +118,7 @@ impl UniFFITestHelper {
         temp_dir: impl AsRef<Utf8Path>,
         script_path: impl AsRef<Utf8Path>,
     ) -> Result<Utf8PathBuf> {
-        let dirname = format!("{}-{}", self.name, hash_path(script_path.as_ref()));
+        let dirname = format!("{}-{}", self.crate_name, hash_path(script_path.as_ref()));
         let out_dir = temp_dir.as_ref().join(dirname);
         if out_dir.exists() {
             // Clean out any files from previous runs
@@ -144,7 +143,15 @@ impl UniFFITestHelper {
 
     /// Get the path to the cdylib file for this package
     pub fn cdylib_path(&self) -> Result<Utf8PathBuf> {
-        Self::find_cdylib_path(&self.package)
+        Ok(self.cdylib.clone())
+    }
+
+    pub fn crate_name(&self) -> &str {
+        &self.crate_name
+    }
+
+    pub fn cargo_metadata(&self) -> Metadata {
+        CARGO_METADATA.clone()
     }
 }
 
@@ -155,16 +162,26 @@ fn get_cargo_metadata() -> Metadata {
 }
 
 fn get_cargo_build_messages() -> Vec<Message> {
+    #[cfg(feature = "ffi-trace")]
+    let features_arg = "--features=ffi-trace";
+
+    #[cfg(not(feature = "ffi-trace"))]
+    let features_arg = "--features=";
+
     let mut child = Command::new(env!("CARGO"))
-        .arg("build")
+        .arg("test")
+        .arg(features_arg)
+        .arg("--no-run")
         .arg("--message-format=json")
         .stdout(Stdio::piped())
         .spawn()
         .expect("Error running cargo build");
     let output = std::io::BufReader::new(child.stdout.take().unwrap());
-    Message::parse_stream(output)
+    let result = Message::parse_stream(output)
         .map(|m| m.expect("Error parsing cargo build messages"))
-        .collect()
+        .collect();
+    child.wait().expect("failed to wait for child");
+    result
 }
 
 fn hash_path(path: &Utf8Path) -> String {

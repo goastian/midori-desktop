@@ -18,7 +18,7 @@
 /// For the types that involve memory allocation, we make a distinction between
 /// "owned" types (the recipient must free it, or pass it to someone else) and
 /// "borrowed" types (the sender must keep it alive for the duration of the call).
-use uniffi_meta::{ExternalKind, Type};
+use uniffi_meta::Type;
 
 #[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
 pub enum FfiType {
@@ -43,7 +43,7 @@ pub enum FfiType {
     /// or pass it to someone that will.
     /// If the inner option is Some, it is the name of the external type. The bindings may need
     /// to use this name to import the correct RustBuffer for that type.
-    RustBuffer(Option<String>),
+    RustBuffer(Option<ExternalFfiMetadata>),
     /// A borrowed reference to some raw bytes owned by foreign language code.
     /// The provider of this reference must keep it alive for the duration of the receiving call.
     ForeignBytes,
@@ -58,8 +58,10 @@ pub enum FfiType {
     /// These are used to pass objects across the FFI.
     Handle,
     RustCallStatus,
-    /// Pointer to an FfiType.
+    /// Const pointer to an FfiType.
     Reference(Box<FfiType>),
+    /// Mutable pointer to an FfiType.
+    MutReference(Box<FfiType>),
     /// Opaque pointer
     VoidPointer,
 }
@@ -67,6 +69,10 @@ pub enum FfiType {
 impl FfiType {
     pub fn reference(self) -> FfiType {
         FfiType::Reference(Box::new(self))
+    }
+
+    pub fn mut_reference(self) -> FfiType {
+        FfiType::MutReference(Box::new(self))
     }
 
     /// Unique name for an FFI return type
@@ -124,31 +130,43 @@ impl From<&Type> for FfiType {
             // Callback interfaces are passed as opaque integer handles.
             Type::CallbackInterface { .. } => FfiType::UInt64,
             // Other types are serialized into a bytebuffer and deserialized on the other side.
-            Type::Enum { .. }
-            | Type::Record { .. }
-            | Type::Optional { .. }
+            Type::Enum { name, module_path } | Type::Record { name, module_path } => {
+                FfiType::RustBuffer(Some(ExternalFfiMetadata {
+                    name: name.clone(),
+                    module_path: module_path.clone(),
+                }))
+            }
+            Type::Optional { .. }
             | Type::Sequence { .. }
             | Type::Map { .. }
             | Type::Timestamp
             | Type::Duration => FfiType::RustBuffer(None),
-            Type::External {
+            Type::Custom {
+                builtin,
                 name,
-                kind: ExternalKind::Interface,
+                module_path,
                 ..
+            } => {
+                // We need ffitype of the builtin.
+                match FfiType::from(builtin.as_ref()) {
+                    // and if that builtin was a "local" RustBuffer, we need to
+                    // let emit enough metadata so the bindings can call the rustbuffer impl
+                    // if necessary.
+                    FfiType::RustBuffer(None) => FfiType::RustBuffer(Some(ExternalFfiMetadata {
+                        name: name.clone(),
+                        module_path: module_path.clone(),
+                    })),
+                    t => t,
+                }
             }
-            | Type::External {
-                name,
-                kind: ExternalKind::Trait,
-                ..
-            } => FfiType::RustArcPtr(name.clone()),
-            Type::External {
-                name,
-                kind: ExternalKind::DataClass,
-                ..
-            } => FfiType::RustBuffer(Some(name.clone())),
-            Type::Custom { builtin, .. } => FfiType::from(builtin.as_ref()),
         }
     }
+}
+
+#[derive(Debug, Clone, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct ExternalFfiMetadata {
+    pub name: String,
+    pub module_path: String,
 }
 
 // Needed for rust scaffolding askama template
@@ -216,6 +234,16 @@ impl FfiFunction {
 
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn rename(&mut self, new_name: String) {
+        self.name = new_name;
+    }
+
+    /// Name of the FFI buffer version of this function that's generated when the
+    /// `scaffolding-ffi-buffer-fns` feature is enabled.
+    pub fn ffi_buffer_fn_name(&self) -> String {
+        uniffi_meta::ffi_buffer_symbol_name(&self.name)
     }
 
     pub fn is_async(&self) -> bool {
@@ -287,6 +315,10 @@ impl FfiArgument {
         &self.name
     }
 
+    pub fn rename(&mut self, new_name: String) {
+        self.name = new_name;
+    }
+
     pub fn type_(&self) -> FfiType {
         self.type_.clone()
     }
@@ -307,6 +339,10 @@ pub struct FfiCallbackFunction {
 impl FfiCallbackFunction {
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn rename(&mut self, new_name: String) {
+        self.name = new_name;
     }
 
     pub fn arguments(&self) -> Vec<&FfiArgument> {
@@ -333,6 +369,10 @@ impl FfiStruct {
     /// Get the name of this struct
     pub fn name(&self) -> &str {
         &self.name
+    }
+
+    pub fn rename(&mut self, new_name: String) {
+        self.name = new_name;
     }
 
     /// Get the fields for this struct
@@ -362,6 +402,10 @@ impl FfiField {
 
     pub fn type_(&self) -> FfiType {
         self.type_.clone()
+    }
+
+    pub fn rename(&mut self, name: String) {
+        self.name = name;
     }
 }
 

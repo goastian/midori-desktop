@@ -29,7 +29,7 @@
 
           "name": {
             "type": "string",
-            "description": "Name must be at least 2, at should be at most 75 characters",
+            "description": "Name must be at least 2, and should be at most 75 characters",
             "optional": false,
             "preprocess": "localize"
           },
@@ -134,26 +134,23 @@
               {
                 "type": "object",
                 "properties": {
-                  "page": { "$ref": "ExtensionURL" },
-                  "persistent": {
+                  "service_worker": {
                     "optional": true,
-                    "type": "boolean",
-                    "max_manifest_version": 2,
-                    "default": true
-                  }
-                },
-                "additionalProperties": { "$ref": "UnrecognizedProperty" }
-              },
-              {
-                "type": "object",
-                "properties": {
+                    "$ref": "ExtensionURL"
+                  },
+                  "page": {
+                    "optional": true,
+                    "$ref": "ExtensionURL"
+                  },
                   "scripts": {
+                    "optional": true,
                     "type": "array",
                     "items": { "$ref": "ExtensionURL" }
                   },
                   "type": {
                     "optional": true,
                     "type": "string",
+                    "description": "Only supported for page/scripts; not for service_worker yet, see bug 1775574",
                     "enum": ["module", "classic"]
                   },
                   "persistent": {
@@ -161,16 +158,19 @@
                     "type": "boolean",
                     "max_manifest_version": 2,
                     "default": true
+                  },
+                  "preferred_environment": {
+                    "optional": true,
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": ["service_worker", "document"],
+                      "onError": "warn"
+                    }
                   }
                 },
-                "additionalProperties": { "$ref": "UnrecognizedProperty" }
-              },
-              {
-                "type": "object",
-                "properties": {
-                  "service_worker": { "$ref": "ExtensionURL" }
-                },
-                "postprocess": "requireBackgroundServiceWorkerEnabled"
+                "additionalProperties": { "$ref": "UnrecognizedProperty" },
+                "postprocess": "checkRequiredManifestBackgroundKeys"
               }
             ],
             "optional": true
@@ -439,31 +439,6 @@
         }
       },
       {
-        "id": "WebExtensionSitePermissionsManifest",
-        "type": "object",
-        "description": "Represents a WebExtension site permissions manifest.json file",
-
-        "$import": "ManifestBase",
-        "properties": {
-          "site_permissions": {
-            "type": "array",
-            "minItems": 1,
-            "items": {
-              "$ref": "SitePermission"
-            }
-          },
-          "install_origins": {
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 1,
-            "items": {
-              "type": "string",
-              "format": "origin"
-            }
-          }
-        }
-      },
-      {
         "id": "ThemeIcons",
         "type": "object",
         "properties": {
@@ -481,6 +456,15 @@
           }
         },
         "additionalProperties": { "$ref": "UnrecognizedProperty" }
+      },
+      {
+        "id": "OptionalOnlyPermission",
+        "choices": [
+          {
+            "type": "string",
+            "enum": []
+          }
+        ]
       },
       {
         "id": "OptionalPermissionNoPrompt",
@@ -510,6 +494,7 @@
         "id": "OptionalPermissionOrOrigin",
         "choices": [
           { "$ref": "OptionalPermission" },
+          { "$ref": "OptionalOnlyPermission" },
           { "$ref": "MatchPattern" }
         ]
       },
@@ -519,6 +504,47 @@
           {
             "type": "string",
             "enum": ["mozillaAddons"]
+          }
+        ]
+      },
+      {
+        "id": "CommonDataCollectionPermission",
+        "choices": [
+          {
+            "type": "string",
+            "enum": [
+              "authenticationInfo",
+              "bookmarksInfo",
+              "browsingActivity",
+              "financialAndPaymentInfo",
+              "healthInfo",
+              "locationInfo",
+              "personalCommunications",
+              "personallyIdentifyingInfo",
+              "searchTerms",
+              "websiteActivity",
+              "websiteContent"
+            ]
+          }
+        ]
+      },
+      {
+        "id": "DataCollectionPermission",
+        "choices": [
+          { "$ref": "CommonDataCollectionPermission" },
+          {
+            "type": "string",
+            "enum": ["none"]
+          }
+        ]
+      },
+      {
+        "id": "OptionalDataCollectionPermission",
+        "choices": [
+          { "$ref": "CommonDataCollectionPermission" },
+          {
+            "type": "string",
+            "enum": ["technicalAndInteraction"]
           }
         ]
       },
@@ -543,15 +569,6 @@
       {
         "id": "PermissionOrOrigin",
         "choices": [{ "$ref": "Permission" }, { "$ref": "MatchPattern" }]
-      },
-      {
-        "id": "SitePermission",
-        "choices": [
-          {
-            "type": "string",
-            "enum": ["midi", "midi-sysex"]
-          }
-        ]
       },
       {
         "id": "HttpURL",
@@ -617,6 +634,32 @@
           "admin_install_only": {
             "type": "boolean",
             "optional": true
+          },
+
+          "data_collection_permissions": {
+            "type": "object",
+            "optional": true,
+            "properties": {
+              "required": {
+                "type": "array",
+                "items": {
+                  "$ref": "DataCollectionPermission",
+                  "onError": "warn"
+                },
+                "optional": true,
+                "default": [],
+                "postprocess": "checkValidRequiredDataCollection"
+              },
+              "optional": {
+                "type": "array",
+                "items": {
+                  "$ref": "OptionalDataCollectionPermission",
+                  "onError": "warn"
+                },
+                "optional": true,
+                "default": []
+              }
+            }
           }
         },
         "additionalProperties": { "$ref": "UnrecognizedProperty" }
@@ -702,7 +745,7 @@
         "choices": [
           {
             "type": "string",
-            "pattern": "^resource://(\\*|\\*\\.[^*/]+|[^*/]+)/.*$|^about:|^moz-extension://(\\*|\\*\\.[^*/]+|[^*/]+)/.*$"
+            "pattern": "^resource://(\\*|\\*\\.[^*/]+|[^*/]+)/.*$|^about:"
           }
         ]
       },

@@ -10,7 +10,19 @@ with Files("**"):
 with Files("*TextInput*"):
     BUG_COMPONENT = ("Core", "DOM: UI Events & Focus Handling")
 
+EXPORTS.mozilla.widget += [
+    "EventDispatcher.h",
+    "GeckoViewSupport.h",
+    "IOSView.h",
+    "nsWindow.h",
+]
+
+EXPORTS.GeckoView += [
+    "GeckoViewSwiftSupport.h",
+]
+
 SOURCES += [
+    "EventDispatcher.mm",
     "GfxInfo.cpp",
     "MediaKeysEventSourceFactory.cpp",
     "nsAppShell.mm",
@@ -19,6 +31,7 @@ SOURCES += [
     "nsNativeThemeUIKit.mm",
     "nsWidgetFactory.mm",
     "nsWindow.mm",
+    "ScreenHelperUIKit.mm",
     "TextInputHandler.mm",
     "UIKitUtils.mm",
 ]
@@ -28,6 +41,7 @@ include("/ipc/chromium/chromium-config.mozbuild")
 FINAL_LIBRARY = "xul"
 LOCAL_INCLUDES += [
     "/widget",
+    "/widget/headless",
 ]
 
 XPCOM_MANIFESTS += [

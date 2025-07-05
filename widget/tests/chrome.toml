@@ -1,16 +1,20 @@
 [DEFAULT]
-skip-if = ["os == 'android'"]
 support-files = [
   "empty_window.xhtml",
   "clipboard_helper.js",
 ]
+tags = "os_integration"
 
 ["test_alwaysontop_focus.xhtml"]
+
+["test_autocorrect_in_parent.html"]
 
 # Privacy relevant
 
 ["test_bug343416.xhtml"]
-skip-if = ["debug"]
+skip-if = [
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11' && opt", # Bug 1962438
+]
 
 ["test_bug428405.xhtml"]
 run-if = ["os == 'mac'"] # Cocoa widget test
@@ -31,7 +35,6 @@ support-files = ["window_bug478536.xhtml"]
 run-if = ["os == 'mac'"] # Cocoa widget test
 
 ["test_bug517396.xhtml"]
-skip-if = ["verify && os == 'win'"]
 
 ["test_bug522217.xhtml"]
 tags = "fullscreen"
@@ -64,10 +67,6 @@ run-if = ["os == 'mac'"] # Cocoa widget test
 ["test_bug760802.xhtml"]
 
 ["test_bug1123480.xhtml"]
-skip-if = ["win11_2009 && bits == 32"]
-
-["test_clipboard_asyncGetData_chrome.html"]
-support-files = "file_test_clipboard_asyncGetData.js"
 
 ["test_clipboard_asyncSetData_chrome.html"]
 support-files = "file_test_clipboard_asyncSetData.js"
@@ -79,6 +78,9 @@ support-files = "file_test_clipboard.js"
 
 ["test_clipboard_getDataSnapshotSync_chrome.html"]
 support-files = "file_test_clipboard_getDataSnapshotSync.js"
+
+["test_clipboard_getDataSnapshot_chrome.html"]
+support-files = "file_test_clipboard_getDataSnapshot.js"
 
 ["test_clipboard_owner_chrome.html"]
 
@@ -143,26 +145,26 @@ support-files = [
   "window_mouse_scroll_win_2.html",
 ]
 
+["test_native_context_menus.xhtml"]
+run-if = ["os == 'mac'"] # Cocoa widget test
+
 ["test_native_key_bindings_mac.html"]
 run-if = ["os == 'mac'"] # Cocoa widget test
-skip-if = [
-  "verify",
-]
+skip-if = ["verify"]
 
 ["test_native_menus.xhtml"]
 run-if = ["os == 'mac'"] # Cocoa widget test
 support-files = ["native_menus_window.xhtml"]
 
 ["test_panel_mouse_coords.xhtml"]
-skip-if = ["os == 'win'"] # bug 1009955
 
 ["test_platform_colors.xhtml"]
 skip-if = ["true"] # Bug 1207190
 
 ["test_position_on_resize.xhtml"]
 skip-if = [
-  "verify && os == 'win'",
-  "os == 'linux' && bits == 64", # Bug 1616760
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'", # Bug 1616760
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'", # Bug 1616760
 ]
 
 ["test_secure_input.html"]
@@ -187,16 +189,11 @@ run-if = ["os == 'mac'"] # Cocoa widget test
 
 ["test_taskbar_progress.xhtml"]
 skip-if = [
-  "os == 'linux'",
-  "os == 'android'",
-  "win10_2009 && !ccov", # Bug 1456811
+  "os == 'linux' && os_version == '18.04' && processor == 'x86_64'",
+  "os == 'linux' && os_version == '24.04' && processor == 'x86_64' && display == 'x11'",
 ]
 
 ["test_transferable_overflow.xhtml"]
-skip-if = [
-  "verify && apple_catalina",
-  "verify && os == 'linux'",
-]
 
 ["test_wheeltransaction.xhtml"]
 support-files = ["window_wheeltransaction.xhtml"]

@@ -11,11 +11,13 @@ components = [
     "CustomTypes",
     "ExternalTypes",
     "FixtureCallbacks",
+    "Futures",
     "Geometry",
     "Refcounts",
     "Rondpoint",
     "Sprites",
     "Todolist",
+    "UniffiTraitInterfaces",
 ]
 
 EXTRA_JS_MODULES += [

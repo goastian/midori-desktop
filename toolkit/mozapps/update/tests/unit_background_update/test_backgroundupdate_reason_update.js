@@ -54,7 +54,7 @@ add_setup(async function test_setup() {
   do_get_profile();
 
   // We need to initialize it once, otherwise operations will be stuck in the pre-init queue.
-  Services.fog.initializeFOG();
+  Services.fog.initializeFOG(undefined, "firefox.desktop.background.update");
 
   setupProfileService();
 });
@@ -313,9 +313,9 @@ add_task(
   }
 );
 
-add_task(() => {
+add_task(async () => {
   // `setupTestCommon()` calls `do_test_pending()`; this calls
   // `do_test_finish()`.  The `add_task` schedules this to run after all the
   // other tests have completed.
-  doTestFinish();
+  await doTestFinish();
 });

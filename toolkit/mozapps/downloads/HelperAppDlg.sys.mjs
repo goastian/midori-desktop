@@ -61,8 +61,11 @@ nsUnknownContentTypeDialogProgressListener.prototype = {
   onStatusChange(aWebProgress, aRequest, aStatus, aMessage) {
     if (aStatus != Cr.NS_OK) {
       // Display error alert (using text supplied by back-end).
-      // FIXME this.dialog is undefined?
-      Services.prompt.alert(this.dialog, this.helperAppDlg.mTitle, aMessage);
+      Services.prompt.alert(
+        this.helperAppDlg.mDialog,
+        this.helperAppDlg.mTitle,
+        aMessage
+      );
       // Close the dialog.
       this.helperAppDlg.onCancel();
       if (this.helperAppDlg.mDialog) {
@@ -154,7 +157,6 @@ nsUnknownContentTypeDialog.prototype = {
       );
     }
 
-    const nsITimer = Ci.nsITimer;
     this._showTimer = Cc["@mozilla.org/timer;1"].createInstance(nsITimer);
     this._showTimer.initWithCallback(this, 0, nsITimer.TYPE_ONE_SHOT);
   },
@@ -174,6 +176,16 @@ nsUnknownContentTypeDialog.prototype = {
         "chrome,centerscreen,titlebar,dialog=yes,dependent",
         null
       );
+      /*
+       * There were some concerns that this load might be triggered by an
+       * inital about:blank in the window. This seems unlikely because:
+       * 1. Loading about:blank takes a tick and would therefore be canceled by
+       *    a consecutive chrome URI load.
+       * 2. With recent about:blank changes, the load event is fired when we
+       *    determine about:blank to be the navigation target, which isn't the
+       *    case here.
+       */
+      this.mDialog.addEventListener("load", () => this.initDialog());
     } catch (ex) {
       // The containing window may have gone away.  Break reference
       // cycles and stop doing the download.
@@ -203,7 +215,7 @@ nsUnknownContentTypeDialog.prototype = {
     );
 
     Services.prompt.alert(
-      this.dialog,
+      this.mDialog,
       bundle.GetStringFromName("badPermissions.title"),
       bundle.GetStringFromName("badPermissions")
     );
@@ -460,6 +472,20 @@ nsUnknownContentTypeDialog.prototype = {
 
     this.mDialog.document.addEventListener("dialogaccept", this);
     this.mDialog.document.addEventListener("dialogcancel", this);
+    this.mDialog.document
+      .getElementById("rememberChoice")
+      .addEventListener("command", event => {
+        this.toggleRememberChoice(event.target);
+      });
+    this.mDialog.document
+      .getElementById("openHandlerPopup")
+      .addEventListener("command", () => this.openHandlerCommand());
+    this.mDialog.document
+      .getElementById("chooseButton")
+      .addEventListener("command", () => this.chooseApp());
+    this.mDialog.addEventListener("unload", () => {
+      this.mDialog.dialog?.onCancel();
+    });
 
     let url = this.mLauncher.source;
 
@@ -590,8 +616,8 @@ nsUnknownContentTypeDialog.prototype = {
       this.toggleRememberChoice(rememberChoice);
     }
 
-    this.mDialog.setTimeout(function () {
-      this.dialog.postShowCallback();
+    this.mDialog.setTimeout(() => {
+      this.postShowCallback();
     }, 0);
 
     this.delayHelper = new lazy.EnableDelayHelper({
@@ -770,6 +796,17 @@ nsUnknownContentTypeDialog.prototype = {
     } catch (e) {
       this.chosenApp = null;
     }
+    if (!this.chosenApp) {
+      try {
+        this.chosenApp =
+          this.mLauncher.MIMEInfo.preferredApplicationHandler.QueryInterface(
+            Ci.nsIGIOHandlerApp
+          );
+      } catch (e) {
+        this.chosenApp = null;
+      }
+    }
+
     // Initialize "default application" field.
     this.initDefaultApp();
 
@@ -778,6 +815,7 @@ nsUnknownContentTypeDialog.prototype = {
     // Fill application name textbox.
     if (
       this.chosenApp &&
+      this.chosenApp instanceof Ci.nsILocalHandlerApp &&
       this.chosenApp.executable &&
       this.chosenApp.executable.path
     ) {
@@ -787,6 +825,16 @@ nsUnknownContentTypeDialog.prototype = {
       );
 
       otherHandler.label = this.getFileDisplayName(this.chosenApp.executable);
+      otherHandler.hidden = false;
+    }
+
+    if (
+      this.chosenApp &&
+      this.chosenApp instanceof Ci.nsIGIOHandlerApp &&
+      this.chosenApp.id
+    ) {
+      otherHandler.setAttribute("appid", this.chooseApp.id);
+      otherHandler.label = this.chosenApp.name;
       otherHandler.hidden = false;
     }
 
@@ -904,7 +952,10 @@ nsUnknownContentTypeDialog.prototype = {
           // the user chose an app....
           ok =
             this.chosenApp ||
-            /\S/.test(this.dialogElement("otherHandler").getAttribute("path"));
+            /\S/.test(
+              this.dialogElement("otherHandler").getAttribute("path")
+            ) ||
+            /\S/.test(this.dialogElement("otherHandler").getAttribute("appid"));
           break;
       }
     }
@@ -1019,9 +1070,9 @@ nsUnknownContentTypeDialog.prototype = {
     if (this.useOtherHandler) {
       var helperApp = this.helperAppChoice();
       if (
-        !helperApp ||
-        !helperApp.executable ||
-        !helperApp.executable.exists()
+        helperApp &&
+        helperApp instanceof Ci.nsILocalHandlerApp &&
+        !helperApp.executable?.exists()
       ) {
         // Show alert and try again.
         var bundle = this.dialogElement("strings");
@@ -1156,10 +1207,14 @@ nsUnknownContentTypeDialog.prototype = {
       // Update dialog.
       var otherHandler = this.dialogElement("otherHandler");
       otherHandler.removeAttribute("hidden");
-      otherHandler.setAttribute(
-        "path",
-        this.getPath(this.chosenApp.executable)
-      );
+      if (this.chosenApp instanceof Ci.nsIGIOHandlerApp) {
+        otherHandler.setAttribute("appid", this.chosenApp.id);
+      } else {
+        otherHandler.setAttribute(
+          "path",
+          this.getPath(this.chosenApp.executable)
+        );
+      }
       if (AppConstants.platform == "win") {
         otherHandler.label = this.getFileDisplayName(this.chosenApp.executable);
       } else {
@@ -1242,9 +1297,13 @@ nsUnknownContentTypeDialog.prototype = {
       );
       var contentTypeDialogObj = this;
       let appChooserCallback = function appChooserCallback_done(aResult) {
-        if (aResult) {
+        if (aResult instanceof Ci.nsILocalHandlerApp) {
           contentTypeDialogObj.chosenApp = aResult.QueryInterface(
             Ci.nsILocalHandlerApp
+          );
+        } else if (aResult && aResult instanceof Ci.nsIGIOHandlerApp) {
+          contentTypeDialogObj.chosenApp = aResult.QueryInterface(
+            Ci.nsIGIOHandlerApp
           );
         }
         contentTypeDialogObj.finishChooseApp();

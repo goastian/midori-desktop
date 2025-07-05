@@ -6,12 +6,14 @@ const lazy = {};
 ChromeUtils.defineESModuleGetters(lazy, {
   FormHistory: "resource://gre/modules/FormHistory.sys.mjs",
   SearchSuggestionController:
-    "resource://gre/modules/SearchSuggestionController.sys.mjs",
+    "moz-src:///toolkit/components/search/SearchSuggestionController.sys.mjs",
 });
 
 /**
  * A search history autocomplete result that implements nsIAutoCompleteResult.
  * Based on FormHistoryAutoCompleteResult.
+ *
+ * @implements {nsIAutoCompleteResult}
  */
 class SearchHistoryResult {
   /**
@@ -288,7 +290,7 @@ class SearchHistoryResult {
  * unique XPCOM Service for every search provider, even if the logic for two
  * providers is identical.
  *
- * @class
+ * @implements {nsIAutoCompleteSearch}
  */
 class SuggestAutoComplete {
   constructor() {
@@ -299,7 +301,7 @@ class SuggestAutoComplete {
   /**
    * Notifies the front end of new results.
    *
-   * @param {FormHistoryAutoCompleteResult} result
+   * @param {nsIAutoCompleteResult} result
    *   Any previous form history result.
    * @private
    */
@@ -325,7 +327,7 @@ class SuggestAutoComplete {
    * @param {object} previousResult
    *   unused, a client-cached store of the previous generated resultset
    *   for faster searching.
-   * @param {object} listener
+   * @param {nsIAutoCompleteObserver} listener
    *   object implementing nsIAutoCompleteObserver which we notify when
    *   results are ready.
    */
@@ -397,7 +399,7 @@ class SuggestAutoComplete {
    * The object implementing nsIAutoCompleteObserver that we notify when
    * we have found results.
    *
-   *  @type {object|null}
+   *  @type {nsIAutoCompleteObserver|null}
    */
   #listener = null;
 
@@ -408,7 +410,7 @@ class SuggestAutoComplete {
    *   The user's query string.
    * @param {string} searchParam
    *   unused
-   * @param {object} listener
+   * @param {nsIAutoCompleteObserver} listener
    *   object implementing nsIAutoCompleteObserver which we notify when
    *   results are ready.
    * @param {boolean} privacyMode
@@ -440,23 +442,20 @@ class SuggestAutoComplete {
     if (results?.remote?.length) {
       // We shouldn't show tail suggestions in their full-text form.
       // Suggestions are shown after form history results.
-      autoCompleteResult.remoteEntries = results.remote.reduce(
-        (results, item) => {
-          if (!item.matchPrefix && !item.tail) {
-            results.push({
-              value: item.value,
-              label: item.value,
-              // We supply the comments field so that autocomplete does not kick
-              // in the unescaping of the results for display which it uses for
-              // urls.
-              comment: item.value,
-            });
-          }
+      autoCompleteResult.remoteEntries = results.remote.reduce((acc, item) => {
+        if (!item.matchPrefix && !item.tail) {
+          acc.push({
+            value: item.value,
+            label: item.value,
+            // We supply the comments field so that autocomplete does not kick
+            // in the unescaping of the results for display which it uses for
+            // urls.
+            comment: item.value,
+          });
+        }
 
-          return results;
-        },
-        []
-      );
+        return acc;
+      }, []);
     }
 
     // Notify the FE of our new results

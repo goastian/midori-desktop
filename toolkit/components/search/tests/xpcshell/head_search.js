@@ -1,58 +1,52 @@
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*- */
 /* vim:set ts=2 sw=2 sts=2 et: */
 
-const { XPCOMUtils } = ChromeUtils.importESModule(
-  "resource://gre/modules/XPCOMUtils.sys.mjs"
-);
-
 ChromeUtils.defineESModuleGetters(this, {
+  AddonTestUtils: "resource://testing-common/AddonTestUtils.sys.mjs",
+  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
   EnterprisePolicyTesting:
     "resource://testing-common/EnterprisePolicyTesting.sys.mjs",
+  ExtensionTestUtils:
+    "resource://testing-common/ExtensionXPCShellUtils.sys.mjs",
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
+  HttpServer: "resource://testing-common/httpd.sys.mjs",
   Region: "resource://gre/modules/Region.sys.mjs",
   RemoteSettings: "resource://services-settings/remote-settings.sys.mjs",
   RemoteSettingsClient:
     "resource://services-settings/RemoteSettingsClient.sys.mjs",
-  SearchEngineSelector: "resource://gre/modules/SearchEngineSelector.sys.mjs",
+  SearchEngineClassification:
+    "moz-src:///toolkit/components/uniffi-bindgen-gecko-js/components/generated/RustSearch.sys.mjs",
+  SearchEngineSelector:
+    "moz-src:///toolkit/components/search/SearchEngineSelector.sys.mjs",
   SearchService: "resource://gre/modules/SearchService.sys.mjs",
-  SearchSettings: "resource://gre/modules/SearchSettings.sys.mjs",
+  SearchSettings: "moz-src:///toolkit/components/search/SearchSettings.sys.mjs",
   SearchTestUtils: "resource://testing-common/SearchTestUtils.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
+  SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
   TestUtils: "resource://testing-common/TestUtils.sys.mjs",
-  clearTimeout: "resource://gre/modules/Timer.sys.mjs",
+  updateAppInfo: "resource://testing-common/AppInfo.sys.mjs",
+  Utils: "resource://services-settings/Utils.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
   sinon: "resource://testing-common/Sinon.sys.mjs",
 });
 
-var { HttpServer } = ChromeUtils.importESModule(
-  "resource://testing-common/httpd.sys.mjs"
-);
-var { AddonTestUtils } = ChromeUtils.importESModule(
-  "resource://testing-common/AddonTestUtils.sys.mjs"
-);
-const { ExtensionTestUtils } = ChromeUtils.importESModule(
-  "resource://testing-common/ExtensionXPCShellUtils.sys.mjs"
-);
+// Expose Remote Settings utils with an explicit name.
+const RemoteSettingsUtils = Utils;
+
+// We need Services.appinfo.name set up to allow the hashes to work with a
+// consistent name.
+// Note: the name and versions here match those in ExtensionXPCShellUtils.sys.mjs.
+updateAppInfo({ name: "XPCShell", version: "48", platformVersion: "48" });
+
+// We generally also need a profile set-up, for saving search settings etc.
+do_get_profile();
 
 SearchTestUtils.init(this);
 
 const SETTINGS_FILENAME = "search.json.mozlz4";
 
-// nsSearchService.js uses Services.appinfo.name to build a salt for a hash.
-// eslint-disable-next-line mozilla/use-services
-var XULRuntime = Cc["@mozilla.org/xre/runtime;1"].getService(Ci.nsIXULRuntime);
-
 // Expand the amount of information available in error logs
 Services.prefs.setBoolPref("browser.search.log", true);
 Services.prefs.setBoolPref("browser.region.log", true);
-
-AddonTestUtils.init(this, false);
-AddonTestUtils.createAppInfo(
-  "xpcshell@tests.mozilla.org",
-  "XPCShell",
-  "42",
-  "42"
-);
 
 // Allow telemetry probes which may otherwise be disabled for some applications (e.g. Thunderbird)
 Services.prefs.setBoolPref(
@@ -235,24 +229,22 @@ function isSubObjectOf(expectedObj, actualObj, skipProp) {
 }
 
 /**
- * After useHttpServer() is called, this string contains the URL of the "data"
- * directory, including the final slash.
+ * After useHttpServer() is called, this string contains the URL test directory,
+ * excluding the final slash.
  */
-var gDataUrl;
+var gHttpURL;
 
 /**
  * Initializes the HTTP server and ensures that it is terminated when tests end.
  *
- * @param {string} dir
- *   The test sub-directory to use for the engines.
  * @returns {HttpServer}
  *   The HttpServer object in case further customization is needed.
  */
-function useHttpServer(dir = "data") {
+function useHttpServer() {
   let httpServer = new HttpServer();
   httpServer.start(-1);
   httpServer.registerDirectory("/", do_get_cwd());
-  gDataUrl = `http://localhost:${httpServer.identity.primaryPort}/${dir}/`;
+  gHttpURL = `http://localhost:${httpServer.identity.primaryPort}`;
   registerCleanupFunction(async function cleanup_httpServer() {
     await new Promise(resolve => {
       httpServer.stop(resolve);
@@ -290,25 +282,6 @@ function checkCountryResultTelemetry(aExpectedValue) {
 }
 
 /**
- * Provides a basic set of remote settings for use in tests.
- */
-async function setupRemoteSettings() {
-  const settings = await RemoteSettings("hijack-blocklists");
-  sinon.stub(settings, "get").returns([
-    {
-      id: "load-paths",
-      matches: ["[addon]searchignore@mozilla.com"],
-      _status: "synced",
-    },
-    {
-      id: "submission-urls",
-      matches: ["ignore=true"],
-      _status: "synced",
-    },
-  ]);
-}
-
-/**
  * Reads the specified file from the data directory and returns its contents as
  * an Uint8Array.
  *
@@ -318,7 +291,7 @@ async function setupRemoteSettings() {
  *   The contents of the file in an Uint8Array.
  */
 async function getFileDataBuffer(filename) {
-  return IOUtils.read(PathUtils.join(do_get_cwd().path, "data", filename));
+  return IOUtils.read(PathUtils.join(do_get_cwd().path, "icons", filename));
 }
 
 /**
@@ -336,6 +309,8 @@ async function getFileDataBuffer(filename) {
  *   The ID to use for the record. If not provided, a new UUID will be generated.
  * @param {number} [item.lastModified]
  *   The last modified time for the record. Defaults to the current time.
+ * @returns {object}
+ *   An object containing the record and attachment.
  */
 async function mockRecordWithAttachment({
   filename,
@@ -464,25 +439,14 @@ function useCustomGeoServer(region, waitToRespond = Promise.resolve()) {
  *   An object with the expected details for the private search engine.
  */
 async function assertGleanDefaultEngine(expected) {
-  await TestUtils.waitForCondition(
-    () =>
-      Glean.searchEngineDefault.engineId.testGetValue() ==
-      (expected.normal.engineId ?? ""),
-    "Should have set the correct telemetry id for the normal engine"
-  );
-
-  await TestUtils.waitForCondition(
-    () =>
-      Glean.searchEnginePrivate.engineId.testGetValue() ==
-      (expected.private?.engineId ?? ""),
-    "Should have set the correct telemetry id for the private engine"
-  );
-
   for (let property of [
+    "providerId",
+    "partnerCode",
+    "overriddenByThirdParty",
+    "engineId",
     "displayName",
     "loadPath",
     "submissionUrl",
-    "verified",
   ]) {
     if (property in expected.normal) {
       Assert.equal(
@@ -647,3 +611,83 @@ registerCleanupFunction(async () => {
     }
   }
 });
+
+/**
+ * This function asserts if the actual engines returned equals the expected
+ * engines.
+ *
+ * @param {SearchEngineSelector} engineSelector
+ *   The search engine selector to use for the test.
+ * @param {object} config
+ *   A fake search config containing engines.
+ * @param {object} userEnv
+ *   A fake user's environment including locale and region, experiment, etc.
+ * @param {Array} expectedEngines
+ *   The array of expected engines to be returned from the fake config.
+ * @param {string} message
+ *   The assertion message.
+ */
+async function assertSelectorEnginesEqualsExpected(
+  engineSelector,
+  config,
+  userEnv,
+  expectedEngines,
+  message
+) {
+  engineSelector._configuration = null;
+  SearchTestUtils.setRemoteSettingsConfig(config);
+
+  if (expectedEngines.length) {
+    let { engines } = await engineSelector.fetchEngineConfiguration(userEnv);
+
+    if (SearchUtils.rustSelectorFeatureGate) {
+      // Add default parameters to match the selector output.
+      for (let i = 0; i < expectedEngines.length; i++) {
+        expectedEngines[i] = {
+          aliases: [],
+          charset: "UTF-8",
+          optional: false,
+          partnerCode: "",
+          telemetrySuffix: "",
+          orderHint: null,
+          clickUrl: null,
+          ...expectedEngines[i],
+        };
+        expectedEngines[i].classification =
+          expectedEngines[i].classification == "general"
+            ? SearchEngineClassification.GENERAL
+            : SearchEngineClassification.UNKNOWN;
+
+        expectedEngines[i].urls = {
+          suggestions: null,
+          trending: null,
+          searchForm: null,
+          ...expectedEngines[i].urls,
+        };
+        expectedEngines[i].urls.search = {
+          method: "GET",
+          ...expectedEngines[i].urls.search,
+        };
+        if (!expectedEngines[i].urls.search.params) {
+          expectedEngines[i].urls.search.params = [];
+        }
+        for (let j = 0; j < expectedEngines[i].urls.search.params.length; j++) {
+          expectedEngines[i].urls.search.params[j] = {
+            enterpriseValue: null,
+            experimentConfig: null,
+            value: null,
+            ...expectedEngines[i].urls.search.params[j],
+          };
+        }
+      }
+    }
+
+    Assert.deepEqual(engines, expectedEngines, message);
+  } else {
+    await Assert.rejects(
+      engineSelector.fetchEngineConfiguration(userEnv),
+      /Could not find any engines in the filtered configuration/,
+      message
+    );
+  }
+}

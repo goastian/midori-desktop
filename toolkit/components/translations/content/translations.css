@@ -9,7 +9,7 @@
 
   /* Provide backup values for some of the variables used in "browser" so that the styles
      look nice by default in "toolkit". */
-  --AT-box-background: var(--in-content-box-background, #fff);
+  --AT-box-background: var(--background-color-box);
   --AT-box-border-color: var(--in-content-box-border-color, #9e9ea0);
   --AT-box-info-background: var(--in-content-box-info-background, #f0f0f4);
 
@@ -34,31 +34,36 @@ body {
 }
 
 .about-translations-header {
-  display: flex;
-}
-
-.about-translations-header > * {
-  flex: 1;
-  display: flex;
-  max-width: 50%;
-}
-
-.about-translations-header-start {
-  justify-content: start;
-}
-
-.about-translations-header-end {
-  justify-content: end;
+  display: grid;
+  grid-template-columns: 1fr max-content 1fr;
+  gap: var(--space-small);
+  padding: var(--space-xsmall);
 }
 
 /* Increase the selector specificity to override the base `select` styles. */
 select.about-translations-select {
   position: relative;
   padding-inline: 10px 20px;
-  padding-block: 0px;
+  padding-block: 0;
   min-width: 50%;
+  width: max-content;
   margin: 5px;
   background-position: right var(--AT-select-arrow-inset) center;
+}
+
+select#language-to {
+  justify-self: end;
+}
+
+.language-swap-icon {
+  width: 20px;
+  height: 20px;
+  background-image: url('chrome://global/skin/icons/arrows-updown.svg');
+  background-size: contain;
+  margin: 0 auto;
+  -moz-context-properties: fill;
+  fill: currentColor;
+  transform: rotateY(180deg) rotateZ(90deg);
 }
 
 select.about-translations-select:dir(rtl) {
@@ -165,5 +170,8 @@ select.about-translations-select:dir(rtl) {
   }
   .about-translations-contents {
     flex: 1;
+  }
+  select.about-translations-select {
+    width: 100%;
   }
 }

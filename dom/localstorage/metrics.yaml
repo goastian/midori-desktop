@@ -1,0 +1,108 @@
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this
+# file, You can obtain one at http://mozilla.org/MPL/2.0/.
+
+# Adding a new metric? We have docs for that!
+# https://firefox-source-docs.mozilla.org/toolkit/components/glean/user/new_definitions_file.html
+
+---
+$schema: moz://mozilla.org/schemas/glean/metrics/2-0-0
+$tags:
+  - 'Core :: Storage: localStorage & sessionStorage'
+
+localstorage.request:
+  prepare_datastore_processing_time:
+    type: timing_distribution
+    time_unit: microsecond
+    description: >
+      Measures the time taken by the parent process to prepare a datastore.
+      This duration can be significantly affected by datastore preloading,
+      which is triggered when a page begins to load. When a datastore is
+      already preloaded, preparation is usually fast since no additional I/O
+      is required. If an error occurs, the time is not recorded.
+      In the future, we may introduce separate metrics to distinguish between
+      different types of datastore preparations (e.g., loading data from disk
+      vs. using preloaded data).
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1590635
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1590635
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - hsingh@mozilla.com
+      - jvarga@mozilla.com
+      - storage-telemetry@mozilla.com
+    expires: never
+  send_cancel_counter:
+    type: counter
+    description: >
+      Increments whenever a request cancellation message is successfully sent.
+      This includes cancellations for requests related to either databases or
+      observers.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1590635
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1590635
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - hsingh@mozilla.com
+      - jvarga@mozilla.com
+    expires: never
+  recv_cancel_counter:
+    type: counter
+    description: >
+      Increments whenever a request cancellation message is successfully
+      received. This includes cancellations for requests related to either
+      databases or observers.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1590635
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1590635
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - hsingh@mozilla.com
+      - jvarga@mozilla.com
+      - storage-telemetry@mozilla.com
+    expires: never
+localstorage.database:
+  new_object_setup_time:
+    type: timing_distribution
+    time_unit: microsecond
+    description: >
+      Measures the time taken for the content process to fully set up a new
+      database, including any time required for datastore preparation in the
+      parent process. This duration can be significantly affected by datastore
+      preloading, which is triggered when a page begins loading. If an error
+      occurs, the time is not recorded.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1590635
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1590635
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - hsingh@mozilla.com
+      - jvarga@mozilla.com
+      - storage-telemetry@mozilla.com
+    expires: never
+  request_allow_to_close_response_time:
+    type: timing_distribution
+    time_unit: microsecond
+    description: >
+      Time it took between sending PBackgroundLSDatabase::RequestAllowToClose
+      and receiving PBackgroundLSDatabase::AllowToClose message. These messages
+      are issued when QuotaManager is shutting down or is aborting operations
+      for a particular origin or process.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1925205
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1925205
+    data_sensitivity:
+      - technical
+    notification_emails:
+      - jvarga@mozilla.com
+      - storage-telemetry@mozilla.com
+    expires: 142

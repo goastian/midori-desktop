@@ -140,7 +140,7 @@ export var PageThumbUtils = {
     backgroundColor = this.THUMBNAIL_BG_COLOR
   ) {
     // 224px is the width of cards in ActivityStream; capture thumbnails at 2x
-    const doc = (window || Services.appShell.hiddenDOMWindow).document;
+    const doc = window.document;
 
     let image = doc.querySelector("img");
     if (!image) {
@@ -174,10 +174,12 @@ export var PageThumbUtils = {
     context.fillRect(0, 0, width, canvasHeight);
     context.drawImage(image, 0, 0, width, height);
 
+    let imgData = context.getImageData(0, 0, width, canvasHeight);
+
     return {
       width,
       height: canvasHeight,
-      imageData: canvas.toDataURL(),
+      imageData: imgData.data,
     };
   },
 

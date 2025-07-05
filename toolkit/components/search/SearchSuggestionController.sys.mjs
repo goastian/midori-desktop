@@ -8,7 +8,14 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   FormHistory: "resource://gre/modules/FormHistory.sys.mjs",
-  SearchUtils: "resource://gre/modules/SearchUtils.sys.mjs",
+  SearchUtils: "moz-src:///toolkit/components/search/SearchUtils.sys.mjs",
+});
+
+ChromeUtils.defineLazyGetter(lazy, "logConsole", () => {
+  return console.createInstance({
+    prefix: "SearchSuggestionController",
+    maxLogLevel: lazy.SearchUtils.loggingEnabled ? "Debug" : "Warn",
+  });
 });
 
 const DEFAULT_FORM_HISTORY_PARAM = "searchbar-history";
@@ -19,12 +26,6 @@ const BROWSER_RICH_SUGGEST_PREF = "browser.urlbar.richSuggestions.featureGate";
 const REMOTE_TIMEOUT_PREF = "browser.search.suggest.timeout";
 const REMOTE_TIMEOUT_DEFAULT = 500; // maximum time (ms) to wait before giving up on a remote suggestions
 
-const SEARCH_DATA_TRANSFERRED_SCALAR = "browser.search.data_transferred";
-const SEARCH_TELEMETRY_KEY_PREFIX = "sggt";
-const SEARCH_TELEMETRY_PRIVATE_BROWSING_KEY_SUFFIX = "pb";
-
-const SEARCH_TELEMETRY_LATENCY = "SEARCH_SUGGESTIONS_LATENCY_MS";
-
 /**
  * Generates an UUID.
  *
@@ -32,8 +33,10 @@ const SEARCH_TELEMETRY_LATENCY = "SEARCH_SUGGESTIONS_LATENCY_MS";
  *   An UUID string, without leading or trailing braces.
  */
 function uuid() {
-  let uuid = Services.uuid.generateUUID().toString();
-  return uuid.slice(1, uuid.length - 1);
+  return Services.uuid
+    .generateUUID()
+    .toString()
+    .slice(1, uuid.length - 1);
 }
 
 /**
@@ -254,7 +257,7 @@ export class SearchSuggestionController {
    * @param {boolean} privateMode - whether the request is being made in the
    *                                context of private browsing.
    * @param {nsISearchEngine} engine - search engine for the suggestions.
-   * @param {int} userContextId - the userContextId of the selected tab.
+   * @param {number} userContextId - the userContextId of the selected tab.
    * @param {boolean} restrictToEngine - whether to restrict local historical
    *   suggestions to the ones registered under the given engine.
    * @param {boolean} dedupeRemoteAndLocal - whether to remove remote
@@ -276,6 +279,10 @@ export class SearchSuggestionController {
     // looking through history/form data) because the result set returned by the
     // server is different for every typed value - e.g. "ocean breathes" does
     // not return a subset of the results returned for "ocean".
+
+    lazy.logConsole.debug(
+      `SearchSuggestionController.fetch() called with searchTerm: ${searchTerm}`
+    );
 
     this.stop();
 
@@ -310,6 +317,7 @@ export class SearchSuggestionController {
       restrictToEngine,
       searchString: searchTerm,
       telemetryHandled: false,
+      gleanTimerId: 0,
       timer: Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer),
       userContextId,
     });
@@ -331,7 +339,8 @@ export class SearchSuggestionController {
     }
 
     function handleRejection(reason) {
-      if (reason == "HTTP request aborted") {
+      if (reason.startsWith("HTTP request aborted")) {
+        lazy.logConsole.debug(reason);
         // Do nothing since this is normal.
         return null;
       }
@@ -389,63 +398,29 @@ export class SearchSuggestionController {
    *   The search context.
    */
   #reportTelemetryForEngine(context) {
-    this.#reportBandwidthForEngine(context);
-
-    // Stop the latency stopwatch.
     if (!context.telemetryHandled) {
+      // Stop the latency stopwatch.
       if (context.abort) {
-        TelemetryStopwatch.cancelKeyed(
-          SEARCH_TELEMETRY_LATENCY,
-          context.engineId,
-          context
+        Glean.search.suggestionsLatency[context.engineId].cancel(
+          context.gleanTimerId
         );
       } else {
-        TelemetryStopwatch.finishKeyed(
-          SEARCH_TELEMETRY_LATENCY,
-          context.engineId,
-          context
+        Glean.search.suggestionsLatency[context.engineId].stopAndAccumulate(
+          context.gleanTimerId
         );
       }
+      context.gleanTimerId = 0;
       context.telemetryHandled = true;
+      if (context.engine.isAppProvided) {
+        if (context.abort) {
+          Glean.searchSuggestions.abortedRequests[context.engine.id].add();
+        } else if (context.error) {
+          Glean.searchSuggestions.failedRequests[context.engine.id].add();
+        } else {
+          Glean.searchSuggestions.successfulRequests[context.engine.id].add();
+        }
+      }
     }
-  }
-
-  /**
-   * Report bandwidth used by search activities. It only reports when it matches
-   * search provider information.
-   *
-   * @param {object} context
-   *   The search context.
-   * @param {boolean} context.abort
-   *   If the request should be aborted.
-   * @param {string} context.engineId
-   *   The search engine identifier.
-   * @param {object} context.request
-   *   Request information
-   * @param {boolean} context.privateMode
-   *   Set to true if this is coming from a private browsing mode request.
-   */
-  #reportBandwidthForEngine(context) {
-    if (context.abort || !context.request.channel) {
-      return;
-    }
-
-    let channel = ChannelWrapper.get(context.request.channel);
-    let bytesTransferred = channel.requestSize + channel.responseSize;
-    if (bytesTransferred == 0) {
-      return;
-    }
-
-    let telemetryKey = `${SEARCH_TELEMETRY_KEY_PREFIX}-${context.engineId}`;
-    if (context.privateMode) {
-      telemetryKey += `-${SEARCH_TELEMETRY_PRIVATE_BROWSING_KEY_SUFFIX}`;
-    }
-
-    Services.telemetry.keyedScalarAdd(
-      SEARCH_DATA_TRANSFERRED_SCALAR,
-      telemetryKey,
-      bytesTransferred
-    );
   }
 
   /**
@@ -489,6 +464,11 @@ export class SearchSuggestionController {
         `${context.engine.identifier || uuid()}.search.suggestions.mozilla`
       );
     }
+
+    lazy.logConsole.debug(
+      `HTTP request started for ${submission.uri.spec} by method ${method}`
+    );
+
     let firstPartyDomain = gFirstPartyDomains.get(context.engine.name);
 
     request.setOriginAttributes({
@@ -526,6 +506,7 @@ export class SearchSuggestionController {
     });
 
     request.addEventListener("error", () => {
+      this.#context.error = true;
       this.#reportTelemetryForEngine(context);
       deferredResponse.resolve("HTTP error");
     });
@@ -535,7 +516,9 @@ export class SearchSuggestionController {
     request.addEventListener("abort", () => {
       context.timer.cancel();
       this.#reportTelemetryForEngine(context);
-      deferredResponse.reject("HTTP request aborted");
+      deferredResponse.reject(
+        `HTTP request aborted for ${submission.uri.spec}}`
+      );
     });
 
     if (submission.postData) {
@@ -544,11 +527,8 @@ export class SearchSuggestionController {
       request.send();
     }
 
-    TelemetryStopwatch.startKeyed(
-      SEARCH_TELEMETRY_LATENCY,
-      context.engineId,
-      context
-    );
+    context.gleanTimerId =
+      Glean.search.suggestionsLatency[context.engineId].start();
 
     return deferredResponse.promise;
   }
@@ -559,9 +539,8 @@ export class SearchSuggestionController {
    *
    * @param {object} context
    *   The search context.
-   * @param {Promise} deferredResponse
+   * @param {PromiseWithResolvers} deferredResponse
    *   The promise to resolve when a response is received.
-   * @private
    */
   #onRemoteLoaded(context, deferredResponse) {
     let status;
@@ -581,6 +560,8 @@ export class SearchSuggestionController {
     }
 
     let serverResults = context.request.response;
+
+    lazy.logConsole.debug("Remote results:", serverResults);
 
     try {
       if (
@@ -695,6 +676,10 @@ export class SearchSuggestionController {
       maxRemoteCount -= results.local.length;
     }
     results.remote = results.remote.slice(0, maxRemoteCount);
+
+    lazy.logConsole.debug(
+      `Deduplication completed. Final results count: local=${results.local.length}, remote=${results.remote.length}`
+    );
 
     return results;
   }

@@ -162,8 +162,8 @@ _ContextualIdentityService.prototype = {
     }
   },
 
-  load() {
-    return IOUtils.read(this._path).then(
+  async load() {
+    await IOUtils.read(this._path).then(
       bytes => {
         // If synchronous loading happened in the meantime, exit now.
         if (this._dataReady) {
@@ -179,6 +179,10 @@ _ContextualIdentityService.prototype = {
       error => {
         this.loadError(error);
       }
+    );
+    Services.obs.notifyObservers(
+      null,
+      "contextual-identity-service-load-finished"
     );
   },
 
@@ -442,12 +446,20 @@ _ContextualIdentityService.prototype = {
     }
 
     try {
+      // Check if the containers.json file exists before attempting to read
+      // from it (to avoid a warning in the console). If the file is missing,
+      // reset the service to its default state and return early.
+      let file = new lazy.FileUtils.File(this._path);
+      if (!file.exists()) {
+        this.resetDefault();
+        return;
+      }
       // This reads the file and automatically detects the UTF-8 encoding.
       let inputStream = Cc[
         "@mozilla.org/network/file-input-stream;1"
       ].createInstance(Ci.nsIFileInputStream);
       inputStream.init(
-        new lazy.FileUtils.File(this._path),
+        file,
         lazy.FileUtils.MODE_RDONLY,
         lazy.FileUtils.PERMS_FILE,
         0

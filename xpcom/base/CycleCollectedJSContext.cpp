@@ -18,21 +18,23 @@
 #include "mozilla/AutoRestore.h"
 #include "mozilla/CycleCollectedJSRuntime.h"
 #include "mozilla/DebuggerOnGCRunnable.h"
+#include "mozilla/FlowMarkers.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/ProfilerMarkers.h"
+#include "mozilla/ProfilerRunnable.h"
 #include "mozilla/Sprintf.h"
-#include "mozilla/Telemetry.h"
 #include "mozilla/Unused.h"
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/DOMJSClass.h"
 #include "mozilla/dom/FinalizationRegistryBinding.h"
-#include "mozilla/dom/PromiseBinding.h"
+#include "mozilla/dom/CallbackObject.h"
 #include "mozilla/dom/PromiseDebugging.h"
 #include "mozilla/dom/PromiseRejectionEvent.h"
 #include "mozilla/dom/PromiseRejectionEventBinding.h"
 #include "mozilla/dom/RootedDictionary.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/UserActivation.h"
+#include "mozilla/dom/WebTaskScheduler.h"
 #include "nsContentUtils.h"
 #include "nsCycleCollectionNoteRootCallback.h"
 #include "nsCycleCollectionParticipant.h"
@@ -57,9 +59,9 @@ CycleCollectedJSContext::CycleCollectedJSContext()
       mDoingStableStates(false),
       mTargetedMicroTaskRecursionDepth(0),
       mMicroTaskLevel(0),
+      mSyncOperations(0),
       mSuppressionGeneration(0),
       mDebuggerRecursionDepth(0),
-      mMicroTaskRecursionDepth(0),
       mFinalizationRegistryCleanup(this) {
   MOZ_COUNT_CTOR(CycleCollectedJSContext);
 
@@ -74,6 +76,7 @@ CycleCollectedJSContext::~CycleCollectedJSContext() {
   if (!mJSContext) {
     return;
   }
+  mRecycledPromiseJob = nullptr;
 
   JS::SetHostCleanupFinalizationRegistryCallback(mJSContext, nullptr, nullptr);
 
@@ -169,17 +172,104 @@ size_t CycleCollectedJSContext::SizeOfExcludingThis(
   return 0;
 }
 
-class PromiseJobRunnable final : public MicroTaskRunnable {
+class PromiseJobRunnable final : public CallbackObjectBase,
+                                 public MicroTaskRunnable {
  public:
   PromiseJobRunnable(JS::HandleObject aPromise, JS::HandleObject aCallback,
                      JS::HandleObject aCallbackGlobal,
                      JS::HandleObject aAllocationSite,
-                     nsIGlobalObject* aIncumbentGlobal)
-      : mCallback(new PromiseJobCallback(aCallback, aCallbackGlobal,
-                                         aAllocationSite, aIncumbentGlobal)),
+                     nsIGlobalObject* aIncumbentGlobal,
+                     WebTaskSchedulingState* aSchedulingState)
+      : CallbackObjectBase(aCallback, aCallbackGlobal, aAllocationSite,
+                           aIncumbentGlobal),
         mPropagateUserInputEventHandling(false) {
     MOZ_ASSERT(js::IsFunctionObject(aCallback));
+    InitInternal(aPromise, aSchedulingState);
+  }
 
+  void Reinit(JS::HandleObject aPromise, JS::HandleObject aCallback,
+              JS::HandleObject aCallbackGlobal,
+              JS::HandleObject aAllocationSite,
+              nsIGlobalObject* aIncumbentGlobal,
+              WebTaskSchedulingState* aSchedulingState) {
+    InitNoHold(aCallback, aCallbackGlobal, aAllocationSite, aIncumbentGlobal);
+    InitInternal(aPromise, aSchedulingState);
+  }
+
+ protected:
+  virtual ~PromiseJobRunnable() = default;
+
+  // This is modeled on the Call methods which WebIDL codegen creates for
+  // callback PromiseJobCallback = undefined();
+  MOZ_CAN_RUN_SCRIPT inline void Call() {
+    IgnoredErrorResult rv;
+    CallSetup s(this, rv, "promise callback", eReportExceptions);
+    if (!s.GetContext()) {
+      MOZ_ASSERT(rv.Failed());
+      return;
+    }
+    JS::Rooted<JS::Value> rval(s.GetContext());
+
+    JS::Rooted<JS::Value> callable(s.GetContext(), JS::ObjectValue(*mCallback));
+    if (!JS::Call(s.GetContext(), JS::UndefinedHandleValue, callable,
+                  JS::HandleValueArray::empty(), &rval)) {
+      // This isn't really needed but it ensures that rv's value is updated
+      // consistently.
+      rv.NoteJSContextException(s.GetContext());
+    }
+  }
+
+  MOZ_CAN_RUN_SCRIPT
+  virtual void Run(AutoSlowOperation& aAso) override {
+    JSObject* callback = CallbackPreserveColor();
+    nsCOMPtr<nsIGlobalObject> global =
+        callback ? xpc::NativeGlobal(callback) : nullptr;
+    if (global && !global->IsDying()) {
+      // Propagate the user input event handling bit if needed.
+      AutoHandlingUserInputStatePusher userInpStatePusher(
+          mPropagateUserInputEventHandling);
+
+      // https://wicg.github.io/scheduling-apis/#sec-patches-html-hostcalljobcallback
+      // 2. Set event loop’s current scheduling state to
+      // callback.[[HostDefined]].[[SchedulingState]].
+      global->SetWebTaskSchedulingState(mSchedulingState);
+
+      Call();
+
+      // (The step after step 7): Set event loop’s current scheduling state to
+      // null
+      global->SetWebTaskSchedulingState(nullptr);
+    }
+    // Now that PromiseJobCallback is no longer needed, clear any pointers it
+    // contains. This removes any storebuffer entries associated with those
+    // pointers, which can cause problems by taking up memory and by triggering
+    // minor GCs. This otherwise would not happen until the next minor GC or
+    // cycle collection.
+    Reset();
+    // Clear also other explicit member variables of PromiseJobRunnable so that
+    // we can possibly reuse it.
+    mSchedulingState = nullptr;
+    mPropagateUserInputEventHandling = false;
+
+    if (CycleCollectedJSContext* ccjs = CycleCollectedJSContext::Get()) {
+      ccjs->mRecycledPromiseJob = this;
+    }
+  }
+
+  virtual bool Suppressed() override {
+    JSObject* callback = CallbackPreserveColor();
+    nsIGlobalObject* global = callback ? xpc::NativeGlobal(callback) : nullptr;
+    return global && global->IsInSyncOperation();
+  }
+
+  void TraceMicroTask(JSTracer* aTracer) override {
+    // We can trace CallbackObjectBase.
+    Trace(aTracer);
+  }
+
+ private:
+  void InitInternal(JS::HandleObject aPromise,
+                    WebTaskSchedulingState* aSchedulingState) {
     if (aPromise) {
       JS::PromiseUserInputEventHandlingState state =
           JS::GetPromiseUserInputEventHandlingState(aPromise);
@@ -187,68 +277,116 @@ class PromiseJobRunnable final : public MicroTaskRunnable {
           state ==
           JS::PromiseUserInputEventHandlingState::HadUserInteractionAtCreation;
     }
+    mSchedulingState = aSchedulingState;
   }
 
-  virtual ~PromiseJobRunnable() = default;
-
- protected:
-  MOZ_CAN_RUN_SCRIPT
-  virtual void Run(AutoSlowOperation& aAso) override {
-    JSObject* callback = mCallback->CallbackPreserveColor();
-    nsIGlobalObject* global = callback ? xpc::NativeGlobal(callback) : nullptr;
-    if (global && !global->IsDying()) {
-      // Propagate the user input event handling bit if needed.
-      nsCOMPtr<nsPIDOMWindowInner> win = do_QueryInterface(global);
-      RefPtr<Document> doc;
-      if (win) {
-        doc = win->GetExtantDoc();
-      }
-      AutoHandlingUserInputStatePusher userInpStatePusher(
-          mPropagateUserInputEventHandling);
-
-      mCallback->Call("promise callback");
-      aAso.CheckForInterrupt();
-    }
-    // Now that mCallback is no longer needed, clear any pointers it contains to
-    // JS GC things. This removes any storebuffer entries associated with those
-    // pointers, which can cause problems by taking up memory and by triggering
-    // minor GCs. This otherwise would not happen until the next minor GC or
-    // cycle collection.
-    mCallback->Reset();
-  }
-
-  virtual bool Suppressed() override {
-    JSObject* callback = mCallback->CallbackPreserveColor();
-    nsIGlobalObject* global = callback ? xpc::NativeGlobal(callback) : nullptr;
-    return global && global->IsInSyncOperation();
-  }
-
- private:
-  const RefPtr<PromiseJobCallback> mCallback;
+  RefPtr<WebTaskSchedulingState> mSchedulingState;
   bool mPropagateUserInputEventHandling;
 };
 
-JSObject* CycleCollectedJSContext::getIncumbentGlobal(JSContext* aCx) {
-  nsIGlobalObject* global = mozilla::dom::GetIncumbentGlobal();
-  if (global) {
-    return global->GetGlobalJSObject();
+enum { INCUMBENT_SETTING_SLOT, SCHEDULING_STATE_SLOT, HOSTDEFINED_DATA_SLOTS };
+
+// Finalizer for instances of HostDefinedData.
+void FinalizeHostDefinedData(JS::GCContext* gcx, JSObject* objSelf) {
+  JS::Value slotEvent = JS::GetReservedSlot(objSelf, SCHEDULING_STATE_SLOT);
+  if (slotEvent.isUndefined()) {
+    return;
   }
-  return nullptr;
+
+  WebTaskSchedulingState* schedulingState =
+      static_cast<WebTaskSchedulingState*>(slotEvent.toPrivate());
+  JS_SetReservedSlot(objSelf, SCHEDULING_STATE_SLOT, JS::UndefinedValue());
+  schedulingState->Release();
+}
+
+static const JSClassOps sHostDefinedData = {
+    nullptr /* addProperty */, nullptr /* delProperty */,
+    nullptr /* enumerate */,   nullptr /* newEnumerate */,
+    nullptr /* resolve */,     nullptr /* mayResolve */,
+    FinalizeHostDefinedData /* finalize */
+};
+
+// Implements `HostDefined` in https://html.spec.whatwg.org/#hostmakejobcallback
+static const JSClass sHostDefinedDataClass = {
+    "HostDefinedData",
+    JSCLASS_HAS_RESERVED_SLOTS(HOSTDEFINED_DATA_SLOTS) |
+        JSCLASS_FOREGROUND_FINALIZE,
+    &sHostDefinedData};
+
+bool CycleCollectedJSContext::getHostDefinedData(
+    JSContext* aCx, JS::MutableHandle<JSObject*> aData) const {
+  nsIGlobalObject* global = mozilla::dom::GetIncumbentGlobal();
+  if (!global) {
+    aData.set(nullptr);
+    return true;
+  }
+
+  JS::Rooted<JSObject*> incumbentGlobal(aCx, global->GetGlobalJSObject());
+
+  if (!incumbentGlobal) {
+    aData.set(nullptr);
+    return true;
+  }
+
+  JSAutoRealm ar(aCx, incumbentGlobal);
+
+  JS::Rooted<JSObject*> objResult(aCx,
+                                  JS_NewObject(aCx, &sHostDefinedDataClass));
+  if (!objResult) {
+    aData.set(nullptr);
+    return false;
+  }
+
+  JS_SetReservedSlot(objResult, INCUMBENT_SETTING_SLOT,
+                     JS::ObjectValue(*incumbentGlobal));
+
+  if (mozilla::dom::WebTaskSchedulingState* schedulingState =
+          mozilla::dom::GetWebTaskSchedulingState()) {
+    schedulingState->AddRef();
+    JS_SetReservedSlot(objResult, SCHEDULING_STATE_SLOT,
+                       JS::PrivateValue(schedulingState));
+  }
+
+  aData.set(objResult);
+
+  return true;
 }
 
 bool CycleCollectedJSContext::enqueuePromiseJob(
     JSContext* aCx, JS::HandleObject aPromise, JS::HandleObject aJob,
-    JS::HandleObject aAllocationSite, JS::HandleObject aIncumbentGlobal) {
+    JS::HandleObject aAllocationSite, JS::HandleObject hostDefinedData) {
   MOZ_ASSERT(aCx == Context());
   MOZ_ASSERT(Get() == this);
 
   nsIGlobalObject* global = nullptr;
-  if (aIncumbentGlobal) {
-    global = xpc::NativeGlobal(aIncumbentGlobal);
+  WebTaskSchedulingState* schedulingState = nullptr;
+
+  if (hostDefinedData) {
+    MOZ_RELEASE_ASSERT(JS::GetClass(hostDefinedData.get()) ==
+                       &sHostDefinedDataClass);
+    JS::Value incumbentGlobal =
+        JS::GetReservedSlot(hostDefinedData.get(), INCUMBENT_SETTING_SLOT);
+    // hostDefinedData is only created when incumbent global exists.
+    MOZ_ASSERT(incumbentGlobal.isObject());
+    global = xpc::NativeGlobal(&incumbentGlobal.toObject());
+
+    JS::Value state =
+        JS::GetReservedSlot(hostDefinedData.get(), SCHEDULING_STATE_SLOT);
+    if (!state.isUndefined()) {
+      schedulingState = static_cast<WebTaskSchedulingState*>(state.toPrivate());
+    }
   }
+
   JS::RootedObject jobGlobal(aCx, JS::CurrentGlobalOrNull(aCx));
-  RefPtr<PromiseJobRunnable> runnable = new PromiseJobRunnable(
-      aPromise, aJob, jobGlobal, aAllocationSite, global);
+  RefPtr<PromiseJobRunnable> runnable;
+  if (mRecycledPromiseJob) {
+    runnable = mRecycledPromiseJob.forget();
+    runnable->Reinit(aPromise, aJob, jobGlobal, aAllocationSite, global,
+                     schedulingState);
+  } else {
+    runnable = new PromiseJobRunnable(aPromise, aJob, jobGlobal,
+                                      aAllocationSite, global, schedulingState);
+  }
   DispatchToMicroTask(runnable.forget());
   return true;
 }
@@ -387,7 +525,10 @@ void CycleCollectedJSContext::PromiseRejectionTrackerCallback(
       nsIGlobalObject* global = xpc::NativeGlobal(aPromise);
       if (nsCOMPtr<EventTarget> owner = do_QueryInterface(global)) {
         RootedDictionary<PromiseRejectionEventInit> init(aCx);
-        init.mPromise = Promise::CreateFromExisting(global, aPromise);
+        if (RefPtr<Promise> newPromise =
+                Promise::CreateFromExisting(global, aPromise)) {
+          init.mPromise = newPromise->PromiseObj();
+        }
         init.mReason = JS::GetPromiseResult(aPromise);
 
         RefPtr<PromiseRejectionEvent> event =
@@ -427,6 +568,12 @@ CycleCollectedJSContext::GetDebuggerMicroTaskQueue() {
   return mDebuggerMicroTaskQueue;
 }
 
+void CycleCollectedJSContext::TraceMicroTasks(JSTracer* aTracer) {
+  for (MicroTaskRunnable* mt : mMicrotasksToTrace) {
+    mt->TraceMicroTask(aTracer);
+  }
+}
+
 void CycleCollectedJSContext::ProcessStableStateQueue() {
   MOZ_ASSERT(mJSContext);
   MOZ_RELEASE_ASSERT(!mDoingStableStates);
@@ -436,6 +583,7 @@ void CycleCollectedJSContext::ProcessStableStateQueue() {
   // such you can't use iterators here.
   for (uint32_t i = 0; i < mStableStateEvents.Length(); ++i) {
     nsCOMPtr<nsIRunnable> event = std::move(mStableStateEvents[i]);
+    AUTO_PROFILE_FOLLOWING_RUNNABLE(event);
     event->Run();
   }
 
@@ -503,6 +651,9 @@ void CycleCollectedJSContext::AfterProcessTask(uint32_t aRecursionDepth) {
   // This should be a fast test so that it won't affect the next task
   // processing.
   MaybePokeGC();
+
+  mRuntime->FinalizeDeferredThings(CycleCollectedJSRuntime::FinalizeNow);
+  nsCycleCollector_maybeDoDeferredDeletion();
 }
 
 void CycleCollectedJSContext::AfterProcessMicrotasks() {
@@ -564,7 +715,10 @@ uint32_t CycleCollectedJSContext::RecursionDepth() const {
 void CycleCollectedJSContext::RunInStableState(
     already_AddRefed<nsIRunnable>&& aRunnable) {
   MOZ_ASSERT(mJSContext);
-  mStableStateEvents.AppendElement(std::move(aRunnable));
+  nsCOMPtr<nsIRunnable> runnable = std::move(aRunnable);
+  PROFILER_MARKER("CycleCollectedJSContext::RunInStableState", OTHER, {},
+                  FlowMarker, Flow::FromPointer(runnable.get()));
+  mStableStateEvents.AppendElement(std::move(runnable));
 }
 
 void CycleCollectedJSContext::AddPendingIDBTransaction(
@@ -602,6 +756,10 @@ void CycleCollectedJSContext::DispatchToMicroTask(
   JS::JobQueueMayNotBeEmpty(Context());
 
   LogMicroTaskRunnable::LogDispatch(runnable.get());
+  if (!runnable->isInList()) {
+    // A recycled object may be in the list already.
+    mMicrotasksToTrace.insertBack(runnable);
+  }
   mPendingMicroTaskRunnables.push_back(std::move(runnable));
 }
 
@@ -648,7 +806,8 @@ bool CycleCollectedJSContext::PerformMicroTaskCheckPoint(bool aForce) {
   }
 
   uint32_t currentDepth = RecursionDepth();
-  if (mMicroTaskRecursionDepth >= currentDepth && !aForce) {
+  if (mMicroTaskRecursionDepth && *mMicroTaskRecursionDepth >= currentDepth &&
+      !aForce) {
     // We are already executing microtasks for the current recursion depth.
     return false;
   }
@@ -666,9 +825,8 @@ bool CycleCollectedJSContext::PerformMicroTaskCheckPoint(bool aForce) {
     return false;
   }
 
-  mozilla::AutoRestore<uint32_t> restore(mMicroTaskRecursionDepth);
-  MOZ_ASSERT(aForce ? currentDepth == 0 : currentDepth > 0);
-  mMicroTaskRecursionDepth = currentDepth;
+  mozilla::AutoRestore<Maybe<uint32_t>> restore(mMicroTaskRecursionDepth);
+  mMicroTaskRecursionDepth = Some(currentDepth);
 
   AUTO_PROFILER_TRACING_MARKER("JS", "Perform microtasks", JS);
 
@@ -687,7 +845,10 @@ bool CycleCollectedJSContext::PerformMicroTaskCheckPoint(bool aForce) {
       break;
     }
 
-    if (runnable->Suppressed()) {
+    // No need to check Suppressed if there aren't ongoing sync operations nor
+    // pending mSuppressedMicroTasks.
+    if ((IsInSyncOperation() || mSuppressedMicroTasks) &&
+        runnable->Suppressed()) {
       // Microtasks in worker shall never be suppressed.
       // Otherwise, mPendingMicroTaskRunnables will be replaced later with
       // all suppressed tasks in mDebuggerMicroTaskQueue unexpectedly.
@@ -779,7 +940,7 @@ NS_IMETHODIMP CycleCollectedJSContext::NotifyUnhandledRejections::Run() {
       if (nsCOMPtr<EventTarget> target =
               do_QueryInterface(promise->GetParentObject())) {
         RootedDictionary<PromiseRejectionEventInit> init(cx);
-        init.mPromise = promise;
+        init.mPromise = promiseObj;
         init.mReason = JS::GetPromiseResult(promiseObj);
         init.mCancelable = true;
 
@@ -824,6 +985,35 @@ nsresult CycleCollectedJSContext::NotifyUnhandledRejections::Cancel() {
   return NS_OK;
 }
 
+#ifdef MOZ_EXECUTION_TRACING
+
+void CycleCollectedJSContext::BeginExecutionTracingAsync() {
+  mOwningThread->Dispatch(NS_NewRunnableFunction(
+      "CycleCollectedJSContext::BeginExecutionTracingAsync", [] {
+        CycleCollectedJSContext* ccjs = CycleCollectedJSContext::Get();
+        if (ccjs) {
+          JS_TracerBeginTracing(ccjs->Context());
+        }
+      }));
+}
+
+void CycleCollectedJSContext::EndExecutionTracingAsync() {
+  mOwningThread->Dispatch(NS_NewRunnableFunction(
+      "CycleCollectedJSContext::EndExecutionTracingAsync", [] {
+        CycleCollectedJSContext* ccjs = CycleCollectedJSContext::Get();
+        if (ccjs) {
+          JS_TracerEndTracing(ccjs->Context());
+        }
+      }));
+}
+
+#else
+
+void CycleCollectedJSContext::BeginExecutionTracingAsync() {}
+void CycleCollectedJSContext::EndExecutionTracingAsync() {}
+
+#endif
+
 class FinalizationRegistryCleanup::CleanupRunnable
     : public DiscardableRunnable {
  public:
@@ -860,18 +1050,29 @@ void FinalizationRegistryCleanup::Init() {
 
 /* static */
 void FinalizationRegistryCleanup::QueueCallback(JSFunction* aDoCleanup,
-                                                JSObject* aIncumbentGlobal,
+                                                JSObject* aHostDefinedData,
                                                 void* aData) {
   FinalizationRegistryCleanup* cleanup =
       static_cast<FinalizationRegistryCleanup*>(aData);
-  cleanup->QueueCallback(aDoCleanup, aIncumbentGlobal);
+  cleanup->QueueCallback(aDoCleanup, aHostDefinedData);
 }
 
 void FinalizationRegistryCleanup::QueueCallback(JSFunction* aDoCleanup,
-                                                JSObject* aIncumbentGlobal) {
+                                                JSObject* aHostDefinedData) {
   bool firstCallback = mCallbacks.empty();
 
-  MOZ_ALWAYS_TRUE(mCallbacks.append(Callback{aDoCleanup, aIncumbentGlobal}));
+  JSObject* incumbentGlobal = nullptr;
+
+  // Extract incumbentGlobal from aHostDefinedData.
+  if (aHostDefinedData) {
+    MOZ_RELEASE_ASSERT(JS::GetClass(aHostDefinedData) ==
+                       &sHostDefinedDataClass);
+    JS::Value global =
+        JS::GetReservedSlot(aHostDefinedData, INCUMBENT_SETTING_SLOT);
+    incumbentGlobal = &global.toObject();
+  }
+
+  MOZ_ALWAYS_TRUE(mCallbacks.append(Callback{aDoCleanup, incumbentGlobal}));
 
   if (firstCallback) {
     RefPtr<CleanupRunnable> cleanup = new CleanupRunnable(this);

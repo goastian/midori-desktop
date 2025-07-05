@@ -517,7 +517,7 @@ async function runTest(enabled) {
         await Services.fog.testFlushAllChildren();
 
         Assert.greater(
-          Glean.fingerprintingProtection.canvasNoiseCalculateTime.testGetValue()
+          Glean.fingerprintingProtection.canvasNoiseCalculateTime2.testGetValue()
             .sum,
           0,
           "The telemetry of canvas randomization is recorded."
@@ -555,6 +555,17 @@ add_setup(async function () {
 
 add_task(async function run_tests_with_randomization_enabled() {
   await runTest(true);
+});
+
+add_task(async function run_tests_with_randomization_enabled_with_siphash() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      ["privacy.resistFingerprinting.randomization.canvas.use_siphash", true],
+    ],
+  });
+  await runTest(true);
+
+  await SpecialPowers.popPrefEnv();
 });
 
 add_task(async function run_tests_with_randomization_disabled() {

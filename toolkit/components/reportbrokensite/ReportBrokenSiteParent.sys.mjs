@@ -17,7 +17,37 @@ export class ReportBrokenSiteParent extends JSWindowActorParent {
     return trackingTable.includes("content") ? "strict" : "basic";
   }
 
+  #getETPCategory() {
+    // Note that the pref will be set to "custom" if the user disables ETP on
+    // mobile.
+    const etpState = Services.prefs.getStringPref(
+      "browser.contentblocking.category",
+      "standard"
+    );
+    return etpState;
+  }
+
   #getAntitrackingInfo(browsingContext) {
+    // Ask BounceTrackingProtection whether it has recently purged state for the
+    // site in the current top level context.
+    let btpHasPurgedSite = false;
+    if (
+      Services.prefs.getIntPref("privacy.bounceTrackingProtection.mode") !=
+      Ci.nsIBounceTrackingProtection.MODE_DISABLED
+    ) {
+      let bounceTrackingProtection = Cc[
+        "@mozilla.org/bounce-tracking-protection;1"
+      ].getService(Ci.nsIBounceTrackingProtection);
+
+      let { currentWindowGlobal } = browsingContext;
+      if (currentWindowGlobal) {
+        let { documentPrincipal } = currentWindowGlobal;
+        let { baseDomain } = documentPrincipal;
+        btpHasPurgedSite =
+          bounceTrackingProtection.hasRecentlyPurgedSite(baseDomain);
+      }
+    }
+
     return {
       blockList: this.#getAntitrackingBlockList(),
       isPrivateBrowsing: browsingContext.usePrivateBrowsing,
@@ -33,6 +63,8 @@ export class ReportBrokenSiteParent extends JSWindowActorParent {
         browsingContext.secureBrowserUI.state &
         Ci.nsIWebProgressListener.STATE_BLOCKED_MIXED_DISPLAY_CONTENT
       ),
+      btpHasPurgedSite,
+      etpCategory: this.#getETPCategory(),
     };
   }
 
@@ -166,8 +198,11 @@ export class ReportBrokenSiteParent extends JSWindowActorParent {
       "gfx.webrender.software",
       "browser.opaqueResponseBlocking",
       "extensions.InstallTrigger.enabled",
+      "layout.css.h1-in-section-ua-styles.enabled",
       "privacy.resistFingerprinting",
       "privacy.globalprivacycontrol.enabled",
+      "network.cookie.cookieBehavior.optInPartitioning",
+      "network.cookie.cookieBehavior.optInPartitioning.pbmode",
     ]) {
       prefs[name] = Services.prefs.getBoolPref(name, undefined);
     }
@@ -223,10 +258,63 @@ export class ReportBrokenSiteParent extends JSWindowActorParent {
     return result;
   }
 
+  static AUTOMATION_ADDON_IDS = [
+    "mochikit@mozilla.org",
+    "special-powers@mozilla.org",
+  ];
+
+  static WANTED_ADDON_LOCATIONS = ["app-profile", "app-temporary"];
+
+  #getActiveAddons(troubleshootingInfo) {
+    const { addons } = troubleshootingInfo;
+    if (!addons) {
+      return [];
+    }
+    // We only care about enabled addons (not themes) the user
+    // installed, not ones bundled with Firefox.
+    const toReport = addons.filter(
+      ({ id, isActive, type, locationName }) =>
+        (!Cu.isInAutomation ||
+          !ReportBrokenSiteParent.AUTOMATION_ADDON_IDS.includes(id)) &&
+        isActive &&
+        type === "extension" &&
+        ReportBrokenSiteParent.WANTED_ADDON_LOCATIONS.includes(locationName)
+    );
+    return toReport.map(({ id, name, version, locationName }) => {
+      return {
+        id,
+        name,
+        temporary: locationName === "app-temporary",
+        version,
+      };
+    });
+  }
+
+  #getActiveExperiments(troubleshootingInfo) {
+    if (!troubleshootingInfo?.normandy) {
+      return [];
+    }
+    const {
+      normandy: { nimbusExperiments, nimbusRollouts },
+    } = troubleshootingInfo;
+    return [
+      nimbusExperiments.map(({ slug, branch }) => {
+        return { slug, branch: branch.slug, kind: "nimbusExperiment" };
+      }),
+      nimbusRollouts.map(({ slug, branch }) => {
+        return { slug, branch: branch.slug, kind: "nimbusRollout" };
+      }),
+    ]
+      .flat()
+      .sort((a, b) => a.slug.localeCompare(b.slug));
+  }
+
   async #getBrowserInfo() {
     const troubleshootingInfo = await Troubleshoot.snapshot();
     return {
+      addons: this.#getActiveAddons(troubleshootingInfo),
       app: this.#getAppInfo(troubleshootingInfo),
+      experiments: this.#getActiveExperiments(troubleshootingInfo),
       graphics: this.#getGraphicsInfo(troubleshootingInfo),
       locales: troubleshootingInfo.intl.localeService.available,
       prefs: this.#getPrefs(),
@@ -247,24 +335,33 @@ export class ReportBrokenSiteParent extends JSWindowActorParent {
       undefined // resetScrollPosition
     );
 
-    const doc = Services.appShell.hiddenDOMWindow.document;
-    const canvas = doc.createElement("canvas");
-    canvas.width = image.width;
-    canvas.height = image.height;
+    const canvas = new OffscreenCanvas(image.width, image.height);
 
-    const ctx = canvas.getContext("2d", { alpha: false });
-    ctx.drawImage(image, 0, 0);
-    image.close();
+    const ctx = canvas.getContext("bitmaprenderer", { alpha: false });
+    ctx.transferFromImageBitmap(image);
 
-    return canvas.toDataURL(`image/${format}`, quality / 100);
+    const blob = await canvas.convertToBlob({
+      type: `image/${format}`,
+      quality: quality / 100,
+    });
+
+    const dataURL = await new Promise((resolve, reject) => {
+      let reader = new FileReader();
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = () => reject(reader.error);
+      reader.readAsDataURL(blob);
+    });
+
+    return dataURL;
   }
 
   async receiveMessage(msg) {
     switch (msg.name) {
       case "GetWebcompatInfoFromParentProcess": {
+        const { browsingContext } = msg.target;
         const { format, quality } = msg.data;
         const screenshot = await this.#getScreenshot(
-          msg.target.browsingContext,
+          browsingContext,
           format,
           quality
         ).catch(e => {
@@ -272,9 +369,14 @@ export class ReportBrokenSiteParent extends JSWindowActorParent {
           return Promise.resolve(undefined);
         });
 
+        const zoom = browsingContext.fullZoom;
+        const scale = browsingContext.topChromeWindow?.devicePixelRatio || 1;
+        const devicePixelRatio = scale * zoom;
+
         return {
           antitracking: this.#getAntitrackingInfo(msg.target.browsingContext),
           browser: await this.#getBrowserInfo(),
+          devicePixelRatio,
           screenshot,
         };
       }

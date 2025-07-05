@@ -25,6 +25,7 @@
 #include "mozilla/fallible.h"
 #include "nsPointerHashKeys.h"
 #include "nsTArrayForwardDeclare.h"
+#include "nsCycleCollectionContainerParticipant.h"
 
 template <class EntryType>
 class nsTHashtable;
@@ -168,7 +169,8 @@ class nsTHashtableKeyRange {
 };
 
 template <typename EntryType>
-auto RangeSize(const ::detail::nsTHashtableKeyRange<EntryType>& aRange) {
+size_t RangeSizeEstimate(
+    const ::detail::nsTHashtableKeyRange<EntryType>& aRange) {
   return aRange.Count();
 }
 
@@ -721,19 +723,21 @@ void nsTHashtable<EntryType>::s_ClearEntry(PLDHashTable* aTable,
 }
 
 class nsCycleCollectionTraversalCallback;
+struct TraceCallbacks;
 
 template <class EntryType>
 inline void ImplCycleCollectionUnlink(nsTHashtable<EntryType>& aField) {
   aField.Clear();
 }
 
-template <class EntryType>
-inline void ImplCycleCollectionTraverse(
-    nsCycleCollectionTraversalCallback& aCallback,
-    nsTHashtable<EntryType>& aField, const char* aName, uint32_t aFlags = 0) {
-  for (auto iter = aField.Iter(); !iter.Done(); iter.Next()) {
-    EntryType* entry = iter.Get();
-    ImplCycleCollectionTraverse(aCallback, *entry, aName, aFlags);
+// Function template constrained to types that are (possibly const)
+// nsTHashtable.
+template <typename Container, typename Callback,
+          EnableCycleCollectionIf<Container, nsTHashtable> = nullptr>
+inline void ImplCycleCollectionContainer(Container&& aField,
+                                         Callback&& aCallback) {
+  for (auto& entry : aField) {
+    aCallback(entry);
   }
 }
 

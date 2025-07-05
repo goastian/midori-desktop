@@ -37,7 +37,7 @@ function checkMixed(loadedModules, context, node, type, resourceURI) {
 module.exports = {
   meta: {
     docs: {
-      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/tools/lint/eslint/eslint-plugin-mozilla/lib/rules/reject-mixed-eager-and-lazy.html",
+      url: "https://firefox-source-docs.mozilla.org/code-quality/lint/linters/eslint-plugin-mozilla/rules/reject-mixing-eager-and-lazy.html",
     },
     messages: {
       mixedEagerAndLazy:
@@ -68,10 +68,9 @@ module.exports = {
         }
 
         if (
-          (callerSource === "ChromeUtils.import" ||
-            callerSource === "ChromeUtils.importESModule") &&
+          callerSource === "ChromeUtils.importESModule" &&
           helpers.getIsTopLevelAndUnconditionallyExecuted(
-            helpers.getAncestors(context, node)
+            context.sourceCode.getAncestors(node)
           )
         ) {
           if (node.arguments.length < 1) {
@@ -90,29 +89,7 @@ module.exports = {
           );
         }
 
-        if (callerSource === "ChromeUtils.defineModuleGetter") {
-          if (node.arguments.length < 3) {
-            return;
-          }
-          if (!isIdentifier(node.arguments[0], "lazy")) {
-            return;
-          }
-
-          const resourceURINode = node.arguments[2];
-          if (!isString(resourceURINode)) {
-            return;
-          }
-          checkMixed(
-            loadedModules,
-            context,
-            node,
-            "lazy",
-            resourceURINode.value
-          );
-        } else if (
-          callerSource === "XPCOMUtils.defineLazyModuleGetters" ||
-          callerSource === "ChromeUtils.defineESModuleGetters"
-        ) {
+        if (callerSource === "ChromeUtils.defineESModuleGetters") {
           if (node.arguments.length < 2) {
             return;
           }

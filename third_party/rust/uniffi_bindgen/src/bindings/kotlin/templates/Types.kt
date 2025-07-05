@@ -12,12 +12,40 @@ interface Disposable {
     fun destroy()
     companion object {
         fun destroy(vararg args: Any?) {
-            args.filterIsInstance<Disposable>()
-                .forEach(Disposable::destroy)
+            for (arg in args) {
+                when (arg) {
+                    is Disposable -> arg.destroy()
+                    is ArrayList<*> -> {
+                        for (idx in arg.indices) {
+                            val element = arg[idx]
+                            if (element is Disposable) {
+                                element.destroy()
+                            }
+                        }
+                    }
+                    is Map<*, *> -> {
+                        for (element in arg.values) {
+                            if (element is Disposable) {
+                                element.destroy()
+                            }
+                        }
+                    }
+                    is Iterable<*> -> {
+                        for (element in arg) {
+                            if (element is Disposable) {
+                                element.destroy()
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }
 
+/**
+ * @suppress
+ */
 inline fun <T : Disposable?, R> T.use(block: (T) -> R) =
     try {
         block(this)
@@ -30,10 +58,22 @@ inline fun <T : Disposable?, R> T.use(block: (T) -> R) =
         }
     }
 
-/** Used to instantiate an interface without an actual pointer, for fakes in tests, mostly. */
+/** 
+ * Used to instantiate an interface without an actual pointer, for fakes in tests, mostly.
+ *
+ * @suppress
+ * */
 object NoPointer
 
-{%- for type_ in ci.iter_types() %}
+{%- if ci.has_callback_definitions() %}
+{%- include "CallbackInterfaceRuntime.kt" %}
+{%- endif %}
+
+{%- if ci.has_object_definitions() %}
+{%- include "ObjectCleanerHelper.kt" %}
+{%- endif %}
+
+{%- for type_ in ci.iter_local_types() %}
 {%- let type_name = type_|type_name(ci) %}
 {%- let ffi_converter_name = type_|ffi_converter_name %}
 {%- let canonical_type_name = type_|canonical_name %}
@@ -97,7 +137,7 @@ object NoPointer
 {% include "ErrorTemplate.kt" %}
 {%- endif -%}
 
-{%- when Type::Object { module_path, name, imp } %}
+{%- when Type::Object { module_path, name, .. } %}
 {% include "ObjectTemplate.kt" %}
 
 {%- when Type::Record { name, module_path } %}
@@ -122,13 +162,20 @@ object NoPointer
 {% include "DurationHelper.kt" %}
 
 {%- when Type::Custom { module_path, name, builtin } %}
-{% include "CustomTypeTemplate.kt" %}
-
-{%- when Type::External { module_path, name, namespace, kind, tagged } %}
+{%- if ci.is_external(type_) %}
 {% include "ExternalTypeTemplate.kt" %}
+{%- else %}
+{% include "CustomTypeTemplate.kt" %}
+{%- endif %}
 
 {%- else %}
 {%- endmatch %}
+{%- endfor %}
+
+{%- for type_ in ci.iter_external_types() %}
+{%- let name = type_.name().unwrap() %}
+{%- let module_path = type_.module_path().unwrap() %}
+{% include "ExternalTypeTemplate.kt" %}
 {%- endfor %}
 
 {%- if ci.has_async_fns() %}

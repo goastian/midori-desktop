@@ -30,13 +30,6 @@ const LoginInfo = Components.Constructor(
 );
 
 /**
- * The maximum age of the password in ms (using `timePasswordChanged`) whereby
- * a user can toggle the password visibility in a doorhanger to add a username to
- * a saved login.
- */
-const VISIBILITY_TOGGLE_MAX_PW_AGE_MS = 2 * 60 * 1000; // 2 minutes
-
-/**
  * Constants for password prompt telemetry.
  */
 const PROMPT_DISPLAYED = 0;
@@ -220,17 +213,23 @@ export class LoginManagerPrompter {
       type == "password-save"
         ? "PWMGR_PROMPT_REMEMBER_ACTION"
         : "PWMGR_PROMPT_UPDATE_ACTION";
-    const histogram = Services.telemetry.getHistogramById(histogramName);
+    const histogramAdd = sample => {
+      if (type == "password-save") {
+        Glean.pwmgr.promptRememberAction.accumulateSingleSample(sample);
+      } else {
+        Glean.pwmgr.promptUpdateAction.accumulateSingleSample(sample);
+      }
+    };
 
     const chromeDoc = browser.ownerDocument;
     let currentNotification;
 
     const wasModifiedEvent = {
       // Values are mutated
-      did_edit_un: "false",
-      did_select_un: "false",
-      did_edit_pw: "false",
-      did_select_pw: "false",
+      did_edit_un: false,
+      did_select_un: false,
+      did_edit_pw: false,
+      did_select_pw: false,
     };
 
     const updateButtonStatus = element => {
@@ -294,10 +293,6 @@ export class LoginManagerPrompter {
       nameField.placeholder = usernamePlaceholder;
       nameField.value = login.username;
 
-      const toggleCheckbox = chromeDoc.getElementById(
-        "password-notification-visibilityToggle"
-      );
-      toggleCheckbox.removeAttribute("checked");
       const passwordField = chromeDoc.getElementById(
         "password-notification-password"
       );
@@ -323,49 +318,31 @@ export class LoginManagerPrompter {
     };
 
     const onUsernameInput = () => {
-      wasModifiedEvent.did_edit_un = "true";
-      wasModifiedEvent.did_select_un = "false";
+      wasModifiedEvent.did_edit_un = true;
+      wasModifiedEvent.did_select_un = false;
       onInput();
     };
 
     const onUsernameSelect = () => {
-      wasModifiedEvent.did_edit_un = "false";
-      wasModifiedEvent.did_select_un = "true";
+      wasModifiedEvent.did_edit_un = false;
+      wasModifiedEvent.did_select_un = true;
     };
 
     const onPasswordInput = () => {
-      wasModifiedEvent.did_edit_pw = "true";
-      wasModifiedEvent.did_select_pw = "false";
+      wasModifiedEvent.did_edit_pw = true;
+      wasModifiedEvent.did_select_pw = false;
       onInput();
     };
 
     const onPasswordSelect = () => {
-      wasModifiedEvent.did_edit_pw = "false";
-      wasModifiedEvent.did_select_pw = "true";
+      wasModifiedEvent.did_edit_pw = false;
+      wasModifiedEvent.did_select_pw = true;
     };
 
     const onKeyUp = e => {
       if (e.key == "Enter") {
         e.target.closest("popupnotification").button.doCommand();
       }
-    };
-
-    const onVisibilityToggle = commandEvent => {
-      const passwordField = chromeDoc.getElementById(
-        "password-notification-password"
-      );
-      // Gets the caret position before changing the type of the textbox
-      const selectionStart = passwordField.selectionStart;
-      const selectionEnd = passwordField.selectionEnd;
-      passwordField.setAttribute(
-        "type",
-        commandEvent.target.checked ? "" : "password"
-      );
-      if (!passwordField.hasAttribute("focused")) {
-        return;
-      }
-      passwordField.selectionStart = selectionStart;
-      passwordField.selectionEnd = selectionEnd;
     };
 
     const togglePopup = event => {
@@ -444,7 +421,7 @@ export class LoginManagerPrompter {
         Services.logins.recordPasswordUse(
           loginToUpdate,
           PrivateBrowsingUtils.isBrowserPrivate(browser),
-          loginToUpdate.username ? "form_password" : "form_login",
+          loginToUpdate.username ? "FormPassword" : "FormLogin",
           !!autoFilledLoginGuid
         );
       } else {
@@ -465,11 +442,6 @@ export class LoginManagerPrompter {
       }
     };
 
-    const supportedHistogramNames = {
-      PWMGR_PROMPT_REMEMBER_ACTION: true,
-      PWMGR_PROMPT_UPDATE_ACTION: true,
-    };
-
     const mainButton = this.getLabelAndAccessKey(initialMessageIds.mainButton);
 
     // The main action is the "Save" or "Update" button.
@@ -479,11 +451,11 @@ export class LoginManagerPrompter {
       callback: async () => {
         const eventTypeMapping = {
           "password-save": {
-            eventObject: "save",
+            eventObject: "Save",
             confirmationHintFtlId: "confirmation-hint-password-created",
           },
           "password-change": {
-            eventObject: "update",
+            eventObject: "Update",
             confirmationHintFtlId: "confirmation-hint-password-updated",
           },
         };
@@ -508,10 +480,7 @@ export class LoginManagerPrompter {
             }
           }
         }
-        histogram.add(PROMPT_ADD_OR_UPDATE);
-        if (!supportedHistogramNames[histogramName]) {
-          throw new Error("Unknown histogram");
-        }
+        histogramAdd(PROMPT_ADD_OR_UPDATE);
 
         showConfirmation(browser, eventTypeMapping[type].confirmationHintFtlId);
         // The popup does not wait until this promise is resolved, but is
@@ -520,13 +489,9 @@ export class LoginManagerPrompter {
         browser.focus();
         await persistData();
 
-        Services.telemetry.recordEvent(
-          "pwmgr",
-          "doorhanger_submitted",
-          eventTypeMapping[type].eventObject,
-          null,
-          wasModifiedEvent
-        );
+        Glean.pwmgr[
+          "doorhangerSubmitted" + eventTypeMapping[type].eventObject
+        ].record(wasModifiedEvent);
 
         if (histogramName == "PWMGR_PROMPT_REMEMBER_ACTION") {
           Services.obs.notifyObservers(browser, "LoginStats:NewSavedPassword");
@@ -551,7 +516,7 @@ export class LoginManagerPrompter {
         label: secondaryButton.label,
         accessKey: secondaryButton.accessKey,
         callback: () => {
-          histogram.add(PROMPT_NOTNOW_OR_DONTUPDATE);
+          histogramAdd(PROMPT_NOTNOW_OR_DONTUPDATE);
           Services.obs.notifyObservers(
             null,
             "weave:telemetry:histogram",
@@ -570,7 +535,7 @@ export class LoginManagerPrompter {
         label: neverSaveButton.label,
         accessKey: neverSaveButton.accessKey,
         callback: () => {
-          histogram.add(PROMPT_NEVER);
+          histogramAdd(PROMPT_NEVER);
           Services.obs.notifyObservers(
             null,
             "weave:telemetry:histogram",
@@ -592,7 +557,7 @@ export class LoginManagerPrompter {
         label: updatePasswordButtonDelete.label,
         accessKey: updatePasswordButtonDelete.accessKey,
         callback: async () => {
-          histogram.add(PROMPT_DELETE);
+          histogramAdd(PROMPT_DELETE);
           Services.obs.notifyObservers(
             null,
             "weave:telemetry:histogram",
@@ -612,9 +577,6 @@ export class LoginManagerPrompter {
 
     const usernamePlaceholder = lazy.l10n.formatValueSync(
       "password-manager-no-username-placeholder"
-    );
-    const togglePassword = this.getLabelAndAccessKey(
-      "password-manager-toggle-password"
     );
 
     // .wrappedJSObject needed here -- see bug 422974 comment 5.
@@ -642,7 +604,7 @@ export class LoginManagerPrompter {
 
                 // Record the first time this instance of the doorhanger is shown.
                 if (!this.timeShown) {
-                  histogram.add(PROMPT_DISPLAYED);
+                  histogramAdd(PROMPT_DISPLAYED);
                   Services.obs.notifyObservers(
                     null,
                     "weave:telemetry:histogram",
@@ -694,37 +656,6 @@ export class LoginManagerPrompter {
                   }
                 });
 
-                const toggleBtn = chromeDoc.getElementById(
-                  "password-notification-visibilityToggle"
-                );
-
-                if (
-                  Services.prefs.getBoolPref(
-                    "signon.rememberSignons.visibilityToggle"
-                  )
-                ) {
-                  toggleBtn.addEventListener("command", onVisibilityToggle);
-
-                  toggleBtn.setAttribute("label", togglePassword.label);
-                  toggleBtn.setAttribute("accesskey", togglePassword.accessKey);
-
-                  const hideToggle =
-                    lazy.LoginHelper.isPrimaryPasswordSet() ||
-                    // Don't show the toggle when the login was autofilled
-                    !!autoFilledLoginGuid ||
-                    // Dismissed-by-default prompts should still show the toggle.
-                    (this.timeShown && this.wasDismissed) ||
-                    // If we are only adding a username then the password is
-                    // one that is already saved and we don't want to reveal
-                    // it as the submitter of this form may not be the account
-                    // owner, they may just be using the saved password.
-                    (messageStringID ==
-                      "password-manager-update-login-add-username" &&
-                      login.timePasswordChanged <
-                        Date.now() - VISIBILITY_TOGGLE_MAX_PW_AGE_MS);
-                  toggleBtn.hidden = hideToggle;
-                }
-
                 let popup = chromeDoc.getElementById("PopupAutoComplete");
                 popup.onUsernameSelect = onUsernameSelect;
                 popup.onPasswordSelect = onPasswordSelect;
@@ -765,7 +696,6 @@ export class LoginManagerPrompter {
               );
               passwordField.removeEventListener("input", onPasswordInput);
               passwordField.removeEventListener("keyup", onKeyUp);
-              passwordField.removeEventListener("command", onVisibilityToggle);
               chromeDoc
                 .getElementById("password-notification-username-dropmarker")
                 .removeEventListener("click", togglePopup);
@@ -994,7 +924,7 @@ export class LoginManagerPrompter {
     try {
       const uri = Services.io.newURI(aURIString);
       const baseDomain = Services.eTLD.getBaseDomain(uri);
-      displayHost = idnService.convertToDisplayIDN(baseDomain, {});
+      displayHost = idnService.convertToDisplayIDN(baseDomain);
     } catch (e) {
       lazy.log.warn(`Couldn't process supplied URIString: ${aURIString}`);
     }

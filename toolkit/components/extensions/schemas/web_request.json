@@ -40,7 +40,6 @@
           "script",
           "image",
           "object",
-          "object_subrequest",
           "xmlhttprequest",
           "xslt",
           "ping",
@@ -53,6 +52,7 @@
           "imageset",
           "web_manifest",
           "speculative",
+          "json",
           "other"
         ]
       },
@@ -401,6 +401,7 @@
           "cryptomining_content",
           "emailtracking",
           "emailtracking_content",
+          "consentmanager",
           "tracking",
           "tracking_ad",
           "tracking_analytics",

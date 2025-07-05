@@ -15,12 +15,9 @@ namespace mozilla::widget {
 // Window types
 enum class WindowType : uint8_t {
   TopLevel,   // default top level window
-  Dialog,     // top level window but usually handled differently
-              // by the OS
+  Dialog,     // top level window but usually handled differently by the OS
   Popup,      // used for combo boxes, etc
-  Child,      // child windows (contained inside a window on the
-              // desktop (has no border))
-  Invisible,  // windows that are invisible or offscreen
+  Invisible,  // a special hidden window (not to be created by arbitrary code)
 };
 
 // Popup types for WindowType::Popup
@@ -77,7 +74,7 @@ enum class TransparencyMode : uint8_t {
 // Basic struct for widget initialization data.
 // @see Create member function of nsIWidget
 struct InitData {
-  WindowType mWindowType = WindowType::Child;
+  WindowType mWindowType = WindowType::TopLevel;
   BorderStyle mBorderStyle = BorderStyle::Default;
   PopupType mPopupHint = PopupType::Panel;
   PopupLevel mPopupLevel = PopupLevel::Top;
@@ -86,7 +83,6 @@ struct InitData {
   bool mClipChildren = false;
   bool mClipSiblings = false;
   bool mRTL = false;
-  bool mNoAutoHide = false;   // true for noautohide panels
   bool mIsDragPopup = false;  // true for drag feedback panels
   // true if window creation animation is suppressed, e.g. for session restore
   bool mIsAnimationSuppressed = false;

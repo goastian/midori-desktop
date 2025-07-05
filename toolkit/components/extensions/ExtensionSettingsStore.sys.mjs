@@ -3,6 +3,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+/* eslint-disable mozilla/valid-lazy */
 
 /**
  * @file
@@ -36,14 +37,12 @@
  *     }
  *   }
  * }
- *
  */
 
+import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 import { ExtensionParent } from "resource://gre/modules/ExtensionParent.sys.mjs";
 
-const lazy = {};
-
-ChromeUtils.defineESModuleGetters(lazy, {
+const lazy = XPCOMUtils.declareLazy({
   AddonManager: "resource://gre/modules/AddonManager.sys.mjs",
   JSONFile: "resource://gre/modules/JSONFile.sys.mjs",
 });
@@ -546,7 +545,7 @@ export var ExtensionSettingsStore = {
    *
    * @param {string} type The type of setting to be returned.
    * @param {string} key A string that uniquely identifies the setting.
-   * @param {string} id
+   * @param {string} [id]
    *        The id of the extension for which the setting is being retrieved.
    *        Defaults to undefined, in which case the top setting is returned.
    *

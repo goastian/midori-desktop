@@ -14,7 +14,6 @@ about-httpsonly-explanation-risk = It’s also possible that an attacker is invo
 about-httpsonly-explanation-continue = If you continue, HTTPS-Only Mode will be turned off temporarily for this site.
 about-httpsonly-explanation-iframe = Due to mixed content blocking, it is not possible to manually allow this frame to load.
 
-
 about-httpsonly-button-continue-to-site = Continue to HTTP Site
 about-httpsonly-button-go-back = Go Back
 about-httpsonly-link-learn-more = Learn More…
