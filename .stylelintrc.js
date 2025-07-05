@@ -9,9 +9,9 @@
 const fs = require("fs");
 const path = require("path");
 
-function readFile(path) {
+function readFile(filePath) {
   return fs
-    .readFileSync(path, { encoding: "utf-8" })
+    .readFileSync(filePath, { encoding: "utf-8" })
     .split("\n")
     .filter(p => p && !p.startsWith("#"));
 }
@@ -25,6 +25,10 @@ const ignoreFiles = [
 
 module.exports = {
   extends: ["stylelint-config-recommended"],
+  plugins: [
+    "./tools/lint/stylelint/stylelint-plugin-mozilla/index.mjs",
+    "@stylistic/stylelint-plugin",
+  ],
   ignoreFiles,
   rules: {
     /* Disabled because of `-moz-element(#foo)` which gets misparsed. */
@@ -48,7 +52,15 @@ module.exports = {
         ignoreFunctions: [
           "light-dark" /* Used for color-scheme dependent colors */,
           "add" /* Used in mathml.css */,
+          "-moz-symbolic-icon" /* Used for GTK icons */,
         ],
+      },
+    ],
+
+    "length-zero-no-unit": [
+      true,
+      {
+        ignore: ["custom-properties"],
       },
     ],
 
@@ -65,7 +77,14 @@ module.exports = {
     "property-no-unknown": [
       true,
       {
-        ignoreProperties: ["overflow-clip-box"],
+        ignoreProperties: [
+          // overflow-clip-box is Gecko-specific and not exposed to web
+          // content. Might be replaced with overflow-clip-margin, see:
+          // https://github.com/w3c/csswg-drafts/issues/10745
+          "overflow-clip-box",
+          "overflow-clip-box-block",
+          "overflow-clip-box-inline",
+        ],
       },
     ],
 
@@ -249,6 +268,7 @@ module.exports = {
         ignorePseudoElements: ["slider-track", "slider-fill", "slider-thumb"],
       },
     ],
+    "stylelint-plugin-mozilla/no-base-design-tokens": true,
   },
 
   overrides: [
@@ -261,11 +281,23 @@ module.exports = {
       files: [
         "browser/components/aboutwelcome/**",
         "browser/components/asrouter/**",
-        "browser/components/newtab/**",
+        "browser/extensions/newtab/**",
       ],
       customSyntax: "postcss-scss",
       extends: "stylelint-config-standard-scss",
       rules: {
+        "@stylistic/color-hex-case": "upper",
+        "@stylistic/indentation": 2,
+        "@stylistic/no-eol-whitespace": true,
+        "@stylistic/no-missing-end-of-source-newline": true,
+        "@stylistic/number-leading-zero": "always",
+        "@stylistic/number-no-trailing-zeros": true,
+        "@stylistic/string-quotes": [
+          "single",
+          {
+            avoidEscape: true,
+          },
+        ],
         "at-rule-disallowed-list": [
           ["debug", "warn", "error"],
           {
@@ -274,7 +306,6 @@ module.exports = {
         ],
         "at-rule-no-vendor-prefix": null,
         "color-function-notation": null,
-        "color-hex-case": "upper",
         "comment-empty-line-before": [
           "always",
           {
@@ -294,14 +325,9 @@ module.exports = {
           },
         ],
         "function-url-no-scheme-relative": true,
-        indentation: 2,
         "keyframes-name-pattern": null,
         "media-feature-name-no-vendor-prefix": null,
         "no-descending-specificity": null,
-        "no-eol-whitespace": true,
-        "no-missing-end-of-source-newline": true,
-        "number-leading-zero": "always",
-        "number-no-trailing-zeros": true,
         "property-disallowed-list": [
           ["margin-left", "margin-right"],
           {
@@ -320,14 +346,30 @@ module.exports = {
         ],
         "selector-class-pattern": null,
         "selector-no-vendor-prefix": null,
-        "string-quotes": [
-          "single",
-          {
-            avoidEscape: true,
-          },
-        ],
         "value-keyword-case": null,
         "value-no-vendor-prefix": null,
+      },
+    },
+    {
+      files: ["browser/extensions/newtab/**"],
+      rules: {
+        "declaration-property-value-disallowed-list": [
+          {
+            "font-size": [
+              "/^[0-9.]+(px|em|rem|%)$/",
+              "/^[0-9.]+$/",
+              "/^(small|medium|large|x-large|xx-large)$/",
+            ],
+            "border-radius": [
+              "/^[0-9.]+(px|em|rem|%)$/",
+              "/^(small|medium|large|x-large|xx-large)$/",
+            ],
+          },
+          {
+            message:
+              "Avoid literal values. Use variables (e.g. var(--font-size-small)) or inherit/unset/etc.",
+          },
+        ],
       },
     },
   ],

@@ -3,8 +3,6 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 import codecs
-import errno
-import io
 import itertools
 import logging
 import os
@@ -20,8 +18,8 @@ sys.path.insert(0, os.path.join(base_dir, "python", "mozbuild"))
 sys.path.insert(0, os.path.join(base_dir, "third_party", "python", "packaging"))
 sys.path.insert(0, os.path.join(base_dir, "third_party", "python", "six"))
 sys.path.insert(0, os.path.join(base_dir, "third_party", "python", "looseversion"))
+sys.path.insert(0, os.path.join(base_dir, "third_party", "python", "filelock"))
 import mozpack.path as mozpath
-import six
 from mach.requirements import MachEnvRequirements
 from mach.site import (
     CommandSiteManager,
@@ -47,7 +45,7 @@ else:
 
 def main(argv):
     # Check for CRLF line endings.
-    with open(__file__, "r") as fh:
+    with open(__file__) as fh:
         data = fh.read()
         if "\r" in data:
             print(
@@ -74,9 +72,6 @@ def main(argv):
             return 1
 
     config = {}
-
-    if "OLD_CONFIGURE" not in os.environ:
-        os.environ["OLD_CONFIGURE"] = os.path.join(base_dir, "old-configure")
 
     sandbox = ConfigureSandbox(config, os.environ, argv)
 
@@ -146,33 +141,21 @@ def main(argv):
 
     buildstatus("START_configure config.status")
     logging.getLogger("moz.configure").info("Creating config.status")
-
-    old_js_configure_substs = config.pop("OLD_JS_CONFIGURE_SUBSTS", None)
-    old_js_configure_defines = config.pop("OLD_JS_CONFIGURE_DEFINES", None)
     try:
-        if old_js_configure_substs or old_js_configure_defines:
-            js_config = config.copy()
-            pwd = os.getcwd()
-            try:
-                try:
-                    os.makedirs("js/src")
-                except OSError as e:
-                    if e.errno != errno.EEXIST:
-                        raise
-
-                os.chdir("js/src")
-                js_config["OLD_CONFIGURE_SUBSTS"] = old_js_configure_substs
-                js_config["OLD_CONFIGURE_DEFINES"] = old_js_configure_defines
-                # The build system frontend expects $objdir/js/src/config.status
-                # to have $objdir/js/src as topobjdir.
-                # We want forward slashes on all platforms.
-                js_config["TOPOBJDIR"] += "/js/src"
-                ret = config_status(js_config, execute=False)
-                if ret:
-                    return ret
-            finally:
-                os.chdir(pwd)
-
+        js_config = config.copy()
+        pwd = os.getcwd()
+        try:
+            os.makedirs("js/src", exist_ok=True)
+            os.chdir("js/src")
+            # The build system frontend expects $objdir/js/src/config.status
+            # to have $objdir/js/src as topobjdir.
+            # We want forward slashes on all platforms.
+            js_config["TOPOBJDIR"] += "/js/src"
+            ret = config_status(js_config, execute=False)
+            if ret:
+                return ret
+        finally:
+            os.chdir(pwd)
         return config_status(config)
     finally:
         buildstatus("END_configure config.status")
@@ -182,7 +165,7 @@ def check_unicode(obj):
     """Recursively check that all strings in the object are unicode strings."""
     if isinstance(obj, dict):
         result = True
-        for k, v in six.iteritems(obj):
+        for k, v in obj.items():
             if not check_unicode(k):
                 print("%s key is not unicode." % k, file=sys.stderr)
                 result = False
@@ -192,7 +175,7 @@ def check_unicode(obj):
         return result
     if isinstance(obj, bytes):
         return False
-    if isinstance(obj, six.text_type):
+    if isinstance(obj, str):
         return True
     if isinstance(obj, Iterable):
         return all(check_unicode(o) for o in obj)
@@ -210,31 +193,25 @@ def config_status(config, execute=True):
         if v is False:
             return ""
         # Serialize types that look like lists and tuples as lists.
-        if not isinstance(v, (bytes, six.text_type, dict)) and isinstance(v, Iterable):
+        if not isinstance(v, (bytes, str, dict)) and isinstance(v, Iterable):
             return list(v)
         return v
 
     sanitized_config = {}
     sanitized_config["substs"] = {
         k: sanitize_config(v)
-        for k, v in six.iteritems(config)
+        for k, v in config.items()
         if k
         not in (
             "DEFINES",
             "TOPSRCDIR",
             "TOPOBJDIR",
             "CONFIG_STATUS_DEPS",
-            "OLD_CONFIGURE_SUBSTS",
-            "OLD_CONFIGURE_DEFINES",
         )
     }
-    for k, v in config["OLD_CONFIGURE_SUBSTS"]:
-        sanitized_config["substs"][k] = sanitize_config(v)
     sanitized_config["defines"] = {
-        k: sanitize_config(v) for k, v in six.iteritems(config["DEFINES"])
+        k: sanitize_config(v) for k, v in config["DEFINES"].items()
     }
-    for k, v in config["OLD_CONFIGURE_DEFINES"]:
-        sanitized_config["defines"][k] = sanitize_config(v)
     sanitized_config["topsrcdir"] = config["TOPSRCDIR"]
     sanitized_config["topobjdir"] = config["TOPOBJDIR"]
     sanitized_config["mozconfig"] = config.get("MOZCONFIG")
@@ -258,7 +235,7 @@ def config_status(config, execute=True):
             )
             % {"python": config["PYTHON3"]}
         )
-        for k, v in sorted(six.iteritems(sanitized_config)):
+        for k, v in sorted(sanitized_config.items()):
             fh.write("%s = " % k)
             pprint.pprint(v, stream=fh, indent=4)
         fh.write(
@@ -282,7 +259,7 @@ def config_status(config, execute=True):
 
     # Write out a file so the build backend knows to re-run configure when
     # relevant Python changes.
-    with io.open("config_status_deps.in", "w", encoding="utf-8", newline="\n") as fh:
+    with open("config_status_deps.in", "w", encoding="utf-8", newline="\n") as fh:
         for f in sorted(
             itertools.chain(
                 config["CONFIG_STATUS_DEPS"],

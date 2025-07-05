@@ -24,12 +24,10 @@ endif
 include $(topsrcdir)/config/config.mk
 
 ifneq (mobile/android,$(MOZ_BUILD_APP))
-# We only want to generate buildid.h once, during the export phase.
-ifeq ($(MAKECMDGOALS),buildid.h)
-$(MDDEPDIR)/buildid.h.stub: FORCE
-endif
-ifeq ($(MAKECMDGOALS),source-repo.h)
-$(MDDEPDIR)/source-repo.h.stub: FORCE
+# We only want to generate buildid.h once, during the (recurse) export phase.
+# faster make build the files explicitly so also match thoses
+ifneq ($(filter $(MAKECMDGOALS),recurse_export buildid.h source-repo.h),)
+$(MDDEPDIR)/buildid.h.stub $(MDDEPDIR)/source-repo.h.stub: FORCE
 endif
 endif
 source-repo.h: $(MDDEPDIR)/source-repo.h.stub
@@ -136,7 +134,7 @@ ifeq ($(MOZ_BUILD_APP),mobile/android)
 recurse_android-stage-package: stage-package
 
 recurse_android-archive-geckoview:
-	GRADLE_INVOKED_WITHIN_MACH_BUILD=1 $(topsrcdir)/mach --log-no-times android archive-geckoview
+	GRADLE_INVOKED_WITHIN_MACH_BUILD=1 $(topsrcdir)/mach --log-no-times android archive-geckoview  $(if $(MOZ_AUTOMATION),--no-configuration-cache)
 endif
 
 ifdef MOZ_WIDGET_TOOLKIT

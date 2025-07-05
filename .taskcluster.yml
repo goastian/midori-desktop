@@ -1,6 +1,6 @@
 # yamllint disable rule:line-length
 # This file is rendered via JSON-e by
-# - hg-push - https://hg.mozilla.org/ci/ci-admin/file/default/build-decision/src/build_decision/hg_push.py
+# - hg-push - https://github.com/mozilla-releng/fxci-config/blob/main/build-decision/src/build_decision/hg_push.py
 #   {
 #     tasks_for: 'hg-push',
 #     push: {owner, comment, pushlog_id, pushdate},
@@ -10,7 +10,7 @@
 #     ownTaskId: // taskId of the task that will be created
 #   }
 #
-# - cron tasks - https://hg.mozilla.org/ci/ci-admin/file/default/build-decision/src/build_decision/cron/decision.py
+# - cron tasks - https://github.com/mozilla-releng/fxci-config/blob/main/build-decision/src/build_decision/cron/decision.py
 #   {
 #     tasks_for: 'cron',
 #     push: {revision, pushlog_id, pushdate, owner}
@@ -22,8 +22,8 @@
 #
 # - action tasks - See:
 #   * taskcluster/gecko_taskgraph/actions/registry.py,
-#   * https://docs.taskcluster.net/docs/manual/using/actions/spec
-#   * ci-admin:ciadmin/generate/in_tree_actions.py
+#   * https://docs.taskcluster.net/docs/manual/design/conventions/actions/spec
+#   * https://github.com/mozilla-releng/fxci-config/blob/main/src/ciadmin/generate/in_tree_actions.py
 #
 #   The registry generates the hookPayload that appears in actions.json, and
 #   contains data from the decision task as well as JSON-e code to combine that
@@ -190,7 +190,7 @@ tasks:
                       then: very-low
                       else: lowest  # tasks_for == 'hg-push'
               retries:
-                  $if: "tasks_for == 'hg-push'"
+                  $if: "tasks_for == 'hg-push' && repository.level != '1'"
                   then: 0
                   else: 5
 
@@ -206,11 +206,13 @@ tasks:
                             GECKO_HEAD_REV: '${push.revision}'
                             HG_STORE_PATH: /builds/worker/checkouts/hg-store
                             TASKCLUSTER_CACHES: /builds/worker/checkouts
+                            TASKCLUSTER_VOLUMES: /builds/worker/artifacts
                             MOZ_AUTOMATION: '1'
                             # mach generates pyc files when reading `mach_commands.py`
                             # This causes cached_task digest generation to be random for
                             # some tasks. Disable bytecode generation to work around that.
                             PYTHONDONTWRITEBYTECODE: '1'
+                            MACH_BUILD_PYTHON_NATIVE_PACKAGE_SOURCE: 'system'
                           - $if: 'tasks_for == "action"'
                             then:
                                 ACTION_TASK_GROUP_ID: '${action.taskGroupId}'  # taskGroupId of the target task
@@ -227,7 +229,7 @@ tasks:
 
                   # Note: This task is built server side without the context or tooling that
                   # exist in tree so we must hard code the hash
-                  image: 'mozillareleases/gecko_decision:4.1.0@sha256:ea73900129328095da4fb033697690d538a08d935298fef4d5fa4aae80273bce'
+                  image: 'mozillareleases/gecko_decision:5.0.0@sha256:9e000c9fd31ee1723927aeea2b82b95ff2ecf32ebdb7a5d893300281a1452670'
 
                   maxRunTime: 3600
 
