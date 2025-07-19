@@ -1227,8 +1227,18 @@ export var Policies = {
           param.Locked
         );
       }
-      if ("Exceptions" in param) {
-        addAllowDenyPermissions("trackingprotection", param.Exceptions);
+      if ("SuspectedFingerprinting" in param) {
+
+        PoliciesUtils.setDefaultPref(
+          "privacy.fingerprintingProtection",
+          param.SuspectedFingerprinting,
+          param.Locked
+        );
+        PoliciesUtils.setDefaultPref(
+          "privacy.fingerprintingProtection.pbmode",
+          param.SuspectedFingerprinting,
+          param.Locked
+        );
       }
     },
   },
