@@ -399,7 +399,7 @@ export let ContentBlockingPrefs = {
    *
    * @param {CBCategory} category
    */
-  setPrefsToCategory(category) {
+  setPrefsToCategory(category, lockPrefs) {
     // Leave prefs as they were if we are switching to "custom" category.
     if (category == "custom") {
       return;
@@ -421,6 +421,9 @@ export let ContentBlockingPrefs = {
             case Services.prefs.PREF_STRING:
               Services.prefs.setStringPref(pref, value);
               break;
+          }
+          if (lockPrefs) {
+            Services.prefs.lockPref(pref);
           }
         }
       }
