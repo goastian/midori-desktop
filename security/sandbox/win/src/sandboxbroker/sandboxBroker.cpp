@@ -1243,7 +1243,7 @@ void SandboxBroker::SetSecurityLevelForGPUProcess(int32_t aSandboxLevel) {
   if (aSandboxLevel >= 2) {
     //add rule to allow access to user specific fonts.
     AddCachedDirRule(mPolicy, sandbox::TargetPolicy::FILES_ALLOW_READONLY,
-                     sLocalAppDataDir, u"\\Microsoft\\Windows\\Fonts\\*"_ns
+                     sLocalAppDataDir, u"\\Microsoft\\Windows\\Fonts\\*"_ns);
     }
 
   // The GPU process needs to write to a shader cache for performance reasons
