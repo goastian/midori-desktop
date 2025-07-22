@@ -1877,6 +1877,8 @@ pref("dom.global_stop_script", true);
   pref("dom.ipc.processCount", 4);
 #else
   pref("dom.ipc.processCount", 8);
+#else
+  pref("dom.ipc.processCount", 16);
 #endif
 
 // Default to allow only one file:// URL content process.
