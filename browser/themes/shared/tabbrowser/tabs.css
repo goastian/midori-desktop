@@ -209,7 +209,7 @@
     }
   }
 
-    &[dragtarget] {
+  &[dragtarget] {
     z-index: 3 !important;
     position: absolute !important;
     pointer-events: none; /* avoid blocking dragover events on scroll buttons */
