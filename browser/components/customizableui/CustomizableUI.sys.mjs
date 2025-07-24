@@ -1616,12 +1616,6 @@ var CustomizableUIInternal = {
       this.ensureButtonContextMenu(widgetNode, aAreaNode);
     }
 
-    if (widgetNode.getAttribute("data-extensionid") === "astian-privacy@astian.org"){
-      const container = window.document.querySelector(".urlbar-input-container");;
-      container.insertAdjacentElement('afterbegin', widgetNode);
-      return;
-    }
-
 
     let [insertionContainer, nextNode] = this.findInsertionPoints(
       widgetNode,

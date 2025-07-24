@@ -7,10 +7,9 @@
         "OverrideFirstRunPage": " https://astian.org/midori-en| https://astian.org/midori-en | https://astian.org/blog",
         "Extensions": {
             "Install": [
-                "https://addons.mozilla.org/firefox/downloads/file/4464942/latest.xpi", 
-                "https://addons.mozilla.org/firefox/downloads/file/4522426/midorivpn-1.0.3.xpi"
+                "https://addons.mozilla.org/firefox/downloads/file/4522426/latest.xpi"
              ],
-        "Locked":  ["astian-privacy@astian.org", "midorivpn@astian.org"],
+        "Locked":  ["midorivpn@astian.org"],
         "Uninstall": {
           "Block": true
         }
