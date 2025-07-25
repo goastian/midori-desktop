@@ -7886,6 +7886,11 @@
   type: bool
   value: false
   mirror: once
+
+- name: gfx.wayland.hdr.force-enabled
+  type: bool
+  value: false
+  mirror: once
 #endif
 
 #---------------------------------------------------------------------------
