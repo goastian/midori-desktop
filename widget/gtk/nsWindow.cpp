@@ -5421,8 +5421,18 @@ void nsWindow::OnWindowStateEvent(GtkWidget* aWidget,
   if (mSizeMode != oldSizeMode || mIsTiled != oldIsTiled) {
     RecomputeBounds(MayChangeCsdMargin::No);
   }
-  if (mSizeMode != oldSizeMode && mWidgetListener) {
-    mWidgetListener->SizeModeChanged(mSizeMode);
+
+  if (mSizeMode != oldSizeMode) {
+    if (mWidgetListener) {
+      mWidgetListener->SizeModeChanged(mSizeMode);
+    }
+    if (mSizeMode == nsSizeMode_Fullscreen ||
+        oldSizeMode == nsSizeMode_Fullscreen) {
+      if (mCompositorWidgetDelegate) {
+        mCompositorWidgetDelegate->NotifyFullscreenChanged(
+            mSizeMode == nsSizeMode_Fullscreen);
+      }
+    }
   }
 }
 

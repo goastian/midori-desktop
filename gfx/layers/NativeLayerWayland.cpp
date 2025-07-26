@@ -422,10 +422,10 @@ void NativeLayerRootWayland::LogStatsLocked(const MutexAutoLock& aProofOfLock) {
     }
   }
   LOGVERBOSE(
-      "Layers [%d] mapped [%d] attached [%d] visible [%d] opaque [%d] opaque "
-      "set [%d]",
+      "Rendering stats: layers [%d] mapped [%d] attached [%d] visible [%d] "
+      "rendered [%d] opaque [%d] opaque set [%d] fullscreen [%d]",
       layersNum, layersMapped, layersBufferAttached, layersVisible,
-      layersMappedOpaque, layersMappedOpaqueSet);
+      layersRendered, layersMappedOpaque, layersMappedOpaqueSet, mIsFullscreen);
 }
 #endif
 

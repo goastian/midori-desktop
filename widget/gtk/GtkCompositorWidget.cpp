@@ -91,6 +91,17 @@ void GtkCompositorWidget::NotifyClientSizeChanged(
   *size = aClientSize;
 }
 
+void GtkCompositorWidget::NotifyFullscreenChanged(bool aIsFullscreen) {
+
+
+#ifdef MOZ_WAYLAND
+  if (mNativeLayerRoot) {
+    LOG("GtkCompositorWidget::NotifyFullscreenChanged() [%d]", aIsFullscreen);
+    mNativeLayerRoot->NotifyFullscreenChanged(aIsFullscreen);
+  }
+#endif
+}
+
 LayoutDeviceIntSize GtkCompositorWidget::GetClientSize() {
   auto size = mClientSize.Lock();
   return *size;
