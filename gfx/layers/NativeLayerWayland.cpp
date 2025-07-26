@@ -977,12 +977,6 @@ void NativeLayerWaylandRender::CommitSurfaceToScreenLocked(
   LOG("NativeLayerWaylandRender::CommitSurfaceToScreenLocked()");
   mSurface->InvalidateRegionLocked(aSurfaceLock, mDirtyRegion);
   mDirtyRegion.SetEmpty();
-
-  auto* buffer = mFrontBuffer->AsWaylandBufferDMABUF();
-  if (buffer) {
-    buffer->GetSurface()->FenceWait();
-  }
-
   mSurface->AttachLocked(aSurfaceLock, mFrontBuffer);
 }
 
@@ -993,10 +987,6 @@ void NativeLayerWaylandRender::NotifySurfaceReady() {
   MOZ_DIAGNOSTIC_ASSERT(mInProgressBuffer);
   mFrontBuffer = std::move(mInProgressBuffer);
   if (mSurfacePoolHandle->gl()) {
-    auto* buffer = mFrontBuffer->AsWaylandBufferDMABUF();
-    if (buffer) {
-      buffer->GetSurface()->FenceSet();
-    }
     mSurfacePoolHandle->gl()->FlushIfHeavyGLCallsSinceLastFlush();
   }
 }
