@@ -402,6 +402,7 @@ void NativeLayerRootWayland::LogStatsLocked(const MutexAutoLock& aProofOfLock) {
   int layersMappedOpaqueSet = 0;
   int layersBufferAttached = 0;
   int layersVisible = 0;
+  int layersRendered = 0;
 
   for (RefPtr<NativeLayerWayland>& layer : mSublayers) {
     layersNum++;
