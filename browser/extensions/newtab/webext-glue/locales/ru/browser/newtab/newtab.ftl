@@ -8,6 +8,9 @@
 newtab-page-title = Новая вкладка
 newtab-settings-button =
     .title = Настроить свою страницу новой вкладки
+newtab-customize-panel-icon-button =
+    .title = Настроить эту страницу
+newtab-customize-panel-icon-button-label = Персонализация
 newtab-personalize-settings-icon-label =
     .title = Персонализировать Новую вкладку
     .aria-label = Настройки
@@ -117,7 +120,8 @@ newtab-menu-delete-pocket = Удалить из { -pocket-brand-name }
 newtab-menu-archive-pocket = Архивировать в { -pocket-brand-name }
 newtab-menu-show-privacy-info = Наши спонсоры и ваша приватность
 newtab-menu-about-fakespot = О { -fakespot-brand-name }
-newtab-menu-report-content = Пожаловаться на этот контент
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Сообщить
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Блокировать
@@ -191,6 +195,8 @@ newtab-label-sponsored-by = От спонсора { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } мин.
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Спонсировано
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -313,6 +319,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Погода
     .description = Краткий прогноз на сегодня
+newtab-custom-trending-search-toggle =
+    .label = Популярные поисковые запросы
+    .description = Популярные и часто запрашиваемые темы
 newtab-custom-close-button = Закрыть
 newtab-custom-settings = Управление дополнительными настройками
 
@@ -558,3 +567,16 @@ newtab-report-content-spam-misleading =
     .label = Спам или вводящее в заблуждение
 newtab-report-cancel = Отмена
 newtab-report-submit = Отправить
+newtab-toast-thanks-for-reporting =
+    .message = Благодарим за сообщение.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Популярные в Google
+newtab-trending-searches-show-trending =
+    .title = Показать популярные поисковые запросы
+newtab-trending-searches-hide-trending =
+    .title = Скрыть популярные поисковые запросы
+newtab-trending-searches-learn-more = Узнать больше
+newtab-trending-searches-dismiss = Скрыть популярные поисковые запросы

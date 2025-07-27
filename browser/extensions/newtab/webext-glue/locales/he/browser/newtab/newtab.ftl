@@ -8,6 +8,9 @@
 newtab-page-title = לשונית חדשה
 newtab-settings-button =
     .title = התאמה אישית של דף הלשונית החדשה שלך
+newtab-customize-panel-icon-button =
+    .title = התאמה אישית של דף זה
+newtab-customize-panel-icon-button-label = התאמה אישית
 newtab-personalize-settings-icon-label =
     .title = התאמה אישית של דף הלשונית החדשה
     .aria-label = הגדרות
@@ -116,7 +119,8 @@ newtab-menu-save-to-pocket = שמירה אל { -pocket-brand-name }
 newtab-menu-delete-pocket = מחיקה מ־{ -pocket-brand-name }
 newtab-menu-archive-pocket = העברה לארכיון ב־{ -pocket-brand-name }
 newtab-menu-about-fakespot = על אודות { -fakespot-brand-name }
-newtab-menu-report-content = דיווח על תוכן זה
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = דיווח
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = חסימה
@@ -189,6 +193,8 @@ newtab-label-source-read-time =
         [1] ‏{ $source }  · דקה אחת
        *[other] ‏{ $source } · { $timeToRead } דקות
     }
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = ממומן
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -306,6 +312,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = מזג אוויר
     .description = התחזית של היום
+newtab-custom-trending-search-toggle =
+    .label = חיפושים פופולריים
+    .description = נושאים נפוצים ובחיפוש תדיר
 newtab-custom-close-button = סגירה
 newtab-custom-settings = ניהול הגדרות נוספות
 
@@ -553,3 +562,14 @@ newtab-report-cancel = ביטול
 newtab-report-submit = שליחה
 newtab-toast-thanks-for-reporting =
     .message = תודה שדיווחת על זה.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = פופולרי ב־Google
+newtab-trending-searches-show-trending =
+    .title = הצגת חיפושים פופולריים
+newtab-trending-searches-hide-trending =
+    .title = הסתרת חיפושים פופולריים
+newtab-trending-searches-learn-more = מידע נוסף
+newtab-trending-searches-dismiss = הסתרת חיפושים פופולריים

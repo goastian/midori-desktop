@@ -8,6 +8,9 @@
 newtab-page-title = Νέα καρτέλα
 newtab-settings-button =
     .title = Προσαρμογή της σελίδας Νέας Καρτέλας
+newtab-customize-panel-icon-button =
+    .title = Προσαρμογή σελίδας
+newtab-customize-panel-icon-button-label = Προσαρμογή
 newtab-personalize-settings-icon-label =
     .title = Εξατομίκευση νέας καρτέλας
     .aria-label = Ρυθμίσεις
@@ -117,7 +120,8 @@ newtab-menu-delete-pocket = Διαγραφή από το { -pocket-brand-name }
 newtab-menu-archive-pocket = Αρχειοθέτηση στο { -pocket-brand-name }
 newtab-menu-show-privacy-info = Οι χορηγοί μας και το απόρρητό σας
 newtab-menu-about-fakespot = Σχετικά με το { -fakespot-brand-name }
-newtab-menu-report-content = Αναφορά περιεχομένου
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Αναφορά
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Φραγή
@@ -191,6 +195,8 @@ newtab-label-sponsored-by = Χορηγία από { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } λεπ.
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Χορηγία
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -312,6 +318,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Καιρός
     .description = Σημερινή πρόγνωση με μια ματιά
+newtab-custom-trending-search-toggle =
+    .label = Δημοφιλείς αναζητήσεις
+    .description = Δημοφιλή και συνήθη θέματα αναζήτησης
 newtab-custom-close-button = Κλείσιμο
 newtab-custom-settings = Διαχείριση περισσότερων ρυθμίσεων
 
@@ -559,3 +568,14 @@ newtab-report-cancel = Ακύρωση
 newtab-report-submit = Υποβολή
 newtab-toast-thanks-for-reporting =
     .message = Ευχαριστούμε για την αναφορά σας.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Τάσεις Google
+newtab-trending-searches-show-trending =
+    .title = Εμφάνιση δημοφιλών αναζητήσεων
+newtab-trending-searches-hide-trending =
+    .title = Απόκρυψη δημοφιλών αναζητήσεων
+newtab-trending-searches-learn-more = Μάθετε περισσότερα
+newtab-trending-searches-dismiss = Απόκρυψη δημοφιλών αναζητήσεων

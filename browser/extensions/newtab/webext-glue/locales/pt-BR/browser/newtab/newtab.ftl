@@ -117,7 +117,8 @@ newtab-menu-delete-pocket = Excluir do { -pocket-brand-name }
 newtab-menu-archive-pocket = Arquivar no { -pocket-brand-name }
 newtab-menu-show-privacy-info = Nossos patrocinadores e sua privacidade
 newtab-menu-about-fakespot = Informações sobre o { -fakespot-brand-name }
-newtab-menu-report-content = Relatar este conteúdo
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Relatar
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Bloquear
@@ -187,6 +188,8 @@ newtab-label-sponsored-by = Patrocinado por { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } min
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Patrocinado
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -308,6 +311,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Tempo
     .description = Visão geral da previsão para hoje
+newtab-custom-trending-search-toggle =
+    .label = Pesquisas em alta
+    .description = Tópicos populares e pesquisados com frequência
 newtab-custom-close-button = Fechar
 newtab-custom-settings = Gerenciar mais configurações
 
@@ -555,3 +561,14 @@ newtab-report-cancel = Cancelar
 newtab-report-submit = Enviar
 newtab-toast-thanks-for-reporting =
     .message = Obrigado por informar isto.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Em alta no Google
+newtab-trending-searches-show-trending =
+    .title = Mostrar pesquisas em alta
+newtab-trending-searches-hide-trending =
+    .title = Ocultar pesquisas em alta
+newtab-trending-searches-learn-more = Saiba mais
+newtab-trending-searches-dismiss = Ocultar pesquisas em alta

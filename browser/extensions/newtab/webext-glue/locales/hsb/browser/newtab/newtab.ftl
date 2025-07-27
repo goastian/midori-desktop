@@ -8,6 +8,9 @@
 newtab-page-title = Nowy rajtark
 newtab-settings-button =
     .title = Stronu wašeho noweho rajtarka přiměrić
+newtab-customize-panel-icon-button =
+    .title = Tutu stronu přiměrić
+newtab-customize-panel-icon-button-label = Přiměrić
 newtab-personalize-settings-icon-label =
     .title = Nowy rajtark personalizować
     .aria-label = Nastajenja
@@ -117,7 +120,8 @@ newtab-menu-delete-pocket = Z { -pocket-brand-name } zhašeć
 newtab-menu-archive-pocket = W { -pocket-brand-name } archiwować
 newtab-menu-show-privacy-info = Naši sponsorojo a waša priwatnosć
 newtab-menu-about-fakespot = Wo { -fakespot-brand-name }
-newtab-menu-report-content = Tutón wobsah zdźělić
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Zdźělić
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Blokować
@@ -191,6 +195,8 @@ newtab-label-sponsored-by = Sponserowany wot { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } mjeń.
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Sponserowany
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -314,6 +320,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Wjedro
     .description = Dźensniša wjedrowa předpowědź na jedyn pohlad
+newtab-custom-trending-search-toggle =
+    .label = Woblubowane pytanja
+    .description = Popularne a husto pytane temy
 newtab-custom-close-button = Začinić
 newtab-custom-settings = Dalše nastajenja rjadować
 
@@ -559,3 +568,16 @@ newtab-report-content-spam-misleading =
     .label = Spam abo zamylacy
 newtab-report-cancel = Přetorhnyć
 newtab-report-submit = Wotpósłać
+newtab-toast-thanks-for-reporting =
+    .message = Wulki dźak, zo sće to zdźělił.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Woblubowane temy na Google
+newtab-trending-searches-show-trending =
+    .title = Woblubowane pytanja pokazać
+newtab-trending-searches-hide-trending =
+    .title = Woblubowane pytanja schować
+newtab-trending-searches-learn-more = Dalše informacije
+newtab-trending-searches-dismiss = Woblubowane pytanja schować

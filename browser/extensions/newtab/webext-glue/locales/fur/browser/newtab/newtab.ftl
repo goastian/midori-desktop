@@ -117,7 +117,8 @@ newtab-menu-delete-pocket = Elimine di { -pocket-brand-name }
 newtab-menu-archive-pocket = Archivie in { -pocket-brand-name }
 newtab-menu-show-privacy-info = I nestris patrocinadôrs e la tô riservatece
 newtab-menu-about-fakespot = Informazions su { -fakespot-brand-name }
-newtab-menu-report-content = Segnale chest contignût
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Segnale
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Bloche
@@ -192,6 +193,8 @@ newtab-label-sponsored-by = Patrocinât di { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } min
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Sponsorizât
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -313,6 +316,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Meteo
     .description = Previsions par vuê cuntune voglade
+newtab-custom-trending-search-toggle =
+    .label = Ricercjis di tindince
+    .description = Argoments popolârs e cirûts dispès
 newtab-custom-close-button = Siere
 newtab-custom-settings = Gjestìs plui impostazions
 
@@ -530,6 +536,44 @@ newtab-custom-wallpaper-cta = Provilu
 
 ## Strings for download mobile highlight
 
+newtab-download-mobile-highlight-title = Discjame { -brand-product-name } par dispositîfs mobii
+# "Scan the code" refers to scanning the QR code that appears above the body text that leads to Firefox for mobile download.
+newtab-download-mobile-highlight-body-variant-a = Scansione il codiç par navigâ in sigurece dapardut.
+newtab-download-mobile-highlight-body-variant-b = Ripie di dulà che tu jeris restât sincronizant schedis, passwords e tant altri.
+newtab-download-mobile-highlight-body-variant-c = Savevistu che tu puedis simpri puartâ daûr { -brand-product-name }? Il stes navigadôr, te tô sachete.
+newtab-download-mobile-highlight-image =
+    .aria-label = Codiç QR par discjariâ { -brand-product-name } par dispositîfs mobii
 
 ## Strings for reporting ads and content
 
+newtab-report-content-why-reporting-this =
+    .label = Parcè stâstu segnalant cheste publicitât?
+newtab-report-ads-reason-not-interested =
+    .label = No mi interesse
+newtab-report-ads-reason-inappropriate =
+    .label = E je inadate
+newtab-report-ads-reason-seen-it-too-many-times =
+    .label = Le ai viodude masse voltis
+newtab-report-content-wrong-category =
+    .label = Categorie sbaliade
+newtab-report-content-outdated =
+    .label = Vecje
+newtab-report-content-inappropriate-offensive =
+    .label = Inadate o ofensive
+newtab-report-content-spam-misleading =
+    .label = Spam o ingjanose
+newtab-report-cancel = Anule
+newtab-report-submit = Invie
+newtab-toast-thanks-for-reporting =
+    .message = Graciis pe segnalazion.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Di tindince su Google
+newtab-trending-searches-show-trending =
+    .title = Mostre ricercjis di tindince
+newtab-trending-searches-hide-trending =
+    .title = Plate ricercjis di tindince
+newtab-trending-searches-learn-more = Plui informazions
+newtab-trending-searches-dismiss = Plate ricercjis di tindince

@@ -8,6 +8,9 @@
 newtab-page-title = ახალი ჩანართი
 newtab-settings-button =
     .title = მოირგეთ ახალი ჩანართის გვერდი
+newtab-customize-panel-icon-button =
+    .title = ამ გვერდის მორგება
+newtab-customize-panel-icon-button-label = მორგება
 newtab-personalize-settings-icon-label =
     .title = ახალი ჩანართის მორგება
     .aria-label = პარამეტრები
@@ -117,7 +120,8 @@ newtab-menu-delete-pocket = წაშლა { -pocket-brand-name }-იდან
 newtab-menu-archive-pocket = დაარქივება { -pocket-brand-name }-ში
 newtab-menu-show-privacy-info = ჩვენი დამკვეთები და თქვენი პირადულობა
 newtab-menu-about-fakespot = გაიცანით { -fakespot-brand-name }
-newtab-menu-report-content = ამ მასალის გასაჩივრება
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = მოხსენება
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = აკრძალვა
@@ -190,6 +194,8 @@ newtab-label-sponsored-by = დამკვეთია { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } წთ
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = დამკვეთისგან
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -311,6 +317,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = ამინდი
     .description = დღევანდელი ამინდისთვის თვალის შევლება
+newtab-custom-trending-search-toggle =
+    .label = ხშირად მოძიებული
+    .description = საყოველთაოდ მოდებული და ფართოდ გავრცელებული
 newtab-custom-close-button = დახურვა
 newtab-custom-settings = დამატებითი პარამეტრების მართვა
 
@@ -558,3 +567,14 @@ newtab-report-cancel = გაუქმება
 newtab-report-submit = გაგზავნა
 newtab-toast-thanks-for-reporting =
     .message = გმადლობთ, რომ მოგვახსენეთ.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Google ხშირად მოძიებულით
+newtab-trending-searches-show-trending =
+    .title = ხშირად მოძიებულის ჩვენება
+newtab-trending-searches-hide-trending =
+    .title = ხშირად მოძიებულის დამალვა
+newtab-trending-searches-learn-more = ვრცლად
+newtab-trending-searches-dismiss = ხშირად მოძიებულის დამალვა

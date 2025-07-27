@@ -8,6 +8,9 @@
 newtab-page-title = Ny flik
 newtab-settings-button =
     .title = Anpassa sidan för Ny flik
+newtab-customize-panel-icon-button =
+    .title = Anpassa sidan
+newtab-customize-panel-icon-button-label = Anpassa
 newtab-personalize-settings-icon-label =
     .title = Anpassa ny flik
     .aria-label = Inställningar
@@ -117,7 +120,8 @@ newtab-menu-delete-pocket = Ta bort från { -pocket-brand-name }
 newtab-menu-archive-pocket = Arkivera i { -pocket-brand-name }
 newtab-menu-show-privacy-info = Våra sponsorer & din integritet
 newtab-menu-about-fakespot = Om { -fakespot-brand-name }
-newtab-menu-report-content = Rapportera detta innehåll
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Rapportera
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Blockera
@@ -191,6 +195,8 @@ newtab-label-sponsored-by = Sponsrad av { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } min
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Sponsrad
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -312,6 +318,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Väder
     .description = Dagens prognos i korthet
+newtab-custom-trending-search-toggle =
+    .label = Trendiga sökningar
+    .description = Populära och ofta sökta ämnen
 newtab-custom-close-button = Stäng
 newtab-custom-settings = Hantera fler inställningar
 
@@ -559,3 +568,14 @@ newtab-report-cancel = Avbryt
 newtab-report-submit = Skicka in
 newtab-toast-thanks-for-reporting =
     .message = Tack för att du rapporterade detta.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Trender på Google
+newtab-trending-searches-show-trending =
+    .title = Visa trendiga sökningar
+newtab-trending-searches-hide-trending =
+    .title = Dölj trendiga sökningar
+newtab-trending-searches-learn-more = Läs mer
+newtab-trending-searches-dismiss = Dölj trendiga sökningar

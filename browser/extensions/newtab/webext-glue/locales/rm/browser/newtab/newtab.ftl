@@ -117,7 +117,6 @@ newtab-menu-delete-pocket = Stizzar da { -pocket-brand-name }
 newtab-menu-archive-pocket = Archivar en { -pocket-brand-name }
 newtab-menu-show-privacy-info = Noss sponsurs & tia sfera privata
 newtab-menu-about-fakespot = Davart { -fakespot-brand-name }
-newtab-menu-report-content = Rapportar quest cuntegn
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Bloccar
@@ -550,3 +549,6 @@ newtab-report-content-spam-misleading =
     .label = Spam u engianus
 newtab-report-cancel = Interrumper
 newtab-report-submit = Trametter
+
+## Strings for trending searches
+

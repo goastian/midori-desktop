@@ -8,6 +8,9 @@
 newtab-page-title = 新分頁
 newtab-settings-button =
     .title = 自訂您的新分頁頁面
+newtab-customize-panel-icon-button =
+    .title = 自訂此頁面
+newtab-customize-panel-icon-button-label = 自訂
 newtab-personalize-settings-icon-label =
     .title = 個人化新分頁
     .aria-label = 設定
@@ -117,7 +120,8 @@ newtab-menu-delete-pocket = 從 { -pocket-brand-name } 刪除
 newtab-menu-archive-pocket = 在 { -pocket-brand-name } 裡封存
 newtab-menu-show-privacy-info = 我們的贊助商與您的隱私權
 newtab-menu-about-fakespot = 關於 { -fakespot-brand-name }
-newtab-menu-report-content = 回報此內容
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = 回報
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = 封鎖
@@ -187,6 +191,8 @@ newtab-label-sponsored-by = 由 { $sponsor } 贊助
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } 分鐘
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = 贊助項目
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -308,6 +314,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = 天氣
     .description = 快速了解本日天氣
+newtab-custom-trending-search-toggle =
+    .label = 熱門搜尋
+    .description = 熱門與常見搜尋主題
 newtab-custom-close-button = 關閉
 newtab-custom-settings = 管理更多設定
 
@@ -555,3 +564,14 @@ newtab-report-cancel = 取消
 newtab-report-submit = 送出
 newtab-toast-thanks-for-reporting =
     .message = 感謝您回報此問題。
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Google 上的熱門搜尋主題
+newtab-trending-searches-show-trending =
+    .title = 顯示熱門搜尋主題
+newtab-trending-searches-hide-trending =
+    .title = 隱藏熱門搜尋主題
+newtab-trending-searches-learn-more = 更多資訊
+newtab-trending-searches-dismiss = 隱藏熱門搜尋主題

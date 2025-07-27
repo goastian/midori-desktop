@@ -8,6 +8,9 @@
 newtab-page-title = Uusi välilehti
 newtab-settings-button =
     .title = Muokkaa Uusi välilehti -sivua
+newtab-customize-panel-icon-button =
+    .title = Mukauta tätä sivua
+newtab-customize-panel-icon-button-label = Mukauta
 newtab-personalize-settings-icon-label =
     .title = Mukauta uutta välilehteä
     .aria-label = Asetukset
@@ -117,7 +120,8 @@ newtab-menu-delete-pocket = Poista { -pocket-brand-name }-palvelusta
 newtab-menu-archive-pocket = Arkistoi { -pocket-brand-name }-palveluun
 newtab-menu-show-privacy-info = Tukijamme ja yksityisyytesi
 newtab-menu-about-fakespot = Tietoja { -fakespot-brand-name }ista
-newtab-menu-report-content = Ilmoita tästä sisällöstä
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Ilmoita
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Estä
@@ -191,6 +195,8 @@ newtab-label-sponsored-by = Sponsorina { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } min
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Sponsoroitu
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -312,6 +318,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Sää
     .description = Päivän sääennuste yhdellä vilkaisulla
+newtab-custom-trending-search-toggle =
+    .label = Nousussa olevat haut
+    .description = Suosittuja ja usein haettuja aiheita
 newtab-custom-close-button = Sulje
 newtab-custom-settings = Muokkaa lisää asetuksia
 
@@ -529,6 +538,13 @@ newtab-custom-wallpaper-cta = Kokeile
 
 ## Strings for download mobile highlight
 
+newtab-download-mobile-highlight-title = Lataa { -brand-product-name } mobiililaitteille
+# "Scan the code" refers to scanning the QR code that appears above the body text that leads to Firefox for mobile download.
+newtab-download-mobile-highlight-body-variant-a = Skannaa koodi selataksesi turvallisesti liikkeellä ollessasi.
+newtab-download-mobile-highlight-body-variant-b = Jatka siitä, mihin jäit, synkronoimalla välilehdet, salasanat ja muut tiedot.
+newtab-download-mobile-highlight-body-variant-c = Tiesitkö, että voit ottaa { -brand-product-name }in mukaasi liikkeellä ollessasi? Sama selain. Taskussasi.
+newtab-download-mobile-highlight-image =
+    .aria-label = QR-koodi { -brand-product-name }in lataamiseksi mobiililaitteille
 
 ## Strings for reporting ads and content
 
@@ -550,3 +566,16 @@ newtab-report-content-spam-misleading =
     .label = Roskapostia tai harhaanjohtavaa
 newtab-report-cancel = Peruuta
 newtab-report-submit = Lähetä
+newtab-toast-thanks-for-reporting =
+    .message = Kiitos, että ilmoitit tästä.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Nousussa Googlessa
+newtab-trending-searches-show-trending =
+    .title = Näytä nousussa olevat haut
+newtab-trending-searches-hide-trending =
+    .title = Piilota nousussa olevat haut
+newtab-trending-searches-learn-more = Lue lisää
+newtab-trending-searches-dismiss = Piilota nousussa olevat haut

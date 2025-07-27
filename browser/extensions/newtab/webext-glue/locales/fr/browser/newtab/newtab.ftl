@@ -8,6 +8,9 @@
 newtab-page-title = Nouvel onglet
 newtab-settings-button =
     .title = Personnaliser la page Nouvel onglet
+newtab-customize-panel-icon-button =
+    .title = Personnaliser cette page
+newtab-customize-panel-icon-button-label = Personnaliser
 newtab-personalize-settings-icon-label =
     .title = Personnaliser la page Nouvel onglet
     .aria-label = Paramètres
@@ -117,7 +120,8 @@ newtab-menu-delete-pocket = Supprimer de { -pocket-brand-name }
 newtab-menu-archive-pocket = Archiver dans { -pocket-brand-name }
 newtab-menu-show-privacy-info = Nos sponsors et votre vie privée
 newtab-menu-about-fakespot = À propos de { -fakespot-brand-name }
-newtab-menu-report-content = Signaler ce contenu
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Signaler
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Bloquer
@@ -187,6 +191,8 @@ newtab-label-sponsored-by = Sponsorisé par { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } min
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Sponsorisé
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -308,6 +314,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Météo
     .description = Les prévisions du jour en un coup d’œil
+newtab-custom-trending-search-toggle =
+    .label = Recherches populaires
+    .description = Sujets populaires et fréquemment recherchés
 newtab-custom-close-button = Fermer
 newtab-custom-settings = Gérer plus de paramètres
 
@@ -518,10 +527,20 @@ newtab-section-mangage-topics-followed-topics = Suivis
 newtab-section-mangage-topics-followed-topics-empty-state = Vous n’avez pas encore suivi de sujet.
 newtab-section-mangage-topics-blocked-topics = Bloqués
 newtab-section-mangage-topics-blocked-topics-empty-state = Vous n’avez pas encore bloqué de sujet.
+newtab-custom-wallpaper-title = Les fonds d’écran personnalisés sont disponibles
+# 'Make firefox yours" means to customize or personalize
+newtab-custom-wallpaper-subtitle = Téléchargez votre propre fond d’écran ou choisissez votre couleur, et appropriez-vous { -brand-product-name }.
 newtab-custom-wallpaper-cta = Essayer
 
 ## Strings for download mobile highlight
 
+newtab-download-mobile-highlight-title = Téléchargez { -brand-product-name } pour mobile
+# "Scan the code" refers to scanning the QR code that appears above the body text that leads to Firefox for mobile download.
+newtab-download-mobile-highlight-body-variant-a = Scannez le code pour naviguer en sécurité où que vous soyez.
+newtab-download-mobile-highlight-body-variant-b = Reprenez là où vous en étiez lorsque vous synchronisez vos onglets, mots de passe, et bien plus.
+newtab-download-mobile-highlight-body-variant-c = Saviez-vous que vous pouvez emporter { -brand-product-name } avec vous ? Le même navigateur, dans votre poche.
+newtab-download-mobile-highlight-image =
+    .aria-label = Code QR pour télécharger { -brand-product-name } pour mobile
 
 ## Strings for reporting ads and content
 
@@ -543,3 +562,16 @@ newtab-report-content-spam-misleading =
     .label = Spam ou trompeur
 newtab-report-cancel = Annuler
 newtab-report-submit = Envoyer
+newtab-toast-thanks-for-reporting =
+    .message = Merci pour votre signalement.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Tendances sur Google
+newtab-trending-searches-show-trending =
+    .title = Afficher les recherches populaires
+newtab-trending-searches-hide-trending =
+    .title = Masquer les recherches populaires
+newtab-trending-searches-learn-more = En savoir plus
+newtab-trending-searches-dismiss = Masquer les recherches populaires

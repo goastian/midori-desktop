@@ -117,7 +117,6 @@ newtab-menu-delete-pocket = احذف من { -pocket-brand-name }
 newtab-menu-archive-pocket = أرشِف في { -pocket-brand-name }
 newtab-menu-show-privacy-info = رُعاتنا الرسميّون وخصوصيّتك
 newtab-menu-about-fakespot = عن { -fakespot-brand-name }
-newtab-menu-report-content = أبلغ عن هذا المحتوى
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = احجب
@@ -415,12 +414,27 @@ newtab-custom-wallpaper-cta = جربه
 
 ## Strings for download mobile highlight
 
+# "Scan the code" refers to scanning the QR code that appears above the body text that leads to Firefox for mobile download.
+newtab-download-mobile-highlight-body-variant-a = افحص الرمز للتصفح بشكل آمن أثناء التنقل.
 
 ## Strings for reporting ads and content
 
+newtab-report-content-why-reporting-this =
+    .label = لماذا تُبلِّغ عن هذا؟
+newtab-report-ads-reason-not-interested =
+    .label = أنا لست مهتم
 newtab-report-ads-reason-inappropriate =
     .label = غير مناسب
+newtab-report-content-wrong-category =
+    .label = فئة خاطئة
 newtab-report-content-outdated =
     .label = قديم
+newtab-report-content-inappropriate-offensive =
+    .label = غير ملائم أو بذيء
 newtab-report-cancel = ألغِ
 newtab-report-submit = أرسِل
+newtab-toast-thanks-for-reporting =
+    .message = شكرا لك على الإبلاغ عن هذا.
+
+## Strings for trending searches
+

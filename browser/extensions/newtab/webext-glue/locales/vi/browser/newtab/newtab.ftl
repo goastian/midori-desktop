@@ -8,6 +8,9 @@
 newtab-page-title = Thẻ mới
 newtab-settings-button =
     .title = Tùy biến trang thẻ mới
+newtab-customize-panel-icon-button =
+    .title = Tuỳ chỉnh trang này
+newtab-customize-panel-icon-button-label = Tùy chỉnh
 newtab-personalize-settings-icon-label =
     .title = Cá nhân hóa thẻ mới
     .aria-label = Cài đặt
@@ -117,7 +120,8 @@ newtab-menu-delete-pocket = Xóa khỏi { -pocket-brand-name }
 newtab-menu-archive-pocket = Lưu trữ trong { -pocket-brand-name }
 newtab-menu-show-privacy-info = Nhà tài trợ của chúng tôi và sự riêng tư của bạn
 newtab-menu-about-fakespot = Về { -fakespot-brand-name }
-newtab-menu-report-content = Báo cáo nội dung này
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Báo cáo
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Chặn
@@ -191,6 +195,8 @@ newtab-label-sponsored-by = Được tài trợ bởi { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } phút
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Được tài trợ
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -311,6 +317,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Thời tiết
     .description = Sơ lược về dự báo hôm nay
+newtab-custom-trending-search-toggle =
+    .label = Tìm kiếm thịnh hành
+    .description = Các chủ đề phổ biến và được tìm kiếm thường xuyên
 newtab-custom-close-button = Đóng
 newtab-custom-settings = Quản lý các cài đặt khác
 
@@ -558,3 +567,14 @@ newtab-report-cancel = Hủy bỏ
 newtab-report-submit = Gửi
 newtab-toast-thanks-for-reporting =
     .message = Cảm ơn bạn đã báo cáo điều này.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Thịnh hành trên Google
+newtab-trending-searches-show-trending =
+    .title = Hiển thị tìm kiếm thịnh hành
+newtab-trending-searches-hide-trending =
+    .title = Ẩn tìm kiếm thịnh hành
+newtab-trending-searches-learn-more = Tìm hiểu thêm
+newtab-trending-searches-dismiss = Ẩn tìm kiếm thịnh hành

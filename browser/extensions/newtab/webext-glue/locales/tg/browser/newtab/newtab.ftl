@@ -8,6 +8,9 @@
 newtab-page-title = Варақаи нав
 newtab-settings-button =
     .title = Танзим кардани саҳифаи худ дар варақаи нав
+newtab-customize-panel-icon-button =
+    .title = Фармоишдиҳии ин саҳифа
+newtab-customize-panel-icon-button-label = Фармоишдиҳӣ
 newtab-personalize-settings-icon-label =
     .title = Шахсисозии варақаи нав
     .aria-label = Танзимот
@@ -117,7 +120,8 @@ newtab-menu-delete-pocket = Нест кардан аз { -pocket-brand-name }
 newtab-menu-archive-pocket = Бойгонӣ кардан ба { -pocket-brand-name }
 newtab-menu-show-privacy-info = Сарпарастони мо ва махфияти шумо
 newtab-menu-about-fakespot = Дар бораи «{ -fakespot-brand-name }»
-newtab-menu-report-content = Гузориш дар бораи ин муҳтаво
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Гузориш додан
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Манъ кардан
@@ -189,6 +193,8 @@ newtab-label-sponsored-by = Аз тарафи сарпарасти { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } дақиқа
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Сарпарастӣ
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -310,6 +316,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Обу ҳаво
     .description = Ҳолати обу ҳаво барои имрӯз
+newtab-custom-trending-search-toggle =
+    .label = Ҷустуҷӯҳои ҳавасангез
+    .description = Мавзуъҳои маъмул ва ҷустуҷӯшавандаи такрорӣ
 newtab-custom-close-button = Пӯшидан
 newtab-custom-settings = Идоракунии танзимоти бештар
 
@@ -557,3 +566,14 @@ newtab-report-cancel = Бекор кардан
 newtab-report-submit = Пешниҳод кардан
 newtab-toast-thanks-for-reporting =
     .message = Ташаккур барои гузориши шумо дар бораи ин масъала.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Ҳавасангез дар «Google»
+newtab-trending-searches-show-trending =
+    .title = Намоиш додани ҷустуҷӯҳои ҳавасангез
+newtab-trending-searches-hide-trending =
+    .title = Пинҳон кардани ҷустуҷӯҳои ҳавасангез
+newtab-trending-searches-learn-more = Маълумоти бештар
+newtab-trending-searches-dismiss = Пинҳон кардани ҷустуҷӯҳои ҳавасангез

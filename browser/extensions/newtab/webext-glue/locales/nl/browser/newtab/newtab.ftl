@@ -8,6 +8,9 @@
 newtab-page-title = Nieuw tabblad
 newtab-settings-button =
     .title = Uw Nieuw-tabbladpagina aanpassen
+newtab-customize-panel-icon-button =
+    .title = Deze pagina aanpassen
+newtab-customize-panel-icon-button-label = Aanpassen
 newtab-personalize-settings-icon-label =
     .title = Nieuw tabblad personaliseren
     .aria-label = Instellingen
@@ -117,7 +120,8 @@ newtab-menu-delete-pocket = Verwijderen uit { -pocket-brand-name }
 newtab-menu-archive-pocket = Archiveren in { -pocket-brand-name }
 newtab-menu-show-privacy-info = Onze sponsors en uw privacy
 newtab-menu-about-fakespot = Over { -fakespot-brand-name }
-newtab-menu-report-content = Deze inhoud rapporteren
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Rapporteren
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Blokkeren
@@ -191,6 +195,8 @@ newtab-label-sponsored-by = Gesponsord door { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } min.
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Gesponsord
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -312,6 +318,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Weer
     .description = De weersverwachting van vandaag in een oogopslag
+newtab-custom-trending-search-toggle =
+    .label = Trending zoekopdrachten
+    .description = Populaire en veel gezochte onderwerpen
 newtab-custom-close-button = Sluiten
 newtab-custom-settings = Meer instellingen beheren
 
@@ -559,3 +568,14 @@ newtab-report-cancel = Annuleren
 newtab-report-submit = Indienen
 newtab-toast-thanks-for-reporting =
     .message = Bedankt voor het melden.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Trending op Google
+newtab-trending-searches-show-trending =
+    .title = Trending zoekopdrachten tonen
+newtab-trending-searches-hide-trending =
+    .title = Trending zoekopdrachten verbergen
+newtab-trending-searches-learn-more = Meer info
+newtab-trending-searches-dismiss = Trending zoekopdrachten verbergen

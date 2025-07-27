@@ -8,6 +8,9 @@
 newtab-page-title = 新标签页
 newtab-settings-button =
     .title = 定制您的新标签页
+newtab-customize-panel-icon-button =
+    .title = 定制此页面
+newtab-customize-panel-icon-button-label = 定制
 newtab-personalize-settings-icon-label =
     .title = 个性化新标签页
     .aria-label = 设置
@@ -117,7 +120,8 @@ newtab-menu-delete-pocket = 从 { -pocket-brand-name } 删除
 newtab-menu-archive-pocket = 在 { -pocket-brand-name } 中存档
 newtab-menu-show-privacy-info = 我们的赞助商＆您的隐私
 newtab-menu-about-fakespot = 关于 { -fakespot-brand-name }
-newtab-menu-report-content = 举报此内容
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = 反馈
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = 屏蔽
@@ -187,6 +191,8 @@ newtab-label-sponsored-by = 由 { $sponsor } 赞助
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } 分钟
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = 赞助推广
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -307,6 +313,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = 天气
     .description = 速览今日天气预报
+newtab-custom-trending-search-toggle =
+    .label = 热门搜索
+    .description = 流行及常搜主题
 newtab-custom-close-button = 关闭
 newtab-custom-settings = 管理更多设置
 
@@ -554,3 +563,14 @@ newtab-report-cancel = 取消
 newtab-report-submit = 提交
 newtab-toast-thanks-for-reporting =
     .message = 感谢反馈。
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Google 热门搜索
+newtab-trending-searches-show-trending =
+    .title = 显示热门搜索
+newtab-trending-searches-hide-trending =
+    .title = 隐藏热门搜索
+newtab-trending-searches-learn-more = 详细了解
+newtab-trending-searches-dismiss = 隐藏热门搜索

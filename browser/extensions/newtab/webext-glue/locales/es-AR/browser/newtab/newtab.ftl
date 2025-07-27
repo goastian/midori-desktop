@@ -117,7 +117,8 @@ newtab-menu-delete-pocket = Borrar de { -pocket-brand-name }
 newtab-menu-archive-pocket = Archivar en { -pocket-brand-name }
 newtab-menu-show-privacy-info = Nuestros patrocinadores y su privacidad
 newtab-menu-about-fakespot = Acerca de { -fakespot-brand-name }
-newtab-menu-report-content = Informar sobre este contenido
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Informar
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Bloquear
@@ -190,6 +191,8 @@ newtab-label-sponsored-by = Patrocinado por { $sponsor }
 #   $source (string) - The name of a company or their domain
 #   $timeToRead (number) - The estimated number of minutes to read this story
 newtab-label-source-read-time = { $source } · { $timeToRead } min
+# This string is used under fixed size ads to indicate sponsored content
+newtab-label-sponsored-fixed = Patrocinado
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -311,6 +314,9 @@ newtab-custom-recent-toggle =
 newtab-custom-weather-toggle =
     .label = Clima
     .description = El pronóstico de hoy de un vistazo
+newtab-custom-trending-search-toggle =
+    .label = Búsquedas más populares
+    .description = Temas populares y buscados con frecuencia
 newtab-custom-close-button = Cerrar
 newtab-custom-settings = Administrar más configuraciones
 
@@ -529,7 +535,10 @@ newtab-custom-wallpaper-cta = Pruébelo
 ## Strings for download mobile highlight
 
 newtab-download-mobile-highlight-title = Descargar { -brand-product-name } para dispositivos móviles
+# "Scan the code" refers to scanning the QR code that appears above the body text that leads to Firefox for mobile download.
+newtab-download-mobile-highlight-body-variant-a = Escanee el código para navegar de forma segura en movimiento.
 newtab-download-mobile-highlight-body-variant-b = Continúe donde lo dejó al sincronizar pestañas, contraseñas y más.
+newtab-download-mobile-highlight-body-variant-c = ¿Sabía que puede llevar { -brand-product-name } a cualquier parte? Mismo navegador. En su bolsillo.
 newtab-download-mobile-highlight-image =
     .aria-label = Código QR para descargar { -brand-product-name } para móviles
 
@@ -555,3 +564,14 @@ newtab-report-cancel = Cancelar
 newtab-report-submit = Enviar
 newtab-toast-thanks-for-reporting =
     .message = Gracias por informar esto.
+
+## Strings for trending searches
+
+# "Trending on Google" refers to the trending topics coming from Google Search, usually seen when a user is focused on the search bar
+newtab-trending-searches-trending-on-google = Tendencia en Google
+newtab-trending-searches-show-trending =
+    .title = Mostrar búsquedas más populares
+newtab-trending-searches-hide-trending =
+    .title = Ocultar búsquedas más populares
+newtab-trending-searches-learn-more = Conocer más
+newtab-trending-searches-dismiss = Ocultar búsquedas más populares

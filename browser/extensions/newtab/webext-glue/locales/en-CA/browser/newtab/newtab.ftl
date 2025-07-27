@@ -117,12 +117,14 @@ newtab-menu-delete-pocket = Delete from { -pocket-brand-name }
 newtab-menu-archive-pocket = Archive in { -pocket-brand-name }
 newtab-menu-show-privacy-info = Our sponsors & your privacy
 newtab-menu-about-fakespot = About { -fakespot-brand-name }
+# Report is a verb (i.e. report issue with the content).
+newtab-menu-report = Report
 # Context menu option to personalize New Tab recommended stories by blocking a section of stories,
 # e.g. "Sports". "Block" is a verb here.
 newtab-menu-section-block = Block
 # "Follow", "unfollow", and "following" are social media terms that refer to subscribing to or unsubscribing from a section of stories.
 # e.g. Following the travel section of stories.
-newtab-menu-section-unfollow = Unfollow Topic
+newtab-menu-section-unfollow = Unfollow topic
 
 ## Context menu options for sponsored stories and new ad formats on New Tab.
 
@@ -525,4 +527,7 @@ newtab-section-mangage-topics-blocked-topics-empty-state = You have not blocked 
 
 
 ## Strings for reporting ads and content
+
+
+## Strings for trending searches
 
