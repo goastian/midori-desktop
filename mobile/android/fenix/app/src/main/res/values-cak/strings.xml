@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Ch\'aqa\' chik taq cha\'oj</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Titzij ri ichinan okem pa k\'amaya\'l</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Titzij ri ichinan okem pa k\'amaya\'l</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Tichup ri ichinan okem pa k\'amaya\'l</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Tichup ri ichinan okem pa k\'amaya\'l</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">Tikanöx o ketz\'ib\'äx ri taq ochochib\'äl</string>
   <!-- Placeholder text shown in the search bar before a user enters text for a general engine -->
@@ -60,7 +60,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s nuyüj ri akanoxik chuqa\' runatab\'al awokem pa k\'amaya\'l toq yatel pa ri chokoy o ri ichinan taq wi\'. Estape\' re re\' man yatrewaj ta pan ajk\'amaya\'l o chuwäch ri niya\'on ak\'amaya\'l, yatruto\' richin nichinäx ronojel ri nab\'än pan k\'amab\'ey chuwäch jun chik winäq nrokisaj ri awokisab\'al.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s nuyüj ri akanoxik chuqa\' runatab\'al awokem pa k\'amaya\'l toq yatel pa ri chokoy o ri ichinan taq wi\'. Estape\' re re\' man yatrewaj ta pan ajk\'amaya\'l o chuwäch ri niya\'on ak\'amaya\'l, yatruto\' richin nichinäx ronojel ri nab\'än pan k\'amab\'ey chuwäch jun chik winäq nrokisaj ri awokisab\'al.</string>
   <string name="private_browsing_common_myths">Ch\'ob\'on taq tzij chi rij ri ichinan okem pa k\'amaya\'l</string>
   <!--
     True Private Browsing Mode
@@ -96,7 +96,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">Tapitz\'a\' wawe\' richin natikirisaj jun k\'ak\'a\' ichinan moloj. Ke\'ayuju\' ri anatab\'al, taq acookie — ronojel.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Tapitz\'a\' wawe\' richin natikirisaj jun k\'ak\'a\' ichinan moloj. Ke\'ayuju\' ri anatab\'al, taq acookie — ronojel.</string>
   <!-- Text for the info dialog when camera permissions have been denied but user tries to access a camera feature. -->
   <string name="camera_permissions_needed_message">Najowäx okem pa elesäy wachib\'äl. Jät pa runuk\'ulem Android, tachapa\' pa ya\'oj q\'ij k\'a ri\' pa tiya\' q\'ij.</string>
   <!-- Text for the positive action button to go to Android Settings to grant permissions. -->
@@ -267,9 +267,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">K\'ak\'a\' pa %1$s</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">K\'ak\'a\' pa %1$s</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">Tik\'ex rik\'in ruxaq kematz\'ib\'</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">Tik\'ex rik\'in ruxaq kematz\'ib\'</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
   <string name="browser_menu_tools" moz:removedIn="141" tools:ignore="UnusedResources">Samajib\'äl</string>
   <!--
@@ -293,7 +293,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">Tiyuj runatab\'al okem pa k\'amaya\'l</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">Tiyuj runatab\'al okem pa k\'amaya\'l</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">Titzalq\'omïx ruxaq</string>
   <!--
@@ -351,7 +351,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Tik\'o</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">¡Najin yexim ri taq ruwi\'! Kasamäj chik el akuchi\' xaya\' wi kan pa jun chik okisaxel.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">¡Najin yexim ri taq ruwi\'! Kasamäj chik el akuchi\' xaya\' wi kan pa jun chik okisaxel.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">Titz\'apïx</string>
   <!--
@@ -558,7 +558,7 @@
   <!-- Preference for language -->
   <string name="preferences_language">Ch\'ab\'äl</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Rucha\'ik tzij</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Rucha\'ik tzij</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Rucha\'ik tzij</string>
   <!-- Preference for developers -->
@@ -599,7 +599,7 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">Majub\'ey</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Runuk\'samajel chi rij qasanïk</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Runuk\'samajel chi rij qasanïk</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">Titzij taq rutz\'ib\'axik Gecko</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -619,7 +619,7 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">Rajowaxik</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">Rajowaxik</string>
   <!-- Button caption to confirm the add-on collection configuration -->
   <string name="customize_addon_collection_ok">ÜTZ</string>
   <!-- Button caption to abort the add-on collection configuration -->
@@ -1353,7 +1353,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Ichinan ruwi\' xtz\'apïx</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Ichinan taq ruwi\' xetz\'apïx</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Ichinan taq ruwi\' xetz\'apïx</string>
   <!-- Text shown in snackbar when user erases their private browsing data -->
   <string name="snackbar_private_data_deleted">Xeyuj ri taq rutzij ichinan okem</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
@@ -2019,4 +2019,6 @@
   <!-- Current state for elements that can be expanded if interacting with them. Talkback will dictate this after a state change. -->
   <string name="a11y_state_label_expanded">nimirisan</string>
   <!-- Translations feature -->
+
+  <!-- TextField Design System Component -->
 </resources>

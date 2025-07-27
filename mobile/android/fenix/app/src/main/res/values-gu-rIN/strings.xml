@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">વધુ વિકલ્પ</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">ખાનગી બ્રાઉઝિંગ સક્ષમ કરો</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">ખાનગી બ્રાઉઝિંગ સક્ષમ કરો</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">ખાનગી બ્રાઉઝિંગ નિષ્ક્રિય કરો</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">ખાનગી બ્રાઉઝિંગ નિષ્ક્રિય કરો</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">શોધ અથવા સરનામું દાખલ કરો</string>
   <!-- No Open Tabs Message Description -->
@@ -160,7 +160,7 @@
   <!-- Preference for language -->
   <string name="preferences_language">ભાષા</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">માહિતી વિકલ્પો</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">માહિતી વિકલ્પો</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">માહિતી સંગ્રહ</string>
   <!-- Preference for developers -->
@@ -538,7 +538,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">ખાનગી ટેબ બંધ કર્યું</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">ખાનગી ટેબ્સ બંધ કર્યા</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">ખાનગી ટેબ્સ બંધ કર્યા</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">પૂર્વવત્ કરો</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -800,4 +800,6 @@
   <!-- Login overflow menu delete button -->
   <string name="login_menu_delete_button">કાઢી નાંખો</string>
   <!-- Translations feature -->
+
+  <!-- TextField Design System Component -->
 </resources>

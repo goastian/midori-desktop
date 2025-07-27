@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Mai multe opțiuni</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Activează navigarea privată</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Activează navigarea privată</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Dezactivează navigarea privată</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Dezactivează navigarea privată</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">Caută sau introdu adresa</string>
   <!-- Placeholder text shown in the search bar before a user enters text for a general engine -->
@@ -50,7 +50,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s îți șterge istoricul de căutare și navigare din filele private când le închizi sau când ieși din aplicație. Deși nu te anonimizează pe site-urile web sau pentru furnizorul de servicii de internet, ușurează păstrarea confidențialității asupra a ce faci online față de oricine altcineva folosește acest dispozitiv.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s îți șterge istoricul de căutare și navigare din filele private când le închizi sau când ieși din aplicație. Deși nu te anonimizează pe site-urile web sau pentru furnizorul de servicii de internet, ușurează păstrarea confidențialității asupra a ce faci online față de oricine altcineva folosește acest dispozitiv.</string>
   <string name="private_browsing_common_myths">Mituri comune despre navigarea privată</string>
   <!--
     True Private Browsing Mode
@@ -86,7 +86,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">Atinge aici pentru a începe o nouă sesiune privată. Șterge-ți istoricul, cookie-urile — totul.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Atinge aici pentru a începe o nouă sesiune privată. Șterge-ți istoricul, cookie-urile — totul.</string>
   <!-- Text for the negative action button to dismiss the dialog. -->
   <string name="camera_permissions_needed_negative_button_text">Înlătură</string>
   <!-- Text for the banner message to tell users about our auto close feature. -->
@@ -197,7 +197,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">Șterge istoricul de navigare</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">Șterge istoricul de navigare</string>
   <!--
     Locale Settings Fragment
 
@@ -323,7 +323,7 @@
   <!-- Preference for language -->
   <string name="preferences_language">Limbă</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Selecții de date</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Selecții de date</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Colectare de date</string>
   <!-- Preference for developers -->
@@ -345,7 +345,7 @@
   <!-- Preference for open links in third party apps -->
   <string name="preferences_open_links_in_apps">Deschide linkuri în aplicații</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Manager extern pentru descărcări</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Manager extern pentru descărcări</string>
   <!-- Preference for notifications -->
   <string name="preferences_notifications">Notificări</string>
   <!-- Button caption to confirm the add-on collection configuration -->
@@ -839,7 +839,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Filă privată închisă</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">File private închise</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">File private închise</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">ANULEAZĂ</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -1221,4 +1221,5 @@
   <string name="translation_option_bottom_sheet_always_translate">Oferă întotdeauna traducerea</string>
   <!-- Toggle switch description that will appear under the "Never translate" and "Always translate" toggle switch settings to provide more information on how these  settings interacts with other settings. -->
   <string name="translation_option_bottom_sheet_switch_description">Suprascrie oferirea traducerii</string>
+  <!-- TextField Design System Component -->
 </resources>

@@ -30,16 +30,16 @@ import mozilla.components.feature.tab.collections.TabCollection
 import mozilla.components.feature.tabs.WindowFeature
 import mozilla.components.support.base.feature.UserInteractionHandler
 import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
-import mozilla.components.support.utils.ext.isContentUrl
-import mozilla.components.support.utils.ext.isLandscape
+import mozilla.components.support.ktx.kotlin.isContentUrl
 import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.GleanMetrics.AddressToolbar
 import org.mozilla.fenix.GleanMetrics.ReaderMode
-import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.R
+import org.mozilla.fenix.browser.store.BrowserScreenAction.ReaderModeStatusUpdated
 import org.mozilla.fenix.browser.tabstrip.isTabStripEnabled
 import org.mozilla.fenix.components.TabCollectionStorage
 import org.mozilla.fenix.components.appstate.AppAction.SnackbarAction
+import org.mozilla.fenix.components.toolbar.BrowserToolbarComposable
 import org.mozilla.fenix.components.toolbar.BrowserToolbarView
 import org.mozilla.fenix.components.toolbar.FenixBrowserToolbarView
 import org.mozilla.fenix.components.toolbar.ToolbarMenu
@@ -73,7 +73,7 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler {
     private var pwaOnboardingObserver: PwaOnboardingObserver? = null
 
     @VisibleForTesting
-    internal var leadingAction: BrowserToolbar.Button? = null
+    internal var homeAction: BrowserToolbar.Button? = null
     private var forwardAction: BrowserToolbar.TwoStateButton? = null
     private var backAction: BrowserToolbar.TwoStateButton? = null
     private var refreshAction: BrowserToolbar.TwoStateButton? = null
@@ -105,12 +105,13 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler {
         if (browserToolbarView is BrowserToolbarView) {
             updateBrowserToolbarLeadingAndNavigationActions(
                 context = context,
-                isLandscape = context.isLandscape(),
                 isTablet = isLargeWindow(),
-                isPrivate = (activity as HomeActivity).browsingModeManager.mode.isPrivate,
-                feltPrivateBrowsingEnabled = context.settings().feltPrivateBrowsingEnabled,
             )
             initBrowserToolbarViewActions(view)
+        } else {
+            (browserToolbarView as? BrowserToolbarComposable)?.let {
+                initBrowserToolbarComposableUpdates(view)
+            }
         }
 
         thumbnailsFeature.set(
@@ -152,9 +153,14 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler {
         initSharePageAction(rootView.context)
     }
 
+    private fun initBrowserToolbarComposableUpdates(rootView: View) {
+        initReaderModeUpdates(rootView.context, rootView)
+        initTranslationsUpdates(rootView.context, rootView)
+    }
+
     private fun initSharePageAction(context: Context) {
         // Only adding share page action if tab strip is disabled.
-        if (!context.isTabStripEnabled()) {
+        if (!context.isTabStripEnabled() && isLargeWindow()) {
             val sharePageAction = BrowserToolbar.createShareBrowserAction(
                 context = context,
             ) {
@@ -167,6 +173,11 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler {
     }
 
     private fun initTranslationsAction(context: Context, view: View) {
+        // Do not add translation page action if device doesn't have large window
+        if (!isLargeWindow()) {
+            return
+        }
+
         if (
             !FxNimbus.features.translations.value().mainFlowToolbarEnabled
         ) {
@@ -191,8 +202,8 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler {
         translationsBinding.set(
             feature = TranslationsBinding(
                 browserStore = context.components.core.store,
-                onTranslationsActionUpdated = {
-                    translationsAvailable = it.isVisible
+                onTranslationStatusUpdate = {
+                    translationsAvailable = it.isTranslationPossible
 
                     translationsAction.updateView(
                         tintColorResource = if (it.isTranslated) {
@@ -218,6 +229,45 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler {
                     }
                 },
                 onShowTranslationsDialog = browserToolbarInteractor::onTranslationsButtonClicked,
+            ),
+            owner = this,
+            view = view,
+        )
+    }
+
+    private fun initReaderModeUpdates(context: Context, view: View) {
+        readerViewFeature.set(
+            feature = context.components.strictMode.resetAfter(StrictMode.allowThreadDiskReads()) {
+                ReaderViewFeature(
+                    context = context,
+                    engine = context.components.core.engine,
+                    store = context.components.core.store,
+                    controlsView = binding.readerViewControlsBar,
+                ) { available, active ->
+                    browserScreenStore.dispatch(
+                        ReaderModeStatusUpdated(ReaderModeStatus(available, active)),
+                    )
+                }
+            },
+            owner = this,
+            view = view,
+        )
+    }
+
+    private fun initTranslationsUpdates(context: Context, view: View) {
+        // Do not add translation page action if device doesn't have large window
+        if (!isLargeWindow()) {
+            return
+        }
+
+        if (!FxNimbus.features.translations.value().mainFlowToolbarEnabled) return
+
+        translationsBinding.set(
+            feature = TranslationsBinding(
+                browserStore = context.components.core.store,
+                browserScreenStore = browserScreenStore,
+                appStore = context.components.appStore,
+                navController = findNavController(),
             ),
             owner = this,
             view = view,
@@ -280,109 +330,30 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler {
     }
 
     @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    internal fun addLeadingAction(
-        context: Context,
-        showHomeButton: Boolean,
-        showEraseButton: Boolean,
-    ) {
-        if (leadingAction != null) return
+    internal fun addHomeAction(context: Context) {
+        if (homeAction != null) return
 
-        leadingAction = if (showEraseButton) {
-            BrowserToolbar.Button(
-                imageDrawable = AppCompatResources.getDrawable(
-                    context,
-                    R.drawable.mozac_ic_data_clearance_24,
-                )!!,
-                contentDescription = context.getString(R.string.browser_toolbar_erase),
-                iconTintColorResource = ThemeManager.resolveAttribute(R.attr.textPrimary, context),
-                listener = browserToolbarInteractor::onEraseButtonClicked,
-            )
-        } else if (showHomeButton) {
-            BrowserToolbar.Button(
-                imageDrawable = AppCompatResources.getDrawable(
-                    context,
-                    R.drawable.mozac_ic_home_24,
-                )!!,
-                contentDescription = context.getString(R.string.browser_toolbar_home),
-                iconTintColorResource = ThemeManager.resolveAttribute(R.attr.textPrimary, context),
-                listener = browserToolbarInteractor::onHomeButtonClicked,
-            )
-        } else {
-            null
-        }
-
-        leadingAction?.let {
+        homeAction = BrowserToolbar.Button(
+            imageDrawable = AppCompatResources.getDrawable(
+                context,
+                R.drawable.mozac_ic_home_24,
+            )!!,
+            contentDescription = context.getString(R.string.browser_toolbar_home),
+            iconTintColorResource = ThemeManager.resolveAttribute(R.attr.textPrimary, context),
+            listener = browserToolbarInteractor::onHomeButtonClicked,
+        ).also {
             (_browserToolbarView as? BrowserToolbarView)?.toolbar?.addNavigationAction(it)
         }
     }
 
-    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
-    internal fun removeLeadingAction() {
-        leadingAction?.let {
-            (_browserToolbarView as? BrowserToolbarView)?.toolbar?.removeNavigationAction(it)
-        }
-        leadingAction = null
-    }
-
-    /**
-     * This code takes care of the [BrowserToolbar] leading and navigation actions.
-     * The older design requires a HomeButton followed by navigation buttons for tablets.
-     * The newer design expects NavigationButtons and a HomeButton in landscape mode for phones and in both modes
-     * for tablets.
-     */
     @VisibleForTesting
     internal fun updateBrowserToolbarLeadingAndNavigationActions(
         context: Context,
-        isLandscape: Boolean,
         isTablet: Boolean,
-        isPrivate: Boolean,
-        feltPrivateBrowsingEnabled: Boolean,
     ) {
-        updateAddressBarLeadingAction(
-            redesignEnabled = false,
-            isLandscape = isLandscape,
-            isPrivate = isPrivate,
-            isTablet = isTablet,
-            feltPrivateBrowsingEnabled = feltPrivateBrowsingEnabled,
-            context = context,
-        )
+        addHomeAction(context = context)
         updateTabletToolbarActions(isTablet = isTablet)
         (browserToolbarView as? BrowserToolbarView)?.toolbar?.invalidateActions()
-    }
-
-    @VisibleForTesting
-    internal fun updateAddressBarLeadingAction(
-        redesignEnabled: Boolean,
-        isLandscape: Boolean,
-        isTablet: Boolean,
-        isPrivate: Boolean,
-        feltPrivateBrowsingEnabled: Boolean,
-        context: Context,
-    ) {
-        val showHomeButton = !redesignEnabled
-        val showEraseButton = feltPrivateBrowsingEnabled && isPrivate && (isLandscape || isTablet)
-
-        if (showHomeButton || showEraseButton) {
-            addLeadingAction(
-                context = context,
-                showHomeButton = showHomeButton,
-                showEraseButton = showEraseButton,
-            )
-        } else {
-            removeLeadingAction()
-        }
-    }
-
-    @VisibleForTesting
-    internal fun updateAddressBarNavigationActions(
-        context: Context,
-        isWindowSizeSmall: Boolean,
-    ) {
-        if (!isWindowSizeSmall) {
-            addNavigationActions(context)
-        } else {
-            removeNavigationActions()
-        }
     }
 
     override fun onUpdateToolbarForConfigurationChange(toolbar: FenixBrowserToolbarView) {
@@ -391,10 +362,7 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler {
         if (browserToolbarView is BrowserToolbarView) {
             updateBrowserToolbarLeadingAndNavigationActions(
                 context = requireContext(),
-                isLandscape = requireContext().isLandscape(),
                 isTablet = isLargeWindow(),
-                isPrivate = (activity as HomeActivity).browsingModeManager.mode.isPrivate,
-                feltPrivateBrowsingEnabled = requireContext().settings().feltPrivateBrowsingEnabled,
             )
         }
     }
@@ -564,7 +532,7 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler {
     override fun onDestroyView() {
         super.onDestroyView()
         isTablet = false
-        leadingAction = null
+        homeAction = null
         forwardAction = null
         backAction = null
         refreshAction = null
@@ -603,8 +571,9 @@ class BrowserFragment : BaseBrowserFragment(), UserInteractionHandler {
             lifecycleScope.launch {
                 val cookieBannersStorage = requireComponents.core.cookieBannersStorage
                 val cookieBannerUIMode = cookieBannersStorage.getCookieBannerUIMode(
-                    requireContext(),
-                    tab,
+                    tab = tab,
+                    isFeatureEnabledInPrivateMode = requireContext().settings().shouldUseCookieBannerPrivateMode,
+                    publicSuffixList = requireComponents.publicSuffixList,
                 )
                 withContext(Dispatchers.Main) {
                     runIfFragmentIsAttached {

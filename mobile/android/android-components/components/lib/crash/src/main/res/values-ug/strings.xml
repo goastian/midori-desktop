@@ -7,7 +7,7 @@
   <!-- Label of the button closing the crash reporter dialog. -->
   <string name="mozac_lib_crash_dialog_button_close">تاقاش</string>
   <!-- Label of the button closing the crash reporter dialog and restarting the app. %1$s is the name of the app (for example "Firefox"). -->
-  <string name="mozac_lib_crash_dialog_button_restart"> %1$s نى قايتا قوزغات</string>
+  <string name="mozac_lib_crash_dialog_button_restart">%1$s نى قايتا قوزغات</string>
   <!-- Name of the "notification channel" used for displaying a notification when the app crashed and we can't show a prompt. See https://developer.android.com/training/notify-user/channels -->
   <string name="mozac_lib_crash_channel">يىمىرىلىش</string>
   <!-- Title of the crash reporter notification for background process crashes. %1$s is the name of the app (for example "Firefox"). -->
@@ -26,4 +26,10 @@
   <string name="mozac_lib_crash_no_crashes">يىمىرىلىش دوكلاتى تاپشۇرۇلمىدى.</string>
   <!-- Text link that will show an app chooser to share a crash report with a third-party app (e.g. gmail) -->
   <string name="mozac_lib_crash_share">ھەمبەھىرلەش</string>
+  <!-- String for Ask before sending crash reports radio button in Data Collection Screen -->
+  <string name="crash_reporting_ask">يوللاشتىن ئىلگىرى سورا</string>
+  <!-- String for Send crash reports automatically radio button in Data Collection Screen -->
+  <string name="crash_reporting_auto">ئۆزلۈكىدىن يوللا</string>
+  <!-- String for Never sending crash reports radio button in Data Collection Screen -->
+  <string name="crash_reporting_never">ھەرگىز يوللىما</string>
 </resources>

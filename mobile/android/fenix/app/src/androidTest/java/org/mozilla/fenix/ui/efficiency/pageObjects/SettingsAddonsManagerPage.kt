@@ -22,6 +22,16 @@ class SettingsAddonsManagerPage(composeRule: AndroidComposeTestRule<HomeActivity
                 NavigationStep.Click(MainMenuSelectors.EXTENSIONS_BUTTON),
             ),
         )
+
+        NavigationRegistry.register(
+            from = "HomePage",
+            to = pageName,
+            steps = listOf(
+                NavigationStep.Click(HomeSelectors.MAIN_MENU_BUTTON),
+                NavigationStep.Click(MainMenuSelectors.EXTENSIONS_BUTTON),
+                // Click the add-on to be able to open the details
+            ),
+        )
     }
 
     override fun mozGetSelectorsByGroup(group: String): List<Selector> {

@@ -10,6 +10,11 @@
     The %1$s will be replaced by the number of opened tabs
   -->
   <string name="mozac_open_tab_counter_tab_tray">%1$s thẻ thông thường đang mở. Nhấn để chuyển sang thẻ.</string>
+  <!--
+    Message announced to the user when the tab counter is selected in private browsing mode.
+    Used by a11y services. The %1$s will be replaced by the number of opened tabs
+  -->
+  <string name="mozac_tab_counter_private">%1$s thẻ riêng tư đang mở. Nhấn để chuyển sang thẻ.</string>
   <!-- Browser menu button that creates a new tab -->
   <string name="mozac_browser_menu_new_tab">Thẻ mới</string>
   <!-- Browser menu button that creates a private tab -->

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- Text for confirmation for a positive action in dialog -->
   <string name="mozac_feature_prompts_ok">OK</string>
   <!-- Text for confirmation for a negative action in dialog. -->
@@ -111,11 +111,11 @@
   <!-- Pressing this will dismiss the suggested strong password dialog -->
   <string name="mozac_feature_prompts_suggest_strong_password_dismiss">Betg ussa</string>
   <!-- Title for showing the suggest strong password saved confirmation snackbar -->
-  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title">Memorisà il pled-clav</string>
+  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title" tools:ignore="UnusedResources" moz:removedIn="142">Memorisà il pled-clav</string>
   <!-- Title for showing the suggest strong password updated confirmation snackbar -->
   <string name="mozac_feature_prompts_suggest_strong_password_updated_snackbar_title">Actualisà il pled-clav</string>
   <!-- Title for showing the username updated confirmation snackbar -->
-  <string name="mozac_feature_prompt_login_snackbar_username_updated">Actualisà il num d’utilisader</string>
+  <string name="mozac_feature_prompt_login_snackbar_username_updated" tools:ignore="UnusedResources" moz:removedIn="142">Actualisà il num d’utilisader</string>
   <!-- Strings shown in a dialog that appear when users try to refresh a certain kind of webpages -->
   <string name="mozac_feature_prompt_repost_title">Anc ina giada trametter las datas a questa website?</string>
   <string name="mozac_feature_prompt_repost_message">Cun actualisar questa pagina vegnan eventualmain duplitgadas acziuns recentas (sco far in pajament u publitgar duas giadas in commentari).</string>
@@ -166,7 +166,7 @@
   <!-- Title of the Identity Credential privacy policy dialog title. The %1$s will be replaced with the name of the provider. -->
   <string name="mozac_feature_prompts_identity_credentials_privacy_policy_title">Utilisar %1$s sco purschider d\'annunzia</string>
   <!-- Title of the Identity Credential privacy policy dialog description. The %1$s will be replaced with the name of the provider, %2$s will be replaced with the account, %3$s will be replaced with the privacy policy url and  %4$s will be replaced with the terms of service. -->
-  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote">L\'annunzia tar %1$s cun in conto da %2$s è suttamessa a las &lt;a href="%3$s"&gt;Directivas per la protecziun da datas&lt;/a&gt; e las &lt;a href="%4$s"&gt;Cundiziuns d\'utilisaziun&lt;/a&gt; correspundentas</string>
+  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote"><![CDATA[L\'annunzia tar %1$s cun in conto da %2$s è suttamessa a las <a href=\"%3$s\">Directivas per la protecziun da datas</a> e las <a href=\"%4$s\">Cundiziuns d\'utilisaziun</a> correspundentas]]></string>
   <!-- Text for the positive button of the Identity Credential dialogs. -->
   <string name="mozac_feature_prompts_identity_credentials_continue">Cuntinuar</string>
   <!-- Text for the cancel button of the Identity Credential dialogs. -->

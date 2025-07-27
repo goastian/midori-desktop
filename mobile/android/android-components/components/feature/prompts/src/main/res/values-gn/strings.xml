@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- Text for confirmation for a positive action in dialog -->
   <string name="mozac_feature_prompts_ok">MONEĨ</string>
   <!-- Text for confirmation for a negative action in dialog. -->
@@ -111,11 +111,11 @@
   <!-- Pressing this will dismiss the suggested strong password dialog -->
   <string name="mozac_feature_prompts_suggest_strong_password_dismiss">Ani ko’ág̃a</string>
   <!-- Title for showing the suggest strong password saved confirmation snackbar -->
-  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title">Eñongatu ñe’ẽñemi</string>
+  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title" tools:ignore="UnusedResources" moz:removedIn="142">Eñongatu ñe’ẽñemi</string>
   <!-- Title for showing the suggest strong password updated confirmation snackbar -->
   <string name="mozac_feature_prompts_suggest_strong_password_updated_snackbar_title">Ñe’ẽñemi hekopyahúva</string>
   <!-- Title for showing the username updated confirmation snackbar -->
-  <string name="mozac_feature_prompt_login_snackbar_username_updated">Poruhára réra hekopyahúmava </string>
+  <string name="mozac_feature_prompt_login_snackbar_username_updated" tools:ignore="UnusedResources" moz:removedIn="142">Poruhára réra hekopyahúmava</string>
   <!-- Strings shown in a dialog that appear when users try to refresh a certain kind of webpages -->
   <string name="mozac_feature_prompt_repost_title">¿Emondojey mba’ekuaarã ko tendápe?</string>
   <string name="mozac_feature_prompt_repost_message">Emyanyhẽjeývo ko kuatiarogue ombohetakuaa ejaporamóva, omondokuaa jehepyme’ẽ térã omoherakuãjo’a nde jehaipy.</string>
@@ -123,6 +123,14 @@
   <string name="mozac_feature_prompt_repost_positive_button_text">Emondojey mba’ekuaarã</string>
   <!-- Pressing this will dismiss the dialog and not refresh the webpage -->
   <string name="mozac_feature_prompt_repost_negative_button_text">Heja</string>
+  <!-- Strings show in a dialog that appear when user confirm folder upload -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_title">¿Ehupi marandurenda?</string>
+  <!-- Prompt message displayed when user selects a specific folder. %1$s is a folder / directory name. -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_message">Ehechauka ejeroviaha ko tenda rehe ehupi mboyve tetepy “%1$s” guive.</string>
+  <!-- Pressing this will dismiss the dialog and allow to upload folder -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_positive_button_text">Hupi</string>
+  <!-- Pressing this will dismiss the dialog and disallow to upload folder -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_negative_button_text">Heja</string>
   <!--
     Credit Card Autofill
 
@@ -162,11 +170,11 @@
   <!-- Title of the Identity Credential provider dialog chooser. -->
   <string name="mozac_feature_prompts_identity_credentials_choose_provider">Eiporavo tembiapo ñepyrũ me’ẽhára</string>
   <!-- Title of an account picker dialog for identity credentials. The %1$s will be replaced with the name of the provider -->
-  <string name="mozac_feature_prompts_identity_credentials_choose_account_for_provider">Eñepyrũ tembiapo  %1$s mba’etépe</string>
+  <string name="mozac_feature_prompts_identity_credentials_choose_account_for_provider">Eñepyrũ tembiapo %1$s mba’etépe</string>
   <!-- Title of the Identity Credential privacy policy dialog title. The %1$s will be replaced with the name of the provider. -->
   <string name="mozac_feature_prompts_identity_credentials_privacy_policy_title">Eiporu %1$s tembiapo ñepyrũ me’ẽhárõ</string>
   <!-- Title of the Identity Credential privacy policy dialog description. The %1$s will be replaced with the name of the provider, %2$s will be replaced with the account, %3$s will be replaced with the privacy policy url and  %4$s will be replaced with the terms of service. -->
-  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote">Emba’apo %1$s peteĩ mba’ete %2$s ndive ojokupytýva &lt;a href="%3$s"&gt;Porureko ñemigua&lt;/a&gt; ha avei &lt;a href="%4$s"&gt;Mba’epytyvõrã ñemboguata&lt;/a&gt;</string>
+  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote"><![CDATA[Emba’apo %1$s peteĩ mba’ete %2$s ndive ojokupytýva <a href=\"%3$s\">Porureko ñemigua</a> ha avei <a href=\"%4$s\">Mba’epytyvõrã ñemboguata</a>]]></string>
   <!-- Text for the positive button of the Identity Credential dialogs. -->
   <string name="mozac_feature_prompts_identity_credentials_continue">Eku’ejey</string>
   <!-- Text for the cancel button of the Identity Credential dialogs. -->

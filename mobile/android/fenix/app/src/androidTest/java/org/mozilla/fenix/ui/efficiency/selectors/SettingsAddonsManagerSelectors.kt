@@ -12,7 +12,15 @@ object SettingsAddonsManagerSelectors {
         groups = listOf("requiredForPage"),
     )
 
+    val ENABLE_OR_DISABLE_EXTENSION_TOGGLE = Selector(
+        strategy = SelectorStrategy.UIAUTOMATOR_WITH_RES_ID,
+        value = "enable_switch",
+        description = "Enable or disable an extension toggle",
+        groups = listOf("extensionDetails"),
+    )
+
     val all = listOf(
         NAVIGATE_BACK_TOOLBAR_BUTTON,
+        ENABLE_OR_DISABLE_EXTENSION_TOGGLE,
     )
 }

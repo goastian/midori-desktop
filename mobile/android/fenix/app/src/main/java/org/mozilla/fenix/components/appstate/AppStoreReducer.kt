@@ -20,6 +20,7 @@ import org.mozilla.fenix.home.recentsyncedtabs.RecentSyncedTabState
 import org.mozilla.fenix.home.recentvisits.RecentlyVisitedItem
 import org.mozilla.fenix.home.recentvisits.RecentlyVisitedItem.RecentHistoryGroup
 import org.mozilla.fenix.messaging.state.MessagingReducer
+import org.mozilla.fenix.reviewprompt.ReviewPromptReducer
 import org.mozilla.fenix.share.ShareActionReducer
 
 /**
@@ -63,7 +64,7 @@ internal object AppStoreReducer {
             state.copy(expandedCollections = newExpandedCollection)
         }
         is AppAction.CollectionsChange -> state.copy(collections = action.collections)
-        is AppAction.ModeChange -> state.copy(mode = action.mode)
+        is AppAction.BrowsingModeManagerModeChanged -> state.copy(mode = action.mode)
         is AppAction.OrientationChange -> state.copy(orientation = action.orientation)
         is AppAction.TopSitesChange -> state.copy(topSites = action.topSites)
         is AppAction.RemoveCollectionsPlaceholder -> {
@@ -221,7 +222,31 @@ internal object AppStoreReducer {
             action = action,
         )
 
+        is AppAction.DownloadAction.DownloadInProgress -> state.copy(
+            snackbarState = SnackbarState.DownloadInProgress(action.sessionId),
+        )
+
+        is AppAction.DownloadAction.DownloadFailed -> state.copy(
+            snackbarState = SnackbarState.DownloadFailed(
+                action.fileName,
+            ),
+        )
+
+        is AppAction.DownloadAction.DownloadCompleted -> state.copy(
+            snackbarState = SnackbarState.DownloadCompleted(
+                action.downloadState,
+            ),
+        )
+
+        is AppAction.DownloadAction.CannotOpenFile -> state.copy(
+            snackbarState = SnackbarState.CannotOpenFileError(
+                action.downloadState,
+            ),
+        )
+
         is AppAction.PrivateBrowsingLockAction -> PrivateBrowsingLockReducer.reduce(state, action)
+
+        is AppAction.ReviewPromptAction -> ReviewPromptReducer.reduce(state, action)
     }
 }
 

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- Text for confirmation for a positive action in dialog -->
   <string name="mozac_feature_prompts_ok">Mat eo</string>
   <!-- Text for confirmation for a negative action in dialog. -->
@@ -111,11 +111,11 @@
   <!-- Pressing this will dismiss the suggested strong password dialog -->
   <string name="mozac_feature_prompts_suggest_strong_password_dismiss">Diwezhatoc’h</string>
   <!-- Title for showing the suggest strong password saved confirmation snackbar -->
-  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title">Ger-tremen enrollet</string>
+  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title" tools:ignore="UnusedResources" moz:removedIn="142">Ger-tremen enrollet</string>
   <!-- Title for showing the suggest strong password updated confirmation snackbar -->
   <string name="mozac_feature_prompts_suggest_strong_password_updated_snackbar_title">Ger-tremen hizivaet</string>
   <!-- Title for showing the username updated confirmation snackbar -->
-  <string name="mozac_feature_prompt_login_snackbar_username_updated">Anv arveriad hizivaet</string>
+  <string name="mozac_feature_prompt_login_snackbar_username_updated" tools:ignore="UnusedResources" moz:removedIn="142">Anv arveriad hizivaet</string>
   <!-- Strings shown in a dialog that appear when users try to refresh a certain kind of webpages -->
   <string name="mozac_feature_prompt_repost_title">Kas roadennoù en-dro d’al lec’hienn?</string>
   <string name="mozac_feature_prompt_repost_message">Azbevaat ar bajenn a c’hallfe eilañ ar gweredoù nevez, evel kas ur paeamant pe embann un evezhiadenn div wech.</string>
@@ -123,6 +123,8 @@
   <string name="mozac_feature_prompt_repost_positive_button_text">Adkas roadennoù</string>
   <!-- Pressing this will dismiss the dialog and not refresh the webpage -->
   <string name="mozac_feature_prompt_repost_negative_button_text">Nullañ</string>
+  <!-- Pressing this will dismiss the dialog and disallow to upload folder -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_negative_button_text">Nullañ</string>
   <!--
     Credit Card Autofill
 
@@ -166,7 +168,7 @@
   <!-- Title of the Identity Credential privacy policy dialog title. The %1$s will be replaced with the name of the provider. -->
   <string name="mozac_feature_prompts_identity_credentials_privacy_policy_title">Ober gant %1$s evel pourchaser dilesa</string>
   <!-- Title of the Identity Credential privacy policy dialog description. The %1$s will be replaced with the name of the provider, %2$s will be replaced with the account, %3$s will be replaced with the privacy policy url and  %4$s will be replaced with the terms of service. -->
-  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote">Kennaskañ ouzh %1$s gant ur gont %2$s a zo reolennet gant o &lt;a href="%3$s"&gt;Reolenn a-fet buhez prevez&lt;/a&gt; ha &lt;a href="%4$s"&gt;divizoù arver&lt;/a&gt;</string>
+  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote"><![CDATA[Kennaskañ ouzh %1$s gant ur gont %2$s a zo reolennet gant o <a href=\"%3$s\">Reolenn a-fet buhez prevez</a> ha <a href=\"%4$s\">divizoù arver</a>]]></string>
   <!-- Text for the positive button of the Identity Credential dialogs. -->
   <string name="mozac_feature_prompts_identity_credentials_continue">Kenderc’hel</string>
   <!-- Text for the cancel button of the Identity Credential dialogs. -->

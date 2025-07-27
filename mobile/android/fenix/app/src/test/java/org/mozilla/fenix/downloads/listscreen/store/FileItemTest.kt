@@ -23,6 +23,33 @@ class FileItemTest {
     }
 
     @Test
+    fun `WHEN file item is in progress THEN it is recognized by the correct ContentTypeFilter`() {
+        val inProgressFile = fileItem(
+            contentType = "image/png",
+            status = FileItem.Status.Downloading(progress = 0.5f),
+        )
+        assertEquals(FileItem.ContentTypeFilter.Image, inProgressFile.matchingContentTypeFilter)
+    }
+
+    @Test
+    fun `WHEN file item is paused THEN it should only match the All ContentTypeFilter`() {
+        val pausedFile = fileItem(
+            contentType = "image/png",
+            status = FileItem.Status.Paused(progress = 0.5f),
+        )
+        assertEquals(FileItem.ContentTypeFilter.Image, pausedFile.matchingContentTypeFilter)
+    }
+
+    @Test
+    fun `WHEN file item failed to download THEN it should only match the All ContentTypeFilter`() {
+        val failedFile = fileItem(
+            contentType = "image/png",
+            status = FileItem.Status.Failed,
+        )
+        assertEquals(FileItem.ContentTypeFilter.Image, failedFile.matchingContentTypeFilter)
+    }
+
+    @Test
     fun `WHEN file's mimetype correspond to a document THEN the Document contentTypeFilter is returned`() {
         val documentMimeTypes = listOf(
             "application/vnd.ms-excel",

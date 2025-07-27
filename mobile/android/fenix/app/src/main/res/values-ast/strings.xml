@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Más opciones</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Activar el mou de restolar en privao</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Activar el mou de restolar en privao</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Desactivar el mou de restolar en privao</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Desactivar el mou de restolar en privao</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">Restolar en privao</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -62,7 +62,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s borra l\'historial de busca y de resolar de les llingüetes privaes cuando les zarres o coles de l\'aplicación. Magar qu\'esta aición nun caltién el to anonimatu nos sitios web o nel fornidor de servicios d\'internet, facilita que cualesquier persona qu\'use esti preséu nun sepa qué faes en llinia.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s borra l\'historial de busca y de resolar de les llingüetes privaes cuando les zarres o coles de l\'aplicación. Magar qu\'esta aición nun caltién el to anonimatu nos sitios web o nel fornidor de servicios d\'internet, facilita que cualesquier persona qu\'use esti preséu nun sepa qué faes en llinia.</string>
   <string name="private_browsing_common_myths">Mitos habituales tocante al restolar en privao</string>
   <!--
     True Private Browsing Mode
@@ -98,7 +98,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">Toca equí p\'aniciar una sesión privada nueva. Desanicia l\'historial, les cookies… Too.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Toca equí p\'aniciar una sesión privada nueva. Desanicia l\'historial, les cookies… Too.</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -244,7 +244,7 @@
   <!-- Browser menu label that navigates to the Password screen -->
   <string name="browser_menu_passwords">Contraseñes</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">Cambiar al sitiu pa ordenadores</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">Cambiar al sitiu pa ordenadores</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
   <string name="browser_menu_tools" moz:removedIn="141" tools:ignore="UnusedResources">Ferramientes</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
@@ -436,7 +436,7 @@
   <!-- Preference for open links in third party apps -->
   <string name="preferences_open_links_in_apps">Abrir los enllaces nes aplicaciones</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Xestor de descargues esternu</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Xestor de descargues esternu</string>
   <!-- Preference for extensions -->
   <string name="preferences_extensions">Estensiones</string>
   <!-- Preference for notifications -->
@@ -1029,7 +1029,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Zarróse la llingüeta privada</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Zarráronse les llingüetes privaes</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Zarráronse les llingüetes privaes</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">DESFACER</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -1576,4 +1576,5 @@
   <string name="certificate_warning_push_notification_pnw2_message" tools:ignore="UnusedResources">Anueva enantes del 14 de marzu pa siguir usando los complementos y otres funciones.</string>
   <!-- Push notification message about old Firefox version -->
   <string name="certificate_warning_push_notification_pnw3_message" tools:ignore="UnusedResources">Dalgunes funciones van dexar de funcionar mañana.</string>
+  <!-- TextField Design System Component -->
 </resources>

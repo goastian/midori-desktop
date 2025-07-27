@@ -9,7 +9,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Card
 import androidx.compose.material.Surface
@@ -37,8 +37,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -60,7 +58,6 @@ import org.mozilla.fenix.compose.PagerIndicator
 import org.mozilla.fenix.home.fake.FakeHomepagePreview
 import org.mozilla.fenix.home.sessioncontrol.TopSiteInteractor
 import org.mozilla.fenix.home.topsites.TopSitesTestTag.TOP_SITE_CARD_FAVICON
-import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.theme.FirefoxTheme
 import org.mozilla.fenix.wallpapers.WallpaperState
 import kotlin.math.ceil
@@ -278,20 +275,10 @@ data class TopSiteColors(
                 Color(textColor) to Color(textColor)
             }
 
-            var faviconCardBackgroundColor = FirefoxTheme.colors.layer2
-
-            wallpaperState.composeRunIfWallpaperCardColorsAreAvailable { cardColorLight, cardColorDark ->
-                faviconCardBackgroundColor = if (isSystemInDarkTheme()) {
-                    cardColorDark
-                } else {
-                    cardColorLight
-                }
-            }
-
             return TopSiteColors(
                 titleTextColor = titleTextColor,
                 sponsoredTextColor = sponsoredTextColor,
-                faviconCardBackgroundColor = faviconCardBackgroundColor,
+                faviconCardBackgroundColor = FirefoxTheme.colors.layer2,
             )
         }
     }
@@ -439,9 +426,9 @@ private fun TopSiteFaviconCard(
                 testTag = TOP_SITE_CARD_FAVICON
             }
             .size(TOP_SITES_FAVICON_CARD_SIZE.dp),
-        shape = RoundedCornerShape(8.dp),
+        shape = CircleShape,
         backgroundColor = backgroundColor,
-        elevation = 6.dp,
+        elevation = 0.dp,
     ) {
         Box(contentAlignment = Alignment.Center) {
             Surface(
@@ -460,22 +447,8 @@ private fun TopSiteFaviconCard(
 }
 
 @Composable
-private fun FaviconImage(painter: Painter) {
-    Image(
-        painter = painter,
-        contentDescription = null,
-        modifier = Modifier
-            .size(TOP_SITES_FAVICON_SIZE.dp),
-        contentScale = ContentScale.Crop,
-    )
-}
-
-@Composable
 private fun TopSiteFavicon(url: String, imageUrl: String? = null) {
-    when (url) {
-        SupportUtils.POCKET_TRENDING_URL -> FaviconImage(painterResource(R.drawable.ic_pocket))
-        else -> Favicon(url = url, size = TOP_SITES_FAVICON_SIZE.dp, imageUrl = imageUrl)
-    }
+    Favicon(url = url, size = TOP_SITES_FAVICON_SIZE.dp, imageUrl = imageUrl)
 }
 
 @Composable

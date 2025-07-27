@@ -9,7 +9,7 @@ const lazy = {};
 
 ChromeUtils.defineESModuleGetters(lazy, {
   ActorManagerParent: "resource://gre/modules/ActorManagerParent.sys.mjs",
-  DoHController: "resource://gre/modules/DoHController.sys.mjs",
+  DoHController: "moz-src:///toolkit/components/doh/DoHController.sys.mjs",
   EventDispatcher: "resource://gre/modules/Messaging.sys.mjs",
   PdfJs: "resource://pdf.js/PdfJs.sys.mjs",
 });
@@ -271,14 +271,6 @@ export class GeckoViewStartup {
           module: "resource://gre/modules/GeckoViewWebExtension.sys.mjs",
           ged: ["GeckoView:WebExtension:DownloadChanged"],
         });
-
-        ChromeUtils.importESModule(
-          "resource://gre/modules/MemoryNotificationDB.sys.mjs"
-        );
-
-        ChromeUtils.importESModule(
-          "resource://gre/modules/NotificationDB.sys.mjs"
-        );
 
         // Listen for global EventDispatcher messages
         lazy.EventDispatcher.instance.registerListener(this, [

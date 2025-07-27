@@ -29,9 +29,9 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.settings
-import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
+import org.robolectric.RobolectricTestRunner
 
-@RunWith(FenixRobolectricTestRunner::class)
+@RunWith(RobolectricTestRunner::class)
 class DefaultConnectionDetailsControllerTest {
 
     private lateinit var context: Context
@@ -90,6 +90,7 @@ class DefaultConnectionDetailsControllerTest {
     @Test
     fun `WHEN handleBackPressed is called THEN should call popBackStack and navigate`() = runTestOnMain {
         every { context.settings().shouldUseCookieBannerPrivateMode } returns false
+        every { context.components.publicSuffixList } returns mockk()
 
         controller.handleBackPressed()
 

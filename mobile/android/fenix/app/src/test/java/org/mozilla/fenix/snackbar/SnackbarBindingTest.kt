@@ -16,6 +16,7 @@ import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import mozilla.appservices.places.BookmarkRoot
 import mozilla.components.browser.state.state.BrowserState
+import mozilla.components.browser.state.state.content.DownloadState
 import mozilla.components.browser.state.state.createTab
 import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.storage.BookmarkNode
@@ -43,6 +44,7 @@ import org.mockito.Mockito.never
 import org.mockito.Mockito.times
 import org.mockito.Mockito.verify
 import org.mozilla.fenix.R
+import org.mozilla.fenix.browser.BrowserFragmentDirections
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.components.appstate.AppAction.BookmarkAction
@@ -50,6 +52,7 @@ import org.mozilla.fenix.components.appstate.AppAction.ShareAction
 import org.mozilla.fenix.components.appstate.AppAction.SnackbarAction
 import org.mozilla.fenix.components.appstate.AppAction.TranslationsAction
 import org.mozilla.fenix.components.appstate.AppAction.URLCopiedToClipboard
+import org.mozilla.fenix.components.appstate.AppAction.WebCompatAction
 import org.mozilla.fenix.components.appstate.snackbar.SnackbarState
 import org.mozilla.fenix.ext.tabClosedUndoMessage
 
@@ -149,6 +152,7 @@ class SnackbarBindingTest {
         val outputMessage = testContext.getString(R.string.bookmark_saved_in_folder_snackbar, "Bookmarks")
         verify(snackbarDelegate).show(
             text = eq(outputMessage),
+            subText = eq(null),
             duration = eq(LENGTH_LONG),
             isError = eq(false),
             action = eq("EDIT"),
@@ -178,6 +182,7 @@ class SnackbarBindingTest {
         val outputMessage = testContext.getString(R.string.bookmark_saved_in_folder_snackbar, "mobile")
         verify(snackbarDelegate).show(
             text = eq(outputMessage),
+            subText = eq(null),
             duration = eq(LENGTH_LONG),
             isError = eq(false),
             action = eq(testContext.getString(R.string.edit_bookmark_snackbar_action)),
@@ -488,6 +493,7 @@ class SnackbarBindingTest {
 
         verify(snackbarDelegate).show(
             text = eq(testContext.tabClosedUndoMessage(false)),
+            subText = eq(null),
             duration = eq(LENGTH_LONG),
             isError = eq(false),
             action = eq(testContext.getString(R.string.snackbar_deleted_undo)),
@@ -511,6 +517,153 @@ class SnackbarBindingTest {
             duration = LENGTH_LONG,
         )
         assertEquals(SnackbarState.None, appStore.state.snackbarState)
+    }
+
+    @Test
+    fun `WHEN download is failed THEN display a snackbar`() {
+        val snackbarAction = argumentCaptor<((v: View) -> Unit)>()
+        val binding = buildSnackbarBinding()
+        binding.start()
+
+        appStore.dispatch(AppAction.DownloadAction.DownloadFailed(fileName = "fileName"))
+        waitForStoreToSettle()
+
+        verify(snackbarDelegate).show(
+            text = eq(testContext.getString(R.string.download_item_status_failed)),
+            subText = eq("fileName"),
+            duration = eq(DOWNLOAD_SNACKBAR_DURATION_MS),
+            isError = eq(false),
+            action = eq(testContext.getString(R.string.download_failed_snackbar_action_details)),
+            listener = snackbarAction.capture(),
+        )
+        snackbarAction.value.invoke(mock())
+
+        verify(navController).navigate(
+            BrowserFragmentDirections.actionGlobalDownloadsFragment(),
+        )
+
+        assertEquals(SnackbarState.None, appStore.state.snackbarState)
+    }
+
+    @Test
+    fun `WHEN download is completed THEN display a snackbar`() {
+        val snackbarAction = argumentCaptor<((v: View) -> Unit)>()
+        val binding = buildSnackbarBinding()
+        binding.start()
+
+        val downloadState = DownloadState(
+            id = "1",
+            url = "url",
+            fileName = "fileName",
+            contentType = "application/zip",
+            contentLength = 5242880,
+            status = DownloadState.Status.DOWNLOADING,
+            directoryPath = "downloads",
+            destinationDirectory = "Environment.DIRECTORY_MUSIC",
+            private = true,
+            createdTime = 33,
+            etag = "etag",
+        )
+
+        appStore.dispatch(AppAction.DownloadAction.DownloadCompleted(downloadState))
+        waitForStoreToSettle()
+
+        verify(snackbarDelegate).show(
+            text = eq(testContext.getString(R.string.download_completed_snackbar)),
+            subText = eq("fileName"),
+            duration = eq(DOWNLOAD_SNACKBAR_DURATION_MS),
+            isError = eq(false),
+            action = eq(testContext.getString(R.string.download_completed_snackbar_action_open)),
+            listener = snackbarAction.capture(),
+        )
+    }
+
+    @Test
+    fun `WHEN download file can't be open THEN display a snackbar`() {
+        val binding = buildSnackbarBinding()
+        binding.start()
+
+        val downloadState = DownloadState(
+            id = "1",
+            url = "url",
+            fileName = "fileName",
+            contentType = "application/zip",
+            contentLength = 5242880,
+            status = DownloadState.Status.DOWNLOADING,
+            directoryPath = "downloads",
+            destinationDirectory = "Environment.DIRECTORY_MUSIC",
+            private = true,
+            createdTime = 33,
+            etag = "etag",
+        )
+
+        appStore.dispatch(AppAction.DownloadAction.CannotOpenFile(downloadState))
+        waitForStoreToSettle()
+
+        verify(snackbarDelegate).show(
+            text = "No app found to open  files",
+            duration = DOWNLOAD_SNACKBAR_DURATION_MS,
+            isError = false,
+        )
+    }
+
+    @Test
+    fun `WHEN download file is in progress THEN display a snackbar`() {
+        val snackbarAction = argumentCaptor<((v: View) -> Unit)>()
+        val binding = buildSnackbarBinding(
+            browserStore = BrowserStore(
+                BrowserState(
+                    tabs = listOf(
+                        createTab("https://www.firefox.com", id = "id"),
+                    ),
+                    selectedTabId = "id",
+                ),
+            ),
+        )
+        binding.start()
+
+        appStore.dispatch(AppAction.DownloadAction.DownloadInProgress(sessionId = "id"))
+        waitForStoreToSettle()
+
+        verify(snackbarDelegate).show(
+            text = eq(testContext.getString(R.string.download_in_progress_snackbar)),
+            subText = eq(null),
+            duration = eq(DOWNLOAD_SNACKBAR_DURATION_MS),
+            isError = eq(false),
+            action = eq(testContext.getString(R.string.download_in_progress_snackbar_action_details)),
+            listener = snackbarAction.capture(),
+        )
+        snackbarAction.value.invoke(mock())
+
+        verify(navController).navigate(
+            BrowserFragmentDirections.actionGlobalDownloadsFragment(),
+        )
+
+        assertEquals(SnackbarState.None, appStore.state.snackbarState)
+    }
+
+    @Test
+    fun `WHEN a webcompat report is successfully sent THEN show a snackbar`() {
+        val snackbarAction = argumentCaptor<((v: View) -> Unit)>()
+        val binding = buildSnackbarBinding()
+        binding.start()
+
+        appStore.dispatch(WebCompatAction.WebCompatReportSent)
+        waitForStoreToSettle()
+
+        verify(snackbarDelegate).show(
+            text = eq(testContext.getString(R.string.webcompat_reporter_success_snackbar_text)),
+            subText = eq(null),
+            duration = eq(WEBCOMPAT_SNACKBAR_DURATION_MS),
+            isError = eq(false),
+            action = eq(testContext.getString(R.string.webcompat_reporter_dismiss_success_snackbar_text)),
+            listener = snackbarAction.capture(),
+        )
+        assertEquals(SnackbarState.None, appStore.state.snackbarState)
+
+        verify(snackbarDelegate, never()).dismiss()
+        snackbarAction.value.invoke(mock())
+        verify(snackbarDelegate).dismiss()
     }
 
     private fun buildSnackbarBinding(

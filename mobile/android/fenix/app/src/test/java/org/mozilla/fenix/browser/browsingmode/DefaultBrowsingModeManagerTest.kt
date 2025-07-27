@@ -11,6 +11,8 @@ import io.mockk.impl.annotations.MockK
 import io.mockk.just
 import io.mockk.verify
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -34,7 +36,7 @@ class DefaultBrowsingModeManagerTest {
     fun before() {
         MockKAnnotations.init(this)
 
-        manager = DefaultBrowsingModeManager(initMode, settings, callback)
+        manager = DefaultBrowsingModeManager(initMode, settings, callback) {}
         every { settings.lastKnownMode = any() } just Runs
     }
 
@@ -65,5 +67,20 @@ class DefaultBrowsingModeManagerTest {
         manager.mode = BrowsingMode.Normal
         assertEquals(BrowsingMode.Normal, manager.mode)
         verify { settings.lastKnownMode = BrowsingMode.Normal }
+    }
+
+    @Test
+    fun `WHEN mode is updated THEN updateAppStateMode callback is invoked`() {
+        var updateAppStateModeCalled = false
+        val manager = DefaultBrowsingModeManager(initMode, settings, callback, {
+            updateAppStateModeCalled = true
+        })
+        assertEquals(BrowsingMode.Normal, manager.mode)
+        assertFalse(updateAppStateModeCalled)
+
+        manager.mode = BrowsingMode.Private
+
+        assertEquals(BrowsingMode.Private, manager.mode)
+        assertTrue(updateAppStateModeCalled)
     }
 }

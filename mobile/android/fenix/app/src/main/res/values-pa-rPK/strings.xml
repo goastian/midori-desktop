@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">ہور چوݨاں</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">نجی ورتوں چالو کرو</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">نجی ورتوں چالو کرو</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">نجی ورتوں چالو نہ کرو</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">نجی ورتوں چالو نہ کرو</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">پتہ پایو</string>
   <!-- Placeholder text shown in the search bar before a user enters text for a general engine -->
@@ -60,7 +60,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">جدوں تسیں ساریاں نجی ٹیباں نوں بند کردے او یا ایپ توں باہر جاندے او تاں %1$s تہاڈی کھوج تے ورتوں دی تاریخ نوں ساف کردا اے۔ حالاں‌کہ ایہہ تہانوں سائٹاں یا تہاڈے اینٹرنیٹ دیݨ والے لئی اݨپچھاتا نہیں بݨاوندا، پر ایس نال ایس فون نوں ورتے والے کسے توں وی تہاڈے ولوں آن‌لائین کیتے نوں نجی رکھݨا ہور سوکھا ہو جاندا اے۔</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">جدوں تسیں ساریاں نجی ٹیباں نوں بند کردے او یا ایپ توں باہر جاندے او تاں %1$s تہاڈی کھوج تے ورتوں دی تاریخ نوں ساف کردا اے۔ حالاں‌کہ ایہہ تہانوں سائٹاں یا تہاڈے اینٹرنیٹ دیݨ والے لئی اݨپچھاتا نہیں بݨاوندا، پر ایس نال ایس فون نوں ورتے والے کسے توں وی تہاڈے ولوں آن‌لائین کیتے نوں نجی رکھݨا ہور سوکھا ہو جاندا اے۔</string>
   <string name="private_browsing_common_myths">نجی ورتوں بارے عام فرضی گلاں</string>
   <!--
     True Private Browsing Mode
@@ -96,7 +96,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">تازہ نجی سیشن شروع کرن لئی اتھے چھوہو۔ آپݨے تاریخ، کوکیاں — ہر چیز ہٹا دیو۔</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">تازہ نجی سیشن شروع کرن لئی اتھے چھوہو۔ آپݨے تاریخ، کوکیاں — ہر چیز ہٹا دیو۔</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -290,9 +290,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">%1$s وچ نواں</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">%1$s وچ نواں</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">ڈیسک‌ٹاپ سائیٹ لئی بدلو</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">ڈیسک‌ٹاپ سائیٹ لئی بدلو</string>
   <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
   <string name="browser_menu_switch_to_mobile_site">موبائیل سائیٹ لئی سوئچ کرو</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
@@ -320,7 +320,7 @@
     Browser menu label that is displayed when the current page has been translated by the translation feature.
     %1$s is the name of the language that page was translated to (e.g. English).
   -->
-  <string name="browser_menu_translated_to">%1$s وچ اُلتھا کیتا</string>
+  <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">%1$s وچ اُلتھا کیتا</string>
   <!-- Browser menu label for the print feature -->
   <string name="browser_menu_print" moz:removedIn="141" tools:ignore="UnusedResources">چھاپو…</string>
   <!--
@@ -344,7 +344,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">براؤز کرن دی تاریخ مٹاؤ</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">براؤز کرن دی تاریخ مٹاؤ</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">صفحے دا اُلتھا کرو</string>
   <!--
@@ -402,7 +402,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">اگلے تے چلو</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">تہاڈیاں ٹیباں ہم وقت ہندیاں پئیاں ہن۔ آپݨے ہور ڈوائیس تے جتھے تسیں چھڈو م، اوتھوں ہی تسیں ہی شروع کرو۔</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">تہاڈیاں ٹیباں ہم وقت ہندیاں پئیاں ہن۔ آپݨے ہور ڈوائیس تے جتھے تسیں چھڈو م، اوتھوں ہی تسیں ہی شروع کرو۔</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">بند کرو</string>
   <!--
@@ -624,7 +624,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">ترجمے</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">ڈیٹا چوݨاں</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">ڈیٹا چوݨاں</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">ڈیٹا بھنڈار</string>
   <!-- Preference for developers -->
@@ -670,7 +670,7 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">کدے نہیں</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">باہری ڈاؤن‌لوڈ مینیجر</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">باہری ڈاؤن‌لوڈ مینیجر</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">گیکو لاگاں دا چالو کرو</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -690,13 +690,13 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">لوڑیندا</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">لوڑیندا</string>
   <!-- The title of the optional permissions section from addon's permissions screen -->
-  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">چوݨواں</string>
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">چوݨواں</string>
   <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
-  <string name="addons_permissions_allow_for_all_sites" tools:ignore="UnusedResources">سبھ سائیٹاں لئی منظوری</string>
+  <string name="addons_permissions_allow_for_all_sites">سبھ سائیٹاں لئی منظوری</string>
   <!-- The subtitle for the allow for all sites preference toggle -->
-  <string name="addons_permissions_allow_for_all_sites_subtitle" tools:ignore="UnusedResources">جے تسیں ایس پھیلاؤ تے بھروسا کدے او تاں تسیں ہر ویب‌سائیٹ لئی ایس نوں اجازت دے سکدے او۔</string>
+  <string name="addons_permissions_allow_for_all_sites_subtitle">جے تسیں ایس پھیلاؤ تے بھروسا کدے او تاں تسیں ہر ویب‌سائیٹ لئی ایس نوں اجازت دے سکدے او۔</string>
   <!-- The text shown when an extension does not require permissions -->
   <string name="addons_does_not_require_permissions">ایس پھیلاؤ لئی کسے اجازت دی لوڑ نہیں اے۔</string>
   <!--
@@ -1739,4 +1739,6 @@
   <!-- Snackbar button text to navigate to telemetry settings. -->
   <string name="experiments_snackbar_button">سیٹنگاں نوں جاؤ</string>
   <!-- Translations feature -->
+
+  <!-- TextField Design System Component -->
 </resources>

@@ -60,7 +60,45 @@ internal fun MenuScaffold(
                     end = 16.dp,
                     bottom = 32.dp,
                 ),
-            verticalArrangement = Arrangement.spacedBy(32.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            content()
+        }
+    }
+}
+
+/**
+ * A frame for the main menu UI that implements the basic layout structure with [header] and [content].
+ *
+ * @param modifier [Modifier] to be applied to the layout.
+ * @param scrollState The [ScrollState] used for vertical scrolling.
+ * @param header The Composable header block to render.
+ * @param content The Composable content block to render.
+ */
+@Composable
+internal fun MenuFrame(
+    modifier: Modifier = Modifier,
+    scrollState: ScrollState = rememberScrollState(),
+    header: @Composable ColumnScope.() -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(modifier = modifier) {
+        header()
+
+        if (scrollState.value != 0) {
+            Divider(color = FirefoxTheme.colors.borderPrimary)
+        }
+
+        Column(
+            modifier = Modifier
+                .verticalScroll(scrollState)
+                .padding(
+                    start = 8.dp,
+                    top = 8.dp,
+                    end = 8.dp,
+                    bottom = 12.dp,
+                ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             content()
         }

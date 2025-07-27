@@ -22,7 +22,6 @@ import java.util.Locale
 
 object SupportUtils {
     const val RATE_APP_URL = "market://details?id=" + BuildConfig.APPLICATION_ID
-    const val POCKET_TRENDING_URL = "https://getpocket.com/fenix-top-articles"
     const val WIKIPEDIA_URL = "https://www.wikipedia.org/"
     const val FENIX_PLAY_STORE_URL = "https://play.google.com/store/apps/details?id=${BuildConfig.APPLICATION_ID}"
     const val GOOGLE_URL = "https://www.google.com/"
@@ -30,6 +29,7 @@ object SupportUtils {
     const val GOOGLE_XX_URL = "https://www.google.com/webhp?client=firefox-b-m&channel=ts"
     const val WHATS_NEW_URL = "https://www.mozilla.org/firefox/android/notes"
     const val FXACCOUNT_SUMO_URL = "https://support.mozilla.org/kb/access-mozilla-services-firefox-account"
+    const val ANDROID_SUPPORT_SUMO_URL = "mzl.la/AndroidSupport"
 
     // This is locale-less on purpose so that the content negotiation happens on the AMO side because the current
     // user language might not be supported by AMO and/or the language might not be exactly what AMO is expecting

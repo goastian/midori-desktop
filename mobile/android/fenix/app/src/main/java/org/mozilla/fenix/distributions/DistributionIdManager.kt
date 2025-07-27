@@ -9,7 +9,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.annotation.VisibleForTesting
 import mozilla.components.support.base.log.logger.Logger
+import org.mozilla.fenix.GleanMetrics.Metrics
 import org.mozilla.fenix.GleanMetrics.Partnerships
+import org.mozilla.fenix.components.metrics.UTMParams
 import java.io.File
 import java.util.Locale
 
@@ -19,6 +21,8 @@ import java.util.Locale
  */
 private const val VIVO_PREINSTALLED_FIREFOX_FILE_PATH = "/data/yzfswj/another/vivo_firefox.txt"
 private const val VIVO_MANUFACTURER = "vivo"
+
+private const val VIVO_INDIA_UTM_CAMPAIGN = "vivo-india-preinstall"
 
 private const val DT_PROVIDER = "digital_turbine"
 private const val DT_TELEFONICA_PACKAGE = "com.dti.telefonica"
@@ -36,6 +40,8 @@ private val logger = Logger(DistributionIdManager::class.simpleName)
  * @param context application context
  * @param browserStoreProvider used to update and fetch the stored distribution Id
  * @param distributionProviderChecker used for checking content providers for a distribution provider
+ * @param legacyDistributionProviderChecker used for checking content providers for a distribution provider
+ * @param distributionSettings used to persist and retrieve the distribution ID
  * @param appPreinstalledOnVivoDevice checks if the vivo preinstalled file exists.
  * @param isDtTelefonicaInstalled checks if the DT telefonica app is installed on the device
  * @param isDtUsaInstalled checks if one of the DT USA carrier apps is installed on the device
@@ -44,6 +50,8 @@ class DistributionIdManager(
     private val context: Context,
     private val browserStoreProvider: DistributionBrowserStoreProvider,
     private val distributionProviderChecker: DistributionProviderChecker,
+    private val legacyDistributionProviderChecker: DistributionProviderChecker,
+    private val distributionSettings: DistributionSettings,
     private val appPreinstalledOnVivoDevice: () -> Boolean = { wasAppPreinstalledOnVivoDevice() },
     private val isDtTelefonicaInstalled: () -> Boolean = { isDtTelefonicaInstalled(context) },
     private val isDtUsaInstalled: () -> Boolean = { isDtUsaInstalled(context) },
@@ -59,19 +67,74 @@ class DistributionIdManager(
         browserStoreProvider.getDistributionId()?.let { return it }
 
         val provider = distributionProviderChecker.queryProvider()
+        val providerLegacy = legacyDistributionProviderChecker.queryProvider()
+
+        val isProviderDigitalTurbine = isProviderDigitalTurbine(provider) || isProviderDigitalTurbine(providerLegacy)
+
+        val savedId = distributionSettings.getDistributionId()
 
         val distributionId = when {
-            isProviderDigitalTurbine(provider) && isDtTelefonicaInstalled() -> Distribution.DT_001.id
-            isProviderDigitalTurbine(provider) && isDtUsaInstalled() -> Distribution.DT_002.id
-            isProviderDigitalTurbine(provider) -> Distribution.DT_003.id
+            savedId.isNotBlank() -> savedId
+            isProviderDigitalTurbine && isDtTelefonicaInstalled() -> Distribution.DT_001.id
+            isProviderDigitalTurbine && isDtUsaInstalled() -> Distribution.DT_002.id
+            isProviderDigitalTurbine -> Distribution.DT_003.id
             isProviderAura(provider) -> Distribution.AURA_001.id
             isDeviceVivo() && appPreinstalledOnVivoDevice() -> Distribution.VIVO_001.id
             else -> Distribution.DEFAULT.id
         }
 
+        recordProviderCheckerEvents(
+            isProviderDigitalTurbine = isProviderDigitalTurbine(provider),
+            isLegacyProviderDigitalTurbine = isProviderDigitalTurbine(providerLegacy),
+            distributionMetricsProvider = DefaultDistributionMetricsProvider(),
+        )
+
         browserStoreProvider.updateDistributionId(distributionId)
+        distributionSettings.saveDistributionId(distributionId)
 
         return distributionId
+    }
+
+    @VisibleForTesting
+    internal fun recordProviderCheckerEvents(
+        isProviderDigitalTurbine: Boolean,
+        isLegacyProviderDigitalTurbine: Boolean,
+        distributionMetricsProvider: DistributionMetricsProvider,
+    ) {
+        when {
+            isProviderDigitalTurbine && isDtTelefonicaInstalled() -> {
+                distributionMetricsProvider.recordDt001Detected()
+            }
+            isLegacyProviderDigitalTurbine && isDtTelefonicaInstalled() -> {
+                distributionMetricsProvider.recordDt001LegacyDetected()
+            }
+            isProviderDigitalTurbine && isDtUsaInstalled() -> {
+                distributionMetricsProvider.recordDt002Detected()
+            }
+            isLegacyProviderDigitalTurbine && isDtUsaInstalled() -> {
+                distributionMetricsProvider.recordDt002LegacyDetected()
+            }
+            isProviderDigitalTurbine -> {
+                distributionMetricsProvider.recordDt003Detected()
+            }
+            isLegacyProviderDigitalTurbine -> {
+                distributionMetricsProvider.recordDt003LegacyDetected()
+            }
+        }
+    }
+
+    /**
+     * Checks the campaign UTM parameters from the google play install referrer response
+     * and updates the distribution ID if necessary
+     *
+     * @param utmParams the UTM parameters from the google play install referrer response
+     */
+    fun updateDistributionIdFromUtmParams(utmParams: UTMParams) {
+        if (utmParams.campaign == VIVO_INDIA_UTM_CAMPAIGN) {
+            browserStoreProvider.updateDistributionId(Distribution.VIVO_002.id)
+            distributionSettings.saveDistributionId(Distribution.VIVO_002.id)
+            Metrics.distributionId.set(Distribution.VIVO_002.id)
+        }
     }
 
     /**
@@ -85,6 +148,7 @@ class DistributionIdManager(
         return when (id) {
             Distribution.DEFAULT -> false
             Distribution.VIVO_001 -> true
+            Distribution.VIVO_002 -> true
             Distribution.DT_001 -> true
             Distribution.DT_002 -> true
             Distribution.DT_003 -> true
@@ -107,6 +171,7 @@ class DistributionIdManager(
     internal enum class Distribution(val id: String) {
         DEFAULT(id = "Mozilla"),
         VIVO_001(id = "vivo-001"),
+        VIVO_002(id = "vivo-002"),
         DT_001(id = "dt-001"),
         DT_002(id = "dt-002"),
         DT_003(id = "dt-003"),

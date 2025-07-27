@@ -85,7 +85,7 @@ Sometimes it is easier to leave logs to help trace exactly which layer the bug i
 
 * **C++** - ``MOZ_LOG``
 
-  * Set the ``logging.config.modules`` preference. For example, ```--setpref="logging.config.clear_on_startup=false"`` or manually in ``about:config``.
+  * Use ``about:logging`` or set the ``logging`` preference directly. For example, ``--setpref="logging.LOG_MODULE_NAME=LOG_MODULE_VALUE"`` or manually in ``about:config``.
 
 * **C++** - ``printf_stderr("Any String")`` or ``__android_log_write(ANDROID_LOG_INFO, "Any Tag", "Any string");`` or ``__android_log_print(ANDROID_LOG_INFO, "Any Tag", "Any string");``
 
@@ -127,7 +127,7 @@ To see information on other options, simply run
 ``./mach geckoview-junit --help``; of particular note for dealing with
 intermittent test failures are ``--repeat N`` and
 ``--run-until-failure``, both of which do exactly what you’d expect.
-If a test is intermittently failing, consult `Debugging Intermittent Test Failures </devtools/tests/debugging-intermittents.html>`_ for additional tips.
+If a test is intermittently failing, consult `Debugging Intermittent Test Failures </testing/debugging-intermittents/index.html>`_ for additional tips.
 
 Other tests, such as mochitests, may be ran using:
 

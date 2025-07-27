@@ -11,7 +11,6 @@ channels:
   - developer
 includes:
   - onboarding.fml.yaml
-  - pbm.fml.yaml
   - messaging-fenix.fml.yaml
 import:
   - path: ../../android-components/components/browser/engine-gecko/geckoview.fml.yaml
@@ -102,10 +101,8 @@ features:
         type: Map<MR2022Section, Boolean>
         default:
           {
-            "home-onboarding-dialog-existing-users": true,
             "sync-cfr": true,
             "wallpapers-selection-tool": true,
-            "jump-back-in-cfr": true,
             "tcp-cfr": true,
             "tcp-feature": true,
           }
@@ -113,10 +110,8 @@ features:
       - channel: developer
         value: {
           "sections-enabled": {
-            "home-onboarding-dialog-existing-users": true,
             "sync-cfr": true,
             "wallpapers-selection-tool": true,
-            "jump-back-in-cfr": true,
           }
         }
   query-parameter-stripping:
@@ -552,6 +547,9 @@ features:
         description: >
           The protection overrides to add or remove fingerprinting protection
           targets. Please check RFPTargets.inc for all supported targets.
+          The format of the overrides is +Target1,-Target2,+Target3
+          where + means add and - means remove. The targets are separated by
+          commas. The default value is empty string.
         type: String
         default: ""
       fdlibm-math:
@@ -560,6 +558,27 @@ features:
           exposes less entropy
         type: Boolean
         default: false
+
+  baseline-fpp:
+    description: Control Baseline Fingerprinting Protection
+    variables:
+      feat-enabled:
+        description: If true, the feature is active.
+        type: Boolean
+        default: false
+      enabled:
+        type: Boolean
+        description: Enables / disables baseline fingerprinting protection.
+        default: true
+      overrides:
+        type: String
+        description: >-
+          The protection overrides to add or remove fingerprinting protection
+          targets. Please check RFPTargets.inc for all supported targets.
+          The format of the overrides is +Target1,-Target2,+Target3
+          where + means add and - means remove. The targets are separated by
+          commas. The default value is empty string.
+        default: ""
 
   third-party-cookie-blocking:
     description: Control third-party cookie blocking.
@@ -585,12 +604,19 @@ features:
       enabled:
         description: If true, the new menu redesign is available.
         type: Boolean
-        default: false
+        default: true
       report-site-issue:
         description: If true, report site issue menu item and preview is available.
         type: Boolean
         default: true
+      menu-banner:
+        description: If true, the menu banner is visible.
+        type: Boolean
+        default: true
     defaults:
+      - channel: release
+        value:
+          enabled: false
       - channel: release
         value:
           report-site-issue: false
@@ -601,15 +627,6 @@ features:
       enabled:
         description: >
           Whether or not to enable MARS endpoint to serve sponsored top sites and stories.
-        type: Boolean
-        default: false
-
-  merino-recommendations:
-    description: Sets the recommendations provider service to Merino.
-    variables:
-      enabled:
-        description: >
-          Whether or not to enable Merino endpoint to serve recommendations.
         type: Boolean
         default: false
 
@@ -644,6 +661,12 @@ features:
       enabled:
         description: >
           Whether or not to enable tab strip.
+        type: Boolean
+        default: false
+      allow-on-all-devices:
+        description: >
+          Experimental: When true, bypasses device restrictions and enables use on all devices.
+          May cause instability or unexpected behavior. This still requires the feature to be `enabled`.
         type: Boolean
         default: false
     defaults:
@@ -864,17 +887,26 @@ features:
         description: >
           Whether or not to enable private browsing mode lock.
         type: Boolean
+        default: true
+
+  toolbar-redesign-option:
+    description: Control the visibility of toolbar redesign option in settings.
+    variables:
+      show-options:
+        description: >
+          Whether or not the toolbar redesign option is visible to the user.  This allows the user to switch between simple and expanded toolbar.
+        type: Boolean
         default: false
-    defaults:
-      - channel: nightly
-        value:
-          enabled: true
-      - channel: beta
-        value:
-          enabled: true
-      - channel: developer
-        value:
-          enabled: true
+      show-simple-customization:
+        description: >
+          Whether or not the simple toolbar customization option is visible to the user.
+        type: Boolean
+        default: false
+      show-expanded-customization:
+        description: >
+          Whether or not the expanded toolbar customization option is visible to the user.
+        type: Boolean
+        default: false
 
 types:
   objects: {}
@@ -901,14 +933,10 @@ types:
     MR2022Section:
       description: The identifiers for the sections of the MR 2022.
       variants:
-        home-onboarding-dialog-existing-users:
-          description: Home onboarding dialog for upgraded users.
         sync-cfr:
           description: CFR for the first time you see a synced tab on the home screen.
         wallpapers-selection-tool:
           description: Wallpapers selection dialog tool for the home screen.
-        jump-back-in-cfr:
-          description: Jump back-in onboarding message.
         tcp-cfr:
           description: CFR for the first time you use the browse with Total Cookie Protection on the browser screen.
         tcp-feature:

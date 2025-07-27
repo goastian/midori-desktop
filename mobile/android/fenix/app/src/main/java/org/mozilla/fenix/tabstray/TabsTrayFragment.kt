@@ -45,9 +45,6 @@ import org.mozilla.fenix.GleanMetrics.TabsTray
 import org.mozilla.fenix.HomeActivity
 import org.mozilla.fenix.NavGraphDirections
 import org.mozilla.fenix.R
-import org.mozilla.fenix.biometricauthentication.AuthenticationStatus
-import org.mozilla.fenix.biometricauthentication.BiometricAuthenticationManager
-import org.mozilla.fenix.biometricauthentication.BiometricAuthenticationNeededInfo
 import org.mozilla.fenix.browser.tabstrip.isTabStripEnabled
 import org.mozilla.fenix.components.StoreProvider
 import org.mozilla.fenix.compose.core.Action
@@ -65,7 +62,8 @@ import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.home.HomeScreenViewModel
 import org.mozilla.fenix.lifecycle.registerForVerification
 import org.mozilla.fenix.lifecycle.verifyUser
-import org.mozilla.fenix.nimbus.FxNimbus
+import org.mozilla.fenix.navigation.DefaultNavControllerProvider
+import org.mozilla.fenix.navigation.NavControllerProvider
 import org.mozilla.fenix.settings.biometric.BiometricUtils
 import org.mozilla.fenix.settings.biometric.DefaultBiometricUtils
 import org.mozilla.fenix.settings.biometric.ext.isAuthenticatorAvailable
@@ -76,6 +74,7 @@ import org.mozilla.fenix.tabstray.syncedtabs.SyncedTabsIntegration
 import org.mozilla.fenix.theme.FirefoxTheme
 import org.mozilla.fenix.theme.Theme
 import org.mozilla.fenix.theme.ThemeManager
+import org.mozilla.fenix.utils.Settings
 import org.mozilla.fenix.utils.allowUndo
 import kotlin.math.abs
 import kotlin.math.max
@@ -125,9 +124,7 @@ class TabsTrayFragment : AppCompatDialogFragment() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        context?.components?.analytics?.crashReporter?.recordCrashBreadcrumb(
-            Breadcrumb("TabsTrayFragment dismissTabsTray"),
-        )
+        recordBreadcrumb("TabsTrayFragment dismissTabsTray")
         setStyle(STYLE_NO_TITLE, R.style.TabTrayDialogStyle)
     }
 
@@ -152,7 +149,7 @@ class TabsTrayFragment : AppCompatDialogFragment() {
             onSuccess = {
                 PrivateBrowsingLocked.authSuccess.record()
                 PrivateBrowsingLocked.featureEnabled.record()
-                requireContext().settings().privateBrowsingLockedEnabled = true
+                requireContext().settings().privateBrowsingModeLocked = true
             },
             onFailure = {
                 PrivateBrowsingLocked.authFailure.record()
@@ -216,18 +213,15 @@ class TabsTrayFragment : AppCompatDialogFragment() {
             controller = tabsTrayController,
         )
 
-        context?.components?.analytics?.crashReporter?.recordCrashBreadcrumb(
-            Breadcrumb("TabsTrayFragment onCreateDialog"),
-        )
+        recordBreadcrumb("TabsTrayFragment onCreateDialog")
+
         tabsTrayDialog = TabsTrayDialog(requireContext(), theme) { tabsTrayInteractor }
         return tabsTrayDialog
     }
 
     override fun onPause() {
         super.onPause()
-        context?.components?.analytics?.crashReporter?.recordCrashBreadcrumb(
-            Breadcrumb("TabsTrayFragment onPause"),
-        )
+        recordBreadcrumb("TabsTrayFragment onPause")
         dialog?.window?.setWindowAnimations(R.style.DialogFragmentRestoreAnimation)
     }
 
@@ -264,19 +258,14 @@ class TabsTrayFragment : AppCompatDialogFragment() {
                         requireComponents.settings.showSecretDebugMenuThisSession,
                     shouldShowTabAutoCloseBanner = requireContext().settings().shouldShowAutoCloseTabsBanner &&
                         requireContext().settings().canShowCfr,
-                    shouldShowLockPbmBanner =
-                        if (FxNimbus.features.privateBrowsingLock.value().enabled) {
-                            shouldShowLockPbmBanner(
-                                isPrivateMode = (activity as HomeActivity).browsingModeManager.mode.isPrivate,
-                                hasPrivateTabs = requireComponents.core.store.state.privateTabs.isNotEmpty(),
-                                biometricAvailable = BiometricManager.from(requireContext())
-                                    .isHardwareAvailable(),
-                                privateLockEnabled = requireContext().settings().privateBrowsingLockedEnabled,
-                                shouldShowBanner = requireContext().settings().shouldShowLockPbmBanner,
-                            )
-                        } else {
-                            false
-                        },
+                    shouldShowLockPbmBanner = shouldShowLockPbmBanner(
+                        isPrivateMode = (activity as HomeActivity).browsingModeManager.mode.isPrivate,
+                        hasPrivateTabs = requireComponents.core.store.state.privateTabs.isNotEmpty(),
+                        biometricAvailable = BiometricManager.from(requireContext())
+                            .isHardwareAvailable(),
+                        privateLockEnabled = requireContext().settings().privateBrowsingModeLocked,
+                        shouldShowBanner = shouldShowBanner(requireContext().settings()),
+                    ),
                     shouldShowInactiveTabsAutoCloseDialog =
                         requireContext().settings()::shouldShowInactiveTabsAutoCloseDialog,
                     onTabPageClick = { page ->
@@ -416,11 +405,12 @@ class TabsTrayFragment : AppCompatDialogFragment() {
         return tabsTrayDialogBinding.root
     }
 
+    private fun shouldShowBanner(settings: Settings) =
+        with(settings) { privateBrowsingLockedFeatureEnabled && shouldShowLockPbmBanner }
+
     override fun onStart() {
         super.onStart()
-        context?.components?.analytics?.crashReporter?.recordCrashBreadcrumb(
-            Breadcrumb("TabsTrayFragment onStart"),
-        )
+        recordBreadcrumb("TabsTrayFragment onStart")
         findPreviousDialogFragment()?.let { dialog ->
             dialog.onAcceptClicked = ::onCancelDownloadWarningAccepted
         }
@@ -428,9 +418,7 @@ class TabsTrayFragment : AppCompatDialogFragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        context?.components?.analytics?.crashReporter?.recordCrashBreadcrumb(
-            Breadcrumb("TabsTrayFragment onDestroyView"),
-        )
+        recordBreadcrumb("TabsTrayFragment onDestroyView")
         _tabsTrayDialogBinding = null
         _tabsTrayComposeBinding = null
         _fabButtonComposeBinding = null
@@ -561,9 +549,8 @@ class TabsTrayFragment : AppCompatDialogFragment() {
     }
 
     private fun showCancelledDownloadWarning(downloadCount: Int, tabId: String?, source: String?) {
-        context?.components?.analytics?.crashReporter?.recordCrashBreadcrumb(
-            Breadcrumb("DownloadCancelDialogFragment show"),
-        )
+        recordBreadcrumb("DownloadCancelDialogFragment show")
+
         val dialog = DownloadCancelDialogFragment.newInstance(
             downloadCount = downloadCount,
             tabId = tabId,
@@ -656,10 +643,13 @@ class TabsTrayFragment : AppCompatDialogFragment() {
     internal val homeViewModel: HomeScreenViewModel by activityViewModels()
 
     @VisibleForTesting
-    internal fun navigateToHomeAndDeleteSession(sessionId: String) {
+    internal fun navigateToHomeAndDeleteSession(
+        sessionId: String,
+        navControllerProvider: NavControllerProvider = DefaultNavControllerProvider(),
+    ) {
         homeViewModel.sessionToDelete = sessionId
         val directions = NavGraphDirections.actionGlobalHome()
-        findNavController().navigate(directions)
+        navControllerProvider.getNavController(this).navigate(directions)
     }
 
     @VisibleForTesting
@@ -672,10 +662,20 @@ class TabsTrayFragment : AppCompatDialogFragment() {
     internal fun dismissTabsTray() {
         // This should always be the last thing we do because nothing (e.g. telemetry)
         // is guaranteed after that.
-        context?.components?.analytics?.crashReporter?.recordCrashBreadcrumb(
-            Breadcrumb("TabsTrayFragment dismissTabsTray"),
-        )
+        recordBreadcrumb("TabsTrayFragment dismissTabsTray")
         dismissAllowingStateLoss()
+    }
+
+    /**
+     * Records a breadcrumb for crash reporting.
+     *
+     * @param message The message to record.
+     */
+    @VisibleForTesting
+    internal fun recordBreadcrumb(message: String) {
+        context?.components?.analytics?.crashReporter?.recordCrashBreadcrumb(
+            Breadcrumb(message = message),
+        )
     }
 
     private fun showCollectionSnackbar(
@@ -771,11 +771,14 @@ class TabsTrayFragment : AppCompatDialogFragment() {
     /**
      * This can only turn the feature ON and should not handle turning the feature OFF.
      */
-    private fun onTabsTrayPbmLockedClick() {
+    private fun onTabsTrayPbmLockedClick(
+        navControllerProvider: NavControllerProvider = DefaultNavControllerProvider(),
+    ) {
         val isAuthenticatorAvailable =
             BiometricManager.from(requireContext()).isAuthenticatorAvailable()
         if (!isAuthenticatorAvailable) {
-            findNavController().navigate(TabsTrayFragmentDirections.actionGlobalPrivateBrowsingFragment())
+            navControllerProvider.getNavController(this)
+                .navigate(TabsTrayFragmentDirections.actionGlobalPrivateBrowsingFragment())
         } else {
             DefaultBiometricUtils.bindBiometricsCredentialsPromptOrShowWarning(
                 titleRes = R.string.pbm_authentication_enable_lock,
@@ -785,7 +788,7 @@ class TabsTrayFragment : AppCompatDialogFragment() {
                     PrivateBrowsingLocked.bannerPositiveClicked.record()
                     PrivateBrowsingLocked.authSuccess.record()
                     PrivateBrowsingLocked.featureEnabled.record()
-                    requireContext().settings().privateBrowsingLockedEnabled = true
+                    requireContext().settings().privateBrowsingModeLocked = true
                     requireContext().settings().shouldShowLockPbmBanner = false
                 },
                 onAuthFailure = {
@@ -796,40 +799,25 @@ class TabsTrayFragment : AppCompatDialogFragment() {
     }
 
     private fun onTabsTrayDismissed() {
-        context?.components?.analytics?.crashReporter?.recordCrashBreadcrumb(
-            Breadcrumb("TabsTrayFragment onTabsTrayDismissed"),
-        )
+        recordBreadcrumb("TabsTrayFragment onTabsTrayDismissed")
         TabsTray.closed.record(NoExtras())
         dismissAllowingStateLoss()
     }
 
     @VisibleForTesting
     internal fun onTabPageClick(
-        biometricAuthenticationNeededInfo: BiometricAuthenticationNeededInfo =
-            BiometricAuthenticationManager.biometricAuthenticationNeededInfo,
         biometricUtils: BiometricUtils = DefaultBiometricUtils,
         tabsTrayInteractor: TabsTrayInteractor,
         page: Page,
         isPrivateScreenLocked: Boolean,
     ) {
-        val isPrivateTabPage = page == Page.PrivateTabs
-
-        if (isPrivateTabPage && isPrivateScreenLocked) {
-            biometricAuthenticationNeededInfo.authenticationStatus =
-                AuthenticationStatus.AUTHENTICATION_IN_PROGRESS
-
+        if (page == Page.PrivateTabs && isPrivateScreenLocked) {
             verifyUser(
                 biometricUtils = biometricUtils,
                 fallbackVerification = verificationResultLauncher,
                 onVerified = ::openPrivateTabsPage,
             )
         } else {
-            // Reset authentication state when leaving PBM
-            if (!isPrivateTabPage) {
-                biometricAuthenticationNeededInfo.apply {
-                    authenticationStatus = AuthenticationStatus.NOT_AUTHENTICATED
-                }
-            }
             tabsTrayInteractor.onTrayPositionSelected(page.ordinal, false)
         }
     }

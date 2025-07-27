@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- Text for confirmation for a positive action in dialog -->
   <string name="mozac_feature_prompts_ok">OK</string>
   <!-- Text for confirmation for a negative action in dialog. -->
@@ -107,7 +107,7 @@
   <!-- Pressing this will dismiss the suggested strong password dialog -->
   <string name="mozac_feature_prompts_suggest_strong_password_dismiss">Nu acum</string>
   <!-- Title for showing the suggest strong password saved confirmation snackbar -->
-  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title">Parola salvată</string>
+  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title" tools:ignore="UnusedResources" moz:removedIn="142">Parola salvată</string>
   <!-- Title for showing the suggest strong password updated confirmation snackbar -->
   <string name="mozac_feature_prompts_suggest_strong_password_updated_snackbar_title">Parolă actualizată</string>
   <!-- Strings shown in a dialog that appear when users try to refresh a certain kind of webpages -->
@@ -124,11 +124,11 @@
   -->
   <string name="mozac_feature_prompts_select_credit_card_2">Folosește cartela salvată</string>
   <!-- Content description for expanding the saved card options in the select card prompt. -->
-  <string name="mozac_feature_prompts_expand_credit_cards_content_description_2">Epandează cardurile de credit </string>
+  <string name="mozac_feature_prompts_expand_credit_cards_content_description_2">Epandează cardurile de credit</string>
   <!-- Content description for collapsing the saved card options in the select prompt. -->
   <string name="mozac_feature_prompts_collapse_credit_cards_content_description_2">Restrânge cardurile salvate</string>
   <!-- Option in the expanded select card prompt that links to cards settings. -->
-  <string name="mozac_feature_prompts_manage_credit_cards_2">Gestionează cardurile </string>
+  <string name="mozac_feature_prompts_manage_credit_cards_2">Gestionează cardurile</string>
   <!-- Text for the title of a save credit card dialog. -->
   <string name="mozac_feature_prompts_save_credit_card_prompt_title">Salvează securizat acest card?</string>
   <!-- Text for the title of an update credit card dialog. -->

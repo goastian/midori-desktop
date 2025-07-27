@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Altere optiones</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Activar le navigation private</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Activar le navigation private</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Disactivar le navigation private.</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Disactivar le navigation private.</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">Navigation private</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -34,6 +34,8 @@
   <string name="no_private_tabs_description">Tu schedas private apparera hic.</string>
   <!-- Tab tray multi select title in app bar. %1$d is the number of tabs selected -->
   <string name="tab_tray_multi_select_title">%1$d seligite</string>
+  <!-- Tab tray multi select title in app bar when no tabs are selected -->
+  <string name="tab_tray_multi_select_title_empty">Eliger schedas</string>
   <!-- Label of button in create collection dialog for creating a new collection -->
   <string name="tab_tray_add_new_collection">Adder nove collection</string>
   <!-- Label of editable text in create collection dialog for naming a new collection -->
@@ -62,8 +64,10 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s rade tu chronologia de recerca e de navigation del schedas private quando tu los claude o quita le application. Ben que isto non te rende anonyme pro sitos web o pro tu fornitor de servicio internet, isto rende plus facile mantener tu activitates in linea private pro altere personas que usa iste apparato.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s rade tu chronologia de recerca e de navigation del schedas private quando tu los claude o quita le application. Ben que isto non te rende anonyme pro sitos web o pro tu fornitor de servicio internet, isto rende plus facile mantener tu activitates in linea private pro altere personas que usa iste apparato.</string>
   <string name="private_browsing_common_myths">Mythos commun sur le navigation private</string>
+  <!-- Text to be announced by the accessibility service to inform the user that the private browsing mode is currently active. -->
+  <string name="private_browsing_a11y_session_announcement">Session de navigation private</string>
   <!--
     True Private Browsing Mode
 
@@ -98,7 +102,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">Tocca ci pro initiar un nove session de navigation private. Dele tu chronologia, cookies – toto.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Tocca ci pro initiar un nove session de navigation private. Dele tu chronologia, cookies – toto.</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -112,12 +116,8 @@
   <!--
     Address bar swipe "contextual feature recommendation" (CFR)
 
-    Text for the title displayed in the contextual feature recommendation popup promoting swipe of address bar.
+    Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar.
   -->
-  <string name="address_bar_swipe_cfr_title" tools:ignore="UnusedResources" moz:removedIn="139">Rolar le barra del instrumentos pro commutar le schedas</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
-  <string name="address_bar_swipe_cfr_message" tools:ignore="UnusedResources" moz:removedIn="139">Glissar a sinistra o dextra pro commutar. Glissar a sinistra sur tu ultime scheda pro aperir un scheda nove.</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
   <string name="address_bar_swipe_cfr_message_2">Glissa a sinistra o a dextra le barra del instrumentos pro mutar schedas.</string>
   <!-- Text for the info dialog when camera permissions have been denied but user tries to access a camera feature. -->
   <string name="camera_permissions_needed_message">Accesso al camera necessari. Vade al parametros de Android, tocca Permissiones e tocca Permitter.</string>
@@ -321,7 +321,9 @@
   <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
   <string name="browser_menu_sign_in_caption" moz:removedIn="141" tools:ignore="UnusedResources">Synchronisar passwords, schedas, e altero</string>
   <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
-  <string name="browser_menu_sign_in_caption_2">Synchronisa marcatores, contrasignos schedas e plus</string>
+  <string name="browser_menu_sign_in_caption_2" moz:removedIn="141" tools:ignore="UnusedResources">Synchronisa marcatores, contrasignos schedas e plus</string>
+  <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
+  <string name="browser_menu_sign_in_caption_3">Synchronisar passwords, marcapaginas, e altero</string>
   <!-- Browser menu label to sign back in to sync on the device when the user's account needs to be reauthenticated -->
   <string name="browser_menu_sign_back_in_to_sync">Reaperi session pro synchronisar</string>
   <!-- Browser menu caption label for the "Sign back in to sync" browser menu item described in `browser_menu_sign_back_in_to_sync` when there is an error in syncing -->
@@ -334,9 +336,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">Novas in %1$s</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">Novas in %1$s</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">Passar al sito pro scriptorio</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">Passar al sito pro scriptorio</string>
   <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
   <string name="browser_menu_switch_to_mobile_site">Passar al sito pro apparato mobile</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
@@ -344,7 +346,11 @@
   <!-- Content description (not visible, for screen readers etc.): Back button for all menu redesign sub-menu -->
   <string name="browser_menu_back_button_content_description" moz:removedIn="141" tools:ignore="UnusedResources">Retro al menu principal</string>
   <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar main menu. -->
-  <string name="browser_main_menu_handlebar_content_description">Clauder menu principal</string>
+  <string name="browser_main_menu_handlebar_content_description" moz:removedIn="142" tools:ignore="UnusedResources">Clauder menu principal</string>
+  <!-- Content description (not visible, for screen readers etc.) for the handle used to drag the main menu at the bottom of the screen. -->
+  <string name="browser_close_main_menu_handlebar_content_description">Clauder menu</string>
+  <!-- Content description (not visible, for screen readers etc.) for main menu navigation header. -->
+  <string name="browser_main_menu_content_description_navigation_header">Navigation</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
   <string name="browser_main_menu_content_description_help_button">Adjuta</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu settings button. -->
@@ -400,7 +406,7 @@
     Browser menu label that is displayed when the current page has been translated by the translation feature.
     %1$s is the name of the language that page was translated to (e.g. English).
   -->
-  <string name="browser_menu_translated_to">Traducite in %1$s</string>
+  <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">Traducite in %1$s</string>
   <!-- Browser menu label that is displayed when the current page has been translated by the translation feature. -->
   <string name="browser_menu_translated">Traducite</string>
   <!-- Browser menu label for the print feature -->
@@ -420,7 +426,11 @@
   <!-- Label text within the set as default banner -->
   <string name="browser_menu_default_banner_subtitle">Prende alcun secundas. Cambia quandocunque.</string>
   <!-- Content description for the button that dismisses the set as default banner in the menu -->
-  <string name="browser_menu_default_banner_dismiss">Dimitter</string>
+  <string name="browser_menu_default_banner_dismiss" moz:removedIn="142" tools:ignore="UnusedResources">Dimitter</string>
+  <!-- Content description (not visible, for screen readers etc.) for the button that dismisses the set as default banner in the menu -->
+  <string name="browser_menu_default_banner_dismiss_promotion">Discartar promotion</string>
+  <!-- Content description (not visible, for screen readers etc.) for recommended extensions in main menu -->
+  <string name="browser_menu_recommended_extensions_content_description">Plus de informationes</string>
   <!--
     Menu "contextual feature recommendation" (CFR)
 
@@ -445,7 +455,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">Eliminar le chronologia de navigation</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">Eliminar le chronologia de navigation</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">Traducer le pagina</string>
   <!--
@@ -520,7 +530,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Saltar</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">Tu schedas es synchronisate! Reprende de ubi tu exiva sur un tu altere apparato.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">Tu schedas es synchronisate! Reprende de ubi tu exiva sur un tu altere apparato.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">Clauder</string>
   <!--
@@ -861,10 +871,14 @@
   <string name="preferences_category_account">Conto</string>
   <!-- Preference for changing where the AddressBar is positioned -->
   <string name="preferences_toolbar_2">Position del barra de adresse</string>
+  <!-- Preference for changing toolbar layout -->
+  <string name="preferences_toolbar_layout">Disposition de barra de instrumentos</string>
   <!-- Preference for changing default theme to dark or light mode -->
   <string name="preferences_theme">Thema</string>
   <!-- Preference for customizing the home screen -->
   <string name="preferences_home_2">Pagina initial</string>
+  <!-- Preference for customizing the app icon -->
+  <string name="preferences_app_icon">Icone del application</string>
   <!-- Preference for gestures based actions -->
   <string name="preferences_gestures">Gestos</string>
   <!-- Preference for settings related to visual options -->
@@ -880,7 +894,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">Traductiones</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Selectiones de datos</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Selectiones de datos</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Collection de datos</string>
   <!-- Preference for developers -->
@@ -942,7 +956,15 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">Jammais</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Gestor de discargamento externe</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Gestor de discargamento externe</string>
+  <!-- Preference title for choosing an app to handle downloads -->
+  <string name="preferences_choose_app_for_downloads">Gere discargamentos con un altere app</string>
+  <!-- Title for the setting to automatically clean up downloaded files. %s is the name of the app (for example "Firefox"). -->
+  <string name="preferences_downloads_settings_clean_up_files_title">Dele ab %s e ab le apparato</string>
+  <!-- Summary for the setting to automatically clean up downloaded files -->
+  <string name="preferences_downloads_settings_clean_up_files_summary">Remover files de tu gestor de discargamento alsi los remove de tu apparato</string>
+  <!-- Preference for downloads -->
+  <string name="preferences_downloads">Discargamentos</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">Activar le registrationes de Gecko</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -962,15 +984,29 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">Necessari</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">Necessari</string>
   <!-- The title of the optional permissions section from addon's permissions screen -->
-  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">Optional</string>
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">Optional</string>
   <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
-  <string name="addons_permissions_allow_for_all_sites" tools:ignore="UnusedResources">Permitter a tote le sitos</string>
+  <string name="addons_permissions_allow_for_all_sites">Permitter a tote le sitos</string>
   <!-- The subtitle for the allow for all sites preference toggle -->
-  <string name="addons_permissions_allow_for_all_sites_subtitle" tools:ignore="UnusedResources">Si tu considera iste extension digne de fide, tu pote dar a illo permisso sur cata sito web.</string>
+  <string name="addons_permissions_allow_for_all_sites_subtitle">Si tu considera iste extension digne de fide, tu pote dar a illo permisso sur cata sito web.</string>
   <!-- The text shown when an extension does not require permissions -->
   <string name="addons_does_not_require_permissions">Iste extension non require alcun permission.</string>
+  <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+  <string name="addons_permissions_required_data_collection_description" moz:removedIn="141" tools:ignore="UnusedResources">Le disveloppator dice que iste extension collige: %1$s.</string>
+  <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+  <string name="addons_permissions_required_data_collection_description_2">Le disveloppator dice que iste extension collige: %1$s</string>
+  <!-- The description of the "none" data collection permission, when the extension doesn't collect anything according to the developer. -->
+  <string name="addons_permissions_none_required_data_collection_description">Le disveloppator dice que iste extension non require collection de datos.</string>
+  <!-- The title of the required permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_required_permissions">Permissos necessari:</string>
+  <!-- The title of the optional permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_optional_permissions">Permissos optional:</string>
+  <!-- The title of the required data collection permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_required_data_collection">Collection de datos necessari:</string>
+  <!-- The title of the optional data collection permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_optional_data_collection">Collection de datos optional:</string>
   <!--
     Add-on Preferences
 
@@ -1094,6 +1130,12 @@
   <string name="alternative_app_icon_option_momo">Momo</string>
   <!-- Subtitle for the "Momo" themed alternative app icon variant in the icon picker screen. The app icon was created by artist @heyheymomodraws and features a unique hand-drawn style with a friendly fox. -->
   <string name="alternative_app_icon_option_momo_subtitle">Create per @heyheymomodraws</string>
+  <!-- Title for the "Solid colors" group of alternative app icon variants in the icon picker screen. This group contains icons with flat, uniform color backgrounds. -->
+  <string name="alternative_app_icon_group_solid_colors">Colores unite</string>
+  <!-- Title for the "Gradients" group of alternative app icon variants in the icon picker screen. This group contains icons with gradient backgrounds inspired by natural light conditions. -->
+  <string name="alternative_app_icon_group_gradients">Gradientes</string>
+  <!-- Title for the "Other" group of alternative app icon variants in the icon picker screen. This group includes retro, pixel art, themed, and artist-created icons. -->
+  <string name="alternative_app_icon_group_other">Altere</string>
   <!--
     Add-ons general availability nimbus message
 
@@ -1202,10 +1244,30 @@
   <string name="exceptions_empty_message_learn_more_link">Saper plus</string>
   <!-- Preference switch for usage and technical data collection -->
   <string name="preference_usage_data_2">Inviar datos technic e de interaction</string>
+  <!-- Preference switch for usage and technical learn more link in new compose -->
+  <string name="preference_usage_data_learn_more_2">Saper plus re datos technic\u0020</string>
   <!-- Preference switch for usage and technical learn more link -->
-  <string name="preference_usage_data_learn_more">Pro saper plus</string>
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">Pro saper plus</string>
   <!-- Preference description for marketing data collection. Note: The words "Firefox" should NOT be translated -->
   <string name="preferences_usage_data_description_1" tools:ignore="BrandUsage">Datos re tu apparato, configuration hardware, e uso adjuta nos meliorar functiones, prestation e stabilitate.</string>
+  <!-- Preference switch for daily usage ping data collection -->
+  <string name="preferences_daily_usage_ping_title">Ping de uso quotidian</string>
+  <string name="preferences_daily_usage_ping_description">Isto adjuta Mozilla a estimar le usatores active.</string>
+  <string name="preferences_daily_usage_ping_learn_more">Saper plus re le uso del ping quotidian</string>
+  <!-- Preference switch title for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_title" tools:ignore="UnusedResources" moz:removedIn="142">Automaticamente inviar reportos de crash</string>
+  <!-- Preference switch description for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_description" tools:ignore="UnusedResources" moz:removedIn="142">Isto adjuta nos a diagnosticar e corriger problemas del navigator, ma pote includer datos personal o sensibile.</string>
+  <!-- Text for sumo link to learn more about crash reports in data collection screen -->
+  <string name="preferences_crashes_learn_more">Saper plus re le reportos de crash</string>
+  <!-- Title Headers for data collection settings screen -->
+  <string name="crash_reports_data_category">Reportos de crash</string>
+  <string name="usage_data_category">Datos de uso</string>
+  <string name="studies_data_category">Studios</string>
+  <string name="technical_data_category">Datos technic</string>
+  <string name="crash_reporting_description">Le reportos de collapso nos permitte de diagnosticar e corriger problemas del navigator, ma pote includer datos personal o sensibile.</string>
+  <!-- Section title for campaign measurement in data collections screen -->
+  <string name="preferences_marketing_data_title">Mesuras de campania</string>
   <!-- Preference switch for campaign measurement data (marketing data) collection -->
   <string name="preferences_marketing_data_2">Datos de mesuration del campanias</string>
   <!--
@@ -1215,16 +1277,8 @@
   <string name="preferences_marketing_data_description_4" tools:ignore="BrandUsage">Comparti como tu discoperiva Firefox e como tu lo usa con le socios technologic de marketing de Mozilla.</string>
   <!-- Learn more link for marketing data preference -->
   <string name="preferences_marketing_data_learn_more">Saper plus re le marketing del datos</string>
-  <!-- Preference switch for daily usage ping data collection -->
-  <string name="preferences_daily_usage_ping_title">Ping de uso quotidian</string>
-  <string name="preferences_daily_usage_ping_description">Isto adjuta Mozilla a estimar le usatores active.</string>
-  <string name="preferences_daily_usage_ping_learn_more">Saper plus re le uso del ping quotidian</string>
-  <!-- Preference switch title for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_title">Automaticamente inviar reportos de crash</string>
-  <!-- Preference switch description for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_description">Isto adjuta nos a diagnosticar e corriger problemas del navigator, ma pote includer datos personal o sensibile.</string>
   <!-- Learn more link for crash reporting preference -->
-  <string name="onboarding_preferences_dialog_crash_reporting_learn_more">Saper plus re le reportos</string>
+  <string name="onboarding_preferences_dialog_crash_reporting_learn_more" tools:ignore="UnusedResources" moz:removedIn="142">Saper plus re le reportos</string>
   <!-- Title for studies preferences -->
   <string name="preference_experiments_2">Studios</string>
   <!-- Summary for studies preferences -->
@@ -1253,6 +1307,16 @@
   <string name="preference_top_toolbar">Alto</string>
   <!-- Preference for using bottom toolbar -->
   <string name="preference_bottom_toolbar">Basso</string>
+  <!-- Preference for using simple toolbar -->
+  <string name="preference_simple_toolbar">Simple</string>
+  <!-- Preference for using expanded toolbar -->
+  <string name="preference_expanded_toolbar">Expandite</string>
+  <!--
+    App icon Preferences
+
+    Title for the preference that lets the user pick a new app icon
+  -->
+  <string name="preference_select_app_icon_title">Selige icone del application</string>
   <!--
     Theme Preferences
 
@@ -1418,6 +1482,11 @@
   <!--
     Sessions
 
+    Title for the list of tabs in the current normal session used by a11y services
+    The %1$s will be replaced by the number of opened normal tabs
+  -->
+  <string name="tabs_header_normal_tabs_counter_title">Schedas aperte normal: %1$s. Tocca pro mutar schedas.</string>
+  <!--
     Title for the list of tabs in the current private session used by a11y services
     The %1$s will be replaced by the number of opened private tabs
   -->
@@ -1427,6 +1496,12 @@
     The %1$s will be replaced by the number of opened synced tabs
   -->
   <string name="tabs_header_synced_tabs_counter_title">Schedas synchronisate aperte: %1$s. Tocca pro mutar schedas.</string>
+  <!-- Text for the tabs header private tabs -->
+  <string name="tabs_header_private_tabs_title">Private</string>
+  <!-- Text for the tabs header normal tabs -->
+  <string name="tabs_header_normal_tabs_title">Schedas</string>
+  <!-- Text for the tabs header synced tabs -->
+  <string name="tabs_header_synced_tabs_title">Synchronisar</string>
   <!-- Content description (not visible, for screen readers etc.): Add tab button. Adds a news tab when pressed -->
   <string name="add_tab">Adder un scheda</string>
   <!-- Content description (not visible, for screen readers etc.): Add tab button. Adds a news tab when pressed -->
@@ -1521,6 +1596,8 @@
     %1$d is the number of items deleted.
   -->
   <string name="download_delete_multiple_items_snackbar_2">Elementos delite: %1$d</string>
+  <!-- Title for the dialog that prompts the user to choose an app for downloading a file. -->
+  <string name="download_app_dialog_title">Discargar iste file con:</string>
   <!-- Text for the snackbar to confirm that a single download item has been removed. %1$s is the name of the download item. -->
   <string name="download_delete_single_item_snackbar_2">Delite “%1$s”</string>
   <!-- Text for the snackbar to confirm that downloads are in progress. -->
@@ -1563,8 +1640,6 @@
   <string name="download_delete_item">Deler</string>
   <!-- Content description for the toolbar "Navigate back" button -->
   <string name="download_navigate_back_description">Navigar retro</string>
-  <!-- Content description for the toolbar "Navigate up" button -->
-  <string name="download_navigate_up_description" moz:removedIn="139" tools:ignore="UnusedResources">Navigar a super</string>
   <!-- Content description for the toolbar back button while searching the downloads -->
   <string name="download_close_search_description">Retornar e clauder recerca</string>
   <!--
@@ -1621,17 +1696,27 @@
   -->
   <string name="download_item_in_progress_description_2">%1$s / %2$s • in %3$s.</string>
   <!--
-    Description of an in progress download item, displayed in the downloads list when the download time remaining is unknown.
+    Description of an in progress download item, displayed in the downloads list when the estimated download time remaining is still being calculated.
     %1$s is the current file size that has been downloaded.
     %2$s is the total size of the downloaded file.
   -->
   <string name="download_item_in_progress_description_pending">%1$s / %2$s • pendente</string>
+  <!--
+    Description of an in progress download item, displayed in the downloads list when the total download size is unknown. This results in the estimated download time remaining to be unknown also.
+    %1$s is the current file size that has been downloaded.
+  -->
+  <string name="download_item_in_progress_description_unknown_total_size">%1$s • tempore incognite</string>
   <!--
     Description of a paused download item, displayed in the downloads list.
     %1$s is the current file size that has been downloaded.
     %2$s is the total size of the downloaded file.
   -->
   <string name="download_item_paused_description">%1$s / %2$s • pausate</string>
+  <!--
+    Description of a paused download item, displayed in the downloads list when the total download size is unknown.
+    %1$s is the current file size that has been downloaded.
+  -->
+  <string name="download_item_paused_description_unknown_total_size">%1$s • pausate</string>
   <!-- Text to indicate that an in progress download is paused. -->
   <string name="download_item_status_paused" moz:removedIn="141" tools:ignore="UnusedResources">pausate</string>
   <!-- Text to indicate that the download speed of an in progress download is being calculated. -->
@@ -1667,7 +1752,11 @@
   -->
   <string name="webcompat_reporter_screen_title">Reportar sito corrupte</string>
   <!-- The description of the Web Compat Reporter feature. %1$s is the name of the app (for example "Firefox"). -->
-  <string name="webcompat_reporter_description">Adjutar a render %1$s melior pro totes. Le empleatos de Mozilla usa le info que tu invia pro remediar problemas de sito web.</string>
+  <string name="webcompat_reporter_description" moz:removedIn="142" tools:ignore="UnusedResources">Adjutar a render %1$s melior pro totes. Le empleatos de Mozilla usa le info que tu invia pro remediar problemas de sito web.</string>
+  <!-- The description of the Web Compat Reporter feature, which has a "learn more" button text for navigating to a SUMO link to learn more about reporting a broken site. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="webcompat_reporter_description_2">Tu reporto adjuta nos a comprender e resolver problemas in %1$s pro render lo melior pro omnes. Pro saper plus</string>
+  <!-- The button text for navigating to the SUMO link to learn more about reporting a broken site. -->
+  <string name="webcompat_reporter_learn_more">Pro saper plus</string>
   <!-- The text field label of the URL text field. This is displayed above the user-inputted URL. -->
   <string name="webcompat_reporter_label_url">URL</string>
   <!-- The error message of the URL text field when an invalid URL has been entered. -->
@@ -1675,7 +1764,9 @@
   <!-- The label/title of a field in the Web Compat Reporter feature for explaining a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_label_whats_broken_2">Que es corrupte?</string>
   <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
-  <string name="webcompat_reporter_choose_reason">Elige un ration</string>
+  <string name="webcompat_reporter_choose_reason" moz:removedIn="142" tools:ignore="UnusedResources">Elige un ration</string>
+  <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
+  <string name="webcompat_reporter_choose_reason_2">Elige un ration</string>
   <!-- The error message of the dropdown, prompting the user to select a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_choose_reason_error">Elige un ration</string>
   <!-- The label/title of an optional field in the Web Compat Reporter feature for adding additional information. -->
@@ -1690,6 +1781,8 @@
   <string name="webcompat_reporter_success_snackbar_text">Tu reporto ha essite inviate</string>
   <!-- Button text for closing or dismissing the snackbar shown after successfully submitting a WebCompat report. -->
   <string name="webcompat_reporter_dismiss_success_snackbar_text">Clauder</string>
+  <!-- Placeholder text for the description field to prompt the user on what they should type. -->
+  <string name="webcompat_reporter_problem_description_placeholder_text">Que eveniva? Que deberea haber evenite?</string>
   <!--
     These reason strings are dropdown options on a WebCompat reporter form, indicating what is broken on the site.
 
@@ -1736,12 +1829,20 @@
   <string name="tab_crash_restore">Restaurar le scheda</string>
   <!-- Unsubmitted crash dialog title, %s is the name of the app (for example "Firefox"). -->
   <string name="unsubmitted_crash_dialog_title">%s debeva reinitiar</string>
+  <!-- Single unsubmitted crash matching remote settings. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="unsubmitted_crash_requested_by_devs_dialog_title">Tu ha un reporto de crash non inviate correlate a crashes jam investigate. Inviar lo nos adjutara meliorar %1$s. Claudente iste aviso, tal reporto sera ignorate.</string>
+  <!-- Multiple unsubmitted crashes matching remote settings. %1$d is the number of unsent crash reports, %2$s is the name of the app (for example "Firefox"). -->
+  <string name="unsubmitted_crashes_requested_by_devs_dialog_title">Tu ha reportos de crash non inviate (%1$d) correlate a crashes jam investigate. Inviar los nos adjutara meliorar %2$s. Claudente iste aviso, tal reportos sera ignorate.</string>
   <!-- Unsubmitted crash dialog checkbox label for automatically sending reports in the future -->
   <string name="unsubmitted_crash_dialog_checkbox_label">Automaticamente inviar reportos de crash</string>
   <!-- Unsubmitted crash dialog negative button to dismiss the dialog -->
   <string name="unsubmitted_crash_dialog_negative_button">Clauder</string>
+  <!-- Unsubmitted crash dialog negative button to never be asked for the submission -->
+  <string name="unsubmitted_crash_requested_by_devs_dialog_never_button">Non plus monstrar jammais</string>
   <!-- Unsubmitted crash dialog positive button to submit crash report -->
   <string name="unsubmitted_crash_dialog_positive_button">Inviar reporto de collapso</string>
+  <!-- Unsubmitted crash dialog button to open a web page with more details on the feature and privacy policy -->
+  <string name="unsubmitted_crash_requested_by_devs_learn_more">Pro saper plus</string>
   <!--
     Bookmarks
 
@@ -2144,7 +2245,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Scheda private claudite</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Schedas private claudite</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Schedas private claudite</string>
   <!-- Text shown in snackbar when user erases their private browsing data -->
   <string name="snackbar_private_data_deleted">Datos de navigation private delite</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
@@ -2176,6 +2277,8 @@
   <string name="preference_accessibility_text_size_summary">Rende le texto sur sitos web plus o minus grande</string>
   <!-- Title for Accessibility Text Size Scaling Preference -->
   <string name="preference_accessibility_font_size_title">Dimension del characteres</string>
+  <!-- %d is the percentage of the slide bar for setting the text font size and %% will be announced as "percent". -->
+  <string name="a11y_preference_accessibility_font_size_percentage">%d %%.</string>
   <!-- Title for Accessibility Text Automatic Size Scaling Preference -->
   <string name="preference_accessibility_auto_size_2">Dimensionamento automatic del characteres</string>
   <!-- Summary for Accessibility Text Automatic Size Scaling Preference -->
@@ -2307,6 +2410,10 @@
   <string name="preference_enhanced_tracking_protection_strict">Stricte</string>
   <!-- Preference description for enhanced tracking protection for the strict protection settings -->
   <string name="preference_enhanced_tracking_protection_strict_description_4">Plus forte protection de traciamento e prestation plus veloce, ma alcun sitos pote non functionar correctemente.</string>
+  <!-- Preference description for the checkbox setting for "baseline" exceptions (a set of content blocking exceptions applied to fix major website breakage). %1$s is the name of the application (e.g. Fenix). -->
+  <string name="preference_enhanced_tracking_protection_allow_list_baseline">Permitter a %1$s de automaticamente applicar le exceptiones necessari pro evitar le principal problemas de sito web.</string>
+  <!-- Preference description for the checkbox setting for "convenience" exceptions (a set of content blocking exceptions applied to fix convenience site features). -->
+  <string name="preference_enhanced_tracking_protection_allow_list_convenience">Applicar exceptiones automaticamente, alsi solo necessari pro remediar minor problemas e render disponibile functiones utile.</string>
   <!-- Accessibility text for the Strict protection information icon -->
   <string name="preference_enhanced_tracking_protection_strict_info_button">Lo que es blocate per standard protection de traciamento</string>
   <!-- Preference for enhanced tracking protection for the custom protection settings -->
@@ -2506,7 +2613,7 @@
   <!-- About page link text to open know your rights link -->
   <string name="about_know_your_rights">Prende acto de tu derectos</string>
   <!-- About page link text to open terms of use link -->
-  <string name="about_terms_of_use" tools:ignore="UnusedResources">Terminos de uso</string>
+  <string name="about_terms_of_use" tools:ignore="UnusedResources">Conditiones de uso</string>
   <!-- About page link text to open licensing information link -->
   <string name="about_licensing_information">Informationes de licentias</string>
   <!-- About page link text to open a screen with libraries that are used -->
@@ -2601,6 +2708,22 @@
   <string name="saved_login_clear_username">Vacuar nomine de usator</string>
   <!-- Content Description (for screenreaders etc) read for the button to clear the hostname field while creating a login -->
   <string name="saved_login_clear_hostname">Vacuar nomine de servitor</string>
+  <!-- Content description, used by tools like screenreaders, for the 3 dots button that shows commands related to the currently displayed login (edit, delete). -->
+  <string name="login_detail_menu_button_content_description">Menu de detalios del credentiales</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the login detail view. -->
+  <string name="login_details_navigate_back_button_content_description">Naviga retro</string>
+  <!-- Edit text for the login detail menu edit button -->
+  <string name="login_detail_menu_edit_button">Rediger</string>
+  <!-- Delete text for the login detail menu delete button -->
+  <string name="login_detail_menu_delete_button">Deler</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the add login view. -->
+  <string name="add_login_navigate_back_button_content_description">Navigar retro</string>
+  <!-- Content description, used by tools like screenreaders, to press on the save new login button. -->
+  <string name="add_login_save_new_login_button_content_description">Salvar nove credential</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the edit login view. -->
+  <string name="edit_login_navigate_back_button_content_description">Navigation retro</string>
+  <!-- Content description, used by tools like screenreaders, to press on the edit login button. -->
+  <string name="edit_login_button_content_description">Editar conto</string>
   <!-- Content Description (for screenreaders etc) read for the button to open a site in logins -->
   <string name="saved_login_open_site">Aperir sito in navigator</string>
   <!-- Content Description (for screenreaders etc) read for the button to reveal a password in logins -->
@@ -2897,8 +3020,10 @@
   <!--
     Top Sites
 
-    Title text displayed in the dialog when shortcuts limit is reached.
+    Title text displayed for the shortcuts home screen section.
   -->
+  <string name="homepage_shortcuts_title">Vias breve</string>
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">Limite de vias breve attingite</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">Pro adder un altere via breve, remove un. Tocca e retene le sito e selige remover.</string>
@@ -3036,7 +3161,7 @@
   <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
   <string name="a11y_action_label_wallpaper_collection_learn_more">aperi le ligamine pro apprender plus re iste collection</string>
   <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-  <string name="a11y_action_label_read_article">leger le articulo</string>
+  <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">leger le articulo</string>
   <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
   <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">aperi le ligamine pro saper plus</string>
   <!-- Content description for headings announced by accessibility service. %s is the text of the heading. Talkback will announce the text and then speak the word "Heading" indicating to the user that this text is a heading for a section. -->
@@ -3290,9 +3415,9 @@
 
     Text for the protection panel header when the site is secure.
   -->
-  <string name="protection_panel_header_secure">Secur</string>
+  <string name="protection_panel_header_secure" moz:removedIn="142" tools:ignore="UnusedResources">Secur</string>
   <!-- Text for the protection panel header when the site is not secure. -->
-  <string name="protection_panel_header_not_secure">Insecur</string>
+  <string name="protection_panel_header_not_secure" moz:removedIn="142" tools:ignore="UnusedResources">Insecur</string>
   <!-- Title text for the protection panel banner when the site is not secure. -->
   <string name="protection_panel_banner_not_secure_title">Sia attente in iste sito</string>
   <!-- Description text for the protection panel banner when the site is not secure. -->
@@ -3313,10 +3438,18 @@
   <string name="protection_panel_banner_protected_description">Tu es protegite. Si nos discoperi alco, lo facera saper vos.</string>
   <!-- Label text for the Enhanced Tracking Protection toggle. -->
   <string name="protection_panel_etp_toggle_label">Protection antitraciamento reinfortiate</string>
+  <!-- Toggle if Enhanced Tracking Protection is turned on -->
+  <string name="protection_panel_etp_toggle_on">Active</string>
+  <!-- Toggle if Enhanced Tracking Protection is turned off -->
+  <string name="protection_panel_etp_toggle_off">Inactive</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
-  <string name="protection_panel_etp_toggle_enabled_description">Si alco pare corrupte in iste sito, tenta disactivar protectiones.</string>
+  <string name="protection_panel_etp_toggle_enabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Si alco pare corrupte in iste sito, tenta disactivar protectiones.</string>
+  <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
+  <string name="protection_panel_etp_toggle_enabled_description_2">Si alco pare rupte in iste sito, tenta disactivar lo.</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
-  <string name="protection_panel_etp_toggle_disabled_description">Le protectiones es disactivate. Nos consilia reactivar los.</string>
+  <string name="protection_panel_etp_toggle_disabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Le protectiones es disactivate. Nos consilia reactivar los.</string>
+  <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
+  <string name="protection_panel_etp_toggle_disabled_description_2">Activar protection de traciamento es recommendate.</string>
   <!--
     Text for displaying the total number of trackers blocked in the protection panel.
     %d is a placeholder for the number of trackers blocked.
@@ -3325,7 +3458,9 @@
   <!-- Text for when no trackers have been blocked. -->
   <string name="protection_panel_no_trackers_blocked">Nulle traciatores trovate</string>
   <!-- Link text to navigate to privacy and security settings from the protection panel. -->
-  <string name="protection_panel_privacy_and_security_settings">Configurationes de confidentialitate e securitate</string>
+  <string name="protection_panel_privacy_and_security_settings" moz:removedIn="142" tools:ignore="UnusedResources">Configurationes de confidentialitate e securitate</string>
+  <!-- Link text to navigate to privacy and security settings from the protection panel. -->
+  <string name="protection_panel_privacy_and_security_settings_2">Parametros de confidentialitate</string>
   <!-- Title text for the protection panel permissions section. -->
   <string name="protection_panel_permissions_title">Permissos</string>
   <!--
@@ -3356,7 +3491,7 @@
   <string name="connection_security_panel_not_secure">Connexion insecur</string>
   <!--
     Text for the connection security panel to indicate who the certificate was verified by.
-    %s is a placeholder for the name of the certificate authority that verified the ticket
+    %s is a placeholder for the name of the certificate authority that issued the certificate.
   -->
   <string name="connection_security_panel_verified_by">Verificate per %s</string>
   <!--
@@ -3536,6 +3671,14 @@
   <!-- The title of the button for overriding home region permanently. -->
   <string name="debug_drawer_override_home_region_permanently">Permanentemente supplantar le region principal</string>
   <!--
+    Add-ons debug tools
+
+    The description of the Add-ons Tools in the Debug Drawer
+  -->
+  <string name="debug_drawer_addons_tools_title">Utensiles de additivos</string>
+  <!-- The title of the button used to check for add-on updates. -->
+  <string name="addons_debug_tools_check_for_updates_button">Cercar actualisationes</string>
+  <!--
     Messages explaining how to exit fullscreen mode
 
     Message shown to explain how to exit fullscreen mode when gesture navigation is enabled.
@@ -3589,14 +3732,8 @@
   <string name="certificate_warning_push_notification_pnw2_message" tools:ignore="UnusedResources">Actualisa ante le 14 de martio pro continuar a usar additivos e altere functiones.</string>
   <!-- Push notification message about old Firefox version -->
   <string name="certificate_warning_push_notification_pnw3_message" tools:ignore="UnusedResources">Alcun functionalitates cessara de functionar deman.</string>
-  <!--
-    TextField Design System Component
+  <!-- TextField Design System Component -->
 
-    The default content description for the eye trailing icon button in TextField
-  -->
-  <string name="text_field_eye_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Monstrar le texto celate</string>
-  <!-- The default content description for the cross trailing icon button in TextField -->
-  <string name="text_field_cross_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Vacuar le texto</string>
   <!--
     Setup checklist feature
 

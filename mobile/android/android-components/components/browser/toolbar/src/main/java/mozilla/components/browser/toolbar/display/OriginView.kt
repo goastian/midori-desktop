@@ -7,6 +7,7 @@ package mozilla.components.browser.toolbar.display
 import android.animation.LayoutTransition
 import android.content.Context
 import android.graphics.Typeface
+import android.text.Spanned
 import android.util.AttributeSet
 import android.util.TypedValue
 import android.view.Gravity
@@ -17,6 +18,7 @@ import androidx.annotation.VisibleForTesting
 import androidx.core.view.isVisible
 import mozilla.components.browser.toolbar.BrowserToolbar
 import mozilla.components.browser.toolbar.R
+import mozilla.components.concept.toolbar.Toolbar
 
 /**
  * View displaying the URL and optionally the title of a website.
@@ -47,6 +49,9 @@ internal class OriginView @JvmOverloads constructor(
         setSingleLine()
         isClickable = true
         isFocusable = true
+
+        textDirection = View.TEXT_DIRECTION_LTR
+        layoutDirection = View.LAYOUT_DIRECTION_LTR
 
         setOnClickListener {
             if (onUrlClicked()) {
@@ -134,9 +139,50 @@ internal class OriginView @JvmOverloads constructor(
         titleView.setOnLongClickListener(handler)
     }
 
+    /**
+     * Scrolls the URL view to ensure the registrable domain is visible.
+     */
+    @VisibleForTesting
+    internal fun scrollToShowRegistrableDomain() {
+        val text = urlView.text
+
+        val spans = (text as? Spanned)?.getSpans(
+            0,
+            text.length,
+            Toolbar.RegistrableDomainColorSpan::class.java,
+        )
+
+        if (spans?.size == 1) {
+            val registrableDomainSpan = (urlView.text as? Spanned)?.getSpans(
+                0,
+                text.length,
+                Toolbar.RegistrableDomainColorSpan::class.java,
+            )?.getOrNull(0)
+
+            val valueUntilRegistrableDomainEnd = text.subSequence(0, text.getSpanEnd(registrableDomainSpan))
+
+            val urlViewWidth = urlView.width
+            val valueWidth = measureUrlTextWidh(valueUntilRegistrableDomainEnd.toString())
+
+            if (valueWidth > urlViewWidth) {
+                urlView.scrollTo((valueWidth - urlViewWidth).toInt(), 0)
+                return
+            }
+        }
+
+        urlView.scrollTo(0, 0)
+    }
+
+    @VisibleForTesting
+    internal fun measureUrlTextWidh(text: String) = urlView.paint.measureText(text)
+
     internal var url: CharSequence
         get() = urlView.text
-        set(value) { urlView.text = value }
+        set(value) {
+            urlView.text = value
+
+            scrollToShowRegistrableDomain()
+        }
 
     /**
      * Sets the colour of the text to be displayed when the URL of the toolbar is empty.
@@ -192,4 +238,11 @@ internal class OriginView @JvmOverloads constructor(
         set(value) {
             urlView.typeface = value
         }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        super.onLayout(changed, left, top, right, bottom)
+        urlView.post {
+            scrollToShowRegistrableDomain()
+        }
+    }
 }

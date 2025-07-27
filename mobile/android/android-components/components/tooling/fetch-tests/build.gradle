@@ -31,9 +31,9 @@ android {
 }
 
 dependencies {
-    implementation project(':concept-fetch')
+    implementation project(':components:concept-fetch')
 
     implementation libs.testing.mockwebserver
-    implementation libs.junit.vintage
+    implementation libs.junit4
     implementation libs.kotlin.coroutines
 }

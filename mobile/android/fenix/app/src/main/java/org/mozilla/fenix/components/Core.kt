@@ -45,6 +45,7 @@ import mozilla.components.feature.customtabs.store.CustomTabsServiceStore
 import mozilla.components.feature.downloads.DateTimeProvider
 import mozilla.components.feature.downloads.DefaultDateTimeProvider
 import mozilla.components.feature.downloads.DefaultFileSizeFormatter
+import mozilla.components.feature.downloads.DownloadEstimator
 import mozilla.components.feature.downloads.DownloadMiddleware
 import mozilla.components.feature.downloads.FileSizeFormatter
 import mozilla.components.feature.fxsuggest.facts.FxSuggestFactsMiddleware
@@ -62,7 +63,6 @@ import mozilla.components.feature.recentlyclosed.RecentlyClosedMiddleware
 import mozilla.components.feature.recentlyclosed.RecentlyClosedTabsStorage
 import mozilla.components.feature.search.SearchApplicationName
 import mozilla.components.feature.search.SearchDeviceType
-import mozilla.components.feature.search.SearchEngineSelector
 import mozilla.components.feature.search.SearchUpdateChannel
 import mozilla.components.feature.search.middleware.AdsTelemetryMiddleware
 import mozilla.components.feature.search.middleware.SearchExtraParams
@@ -202,16 +202,17 @@ class Core(
         if (FxNimbus.features.fingerprintingProtection.value().enabled) {
             defaultSettings.fingerprintingProtectionOverrides =
                 FxNimbus.features.fingerprintingProtection.value().overrides
-        }
-
-        if (FxNimbus.features.fingerprintingProtection.value().enabled) {
             defaultSettings.fingerprintingProtection =
                 FxNimbus.features.fingerprintingProtection.value().enabledNormal
-        }
-
-        if (FxNimbus.features.fingerprintingProtection.value().enabled) {
             defaultSettings.fingerprintingProtectionPrivateBrowsing =
                 FxNimbus.features.fingerprintingProtection.value().enabledPrivate
+        }
+
+        if (FxNimbus.features.baselineFpp.value().featEnabled) {
+            defaultSettings.baselineFingerprintingProtection =
+                FxNimbus.features.baselineFpp.value().enabled
+            defaultSettings.baselineFingerprintingProtectionOverrides =
+                FxNimbus.features.baselineFpp.value().overrides
         }
 
         // Apply third-party cookie blocking settings if the Nimbus feature is
@@ -412,6 +413,11 @@ class Core(
      * [DateTimeProvider] used to provide date and time information.
      */
     val dateTimeProvider: DateTimeProvider by lazyMonitored { DefaultDateTimeProvider() }
+
+    /**
+     * [DateTimeProvider] used to provide date and time information.
+     */
+    val downloadEstimator: DownloadEstimator by lazyMonitored { DownloadEstimator(dateTimeProvider = dateTimeProvider) }
 
     /**
      * The [RelationChecker] checks Digital Asset Links relationships for Trusted Web Activities.
@@ -618,15 +624,6 @@ class Core(
                     ),
                 )
 
-                if (LocaleManager.getSelectedLocale(context).language == "en") {
-                    defaultTopSites.add(
-                        Pair(
-                            context.getString(R.string.pocket_pinned_top_articles),
-                            SupportUtils.POCKET_TRENDING_URL,
-                        ),
-                    )
-                }
-
                 defaultTopSites.add(
                     Pair(
                         context.getString(R.string.default_top_site_wikipedia),
@@ -716,7 +713,6 @@ class Core(
             deviceType = deviceType,
             experiment = "",
             updateChannel = updateChannel,
-            selector = SearchEngineSelector(),
             service = context.components.remoteSettingsService.value,
         )
     }

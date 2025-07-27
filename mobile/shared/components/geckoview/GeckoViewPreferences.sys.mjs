@@ -25,7 +25,9 @@ export const GeckoViewPreferences = {
 
     switch (aEvent) {
       case "GeckoView:Preferences:GetPref": {
-        aCallback.onSuccess(this.getPreference(aData.pref));
+        aCallback.onSuccess({
+          prefs: aData.prefs.map(pref => this.getPreference(pref)),
+        });
         return;
       }
       case "GeckoView:Preferences:SetPref": {
@@ -67,12 +69,16 @@ export const GeckoViewPreferences = {
         break;
       }
       case "GeckoView:Preferences:RegisterObserver": {
-        Services.prefs.addObserver(aData.pref, this);
+        for (const pref of aData.prefs) {
+          Services.prefs.addObserver(pref, this);
+        }
         aCallback.onSuccess();
         break;
       }
       case "GeckoView:Preferences:UnregisterObserver": {
-        Services.prefs.removeObserver(aData.pref, this);
+        for (const pref of aData.prefs) {
+          Services.prefs.removeObserver(pref, this);
+        }
         aCallback.onSuccess();
         break;
       }

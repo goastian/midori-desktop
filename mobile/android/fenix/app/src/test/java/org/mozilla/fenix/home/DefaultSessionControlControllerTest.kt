@@ -49,7 +49,6 @@ import org.mozilla.fenix.BrowserDirection
 import org.mozilla.fenix.GleanMetrics.Collections
 import org.mozilla.fenix.GleanMetrics.Events
 import org.mozilla.fenix.GleanMetrics.HomeBookmarks
-import org.mozilla.fenix.GleanMetrics.HomeScreen
 import org.mozilla.fenix.GleanMetrics.Pings
 import org.mozilla.fenix.GleanMetrics.RecentTabs
 import org.mozilla.fenix.GleanMetrics.TopSites
@@ -66,7 +65,6 @@ import org.mozilla.fenix.components.appstate.setup.checklist.ChecklistItem
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.helpers.FenixGleanTestRule
-import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.home.bookmarks.Bookmark
 import org.mozilla.fenix.home.mars.MARSUseCases
 import org.mozilla.fenix.home.recenttabs.RecentTab
@@ -78,10 +76,11 @@ import org.mozilla.fenix.utils.Settings
 import org.mozilla.fenix.utils.maybeShowAddSearchWidgetPrompt
 import org.mozilla.fenix.wallpapers.Wallpaper
 import org.mozilla.fenix.wallpapers.WallpaperState
+import org.robolectric.RobolectricTestRunner
 import java.io.File
 import mozilla.components.feature.tab.collections.Tab as ComponentTab
 
-@RunWith(FenixRobolectricTestRunner::class) // For gleanTestRule
+@RunWith(RobolectricTestRunner::class) // For gleanTestRule
 class DefaultSessionControlControllerTest {
 
     @get:Rule
@@ -179,23 +178,6 @@ class DefaultSessionControlControllerTest {
             navController.navigate(
                 match<NavDirections> {
                     it.actionId == R.id.action_global_collectionCreationFragment
-                },
-                null,
-            )
-        }
-    }
-
-    @Test
-    fun handleCustomizeHomeTapped() {
-        assertNull(HomeScreen.customizeHomeClicked.testGetValue())
-
-        createController().handleCustomizeHomeTapped()
-
-        assertNotNull(HomeScreen.customizeHomeClicked.testGetValue())
-        verify {
-            navController.navigate(
-                match<NavDirections> {
-                    it.actionId == R.id.action_global_homeSettingsFragment
                 },
                 null,
             )

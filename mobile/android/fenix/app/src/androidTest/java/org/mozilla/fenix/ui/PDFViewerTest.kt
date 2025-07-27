@@ -19,6 +19,7 @@ import org.mozilla.fenix.helpers.MatcherHelper.itemWithResIdAndText
 import org.mozilla.fenix.helpers.MatcherHelper.itemWithText
 import org.mozilla.fenix.helpers.TestAssetHelper.getGenericAsset
 import org.mozilla.fenix.helpers.TestHelper.appName
+import org.mozilla.fenix.helpers.TestHelper.clickSnackbarButton
 import org.mozilla.fenix.helpers.TestHelper.mDevice
 import org.mozilla.fenix.helpers.TestSetup
 import org.mozilla.fenix.helpers.perf.DetectMemoryLeaksRule
@@ -71,8 +72,8 @@ class PDFViewerTest : TestSetup() {
             clickPageObject(itemWithText("PDF form file"))
             clickPageObject(itemWithResIdAndText("android:id/button2", "CANCEL"))
         }.clickDownloadPDFButton {
-            verifyDownloadedFileName(downloadFile)
-        }.clickOpen("application/pdf") {
+            verifyDownloadCompleteSnackbar(fileName = downloadFile)
+            clickSnackbarButton(composeTestRule = composeTestRule, "OPEN")
             assertExternalAppOpens(GOOGLE_DOCS)
         }
     }
@@ -151,37 +152,38 @@ class PDFViewerTest : TestSetup() {
         }.openHomeScreenShortcut("pdfForm") {
             verifyTabCounter("1")
         }.clickDownloadPDFButton {
-            verifyDownloadedFileName(downloadFile)
-        }.clickOpen("application/pdf") {
-            selectToAlwaysOpenDownloadedFileWithApp(appName = appName)
-            verifyUrl("content://media/external_primary/downloads/")
-            verifyTabCounter("2")
+            verifyDownloadCompleteSnackbar(fileName = downloadFile)
+            clickSnackbarButton(composeTestRule = composeTestRule, "OPEN")
         }
+            browserScreen {
+                selectToAlwaysOpenDownloadedFileWithApp(appName = appName)
+                verifyUrl("content://media/external_primary/downloads/")
+                verifyTabCounter("2")
+            }
 
-        navigationToolbar {
-        }.enterURLAndEnterToBrowser(genericURL.url) {
-            clickPageObject(itemWithText("PDF form file"))
-            clickPageObject(itemWithResIdAndText("android:id/button2", "CANCEL"))
-        }.clickDownloadPDFButton {
-            verifyDownloadedFileName(downloadFile)
-        }
+            navigationToolbar {
+            }.enterURLAndEnterToBrowser(genericURL.url) {
+                clickPageObject(itemWithText("PDF form file"))
+                clickPageObject(itemWithResIdAndText("android:id/button2", "CANCEL"))
+            }.clickDownloadPDFButton {
+            }
 
-        mDevice.openNotification()
+            mDevice.openNotification()
 
-        notificationShade {
-            expandMultipleDownloadNotification("pdfForm(1).pdf")
-            clickNotification("pdfForm(1).pdf")
-        }
-        browserScreen {
-            verifyUrl("content://media/external_primary/downloads/")
-            verifyTabCounter("3")
-        }.openThreeDotMenu {
-        }.openDownloadsManager {
-            clickDownloadedItem(composeTestRule, "pdfForm.pdf")
-        }
-        browserScreen {
-            verifyTabCounter("4")
-            verifyUrl("content://media/external_primary/downloads/")
+            notificationShade {
+                expandMultipleDownloadNotification("pdfForm(1).pdf")
+                clickNotification("pdfForm(1).pdf")
+            }
+            browserScreen {
+                verifyUrl("content://media/external_primary/downloads/")
+                verifyTabCounter("3")
+            }.openThreeDotMenu {
+            }.openDownloadsManager {
+                clickDownloadedItem(composeTestRule, "pdfForm.pdf")
+            }
+            browserScreen {
+                verifyTabCounter("4")
+                verifyUrl("content://media/external_primary/downloads/")
+            }
         }
     }
-}

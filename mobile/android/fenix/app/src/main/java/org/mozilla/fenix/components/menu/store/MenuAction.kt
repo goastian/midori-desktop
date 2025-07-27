@@ -83,6 +83,16 @@ sealed class MenuAction : Action {
     data object FindInPage : MenuAction()
 
     /**
+     * [MenuAction] dispatched when it's a new installation of Firefox.
+     */
+    data object MenuBanner : MenuAction()
+
+    /**
+     * [MenuAction] dispatched when menu banner should be dismissed.
+     */
+    data object DismissMenuBanner : MenuAction()
+
+    /**
      * [MenuAction] dispatched when a private tab is open in normal tab.
      */
     data object OpenInRegularTab : MenuAction()
@@ -201,16 +211,6 @@ sealed class MenuAction : Action {
     data object RequestMobileSite : MenuAction()
 
     /**
-     * [MenuAction] dispatched when the save menu item is clicked.
-     */
-    data object SaveMenuClicked : MenuAction()
-
-    /**
-     * [MenuAction] dispatched when the tools menu item is clicked.
-     */
-    data object ToolsMenuClicked : MenuAction()
-
-    /**
      * [MenuAction] dispatched to show the menu CFR.
      */
     data object OnCFRShown : MenuAction()
@@ -316,21 +316,20 @@ sealed class MenuAction : Action {
         data object ExtensionsLearnMore : Navigate()
 
         /**
-         * [Navigate] action dispatched when navigating to the new tab.
-         */
-        data object NewTab : Navigate()
-
-        /**
-         * [Navigate] action dispatched when navigating to the new private tab.
-         */
-        data object NewPrivateTab : Navigate()
-
-        /**
          * [Navigate] action dispatched when navigating to the given [addon] details.
          *
          * @property addon The [Addon] details to display.
          */
         data class AddonDetails(
+            val addon: Addon,
+        ) : Navigate()
+
+        /**
+         * [Navigate] action dispatched when navigating to the given installed [addon] details.
+         *
+         * @property addon The [Addon] details to display.
+         */
+        data class InstalledAddonDetails(
             val addon: Addon,
         ) : Navigate()
 
@@ -365,5 +364,10 @@ sealed class MenuAction : Action {
         data class Reload(
             val bypassCache: Boolean,
         ) : Navigate()
+
+        /**
+         * [Navigate] action dispatched when stopping the current page from loading.
+         */
+        data object Stop : Navigate()
     }
 }

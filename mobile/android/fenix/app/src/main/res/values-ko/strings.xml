@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">옵션 더보기</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">사생활 보호 모드 활성화</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">사생활 보호 모드 활성화</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">사생활 보호 모드 비활성화</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">사생활 보호 모드 비활성화</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">사생활 보호 모드</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -34,6 +34,8 @@
   <string name="no_private_tabs_description">사생활 보호 탭이 여기에 표시됩니다.</string>
   <!-- Tab tray multi select title in app bar. %1$d is the number of tabs selected -->
   <string name="tab_tray_multi_select_title">%1$d개 선택됨</string>
+  <!-- Tab tray multi select title in app bar when no tabs are selected -->
+  <string name="tab_tray_multi_select_title_empty">탭 선택</string>
   <!-- Label of button in create collection dialog for creating a new collection -->
   <string name="tab_tray_add_new_collection">새 모음집 추가</string>
   <!-- Label of editable text in create collection dialog for naming a new collection -->
@@ -62,8 +64,10 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s는 사생활 보호 탭을 닫거나 앱을 종료할 때 사생활 보호 탭으로부터 검색과 방문 기록을 지웁니다. 이것이 사용자를 웹 사이트나 인터넷 서비스 제공자로부터 익명으로 만들지는 않지만, 사용자가 온라인에서 한 일을 이 기기를 사용하는 다른 사용자로부터 보호 할 수 있게 합니다.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s는 사생활 보호 탭을 닫거나 앱을 종료할 때 사생활 보호 탭으로부터 검색과 방문 기록을 지웁니다. 이것이 사용자를 웹 사이트나 인터넷 서비스 제공자로부터 익명으로 만들지는 않지만, 사용자가 온라인에서 한 일을 이 기기를 사용하는 다른 사용자로부터 보호 할 수 있게 합니다.</string>
   <string name="private_browsing_common_myths">사생활 보호 모드에 관한 흔한 오해</string>
+  <!-- Text to be announced by the accessibility service to inform the user that the private browsing mode is currently active. -->
+  <string name="private_browsing_a11y_session_announcement">사생활 보호 세션</string>
   <!--
     True Private Browsing Mode
 
@@ -98,7 +102,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">새 사생활 세션을 시작하려면 여기를 누르세요. 기록, 쿠키 등 모든 것을 삭제하세요.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">새 사생활 세션을 시작하려면 여기를 누르세요. 기록, 쿠키 등 모든 것을 삭제하세요.</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -112,12 +116,8 @@
   <!--
     Address bar swipe "contextual feature recommendation" (CFR)
 
-    Text for the title displayed in the contextual feature recommendation popup promoting swipe of address bar.
+    Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar.
   -->
-  <string name="address_bar_swipe_cfr_title" tools:ignore="UnusedResources" moz:removedIn="139">도구 모음을 밀어서 탭 전환</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
-  <string name="address_bar_swipe_cfr_message" tools:ignore="UnusedResources" moz:removedIn="139">탭을 전환하려면 왼쪽이나 오른쪽으로 미세요. 새 탭을 열려면 마지막 탭을 왼쪽으로 미세요.</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
   <string name="address_bar_swipe_cfr_message_2">도구 모음을 왼쪽이나 오른쪽으로 밀어서 탭을 전환합니다.</string>
   <!-- Text for the info dialog when camera permissions have been denied but user tries to access a camera feature. -->
   <string name="camera_permissions_needed_message">카메라 액세스가 필요합니다. Android 설정으로 이동하여 권한을 누른 다음 허용을 누르세요.</string>
@@ -321,7 +321,9 @@
   <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
   <string name="browser_menu_sign_in_caption" moz:removedIn="141" tools:ignore="UnusedResources">비밀번호, 탭 등을 동기화하세요</string>
   <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
-  <string name="browser_menu_sign_in_caption_2">북마크, 비밀번호, 탭 등을 동기화하세요</string>
+  <string name="browser_menu_sign_in_caption_2" moz:removedIn="141" tools:ignore="UnusedResources">북마크, 비밀번호, 탭 등을 동기화하세요</string>
+  <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
+  <string name="browser_menu_sign_in_caption_3">비밀번호, 북마크 등을 동기화하세요</string>
   <!-- Browser menu label to sign back in to sync on the device when the user's account needs to be reauthenticated -->
   <string name="browser_menu_sign_back_in_to_sync">동기화하려면 다시 로그인</string>
   <!-- Browser menu caption label for the "Sign back in to sync" browser menu item described in `browser_menu_sign_back_in_to_sync` when there is an error in syncing -->
@@ -334,9 +336,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">%1$s 새 기능</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">%1$s 새 기능</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">데스크톱 사이트로 전환</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">데스크톱 사이트로 전환</string>
   <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
   <string name="browser_menu_switch_to_mobile_site">모바일 사이트로 전환</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
@@ -344,7 +346,11 @@
   <!-- Content description (not visible, for screen readers etc.): Back button for all menu redesign sub-menu -->
   <string name="browser_menu_back_button_content_description" moz:removedIn="141" tools:ignore="UnusedResources">주 메뉴로 돌아가기</string>
   <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar main menu. -->
-  <string name="browser_main_menu_handlebar_content_description">메인 메뉴 시트 닫기</string>
+  <string name="browser_main_menu_handlebar_content_description" moz:removedIn="142" tools:ignore="UnusedResources">메인 메뉴 시트 닫기</string>
+  <!-- Content description (not visible, for screen readers etc.) for the handle used to drag the main menu at the bottom of the screen. -->
+  <string name="browser_close_main_menu_handlebar_content_description">메뉴 닫기</string>
+  <!-- Content description (not visible, for screen readers etc.) for main menu navigation header. -->
+  <string name="browser_main_menu_content_description_navigation_header">네비게이션</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
   <string name="browser_main_menu_content_description_help_button">도움말</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu settings button. -->
@@ -400,7 +406,7 @@
     Browser menu label that is displayed when the current page has been translated by the translation feature.
     %1$s is the name of the language that page was translated to (e.g. English).
   -->
-  <string name="browser_menu_translated_to">%1$s 언어로 번역됨</string>
+  <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">%1$s 언어로 번역됨</string>
   <!-- Browser menu label that is displayed when the current page has been translated by the translation feature. -->
   <string name="browser_menu_translated">번역됨</string>
   <!-- Browser menu label for the print feature -->
@@ -420,7 +426,11 @@
   <!-- Label text within the set as default banner -->
   <string name="browser_menu_default_banner_subtitle">몇 초 정도 걸립니다. 언제든지 바꿀 수 있습니다.</string>
   <!-- Content description for the button that dismisses the set as default banner in the menu -->
-  <string name="browser_menu_default_banner_dismiss">닫기</string>
+  <string name="browser_menu_default_banner_dismiss" moz:removedIn="142" tools:ignore="UnusedResources">닫기</string>
+  <!-- Content description (not visible, for screen readers etc.) for the button that dismisses the set as default banner in the menu -->
+  <string name="browser_menu_default_banner_dismiss_promotion">프로모션 닫기</string>
+  <!-- Content description (not visible, for screen readers etc.) for recommended extensions in main menu -->
+  <string name="browser_menu_recommended_extensions_content_description">추가 정보</string>
   <!--
     Menu "contextual feature recommendation" (CFR)
 
@@ -445,7 +455,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">방문 기록 삭제</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">방문 기록 삭제</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">페이지 번역</string>
   <!--
@@ -520,7 +530,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">건너뛰기</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">탭이 동기화 중입니다! 다른 기기에서 중단한 부분부터 다시 시작하세요.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">탭이 동기화 중입니다! 다른 기기에서 중단한 부분부터 다시 시작하세요.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">닫기</string>
   <!--
@@ -634,12 +644,12 @@
   <!-- Title for the crash reporting option in the privacy preferences dialog shown during onboarding. -->
   <string name="onboarding_preferences_dialog_crash_reporting_title">자동으로 충돌 보고서 보내기</string>
   <!-- Description for the crash reporting option in the privacy preferences dialog shown during onboarding. -->
-  <string name="onboarding_preferences_dialog_crash_reporting_description">충돌 보고서를 통해 브라우저의 문제를 진단하고 수정할 수 있습니다. 보고서에는 개인 정보나 민감한 정보가 포함되어 있을 수 있습니다.</string>
+  <string name="onboarding_preferences_dialog_crash_reporting_description">충돌 보고서를 통해 브라우저의 문제를 진단하고 고칠 수 있습니다. 보고서에는 개인 정보나 민감한 정보가 포함되어 있을 수 있습니다.</string>
   <!-- Learn more link for the crash reporting option in the privacy preferences dialog shown during onboarding. -->
   <string name="onboarding_preferences_dialog_crash_reporting_learn_more_2">더 알아보기</string>
   <!-- Title for the usage data option in the privacy preferences dialog shown during onboarding. Note: The word "Mozilla" should NOT be translated. -->
   <string name="onboarding_preferences_dialog_usage_data_title">Mozilla에 기술 및 상호 작용 데이터 보내기</string>
-  <string name="onboarding_preferences_dialog_usage_data_description_2" tools:ignore="BrandUsage">사용자의 기기와 하드웨어 설정, 그리고 Firefox를 어떻게 사용하는지에 대한 데이터는 모두를 위해 기능, 성능, 안정성을 개선하는데 도움이 됩니다.</string>
+  <string name="onboarding_preferences_dialog_usage_data_description_2" tools:ignore="BrandUsage">사용자의 기기와 하드웨어 설정, 그리고 Firefox를 어떻게 사용하는지에 대한 데이터는 모두를 위해 기능, 성능, 안정성을 개선하는 데 도움이 됩니다.</string>
   <string name="onboarding_preferences_dialog_usage_data_learn_more_2">더 알아보기</string>
   <!-- Positive button label for the privacy preferences dialog shown during onboarding. -->
   <string name="onboarding_preferences_dialog_positive_button">완료</string>
@@ -861,10 +871,14 @@
   <string name="preferences_category_account">계정</string>
   <!-- Preference for changing where the AddressBar is positioned -->
   <string name="preferences_toolbar_2">주소 표시줄 위치</string>
+  <!-- Preference for changing toolbar layout -->
+  <string name="preferences_toolbar_layout">도구 모음 레이아웃</string>
   <!-- Preference for changing default theme to dark or light mode -->
   <string name="preferences_theme">테마</string>
   <!-- Preference for customizing the home screen -->
   <string name="preferences_home_2">홈페이지</string>
+  <!-- Preference for customizing the app icon -->
+  <string name="preferences_app_icon">앱 아이콘</string>
   <!-- Preference for gestures based actions -->
   <string name="preferences_gestures">제스처</string>
   <!-- Preference for settings related to visual options -->
@@ -880,7 +894,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">번역</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">데이터 선택</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">데이터 선택</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">데이터 수집</string>
   <!-- Preference for developers -->
@@ -942,7 +956,15 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">안 함</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">외부 다운로드 관리자</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">외부 다운로드 관리자</string>
+  <!-- Preference title for choosing an app to handle downloads -->
+  <string name="preferences_choose_app_for_downloads">다른 앱으로 다운로드 관리</string>
+  <!-- Title for the setting to automatically clean up downloaded files. %s is the name of the app (for example "Firefox"). -->
+  <string name="preferences_downloads_settings_clean_up_files_title">%s 및 기기에서 삭제</string>
+  <!-- Summary for the setting to automatically clean up downloaded files -->
+  <string name="preferences_downloads_settings_clean_up_files_summary">다운로드 관리자에서 파일을 삭제하면 기기에서도 삭제됨</string>
+  <!-- Preference for downloads -->
+  <string name="preferences_downloads">다운로드</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">Gecko 로그 활성화</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -962,15 +984,29 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">필수</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">필수</string>
   <!-- The title of the optional permissions section from addon's permissions screen -->
-  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">선택 사항</string>
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">선택 사항</string>
   <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
-  <string name="addons_permissions_allow_for_all_sites" tools:ignore="UnusedResources">모든 사이트에 허용</string>
+  <string name="addons_permissions_allow_for_all_sites">모든 사이트에 허용</string>
   <!-- The subtitle for the allow for all sites preference toggle -->
-  <string name="addons_permissions_allow_for_all_sites_subtitle" tools:ignore="UnusedResources">이 확장 기능을 신뢰한다면 모든 웹 사이트에 권한을 부여할 수 있습니다.</string>
+  <string name="addons_permissions_allow_for_all_sites_subtitle">이 확장 기능을 신뢰한다면 모든 웹 사이트에 권한을 부여할 수 있습니다.</string>
   <!-- The text shown when an extension does not require permissions -->
   <string name="addons_does_not_require_permissions">이 확장 기능은 권한이 필요하지 않습니다.</string>
+  <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+  <string name="addons_permissions_required_data_collection_description" moz:removedIn="141" tools:ignore="UnusedResources">개발자가 밝힌 이 확장 기능의 수집 권한: %1$s.</string>
+  <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+  <string name="addons_permissions_required_data_collection_description_2">개발자가 밝힌 이 확장 기능의 수집 권한: %1$s</string>
+  <!-- The description of the "none" data collection permission, when the extension doesn't collect anything according to the developer. -->
+  <string name="addons_permissions_none_required_data_collection_description">개발자가 이 확장 기능은 데이터 수집이 필요하지 않다고 합니다.</string>
+  <!-- The title of the required permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_required_permissions">필수 권한:</string>
+  <!-- The title of the optional permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_optional_permissions">선택적 권한:</string>
+  <!-- The title of the required data collection permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_required_data_collection">필수 데이터 수집:</string>
+  <!-- The title of the optional data collection permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_optional_data_collection">선택적 정보 수집:</string>
   <!--
     Add-on Preferences
 
@@ -1094,6 +1130,12 @@
   <string name="alternative_app_icon_option_momo">모모</string>
   <!-- Subtitle for the "Momo" themed alternative app icon variant in the icon picker screen. The app icon was created by artist @heyheymomodraws and features a unique hand-drawn style with a friendly fox. -->
   <string name="alternative_app_icon_option_momo_subtitle">\u0040heyheymomodraws 제작</string>
+  <!-- Title for the "Solid colors" group of alternative app icon variants in the icon picker screen. This group contains icons with flat, uniform color backgrounds. -->
+  <string name="alternative_app_icon_group_solid_colors">단색</string>
+  <!-- Title for the "Gradients" group of alternative app icon variants in the icon picker screen. This group contains icons with gradient backgrounds inspired by natural light conditions. -->
+  <string name="alternative_app_icon_group_gradients">그라데이션</string>
+  <!-- Title for the "Other" group of alternative app icon variants in the icon picker screen. This group includes retro, pixel art, themed, and artist-created icons. -->
+  <string name="alternative_app_icon_group_other">기타</string>
   <!--
     Add-ons general availability nimbus message
 
@@ -1202,10 +1244,30 @@
   <string name="exceptions_empty_message_learn_more_link">더 알아보기</string>
   <!-- Preference switch for usage and technical data collection -->
   <string name="preference_usage_data_2">기술과 상호작용 데이터 보내기</string>
+  <!-- Preference switch for usage and technical learn more link in new compose -->
+  <string name="preference_usage_data_learn_more_2">기술 데이터에 대해 더 알아보기</string>
   <!-- Preference switch for usage and technical learn more link -->
-  <string name="preference_usage_data_learn_more">더 알아보기</string>
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">더 알아보기</string>
   <!-- Preference description for marketing data collection. Note: The words "Firefox" should NOT be translated -->
   <string name="preferences_usage_data_description_1" tools:ignore="BrandUsage">기기와 하드웨어 구성, 사용 현황에 대한 데이터는 Firefox 기능과 성능, 안정성을 개선하는 데 도움이 됩니다.</string>
+  <!-- Preference switch for daily usage ping data collection -->
+  <string name="preferences_daily_usage_ping_title">일일 사용량 핑</string>
+  <string name="preferences_daily_usage_ping_description">이 정보는 Mozilla가 활성 사용자를 예측하는 데 도움이 됩니다.</string>
+  <string name="preferences_daily_usage_ping_learn_more">일일 사용량 핑에 대해 더 알아보기</string>
+  <!-- Preference switch title for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_title" tools:ignore="UnusedResources" moz:removedIn="142">자동으로 충돌 보고서 보내기</string>
+  <!-- Preference switch description for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_description" tools:ignore="UnusedResources" moz:removedIn="142">브라우저의 문제를 진단하고 해결하는 데 도움이 됩니다. 보고서에는 개인 정보나 민감한 정보가 포함되어 있을 수 있습니다.</string>
+  <!-- Text for sumo link to learn more about crash reports in data collection screen -->
+  <string name="preferences_crashes_learn_more">충돌 보고서에 대해 더 알아보기</string>
+  <!-- Title Headers for data collection settings screen -->
+  <string name="crash_reports_data_category">충돌 보고서</string>
+  <string name="usage_data_category">사용 데이터</string>
+  <string name="studies_data_category">연구</string>
+  <string name="technical_data_category">기술 데이터</string>
+  <string name="crash_reporting_description">충돌 보고서를 통해 브라우저의 문제를 진단하고 고칠 수 있습니다. 보고서에는 개인 정보나 민감한 정보가 포함되어 있을 수 있습니다.</string>
+  <!-- Section title for campaign measurement in data collections screen -->
+  <string name="preferences_marketing_data_title">캠페인 측정</string>
   <!-- Preference switch for campaign measurement data (marketing data) collection -->
   <string name="preferences_marketing_data_2">캠페인 측정 마케팅 데이터</string>
   <!--
@@ -1215,16 +1277,8 @@
   <string name="preferences_marketing_data_description_4" tools:ignore="BrandUsage">Firefox를 발견한 방법과 사용 방법을 Mozilla의 마케팅 기술 파트너들과 공유해보세요.</string>
   <!-- Learn more link for marketing data preference -->
   <string name="preferences_marketing_data_learn_more">마케팅 데이터에 대해 더 알아보기</string>
-  <!-- Preference switch for daily usage ping data collection -->
-  <string name="preferences_daily_usage_ping_title">일일 사용량 핑</string>
-  <string name="preferences_daily_usage_ping_description">이 정보는 Mozilla가 활성 사용자를 예측하는 데 도움이 됩니다.</string>
-  <string name="preferences_daily_usage_ping_learn_more">일일 사용량 핑에 대해 더 알아보기</string>
-  <!-- Preference switch title for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_title">자동으로 충돌 보고서 보내기</string>
-  <!-- Preference switch description for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_description">브라우저의 문제를 진단하고 해결하는데 도움이 됩니다. 보고서에는 개인 정보나 민감한 정보가 포함되어 있을 수 있습니다.</string>
   <!-- Learn more link for crash reporting preference -->
-  <string name="onboarding_preferences_dialog_crash_reporting_learn_more">충돌 보고서에 대해 더 알아보기</string>
+  <string name="onboarding_preferences_dialog_crash_reporting_learn_more" tools:ignore="UnusedResources" moz:removedIn="142">충돌 보고서에 대해 더 알아보기</string>
   <!-- Title for studies preferences -->
   <string name="preference_experiments_2">연구</string>
   <!-- Summary for studies preferences -->
@@ -1253,6 +1307,16 @@
   <string name="preference_top_toolbar">위쪽</string>
   <!-- Preference for using bottom toolbar -->
   <string name="preference_bottom_toolbar">아래쪽</string>
+  <!-- Preference for using simple toolbar -->
+  <string name="preference_simple_toolbar">단순</string>
+  <!-- Preference for using expanded toolbar -->
+  <string name="preference_expanded_toolbar">확장됨</string>
+  <!--
+    App icon Preferences
+
+    Title for the preference that lets the user pick a new app icon
+  -->
+  <string name="preference_select_app_icon_title">앱 아이콘 선택</string>
   <!--
     Theme Preferences
 
@@ -1418,6 +1482,11 @@
   <!--
     Sessions
 
+    Title for the list of tabs in the current normal session used by a11y services
+    The %1$s will be replaced by the number of opened normal tabs
+  -->
+  <string name="tabs_header_normal_tabs_counter_title">열린 일반 탭: %1$s개. 탭을 전환하려면 누르세요.</string>
+  <!--
     Title for the list of tabs in the current private session used by a11y services
     The %1$s will be replaced by the number of opened private tabs
   -->
@@ -1427,6 +1496,12 @@
     The %1$s will be replaced by the number of opened synced tabs
   -->
   <string name="tabs_header_synced_tabs_counter_title">열린 동기화된 탭: %1$s개. 탭을 전환하려면 누르세요.</string>
+  <!-- Text for the tabs header private tabs -->
+  <string name="tabs_header_private_tabs_title">사생활 보호</string>
+  <!-- Text for the tabs header normal tabs -->
+  <string name="tabs_header_normal_tabs_title">탭</string>
+  <!-- Text for the tabs header synced tabs -->
+  <string name="tabs_header_synced_tabs_title">동기화</string>
   <!-- Content description (not visible, for screen readers etc.): Add tab button. Adds a news tab when pressed -->
   <string name="add_tab">탭 추가</string>
   <!-- Content description (not visible, for screen readers etc.): Add tab button. Adds a news tab when pressed -->
@@ -1521,6 +1596,8 @@
     %1$d is the number of items deleted.
   -->
   <string name="download_delete_multiple_items_snackbar_2">삭제된 항목: %1$d개</string>
+  <!-- Title for the dialog that prompts the user to choose an app for downloading a file. -->
+  <string name="download_app_dialog_title">파일 다운로드 앱:</string>
   <!-- Text for the snackbar to confirm that a single download item has been removed. %1$s is the name of the download item. -->
   <string name="download_delete_single_item_snackbar_2">“%1$s” 삭제됨</string>
   <!-- Text for the snackbar to confirm that downloads are in progress. -->
@@ -1548,7 +1625,7 @@
     Message for the dialog that is shown when there is not enough storage space to download a file.
     %s is the name of the file to download.
   -->
-  <string name="download_file_has_not_enough_storage_dialog_message"><![CDATA[기기에 <b>%s</b> 파일을 다운로드하는데 충분한 공간이 없습니다.]]></string>
+  <string name="download_file_has_not_enough_storage_dialog_message"><![CDATA[기기에 <b>%s</b> 파일을 다운로드하는 데 충분한 공간이 없습니다.]]></string>
   <!--
     Text for the confirm button in the dialog that is shown when there is not enough storage space to download a file.
     This button will navigate the user to the device's storage management settings.
@@ -1563,8 +1640,6 @@
   <string name="download_delete_item">삭제</string>
   <!-- Content description for the toolbar "Navigate back" button -->
   <string name="download_navigate_back_description">뒤로</string>
-  <!-- Content description for the toolbar "Navigate up" button -->
-  <string name="download_navigate_up_description" moz:removedIn="139" tools:ignore="UnusedResources">위로</string>
   <!-- Content description for the toolbar back button while searching the downloads -->
   <string name="download_close_search_description">뒤로 가기 및 검색 닫기</string>
   <!--
@@ -1621,17 +1696,27 @@
   -->
   <string name="download_item_in_progress_description_2">%1$s / %2$s • %3$s 남음</string>
   <!--
-    Description of an in progress download item, displayed in the downloads list when the download time remaining is unknown.
+    Description of an in progress download item, displayed in the downloads list when the estimated download time remaining is still being calculated.
     %1$s is the current file size that has been downloaded.
     %2$s is the total size of the downloaded file.
   -->
   <string name="download_item_in_progress_description_pending">%1$s / %2$s • 대기 중</string>
+  <!--
+    Description of an in progress download item, displayed in the downloads list when the total download size is unknown. This results in the estimated download time remaining to be unknown also.
+    %1$s is the current file size that has been downloaded.
+  -->
+  <string name="download_item_in_progress_description_unknown_total_size">%1$s • 알 수 없는 시간</string>
   <!--
     Description of a paused download item, displayed in the downloads list.
     %1$s is the current file size that has been downloaded.
     %2$s is the total size of the downloaded file.
   -->
   <string name="download_item_paused_description">%1$s / %2$s • 일시 중지됨</string>
+  <!--
+    Description of a paused download item, displayed in the downloads list when the total download size is unknown.
+    %1$s is the current file size that has been downloaded.
+  -->
+  <string name="download_item_paused_description_unknown_total_size">%1$s • 일시 중지됨</string>
   <!-- Text to indicate that an in progress download is paused. -->
   <string name="download_item_status_paused" moz:removedIn="141" tools:ignore="UnusedResources">일시 중지됨</string>
   <!-- Text to indicate that the download speed of an in progress download is being calculated. -->
@@ -1667,7 +1752,11 @@
   -->
   <string name="webcompat_reporter_screen_title">깨진 사이트 신고</string>
   <!-- The description of the Web Compat Reporter feature. %1$s is the name of the app (for example "Firefox"). -->
-  <string name="webcompat_reporter_description">모두를 위해 %1$s가 더 나아지도록 도와주세요. Mozilla 직원은 보내주신 정보를 웹 사이트 문제 해결에 사용합니다.</string>
+  <string name="webcompat_reporter_description" moz:removedIn="142" tools:ignore="UnusedResources">모두를 위해 %1$s가 더 나아지도록 도와주세요. Mozilla 직원은 보내주신 정보를 웹 사이트 문제 해결에 사용합니다.</string>
+  <!-- The description of the Web Compat Reporter feature, which has a "learn more" button text for navigating to a SUMO link to learn more about reporting a broken site. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="webcompat_reporter_description_2">여러분의 신고는 저희가 %1$s의 문제점을 이해하고 고쳐서 모든 사람을 위해 더 나은 서비스로 만들 수 있도록 도와줍니다. 더 알아보기</string>
+  <!-- The button text for navigating to the SUMO link to learn more about reporting a broken site. -->
+  <string name="webcompat_reporter_learn_more">더 알아보기</string>
   <!-- The text field label of the URL text field. This is displayed above the user-inputted URL. -->
   <string name="webcompat_reporter_label_url">URL</string>
   <!-- The error message of the URL text field when an invalid URL has been entered. -->
@@ -1675,7 +1764,9 @@
   <!-- The label/title of a field in the Web Compat Reporter feature for explaining a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_label_whats_broken_2">어떤 문제인가요?</string>
   <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
-  <string name="webcompat_reporter_choose_reason">이유 선택</string>
+  <string name="webcompat_reporter_choose_reason" moz:removedIn="142" tools:ignore="UnusedResources">이유 선택</string>
+  <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
+  <string name="webcompat_reporter_choose_reason_2">이유 선택</string>
   <!-- The error message of the dropdown, prompting the user to select a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_choose_reason_error">이유를 선택하세요</string>
   <!-- The label/title of an optional field in the Web Compat Reporter feature for adding additional information. -->
@@ -1690,6 +1781,8 @@
   <string name="webcompat_reporter_success_snackbar_text">신고가 전송됨</string>
   <!-- Button text for closing or dismissing the snackbar shown after successfully submitting a WebCompat report. -->
   <string name="webcompat_reporter_dismiss_success_snackbar_text">닫기</string>
+  <!-- Placeholder text for the description field to prompt the user on what they should type. -->
+  <string name="webcompat_reporter_problem_description_placeholder_text">무슨 일이 있었나요? 무슨 일이 일어났어야 했나요?</string>
   <!--
     These reason strings are dropdown options on a WebCompat reporter form, indicating what is broken on the site.
 
@@ -1736,12 +1829,20 @@
   <string name="tab_crash_restore">탭 복원</string>
   <!-- Unsubmitted crash dialog title, %s is the name of the app (for example "Firefox"). -->
   <string name="unsubmitted_crash_dialog_title">%s를 다시 시작해야 함</string>
+  <!-- Single unsubmitted crash matching remote settings. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="unsubmitted_crash_requested_by_devs_dialog_title">조사 중인 충돌과 관련된 보내지 않은 충돌 보고서가 있습니다. 보내면 %1$s를 개선하는 데 도움이 됩니다. 이 알림을 닫으면 이 보고서가 무시됩니다.</string>
+  <!-- Multiple unsubmitted crashes matching remote settings. %1$d is the number of unsent crash reports, %2$s is the name of the app (for example "Firefox"). -->
+  <string name="unsubmitted_crashes_requested_by_devs_dialog_title">조사 중인 충돌과 관련된 보내지 않은 충돌 보고서(%1$d)가 있습니다. 보내면 %2$s를 개선하는 데 도움이 됩니다. 이 알림을 닫으면 이 보고서가 무시됩니다.</string>
   <!-- Unsubmitted crash dialog checkbox label for automatically sending reports in the future -->
   <string name="unsubmitted_crash_dialog_checkbox_label">자동으로 충돌 보고서 제출</string>
   <!-- Unsubmitted crash dialog negative button to dismiss the dialog -->
   <string name="unsubmitted_crash_dialog_negative_button">닫기</string>
+  <!-- Unsubmitted crash dialog negative button to never be asked for the submission -->
+  <string name="unsubmitted_crash_requested_by_devs_dialog_never_button">다시 표시 않음</string>
   <!-- Unsubmitted crash dialog positive button to submit crash report -->
   <string name="unsubmitted_crash_dialog_positive_button">충돌 보고서 보내기</string>
+  <!-- Unsubmitted crash dialog button to open a web page with more details on the feature and privacy policy -->
+  <string name="unsubmitted_crash_requested_by_devs_learn_more">더 알아보기</string>
   <!--
     Bookmarks
 
@@ -2144,7 +2245,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">사생활 보호 탭 닫힘</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">사생활 보호 탭 닫힘</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">사생활 보호 탭 닫힘</string>
   <!-- Text shown in snackbar when user erases their private browsing data -->
   <string name="snackbar_private_data_deleted">사생활 보호 모드 데이터 삭제됨</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
@@ -2176,6 +2277,8 @@
   <string name="preference_accessibility_text_size_summary">웹 사이트의 텍스트를 더 크게 또는 더 작게 함</string>
   <!-- Title for Accessibility Text Size Scaling Preference -->
   <string name="preference_accessibility_font_size_title">글꼴 크기</string>
+  <!-- %d is the percentage of the slide bar for setting the text font size and %% will be announced as "percent". -->
+  <string name="a11y_preference_accessibility_font_size_percentage">%d %%.</string>
   <!-- Title for Accessibility Text Automatic Size Scaling Preference -->
   <string name="preference_accessibility_auto_size_2">자동 글꼴 크기 조정</string>
   <!-- Summary for Accessibility Text Automatic Size Scaling Preference -->
@@ -2307,6 +2410,10 @@
   <string name="preference_enhanced_tracking_protection_strict">엄격</string>
   <!-- Preference description for enhanced tracking protection for the strict protection settings -->
   <string name="preference_enhanced_tracking_protection_strict_description_4">더 강력한 추적 방지 기능과 더 빠른 성능을 제공하지만, 일부 사이트는 제대로 작동하지 않을 수 있습니다.</string>
+  <!-- Preference description for the checkbox setting for "baseline" exceptions (a set of content blocking exceptions applied to fix major website breakage). %1$s is the name of the application (e.g. Fenix). -->
+  <string name="preference_enhanced_tracking_protection_allow_list_baseline">%1$s가 주요 웹 사이트 손상을 방지하는 데 필요한 예외를 자동으로 적용하도록 허용합니다.</string>
+  <!-- Preference description for the checkbox setting for "convenience" exceptions (a set of content blocking exceptions applied to fix convenience site features). -->
+  <string name="preference_enhanced_tracking_protection_allow_list_convenience">또한 사소한 문제를 고치고 편의 기능을 사용할 수 있도록 하는 데에만 필요한 예외를 자동으로 적용합니다.</string>
   <!-- Accessibility text for the Strict protection information icon -->
   <string name="preference_enhanced_tracking_protection_strict_info_button">엄격 추적 방지 기능에 의해 차단된 것</string>
   <!-- Preference for enhanced tracking protection for the custom protection settings -->
@@ -2358,7 +2465,7 @@
   <!-- Category of trackers (cross-site tracking cookies) that can be blocked by Enhanced Tracking Protection -->
   <string name="etp_cookies_title_2">교차 사이트 쿠키</string>
   <!-- Description of cross-site tracking cookies that can be blocked by Enhanced Tracking Protection -->
-  <string name="etp_cookies_description">광고 네트워크 및 분석 회사가 여러 사이트에서 사용자 탐색 데이터를 컴파일하는데 사용하는 쿠키를 차단합니다.</string>
+  <string name="etp_cookies_description">광고 네트워크 및 분석 회사가 여러 사이트에서 사용자 탐색 데이터를 컴파일하는 데 사용하는 쿠키를 차단합니다.</string>
   <!-- Description of cross-site tracking cookies that can be blocked by Enhanced Tracking Protection -->
   <string name="etp_cookies_description_2">전체 쿠키 보호는 광고 네트워크와 같은 추적기가 쿠키를 사용하여 여러 사이트에서 사용자를 추적할 수 없도록 쿠키를 사용자가 있는 사이트로 격리합니다.</string>
   <!-- Category of trackers (cryptominers) that can be blocked by Enhanced Tracking Protection -->
@@ -2601,6 +2708,22 @@
   <string name="saved_login_clear_username">사용자 이름 지우기</string>
   <!-- Content Description (for screenreaders etc) read for the button to clear the hostname field while creating a login -->
   <string name="saved_login_clear_hostname">호스트 이름 지우기</string>
+  <!-- Content description, used by tools like screenreaders, for the 3 dots button that shows commands related to the currently displayed login (edit, delete). -->
+  <string name="login_detail_menu_button_content_description">로그인 상세 메뉴</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the login detail view. -->
+  <string name="login_details_navigate_back_button_content_description">뒤로</string>
+  <!-- Edit text for the login detail menu edit button -->
+  <string name="login_detail_menu_edit_button">편집</string>
+  <!-- Delete text for the login detail menu delete button -->
+  <string name="login_detail_menu_delete_button">삭제</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the add login view. -->
+  <string name="add_login_navigate_back_button_content_description">뒤로</string>
+  <!-- Content description, used by tools like screenreaders, to press on the save new login button. -->
+  <string name="add_login_save_new_login_button_content_description">새 로그인 저장</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the edit login view. -->
+  <string name="edit_login_navigate_back_button_content_description">뒤로</string>
+  <!-- Content description, used by tools like screenreaders, to press on the edit login button. -->
+  <string name="edit_login_button_content_description">로그인 편집</string>
   <!-- Content Description (for screenreaders etc) read for the button to open a site in logins -->
   <string name="saved_login_open_site">브라우저에서 사이트 열기</string>
   <!-- Content Description (for screenreaders etc) read for the button to reveal a password in logins -->
@@ -2849,7 +2972,7 @@
   <!-- The button description to save changes to an edited password. -->
   <string name="save_changes_to_login_2">변경 내용 저장.</string>
   <!-- The page title for editing a saved password. -->
-  <string name="edit_2">비밀번호 수정</string>
+  <string name="edit_2">비밀번호 편집</string>
   <!-- The page title for adding new password. -->
   <string name="add_login_2">비밀번호 추가</string>
   <!-- Error text displayed underneath the password field when it is in an error case. -->
@@ -2897,8 +3020,10 @@
   <!--
     Top Sites
 
-    Title text displayed in the dialog when shortcuts limit is reached.
+    Title text displayed for the shortcuts home screen section.
   -->
+  <string name="homepage_shortcuts_title">바로 가기</string>
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">바로 가기 한도에 도달됨</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">새 바로 가기를 추가하려면 하나를 삭제하세요. 사이트를 길게 터치하고 삭제를 선택하세요.</string>
@@ -3036,7 +3161,7 @@
   <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
   <string name="a11y_action_label_wallpaper_collection_learn_more">이 모음집에 대해 더 알아보려면 링크 열기</string>
   <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-  <string name="a11y_action_label_read_article">글 읽기</string>
+  <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">글 읽기</string>
   <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
   <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">더 알아보려면 링크 열기</string>
   <!-- Content description for headings announced by accessibility service. %s is the text of the heading. Talkback will announce the text and then speak the word "Heading" indicating to the user that this text is a heading for a section. -->
@@ -3290,9 +3415,9 @@
 
     Text for the protection panel header when the site is secure.
   -->
-  <string name="protection_panel_header_secure">안전함</string>
+  <string name="protection_panel_header_secure" moz:removedIn="142" tools:ignore="UnusedResources">안전함</string>
   <!-- Text for the protection panel header when the site is not secure. -->
-  <string name="protection_panel_header_not_secure">안전하지 않음</string>
+  <string name="protection_panel_header_not_secure" moz:removedIn="142" tools:ignore="UnusedResources">안전하지 않음</string>
   <!-- Title text for the protection panel banner when the site is not secure. -->
   <string name="protection_panel_banner_not_secure_title">이 사이트를 조심하세요</string>
   <!-- Description text for the protection panel banner when the site is not secure. -->
@@ -3313,10 +3438,18 @@
   <string name="protection_panel_banner_protected_description">보호 중입니다. 무언가를 발견하면 알려드리겠습니다.</string>
   <!-- Label text for the Enhanced Tracking Protection toggle. -->
   <string name="protection_panel_etp_toggle_label">향상된 추적 방지 기능</string>
+  <!-- Toggle if Enhanced Tracking Protection is turned on -->
+  <string name="protection_panel_etp_toggle_on">켜짐</string>
+  <!-- Toggle if Enhanced Tracking Protection is turned off -->
+  <string name="protection_panel_etp_toggle_off">꺼짐</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
-  <string name="protection_panel_etp_toggle_enabled_description">이 사이트에서 뭔가 손상된 것처럼 보이면 보호 기능을 꺼보세요.</string>
+  <string name="protection_panel_etp_toggle_enabled_description" moz:removedIn="142" tools:ignore="UnusedResources">이 사이트에서 뭔가 손상된 것처럼 보이면 보호 기능을 꺼보세요.</string>
+  <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
+  <string name="protection_panel_etp_toggle_enabled_description_2">이 사이트에서 뭔가 손상된 것처럼 보이면 해당 기능을 꺼보세요.</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
-  <string name="protection_panel_etp_toggle_disabled_description">보호 기능이 꺼져 있습니다. 다시 켜는 것이 좋습니다.</string>
+  <string name="protection_panel_etp_toggle_disabled_description" moz:removedIn="142" tools:ignore="UnusedResources">보호 기능이 꺼져 있습니다. 다시 켜는 것이 좋습니다.</string>
+  <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
+  <string name="protection_panel_etp_toggle_disabled_description_2">추적 방지 기능을 켜는 것을 권장합니다.</string>
   <!--
     Text for displaying the total number of trackers blocked in the protection panel.
     %d is a placeholder for the number of trackers blocked.
@@ -3325,7 +3458,9 @@
   <!-- Text for when no trackers have been blocked. -->
   <string name="protection_panel_no_trackers_blocked">추적기 없음</string>
   <!-- Link text to navigate to privacy and security settings from the protection panel. -->
-  <string name="protection_panel_privacy_and_security_settings">개인 정보 및 보안 설정</string>
+  <string name="protection_panel_privacy_and_security_settings" moz:removedIn="142" tools:ignore="UnusedResources">개인 정보 및 보안 설정</string>
+  <!-- Link text to navigate to privacy and security settings from the protection panel. -->
+  <string name="protection_panel_privacy_and_security_settings_2">개인 정보 설정</string>
   <!-- Title text for the protection panel permissions section. -->
   <string name="protection_panel_permissions_title">권한</string>
   <!--
@@ -3356,7 +3491,7 @@
   <string name="connection_security_panel_not_secure">안전하지 않은 연결</string>
   <!--
     Text for the connection security panel to indicate who the certificate was verified by.
-    %s is a placeholder for the name of the certificate authority that verified the ticket
+    %s is a placeholder for the name of the certificate authority that issued the certificate.
   -->
   <string name="connection_security_panel_verified_by">%s이(가) 인증함</string>
   <!--
@@ -3536,6 +3671,14 @@
   <!-- The title of the button for overriding home region permanently. -->
   <string name="debug_drawer_override_home_region_permanently">홈 지역 영구적으로 재정의</string>
   <!--
+    Add-ons debug tools
+
+    The description of the Add-ons Tools in the Debug Drawer
+  -->
+  <string name="debug_drawer_addons_tools_title">부가 기능 도구</string>
+  <!-- The title of the button used to check for add-on updates. -->
+  <string name="addons_debug_tools_check_for_updates_button">업데이트 확인</string>
+  <!--
     Messages explaining how to exit fullscreen mode
 
     Message shown to explain how to exit fullscreen mode when gesture navigation is enabled.
@@ -3589,14 +3732,8 @@
   <string name="certificate_warning_push_notification_pnw2_message" tools:ignore="UnusedResources">부가 기능과 기타 기능을 계속 사용하시려면 3월 14일 전에 업데이트를 하세요.</string>
   <!-- Push notification message about old Firefox version -->
   <string name="certificate_warning_push_notification_pnw3_message" tools:ignore="UnusedResources">내일이면 일부 기능이 작동하지 않습니다.</string>
-  <!--
-    TextField Design System Component
+  <!-- TextField Design System Component -->
 
-    The default content description for the eye trailing icon button in TextField
-  -->
-  <string name="text_field_eye_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">숨긴 텍스트 표시</string>
-  <!-- The default content description for the cross trailing icon button in TextField -->
-  <string name="text_field_cross_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">텍스트 지우기</string>
   <!--
     Setup checklist feature
 

@@ -59,7 +59,7 @@
     <!-- Private Browsing -->
     <!-- Explanation for private browsing displayed to users on home view when they first enable private mode.
         %1$s is the name of the app (for example "Firefox"). -->
-    <string name="private_browsing_placeholder_description_2">
+    <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">
         %1$s clears your search and browsing history from private tabs when you close them or quit the app. While this doesn’t make you anonymous to websites or your internet service provider, it makes it easier to keep what you do online private from anyone else who uses this device.</string>
     <string name="private_browsing_common_myths">
        Common myths about private browsing
@@ -78,14 +78,6 @@
         This string is used in felt_privacy_info_card_subtitle as the text for the link. -->
     <string name="felt_privacy_info_card_subtitle_link_text">Who might be able to see my activity?</string>
 
-    <!-- Private mode shortcut "contextual feature recommendation" (CFR) -->
-    <!-- Text for the Private mode shortcut CFR message for adding a private mode shortcut to open private tabs from the Home screen -->
-    <string name="private_mode_cfr_message_2" moz:removedIn="138" tools:ignore="UnusedResources">Launch your next private tab in one tap.</string>
-    <!-- Text for the positive button to accept adding a Private Browsing shortcut to the Home screen -->
-    <string name="private_mode_cfr_pos_button_text" moz:removedIn="138" tools:ignore="UnusedResources">Add to Home screen</string>
-    <!-- Text for the negative button to decline adding a Private Browsing shortcut to the Home screen -->
-    <string name="cfr_neg_button_text" moz:removedIn="138" tools:ignore="UnusedResources">No thanks</string>
-
     <!-- Open in App "contextual feature recommendation" (CFR) -->
     <!-- Text for the info message. %1$s is the name of the app (for example "Firefox"). -->
     <string name="open_in_app_cfr_info_message_2">You can set %1$s to automatically open links in apps.</string>
@@ -96,7 +88,7 @@
 
     <!-- Private browsing erase action "contextual feature recommendation" (CFR) -->
     <!-- Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature. -->
-    <string name="erase_action_cfr_message">Tap here to start a fresh private session. Delete your history, cookies — everything.</string>
+    <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Tap here to start a fresh private session. Delete your history, cookies — everything.</string>
 
     <!-- Toolbar "contextual feature recommendation" (CFR) -->
     <!-- Text for the title displayed in the contextual feature recommendation popup promoting the navigation bar. -->
@@ -191,21 +183,25 @@
     <string name="browser_menu_extensions">Extensions</string>
     <!-- Browser menu banner header text for extensions onboarding.
         %s is the name of the app (for example "Firefox"). -->
-    <string name="browser_menu_extensions_banner_onboarding_header">Make %s your own</string>
+    <string name="browser_menu_extensions_banner_onboarding_header" moz:removedIn="141" tools:ignore="UnusedResources">Make %s your own</string>
     <!-- Browser menu banner header text for extensions onboarding when all installed extensions have been disabled. -->
     <string name="browser_menu_disabled_extensions_banner_onboarding_header">You have extensions installed, but not enabled</string>
     <!-- Browser menu banner body text for extensions onboarding.
         %s is the name of the app (for example "Firefox"). -->
-    <string name="browser_menu_extensions_banner_onboarding_body">Extensions level up your browsing, from changing how %s looks and performs to boosting privacy and safety.</string>
+    <string name="browser_menu_extensions_banner_onboarding_body" moz:removedIn="141" tools:ignore="UnusedResources">Extensions level up your browsing, from changing how %s looks and performs to boosting privacy and safety.</string>
     <!-- Browser menu banner body text for extensions onboarding when all installed extensions have been disabled.
      %s is the label of the button that opens the extension manager (for example "Manage extensions"). -->
-    <string name="browser_menu_disabled_extensions_banner_onboarding_body">To use extensions, enable them in settings or by selecting “%s” below.</string>
+    <string name="browser_menu_disabled_extensions_banner_onboarding_body" moz:removedIn="141" tools:ignore="UnusedResources">To use extensions, enable them in settings or by selecting “%s” below.</string>
     <!-- Browser menu banner link text for learning more about extensions -->
-    <string name="browser_menu_extensions_banner_learn_more">Learn more</string>
+    <string name="browser_menu_extensions_banner_learn_more" moz:removedIn="141" tools:ignore="UnusedResources">Learn more</string>
     <!-- Browser menu button that opens the extensions manager -->
     <string name="browser_menu_manage_extensions">Manage extensions</string>
+    <!-- Browser menu group that contains additional settings in collapsed state-->
+    <string name="browser_menu_more_settings">More</string>"
+    <!-- Browser menu group that contains additional settings in expanded state-->
+    <string name="browser_menu_less_settings">Less</string>
     <!-- Content description (not visible, for screen readers etc.): Section heading for recommended extensions.-->
-    <string name="browser_menu_recommended_section_content_description">Recommended extensions</string>
+    <string name="browser_menu_recommended_section_content_description" moz:removedIn="141" tools:ignore="UnusedResources">Recommended extensions</string>
     <!-- Content description (not visible, for screen readers etc.): Label for plus icon used to add extension.
       %1$s is the name of the extension (for example: ClearURLs). -->
     <string name="browser_menu_extension_plus_icon_content_description_2">Add %1$s</string>
@@ -215,6 +211,8 @@
     <string name="browser_menu_extensions_disabled_description">Temporarily disabled</string>
     <!-- The description of the browser menu appears when the user hasn't installed any extensions. -->
     <string name="browser_menu_no_extensions_installed_description">No extensions enabled</string>
+    <!-- The description of the browser menu appears when the user hasn't installed any extensions and there are recommended extensions. -->
+    <string name="browser_menu_try_a_recommended_extension_description">Try a recommended extension</string>
     <!-- Browser menu button that opens account settings -->
     <string name="browser_menu_account_settings">Account info</string>
     <!-- Browser menu button that sends a user to help articles -->
@@ -234,9 +232,9 @@
     <!-- Browser menu toggle that adds a PWA of the site on the device home screen. -->
     <string name="browser_menu_add_app_to_homescreen">Add app to Home screen</string>
     <!-- Browser menu toggle that adds a shortcut to the site on the device home screen. -->
-    <string name="browser_menu_add_to_homescreen_2">Add to Home screen…</string>
+    <string name="browser_menu_add_to_homescreen_2" moz:removedIn="141" tools:ignore="UnusedResources">Add to Home screen…</string>
     <!-- Browser menu toggle that adds a PWA of the site on the device home screen. -->
-    <string name="browser_menu_add_app_to_homescreen_2">Add app to Home screen…</string>
+    <string name="browser_menu_add_app_to_homescreen_2" moz:removedIn="141" tools:ignore="UnusedResources">Add app to Home screen…</string>
     <!-- Text for notifying users that Xiaomi devices require additional permissions to add to home screen -->
     <string name="browser_menu_add_to_homescreen_xiaomi">Xiaomi devices may need extra permissions to add shortcuts to the home screen. Please check your settings.</string>
     <!-- Content description (not visible, for screen readers etc.) for the Resync tabs button -->
@@ -244,17 +242,17 @@
     <!-- Browser menu button that opens the find in page menu -->
     <string name="browser_menu_find_in_page">Find in page</string>
     <!-- Browser menu button that opens the find in page menu -->
-    <string name="browser_menu_find_in_page_2">Find in page…</string>
+    <string name="browser_menu_find_in_page_2" moz:removedIn="141" tools:ignore="UnusedResources">Find in page…</string>
     <!-- Browser menu button that opens the translations dialog, which has options to translate the current browser page. -->
     <string name="browser_menu_translations">Translate page</string>
     <!-- Browser menu button that saves the current tab to a collection -->
-    <string name="browser_menu_save_to_collection">Save to collection…</string>
+    <string name="browser_menu_save_to_collection" moz:removedIn="141" tools:ignore="UnusedResources">Save to collection…</string>
     <!-- Browser menu button that saves the current tab to a collection -->
     <string name="browser_menu_save_to_collection_2">Save to collection</string>
     <!-- Browser menu button that open a share menu to share the current site -->
     <string name="browser_menu_share">Share</string>
     <!-- Browser menu button that open a share menu to share the current site -->
-    <string name="browser_menu_share_2">Share…</string>
+    <string name="browser_menu_share_2" moz:removedIn="141" tools:ignore="UnusedResources">Share…</string>
     <!-- Browser menu button shown in custom tabs that opens the current tab in Fenix
         %1$s is the name of the app (for example "Firefox").  -->
     <string name="browser_menu_open_in_fenix">Open in %1$s</string>
@@ -283,7 +281,11 @@
     <!-- Browser menu label to sign in to sync on the device using Mozilla accounts -->
     <string name="browser_menu_sign_in">Sign in</string>
     <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
-    <string name="browser_menu_sign_in_caption">Sync passwords, tabs, and more</string>
+    <string name="browser_menu_sign_in_caption" moz:removedIn="141" tools:ignore="UnusedResources">Sync passwords, tabs, and more</string>
+    <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
+    <string name="browser_menu_sign_in_caption_2" moz:removedIn="141" tools:ignore="UnusedResources">Sync bookmarks, passwords, tabs, and more</string>
+    <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
+    <string name="browser_menu_sign_in_caption_3">Sync passwords, bookmarks, and more</string>
     <!-- Browser menu label to sign back in to sync on the device when the user's account needs to be reauthenticated -->
     <string name="browser_menu_sign_back_in_to_sync">Sign back in to sync</string>
     <!-- Browser menu caption label for the "Sign back in to sync" browser menu item described in `browser_menu_sign_back_in_to_sync` when there is an error in syncing -->
@@ -296,13 +298,13 @@
          %1$s is the name of the app (for example "Firefox"). -->
     <string name="browser_menu_new_in_firefox">New in %1$s</string>
     <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-    <string name="browser_menu_switch_to_desktop_site">Switch to desktop site</string>
+    <string name="browser_menu_switch_to_desktop_site"  moz:removedIn="141" tools:ignore="UnusedResources">Switch to desktop site</string>
     <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
     <string name="browser_menu_switch_to_mobile_site">Switch to mobile site</string>
     <!-- Browser menu label that navigates to the page tools sub-menu -->
-    <string name="browser_menu_tools">Tools</string>
+    <string name="browser_menu_tools" moz:removedIn="141" tools:ignore="UnusedResources">Tools</string>
     <!-- Content description (not visible, for screen readers etc.): Back button for all menu redesign sub-menu -->
-    <string name="browser_menu_back_button_content_description">Back to main menu</string>
+    <string name="browser_menu_back_button_content_description" moz:removedIn="141" tools:ignore="UnusedResources">Back to main menu</string>
     <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar main menu. -->
     <string name="browser_main_menu_handlebar_content_description">Close main menu sheet</string>
     <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
@@ -318,42 +320,61 @@
     <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar custom tab menu. -->
     <string name="browser_custom_tab_menu_handlebar_content_description">Close custom tab menu sheet</string>
     <!-- Browser menu description that describes the various tools related menu items inside of the tools sub-menu when the "Report broken site" feature is available-->
-    <string name="browser_menu_tools_description_with_translate_with_report_site_2">Reader View, Translate, Report broken site, Print, Share, Open app</string>
+    <string name="browser_menu_tools_description_with_translate_with_report_site_2" moz:removedIn="141" tools:ignore="UnusedResources">Reader View, Translate, Report broken site, Print, Share, Open app</string>
     <!-- Browser menu description that describes the various tools related menu items inside of the tools sub-menu -->
-    <string name="browser_menu_tools_description_with_translate_without_report_site">Reader View, Translate, Print, Share, Open app</string>
+    <string name="browser_menu_tools_description_with_translate_without_report_site" moz:removedIn="141" tools:ignore="UnusedResources">Reader View, Translate, Print, Share, Open app</string>
     <!-- Browser menu description that describes the various tools related menu items inside of the tools sub-menu when the "Report broken site" feature is available-->
-    <string name="browser_menu_tools_description_with_report_site_2">Reader View, Report broken site, Print, Share, Open app</string>
+    <string name="browser_menu_tools_description_with_report_site_2" moz:removedIn="141" tools:ignore="UnusedResources">Reader View, Report broken site, Print, Share, Open app</string>
     <!-- Browser menu description that describes the various tools related menu items inside of the tools sub-menu -->
-    <string name="browser_menu_tools_description_without_report_site">Reader View, Print, Share, Open app</string>
+    <string name="browser_menu_tools_description_without_report_site" moz:removedIn="141" tools:ignore="UnusedResources">Reader View, Print, Share, Open app</string>
     <!-- Browser menu label that navigates to the save sub-menu, which contains various save related menu items such as
          bookmarking a page, saving to collection, shortcut or as a PDF, and adding to home screen -->
-    <string name="browser_menu_save">Save</string>
+    <string name="browser_menu_save" moz:removedIn="141" tools:ignore="UnusedResources">Save</string>
     <!-- Browser menu description that describes the various save related menu items inside of the save sub-menu -->
-    <string name="browser_menu_save_description">Add bookmark, Shortcut, Home, Collection, PDF</string>
+    <string name="browser_menu_save_description" moz:removedIn="141" tools:ignore="UnusedResources">Add bookmark, Shortcut, Home, Collection, PDF</string>
     <!-- Browser menu label that bookmarks the currently visited page -->
-    <string name="browser_menu_bookmark_this_page">Bookmark this page</string>
+    <string name="browser_menu_bookmark_this_page" moz:removedIn="141" tools:ignore="UnusedResources">Bookmark this page</string>
+    <!-- Browser menu label that bookmarks the currently visited page -->
+    <string name="browser_menu_bookmark_this_page_2">Bookmark page</string>
     <!-- Browser menu label that navigates to the edit bookmark screen for the current bookmarked page -->
     <string name="browser_menu_edit_bookmark">Edit bookmark</string>
     <!-- Browser menu label that the saves the currently visited page as a PDF -->
-    <string name="browser_menu_save_as_pdf">Save as PDF…</string>
+    <string name="browser_menu_save_as_pdf" moz:removedIn="141" tools:ignore="UnusedResources">Save as PDF…</string>
+    <!-- Browser menu label that the saves the currently visited page as a PDF -->
+    <string name="browser_menu_save_as_pdf_2">Save as PDF</string>
     <!-- Browser menu label for turning ON reader view of the current visited page -->
-    <string name="browser_menu_turn_on_reader_view">Turn on Reader View</string>
+    <string name="browser_menu_turn_on_reader_view" moz:removedIn="141" tools:ignore="UnusedResources">Turn on Reader View</string>
     <!-- Browser menu label for turning OFF reader view of the current visited page -->
-    <string name="browser_menu_turn_off_reader_view">Turn off Reader View</string>
+    <string name="browser_menu_turn_off_reader_view" moz:removedIn="141" tools:ignore="UnusedResources">Turn off Reader View</string>
     <!-- Browser menu button that reopens a private tab as a regular tab -->
-    <string name="browser_menu_open_in_normal_tab">Move to non-private tab</string>
+    <string name="browser_menu_open_in_normal_tab" moz:removedIn="141" tools:ignore="UnusedResources">Move to non-private tab</string>
     <!-- Browser menu label for navigating to the translation feature, which provides language translation options the current visited page -->
-    <string name="browser_menu_translate_page">Translate page…</string>
+    <string name="browser_menu_translate_page" moz:removedIn="141" tools:ignore="UnusedResources">Translate page…</string>
+    <!-- Browser menu label for navigating to the translation feature, which provides language translation options the current visited page -->
+    <string name="browser_menu_translate_page_2">Translate page</string>
     <!-- Browser menu label for navigating to the Web Compat Reporter feature, which provides users the ability to send bug reports for broken sites. -->
     <string name="browser_menu_webcompat_reporter">Report broken site…</string>
+    <!-- Browser menu label for navigating to the Web Compat Reporter feature, which provides users the ability to send bug reports for broken sites. -->
+    <string name="browser_menu_webcompat_reporter_2">Report broken site</string>
     <!-- Browser menu label that is displayed when the current page has been translated by the translation feature.
          %1$s is the name of the language that page was translated to (e.g. English). -->
-    <string name="browser_menu_translated_to">Translated to %1$s</string>
+    <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">Translated to %1$s</string>
+    <!-- Browser menu label that is displayed when the current page has been translated by the translation feature. -->
+    <string name="browser_menu_translated">Translated</string>
     <!-- Browser menu label for the print feature -->
-    <string name="browser_menu_print">Print…</string>
+    <string name="browser_menu_print" moz:removedIn="141" tools:ignore="UnusedResources">Print…</string>
+    <!-- Browser menu label for the print feature -->
+    <string name="browser_menu_print_2">Print</string>
     <!-- Browser menu label for the Delete browsing data on quit feature.
         %1$s is the name of the app (for example "Firefox"). -->
     <string name="browser_menu_delete_browsing_data_on_quit">Quit %1$s</string>
+    <!-- Content description for a banner within the menu which prompt the user to make this app their default browser.
+%1$s is the name of the app (for example "Firefox"). -->
+    <string name="browser_menu_default_banner_title">Make %1$s your default</string>
+    <!-- Label text within the set as default banner  -->
+    <string name="browser_menu_default_banner_subtitle">Takes seconds. Change anytime.</string>
+    <!-- Content description for the button that dismisses the set as default banner in the menu -->
+    <string name="browser_menu_default_banner_dismiss">Dismiss</string>
 
     <!-- Menu "contextual feature recommendation" (CFR) -->
     <!-- Text for the title in the contextual feature recommendation popup promoting the menu feature. -->
@@ -370,7 +391,7 @@
     <string name="browser_toolbar_home">Home screen</string>
     <!-- Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
          history and go back to the home screen. -->
-    <string name="browser_toolbar_erase">Erase browsing history</string>
+    <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">Erase browsing history</string>
     <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
     <string name="browser_toolbar_translate">Translate page</string>
     <!-- Content description (not visible, for screen readers etc.) for the translate page toolbar button that opens the translations dialog when the page is translated successfully.
@@ -419,19 +440,19 @@
 
     <!-- Home onboarding -->
     <!-- Home onboarding dialog welcome screen title text. -->
-    <string name="onboarding_home_welcome_title_2">Welcome to a more personal internet</string>
+    <string name="onboarding_home_welcome_title_2" moz:removedIn="141" tools:ignore="UnusedResources">Welcome to a more personal internet</string>
     <!-- Home onboarding dialog welcome screen description text. -->
-    <string name="onboarding_home_welcome_description">More colors. Better privacy. Same commitment to people over profits.</string>
+    <string name="onboarding_home_welcome_description" moz:removedIn="141" tools:ignore="UnusedResources">More colors. Better privacy. Same commitment to people over profits.</string>
     <!-- Home onboarding dialog sign into sync screen title text. -->
-    <string name="onboarding_home_sync_title_3">Switching screens is easier than ever</string>
+    <string name="onboarding_home_sync_title_3" moz:removedIn="141" tools:ignore="UnusedResources">Switching screens is easier than ever</string>
     <!-- Home onboarding dialog sign into sync screen description text. -->
-    <string name="onboarding_home_sync_description">Pick up where you left off with tabs from other devices now on your homepage.</string>
+    <string name="onboarding_home_sync_description" moz:removedIn="141" tools:ignore="UnusedResources">Pick up where you left off with tabs from other devices now on your homepage.</string>
     <!-- Text for the button to continue the onboarding on the home onboarding dialog. -->
-    <string name="onboarding_home_get_started_button">Get started</string>
+    <string name="onboarding_home_get_started_button" moz:removedIn="141" tools:ignore="UnusedResources">Get started</string>
     <!-- Text for the button to navigate to the sync sign in screen on the home onboarding dialog. -->
-    <string name="onboarding_home_sign_in_button">Sign in</string>
+    <string name="onboarding_home_sign_in_button" moz:removedIn="141" tools:ignore="UnusedResources">Sign in</string>
     <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
-    <string name="onboarding_home_skip_button">Skip</string>
+    <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Skip</string>
     <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
     <string name="sync_cfr_message">Your tabs are syncing! Pick up where you left off on your other device.</string>
     <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
@@ -849,15 +870,29 @@
 
     <!-- Add-on Permissions -->
     <!-- The title of the required permissions section from addon's permissions screen -->
-    <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">Required</string>
+    <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">Required</string>
     <!-- The title of the optional permissions section from addon's permissions screen -->
-    <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">Optional</string>
+    <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">Optional</string>
     <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
-    <string name="addons_permissions_allow_for_all_sites" tools:ignore="UnusedResources">Allow for all sites</string>
+    <string name="addons_permissions_allow_for_all_sites">Allow for all sites</string>
     <!-- The subtitle for the allow for all sites preference toggle -->
-    <string name="addons_permissions_allow_for_all_sites_subtitle" tools:ignore="UnusedResources">If you trust this extension, you can give it permission on every website.</string>
+    <string name="addons_permissions_allow_for_all_sites_subtitle">If you trust this extension, you can give it permission on every website.</string>
     <!-- The text shown when an extension does not require permissions -->
     <string name="addons_does_not_require_permissions">This extension doesn’t require any permissions.</string>
+    <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+    <string name="addons_permissions_required_data_collection_description" moz:removedIn="141" tools:ignore="UnusedResources">The developer says this extension collects: %1$s.</string>
+    <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+    <string name="addons_permissions_required_data_collection_description_2">The developer says this extension collects: %1$s</string>
+    <!-- The description of the "none" data collection permission, when the extension doesn't collect anything according to the developer. -->
+    <string name="addons_permissions_none_required_data_collection_description">The developer says this extension doesn’t require data collection.</string>
+    <!-- The title of the required permissions section from addon's permissions screen. -->
+    <string name="addons_permissions_heading_required_permissions">Required permissions:</string>
+    <!-- The title of the optional permissions section from addon's permissions screen. -->
+    <string name="addons_permissions_heading_optional_permissions">Optional permissions:</string>
+    <!-- The title of the required data collection permissions section from addon's permissions screen. -->
+    <string name="addons_permissions_heading_required_data_collection">Required data collection:</string>
+    <!-- The title of the optional data collection permissions section from addon's permissions screen. -->
+    <string name="addons_permissions_heading_optional_data_collection">Optional data collection:</string>
 
     <!-- Add-on Preferences -->
     <!-- Preference to customize the configured AMO (addons.mozilla.org) collection -->
@@ -1061,9 +1096,6 @@
     <string name="exceptions_empty_message_description">Exceptions let you disable tracking protection for selected sites.</string>
     <!-- Text displayed when there are no exceptions, with learn more link that brings users to a tracking protection SUMO page -->
     <string name="exceptions_empty_message_learn_more_link">Learn more</string>
-
-    <!-- Preference switch for usage and technical data collection -->
-    <string name="preference_usage_data_1" tools:ignore="UnusedResources" moz:removedIn="138">Technical and interaction data</string>
     <!-- Preference switch for usage and technical data collection -->
     <string name="preference_usage_data_2">Send technical and interaction data</string>
     <!-- Preference switch for usage and technical learn more link -->
@@ -1344,27 +1376,23 @@
     <string name="history_empty_message">No history here</string>
 
     <!-- Downloads -->
-    <!-- Text for the snackbar to confirm that multiple downloads items have been removed -->
-    <string name="download_delete_multiple_items_snackbar_1" moz:removedIn="138" tools:ignore="UnusedResources">Downloads Removed</string>
     <!-- Text for the snackbar to confirm that a multiple download items have been removed. %1$s is the number of removed download items.
             %1$d is the number of items deleted. -->
     <string name="download_delete_multiple_items_snackbar_2">Items deleted: %1$d</string>
-    <!-- Text for the snackbar to confirm that a single download item has been removed. %1$s is the name of the download item. -->
-    <string name="download_delete_single_item_snackbar" moz:removedIn="138" tools:ignore="UnusedResources">Removed %1$s</string>
+    <!-- Title for the dialog that prompts the user to choose an app for downloading a file. -->
+    <string name="download_app_dialog_title">Download file with:</string>
     <!-- Text for the snackbar to confirm that a single download item has been removed. %1$s is the name of the download item. -->
     <string name="download_delete_single_item_snackbar_2">Deleted “%1$s”</string>
     <!-- Text for the snackbar to confirm that downloads are in progress. -->
-    <string name="download_in_progress_snackbar" tools:ignore="UnusedResources">Download in progress…</string>
+    <string name="download_in_progress_snackbar">Download in progress…</string>
     <!-- Text for the snackbar action button to view in progress download details. -->
-    <string name="download_in_progress_snackbar_action_details" tools:ignore="UnusedResources">Details</string>
+    <string name="download_in_progress_snackbar_action_details">Details</string>
     <!-- Text for the snackbar to confirm that a download has completed. -->
-    <string name="download_completed_snackbar" tools:ignore="UnusedResources">Download completed</string>
+    <string name="download_completed_snackbar">Download completed</string>
     <!-- Text for the snackbar action button to open a completed download. -->
-    <string name="download_completed_snackbar_action_open" tools:ignore="UnusedResources">Open</string>
+    <string name="download_completed_snackbar_action_open">Open</string>
     <!-- Text for the snackbar action button to undo deleting a download. -->
     <string name="download_undo_delete_snackbar_action">Undo</string>
-    <!-- Text shown when no download exists -->
-    <string name="download_empty_message_1" moz:removedIn="138" tools:ignore="UnusedResources">No downloaded files</string>
     <!-- Text shown when no download exists -->
     <string name="download_empty_message_2">No downloads yet</string>
     <!-- Text description shown when no download exists -->
@@ -1372,8 +1400,6 @@
     <!-- History multi select title in app bar
     %1$d is the number of downloads selected -->
     <string name="download_multi_select_title">%1$d selected</string>
-    <!-- Text for the button to remove a single download item -->
-    <string name="download_delete_item_1" moz:removedIn="138" tools:ignore="UnusedResources">Remove</string>
     <!-- Title for the dialog that is shown when there is not enough storage space to download a file. -->
     <string name="download_file_has_not_enough_storage_dialog_title">Not enough space</string>
     <!-- Message for the dialog that is shown when there is not enough storage space to download a file.
@@ -1395,6 +1421,12 @@
     <!-- Content description for the toolbar back button while searching the downloads -->
     <string name="download_close_search_description">Back and close search</string>
     <!-- Content description for the search bar clear text button on the downloads screen -->
+    <!-- Content description for pause action button on the downloads screen -->
+    <string name="download_pause_action">Pause</string>
+    <!-- Content description for resume action button on the downloads screen -->
+    <string name="download_resume_action">Resume</string>
+    <!-- Content description for retry download action button on the downloads screen -->
+    <string name="download_retry_action">Retry</string>
     <string name="download_clear_search_description">Clear</string>
     <!-- Text for the button to share the download URL -->
     <string name="download_share_url">Share URL</string>
@@ -1407,7 +1439,7 @@
     <!-- Alert dialog confirmation before deleting multiple download items, this is the negative action. -->
     <string name="download_delete_multi_select_dialog_cancel">Cancel</string>
     <!-- Text for the header of in progress downloads -->
-    <string name="download_header_in_progress" tools:ignore="UnusedResources">In progress</string>
+    <string name="download_header_in_progress">In progress</string>
     <!-- Time period headers for downloads -->
     <!-- Text for the header that groups the downloads for today -->
     <string name="download_time_period_today">Today</string>
@@ -1419,17 +1451,34 @@
     <string name="download_time_period_last_30_days">Last 30 days</string>
     <!-- Text for the header that groups the downloads older than other groups -->
     <string name="download_time_period_older">Older</string>
+    <!-- Description of an in progress download item, displayed in the downloads list when the download has just started. -->
+    <string name="download_item_in_progress_description_preparing">Preparing download…</string>
     <!-- Description of an in progress download item, displayed in the downloads list.
                 %1$s is the current file size that has been downloaded.
                 %2$s is the total size of the downloaded file.
                 %3$s is the amount of time remaining to complete the download. -->
-    <string name="download_item_in_progress_description" tools:ignore="UnusedResources">%1$s / %2$s • %3$s left</string>
+    <string name="download_item_in_progress_description" moz:removedIn="141" tools:ignore="UnusedResources">%1$s / %2$s • %3$s left</string>
+    <!-- Description of an in progress download item, displayed in the downloads list when the download time remaining is known.
+                %1$s is the current file size that has been downloaded.
+                %2$s is the total size of the downloaded file.
+                %3$s is the amount of time remaining to complete the download. -->
+    <string name="download_item_in_progress_description_2">%1$s / %2$s • in %3$s.</string>
+    <!-- Description of an in progress download item, displayed in the downloads list when the download time remaining is unknown.
+                %1$s is the current file size that has been downloaded.
+                %2$s is the total size of the downloaded file. -->
+    <string name="download_item_in_progress_description_pending">%1$s / %2$s • pending</string>
+    <!-- Description of a paused download item, displayed in the downloads list.
+                %1$s is the current file size that has been downloaded.
+                %2$s is the total size of the downloaded file. -->
+    <string name="download_item_paused_description">%1$s / %2$s • paused</string>
     <!-- Text to indicate that an in progress download is paused. -->
-    <string name="download_item_status_paused" tools:ignore="UnusedResources">paused</string>
+    <string name="download_item_status_paused" moz:removedIn="141" tools:ignore="UnusedResources">paused</string>
     <!-- Text to indicate that the download speed of an in progress download is being calculated. -->
-    <string name="download_item_download_speed_pending" tools:ignore="UnusedResources">pending</string>
+    <string name="download_item_download_speed_pending" moz:removedIn="141" tools:ignore="UnusedResources">pending</string>
     <!-- Text to indicate that a download has failed to download. -->
-    <string name="download_item_status_failed" tools:ignore="UnusedResources">Download failed</string>
+    <string name="download_item_status_failed">Download failed</string>
+    <!-- Text for the snackbar action button to view failed download details. -->
+    <string name="download_failed_snackbar_action_details">Details</string>
     <!-- Placeholder text to indicate that users can use the search bar to search for a download. -->
     <string name="download_search_placeholder">Search downloads</string>
     <!-- Text to indicate that no downloads match the search query. -->
@@ -1447,13 +1496,7 @@
     <!-- Text for the filter button to show only documents in the downloads list -->
     <string name="download_content_type_filter_document">Documents</string>
     <!-- Text for the filter button to show all other file types in the downloads list -->
-    <string name="download_content_type_filter_other" moz:removedIn="138" tools:ignore="UnusedResources">Others</string>
-    <!-- Text for the filter button to show all other file types in the downloads list -->
     <string name="download_content_type_filter_other_1">Other</string>
-    <!-- Description of a downloaded item, displayed in the downloads list.
-          %1$s: The size of the downloaded file.
-          %2$s: The URL of the downloaded file. -->
-    <string name="download_item_description" moz:removedIn="138" tools:ignore="UnusedResources">%1$s • %2$s</string>
 
 
     <!-- WebCompat Reporter -->
@@ -1729,6 +1772,10 @@
     <string name="studies_on">On</string>
     <!-- Summary of studies data on quit preference if it is set to off -->
     <string name="studies_off">Off</string>
+    <!-- Toggle if desktop site is turned on -->
+    <string name="browser_feature_desktop_site_on">On</string>
+    <!-- Toggle if desktop site is turned off -->
+    <string name="browser_feature_desktop_site_off">Off</string>
     <!-- Category header of a preference that allows a user to alter settings related to web permissions. -->
     <string name="preferences_category_permissions">Permissions</string>
     <!-- Category header of a preference that allows a user to alter settings related to web content. -->
@@ -1898,7 +1945,7 @@
     <!-- Text shown in snackbar when user closes a private tab -->
     <string name="snackbar_private_tab_closed">Private tab closed</string>
     <!-- Text shown in snackbar when user closes all private tabs -->
-    <string name="snackbar_private_tabs_closed">Private tabs closed</string>
+    <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Private tabs closed</string>
     <!-- Text shown in snackbar when user erases their private browsing data -->
     <string name="snackbar_private_data_deleted">Private browsing data deleted</string>
     <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
@@ -2726,9 +2773,9 @@
     <!-- Header text for a section on the home screen. -->
     <string name="pocket_stories_header_2">Stories</string>
     <!-- Header text for a section on the home screen. -->
-    <string name="pocket_stories_categories_header">Stories by topic</string>
+    <string name="pocket_stories_categories_header" moz:removedIn="141" tools:ignore="UnusedResources">Stories by topic</string>
     <!-- Text of a button allowing users to access an external url for more Pocket recommendations. -->
-    <string name="pocket_stories_placeholder_text">Discover more</string>
+    <string name="pocket_stories_placeholder_text" moz:removedIn="141" tools:ignore="UnusedResources">Discover more</string>
     <!-- Title of an app feature. Smaller than a heading. %s is "Pocket". -->
     <string name="pocket_stories_feature_title_2" moz:removedIn="140" tools:ignore="UnusedResources">Powered by %s.</string>
     <!-- Caption for describing a certain feature. %s is a link using pocket_stories_feature_learn_more as text, which will load an url in a new tab when clicked.  -->
@@ -2763,7 +2810,7 @@
     <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
     <string name="a11y_action_label_wallpaper_collection_learn_more">open link to learn more about this collection</string>
     <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-    <string name="a11y_action_label_read_article">read the article</string>
+    <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">read the article</string>
     <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
     <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">open link to learn more</string>
     <!-- Content description for headings announced by accessibility service. %s is the text of the heading. Talkback will announce the text and then speak the word "Heading" indicating to the user that this text is a heading for a section. -->
@@ -3337,4 +3384,19 @@
     <!-- Positive button text for the contextual feature recommendation (CFR) enabling screen lock for private tabs -->
     <string name="private_tab_cfr_positive">Lock tabs</string>
 
+    <!-- Review prompt -->
+    <!-- Title for a prompt asking the user about their experience using the app. %1$s is the name of the app (for example "Firefox"). -->
+    <string name="review_prompt_pre_prompt_header">What do you think about %1$s?</string>
+    <!-- Label for a button negatively rating the user's experience with the app -->
+    <string name="review_prompt_negative_button">I’m having issues</string>
+    <!-- Label for a button positively rating the user's experience with the app -->
+    <string name="review_prompt_positive_button">It’s great!</string>
+    <!-- Title for a prompt asking the user to rate the app on Google Play Store. %1$s is the name of the app (for example "Firefox"). -->
+    <string name="review_prompt_rate_header">Thanks for loving %1$s. Got a second to spread the love with a rating?</string>
+    <!-- Label for a button proceeding to rate the app on Google Play Store. %1$s is the name of the app (for example "Firefox"). -->
+    <string name="review_prompt_rate_button">Rate %1$s on the Play Store</string>
+    <!-- Title for a prompt asking the user send us feedback. %1$s is the name of the app (for example "Firefox"). -->
+    <string name="review_prompt_feedback_header">We’re sorry you’re having issues. Let us know how we can improve %1$s.</string>
+    <!-- Label for a button opening a feedback forum -->
+    <string name="review_prompt_feedback_button">Leave feedback</string>
 </resources>

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://schemas.android.com/apk/res-auto">
   <!-- Description for privacy add-on permission. -->
   <string name="mozac_feature_addons_permissions_privacy_description">Leger e modifitgar parameters per la sfera privata</string>
   <!-- Description for all_urls add-on permission. -->
@@ -84,12 +84,68 @@
   <string name="mozac_feature_addons_permissions_user_scripts_description">Permetter a scripts betg verifitgads da terzas partidas l’access a tias datas</string>
   <!-- The text shown when an extension requests the userScripts permission, near the usual description of the userScripts permission -->
   <string name="mozac_feature_addons_permissions_user_scripts_extra_warning">Scripts betg verifitgads pon periclitar la segirezza e la protecziun da datas. Exequescha sulettamain scripts dad extensiuns u funtaunas da las qualas ti ta fidas.</string>
+  <!-- The sentence used when the extension has data collection permissions. %1$s is a formatted list of permissions. -->
+  <string name="mozac_feature_addons_permissions_required_data_collection_description" moz:removedIn="141" tools:ignore="UnusedResources">Il sviluppader declera che questa extensiun rimnia il suandant: %1$s.</string>
+  <!-- The sentence used when the extension has data collection permissions. %1$s is a formatted list of permissions. -->
+  <string name="mozac_feature_addons_permissions_required_data_collection_description_2">Il sviluppader declera che questa extensiun rimnia il suandant: %1$s</string>
+  <!-- The sentence used when the developer of an extension has explicitly stated that they do not collect any data collection. -->
+  <string name="mozac_feature_addons_permissions_none_required_data_collection_description">Il sviluppader declera che questa extensiun na pretendia nagina collecziun da datas.</string>
+  <!-- The sentence used when the extension requests new data collection permissions. %1$s is a formatted list of permissions. -->
+  <string name="mozac_feature_addons_permissions_data_collection_optional_description">Il sviluppader declera che questa extensiun rimnia il suandant: %1$s</string>
   <!-- Description for devtools permission. -->
   <string name="mozac_feature_addons_permissions_devtools_description">Extender ils utensils per sviluppaders per acceder a tias datas en ils tabs averts</string>
   <!-- Description for text button that expands the list of domain permissions -->
   <string name="mozac_feature_addons_permissions_show_all_sites">Mussar tut las websites</string>
   <!-- Description for text button that hides the majority of the list of domain permissions -->
   <string name="mozac_feature_addons_permissions_show_fewer_sites">Mussar damain websites</string>
+  <!-- Short description for the authenticationInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_authenticationInfo_short_description">infurmaziuns d’autentificaziun</string>
+  <!-- Short description for the bookmarksInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_bookmarksInfo_short_description">segnapaginas</string>
+  <!-- Short description for the browsingActivity data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_browsingActivity_short_description">activitad da navigaziun</string>
+  <!-- Short description for the financialAndPaymentInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_financialAndPaymentInfo_short_description">infurmaziuns finanzialas e da pajament</string>
+  <!-- Short description for the healthInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_healthInfo_short_description">datas davart la sanadad</string>
+  <!-- Short description for the locationInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_locationInfo_short_description">posiziun</string>
+  <!-- Short description for the personalCommunications data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_personalCommunications_short_description">communicaziun persunala</string>
+  <!-- Short description for the personallyIdentifyingInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_personallyIdentifyingInfo_short_description">datas d’identificaziun persunala</string>
+  <!-- Short description for the searchTerms data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_searchTerms_short_description">terms da tschertga</string>
+  <!-- Short description for the technicalAndInteraction data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_technicalAndInteraction_short_description">datas tecnicas e d’interacziun</string>
+  <!-- Short description for the websiteActivity data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_websiteActivity_short_description">activitads da websites</string>
+  <!-- Short description for the websiteContent data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_websiteContent_short_description">cuntegn da websites</string>
+  <!-- Long description for the authenticationInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_authenticationInfo_long_description">Cundivider infurmaziuns d’autentificaziun cun il sviluppader da l’extensiun</string>
+  <!-- Long description for the bookmarksInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_bookmarksInfo_long_description">Cundivider infurmaziuns davart ils segnapaginas cun il sviluppader da l’extensiun</string>
+  <!-- Long description for the browsingActivity data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_browsingActivity_long_description">Cundivider l’activitad da navigaziun cun il sviluppader da l’extensiun</string>
+  <!-- Long description for the financialAndPaymentInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_financialAndPaymentInfo_long_description">Cundivider datas finanzialas ed infurmaziuns davart las metodas da pajament cun il sviluppader da l’extensiun</string>
+  <!-- Long description for the healthInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_healthInfo_long_description">Cundivider datas davart la sanadad cun il sviluppader da l’extensiun</string>
+  <!-- Long description for the locationInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_locationInfo_long_description">Cundivider datas da posiziun cun il sviluppader da l’extensiun</string>
+  <!-- Long description for the personalCommunications data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_personalCommunications_long_description">Cundivider la communicaziun persunala cun il sviluppader da l’extensiun</string>
+  <!-- Long description for the personallyIdentifyingInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_personallyIdentifyingInfo_long_description">Cundivider infurmaziuns d’identificaziun persunala cun il sviluppader da l’extensiun</string>
+  <!-- Long description for the searchTerms data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_searchTerms_long_description">Cundivider terms da tschertga cun il sviluppader da l’extensiun</string>
+  <!-- Long description for the technicalAndInteraction data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_technicalAndInteraction_long_description">Cundivider datas tecnicas e datas d’interacziun cun il sviluppader da l’extensiun</string>
+  <!-- Long description for the websiteActivity data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_websiteActivity_long_description">Cundivider activitads da websites cun il sviluppader da l’extensiun</string>
+  <!-- Long description for the websiteContent data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_websiteContent_long_description">Cundivider il cuntegn da websites cun il sviluppader da l’extensiun</string>
   <!-- The version on of add-on. -->
   <string name="mozac_feature_addons_version">Versiun</string>
   <!-- The author of an add-on. -->
@@ -109,7 +165,9 @@
   <!-- Indicates the add-on is enabled. -->
   <string name="mozac_feature_addons_settings_on">Activà</string>
   <!-- Indicates the add-on is allowed in private browsing mode. -->
-  <string name="mozac_feature_addons_settings_allow_in_private_browsing">Permetter en il modus privat</string>
+  <string name="mozac_feature_addons_settings_allow_in_private_browsing" moz:removedIn="141" tools:ignore="UnusedResources">Permetter en il modus privat</string>
+  <!-- Indicates the add-on is allowed in private browsing mode. -->
+  <string name="mozac_feature_addons_settings_allow_in_private_browsing_2">Permetter che l’extensiun vegnia exequida en il modus privat</string>
   <!-- Indicates the add-on is allowed in private browsing mode. -->
   <string name="mozac_feature_addons_settings_run_in_private_browsing">Exequir en il modus privat</string>
   <!-- This is displayed when the add-on is not allowed to run in private browsing. -->
@@ -135,13 +193,29 @@
   <!-- This is a button to report an add-on. -->
   <string name="mozac_feature_addons_report">Rapportar</string>
   <!-- This is the title of a dialog that asks the users if they to install or not an add-on. %1$s is the add-on name. -->
-  <string name="mozac_feature_addons_permissions_dialog_title">Agiuntar %1$s?</string>
+  <string name="mozac_feature_addons_permissions_dialog_title" moz:removedIn="141" tools:ignore="UnusedResources">Agiuntar %1$s?</string>
+  <!-- This is the title of a dialog that asks the users if they to install or not an add-on. %1$s is the add-on name. -->
+  <string name="mozac_feature_addons_permissions_dialog_title_2">Agiuntar %1$s</string>
   <!-- This is the title of a dialog that asks the users to grant optional permissions. %1$s is the add-on name. -->
-  <string name="mozac_feature_addons_optional_permissions_dialog_title">%1$s dumonda ulteriuras autorisaziuns.</string>
+  <string name="mozac_feature_addons_optional_permissions_dialog_title" moz:removedIn="142" tools:ignore="UnusedResources">%1$s dumonda ulteriuras autorisaziuns.</string>
+  <!-- This is the title of a dialog that asks the users to grant optional permissions. %1$s is the add-on name. -->
+  <string name="mozac_feature_addons_optional_permissions_with_data_collection_dialog_title">%1$s dumonda ulteriurs parameters</string>
+  <!-- This is the title of a dialog that asks the users to grant optional data collection permissions only. %1$s is the add-on name. -->
+  <string name="mozac_feature_addons_optional_permissions_with_data_collection_only_dialog_title">%1$s dumonda da rimnar ulteriuras datas</string>
   <!-- This is the subtitle of a dialog that asks the users if they want to install or not an add-on, the subtitle lists the permissions that this add-on requires, the permissions will dynamically be listed after the ":". -->
-  <string name="mozac_feature_addons_permissions_dialog_subtitle">Basegna l\'autorisaziun per:</string>
+  <string name="mozac_feature_addons_permissions_dialog_subtitle" moz:removedIn="141" tools:ignore="UnusedResources">Basegna l\'autorisaziun per:</string>
+  <!-- Heading for the permissions section in the add-on install dialog. -->
+  <string name="mozac_feature_addons_permissions_dialog_heading_required_permissions">Autorisaziuns necessarias:</string>
+  <!-- Heading for the data collection permissions section in the add-on install dialog. -->
+  <string name="mozac_feature_addons_permissions_dialog_heading_required_data_collection">Rimnada da datas obligatorica:</string>
+  <!-- Heading for the optional settings section in the add-on install dialog. -->
+  <string name="mozac_feature_addons_permissions_dialog_heading_optional_settings">Parameters opziunals:</string>
   <!-- This is the subtitle of a dialog that asks the users to grant optional permissions, the subtitle lists the permissions that this add-on requests, the permissions will dynamically be listed after the ":". -->
-  <string name="mozac_feature_addons_optional_permissions_dialog_subtitle">L\'extensiun vul:</string>
+  <string name="mozac_feature_addons_optional_permissions_dialog_subtitle" moz:removedIn="142" tools:ignore="UnusedResources">L\'extensiun vul:</string>
+  <!-- Heading for the permissions section in the optional permissions request dialog. -->
+  <string name="mozac_feature_addons_permissions_dialog_heading_optional_permissions">Novas permissiuns:</string>
+  <!-- Heading for the data collection permissions section in the optional permissions request dialog. -->
+  <string name="mozac_feature_addons_permissions_dialog_heading_optional_data_collection">Nova rimnada da datas:</string>
   <!-- This is a button to add (install) an add-on . -->
   <string name="mozac_feature_addons_permissions_dialog_add">Agiuntar</string>
   <!-- This is a button to allow the optional permissions requested by an add-on . -->
@@ -150,6 +224,8 @@
   <string name="mozac_feature_addons_permissions_dialog_deny">Refusar</string>
   <!-- Text link to learn more about permission requests on the add-on permissions dialog . -->
   <string name="mozac_feature_addons_permissions_dialog_learn_more">Ulteriuras infurmaziuns</string>
+  <!-- This is the text for the "technical and interaction" checkbox shown in the add-on permissions dialog. -->
+  <string name="mozac_feature_addons_permissions_dialog_technical_and_interaction_data">Cundivider datas tecnicas e d’interacziun cun il sviluppader da l’extensiun</string>
   <!-- This is a button to cancel the add-on installation . -->
   <string name="mozac_feature_addons_permissions_dialog_cancel">Interrumper</string>
   <!-- Accessibility content description to install add-on button. %1$s is the add-on name. -->

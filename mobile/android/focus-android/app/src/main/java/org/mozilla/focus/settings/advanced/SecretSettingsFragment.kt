@@ -6,8 +6,10 @@ package org.mozilla.focus.settings.advanced
 
 import android.content.SharedPreferences
 import android.os.Bundle
+import androidx.preference.Preference
 import androidx.preference.SwitchPreferenceCompat
 import org.mozilla.focus.R
+import org.mozilla.focus.ext.components
 import org.mozilla.focus.ext.getPreferenceKey
 import org.mozilla.focus.ext.requireComponents
 import org.mozilla.focus.ext.requirePreference
@@ -33,6 +35,21 @@ class SecretSettingsFragment :
             isVisible = true
             isChecked = context.settings.useProductionRemoteSettingsServer
             onPreferenceChangeListener = SharedPreferenceUpdater()
+        }
+
+        requirePreference<SwitchPreferenceCompat>(R.string.pref_key_use_remote_search_configuration).apply {
+            isVisible = true
+            isChecked = context.settings.useRemoteSearchConfiguration
+            onPreferenceChangeListener = object : SharedPreferenceUpdater() {
+                override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
+                    if (newValue as? Boolean == true) {
+                        context.components.remoteSettingsSyncScheduler.registerForSync()
+                    } else {
+                        context.components.remoteSettingsSyncScheduler.unregisterForSync()
+                    }
+                    return super.onPreferenceChange(preference, newValue)
+                }
+            }
         }
     }
 

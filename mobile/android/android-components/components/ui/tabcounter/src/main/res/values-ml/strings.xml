@@ -10,6 +10,11 @@
     The %1$s will be replaced by the number of opened tabs
   -->
   <string name="mozac_open_tab_counter_tab_tray">സ്വകാര്യമല്ലാത്ത തുറന്നിരിക്കുന്ന ടാബുകൾ: %1$s. ടാബുകൾ മാറ്റാൻ അമർത്തുക.</string>
+  <!--
+    Message announced to the user when the tab counter is selected in private browsing mode.
+    Used by a11y services. The %1$s will be replaced by the number of opened tabs
+  -->
+  <string name="mozac_tab_counter_private">തുറന്നിരിപ്പുണ്ട സ്വകാര്യ ടാബുകൾ: %1$s. ടാബുമാറാൻ ഞെക്കുക.</string>
   <!-- Browser menu button that creates a new tab -->
   <string name="mozac_browser_menu_new_tab">പുതിയ ടാബ്</string>
   <!-- Browser menu button that creates a private tab -->

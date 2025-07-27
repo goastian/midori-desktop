@@ -39,11 +39,11 @@ import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getIntentSource
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.helpers.FenixGleanTestRule
-import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.helpers.perf.TestStrictModeManager
 import org.mozilla.fenix.utils.Settings
+import org.robolectric.RobolectricTestRunner
 
-@RunWith(FenixRobolectricTestRunner::class)
+@RunWith(RobolectricTestRunner::class)
 class HomeActivityTest {
     @get:Rule
     val gleanTestRule = FenixGleanTestRule(testContext)
@@ -86,12 +86,39 @@ class HomeActivityTest {
     }
 
     @Test
-    fun `getModeFromIntentOrLastKnown returns mode from settings when intent does not set`() {
+    fun `GIVEN browsing mode is not set by intent and private mode with a tab persisted WHEN getModeFromIntentOrLastKnown is called THEN returns normal browsing mode`() {
+        val browserStore = BrowserStore(
+            BrowserState(
+                tabs = listOf(
+                    createTab(url = "https://mozilla.org", private = true),
+                ),
+            ),
+        )
+
         every { testContext.settings() } returns Settings(testContext)
         every { activity.applicationContext } returns testContext
+        every { testContext.components.core.store } returns browserStore
+
         testContext.settings().lastKnownMode = BrowsingMode.Private
 
-        assertEquals(testContext.settings().lastKnownMode, activity.getModeFromIntentOrLastKnown(null))
+        assertEquals(BrowsingMode.Private, activity.getModeFromIntentOrLastKnown(null))
+
+        testContext.settings().lastKnownMode = BrowsingMode.Normal
+
+        assertEquals(BrowsingMode.Normal, activity.getModeFromIntentOrLastKnown(null))
+    }
+
+    @Test
+    fun `GIVEN last known mode is private mode and no tabs persisted WHEN getModeFromIntentOrLastKnown is called THEN returns normal browsing mode`() {
+        val browserStore = BrowserStore()
+
+        every { testContext.settings() } returns Settings(testContext)
+        every { activity.applicationContext } returns testContext
+        every { testContext.components.core.store } returns browserStore
+
+        testContext.settings().lastKnownMode = BrowsingMode.Private
+
+        assertEquals(BrowsingMode.Normal, activity.getModeFromIntentOrLastKnown(null))
     }
 
     @Test

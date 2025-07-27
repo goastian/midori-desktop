@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- Text for confirmation for a positive action in dialog -->
   <string name="mozac_feature_prompts_ok">OK</string>
   <!-- Text for confirmation for a negative action in dialog. -->
@@ -111,11 +111,11 @@
   <!-- Pressing this will dismiss the suggested strong password dialog -->
   <string name="mozac_feature_prompts_suggest_strong_password_dismiss">Không phải bây giờ</string>
   <!-- Title for showing the suggest strong password saved confirmation snackbar -->
-  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title">Đã lưu mật khẩu</string>
+  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title" tools:ignore="UnusedResources" moz:removedIn="142">Đã lưu mật khẩu</string>
   <!-- Title for showing the suggest strong password updated confirmation snackbar -->
   <string name="mozac_feature_prompts_suggest_strong_password_updated_snackbar_title">Đã cập nhật mật khẩu</string>
   <!-- Title for showing the username updated confirmation snackbar -->
-  <string name="mozac_feature_prompt_login_snackbar_username_updated">Đã cập nhật tên người dùng</string>
+  <string name="mozac_feature_prompt_login_snackbar_username_updated" tools:ignore="UnusedResources" moz:removedIn="142">Đã cập nhật tên người dùng</string>
   <!-- Strings shown in a dialog that appear when users try to refresh a certain kind of webpages -->
   <string name="mozac_feature_prompt_repost_title">Gửi lại dữ liệu cho trang web này?</string>
   <string name="mozac_feature_prompt_repost_message">Việc làm mới trang này có thể trùng lặp với các hành động gần đây, chẳng hạn như gửi thanh toán hoặc đăng nhận xét hai lần.</string>
@@ -123,6 +123,14 @@
   <string name="mozac_feature_prompt_repost_positive_button_text">Gửi lại dữ liệu</string>
   <!-- Pressing this will dismiss the dialog and not refresh the webpage -->
   <string name="mozac_feature_prompt_repost_negative_button_text">Huỷ bỏ</string>
+  <!-- Strings show in a dialog that appear when user confirm folder upload -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_title">Tải lên tập tin?</string>
+  <!-- Prompt message displayed when user selects a specific folder. %1$s is a folder / directory name. -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_message">Hãy chắc chắn rằng bạn tin tưởng trang web này trước khi bạn tải lên từ “%1$s”.</string>
+  <!-- Pressing this will dismiss the dialog and allow to upload folder -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_positive_button_text">Tải lên</string>
+  <!-- Pressing this will dismiss the dialog and disallow to upload folder -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_negative_button_text">Hủy bỏ</string>
   <!--
     Credit Card Autofill
 
@@ -166,7 +174,7 @@
   <!-- Title of the Identity Credential privacy policy dialog title. The %1$s will be replaced with the name of the provider. -->
   <string name="mozac_feature_prompts_identity_credentials_privacy_policy_title">Sử dụng %1$s làm nhà cung cấp thông tin đăng nhập</string>
   <!-- Title of the Identity Credential privacy policy dialog description. The %1$s will be replaced with the name of the provider, %2$s will be replaced with the account, %3$s will be replaced with the privacy policy url and  %4$s will be replaced with the terms of service. -->
-  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote"> Đăng nhập vào %1$s với tài khoản %2$s phải tuân theo &lt;a href="%3$s"&gt;chính sách bảo mật&lt;/a&gt; và &lt;a href="%4$s"&gt;điều khoản dịch vụ&lt;/a&gt; của họ</string>
+  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote"><![CDATA[Đăng nhập vào %1$s với tài khoản %2$s phải tuân theo <a href=\"%3$s\">chính sách bảo mật</a> và <a href=\"%4$s\">điều khoản dịch vụ</a> của họ]]></string>
   <!-- Text for the positive button of the Identity Credential dialogs. -->
   <string name="mozac_feature_prompts_identity_credentials_continue">Tiếp tục</string>
   <!-- Text for the cancel button of the Identity Credential dialogs. -->

@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Pli da elektebloj</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Aktivigi privatan retumon</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Aktivigi privatan retumon</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Malaktivigi privatan retumon</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Malaktivigi privatan retumon</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">Privata retumo</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -62,7 +62,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s viŝas la serĉan kaj retuman historion de langetoj kiam vi fermas ilin aŭ finas la programon. Kvankam tio ne igas vin anonima antaŭ retejoj aŭ via retprovizanto, tio faciligas la taskon kaŝi vian retumon de aliaj uzantoj en tiu ĉi aparato.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s viŝas la serĉan kaj retuman historion de langetoj kiam vi fermas ilin aŭ finas la programon. Kvankam tio ne igas vin anonima antaŭ retejoj aŭ via retprovizanto, tio faciligas la taskon kaŝi vian retumon de aliaj uzantoj en tiu ĉi aparato.</string>
   <string name="private_browsing_common_myths">Oftaj mitoj pri privata retumo</string>
   <!--
     True Private Browsing Mode
@@ -98,7 +98,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">Tuŝetu ĉi tie por komenci novan freŝan privatan seancon. Forigu vian historion, kuketojn — ĉion.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Tuŝetu ĉi tie por komenci novan freŝan privatan seancon. Forigu vian historion, kuketojn — ĉion.</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -112,12 +112,8 @@
   <!--
     Address bar swipe "contextual feature recommendation" (CFR)
 
-    Text for the title displayed in the contextual feature recommendation popup promoting swipe of address bar.
+    Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar.
   -->
-  <string name="address_bar_swipe_cfr_title" tools:ignore="UnusedResources" moz:removedIn="139">Ŝovu la ilaron por ŝanĝi langetojn</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
-  <string name="address_bar_swipe_cfr_message" tools:ignore="UnusedResources" moz:removedIn="139">Ŝovu maldekstren aŭ dekstren por ŝanĝi. Ŝovu maldekstren en vi lasta langeto por malfermi novan langeton.</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
   <string name="address_bar_swipe_cfr_message_2">Ŝovu la ilaron dekstren aŭ maldekstren por ŝanĝi langetojn.</string>
   <!-- Text for the info dialog when camera permissions have been denied but user tries to access a camera feature. -->
   <string name="camera_permissions_needed_message">Aliro al la fimilo postulata. Iru al agordoj de Android, tuŝetu Permesojn kaj poste Permesi.</string>
@@ -226,6 +222,10 @@
   <string name="browser_menu_extensions_banner_learn_more" moz:removedIn="141" tools:ignore="UnusedResources">Pli da informo</string>
   <!-- Browser menu button that opens the extensions manager -->
   <string name="browser_menu_manage_extensions">Administri etendaĵojn</string>
+  <!-- Browser menu group that contains additional settings in collapsed state -->
+  <string name="browser_menu_more_settings">Pli</string>
+  <!-- Browser menu group that contains additional settings in expanded state -->
+  <string name="browser_menu_less_settings">Malpli</string>
   <!-- Content description (not visible, for screen readers etc.): Section heading for recommended extensions. -->
   <string name="browser_menu_recommended_section_content_description" moz:removedIn="141" tools:ignore="UnusedResources">Rekomenditaj etendaĵoj</string>
   <!--
@@ -239,6 +239,8 @@
   <string name="browser_menu_extensions_disabled_description">Provizore malaktiva</string>
   <!-- The description of the browser menu appears when the user hasn't installed any extensions. -->
   <string name="browser_menu_no_extensions_installed_description">Neniu aktiva etendaĵo</string>
+  <!-- The description of the browser menu appears when the user hasn't installed any extensions and there are recommended extensions. -->
+  <string name="browser_menu_try_a_recommended_extension_description">Provu rekomenditan etendaĵon</string>
   <!-- Browser menu button that opens account settings -->
   <string name="browser_menu_account_settings">Informoj pri konto</string>
   <!-- Browser menu button that sends a user to help articles -->
@@ -314,6 +316,8 @@
   <string name="browser_menu_sign_in">Komenci seancon</string>
   <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
   <string name="browser_menu_sign_in_caption" moz:removedIn="141" tools:ignore="UnusedResources">Speguli pasvortojn, langetojn, kaj pli</string>
+  <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
+  <string name="browser_menu_sign_in_caption_2" moz:removedIn="141" tools:ignore="UnusedResources">Speguli viajn legosignojn, pasvortojn, langetojn kaj pli</string>
   <!-- Browser menu label to sign back in to sync on the device when the user's account needs to be reauthenticated -->
   <string name="browser_menu_sign_back_in_to_sync">Rekomencu seancon por speguli</string>
   <!-- Browser menu caption label for the "Sign back in to sync" browser menu item described in `browser_menu_sign_back_in_to_sync` when there is an error in syncing -->
@@ -326,9 +330,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">Novaĵoj en %1$s</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">Novaĵoj en %1$s</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">Iri al versio por komputiloj</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">Iri al versio por komputiloj</string>
   <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
   <string name="browser_menu_switch_to_mobile_site">Iri al poŝaparata retejo</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
@@ -336,7 +340,7 @@
   <!-- Content description (not visible, for screen readers etc.): Back button for all menu redesign sub-menu -->
   <string name="browser_menu_back_button_content_description" moz:removedIn="141" tools:ignore="UnusedResources">Reen al ĉefa menuo</string>
   <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar main menu. -->
-  <string name="browser_main_menu_handlebar_content_description">Fermi ĉefan menuon</string>
+  <string name="browser_main_menu_handlebar_content_description" moz:removedIn="142" tools:ignore="UnusedResources">Fermi ĉefan menuon</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
   <string name="browser_main_menu_content_description_help_button">Helpo</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu settings button. -->
@@ -366,10 +370,14 @@
   <string name="browser_menu_save_description" moz:removedIn="141" tools:ignore="UnusedResources">Aldono de legosigno, ŝparvojo, eka paĝo, kolekto, PDF</string>
   <!-- Browser menu label that bookmarks the currently visited page -->
   <string name="browser_menu_bookmark_this_page" moz:removedIn="141" tools:ignore="UnusedResources">Aldoni legosignon por tiu ĉi paĝo</string>
+  <!-- Browser menu label that bookmarks the currently visited page -->
+  <string name="browser_menu_bookmark_this_page_2">Aldoni paĝon al legosignoj</string>
   <!-- Browser menu label that navigates to the edit bookmark screen for the current bookmarked page -->
   <string name="browser_menu_edit_bookmark">Redakti legosignon</string>
   <!-- Browser menu label that the saves the currently visited page as a PDF -->
   <string name="browser_menu_save_as_pdf" moz:removedIn="141" tools:ignore="UnusedResources">Konservi kiel PDF…</string>
+  <!-- Browser menu label that the saves the currently visited page as a PDF -->
+  <string name="browser_menu_save_as_pdf_2">Konservi kiel PDF</string>
   <!-- Browser menu label for turning ON reader view of the current visited page -->
   <string name="browser_menu_turn_on_reader_view" moz:removedIn="141" tools:ignore="UnusedResources">Ŝalti legilan vidon</string>
   <!-- Browser menu label for turning OFF reader view of the current visited page -->
@@ -378,20 +386,37 @@
   <string name="browser_menu_open_in_normal_tab" moz:removedIn="141" tools:ignore="UnusedResources">Movi al neprivata langeto</string>
   <!-- Browser menu label for navigating to the translation feature, which provides language translation options the current visited page -->
   <string name="browser_menu_translate_page" moz:removedIn="141" tools:ignore="UnusedResources">Traduki paĝon…</string>
+  <!-- Browser menu label for navigating to the translation feature, which provides language translation options the current visited page -->
+  <string name="browser_menu_translate_page_2">Traduki paĝon</string>
   <!-- Browser menu label for navigating to the Web Compat Reporter feature, which provides users the ability to send bug reports for broken sites. -->
   <string name="browser_menu_webcompat_reporter">Raporti misfunkciantan retejon…</string>
+  <!-- Browser menu label for navigating to the Web Compat Reporter feature, which provides users the ability to send bug reports for broken sites. -->
+  <string name="browser_menu_webcompat_reporter_2">Raporti ne bone funkciantan retejon</string>
   <!--
     Browser menu label that is displayed when the current page has been translated by the translation feature.
     %1$s is the name of the language that page was translated to (e.g. English).
   -->
-  <string name="browser_menu_translated_to">Tradukita en la %1$sn</string>
+  <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">Tradukita en la %1$sn</string>
+  <!-- Browser menu label that is displayed when the current page has been translated by the translation feature. -->
+  <string name="browser_menu_translated">Tradukita</string>
   <!-- Browser menu label for the print feature -->
   <string name="browser_menu_print" moz:removedIn="141" tools:ignore="UnusedResources">Presi…</string>
+  <!-- Browser menu label for the print feature -->
+  <string name="browser_menu_print_2">Presi</string>
   <!--
     Browser menu label for the Delete browsing data on quit feature.
     %1$s is the name of the app (for example "Firefox").
   -->
   <string name="browser_menu_delete_browsing_data_on_quit">Fini %1$s</string>
+  <!--
+    Content description for a banner within the menu which prompt the user to make this app their default browser.
+    %1$s is the name of the app (for example "Firefox").
+  -->
+  <string name="browser_menu_default_banner_title">Igu %1$s norma</string>
+  <!-- Label text within the set as default banner -->
+  <string name="browser_menu_default_banner_subtitle">Tio postulas sekundojn. Vi povas ŝanĝi iam ajn.</string>
+  <!-- Content description for the button that dismisses the set as default banner in the menu -->
+  <string name="browser_menu_default_banner_dismiss" moz:removedIn="142" tools:ignore="UnusedResources">Ignori</string>
   <!--
     Menu "contextual feature recommendation" (CFR)
 
@@ -416,7 +441,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">Viŝi retuman historion</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">Viŝi retuman historion</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">Traduki paĝon</string>
   <!--
@@ -491,7 +516,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Ignori</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">Viaj langetoj estas spegulataj! Daŭrigu kie vi haltis en via alia aparato.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">Viaj langetoj estas spegulataj! Daŭrigu kie vi haltis en via alia aparato.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">Fermi</string>
   <!--
@@ -766,6 +791,8 @@
   <string name="preferences_pbm_lock_screen_title">Uzi la blokadon de ekrano por kaŝi langetojn en privata retumo</string>
   <!-- Informs the user how to access the tabs when "Use screen lock to hide tabs in private browsing" is enabled -->
   <string name="preferences_pbm_lock_screen_summary" moz:removedIn="140" tools:ignore="UnusedResources">Montri langetojn per fingrospuro, malblokado per vizaĝo aŭ kodo PIN.</string>
+  <!-- Informs the user how to access the tabs when "Use screen lock to hide tabs in private browsing" is enabled -->
+  <string name="preferences_pbm_lock_screen_summary_2">Montri langetojn per fingrospuro, kodo PIN aŭ malblokado per vizaĝo.</string>
   <!-- Label for cookie banner section in quick settings panel. -->
   <string name="cookie_banner_blocker">Blokilo de kuketaj anoncoj</string>
   <!-- Preference for removing cookie/consent banners from sites automatically in private mode. See reduce_cookie_banner_summary for additional context. -->
@@ -849,7 +876,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">Tradukoj</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Elekto de datumoj</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Elekto de datumoj</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Kolektado de datumoj</string>
   <!-- Preference for developers -->
@@ -911,7 +938,7 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">Neniam</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Ekstera administranto de elŝutoj</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Ekstera administranto de elŝutoj</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">Aktivigi registrojn de Gecko</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -931,13 +958,13 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">Postulata</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">Postulata</string>
   <!-- The title of the optional permissions section from addon's permissions screen -->
-  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">Elektebla</string>
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">Elektebla</string>
   <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
-  <string name="addons_permissions_allow_for_all_sites" tools:ignore="UnusedResources">Permesi por ĉiuj retejoj</string>
+  <string name="addons_permissions_allow_for_all_sites">Permesi por ĉiuj retejoj</string>
   <!-- The subtitle for the allow for all sites preference toggle -->
-  <string name="addons_permissions_allow_for_all_sites_subtitle" tools:ignore="UnusedResources">Se vi fidas tiun ĉi etendaĵon vi povas doni al ĝi tiun permeson por ĉiuj retejoj.</string>
+  <string name="addons_permissions_allow_for_all_sites_subtitle">Se vi fidas tiun ĉi etendaĵon vi povas doni al ĝi tiun permeson por ĉiuj retejoj.</string>
   <!-- The text shown when an extension does not require permissions -->
   <string name="addons_does_not_require_permissions">Tiu ĉi etendaĵo ne postulas iun ajn permeson.</string>
   <!--
@@ -971,6 +998,8 @@
   <string name="customize_toggle_recently_visited">Ĵusaj retpaĝoj</string>
   <!-- Title for the customize home screen section with Pocket. -->
   <string name="customize_toggle_pocket_2" tools:ignore="UnusedResources" moz:removedIn="140">Pensigaj artikoloj</string>
+  <!-- Title for the customize home screen section with Pocket. -->
+  <string name="customize_toggle_pocket_3">Artikoloj</string>
   <!-- Summary for the customize home screen section with Pocket. %s is "Pocket". -->
   <string name="customize_toggle_pocket_summary" tools:ignore="UnusedResources" moz:removedIn="140">Artikoloj sugestitaj de %s</string>
   <!-- Title for the customize home screen section with sponsored Pocket stories. -->
@@ -1011,6 +1040,56 @@
   <string name="wallpapers_onboarding_dialog_body_text">Elektu ekranfonon kiu signifas ion por vi.</string>
   <!-- Wallpaper onboarding dialog learn more button text. The button navigates to the wallpaper settings screen. -->
   <string name="wallpapers_onboarding_dialog_explore_more_button_text">Serĉi pli da ekranfonoj</string>
+  <!--
+    Icon picker
+
+    Title for the "Default" alternative app icon variant in the icon picker screen.
+  -->
+  <string name="alternative_app_icon_option_default">Norma</string>
+  <!-- Title for the "Light" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_light">Hela</string>
+  <!-- Title for the "Dark" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_dark">Malhela</string>
+  <!-- Title for the "Red" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_red">Ruĝa</string>
+  <!-- Title for the "Green" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_green">Verda</string>
+  <!-- Title for the "Blue" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_blue">Blua</string>
+  <!-- Title for the "Purple" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_purple">Purpura</string>
+  <!-- Title for the "Purple Dark" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_purple_dark">Malhele purpura</string>
+  <!-- Title for the "Sunrise" gradient alternative app icon variant in the icon picker screen. The app icon features a soft yellow-to-blue gradient background, resembling the colors of early morning light. -->
+  <string name="alternative_app_icon_option_gradient_sunrise">Suneliro</string>
+  <!-- Title for the "Golden Hour" gradient alternative app icon variant in the icon picker screen. The app icon features a warm golden-to-pink gradient background, resembling the colors of the sunlight shortly before sunset. -->
+  <string name="alternative_app_icon_option_gradient_golden_hour">Ora horo</string>
+  <!-- Title for the "Sunset" gradient alternative app icon variant in the icon picker screen. The app icon has a rich red-to-purple gradient background, resembling the tones of a sunset sky. -->
+  <string name="alternative_app_icon_option_gradient_sunset">Sunsubiro</string>
+  <!-- Title for the "Blue Hour" gradient alternative app icon variant in the icon picker screen. The app icon has a cool blue gradient background, resembling the sky color around the time just after sunset or before sunrise. -->
+  <string name="alternative_app_icon_option_gradient_blue_hour">Blua horo</string>
+  <!-- Title for the "Twilight" gradient alternative app icon variant in the icon picker screen. The app icon has a purple-toned gradient background, resembling the sky color during twilight. -->
+  <string name="alternative_app_icon_option_gradient_twilight">Krepusko</string>
+  <!-- Title for the "Midnight" gradient alternative app icon variant in the icon picker screen. The app icon features a dark gradient background, resembling the deep tones of the night sky. -->
+  <string name="alternative_app_icon_option_gradient_midnight">Noktomezo</string>
+  <!-- Title for the "Northern Lights" gradient alternative app icon variant in the icon picker screen. The app icon has a dynamic green, blue, and purple gradient background, resembling the aurora borealis. -->
+  <string name="alternative_app_icon_option_gradient_northern_lights">Nordpolusaj lumoj</string>
+  <!-- Title for the "Retro 2004" themed alternative app icon variant in the icon picker screen. This app icon uses the classic Firefox logo from 2004. -->
+  <string name="alternative_app_icon_option_retro_2004">Retro 2004</string>
+  <!-- Title for the "Retro 2017" themed alternative app icon variant in the icon picker screen. This app icon uses the Firefox logo from 2017, with a more modernized design. -->
+  <string name="alternative_app_icon_option_retro_2017">Retro 2017</string>
+  <!-- Title for the "Pixelated" themed alternative app icon variant in the icon picker screen. This app icon features a pixel-art style, resembling retro 8-bit graphics. -->
+  <string name="alternative_app_icon_option_pixelated">Grandaj bilderoj</string>
+  <!-- Title for the "Minimal" themed alternative app icon variant in the icon picker screen. The app icon presents a simplified, flat and monochrome version of the Firefox logo. -->
+  <string name="alternative_app_icon_option_minimal">Minimuma</string>
+  <!-- Title for the "Pride" themed alternative app icon variant in the icon picker screen. The app icon incorporates a rainbow color scheme in support of the LGBTQ+ community. -->
+  <string name="alternative_app_icon_option_pride">Fiera</string>
+  <!-- Title for the "Cute" themed alternative app icon variant in the icon picker screen. The app icon features a playful design with an adorable aesthetic. -->
+  <string name="alternative_app_icon_option_cute">Aminda</string>
+  <!-- Title for the "Momo" themed alternative app icon variant in the icon picker screen. The app icon was created by artist @heyheymomodraws and features a unique hand-drawn style with a friendly fox. -->
+  <string name="alternative_app_icon_option_momo">Momo</string>
+  <!-- Subtitle for the "Momo" themed alternative app icon variant in the icon picker screen. The app icon was created by artist @heyheymomodraws and features a unique hand-drawn style with a friendly fox. -->
+  <string name="alternative_app_icon_option_momo_subtitle">Kreita de @heyheymomodraws</string>
   <!--
     Add-ons general availability nimbus message
 
@@ -1120,9 +1199,17 @@
   <!-- Preference switch for usage and technical data collection -->
   <string name="preference_usage_data_2">Sendi teknikajn kaj interagajn datumojn</string>
   <!-- Preference switch for usage and technical learn more link -->
-  <string name="preference_usage_data_learn_more">Pli da informo</string>
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">Pli da informo</string>
   <!-- Preference description for marketing data collection. Note: The words "Firefox" should NOT be translated -->
   <string name="preferences_usage_data_description_1" tools:ignore="BrandUsage">Informoj pri via aparato, ĝia aparataro kaj kiel vi uzas Firefox helpas nin plibonigi trajtojn, efikecon kaj stabilecon.</string>
+  <!-- Preference switch for daily usage ping data collection -->
+  <string name="preferences_daily_usage_ping_title">Ping de taga uzo</string>
+  <string name="preferences_daily_usage_ping_description">Tio ĉi helpas Mozillan taksi la nombron de aktivaj uzantoj.</string>
+  <string name="preferences_daily_usage_ping_learn_more">Pli da informo pri la ping de taga uzo</string>
+  <!-- Preference switch title for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_title" tools:ignore="UnusedResources" moz:removedIn="142">Aŭtomate sendi raportojn pri paneoj</string>
+  <!-- Preference switch description for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_description" tools:ignore="UnusedResources" moz:removedIn="142">Tio ĉi helpas nin diagnozi kaj solvi problemojn en la retumilo. Raportoj povus inkluzivi personajn aŭ delikatajn datumojn.</string>
   <!-- Preference switch for campaign measurement data (marketing data) collection -->
   <string name="preferences_marketing_data_2">Kampanjo pri mezuro de datumoj</string>
   <!--
@@ -1132,16 +1219,8 @@
   <string name="preferences_marketing_data_description_4" tools:ignore="BrandUsage">Rakontu pri kiel vi malkovris Firefox kaj la fakton ke vi ĝin uzas kun la marketikaj teknologiaj asociitoj de Mozilla.</string>
   <!-- Learn more link for marketing data preference -->
   <string name="preferences_marketing_data_learn_more">Pli da informo pri merkatikaj datumoj</string>
-  <!-- Preference switch for daily usage ping data collection -->
-  <string name="preferences_daily_usage_ping_title">Ping de taga uzo</string>
-  <string name="preferences_daily_usage_ping_description">Tio ĉi helpas Mozillan taksi la nombron de aktivaj uzantoj.</string>
-  <string name="preferences_daily_usage_ping_learn_more">Pli da informo pri la ping de taga uzo</string>
-  <!-- Preference switch title for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_title">Aŭtomate sendi raportojn pri paneoj</string>
-  <!-- Preference switch description for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_description">Tio ĉi helpas nin diagnozi kaj solvi problemojn en la retumilo. Raportoj povus inkluzivi personajn aŭ delikatajn datumojn.</string>
   <!-- Learn more link for crash reporting preference -->
-  <string name="onboarding_preferences_dialog_crash_reporting_learn_more">Pli da informo pri raportoj pri paneo</string>
+  <string name="onboarding_preferences_dialog_crash_reporting_learn_more" tools:ignore="UnusedResources" moz:removedIn="142">Pli da informo pri raportoj pri paneo</string>
   <!-- Title for studies preferences -->
   <string name="preference_experiments_2">Studoj</string>
   <!-- Summary for studies preferences -->
@@ -1333,8 +1412,6 @@
   <!-- Learn more link for studies, links to an article for more information about studies. -->
   <string name="studies_learn_more">Pli da informo</string>
   <!--
-    Sessions
-
     Title for the list of tabs in the current private session used by a11y services
     The %1$s will be replaced by the number of opened private tabs
   -->
@@ -1480,10 +1557,18 @@
   <string name="download_delete_item">Forigi</string>
   <!-- Content description for the toolbar "Navigate back" button -->
   <string name="download_navigate_back_description">Iri reen</string>
-  <!-- Content description for the toolbar "Navigate up" button -->
-  <string name="download_navigate_up_description" moz:removedIn="139" tools:ignore="UnusedResources">Iri supren</string>
   <!-- Content description for the toolbar back button while searching the downloads -->
   <string name="download_close_search_description">Iri reen kaj fermi serĉon</string>
+  <!--
+    Content description for the search bar clear text button on the downloads screen
+
+    Content description for pause action button on the downloads screen
+  -->
+  <string name="download_pause_action">Paŭzigi</string>
+  <!-- Content description for resume action button on the downloads screen -->
+  <string name="download_resume_action">Daŭrigi</string>
+  <!-- Content description for retry download action button on the downloads screen -->
+  <string name="download_retry_action">Klopodi denove</string>
   <string name="download_clear_search_description">Viŝi</string>
   <!-- Text for the button to share the download URL -->
   <string name="download_share_url">Dividi retadreson</string>
@@ -1511,6 +1596,8 @@
   <string name="download_time_period_last_30_days">Lastaj 30 tagoj</string>
   <!-- Text for the header that groups the downloads older than other groups -->
   <string name="download_time_period_older">Pli malnovaj</string>
+  <!-- Description of an in progress download item, displayed in the downloads list when the download has just started. -->
+  <string name="download_item_in_progress_description_preparing">Elŝuto preparata…</string>
   <!--
     Description of an in progress download item, displayed in the downloads list.
     %1$s is the current file size that has been downloaded.
@@ -1518,12 +1605,33 @@
     %3$s is the amount of time remaining to complete the download.
   -->
   <string name="download_item_in_progress_description" moz:removedIn="141" tools:ignore="UnusedResources">%1$s / %2$s • restas %3$s</string>
+  <!--
+    Description of an in progress download item, displayed in the downloads list when the download time remaining is known.
+    %1$s is the current file size that has been downloaded.
+    %2$s is the total size of the downloaded file.
+    %3$s is the amount of time remaining to complete the download.
+  -->
+  <string name="download_item_in_progress_description_2">%1$s / %2$s • en %3$s.</string>
+  <!--
+    Description of an in progress download item, displayed in the downloads list when the estimated download time remaining is still being calculated.
+    %1$s is the current file size that has been downloaded.
+    %2$s is the total size of the downloaded file.
+  -->
+  <string name="download_item_in_progress_description_pending">%1$s / %2$s • en atendo</string>
+  <!--
+    Description of a paused download item, displayed in the downloads list.
+    %1$s is the current file size that has been downloaded.
+    %2$s is the total size of the downloaded file.
+  -->
+  <string name="download_item_paused_description">%1$s / %2$s • en paŭzo</string>
   <!-- Text to indicate that an in progress download is paused. -->
   <string name="download_item_status_paused" moz:removedIn="141" tools:ignore="UnusedResources">paŭzigita</string>
   <!-- Text to indicate that the download speed of an in progress download is being calculated. -->
   <string name="download_item_download_speed_pending" moz:removedIn="141" tools:ignore="UnusedResources">farota</string>
   <!-- Text to indicate that a download has failed to download. -->
   <string name="download_item_status_failed">Elŝuto malsukcesa</string>
+  <!-- Text for the snackbar action button to view failed download details. -->
+  <string name="download_failed_snackbar_action_details">Detaloj</string>
   <!-- Placeholder text to indicate that users can use the search bar to search for a download. -->
   <string name="download_search_placeholder">Serĉi en elŝutoj</string>
   <!-- Text to indicate that no downloads match the search query. -->
@@ -1551,7 +1659,7 @@
   -->
   <string name="webcompat_reporter_screen_title">Raporti ne bone funkciantan retejon</string>
   <!-- The description of the Web Compat Reporter feature. %1$s is the name of the app (for example "Firefox"). -->
-  <string name="webcompat_reporter_description">Helpu igi %1$s pli bona por ĉiuj. Laboristoj en Mozilla uzas la informon, kiun vi sendas, por solvi problemojn kun retejoj.</string>
+  <string name="webcompat_reporter_description" moz:removedIn="142" tools:ignore="UnusedResources">Helpu igi %1$s pli bona por ĉiuj. Laboristoj en Mozilla uzas la informon, kiun vi sendas, por solvi problemojn kun retejoj.</string>
   <!-- The text field label of the URL text field. This is displayed above the user-inputted URL. -->
   <string name="webcompat_reporter_label_url">Retadreso</string>
   <!-- The error message of the URL text field when an invalid URL has been entered. -->
@@ -1559,7 +1667,7 @@
   <!-- The label/title of a field in the Web Compat Reporter feature for explaining a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_label_whats_broken_2">Kio ne bone funkcias?</string>
   <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
-  <string name="webcompat_reporter_choose_reason">Elektu kialon</string>
+  <string name="webcompat_reporter_choose_reason" moz:removedIn="142" tools:ignore="UnusedResources">Elektu kialon</string>
   <!-- The error message of the dropdown, prompting the user to select a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_choose_reason_error">Bonvolu elekti kialon</string>
   <!-- The label/title of an optional field in the Web Compat Reporter feature for adding additional information. -->
@@ -1580,14 +1688,30 @@
     Broken site reason text for site slow or not working
   -->
   <string name="webcompat_reporter_reason_slow" moz:removedIn="140" tools:ignore="UnusedResources">La retejo estas malrapida aŭ ne funkcias</string>
+  <!-- Broken site reason text for site doesn’t load -->
+  <string name="webcompat_reporter_reason_load">La retejo ne ŝargiĝas</string>
+  <!-- Broken site reason text for can’t pay, check out or shop -->
+  <string name="webcompat_reporter_reason_checkout">Ne eblas pagi aŭ aĉetumi</string>
   <!-- Broken site reason text for images or videos -->
   <string name="webcompat_reporter_reason_media" moz:removedIn="140" tools:ignore="UnusedResources">Bildoj aŭ video</string>
   <!-- Broken site reason text for buttons, links, and other content -->
   <string name="webcompat_reporter_reason_content" moz:removedIn="140" tools:ignore="UnusedResources">Butonoj, ligiloj kaj aliaj elementoj</string>
   <!-- Broken site reason text for sign in or sign out -->
   <string name="webcompat_reporter_reason_account" moz:removedIn="140" tools:ignore="UnusedResources">Komenco aŭ fino de seanco</string>
+  <!-- Broken site reason text for site is slow -->
+  <string name="webcompat_reporter_reason_slow2">La retejo estas malrapida</string>
+  <!-- Broken site reason text for video isn’t playing or loading -->
+  <string name="webcompat_reporter_reason_media2">Ne eblas vidi filmeton aŭ ŝargi ĝin</string>
+  <!-- Broken site reason text for missing content -->
+  <string name="webcompat_reporter_reason_content2">Mankas enhavo</string>
+  <!-- Broken site reason text for can’t sign in or register -->
+  <string name="webcompat_reporter_reason_account2">Ne eblas komenci seancon aŭ registriĝi</string>
   <!-- Broken site reason text for ad blocker -->
   <string name="webcompat_reporter_reason_ad_blocker" moz:removedIn="140" tools:ignore="UnusedResources">Blokilo de reklamoj</string>
+  <!-- Broken site reason text for site asked to turn off ad blocker -->
+  <string name="webcompat_reporter_reason_turn_off_adblocker">La retejo petas malŝalti la blokilon de reklamoj</string>
+  <!-- Broken site reason text for browser isn’t supported or blocked -->
+  <string name="webcompat_reporter_reason_notsupported">La retumilo ne estas subtenata aŭ ĝi esta blokita</string>
   <!-- Broken site reason text for something else -->
   <string name="webcompat_reporter_reason_other">Io alia</string>
   <!--
@@ -1818,6 +1942,10 @@
   <string name="studies_on">Ŝaltita</string>
   <!-- Summary of studies data on quit preference if it is set to off -->
   <string name="studies_off">Malŝaltita</string>
+  <!-- Toggle if desktop site is turned on -->
+  <string name="browser_feature_desktop_site_on">Ŝaltita</string>
+  <!-- Toggle if desktop site is turned off -->
+  <string name="browser_feature_desktop_site_off">Malŝaltita</string>
   <!-- Category header of a preference that allows a user to alter settings related to web permissions. -->
   <string name="preferences_category_permissions">Permesoj</string>
   <!-- Category header of a preference that allows a user to alter settings related to web content. -->
@@ -2008,7 +2136,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Privata langeto fermita</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Privataj langetoj fermitaj</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Privataj langetoj fermitaj</string>
   <!-- Text shown in snackbar when user erases their private browsing data -->
   <string name="snackbar_private_data_deleted">Datumojn de privata retumo forigitaj</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
@@ -2443,6 +2571,8 @@
   <string name="preferences_passwords_exceptions_remove_all">Forigi ĉiujn esceptojn</string>
   <!-- Hint for search box in passwords list -->
   <string name="preferences_passwords_saved_logins_search_2">Serĉi pasvortojn</string>
+  <!-- Content description for the logins navigation bar back button -->
+  <string name="logins_navigate_back_button_content_description">Malantaŭen</string>
   <!-- The header for the site that a login is for -->
   <string name="preferences_passwords_saved_logins_site">Retejo</string>
   <!-- The header for the username for a login -->
@@ -2756,11 +2886,7 @@
   <string name="synced_tabs_expand_group">Malfaldi grupon de spegulitaj langetoj</string>
   <!-- Content description for collapsing a group of synced tabs. -->
   <string name="synced_tabs_collapse_group">Faldi grupon de spegulitaj langetoj</string>
-  <!--
-    Top Sites
-
-    Title text displayed in the dialog when shortcuts limit is reached.
-  -->
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">Lima kvanto de ŝparvojoj atingita</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">Por aldoni novan ŝparvojon, forigu alian. Longe premu la forigotan retejon kaj elektu forigi.</string>
@@ -2856,6 +2982,8 @@
   -->
   <string name="pocket_stories_header_1" tools:ignore="UnusedResources" moz:removedIn="140">Pensigaj artikoloj</string>
   <!-- Header text for a section on the home screen. -->
+  <string name="pocket_stories_header_2">Artikoloj</string>
+  <!-- Header text for a section on the home screen. -->
   <string name="pocket_stories_categories_header" moz:removedIn="141" tools:ignore="UnusedResources">Artikoloj laŭ kategorio</string>
   <!-- Text of a button allowing users to access an external url for more Pocket recommendations. -->
   <string name="pocket_stories_placeholder_text" moz:removedIn="141" tools:ignore="UnusedResources">Malkovri pli da aferoj</string>
@@ -2896,7 +3024,7 @@
   <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
   <string name="a11y_action_label_wallpaper_collection_learn_more">malfermi ligilon por havi pli da informo pri tiu ĉi kolekto</string>
   <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-  <string name="a11y_action_label_read_article">legi la artikolon</string>
+  <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">legi la artikolon</string>
   <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
   <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">malfermu ligilon por pli da informo</string>
   <!-- Content description for headings announced by accessibility service. %s is the text of the heading. Talkback will announce the text and then speak the word "Heading" indicating to the user that this text is a heading for a section. -->
@@ -3150,9 +3278,9 @@
 
     Text for the protection panel header when the site is secure.
   -->
-  <string name="protection_panel_header_secure">Sekura</string>
+  <string name="protection_panel_header_secure" moz:removedIn="142" tools:ignore="UnusedResources">Sekura</string>
   <!-- Text for the protection panel header when the site is not secure. -->
-  <string name="protection_panel_header_not_secure">Nesekura</string>
+  <string name="protection_panel_header_not_secure" moz:removedIn="142" tools:ignore="UnusedResources">Nesekura</string>
   <!-- Title text for the protection panel banner when the site is not secure. -->
   <string name="protection_panel_banner_not_secure_title">Estu singarda en tiu ĉi retejo</string>
   <!-- Description text for the protection panel banner when the site is not secure. -->
@@ -3174,9 +3302,9 @@
   <!-- Label text for the Enhanced Tracking Protection toggle. -->
   <string name="protection_panel_etp_toggle_label">Plibonigita protekto kontraŭ spurado</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
-  <string name="protection_panel_etp_toggle_enabled_description">Se io misfunkcias en tiu ĉi retejo, provu malŝalti protektojn.</string>
+  <string name="protection_panel_etp_toggle_enabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Se io misfunkcias en tiu ĉi retejo, provu malŝalti protektojn.</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
-  <string name="protection_panel_etp_toggle_disabled_description">Protektoj estas MALAKTIVAJ. Ni sugestas reaktivigi ilin.</string>
+  <string name="protection_panel_etp_toggle_disabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Protektoj estas MALAKTIVAJ. Ni sugestas reaktivigi ilin.</string>
   <!--
     Text for displaying the total number of trackers blocked in the protection panel.
     %d is a placeholder for the number of trackers blocked.
@@ -3185,7 +3313,7 @@
   <!-- Text for when no trackers have been blocked. -->
   <string name="protection_panel_no_trackers_blocked">Neniu spurilo trovita</string>
   <!-- Link text to navigate to privacy and security settings from the protection panel. -->
-  <string name="protection_panel_privacy_and_security_settings">Privatecaj kaj sekurecaj agordoj</string>
+  <string name="protection_panel_privacy_and_security_settings" moz:removedIn="142" tools:ignore="UnusedResources">Privatecaj kaj sekurecaj agordoj</string>
   <!-- Title text for the protection panel permissions section. -->
   <string name="protection_panel_permissions_title">Permesoj</string>
   <!--
@@ -3216,7 +3344,7 @@
   <string name="connection_security_panel_not_secure">Nesekura konekto</string>
   <!--
     Text for the connection security panel to indicate who the certificate was verified by.
-    %s is a placeholder for the name of the certificate authority that verified the ticket
+    %s is a placeholder for the name of the certificate authority that issued the certificate.
   -->
   <string name="connection_security_panel_verified_by">Kontrolita de %s</string>
   <!--
@@ -3449,14 +3577,8 @@
   <string name="certificate_warning_push_notification_pnw2_message" tools:ignore="UnusedResources">Ĝisdatigu antaŭ la 14a de marto por povi plu uzi aldonaĵojn kaj aliajn trajtojn.</string>
   <!-- Push notification message about old Firefox version -->
   <string name="certificate_warning_push_notification_pnw3_message" tools:ignore="UnusedResources">Kelkaj trajtoj ĉesos funkcii morgaŭ.</string>
-  <!--
-    TextField Design System Component
+  <!-- TextField Design System Component -->
 
-    The default content description for the eye trailing icon button in TextField
-  -->
-  <string name="text_field_eye_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Montri kaŝitan tekston</string>
-  <!-- The default content description for the cross trailing icon button in TextField -->
-  <string name="text_field_cross_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Viŝi tekston</string>
   <!--
     Setup checklist feature
 
@@ -3575,4 +3697,22 @@
   <string name="private_tab_cfr_negative">Ne, dankon</string>
   <!-- Positive button text for the contextual feature recommendation (CFR) enabling screen lock for private tabs -->
   <string name="private_tab_cfr_positive">Bloki langetojn</string>
+  <!--
+    Review prompt
+
+    Title for a prompt asking the user about their experience using the app. %1$s is the name of the app (for example "Firefox").
+  -->
+  <string name="review_prompt_pre_prompt_header">Kion vi pensas pri %1$s?</string>
+  <!-- Label for a button negatively rating the user's experience with the app -->
+  <string name="review_prompt_negative_button">Mi havas problemojn</string>
+  <!-- Label for a button positively rating the user's experience with the app -->
+  <string name="review_prompt_positive_button">Ĝi bonegas!</string>
+  <!-- Title for a prompt asking the user to rate the app on Google Play Store. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="review_prompt_rate_header">Dankon pro via amo al %1$s. Ĉu vi havas momenton por disvastigi tiun amon per takso?</string>
+  <!-- Label for a button proceeding to rate the app on Google Play Store. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="review_prompt_rate_button">Taski %1$s en la Play Store</string>
+  <!-- Title for a prompt asking the user send us feedback. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="review_prompt_feedback_header">Ni bedaŭras, ke vi havu problemojn. Rakontu al kiel ni povas plibonigi %1$s.</string>
+  <!-- Label for a button opening a feedback forum -->
+  <string name="review_prompt_feedback_button">Komenti</string>
 </resources>

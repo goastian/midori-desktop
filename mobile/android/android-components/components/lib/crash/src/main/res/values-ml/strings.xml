@@ -19,11 +19,17 @@
   <!-- Label of notification showing that the crash handling service is gathering the crash data. -->
   <string name="mozac_lib_gathering_crash_data_in_progress">തകർച്ച ദത്ത പിരിക്കുന്നു</string>
   <!-- Label of notification showing that the telemetry service is gathering the crash data. -->
-  <string name="mozac_lib_gathering_crash_telemetry_in_progress">തകർച്ച നിരീക്ഷണം ദത്ത പിരിക്കുന്നു </string>
+  <string name="mozac_lib_gathering_crash_telemetry_in_progress">തകർച്ച നിരീക്ഷണം ദത്ത പിരിക്കുന്നു</string>
   <!-- Title of the activity that shows the list of past crashes (similar to about:crashes) -->
   <string name="mozac_lib_crash_activity_title">തകരാർ വിവരണം</string>
   <!-- Text shown instead of crash list if no crashes have been submitted yet -->
   <string name="mozac_lib_crash_no_crashes">തകരാർ വിവരങ്ങൾ സമര്‍പ്പിച്ചിട്ടില്ല.</string>
   <!-- Text link that will show an app chooser to share a crash report with a third-party app (e.g. gmail) -->
   <string name="mozac_lib_crash_share">പങ്കിടുക</string>
+  <!-- String for Ask before sending crash reports radio button in Data Collection Screen -->
+  <string name="crash_reporting_ask">അയയ്ക്കുന്നതിനു മുമ്പ് ചോദിക്കുക</string>
+  <!-- String for Send crash reports automatically radio button in Data Collection Screen -->
+  <string name="crash_reporting_auto">തന്നെത്താനെ അയയ്ക്കുക</string>
+  <!-- String for Never sending crash reports radio button in Data Collection Screen -->
+  <string name="crash_reporting_never">ഒരിക്കലും അയയ്ക്കരുതു്</string>
 </resources>

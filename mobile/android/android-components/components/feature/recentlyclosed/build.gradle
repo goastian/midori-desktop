@@ -40,13 +40,13 @@ android {
 }
 
 dependencies {
-    implementation project(':concept-engine')
+    implementation project(':components:concept-engine')
 
-    implementation project(':browser-state')
-    implementation project(':browser-session-storage')
+    implementation project(':components:browser-state')
+    implementation project(':components:browser-session-storage')
 
-    implementation project(':support-ktx')
-    implementation project(':support-base')
+    implementation project(':components:support-ktx')
+    implementation project(':components:support-base')
 
     implementation libs.kotlin.coroutines
 
@@ -54,19 +54,22 @@ dependencies {
     implementation libs.androidx.lifecycle.livedata
     ksp libs.androidx.room.compiler
 
-    testImplementation project(':feature-session')
-    testImplementation project(':support-test')
-    testImplementation project(':support-test-libstate')
+    testImplementation project(':components:feature-session')
+    testImplementation project(':components:support-test')
+    testImplementation project(':components:support-test-libstate')
 
     testImplementation libs.androidx.test.core
     testImplementation libs.androidx.test.junit
     testImplementation libs.testing.coroutines
-    testImplementation libs.junit.vintage
+    testImplementation platform(libs.junit.bom)
+    testImplementation libs.junit4
+    testRuntimeOnly libs.junit.vintage
+    testRuntimeOnly libs.junit.platform.launcher
     testImplementation libs.testing.robolectric
     testImplementation libs.kotlin.coroutines
     testImplementation libs.testing.coroutines
 
-    androidTestImplementation project(':support-test-fakes')
+    androidTestImplementation project(':components:support-test-fakes')
 
     androidTestImplementation libs.androidx.test.core
     androidTestImplementation libs.androidx.test.runner

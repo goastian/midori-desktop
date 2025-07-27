@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">మరిన్ని ఎంపికలు</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">అంతరంగిక విహరణను చేతనించు</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">అంతరంగిక విహరణను చేతనించు</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">అంతరంగిక విహరణను అచేతనించు</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">అంతరంగిక విహరణను అచేతనించు</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">వెతకండి లేదా చిరునామా ఇవ్వండి</string>
   <!-- No Open Tabs Message Description -->
@@ -48,7 +48,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">మీరు అంతరంగిక ట్యాబులను మూసివేసినప్పుడు లేదా అనువర్తనం నుండి నిష్క్రమించినప్పుడు మీ వెతుకుడు, విహరణ చరిత్రను %1$s తుడిచివేస్తుంది. ఇది మిమ్మల్ని వెబ్‌సైట్లకు లేదా మీ ఇంటర్నెట్ సర్వీస్ ప్రొవైడర్‌కు అనామకంగా చేయనప్పటికీ, ఈ పరికరాన్ని వాడే ఇతరుల నుండి మీ ఆన్‌లైన్ కార్యకలాపాన్ని అంతరంగికంగా ఉంచుకోవడంలో తోడ్పడుతుంది.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">మీరు అంతరంగిక ట్యాబులను మూసివేసినప్పుడు లేదా అనువర్తనం నుండి నిష్క్రమించినప్పుడు మీ వెతుకుడు, విహరణ చరిత్రను %1$s తుడిచివేస్తుంది. ఇది మిమ్మల్ని వెబ్‌సైట్లకు లేదా మీ ఇంటర్నెట్ సర్వీస్ ప్రొవైడర్‌కు అనామకంగా చేయనప్పటికీ, ఈ పరికరాన్ని వాడే ఇతరుల నుండి మీ ఆన్‌లైన్ కార్యకలాపాన్ని అంతరంగికంగా ఉంచుకోవడంలో తోడ్పడుతుంది.</string>
   <string name="private_browsing_common_myths">అంతరంగిక విహారణ గురించి సామాన్య అపోహలు</string>
   <!-- Text for the positive action button -->
   <string name="open_in_app_cfr_positive_button_text">అమరికలకు వెళ్లు</string>
@@ -166,9 +166,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">%1$sలో కొత్తవి</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">%1$sలో కొత్తవి</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">డెస్క్‌టాప్ సైటుకి మారండి</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">డెస్క్‌టాప్ సైటుకి మారండి</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
   <string name="browser_menu_tools" moz:removedIn="141" tools:ignore="UnusedResources">పనిముట్లు</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
@@ -328,7 +328,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">అనువాదాలు</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">డేటా ఎంపికలు</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">డేటా ఎంపికలు</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">దత్త సేకరణ</string>
   <!-- Preference for developers -->
@@ -352,7 +352,7 @@
   <!-- Preference for open links in third party apps always open in apps option -->
   <string name="preferences_open_links_in_apps_always">ఎల్లప్పుడూ</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">బయటి దింపుకోలు నిర్వాహకి</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">బయటి దింపుకోలు నిర్వాహకి</string>
   <!-- Preference for notifications -->
   <string name="preferences_notifications">గమనింపులు</string>
   <!--
@@ -360,9 +360,9 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">అవసరం</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">అవసరం</string>
   <!-- The title of the optional permissions section from addon's permissions screen -->
-  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">ఐచ్ఛికం</string>
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">ఐచ్ఛికం</string>
   <!-- Button caption to confirm the add-on collection configuration -->
   <string name="customize_addon_collection_ok">సరే</string>
   <!-- Button caption to abort the add-on collection configuration -->
@@ -447,7 +447,7 @@
   <!-- Text displayed when there are no exceptions, with learn more link that brings users to a tracking protection SUMO page -->
   <string name="exceptions_empty_message_learn_more_link">ఇంకా తెలుసుకోండి</string>
   <!-- Preference switch for usage and technical learn more link -->
-  <string name="preference_usage_data_learn_more">ఇంకా తెలుసుకోండి</string>
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">ఇంకా తెలుసుకోండి</string>
   <!-- Title for studies preferences -->
   <string name="preference_experiments_2">అధ్యయనాలు</string>
   <!-- Summary for studies preferences -->
@@ -957,7 +957,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">అంతరంగిక ట్యాబు మూసివేయబడింది</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">అంతరంగిక ట్యాబులు మూసివేయబడ్డాయి</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">అంతరంగిక ట్యాబులు మూసివేయబడ్డాయి</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">చర్య రద్దుచేయి</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -1546,4 +1546,5 @@
   <string name="certificate_warning_homepage_card_update_now_button" tools:ignore="UnusedResources">ఇప్పుడే తాజాకరించు</string>
   <!-- Push notification title about old Firefox version. Note: The word "Firefox" should NOT be translated. -->
   <string name="certificate_warning_push_notification_pnw2_title" tools:ignore="BrandUsage,UnusedResources">మీరు Firefox యొక్క పాత వెర్షన్ వాడుతున్నారు</string>
+  <!-- TextField Design System Component -->
 </resources>

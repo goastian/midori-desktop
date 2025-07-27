@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">هەڵبژاردەی زیاتر</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">گەڕانی تایبەتی شاراوە کارابکە</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">گەڕانی تایبەتی شاراوە کارابکە</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">گەڕانی تایبەتی شاراوە ناچالاک بکە</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">گەڕانی تایبەتی شاراوە ناچالاک بکە</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">بگەڕێ یان ناونیشان بنووسە</string>
   <!-- No Open Tabs Message Description -->
@@ -200,7 +200,7 @@
   <!-- Preference for language -->
   <string name="preferences_language">زمان</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">هەڵبژاردنەکانی زانیاری</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">هەڵبژاردنەکانی زانیاری</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">کۆمەڵی زانیاری</string>
   <!-- Preference for developers -->
@@ -224,7 +224,7 @@
   <!-- Preference for open links in third party apps -->
   <string name="preferences_open_links_in_apps">کردنەوەی بەستەر لە بەرنامەکان</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">بەڕێوەبردنی داگرتنی دەرەکی</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">بەڕێوەبردنی داگرتنی دەرەکی</string>
   <!-- Preference for notifications -->
   <string name="preferences_notifications">ئاگانامەکان</string>
   <!-- Button caption to confirm the add-on collection configuration -->
@@ -739,7 +739,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">بازدەری تایبەت داخرا</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">بازدەرە تایبەتەکان داخران</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">بازدەرە تایبەتەکان داخران</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">گێڕانەوە</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -1102,4 +1102,6 @@
   <!-- Content description for privacy content close button -->
   <string name="privacy_content_close_button_content_description">داخستن</string>
   <!-- Translations feature -->
+
+  <!-- TextField Design System Component -->
 </resources>

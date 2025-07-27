@@ -18,7 +18,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.compose.ui.unit.dp
@@ -67,7 +68,7 @@ import mozilla.components.feature.top.sites.TopSite
 import mozilla.components.feature.top.sites.TopSitesFeature
 import mozilla.components.lib.state.ext.consumeFlow
 import mozilla.components.lib.state.ext.consumeFrom
-import mozilla.components.lib.state.ext.observeAsState
+import mozilla.components.lib.state.ext.flow
 import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
 import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.BrowserDirection
@@ -106,7 +107,6 @@ import org.mozilla.fenix.ext.updateMicrosurveyPromptForConfigurationChange
 import org.mozilla.fenix.home.bookmarks.BookmarksFeature
 import org.mozilla.fenix.home.bookmarks.controller.DefaultBookmarksController
 import org.mozilla.fenix.home.ext.showWallpaperOnboardingDialog
-import org.mozilla.fenix.home.pocket.PocketRecommendedStoriesCategory
 import org.mozilla.fenix.home.pocket.controller.DefaultPocketStoriesController
 import org.mozilla.fenix.home.privatebrowsing.controller.DefaultPrivateBrowsingController
 import org.mozilla.fenix.home.recentsyncedtabs.RecentSyncedTabFeature
@@ -281,7 +281,6 @@ class HomeFragment : Fragment() {
     ): View {
         // DO NOT ADD ANYTHING ABOVE THIS getProfilerTime CALL!
         val profilerStartTime = requireComponents.core.engine.profiler?.getProfilerTime()
-
         _binding = FragmentHomeBinding.inflate(inflater, container, false)
         val activity = activity as HomeActivity
         val components = requireComponents
@@ -293,30 +292,17 @@ class HomeFragment : Fragment() {
             orientation = requireContext().resources.configuration.orientation,
         )
 
-        components.appStore.dispatch(AppAction.ModeChange(browsingModeManager.mode))
-
         lifecycleScope.launch(IO) {
-            // Show Merino content recommendations.
-            val showContentRecommendations = requireContext().settings().showContentRecommendations
-            // Show Pocket recommended stories.
-            val showPocketRecommendationsFeature =
-                requireContext().settings().showPocketRecommendationsFeature
-            // Show sponsored stories if recommended stories are enabled.
-            val showSponsoredStories = requireContext().settings().showPocketSponsoredStories &&
-                (showContentRecommendations || showPocketRecommendationsFeature)
+            val settings = requireContext().settings()
+            val showStories = settings.showPocketRecommendationsFeature
+            val showSponsoredStories = showStories && settings.showPocketSponsoredStories
 
-            if (showContentRecommendations) {
+            if (showStories) {
                 components.appStore.dispatch(
                     ContentRecommendationsAction.ContentRecommendationsFetched(
                         recommendations = components.core.pocketStoriesService.getContentRecommendations(),
                     ),
                 )
-            } else if (showPocketRecommendationsFeature) {
-                val categories = components.core.pocketStoriesService.getStories()
-                    .groupBy { story -> story.category }
-                    .map { (category, stories) -> PocketRecommendedStoriesCategory(category, stories) }
-
-                components.appStore.dispatch(ContentRecommendationsAction.PocketStoriesCategoriesChange(categories))
             } else {
                 components.appStore.dispatch(ContentRecommendationsAction.PocketStoriesClean)
             }
@@ -326,14 +312,12 @@ class HomeFragment : Fragment() {
                     components.appStore.dispatch(
                         ContentRecommendationsAction.SponsoredContentsChange(
                             sponsoredContents = components.core.pocketStoriesService.getSponsoredContents(),
-                            showContentRecommendations = showContentRecommendations,
                         ),
                     )
                 } else {
                     components.appStore.dispatch(
                         ContentRecommendationsAction.PocketSponsoredStoriesChange(
                             sponsoredStories = components.core.pocketStoriesService.getSponsoredStories(),
-                            showContentRecommendations = showContentRecommendations,
                         ),
                     )
                 }
@@ -866,9 +850,13 @@ class HomeFragment : Fragment() {
             initTabStrip()
         }
 
-        PrivateBrowsingButtonView(binding.privateBrowsingButton, browsingModeManager) { newMode ->
+        PrivateBrowsingButtonView(
+            button = binding.privateBrowsingButton,
+            showPrivateBrowsingButton = !requireContext().settings().enableHomepageAsNewTab,
+            browsingModeManager = browsingModeManager,
+        ) { newMode ->
             sessionControlInteractor.onPrivateModeButtonClicked(newMode)
-            Homepage.privateModeIconTapped.record(mozilla.telemetry.glean.private.NoExtras())
+            Homepage.privateModeIconTapped.record(NoExtras())
         }
 
         consumeFrom(requireComponents.core.store) {
@@ -884,7 +872,7 @@ class HomeFragment : Fragment() {
         toolbarView.updateTabCounter(requireComponents.core.store.state)
 
         val focusOnAddressBar = bundleArgs.getBoolean(FOCUS_ON_ADDRESS_BAR) ||
-            FxNimbus.features.oneClickSearch.value().enabled
+                FxNimbus.features.oneClickSearch.value().enabled
 
         if (focusOnAddressBar) {
             // If the fragment gets recreated by the activity, the search fragment might get recreated as well. Changing
@@ -969,13 +957,19 @@ class HomeFragment : Fragment() {
             setContent {
                 FirefoxTheme {
                     val settings = LocalContext.current.settings()
-                    val appState by components.appStore.observeAsState(
-                        initialValue = components.appStore.state,
-                    ) { it }
+                    val appState = with(components.appStore) {
+                        remember {
+                            // Ignore AppState changes where only the browsing mode differs.
+                            // This avoids unnecessary recompositions triggered by theme/browsing mode transitions,
+                            // which are handled outside Compose via ThemeManager recreating the activity.
+                            // Without this, transient states can cause visual glitches (e.g., incorrect theme/frame)
+                            flow().distinctUntilChanged { old, new -> old.mode != new.mode }
+                        }.collectAsState(state)
+                    }
 
                     Homepage(
                         state = HomepageState.build(
-                            appState = appState,
+                            appState = appState.value,
                             settings = settings,
                             browsingModeManager = browsingModeManager,
                         ),
@@ -1000,7 +994,7 @@ class HomeFragment : Fragment() {
 
     private fun onFirstHomepageFrameDrawn() {
         with(requireContext().components.settings) {
-            if (!featureRecommended && !showHomeOnboardingDialog && showWallpaperOnboardingDialog(featureRecommended)) {
+            if (!featureRecommended && showWallpaperOnboardingDialog(featureRecommended)) {
                 featureRecommended = sessionControlInteractor.showWallpapersOnboardingDialog(
                     requireContext().components.appStore.state.wallpaperState,
                 )
@@ -1097,7 +1091,9 @@ class HomeFragment : Fragment() {
         _bottomToolbarContainerView = null
         _binding = null
 
-        bundleArgs.clear()
+        if (!requireContext().components.appStore.state.isPrivateScreenLocked) {
+            bundleArgs.clear()
+        }
         lastAppliedWallpaperName = Wallpaper.DEFAULT
     }
 

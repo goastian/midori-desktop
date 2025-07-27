@@ -24,8 +24,9 @@ import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.home.mars.MARSUseCases
 import org.mozilla.fenix.home.pocket.PocketImpression
 import org.mozilla.fenix.home.pocket.PocketRecommendedStoriesCategory
-import org.mozilla.fenix.home.pocket.view.POCKET_CATEGORIES_SELECTED_AT_A_TIME_COUNT
 import org.mozilla.fenix.utils.Settings
+
+private const val POCKET_CATEGORIES_SELECTED_AT_A_TIME_COUNT = 8
 
 /**
  * Contract for how all user interactions with the Pocket stories feature are to be handled.
@@ -62,20 +63,6 @@ interface PocketStoriesController {
      * of the clicked story.
      */
     fun handleStoryClicked(storyClicked: PocketStory, storyPosition: Triple<Int, Int, Int>)
-
-    /**
-     * Callback for when the "Learn more" link is clicked.
-     *
-     * @param link URL clicked.
-     */
-    fun handleLearnMoreClicked(link: String)
-
-    /**
-     * Callback for when the "Discover more" link is clicked.
-     *
-     * @param link URL clicked.
-     */
-    fun handleDiscoverMoreClicked(link: String)
 }
 
 /**
@@ -253,15 +240,5 @@ internal class DefaultPocketStoriesController(
                 }
             }
         }
-    }
-
-    override fun handleLearnMoreClicked(link: String) {
-        homeActivity.openToBrowserAndLoad(link, true, BrowserDirection.FromHome)
-        Pocket.homeRecsLearnMoreClicked.record(NoExtras())
-    }
-
-    override fun handleDiscoverMoreClicked(link: String) {
-        homeActivity.openToBrowserAndLoad(link, true, BrowserDirection.FromHome)
-        Pocket.homeRecsDiscoverClicked.record(NoExtras())
     }
 }

@@ -15,78 +15,96 @@ import mozilla.components.support.ktx.android.view.findViewInHierarchy
 import kotlin.math.roundToInt
 
 /**
- * A [CoordinatorLayout.Behavior] implementation that allows the [EngineView] to automatically
- * size itself in relation to the Y translation of the [ScrollableToolbar].
+ * A modification of [mozilla.components.ui.widgets.behavior.EngineViewClippingBehavior] that supports two toolbars.
  *
- * This is useful for dynamic [ScrollableToolbar]s ensuring the web content is displayed immediately
- * below / above the toolbar even when that is animated.
+ * This behavior adjusts the top margin of the [EngineView] parent to ensure that tab content is displayed
+ * right below the top toolbar when it is translating upwards. Additionally, it modifies the
+ * [EngineView.setVerticalClipping] when the bottom toolbar is translating downwards, ensuring that page content, like
+ * banners or webpage toolbars, is displayed right above the app toolbar.
  *
- * @param context [Context] used for various Android interactions
- * @param attrs XML set attributes configuring this
- * @param engineViewParent NestedScrollingChild parent of the [EngineView]
- * @param toolbarHeight size of [ScrollableToolbar] when it is placed above the [EngineView]
- * @param toolbarPosition whether the [ScrollableToolbar] is placed above or below the [EngineView]
+ * This class could be a candidate to replace the original and be integrated into A-C:
+ * https://bugzilla.mozilla.org/show_bug.cgi?id=1884835
+ *
+ * @param context [Context] for various Android interactions.
+ * @param attrs XML attributes configuring this behavior.
+ * @param engineViewParent The parent [View] of the [EngineView].
+ * @param topToolbarHeight The height of a [ScrollableToolbar] placed above the [EngineView].
+ * @param bottomToolbarHeight The height of a [ScrollableToolbar] placed below the [EngineView].
  */
+
 class EngineViewClippingBehavior(
-    context: Context?,
+    context: Context,
     attrs: AttributeSet?,
-    engineViewParent: View,
-    toolbarHeight: Int,
-    toolbarPosition: ToolbarPosition,
+    private val engineViewParent: View,
+    private val topToolbarHeight: Int,
+    private val bottomToolbarHeight: Int,
 ) : CoordinatorLayout.Behavior<View>(context, attrs) {
 
-    @VisibleForTesting
-    internal val engineView = engineViewParent.findViewInHierarchy { it is EngineView } as EngineView?
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal var engineView = engineViewParent.findViewInHierarchy { it is EngineView } as EngineView?
 
-    @VisibleForTesting
-    internal var toolbarChangedAction: (Float) -> Unit?
-    private val bottomToolbarChangedAction = { newToolbarTranslationY: Float ->
-        if (!newToolbarTranslationY.isNaN()) {
-            engineView?.setVerticalClipping(-newToolbarTranslationY.roundToInt())
-        }
-    }
-    private val topToolbarChangedAction = { newToolbarTranslationY: Float ->
-        // the top toolbar is translated upwards when collapsing-> all values received are 0 or negative
-        engineView?.let {
-            it.setVerticalClipping(newToolbarTranslationY.roundToInt())
-            // Need to add the toolbarHeight to effectively place the engineView below the toolbar.
-            engineViewParent.translationY = newToolbarTranslationY + toolbarHeight
-        }
-    }
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal var recentBottomToolbarTranslation: Float = 0f
+        set(value) { field = value.coerceIn(0f, bottomToolbarHeight.toFloat()) }
 
-    init {
-        toolbarChangedAction = if (toolbarPosition == ToolbarPosition.TOP) {
-            topToolbarChangedAction
-        } else {
-            bottomToolbarChangedAction
-        }
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    internal var recentTopToolbarTranslation: Float = 0f
+        set(value) { field = value.coerceIn(-topToolbarHeight.toFloat(), 0f) }
 
-        toolbarChangedAction.invoke(0f)
-    }
+    private val hasTopToolbar = topToolbarHeight > 0
 
     override fun layoutDependsOn(parent: CoordinatorLayout, child: View, dependency: View): Boolean {
         if (dependency is ScrollableToolbar) {
-            applyUpdatesDependentViewChanged(dependency)
+            applyUpdatesDependentViewChanged(parent, dependency)
             return true
         }
 
         return super.layoutDependsOn(parent, child, dependency)
     }
 
-    /**
-     * Apply vertical clipping to [EngineView]. This requires [EngineViewClippingBehavior] to be set
-     * in/on the [EngineView] or its parent. Must be a direct descending child of [CoordinatorLayout].
-     */
+    // This method will be sequentially called with BrowserToolbar and ToolbarContainerView as dependencies when the
+    // navbar feature is on. Each call adjusts the translations of both elements and saves the most recent ones for
+    // future calls, ensuring that translations remain in sync. This is crucial, especially in cases where the toolbars
+    // have different sizes: as the top toolbar moves up, the bottom content clipping should be adjusted at twice the
+    // speed to compensate for the increased parent view height. However, once the top toolbar is completely hidden, the
+    // bottom content clipping should then move at the normal speed.
     @VisibleForTesting
-    internal fun applyUpdatesDependentViewChanged(dependency: View) {
-        toolbarChangedAction.invoke(dependency.translationY)
-    }
-}
+    internal fun applyUpdatesDependentViewChanged(parent: CoordinatorLayout, dependency: View) {
+        // Added NaN check for translationY as a precaution based on historical issues observed in
+        // [https://bugzilla.mozilla.org/show_bug.cgi?id=1823306]. This check aims to prevent similar issues, as
+        // confirmed by the test. Further investigation might be needed to identify all possible causes of NaN values.
+        if (dependency.translationY.isNaN()) {
+            return
+        }
 
-/**
- * Where the toolbar is placed on the screen.
- */
-enum class ToolbarPosition {
-    TOP,
-    BOTTOM,
+        val dependantAtTop = dependency.top < parent.height / 2
+        if (dependantAtTop) {
+            recentTopToolbarTranslation = dependency.translationY
+        } else {
+            recentBottomToolbarTranslation = dependency.translationY
+        }
+
+        engineView?.let {
+            if (hasTopToolbar) {
+                // Here we are adjusting the vertical position of
+                // the engine view container to be directly under
+                // the toolbar. The top toolbar is shifting up, so
+                // its translation will be either negative or zero.
+                // It might be safe to use the child view here, but the original
+                // implementation was adjusting the size of the parent passed
+                // to the class directly, and I feel cautious to change that
+                // considering possible side effects.
+                engineViewParent.translationY = recentTopToolbarTranslation + topToolbarHeight
+            }
+
+            // We want to position the engine view popup content
+            // right above the bottom toolbar when the toolbar
+            // is being shifted down. The top of the bottom toolbar
+            // is either positive or zero, but for clipping
+            // the values should be negative because the baseline
+            // for clipping is bottom toolbar height.
+            val contentBottomClipping = recentTopToolbarTranslation - recentBottomToolbarTranslation
+            it.setVerticalClipping(contentBottomClipping.roundToInt())
+        }
+    }
 }

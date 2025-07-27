@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://schemas.android.com/apk/res-auto">
   <!-- Description for privacy add-on permission. -->
   <string name="mozac_feature_addons_permissions_privacy_description">Чтение и изменение настроек приватности</string>
   <!-- Description for all_urls add-on permission. -->
@@ -84,12 +84,68 @@
   <string name="mozac_feature_addons_permissions_user_scripts_description">Разрешить непроверенным сторонним скриптам доступ к вашим данным</string>
   <!-- The text shown when an extension requests the userScripts permission, near the usual description of the userScripts permission -->
   <string name="mozac_feature_addons_permissions_user_scripts_extra_warning">Непроверенные скрипты могут представлять угрозу безопасности и конфиденциальности. Запускайте скрипты только из расширений или источников, которым вы доверяете.</string>
+  <!-- The sentence used when the extension has data collection permissions. %1$s is a formatted list of permissions. -->
+  <string name="mozac_feature_addons_permissions_required_data_collection_description" moz:removedIn="141" tools:ignore="UnusedResources">Разработчик сообщает, что это расширение собирает: %1$s.</string>
+  <!-- The sentence used when the extension has data collection permissions. %1$s is a formatted list of permissions. -->
+  <string name="mozac_feature_addons_permissions_required_data_collection_description_2">Разработчик сообщает, что это расширение собирает: %1$s</string>
+  <!-- The sentence used when the developer of an extension has explicitly stated that they do not collect any data collection. -->
+  <string name="mozac_feature_addons_permissions_none_required_data_collection_description">Разработчик сообщает, что это расширение не требует сбора данных.</string>
+  <!-- The sentence used when the extension requests new data collection permissions. %1$s is a formatted list of permissions. -->
+  <string name="mozac_feature_addons_permissions_data_collection_optional_description">Разработчик сообщает, что расширение хочет собирать: %1$s</string>
   <!-- Description for devtools permission. -->
   <string name="mozac_feature_addons_permissions_devtools_description">Расширение доступа инструментов разработчика к вашим данным в открытых вкладках</string>
   <!-- Description for text button that expands the list of domain permissions -->
   <string name="mozac_feature_addons_permissions_show_all_sites">Показать все сайты</string>
   <!-- Description for text button that hides the majority of the list of domain permissions -->
   <string name="mozac_feature_addons_permissions_show_fewer_sites">Показать меньше сайтов</string>
+  <!-- Short description for the authenticationInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_authenticationInfo_short_description">информация для аутентификации</string>
+  <!-- Short description for the bookmarksInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_bookmarksInfo_short_description">закладки</string>
+  <!-- Short description for the browsingActivity data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_browsingActivity_short_description">интернет-активность</string>
+  <!-- Short description for the financialAndPaymentInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_financialAndPaymentInfo_short_description">финансовая и платёжная информация</string>
+  <!-- Short description for the healthInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_healthInfo_short_description">информация о здоровье</string>
+  <!-- Short description for the locationInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_locationInfo_short_description">местоположение</string>
+  <!-- Short description for the personalCommunications data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_personalCommunications_short_description">личные сообщения</string>
+  <!-- Short description for the personallyIdentifyingInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_personallyIdentifyingInfo_short_description">информация, позволяющая установить личность</string>
+  <!-- Short description for the searchTerms data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_searchTerms_short_description">поисковые запросы</string>
+  <!-- Short description for the technicalAndInteraction data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_technicalAndInteraction_short_description">технические данные и данные взаимодействия</string>
+  <!-- Short description for the websiteActivity data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_websiteActivity_short_description">активность на веб-сайтах</string>
+  <!-- Short description for the websiteContent data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_websiteContent_short_description">содержимое веб-сайтов</string>
+  <!-- Long description for the authenticationInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_authenticationInfo_long_description">Предоставлять данные аутентификации разработчику расширения</string>
+  <!-- Long description for the bookmarksInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_bookmarksInfo_long_description">Предоставлять информацию о закладках разработчику расширения</string>
+  <!-- Long description for the browsingActivity data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_browsingActivity_long_description">Предоставлять данные об интернет-активности разработчику расширения</string>
+  <!-- Long description for the financialAndPaymentInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_financialAndPaymentInfo_long_description">Поделиться финансовой и платежной информацией с разработчиком расширения</string>
+  <!-- Long description for the healthInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_healthInfo_long_description">Предоставлять данные о здоровье разработчику расширения</string>
+  <!-- Long description for the locationInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_locationInfo_long_description">Предоставлять информацию о местоположении разработчику расширения</string>
+  <!-- Long description for the personalCommunications data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_personalCommunications_long_description">Предоставлять доступ к личной переписке разработчику расширения</string>
+  <!-- Long description for the personallyIdentifyingInfo data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_personallyIdentifyingInfo_long_description">Поделиться личной информацией с разработчиком расширения</string>
+  <!-- Long description for the searchTerms data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_searchTerms_long_description">Предоставлять поисковые запросы разработчику расширения</string>
+  <!-- Long description for the technicalAndInteraction data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_technicalAndInteraction_long_description">Предоставлять технические данные и данные взаимодействия разработчику расширения</string>
+  <!-- Long description for the websiteActivity data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_websiteActivity_long_description">Предоставлять данные об активности на веб-сайте разработчику расширения</string>
+  <!-- Long description for the websiteContent data collection permission -->
+  <string name="mozac_feature_addons_permissions_data_collection_websiteContent_long_description">Предоставлять содержимое веб-сайта разработчику расширения</string>
   <!-- The version on of add-on. -->
   <string name="mozac_feature_addons_version">Версия</string>
   <!-- The author of an add-on. -->
@@ -109,7 +165,9 @@
   <!-- Indicates the add-on is enabled. -->
   <string name="mozac_feature_addons_settings_on">Включено</string>
   <!-- Indicates the add-on is allowed in private browsing mode. -->
-  <string name="mozac_feature_addons_settings_allow_in_private_browsing">Разрешено в приватных окнах</string>
+  <string name="mozac_feature_addons_settings_allow_in_private_browsing" moz:removedIn="141" tools:ignore="UnusedResources">Разрешено в приватных окнах</string>
+  <!-- Indicates the add-on is allowed in private browsing mode. -->
+  <string name="mozac_feature_addons_settings_allow_in_private_browsing_2">Разрешить расширению работать в приватном просмотре</string>
   <!-- Indicates the add-on is allowed in private browsing mode. -->
   <string name="mozac_feature_addons_settings_run_in_private_browsing">Запуск в приватных окнах</string>
   <!-- This is displayed when the add-on is not allowed to run in private browsing. -->
@@ -133,15 +191,31 @@
   <!-- This is a button to remove (i.e. uninstall) an add-on. -->
   <string name="mozac_feature_addons_remove">Удалить</string>
   <!-- This is a button to report an add-on. -->
-  <string name="mozac_feature_addons_report">Сообщить</string>
+  <string name="mozac_feature_addons_report">Пожаловаться</string>
   <!-- This is the title of a dialog that asks the users if they to install or not an add-on. %1$s is the add-on name. -->
-  <string name="mozac_feature_addons_permissions_dialog_title">Добавить %1$s?</string>
+  <string name="mozac_feature_addons_permissions_dialog_title" moz:removedIn="141" tools:ignore="UnusedResources">Добавить %1$s?</string>
+  <!-- This is the title of a dialog that asks the users if they to install or not an add-on. %1$s is the add-on name. -->
+  <string name="mozac_feature_addons_permissions_dialog_title_2">Добавить %1$s</string>
   <!-- This is the title of a dialog that asks the users to grant optional permissions. %1$s is the add-on name. -->
-  <string name="mozac_feature_addons_optional_permissions_dialog_title">%1$s запрашивает дополнительные разрешения.</string>
+  <string name="mozac_feature_addons_optional_permissions_dialog_title" moz:removedIn="142" tools:ignore="UnusedResources">%1$s запрашивает дополнительные разрешения.</string>
+  <!-- This is the title of a dialog that asks the users to grant optional permissions. %1$s is the add-on name. -->
+  <string name="mozac_feature_addons_optional_permissions_with_data_collection_dialog_title">%1$s запрашивает дополнительные настройки</string>
+  <!-- This is the title of a dialog that asks the users to grant optional data collection permissions only. %1$s is the add-on name. -->
+  <string name="mozac_feature_addons_optional_permissions_with_data_collection_only_dialog_title">%1$s запрашивает дополнительный сбор данных</string>
   <!-- This is the subtitle of a dialog that asks the users if they want to install or not an add-on, the subtitle lists the permissions that this add-on requires, the permissions will dynamically be listed after the ":". -->
-  <string name="mozac_feature_addons_permissions_dialog_subtitle">Оно запрашивает разрешение на:</string>
+  <string name="mozac_feature_addons_permissions_dialog_subtitle" moz:removedIn="141" tools:ignore="UnusedResources">Оно запрашивает разрешение на:</string>
+  <!-- Heading for the permissions section in the add-on install dialog. -->
+  <string name="mozac_feature_addons_permissions_dialog_heading_required_permissions">Требуемые разрешения:</string>
+  <!-- Heading for the data collection permissions section in the add-on install dialog. -->
+  <string name="mozac_feature_addons_permissions_dialog_heading_required_data_collection">Требуемый сбор данных:</string>
+  <!-- Heading for the optional settings section in the add-on install dialog. -->
+  <string name="mozac_feature_addons_permissions_dialog_heading_optional_settings">Необязательные настройки:</string>
   <!-- This is the subtitle of a dialog that asks the users to grant optional permissions, the subtitle lists the permissions that this add-on requests, the permissions will dynamically be listed after the ":". -->
-  <string name="mozac_feature_addons_optional_permissions_dialog_subtitle">Оно хочет разрешение на:</string>
+  <string name="mozac_feature_addons_optional_permissions_dialog_subtitle" moz:removedIn="142" tools:ignore="UnusedResources">Оно хочет разрешение на:</string>
+  <!-- Heading for the permissions section in the optional permissions request dialog. -->
+  <string name="mozac_feature_addons_permissions_dialog_heading_optional_permissions">Новые разрешения:</string>
+  <!-- Heading for the data collection permissions section in the optional permissions request dialog. -->
+  <string name="mozac_feature_addons_permissions_dialog_heading_optional_data_collection">Новый сбор данных:</string>
   <!-- This is a button to add (install) an add-on . -->
   <string name="mozac_feature_addons_permissions_dialog_add">Добавить</string>
   <!-- This is a button to allow the optional permissions requested by an add-on . -->
@@ -150,6 +224,8 @@
   <string name="mozac_feature_addons_permissions_dialog_deny">Отклонить</string>
   <!-- Text link to learn more about permission requests on the add-on permissions dialog . -->
   <string name="mozac_feature_addons_permissions_dialog_learn_more">Подробнее</string>
+  <!-- This is the text for the "technical and interaction" checkbox shown in the add-on permissions dialog. -->
+  <string name="mozac_feature_addons_permissions_dialog_technical_and_interaction_data">Делиться техническими данными и данными взаимодействия с разработчиком расширений</string>
   <!-- This is a button to cancel the add-on installation . -->
   <string name="mozac_feature_addons_permissions_dialog_cancel">Отмена</string>
   <!-- Accessibility content description to install add-on button. %1$s is the add-on name. -->

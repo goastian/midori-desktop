@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- Text for confirmation for a positive action in dialog -->
   <string name="mozac_feature_prompts_ok">හරි</string>
   <!-- Text for confirmation for a negative action in dialog. -->
@@ -105,11 +105,11 @@
   <!-- Pressing this will dismiss the suggested strong password dialog -->
   <string name="mozac_feature_prompts_suggest_strong_password_dismiss">දැන් නොවේ</string>
   <!-- Title for showing the suggest strong password saved confirmation snackbar -->
-  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title">මුරපදය සුරැකිණි</string>
+  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title" tools:ignore="UnusedResources" moz:removedIn="142">මුරපදය සුරැකිණි</string>
   <!-- Title for showing the suggest strong password updated confirmation snackbar -->
   <string name="mozac_feature_prompts_suggest_strong_password_updated_snackbar_title">මුරපදය යාවත්කාල විය</string>
   <!-- Title for showing the username updated confirmation snackbar -->
-  <string name="mozac_feature_prompt_login_snackbar_username_updated">පරිශ්‍රීලක නාමය යාවත්කාලීනයි</string>
+  <string name="mozac_feature_prompt_login_snackbar_username_updated" tools:ignore="UnusedResources" moz:removedIn="142">පරිශ්‍රීලක නාමය යාවත්කාලීනයි</string>
   <!-- Strings shown in a dialog that appear when users try to refresh a certain kind of webpages -->
   <string name="mozac_feature_prompt_repost_title">අඩවියට දත්ත යළි යවන්නද?</string>
   <string name="mozac_feature_prompt_repost_message">මෙම පිටුව නැවුම් කිරීමෙන් ගෙවීමක් යැවීම හෝ අදහසක් පළ කිරීම වැනි මෑත ක්‍රියාමාර්ග දෙවරක් අනුපිටපත් විය හැකිය.</string>
@@ -160,7 +160,7 @@
   <!-- Title of the Identity Credential privacy policy dialog title. The %1$s will be replaced with the name of the provider. -->
   <string name="mozac_feature_prompts_identity_credentials_privacy_policy_title">පිවිසුම් ප්‍රතිපාදකයක් ලෙස %1$s යොදාගන්න</string>
   <!-- Title of the Identity Credential privacy policy dialog description. The %1$s will be replaced with the name of the provider, %2$s will be replaced with the account, %3$s will be replaced with the privacy policy url and  %4$s will be replaced with the terms of service. -->
-  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote"> %2$s ගිණුමක් සමඟින් %1$s වෙත පිවිසීමෙන් ඔවුන්ගේ &lt;a href="%4$s"&gt;සේවාවේ නියම&lt;/a&gt; සහ &lt;a href="%3$s"&gt;රහස්‍යතා ප්‍රතිපත්තියට&lt;/a&gt; යටත් වේ</string>
+  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote"><![CDATA[%2$s ගිණුමක් සමඟින් %1$s වෙත පිවිසීමෙන් ඔවුන්ගේ <a href=\"%4$s\">සේවාවේ නියම</a> සහ <a href=\"%3$s\">රහස්‍යතා ප්‍රතිපත්තියට</a> යටත් වේ]]></string>
   <!-- Text for the positive button of the Identity Credential dialogs. -->
   <string name="mozac_feature_prompts_identity_credentials_continue">ඉදිරියට</string>
   <!-- Text for the cancel button of the Identity Credential dialogs. -->

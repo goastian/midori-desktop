@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Basqa variantlar</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Jeke kórinisti iske túsiriw</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Jeke kórinisti iske túsiriw</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Jeke kórinisti óshiriw</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Jeke kórinisti óshiriw</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">Mánzildi izleń yamasa kirgiziń</string>
   <!-- Placeholder text shown in the search bar before a user enters text for a general engine -->
@@ -50,7 +50,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s izlew hám kóriw tariyxın jeke betlerdi japqanıńızda yamasa baǵdarlamadan shıqqanıńızda óshiredi. Bul sizdi veb-saytlar yamasa internet-provayderlar ushın anonim qılmaydı, tek ǵana usı qurılmanı qollanatuǵın basqa adamlardan óz háreketlerińizdiń internet tarmaǵında qupıyalıǵıńızdı saqlawdı jeńillestiredi.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s izlew hám kóriw tariyxın jeke betlerdi japqanıńızda yamasa baǵdarlamadan shıqqanıńızda óshiredi. Bul sizdi veb-saytlar yamasa internet-provayderlar ushın anonim qılmaydı, tek ǵana usı qurılmanı qollanatuǵın basqa adamlardan óz háreketlerińizdiń internet tarmaǵında qupıyalıǵıńızdı saqlawdı jeńillestiredi.</string>
   <string name="private_browsing_common_myths">Jeke kóriw haqqında tarqalǵan jalǵanlar</string>
   <!--
     Open in App "contextual feature recommendation" (CFR)
@@ -250,7 +250,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Ótkerip jiberiw</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">Betler sáykeslestirilmekte! Jumıstı qalǵan jerinen basqa qurılmada dawam etiń.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">Betler sáykeslestirilmekte! Jumıstı qalǵan jerinen basqa qurılmada dawam etiń.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">Jabıw</string>
   <!-- Text for the button to set firefox as default browser on the device -->
@@ -373,7 +373,7 @@
   <!-- Preference for language -->
   <string name="preferences_language">Til</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Maǵlıwmatlardı tańlaw</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Maǵlıwmatlardı tańlaw</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Maǵlıwmatlardı jıynaw</string>
   <!-- Preference for developers -->
@@ -405,7 +405,7 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">Heshqashan</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Sırtqı júklep alıw menedjeri</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Sırtqı júklep alıw menedjeri</string>
   <!-- Preference for notifications -->
   <string name="preferences_notifications">Xabarlamalar</string>
   <!-- Summary for notification preference indicating notifications are allowed -->
@@ -1109,7 +1109,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Jeke bet jabıldı</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Jeke betler jabıldı</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Jeke betler jabıldı</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">BIYKARLAW</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -1638,11 +1638,7 @@
   <string name="synced_tabs_expand_group">Sáykeslestirilgen betler toparın keńeytiw</string>
   <!-- Content description for collapsing a group of synced tabs. -->
   <string name="synced_tabs_collapse_group">Sáykeslestirilgen betler toparın qısqartıw</string>
-  <!--
-    Top Sites
-
-    Title text displayed in the dialog when shortcuts limit is reached.
-  -->
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">Operativ buyrıqlar tolıp qaldı</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">Jańa operativ buyrıq qosıw ushın birewin alıp taslań. Sayttı basıp turıń hám alıp taslawdi tańlań</string>
@@ -1739,8 +1735,10 @@
   <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
   <string name="a11y_action_label_wallpaper_collection_learn_more">bul toplam haqqında kóbirek biliw ushın siltemeni ashıń</string>
   <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-  <string name="a11y_action_label_read_article">Maqalanı oqıw</string>
+  <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">Maqalanı oqıw</string>
   <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
   <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">kóbirek biliw ushın siltemeni ashıń</string>
   <!-- Translations feature -->
+
+  <!-- TextField Design System Component -->
 </resources>

@@ -32,19 +32,25 @@ android {
 
 dependencies {
     implementation platform(libs.androidx.compose.bom)
-    implementation project(":support-ktx")
-    implementation project(":support-utils")
-    implementation project(":ui-colors")
-    implementation project(":ui-icons")
+    implementation project(":components:support-ktx")
+    implementation project(":components:support-utils")
+    implementation project(":components:ui-colors")
+    implementation project(":components:ui-icons")
 
     implementation libs.androidx.compose.ui
     implementation libs.androidx.compose.ui.tooling.preview
     implementation libs.androidx.compose.foundation
-    implementation libs.androidx.compose.material
+
+    implementation libs.androidx.compose.material3
+    implementation libs.androidx.compose.material3.adaptive
+    implementation libs.androidx.compose.material3.adaptivelayout
+    implementation libs.androidx.compose.material3.adaptivenavigation
+    implementation libs.androidx.compose.material3.adaptivenavigationsuite
+    implementation libs.androidx.compose.material3.windowsizeclass
 
     debugImplementation libs.androidx.compose.ui.tooling
 
-    testImplementation project(':support-test')
+    testImplementation project(':components:support-test')
     testImplementation libs.androidx.compose.ui.test
     testImplementation libs.androidx.test.core
     testImplementation libs.androidx.test.junit

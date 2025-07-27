@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Iba pang pagpipilian</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Paganahin ang private browsing</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Paganahin ang private browsing</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">I-disable ang private browsing</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">I-disable ang private browsing</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">Pribadong pag-browse</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -62,7 +62,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">Inaalis ng %1$s ang iyong bakas sa paghahanap at pag-browse sa mga pribadong tab kapag isinara mo sila o umalis sa app. Bagaman makikilala ka pa rin ng mga website o internet service provider mo, nakatutulong pa rin ito para mapanatiling pribado ang mga gawain mo online mula sa ibang gagamit ng device na ito.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">Inaalis ng %1$s ang iyong bakas sa paghahanap at pag-browse sa mga pribadong tab kapag isinara mo sila o umalis sa app. Bagaman makikilala ka pa rin ng mga website o internet service provider mo, nakatutulong pa rin ito para mapanatiling pribado ang mga gawain mo online mula sa ibang gagamit ng device na ito.</string>
   <string name="private_browsing_common_myths">Mga karaniwang pamahiin tungkol sa pribadong pag-browse</string>
   <!--
     True Private Browsing Mode
@@ -98,7 +98,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">Mag-tap dito para magsimula ng bagong pribadong session. Burahin ang iyong kasaysayan, mga cookie — lahat-lahat.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Mag-tap dito para magsimula ng bagong pribadong session. Burahin ang iyong kasaysayan, mga cookie — lahat-lahat.</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -112,12 +112,8 @@
   <!--
     Address bar swipe "contextual feature recommendation" (CFR)
 
-    Text for the title displayed in the contextual feature recommendation popup promoting swipe of address bar.
+    Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar.
   -->
-  <string name="address_bar_swipe_cfr_title" tools:ignore="UnusedResources" moz:removedIn="139">Mag-swipe sa toolbar para makalipat ng tab</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
-  <string name="address_bar_swipe_cfr_message" tools:ignore="UnusedResources" moz:removedIn="139">Mag-swipe kaliwa o kanan para makalipat. Mag-swipe pakaliwa sa huling tab para makapagbukas ng bagong tab.</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
   <string name="address_bar_swipe_cfr_message_2">Mag-swipe pakaliwa o pakanan para makalipat ng tab.</string>
   <!-- Text for the info dialog when camera permissions have been denied but user tries to access a camera feature. -->
   <string name="camera_permissions_needed_message">Kailangan ng camera access. Pumunta sa Android settings, i-tap ang permiso, at i-tap ang payagan.</string>
@@ -321,9 +317,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">Bago sa %1$s</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">Bago sa %1$s</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">Lumipat sa desktop site</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">Lumipat sa desktop site</string>
   <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
   <string name="browser_menu_switch_to_mobile_site">Lumipat sa mobile site</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
@@ -331,7 +327,7 @@
   <!-- Content description (not visible, for screen readers etc.): Back button for all menu redesign sub-menu -->
   <string name="browser_menu_back_button_content_description" moz:removedIn="141" tools:ignore="UnusedResources">Bumalik sa main menu</string>
   <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar main menu. -->
-  <string name="browser_main_menu_handlebar_content_description">Isara ang main menu sheet</string>
+  <string name="browser_main_menu_handlebar_content_description" moz:removedIn="142" tools:ignore="UnusedResources">Isara ang main menu sheet</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
   <string name="browser_main_menu_content_description_help_button">Tulong</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu settings button. -->
@@ -379,7 +375,7 @@
     Browser menu label that is displayed when the current page has been translated by the translation feature.
     %1$s is the name of the language that page was translated to (e.g. English).
   -->
-  <string name="browser_menu_translated_to">Nakasalin na sa %1$s</string>
+  <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">Nakasalin na sa %1$s</string>
   <!-- Browser menu label for the print feature -->
   <string name="browser_menu_print" moz:removedIn="141" tools:ignore="UnusedResources">I-print…</string>
   <!--
@@ -411,7 +407,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">Burahin ang kasaysayan ng pag-browse</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">Burahin ang kasaysayan ng pag-browse</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">Isalin ang pahina</string>
   <!--
@@ -486,7 +482,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Laktawan</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">Nagsi-sync na ang mga tab mo! Balikan ang iyong mga naiwan sa kabilang device.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">Nagsi-sync na ang mga tab mo! Balikan ang iyong mga naiwan sa kabilang device.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">Isara</string>
   <!--
@@ -842,7 +838,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">Mga pagsasalin</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Mga pamimilian sa data</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Mga pamimilian sa data</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Pagkolekta ng data</string>
   <!-- Preference for developers -->
@@ -904,7 +900,7 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">Hindi kailanman</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Hiwalay na download manager</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Hiwalay na download manager</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">I-enable ang mga Gecko log</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -924,13 +920,13 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">Kinakailangan</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">Kinakailangan</string>
   <!-- The title of the optional permissions section from addon's permissions screen -->
-  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">Opsyonal</string>
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">Opsyonal</string>
   <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
-  <string name="addons_permissions_allow_for_all_sites" tools:ignore="UnusedResources">Payagan para sa lahat ng mga site</string>
+  <string name="addons_permissions_allow_for_all_sites">Payagan para sa lahat ng mga site</string>
   <!-- The subtitle for the allow for all sites preference toggle -->
-  <string name="addons_permissions_allow_for_all_sites_subtitle" tools:ignore="UnusedResources">Kung pinagkakatiwalaan mo ang extension na ito, pwede mo itong bigyan ng pahintulot sa bawat website.</string>
+  <string name="addons_permissions_allow_for_all_sites_subtitle">Kung pinagkakatiwalaan mo ang extension na ito, pwede mo itong bigyan ng pahintulot sa bawat website.</string>
   <!-- The text shown when an extension does not require permissions -->
   <string name="addons_does_not_require_permissions">Hindi nangangailangan ng kahit anong pahintulot ang extension na ito.</string>
   <!--
@@ -1111,9 +1107,17 @@
   <!-- Preference switch for usage and technical data collection -->
   <string name="preference_usage_data_2">Magpadala ng technical at interaction data</string>
   <!-- Preference switch for usage and technical learn more link -->
-  <string name="preference_usage_data_learn_more">Alamin</string>
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">Alamin</string>
   <!-- Preference description for marketing data collection. Note: The words "Firefox" should NOT be translated -->
   <string name="preferences_usage_data_description_1" tools:ignore="BrandUsage">Nakatutulong sa amin na pagandahin ang mga feature, performance, at stability ng Firefox gamit ang data tungkol sa iyong device, hardware configuration, at paraan ng paggamit.</string>
+  <!-- Preference switch for daily usage ping data collection -->
+  <string name="preferences_daily_usage_ping_title">Daily usage ping</string>
+  <string name="preferences_daily_usage_ping_description">Natutulungan nito ang Mozilla na tantyahin ang bilang ng mga aktibong user.</string>
+  <string name="preferences_daily_usage_ping_learn_more">Alamin ang tungkol sa daily usage ping</string>
+  <!-- Preference switch title for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_title" tools:ignore="UnusedResources" moz:removedIn="142">Kusang magpadala ng mga crash report</string>
+  <!-- Preference switch description for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_description" tools:ignore="UnusedResources" moz:removedIn="142">Natutulungan kami nitong alamin at ayusin ang mga issue sa browser. Maaaring may kalakip na personal o sensitibong data ang mga ulat.</string>
   <!-- Preference switch for campaign measurement data (marketing data) collection -->
   <string name="preferences_marketing_data_2">Campaign measurement data</string>
   <!--
@@ -1123,16 +1127,8 @@
   <string name="preferences_marketing_data_description_4" tools:ignore="BrandUsage">Ibahagi kung paano mo natuklasan ang Firefox, na ginagamit mo ito kaakibat ang mga marketing partner ng Mozilla.</string>
   <!-- Learn more link for marketing data preference -->
   <string name="preferences_marketing_data_learn_more">Alamin ang tungkol sa marketing data</string>
-  <!-- Preference switch for daily usage ping data collection -->
-  <string name="preferences_daily_usage_ping_title">Daily usage ping</string>
-  <string name="preferences_daily_usage_ping_description">Natutulungan nito ang Mozilla na tantyahin ang bilang ng mga aktibong user.</string>
-  <string name="preferences_daily_usage_ping_learn_more">Alamin ang tungkol sa daily usage ping</string>
-  <!-- Preference switch title for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_title">Kusang magpadala ng mga crash report</string>
-  <!-- Preference switch description for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_description">Natutulungan kami nitong alamin at ayusin ang mga issue sa browser. Maaaring may kalakip na personal o sensitibong data ang mga ulat.</string>
   <!-- Learn more link for crash reporting preference -->
-  <string name="onboarding_preferences_dialog_crash_reporting_learn_more">Alamin ang tungkol sa mga crash report</string>
+  <string name="onboarding_preferences_dialog_crash_reporting_learn_more" tools:ignore="UnusedResources" moz:removedIn="142">Alamin ang tungkol sa mga crash report</string>
   <!-- Title for studies preferences -->
   <string name="preference_experiments_2">Mga pag-aaral</string>
   <!-- Summary for studies preferences -->
@@ -1324,8 +1320,6 @@
   <!-- Learn more link for studies, links to an article for more information about studies. -->
   <string name="studies_learn_more">Alamin</string>
   <!--
-    Sessions
-
     Title for the list of tabs in the current private session used by a11y services
     The %1$s will be replaced by the number of opened private tabs
   -->
@@ -1471,8 +1465,6 @@
   <string name="download_delete_item">Burahin</string>
   <!-- Content description for the toolbar "Navigate back" button -->
   <string name="download_navigate_back_description">Bumalik</string>
-  <!-- Content description for the toolbar "Navigate up" button -->
-  <string name="download_navigate_up_description" moz:removedIn="139" tools:ignore="UnusedResources">Mag-navigate pataas</string>
   <!-- Content description for the toolbar back button while searching the downloads -->
   <string name="download_close_search_description">Bumalik at isara ang paghahanap</string>
   <string name="download_clear_search_description">Alisin</string>
@@ -1542,7 +1534,7 @@
   -->
   <string name="webcompat_reporter_screen_title">Mag-ulat ng sirang site</string>
   <!-- The description of the Web Compat Reporter feature. %1$s is the name of the app (for example "Firefox"). -->
-  <string name="webcompat_reporter_description">Tulungang pagandahin ang %1$s para sa lahat. Gagamitin ng mga empleyado ng Mozilla ang impormasyong ipapadala mo para ayusin ang mga problema sa website.</string>
+  <string name="webcompat_reporter_description" moz:removedIn="142" tools:ignore="UnusedResources">Tulungang pagandahin ang %1$s para sa lahat. Gagamitin ng mga empleyado ng Mozilla ang impormasyong ipapadala mo para ayusin ang mga problema sa website.</string>
   <!-- The text field label of the URL text field. This is displayed above the user-inputted URL. -->
   <string name="webcompat_reporter_label_url">URL</string>
   <!-- The error message of the URL text field when an invalid URL has been entered. -->
@@ -1550,7 +1542,7 @@
   <!-- The label/title of a field in the Web Compat Reporter feature for explaining a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_label_whats_broken_2">Ano\'ng sira?</string>
   <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
-  <string name="webcompat_reporter_choose_reason">Pumili ng dahilan</string>
+  <string name="webcompat_reporter_choose_reason" moz:removedIn="142" tools:ignore="UnusedResources">Pumili ng dahilan</string>
   <!-- The error message of the dropdown, prompting the user to select a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_choose_reason_error">Mangyaring pumili ng isang dahilan</string>
   <!-- The label/title of an optional field in the Web Compat Reporter feature for adding additional information. -->
@@ -1997,7 +1989,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Naisara na ang pribadong tab</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Naisara na ang mga pribadong tab</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Naisara na ang mga pribadong tab</string>
   <!-- Text shown in snackbar when user erases their private browsing data -->
   <string name="snackbar_private_data_deleted">Nabura na ang pribadong browsing data</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
@@ -2743,11 +2735,7 @@
   <string name="synced_tabs_expand_group">I-expand ang grupo ng mga naka-sync na tab</string>
   <!-- Content description for collapsing a group of synced tabs. -->
   <string name="synced_tabs_collapse_group">I-collapse ang grupo ng mga naka-sync na tab</string>
-  <!--
-    Top Sites
-
-    Title text displayed in the dialog when shortcuts limit is reached.
-  -->
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">Naabot na ang hangganan na bilang ng mga shortcut</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">Para magdagdag ng bagong shortcut, magtanggal ng isa. I-tap nang matagal ang site at tanggalin.</string>
@@ -2883,7 +2871,7 @@
   <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
   <string name="a11y_action_label_wallpaper_collection_learn_more">buksan ang link para matuto pa tungkol sa koleksyong ito</string>
   <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-  <string name="a11y_action_label_read_article">basahin ang artikulo</string>
+  <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">basahin ang artikulo</string>
   <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
   <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">buksan ang link para matuto pa</string>
   <!-- Content description for headings announced by accessibility service. %s is the text of the heading. Talkback will announce the text and then speak the word "Heading" indicating to the user that this text is a heading for a section. -->
@@ -3137,9 +3125,9 @@
 
     Text for the protection panel header when the site is secure.
   -->
-  <string name="protection_panel_header_secure">Ligtas</string>
+  <string name="protection_panel_header_secure" moz:removedIn="142" tools:ignore="UnusedResources">Ligtas</string>
   <!-- Text for the protection panel header when the site is not secure. -->
-  <string name="protection_panel_header_not_secure">Hindi ligtas</string>
+  <string name="protection_panel_header_not_secure" moz:removedIn="142" tools:ignore="UnusedResources">Hindi ligtas</string>
   <!-- Title text for the protection panel banner when the site is not secure. -->
   <string name="protection_panel_banner_not_secure_title">Mag-ingat sa site na ito</string>
   <!-- Description text for the protection panel banner when the site is not secure. -->
@@ -3161,9 +3149,9 @@
   <!-- Label text for the Enhanced Tracking Protection toggle. -->
   <string name="protection_panel_etp_toggle_label">Enhanced Tracking Protection</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
-  <string name="protection_panel_etp_toggle_enabled_description">Kung mukhang may sira sa site na ito, subukang isara ang mga proteksyon.</string>
+  <string name="protection_panel_etp_toggle_enabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Kung mukhang may sira sa site na ito, subukang isara ang mga proteksyon.</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
-  <string name="protection_panel_etp_toggle_disabled_description">SARADO ang mga proteksyon. Iminumungkahi naming buksan muli ito.</string>
+  <string name="protection_panel_etp_toggle_disabled_description" moz:removedIn="142" tools:ignore="UnusedResources">SARADO ang mga proteksyon. Iminumungkahi naming buksan muli ito.</string>
   <!--
     Text for displaying the total number of trackers blocked in the protection panel.
     %d is a placeholder for the number of trackers blocked.
@@ -3172,7 +3160,7 @@
   <!-- Text for when no trackers have been blocked. -->
   <string name="protection_panel_no_trackers_blocked">Walang natagpuang mga tracker</string>
   <!-- Link text to navigate to privacy and security settings from the protection panel. -->
-  <string name="protection_panel_privacy_and_security_settings">Mga setting sa pribasiya at seguridad</string>
+  <string name="protection_panel_privacy_and_security_settings" moz:removedIn="142" tools:ignore="UnusedResources">Mga setting sa pribasiya at seguridad</string>
   <!-- Title text for the protection panel permissions section. -->
   <string name="protection_panel_permissions_title">Mga pahintulot</string>
   <!--
@@ -3203,7 +3191,7 @@
   <string name="connection_security_panel_not_secure">Hindi ligtas ang koneksyon</string>
   <!--
     Text for the connection security panel to indicate who the certificate was verified by.
-    %s is a placeholder for the name of the certificate authority that verified the ticket
+    %s is a placeholder for the name of the certificate authority that issued the certificate.
   -->
   <string name="connection_security_panel_verified_by">Beniripika ng %s</string>
   <!--
@@ -3434,14 +3422,8 @@
   <string name="certificate_warning_push_notification_pnw2_message" tools:ignore="UnusedResources">Mag-update bago mag-Marso 14 para patuloy na makagamit ng mga add-on at ibang mga feature.</string>
   <!-- Push notification message about old Firefox version -->
   <string name="certificate_warning_push_notification_pnw3_message" tools:ignore="UnusedResources">May ilang mga feature na titigil nang gumana bukas.</string>
-  <!--
-    TextField Design System Component
+  <!-- TextField Design System Component -->
 
-    The default content description for the eye trailing icon button in TextField
-  -->
-  <string name="text_field_eye_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Ipakita ang nakatagong text</string>
-  <!-- The default content description for the cross trailing icon button in TextField -->
-  <string name="text_field_cross_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Alisin ang text</string>
   <!--
     Setup checklist feature
 

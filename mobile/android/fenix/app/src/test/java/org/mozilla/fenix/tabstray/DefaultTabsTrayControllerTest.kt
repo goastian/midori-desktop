@@ -68,18 +68,17 @@ import org.mozilla.fenix.collections.CollectionsDialog
 import org.mozilla.fenix.collections.show
 import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.components.TabCollectionStorage
-import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.components.usecases.FenixBrowserUseCases
 import org.mozilla.fenix.ext.maxActiveTime
 import org.mozilla.fenix.ext.potentialInactiveTabs
 import org.mozilla.fenix.helpers.FenixGleanTestRule
-import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.home.HomeScreenViewModel.Companion.ALL_NORMAL_TABS
 import org.mozilla.fenix.home.HomeScreenViewModel.Companion.ALL_PRIVATE_TABS
 import org.mozilla.fenix.utils.Settings
+import org.robolectric.RobolectricTestRunner
 import java.util.concurrent.TimeUnit
 
-@RunWith(FenixRobolectricTestRunner::class) // for gleanTestRule
+@RunWith(RobolectricTestRunner::class) // for gleanTestRule
 class DefaultTabsTrayControllerTest {
     @MockK(relaxed = true)
     private lateinit var trayStore: TabsTrayStore
@@ -1022,11 +1021,15 @@ class DefaultTabsTrayControllerTest {
                 tabs = listOf(normalTab, privateTab),
             ),
         )
+        var appStateModeUpdate: BrowsingMode? = null
         browsingModeManager = spyk(
             DefaultBrowsingModeManager(
                 initialMode = BrowsingMode.Private,
                 settings = settings,
                 modeDidChange = mockk(relaxed = true),
+                updateAppStateMode = { updatedMode ->
+                    appStateModeUpdate = updatedMode
+                },
             ),
         )
         val controller = spyk(createController())
@@ -1038,7 +1041,7 @@ class DefaultTabsTrayControllerTest {
 
             assertEquals(privateTab.id, browserStore.state.selectedTabId)
             assertEquals(true, browsingModeManager.mode.isPrivate)
-            verify { appStore.dispatch(AppAction.ModeChange(BrowsingMode.Private)) }
+            assertEquals(BrowsingMode.Private, appStateModeUpdate)
 
             controller.handleTabDeletion("privateTab")
             browserStore.dispatch(TabListAction.SelectTabAction(normalTab.id)).joinBlocking()
@@ -1046,7 +1049,7 @@ class DefaultTabsTrayControllerTest {
 
             assertEquals(normalTab.id, browserStore.state.selectedTabId)
             assertEquals(false, browsingModeManager.mode.isPrivate)
-            verify { appStore.dispatch(AppAction.ModeChange(BrowsingMode.Normal)) }
+            assertEquals(BrowsingMode.Normal, appStateModeUpdate)
         } finally {
             unmockkStatic("mozilla.components.browser.state.selector.SelectorsKt")
         }

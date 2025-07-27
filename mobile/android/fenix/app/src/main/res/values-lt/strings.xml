@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Daugiau parinkčių</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Įjungti privatųjį naršymą</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Įjungti privatųjį naršymą</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Išjungti privatųjį naršymą</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Išjungti privatųjį naršymą</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">Ieškokite arba įveskite adresą</string>
   <!-- Placeholder text shown in search bar when using history search -->
@@ -48,7 +48,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">„%1$s“ išvalo jūsų paieškos ir naršymo žurnalą iš privačiųjų kortelių kai jas užveriate, arba išjungiate programą. Nors tai ir nesuteikia jums anonimiškumo internete, taip lengviau galite išlaikyti savo privatumą nuo kitų šį įrenginį naudojančių asmenų.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">„%1$s“ išvalo jūsų paieškos ir naršymo žurnalą iš privačiųjų kortelių kai jas užveriate, arba išjungiate programą. Nors tai ir nesuteikia jums anonimiškumo internete, taip lengviau galite išlaikyti savo privatumą nuo kitų šį įrenginį naudojančių asmenų.</string>
   <string name="private_browsing_common_myths">Dažni mitai apie privatųjį naršymą</string>
   <!--
     Open in App "contextual feature recommendation" (CFR)
@@ -289,7 +289,7 @@
   <!-- Preference for language -->
   <string name="preferences_language">Kalba</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Duomenų siuntimas</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Duomenų siuntimas</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Duomenų rinkimas</string>
   <!-- Preference for developers -->
@@ -315,7 +315,7 @@
   <!-- Preference for open links in third party apps -->
   <string name="preferences_open_links_in_apps">Atverti saitus programose</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Išorinė atsiuntimų tvarkytuvė</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Išorinė atsiuntimų tvarkytuvė</string>
   <!-- Preference for notifications -->
   <string name="preferences_notifications">Pranešimai</string>
   <!-- Button caption to confirm the add-on collection configuration -->
@@ -905,7 +905,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Privačioji kortelė užverta</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Privačiosios kortelės užvertos</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Privačiosios kortelės užvertos</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">Atšaukti</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -1403,4 +1403,6 @@
   <!-- Clickable text for opening an external link for more information about Pocket. -->
   <string name="pocket_stories_feature_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">Sužinoti daugiau</string>
   <!-- Translations feature -->
+
+  <!-- TextField Design System Component -->
 </resources>

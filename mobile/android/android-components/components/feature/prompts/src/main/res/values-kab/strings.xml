@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- Text for confirmation for a positive action in dialog -->
   <string name="mozac_feature_prompts_ok">IH</string>
   <!-- Text for confirmation for a negative action in dialog. -->
@@ -111,11 +111,11 @@
   <!-- Pressing this will dismiss the suggested strong password dialog -->
   <string name="mozac_feature_prompts_suggest_strong_password_dismiss">Mačči tura</string>
   <!-- Title for showing the suggest strong password saved confirmation snackbar -->
-  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title">Awal uffir yettwasekles</string>
+  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title" tools:ignore="UnusedResources" moz:removedIn="142">Awal uffir yettwasekles</string>
   <!-- Title for showing the suggest strong password updated confirmation snackbar -->
   <string name="mozac_feature_prompts_suggest_strong_password_updated_snackbar_title">Awal uffir yettuleqqem</string>
   <!-- Title for showing the username updated confirmation snackbar -->
-  <string name="mozac_feature_prompt_login_snackbar_username_updated">Isem n useqdac yettwaleqqem</string>
+  <string name="mozac_feature_prompt_login_snackbar_username_updated" tools:ignore="UnusedResources" moz:removedIn="142">Isem n useqdac yettwaleqqem</string>
   <!-- Strings shown in a dialog that appear when users try to refresh a certain kind of webpages -->
   <string name="mozac_feature_prompt_repost_title">Ales tuzna n yisefka ɣer usmel-a?</string>
   <string name="mozac_feature_prompt_repost_message">Asmiren n usebter-a yezmer ad d-yerr tigawin n melmi kan, am tuzna n lexlaṣ neɣ asuffeɣ n uwennit snat tikkal.</string>
@@ -123,6 +123,12 @@
   <string name="mozac_feature_prompt_repost_positive_button_text">Ales tuzna n yisefka</string>
   <!-- Pressing this will dismiss the dialog and not refresh the webpage -->
   <string name="mozac_feature_prompt_repost_negative_button_text">Sefsex</string>
+  <!-- Strings show in a dialog that appear when user confirm folder upload -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_title">Sali ifuyla?</string>
+  <!-- Pressing this will dismiss the dialog and allow to upload folder -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_positive_button_text">Sali</string>
+  <!-- Pressing this will dismiss the dialog and disallow to upload folder -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_negative_button_text">Sefsex</string>
   <!--
     Credit Card Autofill
 
@@ -166,7 +172,7 @@
   <!-- Title of the Identity Credential privacy policy dialog title. The %1$s will be replaced with the name of the provider. -->
   <string name="mozac_feature_prompts_identity_credentials_privacy_policy_title">Seqdec %1$s am usaǧǧaw n tuqqna</string>
   <!-- Title of the Identity Credential privacy policy dialog description. The %1$s will be replaced with the name of the provider, %2$s will be replaced with the account, %3$s will be replaced with the privacy policy url and  %4$s will be replaced with the terms of service. -->
-  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote">Tuqqna ɣer %1$s s umiḍan %2$s ad yili ddaw &lt;a href="%3$s"&gt;Tsertit tabaḍnit&lt;/a&gt; d &lt;a href="%4$s"&gt;Tewtilin n useqdec&lt;/a&gt;</string>
+  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote"><![CDATA[Tuqqna ɣer %1$s s umiḍan %2$s ad yili ddaw <a href=\"%3$s\">Tsertit tabaḍnit</a> d <a href=\"%4$s\">Tewtilin n useqdec</a>]]></string>
   <!-- Text for the positive button of the Identity Credential dialogs. -->
   <string name="mozac_feature_prompts_identity_credentials_continue">Kemmel</string>
   <!-- Text for the cancel button of the Identity Credential dialogs. -->

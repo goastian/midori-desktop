@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Àwọn àṣàyàn si</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Ṣe ìgbàláyè fún bíráwúsínnì ìkọ̀kọ̀</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Ṣe ìgbàláyè fún bíráwúsínnì ìkọ̀kọ̀</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Má ṣe ìgbàláyè fún bíráwúsìnnì ìkọ̀kọ̀</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Má ṣe ìgbàláyè fún bíráwúsìnnì ìkọ̀kọ̀</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">Ṣàwárí tàbí fi àdìrẹ́sì si</string>
   <!-- Placeholder text shown in the search bar when using application search engines -->
@@ -42,7 +42,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s pa ìwádìí àti ìtàn ìlọkiri rẹ̀ lórí àwọn táàbù ìkọ̀kọ̀ nígbà tí o bá tì wọ́n tàbí nígbà tí o kò lo áàpù náà mọ́. Ní àkó́kò tí èyí kò sọ ẹ́ di aláìnídáánimọ̀ sí àwọn wẹ́íbusaìtì yí tàbí olùpèsè ìlò íntánẹ́ẹ̀tì rẹ, ó jẹ́ kó rọrùn láti tọ́jú gbogbo ohun tí ò ń ṣe lórí ayélujára sí ìkọ̀kọ̀ fún ẹnikẹ́ni tó bá lo èrọ yìí.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s pa ìwádìí àti ìtàn ìlọkiri rẹ̀ lórí àwọn táàbù ìkọ̀kọ̀ nígbà tí o bá tì wọ́n tàbí nígbà tí o kò lo áàpù náà mọ́. Ní àkó́kò tí èyí kò sọ ẹ́ di aláìnídáánimọ̀ sí àwọn wẹ́íbusaìtì yí tàbí olùpèsè ìlò íntánẹ́ẹ̀tì rẹ, ó jẹ́ kó rọrùn láti tọ́jú gbogbo ohun tí ò ń ṣe lórí ayélujára sí ìkọ̀kọ̀ fún ẹnikẹ́ni tó bá lo èrọ yìí.</string>
   <string name="private_browsing_common_myths">Àwọn àròsọ tó wọ́pọ̀ nípa ìlọkiri-oníwẹ́ẹ̀bù ìkọ̀kọ̀</string>
   <!--
     Open in App "contextual feature recommendation" (CFR)
@@ -230,7 +230,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Fò</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">Àwọn táàbù rẹ ti ń ṣiṣẹ́ pọ̀! Mú u sókè níbi tí o ti kúrò lóri ẹ̀rọ rẹ mìíràn.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">Àwọn táàbù rẹ ti ń ṣiṣẹ́ pọ̀! Mú u sókè níbi tí o ti kúrò lóri ẹ̀rọ rẹ mìíràn.</string>
   <!--
     Search Widget
 
@@ -319,7 +319,7 @@
   <!-- Preference for language -->
   <string name="preferences_language">Èdè</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Àwọn dátà tó wunni</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Àwọn dátà tó wunni</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Gbígba àwọn dátà</string>
   <!-- Preference for developers -->
@@ -345,7 +345,7 @@
   <!-- Preference for open links in third party apps -->
   <string name="preferences_open_links_in_apps">Ṣí àwọn ọ̀nà àsopọ̀ nínú awọn áápù</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Alákòóso ìgbàsílẹ̀ ìta</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Alákòóso ìgbàsílẹ̀ ìta</string>
   <!-- Preference for notifications -->
   <string name="preferences_notifications">Àwọn ìfitónilétí</string>
   <!-- Button caption to confirm the add-on collection configuration -->
@@ -965,7 +965,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Táàbù ìkọ̀kọ̀ ti padé</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Àwọn táàbù ìkọ̀kọ̀ ti padé</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Àwọn táàbù ìkọ̀kọ̀ ti padé</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">MÁṢÈÉ</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -1486,11 +1486,7 @@
   <string name="synced_tabs_expand_group">Fẹ́ àkójọpọ̀ àwọn táàbù tí wọ́n jọ́ ń ṣiṣẹ́ pọ̀</string>
   <!-- Content description for collapsing a group of synced tabs. -->
   <string name="synced_tabs_collapse_group">Pa àwọn àkójọpọ̀ táàbù tí wọ́n jọ́ ń ṣiṣẹ́ pọ náà dé</string>
-  <!--
-    Top Sites
-
-    Title text displayed in the dialog when shortcuts limit is reached.
-  -->
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">Ó ti dé ìwọ̀n ọ̀nà-àbùjá</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">Láti ṣàfikún ọ̀nà-àbùjá tuntun, yọ ọ̀kan. Fọwọ́kàn kí o sì di sáìtì náà mú kí o sì yan ìyọkúrò.</string>
@@ -1571,4 +1567,6 @@
   <!-- Snackbar button text to navigate to telemetry settings. -->
   <string name="experiments_snackbar_button">Lọ sí àwọn ààtò</string>
   <!-- Translations feature -->
+
+  <!-- TextField Design System Component -->
 </resources>

@@ -72,14 +72,11 @@ class PocketTest : TestSetup() {
                 // Sponsored Pocket stories are only advertised for a limited time.
                 // See also known issue https://bugzilla.mozilla.org/show_bug.cgi?id=1828629
                 // verifyPocketSponsoredStoriesItems(2, 8)
-                verifyDiscoverMoreStoriesButton(activityTestRule)
-                verifyStoriesByTopic(true)
             }.openThreeDotMenu {
             }.openCustomizeHome {
                 clickPocketButton()
             }.goBackToHomeScreen {
                 verifyThoughtProvokingStories(false)
-                verifyStoriesByTopic(false)
             }
         }
     }
@@ -92,31 +89,7 @@ class PocketTest : TestSetup() {
                 verifyThoughtProvokingStories(true)
                 firstPocketStoryPublisher = getProvokingStoryPublisher(1)
             }.clickPocketStoryItem(firstPocketStoryPublisher, 1) {
-                verifyUrl(Constants.POCKET_RECOMMENDED_STORIES_UTM_PARAM)
-            }
-        }
-    }
-
-    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2252514
-    @Test
-    fun pocketDiscoverMoreButtonTest() {
-        runWithCondition(isNetworkConnected()) {
-            homeScreen {
-                verifyDiscoverMoreStoriesButton(activityTestRule)
-            }.clickPocketDiscoverMoreButton(activityTestRule) {
-                verifyUrl("getpocket.com/explore")
-            }
-        }
-    }
-
-    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/2252515
-    @Test
-    fun selectPocketStoriesByTopicTest() {
-        runWithCondition(isNetworkConnected()) {
-            homeScreen {
-                verifyStoriesByTopicItemState(activityTestRule, false, 1)
-                clickStoriesByTopicItem(activityTestRule, 1)
-                verifyStoriesByTopicItemState(activityTestRule, true, 1)
+                verifyUrl(Constants.STORIES_UTM_PARAM)
             }
         }
     }

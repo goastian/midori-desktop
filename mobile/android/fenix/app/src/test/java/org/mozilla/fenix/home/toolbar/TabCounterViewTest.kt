@@ -27,14 +27,15 @@ import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.browsingmode.BrowsingMode
 import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.browser.browsingmode.DefaultBrowsingModeManager
+import org.mozilla.fenix.components.AppStore
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.helpers.FenixGleanTestRule
-import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.utils.Settings
+import org.robolectric.RobolectricTestRunner
 import mozilla.components.ui.tabcounter.TabCounterView as MozacTabCounter
 
-@RunWith(FenixRobolectricTestRunner::class)
+@RunWith(RobolectricTestRunner::class)
 class TabCounterViewTest {
 
     @get:Rule
@@ -43,6 +44,7 @@ class TabCounterViewTest {
     private lateinit var navController: NavController
     private lateinit var browsingModeManager: BrowsingModeManager
     private lateinit var settings: Settings
+    private lateinit var appStore: AppStore
     private lateinit var modeDidChange: (BrowsingMode) -> Unit
     private lateinit var tabCounterView: TabCounterView
     private lateinit var tabCounter: MozacTabCounter
@@ -51,6 +53,7 @@ class TabCounterViewTest {
     fun setup() {
         navController = mockk(relaxed = true)
         settings = mockk(relaxed = true)
+        appStore = mockk(relaxed = true)
         modeDidChange = mockk(relaxed = true)
 
         tabCounter = spyk(MozacTabCounter(testContext))
@@ -59,6 +62,7 @@ class TabCounterViewTest {
             initialMode = BrowsingMode.Normal,
             settings = settings,
             modeDidChange = modeDidChange,
+            updateAppStateMode = {},
         )
     }
 

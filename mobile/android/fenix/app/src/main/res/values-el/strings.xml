@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Περισσότερες επιλογές</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Ενεργοποίηση ιδιωτικής περιήγησης</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Ενεργοποίηση ιδιωτικής περιήγησης</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Απενεργοποίηση ιδιωτικής περιήγησης</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Απενεργοποίηση ιδιωτικής περιήγησης</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">Ιδιωτική περιήγηση</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -62,8 +62,10 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">Το %1$s διαγράφει το ιστορικό αναζητήσεων και περιήγησης των ιδιωτικών καρτελών όταν κλείνετε αυτές ή την εφαρμογή. Αυτό δεν σας παρέχει ανωνυμία σε ιστοτόπους ή στον πάροχο υπηρεσιών διαδικτύου σας, αλλά σας βοηθά να προστατέψετε το απόρρητό σας από τους άλλους χρήστες αυτής της συσκευής.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">Το %1$s διαγράφει το ιστορικό αναζητήσεων και περιήγησης των ιδιωτικών καρτελών όταν κλείνετε αυτές ή την εφαρμογή. Αυτό δεν σας παρέχει ανωνυμία σε ιστοτόπους ή στον πάροχο υπηρεσιών διαδικτύου σας, αλλά σας βοηθά να προστατέψετε το απόρρητό σας από τους άλλους χρήστες αυτής της συσκευής.</string>
   <string name="private_browsing_common_myths">Συνήθεις παρανοήσεις σχετικά με την ιδιωτική περιήγηση</string>
+  <!-- Text to be announced by the accessibility service to inform the user that the private browsing mode is currently active. -->
+  <string name="private_browsing_a11y_session_announcement">Συνεδρία ιδιωτικής περιήγησης</string>
   <!--
     True Private Browsing Mode
 
@@ -98,7 +100,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">Πατήστε εδώ για να ξεκινήσετε μια νέα ιδιωτική συνεδρία. Διαγράψτε το ιστορικό σας, τα cookie… τα πάντα.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Πατήστε εδώ για να ξεκινήσετε μια νέα ιδιωτική συνεδρία. Διαγράψτε το ιστορικό σας, τα cookie… τα πάντα.</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -112,12 +114,8 @@
   <!--
     Address bar swipe "contextual feature recommendation" (CFR)
 
-    Text for the title displayed in the contextual feature recommendation popup promoting swipe of address bar.
+    Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar.
   -->
-  <string name="address_bar_swipe_cfr_title" tools:ignore="UnusedResources" moz:removedIn="139">Σύρετε τη γραμμή εργαλείων για εναλλαγή καρτελών</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
-  <string name="address_bar_swipe_cfr_message" tools:ignore="UnusedResources" moz:removedIn="139">Σύρετε προς τα αριστερά ή τα δεξιά για εναλλαγή. Σύρετε προς τα αριστερά στην τελευταία σας καρτέλα για να ανοίξετε μια νέα.</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
   <string name="address_bar_swipe_cfr_message_2">Σύρετε τη γραμμή εργαλείων αριστερά ή δεξιά για εναλλαγή καρτελών.</string>
   <!-- Text for the info dialog when camera permissions have been denied but user tries to access a camera feature. -->
   <string name="camera_permissions_needed_message">Απαιτείται πρόσβαση στην κάμερα. Μεταβείτε στις Ρυθμίσεις Android, πατήστε «Δικαιώματα» και επιλέξτε «Να επιτρέπεται».</string>
@@ -321,7 +319,9 @@
   <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
   <string name="browser_menu_sign_in_caption" moz:removedIn="141" tools:ignore="UnusedResources">Συγχρονίστε κωδικούς πρόσβασης, καρτέλες και πολλά άλλα</string>
   <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
-  <string name="browser_menu_sign_in_caption_2">Συγχρονίστε σελιδοδείκτες, κωδικούς πρόσβασης, καρτέλες και πολλά άλλα</string>
+  <string name="browser_menu_sign_in_caption_2" moz:removedIn="141" tools:ignore="UnusedResources">Συγχρονίστε σελιδοδείκτες, κωδικούς πρόσβασης, καρτέλες και πολλά άλλα</string>
+  <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
+  <string name="browser_menu_sign_in_caption_3">Συγχρονίστε κωδικούς πρόσβασης, σελιδοδείκτες και πολλά άλλα</string>
   <!-- Browser menu label to sign back in to sync on the device when the user's account needs to be reauthenticated -->
   <string name="browser_menu_sign_back_in_to_sync">Συνδεθείτε ξανά για συγχρονισμό</string>
   <!-- Browser menu caption label for the "Sign back in to sync" browser menu item described in `browser_menu_sign_back_in_to_sync` when there is an error in syncing -->
@@ -334,9 +334,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">Νέο στο %1$s</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">Νέο στο %1$s</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">Εναλλαγή στην έκδοση υπολογιστή</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">Εναλλαγή στην έκδοση υπολογιστή</string>
   <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
   <string name="browser_menu_switch_to_mobile_site">Εναλλαγή στην έκδοση κινητού</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
@@ -344,7 +344,11 @@
   <!-- Content description (not visible, for screen readers etc.): Back button for all menu redesign sub-menu -->
   <string name="browser_menu_back_button_content_description" moz:removedIn="141" tools:ignore="UnusedResources">Επιστροφή στο κύριο μενού</string>
   <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar main menu. -->
-  <string name="browser_main_menu_handlebar_content_description">Κλείσιμο φύλλου κύριου μενού</string>
+  <string name="browser_main_menu_handlebar_content_description" moz:removedIn="142" tools:ignore="UnusedResources">Κλείσιμο φύλλου κύριου μενού</string>
+  <!-- Content description (not visible, for screen readers etc.) for the handle used to drag the main menu at the bottom of the screen. -->
+  <string name="browser_close_main_menu_handlebar_content_description">Κλείσιμο μενού</string>
+  <!-- Content description (not visible, for screen readers etc.) for main menu navigation header. -->
+  <string name="browser_main_menu_content_description_navigation_header">Πλοήγηση</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
   <string name="browser_main_menu_content_description_help_button">Βοήθεια</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu settings button. -->
@@ -400,7 +404,7 @@
     Browser menu label that is displayed when the current page has been translated by the translation feature.
     %1$s is the name of the language that page was translated to (e.g. English).
   -->
-  <string name="browser_menu_translated_to">Μεταφράστηκε σε %1$s</string>
+  <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">Μεταφράστηκε σε %1$s</string>
   <!-- Browser menu label that is displayed when the current page has been translated by the translation feature. -->
   <string name="browser_menu_translated">Μεταφράστηκε</string>
   <!-- Browser menu label for the print feature -->
@@ -420,7 +424,11 @@
   <!-- Label text within the set as default banner -->
   <string name="browser_menu_default_banner_subtitle">Παίρνει λίγα δευτερόλεπτα. Αλλαγή ανά πάσα στιγμή.</string>
   <!-- Content description for the button that dismisses the set as default banner in the menu -->
-  <string name="browser_menu_default_banner_dismiss">Απόρριψη</string>
+  <string name="browser_menu_default_banner_dismiss" moz:removedIn="142" tools:ignore="UnusedResources">Απόρριψη</string>
+  <!-- Content description (not visible, for screen readers etc.) for the button that dismisses the set as default banner in the menu -->
+  <string name="browser_menu_default_banner_dismiss_promotion">Απόρριψη προωθητικής ενέργειας</string>
+  <!-- Content description (not visible, for screen readers etc.) for recommended extensions in main menu -->
+  <string name="browser_menu_recommended_extensions_content_description">Περισσότερες πληροφορίες</string>
   <!--
     Menu "contextual feature recommendation" (CFR)
 
@@ -445,7 +453,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">Διαγραφή ιστορικού περιήγησης</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">Διαγραφή ιστορικού περιήγησης</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">Μετάφραση σελίδας</string>
   <!--
@@ -520,7 +528,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Παράλειψη</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">Οι καρτέλες σας συγχρονίζονται! Συνεχίστε από εκεί που σταματήσατε στην άλλη συσκευή σας.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">Οι καρτέλες σας συγχρονίζονται! Συνεχίστε από εκεί που σταματήσατε στην άλλη συσκευή σας.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">Κλείσιμο</string>
   <!--
@@ -861,6 +869,8 @@
   <string name="preferences_category_account">Λογαριασμός</string>
   <!-- Preference for changing where the AddressBar is positioned -->
   <string name="preferences_toolbar_2">Τοποθεσία γραμμής διευθύνσεων</string>
+  <!-- Preference for changing toolbar layout -->
+  <string name="preferences_toolbar_layout">Διάταξη γραμμής εργαλείων</string>
   <!-- Preference for changing default theme to dark or light mode -->
   <string name="preferences_theme">Θέμα</string>
   <!-- Preference for customizing the home screen -->
@@ -880,7 +890,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">Μεταφράσεις</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Επιλογές δεδομένων</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Επιλογές δεδομένων</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Συλλογή δεδομένων</string>
   <!-- Preference for developers -->
@@ -942,7 +952,15 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">Ποτέ</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Εξωτερική διαχείριση λήψεων</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Εξωτερική διαχείριση λήψεων</string>
+  <!-- Preference title for choosing an app to handle downloads -->
+  <string name="preferences_choose_app_for_downloads">Διαχείριση λήψεων με άλλη εφαρμογή</string>
+  <!-- Title for the setting to automatically clean up downloaded files. %s is the name of the app (for example "Firefox"). -->
+  <string name="preferences_downloads_settings_clean_up_files_title">Διαγραφή από το %s και τη συσκευή</string>
+  <!-- Summary for the setting to automatically clean up downloaded files -->
+  <string name="preferences_downloads_settings_clean_up_files_summary">Η διαγραφή των αρχείων από την εφαρμογή διαχείρισης λήψεών σας θα τα διαγράψει και από τη συσκευή σας</string>
+  <!-- Preference for downloads -->
+  <string name="preferences_downloads">Λήψεις</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">Ενεργοποίηση αρχείων καταγραφής Gecko</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -962,15 +980,29 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">Απαιτείται</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">Απαιτείται</string>
   <!-- The title of the optional permissions section from addon's permissions screen -->
-  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">Προαιρετικό</string>
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">Προαιρετικό</string>
   <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
-  <string name="addons_permissions_allow_for_all_sites" tools:ignore="UnusedResources">Αποδοχή για όλους τους ιστοτόπους</string>
+  <string name="addons_permissions_allow_for_all_sites">Αποδοχή για όλους τους ιστοτόπους</string>
   <!-- The subtitle for the allow for all sites preference toggle -->
-  <string name="addons_permissions_allow_for_all_sites_subtitle" tools:ignore="UnusedResources">Εάν εμπιστεύεστε αυτήν την επέκταση, μπορείτε να παραχωρήσετε άδεια σε κάθε ιστότοπο.</string>
+  <string name="addons_permissions_allow_for_all_sites_subtitle">Εάν εμπιστεύεστε αυτήν την επέκταση, μπορείτε να παραχωρήσετε άδεια σε κάθε ιστότοπο.</string>
   <!-- The text shown when an extension does not require permissions -->
   <string name="addons_does_not_require_permissions">Αυτή η επέκταση δεν απαιτεί κανένα δικαίωμα.</string>
+  <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+  <string name="addons_permissions_required_data_collection_description" moz:removedIn="141" tools:ignore="UnusedResources">Ο δημιουργός δηλώνει ότι αυτή η επέκταση συλλέγει: %1$s.</string>
+  <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+  <string name="addons_permissions_required_data_collection_description_2">Ο δημιουργός δηλώνει ότι αυτή η επέκταση συλλέγει: %1$s</string>
+  <!-- The description of the "none" data collection permission, when the extension doesn't collect anything according to the developer. -->
+  <string name="addons_permissions_none_required_data_collection_description">Ο δημιουργός δηλώνει ότι αυτή η επέκταση δεν απαιτεί συλλογή δεδομένων.</string>
+  <!-- The title of the required permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_required_permissions">Απαιτούμενα δικαιώματα:</string>
+  <!-- The title of the optional permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_optional_permissions">Προαιρετικά δικαιώματα:</string>
+  <!-- The title of the required data collection permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_required_data_collection">Συλλογή υποχρεωτικών δεδομένων:</string>
+  <!-- The title of the optional data collection permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_optional_data_collection">Συλλογή προαιρετικών δεδομένων:</string>
   <!--
     Add-on Preferences
 
@@ -1094,6 +1126,12 @@
   <string name="alternative_app_icon_option_momo">Momo</string>
   <!-- Subtitle for the "Momo" themed alternative app icon variant in the icon picker screen. The app icon was created by artist @heyheymomodraws and features a unique hand-drawn style with a friendly fox. -->
   <string name="alternative_app_icon_option_momo_subtitle">Δημιουργός: @heyheymomodraws</string>
+  <!-- Title for the "Solid colors" group of alternative app icon variants in the icon picker screen. This group contains icons with flat, uniform color backgrounds. -->
+  <string name="alternative_app_icon_group_solid_colors">Αμιγή χρώματα</string>
+  <!-- Title for the "Gradients" group of alternative app icon variants in the icon picker screen. This group contains icons with gradient backgrounds inspired by natural light conditions. -->
+  <string name="alternative_app_icon_group_gradients">Διαβαθμίσεις</string>
+  <!-- Title for the "Other" group of alternative app icon variants in the icon picker screen. This group includes retro, pixel art, themed, and artist-created icons. -->
+  <string name="alternative_app_icon_group_other">Άλλο</string>
   <!--
     Add-ons general availability nimbus message
 
@@ -1202,10 +1240,30 @@
   <string name="exceptions_empty_message_learn_more_link">Μάθετε περισσότερα</string>
   <!-- Preference switch for usage and technical data collection -->
   <string name="preference_usage_data_2">Αποστολή τεχνικών δεδομένων και δεδομένων αλληλεπίδρασης</string>
+  <!-- Preference switch for usage and technical learn more link in new compose -->
+  <string name="preference_usage_data_learn_more_2">Μάθετε περισσότερα σχετικά με τα τεχνικά δεδομένα</string>
   <!-- Preference switch for usage and technical learn more link -->
-  <string name="preference_usage_data_learn_more">Μάθετε περισσότερα</string>
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">Μάθετε περισσότερα</string>
   <!-- Preference description for marketing data collection. Note: The words "Firefox" should NOT be translated -->
   <string name="preferences_usage_data_description_1" tools:ignore="BrandUsage">Τα δεδομένα της συσκευής, των ρυθμίσεων υλικού και της χρήσης σας, μάς βοηθούν να βελτιώσουμε τις λειτουργίες, τις επιδόσεις και τη σταθερότητα του Firefox.</string>
+  <!-- Preference switch for daily usage ping data collection -->
+  <string name="preferences_daily_usage_ping_title">Ping ημερήσιας χρήσης</string>
+  <string name="preferences_daily_usage_ping_description">Αυτό βοηθά τη Mozilla να εκτιμήσει τους ενεργούς χρήστες.</string>
+  <string name="preferences_daily_usage_ping_learn_more">Μάθετε περισσότερα σχετικά με το ping ημερήσιας χρήσης</string>
+  <!-- Preference switch title for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_title" tools:ignore="UnusedResources" moz:removedIn="142">Αυτόματη αποστολή αναφορών κατάρρευσης</string>
+  <!-- Preference switch description for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_description" tools:ignore="UnusedResources" moz:removedIn="142">Αυτό μας βοηθάει να διαγνώσουμε και να επιλύσουμε προβλήματα με το πρόγραμμα περιήγησης. Οι αναφορές ενδέχεται να περιέχουν προσωπικά ή ευαίσθητα δεδομένα.</string>
+  <!-- Text for sumo link to learn more about crash reports in data collection screen -->
+  <string name="preferences_crashes_learn_more">Μάθετε περισσότερα σχετικά με τις αναφορές καταρρεύσεων</string>
+  <!-- Title Headers for data collection settings screen -->
+  <string name="crash_reports_data_category">Αναφορές καταρρεύσεων</string>
+  <string name="usage_data_category">Δεδομένα χρήσης</string>
+  <string name="studies_data_category">Μελέτες</string>
+  <string name="technical_data_category">Τεχνικά δεδομένα</string>
+  <string name="crash_reporting_description">Οι αναφορές κατάρρευσης μάς επιτρέπουν να διαγνώσουμε και να διορθώσουμε προβλήματα του προγράμματος περιήγησης. Οι αναφορές ενδέχεται να περιλαμβάνουν προσωπικά ή ευαίσθητα δεδομένα.</string>
+  <!-- Section title for campaign measurement in data collections screen -->
+  <string name="preferences_marketing_data_title">Μετρήσεις εκστρατειών</string>
   <!-- Preference switch for campaign measurement data (marketing data) collection -->
   <string name="preferences_marketing_data_2">Δεδομένα μέτρησης εκστρατειών</string>
   <!--
@@ -1215,16 +1273,8 @@
   <string name="preferences_marketing_data_description_4" tools:ignore="BrandUsage">Μοιραστείτε πώς ανακαλύψατε το Firefox και δηλώστε ότι το χρησιμοποιείτε στους συνεργάτες μάρκετινγκ της Mozilla.</string>
   <!-- Learn more link for marketing data preference -->
   <string name="preferences_marketing_data_learn_more">Μάθετε περισσότερα σχετικά με τα δεδομένα μάρκετινγκ</string>
-  <!-- Preference switch for daily usage ping data collection -->
-  <string name="preferences_daily_usage_ping_title">Ping ημερήσιας χρήσης</string>
-  <string name="preferences_daily_usage_ping_description">Αυτό βοηθά τη Mozilla να εκτιμήσει τους ενεργούς χρήστες.</string>
-  <string name="preferences_daily_usage_ping_learn_more">Μάθετε περισσότερα σχετικά με το ping ημερήσιας χρήσης</string>
-  <!-- Preference switch title for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_title">Αυτόματη αποστολή αναφορών κατάρρευσης</string>
-  <!-- Preference switch description for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_description">Αυτό μας βοηθάει να διαγνώσουμε και να επιλύσουμε προβλήματα με το πρόγραμμα περιήγησης. Οι αναφορές ενδέχεται να περιέχουν προσωπικά ή ευαίσθητα δεδομένα.</string>
   <!-- Learn more link for crash reporting preference -->
-  <string name="onboarding_preferences_dialog_crash_reporting_learn_more">Μάθετε περισσότερα σχετικά με τις αναφορές καταρρεύσεων</string>
+  <string name="onboarding_preferences_dialog_crash_reporting_learn_more" tools:ignore="UnusedResources" moz:removedIn="142">Μάθετε περισσότερα σχετικά με τις αναφορές καταρρεύσεων</string>
   <!-- Title for studies preferences -->
   <string name="preference_experiments_2">Μελέτες</string>
   <!-- Summary for studies preferences -->
@@ -1253,6 +1303,10 @@
   <string name="preference_top_toolbar">Πάνω</string>
   <!-- Preference for using bottom toolbar -->
   <string name="preference_bottom_toolbar">Κάτω</string>
+  <!-- Preference for using simple toolbar -->
+  <string name="preference_simple_toolbar">Απλή</string>
+  <!-- Preference for using expanded toolbar -->
+  <string name="preference_expanded_toolbar">Ανεπτυγμένη</string>
   <!--
     Theme Preferences
 
@@ -1416,8 +1470,6 @@
   <!-- Learn more link for studies, links to an article for more information about studies. -->
   <string name="studies_learn_more">Μάθετε περισσότερα</string>
   <!--
-    Sessions
-
     Title for the list of tabs in the current private session used by a11y services
     The %1$s will be replaced by the number of opened private tabs
   -->
@@ -1521,6 +1573,8 @@
     %1$d is the number of items deleted.
   -->
   <string name="download_delete_multiple_items_snackbar_2">Διαγραμμένα στοιχεία: %1$d</string>
+  <!-- Title for the dialog that prompts the user to choose an app for downloading a file. -->
+  <string name="download_app_dialog_title">Λήψη αρχείου με:</string>
   <!-- Text for the snackbar to confirm that a single download item has been removed. %1$s is the name of the download item. -->
   <string name="download_delete_single_item_snackbar_2">Το «%1$s» διαγράφηκε</string>
   <!-- Text for the snackbar to confirm that downloads are in progress. -->
@@ -1563,8 +1617,6 @@
   <string name="download_delete_item">Διαγραφή</string>
   <!-- Content description for the toolbar "Navigate back" button -->
   <string name="download_navigate_back_description">Πλοήγηση προς τα πίσω</string>
-  <!-- Content description for the toolbar "Navigate up" button -->
-  <string name="download_navigate_up_description" moz:removedIn="139" tools:ignore="UnusedResources">Πλοήγηση προς τα πάνω</string>
   <!-- Content description for the toolbar back button while searching the downloads -->
   <string name="download_close_search_description">Επιστροφή και κλείσιμο αναζήτησης</string>
   <!--
@@ -1621,17 +1673,27 @@
   -->
   <string name="download_item_in_progress_description_2">%1$s / %2$s • σε %3$s.</string>
   <!--
-    Description of an in progress download item, displayed in the downloads list when the download time remaining is unknown.
+    Description of an in progress download item, displayed in the downloads list when the estimated download time remaining is still being calculated.
     %1$s is the current file size that has been downloaded.
     %2$s is the total size of the downloaded file.
   -->
   <string name="download_item_in_progress_description_pending">%1$s / %2$s • σε εκκρεμότητα</string>
+  <!--
+    Description of an in progress download item, displayed in the downloads list when the total download size is unknown. This results in the estimated download time remaining to be unknown also.
+    %1$s is the current file size that has been downloaded.
+  -->
+  <string name="download_item_in_progress_description_unknown_total_size">%1$s • άγνωστος χρόνος</string>
   <!--
     Description of a paused download item, displayed in the downloads list.
     %1$s is the current file size that has been downloaded.
     %2$s is the total size of the downloaded file.
   -->
   <string name="download_item_paused_description">%1$s / %2$s • σε παύση</string>
+  <!--
+    Description of a paused download item, displayed in the downloads list when the total download size is unknown.
+    %1$s is the current file size that has been downloaded.
+  -->
+  <string name="download_item_paused_description_unknown_total_size">%1$s • σε παύση</string>
   <!-- Text to indicate that an in progress download is paused. -->
   <string name="download_item_status_paused" moz:removedIn="141" tools:ignore="UnusedResources">σε παύση</string>
   <!-- Text to indicate that the download speed of an in progress download is being calculated. -->
@@ -1667,7 +1729,11 @@
   -->
   <string name="webcompat_reporter_screen_title">Αναφορά προβληματικού ιστοτόπου</string>
   <!-- The description of the Web Compat Reporter feature. %1$s is the name of the app (for example "Firefox"). -->
-  <string name="webcompat_reporter_description">Βοηθήστε μας να κάνουμε το %1$s καλύτερο για όλους. Οι υπάλληλοι της Mozilla χρησιμοποιούν τις πληροφορίες που στέλνετε για να διορθώσουν τα προβλήματα ιστοτόπων.</string>
+  <string name="webcompat_reporter_description" moz:removedIn="142" tools:ignore="UnusedResources">Βοηθήστε μας να κάνουμε το %1$s καλύτερο για όλους. Οι υπάλληλοι της Mozilla χρησιμοποιούν τις πληροφορίες που στέλνετε για να διορθώσουν τα προβλήματα ιστοτόπων.</string>
+  <!-- The description of the Web Compat Reporter feature, which has a "learn more" button text for navigating to a SUMO link to learn more about reporting a broken site. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="webcompat_reporter_description_2">Η αναφορά σας μας βοηθά να κατανοήσουμε και να διορθώσουμε ζητήματα στο %1$s, ώστε να το βελτιώσουμε για όλους. Μάθετε περισσότερα</string>
+  <!-- The button text for navigating to the SUMO link to learn more about reporting a broken site. -->
+  <string name="webcompat_reporter_learn_more">Μάθετε περισσότερα</string>
   <!-- The text field label of the URL text field. This is displayed above the user-inputted URL. -->
   <string name="webcompat_reporter_label_url">URL</string>
   <!-- The error message of the URL text field when an invalid URL has been entered. -->
@@ -1675,7 +1741,9 @@
   <!-- The label/title of a field in the Web Compat Reporter feature for explaining a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_label_whats_broken_2">Τι δεν λειτουργεί;</string>
   <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
-  <string name="webcompat_reporter_choose_reason">Επιλέξτε λόγο</string>
+  <string name="webcompat_reporter_choose_reason" moz:removedIn="142" tools:ignore="UnusedResources">Επιλέξτε λόγο</string>
+  <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
+  <string name="webcompat_reporter_choose_reason_2">Επιλέξτε έναν λόγο</string>
   <!-- The error message of the dropdown, prompting the user to select a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_choose_reason_error">Επιλέξτε έναν λόγο</string>
   <!-- The label/title of an optional field in the Web Compat Reporter feature for adding additional information. -->
@@ -1690,6 +1758,8 @@
   <string name="webcompat_reporter_success_snackbar_text">Η αναφορά σας έχει σταλεί</string>
   <!-- Button text for closing or dismissing the snackbar shown after successfully submitting a WebCompat report. -->
   <string name="webcompat_reporter_dismiss_success_snackbar_text">Κλείσιμο</string>
+  <!-- Placeholder text for the description field to prompt the user on what they should type. -->
+  <string name="webcompat_reporter_problem_description_placeholder_text">Τι συνέβη; Τι θα έπρεπε να έχει συμβεί;</string>
   <!--
     These reason strings are dropdown options on a WebCompat reporter form, indicating what is broken on the site.
 
@@ -1736,18 +1806,26 @@
   <string name="tab_crash_restore">Επαναφορά καρτελών</string>
   <!-- Unsubmitted crash dialog title, %s is the name of the app (for example "Firefox"). -->
   <string name="unsubmitted_crash_dialog_title">Έπρεπε να γίνει επανεκκίνηση του %s</string>
+  <!-- Single unsubmitted crash matching remote settings. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="unsubmitted_crash_requested_by_devs_dialog_title">Έχετε μια μη απεσταλμένη αναφορά κατάρρευσης που σχετίζεται με καταρρεύσεις που διερευνώνται. Η αποστολή της θα μας βοηθήσει να βελτιώσουμε το %1$s. Η αναφορά θα αγνοηθεί εάν κλείσετε αυτήν την ειδοποίηση.</string>
+  <!-- Multiple unsubmitted crashes matching remote settings. %1$d is the number of unsent crash reports, %2$s is the name of the app (for example "Firefox"). -->
+  <string name="unsubmitted_crashes_requested_by_devs_dialog_title">Έχετε μη απεσταλμένες αναφορές κατάρρευσης (%1$d) που σχετίζονται με καταρρεύσεις που διερευνώνται. Η αποστολή τους θα μας βοηθήσει να βελτιώσουμε το %2$s. Οι αναφορές θα αγνοηθούν εάν κλείσετε αυτήν την ειδοποίηση.</string>
   <!-- Unsubmitted crash dialog checkbox label for automatically sending reports in the future -->
   <string name="unsubmitted_crash_dialog_checkbox_label">Αυτόματη αποστολή αναφορών κατάρρευσης</string>
   <!-- Unsubmitted crash dialog negative button to dismiss the dialog -->
   <string name="unsubmitted_crash_dialog_negative_button">Κλείσιμο</string>
+  <!-- Unsubmitted crash dialog negative button to never be asked for the submission -->
+  <string name="unsubmitted_crash_requested_by_devs_dialog_never_button">Να μην εμφανιστεί ξανά</string>
   <!-- Unsubmitted crash dialog positive button to submit crash report -->
   <string name="unsubmitted_crash_dialog_positive_button">Αποστολή αναφοράς κατάρρευσης</string>
+  <!-- Unsubmitted crash dialog button to open a web page with more details on the feature and privacy policy -->
+  <string name="unsubmitted_crash_requested_by_devs_learn_more">Μάθετε περισσότερα</string>
   <!--
     Bookmarks
 
     Confirmation message for a dialog confirming if the user wants to delete the selected folder
   -->
-  <string name="bookmark_delete_folder_confirmation_dialog">Θέλετε σίγουρα να διαγράψετε αυτό το φάκελο;</string>
+  <string name="bookmark_delete_folder_confirmation_dialog">Θέλετε σίγουρα να διαγράψετε αυτόν τον φάκελο;</string>
   <!-- Confirmation message for a dialog confirming if the user wants to delete multiple items. -->
   <string name="bookmark_delete_folders_confirmation_dialog">Θέλετε σίγουρα να διαγράψετε τα επιλεγμένα στοιχεία;</string>
   <!-- Confirmation message for a dialog confirming if the user wants to delete multiple items including folders. %s is the name of the app (for example "Firefox"). -->
@@ -2144,7 +2222,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Η ιδιωτική καρτέλα έκλεισε</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Οι ιδιωτικές καρτέλες έκλεισαν</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Οι ιδιωτικές καρτέλες έκλεισαν</string>
   <!-- Text shown in snackbar when user erases their private browsing data -->
   <string name="snackbar_private_data_deleted">Τα δεδομένα ιδιωτικής περιήγησης διαγράφηκαν</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
@@ -2176,6 +2254,8 @@
   <string name="preference_accessibility_text_size_summary">Σμίκρυνση ή μεγέθυνση κειμένου ιστοτόπων</string>
   <!-- Title for Accessibility Text Size Scaling Preference -->
   <string name="preference_accessibility_font_size_title">Μέγεθος γραμματοσειράς</string>
+  <!-- %d is the percentage of the slide bar for setting the text font size and %% will be announced as "percent". -->
+  <string name="a11y_preference_accessibility_font_size_percentage">%d %%.</string>
   <!-- Title for Accessibility Text Automatic Size Scaling Preference -->
   <string name="preference_accessibility_auto_size_2">Αυτόματο μέγεθος γραμματοσειράς</string>
   <!-- Summary for Accessibility Text Automatic Size Scaling Preference -->
@@ -2306,7 +2386,7 @@
   <!-- Preference for enhanced tracking protection for the strict protection settings -->
   <string name="preference_enhanced_tracking_protection_strict">Αυστηρή</string>
   <!-- Preference description for enhanced tracking protection for the strict protection settings -->
-  <string name="preference_enhanced_tracking_protection_strict_description_4">Ισχυρότερη προστασία από καταγραφή και καλύτερες επιδόσεις, αλλά ορισμένοι ιστότοποι ενδέχεται να μη λειτουργούν σωστά.</string>
+  <string name="preference_enhanced_tracking_protection_strict_description_4">Ισχυρότερη προστασία από καταγραφή και καλύτερες επιδόσεις, αλλά ορισμένοι ιστότοποι ενδέχεται να μην λειτουργούν σωστά.</string>
   <!-- Accessibility text for the Strict protection information icon -->
   <string name="preference_enhanced_tracking_protection_strict_info_button">Τι αποκλείει η αυστηρή προστασία από καταγραφή</string>
   <!-- Preference for enhanced tracking protection for the custom protection settings -->
@@ -2548,7 +2628,7 @@
   <!-- Preference option for asking to save passwords in Fenix -->
   <string name="preferences_passwords_save_logins_ask_to_save">Να γίνεται ερώτηση για αποθήκευση</string>
   <!-- Preference option for never saving passwords in Fenix -->
-  <string name="preferences_passwords_save_logins_never_save">Να μη γίνεται ποτέ αποθήκευση</string>
+  <string name="preferences_passwords_save_logins_never_save">Να μην γίνεται ποτέ αποθήκευση</string>
   <!-- Preference for autofilling saved logins in Firefox (in web content), %1$s will be replaced with the app name -->
   <string name="preferences_passwords_autofill2">Αυτόματη συμπλήρωση στο %1$s</string>
   <!-- Description for the preference for autofilling saved logins in Firefox (in web content), %1$s will be replaced with the app name -->
@@ -2601,6 +2681,22 @@
   <string name="saved_login_clear_username">Εκκαθάριση ονόματος χρήστη</string>
   <!-- Content Description (for screenreaders etc) read for the button to clear the hostname field while creating a login -->
   <string name="saved_login_clear_hostname">Απαλοιφή ονόματος κεντρικού υπολογιστή</string>
+  <!-- Content description, used by tools like screenreaders, for the 3 dots button that shows commands related to the currently displayed login (edit, delete). -->
+  <string name="login_detail_menu_button_content_description">Μενού λεπτομερειών σύνδεσης</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the login detail view. -->
+  <string name="login_details_navigate_back_button_content_description">Πλοήγηση προς τα πίσω</string>
+  <!-- Edit text for the login detail menu edit button -->
+  <string name="login_detail_menu_edit_button">Επεξεργασία</string>
+  <!-- Delete text for the login detail menu delete button -->
+  <string name="login_detail_menu_delete_button">Διαγραφή</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the add login view. -->
+  <string name="add_login_navigate_back_button_content_description">Πλοήγηση προς τα πίσω</string>
+  <!-- Content description, used by tools like screenreaders, to press on the save new login button. -->
+  <string name="add_login_save_new_login_button_content_description">Αποθήκευση νέας σύνδεσης</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the edit login view. -->
+  <string name="edit_login_navigate_back_button_content_description">Πλοήγηση προς τα πίσω</string>
+  <!-- Content description, used by tools like screenreaders, to press on the edit login button. -->
+  <string name="edit_login_button_content_description">Επεξεργασία σύνδεσης</string>
   <!-- Content Description (for screenreaders etc) read for the button to open a site in logins -->
   <string name="saved_login_open_site">Άνοιγμα σελίδας στο πρόγραμμα περιήγησης</string>
   <!-- Content Description (for screenreaders etc) read for the button to reveal a password in logins -->
@@ -2782,9 +2878,9 @@
   <!-- Text shown when a user leaves the search string field empty -->
   <string name="search_add_custom_engine_error_empty_search_string">Εισαγάγετε νήμα αναζήτησης</string>
   <!-- Text shown when a user leaves out the required template string -->
-  <string name="search_add_custom_engine_error_missing_template">Βεβαιωθείτε ότι το νήμα αναζήτησης συμφωνεί με την μορφή του παραδείγματος</string>
+  <string name="search_add_custom_engine_error_missing_template">Βεβαιωθείτε ότι το νήμα αναζήτησης συμφωνεί με τη μορφή του παραδείγματος</string>
   <!-- Text shown when we aren't able to validate the custom search query. %s is the url of the custom search engine. -->
-  <string name="search_add_custom_engine_error_cannot_reach" moz:removedIn="140" tools:ignore="UnusedResources">Σφάλμα σύνδεσης στο “%s”</string>
+  <string name="search_add_custom_engine_error_cannot_reach" moz:removedIn="140" tools:ignore="UnusedResources">Σφάλμα σύνδεσης στο «%s»</string>
   <!-- Text shown when a user creates a new search engine. %s is the url of the custom search engine. -->
   <string name="search_add_custom_engine_success_message">Δημιουργήθηκε to %s</string>
   <!-- Text shown when a user successfully edits a custom search engine. %s is the url of the custom search engine. -->
@@ -2897,8 +2993,10 @@
   <!--
     Top Sites
 
-    Title text displayed in the dialog when shortcuts limit is reached.
+    Title text displayed for the shortcuts home screen section.
   -->
+  <string name="homepage_shortcuts_title">Συντομεύσεις</string>
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">Έχετε φτάσει το όριο συντομεύσεων</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">Για να προσθέσετε μια νέα συντόμευση, αφαιρέστε μια υπάρχουσα. Πατήστε παρατεταμένα τον ιστότοπο και επιλέξτε «Αφαίρεση».</string>
@@ -3036,7 +3134,7 @@
   <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
   <string name="a11y_action_label_wallpaper_collection_learn_more">άνοιγμα συνδέσμου για περισσότερες πληροφορίες σχετικά με αυτήν τη συλλογή</string>
   <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-  <string name="a11y_action_label_read_article">ανάγνωση του άρθρου</string>
+  <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">ανάγνωση του άρθρου</string>
   <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
   <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">άνοιγμα συνδέσμου για περισσότερες πληροφορίες</string>
   <!-- Content description for headings announced by accessibility service. %s is the text of the heading. Talkback will announce the text and then speak the word "Heading" indicating to the user that this text is a heading for a section. -->
@@ -3092,7 +3190,7 @@
   <!-- The title of the warning card informs the user that a translation could not be completed. -->
   <string name="translation_error_could_not_translate_warning_text">Προέκυψε πρόβλημα με τη μετάφραση. Δοκιμάστε ξανά.</string>
   <!-- The title of the warning card informs the user that the list of languages cannot be loaded. -->
-  <string name="translation_error_could_not_load_languages_warning_text">Αδυναμία φόρτωσης γλωσσών. Ελέγξτε τη σύνδεσή σας στο διαδίκτυο και δοκιμάστε ξανά.</string>
+  <string name="translation_error_could_not_load_languages_warning_text">Δεν ήταν δυνατή η φόρτωση των γλωσσών. Ελέγξτε τη σύνδεσή σας στο διαδίκτυο και δοκιμάστε ξανά.</string>
   <!-- The title of the warning card informs the user that a language is not supported. %1$s is the name of the language that is not supported. -->
   <string name="translation_error_language_not_supported_warning_text">Δυστυχώς, δεν υποστηρίζουμε ακόμα τα %1$s.</string>
   <!-- Snackbar title shown if the user closes the Translation Request dialogue and a translation is in progress. -->
@@ -3117,7 +3215,7 @@
   <!-- Toggle switch label that allows a user to set if they would like to never be offered a translation of the given language. %1$s is the language name, for example, "Spanish". -->
   <string name="translation_option_bottom_sheet_never_translate_in_language">Ποτέ μετάφραση για τα %1$s</string>
   <!-- Toggle switch label that allows a user to set the setting if they would like the browser to never translate the site the user is currently visiting. -->
-  <string name="translation_option_bottom_sheet_never_translate_site">Να μη μεταφράζεται ποτέ αυτός ο ιστότοπος</string>
+  <string name="translation_option_bottom_sheet_never_translate_site">Να μην μεταφράζεται ποτέ αυτός ο ιστότοπος</string>
   <!-- Toggle switch description that will appear under the "Never translate these sites" settings toggle switch to provide more information on how this setting interacts with other settings. -->
   <string name="translation_option_bottom_sheet_switch_never_translate_site_description">Παρακάμπτει όλες τις άλλες ρυθμίσεις</string>
   <!-- Toggle switch description that will appear under the "Never translate" and "Always translate" toggle switch settings to provide more information on how these  settings interacts with other settings. -->
@@ -3145,7 +3243,7 @@
   <!-- Button text for the button that will take the user to the automatic translations settings dialog. On the automatic translations settings dialog, the user can set if translations should occur automatically for a given language. -->
   <string name="translation_settings_automatic_translation">Αυτόματη μετάφραση</string>
   <!-- Button text for the button that will take the user to the never translate these sites dialog. On the never translate these sites dialog, the user can set if translations should never occur on certain websites. -->
-  <string name="translation_settings_automatic_never_translate_sites">Να μη μεταφράζονται ποτέ αυτοί οι ιστότοποι</string>
+  <string name="translation_settings_automatic_never_translate_sites">Να μην μεταφράζονται ποτέ αυτοί οι ιστότοποι</string>
   <!-- Button text for the button that will take the user to the download languages dialog. On the download languages dialog, the user can manage which languages they would like to download for translations. -->
   <string name="translation_settings_download_language">Λήψη γλωσσών</string>
   <!--
@@ -3171,7 +3269,7 @@
   <!-- Preference option for always translate. Radio button summary text. %1$s is the name of the app (for example "Firefox"). -->
   <string name="automatic_translation_option_always_translate_summary_preference">Το %1$s θα μεταφράζει αυτόματα αυτήν τη γλώσσα κατά τη φόρτωση των σελίδων.</string>
   <!-- Preference option for never translate. Radio button title text. -->
-  <string name="automatic_translation_option_never_translate_title_preference">Να μη γίνεται ποτέ μετάφραση</string>
+  <string name="automatic_translation_option_never_translate_title_preference">Να μην γίνεται ποτέ μετάφραση</string>
   <!-- Preference option for never translate. Radio button summary text. %1$s is the name of the app (for example "Firefox"). -->
   <string name="automatic_translation_option_never_translate_summary_preference">Το %1$s δεν θα προτείνει ποτέ τη μετάφραση ιστοτόπων σε αυτήν τη γλώσσα.</string>
   <!--
@@ -3179,9 +3277,9 @@
 
     Title of the never translate site preference screen that will appear on the toolbar.
   -->
-  <string name="never_translate_site_toolbar_title_preference">Να μη μεταφράζονται ποτέ αυτοί οι ιστότοποι</string>
+  <string name="never_translate_site_toolbar_title_preference">Να μην μεταφράζονται ποτέ αυτοί οι ιστότοποι</string>
   <!-- Screen header presenting the never translate site preference feature. It will appear under the toolbar. -->
-  <string name="never_translate_site_header_preference">Για να προσθέσετε νέο ιστότοπο: Επισκεφτείτε τον και επιλέξτε «Να μη μεταφράζεται ποτέ αυτός ο ιστότοπος» από το μενού μετάφρασης.</string>
+  <string name="never_translate_site_header_preference">Για να προσθέσετε έναν νέο ιστότοπο: Επισκεφθείτε τον και επιλέξτε «Να μην μεταφράζεται ποτέ αυτός ο ιστότοπος» από το μενού μετάφρασης.</string>
   <!--
     Content description (not visible, for screen readers etc.): For a never-translated site list item that is selected.
     %1$s is web site url (for example:"wikipedia.com")
@@ -3290,9 +3388,9 @@
 
     Text for the protection panel header when the site is secure.
   -->
-  <string name="protection_panel_header_secure">Ασφαλής</string>
+  <string name="protection_panel_header_secure" moz:removedIn="142" tools:ignore="UnusedResources">Ασφαλής</string>
   <!-- Text for the protection panel header when the site is not secure. -->
-  <string name="protection_panel_header_not_secure">Μη ασφαλής</string>
+  <string name="protection_panel_header_not_secure" moz:removedIn="142" tools:ignore="UnusedResources">Μη ασφαλής</string>
   <!-- Title text for the protection panel banner when the site is not secure. -->
   <string name="protection_panel_banner_not_secure_title">Να προσέχετε σε αυτόν τον ιστότοπο</string>
   <!-- Description text for the protection panel banner when the site is not secure. -->
@@ -3313,10 +3411,18 @@
   <string name="protection_panel_banner_protected_description">Προστατεύεστε. Αν εντοπίσουμε κάτι, θα σας ενημερώσουμε.</string>
   <!-- Label text for the Enhanced Tracking Protection toggle. -->
   <string name="protection_panel_etp_toggle_label">Ενισχυμένη προστασία από καταγραφή</string>
+  <!-- Toggle if Enhanced Tracking Protection is turned on -->
+  <string name="protection_panel_etp_toggle_on">Ενεργή</string>
+  <!-- Toggle if Enhanced Tracking Protection is turned off -->
+  <string name="protection_panel_etp_toggle_off">Ανενεργή</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
-  <string name="protection_panel_etp_toggle_enabled_description">Αν κάτι δεν λειτουργεί σωστά σε αυτόν τον ιστότοπο, δοκιμάστε να απενεργοποιήσετε την προστασία.</string>
+  <string name="protection_panel_etp_toggle_enabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Αν κάτι δεν λειτουργεί σωστά σε αυτόν τον ιστότοπο, δοκιμάστε να απενεργοποιήσετε την προστασία.</string>
+  <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
+  <string name="protection_panel_etp_toggle_enabled_description_2">Αν κάτι δεν λειτουργεί σωστά σε αυτόν τον ιστότοπο, δοκιμάστε να την απενεργοποιήσετε.</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
-  <string name="protection_panel_etp_toggle_disabled_description">Η προστασία είναι ΑΝΕΝΕΡΓΗ. Προτείνουμε να την ενεργοποιήσετε ξανά.</string>
+  <string name="protection_panel_etp_toggle_disabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Η προστασία είναι ΑΝΕΝΕΡΓΗ. Προτείνουμε να την ενεργοποιήσετε ξανά.</string>
+  <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
+  <string name="protection_panel_etp_toggle_disabled_description_2">Προτείνεται η ενεργοποίηση της προστασίας από καταγραφή.</string>
   <!--
     Text for displaying the total number of trackers blocked in the protection panel.
     %d is a placeholder for the number of trackers blocked.
@@ -3325,7 +3431,9 @@
   <!-- Text for when no trackers have been blocked. -->
   <string name="protection_panel_no_trackers_blocked">Δεν βρέθηκαν ιχνηλάτες</string>
   <!-- Link text to navigate to privacy and security settings from the protection panel. -->
-  <string name="protection_panel_privacy_and_security_settings">Ρυθμίσεις απορρήτου και ασφάλειας</string>
+  <string name="protection_panel_privacy_and_security_settings" moz:removedIn="142" tools:ignore="UnusedResources">Ρυθμίσεις απορρήτου και ασφάλειας</string>
+  <!-- Link text to navigate to privacy and security settings from the protection panel. -->
+  <string name="protection_panel_privacy_and_security_settings_2">Ρυθμίσεις απορρήτου</string>
   <!-- Title text for the protection panel permissions section. -->
   <string name="protection_panel_permissions_title">Δικαιώματα</string>
   <!--
@@ -3356,7 +3464,7 @@
   <string name="connection_security_panel_not_secure">Μη ασφαλής σύνδεση</string>
   <!--
     Text for the connection security panel to indicate who the certificate was verified by.
-    %s is a placeholder for the name of the certificate authority that verified the ticket
+    %s is a placeholder for the name of the certificate authority that issued the certificate.
   -->
   <string name="connection_security_panel_verified_by">Επαλήθευση από %s</string>
   <!--
@@ -3536,6 +3644,14 @@
   <!-- The title of the button for overriding home region permanently. -->
   <string name="debug_drawer_override_home_region_permanently">Οριστική παράκαμψη αρχικής περιοχής</string>
   <!--
+    Add-ons debug tools
+
+    The description of the Add-ons Tools in the Debug Drawer
+  -->
+  <string name="debug_drawer_addons_tools_title">Εργαλεία προσθέτων</string>
+  <!-- The title of the button used to check for add-on updates. -->
+  <string name="addons_debug_tools_check_for_updates_button">Έλεγχος για ενημερώσεις</string>
+  <!--
     Messages explaining how to exit fullscreen mode
 
     Message shown to explain how to exit fullscreen mode when gesture navigation is enabled.
@@ -3589,14 +3705,8 @@
   <string name="certificate_warning_push_notification_pnw2_message" tools:ignore="UnusedResources">Κάντε ενημέρωση πριν τις 14 Μαρτίου για να συνεχίσετε να χρησιμοποιείτε τα πρόσθετα και άλλες λειτουργίες.</string>
   <!-- Push notification message about old Firefox version -->
   <string name="certificate_warning_push_notification_pnw3_message" tools:ignore="UnusedResources">Ορισμένες λειτουργίες θα σταματήσουν να λειτουργούν αύριο.</string>
-  <!--
-    TextField Design System Component
+  <!-- TextField Design System Component -->
 
-    The default content description for the eye trailing icon button in TextField
-  -->
-  <string name="text_field_eye_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Εμφάνιση κρυφού κειμένου</string>
-  <!-- The default content description for the cross trailing icon button in TextField -->
-  <string name="text_field_cross_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Απαλοιφή κειμένου</string>
   <!--
     Setup checklist feature
 

@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Diğer seçenekler</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Gizli gezintiyi aç</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Gizli gezintiyi aç</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Gizli gezintiyi kapat</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Gizli gezintiyi kapat</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">Gizli gezinti</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -62,8 +62,10 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s, gizli sekmeleri kapattığınızda veya uygulamadan çıktığınızda gizli sekmelerdeki arama ve gezinti geçmişinizi temizler. Bu işlem, web sitelerinin ve internet servis sağlayıcınızın sizi tanımamasını sağlamaz ama bu cihazı kullanan başkaları varsa internette yaptıklarınızı onlardan gizlemenizi sağlar.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s, gizli sekmeleri kapattığınızda veya uygulamadan çıktığınızda gizli sekmelerdeki arama ve gezinti geçmişinizi temizler. Bu işlem, web sitelerinin ve internet servis sağlayıcınızın sizi tanımamasını sağlamaz ama bu cihazı kullanan başkaları varsa internette yaptıklarınızı onlardan gizlemenizi sağlar.</string>
   <string name="private_browsing_common_myths">Gizli gezinti ile ilgili yaygın efsaneler</string>
+  <!-- Text to be announced by the accessibility service to inform the user that the private browsing mode is currently active. -->
+  <string name="private_browsing_a11y_session_announcement">Gizli gezinti oturumu</string>
   <!--
     True Private Browsing Mode
 
@@ -98,7 +100,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">Yeni bir gizli oturum başlatmak için buraya dokunun. Geçmişinizi, çerezlerinizi ve diğer her şeyi silin.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Yeni bir gizli oturum başlatmak için buraya dokunun. Geçmişinizi, çerezlerinizi ve diğer her şeyi silin.</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -112,12 +114,8 @@
   <!--
     Address bar swipe "contextual feature recommendation" (CFR)
 
-    Text for the title displayed in the contextual feature recommendation popup promoting swipe of address bar.
+    Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar.
   -->
-  <string name="address_bar_swipe_cfr_title" tools:ignore="UnusedResources" moz:removedIn="139">Sekme değiştirmek için araç çubuğunu kaydırın</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
-  <string name="address_bar_swipe_cfr_message" tools:ignore="UnusedResources" moz:removedIn="139">Geçiş yapmak için sola veya sağa kaydırın. Yeni bir sekme açmak için son sekmenizde sola kaydırın.</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
   <string name="address_bar_swipe_cfr_message_2">Sekme değiştirmek için araç çubuğunu sola veya sağa sürükleyin.</string>
   <!-- Text for the info dialog when camera permissions have been denied but user tries to access a camera feature. -->
   <string name="camera_permissions_needed_message">Kamera erişimi gerekiyor. Android ayarlarına gidin, izinlere girin ve izin verin.</string>
@@ -321,7 +319,9 @@
   <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
   <string name="browser_menu_sign_in_caption" moz:removedIn="141" tools:ignore="UnusedResources">Parolaları, sekmeleri ve daha fazlasını eşitle</string>
   <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
-  <string name="browser_menu_sign_in_caption_2">Parolaları, yer imlerini, sekmeleri ve daha fazlasını eşitle</string>
+  <string name="browser_menu_sign_in_caption_2" moz:removedIn="141" tools:ignore="UnusedResources">Parolaları, yer imlerini, sekmeleri ve daha fazlasını eşitle</string>
+  <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
+  <string name="browser_menu_sign_in_caption_3">Parolaları, yer imlerini ve daha fazlasını eşitle</string>
   <!-- Browser menu label to sign back in to sync on the device when the user's account needs to be reauthenticated -->
   <string name="browser_menu_sign_back_in_to_sync">Eşitlemek için yeniden giriş yap</string>
   <!-- Browser menu caption label for the "Sign back in to sync" browser menu item described in `browser_menu_sign_back_in_to_sync` when there is an error in syncing -->
@@ -334,9 +334,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">%1$s uygulamasındaki yenilikler</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">%1$s sürüm notları</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">Masaüstü sitesine geç</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">Masaüstü sitesine geç</string>
   <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
   <string name="browser_menu_switch_to_mobile_site">Mobil siteye geç</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
@@ -344,7 +344,11 @@
   <!-- Content description (not visible, for screen readers etc.): Back button for all menu redesign sub-menu -->
   <string name="browser_menu_back_button_content_description" moz:removedIn="141" tools:ignore="UnusedResources">Ana menüye dön</string>
   <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar main menu. -->
-  <string name="browser_main_menu_handlebar_content_description">Ana menüyü kapat</string>
+  <string name="browser_main_menu_handlebar_content_description" moz:removedIn="142" tools:ignore="UnusedResources">Ana menüyü kapat</string>
+  <!-- Content description (not visible, for screen readers etc.) for the handle used to drag the main menu at the bottom of the screen. -->
+  <string name="browser_close_main_menu_handlebar_content_description">Menüyü kapat</string>
+  <!-- Content description (not visible, for screen readers etc.) for main menu navigation header. -->
+  <string name="browser_main_menu_content_description_navigation_header">Navigasyon</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
   <string name="browser_main_menu_content_description_help_button">Yardım</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu settings button. -->
@@ -400,7 +404,7 @@
     Browser menu label that is displayed when the current page has been translated by the translation feature.
     %1$s is the name of the language that page was translated to (e.g. English).
   -->
-  <string name="browser_menu_translated_to">%1$s diline çevrildi</string>
+  <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">%1$s diline çevrildi</string>
   <!-- Browser menu label that is displayed when the current page has been translated by the translation feature. -->
   <string name="browser_menu_translated">Çevrildi</string>
   <!-- Browser menu label for the print feature -->
@@ -420,7 +424,11 @@
   <!-- Label text within the set as default banner -->
   <string name="browser_menu_default_banner_subtitle">Yalnızca birkaç saniye sürer. İstediğiniz zaman değiştirebilirsiniz.</string>
   <!-- Content description for the button that dismisses the set as default banner in the menu -->
-  <string name="browser_menu_default_banner_dismiss">Kapat</string>
+  <string name="browser_menu_default_banner_dismiss" moz:removedIn="142" tools:ignore="UnusedResources">Kapat</string>
+  <!-- Content description (not visible, for screen readers etc.) for the button that dismisses the set as default banner in the menu -->
+  <string name="browser_menu_default_banner_dismiss_promotion">Tanıtımı kapat</string>
+  <!-- Content description (not visible, for screen readers etc.) for recommended extensions in main menu -->
+  <string name="browser_menu_recommended_extensions_content_description">Daha fazla bilgi al</string>
   <!--
     Menu "contextual feature recommendation" (CFR)
 
@@ -445,7 +453,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">Gezinti geçmişini sil</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">Gezinti geçmişini sil</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">Sayfayı çevir</string>
   <!--
@@ -520,7 +528,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Geç</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">Sekmeleriniz eşitleniyor! Diğer cihazınızda kaldığınız yerden devam edin.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">Sekmeleriniz eşitleniyor! Diğer cihazınızda kaldığınız yerden devam edin.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">Kapat</string>
   <!--
@@ -861,10 +869,14 @@
   <string name="preferences_category_account">Hesap</string>
   <!-- Preference for changing where the AddressBar is positioned -->
   <string name="preferences_toolbar_2">Adres çubuğu konumu</string>
+  <!-- Preference for changing toolbar layout -->
+  <string name="preferences_toolbar_layout">Araç çubuğu düzeni</string>
   <!-- Preference for changing default theme to dark or light mode -->
   <string name="preferences_theme">Tema</string>
   <!-- Preference for customizing the home screen -->
   <string name="preferences_home_2">Giriş sayfası</string>
+  <!-- Preference for customizing the app icon -->
+  <string name="preferences_app_icon">Uygulama simgesi</string>
   <!-- Preference for gestures based actions -->
   <string name="preferences_gestures">Parmak hareketleri</string>
   <!-- Preference for settings related to visual options -->
@@ -880,7 +892,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">Çeviriler</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Veri seçenekleri</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Veri seçenekleri</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Veri toplama</string>
   <!-- Preference for developers -->
@@ -942,7 +954,15 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">Asla</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Harici indirme yöneticisi</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Harici indirme yöneticisi</string>
+  <!-- Preference title for choosing an app to handle downloads -->
+  <string name="preferences_choose_app_for_downloads">İndirmeleri başka bir uygulamadan yönet</string>
+  <!-- Title for the setting to automatically clean up downloaded files. %s is the name of the app (for example "Firefox"). -->
+  <string name="preferences_downloads_settings_clean_up_files_title">%s uygulamasından ve cihazdan sil</string>
+  <!-- Summary for the setting to automatically clean up downloaded files -->
+  <string name="preferences_downloads_settings_clean_up_files_summary">İndirme yöneticinizden sildiğiniz dosyalar cihazınızdan da silinir</string>
+  <!-- Preference for downloads -->
+  <string name="preferences_downloads">İndirilenler</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">Gecko günlük kaydını etkinleştir</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -962,15 +982,29 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">Gerekli</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">Gerekli</string>
   <!-- The title of the optional permissions section from addon's permissions screen -->
-  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">İsteğe bağlı</string>
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">İsteğe bağlı</string>
   <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
-  <string name="addons_permissions_allow_for_all_sites" tools:ignore="UnusedResources">Tüm siteler için izin ver</string>
+  <string name="addons_permissions_allow_for_all_sites">Tüm siteler için izin ver</string>
   <!-- The subtitle for the allow for all sites preference toggle -->
-  <string name="addons_permissions_allow_for_all_sites_subtitle" tools:ignore="UnusedResources">Bu uzantıya güveniyorsanız her web sitesinde bu uzantıya izin verebilirsiniz.</string>
+  <string name="addons_permissions_allow_for_all_sites_subtitle">Bu uzantıya güveniyorsanız her web sitesinde bu uzantıya izin verebilirsiniz.</string>
   <!-- The text shown when an extension does not require permissions -->
   <string name="addons_does_not_require_permissions">Bu uzantı herhangi bir izin gerektirmiyor.</string>
+  <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+  <string name="addons_permissions_required_data_collection_description" moz:removedIn="141" tools:ignore="UnusedResources">Geliştirici, uzantının aşağıdakileri topladığını söylüyor: %1$s.</string>
+  <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+  <string name="addons_permissions_required_data_collection_description_2">Geliştirici, uzantının aşağıdakileri topladığını söylüyor: %1$s</string>
+  <!-- The description of the "none" data collection permission, when the extension doesn't collect anything according to the developer. -->
+  <string name="addons_permissions_none_required_data_collection_description">Geliştirici, bu uzantının veri toplamaya gerek duymadığını söylüyor.</string>
+  <!-- The title of the required permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_required_permissions">Gerekli izinler:</string>
+  <!-- The title of the optional permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_optional_permissions">İsteğe bağlı izinler:</string>
+  <!-- The title of the required data collection permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_required_data_collection">Toplanması gereken veriler:</string>
+  <!-- The title of the optional data collection permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_optional_data_collection">Toplanması isteğe bağlı veriler:</string>
   <!--
     Add-on Preferences
 
@@ -1094,6 +1128,12 @@
   <string name="alternative_app_icon_option_momo">Momo</string>
   <!-- Subtitle for the "Momo" themed alternative app icon variant in the icon picker screen. The app icon was created by artist @heyheymomodraws and features a unique hand-drawn style with a friendly fox. -->
   <string name="alternative_app_icon_option_momo_subtitle">Tasarım: @heyheymomodraws</string>
+  <!-- Title for the "Solid colors" group of alternative app icon variants in the icon picker screen. This group contains icons with flat, uniform color backgrounds. -->
+  <string name="alternative_app_icon_group_solid_colors">Düz renkler</string>
+  <!-- Title for the "Gradients" group of alternative app icon variants in the icon picker screen. This group contains icons with gradient backgrounds inspired by natural light conditions. -->
+  <string name="alternative_app_icon_group_gradients">Renk geçişleri</string>
+  <!-- Title for the "Other" group of alternative app icon variants in the icon picker screen. This group includes retro, pixel art, themed, and artist-created icons. -->
+  <string name="alternative_app_icon_group_other">Diğer</string>
   <!--
     Add-ons general availability nimbus message
 
@@ -1202,10 +1242,30 @@
   <string name="exceptions_empty_message_learn_more_link">Daha fazla bilgi al</string>
   <!-- Preference switch for usage and technical data collection -->
   <string name="preference_usage_data_2">Teknik verileri ve etkileşim verilerini gönder</string>
+  <!-- Preference switch for usage and technical learn more link in new compose -->
+  <string name="preference_usage_data_learn_more_2">Teknik veriler hakkında daha fazla bilgi alın</string>
   <!-- Preference switch for usage and technical learn more link -->
-  <string name="preference_usage_data_learn_more">Daha fazla bilgi al</string>
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">Daha fazla bilgi al</string>
   <!-- Preference description for marketing data collection. Note: The words "Firefox" should NOT be translated -->
   <string name="preferences_usage_data_description_1" tools:ignore="BrandUsage">Cihazınız, donanım yapılandırmanız ve kullanımınızla ilgili veriler Firefox’un özelliklerini, performansını ve kararlılığını geliştirmemize yardımcı olur.</string>
+  <!-- Preference switch for daily usage ping data collection -->
+  <string name="preferences_daily_usage_ping_title">Günlük kullanım ping’i</string>
+  <string name="preferences_daily_usage_ping_description">Bu sayede Mozilla aktif kullanıcı sayısını tahmin edebilir.</string>
+  <string name="preferences_daily_usage_ping_learn_more">Günlük kullanım ping’i hakkında daha fazla bilgi al</string>
+  <!-- Preference switch title for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_title" tools:ignore="UnusedResources" moz:removedIn="142">Çökme raporlarını otomatik olarak gönder</string>
+  <!-- Preference switch description for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_description" tools:ignore="UnusedResources" moz:removedIn="142">Bu sayede tarayıcıyla ilgili sorunları tanılayıp düzeltebiliriz. Raporlar kişisel veya hassas veriler içerebilir.</string>
+  <!-- Text for sumo link to learn more about crash reports in data collection screen -->
+  <string name="preferences_crashes_learn_more">Çökme raporları hakkında bilgi alın</string>
+  <!-- Title Headers for data collection settings screen -->
+  <string name="crash_reports_data_category">Çökme raporları</string>
+  <string name="usage_data_category">Kullanım verileri</string>
+  <string name="studies_data_category">Araştırmalar</string>
+  <string name="technical_data_category">Teknik veriler</string>
+  <string name="crash_reporting_description">Çökme raporları tarayıcıyla ilgili sorunları tanılayıp düzeltmemizi sağlar. Raporlar kişisel veya hassas veriler içerebilir.</string>
+  <!-- Section title for campaign measurement in data collections screen -->
+  <string name="preferences_marketing_data_title">Kampanya ölçümü</string>
   <!-- Preference switch for campaign measurement data (marketing data) collection -->
   <string name="preferences_marketing_data_2">Kampanya ölçüm verileri</string>
   <!--
@@ -1215,16 +1275,8 @@
   <string name="preferences_marketing_data_description_4" tools:ignore="BrandUsage">Firefox’u nasıl keşfettiğinizi ve kullandığınızı Mozilla’nın pazarlama teknolojileri iş ortaklarıyla paylaşın.</string>
   <!-- Learn more link for marketing data preference -->
   <string name="preferences_marketing_data_learn_more">Pazarlama verileri ile ilgili daha fazla bilgi alın</string>
-  <!-- Preference switch for daily usage ping data collection -->
-  <string name="preferences_daily_usage_ping_title">Günlük kullanım ping’i</string>
-  <string name="preferences_daily_usage_ping_description">Bu sayede Mozilla aktif kullanıcı sayısını tahmin edebilir.</string>
-  <string name="preferences_daily_usage_ping_learn_more">Günlük kullanım ping’i hakkında daha fazla bilgi al</string>
-  <!-- Preference switch title for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_title">Çökme raporlarını otomatik olarak gönder</string>
-  <!-- Preference switch description for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_description">Bu sayede tarayıcıyla ilgili sorunları tanılayıp düzeltebiliriz. Raporlar kişisel veya hassas veriler içerebilir.</string>
   <!-- Learn more link for crash reporting preference -->
-  <string name="onboarding_preferences_dialog_crash_reporting_learn_more">Çökme raporları hakkında bilgi alın</string>
+  <string name="onboarding_preferences_dialog_crash_reporting_learn_more" tools:ignore="UnusedResources" moz:removedIn="142">Çökme raporları hakkında bilgi alın</string>
   <!-- Title for studies preferences -->
   <string name="preference_experiments_2">Araştırmalar</string>
   <!-- Summary for studies preferences -->
@@ -1253,6 +1305,16 @@
   <string name="preference_top_toolbar">Üstte</string>
   <!-- Preference for using bottom toolbar -->
   <string name="preference_bottom_toolbar">Altta</string>
+  <!-- Preference for using simple toolbar -->
+  <string name="preference_simple_toolbar">Basit</string>
+  <!-- Preference for using expanded toolbar -->
+  <string name="preference_expanded_toolbar">Genişletilmiş</string>
+  <!--
+    App icon Preferences
+
+    Title for the preference that lets the user pick a new app icon
+  -->
+  <string name="preference_select_app_icon_title">Uygulama simgesini seçin</string>
   <!--
     Theme Preferences
 
@@ -1416,8 +1478,6 @@
   <!-- Learn more link for studies, links to an article for more information about studies. -->
   <string name="studies_learn_more">Daha fazla bilgi al</string>
   <!--
-    Sessions
-
     Title for the list of tabs in the current private session used by a11y services
     The %1$s will be replaced by the number of opened private tabs
   -->
@@ -1432,7 +1492,7 @@
   <!-- Content description (not visible, for screen readers etc.): Add tab button. Adds a news tab when pressed -->
   <string name="add_private_tab">Gizli sekme ekle</string>
   <!-- Text for the new tab button to indicate adding a new private tab in the tab -->
-  <string name="tab_drawer_fab_content">Gizli</string>
+  <string name="tab_drawer_fab_content">GİZLİ</string>
   <!-- Text for the new tab button to indicate syncing command on the synced tabs page -->
   <string name="tab_drawer_fab_sync">EŞİTLE</string>
   <!-- Text shown in the menu for sharing all tabs -->
@@ -1521,6 +1581,8 @@
     %1$d is the number of items deleted.
   -->
   <string name="download_delete_multiple_items_snackbar_2">%1$d öğe silindi</string>
+  <!-- Title for the dialog that prompts the user to choose an app for downloading a file. -->
+  <string name="download_app_dialog_title">Dosyayı bununla indir:</string>
   <!-- Text for the snackbar to confirm that a single download item has been removed. %1$s is the name of the download item. -->
   <string name="download_delete_single_item_snackbar_2">“%1$s” silindi</string>
   <!-- Text for the snackbar to confirm that downloads are in progress. -->
@@ -1563,8 +1625,6 @@
   <string name="download_delete_item">Sil</string>
   <!-- Content description for the toolbar "Navigate back" button -->
   <string name="download_navigate_back_description">Geri git</string>
-  <!-- Content description for the toolbar "Navigate up" button -->
-  <string name="download_navigate_up_description" moz:removedIn="139" tools:ignore="UnusedResources">Yukarı git</string>
   <!-- Content description for the toolbar back button while searching the downloads -->
   <string name="download_close_search_description">Geri dön ve aramayı kapat</string>
   <!--
@@ -1621,17 +1681,27 @@
   -->
   <string name="download_item_in_progress_description_2">%1$s / %2$s • %3$s içinde</string>
   <!--
-    Description of an in progress download item, displayed in the downloads list when the download time remaining is unknown.
+    Description of an in progress download item, displayed in the downloads list when the estimated download time remaining is still being calculated.
     %1$s is the current file size that has been downloaded.
     %2$s is the total size of the downloaded file.
   -->
   <string name="download_item_in_progress_description_pending">%1$s / %2$s • beklemede</string>
+  <!--
+    Description of an in progress download item, displayed in the downloads list when the total download size is unknown. This results in the estimated download time remaining to be unknown also.
+    %1$s is the current file size that has been downloaded.
+  -->
+  <string name="download_item_in_progress_description_unknown_total_size">%1$s • bilinmeyen süre</string>
   <!--
     Description of a paused download item, displayed in the downloads list.
     %1$s is the current file size that has been downloaded.
     %2$s is the total size of the downloaded file.
   -->
   <string name="download_item_paused_description">%1$s / %2$s • duraklatıldı</string>
+  <!--
+    Description of a paused download item, displayed in the downloads list when the total download size is unknown.
+    %1$s is the current file size that has been downloaded.
+  -->
+  <string name="download_item_paused_description_unknown_total_size">%1$s • duraklatıldı</string>
   <!-- Text to indicate that an in progress download is paused. -->
   <string name="download_item_status_paused" moz:removedIn="141" tools:ignore="UnusedResources">duraklatıldı</string>
   <!-- Text to indicate that the download speed of an in progress download is being calculated. -->
@@ -1667,7 +1737,11 @@
   -->
   <string name="webcompat_reporter_screen_title">Bozuk siteyi rapor et</string>
   <!-- The description of the Web Compat Reporter feature. %1$s is the name of the app (for example "Firefox"). -->
-  <string name="webcompat_reporter_description">%1$s tarayıcısını iyileştirmemize yardım edin. Mozilla çalışanları, gönderdiğiniz bilgileri web siteleriyle ilgili sorunlarını gidermek için kullanır.</string>
+  <string name="webcompat_reporter_description" moz:removedIn="142" tools:ignore="UnusedResources">%1$s tarayıcısını iyileştirmemize yardım edin. Mozilla çalışanları, gönderdiğiniz bilgileri web siteleriyle ilgili sorunlarını gidermek için kullanır.</string>
+  <!-- The description of the Web Compat Reporter feature, which has a "learn more" button text for navigating to a SUMO link to learn more about reporting a broken site. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="webcompat_reporter_description_2">Raporunuz %1$s uygulamasındaki sorunları anlayıp düzeltmemize, böylece uygulamayı herkes için iyileştirmemize için yardımcı oluyor. Daha fazla bilgi alın</string>
+  <!-- The button text for navigating to the SUMO link to learn more about reporting a broken site. -->
+  <string name="webcompat_reporter_learn_more">Daha fazla bilgi alın</string>
   <!-- The text field label of the URL text field. This is displayed above the user-inputted URL. -->
   <string name="webcompat_reporter_label_url">Adres</string>
   <!-- The error message of the URL text field when an invalid URL has been entered. -->
@@ -1675,7 +1749,9 @@
   <!-- The label/title of a field in the Web Compat Reporter feature for explaining a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_label_whats_broken_2">Bozuk olan nedir?</string>
   <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
-  <string name="webcompat_reporter_choose_reason">Neden seçin</string>
+  <string name="webcompat_reporter_choose_reason" moz:removedIn="142" tools:ignore="UnusedResources">Neden seçin</string>
+  <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
+  <string name="webcompat_reporter_choose_reason_2">Bir neden seçin</string>
   <!-- The error message of the dropdown, prompting the user to select a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_choose_reason_error">Lütfen bir sebep seçin</string>
   <!-- The label/title of an optional field in the Web Compat Reporter feature for adding additional information. -->
@@ -1690,6 +1766,8 @@
   <string name="webcompat_reporter_success_snackbar_text">Raporunuz gönderildi</string>
   <!-- Button text for closing or dismissing the snackbar shown after successfully submitting a WebCompat report. -->
   <string name="webcompat_reporter_dismiss_success_snackbar_text">Kapat</string>
+  <!-- Placeholder text for the description field to prompt the user on what they should type. -->
+  <string name="webcompat_reporter_problem_description_placeholder_text">Ne oldu? Ne olması gerekiyordu?</string>
   <!--
     These reason strings are dropdown options on a WebCompat reporter form, indicating what is broken on the site.
 
@@ -1736,12 +1814,20 @@
   <string name="tab_crash_restore">Sekmeyi geri yükle</string>
   <!-- Unsubmitted crash dialog title, %s is the name of the app (for example "Firefox"). -->
   <string name="unsubmitted_crash_dialog_title">%s yeniden başlamak zorunda kaldı</string>
+  <!-- Single unsubmitted crash matching remote settings. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="unsubmitted_crash_requested_by_devs_dialog_title">Araştırdığımız çökmelerle ilgili gönderilmemiş bir çökme raporunuz var. Raporunuzu göndererek %1$s tarayıcısını geliştirmemize yardımcı olabilirsiniz. Bu bildirimi kapatırsanız bu rapor görmezden gelinecektir.</string>
+  <!-- Multiple unsubmitted crashes matching remote settings. %1$d is the number of unsent crash reports, %2$s is the name of the app (for example "Firefox"). -->
+  <string name="unsubmitted_crashes_requested_by_devs_dialog_title">Araştırdığımız çökmelerle ilgili gönderilmemiş %1$d çökme raporunuz var. Raporunuzu göndererek %2$s tarayıcısını geliştirmemize yardımcı olabilirsiniz. Bu bildirimi kapatırsanız bu rapor görmezden gelinecektir.</string>
   <!-- Unsubmitted crash dialog checkbox label for automatically sending reports in the future -->
   <string name="unsubmitted_crash_dialog_checkbox_label">Çökme raporlarını otomatik olarak gönder</string>
   <!-- Unsubmitted crash dialog negative button to dismiss the dialog -->
   <string name="unsubmitted_crash_dialog_negative_button">Kapat</string>
+  <!-- Unsubmitted crash dialog negative button to never be asked for the submission -->
+  <string name="unsubmitted_crash_requested_by_devs_dialog_never_button">Bir daha gösterme</string>
   <!-- Unsubmitted crash dialog positive button to submit crash report -->
   <string name="unsubmitted_crash_dialog_positive_button">Çökme raporu gönder</string>
+  <!-- Unsubmitted crash dialog button to open a web page with more details on the feature and privacy policy -->
+  <string name="unsubmitted_crash_requested_by_devs_learn_more">Daha fazla bilgi al</string>
   <!--
     Bookmarks
 
@@ -2144,7 +2230,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Gizli sekme kapatıldı</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Gizli sekmeler kapatıldı</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Gizli sekmeler kapatıldı</string>
   <!-- Text shown in snackbar when user erases their private browsing data -->
   <string name="snackbar_private_data_deleted">Gizli gezinti verileri silindi</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
@@ -2176,6 +2262,8 @@
   <string name="preference_accessibility_text_size_summary">Web sitelerinde metinleri büyütün veya küçültün</string>
   <!-- Title for Accessibility Text Size Scaling Preference -->
   <string name="preference_accessibility_font_size_title">Yazı tipi boyutu</string>
+  <!-- %d is the percentage of the slide bar for setting the text font size and %% will be announced as "percent". -->
+  <string name="a11y_preference_accessibility_font_size_percentage">%% %d.</string>
   <!-- Title for Accessibility Text Automatic Size Scaling Preference -->
   <string name="preference_accessibility_auto_size_2">Otomatik yazı tipi boyutlandırma</string>
   <!-- Summary for Accessibility Text Automatic Size Scaling Preference -->
@@ -2418,7 +2506,7 @@
   -->
   <string name="preference_doh_title">HTTPS üzerinden DNS</string>
   <!-- Description of the preference to enable "DNS over HTTPS". %1$s is replaced by a link using `preference_doh_learn_more` at text ("Learn More"). -->
-  <string name="preference_doh_summary">HTTPS Üzerinden Alan Adı Sistemi (DNS), alan adı isteklerinizi şifreli bir bağlantı üzerinden göndererek güvenli bir DNS sağlar. Böylece hangi web sitelerine eriştiğinizi başkalarının görmesi zorlaştır. %1$s</string>
+  <string name="preference_doh_summary">HTTPS Üzerinden Alan Adı Sistemi (DNS), alan adı isteklerinizi şifreli bir bağlantı üzerinden göndererek güvenli bir DNS sağlar. Böylece hangi web sitelerine eriştiğinizi başkalarının görmesi zorlaşır. %1$s</string>
   <!-- Used as text for the link in `preference_doh_title`, points to documentation about "DNS over HTTPS" -->
   <string name="preference_doh_learn_more">Daha fazla bilgi al</string>
   <!-- Content description for the "Exceptions" button -->
@@ -2601,6 +2689,22 @@
   <string name="saved_login_clear_username">Kullanıcı adını temizle</string>
   <!-- Content Description (for screenreaders etc) read for the button to clear the hostname field while creating a login -->
   <string name="saved_login_clear_hostname">Sunucuyu temizle</string>
+  <!-- Content description, used by tools like screenreaders, for the 3 dots button that shows commands related to the currently displayed login (edit, delete). -->
+  <string name="login_detail_menu_button_content_description">Hesap bilgileri menüsü</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the login detail view. -->
+  <string name="login_details_navigate_back_button_content_description">Geri git</string>
+  <!-- Edit text for the login detail menu edit button -->
+  <string name="login_detail_menu_edit_button">Düzenle</string>
+  <!-- Delete text for the login detail menu delete button -->
+  <string name="login_detail_menu_delete_button">Sil</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the add login view. -->
+  <string name="add_login_navigate_back_button_content_description">Geri git</string>
+  <!-- Content description, used by tools like screenreaders, to press on the save new login button. -->
+  <string name="add_login_save_new_login_button_content_description">Yeni hesabı kaydet</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the edit login view. -->
+  <string name="edit_login_navigate_back_button_content_description">Geri git</string>
+  <!-- Content description, used by tools like screenreaders, to press on the edit login button. -->
+  <string name="edit_login_button_content_description">Hesabı düzenle</string>
   <!-- Content Description (for screenreaders etc) read for the button to open a site in logins -->
   <string name="saved_login_open_site">Siteyi tarayıcıda aç</string>
   <!-- Content Description (for screenreaders etc) read for the button to reveal a password in logins -->
@@ -2766,7 +2870,7 @@
   <!-- Placeholder text shown in the Search String TextField before a user enters text -->
   <string name="search_add_custom_engine_search_string_hint_2">Arama için kullanılacak URL</string>
   <!-- Description text for the Search String TextField. The %s is part of the string -->
-  <string name="search_add_custom_engine_search_string_example" formatted="false">Sorguyu “%s” ile değiştirin. Örnek:\nhttps://www.google.com/search?q=%s</string>
+  <string name="search_add_custom_engine_search_string_example" formatted="false">Sorgunun yerine “%s” yazın. Örnek:\nhttps://www.google.com/search?q=%s</string>
   <!-- Accessibility description for the form in which details about the custom search engine are entered -->
   <string name="search_add_custom_engine_form_description">Özel arama motoru ayrıntıları</string>
   <!-- Label for the TextField in which user enters custom search engine suggestion URL -->
@@ -2897,8 +3001,10 @@
   <!--
     Top Sites
 
-    Title text displayed in the dialog when shortcuts limit is reached.
+    Title text displayed for the shortcuts home screen section.
   -->
+  <string name="homepage_shortcuts_title">Kısayollar</string>
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">Kısayol sınırına ulaştınız</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">Yeni bir kısayol eklemek için kısayollardan birini kaldırın. Siteye dokunup basılı tutun ve kaldır’ı seçin.</string>
@@ -3036,7 +3142,7 @@
   <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
   <string name="a11y_action_label_wallpaper_collection_learn_more">bu koleksiyon hakkında daha fazla bilgi edinmek için bağlantıyı açın</string>
   <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-  <string name="a11y_action_label_read_article">makaleyi oku</string>
+  <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">makaleyi oku</string>
   <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
   <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">bilgi almak için bağlantıyı aç</string>
   <!-- Content description for headings announced by accessibility service. %s is the text of the heading. Talkback will announce the text and then speak the word "Heading" indicating to the user that this text is a heading for a section. -->
@@ -3290,9 +3396,9 @@
 
     Text for the protection panel header when the site is secure.
   -->
-  <string name="protection_panel_header_secure">Güvenli</string>
+  <string name="protection_panel_header_secure" moz:removedIn="142" tools:ignore="UnusedResources">Güvenli</string>
   <!-- Text for the protection panel header when the site is not secure. -->
-  <string name="protection_panel_header_not_secure">Güvenli değil</string>
+  <string name="protection_panel_header_not_secure" moz:removedIn="142" tools:ignore="UnusedResources">Güvenli değil</string>
   <!-- Title text for the protection panel banner when the site is not secure. -->
   <string name="protection_panel_banner_not_secure_title">Bu sitede dikkatli olun</string>
   <!-- Description text for the protection panel banner when the site is not secure. -->
@@ -3313,10 +3419,18 @@
   <string name="protection_panel_banner_protected_description">Koruma altındasınız. Bir şey tespit edersek size haber vereceğiz.</string>
   <!-- Label text for the Enhanced Tracking Protection toggle. -->
   <string name="protection_panel_etp_toggle_label">Gelişmiş izlenme koruması</string>
+  <!-- Toggle if Enhanced Tracking Protection is turned on -->
+  <string name="protection_panel_etp_toggle_on">Açık</string>
+  <!-- Toggle if Enhanced Tracking Protection is turned off -->
+  <string name="protection_panel_etp_toggle_off">Kapalı</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
-  <string name="protection_panel_etp_toggle_enabled_description">Site bozuk görünüyorsa korumaları kapatmayı deneyin.</string>
+  <string name="protection_panel_etp_toggle_enabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Site bozuk görünüyorsa korumaları kapatmayı deneyin.</string>
+  <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
+  <string name="protection_panel_etp_toggle_enabled_description_2">Site bozuk görünüyorsa kapatmayı deneyin.</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
-  <string name="protection_panel_etp_toggle_disabled_description">Korumalar KAPALI. Yeniden açmanızı öneririz.</string>
+  <string name="protection_panel_etp_toggle_disabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Korumalar KAPALI. Yeniden açmanızı öneririz.</string>
+  <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
+  <string name="protection_panel_etp_toggle_disabled_description_2">İzlenme korumasını açmanız önerilir.</string>
   <!--
     Text for displaying the total number of trackers blocked in the protection panel.
     %d is a placeholder for the number of trackers blocked.
@@ -3325,7 +3439,9 @@
   <!-- Text for when no trackers have been blocked. -->
   <string name="protection_panel_no_trackers_blocked">Hiç takip kodu bulunamadı</string>
   <!-- Link text to navigate to privacy and security settings from the protection panel. -->
-  <string name="protection_panel_privacy_and_security_settings">Gizlilik ve güvenlik ayarları</string>
+  <string name="protection_panel_privacy_and_security_settings" moz:removedIn="142" tools:ignore="UnusedResources">Gizlilik ve güvenlik ayarları</string>
+  <!-- Link text to navigate to privacy and security settings from the protection panel. -->
+  <string name="protection_panel_privacy_and_security_settings_2">Gizlilik ayarları</string>
   <!-- Title text for the protection panel permissions section. -->
   <string name="protection_panel_permissions_title">İzinler</string>
   <!--
@@ -3356,7 +3472,7 @@
   <string name="connection_security_panel_not_secure">Bağlantı güvenli değil</string>
   <!--
     Text for the connection security panel to indicate who the certificate was verified by.
-    %s is a placeholder for the name of the certificate authority that verified the ticket
+    %s is a placeholder for the name of the certificate authority that issued the certificate.
   -->
   <string name="connection_security_panel_verified_by">Doğrulayan: %s</string>
   <!--
@@ -3536,6 +3652,14 @@
   <!-- The title of the button for overriding home region permanently. -->
   <string name="debug_drawer_override_home_region_permanently">Ev bölgesini kalıcı olarak değiştir</string>
   <!--
+    Add-ons debug tools
+
+    The description of the Add-ons Tools in the Debug Drawer
+  -->
+  <string name="debug_drawer_addons_tools_title">Eklenti araçları</string>
+  <!-- The title of the button used to check for add-on updates. -->
+  <string name="addons_debug_tools_check_for_updates_button">Güncellemeleri denetle</string>
+  <!--
     Messages explaining how to exit fullscreen mode
 
     Message shown to explain how to exit fullscreen mode when gesture navigation is enabled.
@@ -3589,14 +3713,8 @@
   <string name="certificate_warning_push_notification_pnw2_message" tools:ignore="UnusedResources">Eklentileri ve diğer özellikleri kullanmaya devam edebilmek için 14 Mart’tan önce tarayıcınızı güncelleyin.</string>
   <!-- Push notification message about old Firefox version -->
   <string name="certificate_warning_push_notification_pnw3_message" tools:ignore="UnusedResources">Bazı özellikler yarından itibaren çalışmayacak.</string>
-  <!--
-    TextField Design System Component
+  <!-- TextField Design System Component -->
 
-    The default content description for the eye trailing icon button in TextField
-  -->
-  <string name="text_field_eye_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Gizli metni göster</string>
-  <!-- The default content description for the cross trailing icon button in TextField -->
-  <string name="text_field_cross_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Metni temizle</string>
   <!--
     Setup checklist feature
 

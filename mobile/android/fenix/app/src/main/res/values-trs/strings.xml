@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Doj sa ga\'ue nagi\'át</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Nāchrūn riña gāchē nu huìt</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Nāchrūn riña gāchē nu huìt</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Dūnâ\\’āJ riña gāchē nu huìt</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Dūnâ\\’āJ riña gāchē nu huìt</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">Gachrūn nuguan\' ruhuât nanà\'uìt</string>
   <!-- Placeholder text shown in the search bar before a user enters text for a general engine -->
@@ -52,7 +52,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$snadure\' nej sa nana\'uî\'t nga gaché nunt riña nej rakïj ñanj huì garâj sunt nan sisī naránt asi gahuīt riña aplikasiûn nan. Nan nī sê sī gāta ruhuaj sisī à\'ngō nādure\'ej sò\' riña nej sîtio asi riña duguî\' dû\'uèj internet, sanī rugûñu\'un da\' \'ngōrïnt gīni\'in sa \'iát ngà aché nunt nī sī ga\'ue gīni\'in a\'ngô guìi ngà\'.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$snadure\' nej sa nana\'uî\'t nga gaché nunt riña nej rakïj ñanj huì garâj sunt nan sisī naránt asi gahuīt riña aplikasiûn nan. Nan nī sê sī gāta ruhuaj sisī à\'ngō nādure\'ej sò\' riña nej sîtio asi riña duguî\' dû\'uèj internet, sanī rugûñu\'un da\' \'ngōrïnt gīni\'in sa \'iát ngà aché nunt nī sī ga\'ue gīni\'in a\'ngô guìi ngà\'.</string>
   <string name="private_browsing_common_myths">Nuguan\' nē huā rayi\'î riña aché nu huì\'</string>
   <!--
     Open in App "contextual feature recommendation" (CFR)
@@ -252,7 +252,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Si gi\'hiaj guendât</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">¡Huā nūguan’àn nej rakïj ñanj huā ‘hiát! Guīj riña rakïj ñanj dunâjt riña a’ngô si āgâ’t.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">¡Huā nūguan’àn nej rakïj ñanj huā ‘hiát! Guīj riña rakïj ñanj dunâjt riña a’ngô si āgâ’t.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">Nārán</string>
   <!-- Text for the button to set firefox as default browser on the device -->
@@ -387,7 +387,7 @@
   <!-- Preference for language -->
   <string name="preferences_language">Nânj ga\'minj</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Doj sa nikāj nej dâto</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Doj sa nikāj nej dâto</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Nara\'uij nej dâto</string>
   <!-- Preference for developers -->
@@ -419,7 +419,7 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">Nitāj āmān</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Sa ni’hiāj rayi’î nej sa nanïnj ânèj e</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Sa ni’hiāj rayi’î nej sa nanïnj ânèj e</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">Nāchrūn riña nāgimàn nej si dā’nga Gecko</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -1170,7 +1170,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Ngà narán riña rakïj ñanj huìi</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Ngà narán riña nej rakïj ñanj huìi</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Ngà narán riña nej rakïj ñanj huìi</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">NĀNIKÀJ RŪKÙ</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -1732,11 +1732,7 @@
   <string name="synced_tabs_expand_group">Nāgi’hiaj yāchìj nej yi’nïn’ rakïj ñanj huā nūguan’àan</string>
   <!-- Content description for collapsing a group of synced tabs. -->
   <string name="synced_tabs_collapse_group">Gāchrī huì nej yi’nïn’ rakïj ñanj huā nūguan’àan</string>
-  <!--
-    Top Sites
-
-    Title text displayed in the dialog when shortcuts limit is reached.
-  -->
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">Ngà gachra riña āksêso dīrêkto</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">Da’ nūtà’t a’ngô atâjo, da’huît nādurê’t ‘ngòj. Gūru’man ra’a riña sitio nī gūru’man ra’a riña tāj nādurê’t.</string>
@@ -1833,8 +1829,10 @@
   <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
   <string name="a11y_action_label_wallpaper_collection_learn_more">nā’nïn riña enlâse da’ gīni’înt doj dàj hua rayi’î yi’nïn’ nan</string>
   <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-  <string name="a11y_action_label_read_article">gāhiā riña ñanj dan</string>
+  <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">gāhiā riña ñanj dan</string>
   <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
   <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">nā’nïn riña enlâse da’ gīni’înt doj</string>
   <!-- Translations feature -->
+
+  <!-- TextField Design System Component -->
 </resources>

@@ -17,6 +17,8 @@
     <color name="fx_mobile_layer_color_accent" tools:ignore="UnusedResources">@color/photonInk20</color>
     <!-- Selected tab -->
     <color name="fx_mobile_layer_color_accent_nonopaque">@color/photonViolet70A12</color>
+    <!-- Selected chip -->
+    <color name="fx_mobile_action_color_chip_selected">@color/photonViolet70A12</color>
     <!-- Selected tab -->
     <color name="fx_mobile_layer_color_accent_opaque" tools:ignore="UnusedResources">#EAE4F9</color>
     <color name="fx_mobile_layer_color_scrim">@color/photonDarkGrey30A95</color>
@@ -174,6 +176,8 @@
     <color name="fx_mobile_private_layer_color_accent" tools:ignore="UnusedResources">@color/photonViolet40</color>
     <!-- Selected tab -->
     <color name="fx_mobile_private_layer_color_accent_nonopaque">@color/photonViolet50A32</color>
+    <!-- Selected chip -->
+    <color name="fx_mobile_private_action_color_chip_selected">@color/photonViolet50A32</color>
     <!-- Selected tab -->
     <color name="fx_mobile_private_layer_color_accent_opaque" tools:ignore="UnusedResources">#423262</color>
     <color name="fx_mobile_private_layer_color_scrim">@color/photonDarkGrey90A95</color>
@@ -372,7 +376,7 @@
     <color name="spinner_selected_item">#1415141A</color>
 
     <!-- Material Design colors -->
-    <color name="material_scrim_color">#52000000</color>
+    <color name="material_scrim_color" tools:ignore="UnusedResources">#52000000</color>
 
     <!-- Add-ons colors -->
     <color name="mozac_feature_addons_messagebar_error_background_color" tools:ignore="UnusedResources">@color/fx_mobile_layer_color_critical</color>
@@ -380,4 +384,12 @@
 
     <!-- Private Mode mask icon circle fill colors -->
     <color name="mozac_ui_private_mode_circle_fill" tools:ignore="UnusedResources">@color/photonPurple60</color>
+
+    <!-- Account Sync Avatar fill colors -->
+    <color name="mozac_ui_avatar_warning_bg_fill_critical" tools:ignore="UnusedResources">@color/fx_mobile_icon_color_secondary</color>
+    <color name="mozac_ui_avatar_warning_fill_critical" tools:ignore="UnusedResources">@color/fx_mobile_icon_color_critical</color>
+
+    <!-- Extensions disabled icon fill colors -->
+    <color name="mozac_ui_extensions_warning_bg_fill_critical" tools:ignore="UnusedResources">@color/fx_mobile_icon_color_secondary</color>
+    <color name="mozac_ui_extensions_warning_fill_critical" tools:ignore="UnusedResources">@color/fx_mobile_icon_color_critical</color>
 </resources>

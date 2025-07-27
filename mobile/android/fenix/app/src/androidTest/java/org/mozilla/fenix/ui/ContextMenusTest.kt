@@ -208,9 +208,8 @@ class ContextMenusTest : TestSetup() {
         }
 
         downloadRobot {
-            verifyDownloadCompleteNotificationPopup()
-        }.clickOpen("image/jpeg") {} // verify open intent is matched with associated data type
-        downloadRobot {
+            verifyDownloadCompleteSnackbar(fileName = "rabbit.jpg")
+            clickSnackbarButton(composeTestRule = composeTestRule, "OPEN")
             verifyPhotosAppOpens()
         }
     }

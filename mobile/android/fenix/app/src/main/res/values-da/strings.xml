@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Flere indstillinger</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Aktiver privat browsing</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Aktiver privat browsing</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Deaktiver privat browsing</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Deaktiver privat browsing</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">Privat browsing</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -34,6 +34,8 @@
   <string name="no_private_tabs_description">Dine private faneblade vil blive vist her.</string>
   <!-- Tab tray multi select title in app bar. %1$d is the number of tabs selected -->
   <string name="tab_tray_multi_select_title">%1$d valgt</string>
+  <!-- Tab tray multi select title in app bar when no tabs are selected -->
+  <string name="tab_tray_multi_select_title_empty">Vælg faneblade</string>
   <!-- Label of button in create collection dialog for creating a new collection -->
   <string name="tab_tray_add_new_collection">Tilføj ny samling</string>
   <!-- Label of editable text in create collection dialog for naming a new collection -->
@@ -62,8 +64,10 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s rydder din søge- og browserhistorik fra private faneblade, når du lukker dem, eller når du afslutter programmet. Det gør det nemmere at holde din færden på nettet for dig selv, hvis andre bruger den samme computer. Websteder og din internetudbyder kan dog stadig finde ud af, hvad du foretager dig.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s rydder din søge- og browserhistorik fra private faneblade, når du lukker dem, eller når du afslutter programmet. Det gør det nemmere at holde din færden på nettet for dig selv, hvis andre bruger den samme computer. Websteder og din internetudbyder kan dog stadig finde ud af, hvad du foretager dig.</string>
   <string name="private_browsing_common_myths">Udbredte myter om privat browsing</string>
+  <!-- Text to be announced by the accessibility service to inform the user that the private browsing mode is currently active. -->
+  <string name="private_browsing_a11y_session_announcement">Privat browsing-session</string>
   <!--
     True Private Browsing Mode
 
@@ -98,7 +102,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">Tryk her for at starte en ny privat session. Slet din historik, cookies — alt.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Tryk her for at starte en ny privat session. Slet din historik, cookies — alt.</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -112,12 +116,8 @@
   <!--
     Address bar swipe "contextual feature recommendation" (CFR)
 
-    Text for the title displayed in the contextual feature recommendation popup promoting swipe of address bar.
+    Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar.
   -->
-  <string name="address_bar_swipe_cfr_title" tools:ignore="UnusedResources" moz:removedIn="139">Stryg værktøjslinjen for at skifte faneblade</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
-  <string name="address_bar_swipe_cfr_message" tools:ignore="UnusedResources" moz:removedIn="139">Stryg til højre eller venstre for at skifte. Stryg til venstre på dit sidste faneblad for at åbne et nyt.</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
   <string name="address_bar_swipe_cfr_message_2">Stryg værktøjslinjen til venstre eller højre for at skifte faneblade.</string>
   <!-- Text for the info dialog when camera permissions have been denied but user tries to access a camera feature. -->
   <string name="camera_permissions_needed_message">Adgang til kamera er nødvendig. Gå til Indstillinger i Android, tryk på Tilladelser, og tryk så på Tillad.</string>
@@ -320,6 +320,10 @@
   <string name="browser_menu_sign_in">Log ind</string>
   <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
   <string name="browser_menu_sign_in_caption" moz:removedIn="141" tools:ignore="UnusedResources">Synkroniser adgangskoder, faneblade med mere</string>
+  <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
+  <string name="browser_menu_sign_in_caption_2" moz:removedIn="141" tools:ignore="UnusedResources">Synkroniser bogmærker, adgangskoder, faneblade med mere</string>
+  <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
+  <string name="browser_menu_sign_in_caption_3">Synkroniser adgangskoder, bogmærker med mere</string>
   <!-- Browser menu label to sign back in to sync on the device when the user's account needs to be reauthenticated -->
   <string name="browser_menu_sign_back_in_to_sync">Log ind igen for at synkronisere</string>
   <!-- Browser menu caption label for the "Sign back in to sync" browser menu item described in `browser_menu_sign_back_in_to_sync` when there is an error in syncing -->
@@ -332,9 +336,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">Nyheder i %1$s</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">Nyheder i %1$s</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">Skift til desktop-version</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">Skift til desktop-version</string>
   <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
   <string name="browser_menu_switch_to_mobile_site">Skift til mobil-version</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
@@ -342,7 +346,11 @@
   <!-- Content description (not visible, for screen readers etc.): Back button for all menu redesign sub-menu -->
   <string name="browser_menu_back_button_content_description" moz:removedIn="141" tools:ignore="UnusedResources">Tilbage til hovedmenuen</string>
   <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar main menu. -->
-  <string name="browser_main_menu_handlebar_content_description">Luk hovedmenuen</string>
+  <string name="browser_main_menu_handlebar_content_description" moz:removedIn="142" tools:ignore="UnusedResources">Luk hovedmenuen</string>
+  <!-- Content description (not visible, for screen readers etc.) for the handle used to drag the main menu at the bottom of the screen. -->
+  <string name="browser_close_main_menu_handlebar_content_description">Luk menu</string>
+  <!-- Content description (not visible, for screen readers etc.) for main menu navigation header. -->
+  <string name="browser_main_menu_content_description_navigation_header">Navigation</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
   <string name="browser_main_menu_content_description_help_button">Hjælp</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu settings button. -->
@@ -378,6 +386,8 @@
   <string name="browser_menu_edit_bookmark">Rediger bogmærke</string>
   <!-- Browser menu label that the saves the currently visited page as a PDF -->
   <string name="browser_menu_save_as_pdf" moz:removedIn="141" tools:ignore="UnusedResources">Gem som PDF…</string>
+  <!-- Browser menu label that the saves the currently visited page as a PDF -->
+  <string name="browser_menu_save_as_pdf_2">Gem som PDF</string>
   <!-- Browser menu label for turning ON reader view of the current visited page -->
   <string name="browser_menu_turn_on_reader_view" moz:removedIn="141" tools:ignore="UnusedResources">Slå læsevisning til</string>
   <!-- Browser menu label for turning OFF reader view of the current visited page -->
@@ -386,17 +396,23 @@
   <string name="browser_menu_open_in_normal_tab" moz:removedIn="141" tools:ignore="UnusedResources">Flyt til ikke-privat faneblad</string>
   <!-- Browser menu label for navigating to the translation feature, which provides language translation options the current visited page -->
   <string name="browser_menu_translate_page" moz:removedIn="141" tools:ignore="UnusedResources">Oversæt side…</string>
+  <!-- Browser menu label for navigating to the translation feature, which provides language translation options the current visited page -->
+  <string name="browser_menu_translate_page_2">Oversæt side</string>
   <!-- Browser menu label for navigating to the Web Compat Reporter feature, which provides users the ability to send bug reports for broken sites. -->
   <string name="browser_menu_webcompat_reporter">Rapporter probl. m. websted…</string>
+  <!-- Browser menu label for navigating to the Web Compat Reporter feature, which provides users the ability to send bug reports for broken sites. -->
+  <string name="browser_menu_webcompat_reporter_2">Rapporter problem med websted</string>
   <!--
     Browser menu label that is displayed when the current page has been translated by the translation feature.
     %1$s is the name of the language that page was translated to (e.g. English).
   -->
-  <string name="browser_menu_translated_to">Oversat til %1$s</string>
+  <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">Oversat til %1$s</string>
   <!-- Browser menu label that is displayed when the current page has been translated by the translation feature. -->
   <string name="browser_menu_translated">Oversat</string>
   <!-- Browser menu label for the print feature -->
   <string name="browser_menu_print" moz:removedIn="141" tools:ignore="UnusedResources">Udskriv…</string>
+  <!-- Browser menu label for the print feature -->
+  <string name="browser_menu_print_2">Udskriv</string>
   <!--
     Browser menu label for the Delete browsing data on quit feature.
     %1$s is the name of the app (for example "Firefox").
@@ -407,8 +423,14 @@
     %1$s is the name of the app (for example "Firefox").
   -->
   <string name="browser_menu_default_banner_title">Gør %1$s til din standard-browser</string>
+  <!-- Label text within the set as default banner -->
+  <string name="browser_menu_default_banner_subtitle">Tager sekunder. Skift når som helst.</string>
   <!-- Content description for the button that dismisses the set as default banner in the menu -->
-  <string name="browser_menu_default_banner_dismiss">Afvis</string>
+  <string name="browser_menu_default_banner_dismiss" moz:removedIn="142" tools:ignore="UnusedResources">Afvis</string>
+  <!-- Content description (not visible, for screen readers etc.) for the button that dismisses the set as default banner in the menu -->
+  <string name="browser_menu_default_banner_dismiss_promotion">Afvis promovering</string>
+  <!-- Content description (not visible, for screen readers etc.) for recommended extensions in main menu -->
+  <string name="browser_menu_recommended_extensions_content_description">Mere information</string>
   <!--
     Menu "contextual feature recommendation" (CFR)
 
@@ -433,7 +455,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">Slet browser-historik</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">Slet browser-historik</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">Oversæt side</string>
   <!--
@@ -508,7 +530,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Spring over</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">Dine faneblade synkroniseres! Fortsæt, hvor du slap, på din anden enhed.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">Dine faneblade synkroniseres! Fortsæt, hvor du slap, på din anden enhed.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">Luk</string>
   <!--
@@ -849,10 +871,14 @@
   <string name="preferences_category_account">Konto</string>
   <!-- Preference for changing where the AddressBar is positioned -->
   <string name="preferences_toolbar_2">Adresselinjens placering</string>
+  <!-- Preference for changing toolbar layout -->
+  <string name="preferences_toolbar_layout">Tilpas værktøjslinje</string>
   <!-- Preference for changing default theme to dark or light mode -->
   <string name="preferences_theme">Tema</string>
   <!-- Preference for customizing the home screen -->
   <string name="preferences_home_2">Startside</string>
+  <!-- Preference for customizing the app icon -->
+  <string name="preferences_app_icon">App-ikon</string>
   <!-- Preference for gestures based actions -->
   <string name="preferences_gestures">Bevægelser</string>
   <!-- Preference for settings related to visual options -->
@@ -868,7 +894,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">Oversættelser</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Valg for data</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Valg for data</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Indsamling af data</string>
   <!-- Preference for developers -->
@@ -930,7 +956,15 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">Aldrig</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Ekstern håndtering af filhentning</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Ekstern håndtering af filhentning</string>
+  <!-- Preference title for choosing an app to handle downloads -->
+  <string name="preferences_choose_app_for_downloads">Håndter filhentninger med en anden app</string>
+  <!-- Title for the setting to automatically clean up downloaded files. %s is the name of the app (for example "Firefox"). -->
+  <string name="preferences_downloads_settings_clean_up_files_title">Slet fra %s og enhed</string>
+  <!-- Summary for the setting to automatically clean up downloaded files -->
+  <string name="preferences_downloads_settings_clean_up_files_summary">Hvis du fjerner filer fra oversigten over hentede filer, fjernes de også fra din enhed</string>
+  <!-- Preference for downloads -->
+  <string name="preferences_downloads">Filhentninger</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">Aktiver Gecko-logfiler</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -950,15 +984,29 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">Påkrævede</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">Påkrævede</string>
   <!-- The title of the optional permissions section from addon's permissions screen -->
-  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">Valgfrie</string>
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">Valgfrie</string>
   <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
-  <string name="addons_permissions_allow_for_all_sites" tools:ignore="UnusedResources">Tillad for alle websteder</string>
+  <string name="addons_permissions_allow_for_all_sites">Tillad for alle websteder</string>
   <!-- The subtitle for the allow for all sites preference toggle -->
-  <string name="addons_permissions_allow_for_all_sites_subtitle" tools:ignore="UnusedResources">Hvis du har tillid til denne udvidelse, kan du give den tilladelse på alle websteder.</string>
+  <string name="addons_permissions_allow_for_all_sites_subtitle">Hvis du har tillid til denne udvidelse, kan du give den tilladelse på alle websteder.</string>
   <!-- The text shown when an extension does not require permissions -->
   <string name="addons_does_not_require_permissions">Denne udvidelse kræver ingen tilladelser.</string>
+  <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+  <string name="addons_permissions_required_data_collection_description" moz:removedIn="141" tools:ignore="UnusedResources">Udvikleren meddeler, at udvidelsen indsamler: %1$s.</string>
+  <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+  <string name="addons_permissions_required_data_collection_description_2">Udvikleren meddeler, at udvidelsen indsamler: %1$s</string>
+  <!-- The description of the "none" data collection permission, when the extension doesn't collect anything according to the developer. -->
+  <string name="addons_permissions_none_required_data_collection_description">Udvikleren meddeler, at denne udvidelse ikke kræver indsamling af data.</string>
+  <!-- The title of the required permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_required_permissions">Påkrævede tilladelser:</string>
+  <!-- The title of the optional permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_optional_permissions">Valgfrie tilladelser:</string>
+  <!-- The title of the required data collection permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_required_data_collection">Påkrævet indsamling af data:</string>
+  <!-- The title of the optional data collection permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_optional_data_collection">Valgfri indsamling af data:</string>
   <!--
     Add-on Preferences
 
@@ -1082,6 +1130,12 @@
   <string name="alternative_app_icon_option_momo">Momo</string>
   <!-- Subtitle for the "Momo" themed alternative app icon variant in the icon picker screen. The app icon was created by artist @heyheymomodraws and features a unique hand-drawn style with a friendly fox. -->
   <string name="alternative_app_icon_option_momo_subtitle">Skabt af @heyheymomodraws</string>
+  <!-- Title for the "Solid colors" group of alternative app icon variants in the icon picker screen. This group contains icons with flat, uniform color backgrounds. -->
+  <string name="alternative_app_icon_group_solid_colors">Ensfarvede</string>
+  <!-- Title for the "Gradients" group of alternative app icon variants in the icon picker screen. This group contains icons with gradient backgrounds inspired by natural light conditions. -->
+  <string name="alternative_app_icon_group_gradients">Farveforløb</string>
+  <!-- Title for the "Other" group of alternative app icon variants in the icon picker screen. This group includes retro, pixel art, themed, and artist-created icons. -->
+  <string name="alternative_app_icon_group_other">Andet</string>
   <!--
     Add-ons general availability nimbus message
 
@@ -1190,10 +1244,30 @@
   <string name="exceptions_empty_message_learn_more_link">Læs mere</string>
   <!-- Preference switch for usage and technical data collection -->
   <string name="preference_usage_data_2">Send tekniske data og data om brug</string>
+  <!-- Preference switch for usage and technical learn more link in new compose -->
+  <string name="preference_usage_data_learn_more_2">Læs mere om tekniske data</string>
   <!-- Preference switch for usage and technical learn more link -->
-  <string name="preference_usage_data_learn_more">Læs mere</string>
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">Læs mere</string>
   <!-- Preference description for marketing data collection. Note: The words "Firefox" should NOT be translated -->
   <string name="preferences_usage_data_description_1" tools:ignore="BrandUsage">Data om din enhed, din hardware-konfiguration og hvordan du bruger appen hjælper os med at forbedre funktioner, ydelse og stabilitet i Firefox.</string>
+  <!-- Preference switch for daily usage ping data collection -->
+  <string name="preferences_daily_usage_ping_title">Ping for dagligt brug</string>
+  <string name="preferences_daily_usage_ping_description">Dette hjælper Mozilla med at vurdere antallet af aktive brugere.</string>
+  <string name="preferences_daily_usage_ping_learn_more">Læs mere om ping for dagligt brug</string>
+  <!-- Preference switch title for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_title" tools:ignore="UnusedResources" moz:removedIn="142">Send automatisk fejlrapporter</string>
+  <!-- Preference switch description for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_description" tools:ignore="UnusedResources" moz:removedIn="142">Dette hjælper os med at diagnosticere og løse problemer med browseren. Rapporter kan indeholde personlige eller følsomme data.</string>
+  <!-- Text for sumo link to learn more about crash reports in data collection screen -->
+  <string name="preferences_crashes_learn_more">Læs mere om fejlrapporter</string>
+  <!-- Title Headers for data collection settings screen -->
+  <string name="crash_reports_data_category">Fejlrapporter</string>
+  <string name="usage_data_category">Data for anvendelse</string>
+  <string name="studies_data_category">Undersøgelser</string>
+  <string name="technical_data_category">Tekniske data</string>
+  <string name="crash_reporting_description">Med fejlrapporter kan vi diagnosticere og løse problemer med browseren. Rapporter kan indeholde personlige eller følsomme data.</string>
+  <!-- Section title for campaign measurement in data collections screen -->
+  <string name="preferences_marketing_data_title">Kampagnemåling</string>
   <!-- Preference switch for campaign measurement data (marketing data) collection -->
   <string name="preferences_marketing_data_2">Kampagnemålingsdata</string>
   <!--
@@ -1203,16 +1277,8 @@
   <string name="preferences_marketing_data_description_4" tools:ignore="BrandUsage">Del, hvordan du opdagede Firefox, og at du bruger appen med Mozillas partnere indenfor markedsføringsteknologi.</string>
   <!-- Learn more link for marketing data preference -->
   <string name="preferences_marketing_data_learn_more">Læs mere om markedsføringsdata</string>
-  <!-- Preference switch for daily usage ping data collection -->
-  <string name="preferences_daily_usage_ping_title">Ping for dagligt brug</string>
-  <string name="preferences_daily_usage_ping_description">Dette hjælper Mozilla med at vurdere antallet af aktive brugere.</string>
-  <string name="preferences_daily_usage_ping_learn_more">Læs mere om ping for dagligt brug</string>
-  <!-- Preference switch title for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_title">Send automatisk fejlrapporter</string>
-  <!-- Preference switch description for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_description">Dette hjælper os med at diagnosticere og løse problemer med browseren. Rapporter kan indeholde personlige eller følsomme data.</string>
   <!-- Learn more link for crash reporting preference -->
-  <string name="onboarding_preferences_dialog_crash_reporting_learn_more">Læs mere om fejlrapporter</string>
+  <string name="onboarding_preferences_dialog_crash_reporting_learn_more" tools:ignore="UnusedResources" moz:removedIn="142">Læs mere om fejlrapporter</string>
   <!-- Title for studies preferences -->
   <string name="preference_experiments_2">Undersøgelser</string>
   <!-- Summary for studies preferences -->
@@ -1241,6 +1307,16 @@
   <string name="preference_top_toolbar">Top</string>
   <!-- Preference for using bottom toolbar -->
   <string name="preference_bottom_toolbar">Bund</string>
+  <!-- Preference for using simple toolbar -->
+  <string name="preference_simple_toolbar">Enkel</string>
+  <!-- Preference for using expanded toolbar -->
+  <string name="preference_expanded_toolbar">Udvidet</string>
+  <!--
+    App icon Preferences
+
+    Title for the preference that lets the user pick a new app icon
+  -->
+  <string name="preference_select_app_icon_title">Vælg app-ikon</string>
   <!--
     Theme Preferences
 
@@ -1406,6 +1482,11 @@
   <!--
     Sessions
 
+    Title for the list of tabs in the current normal session used by a11y services
+    The %1$s will be replaced by the number of opened normal tabs
+  -->
+  <string name="tabs_header_normal_tabs_counter_title">Almindelige åbne faneblade: %1$s. Tryk for at skifte faneblade.</string>
+  <!--
     Title for the list of tabs in the current private session used by a11y services
     The %1$s will be replaced by the number of opened private tabs
   -->
@@ -1415,6 +1496,12 @@
     The %1$s will be replaced by the number of opened synced tabs
   -->
   <string name="tabs_header_synced_tabs_counter_title">Synkroniserede åbne faneblade: %1$s. Tryk for at skifte faneblade.</string>
+  <!-- Text for the tabs header private tabs -->
+  <string name="tabs_header_private_tabs_title">Private</string>
+  <!-- Text for the tabs header normal tabs -->
+  <string name="tabs_header_normal_tabs_title">Faneblade</string>
+  <!-- Text for the tabs header synced tabs -->
+  <string name="tabs_header_synced_tabs_title">Synkroniser</string>
   <!-- Content description (not visible, for screen readers etc.): Add tab button. Adds a news tab when pressed -->
   <string name="add_tab">Tilføj faneblad</string>
   <!-- Content description (not visible, for screen readers etc.): Add tab button. Adds a news tab when pressed -->
@@ -1509,6 +1596,8 @@
     %1$d is the number of items deleted.
   -->
   <string name="download_delete_multiple_items_snackbar_2">Elementer slettet: %1$d</string>
+  <!-- Title for the dialog that prompts the user to choose an app for downloading a file. -->
+  <string name="download_app_dialog_title">Hent file med:</string>
   <!-- Text for the snackbar to confirm that a single download item has been removed. %1$s is the name of the download item. -->
   <string name="download_delete_single_item_snackbar_2">Slettet “%1$s”</string>
   <!-- Text for the snackbar to confirm that downloads are in progress. -->
@@ -1551,10 +1640,18 @@
   <string name="download_delete_item">Slet</string>
   <!-- Content description for the toolbar "Navigate back" button -->
   <string name="download_navigate_back_description">Gå tilbage</string>
-  <!-- Content description for the toolbar "Navigate up" button -->
-  <string name="download_navigate_up_description" moz:removedIn="139" tools:ignore="UnusedResources">Naviger op</string>
   <!-- Content description for the toolbar back button while searching the downloads -->
   <string name="download_close_search_description">Tilbage og luk søgning</string>
+  <!--
+    Content description for the search bar clear text button on the downloads screen
+
+    Content description for pause action button on the downloads screen
+  -->
+  <string name="download_pause_action">Pause</string>
+  <!-- Content description for resume action button on the downloads screen -->
+  <string name="download_resume_action">Genoptag</string>
+  <!-- Content description for retry download action button on the downloads screen -->
+  <string name="download_retry_action">Prøv igen</string>
   <string name="download_clear_search_description">Ryd</string>
   <!-- Text for the button to share the download URL -->
   <string name="download_share_url">Del URL</string>
@@ -1599,17 +1696,27 @@
   -->
   <string name="download_item_in_progress_description_2">%1$s / %2$s • %3$s tilbage.</string>
   <!--
-    Description of an in progress download item, displayed in the downloads list when the download time remaining is unknown.
+    Description of an in progress download item, displayed in the downloads list when the estimated download time remaining is still being calculated.
     %1$s is the current file size that has been downloaded.
     %2$s is the total size of the downloaded file.
   -->
   <string name="download_item_in_progress_description_pending">%1$s / %2$s • afventer</string>
+  <!--
+    Description of an in progress download item, displayed in the downloads list when the total download size is unknown. This results in the estimated download time remaining to be unknown also.
+    %1$s is the current file size that has been downloaded.
+  -->
+  <string name="download_item_in_progress_description_unknown_total_size">%1$s • ukendt tid</string>
   <!--
     Description of a paused download item, displayed in the downloads list.
     %1$s is the current file size that has been downloaded.
     %2$s is the total size of the downloaded file.
   -->
   <string name="download_item_paused_description">%1$s / %2$s • sat på pause</string>
+  <!--
+    Description of a paused download item, displayed in the downloads list when the total download size is unknown.
+    %1$s is the current file size that has been downloaded.
+  -->
+  <string name="download_item_paused_description_unknown_total_size">%1$s • sat på pause</string>
   <!-- Text to indicate that an in progress download is paused. -->
   <string name="download_item_status_paused" moz:removedIn="141" tools:ignore="UnusedResources">sat på pause</string>
   <!-- Text to indicate that the download speed of an in progress download is being calculated. -->
@@ -1645,7 +1752,11 @@
   -->
   <string name="webcompat_reporter_screen_title">Rapporter problem med websted</string>
   <!-- The description of the Web Compat Reporter feature. %1$s is the name of the app (for example "Firefox"). -->
-  <string name="webcompat_reporter_description">Hjælp med at gøre %1$s bedre for alle. Ansatte hos Mozilla bruger de oplysninger, du sender os, til at løse problemer med webstedet.</string>
+  <string name="webcompat_reporter_description" moz:removedIn="142" tools:ignore="UnusedResources">Hjælp med at gøre %1$s bedre for alle. Ansatte hos Mozilla bruger de oplysninger, du sender os, til at løse problemer med webstedet.</string>
+  <!-- The description of the Web Compat Reporter feature, which has a "learn more" button text for navigating to a SUMO link to learn more about reporting a broken site. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="webcompat_reporter_description_2">Din rapport hjælper os med at forstå og løse problemer i %1$s for at \u0020gøre appen bedre for alle. Læs mere</string>
+  <!-- The button text for navigating to the SUMO link to learn more about reporting a broken site. -->
+  <string name="webcompat_reporter_learn_more">Læs mere</string>
   <!-- The text field label of the URL text field. This is displayed above the user-inputted URL. -->
   <string name="webcompat_reporter_label_url">URL</string>
   <!-- The error message of the URL text field when an invalid URL has been entered. -->
@@ -1653,7 +1764,9 @@
   <!-- The label/title of a field in the Web Compat Reporter feature for explaining a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_label_whats_broken_2">Hvad virker ikke?</string>
   <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
-  <string name="webcompat_reporter_choose_reason">Vælg årsag</string>
+  <string name="webcompat_reporter_choose_reason" moz:removedIn="142" tools:ignore="UnusedResources">Vælg årsag</string>
+  <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
+  <string name="webcompat_reporter_choose_reason_2">Vælg en årsag</string>
   <!-- The error message of the dropdown, prompting the user to select a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_choose_reason_error">Vælg en årsag</string>
   <!-- The label/title of an optional field in the Web Compat Reporter feature for adding additional information. -->
@@ -1668,6 +1781,8 @@
   <string name="webcompat_reporter_success_snackbar_text">Din rapport blev sendt</string>
   <!-- Button text for closing or dismissing the snackbar shown after successfully submitting a WebCompat report. -->
   <string name="webcompat_reporter_dismiss_success_snackbar_text">Luk</string>
+  <!-- Placeholder text for the description field to prompt the user on what they should type. -->
+  <string name="webcompat_reporter_problem_description_placeholder_text">Hvad skete der? Hvad skulle der være sket?</string>
   <!--
     These reason strings are dropdown options on a WebCompat reporter form, indicating what is broken on the site.
 
@@ -1714,12 +1829,20 @@
   <string name="tab_crash_restore">Gendan faneblad</string>
   <!-- Unsubmitted crash dialog title, %s is the name of the app (for example "Firefox"). -->
   <string name="unsubmitted_crash_dialog_title">%s blev nødt til at genstarte</string>
+  <!-- Single unsubmitted crash matching remote settings. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="unsubmitted_crash_requested_by_devs_dialog_title">Du har en fejlrapport, som ikke er blevet sendt. Den er relateret til nedbrud, som vi er ved at undersøge. Det vil hjælpe os med at forbedre %1$s, hvis du sender fejlrapporten til os. Ved at lukke denne besked ignoreres rapporten.</string>
+  <!-- Multiple unsubmitted crashes matching remote settings. %1$d is the number of unsent crash reports, %2$s is the name of the app (for example "Firefox"). -->
+  <string name="unsubmitted_crashes_requested_by_devs_dialog_title">Du har fejlrapporter, som ikke er blevet sendt (%1$d). De er relateret til nedbrud, som vi er ved at undersøge. Det vil hjælpe os med at forbedre %2$s, hvis du sender fejlrapporterne til os. Ved at lukke denne besked ignoreres rapporterne.</string>
   <!-- Unsubmitted crash dialog checkbox label for automatically sending reports in the future -->
   <string name="unsubmitted_crash_dialog_checkbox_label">Send automatisk fejlrapporter</string>
   <!-- Unsubmitted crash dialog negative button to dismiss the dialog -->
   <string name="unsubmitted_crash_dialog_negative_button">Luk</string>
+  <!-- Unsubmitted crash dialog negative button to never be asked for the submission -->
+  <string name="unsubmitted_crash_requested_by_devs_dialog_never_button">Vis aldrig igen</string>
   <!-- Unsubmitted crash dialog positive button to submit crash report -->
   <string name="unsubmitted_crash_dialog_positive_button">Send fejlrapport</string>
+  <!-- Unsubmitted crash dialog button to open a web page with more details on the feature and privacy policy -->
+  <string name="unsubmitted_crash_requested_by_devs_learn_more">Læs mere</string>
   <!--
     Bookmarks
 
@@ -2122,7 +2245,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Privat faneblad lukket</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Private faneblade lukket</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Private faneblade lukket</string>
   <!-- Text shown in snackbar when user erases their private browsing data -->
   <string name="snackbar_private_data_deleted">Private browsing-data slettet</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
@@ -2154,6 +2277,8 @@
   <string name="preference_accessibility_text_size_summary">Gør tekst på websteder større eller mindre</string>
   <!-- Title for Accessibility Text Size Scaling Preference -->
   <string name="preference_accessibility_font_size_title">Skriftstørrelse</string>
+  <!-- %d is the percentage of the slide bar for setting the text font size and %% will be announced as "percent". -->
+  <string name="a11y_preference_accessibility_font_size_percentage">%d %%.</string>
   <!-- Title for Accessibility Text Automatic Size Scaling Preference -->
   <string name="preference_accessibility_auto_size_2">Automatisk skriftstørrelse</string>
   <!-- Summary for Accessibility Text Automatic Size Scaling Preference -->
@@ -2285,6 +2410,10 @@
   <string name="preference_enhanced_tracking_protection_strict">Striks</string>
   <!-- Preference description for enhanced tracking protection for the strict protection settings -->
   <string name="preference_enhanced_tracking_protection_strict_description_4">Stærkere beskyttelse mod sporing og hurtigere ydelse, men nogle websteder virker måske ikke ordentligt.</string>
+  <!-- Preference description for the checkbox setting for "baseline" exceptions (a set of content blocking exceptions applied to fix major website breakage). %1$s is the name of the application (e.g. Fenix). -->
+  <string name="preference_enhanced_tracking_protection_allow_list_baseline">Tillad at %1$s automatisk anvender undtagelser, som er nødvendige for at undgå alvorlige problemer med indlæsning af websteder.</string>
+  <!-- Preference description for the checkbox setting for "convenience" exceptions (a set of content blocking exceptions applied to fix convenience site features). -->
+  <string name="preference_enhanced_tracking_protection_allow_list_convenience">Anvend også automatisk undtagelser, der kun er nødvendige for at løse mindre problemer og gøre ikke-essentielle funktioner tilgængelige.</string>
   <!-- Accessibility text for the Strict protection information icon -->
   <string name="preference_enhanced_tracking_protection_strict_info_button">Hvad der bliver blokeret af striks beskyttelse mod sporing</string>
   <!-- Preference for enhanced tracking protection for the custom protection settings -->
@@ -2579,6 +2708,22 @@
   <string name="saved_login_clear_username">Ryd brugernavn</string>
   <!-- Content Description (for screenreaders etc) read for the button to clear the hostname field while creating a login -->
   <string name="saved_login_clear_hostname">Ryd værtsnavn</string>
+  <!-- Content description, used by tools like screenreaders, for the 3 dots button that shows commands related to the currently displayed login (edit, delete). -->
+  <string name="login_detail_menu_button_content_description">Menuen login-detaljer</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the login detail view. -->
+  <string name="login_details_navigate_back_button_content_description">Gå tilbage</string>
+  <!-- Edit text for the login detail menu edit button -->
+  <string name="login_detail_menu_edit_button">Rediger</string>
+  <!-- Delete text for the login detail menu delete button -->
+  <string name="login_detail_menu_delete_button">Slet</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the add login view. -->
+  <string name="add_login_navigate_back_button_content_description">Gå tilbage</string>
+  <!-- Content description, used by tools like screenreaders, to press on the save new login button. -->
+  <string name="add_login_save_new_login_button_content_description">Gem nyt login</string>
+  <!-- Content description, used by tools like screenreaders, to go back and exit the edit login view. -->
+  <string name="edit_login_navigate_back_button_content_description">Gå tilbage</string>
+  <!-- Content description, used by tools like screenreaders, to press on the edit login button. -->
+  <string name="edit_login_button_content_description">Rediger login</string>
   <!-- Content Description (for screenreaders etc) read for the button to open a site in logins -->
   <string name="saved_login_open_site">Åbn websted i browser</string>
   <!-- Content Description (for screenreaders etc) read for the button to reveal a password in logins -->
@@ -2875,8 +3020,10 @@
   <!--
     Top Sites
 
-    Title text displayed in the dialog when shortcuts limit is reached.
+    Title text displayed for the shortcuts home screen section.
   -->
+  <string name="homepage_shortcuts_title">Genveje</string>
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">Grænsen for genveje er nået</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">Fjern en genvej for at erstatte den med en ny. Tryk og hold på websiden, og vælg så Fjern.</string>
@@ -3014,7 +3161,7 @@
   <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
   <string name="a11y_action_label_wallpaper_collection_learn_more">åbne link for at læse mere om denne samling</string>
   <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-  <string name="a11y_action_label_read_article">læse artiklen</string>
+  <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">læse artiklen</string>
   <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
   <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">åbne link for at læse mere</string>
   <!-- Content description for headings announced by accessibility service. %s is the text of the heading. Talkback will announce the text and then speak the word "Heading" indicating to the user that this text is a heading for a section. -->
@@ -3268,9 +3415,9 @@
 
     Text for the protection panel header when the site is secure.
   -->
-  <string name="protection_panel_header_secure">Sikker</string>
+  <string name="protection_panel_header_secure" moz:removedIn="142" tools:ignore="UnusedResources">Sikker</string>
   <!-- Text for the protection panel header when the site is not secure. -->
-  <string name="protection_panel_header_not_secure">Ikke sikker</string>
+  <string name="protection_panel_header_not_secure" moz:removedIn="142" tools:ignore="UnusedResources">Ikke sikker</string>
   <!-- Title text for the protection panel banner when the site is not secure. -->
   <string name="protection_panel_banner_not_secure_title">Vær forsigtig på dette websted</string>
   <!-- Description text for the protection panel banner when the site is not secure. -->
@@ -3291,10 +3438,18 @@
   <string name="protection_panel_banner_protected_description">Du er beskyttet. Vi giver dig besked, hvis vi opdager noget.</string>
   <!-- Label text for the Enhanced Tracking Protection toggle. -->
   <string name="protection_panel_etp_toggle_label">Udvidet beskyttelse mod sporing</string>
+  <!-- Toggle if Enhanced Tracking Protection is turned on -->
+  <string name="protection_panel_etp_toggle_on">Til</string>
+  <!-- Toggle if Enhanced Tracking Protection is turned off -->
+  <string name="protection_panel_etp_toggle_off">Fra</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
-  <string name="protection_panel_etp_toggle_enabled_description">Hvis noget på webstedet ikke ser ud til at virke som det skal, så prøv at slå beskyttelse fra.</string>
+  <string name="protection_panel_etp_toggle_enabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Hvis noget på webstedet ikke ser ud til at virke som det skal, så prøv at slå beskyttelse fra.</string>
+  <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
+  <string name="protection_panel_etp_toggle_enabled_description_2">Hvis noget på webstedet ikke ser ud til at virke som det skal, så prøv at slå beskyttelse fra.</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
-  <string name="protection_panel_etp_toggle_disabled_description">Beskyttelse er SLÅET FRA. Vi anbefaler, at du slår det til igen.</string>
+  <string name="protection_panel_etp_toggle_disabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Beskyttelse er SLÅET FRA. Vi anbefaler, at du slår det til igen.</string>
+  <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
+  <string name="protection_panel_etp_toggle_disabled_description_2">Det anbefales at aktivere beskyttelse mod sporing.</string>
   <!--
     Text for displaying the total number of trackers blocked in the protection panel.
     %d is a placeholder for the number of trackers blocked.
@@ -3303,7 +3458,9 @@
   <!-- Text for when no trackers have been blocked. -->
   <string name="protection_panel_no_trackers_blocked">Ingen sporings-mekanismer fundet</string>
   <!-- Link text to navigate to privacy and security settings from the protection panel. -->
-  <string name="protection_panel_privacy_and_security_settings">Privatlivs- og sikkerhedsindstillinger</string>
+  <string name="protection_panel_privacy_and_security_settings" moz:removedIn="142" tools:ignore="UnusedResources">Privatlivs- og sikkerhedsindstillinger</string>
+  <!-- Link text to navigate to privacy and security settings from the protection panel. -->
+  <string name="protection_panel_privacy_and_security_settings_2">Indstillinger for beskyttelse af dit privatliv</string>
   <!-- Title text for the protection panel permissions section. -->
   <string name="protection_panel_permissions_title">Tilladelser</string>
   <!--
@@ -3334,7 +3491,7 @@
   <string name="connection_security_panel_not_secure">Forbindelsen er ikke sikker</string>
   <!--
     Text for the connection security panel to indicate who the certificate was verified by.
-    %s is a placeholder for the name of the certificate authority that verified the ticket
+    %s is a placeholder for the name of the certificate authority that issued the certificate.
   -->
   <string name="connection_security_panel_verified_by">Bekræftet af %s</string>
   <!--
@@ -3514,6 +3671,14 @@
   <!-- The title of the button for overriding home region permanently. -->
   <string name="debug_drawer_override_home_region_permanently">Tilsidesæt hjemregion permanent</string>
   <!--
+    Add-ons debug tools
+
+    The description of the Add-ons Tools in the Debug Drawer
+  -->
+  <string name="debug_drawer_addons_tools_title">Tilføjelses-værktøjer</string>
+  <!-- The title of the button used to check for add-on updates. -->
+  <string name="addons_debug_tools_check_for_updates_button">Søg efter opdateringer</string>
+  <!--
     Messages explaining how to exit fullscreen mode
 
     Message shown to explain how to exit fullscreen mode when gesture navigation is enabled.
@@ -3567,14 +3732,8 @@
   <string name="certificate_warning_push_notification_pnw2_message" tools:ignore="UnusedResources">Opdater inden den 14. marts for at fortsætte med at bruge tilføjelser og andre funktioner.</string>
   <!-- Push notification message about old Firefox version -->
   <string name="certificate_warning_push_notification_pnw3_message" tools:ignore="UnusedResources">Nogle funktioner holder op med at virke i morgen.</string>
-  <!--
-    TextField Design System Component
+  <!-- TextField Design System Component -->
 
-    The default content description for the eye trailing icon button in TextField
-  -->
-  <string name="text_field_eye_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Vis skjult tekst</string>
-  <!-- The default content description for the cross trailing icon button in TextField -->
-  <string name="text_field_cross_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Ryd tekst</string>
   <!--
     Setup checklist feature
 

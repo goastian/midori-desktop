@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Rohkem sätteid</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Luba privaatne veebilehitsemine</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Luba privaatne veebilehitsemine</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Keela privaatne veebilehitsemine</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Keela privaatne veebilehitsemine</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">Privaatne veebilehitsemine</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -62,7 +62,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s kustutab privaatsete kaartide otsimise ja lehitsemise ajaloo, kui väljud rakendusest või sulged privaatsed kaardid. Kuigi see ei muuda sind külastatavate veebilehtede või internetiteenuse pakkuja ees anonüümseks, kaitseb see siiski sinu privaatsust teiste selle seadme kasutajate eest.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s kustutab privaatsete kaartide otsimise ja lehitsemise ajaloo, kui väljud rakendusest või sulged privaatsed kaardid. Kuigi see ei muuda sind külastatavate veebilehtede või internetiteenuse pakkuja ees anonüümseks, kaitseb see siiski sinu privaatsust teiste selle seadme kasutajate eest.</string>
   <string name="private_browsing_common_myths">Levinumad müüdid privaatse veebilehitsemise kohta</string>
   <!--
     True Private Browsing Mode
@@ -98,7 +98,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">Uue privaatseansi alustamiseks puuduta siit. Kustuta ajalugu, küpsised – kõik.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Uue privaatseansi alustamiseks puuduta siit. Kustuta ajalugu, küpsised – kõik.</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -281,7 +281,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">Kustuta lehitsemise ajalugu</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">Kustuta lehitsemise ajalugu</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">Tõlgi leht</string>
   <!--
@@ -350,7 +350,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Jäta vahele</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">Kaarte sünkroonitakse! Jätka teises seadmes sealt, kus pooleli jäid.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">Kaarte sünkroonitakse! Jätka teises seadmes sealt, kus pooleli jäid.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">Sulge</string>
   <!-- Text for the button dismiss the screen and move on with the flow -->
@@ -488,7 +488,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">Tõlkimine</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Saadetavad andmed</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Saadetavad andmed</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Andmete kogumine</string>
   <!-- Preference for developers -->
@@ -520,7 +520,7 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">Mitte kunagi</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Kasutatakse välist allalaadimishaldurit</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Kasutatakse välist allalaadimishaldurit</string>
   <!-- Preference for extensions -->
   <string name="preferences_extensions">Lisad</string>
   <!-- Preference for notifications -->
@@ -534,7 +534,7 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">Nõutud</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">Nõutud</string>
   <!-- Button caption to confirm the add-on collection configuration -->
   <string name="customize_addon_collection_ok">Olgu</string>
   <!-- Button caption to abort the add-on collection configuration -->
@@ -647,7 +647,7 @@
   <!-- Preference switch for usage and technical data collection -->
   <string name="preference_usage_data_2">Saadetakse tehnilisi ja interaktsiooniandmeid</string>
   <!-- Preference switch for usage and technical learn more link -->
-  <string name="preference_usage_data_learn_more">Lisateave</string>
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">Lisateave</string>
   <!-- Preference description for marketing data collection. Note: The words "Firefox" should NOT be translated -->
   <string name="preferences_usage_data_description_1" tools:ignore="BrandUsage">Andmed sinu seadme, riistvara konfiguratsiooni ja kasutuse kohta aitavad meil Firefoxi funktsioone, jõudlust ja stabiilsust täiustada.</string>
   <!-- Preference switch for daily usage ping data collection -->
@@ -655,11 +655,11 @@
   <string name="preferences_daily_usage_ping_description">See aitab Mozillal aktiivsete kasutajate arvu \u0020hinnata.</string>
   <string name="preferences_daily_usage_ping_learn_more">Rohkem teavet igapäevasest kasutuspingust</string>
   <!-- Preference switch title for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_title">Vearaporteid saadetakse automaatselt</string>
+  <string name="preferences_automatically_send_crashes_title" tools:ignore="UnusedResources" moz:removedIn="142">Vearaporteid saadetakse automaatselt</string>
   <!-- Preference switch description for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_description">Need võimaldavad meil diagnoosida ja lahendada veebilehitseja probleeme. Aruanded võivad sisaldada isikuandmeid või tundlikke andmeid.</string>
+  <string name="preferences_automatically_send_crashes_description" tools:ignore="UnusedResources" moz:removedIn="142">Need võimaldavad meil diagnoosida ja lahendada veebilehitseja probleeme. Aruanded võivad sisaldada isikuandmeid või tundlikke andmeid.</string>
   <!-- Learn more link for crash reporting preference -->
-  <string name="onboarding_preferences_dialog_crash_reporting_learn_more">Rohkem teavet vearaportitest</string>
+  <string name="onboarding_preferences_dialog_crash_reporting_learn_more" tools:ignore="UnusedResources" moz:removedIn="142">Rohkem teavet vearaportitest</string>
   <!-- Title for studies preferences -->
   <string name="preference_experiments_2">Uuringud</string>
   <!-- Summary for studies preferences -->
@@ -965,7 +965,7 @@
   -->
   <string name="webcompat_reporter_screen_title">Katkisest saidist teavitamine</string>
   <!-- The description of the Web Compat Reporter feature. %1$s is the name of the app (for example "Firefox"). -->
-  <string name="webcompat_reporter_description">Aita muuta %1$s kõigi jaoks paremaks. Mozilla töötajad kasutavad sinu saadetud teavet veebisaidi probleemide lahendamiseks.</string>
+  <string name="webcompat_reporter_description" moz:removedIn="142" tools:ignore="UnusedResources">Aita muuta %1$s kõigi jaoks paremaks. Mozilla töötajad kasutavad sinu saadetud teavet veebisaidi probleemide lahendamiseks.</string>
   <!-- The text field label of the URL text field. This is displayed above the user-inputted URL. -->
   <string name="webcompat_reporter_label_url">URL</string>
   <!-- The error message of the URL text field when an invalid URL has been entered. -->
@@ -973,7 +973,7 @@
   <!-- The label/title of a field in the Web Compat Reporter feature for explaining a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_label_whats_broken_2">Mis on katki?</string>
   <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
-  <string name="webcompat_reporter_choose_reason">Vali põhjus</string>
+  <string name="webcompat_reporter_choose_reason" moz:removedIn="142" tools:ignore="UnusedResources">Vali põhjus</string>
   <!-- The error message of the dropdown, prompting the user to select a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_choose_reason_error">Palun vali põhjus</string>
   <!-- The label/title of an optional field in the Web Compat Reporter feature for adding additional information. -->
@@ -1319,7 +1319,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Privaatne kaart suleti</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Privaatsed kaardid suleti</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Privaatsed kaardid suleti</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">VÕTA TAGASI</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -1966,11 +1966,7 @@
   <string name="synced_tabs_expand_group">Laienda sünkroniseeritud kaartide grupp</string>
   <!-- Content description for collapsing a group of synced tabs. -->
   <string name="synced_tabs_collapse_group">Ahenda sünkroniseeritud kaartide grupp</string>
-  <!--
-    Top Sites
-
-    Title text displayed in the dialog when shortcuts limit is reached.
-  -->
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">Otseteede limiit on täis</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">Uue otsetee lisamiseks tuleb üks olemasolev eemaldada. Puuduta ja hoia saidil pikemalt, seejärel vali eemaldamine.</string>
@@ -2182,6 +2178,8 @@
   <string name="protection_panel_permissions_title">Õigused</string>
   <!-- Button text on the clear site data dialog to allow users to cancel the action and not clear the site data. -->
   <string name="clear_site_data_dialog_negative_button_text">Loobu</string>
+  <!-- TextField Design System Component -->
+
   <!-- Label for the primary action button to unlock private tabs -->
   <string name="pbm_authentication_unlock">Ava</string>
   <!-- Title text instructing the user to unlock private tabs -->

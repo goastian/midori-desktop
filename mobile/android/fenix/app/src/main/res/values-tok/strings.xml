@@ -11,7 +11,9 @@
   -->
   <string name="content_description_menu">lipu pi wile mute</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">o wile e nasin len</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">o wile e nasin len</string>
+  <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">o wile ala e nasin len</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">ilo pi nasin len</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -31,11 +33,15 @@
   <!-- No Private Tabs Message Description -->
   <string name="no_private_tabs_description">lipu len open li kama lon poki ni.</string>
   <!-- Label of button in create collection dialog for creating a new collection -->
-  <string name="tab_tray_add_new_collection">o pana e kulupu sin</string>
+  <string name="tab_tray_add_new_collection">o pali e kulupu poki sin</string>
   <!-- Label of editable text in create collection dialog for naming a new collection -->
   <string name="tab_tray_add_new_collection_name">nimi</string>
   <!-- Label of button in save to collection dialog for selecting a current collection -->
-  <string name="tab_tray_select_collection">o wile e kulupu</string>
+  <string name="tab_tray_select_collection">o wile e kulupu poki</string>
+  <!-- Content description for close button while in multiselect mode in tab tray -->
+  <string name="tab_tray_close_multiselect_content_description">o weka e nasin pi wile mute</string>
+  <!-- Content description for save to collection button while in multiselect mode in tab tray -->
+  <string name="tab_tray_collection_button_multiselect_content_description">o pana e poki wile tawa kulupu</string>
   <!--
     Home - Bookmarks
 
@@ -54,12 +60,25 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">nasin len la ilo %1$s li weka e sona pi lipu lukin sina lon weka sina. ni li len ala e sina tawa ilo lipu tawa kulupu lawa. taso jan ante li kepeken ilo sina la nasin ni li len e sina tawa ona.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">nasin len la ilo %1$s li weka e sona pi lipu lukin sina lon weka sina. ni li len ala e sina tawa ilo lipu tawa kulupu lawa. taso jan ante li kepeken ilo sina la nasin ni li len e sina tawa ona.</string>
   <string name="private_browsing_common_myths">o kama sona pona e nasin len</string>
+  <!--
+    Explanation for private browsing displayed to users on home view when they first enable
+    private mode in our new Total Private Browsing mode.
+    %1$s is the name of the app (for example "Firefox").
+    %2$s is a link using felt_privacy_info_card_subtitle_link_text as text
+  -->
+  <string name="felt_privacy_info_card_subtitle_2">sina weka e poki ale tan ilo la ilo %1$s li weka e sona awen sina. %2$s</string>
   <!-- Text for the positive action button -->
   <string name="open_in_app_cfr_positive_button_text">o lukin e lipu wile</string>
   <!-- Text for the negative action button -->
   <string name="open_in_app_cfr_negative_button_text">o weka</string>
+  <!--
+    Address bar swipe "contextual feature recommendation" (CFR)
+
+    Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar.
+  -->
+  <string name="address_bar_swipe_cfr_message_2">sina wile lukin e poki ante poka la o tawa e ilo pi nasin poki kepeken nena.</string>
   <!-- Text for the positive action button to go to Android Settings to grant permissions. -->
   <string name="camera_permissions_needed_positive_button_text">o lukin e lipu wile</string>
   <!-- Text for the negative action button to dismiss the dialog. -->
@@ -96,11 +115,15 @@
 
     Header text for jumping back into the recent tab in the home screen
   -->
-  <string name="recent_tabs_header">o lukin e poki pi tenpo poka</string>
+  <string name="recent_tabs_header">o lukin sin e lipu poka</string>
   <!-- Button text for showing all the tabs in the tabs tray -->
   <string name="recent_tabs_show_all">o lukin e poki ale</string>
   <!-- Content description for the button which navigates the user to show all recent tabs in the tabs tray. -->
   <string name="recent_tabs_show_all_content_description_2">o lukin e poki poka ale</string>
+  <!-- Text for button in synced tab card that opens synced tabs tray -->
+  <string name="recent_tabs_see_all_synced_tabs_button_text">o lukin e poki sama ale</string>
+  <!-- Accessibility description for device icon used for recent synced tab -->
+  <string name="recent_tabs_synced_device_icon_content_description">ilo sama</string>
   <!-- Text for the dropdown menu to remove a recent synced tab from the homescreen -->
   <string name="recent_synced_tab_menu_item_remove">o weka</string>
   <!--
@@ -144,7 +167,7 @@
   <!-- Browser menu banner header text for extensions onboarding when all installed extensions have been disabled. -->
   <string name="browser_menu_disabled_extensions_banner_onboarding_header">ilo namako li lon ilo sina. taso sina li ken ala e ona</string>
   <!-- Browser menu banner link text for learning more about extensions -->
-  <string name="browser_menu_extensions_banner_learn_more" moz:removedIn="141" tools:ignore="UnusedResources">o kama sona</string>
+  <string name="browser_menu_extensions_banner_learn_more" moz:removedIn="141" tools:ignore="UnusedResources">o sona</string>
   <!-- Browser menu button that opens the extensions manager -->
   <string name="browser_menu_manage_extensions">o nasin e ilo namako</string>
   <!-- Browser menu group that contains additional settings in collapsed state -->
@@ -160,6 +183,8 @@
   <string name="browser_menu_extension_plus_icon_content_description_2">o jo e ilo %1$s</string>
   <!-- Browser menu button that opens AMO in a tab -->
   <string name="browser_menu_discover_more_extensions">o alasa e ilo namako ante</string>
+  <!-- Browser menu description that is shown when one or more extensions are disabled due to extension errors -->
+  <string name="browser_menu_extensions_disabled_description">mi pini lon tenpo lili</string>
   <!-- The description of the browser menu appears when the user hasn't installed any extensions. -->
   <string name="browser_menu_no_extensions_installed_description">ilo li ken ala e ilo namako</string>
   <!-- The description of the browser menu appears when the user hasn't installed any extensions and there are recommended extensions. -->
@@ -167,7 +192,7 @@
   <!-- Browser menu button that opens account settings -->
   <string name="browser_menu_account_settings">sona sijelo</string>
   <!-- Browser menu button that sends a user to help articles -->
-  <string name="browser_menu_help">lipu sona</string>
+  <string name="browser_menu_help">o sona</string>
   <!-- Browser menu button that sends a to a the what's new article -->
   <string name="browser_menu_whats_new">seme li sin</string>
   <!-- Browser menu button that opens the settings menu -->
@@ -175,7 +200,7 @@
   <!-- Browser menu button that opens a user's library -->
   <string name="browser_menu_library">kulupu lipu</string>
   <!-- Browser menu toggle that requests a desktop site -->
-  <string name="browser_menu_desktop_site">lipu pi ilo suli</string>
+  <string name="browser_menu_desktop_site">nasin lukin</string>
   <!-- Browser menu button that reopens a private tab as a regular tab -->
   <string name="browser_menu_open_in_regular_tab">o pana tawa poki</string>
   <!-- Browser menu toggle that adds a shortcut to the site on the device home screen. -->
@@ -188,6 +213,8 @@
   <string name="browser_menu_add_app_to_homescreen_2" moz:removedIn="141" tools:ignore="UnusedResources">o pana tawa lipu lawa ilo…</string>
   <!-- Text for notifying users that Xiaomi devices require additional permissions to add to home screen -->
   <string name="browser_menu_add_to_homescreen_xiaomi">kulupu Xiaomi la ilo li wile e ken ante tawa ni: sina ken pana e ilo tawa lipu lawa. o lukin e nasin ilo sina.</string>
+  <!-- Content description (not visible, for screen readers etc.) for the Resync tabs button -->
+  <string name="resync_button_content_description">o sama sin e ilo</string>
   <!-- Browser menu button that opens the find in page menu -->
   <string name="browser_menu_find_in_page">o alasa lon lipu</string>
   <!-- Browser menu button that opens the find in page menu -->
@@ -195,61 +222,1417 @@
   <!-- Browser menu button that opens the translations dialog, which has options to translate the current browser page. -->
   <string name="browser_menu_translations">o ante e toki lipu</string>
   <!-- Browser menu button that saves the current tab to a collection -->
-  <string name="browser_menu_save_to_collection" moz:removedIn="141" tools:ignore="UnusedResources">o awen lon kulupu…</string>
+  <string name="browser_menu_save_to_collection" moz:removedIn="141" tools:ignore="UnusedResources">o pana tawa kulupu poki…</string>
   <!-- Browser menu button that saves the current tab to a collection -->
-  <string name="browser_menu_save_to_collection_2">o awen lon kulupu</string>
+  <string name="browser_menu_save_to_collection_2">o pana tawa kulupu poki</string>
   <!-- Browser menu button that open a share menu to share the current site -->
   <string name="browser_menu_share">o pana</string>
+  <!-- Browser menu button that open a share menu to share the current site -->
+  <string name="browser_menu_share_2" moz:removedIn="141" tools:ignore="UnusedResources">o pana e lipu…</string>
   <!--
     Browser menu button shown in custom tabs that opens the current tab in Fenix
     %1$s is the name of the app (for example "Firefox").
   -->
   <string name="browser_menu_open_in_fenix">o open lon ilo %1$s</string>
+  <!--
+    Browser menu text shown in custom tabs to indicate this is a Fenix tab
+    %1$s is the name of the app (for example "Firefox").
+  -->
+  <string name="browser_menu_powered_by">ILO %1$s LI KEN E MI</string>
+  <!--
+    Browser menu text shown in custom tabs to indicate this is a Fenix tab
+    %1$s is the name of the app (for example "Firefox").
+  -->
+  <string name="browser_menu_powered_by2">ilo %1$s li ken e mi</string>
+  <!-- Browser menu button to put the current page in reader mode -->
+  <string name="browser_menu_read">o open e lukin pona</string>
+  <!-- Browser menu button content description to close reader mode and return the user to the regular browser -->
+  <string name="browser_menu_read_close">o pini e lukin pona</string>
+  <!-- Browser menu button to open the current page in an external app -->
+  <string name="browser_menu_open_app_link">o open e ni lon ilo ante</string>
+  <!-- Browser menu button to show reader view appearance controls e.g. the used font type and size -->
+  <string name="browser_menu_customize_reader_view">o nasin e lukin pona</string>
+  <!-- Browser menu button to show reader view appearance controls e.g. the used font type and size -->
+  <string name="browser_menu_customize_reader_view_2">o nasin e lukin pona</string>
   <!-- Browser menu label for adding a bookmark -->
   <string name="browser_menu_add">o pana</string>
   <!-- Browser menu label for editing a bookmark -->
   <string name="browser_menu_edit">o ante</string>
   <!-- Button shown on the home page that opens the Customize home settings -->
   <string name="browser_menu_customize_home_1">o nasin sina e lipu lawa</string>
+  <!-- Browser menu label to sign in to sync on the device using Mozilla accounts -->
+  <string name="browser_menu_sign_in">o lon sijelo</string>
+  <!-- Browser menu label that creates a private tab -->
+  <string name="browser_menu_new_private_tab">poki sin pi nasin len</string>
+  <!-- Browser menu label that navigates to the Password screen -->
+  <string name="browser_menu_passwords">nimi open</string>
+  <!--
+    Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
+    %1$s is the name of the app (for example "Firefox").
+  -->
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">ilo %1$s la ijo sin</string>
+  <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">o kepeken nasin lukin lipu pi ilo suli</string>
+  <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
+  <string name="browser_menu_switch_to_mobile_site">nasin lukin pi ilo lili</string>
+  <!-- Browser menu label that navigates to the page tools sub-menu -->
+  <string name="browser_menu_tools" moz:removedIn="141" tools:ignore="UnusedResources">ilo ante</string>
+  <!-- Content description (not visible, for screen readers etc.): Back button for all menu redesign sub-menu -->
+  <string name="browser_menu_back_button_content_description" moz:removedIn="141" tools:ignore="UnusedResources">o lukin e lipu open</string>
+  <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
+  <string name="browser_main_menu_content_description_help_button">o sona</string>
+  <!-- Content description (not visible, for screen readers etc.) for main menu settings button. -->
+  <string name="browser_main_menu_content_description_settings_button">nasin ilo</string>
+  <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar extensions menu. -->
+  <string name="browser_extensions_menu_handlebar_content_description">o lukin ala e lipu pi ilo namako</string>
+  <!--
+    Browser menu label that navigates to the save sub-menu, which contains various save related menu items such as
+    bookmarking a page, saving to collection, shortcut or as a PDF, and adding to home screen
+  -->
+  <string name="browser_menu_save" moz:removedIn="141" tools:ignore="UnusedResources">o awen e ni</string>
+  <!-- Browser menu label that bookmarks the currently visited page -->
+  <string name="browser_menu_bookmark_this_page" moz:removedIn="141" tools:ignore="UnusedResources">o awen e lipu ni</string>
+  <!-- Browser menu label that bookmarks the currently visited page -->
+  <string name="browser_menu_bookmark_this_page_2">o awen e lipu</string>
+  <!-- Browser menu label that navigates to the edit bookmark screen for the current bookmarked page -->
+  <string name="browser_menu_edit_bookmark">o ante e lipu awen</string>
+  <!-- Browser menu label that the saves the currently visited page as a PDF -->
+  <string name="browser_menu_save_as_pdf" moz:removedIn="141" tools:ignore="UnusedResources">o lipu lon nasin PDF…</string>
+  <!-- Browser menu label that the saves the currently visited page as a PDF -->
+  <string name="browser_menu_save_as_pdf_2">o lipu lon nasin PDF</string>
+  <!-- Browser menu label for turning ON reader view of the current visited page -->
+  <string name="browser_menu_turn_on_reader_view" moz:removedIn="141" tools:ignore="UnusedResources">o lukin pona e lipu</string>
+  <!-- Browser menu label for turning OFF reader view of the current visited page -->
+  <string name="browser_menu_turn_off_reader_view" moz:removedIn="141" tools:ignore="UnusedResources">o lukin pona ala e lipu</string>
+  <!-- Browser menu button that reopens a private tab as a regular tab -->
+  <string name="browser_menu_open_in_normal_tab" moz:removedIn="141" tools:ignore="UnusedResources">o pana e lipu tawa poki pi nasin len ala</string>
+  <!-- Browser menu label for navigating to the translation feature, which provides language translation options the current visited page -->
+  <string name="browser_menu_translate_page" moz:removedIn="141" tools:ignore="UnusedResources">o ante e toki lipu…</string>
+  <!-- Browser menu label for navigating to the translation feature, which provides language translation options the current visited page -->
+  <string name="browser_menu_translate_page_2">o ante e toki lipu</string>
+  <!-- Browser menu label for navigating to the Web Compat Reporter feature, which provides users the ability to send bug reports for broken sites. -->
+  <string name="browser_menu_webcompat_reporter">o toki e pakala lipu…</string>
+  <!-- Browser menu label for navigating to the Web Compat Reporter feature, which provides users the ability to send bug reports for broken sites. -->
+  <string name="browser_menu_webcompat_reporter_2">o toki e pakala lipu</string>
+  <!--
+    Browser menu label that is displayed when the current page has been translated by the translation feature.
+    %1$s is the name of the language that page was translated to (e.g. English).
+  -->
+  <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">mi ante e lipu tawa %1$s</string>
+  <!-- Browser menu label that is displayed when the current page has been translated by the translation feature. -->
+  <string name="browser_menu_translated">mi ante e toki lipu</string>
+  <!-- Browser menu label for the print feature -->
+  <string name="browser_menu_print" moz:removedIn="141" tools:ignore="UnusedResources">pana pi lipu kasi…</string>
+  <!-- Browser menu label for the print feature -->
+  <string name="browser_menu_print_2">o pana tawa lipu kasi</string>
+  <!--
+    Browser menu label for the Delete browsing data on quit feature.
+    %1$s is the name of the app (for example "Firefox").
+  -->
+  <string name="browser_menu_delete_browsing_data_on_quit">o weka tan ilo %1$s</string>
+  <!--
+    Content description for a banner within the menu which prompt the user to make this app their default browser.
+    %1$s is the name of the app (for example "Firefox").
+  -->
+  <string name="browser_menu_default_banner_title">o open e lipu ale kepeken ilo %1$s</string>
+  <!-- Label text within the set as default banner -->
+  <string name="browser_menu_default_banner_subtitle">ni li wile e tenpo lili taso. sina ken ante e ni lon wile.</string>
+  <!--
+    Extensions management fragment
+
+    Text displayed when there are no extensions to be shown
+  -->
+  <string name="extensions_management_no_extensions">sina jo ala e ilo namako</string>
+  <!--
+    Browser Toolbar
+
+    Content description for the Home screen button on the browser toolbar
+  -->
+  <string name="browser_toolbar_home">lipu open</string>
+  <!--
+    Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
+    history and go back to the home screen.
+  -->
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">o weka ale e lukin pini lipu</string>
+  <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
+  <string name="browser_toolbar_translate">o ante e toki lipu</string>
+  <!--
+    Content description (not visible, for screen readers etc.) for the translate page toolbar button that opens the translations dialog when the page is translated successfully.
+    %1$s is the name of the language that is displayed in the original page. (For example: English)
+    %2$s is the name of the language which the page was translated to. (For example: French)
+  -->
+  <string name="browser_toolbar_translated_successfully">toki lipu la %1$s li kama %2$s</string>
+  <!-- Text for default locale item -->
+  <string name="default_locale_text">o toki sama ilo lawa</string>
+  <!-- Placeholder text shown in the search bar before a user enters text -->
+  <string name="locale_search_hint">o alasa e toki</string>
+  <!--
+    Search Fragment
+
+    Button in the search view that lets a user search by scanning a QR code
+  -->
+  <string name="search_scan_button_2">o lukin e sitelen QR</string>
+  <!-- Button in the search view when shortcuts are displayed that takes a user to the search engine settings -->
+  <string name="search_shortcuts_engine_settings">nasin pi ilo alasa</string>
+  <!-- Button in the search view that lets a user navigate to the site in their clipboard -->
+  <string name="awesomebar_clipboard_title">o alasa e nimi tan poki ilo</string>
+  <!-- Button in the search suggestions onboarding that allows search suggestions in private sessions -->
+  <string name="search_suggestions_onboarding_allow_button">o ken</string>
+  <!-- Button in the search suggestions onboarding that does not allow search suggestions in private sessions -->
+  <string name="search_suggestions_onboarding_do_not_allow_button">o ken ala</string>
+  <!-- Search suggestion onboarding hint title text -->
+  <string name="search_suggestions_onboarding_title">nasin len la ilo li ken ala ken pana e toki alasa ken?</string>
+  <!-- Search engine suggestion title text. %s is the name of the suggested engine. -->
+  <string name="search_engine_suggestions_title">o alasa kepeken ilo %s</string>
+  <!--
+    Content description (not visible, for screen readers etc.): Search engine icon.
+    %s is the search engine name (for example: DuckDuckGo).
+  -->
+  <string name="search_engine_icon_content_description_1">ilo alasa: ilo %s</string>
+  <!--
+    Content description (not visible, for screen readers etc.) of the search engine selector from the search toolbar.
+    %s is the search engine name (for example: DuckDuckGo).
+    The colon character (in "%s:") is intended to have the screen reader make a small pause between the search engine name and the description of the button.
+  -->
+  <string name="search_engine_selector_content_description">%s: ilo alasa</string>
+  <!--
+    Home onboarding
+
+    Home onboarding dialog welcome screen title text.
+  -->
+  <string name="onboarding_home_welcome_title_2" moz:removedIn="141" tools:ignore="UnusedResources">o kama pona. ilo o nasin sina</string>
+  <!-- Home onboarding dialog welcome screen description text. -->
+  <string name="onboarding_home_welcome_description" moz:removedIn="141" tools:ignore="UnusedResources">kule sin. awen sin. olin jan pi sin ala.</string>
+  <!-- Text for the button to continue the onboarding on the home onboarding dialog. -->
+  <string name="onboarding_home_get_started_button" moz:removedIn="141" tools:ignore="UnusedResources">o open</string>
+  <!-- Text for the button to navigate to the sync sign in screen on the home onboarding dialog. -->
+  <string name="onboarding_home_sign_in_button" moz:removedIn="141" tools:ignore="UnusedResources">o lon sijelo</string>
+  <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
+  <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">o kama lon tenpo ante</string>
+  <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
+  <string name="onboarding_home_content_description_close_button">o pini</string>
+  <!--
+    Juno first user onboarding flow experiment, strings are marked unused as they are only referenced by Nimbus experiments.
+
+    Description for learning more about our privacy notice.
+  -->
+  <string name="juno_onboarding_privacy_notice_text" tools:ignore="BrandUsage">ilo Firefox la toki lawa pi len sona</string>
+  <!-- Title for set firefox as default browser screen used by Nimbus experiments. -->
+  <string name="juno_onboarding_default_browser_title_nimbus_2">mi wile awen e sina</string>
+  <!--
+    Title for set firefox as default browser screen used by Nimbus experiments.
+    Note: The word "Firefox" should NOT be translated
+  -->
+  <string name="juno_onboarding_default_browser_title_nimbus_3" tools:ignore="BrandUsage,UnusedResources">o sona e pona tan ilo Firefox</string>
+  <!-- Description for set firefox as default browser screen used by Nimbus experiments. -->
+  <string name="juno_onboarding_default_browser_description_nimbus_3">kulupu mi li utala e ni: kulupu mani li wile alasa ike e sina lon ilo.</string>
+  <!-- Text for the button to set firefox as default browser on the device -->
+  <string name="juno_onboarding_default_browser_positive_button" tools:ignore="UnusedResources">o open e lipu ale kepeken ilo alasa ni</string>
+  <!-- Text for the button dismiss the screen and move on with the flow -->
+  <string name="juno_onboarding_default_browser_negative_button" tools:ignore="UnusedResources">o ni lon tenpo ante</string>
+  <!-- Title for sign in to sync screen. -->
+  <string name="juno_onboarding_sign_in_title_2">o len e sona sina lon ilo mute</string>
+  <!-- Text for the button to sign in to sync on the device -->
+  <string name="juno_onboarding_sign_in_positive_button" tools:ignore="UnusedResources">o lon sijelo</string>
+  <!-- Text for the button dismiss the screen and move on with the flow -->
+  <string name="juno_onboarding_sign_in_negative_button" tools:ignore="UnusedResources">o kama lon tenpo ante</string>
+  <!-- Onboarding add-ons card, button for start browsing, used by Nimbus experiments. -->
+  <string name="onboarding_add_on_start_browsing_button_2" moz:removedIn="140" tools:ignore="UnusedResources">o open</string>
+  <!-- Ublock name for the onboarding add-ons card, used by Nimbus experiments. Note: The word "Ublock Origin" is a brand name should NOT be translated -->
+  <string name="onboarding_add_on_ublock_name" moz:removedIn="140" tools:ignore="UnusedResources">ilo uBlock Origin</string>
+  <!-- Ublock description for the onboarding add-ons card, used by Nimbus experiments. -->
+  <string name="onboarding_add_on_ublock_description" moz:removedIn="140" tools:ignore="UnusedResources">ilo ni li weka pona e sitelen mani ike.</string>
+  <!-- Privacy Badger name for the onboarding add-ons card, used by Nimbus experiments. Note: The word "Privacy Badger" is a brand name should NOT be translated -->
+  <string name="onboarding_add_on_privacy_badger_name" moz:removedIn="140" tools:ignore="UnusedResources">ilo Privacy Badger</string>
+  <!-- Privacy Badger description for the onboarding add-ons card, used by Nimbus experiments. -->
+  <string name="onboarding_add_on_privacy_badger_description" moz:removedIn="140" tools:ignore="UnusedResources">ilo ni li weka pona a e ni: kulupu ike li wile alasa e sina tawa mani.</string>
+  <!-- Search by Image name for the onboarding add-ons card, used by Nimbus experiments. Note: The word "Search by Image" is a brand name should NOT be translated -->
+  <string name="onboarding_add_on_search_by_image_name" moz:removedIn="140" tools:ignore="UnusedResources">ilo Search by Image</string>
+  <!-- Search by Image description for the onboarding add-ons card, used by Nimbus experiments. -->
+  <string name="onboarding_add_on_search_by_image_description" moz:removedIn="140" tools:ignore="UnusedResources">ilo ni li alasa e sona pona tan sitelen musi.</string>
+  <!-- Dark Reader name for the onboarding add-ons card, used by Nimbus experiments. Note: The word "Dark Reader" is a brand name should NOT be translated -->
+  <string name="onboarding_add_on_dark_reader_name" moz:removedIn="140" tools:ignore="UnusedResources">ilo Dark Reader</string>
+  <!-- Privacy Badger description for the onboarding add-ons card, used by Nimbus experiments. -->
+  <string name="onboarding_add_on_dark_reader_description" moz:removedIn="140" tools:ignore="UnusedResources">ilo ni li pimeja e selo lipu.</string>
+  <!-- Label for the number of reviews for an add-on. %1$s is the formatted number of reviews e.g. "1,234", "12,345", "123,456". -->
+  <string name="onboarding_add_on_reviews_label" moz:removedIn="140" tools:ignore="UnusedResources">pilin jan: %1$s</string>
+  <!-- Content description for the star rating group. %1$s is the rating. -->
+  <string name="onboarding_add_on_star_rating_content_description" moz:removedIn="140" tools:ignore="UnusedResources">pona 5 la pona %1$s</string>
+  <!-- Title for the privacy preferences dialog shown during onboarding. Note: The word "Firefox" should NOT be translated. -->
+  <string name="onboarding_preferences_dialog_title" tools:ignore="BrandUsage">o pana e pona tawa ilo Firefox</string>
+  <!-- Learn more link for the crash reporting option in the privacy preferences dialog shown during onboarding. -->
+  <string name="onboarding_preferences_dialog_crash_reporting_learn_more_2">o sona</string>
+  <!-- Terms of service onboarding title card label. 'Firefox' intentionally hardcoded here -->
+  <string name="onboarding_welcome_to_firefox" tools:ignore="BrandUsage">o kama pona tawa ilo Firefox</string>
+  <!-- Used as text for the link in onboarding_term_of_service_line_one_2. -->
+  <string name="onboarding_term_of_service_line_one_link_text_2" tools:ignore="BrandUsage">ilo Firefox la lawa kepeken</string>
+  <!-- Line two of the terms of service onboarding page. 'Firefox' is intentionally hardcoded. %1$s is replaced by an active link, using onboarding_term_of_service_line_two_link_text as text (“Privacy Notice”). -->
+  <string name="onboarding_term_of_service_line_two_2" tools:ignore="BrandUsage">ilo Firefox li wile awen e len sina. o lukin e %1$s</string>
+  <!-- Used as text for the link in onboarding_term_of_service_line_two. -->
+  <string name="onboarding_term_of_service_line_two_link_text">toki lawa pi len sona</string>
+  <!-- Marketing onboarding page title. 'Firefox' is intentionally hardcoded. -->
+  <string name="onboarding_marketing_title" tools:ignore="BrandUsage,UnusedResources">o pona e suli tawa ilo Firefox</string>
+  <!-- Onboarding toolbar selection card label for 'top' option, used by Nimbus experiments. -->
+  <string name="onboarding_customize_toolbar_top_option">sewi</string>
+  <!-- Onboarding toolbar selection card label for 'bottom' option, used by Nimbus experiments. -->
+  <string name="onboarding_customize_toolbar_bottom_option">anpa</string>
+  <!-- Onboarding theme selection card label for 'dark' option, used by Nimbus experiments. -->
+  <string name="onboarding_customize_theme_dark_option">pimeja</string>
+  <!-- Onboarding theme selection card label for 'light' option, used by Nimbus experiments. -->
+  <string name="onboarding_customize_theme_light_option">walo</string>
+  <!-- Onboarding theme selection card label for 'System auto' option, used by Nimbus experiments. -->
+  <string name="onboarding_customize_theme_system_option">tan ilo</string>
+  <!--
+    Search Widget
+
+    Content description for searching with a widget. %1$s is the name of the app (for example "Firefox").
+  -->
+  <string name="search_widget_content_description_2">o open e poki sin %1$s</string>
+  <!-- Text preview for smaller sized widgets -->
+  <string name="search_widget_text_short">o alasa</string>
+  <!-- Text preview for larger sized widgets -->
+  <string name="search_widget_text_long">o alasa e ilo</string>
+  <!-- Content description (not visible, for screen readers etc.): Voice search -->
+  <string name="search_widget_voice">o alasa kepeken toki uta</string>
+  <!--
+    Preferences
+
+    Title for the settings page
+  -->
+  <string name="settings">nasin ilo</string>
+  <!-- Preference category for general settings -->
+  <string name="preferences_category_general">nasin ilo</string>
+  <!-- Preference category for all links about Fenix -->
+  <string name="preferences_category_about">sona poka</string>
+  <!-- Preference category for settings related to changing the default search engine -->
+  <string name="preferences_category_select_default_search_engine">o alasa e ilo lawa wan</string>
+  <!-- Preference for settings related to managing search shortcuts for the quick search menu -->
+  <string name="preferences_manage_search_shortcuts_2">o nasin e ilo alasa ante</string>
+  <!-- Preference for settings related to changing the default search engine -->
+  <string name="preferences_default_search_engine">ilo alasa lawa</string>
+  <!-- Preference for settings related to Search -->
+  <string name="preferences_search">ilo alasa</string>
+  <!-- Preference link to Learn more about Firefox Suggest -->
+  <string name="preference_search_learn_about_fx_suggest" tools:ignore="BrandUsage">o sona e ilo Firefox Suggest</string>
+  <!-- Preference link to rating Fenix on the Play Store -->
+  <string name="preferences_rate">o pana e pilin lon ilo Google Play</string>
+  <!--
+    Preference linking to about page for Fenix
+    %1$s is the name of the app (for example "Firefox").
+  -->
+  <string name="preferences_about">sona pi ilo %1$s</string>
+  <!-- Preference for settings related to changing the default browser -->
+  <string name="preferences_set_as_default_browser">o open e lipu ale kepeken ilo alasa ni</string>
+  <!-- Preference category for advanced settings -->
+  <string name="preferences_category_advanced">namako</string>
+  <!-- Preference category for privacy and security settings -->
+  <string name="preferences_category_privacy_security">sona len</string>
+  <!-- Preference for opening links in a private tab -->
+  <string name="preferences_open_links_in_a_private_tab">o open e lipu lon poki len</string>
+  <!-- Preference for accessibility -->
+  <string name="preferences_accessibility">pona pi kepeken ale</string>
+  <!-- Preference category for account information -->
+  <string name="preferences_category_account">sijelo ilo</string>
+  <!-- Preference for changing default theme to dark or light mode -->
+  <string name="preferences_theme">kule</string>
+  <!-- Preference for customizing the home screen -->
+  <string name="preferences_home_2">lipu open</string>
+  <!-- Preference for gestures based actions -->
+  <string name="preferences_gestures">pilin nena</string>
+  <!-- Preference for settings related to visual options -->
+  <string name="preferences_customize">o nasin sina</string>
+  <!-- Preference shown instead of account display name while account profile information isn't available yet. -->
+  <string name="preferences_account_default_name_2">sijelo pi kulupu Mozilla</string>
+  <!-- Preference for language -->
+  <string name="preferences_language">toki ilo</string>
+  <!-- Preference for translations -->
+  <string name="preferences_translations">ante toki lipu</string>
+  <!-- Preference for data choices -->
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">sona ante</string>
+  <!-- Preference for data collection -->
+  <string name="preferences_data_collection">jo sona</string>
+  <!-- Preference title for switch preference to show search suggestions -->
+  <string name="preferences_show_search_suggestions">o lukin e toki alasa ken</string>
+  <!-- Preference title for switch preference to show voice search button -->
+  <string name="preferences_show_voice_search">o lukin e alasa kalama</string>
+  <!-- Preference title for switch preference to show recent search suggestions -->
+  <string name="preferences_show_recent_search_suggestions">o lukin e alasa poka</string>
+  <!-- Preference title for switch preference to show a clipboard suggestion when searching -->
+  <string name="preferences_show_clipboard_suggestions">o lukin e nimi pi ken pana lon poki nimi</string>
+  <!-- Preference title for switch preference to suggest browsing history when searching -->
+  <string name="preferences_search_browsing_history">o alasa e poki tan alasa pini</string>
+  <!-- Preference title for switch preference to suggest bookmarks when searching -->
+  <string name="preferences_search_bookmarks">o alasa e lipu awen</string>
+  <!-- Preference for account settings -->
+  <string name="preferences_account_settings">nasin sijelo</string>
+  <!-- Snackbar message shown when user shares a link -->
+  <string name="link_shared_snackbar_message">sina pana e lipu</string>
+  <!-- Snackbar action label shown when user shares a link -->
+  <string name="link_shared_snackbar_action">o nasin e ilo</string>
+  <!-- Preference for open links in third party apps -->
+  <string name="preferences_open_links_in_apps">o open e lipu lon ilo ante lon tenpo seme</string>
+  <!-- Preference for open links in third party apps always open in apps option -->
+  <string name="preferences_open_links_in_apps_always">lon tenpo ale</string>
+  <!-- Preference for open links in third party apps ask before opening option -->
+  <string name="preferences_open_links_in_apps_ask">o alasa sin e wile mi lon tenpo ale</string>
+  <!-- Preference for open links in third party apps never open in apps option -->
+  <string name="preferences_open_links_in_apps_never">lon tenpo ala</string>
+  <!-- Title for the setting to automatically clean up downloaded files. %s is the name of the app (for example "Firefox"). -->
+  <string name="preferences_downloads_settings_clean_up_files_title">o weka tan ilo %s tan ilo lawa ni</string>
+  <!-- Preference for downloads -->
+  <string name="preferences_downloads">jo lipu</string>
+  <!-- Preference for extensions -->
+  <string name="preferences_extensions">ilo namako</string>
+  <!-- Preference for installing a local extension -->
+  <string name="preferences_install_local_extension">o kama e ilo namako tan ilo sina</string>
+  <!-- Summary for notification preference indicating notifications are allowed -->
+  <string name="notifications_allowed_summary">ken</string>
+  <!-- Summary for notification preference indicating notifications are not allowed -->
+  <string name="notifications_not_allowed_summary">ken ala</string>
+  <!--
+    Add-on Permissions
+
+    The title of the required permissions section from addon's permissions screen
+  -->
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">wile</string>
+  <!-- The title of the optional permissions section from addon's permissions screen -->
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">ken wile ala</string>
+  <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
+  <string name="addons_permissions_allow_for_all_sites">o ken lon lipu ale</string>
+  <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+  <string name="addons_permissions_required_data_collection_description" moz:removedIn="141" tools:ignore="UnusedResources">mama lawa la ilo li wile e sona ni: %1$s.</string>
+  <!-- The description of data collection permissions listed in the addon's permissions screen.  %1$s is a formatted list of permissions. -->
+  <string name="addons_permissions_required_data_collection_description_2">mama lawa la ilo li wile e sona ni: %1$s</string>
+  <!-- The description of the "none" data collection permission, when the extension doesn't collect anything according to the developer. -->
+  <string name="addons_permissions_none_required_data_collection_description">mama lawa la ilo li wile e sona ala.</string>
+  <!-- The title of the required permissions section from addon's permissions screen. -->
+  <string name="addons_permissions_heading_required_permissions">ilo li wile e ken:</string>
+  <!-- Button caption to confirm the add-on collection configuration -->
+  <string name="customize_addon_collection_ok">o ken</string>
+  <!-- Button caption to abort the add-on collection configuration -->
+  <string name="customize_addon_collection_cancel">o ken ala</string>
+  <!-- Hint displayed on input field for custom collection name -->
+  <string name="customize_addon_collection_hint">nimi kulupu</string>
+  <!-- Hint displayed on input field for custom collection user ID -->
+  <string name="customize_addon_collection_user_hint">mama kulupu (nanpa)</string>
+  <!--
+    Customize Home
+
+    Header text for jumping back into the recent tab in customize the home screen
+  -->
+  <string name="customize_toggle_jump_back_in">o lukin e poki poka</string>
+  <!-- Title for the customize home screen section with bookmarks. -->
+  <string name="customize_toggle_bookmarks">lipu awen</string>
+  <!--
+    Title for the customize home screen section with recently visited. Recently visited is
+    a section where users see a list of tabs that they have visited in the past few days
+  -->
+  <string name="customize_toggle_recently_visited">lukin poka</string>
+  <!-- Summary for the customize home screen section with Pocket. %s is "Pocket". -->
+  <string name="customize_toggle_pocket_summary" tools:ignore="UnusedResources" moz:removedIn="140">ilo %s li ken e lipu ni</string>
+  <!-- Title for the opening wallpaper settings screen -->
+  <string name="customize_wallpapers">selo kule</string>
+  <!--
+    Wallpapers
+
+    Content description for various wallpapers. %1$s is the name of the wallpaper.
+  -->
+  <string name="wallpapers_item_name_content_description">selo kule: %1$s</string>
+  <!-- Snackbar message for when wallpaper is selected -->
+  <string name="wallpaper_updated_snackbar_message">mi ante e selo kule!</string>
+  <!-- Snackbar label for action to view selected wallpaper -->
+  <string name="wallpaper_updated_snackbar_action">o lukin</string>
+  <!-- Snackbar message for when wallpaper couldn't be downloaded -->
+  <string name="wallpaper_download_error_snackbar_message">pakala la mi ken ala kama jo e selo kule</string>
+  <!-- Snackbar label for action to retry downloading the wallpaper -->
+  <string name="wallpaper_download_error_snackbar_action">o sin</string>
+  <!-- Snackbar message for when wallpaper couldn't be selected because of the disk error -->
+  <string name="wallpaper_select_error_snackbar_message">pakala la mi ken ala ante e selo kule</string>
+  <!-- Text displayed that links to website containing documentation about the "Limited Edition" wallpapers. -->
+  <string name="wallpaper_learn_more">o sona</string>
+  <!-- Wallpaper onboarding dialog header text. -->
+  <string name="wallpapers_onboarding_dialog_title_text">o alasa e kule pona</string>
+  <!-- Wallpaper onboarding dialog body text. -->
+  <string name="wallpapers_onboarding_dialog_body_text">o alasa e selo lipu pona a.</string>
+  <!-- Wallpaper onboarding dialog learn more button text. The button navigates to the wallpaper settings screen. -->
+  <string name="wallpapers_onboarding_dialog_explore_more_button_text">o lukin e selo lipu ante</string>
+  <!--
+    Icon picker
+
+    Title for the "Default" alternative app icon variant in the icon picker screen.
+  -->
+  <string name="alternative_app_icon_option_default">ante ala</string>
+  <!-- Title for the "Light" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_light">walo</string>
+  <!-- Title for the "Dark" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_dark">pimeja</string>
+  <!-- Title for the "Red" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_red">loje</string>
+  <!-- Subtitle for the "Momo" themed alternative app icon variant in the icon picker screen. The app icon was created by artist @heyheymomodraws and features a unique hand-drawn style with a friendly fox. -->
+  <string name="alternative_app_icon_option_momo_subtitle">jan @heyheymomodraws li sitelen</string>
+  <!--
+    Add-ons general availability nimbus message
+
+    Title of the Nimbus message for extension general availability
+  -->
+  <string name="addon_ga_message_title_2" tools:ignore="UnusedResources">ilo namako sin li lon</string>
+  <!-- Body of the Nimbus message for add-ons general availability. 'Firefox' intentionally hardcoded here -->
+  <string name="addon_ga_message_body" tools:ignore="BrandUsage,UnusedResources">o alasa e ilo namako mute a. ona li ken nasin sina e ilo Firefox.</string>
+  <!-- Button text of the Nimbus message for extensions general availability. -->
+  <string name="addon_ga_message_button_2" tools:ignore="UnusedResources">o alasa e ilo namako</string>
+  <!--
+    Extension process crash dialog to user
+
+    Title of the extension crash dialog shown to the user when enough errors have occurred with extensions and they need to be temporarily disabled
+  -->
+  <string name="extension_process_crash_dialog_title">mi pini e ilo namako lon tenpo lili</string>
+  <!-- Button text on the extension crash dialog to prompt the user to try restarting the extensions but the dialog will reappear if it is unsuccessful again -->
+  <string name="extension_process_crash_dialog_retry_button_text" tools:ignore="UnusedResources">o alasa sin e ilo namako</string>
+  <!--
+    Account Preferences
+
+    Preference for managing your account via accounts.firefox.com
+  -->
+  <string name="preferences_manage_account">o nasin e sijelo</string>
+  <!-- Preference for triggering sync -->
+  <string name="preferences_sync_now">o kama sama lon tenpo ni</string>
+  <!-- Preference for syncing history -->
+  <string name="preferences_sync_history">lukin pini lipu</string>
+  <!-- Preference for syncing bookmarks -->
+  <string name="preferences_sync_bookmarks">lipu awen</string>
+  <!-- Preference for syncing passwords -->
+  <string name="preferences_sync_logins_2">nimi open</string>
+  <!-- Preference for signing out -->
+  <string name="preferences_sign_out">o weka tan sijelo</string>
+  <!-- Preference displays and allows changing current FxA device name -->
+  <string name="preferences_sync_device_name">nimi pi ilo lawa</string>
+  <!-- Text shown when user enters empty device name -->
+  <string name="empty_device_name_error">nimi ilo li ken ala weka.</string>
+  <!-- Label indicating that sync is in progress -->
+  <string name="sync_syncing_in_progress">mi sama e ilo…</string>
+  <!-- Preference for syncing addresses -->
+  <string name="preferences_sync_address">nimi ma</string>
+  <!-- The body for these is the URL of the tab received -->
+  <string name="fxa_tab_received_notification_name">poki li kama</string>
+  <!-- %s is the device name -->
+  <string name="fxa_tab_received_from_notification_name">poki li kama tan %s</string>
+  <!--
+    Close Synced Tabs
+
+    The title for a notification shown when the user closes tabs that are currently
+    open on this device from another device that's signed in to the same Mozilla account.
+    %1$s is a placeholder for the app name; %2$d is the number of tabs closed.
+  -->
+  <string name="fxa_tabs_closed_notification_title">ilo %1$s li weka e poki %2$d tan ilo ni</string>
+  <!-- The body for a "closed synced tabs" notification. -->
+  <string name="fxa_tabs_closed_text">o lukin e lipu pini poka</string>
+  <!--
+    Advanced Preferences
+
+    Preference for tracking protection exceptions
+  -->
+  <string name="preferences_tracking_protection_exceptions">nasin li lawa ala e lipu ni</string>
+  <!-- Text displayed when there are no exceptions, with learn more link that brings users to a tracking protection SUMO page -->
+  <string name="exceptions_empty_message_learn_more_link">o sona</string>
+  <!-- Preference switch for usage and technical learn more link -->
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">o sona</string>
+  <!-- Title for studies preferences -->
+  <string name="preference_experiments_2">sona pali</string>
+  <!--
+    Pairing Feature strings
+
+    Instructions on how to access pairing
+  -->
+  <string name="pair_instructions_2"><![CDATA[ilo li wile lukin e sitelen QR tan lipu <b>firefox.com/pair</b>]]></string>
+  <!--
+    Toolbar Preferences
+
+    Preference for using top toolbar
+  -->
+  <string name="preference_top_toolbar">sewi</string>
+  <!-- Preference for using bottom toolbar -->
+  <string name="preference_bottom_toolbar">anpa</string>
+  <!--
+    Theme Preferences
+
+    Preference for using light theme
+  -->
+  <string name="preference_light_theme">walo</string>
+  <!-- Preference for using dark theme -->
+  <string name="preference_dark_theme">pimeja</string>
+  <!--
+    Library
+
+    Option in Library to open Downloads page
+  -->
+  <string name="library_downloads">jo lipu</string>
+  <!-- Option in library to open Bookmarks page -->
+  <string name="library_bookmarks">lipu awen</string>
+  <!-- Option in library to open Desktop Bookmarks root page -->
+  <string name="library_desktop_bookmarks_root">lipu awen pi ilo suli</string>
+  <!-- Option in library to open Desktop Bookmarks "menu" page -->
+  <string name="library_desktop_bookmarks_menu">poki pi lipu awen</string>
+  <!-- Option in library to open Desktop Bookmarks "unfiled" page -->
+  <string name="library_desktop_bookmarks_unfiled">lipu awen ante</string>
+  <!-- Option in Library to open History page -->
+  <string name="library_history">lukin pini</string>
+  <!-- Option in Library to open a new tab -->
+  <string name="library_new_tab">poki sin</string>
+  <!-- Settings Page Title -->
+  <string name="settings_title">nasin ilo</string>
+  <!-- Content description (not visible, for screen readers etc.): "Close button for library settings" -->
+  <string name="content_description_close_button">o pini</string>
+  <!--
+    Title to show in alert when a lot of tabs are to be opened
+    %d is a placeholder for the number of tabs that will be opened
+  -->
+  <string name="open_all_warning_title">sina wile ala wile open e poki %d ni?</string>
+  <!--
+    Message to warn users that a large number of tabs will be opened
+    %s will be replaced by app name.
+  -->
+  <string name="open_all_warning_message">sina open e poki mute a la ni li ken wile e pali suli tan ilo %s. sina awen wile ala wile?</string>
+  <!-- Dialog button text for confirming open all tabs -->
+  <string name="open_all_warning_confirm">o open e poki</string>
+  <!-- Dialog button text for canceling open all tabs -->
+  <string name="open_all_warning_cancel">o open ala</string>
+  <!--
+    Text to show users they have one page in the history group section of the History fragment.
+    %d is a placeholder for the number of pages in the group.
+  -->
+  <string name="history_search_group_site_1">lipu %d</string>
+  <!--
+    Text to show users they have multiple pages in the history group section of the History fragment.
+    %d is a placeholder for the number of pages in the group.
+  -->
+  <string name="history_search_group_sites_1">lipu %d</string>
+  <!-- Option in library for Recently Closed Tabs -->
+  <string name="library_recently_closed_tabs">poki pi pini poka</string>
+  <!-- Option in library to open Recently Closed Tabs page -->
+  <string name="recently_closed_show_full_history">o lukin e alasa pini ale</string>
+  <!--
+    Text to show users they have multiple tabs saved in the Recently Closed Tabs section of history.
+    %d is a placeholder for the number of tabs selected.
+  -->
+  <string name="recently_closed_tabs">poki %d</string>
+  <!--
+    Text to show users they have one tab saved in the Recently Closed Tabs section of history.
+    %d is a placeholder for the number of tabs selected.
+  -->
+  <string name="recently_closed_tab">poki %d</string>
+  <!-- Recently closed tabs screen message when there are no recently closed tabs -->
+  <string name="recently_closed_empty_message">sina pini ala e lipu lon tenpo poka</string>
+  <!--
+    Tab Management
+
+    Title of preference for tabs management
+  -->
+  <string name="preferences_tabs">poki</string>
+  <!-- Title of preference that allows a user to specify the tab view -->
+  <string name="preferences_tab_view">lukin poki</string>
+  <!-- Option for a list tab view -->
+  <string name="tab_view_list">sama linja</string>
+  <!-- Option for a grid tab view -->
+  <string name="tab_view_grid">sama leko</string>
+  <!-- Title of preference that allows a user to auto close tabs after a specified amount of time -->
+  <string name="preferences_close_tabs">o pini e poki lon tenpo seme</string>
+  <!-- Option for auto closing tabs that will never auto close tabs, always allows user to manually close tabs -->
+  <string name="close_tabs_manually">lon tenpo ala</string>
+  <!-- Option for auto closing tabs that will auto close tabs after one day -->
+  <string name="close_tabs_after_one_day">lon sike suno wan</string>
+  <!-- Option for auto closing tabs that will auto close tabs after one week -->
+  <string name="close_tabs_after_one_week">lon sike esun wan</string>
+  <!-- Option for auto closing tabs that will auto close tabs after one month -->
+  <string name="close_tabs_after_one_month">lon sike mun wan</string>
+  <!-- Title of preference that allows a user to specify the auto-close settings for open tabs -->
+  <string name="preference_auto_close_tabs" tools:ignore="UnusedResources">o pini e poki open kepeken wile ala jan</string>
+  <!--
+    Opening screen
+
+    Title of a preference that allows a user to choose what screen to show after opening the app
+  -->
+  <string name="preferences_opening_screen">lipu open li seme</string>
+  <!-- Option for always opening the homepage when re-opening the app -->
+  <string name="opening_screen_homepage">lipu lawa</string>
+  <!-- Option for always opening the user's last-open tab when re-opening the app -->
+  <string name="opening_screen_last_tab">lipu pi lukin poka</string>
+  <!-- Option for always opening the homepage when re-opening the app after four hours of inactivity -->
+  <string name="opening_screen_after_four_hours_of_inactivity">lipu lawa lon weka jan suli</string>
+  <!-- Summary for tabs preference when auto closing tabs setting is set to manual close -->
+  <string name="close_tabs_manually_summary">o pini ala</string>
+  <!-- Summary for tabs preference when auto closing tabs setting is set to auto close tabs after one day -->
+  <string name="close_tabs_after_one_day_summary">o pini lon sike suno wan</string>
+  <!-- Summary for tabs preference when auto closing tabs setting is set to auto close tabs after one week -->
+  <string name="close_tabs_after_one_week_summary">o pini lon sike esun wan</string>
+  <!-- Summary for tabs preference when auto closing tabs setting is set to auto close tabs after one month -->
+  <string name="close_tabs_after_one_month_summary">o pini lon sike mun wan</string>
+  <!-- Summary for homepage preference indicating always opening the homepage when re-opening the app -->
+  <string name="opening_screen_homepage_summary">o open e lipu lawa</string>
+  <!-- Summary for homepage preference indicating always opening the last-open tab when re-opening the app -->
+  <string name="opening_screen_last_tab_summary">o open e lipu poka</string>
+  <!-- Summary for homepage preference indicating opening the homepage when re-opening the app after four hours of inactivity -->
+  <string name="opening_screen_after_four_hours_of_inactivity_summary">tenpo suli li kama la o open e lipu lawa</string>
+  <!--
+    Studies
+
+    Title of the remove studies button
+  -->
+  <string name="studies_remove">o weka</string>
+  <!-- Learn more link for studies, links to an article for more information about studies. -->
+  <string name="studies_learn_more">o sona</string>
+  <!-- Content description (not visible, for screen readers etc.): Add tab button. Adds a news tab when pressed -->
+  <string name="add_tab">o open e poki</string>
+  <!-- Content description (not visible, for screen readers etc.): Add tab button. Adds a news tab when pressed -->
+  <string name="add_private_tab">o open e poki pi nasin len</string>
+  <!-- Text for the new tab button to indicate adding a new private tab in the tab -->
+  <string name="tab_drawer_fab_content">nasin len</string>
+  <!-- Text for the new tab button to indicate syncing command on the synced tabs page -->
+  <string name="tab_drawer_fab_sync">o sama e ilo</string>
+  <!-- Text shown in the menu for sharing all tabs -->
+  <string name="tab_tray_menu_item_share">o pana e poki ale</string>
+  <!-- Text shown in the menu to view recently closed tabs -->
+  <string name="tab_tray_menu_recently_closed">poki pi pini poka</string>
+  <!-- Text shown in the tabs tray inactive tabs section -->
+  <string name="tab_tray_inactive_recently_closed" tools:ignore="UnusedResources">pini poka</string>
+  <!-- Text shown in the menu to view account settings -->
+  <string name="tab_tray_menu_account_settings">nasin ilo sijelo</string>
+  <!-- Text shown in the multiselect menu for bookmarking selected tabs. -->
+  <string name="tab_tray_multiselect_menu_item_bookmark">o awen</string>
+  <!-- Text shown in the multiselect menu for closing selected tabs. -->
+  <string name="tab_tray_multiselect_menu_item_close">o pini</string>
+  <!-- Content description (not visible, for screen readers etc.): Removes tab from collection button. Removes the selected tab from collection when pressed -->
+  <string name="remove_tab_from_collection">o weka e poki tan kulupu ni</string>
+  <!-- Content description (not visible, for screen readers etc.): Close tab button. Closes the current session when pressed -->
+  <string name="close_tab">o pini e poki</string>
+  <!-- Content description (not visible, for screen readers etc.): Close tab <title> button. %s is the tab title -->
+  <string name="close_tab_title">o pini e poki \"%s\"</string>
+  <!-- Open tabs menu item to save tabs to collection -->
+  <string name="tabs_menu_save_to_collection1">o pana poki tawa kulupu ni</string>
+  <!-- Text for the menu button to delete a collection -->
+  <string name="collection_delete">o weka e kulupu poki</string>
+  <!-- Text for the menu button to rename a collection -->
+  <string name="collection_rename">o ante nimi e kulupu poki</string>
+  <!-- Text for the button to open tabs of the selected collection -->
+  <string name="collection_open_tabs">o open e poki</string>
+  <!-- Hint for adding name of a collection -->
+  <string name="collection_name_hint">nimi kulupu</string>
+  <!-- Text for the menu button to delete a top site from history -->
+  <string name="delete_from_history">o weka e ni tan lukin pini</string>
+  <!-- Postfix for private WebApp titles. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="pwa_site_controls_title_private">ilo %1$s la nasin len</string>
+  <!-- Text for the button to clear all history -->
+  <string name="history_delete_all">o weka e lukin pini ale</string>
+  <!-- Text for the snackbar to confirm that multiple browsing history items has been deleted -->
+  <string name="history_delete_multiple_items_snackbar">mi weka e lukin pini ale</string>
+  <!-- Text for the snackbar to confirm that a single browsing history item has been deleted. %1$s is the shortened URL of the deleted history item. -->
+  <string name="history_delete_single_item_snackbar">mi weka e lipu %1$s</string>
+  <!-- Context description text for the button to delete a single history item -->
+  <string name="history_delete_item">o weka</string>
+  <!-- Text for the header that groups the history for today -->
+  <string name="history_today">sike suno ni</string>
+  <!-- Text for the header that groups the history for yesterday -->
+  <string name="history_yesterday">sike suno pini 1</string>
+  <!-- Text for the header that groups the history the past 7 days -->
+  <string name="history_7_days">sike suno pini 7</string>
+  <!-- Text for the header that groups the history the past 30 days -->
+  <string name="history_30_days">sike suno pini 30</string>
+  <!-- Text for the header that groups the history older than the last month -->
+  <string name="history_older">sike weka</string>
+  <!-- Text shown when no history exists -->
+  <string name="history_empty_message">sina lukin ala e lipu</string>
+  <!-- Text for the snackbar to confirm that a single download item has been removed. %1$s is the name of the download item. -->
+  <string name="download_delete_single_item_snackbar_2">mi weka e lipu “%1$s”</string>
+  <!-- Text for the snackbar to confirm that downloads are in progress. -->
+  <string name="download_in_progress_snackbar">mi kama jo e lipu…</string>
+  <!-- Text for the snackbar action button to view in progress download details. -->
+  <string name="download_in_progress_snackbar_action_details">sona jo</string>
+  <!-- Text for the snackbar action button to undo deleting a download. -->
+  <string name="download_undo_delete_snackbar_action">o weka ala</string>
+  <!-- Text shown when no download exists -->
+  <string name="download_empty_message_2">sina jo ala e lipu</string>
+  <!-- Text description shown when no download exists -->
+  <string name="download_empty_description">sina kama jo e lipu la sina ken lukin e ona lon ni.</string>
+  <!--
+    Message for the dialog that is shown when there is not enough storage space to download a file.
+    %s is the name of the file to download.
+  -->
+  <string name="download_file_has_not_enough_storage_dialog_message"><![CDATA[pakala la ilo sina li ken ala kama jo e lipu <b>%s</b>. ona li jo e ijo mute li ken ala jo e ijo ante.]]></string>
+  <!-- Text for the button to delete a single downloaded file item -->
+  <string name="download_delete_item">o weka</string>
+  <!-- Content description for the toolbar "Navigate back" button -->
+  <string name="download_navigate_back_description">o tawa pini</string>
+  <!--
+    Content description for the search bar clear text button on the downloads screen
+
+    Content description for pause action button on the downloads screen
+  -->
+  <string name="download_pause_action">ilo o lape</string>
+  <!-- Content description for resume action button on the downloads screen -->
+  <string name="download_resume_action">o lape ala</string>
+  <!-- Content description for retry download action button on the downloads screen -->
+  <string name="download_retry_action">o sin</string>
+  <string name="download_clear_search_description">o weka</string>
   <!-- Text for the button to share the download URL -->
   <string name="download_share_url">o pana e nimi nasin</string>
+  <!-- Alert dialog confirmation before deleting multiple download items, this is the positive action. -->
+  <string name="download_delete_multi_select_dialog_confirm">o weka</string>
+  <!--
+    Time period headers for downloads
+
+    Text for the header that groups the downloads for today
+  -->
+  <string name="download_time_period_today">sike suno ni</string>
+  <!-- Text for the header that groups the downloads for yesterday -->
+  <string name="download_time_period_yesterday">sike suno pini 1</string>
+  <!-- Text for the header that groups the downloads the past 7 days -->
+  <string name="download_time_period_last_7_days">sike suno pini 7</string>
+  <!-- Text for the header that groups the downloads the past 30 days -->
+  <string name="download_time_period_last_30_days">sike suno pini 30</string>
+  <!-- Text for the header that groups the downloads older than other groups -->
+  <string name="download_time_period_older">sike weka</string>
+  <!--
+    Description of an in progress download item, displayed in the downloads list.
+    %1$s is the current file size that has been downloaded.
+    %2$s is the total size of the downloaded file.
+    %3$s is the amount of time remaining to complete the download.
+  -->
+  <string name="download_item_in_progress_description" moz:removedIn="141" tools:ignore="UnusedResources">%1$s / %2$s • %3$s li wile</string>
+  <!--
+    Description of an in progress download item, displayed in the downloads list when the download time remaining is known.
+    %1$s is the current file size that has been downloaded.
+    %2$s is the total size of the downloaded file.
+    %3$s is the amount of time remaining to complete the download.
+  -->
+  <string name="download_item_in_progress_description_2">%1$s / %2$s • %3$s li wile.</string>
+  <!--
+    Description of an in progress download item, displayed in the downloads list when the estimated download time remaining is still being calculated.
+    %1$s is the current file size that has been downloaded.
+    %2$s is the total size of the downloaded file.
+  -->
+  <string name="download_item_in_progress_description_pending">%1$s / %2$s • mi alasa</string>
+  <!--
+    Description of a paused download item, displayed in the downloads list.
+    %1$s is the current file size that has been downloaded.
+    %2$s is the total size of the downloaded file.
+  -->
+  <string name="download_item_paused_description">%1$s / %2$s • mi lape</string>
+  <!-- Text to indicate that a download has failed to download. -->
+  <string name="download_item_status_failed">kama jo li pakala</string>
+  <!-- Placeholder text to indicate that users can use the search bar to search for a download. -->
+  <string name="download_search_placeholder">o alasa e jo lipu</string>
+  <!-- Text for the "Select all" button, which selects all downloaded items in the downloads list. -->
+  <string name="download_select_all_items">o wile e lipu ale</string>
+  <!--
+    Downloads Content Type Filters
+
+    Text for the filter button to show all files in the downloads list
+  -->
+  <string name="download_content_type_filter_all">jo ale</string>
+  <!-- Text for the filter button to show only images in the downloads list -->
+  <string name="download_content_type_filter_image">sitelen</string>
+  <!-- Text for the filter button to show only video files in the downloads list -->
+  <string name="download_content_type_filter_video">sitelen tawa</string>
+  <!-- Text for the filter button to show only documents in the downloads list -->
+  <string name="download_content_type_filter_document">lipu</string>
   <!-- The text field label of the URL text field. This is displayed above the user-inputted URL. -->
   <string name="webcompat_reporter_label_url">nimi nasin</string>
   <!-- The error message of the URL text field when an invalid URL has been entered. -->
   <string name="webcompat_reporter_url_error_invalid">o pana e nimi nasin pona</string>
+  <!-- The error message of the dropdown, prompting the user to select a high-level reason why the site is broken. -->
+  <string name="webcompat_reporter_choose_reason_error">o alasa e tan</string>
+  <!-- The button text for the cancel button to leave the Web Compat Reporter feature. -->
+  <string name="webcompat_reporter_cancel">ala</string>
+  <!-- The button text for the send button to submit the provided form data. -->
+  <string name="webcompat_reporter_send">o pana</string>
+  <!-- Text for a snackbar to confirm the successful submission of a WebCompat report. -->
+  <string name="webcompat_reporter_success_snackbar_text">mi pana e toki pakala sina</string>
+  <!-- Broken site reason text for images or videos -->
+  <string name="webcompat_reporter_reason_media" moz:removedIn="140" tools:ignore="UnusedResources">sitelen</string>
+  <!-- Broken site reason text for site asked to turn off ad blocker -->
+  <string name="webcompat_reporter_reason_turn_off_adblocker">lipu ni li wile e ni: sina weka ala e sitelen esun</string>
+  <!-- Broken site reason text for something else -->
+  <string name="webcompat_reporter_reason_other">ijo ante</string>
+  <!--
+    Crashes
+
+    Title text displayed on the tab crash page. %1$s is the name of the app (for example "Firefox").
+  -->
+  <string name="tab_crash_title_2">pakala la ilo %1$s li ken ala pana e lipu ni.</string>
+  <!-- Send crash report checkbox text on the tab crash page -->
+  <string name="tab_crash_send_report">o pana e sona pakala tawa kulupu Mozilla</string>
+  <!-- Close tab button text on the tab crash page -->
+  <string name="tab_crash_close">o weka e poki</string>
+  <!-- Unsubmitted crash dialog negative button to dismiss the dialog -->
+  <string name="unsubmitted_crash_dialog_negative_button">o pini</string>
+  <!-- Unsubmitted crash dialog negative button to never be asked for the submission -->
+  <string name="unsubmitted_crash_requested_by_devs_dialog_never_button">o lukin lon tenpo ala</string>
+  <!-- Unsubmitted crash dialog positive button to submit crash report -->
+  <string name="unsubmitted_crash_dialog_positive_button">o pana e toki pakala</string>
+  <!-- Unsubmitted crash dialog button to open a web page with more details on the feature and privacy policy -->
+  <string name="unsubmitted_crash_requested_by_devs_learn_more">o sona</string>
+  <!--
+    Bookmarks
+
+    Confirmation message for a dialog confirming if the user wants to delete the selected folder
+  -->
+  <string name="bookmark_delete_folder_confirmation_dialog">sina wile ala wile weka e poki ni?</string>
+  <!-- Text for the cancel button on delete bookmark dialog -->
+  <string name="bookmark_delete_negative">wile ala</string>
+  <!-- Snackbar title that confirms a bookmark was saved into a folder. %s is the name of the folder the bookmark was saved into. -->
+  <string name="bookmark_saved_in_folder_snackbar">mi pana e lipu tawa kulupu “%s”</string>
+  <!-- Snackbar edit button shown after a bookmark has been created. -->
+  <string name="edit_bookmark_snackbar_action">o ante</string>
+  <!-- Bookmark overflow menu edit button -->
+  <string name="bookmark_menu_edit_button">o ante</string>
+  <!-- Bookmark overflow menu copy button -->
+  <string name="bookmark_menu_copy_button">o jo</string>
+  <!-- Bookmark overflow menu share button -->
+  <string name="bookmark_menu_share_button">o pana</string>
+  <!-- Bookmark overflow menu select all bookmarks -->
+  <string name="bookmark_menu_select_all_bookmarks">o kule ale</string>
+  <!-- Bookmark overflow menu open in new tab button -->
+  <string name="bookmark_menu_open_in_new_tab_button">o pana e lipu tawa poki sin</string>
+  <!-- Bookmark overflow menu open in private tab button -->
+  <string name="bookmark_menu_open_in_private_tab_button">o open lon poki len</string>
+  <!-- Bookmark overflow menu open all in tabs button -->
+  <string name="bookmark_menu_open_all_in_tabs_button">o pana e lipu ale ni tawa poki sin</string>
+  <!-- Bookmark overflow menu delete button -->
+  <string name="bookmark_menu_delete_button">o weka</string>
+  <!-- Label for button to sort bookmarks by user-defined sort order in the bookmark sorting overflow menu. -->
+  <string name="bookmark_sort_menu_custom">o nasin sina</string>
+  <!-- Label for button to sort bookmarks by newest in the bookmark sorting overflow menu. -->
+  <string name="bookmark_sort_menu_newest">pana sin o lon open nasin</string>
+  <!-- Label for button to sort bookmarks by oldest in the bookmark sorting overflow menu. -->
+  <string name="bookmark_sort_menu_oldest">pana sin o lon pini nasin</string>
+  <!-- Label for button to sort bookmarks in alphabetical order in the bookmark sorting overflow menu. -->
+  <string name="bookmark_sort_menu_a_to_z">nimi open o lon open nasin</string>
+  <!-- Label for button to sort bookmarks in reverse alphabetical order in the bookmark sorting overflow menu. -->
+  <string name="bookmark_sort_menu_z_to_a">nimi open o lon pini nasin</string>
+  <!-- Bookmark editing screen title -->
+  <string name="edit_bookmark_fragment_title">o ante e lipu awen</string>
   <!-- Bookmark URL editing field label -->
   <string name="bookmark_url_label">nimi nasin</string>
+  <!-- Bookmark FOLDER editing field label -->
+  <string name="bookmark_folder_label">kulupu sona</string>
+  <!-- Bookmark NAME editing field label -->
+  <string name="bookmark_name_label">nimi</string>
+  <!-- Label for a text input field for a bookmark or folder name -->
+  <string name="bookmark_name_label_normal_case">nimi</string>
+  <!-- Bookmark editing error missing title -->
+  <string name="bookmark_empty_title_error">lipu li wile e nimi</string>
   <!-- Bookmark editing error missing or improper URL -->
   <string name="bookmark_invalid_url_error">nimi nasin ni li pakala</string>
+  <!-- Bookmark screen message for empty bookmarks folder -->
+  <string name="bookmarks_empty_message">sina awen ala e lipu</string>
+  <!--
+    Bookmark snackbar message on deletion
+    %1$s is the host part of the URL of the bookmark deleted, if any
+  -->
+  <string name="bookmark_deletion_snackbar_message">mi weka e %1$s</string>
+  <!-- Bookmark snackbar message on deleting multiple bookmarks not including folders -->
+  <string name="bookmark_deletion_multiple_snackbar_message_2">mi weka e lipu awen</string>
+  <!-- Bookmark undo button for deletion snackbar action -->
+  <string name="bookmark_undo_deletion">O NI ALA</string>
+  <!-- Bookmark snackbar message for deleting a single item. %s is the title of the item being deleted -->
+  <string name="bookmark_delete_single_item">mi weka e %s</string>
+  <!-- Bookmark snackbar message for deleting multiple items. %s is the number of items being deleted -->
+  <string name="bookmark_delete_multiple_items">mi weka e lipu %s</string>
+  <!-- Content description for the bookmark navigation bar back button -->
+  <string name="bookmark_navigate_back_button_content_description">o tawa pini</string>
+  <!-- Content description for bookmark search floating action button -->
+  <string name="bookmark_search_button_content_description">o alasa e lipu awen</string>
+  <!-- Title for the bookmark list empty state -->
+  <string name="bookmark_empty_list_title">sina awen ala e lipu</string>
   <!--
     Site Permissions
 
     Button label that take the user to the Android App setting
   -->
   <string name="phone_feature_go_to_settings">o lukin e nasin ilo</string>
+  <!-- Button label for clearing all the information of site permissions -->
+  <string name="clear_permissions">o weka e ken ale</string>
+  <!-- Text for the OK button on Clear permissions dialog -->
+  <string name="clear_permissions_positive">pona</string>
   <!-- Preference for altering video and audio autoplay for all websites -->
   <string name="preference_browser_feature_autoplay">open sitelen</string>
+  <!-- Preference for showing a list of websites that the default configurations won't apply to them -->
+  <string name="preference_exceptions">nasin li lawa ala e lipu ni</string>
+  <!-- Summary of tracking protection preference if tracking protection is set to off -->
+  <string name="tracking_protection_off">ala</string>
+  <!-- Summary of tracking protection preference if tracking protection is set to standard -->
+  <string name="tracking_protection_standard">nasin kulupu</string>
+  <!-- Summary of tracking protection preference if tracking protection is set to strict -->
+  <string name="tracking_protection_strict">nasin wawa</string>
+  <!-- Summary of tracking protection preference if tracking protection is set to custom -->
+  <string name="tracking_protection_custom">nasin sina</string>
+  <!-- Label for global setting that indicates that all video and audio autoplay is allowed -->
+  <string name="preference_option_autoplay_allowed2">o ken e kalama e sitelen</string>
+  <!-- Label for site specific setting that indicates that all video and audio autoplay is allowed -->
+  <string name="quick_setting_option_autoplay_allowed">o ken e kalama e sitelen</string>
+  <!-- Label for global setting that indicates that video autoplay is allowed, but audio autoplay is blocked -->
+  <string name="preference_option_autoplay_block_audio2">o ken ala e kalama taso</string>
+  <!-- Label for site specific setting that indicates that video autoplay is allowed, but audio autoplay is blocked -->
+  <string name="quick_setting_option_autoplay_block_audio">o ken ala e kalama taso</string>
+  <!-- Label for global setting that indicates that all video and audio autoplay is blocked -->
+  <string name="preference_option_autoplay_blocked3">o ken ala e kalama e sitelen</string>
+  <!-- Label for site specific setting that indicates that all video and audio autoplay is blocked -->
+  <string name="quick_setting_option_autoplay_blocked">o ken ala e kalama e sitelen</string>
+  <!-- Summary of delete browsing data on quit preference if it is set to on -->
+  <string name="delete_browsing_data_quit_on">ken</string>
+  <!-- Summary of delete browsing data on quit preference if it is set to off -->
+  <string name="delete_browsing_data_quit_off">ken ala</string>
+  <!-- Summary of studies preference if it is set to on -->
+  <string name="studies_on">ken</string>
+  <!-- Summary of studies data on quit preference if it is set to off -->
+  <string name="studies_off">ken ala</string>
+  <!-- Toggle if desktop site is turned on -->
+  <string name="browser_feature_desktop_site_on">suli</string>
+  <!-- Toggle if desktop site is turned off -->
+  <string name="browser_feature_desktop_site_off">lili</string>
+  <!-- Category header of a preference that allows a user to alter settings related to web permissions. -->
+  <string name="preferences_category_permissions">nasin ken</string>
+  <!-- Category header of a preference that allows a user to alter settings related to web content. -->
+  <string name="preferences_category_content">ijo toki</string>
+  <!-- Preference for altering the default browsing mode. When enabled, the desktop site will always be requested. -->
+  <string name="preference_feature_desktop_mode_default">tenpo ale la o kepeken nasin lukin lipu pi ilo suli</string>
+  <!--
+    Collections
+
+    Collections header on home fragment
+  -->
+  <string name="collections_header">kulupu poki</string>
+  <!-- Content description (not visible, for screen readers etc.): Opens the collection menu when pressed -->
+  <string name="collection_menu_button_content_description">poki pi kulupu poki</string>
+  <!-- Label to describe what collections are to a new user without any collections -->
+  <string name="no_collections_description2">o poki e ijo pona sina.\no kulupu e ijo pi alasa sama. ni la sina ken lukin pona e ona lon tenpo kama.</string>
+  <!-- Title for the "select collection" step of the collection creator -->
+  <string name="create_collection_select_collection">o wile e kulupu poki</string>
+  <!-- Title for the "name collection" step of the collection creator -->
+  <string name="create_collection_name_collection">o nimi e kulupu poki</string>
+  <!-- Button to add new collection for the "select collection" step of the collection creator -->
+  <string name="create_collection_add_new_collection">o pali e kulupu poki sin</string>
+  <!-- Button to select all tabs in the "select tabs" step of the collection creator -->
+  <string name="create_collection_select_all">o wile e lipu ale</string>
+  <!-- Text shown in snackbar when multiple tabs have been saved in a collection -->
+  <string name="create_collection_tabs_saved">mi pana e poki tawa kulupu!</string>
+  <!-- Text shown in snackbar when one or multiple tabs have been saved in a new collection -->
+  <string name="create_collection_tabs_saved_new_collection">mi awen e kulupu poki!</string>
+  <!-- Text shown in snackbar when one tab has been saved in a collection -->
+  <string name="create_collection_tab_saved">mi pana e poki tawa kulupu!</string>
+  <!-- Content description (not visible, for screen readers etc.): button to close the collection creator -->
+  <string name="create_collection_close">o pini</string>
+  <!-- Button to save currently selected tabs in the "select tabs" step of the collection creator -->
+  <string name="create_collection_save">o awen</string>
+  <!-- Snackbar action to view the collection the user just created or updated -->
+  <string name="create_collection_view">o lukin</string>
+  <!-- Text for the OK button from collection dialogs -->
+  <string name="create_collection_positive">pona</string>
+  <!-- Text for the cancel button from collection dialogs -->
+  <string name="create_collection_negative">ala</string>
+  <!-- Default name for a new collection in "name new collection" step of the collection creator. %d is a placeholder for the number of collections -->
+  <string name="create_collection_default_name">kulupu %d</string>
+  <!--
+    Share
+
+    Share screen header
+  -->
+  <string name="share_header_2">o pana</string>
+  <!--
+    Content description (not visible, for screen readers etc.):
+    "Share" button. Opens the share menu when pressed.
+  -->
+  <string name="share_button_content_description">o pana</string>
+  <!-- Text for the Save to PDF feature in the share menu -->
+  <string name="share_save_to_pdf">o lipu lon nasin PDF</string>
+  <!-- Text for error message when generating a PDF file Text. -->
+  <string name="unable_to_save_to_pdf_error">pakala la mi ken ala lipu e ni</string>
+  <!-- Text for standard error snackbar dismiss button. -->
+  <string name="standard_snackbar_error_dismiss">o weka</string>
+  <!-- Text for error message when printing a page and it fails. -->
+  <string name="unable_to_print_page_error">pakala la mi ken ala pana e lipu ilo ni tawa lipu kasi</string>
+  <!-- Text for the print feature in the share and browser menu -->
+  <string name="menu_print">o pana tawa lipu kasi</string>
+  <!-- Sub-header in the dialog to share a link to another sync device -->
+  <string name="share_device_subheader">o pana tawa ilo ante</string>
+  <!-- Text for the copy link action in the share screen. -->
+  <string name="share_copy_link_to_clipboard">o pana tawa poki nimi</string>
+  <!-- Toast shown after copying link to clipboard -->
+  <string name="toast_copy_link_to_clipboard">mi pana tawa poki nimi</string>
+  <!-- An option from the share dialog to send link to all other sync devices -->
+  <string name="sync_send_to_all">o pana tawa ilo ante ale</string>
+  <!-- Text displayed when sync is offline and cannot be accessed -->
+  <string name="sync_offline">linja ala</string>
+  <!-- The dialog text shown when additional devices are not available -->
+  <string name="sync_connect_device_dialog" tools:ignore="BrandUsage">pana lipu la o kama tawa ilo Firefox lon ilo ante</string>
+  <!-- Confirmation dialog button -->
+  <string name="sync_confirmation_button">mi sona</string>
+  <!-- Add new device screen title -->
+  <string name="sync_add_new_device_title">o pana tawa ilo ante</string>
+  <!-- A message template for the shared link with a footer. %1$s is the shared link, %2$s is the app name (e.g. Firefox) and %3$s is a download link for the app. -->
+  <string name="sent_from_firefox_template" tools:ignore="UnusedResources">%1$s\n\nmi pana e ni tan ilo %2$s 🦊 o kepeken e ilo alasa ni: %3$s</string>
+  <!-- A short message template for the shared link with a footer. %1$s is the shared link, %2$s is the app name (e.g. Firefox) and %3$s is a download link for the app. -->
+  <string name="sent_from_firefox_template_short" tools:ignore="UnusedResources">%1$s\n\nmi toki e ni tan ilo %2$s 🦊 %3$s</string>
+  <!--
+    Notifications
+
+    Text shown in the notification that pops up to remind the user that a private browsing session is active.
+  -->
+  <string name="notification_pbm_delete_text_2">o pini e poki len</string>
+  <!-- Text shown in the notification that pops up to remind the user that a private browsing session is active for Android 14+ -->
+  <string name="notification_erase_title_android_14">sina wile ala wile pini e poki len?</string>
+  <string name="notification_erase_text_android_14">wile la o nena e poki mu ni.</string>
+  <!-- Name of the marketing notification channel. Displayed in the "App notifications" system settings for the app -->
+  <string name="notification_marketing_channel_name">mu esun</string>
+  <!--
+    Title shown in the notification that pops up to remind the user to set fenix as default browser.
+    The app name is in the text, due to limitations with localizing Nimbus experiments
+  -->
+  <string name="nimbus_notification_default_browser_title" tools:ignore="BrandUsage,UnusedResources">ilo Firefox li awen suli</string>
+  <!--
+    Text shown in the notification that pops up to remind the user to set fenix as default browser.
+    The app name is in the text, due to limitations with localizing Nimbus experiments
+  -->
+  <string name="nimbus_notification_default_browser_text" tools:ignore="BrandUsage,UnusedResources">o open e lipu ale kepeken ilo Firefox</string>
+  <!--
+    Text shown in the notification that pops up to re-engage the user.
+    %1$s is a placeholder that will be replaced by the app name.
+  -->
+  <string name="notification_re_engagement_text">sina lukin e lipu lon ilo %1$s la ilo ante li ken ala alasa e sina</string>
+  <!--
+    Text A shown in the notification that pops up to re-engage the user.
+    %1$s is a placeholder that will be replaced by the app name.
+  -->
+  <string name="notification_re_engagement_A_text">ilo %1$s la sona sina li awen ala lon nasin len</string>
+  <!-- Preference for not taking the short survey. -->
+  <string name="preferences_not_take_survey">mi wile ala</string>
+  <!--
+    Snackbar
+
+    Text shown in snackbar when user deletes a collection
+  -->
+  <string name="snackbar_collection_deleted">mi weka e kulupu poki ni</string>
+  <!-- Text shown in snackbar when user renames a collection -->
+  <string name="snackbar_collection_renamed">mi ante nimi e kulupu poki ni</string>
+  <!-- Text shown in snackbar when user closes a tab -->
+  <string name="snackbar_tab_closed">poki li pini</string>
+  <!-- Text shown in snackbar when user closes all tabs -->
+  <string name="snackbar_tabs_closed">poki li pini</string>
+  <!-- Text shown in snackbar when user closes multiple inactive tabs. %1$s will be replaced with the number of tabs closed. -->
+  <string name="snackbar_num_tabs_closed">poki %1$s li pini</string>
+  <!-- Text shown in snackbar when user bookmarks a list of tabs. %s is the name of the folder the bookmark was saved into. -->
+  <string name="snackbar_message_bookmarks_saved_in">mi pana e lipu tawa kulupu “%s”!</string>
+  <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
+  <string name="snackbar_deleted_undo">O NI ALA</string>
+  <!--
+    QR code scanner prompt which appears after scanning a code, but before navigating to it
+    %1$s is the name of the app (for example "Firefox"), %2$s is the URL or text scanned
+  -->
+  <string name="qr_scanner_confirmation_dialog_message">ilo %1$s li ken ala ken open e lipu %2$s?</string>
+  <!-- QR code scanner prompt dialog positive option to allow navigation to scanned link -->
+  <string name="qr_scanner_dialog_positive">ken</string>
+  <!-- QR code scanner prompt dialog positive option to deny navigation to scanned link -->
+  <string name="qr_scanner_dialog_negative">ken ala</string>
+  <!-- Tab collection deletion prompt dialog message. %1$s is the collection name. -->
+  <string name="tab_collection_dialog_message">sina wile ala wile weka e kulupu %1$s?</string>
+  <!-- Tab collection deletion prompt dialog option to delete the collection -->
+  <string name="tab_collection_dialog_positive">o weka</string>
   <!-- Message for copying the URL via long press on the toolbar -->
   <string name="url_copied">mi jo e nimi nasin</string>
+  <!-- Sample text for accessibility font size -->
+  <string name="accessibility_text_size_sample_text_1">nimi li pana ala e kon. ona li lon tawa ni taso: sina ante e suli nimi la nimi li pona ala pona tawa lukin?</string>
+  <!--
+    Title for the data and history items in Delete browsing data
+
+    Title for the history item in Delete browsing data
+  -->
+  <string name="preferences_delete_browsing_data_browsing_history_title">lukin pini lipu</string>
+  <!-- Title for the site permissions item in Delete browsing data -->
+  <string name="preferences_delete_browsing_data_site_permissions">ken lipu</string>
+  <!-- Title for the downloads item in Delete browsing data -->
+  <string name="preferences_delete_browsing_data_downloads">jo lipu</string>
+  <!--
+    Onboarding theme
+
+    Text shown in snackbar when multiple tabs have been sent to device
+  -->
+  <string name="sync_sent_tabs_snackbar">mi pana e poki ni!</string>
+  <!-- Text shown in snackbar when one tab has been sent to device -->
+  <string name="sync_sent_tab_snackbar">mi pana e poki ni!</string>
+  <!-- Text shown in snackbar when sharing tabs failed -->
+  <string name="sync_sent_tab_error_snackbar">pakala la mi ken ala pana e poki ni</string>
+  <!-- Text shown in snackbar for the "retry" action that the user has after sharing tabs failed -->
+  <string name="sync_sent_tab_error_snackbar_action">o sin</string>
+  <!-- Title of QR Pairing Fragment -->
+  <string name="sync_scan_code">ilo o lukin e sitelen</string>
   <!-- Instructions on how to access pairing -->
   <string name="sign_in_instructions" tools:ignore="BrandUsage"><![CDATA[ilo ante suli la o alasa e nimi <b>https://firefox.com/pair</b>]]></string>
+  <!-- Text shown for sign in pairing when ready -->
+  <string name="sign_in_ready_for_scan">ilo li ken lukin</string>
+  <!-- Text shown for settings option for sign with pairing -->
+  <string name="sign_in_with_camera">o lon sijelo kepeken ilo lukin</string>
+  <!-- Text shown for settings option for sign with email -->
+  <string name="sign_in_with_email">o kepeken nimi nasin pi poki lipu</string>
+  <!-- Text shown for settings option for create new account text.'Firefox' intentionally hardcoded here. -->
+  <string name="sign_in_create_account_text" tools:ignore="BrandUsage"><![CDATA[sina jo ala e sijelo anu seme? <u>o open e sijelo</u> tawa ni: sina ken sama e ilo sina lon nasin Firefox.]]></string>
+  <!-- Text displayed that links to website about enhanced tracking protection -->
+  <string name="preference_enhanced_tracking_protection_explanation_learn_more">o sona</string>
+  <!-- Preference for enhanced tracking protection for the standard protection settings -->
+  <string name="preference_enhanced_tracking_protection_standard_default_1">nasin kulupu</string>
+  <!-- Preference for enhanced tracking protection for the strict protection settings -->
+  <string name="preference_enhanced_tracking_protection_strict">nasin wawa</string>
+  <!-- Preference for enhanced tracking protection for the custom protection settings -->
+  <string name="preference_enhanced_tracking_protection_custom">nasin sina</string>
+  <!-- About page link text to open what's new link. %s is the name of the app (for example "Firefox"). -->
+  <string name="about_whats_new">ilo %s la seme li sin</string>
+  <!--
+    Open source licenses page title
+    %s is the name of the app (for example "Firefox")
+  -->
+  <string name="open_source_licenses_title">ilo %s la ilo open pi sona nanpa</string>
+  <!-- Text displayed for "Default provider" under "DNS over HTTPS" providers -->
+  <string name="preference_doh_provider_default">(ante ala)</string>
   <!-- Error text displayed for provider textfield under "DNS over HTTPS" if the URL does not start with "https://" or its scheme is not "https" -->
   <string name="preference_doh_provider_custom_dialog_error_https">nimi nasin li wile e open “https://”</string>
   <!-- Error text displayed for provider textfield under "DNS over HTTPS" if the URL is invalid -->
   <string name="preference_doh_provider_custom_dialog_error_invalid">nimi nasin ni li pakala</string>
+  <!-- About page link text to open privacy notice link -->
+  <string name="about_privacy_notice">toki lawa pi len sona</string>
+  <!-- About page link text to open know your rights link -->
+  <string name="about_know_your_rights">o sona e ken</string>
+  <!-- About page link text to open licensing information link -->
+  <string name="about_licensing_information">toki lawa pi nasin kepeken</string>
+  <!--
+    Toast shown to the user when they are activating the secret dev menu
+    %1$d is number of long clicks left to enable the menu
+  -->
+  <string name="about_debug_menu_toast_progress">lipu pi weka pakala la o nena %1$d tawa ken ona</string>
+  <string name="about_debug_menu_toast_done">mi ken e lipu pi weka pakala</string>
+  <!--
+    Browser long press popup menu
+
+    Copy the current url
+  -->
+  <string name="browser_toolbar_long_press_popup_copy">o jo</string>
+  <!-- Paste & go the text in the clipboard. '&amp;' is replaced with the ampersand symbol: & -->
+  <string name="browser_toolbar_long_press_popup_paste_and_go">o pana o alasa</string>
+  <!-- Paste the text in the clipboard -->
+  <string name="browser_toolbar_long_press_popup_paste">o pana</string>
   <!-- Snackbar message shown after an URL has been copied to clipboard. -->
   <string name="browser_toolbar_url_copied_to_clipboard_snackbar">mi jo e nimi nasin</string>
+  <!-- Title text for the Add To Homescreen dialog -->
+  <string name="add_to_homescreen_title">o pana tawa lipu lawa</string>
+  <!-- Cancel button text for the Add to Homescreen dialog -->
+  <string name="add_to_homescreen_cancel">o weka</string>
+  <!-- Add button text for the Add to Homescreen dialog -->
+  <string name="add_to_homescreen_add">o pana</string>
+  <!-- Continue to website button text for the first-time Add to Homescreen dialog -->
+  <string name="add_to_homescreen_continue">o lukin e lipu</string>
+  <!-- Preference for managing the settings for logins and passwords in Fenix -->
+  <string name="preferences_passwords_logins_and_passwords_2">nimi open</string>
+  <!-- Preference for managing the saving of logins and passwords in Fenix -->
+  <string name="preferences_passwords_save_logins_2">o awen e nimi open</string>
+  <!-- Preference option for asking to save passwords in Fenix -->
+  <string name="preferences_passwords_save_logins_ask_to_save">o alasa e wile tawa awen</string>
+  <!-- Preference for syncing saved passwords in Fenix -->
+  <string name="preferences_passwords_sync_logins_2">o sama e nimi open lon ilo ante</string>
+  <!-- Preference for syncing saved passwords in Fenix, when not signed in -->
+  <string name="preferences_passwords_sync_logins_across_devices_2">o sama e nimi open lon ilo ante</string>
+  <!-- Preference to access list of saved passwords -->
+  <string name="preferences_passwords_saved_logins_2">nimi open awen</string>
+  <!-- Preference to access list of login exceptions that we never save logins for -->
+  <string name="preferences_passwords_exceptions">nasin li lawa ala e lipu ni</string>
+  <!-- Text on button to remove all saved login exceptions -->
+  <string name="preferences_passwords_exceptions_remove_all">nasin o lawa a lipu ale</string>
+  <!-- Hint for search box in passwords list -->
+  <string name="preferences_passwords_saved_logins_search_2">o alasa e nimi open</string>
+  <!-- The header for the site that a login is for -->
+  <string name="preferences_passwords_saved_logins_site">nimi lipu</string>
+  <!-- The header for the username for a login -->
+  <string name="preferences_passwords_saved_logins_username">nimi sijelo</string>
+  <!-- The header for the password for a login -->
+  <string name="preferences_passwords_saved_logins_password">nimi open</string>
+  <!-- Shown in snackbar to tell user that the password has been copied -->
+  <string name="logins_password_copied">mi pana e nimi open tawa poki ilo</string>
+  <!-- Shown in snackbar to tell user that the username has been copied -->
+  <string name="logins_username_copied">mi pana e nimi sijelo tawa poki ilo</string>
+  <!-- Content Description (for screenreaders etc) read for the button to copy a password in logins -->
+  <string name="saved_logins_copy_password">o jo e nimi open ni</string>
+  <!-- Content Description (for screenreaders etc) read for the button to copy a username in logins -->
+  <string name="saved_login_copy_username">o jo e nimi ni</string>
+  <!-- Content Description (for screenreaders etc) read for the button to clear a username while editing a login -->
+  <string name="saved_login_clear_username">o weka e nimi sijelo</string>
+  <!-- Content Description (for screenreaders etc) read for the button to clear the hostname field while creating a login -->
+  <string name="saved_login_clear_hostname">o weka e nimi lipu</string>
+  <!-- Edit text for the login detail menu edit button -->
+  <string name="login_detail_menu_edit_button">o ante</string>
+  <!-- Delete text for the login detail menu delete button -->
+  <string name="login_detail_menu_delete_button">o weka</string>
+  <!-- Content Description (for screenreaders etc) read for the button to open a site in logins -->
+  <string name="saved_login_open_site">o lukin e lipu lon ilo lawa</string>
+  <!-- Content Description (for screenreaders etc) read for the button to reveal a password in logins -->
+  <string name="saved_login_reveal_password">o lukin e nimi open ni</string>
+  <!-- Content Description (for screenreaders etc) read for the button to hide a password in logins -->
+  <string name="saved_login_hide_password">o lukin ala e nimi open ni</string>
+  <!-- Message displayed in biometric prompt displayed for authentication before allowing users to view their passwords -->
+  <string name="logins_biometric_prompt_message_2">o open e ilo tawa ni: sina lukin e nimi open</string>
+  <!-- Preference option for managing saved cards -->
+  <string name="preferences_credit_cards_manage_saved_cards_2">o ante e lipu mani</string>
+  <!-- Preference option for adding an address -->
+  <string name="preferences_addresses_add_address">o pana e nimi ma</string>
+  <!-- Preference option for managing saved addresses -->
+  <string name="preferences_addresses_manage_addresses">o ante e nimi ma</string>
+  <!-- Preference for saving and filling addresses -->
+  <string name="preferences_addresses_save_and_autofill_addresses_2">o awen e nimi ma</string>
+  <!-- Title of the "Add card" screen -->
+  <string name="credit_cards_add_card">o pana e lipu mani</string>
+  <!-- Title of the "Edit card" screen -->
+  <string name="credit_cards_edit_card">o ante e lipu mani</string>
+  <!-- The header for the card number of a credit card -->
+  <string name="credit_cards_card_number">nanpa mani</string>
+  <!-- The header for the expiration date of a credit card -->
+  <string name="credit_cards_expiration_date">tenpo pi pini lawa</string>
+  <!-- The label for the expiration date month of a credit card to be used by a11y services -->
+  <string name="credit_cards_expiration_date_month">tenpo mun pi pini lawa</string>
+  <!-- The label for the expiration date year of a credit card to be used by a11y services -->
+  <string name="credit_cards_expiration_date_year">tenpo sike pi pini lawa</string>
+  <!-- The header for the name on the credit card -->
+  <string name="credit_cards_name_on_card">nimi jan</string>
+  <!-- The text for the "Delete card" menu item for deleting a credit card -->
+  <string name="credit_cards_menu_delete_card">o weka e lipu mani</string>
+  <!-- The text for the "Delete card" button for deleting a credit card -->
+  <string name="credit_cards_delete_card_button">o weka e lipu mani</string>
+  <!-- The text for the confirmation message of "Delete card" dialog -->
+  <string name="credit_cards_delete_dialog_confirmation_2">sina wile ala wile weka e lipu mani</string>
+  <!-- The text for the positive button on "Delete card" dialog -->
+  <string name="credit_cards_delete_dialog_button">o weka</string>
+  <!-- The title for the "Save" menu item for saving a credit card -->
+  <string name="credit_cards_menu_save">o awen</string>
+  <!-- The text for the "Save" button for saving a credit card -->
+  <string name="credit_cards_save_button">o awen</string>
+  <!-- The text for the "Cancel" button for cancelling adding, updating or deleting a credit card -->
+  <string name="credit_cards_cancel_button">ala</string>
+  <!-- Title of the "Saved cards" screen -->
+  <string name="credit_cards_saved_cards">lipu awen</string>
+  <!-- Error message for card number validation -->
+  <string name="credit_cards_number_validation_error_message_2">o pana e nimi mani pona</string>
+  <!-- Error message for card name on card validation -->
+  <string name="credit_cards_name_on_card_validation_error_message_2">o pana e nimi a</string>
+  <!-- Title of the "Manage addresses" screen -->
+  <string name="addresses_manage_addresses">o ante e nimi ma</string>
+  <!-- The header for the name of an address. Name represents a person's full name, typically made up of a first, middle and last name, e.g. John Joe Doe. -->
+  <string name="addresses_name">nimi jan</string>
+  <!-- The header for the street address of an address -->
+  <string name="addresses_street_address">nimi pi nasin tomo</string>
+  <!-- The header for the city of an address -->
+  <string name="addresses_city">nimi pi ma tomo</string>
+  <!-- The header for the subregion of an address when "state" should be used -->
+  <string name="addresses_state">nimi pi ma lawa lili</string>
+  <!-- The header for the subregion of an address when "province" should be used -->
+  <string name="addresses_province">nimi pi ma lawa lili</string>
+  <!-- The header for the zip code of an address -->
+  <string name="addresses_zip">nanpa ma</string>
+  <!-- The header for the country or region of an address -->
+  <string name="addresses_country">nimi ma</string>
+  <!-- The header for the phone number of an address -->
+  <string name="addresses_phone">nanpa pi ilo kalama</string>
+  <!-- The header for the email of an address -->
+  <string name="addresses_email">nimi pi poki lipu</string>
+  <!-- The text for the "Save" button for saving an address -->
+  <string name="addresses_save_button">o awen</string>
+  <!-- The text for the "Cancel" button for cancelling adding, updating or deleting an address -->
+  <string name="addresses_cancel_button">ala</string>
+  <!-- The text for the "Delete address" button for deleting an address -->
+  <string name="addressess_delete_address_button">o weka e nimi ma</string>
+  <!-- The title for the "Delete address" confirmation dialog -->
+  <string name="addressess_confirm_dialog_message_2">sina wile ala wile weka e nimi ma?</string>
+  <!-- The text for the positive button on "Delete address" dialog -->
+  <string name="addressess_confirm_dialog_ok_button">o weka</string>
+  <!-- The text for the negative button on "Delete address" dialog -->
+  <string name="addressess_confirm_dialog_cancel_button">ala</string>
+  <!-- The text for the "Save address" menu item for saving an address -->
+  <string name="address_menu_save_address">o awen e nimi ma</string>
+  <!-- The text for the "Delete address" menu item for deleting an address -->
+  <string name="address_menu_delete_address">o weka e nimi ma</string>
+  <!-- Title of the Add search engine screen -->
+  <string name="search_engine_add_custom_search_engine_title">o pana e ilo alasa</string>
+  <!-- Content description (not visible, for screen readers etc.): Title for the button that navigates to add new engine screen -->
+  <string name="search_engine_add_custom_search_engine_button_content_description">o pana e ilo alasa sin</string>
   <!-- First step for the allowing a permission -->
   <string name="phone_feature_blocked_step_settings">1. o lukin e nasin ilo lon ilo Android</string>
+  <!-- Label that indicates a site is using a secure connection -->
+  <string name="quick_settings_sheet_secure_connection_2">linja toki li len</string>
+  <!-- Label that indicates a site is using a insecure connection -->
+  <string name="quick_settings_sheet_insecure_connection_2">linja toki li len ala</string>
+  <!-- Browser menu button that adds a shortcut to the home fragment -->
+  <string name="browser_menu_add_to_shortcuts">o awen lon lipu open</string>
+  <!-- Browser menu button that removes a shortcut from the home fragment -->
+  <string name="browser_menu_remove_from_shortcuts">o awen ala lon lipu open</string>
+  <!-- Error text displayed underneath the password field when it is in an error case. -->
+  <string name="saved_login_password_required_2">o pana e nimi open</string>
+  <!-- The error message in add login view when username field is blank. -->
+  <string name="saved_login_username_required_2">o pana e nimi sijelo</string>
+  <!-- The error message in add login view when hostname field is blank. -->
+  <string name="saved_login_hostname_required_2" tools:ignore="UnusedResources">o pana e nimi pi ma ilo</string>
+  <!-- Voice search button content description -->
+  <string name="voice_search_content_description">o alasa kepeken toki uta</string>
+  <!-- Voice search prompt description displayed after the user presses the voice search button -->
+  <string name="voice_search_explainer">o toki uta</string>
+  <!-- The error message in edit login view when a duplicate username exists. -->
+  <string name="saved_login_duplicate">sijelo ante li jo e nimi sama ni</string>
   <!-- This is the hint text that is shown inline on the hostname field of the create new login page. 'https://www.example.com' intentionally hardcoded here -->
   <string name="add_login_hostname_hint_text">https://www.example.com</string>
+  <!-- This is an error message shown below the hostname field of the add login page when a hostname does not contain http or https. -->
+  <string name="add_login_hostname_invalid_text_3">nimi nasin li wile jo e \"https://\" e \"http://\" lon open</string>
+  <!-- Confirmation dialog button text when top sites limit is reached. -->
+  <string name="top_sites_max_limit_confirmation_button">mi sona</string>
   <!-- Hint for editing URL of a shortcut. -->
-  <string name="shortcut_url_hint">nimi nasin lili</string>
+  <string name="shortcut_url_hint">nimi nasin</string>
   <!-- Error message when the user entered an invalid URL -->
   <string name="top_sites_edit_dialog_url_error">o pana e nimi nasin pona</string>
   <!-- Label for the URL edit field in the edit top site dialog. -->
   <string name="top_sites_edit_dialog_url_title">nimi nasin</string>
+  <!-- Content description for closing all inactive tabs -->
+  <string name="inactive_tabs_delete_all">o pini e poki ale pi pali ala</string>
+  <!-- Content description for expanding the inactive tabs section. -->
+  <string name="inactive_tabs_expand_content_description">o lukin e poki pi pali ala</string>
+  <!--
+    Pocket recommended stories
+
+    Header text for a section on the home screen.
+  -->
+  <string name="pocket_stories_header_1" tools:ignore="UnusedResources" moz:removedIn="140">lipu toki musi</string>
+  <!-- Title of an app feature. Smaller than a heading. %s is "Pocket". -->
+  <string name="pocket_stories_feature_title_2" moz:removedIn="140" tools:ignore="UnusedResources">ilo %s li ken e ni.</string>
+  <!-- Clickable text for opening an external link for more information about Pocket. -->
+  <string name="pocket_stories_feature_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">o sona</string>
+  <!-- Text indicating that the Pocket story that also displays this text is a sponsored story by other 3rd party entity. -->
+  <string name="pocket_stories_sponsor_indication">jan li pana e mani tawa lipu ni</string>
   <!-- Snackbar button text to navigate to telemetry settings. -->
   <string name="experiments_snackbar_button">o lukin e nasin ilo</string>
   <!-- Translations feature -->
+
+  <!--
+    Translation request dialog
+
+    Title for the translation dialog that allows a user to translate the webpage.
+  -->
+  <string name="translations_bottom_sheet_title">sina wile ala wile ante e toki lipu?</string>
+  <!--
+    Title for the translation dialog after a translation was completed successfully.
+    %1$s is the name of the language that the page was translated from, for example, "French".
+    %2$s is the name of the language that the page was translated to, for example, "English".
+  -->
+  <string name="translations_bottom_sheet_title_translation_completed">toki lipu la %1$s li kama %2$s</string>
+  <!-- Label for the dropdown to select which language to translate from on the translations dialog. Usually the translate from language selected will be the same as the page language. -->
+  <string name="translations_bottom_sheet_translate_from">toki tan</string>
+  <!-- Description text for the protection panel banner when the site is not secure. -->
+  <string name="protection_panel_banner_not_secure_description">linja toki li len ala.</string>
+  <!-- TextField Design System Component -->
+
+  <!--
+    ===== Setup checklist feature: Task titles =====
+
+    The title of the default browser task for the setup checklist
+  -->
+  <string name="setup_checklist_task_default_browser">o open e lipu ale kepeken ilo alasa ni</string>
 </resources>

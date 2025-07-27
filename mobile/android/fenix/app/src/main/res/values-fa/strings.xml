@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">گزینه‌های بیشتر</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">فعال کردن حالت خصوصی</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">فعال کردن حالت خصوصی</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">غیرفعال کردن حالت مرور خصوصی</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">غیرفعال کردن حالت مرور خصوصی</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">مرور ناشناس</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -62,7 +62,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s جست‌وجوها و تاریخچهٔ مرور شما را هنگام خروج از برنامه یا بستن زبانه‌های خصوصی پاک می‌کند. در حالی که این کار شما را برای وبگاه‌ها یا فراهم‌کنندگان اینترنت ناشناس نمی‌کند، این کار مخفی کردن فعالیت‌های برخط شما را برای هرکس دیگری که از این افزاره استفاده می‌کند را ساده‌تر می‌کند.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s جست‌وجوها و تاریخچهٔ مرور شما را هنگام خروج از برنامه یا بستن زبانه‌های خصوصی پاک می‌کند. در حالی که این کار شما را برای وبگاه‌ها یا فراهم‌کنندگان اینترنت ناشناس نمی‌کند، این کار مخفی کردن فعالیت‌های برخط شما را برای هرکس دیگری که از این افزاره استفاده می‌کند را ساده‌تر می‌کند.</string>
   <string name="private_browsing_common_myths">باورهای غلط و رایج در مورد مرور خصوصی</string>
   <!--
     True Private Browsing Mode
@@ -98,7 +98,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">برای شروع یک نشست خصوصی جدید اینجا ضربه بزنید. تاریخچه، کوکی‌ها — همه چیز را حذف کنید.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">برای شروع یک نشست خصوصی جدید اینجا ضربه بزنید. تاریخچه، کوکی‌ها — همه چیز را حذف کنید.</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -112,12 +112,8 @@
   <!--
     Address bar swipe "contextual feature recommendation" (CFR)
 
-    Text for the title displayed in the contextual feature recommendation popup promoting swipe of address bar.
+    Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar.
   -->
-  <string name="address_bar_swipe_cfr_title" tools:ignore="UnusedResources" moz:removedIn="139">نوار ابزار را به چپ یا راست بکشید تا زبانه‌ها تغییر کنند</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
-  <string name="address_bar_swipe_cfr_message" tools:ignore="UnusedResources" moz:removedIn="139">به چپ یا راست بکشید تا زبانه تغییر کنید. روی زبانه آخر خود به چپ بکشید تا یک زبانه جدید باز کنید.</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
   <string name="address_bar_swipe_cfr_message_2">با کشیدن نوارابزار به چپ و راست، میان زبانه‌ها جابجا شوید.</string>
   <!-- Text for the info dialog when camera permissions have been denied but user tries to access a camera feature. -->
   <string name="camera_permissions_needed_message">دسترسی به دوربین مورد نیاز است. به تنظیمات اندروید بروید، روی مجوزها ضربه بزنید و بعد روی اجازه ضربه بزنید.</string>
@@ -332,9 +328,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">جدید در %1$s</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">جدید در %1$s</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">تغییر به حالت رومیزی</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">تغییر به حالت رومیزی</string>
   <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
   <string name="browser_menu_switch_to_mobile_site">تغییر به حالت موبایل</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
@@ -342,7 +338,7 @@
   <!-- Content description (not visible, for screen readers etc.): Back button for all menu redesign sub-menu -->
   <string name="browser_menu_back_button_content_description" moz:removedIn="141" tools:ignore="UnusedResources">بازگشت به منوی اصلی</string>
   <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar main menu. -->
-  <string name="browser_main_menu_handlebar_content_description">بستن برگه منوی اصلی</string>
+  <string name="browser_main_menu_handlebar_content_description" moz:removedIn="142" tools:ignore="UnusedResources">بستن برگه منوی اصلی</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
   <string name="browser_main_menu_content_description_help_button">راهنما</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu settings button. -->
@@ -394,7 +390,7 @@
     Browser menu label that is displayed when the current page has been translated by the translation feature.
     %1$s is the name of the language that page was translated to (e.g. English).
   -->
-  <string name="browser_menu_translated_to">ترجمه شده به %1$s</string>
+  <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">ترجمه شده به %1$s</string>
   <!-- Browser menu label that is displayed when the current page has been translated by the translation feature. -->
   <string name="browser_menu_translated">ترجمه‌شده</string>
   <!-- Browser menu label for the print feature -->
@@ -430,7 +426,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">پاک کردن تاریخچه مرور</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">پاک کردن تاریخچه مرور</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">ترجمه صفحه</string>
   <!--
@@ -505,7 +501,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">پرش</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">زبانه‌هایتان در حال همگام‌سازی‌اند! جایی که در افزاره‌ای دیگر رها کرده‌اید را پی بگیرید.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">زبانه‌هایتان در حال همگام‌سازی‌اند! جایی که در افزاره‌ای دیگر رها کرده‌اید را پی بگیرید.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">بستن</string>
   <!--
@@ -865,7 +861,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">ترجمه‌ها</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">انتخاب داده‌ها</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">انتخاب داده‌ها</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">جمع آوری داده ها</string>
   <!-- Preference for developers -->
@@ -927,7 +923,7 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">هرگز</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">مدیریت بارگیری خارجی</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">مدیریت بارگیری خارجی</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">به کار انداختن گزارش‌ها گکو</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -947,13 +943,13 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">ضروری</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">ضروری</string>
   <!-- The title of the optional permissions section from addon's permissions screen -->
-  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">اختیاری</string>
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">اختیاری</string>
   <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
-  <string name="addons_permissions_allow_for_all_sites" tools:ignore="UnusedResources">اجازه برای همه وبگاه‌ها</string>
+  <string name="addons_permissions_allow_for_all_sites">اجازه برای همه وبگاه‌ها</string>
   <!-- The subtitle for the allow for all sites preference toggle -->
-  <string name="addons_permissions_allow_for_all_sites_subtitle" tools:ignore="UnusedResources">اگر به این افزونه اعتماد دارید، می‌توانید به آن در هر وبگاه‌ی اجازه دسترسی بدهید.</string>
+  <string name="addons_permissions_allow_for_all_sites_subtitle">اگر به این افزونه اعتماد دارید، می‌توانید به آن در هر وبگاه‌ی اجازه دسترسی بدهید.</string>
   <!-- The text shown when an extension does not require permissions -->
   <string name="addons_does_not_require_permissions">این افزونه نیازی به مجوز ندارد.</string>
   <!--
@@ -1172,9 +1168,17 @@
   <!-- Preference switch for usage and technical data collection -->
   <string name="preference_usage_data_2">ارسال داده‌های فنی و تعاملی</string>
   <!-- Preference switch for usage and technical learn more link -->
-  <string name="preference_usage_data_learn_more">بیشتر بدانید</string>
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">بیشتر بدانید</string>
   <!-- Preference description for marketing data collection. Note: The words "Firefox" should NOT be translated -->
   <string name="preferences_usage_data_description_1" tools:ignore="BrandUsage">داده‌های مربوط به دستگاه، پیکربندی سخت‌افزار و استفاده شما به ما کمک می‌کند تا ویژگی‌ها، عملکرد و پایداری Firefox را بهبود دهیم.</string>
+  <!-- Preference switch for daily usage ping data collection -->
+  <string name="preferences_daily_usage_ping_title">پینگ استفاده روزانه</string>
+  <string name="preferences_daily_usage_ping_description">این به Mozilla کمک می‌کند تا کاربران فعال را تخمین بزند.</string>
+  <string name="preferences_daily_usage_ping_learn_more">بیشتر درباره پینگ استفاده روزانه بدانید</string>
+  <!-- Preference switch title for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_title" tools:ignore="UnusedResources" moz:removedIn="142">به‌صورت خودکار گزارشات خرابی ارسال کنید</string>
+  <!-- Preference switch description for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_description" tools:ignore="UnusedResources" moz:removedIn="142">این به ما کمک می‌کند تا مشکلات مرورگر را تشخیص داده و رفع کنیم. گزارش‌ها ممکن است شامل داده‌های شخصی یا حساس باشند.</string>
   <!-- Preference switch for campaign measurement data (marketing data) collection -->
   <string name="preferences_marketing_data_2">داده‌های اندازه‌گیری کمپین</string>
   <!--
@@ -1184,16 +1188,8 @@
   <string name="preferences_marketing_data_description_4" tools:ignore="BrandUsage">نحوه کشف Firefox و استفاده از آن را با شرکای فناوری بازاریابی Mozilla هم‌رسانی کنید.</string>
   <!-- Learn more link for marketing data preference -->
   <string name="preferences_marketing_data_learn_more">بیشتر درباره داده‌های بازاریابی بدانید</string>
-  <!-- Preference switch for daily usage ping data collection -->
-  <string name="preferences_daily_usage_ping_title">پینگ استفاده روزانه</string>
-  <string name="preferences_daily_usage_ping_description">این به Mozilla کمک می‌کند تا کاربران فعال را تخمین بزند.</string>
-  <string name="preferences_daily_usage_ping_learn_more">بیشتر درباره پینگ استفاده روزانه بدانید</string>
-  <!-- Preference switch title for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_title">به‌صورت خودکار گزارشات خرابی ارسال کنید</string>
-  <!-- Preference switch description for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_description">این به ما کمک می‌کند تا مشکلات مرورگر را تشخیص داده و رفع کنیم. گزارش‌ها ممکن است شامل داده‌های شخصی یا حساس باشند.</string>
   <!-- Learn more link for crash reporting preference -->
-  <string name="onboarding_preferences_dialog_crash_reporting_learn_more">بیشتر درباره گزارشات خرابی بدانید</string>
+  <string name="onboarding_preferences_dialog_crash_reporting_learn_more" tools:ignore="UnusedResources" moz:removedIn="142">بیشتر درباره گزارشات خرابی بدانید</string>
   <!-- Title for studies preferences -->
   <string name="preference_experiments_2">مطالعات</string>
   <!-- Summary for studies preferences -->
@@ -1385,8 +1381,6 @@
   <!-- Learn more link for studies, links to an article for more information about studies. -->
   <string name="studies_learn_more">بیشتر بدانید</string>
   <!--
-    Sessions
-
     Title for the list of tabs in the current private session used by a11y services
     The %1$s will be replaced by the number of opened private tabs
   -->
@@ -1532,8 +1526,6 @@
   <string name="download_delete_item">حذف</string>
   <!-- Content description for the toolbar "Navigate back" button -->
   <string name="download_navigate_back_description">بازگشت به عقب</string>
-  <!-- Content description for the toolbar "Navigate up" button -->
-  <string name="download_navigate_up_description" moz:removedIn="139" tools:ignore="UnusedResources">پیمایش به بالا</string>
   <!-- Content description for the toolbar back button while searching the downloads -->
   <string name="download_close_search_description">بازگشت و بستن جستجو</string>
   <string name="download_clear_search_description">پاک کردن</string>
@@ -1605,7 +1597,7 @@
   -->
   <string name="webcompat_reporter_screen_title">گزارش خرابی وبگاه</string>
   <!-- The description of the Web Compat Reporter feature. %1$s is the name of the app (for example "Firefox"). -->
-  <string name="webcompat_reporter_description">به بهتر شدن %1$s برای همه کمک کنید. کارکنان Mozilla از اطلاعاتی که ارسال می‌کنید برای رفع مشکلات وبگاه استفاده می‌کنند.</string>
+  <string name="webcompat_reporter_description" moz:removedIn="142" tools:ignore="UnusedResources">به بهتر شدن %1$s برای همه کمک کنید. کارکنان Mozilla از اطلاعاتی که ارسال می‌کنید برای رفع مشکلات وبگاه استفاده می‌کنند.</string>
   <!-- The text field label of the URL text field. This is displayed above the user-inputted URL. -->
   <string name="webcompat_reporter_label_url">نشانی اینترنتی</string>
   <!-- The error message of the URL text field when an invalid URL has been entered. -->
@@ -1613,7 +1605,7 @@
   <!-- The label/title of a field in the Web Compat Reporter feature for explaining a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_label_whats_broken_2">چه مشکلی پیش آمده است؟</string>
   <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
-  <string name="webcompat_reporter_choose_reason">انتخاب دلیل</string>
+  <string name="webcompat_reporter_choose_reason" moz:removedIn="142" tools:ignore="UnusedResources">انتخاب دلیل</string>
   <!-- The error message of the dropdown, prompting the user to select a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_choose_reason_error">لطفا یک دلیل انتخاب کنید</string>
   <!-- The label/title of an optional field in the Web Compat Reporter feature for adding additional information. -->
@@ -2078,7 +2070,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">زبانه خصوصی بسته شد</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">زبانه‌های خصوصی بسته شدند</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">زبانه‌های خصوصی بسته شدند</string>
   <!-- Text shown in snackbar when user erases their private browsing data -->
   <string name="snackbar_private_data_deleted">داده‌های مرور خصوصی حذف شدند</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
@@ -2828,11 +2820,7 @@
   <string name="synced_tabs_expand_group">گسترش گروه زبانه‌های همگام‌سازی شده</string>
   <!-- Content description for collapsing a group of synced tabs. -->
   <string name="synced_tabs_collapse_group">جمع کردن گروه زبانه‌های همگام‌سازی شده</string>
-  <!--
-    Top Sites
-
-    Title text displayed in the dialog when shortcuts limit is reached.
-  -->
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">به حد مجاز میان‌بر رسیده‌اید</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">برای افزودن میان‌بری جدید، یکی را حذف کنید. پایگاه را لمس کرده، نگه دارید و برداشتن را انتخاب کنید.</string>
@@ -2963,7 +2951,7 @@
   <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
   <string name="a11y_action_label_wallpaper_collection_learn_more">برای آموختن بیش‌تر دربارهٔ این مجموعه، پیوند را باز کنید</string>
   <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-  <string name="a11y_action_label_read_article">خواندن مقاله</string>
+  <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">خواندن مقاله</string>
   <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
   <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">برای آموختن بیش‌تر، پیوند را باز کنید</string>
   <!-- Content description for headings announced by accessibility service. %s is the text of the heading. Talkback will announce the text and then speak the word "Heading" indicating to the user that this text is a heading for a section. -->
@@ -3217,9 +3205,9 @@
 
     Text for the protection panel header when the site is secure.
   -->
-  <string name="protection_panel_header_secure">ایمن</string>
+  <string name="protection_panel_header_secure" moz:removedIn="142" tools:ignore="UnusedResources">ایمن</string>
   <!-- Text for the protection panel header when the site is not secure. -->
-  <string name="protection_panel_header_not_secure">ناامن</string>
+  <string name="protection_panel_header_not_secure" moz:removedIn="142" tools:ignore="UnusedResources">ناامن</string>
   <!-- Title text for the protection panel banner when the site is not secure. -->
   <string name="protection_panel_banner_not_secure_title">مواظب این وبگاه باشید</string>
   <!-- Description text for the protection panel banner when the site is not secure. -->
@@ -3241,9 +3229,9 @@
   <!-- Label text for the Enhanced Tracking Protection toggle. -->
   <string name="protection_panel_etp_toggle_label">محافظت پیشرفته در برابر ردیابی</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
-  <string name="protection_panel_etp_toggle_enabled_description">اگر چیزی در این وبگاه خراب به نظر می‌رسد، سعی کنید محافظت‌ها را خاموش کنید.</string>
+  <string name="protection_panel_etp_toggle_enabled_description" moz:removedIn="142" tools:ignore="UnusedResources">اگر چیزی در این وبگاه خراب به نظر می‌رسد، سعی کنید محافظت‌ها را خاموش کنید.</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
-  <string name="protection_panel_etp_toggle_disabled_description">محافظ‌ها خاموش هستند. پیشنهاد می‌کنیم آن‌ها را دوباره فعال کنید.</string>
+  <string name="protection_panel_etp_toggle_disabled_description" moz:removedIn="142" tools:ignore="UnusedResources">محافظ‌ها خاموش هستند. پیشنهاد می‌کنیم آن‌ها را دوباره فعال کنید.</string>
   <!--
     Text for displaying the total number of trackers blocked in the protection panel.
     %d is a placeholder for the number of trackers blocked.
@@ -3252,7 +3240,7 @@
   <!-- Text for when no trackers have been blocked. -->
   <string name="protection_panel_no_trackers_blocked">ردیابی یافت نشد</string>
   <!-- Link text to navigate to privacy and security settings from the protection panel. -->
-  <string name="protection_panel_privacy_and_security_settings">تنظیمات حریم خصوصی و امنیت</string>
+  <string name="protection_panel_privacy_and_security_settings" moz:removedIn="142" tools:ignore="UnusedResources">تنظیمات حریم خصوصی و امنیت</string>
   <!-- Title text for the protection panel permissions section. -->
   <string name="protection_panel_permissions_title">مجوزها</string>
   <!--
@@ -3283,7 +3271,7 @@
   <string name="connection_security_panel_not_secure">اتصال ناامن</string>
   <!--
     Text for the connection security panel to indicate who the certificate was verified by.
-    %s is a placeholder for the name of the certificate authority that verified the ticket
+    %s is a placeholder for the name of the certificate authority that issued the certificate.
   -->
   <string name="connection_security_panel_verified_by">تأییدشده توسط %s</string>
   <!--
@@ -3516,14 +3504,8 @@
   <string name="certificate_warning_push_notification_pnw2_message" tools:ignore="UnusedResources">قبل از ۱۴ مارس به‌روزرسانی کنید تا به استفاده از برافزاها و سایر ویژگی‌ها ادامه دهید.</string>
   <!-- Push notification message about old Firefox version -->
   <string name="certificate_warning_push_notification_pnw3_message" tools:ignore="UnusedResources">برخی ویژگی‌ها فردا متوقف خواهند شد.</string>
-  <!--
-    TextField Design System Component
+  <!-- TextField Design System Component -->
 
-    The default content description for the eye trailing icon button in TextField
-  -->
-  <string name="text_field_eye_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">نمایش متن مخفی</string>
-  <!-- The default content description for the cross trailing icon button in TextField -->
-  <string name="text_field_cross_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">پاک کردن متن</string>
   <!--
     Setup checklist feature
 

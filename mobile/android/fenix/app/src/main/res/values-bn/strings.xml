@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- App name for private browsing mode. %s is the name of the app (for example "Firefox"). -->
   <string name="app_name_private_5">ব্যক্তিগত %s</string>
   <!-- App name for private browsing mode. %s is the name of the app (for example "Firefox"). -->
@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">আরও অপশন</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">ব্যক্তিগত ব্রাউজিং সক্রিয় করুন</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">ব্যক্তিগত ব্রাউজিং সক্রিয় করুন</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">ব্যক্তিগত ব্রাউজিং নিস্ক্রিয় করুন।</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">ব্যক্তিগত ব্রাউজিং নিস্ক্রিয় করুন।</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">অনুসন্ধান করুন বা ঠিকানা লিখুন</string>
   <!-- No Open Tabs Message Description -->
@@ -190,7 +190,7 @@
   <!-- Preference for language -->
   <string name="preferences_language">ভাষা</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">ডাটা পছন্দ</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">ডাটা পছন্দ</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">তথ্য সংগ্রহ</string>
   <!-- Preference for developers -->
@@ -646,7 +646,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">ব্যক্তিগত ট্যাব বন্ধ হয়েছে</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">ব্যক্তিগত ট্যাব বন্ধ হয়েছে</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">ব্যক্তিগত ট্যাব বন্ধ হয়েছে</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">UNDO</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -892,4 +892,6 @@
   <!-- Positive action of a dialog asking to delete -->
   <string name="dialog_delete_positive">মুছে ফেলুন</string>
   <!-- Translations feature -->
+
+  <!-- TextField Design System Component -->
 </resources>

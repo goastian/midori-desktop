@@ -29,11 +29,14 @@ dependencies {
     // Included via 'api' because this module is unusable without coroutines.
     api libs.kotlin.coroutines
 
-    implementation project(':support-ktx')
+    implementation project(':components:support-ktx')
     implementation libs.androidx.annotation
 
-    testImplementation project(':support-test')
-    testImplementation libs.junit.vintage
+    testImplementation project(':components:support-test')
+    testImplementation platform(libs.junit.bom)
+    testImplementation libs.junit4
+    testRuntimeOnly libs.junit.vintage
+    testRuntimeOnly libs.junit.platform.launcher
 }
 
 apply from: '../../../android-lint.gradle'

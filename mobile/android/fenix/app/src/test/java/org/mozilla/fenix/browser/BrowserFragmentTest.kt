@@ -49,12 +49,12 @@ import org.mozilla.fenix.ext.application
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.isLargeWindow
 import org.mozilla.fenix.ext.settings
-import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.onboarding.FenixOnboarding
 import org.mozilla.fenix.theme.ThemeManager
 import org.mozilla.fenix.utils.Settings
+import org.robolectric.RobolectricTestRunner
 
-@RunWith(FenixRobolectricTestRunner::class)
+@RunWith(RobolectricTestRunner::class)
 class BrowserFragmentTest {
 
     private lateinit var store: BrowserStore
@@ -99,7 +99,6 @@ class BrowserFragmentTest {
         every { browserFragment.requireContext() } returns context
         every { browserFragment.initializeUI(any(), any()) } returns mockk()
         every { browserFragment.fullScreenChanged(any()) } returns Unit
-        every { browserFragment.resumeDownloadDialogState(any(), any(), any()) } returns Unit
 
         testTab = createTab(url = "https://mozilla.org")
         store = BrowserStore()
@@ -171,18 +170,6 @@ class BrowserFragmentTest {
         val newSelectedTab = createTab("https://firefox.com")
         addAndSelectTab(newSelectedTab)
         verify(exactly = 1) { browserFragment.fullScreenChanged(false) }
-    }
-
-    @Test
-    fun `GIVEN browser UI is initialized WHEN selected tab changes THEN download dialog is resumed`() {
-        browserFragment.browserInitialized = true
-        browserFragment.observeTabSelection(store, false)
-
-        val newSelectedTab = createTab("https://firefox.com")
-        addAndSelectTab(newSelectedTab)
-        verify(exactly = 1) {
-            browserFragment.resumeDownloadDialogState(newSelectedTab.id, store, context)
-        }
     }
 
     @Test
@@ -395,7 +382,7 @@ class BrowserFragmentTest {
         val browserToolbarView: BrowserToolbarView = mockk(relaxed = true)
         val browserToolbar: BrowserToolbar = mockk(relaxed = true)
         val leadingAction: BrowserToolbar.Button = mockk(relaxed = true)
-        browserFragment.leadingAction = leadingAction
+        browserFragment.homeAction = leadingAction
         browserFragment._browserToolbarView = browserToolbarView
         every { browserToolbarView.toolbar } returns browserToolbar
         every { browserToolbarView.updateMenuVisibility(any()) } just Runs
@@ -424,7 +411,7 @@ class BrowserFragmentTest {
         val browserToolbarView: BrowserToolbarView = mockk(relaxed = true)
         val browserToolbar: BrowserToolbar = mockk(relaxed = true)
         val leadingAction: BrowserToolbar.Button = mockk(relaxed = true)
-        browserFragment.leadingAction = leadingAction
+        browserFragment.homeAction = leadingAction
         browserFragment._browserToolbarView = browserToolbarView
         every { browserToolbarView.toolbar } returns browserToolbar
         every { browserToolbarView.updateMenuVisibility(any()) } just Runs
@@ -452,7 +439,7 @@ class BrowserFragmentTest {
         val browserToolbarView: BrowserToolbarView = mockk(relaxed = true)
         val browserToolbar: BrowserToolbar = mockk(relaxed = true)
         val leadingAction: BrowserToolbar.Button = mockk(relaxed = true)
-        browserFragment.leadingAction = leadingAction
+        browserFragment.homeAction = leadingAction
         browserFragment._browserToolbarView = browserToolbarView
         every { browserToolbarView.toolbar } returns browserToolbar
         every { browserToolbarView.updateMenuVisibility(any()) } just Runs
@@ -501,105 +488,35 @@ class BrowserFragmentTest {
     }
 
     @Test
-    fun `GIVEN redesign feature is off and configuration is portrait WHEN updating navigation icons THEN only leading action is added`() {
+    fun `GIVEN device is not a tablet WHEN updating toolbar actions THEN only leading action is added and no actions are removed`() {
         mockThemeManagerAndAppCompatResources()
 
-        val isLandscape = false
         browserFragment.updateBrowserToolbarLeadingAndNavigationActions(
             context = context,
-            isLandscape = isLandscape,
             isTablet = false,
-            isPrivate = false,
-            feltPrivateBrowsingEnabled = false,
         )
 
-        verify(exactly = 1) { browserFragment.addLeadingAction(any(), any(), any()) }
+        verify(exactly = 1) { browserFragment.addHomeAction(any()) }
         verify(exactly = 0) { browserFragment.addTabletActions(any()) }
         verify(exactly = 0) { browserFragment.addNavigationActions(any()) }
-
-        unmockThemeManagerAndAppCompatResources()
-    }
-
-    @Test
-    fun `GIVEN redesign feature is off and configuration is landscape WHEN updating navigation icons THEN only leading action is added`() {
-        mockThemeManagerAndAppCompatResources()
-
-        val isLandscape = true
-        browserFragment.updateBrowserToolbarLeadingAndNavigationActions(
-            context = context,
-            isLandscape = isLandscape,
-            isTablet = false,
-            isPrivate = false,
-            feltPrivateBrowsingEnabled = false,
-        )
-
-        verify(exactly = 1) { browserFragment.addLeadingAction(any(), any(), any()) }
-        verify(exactly = 0) { browserFragment.addTabletActions(any()) }
-        verify(exactly = 0) { browserFragment.addNavigationActions(any()) }
-
-        unmockThemeManagerAndAppCompatResources()
-    }
-
-    @Test
-    fun `GIVEN tablet WHEN updating navigation icons THEN leading action and navigation buttons are added in order`() {
-        mockThemeManagerAndAppCompatResources()
-
-        val isTablet = true
-        val isLandscape = true
-        browserFragment.updateBrowserToolbarLeadingAndNavigationActions(
-            context = context,
-            isLandscape = isLandscape,
-            isTablet = isTablet,
-            isPrivate = false,
-            feltPrivateBrowsingEnabled = false,
-        )
-
-        verifyOrder {
-            browserFragment.addLeadingAction(any(), any(), any())
-            browserFragment.addNavigationActions(any())
-        }
-
-        unmockThemeManagerAndAppCompatResources()
-    }
-
-    @Test
-    fun `GIVEN orientation is portrait and it is not tablet WHEN updating navigation icons THEN no action is removed`() {
-        mockThemeManagerAndAppCompatResources()
-
-        val isLandscape = false
-        val isTablet = false
-
-        browserFragment.updateBrowserToolbarLeadingAndNavigationActions(
-            context = context,
-            isLandscape = isLandscape,
-            isPrivate = false,
-            isTablet = isTablet,
-            feltPrivateBrowsingEnabled = false,
-        )
-
-        verify(exactly = 0) { browserFragment.removeLeadingAction() }
         verify(exactly = 0) { browserFragment.removeNavigationActions() }
 
         unmockThemeManagerAndAppCompatResources()
     }
 
     @Test
-    fun `GIVEN orientation is portrait and it is tablet WHEN updating navigation actions THEN navigation actions are added`() {
+    fun `GIVEN device is a tablet WHEN updating toolbar actions THEN leading and navigation actions are added in order`() {
         mockThemeManagerAndAppCompatResources()
-
-        val isLandscape = false
-        val isTablet = true
 
         browserFragment.updateBrowserToolbarLeadingAndNavigationActions(
             context = context,
-            isLandscape = isLandscape,
-            isPrivate = false,
-            isTablet = isTablet,
-            feltPrivateBrowsingEnabled = false,
+            isTablet = true,
         )
 
-        verify(exactly = 1) { browserFragment.addLeadingAction(any(), any(), any()) }
-        verify(exactly = 1) { browserFragment.addNavigationActions(any()) }
+        verifyOrder {
+            browserFragment.addHomeAction(any())
+            browserFragment.addNavigationActions(any())
+        }
 
         unmockThemeManagerAndAppCompatResources()
     }

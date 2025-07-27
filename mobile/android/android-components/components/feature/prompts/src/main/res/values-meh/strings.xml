@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- Text for confirmation for a positive action in dialog -->
   <string name="mozac_feature_prompts_ok">Kuvi</string>
   <!-- Text for confirmation for a negative action in dialog. -->
@@ -103,7 +103,7 @@
   <!-- Pressing this will dismiss the suggested strong password dialog -->
   <string name="mozac_feature_prompts_suggest_strong_password_dismiss">Nkuvi ntañu´u</string>
   <!-- Title for showing the suggest strong password saved confirmation snackbar -->
-  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title">Nchuva\'a contraseña</string>
+  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title" tools:ignore="UnusedResources" moz:removedIn="142">Nchuva\'a contraseña</string>
   <!-- Strings shown in a dialog that appear when users try to refresh a certain kind of webpages -->
   <string name="mozac_feature_prompt_repost_title">¿Nachu\'un tuku datos nu nuu ya\'a?</string>
   <string name="mozac_feature_prompt_repost_message">De nachu\'unu tuku página ya\'a kuvi sa duplicar acciones a nsá\'ánu, kua chu\'un íchi xu\'un a xíín tee uvi ichi iin comentario.</string>
@@ -152,7 +152,7 @@
   <!-- Title of the Identity Credential privacy policy dialog title. The %1$s will be replaced with the name of the provider. -->
   <string name="mozac_feature_prompts_identity_credentials_privacy_policy_title">Ni\'i %1$s kua proveedor daa nuu kajie\'e sesión</string>
   <!-- Title of the Identity Credential privacy policy dialog description. The %1$s will be replaced with the name of the provider, %2$s will be replaced with the account, %3$s will be replaced with the privacy policy url and  %4$s will be replaced with the terms of service. -->
-  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote">De kajie\'enu sesión nu %1$s jíí iin cuenta %2$s naja satiñu ya\'a vaji &lt;a href="%3$s"&gt;Tutu xitu nejika kumio&lt;/a&gt; y &lt;a href="%4$s"&gt;Tutu xitu nejika kumio&lt;/a&gt;</string>
+  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote"><![CDATA[De kajie\'enu sesión nu %1$s jíí iin cuenta %2$s naja satiñu ya\'a vaji <a href=\"%3$s\">Tutu xitu nejika kumio</a> y <a href=\"%4$s\">Tutu xitu nejika kumio</a>]]></string>
   <!-- Text for the positive button of the Identity Credential dialogs. -->
   <string name="mozac_feature_prompts_identity_credentials_continue">Kɨ´ɨ</string>
   <!-- Text for the cancel button of the Identity Credential dialogs. -->

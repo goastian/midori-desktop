@@ -4,7 +4,6 @@
 
 package org.mozilla.fenix.downloads.listscreen.store
 
-import mozilla.components.browser.state.state.content.DownloadState
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.mozilla.fenix.R
@@ -17,11 +16,11 @@ class FileItemToIconMapperTest {
             url = "url",
             fileName = "MyAwesomeFile",
             filePath = "",
-            formattedSize = "",
+            description = "Test description",
             displayedShortUrl = "url",
             contentType = "image/png",
-            status = DownloadState.Status.COMPLETED,
-            createdTime = CreatedTime.TODAY,
+            status = FileItem.Status.Completed,
+            timeCategory = TimeCategory.TODAY,
         )
 
         assertEquals(R.drawable.ic_file_type_image, fileItem.getIcon())

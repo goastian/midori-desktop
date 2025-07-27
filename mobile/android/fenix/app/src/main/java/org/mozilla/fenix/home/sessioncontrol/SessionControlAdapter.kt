@@ -22,7 +22,6 @@ import org.mozilla.fenix.home.bookmarks.view.BookmarksHeaderViewHolder
 import org.mozilla.fenix.home.bookmarks.view.BookmarksViewHolder
 import org.mozilla.fenix.home.collections.CollectionViewHolder
 import org.mozilla.fenix.home.collections.TabInCollectionViewHolder
-import org.mozilla.fenix.home.pocket.view.PocketCategoriesViewHolder
 import org.mozilla.fenix.home.pocket.view.PocketStoriesViewHolder
 import org.mozilla.fenix.home.recentsyncedtabs.view.RecentSyncedTabViewHolder
 import org.mozilla.fenix.home.recenttabs.view.RecentTabViewHolder
@@ -30,7 +29,6 @@ import org.mozilla.fenix.home.recenttabs.view.RecentTabsHeaderViewHolder
 import org.mozilla.fenix.home.recentvisits.view.RecentVisitsHeaderViewHolder
 import org.mozilla.fenix.home.recentvisits.view.RecentlyVisitedViewHolder
 import org.mozilla.fenix.home.sessioncontrol.viewholders.CollectionHeaderViewHolder
-import org.mozilla.fenix.home.sessioncontrol.viewholders.CustomizeHomeButtonViewHolder
 import org.mozilla.fenix.home.sessioncontrol.viewholders.NoCollectionsMessageViewHolder
 import org.mozilla.fenix.home.sessioncontrol.viewholders.PrivateBrowsingDescriptionViewHolder
 import org.mozilla.fenix.home.sessioncontrol.viewholders.onboarding.MessageCardViewHolder
@@ -136,8 +134,6 @@ sealed class AdapterItem(@LayoutRes val viewType: Int) {
             other is NimbusMessageCard && message.id == other.message.id
     }
 
-    object CustomizeHomeButton : AdapterItem(CustomizeHomeButtonViewHolder.LAYOUT_ID)
-
     object RecentTabsHeader : AdapterItem(RecentTabsHeaderViewHolder.LAYOUT_ID)
     object RecentTabItem : AdapterItem(RecentTabViewHolder.LAYOUT_ID)
 
@@ -160,7 +156,6 @@ sealed class AdapterItem(@LayoutRes val viewType: Int) {
     object Bookmarks : AdapterItem(BookmarksViewHolder.LAYOUT_ID)
 
     object PocketStoriesItem : AdapterItem(PocketStoriesViewHolder.LAYOUT_ID)
-    object PocketCategoriesItem : AdapterItem(PocketCategoriesViewHolder.LAYOUT_ID)
 
     /**
      * Adapter item to hold the setup checklist feature view.
@@ -205,11 +200,6 @@ class SessionControlAdapter(
     @SuppressWarnings("ComplexMethod", "LongMethod", "ReturnCount")
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): RecyclerView.ViewHolder {
         when (viewType) {
-            CustomizeHomeButtonViewHolder.LAYOUT_ID -> return CustomizeHomeButtonViewHolder(
-                composeView = ComposeView(parent.context),
-                viewLifecycleOwner = viewLifecycleOwner,
-                interactor = interactor,
-            )
             MessageCardViewHolder.LAYOUT_ID -> return MessageCardViewHolder(
                 composeView = ComposeView(parent.context),
                 viewLifecycleOwner = viewLifecycleOwner,
@@ -221,11 +211,6 @@ class SessionControlAdapter(
                 interactor = interactor,
             )
             PocketStoriesViewHolder.LAYOUT_ID -> return PocketStoriesViewHolder(
-                composeView = ComposeView(parent.context),
-                viewLifecycleOwner = viewLifecycleOwner,
-                interactor = interactor,
-            )
-            PocketCategoriesViewHolder.LAYOUT_ID -> return PocketCategoriesViewHolder(
                 composeView = ComposeView(parent.context),
                 viewLifecycleOwner = viewLifecycleOwner,
                 interactor = interactor,
@@ -311,7 +296,6 @@ class SessionControlAdapter(
     override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
         when (holder) {
             is CollectionHeaderViewHolder,
-            is CustomizeHomeButtonViewHolder,
             is RecentlyVisitedViewHolder,
             is RecentVisitsHeaderViewHolder,
             is BookmarksViewHolder,
@@ -320,7 +304,6 @@ class SessionControlAdapter(
             is RecentSyncedTabViewHolder,
             is RecentTabsHeaderViewHolder,
             is PrivateBrowsingDescriptionViewHolder,
-            is PocketCategoriesViewHolder,
             is PocketStoriesViewHolder,
             is SetupChecklistViewHolder,
             -> {

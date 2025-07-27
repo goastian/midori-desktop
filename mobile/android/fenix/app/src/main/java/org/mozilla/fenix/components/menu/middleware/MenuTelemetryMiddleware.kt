@@ -63,18 +63,6 @@ class MenuTelemetryMiddleware(
                 ),
             )
 
-            MenuAction.SaveMenuClicked -> Events.browserMenuAction.record(
-                Events.BrowserMenuActionExtra(
-                    item = "save_submenu",
-                ),
-            )
-
-            MenuAction.ToolsMenuClicked -> Events.browserMenuAction.record(
-                Events.BrowserMenuActionExtra(
-                    item = "tools_submenu",
-                ),
-            )
-
             MenuAction.Navigate.AddToHomeScreen -> Events.browserMenuAction.record(
                 Events.BrowserMenuActionExtra(
                     item = "add_to_homescreen",
@@ -111,18 +99,6 @@ class MenuTelemetryMiddleware(
                 Events.browserMenuAction.record(Events.BrowserMenuActionExtra(item = "sync_account"))
                 AppMenu.signIntoSync.add()
             }
-
-            MenuAction.Navigate.NewTab -> Events.browserMenuAction.record(
-                Events.BrowserMenuActionExtra(
-                    item = "new_tab",
-                ),
-            )
-
-            MenuAction.Navigate.NewPrivateTab -> Events.browserMenuAction.record(
-                Events.BrowserMenuActionExtra(
-                    item = "new_private_tab",
-                ),
-            )
 
             MenuAction.OpenInApp -> Events.browserMenuAction.record(
                 Events.BrowserMenuActionExtra(
@@ -164,7 +140,10 @@ class MenuTelemetryMiddleware(
 
             MenuAction.Navigate.Share -> Events.browserMenuAction.record(
                 Events.BrowserMenuActionExtra(
-                    item = "share",
+                    item = when (accessPoint) {
+                        MenuAccessPoint.External -> "share_custom_tab"
+                        else -> "share"
+                    },
                 ),
             )
 
@@ -186,7 +165,22 @@ class MenuTelemetryMiddleware(
 
             MenuAction.FindInPage -> Events.browserMenuAction.record(
                 Events.BrowserMenuActionExtra(
-                    item = "find_in_page",
+                    item = when (accessPoint) {
+                        MenuAccessPoint.External -> "find_in_page_custom_tab"
+                        else -> "find_in_page"
+                    },
+                ),
+            )
+
+            is MenuAction.MenuBanner -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "menu_banner",
+                ),
+            )
+
+            MenuAction.DismissMenuBanner -> Events.browserMenuAction.record(
+                Events.BrowserMenuActionExtra(
+                    item = "dismiss_menu_banner",
                 ),
             )
 
@@ -204,13 +198,19 @@ class MenuTelemetryMiddleware(
 
             is MenuAction.RequestDesktopSite -> Events.browserMenuAction.record(
                 Events.BrowserMenuActionExtra(
-                    item = "desktop_view_on",
+                    item = when (accessPoint) {
+                        MenuAccessPoint.External -> "desktop_view_on_custom_tab"
+                        else -> "desktop_view_on"
+                    },
                 ),
             )
 
             is MenuAction.RequestMobileSite -> Events.browserMenuAction.record(
                 Events.BrowserMenuActionExtra(
-                    item = "desktop_view_off",
+                    item = when (accessPoint) {
+                        MenuAccessPoint.External -> "desktop_view_off_custom_tab"
+                        else -> "desktop_view_off"
+                    },
                 ),
             )
 
@@ -288,6 +288,8 @@ class MenuTelemetryMiddleware(
             is MenuAction.Navigate.Back,
             is MenuAction.Navigate.Forward,
             is MenuAction.Navigate.Reload,
+            is MenuAction.Navigate.Stop,
+            is MenuAction.Navigate.InstalledAddonDetails,
             -> Unit
         }
     }

@@ -15,10 +15,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.mozilla.fenix.BrowserDirection
 import org.mozilla.fenix.ext.components
-import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.utils.Settings
+import org.robolectric.RobolectricTestRunner
 
-@RunWith(FenixRobolectricTestRunner::class)
+@RunWith(RobolectricTestRunner::class)
 class AuthCustomTabActivityTest {
 
     @Test
@@ -40,7 +40,7 @@ class AuthCustomTabActivityTest {
         val activity = spyk(AuthCustomTabActivity())
         val navHostController: NavController = mockk()
 
-        activity.navigateToHome(navHostController)
+        activity.navigateToHome(navHostController, true)
         verify { navHostController wasNot Called }
     }
 

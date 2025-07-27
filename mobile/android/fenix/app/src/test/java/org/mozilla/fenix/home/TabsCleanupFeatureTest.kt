@@ -30,13 +30,13 @@ import org.junit.runner.RunWith
 import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.components.usecases.FenixBrowserUseCases
-import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.home.HomeScreenViewModel.Companion.ALL_NORMAL_TABS
 import org.mozilla.fenix.home.HomeScreenViewModel.Companion.ALL_PRIVATE_TABS
 import org.mozilla.fenix.utils.Settings
 import org.mozilla.fenix.utils.allowUndo
+import org.robolectric.RobolectricTestRunner
 
-@RunWith(FenixRobolectricTestRunner::class)
+@RunWith(RobolectricTestRunner::class)
 class TabsCleanupFeatureTest {
 
     @get:Rule
@@ -122,7 +122,7 @@ class TabsCleanupFeatureTest {
     }
 
     @Test
-    fun `GIVEN all private tabs to delete WHEN rfeature is started THEN remove all normal tabs and show undo snackbar`() {
+    fun `GIVEN all private tabs to delete WHEN feature is started THEN remove all normal tabs and show undo snackbar`() {
         every { viewModel.sessionToDelete } returns ALL_PRIVATE_TABS
 
         feature.start()
@@ -132,7 +132,7 @@ class TabsCleanupFeatureTest {
 
             testCoroutineScope.allowUndo(
                 view = snackBarParentView,
-                message = testContext.getString(R.string.snackbar_private_tabs_closed),
+                message = testContext.getString(R.string.snackbar_private_data_deleted),
                 undoActionTitle = testContext.getString(R.string.snackbar_deleted_undo),
                 onCancel = any(),
                 operation = any(),
@@ -184,7 +184,7 @@ class TabsCleanupFeatureTest {
 
             testCoroutineScope.allowUndo(
                 view = snackBarParentView,
-                message = testContext.getString(R.string.snackbar_private_tabs_closed),
+                message = testContext.getString(R.string.snackbar_private_data_deleted),
                 undoActionTitle = testContext.getString(R.string.snackbar_deleted_undo),
                 onCancel = any(),
                 operation = any(),
@@ -195,8 +195,7 @@ class TabsCleanupFeatureTest {
     }
 
     @Test
-    fun `GIVEN felt private browsing is enabled and all private tabs to delete WHEN remove tabs is called THEN remove all normal tabs and show undo snackbar`() {
-        every { settings.feltPrivateBrowsingEnabled } returns true
+    fun `GIVEN all private tabs to delete WHEN remove tabs is called THEN remove all normal tabs and show undo snackbar`() {
         every { viewModel.sessionToDelete } returns ALL_PRIVATE_TABS
 
         feature.start()

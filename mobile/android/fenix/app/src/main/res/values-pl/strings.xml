@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Więcej opcji</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Przejdź do trybu prywatnego</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Przejdź do trybu prywatnego</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Wyjdź z trybu prywatnego</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Wyjdź z trybu prywatnego</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">Tryb prywatny</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -62,7 +62,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s usuwa historię wyszukiwania i przeglądania w prywatnych kartach po ich zamknięciu lub wyłączeniu aplikacji. Chociaż nie czyni to użytkownika anonimowym wobec stron internetowych ani dostawcy Internetu, to ułatwia zachowanie prywatności przed pozostałymi użytkownikami tego urządzenia.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s usuwa historię wyszukiwania i przeglądania w prywatnych kartach po ich zamknięciu lub wyłączeniu aplikacji. Chociaż nie czyni to użytkownika anonimowym wobec stron internetowych ani dostawcy Internetu, to ułatwia zachowanie prywatności przed pozostałymi użytkownikami tego urządzenia.</string>
   <string name="private_browsing_common_myths">Popularne mity na temat przeglądania prywatnego</string>
   <!--
     True Private Browsing Mode
@@ -98,7 +98,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">Stuknij tutaj, aby otworzyć nową sesję prywatną. Usuń swoją historię, ciasteczka — wszystko.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Stuknij tutaj, aby otworzyć nową sesję prywatną. Usuń swoją historię, ciasteczka — wszystko.</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -112,12 +112,8 @@
   <!--
     Address bar swipe "contextual feature recommendation" (CFR)
 
-    Text for the title displayed in the contextual feature recommendation popup promoting swipe of address bar.
+    Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar.
   -->
-  <string name="address_bar_swipe_cfr_title" tools:ignore="UnusedResources" moz:removedIn="139">Przeciągaj pasek narzędzi w bok, aby przełączać karty</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
-  <string name="address_bar_swipe_cfr_message" tools:ignore="UnusedResources" moz:removedIn="139">Przeciągnij w lewo lub w prawo, aby przełączyć. Przeciągnij w lewo na ostatniej karcie, aby otworzyć nową.</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
   <string name="address_bar_swipe_cfr_message_2">Przeciągnij pasek narzędzi w lewo lub w prawo, aby przełączyć karty.</string>
   <!-- Text for the info dialog when camera permissions have been denied but user tries to access a camera feature. -->
   <string name="camera_permissions_needed_message">Wymagany jest dostęp do aparatu. Przejdź do ustawień Androida, stuknij „Uprawnienia” i stuknij „Zezwól”.</string>
@@ -226,6 +222,10 @@
   <string name="browser_menu_extensions_banner_learn_more" moz:removedIn="141" tools:ignore="UnusedResources">Więcej informacji</string>
   <!-- Browser menu button that opens the extensions manager -->
   <string name="browser_menu_manage_extensions">Zarządzaj rozszerzeniami</string>
+  <!-- Browser menu group that contains additional settings in collapsed state -->
+  <string name="browser_menu_more_settings">Więcej</string>
+  <!-- Browser menu group that contains additional settings in expanded state -->
+  <string name="browser_menu_less_settings">Mniej</string>
   <!-- Content description (not visible, for screen readers etc.): Section heading for recommended extensions. -->
   <string name="browser_menu_recommended_section_content_description" moz:removedIn="141" tools:ignore="UnusedResources">Polecane rozszerzenia</string>
   <!--
@@ -239,6 +239,8 @@
   <string name="browser_menu_extensions_disabled_description">Tymczasowo wyłączone</string>
   <!-- The description of the browser menu appears when the user hasn't installed any extensions. -->
   <string name="browser_menu_no_extensions_installed_description">Nie włączono żadnych rozszerzeń</string>
+  <!-- The description of the browser menu appears when the user hasn't installed any extensions and there are recommended extensions. -->
+  <string name="browser_menu_try_a_recommended_extension_description">Wypróbuj polecane rozszerzenie</string>
   <!-- Browser menu button that opens account settings -->
   <string name="browser_menu_account_settings">Informacje o koncie</string>
   <!-- Browser menu button that sends a user to help articles -->
@@ -314,6 +316,10 @@
   <string name="browser_menu_sign_in">Zaloguj się</string>
   <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
   <string name="browser_menu_sign_in_caption" moz:removedIn="141" tools:ignore="UnusedResources">Synchronizuj hasła, karty i nie tylko</string>
+  <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
+  <string name="browser_menu_sign_in_caption_2" moz:removedIn="141" tools:ignore="UnusedResources">Synchronizuj zakładki, hasła, karty i\u00a0nie tylko</string>
+  <!-- Browser menu caption label for the "Sign in" browser menu item described in `browser_menu_sign_in` -->
+  <string name="browser_menu_sign_in_caption_3">Synchronizuj hasła, zakładki i\u00a0nie tylko</string>
   <!-- Browser menu label to sign back in to sync on the device when the user's account needs to be reauthenticated -->
   <string name="browser_menu_sign_back_in_to_sync">Ponownie zaloguj się do synchronizacji</string>
   <!-- Browser menu caption label for the "Sign back in to sync" browser menu item described in `browser_menu_sign_back_in_to_sync` when there is an error in syncing -->
@@ -326,9 +332,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">Nowości w przeglądarce %1$s</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">Nowości w przeglądarce %1$s</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">Wersja na komputery</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">Wersja na komputery</string>
   <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
   <string name="browser_menu_switch_to_mobile_site">Wersja na telefon</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
@@ -336,7 +342,7 @@
   <!-- Content description (not visible, for screen readers etc.): Back button for all menu redesign sub-menu -->
   <string name="browser_menu_back_button_content_description" moz:removedIn="141" tools:ignore="UnusedResources">Wróć do menu głównego</string>
   <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar main menu. -->
-  <string name="browser_main_menu_handlebar_content_description">Zamknij menu główne</string>
+  <string name="browser_main_menu_handlebar_content_description" moz:removedIn="142" tools:ignore="UnusedResources">Zamknij menu główne</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
   <string name="browser_main_menu_content_description_help_button">Pomoc</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu settings button. -->
@@ -366,10 +372,14 @@
   <string name="browser_menu_save_description" moz:removedIn="141" tools:ignore="UnusedResources">Dodaj zakładkę, skrót, strona startowa, kolekcja, PDF</string>
   <!-- Browser menu label that bookmarks the currently visited page -->
   <string name="browser_menu_bookmark_this_page" moz:removedIn="141" tools:ignore="UnusedResources">Dodaj zakładkę do tej strony</string>
+  <!-- Browser menu label that bookmarks the currently visited page -->
+  <string name="browser_menu_bookmark_this_page_2">Dodaj zakładkę do strony</string>
   <!-- Browser menu label that navigates to the edit bookmark screen for the current bookmarked page -->
   <string name="browser_menu_edit_bookmark">Edytuj zakładkę</string>
   <!-- Browser menu label that the saves the currently visited page as a PDF -->
   <string name="browser_menu_save_as_pdf" moz:removedIn="141" tools:ignore="UnusedResources">Zapisz jako PDF…</string>
+  <!-- Browser menu label that the saves the currently visited page as a PDF -->
+  <string name="browser_menu_save_as_pdf_2">Zapisz jako PDF</string>
   <!-- Browser menu label for turning ON reader view of the current visited page -->
   <string name="browser_menu_turn_on_reader_view" moz:removedIn="141" tools:ignore="UnusedResources">Popraw czytelność</string>
   <!-- Browser menu label for turning OFF reader view of the current visited page -->
@@ -378,20 +388,37 @@
   <string name="browser_menu_open_in_normal_tab" moz:removedIn="141" tools:ignore="UnusedResources">Przenieś do karty nieprywatnej</string>
   <!-- Browser menu label for navigating to the translation feature, which provides language translation options the current visited page -->
   <string name="browser_menu_translate_page" moz:removedIn="141" tools:ignore="UnusedResources">Przetłumacz stronę…</string>
+  <!-- Browser menu label for navigating to the translation feature, which provides language translation options the current visited page -->
+  <string name="browser_menu_translate_page_2">Przetłumacz stronę</string>
   <!-- Browser menu label for navigating to the Web Compat Reporter feature, which provides users the ability to send bug reports for broken sites. -->
   <string name="browser_menu_webcompat_reporter">Zgłoś niepoprawnie działającą stronę…</string>
+  <!-- Browser menu label for navigating to the Web Compat Reporter feature, which provides users the ability to send bug reports for broken sites. -->
+  <string name="browser_menu_webcompat_reporter_2">Zgłoś niepoprawnie działającą stronę</string>
   <!--
     Browser menu label that is displayed when the current page has been translated by the translation feature.
     %1$s is the name of the language that page was translated to (e.g. English).
   -->
-  <string name="browser_menu_translated_to">Przetłumaczono na %1$s</string>
+  <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">Przetłumaczono na %1$s</string>
+  <!-- Browser menu label that is displayed when the current page has been translated by the translation feature. -->
+  <string name="browser_menu_translated">Przetłumaczone</string>
   <!-- Browser menu label for the print feature -->
   <string name="browser_menu_print" moz:removedIn="141" tools:ignore="UnusedResources">Drukuj…</string>
+  <!-- Browser menu label for the print feature -->
+  <string name="browser_menu_print_2">Drukuj</string>
   <!--
     Browser menu label for the Delete browsing data on quit feature.
     %1$s is the name of the app (for example "Firefox").
   -->
   <string name="browser_menu_delete_browsing_data_on_quit">Zakończ program %1$s</string>
+  <!--
+    Content description for a banner within the menu which prompt the user to make this app their default browser.
+    %1$s is the name of the app (for example "Firefox").
+  -->
+  <string name="browser_menu_default_banner_title">Ustaw przeglądarkę %1$s jako domyślną</string>
+  <!-- Label text within the set as default banner -->
+  <string name="browser_menu_default_banner_subtitle">Zajmie to kilka sekund. Możesz cofnąć w\u00a0każdej chwili.</string>
+  <!-- Content description for the button that dismisses the set as default banner in the menu -->
+  <string name="browser_menu_default_banner_dismiss" moz:removedIn="142" tools:ignore="UnusedResources">Zamknij</string>
   <!--
     Menu "contextual feature recommendation" (CFR)
 
@@ -416,7 +443,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">Usuń historię przeglądania</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">Usuń historię przeglądania</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">Przetłumacz stronę</string>
   <!--
@@ -491,7 +518,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Pomiń</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">Twoje karty są synchronizowane! Kontynuuj w tym samym miejscu, co na drugim urządzeniu.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">Twoje karty są synchronizowane! Kontynuuj w tym samym miejscu, co na drugim urządzeniu.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">Zamknij</string>
   <!--
@@ -766,6 +793,8 @@
   <string name="preferences_pbm_lock_screen_title">Używanie blokady ekranu do ukrywania kart w trybie prywatnym</string>
   <!-- Informs the user how to access the tabs when "Use screen lock to hide tabs in private browsing" is enabled -->
   <string name="preferences_pbm_lock_screen_summary" moz:removedIn="140" tools:ignore="UnusedResources">Wyświetl karty za pomocą odcisku palca, rozpoznawania twarzy lub kodu PIN.</string>
+  <!-- Informs the user how to access the tabs when "Use screen lock to hide tabs in private browsing" is enabled -->
+  <string name="preferences_pbm_lock_screen_summary_2">Wyświetl karty za pomocą odcisku palca, kodu PIN lub rozpoznawania twarzy.</string>
   <!-- Label for cookie banner section in quick settings panel. -->
   <string name="cookie_banner_blocker">Blokowanie informacji o ciasteczkach</string>
   <!-- Preference for removing cookie/consent banners from sites automatically in private mode. See reduce_cookie_banner_summary for additional context. -->
@@ -849,7 +878,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">Tłumaczenia</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Udostępniane dane</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Udostępniane dane</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Zbieranie danych</string>
   <!-- Preference for developers -->
@@ -911,7 +940,7 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">Nigdy</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Zewnętrzny menedżer pobierania</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Zewnętrzny menedżer pobierania</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">Dzienniki Gecko</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -931,13 +960,13 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">Wymagane</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">Wymagane</string>
   <!-- The title of the optional permissions section from addon's permissions screen -->
-  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">Opcjonalne</string>
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">Opcjonalne</string>
   <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
-  <string name="addons_permissions_allow_for_all_sites" tools:ignore="UnusedResources">Zezwalaj na wszystkich witrynach</string>
+  <string name="addons_permissions_allow_for_all_sites">Zezwalaj na wszystkich witrynach</string>
   <!-- The subtitle for the allow for all sites preference toggle -->
-  <string name="addons_permissions_allow_for_all_sites_subtitle" tools:ignore="UnusedResources">Jeśli ufasz temu rozszerzeniu, możesz udzielić mu pozwolenia na każdej witrynie.</string>
+  <string name="addons_permissions_allow_for_all_sites_subtitle">Jeśli ufasz temu rozszerzeniu, możesz udzielić mu pozwolenia na każdej witrynie.</string>
   <!-- The text shown when an extension does not require permissions -->
   <string name="addons_does_not_require_permissions">To rozszerzenie nie wymaga żadnych uprawnień.</string>
   <!--
@@ -971,6 +1000,8 @@
   <string name="customize_toggle_recently_visited">Ostatnio odwiedzone</string>
   <!-- Title for the customize home screen section with Pocket. -->
   <string name="customize_toggle_pocket_2" tools:ignore="UnusedResources" moz:removedIn="140">Artykuły skłaniające do myślenia</string>
+  <!-- Title for the customize home screen section with Pocket. -->
+  <string name="customize_toggle_pocket_3">Artykuły</string>
   <!-- Summary for the customize home screen section with Pocket. %s is "Pocket". -->
   <string name="customize_toggle_pocket_summary" tools:ignore="UnusedResources" moz:removedIn="140">Artykuły dostarczane przez %s</string>
   <!-- Title for the customize home screen section with sponsored Pocket stories. -->
@@ -1011,6 +1042,56 @@
   <string name="wallpapers_onboarding_dialog_body_text">Wybierz tapetę, która do Ciebie pasuje.</string>
   <!-- Wallpaper onboarding dialog learn more button text. The button navigates to the wallpaper settings screen. -->
   <string name="wallpapers_onboarding_dialog_explore_more_button_text">Odkrywaj więcej tapet</string>
+  <!--
+    Icon picker
+
+    Title for the "Default" alternative app icon variant in the icon picker screen.
+  -->
+  <string name="alternative_app_icon_option_default">Domyślna</string>
+  <!-- Title for the "Light" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_light">Jasna</string>
+  <!-- Title for the "Dark" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_dark">Ciemna</string>
+  <!-- Title for the "Red" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_red">Czerwona</string>
+  <!-- Title for the "Green" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_green">Zielona</string>
+  <!-- Title for the "Blue" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_blue">Niebieska</string>
+  <!-- Title for the "Purple" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_purple">Fioletowa</string>
+  <!-- Title for the "Purple Dark" alternative app icon variant in the icon picker screen. -->
+  <string name="alternative_app_icon_option_purple_dark">Ciemnofioletowa</string>
+  <!-- Title for the "Sunrise" gradient alternative app icon variant in the icon picker screen. The app icon features a soft yellow-to-blue gradient background, resembling the colors of early morning light. -->
+  <string name="alternative_app_icon_option_gradient_sunrise">Wschód słońca</string>
+  <!-- Title for the "Golden Hour" gradient alternative app icon variant in the icon picker screen. The app icon features a warm golden-to-pink gradient background, resembling the colors of the sunlight shortly before sunset. -->
+  <string name="alternative_app_icon_option_gradient_golden_hour">Złota godzina</string>
+  <!-- Title for the "Sunset" gradient alternative app icon variant in the icon picker screen. The app icon has a rich red-to-purple gradient background, resembling the tones of a sunset sky. -->
+  <string name="alternative_app_icon_option_gradient_sunset">Zachód słońca</string>
+  <!-- Title for the "Blue Hour" gradient alternative app icon variant in the icon picker screen. The app icon has a cool blue gradient background, resembling the sky color around the time just after sunset or before sunrise. -->
+  <string name="alternative_app_icon_option_gradient_blue_hour">Błękitna godzina</string>
+  <!-- Title for the "Twilight" gradient alternative app icon variant in the icon picker screen. The app icon has a purple-toned gradient background, resembling the sky color during twilight. -->
+  <string name="alternative_app_icon_option_gradient_twilight">Zmierzch</string>
+  <!-- Title for the "Midnight" gradient alternative app icon variant in the icon picker screen. The app icon features a dark gradient background, resembling the deep tones of the night sky. -->
+  <string name="alternative_app_icon_option_gradient_midnight">Północ</string>
+  <!-- Title for the "Northern Lights" gradient alternative app icon variant in the icon picker screen. The app icon has a dynamic green, blue, and purple gradient background, resembling the aurora borealis. -->
+  <string name="alternative_app_icon_option_gradient_northern_lights">Zorza polarna</string>
+  <!-- Title for the "Retro 2004" themed alternative app icon variant in the icon picker screen. This app icon uses the classic Firefox logo from 2004. -->
+  <string name="alternative_app_icon_option_retro_2004">Retro 2004</string>
+  <!-- Title for the "Retro 2017" themed alternative app icon variant in the icon picker screen. This app icon uses the Firefox logo from 2017, with a more modernized design. -->
+  <string name="alternative_app_icon_option_retro_2017">Retro 2017</string>
+  <!-- Title for the "Pixelated" themed alternative app icon variant in the icon picker screen. This app icon features a pixel-art style, resembling retro 8-bit graphics. -->
+  <string name="alternative_app_icon_option_pixelated">Pikselowa</string>
+  <!-- Title for the "Minimal" themed alternative app icon variant in the icon picker screen. The app icon presents a simplified, flat and monochrome version of the Firefox logo. -->
+  <string name="alternative_app_icon_option_minimal">Minimalistyczna</string>
+  <!-- Title for the "Pride" themed alternative app icon variant in the icon picker screen. The app icon incorporates a rainbow color scheme in support of the LGBTQ+ community. -->
+  <string name="alternative_app_icon_option_pride">Duma</string>
+  <!-- Title for the "Cute" themed alternative app icon variant in the icon picker screen. The app icon features a playful design with an adorable aesthetic. -->
+  <string name="alternative_app_icon_option_cute">Słodziak</string>
+  <!-- Title for the "Momo" themed alternative app icon variant in the icon picker screen. The app icon was created by artist @heyheymomodraws and features a unique hand-drawn style with a friendly fox. -->
+  <string name="alternative_app_icon_option_momo">Momo</string>
+  <!-- Subtitle for the "Momo" themed alternative app icon variant in the icon picker screen. The app icon was created by artist @heyheymomodraws and features a unique hand-drawn style with a friendly fox. -->
+  <string name="alternative_app_icon_option_momo_subtitle">Autorstwa @heyheymomodraws</string>
   <!--
     Add-ons general availability nimbus message
 
@@ -1120,9 +1201,17 @@
   <!-- Preference switch for usage and technical data collection -->
   <string name="preference_usage_data_2">Wysyłanie danych technicznych i o interakcjach</string>
   <!-- Preference switch for usage and technical learn more link -->
-  <string name="preference_usage_data_learn_more">Więcej informacji</string>
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">Więcej informacji</string>
   <!-- Preference description for marketing data collection. Note: The words "Firefox" should NOT be translated -->
   <string name="preferences_usage_data_description_1" tools:ignore="BrandUsage">Informacje o Twoim urządzeniu, konfiguracji sprzętowej i użyciu pomagają ulepszać funkcje oraz zwiększać wydajność i stabilność Firefoksa.</string>
+  <!-- Preference switch for daily usage ping data collection -->
+  <string name="preferences_daily_usage_ping_title">Dzienny sygnał o użyciu</string>
+  <string name="preferences_daily_usage_ping_description">To pomaga Mozilli oszacować liczbę aktywnych użytkowników.</string>
+  <string name="preferences_daily_usage_ping_learn_more">Więcej informacji o dziennym sygnale o użyciu</string>
+  <!-- Preference switch title for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_title" tools:ignore="UnusedResources" moz:removedIn="142">Automatyczne wysyłanie zgłoszeń awarii</string>
+  <!-- Preference switch description for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_description" tools:ignore="UnusedResources" moz:removedIn="142">Umożliwia nam to diagnozowanie i naprawianie problemów z przeglądarką. Zgłoszenia mogą zawierać dane osobowe lub prywatne informacje.</string>
   <!-- Preference switch for campaign measurement data (marketing data) collection -->
   <string name="preferences_marketing_data_2">Dane pomiarowe kampanii</string>
   <!--
@@ -1132,16 +1221,8 @@
   <string name="preferences_marketing_data_description_4" tools:ignore="BrandUsage">Podziel się informacją, skąd wiesz o Firefoksie i że go używasz z partnerami technologii marketingowych Mozilli.</string>
   <!-- Learn more link for marketing data preference -->
   <string name="preferences_marketing_data_learn_more">Więcej informacji o danych marketingowych</string>
-  <!-- Preference switch for daily usage ping data collection -->
-  <string name="preferences_daily_usage_ping_title">Dzienny sygnał o użyciu</string>
-  <string name="preferences_daily_usage_ping_description">To pomaga Mozilli oszacować liczbę aktywnych użytkowników.</string>
-  <string name="preferences_daily_usage_ping_learn_more">Więcej informacji o dziennym sygnale o użyciu</string>
-  <!-- Preference switch title for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_title">Automatyczne wysyłanie zgłoszeń awarii</string>
-  <!-- Preference switch description for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_description">Umożliwia nam to diagnozowanie i naprawianie problemów z przeglądarką. Zgłoszenia mogą zawierać dane osobowe lub prywatne informacje.</string>
   <!-- Learn more link for crash reporting preference -->
-  <string name="onboarding_preferences_dialog_crash_reporting_learn_more">Więcej informacji o zgłoszeniach awarii</string>
+  <string name="onboarding_preferences_dialog_crash_reporting_learn_more" tools:ignore="UnusedResources" moz:removedIn="142">Więcej informacji o zgłoszeniach awarii</string>
   <!-- Title for studies preferences -->
   <string name="preference_experiments_2">Badania</string>
   <!-- Summary for studies preferences -->
@@ -1275,7 +1356,7 @@
   <!-- Title of preference that allows a user to auto close tabs after a specified amount of time -->
   <string name="preferences_close_tabs">Zamykaj karty</string>
   <!-- Option for auto closing tabs that will never auto close tabs, always allows user to manually close tabs -->
-  <string name="close_tabs_manually">Ręcznie</string>
+  <string name="close_tabs_manually">Nigdy</string>
   <!-- Option for auto closing tabs that will auto close tabs after one day -->
   <string name="close_tabs_after_one_day">Po jednym dniu</string>
   <!-- Option for auto closing tabs that will auto close tabs after one week -->
@@ -1333,8 +1414,6 @@
   <!-- Learn more link for studies, links to an article for more information about studies. -->
   <string name="studies_learn_more">Więcej informacji</string>
   <!--
-    Sessions
-
     Title for the list of tabs in the current private session used by a11y services
     The %1$s will be replaced by the number of opened private tabs
   -->
@@ -1480,10 +1559,18 @@
   <string name="download_delete_item">Usuń</string>
   <!-- Content description for the toolbar "Navigate back" button -->
   <string name="download_navigate_back_description">Przejdź wstecz</string>
-  <!-- Content description for the toolbar "Navigate up" button -->
-  <string name="download_navigate_up_description" moz:removedIn="139" tools:ignore="UnusedResources">Przejdź w górę</string>
   <!-- Content description for the toolbar back button while searching the downloads -->
   <string name="download_close_search_description">Wróć i zamknij wyszukiwanie</string>
+  <!--
+    Content description for the search bar clear text button on the downloads screen
+
+    Content description for pause action button on the downloads screen
+  -->
+  <string name="download_pause_action">Wstrzymaj</string>
+  <!-- Content description for resume action button on the downloads screen -->
+  <string name="download_resume_action">Wznów</string>
+  <!-- Content description for retry download action button on the downloads screen -->
+  <string name="download_retry_action">Ponów</string>
   <string name="download_clear_search_description">Wyczyść</string>
   <!-- Text for the button to share the download URL -->
   <string name="download_share_url">Udostępnij adres</string>
@@ -1511,6 +1598,8 @@
   <string name="download_time_period_last_30_days">Ostatnie 30 dni</string>
   <!-- Text for the header that groups the downloads older than other groups -->
   <string name="download_time_period_older">Starsze</string>
+  <!-- Description of an in progress download item, displayed in the downloads list when the download has just started. -->
+  <string name="download_item_in_progress_description_preparing">Przygotowywanie do pobrania…</string>
   <!--
     Description of an in progress download item, displayed in the downloads list.
     %1$s is the current file size that has been downloaded.
@@ -1518,12 +1607,33 @@
     %3$s is the amount of time remaining to complete the download.
   -->
   <string name="download_item_in_progress_description" moz:removedIn="141" tools:ignore="UnusedResources">%1$s/%2$s • pozostało: %3$s</string>
+  <!--
+    Description of an in progress download item, displayed in the downloads list when the download time remaining is known.
+    %1$s is the current file size that has been downloaded.
+    %2$s is the total size of the downloaded file.
+    %3$s is the amount of time remaining to complete the download.
+  -->
+  <string name="download_item_in_progress_description_2">%1$s/%2$s • za %3$s.</string>
+  <!--
+    Description of an in progress download item, displayed in the downloads list when the estimated download time remaining is still being calculated.
+    %1$s is the current file size that has been downloaded.
+    %2$s is the total size of the downloaded file.
+  -->
+  <string name="download_item_in_progress_description_pending">%1$s/%2$s • szacowanie</string>
+  <!--
+    Description of a paused download item, displayed in the downloads list.
+    %1$s is the current file size that has been downloaded.
+    %2$s is the total size of the downloaded file.
+  -->
+  <string name="download_item_paused_description">%1$s/%2$s • wstrzymane</string>
   <!-- Text to indicate that an in progress download is paused. -->
   <string name="download_item_status_paused" moz:removedIn="141" tools:ignore="UnusedResources">wstrzymano</string>
   <!-- Text to indicate that the download speed of an in progress download is being calculated. -->
   <string name="download_item_download_speed_pending" moz:removedIn="141" tools:ignore="UnusedResources">szacowanie</string>
   <!-- Text to indicate that a download has failed to download. -->
   <string name="download_item_status_failed">Pobranie się nie powiodło</string>
+  <!-- Text for the snackbar action button to view failed download details. -->
+  <string name="download_failed_snackbar_action_details">Szczegóły</string>
   <!-- Placeholder text to indicate that users can use the search bar to search for a download. -->
   <string name="download_search_placeholder">Szukaj w pobranych plikach</string>
   <!-- Text to indicate that no downloads match the search query. -->
@@ -1551,7 +1661,7 @@
   -->
   <string name="webcompat_reporter_screen_title">Zgłoś niepoprawnie działającą stronę</string>
   <!-- The description of the Web Compat Reporter feature. %1$s is the name of the app (for example "Firefox"). -->
-  <string name="webcompat_reporter_description">Pomóż ulepszyć przeglądarkę %1$s dla wszystkich. Pracownicy Mozilli wykorzystują przesłane informacje, aby rozwiązać problemy ze stroną.</string>
+  <string name="webcompat_reporter_description" moz:removedIn="142" tools:ignore="UnusedResources">Pomóż ulepszyć przeglądarkę %1$s dla wszystkich. Pracownicy Mozilli wykorzystują przesłane informacje, aby rozwiązać problemy ze stroną.</string>
   <!-- The text field label of the URL text field. This is displayed above the user-inputted URL. -->
   <string name="webcompat_reporter_label_url">Adres</string>
   <!-- The error message of the URL text field when an invalid URL has been entered. -->
@@ -1559,7 +1669,7 @@
   <!-- The label/title of a field in the Web Compat Reporter feature for explaining a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_label_whats_broken_2">Co działa niepoprawnie?</string>
   <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
-  <string name="webcompat_reporter_choose_reason">Wybierz powód</string>
+  <string name="webcompat_reporter_choose_reason" moz:removedIn="142" tools:ignore="UnusedResources">Wybierz powód</string>
   <!-- The error message of the dropdown, prompting the user to select a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_choose_reason_error">Proszę wybrać powód</string>
   <!-- The label/title of an optional field in the Web Compat Reporter feature for adding additional information. -->
@@ -1580,14 +1690,30 @@
     Broken site reason text for site slow or not working
   -->
   <string name="webcompat_reporter_reason_slow" moz:removedIn="140" tools:ignore="UnusedResources">Strona działa wolno lub nie działa w ogóle</string>
+  <!-- Broken site reason text for site doesn’t load -->
+  <string name="webcompat_reporter_reason_load">Strona się nie wczytuje</string>
+  <!-- Broken site reason text for can’t pay, check out or shop -->
+  <string name="webcompat_reporter_reason_checkout">Nie można zapłacić, dokonać płatności ani zrobić zakupów</string>
   <!-- Broken site reason text for images or videos -->
   <string name="webcompat_reporter_reason_media" moz:removedIn="140" tools:ignore="UnusedResources">Obrazy albo filmy</string>
   <!-- Broken site reason text for buttons, links, and other content -->
   <string name="webcompat_reporter_reason_content" moz:removedIn="140" tools:ignore="UnusedResources">Przyciski, odnośniki i inna treść</string>
   <!-- Broken site reason text for sign in or sign out -->
   <string name="webcompat_reporter_reason_account" moz:removedIn="140" tools:ignore="UnusedResources">Logowanie lub wylogowywanie</string>
+  <!-- Broken site reason text for site is slow -->
+  <string name="webcompat_reporter_reason_slow2">Strona jest wolna</string>
+  <!-- Broken site reason text for video isn’t playing or loading -->
+  <string name="webcompat_reporter_reason_media2">Film się nie odtwarza lub nie wczytuje</string>
+  <!-- Broken site reason text for missing content -->
+  <string name="webcompat_reporter_reason_content2">Brakujące treści</string>
+  <!-- Broken site reason text for can’t sign in or register -->
+  <string name="webcompat_reporter_reason_account2">Nie można się zalogować ani zarejestrować</string>
   <!-- Broken site reason text for ad blocker -->
   <string name="webcompat_reporter_reason_ad_blocker" moz:removedIn="140" tools:ignore="UnusedResources">Blokowanie reklam</string>
+  <!-- Broken site reason text for site asked to turn off ad blocker -->
+  <string name="webcompat_reporter_reason_turn_off_adblocker">Strona poprosiła o\u00a0wyłączenie blokowania reklam</string>
+  <!-- Broken site reason text for browser isn’t supported or blocked -->
+  <string name="webcompat_reporter_reason_notsupported">Przeglądarka nie jest obsługiwana lub została zablokowana</string>
   <!-- Broken site reason text for something else -->
   <string name="webcompat_reporter_reason_other">Coś innego</string>
   <!--
@@ -1818,6 +1944,10 @@
   <string name="studies_on">Włączone</string>
   <!-- Summary of studies data on quit preference if it is set to off -->
   <string name="studies_off">Wyłączone</string>
+  <!-- Toggle if desktop site is turned on -->
+  <string name="browser_feature_desktop_site_on">Włączona</string>
+  <!-- Toggle if desktop site is turned off -->
+  <string name="browser_feature_desktop_site_off">Wyłączona</string>
   <!-- Category header of a preference that allows a user to alter settings related to web permissions. -->
   <string name="preferences_category_permissions">Uprawnienia</string>
   <!-- Category header of a preference that allows a user to alter settings related to web content. -->
@@ -2008,7 +2138,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Zamknięto prywatną kartę</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Zamknięto prywatne karty</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Zamknięto prywatne karty</string>
   <!-- Text shown in snackbar when user erases their private browsing data -->
   <string name="snackbar_private_data_deleted">Usunięto dane trybu prywatnego</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
@@ -2443,6 +2573,8 @@
   <string name="preferences_passwords_exceptions_remove_all">Usuń wszystkie wyjątki</string>
   <!-- Hint for search box in passwords list -->
   <string name="preferences_passwords_saved_logins_search_2">Szukaj haseł</string>
+  <!-- Content description for the logins navigation bar back button -->
+  <string name="logins_navigate_back_button_content_description">Wstecz</string>
   <!-- The header for the site that a login is for -->
   <string name="preferences_passwords_saved_logins_site">Witryna</string>
   <!-- The header for the username for a login -->
@@ -2756,11 +2888,7 @@
   <string name="synced_tabs_expand_group">Rozwiń grupę kart z innych urządzeń</string>
   <!-- Content description for collapsing a group of synced tabs. -->
   <string name="synced_tabs_collapse_group">Zwiń grupę kart z innych urządzeń</string>
-  <!--
-    Top Sites
-
-    Title text displayed in the dialog when shortcuts limit is reached.
-  -->
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">Osiągnięto limit skrótów</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">Aby dodać nowy skrót, usuń istniejący. Dotknij i przytrzymaj któryś i wybierz „Usuń”.</string>
@@ -2856,6 +2984,8 @@
   -->
   <string name="pocket_stories_header_1" tools:ignore="UnusedResources" moz:removedIn="140">Artykuły skłaniające do myślenia</string>
   <!-- Header text for a section on the home screen. -->
+  <string name="pocket_stories_header_2">Artykuły</string>
+  <!-- Header text for a section on the home screen. -->
   <string name="pocket_stories_categories_header" moz:removedIn="141" tools:ignore="UnusedResources">Artykuły według tematu</string>
   <!-- Text of a button allowing users to access an external url for more Pocket recommendations. -->
   <string name="pocket_stories_placeholder_text" moz:removedIn="141" tools:ignore="UnusedResources">Odkryj więcej</string>
@@ -2886,7 +3016,7 @@
   <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
   <string name="a11y_action_label_wallpaper_collection_learn_more">otworzyć odnośnik z informacjami o tej kolekcji</string>
   <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-  <string name="a11y_action_label_read_article">przeczytać artykuł</string>
+  <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">przeczytać artykuł</string>
   <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
   <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">otworzyć odnośnik z informacjami</string>
   <!-- Content description for headings announced by accessibility service. %s is the text of the heading. Talkback will announce the text and then speak the word "Heading" indicating to the user that this text is a heading for a section. -->
@@ -3140,9 +3270,9 @@
 
     Text for the protection panel header when the site is secure.
   -->
-  <string name="protection_panel_header_secure">Zabezpieczone</string>
+  <string name="protection_panel_header_secure" moz:removedIn="142" tools:ignore="UnusedResources">Zabezpieczone</string>
   <!-- Text for the protection panel header when the site is not secure. -->
-  <string name="protection_panel_header_not_secure">Niezabezpieczone</string>
+  <string name="protection_panel_header_not_secure" moz:removedIn="142" tools:ignore="UnusedResources">Niezabezpieczone</string>
   <!-- Title text for the protection panel banner when the site is not secure. -->
   <string name="protection_panel_banner_not_secure_title">Zachowaj ostrożność na tej witrynie</string>
   <!-- Description text for the protection panel banner when the site is not secure. -->
@@ -3164,9 +3294,9 @@
   <!-- Label text for the Enhanced Tracking Protection toggle. -->
   <string name="protection_panel_etp_toggle_label">Wzmocniona ochrona przed śledzeniem</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
-  <string name="protection_panel_etp_toggle_enabled_description">Jeśli coś na tej witrynie nie działa, spróbuj wyłączyć ochronę.</string>
+  <string name="protection_panel_etp_toggle_enabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Jeśli coś na tej witrynie nie działa, spróbuj wyłączyć ochronę.</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
-  <string name="protection_panel_etp_toggle_disabled_description">Ochrona jest wyłączona. Zalecamy ponowne jej włączenie.</string>
+  <string name="protection_panel_etp_toggle_disabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Ochrona jest wyłączona. Zalecamy ponowne jej włączenie.</string>
   <!--
     Text for displaying the total number of trackers blocked in the protection panel.
     %d is a placeholder for the number of trackers blocked.
@@ -3175,7 +3305,7 @@
   <!-- Text for when no trackers have been blocked. -->
   <string name="protection_panel_no_trackers_blocked">Nie odnaleziono żadnych elementów śledzących</string>
   <!-- Link text to navigate to privacy and security settings from the protection panel. -->
-  <string name="protection_panel_privacy_and_security_settings">Ustawienia prywatności i bezpieczeństwa</string>
+  <string name="protection_panel_privacy_and_security_settings" moz:removedIn="142" tools:ignore="UnusedResources">Ustawienia prywatności i bezpieczeństwa</string>
   <!-- Title text for the protection panel permissions section. -->
   <string name="protection_panel_permissions_title">Uprawnienia</string>
   <!--
@@ -3206,7 +3336,7 @@
   <string name="connection_security_panel_not_secure">Niezabezpieczone połączenie</string>
   <!--
     Text for the connection security panel to indicate who the certificate was verified by.
-    %s is a placeholder for the name of the certificate authority that verified the ticket
+    %s is a placeholder for the name of the certificate authority that issued the certificate.
   -->
   <string name="connection_security_panel_verified_by">Zweryfikowane przez: %s</string>
   <!--
@@ -3439,14 +3569,8 @@
   <string name="certificate_warning_push_notification_pnw2_message" tools:ignore="UnusedResources">Zaktualizuj przed 14 marca, aby móc nadal korzystać z dodatków i innych funkcji.</string>
   <!-- Push notification message about old Firefox version -->
   <string name="certificate_warning_push_notification_pnw3_message" tools:ignore="UnusedResources">Jutro część funkcji przestanie działać.</string>
-  <!--
-    TextField Design System Component
+  <!-- TextField Design System Component -->
 
-    The default content description for the eye trailing icon button in TextField
-  -->
-  <string name="text_field_eye_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Wyświetl ukryty tekst</string>
-  <!-- The default content description for the cross trailing icon button in TextField -->
-  <string name="text_field_cross_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Wyczyść tekst</string>
   <!--
     Setup checklist feature
 
@@ -3565,4 +3689,22 @@
   <string name="private_tab_cfr_negative">Nie, dziękuję</string>
   <!-- Positive button text for the contextual feature recommendation (CFR) enabling screen lock for private tabs -->
   <string name="private_tab_cfr_positive">Blokuj karty</string>
+  <!--
+    Review prompt
+
+    Title for a prompt asking the user about their experience using the app. %1$s is the name of the app (for example "Firefox").
+  -->
+  <string name="review_prompt_pre_prompt_header">Co myślisz o\u00a0przeglądarce %1$s?</string>
+  <!-- Label for a button negatively rating the user's experience with the app -->
+  <string name="review_prompt_negative_button">Mam problemy</string>
+  <!-- Label for a button positively rating the user's experience with the app -->
+  <string name="review_prompt_positive_button">Jest wspaniała!</string>
+  <!-- Title for a prompt asking the user to rate the app on Google Play Store. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="review_prompt_rate_header">Dziękujemy za pokochanie przeglądarki %1$s. Masz sekundę, aby podzielić się miłością, wystawiając ocenę?</string>
+  <!-- Label for a button proceeding to rate the app on Google Play Store. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="review_prompt_rate_button">Oceń przeglądarkę %1$s w\u00a0Sklepie Play</string>
+  <!-- Title for a prompt asking the user send us feedback. %1$s is the name of the app (for example "Firefox"). -->
+  <string name="review_prompt_feedback_header">Przykro nam, że masz problemy. Powiedz nam, jak możemy ulepszyć przeglądarkę %1$s.</string>
+  <!-- Label for a button opening a feedback forum -->
+  <string name="review_prompt_feedback_button">Podziel się opinią</string>
 </resources>

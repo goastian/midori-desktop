@@ -53,32 +53,25 @@ import mozilla.components.service.pocket.PocketStory.PocketRecommendedStory
 import mozilla.components.service.pocket.PocketStory.PocketSponsoredStory
 import mozilla.components.service.pocket.PocketStory.SponsoredContent
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.EagerFlingBehavior
 import org.mozilla.fenix.compose.ITEM_WIDTH
 import org.mozilla.fenix.compose.ListItemTabLarge
-import org.mozilla.fenix.compose.ListItemTabLargePlaceholder
 import org.mozilla.fenix.compose.ListItemTabSurface
 import org.mozilla.fenix.compose.SelectableChip
 import org.mozilla.fenix.compose.SelectableChipColors
 import org.mozilla.fenix.compose.TabSubtitleWithInterdot
+import org.mozilla.fenix.compose.eagerFlingBehavior
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.home.fake.FakeHomepagePreview
 import org.mozilla.fenix.home.pocket.POCKET_STORIES_DEFAULT_CATEGORY_NAME
 import org.mozilla.fenix.home.pocket.PocketRecommendedStoriesCategory
 import org.mozilla.fenix.home.pocket.PocketRecommendedStoriesSelectedCategory
+import org.mozilla.fenix.home.ui.HomepageTestTag.HOMEPAGE_SPONSORED_STORY
+import org.mozilla.fenix.home.ui.HomepageTestTag.HOMEPAGE_STORY
 import org.mozilla.fenix.theme.FirefoxTheme
 import kotlin.math.roundToInt
 
 private const val URI_PARAM_UTM_KEY = "utm_source"
 private const val POCKET_STORIES_UTM_VALUE = "pocket-newtab-android"
-private const val POCKET_FEATURE_UTM_KEY_VALUE = "utm_source=ff_android"
-
-/**
- * Placeholder [PocketStory] allowing to combine other items in the same list that shows stories.
- * It uses empty values for it's properties ensuring that no conflict is possible since real stories have
- * mandatory values.
- */
-private val placeholderStory = PocketRecommendedStory("", "", "", "", "", 0, 0)
 
 /**
  * Displays a single [PocketRecommendedStory].
@@ -345,10 +338,8 @@ fun ContentRecommendation(
  * @param contentPadding Dimension for padding the content after it has been clipped.
  * This space will be used for shadows and also content rendering when the list is scrolled.
  * @param backgroundColor The background [Color] of each story.
- * @param showPlaceholderStory Whether or not to show a "Discover more" placeholder story.
  * @param onStoryShown Callback for when a certain story is visible to the user.
  * @param onStoryClicked Callback for when the user taps on a recommended story.
- * @param onDiscoverMoreClicked Callback for when the user taps an element which contains an
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Suppress("CyclomaticComplexMethod", "LongMethod")
@@ -357,20 +348,15 @@ fun PocketStories(
     @PreviewParameter(PocketStoryProvider::class) stories: List<PocketStory>,
     contentPadding: Dp,
     backgroundColor: Color = FirefoxTheme.colors.layer2,
-    showPlaceholderStory: Boolean = true,
     onStoryShown: (PocketStory, Triple<Int, Int, Int>) -> Unit,
     onStoryClicked: (PocketStory, Triple<Int, Int, Int>) -> Unit,
-    onDiscoverMoreClicked: (String) -> Unit,
 ) {
     // Show stories in at most 3 rows but on any number of columns depending on the data received.
     val maxRowsNo = 3
-    val storiesToShow =
-        (stories + if (showPlaceholderStory) placeholderStory else null)
-            .filterNotNull()
-            .chunked(maxRowsNo)
+    val storiesToShow = stories.chunked(maxRowsNo)
 
     val listState = rememberLazyListState()
-    val flingBehavior = EagerFlingBehavior(lazyRowState = listState)
+    val flingBehavior = eagerFlingBehavior(lazyRowState = listState)
 
     val configuration = LocalConfiguration.current
     val screenWidth = configuration.screenWidthDp.dp
@@ -397,22 +383,14 @@ fun PocketStories(
                         modifier = Modifier.semantics {
                             testTagsAsResourceId = true
                             testTag = when (story) {
-                                placeholderStory -> "pocket.discover.more.story"
-                                is PocketRecommendedStory -> "pocket.recommended.story"
-                                else -> "pocket.sponsored.story"
+                                is PocketRecommendedStory,
+                                is ContentRecommendation,
+                                    -> HOMEPAGE_STORY
+                                else -> HOMEPAGE_SPONSORED_STORY
                             }
                         },
                     ) {
                         when (story) {
-                            placeholderStory -> {
-                                ListItemTabLargePlaceholder(
-                                    text = stringResource(R.string.pocket_stories_placeholder_text),
-                                    backgroundColor = backgroundColor,
-                                ) {
-                                    onDiscoverMoreClicked("https://getpocket.com/explore?$POCKET_FEATURE_UTM_KEY_VALUE")
-                                }
-                            }
-
                             is PocketRecommendedStory -> {
                                 PocketStory(
                                     story = story,
@@ -576,7 +554,6 @@ fun PocketStoriesCategories(
                 SelectableChip(
                     text = category.name,
                     isSelected = selections.map { it.name }.contains(category.name),
-                    isSquare = true,
                     selectableChipColors = categoryColors,
                 ) {
                     onCategoryClick(category)
@@ -597,7 +574,6 @@ private fun PocketStoriesComposablesPreview() {
                     contentPadding = 0.dp,
                     onStoryShown = { _, _ -> },
                     onStoryClicked = { _, _ -> },
-                    onDiscoverMoreClicked = {},
                 )
                 Spacer(Modifier.height(10.dp))
 

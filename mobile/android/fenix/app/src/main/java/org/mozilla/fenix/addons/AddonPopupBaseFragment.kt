@@ -8,8 +8,8 @@ import android.os.Bundle
 import android.os.Environment
 import android.view.Gravity
 import android.view.View
-import android.view.ViewGroup
 import androidx.appcompat.app.AlertDialog
+import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.fragment.app.Fragment
 import androidx.navigation.fragment.findNavController
 import androidx.preference.PreferenceManager
@@ -19,6 +19,7 @@ import mozilla.components.browser.state.state.CustomTabSessionState
 import mozilla.components.browser.state.state.EngineState
 import mozilla.components.browser.state.state.SessionState
 import mozilla.components.browser.state.state.content.DownloadState
+import mozilla.components.browser.state.state.content.DownloadState.Status
 import mozilla.components.browser.state.state.createCustomTab
 import mozilla.components.concept.base.crash.Breadcrumb
 import mozilla.components.concept.engine.EngineSession
@@ -32,13 +33,9 @@ import mozilla.components.feature.prompts.PromptFeature
 import mozilla.components.support.base.feature.UserInteractionHandler
 import mozilla.components.support.base.feature.ViewBoundFeatureWrapper
 import org.mozilla.fenix.R
-import org.mozilla.fenix.compose.snackbar.Snackbar
-import org.mozilla.fenix.compose.snackbar.SnackbarState
-import org.mozilla.fenix.databinding.DownloadDialogLayoutBinding
+import org.mozilla.fenix.components.appstate.AppAction
 import org.mozilla.fenix.downloads.DownloadService
-import org.mozilla.fenix.downloads.dialog.DynamicDownloadDialog
-import org.mozilla.fenix.downloads.dialog.StartDownloadDialog
-import org.mozilla.fenix.downloads.dialog.ThirdPartyDownloadDialog
+import org.mozilla.fenix.downloads.dialog.createDownloadAppDialog
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getPreferenceKey
 import org.mozilla.fenix.ext.requireComponents
@@ -55,8 +52,7 @@ abstract class AddonPopupBaseFragment : Fragment(), EngineSession.Observer, User
     protected var session: SessionState? = null
     protected var engineSession: EngineSession? = null
     private var canGoBack: Boolean = false
-    private var currentStartDownloadDialog: StartDownloadDialog? = null
-    private var firstPartyDownloadDialog: AlertDialog? = null
+    private var downloadDialog: AlertDialog? = null
 
     @Suppress("DEPRECATION", "LongMethod")
     // https://github.com/mozilla-mobile/fenix/issues/19920
@@ -108,16 +104,23 @@ abstract class AddonPopupBaseFragment : Fragment(), EngineSession.Observer, User
                     ),
                     positiveButtonRadius = (resources.getDimensionPixelSize(R.dimen.tab_corner_radius)).toFloat(),
                 ),
+                onDownloadStartedListener = {
+                    requireComponents.appStore.dispatch(
+                        AppAction.DownloadAction.DownloadInProgress(
+                            session?.id,
+                        ),
+                    )
+                },
                 onNeedToRequestPermissions = { permissions ->
                     requestPermissions(permissions, REQUEST_CODE_DOWNLOAD_PERMISSIONS)
                 },
                 customFirstPartyDownloadDialog = { filename, contentSize, positiveAction, negativeAction ->
                     run {
-                        if (firstPartyDownloadDialog == null && currentStartDownloadDialog == null) {
+                        if (downloadDialog == null) {
                             val contentSizeInBytes =
                                 requireComponents.core.fileSizeFormatter.formatSizeInBytes(contentSize.value)
 
-                            firstPartyDownloadDialog = AlertDialog.Builder(requireContext())
+                            downloadDialog = AlertDialog.Builder(requireContext())
                                 .setTitle(
                                     getString(
                                         R.string.mozac_feature_downloads_dialog_title_3,
@@ -133,7 +136,7 @@ abstract class AddonPopupBaseFragment : Fragment(), EngineSession.Observer, User
                                     negativeAction.value.invoke()
                                     dialog.dismiss()
                                 }.setOnDismissListener {
-                                    firstPartyDownloadDialog = null
+                                    downloadDialog = null
                                     requireContext().components.analytics.crashReporter.recordCrashBreadcrumb(
                                         Breadcrumb("FirstPartyDownloadDialog onDismiss"),
                                     )
@@ -143,23 +146,22 @@ abstract class AddonPopupBaseFragment : Fragment(), EngineSession.Observer, User
                 },
                 customThirdPartyDownloadDialog = { downloaderApps, onAppSelected, negativeActionCallback ->
                     run {
-                        if (firstPartyDownloadDialog == null && currentStartDownloadDialog == null) {
+                        if (downloadDialog == null) {
                             requireContext().components.analytics.crashReporter.recordCrashBreadcrumb(
-                                Breadcrumb("ThirdPartyDownloadDialog created"),
+                                Breadcrumb("DownloaderAppDialog created"),
                             )
-                            ThirdPartyDownloadDialog(
-                                activity = requireActivity(),
+                            downloadDialog = createDownloadAppDialog(
+                                context = requireContext(),
                                 downloaderApps = downloaderApps.value,
                                 onAppSelected = onAppSelected.value,
-                                negativeButtonAction = negativeActionCallback.value,
-                            ).onDismiss {
-                                requireContext().components.analytics.crashReporter.recordCrashBreadcrumb(
-                                    Breadcrumb("ThirdPartyDownloadDialog onDismiss"),
-                                )
-                                currentStartDownloadDialog = null
-                            }.show(provideDownloadContainer()).also {
-                                currentStartDownloadDialog = it
-                            }
+                                onDismiss = {
+                                    downloadDialog = null
+                                    requireContext().components.analytics.crashReporter.recordCrashBreadcrumb(
+                                        Breadcrumb("DownloaderAppDialog onDismiss"),
+                                    )
+                                },
+                            )
+                            downloadDialog?.show()
                         }
                     }
                 },
@@ -170,7 +172,7 @@ abstract class AddonPopupBaseFragment : Fragment(), EngineSession.Observer, User
                 view = view,
             )
             downloadFeature.onDownloadStopped = { downloadState, _, downloadJobStatus ->
-                handleOnDownloadFinished(downloadState, downloadJobStatus, downloadFeature::tryAgain)
+                handleOnDownloadFinished(downloadState, downloadJobStatus)
             }
         }
     }
@@ -216,18 +218,11 @@ abstract class AddonPopupBaseFragment : Fragment(), EngineSession.Observer, User
     private fun provideBrowserStore() = requireComponents.core.store
 
     /**
-     * Provides a container for download-related views.
+     * Provides a container for dynamic snackbars.
      *
-     * @return A ViewGroup that will contain the download views.
+     * @return A ConstraintLayout that will contain the dynamic snackbars.
      */
-    abstract fun provideDownloadContainer(): ViewGroup
-
-    /**
-     * Provides the layout binding for the download dialog.
-     *
-     * @return A DownloadDialogLayoutBinding instance that binds the download dialog layout.
-     */
-    abstract fun provideDownloadDialogLayoutBinding(): DownloadDialogLayoutBinding
+    abstract fun provideDynamicSnackbarContainer(): ConstraintLayout
 
     override fun onDestroyView() {
         engineSession?.close()
@@ -245,8 +240,7 @@ abstract class AddonPopupBaseFragment : Fragment(), EngineSession.Observer, User
     override fun onStop() {
         super.onStop()
         engineSession?.unregister(this)
-        currentStartDownloadDialog?.dismiss()
-        firstPartyDownloadDialog?.dismiss()
+        downloadDialog?.dismiss()
     }
 
     override fun onPromptRequest(promptRequest: PromptRequest) {
@@ -302,34 +296,25 @@ abstract class AddonPopupBaseFragment : Fragment(), EngineSession.Observer, User
         }
     }
 
-    internal fun shouldShowCompletedDownloadDialog(
+    private fun shouldShowCompletedDownloadDialog(
         downloadState: DownloadState,
-        status: DownloadState.Status,
+        status: Status,
     ): Boolean {
-        val isValidStatus = status in listOf(DownloadState.Status.COMPLETED, DownloadState.Status.FAILED)
+        val isValidStatus = status in listOf(Status.COMPLETED, Status.FAILED)
         val isSameTab = downloadState.sessionId == (session?.id ?: false)
 
         return isValidStatus && isSameTab
     }
 
-    internal fun handleOnDownloadFinished(
+    private fun handleOnDownloadFinished(
         downloadState: DownloadState,
-        downloadJobStatus: DownloadState.Status,
-        tryAgain: (String) -> Unit,
+        downloadJobStatus: Status,
     ) {
         // If the download is just paused, don't show any in-app notification
         if (shouldShowCompletedDownloadDialog(downloadState, downloadJobStatus)) {
             val safeContext = context ?: return
-            val onCannotOpenFile: (DownloadState) -> Unit = {
-                Snackbar.make(
-                    snackBarParentView = requireView(),
-                    snackbarState = SnackbarState(
-                        message = DynamicDownloadDialog.getCannotOpenFileErrorMessage(requireContext(), downloadState),
-                        duration = SnackbarState.Duration.Preset.Short,
-                    ),
-                ).show()
-            }
-            if (downloadState.openInApp && downloadJobStatus == DownloadState.Status.COMPLETED) {
+
+            if (downloadState.openInApp && downloadJobStatus == Status.COMPLETED) {
                 val fileWasOpened = AbstractFetchDownloadService.openFile(
                     applicationContext = safeContext.applicationContext,
                     downloadFileName = downloadState.fileName,
@@ -337,19 +322,26 @@ abstract class AddonPopupBaseFragment : Fragment(), EngineSession.Observer, User
                     downloadContentType = downloadState.contentType,
                 )
                 if (!fileWasOpened) {
-                    onCannotOpenFile(downloadState)
+                    requireComponents.appStore.dispatch(
+                        AppAction.DownloadAction.CannotOpenFile(
+                            downloadState = downloadState,
+                        ),
+                    )
                 }
             } else {
-                val dynamicDownloadDialog = DynamicDownloadDialog(
-                    context = safeContext,
-                    fileSizeFormatter = requireComponents.core.fileSizeFormatter,
-                    downloadState = downloadState,
-                    didFail = downloadJobStatus == DownloadState.Status.FAILED,
-                    tryAgain = tryAgain,
-                    onCannotOpenFile = onCannotOpenFile,
-                    binding = provideDownloadDialogLayoutBinding(),
-                ) {}
-                dynamicDownloadDialog.show()
+                if (downloadJobStatus == Status.FAILED) {
+                    requireComponents.appStore.dispatch(
+                        AppAction.DownloadAction.DownloadFailed(
+                            downloadState.fileName,
+                        ),
+                    )
+                } else {
+                    requireComponents.appStore.dispatch(
+                        AppAction.DownloadAction.DownloadCompleted(
+                            downloadState,
+                        ),
+                    )
+                }
             }
         }
     }

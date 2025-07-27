@@ -9,6 +9,14 @@ const PRIVATE_BROWSING_PERM_NAME = "internal:privateBrowsingAllowed";
 const PRIVATE_BROWSING_PERMS = {
   permissions: [PRIVATE_BROWSING_PERM_NAME],
   origins: [],
+  data_collection: [],
+};
+
+const TECHNICAL_AND_INTERACTION_DATA_PERM_NAME = "technicalAndInteraction";
+const TECHNICAL_AND_INTERACTION_DATA_PERMS = {
+  permissions: [],
+  origins: [],
+  data_collection: [TECHNICAL_AND_INTERACTION_DATA_PERM_NAME],
 };
 
 const lazy = {};
@@ -378,13 +386,19 @@ async function exportExtension(aAddon, aSourceURI) {
 
   const requiredPermissions = aAddon.userPermissions?.permissions ?? [];
   const requiredOrigins = aAddon.userPermissions?.origins ?? [];
+  const requiredDataCollectionPermissions =
+    aAddon.userPermissions?.data_collection ?? [];
   const optionalPermissions = aAddon.optionalPermissions?.permissions ?? [];
   const optionalOrigins = aAddon.optionalOriginsNormalized;
+  const optionalDataCollectionPermissions =
+    aAddon.optionalPermissions?.data_collection ?? [];
   const grantedPermissions = normalizePermissions(
     await lazy.ExtensionPermissions.get(id)
   );
   const grantedOptionalPermissions = grantedPermissions?.permissions ?? [];
   const grantedOptionalOrigins = grantedPermissions?.origins ?? [];
+  const grantedOptionalDataCollectionPermissions =
+    grantedPermissions?.data_collection ?? [];
 
   return {
     webExtensionId: id,
@@ -419,10 +433,13 @@ async function exportExtension(aAddon, aSourceURI) {
       version,
       requiredPermissions,
       requiredOrigins,
+      requiredDataCollectionPermissions,
       optionalPermissions,
       optionalOrigins,
+      optionalDataCollectionPermissions,
       grantedOptionalPermissions,
       grantedOptionalOrigins,
+      grantedOptionalDataCollectionPermissions,
     },
   };
 }
@@ -533,12 +550,18 @@ class ExtensionPromptObserver {
     const { sourceURI } = aInstall;
     const { permissions } = aInfo;
 
+    const hasTechnicalAndInteractionDataPerm =
+      permissions.data_collection.includes(
+        TECHNICAL_AND_INTERACTION_DATA_PERM_NAME
+      );
+
     const extension = await exportExtension(aAddon, sourceURI);
     const response = await lazy.EventDispatcher.instance.sendRequestForResult({
       type: "GeckoView:WebExtension:InstallPrompt",
       extension,
       permissions: await filterPromptPermissions(permissions.permissions),
       origins: permissions.origins,
+      dataCollectionPermissions: permissions.data_collection,
     });
 
     if (response.allow) {
@@ -550,6 +573,21 @@ class ExtensionPromptObserver {
           PRIVATE_BROWSING_PERMS
         );
       }
+
+      if (hasTechnicalAndInteractionDataPerm) {
+        if (response.isTechnicalAndInteractionDataGranted) {
+          await lazy.ExtensionPermissions.add(
+            aAddon.id,
+            TECHNICAL_AND_INTERACTION_DATA_PERMS
+          );
+        } else {
+          await lazy.ExtensionPermissions.remove(
+            aAddon.id,
+            TECHNICAL_AND_INTERACTION_DATA_PERMS
+          );
+        }
+      }
+
       aInfo.resolve();
     } else {
       aInfo.reject();
@@ -1214,14 +1252,16 @@ export var GeckoViewWebExtension = {
       }
 
       case "GeckoView:WebExtension:AddOptionalPermissions": {
-        const { extensionId, permissions, origins } = aData;
+        const {
+          extensionId,
+          permissions,
+          origins,
+          dataCollectionPermissions: data_collection,
+        } = aData;
         try {
           const addon = await this.extensionById(extensionId);
           const normalized = lazy.ExtensionPermissions.normalizeOptional(
-            {
-              permissions,
-              origins,
-            },
+            { permissions, origins, data_collection },
             addon.optionalPermissions
           );
           const policy = WebExtensionPolicy.getByID(addon.id);
@@ -1239,11 +1279,16 @@ export var GeckoViewWebExtension = {
       }
 
       case "GeckoView:WebExtension:RemoveOptionalPermissions": {
-        const { extensionId, permissions, origins } = aData;
+        const {
+          extensionId,
+          permissions,
+          origins,
+          dataCollectionPermissions: data_collection,
+        } = aData;
         try {
           const addon = await this.extensionById(extensionId);
           const normalized = lazy.ExtensionPermissions.normalizeOptional(
-            { permissions, origins },
+            { permissions, origins, data_collection },
             addon.optionalPermissions
           );
           const policy = WebExtensionPolicy.getByID(addon.id);

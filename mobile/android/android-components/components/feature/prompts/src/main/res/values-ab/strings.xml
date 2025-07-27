@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- Text for confirmation for a positive action in dialog -->
   <string name="mozac_feature_prompts_ok">ИБЗИОУП</string>
   <!-- Text for confirmation for a negative action in dialog. -->
@@ -109,11 +109,11 @@
   <!-- Pressing this will dismiss the suggested strong password dialog -->
   <string name="mozac_feature_prompts_suggest_strong_password_dismiss">Уажәазы ​​акәым</string>
   <!-- Title for showing the suggest strong password saved confirmation snackbar -->
-  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title">Амаӡажәа еиқәырхоуп</string>
+  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title" tools:ignore="UnusedResources" moz:removedIn="142">Амаӡажәа еиқәырхоуп</string>
   <!-- Title for showing the suggest strong password updated confirmation snackbar -->
   <string name="mozac_feature_prompts_suggest_strong_password_updated_snackbar_title">Амаӡажәа ԥсахуп</string>
   <!-- Title for showing the username updated confirmation snackbar -->
-  <string name="mozac_feature_prompt_login_snackbar_username_updated">Ахархәаҩ ихьӡ еиҭарҿыцуп</string>
+  <string name="mozac_feature_prompt_login_snackbar_username_updated" tools:ignore="UnusedResources" moz:removedIn="142">Ахархәаҩ ихьӡ еиҭарҿыцуп</string>
   <!-- Strings shown in a dialog that appear when users try to refresh a certain kind of webpages -->
   <string name="mozac_feature_prompt_repost_title">Даҽазнык ари асаит ахь адыррақәа рышьҭра?</string>
   <string name="mozac_feature_prompt_repost_message">Ари адаҟьа арҿыцра аҵыхәтәантәи аус еиҭанаҳәар алшоит, иаҳҳәап, ашәара ма даҽазнык акомментари ашьҭрала.</string>
@@ -164,7 +164,7 @@
   <!-- Title of the Identity Credential privacy policy dialog title. The %1$s will be replaced with the name of the provider. -->
   <string name="mozac_feature_prompts_identity_credentials_privacy_policy_title">Ихархәатәуп %1$s аҭалара аиқәыршәаҩ иеиԥш</string>
   <!-- Title of the Identity Credential privacy policy dialog description. The %1$s will be replaced with the name of the provider, %2$s will be replaced with the account, %3$s will be replaced with the privacy policy url and  %4$s will be replaced with the terms of service. -->
-  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote">%1$s ахь аҭалара %2$s акаунт ала урҭ р &lt;a href="%3$s"&gt;Амаӡаратә политика&lt;/a&gt; насгьы &lt;a href="%4$s"&gt;Ахархәаратә ԥҟарақәа&lt;/a&gt;</string>
+  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote"><![CDATA[%1$s ахь аҭалара %2$s акаунт ала урҭ р <a href=\"%3$s\">Амаӡаратә политика</a> насгьы <a href=\"%4$s\">Ахархәаратә ԥҟарақәа</a>]]></string>
   <!-- Text for the positive button of the Identity Credential dialogs. -->
   <string name="mozac_feature_prompts_identity_credentials_continue">Иацҵатәуп</string>
   <!-- Text for the cancel button of the Identity Credential dialogs. -->

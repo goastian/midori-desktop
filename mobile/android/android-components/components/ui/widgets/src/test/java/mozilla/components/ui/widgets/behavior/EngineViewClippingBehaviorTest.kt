@@ -9,6 +9,7 @@ import android.view.View
 import android.widget.EditText
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import mozilla.components.concept.engine.EngineView
 import mozilla.components.concept.toolbar.ScrollableToolbar
@@ -18,6 +19,7 @@ import mozilla.components.support.test.robolectric.testContext
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.mockito.Mockito.doReturn
@@ -27,74 +29,227 @@ import org.mockito.Mockito.verify
 @RunWith(AndroidJUnit4::class)
 class EngineViewClippingBehaviorTest {
 
+    private lateinit var coordinatorLayout: CoordinatorLayout
+    private lateinit var engineView: EngineView
+    private lateinit var engineParentView: View
+    private lateinit var toolbar: View
+    private lateinit var toolbarContainerView: View
+
+    @Before
+    fun setup() {
+        coordinatorLayout = mock()
+        engineView = spy(FakeEngineView(testContext))
+        engineParentView = spy(View(testContext))
+        toolbar = mock()
+        toolbarContainerView = mock()
+    }
+
+    // Bottom toolbar position tests
     @Test
-    fun `GIVEN the behavior is just applied WHEN it is initialized THEN set a default clipping of 0`() {
-        val engineView: EngineView = spy(FakeEngineView(testContext))
-        val toolbar: View = mock()
-        doReturn(100).`when`(toolbar).height
+    fun `GIVEN the toolbar is at the bottom WHEN toolbar is being shifted THEN EngineView adjusts bottom clipping && EngineViewParent position doesn't change`() {
+        doReturn(TOOLBAR_PARENT_HEIGHT).`when`(coordinatorLayout).height
+        doReturn(TOOLBAR_TOP_WHEN_POSITIONED_AT_BOTTOM).`when`(toolbar).top
+        doReturn(Y_DOWN_TRANSITION).`when`(toolbar).translationY
 
-        EngineViewClippingBehavior(
-            mock(),
-            null,
-            engineView.asView(),
-            toolbar.height,
-            ToolbarPosition.BOTTOM,
-        )
+        assertEquals(0f, engineParentView.translationY)
 
-        verify(engineView).setVerticalClipping(0)
+        buildEngineViewClipping2Behavior(
+            bottomToolbarHeight = TOOLBAR_HEIGHT.toInt(),
+        ).applyUpdatesDependentViewChanged(coordinatorLayout, toolbar)
+
+        // We want to position the engine view popup content
+        // right above the bottom toolbar when the toolbar
+        // is being shifted down. The top of the bottom toolbar
+        // is either positive or zero, but for clipping
+        // the values should be negative because the baseline
+        // for clipping is bottom toolbar height.
+        val bottomClipping = -Y_DOWN_TRANSITION.toInt()
+        verify(engineView).setVerticalClipping(bottomClipping)
+
+        assertEquals(0f, engineParentView.translationY)
     }
 
     @Test
-    fun `EngineView clipping and bottom toolbar offset are kept in sync`() {
-        val engineView: EngineView = spy(FakeEngineView(testContext))
-        val toolbar: View = mock()
+    fun `GIVEN the toolbar is at the bottom && the navbar is enabled WHEN toolbar is being shifted THEN EngineView adjusts bottom clipping && EngineViewParent position doesn't change`() {
+        doReturn(TOOLBAR_PARENT_HEIGHT).`when`(coordinatorLayout).height
+        doReturn(TOOLBAR_TOP_WHEN_POSITIONED_AT_BOTTOM).`when`(toolbar).top
+        doReturn(Y_DOWN_TRANSITION).`when`(toolbar).translationY
+
+        assertEquals(0f, engineParentView.translationY)
+
+        buildEngineViewClipping2Behavior(
+            bottomToolbarHeight = TOOLBAR_HEIGHT.toInt(),
+        ).applyUpdatesDependentViewChanged(coordinatorLayout, toolbar)
+
+        // We want to position the engine view popup content
+        // right above the bottom toolbar when the toolbar
+        // is being shifted down. The top of the bottom toolbar
+        // is either positive or zero, but for clipping
+        // the values should be negative because the baseline
+        // for clipping is bottom toolbar height.
+        val bottomClipping = -Y_DOWN_TRANSITION.toInt()
+        verify(engineView).setVerticalClipping(bottomClipping)
+
+        assertEquals(0f, engineParentView.translationY)
+    }
+
+    // Top toolbar position tests
+    @Test
+    fun `GIVEN the toolbar is at the top WHEN toolbar is being shifted THEN EngineView adjusts bottom clipping && EngineViewParent shifts as well`() {
+        doReturn(TOOLBAR_PARENT_HEIGHT).`when`(coordinatorLayout).height
+        doReturn(TOOLBAR_TOP_WHEN_POSITIONED_AT_TOP).`when`(toolbar).top
+        doReturn(Y_UP_TRANSITION).`when`(toolbar).translationY
+
+        assertEquals(0f, engineParentView.translationY)
+
+        buildEngineViewClipping2Behavior(
+            topToolbarHeight = TOOLBAR_HEIGHT.toInt(),
+        ).applyUpdatesDependentViewChanged(coordinatorLayout, toolbar)
+
+        verify(engineView).setVerticalClipping(Y_UP_TRANSITION.toInt())
+
+        // Here we are adjusting the vertical position of
+        // the engine view container to be directly under
+        // the toolbar. The top toolbar is shifting up, so
+        // its translation will be either negative or zero.
+        val bottomClipping = Y_UP_TRANSITION + TOOLBAR_HEIGHT
+        assertEquals(bottomClipping, engineParentView.translationY)
+    }
+
+    // Combined toolbar position tests
+    @Test
+    fun `WHEN both of the toolbars are being shifted GIVEN the toolbar is at the top && the navbar is enabled THEN EngineView adjusts bottom clipping`() {
+        doReturn(TOOLBAR_PARENT_HEIGHT).`when`(coordinatorLayout).height
+        doReturn(TOOLBAR_TOP_WHEN_POSITIONED_AT_TOP).`when`(toolbar).top
+        doReturn(TOOLBAR_TOP_WHEN_POSITIONED_AT_BOTTOM).`when`(toolbarContainerView).top
+        doReturn(Y_UP_TRANSITION).`when`(toolbar).translationY
+        doReturn(Y_DOWN_TRANSITION).`when`(toolbarContainerView).translationY
+
+        buildEngineViewClipping2Behavior(
+            topToolbarHeight = TOOLBAR_HEIGHT.toInt(),
+            bottomToolbarHeight = TOOLBAR_HEIGHT.toInt(),
+        ).run {
+            applyUpdatesDependentViewChanged(coordinatorLayout, toolbar)
+            applyUpdatesDependentViewChanged(coordinatorLayout, toolbarContainerView)
+        }
+
+        val doubleClipping = Y_UP_TRANSITION - Y_DOWN_TRANSITION
+        verify(engineView).setVerticalClipping(doubleClipping.toInt())
+    }
+
+    @Test
+    fun `WHEN both of the toolbars are being shifted GIVEN the toolbar is at the top && the navbar is enabled THEN EngineViewParent shifts as well`() {
+        doReturn(TOOLBAR_PARENT_HEIGHT).`when`(coordinatorLayout).height
+        doReturn(TOOLBAR_TOP_WHEN_POSITIONED_AT_TOP).`when`(toolbar).top
+        doReturn(TOOLBAR_TOP_WHEN_POSITIONED_AT_BOTTOM).`when`(toolbarContainerView).top
+        doReturn(Y_UP_TRANSITION).`when`(toolbar).translationY
+        doReturn(Y_DOWN_TRANSITION).`when`(toolbarContainerView).translationY
+
+        buildEngineViewClipping2Behavior(
+            topToolbarHeight = TOOLBAR_HEIGHT.toInt(),
+            bottomToolbarHeight = TOOLBAR_HEIGHT.toInt(),
+        ).run {
+            applyUpdatesDependentViewChanged(coordinatorLayout, toolbar)
+            applyUpdatesDependentViewChanged(coordinatorLayout, toolbarContainerView)
+        }
+
+        // The top of the parent should be positioned right below the toolbar,
+        // so when we are given the new Y position of the top of the toolbar,
+        // which is always negative as the element is being "scrolled" out of
+        // the screen, the bottom of the toolbar is just a toolbar height away
+        // from it.
+        val parentTranslation = Y_UP_TRANSITION + TOOLBAR_HEIGHT
+        assertEquals(parentTranslation, engineParentView.translationY)
+    }
+
+    // Edge cases
+    @Test
+    fun `GIVEN top toolbar is much bigger than bottom WHEN bottom stopped shifting && top is shifting THEN bottom clipping && engineParentView shifting is still accurate`() {
+        val largeYUpTransition = -500f
+        val largeTopToolbarHeight = 500
+        doReturn(TOOLBAR_PARENT_HEIGHT).`when`(coordinatorLayout).height
+        doReturn(TOOLBAR_TOP_WHEN_POSITIONED_AT_TOP).`when`(toolbar).top
+        doReturn(largeYUpTransition).`when`(toolbar).translationY
+
+        buildEngineViewClipping2Behavior(
+            topToolbarHeight = largeTopToolbarHeight,
+            bottomToolbarHeight = TOOLBAR_HEIGHT.toInt(),
+        ).run {
+            this.recentBottomToolbarTranslation = Y_DOWN_TRANSITION
+            applyUpdatesDependentViewChanged(coordinatorLayout, toolbar)
+        }
+
+        val doubleClipping = largeYUpTransition - Y_DOWN_TRANSITION
+        verify(engineView).setVerticalClipping(doubleClipping.toInt())
+
+        val parentTranslation = largeYUpTransition + largeTopToolbarHeight
+        assertEquals(parentTranslation, engineParentView.translationY)
+    }
+
+    @Test
+    fun `GIVEN bottom toolbar is much bigger than top WHEN top stopped shifting && bottom is shifting THEN bottom clipping && engineParentView shifting is still accurate`() {
+        val largeYBottomTransition = 500f
+        val largeBottomToolbarTop = TOOLBAR_PARENT_HEIGHT - 500
+        doReturn(TOOLBAR_PARENT_HEIGHT).`when`(coordinatorLayout).height
+        doReturn(largeBottomToolbarTop).`when`(toolbarContainerView).top
+        doReturn(largeYBottomTransition).`when`(toolbarContainerView).translationY
+
+        buildEngineViewClipping2Behavior(
+            topToolbarHeight = TOOLBAR_HEIGHT.toInt(),
+            bottomToolbarHeight = largeBottomToolbarTop,
+        ).run {
+            this.recentTopToolbarTranslation = Y_UP_TRANSITION
+            applyUpdatesDependentViewChanged(coordinatorLayout, toolbarContainerView)
+        }
+
+        val doubleClipping = Y_UP_TRANSITION - largeYBottomTransition
+        verify(engineView).setVerticalClipping(doubleClipping.toInt())
+
+        val parentTranslation = Y_UP_TRANSITION + TOOLBAR_HEIGHT
+        assertEquals(parentTranslation, engineParentView.translationY)
+    }
+
+    @Test
+    fun `GIVEN the toolbars handled are translated more than their expected height WHEN using this data THEN coerce the heights to the expected values`() {
+        doReturn(TOOLBAR_PARENT_HEIGHT).`when`(coordinatorLayout).height
+        doReturn(TOOLBAR_TOP_WHEN_POSITIONED_AT_TOP).`when`(toolbar).top
+        doReturn(TOOLBAR_TOP_WHEN_POSITIONED_AT_BOTTOM).`when`(toolbarContainerView).top
+        doReturn(Y_UP_TRANSITION).`when`(toolbar).translationY
+        doReturn(Y_DOWN_TRANSITION).`when`(toolbarContainerView).translationY
+        val topToolbarHeight = 15
+        val bottomToolbarHeight = 10
+
+        buildEngineViewClipping2Behavior(
+            topToolbarHeight = topToolbarHeight,
+            bottomToolbarHeight = bottomToolbarHeight,
+        ).run {
+            applyUpdatesDependentViewChanged(coordinatorLayout, toolbar)
+            applyUpdatesDependentViewChanged(coordinatorLayout, toolbarContainerView)
+        }
+
+        // after just the top toolbar has moved
+        verify(engineView).setVerticalClipping(-topToolbarHeight)
+        assertEquals(0f, engineParentView.translationY)
+
+        // after the bottom toolbar has moved also
+        verify(engineView).setVerticalClipping(-topToolbarHeight - bottomToolbarHeight)
+        assertEquals(0f, engineParentView.translationY)
+    }
+
+    @Test
+    fun `GIVEN a bottom toolbar WHEN translation returns NaN THEN no exception thrown`() {
         doReturn(100).`when`(toolbar).height
-        doReturn(42f).`when`(toolbar).translationY
+        doReturn(Float.NaN).`when`(toolbar).translationY
 
-        val behavior = EngineViewClippingBehavior(
-            mock(),
-            null,
-            engineView.asView(),
-            toolbar.height,
-            ToolbarPosition.BOTTOM,
-        )
+        buildEngineViewClipping2Behavior().applyUpdatesDependentViewChanged(coordinatorLayout, toolbar)
 
-        behavior.applyUpdatesDependentViewChanged(toolbar)
-
-        verify(engineView).setVerticalClipping(-42)
         assertEquals(0f, engineView.asView().translationY)
     }
 
+    // General tests
     @Test
-    fun `EngineView clipping and top toolbar offset are kept in sync`() {
-        val engineView: EngineView = spy(FakeEngineView(testContext))
-        val toolbar: View = mock()
-        doReturn(100).`when`(toolbar).height
-        doReturn(42f).`when`(toolbar).translationY
-
-        val behavior = EngineViewClippingBehavior(
-            mock(),
-            null,
-            engineView.asView(),
-            toolbar.height,
-            ToolbarPosition.TOP,
-        )
-
-        behavior.applyUpdatesDependentViewChanged(toolbar)
-
-        verify(engineView).setVerticalClipping(42)
-        assertEquals(142f, engineView.asView().translationY)
-    }
-
-    @Test
-    fun `Behavior does not depend on normal views`() {
-        val behavior = EngineViewClippingBehavior(
-            mock(),
-            null,
-            mock(),
-            0,
-            ToolbarPosition.BOTTOM,
-        )
+    fun `WHEN layoutDependsOn receives a class that isn't a ScrollableToolbar THEN it ignores it`() {
+        val behavior = buildEngineViewClipping2Behavior()
 
         assertFalse(behavior.layoutDependsOn(mock(), mock(), TextView(testContext)))
         assertFalse(behavior.layoutDependsOn(mock(), mock(), EditText(testContext)))
@@ -102,137 +257,39 @@ class EngineViewClippingBehaviorTest {
     }
 
     @Test
-    fun `Behavior depends on BrowserToolbar`() {
-        val behavior = EngineViewClippingBehavior(
-            mock(),
-            null,
-            mock(),
-            0,
-            ToolbarPosition.BOTTOM,
-        )
+    fun `WHEN layoutDependsOn receives a class that is a ScrollableToolbar THEN it recognizes it as a dependency`() {
+        val behavior = buildEngineViewClipping2Behavior()
 
-        assertTrue(behavior.layoutDependsOn(mock(), mock(), BrowserToolbar(testContext)))
+        assertFalse(behavior.layoutDependsOn(mock(), mock(), View(testContext)))
+        assertTrue(behavior.layoutDependsOn(mock(), mock(), TestToolbar(testContext)))
     }
 
-    @Test
-    fun `GIVEN a bottom toolbar WHEN translation has below a half decimal THEN set vertical clipping with the floor value`() {
-        val engineView: FakeEngineView = mock()
-        val behavior = EngineViewClippingBehavior(
-            mock(),
-            null,
-            engineView,
-            100,
-            ToolbarPosition.BOTTOM,
-        )
-
-        behavior.toolbarChangedAction(40.4f)
-
-        verify(engineView).setVerticalClipping(-40)
-    }
-
-    @Test
-    fun `GIVEN a bottom toolbar WHEN translation has exactly half of a decimal THEN set vertical clipping with the ceiling value`() {
-        val engineView: FakeEngineView = mock()
-        val behavior = EngineViewClippingBehavior(
-            mock(),
-            null,
-            engineView,
-            100,
-            ToolbarPosition.BOTTOM,
-        )
-
-        behavior.toolbarChangedAction(40.5f)
-
-        verify(engineView).setVerticalClipping(-41)
-    }
-
-    @Test
-    fun `GIVEN a bottom toolbar WHEN translation has more than a half decimal THEN set vertical clipping with the ceiling value`() {
-        val engineView: FakeEngineView = mock()
-        val behavior = EngineViewClippingBehavior(
-            mock(),
-            null,
-            engineView,
-            100,
-            ToolbarPosition.BOTTOM,
-        )
-
-        behavior.toolbarChangedAction(40.6f)
-
-        verify(engineView).setVerticalClipping(-41)
-    }
-
-    @Test
-    fun `GIVEN a top toolbar WHEN translation has below a half decimal THEN set vertical clipping with the floor value`() {
-        val engineView: FakeEngineView = mock()
-        val behavior = EngineViewClippingBehavior(
-            mock(),
-            null,
-            engineView,
-            100,
-            ToolbarPosition.TOP,
-        )
-
-        behavior.toolbarChangedAction(40.4f)
-
-        verify(engineView).setVerticalClipping(40)
-    }
-
-    @Test
-    fun `GIVEN a top toolbar WHEN translation has exactly half of a decimal THEN set vertical clipping with the ceiling value`() {
-        val engineView: FakeEngineView = mock()
-        val behavior = EngineViewClippingBehavior(
-            mock(),
-            null,
-            engineView,
-            100,
-            ToolbarPosition.TOP,
-        )
-
-        behavior.toolbarChangedAction(40.5f)
-
-        verify(engineView).setVerticalClipping(41)
-    }
-
-    @Test
-    fun `GIVEN a top toolbar WHEN translation has more than a half decimal THEN set vertical clipping with the ceiling value`() {
-        val engineView: FakeEngineView = mock()
-        val behavior = EngineViewClippingBehavior(
-            mock(),
-            null,
-            engineView,
-            100,
-            ToolbarPosition.TOP,
-        )
-
-        behavior.toolbarChangedAction(40.6f)
-
-        verify(engineView).setVerticalClipping(41)
-    }
-
-    @Test
-    fun `GIVEN a bottom toolbar WHEN translation returns NaN THEN no exception thrown`() {
-        val engineView: EngineView = spy(FakeEngineView(testContext))
-        val toolbar: View = mock()
-        doReturn(100).`when`(toolbar).height
-        doReturn(Float.NaN).`when`(toolbar).translationY
-
-        val behavior = EngineViewClippingBehavior(
-            mock(),
-            null,
-            engineView.asView(),
-            toolbar.height,
-            ToolbarPosition.BOTTOM,
-        )
-
-        behavior.applyUpdatesDependentViewChanged(toolbar)
-        assertEquals(0f, engineView.asView().translationY)
+    private fun buildEngineViewClipping2Behavior(
+        topToolbarHeight: Int = 0,
+        bottomToolbarHeight: Int = 0,
+    ): EngineViewClippingBehavior {
+        return EngineViewClippingBehavior(
+            context = mock(),
+            attrs = null,
+            engineViewParent = engineParentView,
+            topToolbarHeight = topToolbarHeight,
+            bottomToolbarHeight = bottomToolbarHeight,
+        ).apply {
+            engineView = this@EngineViewClippingBehaviorTest.engineView
+        }
     }
 }
 
-private class BrowserToolbar(context: Context) : TextView(context), ScrollableToolbar {
+private class TestToolbar(context: Context) : TextView(context), ScrollableToolbar {
     override fun enableScrolling() {}
     override fun disableScrolling() {}
     override fun expand() {}
     override fun collapse() {}
 }
+
+private const val TOOLBAR_PARENT_HEIGHT = 2200
+private const val TOOLBAR_HEIGHT = 100f
+private const val TOOLBAR_TOP_WHEN_POSITIONED_AT_TOP = 0
+private const val TOOLBAR_TOP_WHEN_POSITIONED_AT_BOTTOM = 2100
+private const val Y_UP_TRANSITION = -42f
+private const val Y_DOWN_TRANSITION = 42f

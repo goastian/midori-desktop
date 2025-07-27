@@ -4,6 +4,7 @@
 
 package org.mozilla.fenix.components.appstate
 
+import mozilla.components.browser.state.state.content.DownloadState
 import mozilla.components.concept.storage.BookmarkNode
 import mozilla.components.concept.sync.TabData
 import mozilla.components.feature.tab.collections.TabCollection
@@ -82,7 +83,11 @@ sealed class AppAction : Action {
         AppAction()
 
     data class CollectionsChange(val collections: List<TabCollection>) : AppAction()
-    data class ModeChange(val mode: BrowsingMode) : AppAction()
+
+    /**
+     * Action dispatched when the browsing mode changes inside the BrowsingModeManager.
+     */
+    data class BrowsingModeManagerModeChanged(val mode: BrowsingMode) : AppAction()
     data class TopSitesChange(val topSites: List<TopSite>) : AppAction()
     data class RecentTabsChange(val recentTabs: List<RecentTab>) : AppAction()
     data class RemoveRecentTab(val recentTab: RecentTab) : AppAction()
@@ -552,24 +557,18 @@ sealed class AppAction : Action {
          * Replaces the current list of Pocket sponsored stories.
          *
          * @property sponsoredStories The new list of [PocketSponsoredStory] that was fetched.
-         * @property showContentRecommendations Whether or not to show Merino content
-         * recommendations.
          */
         data class PocketSponsoredStoriesChange(
             val sponsoredStories: List<PocketSponsoredStory>,
-            val showContentRecommendations: Boolean,
         ) : ContentRecommendationsAction()
 
         /**
          * Replaces the current list of [SponsoredContent]s.
          *
          * @property sponsoredContents THe new list of [SponsoredContent] that was fetched.
-         * @property showContentRecommendations Whether or not to show Merino content
-         * recommendations.
          */
         data class SponsoredContentsChange(
             val sponsoredContents: List<SponsoredContent>,
-            val showContentRecommendations: Boolean,
         ) : ContentRecommendationsAction()
 
         /**
@@ -636,5 +635,68 @@ sealed class AppAction : Action {
             val taskType: ChecklistItem.Task.Type,
             val prefValue: Boolean,
         ) : SetupChecklistAction()
+    }
+
+    /**
+     * [AppAction]s related to downloads.
+     */
+    sealed class DownloadAction : AppAction() {
+        /**
+         * Dispatched when a download is in progress.
+         *
+         * @property sessionId The ID of the session associated with the download.
+         */
+        data class DownloadInProgress(val sessionId: String?) : DownloadAction()
+
+        /**
+         * Dispatched when a download has failed.
+         *
+         * @property fileName The name of the file that failed to download.
+         */
+        data class DownloadFailed(val fileName: String?) : DownloadAction()
+
+        /**
+         * Dispatched when a download has completed successfully.
+         *
+         * @property downloadState The state object containing information about the completed download.
+         */
+        data class DownloadCompleted(val downloadState: DownloadState) : DownloadAction()
+
+        /**
+         * Dispatched when there is an error attempting to open a downloaded file.
+         *
+         * @property downloadState The state object containing information about the failed download.
+         */
+        data class CannotOpenFile(val downloadState: DownloadState) : DownloadAction()
+    }
+
+    /**
+     * [AppAction]s related to prompting the user for a store review/rating.
+     */
+    sealed class ReviewPromptAction : AppAction() {
+        /**
+         * Dispatched to trigger review prompt eligibility checks.
+         */
+        data object CheckIfEligibleForReviewPrompt : ReviewPromptAction()
+
+        /**
+         * Dispatched when no triggers for showing the prompt are satisfied.
+         */
+        data object DoNotShowReviewPrompt : ReviewPromptAction()
+
+        /**
+         * Dispatched when a trigger to show the Play Store prompt is satisfied.
+         */
+        data object ShowPlayStorePrompt : ReviewPromptAction()
+
+        /**
+         * Dispatched when a trigger to show our custom review prompt is satisfied.
+         */
+        data object ShowCustomReviewPrompt : ReviewPromptAction()
+
+        /**
+         * Dispatched after a review prompt was shown.
+         */
+        data object ReviewPromptShown : ReviewPromptAction()
     }
 }

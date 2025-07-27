@@ -18,8 +18,8 @@ import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.EngineView
 import mozilla.components.concept.engine.prompt.ShareData
 import mozilla.components.feature.tabs.TabsUseCases
+import mozilla.components.support.ktx.kotlin.isContentUrl
 import mozilla.components.support.ktx.kotlin.isUrl
-import mozilla.components.support.utils.ext.isContentUrl
 import mozilla.components.ui.tabcounter.TabCounterMenu
 import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.GleanMetrics.Events
@@ -43,7 +43,6 @@ import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.ext.navigateSafe
 import org.mozilla.fenix.ext.settings
 import org.mozilla.fenix.home.HomeScreenViewModel
-import org.mozilla.fenix.home.HomeScreenViewModel.Companion.ALL_PRIVATE_TABS
 import org.mozilla.fenix.utils.Settings
 
 /**
@@ -62,11 +61,6 @@ interface BrowserToolbarController {
      * @see [BrowserToolbarInteractor.onHomeButtonClicked]
      */
     fun handleHomeButtonClick()
-
-    /**
-     * @see [BrowserToolbarInteractor.onEraseButtonClicked]
-     */
-    fun handleEraseButtonClick()
 
     /**
      * @see [BrowserToolbarInteractor.onTranslationsButtonClicked]
@@ -232,13 +226,6 @@ class DefaultBrowserToolbarController(
         }
     }
 
-    override fun handleEraseButtonClick() {
-        Events.browserToolbarEraseTapped.record(NoExtras())
-        homeViewModel.sessionToDelete = ALL_PRIVATE_TABS
-        val directions = BrowserFragmentDirections.actionGlobalHome()
-        navController.navigate(directions)
-    }
-
     override fun handleTranslationsButtonClick() {
         Translations.action.record(Translations.ActionExtra("main_flow_toolbar"))
 
@@ -256,7 +243,7 @@ class DefaultBrowserToolbarController(
         }
 
         if (url?.isContentUrl() == true) {
-            val tab = sessionId.let { store.state.findTab(it) } ?: return
+            val tab = store.state.findTab(sessionId) ?: return
 
             store.dispatch(
                 ShareResourceAction.AddShareAction(

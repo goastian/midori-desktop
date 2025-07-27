@@ -101,7 +101,7 @@ class HomeSettingsFragment : PreferenceFragmentCompat() {
         }
 
         requirePreference<SwitchPreference>(R.string.pref_key_pocket_homescreen_recommendations).apply {
-            isVisible = ContentRecommendationsFeatureHelper.isPocketRecommendationsFeatureEnabled(context)
+            isVisible = ContentRecommendationsFeatureHelper.isContentRecommendationsFeatureEnabled(context)
             isChecked = context.settings().showPocketRecommendationsFeature
             onPreferenceChangeListener = object : SharedPreferenceUpdater() {
                 override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
@@ -137,7 +137,6 @@ class HomeSettingsFragment : PreferenceFragmentCompat() {
                                 context.components.appStore.dispatch(
                                     ContentRecommendationsAction.SponsoredContentsChange(
                                         sponsoredContents = emptyList(),
-                                        showContentRecommendations = context.settings().showContentRecommendations,
                                     ),
                                 )
                             } else {
@@ -146,7 +145,6 @@ class HomeSettingsFragment : PreferenceFragmentCompat() {
                                 context.components.appStore.dispatch(
                                     ContentRecommendationsAction.PocketSponsoredStoriesChange(
                                         sponsoredStories = emptyList(),
-                                        showContentRecommendations = context.settings().showContentRecommendations,
                                     ),
                                 )
                             }

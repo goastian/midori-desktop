@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- Text for confirmation for a positive action in dialog -->
   <string name="mozac_feature_prompts_ok">Ceart ma-thà</string>
   <!-- Text for confirmation for a negative action in dialog. -->
@@ -50,6 +50,8 @@
   <string name="mozac_feature_prompts_allow">Ceadaich</string>
   <!-- Text of a negative button in dialog requesting to open a new window. -->
   <string name="mozac_feature_prompts_deny">Diùlt</string>
+  <!-- Text of the title of a dialog when a page is requesting to open a new window. -->
+  <string name="mozac_feature_prompts_popup_dialog_title">A bheil thu airson cead fosglaidh a thoirt dhan làrach?</string>
   <!-- Title of the dialog shown when a user is leaving a website and there is still data not saved yet. -->
   <string name="mozac_feature_prompt_before_unload_dialog_title">A bheil thu cinnteach?</string>
   <!-- Body text of the dialog shown when a user is leaving a website and there is still data not saved yet. -->
@@ -109,11 +111,11 @@
   <!-- Pressing this will dismiss the suggested strong password dialog -->
   <string name="mozac_feature_prompts_suggest_strong_password_dismiss">Chan ann an-dràsta</string>
   <!-- Title for showing the suggest strong password saved confirmation snackbar -->
-  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title">Chaidh am facal-faire a shàbhaladh</string>
+  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title" tools:ignore="UnusedResources" moz:removedIn="142">Chaidh am facal-faire a shàbhaladh</string>
   <!-- Title for showing the suggest strong password updated confirmation snackbar -->
   <string name="mozac_feature_prompts_suggest_strong_password_updated_snackbar_title">Chaidh am facal-faire ùrachadh</string>
   <!-- Title for showing the username updated confirmation snackbar -->
-  <string name="mozac_feature_prompt_login_snackbar_username_updated">Chaidh an t-ainm-chleachdaiche ùrachadh</string>
+  <string name="mozac_feature_prompt_login_snackbar_username_updated" tools:ignore="UnusedResources" moz:removedIn="142">Chaidh an t-ainm-chleachdaiche ùrachadh</string>
   <!-- Strings shown in a dialog that appear when users try to refresh a certain kind of webpages -->
   <string name="mozac_feature_prompt_repost_title">A bheil thu airson an dàta a chur gun làrach seo a-rithist?</string>
   <string name="mozac_feature_prompt_repost_message">Ma nì thu ath-nuadhachadh air an duilleag seo, dh’fhaoidte gun dèid gnìomhan a rinn thu o chionn goirid, can pàigheadh a chur thu no beachd a phostaich thu, a dhèanamh a-rithist.</string>
@@ -121,6 +123,14 @@
   <string name="mozac_feature_prompt_repost_positive_button_text">Cuir an dàta a-rithist</string>
   <!-- Pressing this will dismiss the dialog and not refresh the webpage -->
   <string name="mozac_feature_prompt_repost_negative_button_text">Sguir dheth</string>
+  <!-- Strings show in a dialog that appear when user confirm folder upload -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_title">A bheil thu airson na faidhlichean a luchdadh suas?</string>
+  <!-- Prompt message displayed when user selects a specific folder. %1$s is a folder / directory name. -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_message">Dèan cinnteach gu bheil earbsa agad san làrach mus luchdaich thu rud suas o “%1$s”.</string>
+  <!-- Pressing this will dismiss the dialog and allow to upload folder -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_positive_button_text">Luchdaich suas</string>
+  <!-- Pressing this will dismiss the dialog and disallow to upload folder -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_negative_button_text">Sguir dheth</string>
   <!--
     Credit Card Autofill
 
@@ -164,7 +174,7 @@
   <!-- Title of the Identity Credential privacy policy dialog title. The %1$s will be replaced with the name of the provider. -->
   <string name="mozac_feature_prompts_identity_credentials_privacy_policy_title">Cleachd %1$s mar sholaraiche clàraidh a-steach</string>
   <!-- Title of the Identity Credential privacy policy dialog description. The %1$s will be replaced with the name of the provider, %2$s will be replaced with the account, %3$s will be replaced with the privacy policy url and  %4$s will be replaced with the terms of service. -->
-  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote">Ma chlàraicheas tu a-steach gu %1$s le cunntas %2$s, bidh sin fo bhuaidh &lt;a href="%3$s"&gt;a’ phoileasaidh phrìobhaideachd&lt;/a&gt; agus &lt;a href="%4$s"&gt;teirmichean na seirbheise&lt;/a&gt; aca</string>
+  <string name="mozac_feature_prompts_identity_credentials_privacy_policy_description" tools:ignore="IncorrectStraightDoubleQuote"><![CDATA[Ma chlàraicheas tu a-steach gu %1$s le cunntas %2$s, bidh sin fo bhuaidh <a href=\"%3$s\">a’ phoileasaidh phrìobhaideachd</a> agus <a href=\"%4$s\">teirmichean na seirbheise</a> aca]]></string>
   <!-- Text for the positive button of the Identity Credential dialogs. -->
   <string name="mozac_feature_prompts_identity_credentials_continue">Lean air adhart</string>
   <!-- Text for the cancel button of the Identity Credential dialogs. -->

@@ -11,7 +11,6 @@ import mozilla.components.service.pocket.PocketStory
 import org.mozilla.fenix.components.appstate.AppState
 import org.mozilla.fenix.compose.SelectableChipColors
 import org.mozilla.fenix.theme.FirefoxTheme
-import org.mozilla.fenix.utils.Settings
 
 /**
  * State object that describes the pocket section of the homepage.
@@ -19,7 +18,6 @@ import org.mozilla.fenix.utils.Settings
  * @property stories List of [PocketStory] to display.
  * @property categories List of [PocketRecommendedStoriesCategory] to display.
  * @property categoriesSelections List of selectable [PocketRecommendedStoriesSelectedCategory] to display.
- * @property showContentRecommendations Whether or not to show Merino content recommendations.
  * @property categoryColors Color parameters for the selectable categories.
  * @property textColor [Color] for text.
  * @property linkTextColor [Color] for link text.
@@ -28,7 +26,6 @@ data class PocketState(
     val stories: List<PocketStory>,
     val categories: List<PocketRecommendedStoriesCategory>,
     val categoriesSelections: List<PocketRecommendedStoriesSelectedCategory>,
-    val showContentRecommendations: Boolean,
     val categoryColors: SelectableChipColors,
     val textColor: Color,
     val linkTextColor: Color,
@@ -43,10 +40,9 @@ data class PocketState(
          * Builds a new [PocketState] from the current [AppState].
          *
          * @param appState State to build the [PocketState] from.
-         * @param settings [Settings] corresponding to how the homepage should be displayed.
          */
         @Composable
-        internal fun build(appState: AppState, settings: Settings) = with(appState) {
+        internal fun build(appState: AppState) = with(appState) {
             var textColor = FirefoxTheme.colors.textPrimary
             var linkTextColor = FirefoxTheme.colors.textAccent
 
@@ -62,7 +58,6 @@ data class PocketState(
                 stories = recommendationState.pocketStories,
                 categories = recommendationState.pocketStoriesCategories,
                 categoriesSelections = recommendationState.pocketStoriesCategoriesSelections,
-                showContentRecommendations = settings.showContentRecommendations,
                 categoryColors = getSelectableChipColors(),
                 textColor = textColor,
                 linkTextColor = linkTextColor,
@@ -73,26 +68,27 @@ data class PocketState(
 
 @Composable
 private fun AppState.getSelectableChipColors(): SelectableChipColors {
-    var (selectedBackgroundColor, unselectedBackgroundColor, selectedTextColor, unselectedTextColor) =
+    var (selectedContainerColor, containerColor, selectedLabelColor, labelColor, borderColor) =
         SelectableChipColors.buildColors()
 
-    wallpaperState.composeRunIfWallpaperCardColorsAreAvailable { cardColorLight, cardColorDark ->
-        selectedTextColor = FirefoxTheme.colors.textPrimary
-        unselectedTextColor = FirefoxTheme.colors.textInverted
+    wallpaperState.ComposeRunIfWallpaperCardColorsAreAvailable { cardColorLight, cardColorDark ->
+        selectedLabelColor = FirefoxTheme.colors.textPrimary
+        labelColor = FirefoxTheme.colors.textInverted
 
         if (isSystemInDarkTheme()) {
-            selectedBackgroundColor = cardColorDark
-            unselectedBackgroundColor = cardColorLight
+            selectedContainerColor = cardColorDark
+            containerColor = cardColorLight
         } else {
-            selectedBackgroundColor = cardColorLight
-            unselectedBackgroundColor = cardColorDark
+            selectedContainerColor = cardColorLight
+            containerColor = cardColorDark
         }
     }
 
     return SelectableChipColors(
-        selectedTextColor = selectedTextColor,
-        unselectedTextColor = unselectedTextColor,
-        selectedBackgroundColor = selectedBackgroundColor,
-        unselectedBackgroundColor = unselectedBackgroundColor,
+        selectedLabelColor = selectedLabelColor,
+        labelColor = labelColor,
+        selectedContainerColor = selectedContainerColor,
+        containerColor = containerColor,
+        borderColor = borderColor,
     )
 }

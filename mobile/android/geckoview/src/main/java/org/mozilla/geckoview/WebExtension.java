@@ -1876,6 +1876,9 @@ public class WebExtension {
      */
     public final @NonNull String[] requiredOrigins;
 
+    /** Required data collection permissions for this extension. */
+    public final @NonNull String[] requiredDataCollectionPermissions;
+
     /**
      * Optional permissions for this extension.
      *
@@ -1911,6 +1914,12 @@ public class WebExtension {
      * Host permissions </a>.
      */
     public final @NonNull String[] grantedOptionalOrigins;
+
+    /** Optional data collection permissions for this extension. */
+    public final @NonNull String[] optionalDataCollectionPermissions;
+
+    /** Granted optional data collection permissions for this extension. */
+    public final @NonNull String[] grantedOptionalDataCollectionPermissions;
 
     /**
      * Branding name for this extension.
@@ -2084,10 +2093,13 @@ public class WebExtension {
       icon = null;
       requiredPermissions = null;
       requiredOrigins = null;
+      requiredDataCollectionPermissions = null;
       optionalPermissions = null;
       optionalOrigins = null;
+      optionalDataCollectionPermissions = null;
       grantedOptionalPermissions = null;
       grantedOptionalOrigins = null;
+      grantedOptionalDataCollectionPermissions = null;
       name = null;
       description = null;
       version = null;
@@ -2117,10 +2129,16 @@ public class WebExtension {
     /* package */ MetaData(final GeckoBundle bundle) {
       requiredPermissions = bundle.getStringArray("requiredPermissions");
       requiredOrigins = bundle.getStringArray("requiredOrigins");
+      requiredDataCollectionPermissions =
+          bundle.getStringArray("requiredDataCollectionPermissions");
       optionalPermissions = bundle.getStringArray("optionalPermissions");
       optionalOrigins = bundle.getStringArray("optionalOrigins");
+      optionalDataCollectionPermissions =
+          bundle.getStringArray("optionalDataCollectionPermissions");
       grantedOptionalPermissions = bundle.getStringArray("grantedOptionalPermissions");
       grantedOptionalOrigins = bundle.getStringArray("grantedOptionalOrigins");
+      grantedOptionalDataCollectionPermissions =
+          bundle.getStringArray("grantedOptionalDataCollectionPermissions");
       description = bundle.getString("description");
       version = bundle.getString("version");
       creatorName = bundle.getString("creatorName");
@@ -2996,17 +3014,38 @@ public class WebExtension {
     /** Whether the user granted access in private mode or not. */
     @Nullable public final Boolean isPrivateModeGranted;
 
+    /** Whether the user granted access to technical and interaction data collection. */
+    @Nullable public final Boolean isTechnicalAndInteractionDataGranted;
+
     /**
      * Creates a new PermissionPromptResponse with the given fields.
      *
      * @param isPermissionsGranted Whether the user granted permissions or not.
      * @param isPrivateModeGranted Whether the user granted access in private mode or not.
      */
+    @Deprecated
+    @DeprecationSchedule(id = "web-extension-permission-prompt-response", version = 143)
     public PermissionPromptResponse(
         final @Nullable Boolean isPermissionsGranted,
         final @Nullable Boolean isPrivateModeGranted) {
+      this(isPermissionsGranted, isPrivateModeGranted, false);
+    }
+
+    /**
+     * Creates a new PermissionPromptResponse with the given fields.
+     *
+     * @param isPermissionsGranted Whether the user granted permissions or not.
+     * @param isPrivateModeGranted Whether the user granted access in private mode or not.
+     * @param isTechnicalAndInteractionDataGranted Whether the user granted access to technical and
+     *     interaction data collection.
+     */
+    public PermissionPromptResponse(
+        final Boolean isPermissionsGranted,
+        final Boolean isPrivateModeGranted,
+        final Boolean isTechnicalAndInteractionDataGranted) {
       this.isPermissionsGranted = isPermissionsGranted;
       this.isPrivateModeGranted = isPrivateModeGranted;
+      this.isTechnicalAndInteractionDataGranted = isTechnicalAndInteractionDataGranted;
     }
   }
 }

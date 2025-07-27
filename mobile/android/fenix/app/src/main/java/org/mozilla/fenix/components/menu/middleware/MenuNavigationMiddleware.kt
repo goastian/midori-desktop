@@ -10,8 +10,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import mozilla.appservices.places.BookmarkRoot
+import mozilla.components.browser.state.action.ShareResourceAction
 import mozilla.components.browser.state.ext.getUrl
 import mozilla.components.browser.state.state.CustomTabSessionState
+import mozilla.components.browser.state.state.content.ShareResourceState
+import mozilla.components.browser.state.store.BrowserStore
 import mozilla.components.concept.engine.EngineSession.LoadUrlFlags
 import mozilla.components.concept.engine.prompt.ShareData
 import mozilla.components.feature.pwa.WebAppUseCases
@@ -22,10 +25,9 @@ import mozilla.components.service.fxa.manager.AccountState.Authenticated
 import mozilla.components.service.fxa.manager.AccountState.Authenticating
 import mozilla.components.service.fxa.manager.AccountState.AuthenticationProblem
 import mozilla.components.service.fxa.manager.AccountState.NotAuthenticated
+import mozilla.components.support.ktx.kotlin.isContentUrl
 import org.mozilla.fenix.R
 import org.mozilla.fenix.browser.BrowserFragmentDirections
-import org.mozilla.fenix.browser.browsingmode.BrowsingMode
-import org.mozilla.fenix.browser.browsingmode.BrowsingModeManager
 import org.mozilla.fenix.collections.SaveCollectionStep
 import org.mozilla.fenix.components.menu.BrowserNavigationParams
 import org.mozilla.fenix.components.menu.MenuDialogFragmentDirections
@@ -33,7 +35,6 @@ import org.mozilla.fenix.components.menu.store.MenuAction
 import org.mozilla.fenix.components.menu.store.MenuState
 import org.mozilla.fenix.components.menu.store.MenuStore
 import org.mozilla.fenix.components.menu.toFenixFxAEntryPoint
-import org.mozilla.fenix.components.usecases.FenixBrowserUseCases
 import org.mozilla.fenix.ext.nav
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.settings.SupportUtils.AMO_HOMEPAGE_FOR_ANDROID
@@ -45,12 +46,11 @@ import org.mozilla.fenix.webcompat.WEB_COMPAT_REPORTER_URL
  * [Middleware] implementation for handling navigating events based on [MenuAction]s that are
  * dispatched to the [MenuStore].
  *
+ * @param browserStore [BrowserStore] used to dispatch actions related to the menu state.
  * @param navController [NavController] used for navigation.
- * @param browsingModeManager [BrowsingModeManager] used for setting the browsing mode.
  * @param openToBrowser Callback to open the provided [BrowserNavigationParams]
  * in a new browser tab.
  * @param sessionUseCases [SessionUseCases] used to reload the page and navigate back/forward.
- * @param fenixBrowserUseCases [FenixBrowserUseCases] used for adding new homepage tabs.
  * @param webAppUseCases [WebAppUseCases] used for adding items to the home screen.
  * @param settings Used to check [Settings] when adding items to the home screen.
  * @param onDismiss Callback invoked to dismiss the menu dialog.
@@ -59,11 +59,10 @@ import org.mozilla.fenix.webcompat.WEB_COMPAT_REPORTER_URL
  */
 @Suppress("LongParameterList")
 class MenuNavigationMiddleware(
+    private val browserStore: BrowserStore,
     private val navController: NavController,
-    private val browsingModeManager: BrowsingModeManager,
     private val openToBrowser: (params: BrowserNavigationParams) -> Unit,
     private val sessionUseCases: SessionUseCases,
-    private val fenixBrowserUseCases: FenixBrowserUseCases,
     private val webAppUseCases: WebAppUseCases,
     private val settings: Settings,
     private val onDismiss: suspend () -> Unit,
@@ -113,6 +112,13 @@ class MenuNavigationMiddleware(
                 is MenuAction.Navigate.Settings -> navController.nav(
                     R.id.menuDialogFragment,
                     MenuDialogFragmentDirections.actionGlobalSettingsFragment(),
+                )
+
+                is MenuAction.Navigate.InstalledAddonDetails -> navController.nav(
+                    R.id.menuDialogFragment,
+                    MenuDialogFragmentDirections.actionMenuDialogFragmentToInstalledAddonDetailsFragment(
+                        addon = action.addon,
+                    ),
                 )
 
                 is MenuAction.Navigate.Bookmarks -> navController.nav(
@@ -205,26 +211,36 @@ class MenuNavigationMiddleware(
                     val url = customTab?.content?.url ?: currentState.browserMenuState?.selectedTab?.getUrl()
 
                     session?.let {
-                        val shareData = ShareData(title = it.content.title, url = url)
-                        val direction = MenuDialogFragmentDirections.actionGlobalShareFragment(
-                            sessionId = it.id,
-                            data = arrayOf(shareData),
-                            showPage = true,
-                        )
-
-                        val popUpToId = if (customTab != null) {
-                            R.id.externalAppBrowserFragment
+                        if (url?.isContentUrl() == true) {
+                            browserStore.dispatch(
+                                ShareResourceAction.AddShareAction(
+                                    session.id,
+                                    ShareResourceState.LocalResource(url),
+                                ),
+                            )
+                            onDismiss()
                         } else {
-                            R.id.browserFragment
-                        }
+                            val shareData = ShareData(title = it.content.title, url = url)
+                            val direction = MenuDialogFragmentDirections.actionGlobalShareFragment(
+                                sessionId = it.id,
+                                data = arrayOf(shareData),
+                                showPage = true,
+                            )
 
-                        navController.nav(
-                            R.id.menuDialogFragment,
-                            direction,
-                            navOptions = NavOptions.Builder()
-                                .setPopUpTo(popUpToId, false)
-                                .build(),
-                        )
+                            val popUpToId = if (customTab != null) {
+                                R.id.externalAppBrowserFragment
+                            } else {
+                                R.id.browserFragment
+                            }
+
+                            navController.nav(
+                                R.id.menuDialogFragment,
+                                direction,
+                                navOptions = NavOptions.Builder()
+                                    .setPopUpTo(popUpToId, false)
+                                    .build(),
+                            )
+                        }
                     }
                 }
 
@@ -240,10 +256,6 @@ class MenuNavigationMiddleware(
                 is MenuAction.Navigate.ExtensionsLearnMore -> openToBrowser(
                     BrowserNavigationParams(sumoTopic = SumoTopic.FIND_INSTALL_ADDONS),
                 )
-
-                is MenuAction.Navigate.NewTab -> openNewTab(isPrivate = false)
-
-                is MenuAction.Navigate.NewPrivateTab -> openNewTab(isPrivate = true)
 
                 is MenuAction.Navigate.AddonDetails -> navController.nav(
                     R.id.menuDialogFragment,
@@ -329,21 +341,17 @@ class MenuNavigationMiddleware(
                     }
                 }
 
+                is MenuAction.Navigate.Stop -> {
+                    val session = customTab ?: currentState.browserMenuState?.selectedTab
+
+                    session?.let {
+                        sessionUseCases.stopLoading.invoke(it.id)
+                        onDismiss()
+                    }
+                }
+
                 else -> Unit
             }
         }
-    }
-
-    private fun openNewTab(isPrivate: Boolean) {
-        browsingModeManager.mode = BrowsingMode.fromBoolean(isPrivate)
-
-        if (settings.enableHomepageAsNewTab) {
-            fenixBrowserUseCases.addNewHomepageTab(private = isPrivate)
-        }
-
-        navController.nav(
-            R.id.menuDialogFragment,
-            MenuDialogFragmentDirections.actionGlobalHome(focusOnAddressBar = true),
-        )
     }
 }

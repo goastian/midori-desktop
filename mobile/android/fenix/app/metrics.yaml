@@ -162,13 +162,14 @@ events:
           A string containing the name of the item the user tapped. These items
           include:
           add_bookmark, add_to_homescreen, add_to_top_sites, addon_details, addons_manager,
-          back, back_long_press, bookmark, bookmarks, desktop_view_off, desktop_view_on,
-          discover_more_extensions, web_extension_browser_action_clicked,
-          downloads, edit_bookmark, extensions_learn_more, extensions_submenu,
-          find_in_page, forward, forward_long_press, history, install_addon, new_tab,
-          new_private_tab, open_in_app, open_in_fenix, quit, reader_mode_appearance, reload,
-          remove_from_top_sites, save_submenu, save_to_collection, set_default_browser,
-          settings, share, stop, sync_account, tools_submenu, translate and print_content.
+          back, back_long_press, bookmark, bookmarks, desktop_view_off,
+          desktop_view_off_custom_tab, desktop_view_on, desktop_view_on_custom_tab,
+          discover_more_extensions, dismiss_menu_banner, web_extension_browser_action_clicked,
+          downloads, edit_bookmark, extensions_learn_more, find_in_page, find_in_page_custom_tab,
+          forward, forward_long_press, history, install_addon, menu_banner, new_tab, open_in_app,
+          open_in_fenix, quit, reader_mode_appearance, reload, remove_from_top_sites,
+          save_to_collection, set_default_browser, settings, share, share_custom_tab, stop,
+          sync_account, translate and print_content.
         type: string
     bugs:
       - https://github.com/mozilla-mobile/fenix/issues/1024
@@ -531,20 +532,6 @@ events:
     metadata:
       tags:
         - Toolbar
-  browser_toolbar_erase_tapped:
-    type: event
-    description: |
-      An event that indicates that a user has tapped
-      erase button on browser toolbar.
-    bugs:
-      - https://bugzilla.mozilla.org/show_bug.cgi?id=1859903
-    data_reviews:
-      - https://github.com/mozilla-mobile/firefox-android/pull/4151#issuecomment-1769519433
-    data_sensitivity:
-      - interaction
-    notification_emails:
-      - android-probes@mozilla.com
-    expires: never
   browser_toolbar_input_cleared:
     type: event
     description: |
@@ -2280,6 +2267,85 @@ private_browsing_locked:
       - android-probes@mozilla.com
     expires: never
 
+custom_review_prompt:
+  prompt_displayed:
+    type: event
+    description: Logged when the custom review prompt is shown to the user.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966653
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D253398
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+
+  positive_feedback_clicked:
+    type: event
+    description: Logged when the user clicks the positive button in the custom review prompt.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966653
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D253398
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+
+  negative_feedback_clicked:
+    type: event
+    description: Logged when the user clicks the negative button in the custom review prompt.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966653
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D253398
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+
+  rate_on_play_store_clicked:
+    type: event
+    description: Logged when the user chooses to rate the app on the Play Store from the custom review prompt.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966653
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D253398
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+
+  open_mozilla_connect_clicked:
+    type: event
+    description: Logged when the user chooses to open Mozilla Connect from the custom review prompt.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966653
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D253398
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+
+  prompt_dismissed:
+    type: event
+    description: Logged when the user dismisses the custom review prompt without interacting with any of the main options.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1966653
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D253398
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+
 search_shortcuts:
   selected:
     type: event
@@ -2534,6 +2600,22 @@ generated_password_dialog:
       tags:
         - Logins
 metrics:
+  client_association:
+    type: string
+    description: |
+      The Mozilla Account UID associated with the user.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1970661
+    data_reviews:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1970661
+    data_sensitivity:
+      - highly_sensitive
+    notification_emails:
+      - fmasalha@mozilla.com
+      - mtighe@mozilla.com
+    expires: never
+    send_in_pings:
+      - fx-accounts
   default_browser:
     type: boolean
     lifetime: application
@@ -8050,52 +8132,6 @@ app_theme:
       tags:
         - Themes
 pocket:
-  pocket_top_site_clicked:
-    type: event
-    description: |
-      A user clicked on the trending Pocket top site
-    bugs:
-      - https://github.com/mozilla-mobile/fenix/issues/8126
-    data_reviews:
-      - https://github.com/mozilla-mobile/fenix/pull/8098
-      - https://github.com/mozilla-mobile/fenix/pull/15713#issuecomment-703972068
-      - https://github.com/mozilla-mobile/fenix/pull/19924#issuecomment-861423789
-      - https://github.com/mozilla-mobile/fenix/pull/20517#pullrequestreview-718069041
-      - https://github.com/mozilla-mobile/fenix/pull/21038#issuecomment-906757301
-    data_sensitivity:
-      - interaction
-    notification_emails:
-      - android-probes@mozilla.com
-    expires: never
-    no_lint:
-      - COMMON_PREFIX
-    metadata:
-      tags:
-        - PocketIntegration
-        - Shortcuts
-  pocket_top_site_removed:
-    type: event
-    description: |
-      A user removed the trending Pocket top site
-    bugs:
-      - https://github.com/mozilla-mobile/fenix/issues/8126
-    data_reviews:
-      - https://github.com/mozilla-mobile/fenix/pull/8098
-      - https://github.com/mozilla-mobile/fenix/pull/15713#issuecomment-703972068
-      - https://github.com/mozilla-mobile/fenix/pull/19924#issuecomment-861423789
-      - https://github.com/mozilla-mobile/fenix/pull/20517#pullrequestreview-718069041
-      - https://github.com/mozilla-mobile/fenix/pull/23453#issuecomment-1024694220
-      - https://github.com/mozilla-mobile/fenix/pull/28502
-      - https://github.com/mozilla-mobile/firefox-android/pull/4039
-    data_sensitivity:
-      - interaction
-    notification_emails:
-      - android-probes@mozilla.com
-    expires: never
-    metadata:
-      tags:
-        - PocketIntegration
-        - Shortcuts
   home_recs_shown:
     type: event
     description: |
@@ -12696,6 +12732,84 @@ partnerships:
     notification_emails:
       - android-probes@mozilla.com
     expires: never
+  dt_001_detected:
+    type: event
+    description: |
+      When a dt-001 preinstall is detected using the DefaultDistributionProviderChecker
+    data_sensitivity:
+      - technical
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968291
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D252908
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+  dt_002_detected:
+    type: event
+    description: |
+      When a dt-002 preinstall is detected using the DefaultDistributionProviderChecker
+    data_sensitivity:
+      - technical
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968291
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D252908
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+  dt_003_detected:
+    type: event
+    description: |
+      When a dt-003 preinstall is detected using the DefaultDistributionProviderChecker
+    data_sensitivity:
+      - technical
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968291
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D252908
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+  dt_001_legacy_detected:
+    type: event
+    description: |
+      When a dt-001 preinstall is detected using the LegacyDistributionProviderChecker
+    data_sensitivity:
+      - technical
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968291
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D252908
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+  dt_002_legacy_detected:
+    type: event
+    description: |
+      When a dt-002 preinstall is detected using the LegacyDistributionProviderChecker
+    data_sensitivity:
+      - technical
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968291
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D252908
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+  dt_003_legacy_detected:
+    type: event
+    description: |
+      When a dt-003 preinstall is detected using the LegacyDistributionProviderChecker
+    data_sensitivity:
+      - technical
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968291
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D252908
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
 
 usage:
   profile_id:
@@ -13831,6 +13945,58 @@ downloads:
       - https://bugzilla.mozilla.org/show_bug.cgi?id=1956437
     data_reviews:
       - https://phabricator.services.mozilla.com/D243323
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+  pause_download:
+    type: event
+    description: |
+      The user pauses a downloading file on the downloads screen.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968735
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D251698
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+  resume_download:
+    type: event
+    description: |
+      The user resumes downloading a file on the downloads screen.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968735
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D251698
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+  cancel_download:
+    type: event
+    description: |
+      The user cancels downloading a file on the downloads screen.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968735
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D251698
+    data_sensitivity:
+      - interaction
+    notification_emails:
+      - android-probes@mozilla.com
+    expires: never
+  retry_download:
+    type: event
+    description: |
+      The user retries to download a failed download file on the downloads screen.
+    bugs:
+      - https://bugzilla.mozilla.org/show_bug.cgi?id=1968735
+    data_reviews:
+      - https://phabricator.services.mozilla.com/D251698
     data_sensitivity:
       - interaction
     notification_emails:

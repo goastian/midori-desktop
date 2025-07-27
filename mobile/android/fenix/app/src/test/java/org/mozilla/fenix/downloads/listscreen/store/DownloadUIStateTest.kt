@@ -14,32 +14,93 @@ class DownloadUIStateTest {
         val fileItems = listOf(
             fileItem(
                 id = "1",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "2",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "3",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "4",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
+            ),
+            fileItem(
+                id = "5",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "6",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "7",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "8",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "9",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "10",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "11",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "12",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
             ),
         )
 
         val downloadUIState = DownloadUIState(
             items = fileItems,
             mode = DownloadUIState.Mode.Normal,
-            pendingDeletionIds = setOf("2", "4"),
+            pendingDeletionIds = setOf("2", "4", "6", "8", "10", "12"),
             userSelectedContentTypeFilter = FileItem.ContentTypeFilter.All,
         )
 
         val expected = DownloadUIState.ItemsState.Items(
             listOf(
-                HeaderItem(createdTime = CreatedTime.LAST_30_DAYS),
+                HeaderItem(timeCategory = TimeCategory.IN_PROGRESS),
+                fileItem(
+                    id = "5",
+                    status = FileItem.Status.Downloading(progress = 0.5f),
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                fileItem(
+                    id = "7",
+                    status = FileItem.Status.Paused(progress = 0.5f),
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                fileItem(
+                    id = "9",
+                    status = FileItem.Status.Failed,
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                fileItem(
+                    id = "11",
+                    status = FileItem.Status.Initiated,
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                HeaderItem(timeCategory = TimeCategory.LAST_30_DAYS),
                 fileItem(id = "1"),
                 fileItem(id = "3"),
             ),
@@ -53,35 +114,55 @@ class DownloadUIStateTest {
         val fileItems = listOf(
             fileItem(
                 id = "1",
-                createdTime = CreatedTime.OLDER,
+                timeCategory = TimeCategory.OLDER,
             ),
             fileItem(
                 id = "2",
-                createdTime = CreatedTime.OLDER,
+                timeCategory = TimeCategory.OLDER,
             ),
             fileItem(
                 id = "3",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "4",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "5",
-                createdTime = CreatedTime.YESTERDAY,
+                timeCategory = TimeCategory.YESTERDAY,
             ),
             fileItem(
                 id = "6",
-                createdTime = CreatedTime.TODAY,
+                timeCategory = TimeCategory.TODAY,
             ),
             fileItem(
                 id = "7",
-                createdTime = CreatedTime.TODAY,
+                timeCategory = TimeCategory.TODAY,
             ),
             fileItem(
                 id = "8",
-                createdTime = CreatedTime.LAST_7_DAYS,
+                timeCategory = TimeCategory.LAST_7_DAYS,
+            ),
+            fileItem(
+                id = "9",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "10",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "11",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "12",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
             ),
         )
 
@@ -94,38 +175,59 @@ class DownloadUIStateTest {
 
         val expected = DownloadUIState.ItemsState.Items(
             listOf(
-                HeaderItem(createdTime = CreatedTime.TODAY),
+                HeaderItem(timeCategory = TimeCategory.IN_PROGRESS),
+                fileItem(
+                    id = "9",
+                    status = FileItem.Status.Downloading(progress = 0.5f),
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                fileItem(
+                    id = "10",
+                    status = FileItem.Status.Paused(progress = 0.5f),
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                fileItem(
+                    id = "11",
+                    status = FileItem.Status.Failed,
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                fileItem(
+                    id = "12",
+                    status = FileItem.Status.Initiated,
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                HeaderItem(timeCategory = TimeCategory.TODAY),
                 fileItem(
                     id = "6",
-                    createdTime = CreatedTime.TODAY,
+                    timeCategory = TimeCategory.TODAY,
                 ),
-                HeaderItem(createdTime = CreatedTime.YESTERDAY),
+                HeaderItem(timeCategory = TimeCategory.YESTERDAY),
                 fileItem(
                     id = "5",
-                    createdTime = CreatedTime.YESTERDAY,
+                    timeCategory = TimeCategory.YESTERDAY,
                 ),
-                HeaderItem(createdTime = CreatedTime.LAST_7_DAYS),
+                HeaderItem(timeCategory = TimeCategory.LAST_7_DAYS),
                 fileItem(
                     id = "8",
-                    createdTime = CreatedTime.LAST_7_DAYS,
+                    timeCategory = TimeCategory.LAST_7_DAYS,
                 ),
-                HeaderItem(createdTime = CreatedTime.LAST_30_DAYS),
+                HeaderItem(timeCategory = TimeCategory.LAST_30_DAYS),
                 fileItem(
                     id = "3",
-                    createdTime = CreatedTime.LAST_30_DAYS,
+                    timeCategory = TimeCategory.LAST_30_DAYS,
                 ),
                 fileItem(
                     id = "4",
-                    createdTime = CreatedTime.LAST_30_DAYS,
+                    timeCategory = TimeCategory.LAST_30_DAYS,
                 ),
-                HeaderItem(createdTime = CreatedTime.OLDER),
+                HeaderItem(timeCategory = TimeCategory.OLDER),
                 fileItem(
                     id = "1",
-                    createdTime = CreatedTime.OLDER,
+                    timeCategory = TimeCategory.OLDER,
                 ),
                 fileItem(
                     id = "2",
-                    createdTime = CreatedTime.OLDER,
+                    timeCategory = TimeCategory.OLDER,
                 ),
             ),
         )
@@ -134,42 +236,66 @@ class DownloadUIStateTest {
     }
 
     @Test
-    fun `WHEN content type filter is selected THEN only those items are displayed`() {
+    fun `WHEN content type filter is selected THEN only those completed items are displayed`() {
         val fileItems = listOf(
             fileItem(
                 id = "1",
-                createdTime = CreatedTime.OLDER,
+                timeCategory = TimeCategory.OLDER,
                 contentType = "image/png",
             ),
             fileItem(
                 id = "2",
-                createdTime = CreatedTime.OLDER,
+                timeCategory = TimeCategory.OLDER,
                 contentType = "video/mp4",
             ),
             fileItem(
                 id = "3",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
                 contentType = "application/pdf",
             ),
             fileItem(
                 id = "4",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
                 contentType = "text/plain",
             ),
             fileItem(
                 id = "5",
-                createdTime = CreatedTime.YESTERDAY,
+                timeCategory = TimeCategory.YESTERDAY,
                 contentType = "image/png",
             ),
             fileItem(
                 id = "6",
-                createdTime = CreatedTime.TODAY,
+                timeCategory = TimeCategory.TODAY,
                 contentType = "image/png",
             ),
             fileItem(
                 id = "7",
-                createdTime = CreatedTime.TODAY,
+                timeCategory = TimeCategory.TODAY,
                 contentType = "image/png",
+            ),
+            fileItem(
+                id = "8",
+                contentType = "image/png",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "9",
+                contentType = "image/png",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "10",
+                contentType = "image/png",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "11",
+                contentType = "image/png",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
             ),
         )
 
@@ -182,27 +308,27 @@ class DownloadUIStateTest {
 
         val expected = DownloadUIState.ItemsState.Items(
             listOf(
-                HeaderItem(createdTime = CreatedTime.TODAY),
+                HeaderItem(timeCategory = TimeCategory.TODAY),
                 fileItem(
                     id = "6",
-                    createdTime = CreatedTime.TODAY,
+                    timeCategory = TimeCategory.TODAY,
                     contentType = "image/png",
                 ),
                 fileItem(
                     id = "7",
-                    createdTime = CreatedTime.TODAY,
+                    timeCategory = TimeCategory.TODAY,
                     contentType = "image/png",
                 ),
-                HeaderItem(createdTime = CreatedTime.YESTERDAY),
+                HeaderItem(timeCategory = TimeCategory.YESTERDAY),
                 fileItem(
                     id = "5",
-                    createdTime = CreatedTime.YESTERDAY,
+                    timeCategory = TimeCategory.YESTERDAY,
                     contentType = "image/png",
                 ),
-                HeaderItem(createdTime = CreatedTime.OLDER),
+                HeaderItem(timeCategory = TimeCategory.OLDER),
                 fileItem(
                     id = "1",
-                    createdTime = CreatedTime.OLDER,
+                    timeCategory = TimeCategory.OLDER,
                     contentType = "image/png",
                 ),
             ),
@@ -213,22 +339,46 @@ class DownloadUIStateTest {
     }
 
     @Test
-    fun `WHEN file items of at least 2 types are present THEN only those filters for available file types`() {
+    fun `WHEN completed file items of at least 2 types are present THEN only those filters are available`() {
         val fileItems = listOf(
             fileItem(
                 id = "2",
-                createdTime = CreatedTime.OLDER,
+                timeCategory = TimeCategory.OLDER,
                 contentType = "video/mp4",
             ),
             fileItem(
                 id = "3",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
                 contentType = "application/pdf",
             ),
             fileItem(
                 id = "4",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
                 contentType = "text/plain",
+            ),
+            fileItem(
+                id = "5",
+                contentType = "image/png",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "6",
+                contentType = "image/png",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "7",
+                contentType = "image/png",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "8",
+                contentType = "image/png",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
             ),
         )
 
@@ -253,12 +403,12 @@ class DownloadUIStateTest {
         val fileItems = listOf(
             fileItem(
                 id = "2",
-                createdTime = CreatedTime.OLDER,
+                timeCategory = TimeCategory.OLDER,
                 contentType = "video/mp4",
             ),
             fileItem(
                 id = "3",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
                 contentType = "video/mp4",
             ),
         )
@@ -276,22 +426,87 @@ class DownloadUIStateTest {
     }
 
     @Test
-    fun `WHEN user selected filter does not contain any items THEN override filter is set to All`() {
+    fun `WHEN in progress file items of at least 2 types are present THEN filters are not displayed`() {
+        val fileItems = listOf(
+            fileItem(
+                id = "1",
+                contentType = "image/png",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "2",
+                contentType = "application/pdf",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "3",
+                contentType = "video/mp4",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "4",
+                contentType = "video/mp4",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+        )
+
+        val downloadUIState = DownloadUIState(
+            items = fileItems,
+            mode = DownloadUIState.Mode.Normal,
+            pendingDeletionIds = emptySet(),
+            userSelectedContentTypeFilter = FileItem.ContentTypeFilter.All,
+        )
+
+        val expected = emptyList<FileItem.ContentTypeFilter>()
+
+        assertEquals(expected, downloadUIState.filtersToDisplay)
+    }
+
+    @Test
+    fun `GIVEN filter is not set to All WHEN user selected filter does not contain any completed items THEN override filter is set to All`() {
         val fileItems = listOf(
             fileItem(
                 id = "2",
-                createdTime = CreatedTime.OLDER,
+                timeCategory = TimeCategory.OLDER,
                 contentType = "video/mp4",
             ),
             fileItem(
                 id = "3",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
                 contentType = "application/pdf",
             ),
             fileItem(
                 id = "4",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
                 contentType = "text/plain",
+            ),
+            fileItem(
+                id = "5",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+                contentType = "image/png",
+            ),
+            fileItem(
+                id = "6",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+                contentType = "image/png",
+            ),
+            fileItem(
+                id = "7",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+                contentType = "image/png",
+            ),
+            fileItem(
+                id = "8",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
+                contentType = "image/png",
             ),
         )
 
@@ -308,31 +523,79 @@ class DownloadUIStateTest {
     }
 
     @Test
-    fun `WHEN search query is used THEN only the items matching query for url are displayed`() {
+    fun `GIVEN content type is All WHEN search query is used THEN only the items matching query for url are displayed`() {
         val fileItems = listOf(
             fileItem(
                 id = "1",
                 fileName = "somefile",
                 displayedShortUrl = "firefox.com",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "2",
                 fileName = "anotherfile",
                 displayedShortUrl = "mozilla.org",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "3",
                 fileName = "yetanotherfile",
                 displayedShortUrl = "mozilla.com",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "4",
                 fileName = "name",
                 displayedShortUrl = "firefox.com",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
+            ),
+            fileItem(
+                id = "5",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "6",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "7",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "8",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "9",
+                displayedShortUrl = "mozilla.com",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "10",
+                displayedShortUrl = "mozilla.com",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "11",
+                displayedShortUrl = "mozilla.com",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "12",
+                displayedShortUrl = "mozilla.com",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
             ),
         )
 
@@ -341,22 +604,48 @@ class DownloadUIStateTest {
             mode = DownloadUIState.Mode.Normal,
             pendingDeletionIds = emptySet(),
             searchQuery = "firefox",
+            userSelectedContentTypeFilter = FileItem.ContentTypeFilter.All,
         )
 
         val expected = DownloadUIState.ItemsState.Items(
             listOf(
-                HeaderItem(createdTime = CreatedTime.LAST_30_DAYS),
+                HeaderItem(timeCategory = TimeCategory.IN_PROGRESS),
+                fileItem(
+                    id = "5",
+                    displayedShortUrl = "firefox.com",
+                    status = FileItem.Status.Downloading(progress = 0.5f),
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                fileItem(
+                    id = "6",
+                    displayedShortUrl = "firefox.com",
+                    status = FileItem.Status.Paused(progress = 0.5f),
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                fileItem(
+                    id = "7",
+                    displayedShortUrl = "firefox.com",
+                    status = FileItem.Status.Failed,
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                fileItem(
+                    id = "8",
+                    displayedShortUrl = "firefox.com",
+                    status = FileItem.Status.Initiated,
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                HeaderItem(timeCategory = TimeCategory.LAST_30_DAYS),
                 fileItem(
                     id = "1",
                     fileName = "somefile",
                     displayedShortUrl = "firefox.com",
-                    createdTime = CreatedTime.LAST_30_DAYS,
+                    timeCategory = TimeCategory.LAST_30_DAYS,
                 ),
                 fileItem(
                     id = "4",
                     fileName = "name",
                     displayedShortUrl = "firefox.com",
-                    createdTime = CreatedTime.LAST_30_DAYS,
+                    timeCategory = TimeCategory.LAST_30_DAYS,
                 ),
             ),
         )
@@ -365,31 +654,193 @@ class DownloadUIStateTest {
     }
 
     @Test
-    fun `WHEN search query is used THEN only the items matching query for name are displayed`() {
+    fun `GIVEN content type is not All WHEN search query is used THEN only the completed items matching query for url are displayed`() {
         val fileItems = listOf(
             fileItem(
                 id = "1",
                 fileName = "somefile",
                 displayedShortUrl = "firefox.com",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "2",
                 fileName = "anotherfile",
                 displayedShortUrl = "mozilla.org",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "3",
                 fileName = "yetanotherfile",
                 displayedShortUrl = "mozilla.com",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "4",
                 fileName = "name",
                 displayedShortUrl = "firefox.com",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
+            ),
+            fileItem(
+                id = "5",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "6",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "7",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "8",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "9",
+                displayedShortUrl = "mozilla.com",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "10",
+                displayedShortUrl = "mozilla.com",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "11",
+                displayedShortUrl = "mozilla.com",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "12",
+                displayedShortUrl = "mozilla.com",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+        )
+
+        val downloadUIState = DownloadUIState(
+            items = fileItems,
+            mode = DownloadUIState.Mode.Normal,
+            pendingDeletionIds = emptySet(),
+            searchQuery = "firefox",
+            userSelectedContentTypeFilter = FileItem.ContentTypeFilter.Image,
+        )
+
+        val expected = DownloadUIState.ItemsState.Items(
+            listOf(
+                HeaderItem(timeCategory = TimeCategory.LAST_30_DAYS),
+                fileItem(
+                    id = "1",
+                    fileName = "somefile",
+                    displayedShortUrl = "firefox.com",
+                    timeCategory = TimeCategory.LAST_30_DAYS,
+                ),
+                fileItem(
+                    id = "4",
+                    fileName = "name",
+                    displayedShortUrl = "firefox.com",
+                    timeCategory = TimeCategory.LAST_30_DAYS,
+                ),
+            ),
+        )
+
+        assertEquals(expected, downloadUIState.itemsState)
+    }
+
+    @Test
+    fun `GIVEN content type filter is All WHEN search query is used THEN only the items matching query for name are displayed`() {
+        val fileItems = listOf(
+            fileItem(
+                id = "1",
+                fileName = "somefile",
+                displayedShortUrl = "firefox.com",
+                timeCategory = TimeCategory.LAST_30_DAYS,
+            ),
+            fileItem(
+                id = "2",
+                fileName = "anotherfile",
+                displayedShortUrl = "mozilla.org",
+                timeCategory = TimeCategory.LAST_30_DAYS,
+            ),
+            fileItem(
+                id = "3",
+                fileName = "yetanotherfile",
+                displayedShortUrl = "mozilla.com",
+                timeCategory = TimeCategory.LAST_30_DAYS,
+            ),
+            fileItem(
+                id = "4",
+                fileName = "name",
+                displayedShortUrl = "firefox.com",
+                timeCategory = TimeCategory.LAST_30_DAYS,
+            ),
+            fileItem(
+                id = "5",
+                fileName = "inprogressfile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "6",
+                fileName = "pausedFile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "7",
+                fileName = "failedFile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "8",
+                fileName = "initiatedFile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "9",
+                displayedShortUrl = "firefox.com",
+                fileName = "nonameinprogress",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "10",
+                fileName = "nonamepaused",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "11",
+                fileName = "nonamefailed",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "12",
+                fileName = "nonameinitiated",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
             ),
         )
 
@@ -398,28 +849,178 @@ class DownloadUIStateTest {
             mode = DownloadUIState.Mode.Normal,
             pendingDeletionIds = emptySet(),
             searchQuery = "file",
+            userSelectedContentTypeFilter = FileItem.ContentTypeFilter.All,
         )
 
         val expected = DownloadUIState.ItemsState.Items(
             listOf(
-                HeaderItem(createdTime = CreatedTime.LAST_30_DAYS),
+                HeaderItem(timeCategory = TimeCategory.IN_PROGRESS),
+                fileItem(
+                    id = "5",
+                    fileName = "inprogressfile",
+                    displayedShortUrl = "firefox.com",
+                    status = FileItem.Status.Downloading(progress = 0.5f),
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                fileItem(
+                    id = "6",
+                    fileName = "pausedFile",
+                    displayedShortUrl = "firefox.com",
+                    status = FileItem.Status.Paused(progress = 0.5f),
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                fileItem(
+                    id = "7",
+                    fileName = "failedFile",
+                    displayedShortUrl = "firefox.com",
+                    status = FileItem.Status.Failed,
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                fileItem(
+                    id = "8",
+                    fileName = "initiatedFile",
+                    displayedShortUrl = "firefox.com",
+                    status = FileItem.Status.Initiated,
+                    timeCategory = TimeCategory.IN_PROGRESS,
+                ),
+                HeaderItem(timeCategory = TimeCategory.LAST_30_DAYS),
                 fileItem(
                     id = "1",
                     fileName = "somefile",
                     displayedShortUrl = "firefox.com",
-                    createdTime = CreatedTime.LAST_30_DAYS,
+                    timeCategory = TimeCategory.LAST_30_DAYS,
                 ),
                 fileItem(
                     id = "2",
                     fileName = "anotherfile",
                     displayedShortUrl = "mozilla.org",
-                    createdTime = CreatedTime.LAST_30_DAYS,
+                    timeCategory = TimeCategory.LAST_30_DAYS,
                 ),
                 fileItem(
                     id = "3",
                     fileName = "yetanotherfile",
                     displayedShortUrl = "mozilla.com",
-                    createdTime = CreatedTime.LAST_30_DAYS,
+                    timeCategory = TimeCategory.LAST_30_DAYS,
+                ),
+            ),
+        )
+
+        assertEquals(expected, downloadUIState.itemsState)
+    }
+
+    @Test
+    fun `GIVEN content type filter is not All WHEN search query is used THEN only the completed items matching query for name are displayed`() {
+        val fileItems = listOf(
+            fileItem(
+                id = "1",
+                fileName = "somefile",
+                displayedShortUrl = "firefox.com",
+                timeCategory = TimeCategory.LAST_30_DAYS,
+            ),
+            fileItem(
+                id = "2",
+                fileName = "anotherfile",
+                displayedShortUrl = "mozilla.org",
+                timeCategory = TimeCategory.LAST_30_DAYS,
+            ),
+            fileItem(
+                id = "3",
+                fileName = "yetanotherfile",
+                displayedShortUrl = "mozilla.com",
+                timeCategory = TimeCategory.LAST_30_DAYS,
+            ),
+            fileItem(
+                id = "4",
+                fileName = "name",
+                displayedShortUrl = "firefox.com",
+                timeCategory = TimeCategory.LAST_30_DAYS,
+            ),
+            fileItem(
+                id = "5",
+                fileName = "inprogressfile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "6",
+                fileName = "pausedFile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "7",
+                fileName = "failedFile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "8",
+                fileName = "initiatedFile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "9",
+                displayedShortUrl = "firefox.com",
+                fileName = "nonameinprogress",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "10",
+                fileName = "nonamepaused",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "11",
+                fileName = "nonamefailed",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "12",
+                fileName = "nonameinitiated",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+        )
+
+        val downloadUIState = DownloadUIState(
+            items = fileItems,
+            mode = DownloadUIState.Mode.Normal,
+            pendingDeletionIds = emptySet(),
+            searchQuery = "file",
+            userSelectedContentTypeFilter = FileItem.ContentTypeFilter.Image,
+        )
+
+        val expected = DownloadUIState.ItemsState.Items(
+            listOf(
+                HeaderItem(timeCategory = TimeCategory.LAST_30_DAYS),
+                fileItem(
+                    id = "1",
+                    fileName = "somefile",
+                    displayedShortUrl = "firefox.com",
+                    timeCategory = TimeCategory.LAST_30_DAYS,
+                ),
+                fileItem(
+                    id = "2",
+                    fileName = "anotherfile",
+                    displayedShortUrl = "mozilla.org",
+                    timeCategory = TimeCategory.LAST_30_DAYS,
+                ),
+                fileItem(
+                    id = "3",
+                    fileName = "yetanotherfile",
+                    displayedShortUrl = "mozilla.com",
+                    timeCategory = TimeCategory.LAST_30_DAYS,
                 ),
             ),
         )
@@ -434,25 +1035,53 @@ class DownloadUIStateTest {
                 id = "1",
                 fileName = "somefile",
                 displayedShortUrl = "firefox.com",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "2",
                 fileName = "anotherfile",
                 displayedShortUrl = "mozilla.org",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "3",
                 fileName = "yetanotherfile",
                 displayedShortUrl = "mozilla.com",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
             ),
             fileItem(
                 id = "4",
                 fileName = "name",
                 displayedShortUrl = "firefox.com",
-                createdTime = CreatedTime.LAST_30_DAYS,
+                timeCategory = TimeCategory.LAST_30_DAYS,
+            ),
+            fileItem(
+                id = "5",
+                fileName = "inprogressfile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "6",
+                fileName = "pausedFile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "7",
+                fileName = "failedFile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "8",
+                fileName = "initiatedFile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
             ),
         )
 
@@ -500,13 +1129,13 @@ class DownloadUIStateTest {
             id = "1",
             fileName = "somefile",
             displayedShortUrl = "firefox.com",
-            createdTime = CreatedTime.LAST_30_DAYS,
+            timeCategory = TimeCategory.LAST_30_DAYS,
         )
         val fileItem2 = fileItem(
             id = "2",
             fileName = "anotherfile",
             displayedShortUrl = "mozilla.org",
-            createdTime = CreatedTime.LAST_30_DAYS,
+            timeCategory = TimeCategory.LAST_30_DAYS,
         )
         val fileItems = listOf(
             fileItem1,
@@ -532,13 +1161,13 @@ class DownloadUIStateTest {
             id = "1",
             fileName = "somefile",
             displayedShortUrl = "firefox.com",
-            createdTime = CreatedTime.LAST_30_DAYS,
+            timeCategory = TimeCategory.LAST_30_DAYS,
         )
         val fileItem2 = fileItem(
             id = "2",
             fileName = "anotherfile",
             displayedShortUrl = "mozilla.org",
-            createdTime = CreatedTime.LAST_30_DAYS,
+            timeCategory = TimeCategory.LAST_30_DAYS,
         )
         val fileItems = listOf(
             fileItem1,
@@ -557,22 +1186,66 @@ class DownloadUIStateTest {
     }
 
     @Test
-    fun `WHEN search field is not requested and state is in normal mode with items THEN search icon is visible`() {
+    fun `WHEN search field is not requested and state is in normal mode with completed file items THEN search icon is visible`() {
         val fileItem1 = fileItem(
             id = "1",
             fileName = "somefile",
             displayedShortUrl = "firefox.com",
-            createdTime = CreatedTime.LAST_30_DAYS,
+            timeCategory = TimeCategory.LAST_30_DAYS,
         )
         val fileItem2 = fileItem(
             id = "2",
             fileName = "anotherfile",
             displayedShortUrl = "mozilla.org",
-            createdTime = CreatedTime.LAST_30_DAYS,
+            timeCategory = TimeCategory.LAST_30_DAYS,
         )
         val fileItems = listOf(
             fileItem1,
             fileItem2,
+        )
+
+        val downloadUIState = DownloadUIState(
+            items = fileItems,
+            mode = DownloadUIState.Mode.Normal,
+            pendingDeletionIds = emptySet(),
+            isSearchFieldRequested = false,
+            searchQuery = "",
+        )
+
+        assertEquals(true, downloadUIState.isSearchIconVisible)
+    }
+
+    @Test
+    fun `WHEN search field is not requested and state is in normal mode with in progress file items THEN search icon is visible`() {
+        val fileItems = listOf(
+            fileItem(
+                id = "5",
+                fileName = "inprogressfile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Downloading(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "6",
+                fileName = "pausedFile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Paused(progress = 0.5f),
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "7",
+                fileName = "failedFile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Failed,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
+            fileItem(
+                id = "8",
+                fileName = "initiatedFile",
+                displayedShortUrl = "firefox.com",
+                status = FileItem.Status.Initiated,
+                timeCategory = TimeCategory.IN_PROGRESS,
+            ),
         )
 
         val downloadUIState = DownloadUIState(

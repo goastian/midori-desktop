@@ -7,9 +7,9 @@
   -->
   <string name="content_description_menu">Tuilleadh roghanna</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Cumasaigh brabhsáil phríobháideach</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Cumasaigh brabhsáil phríobháideach</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Díchumasaigh brabhsáil phríobháideach</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Díchumasaigh brabhsáil phríobháideach</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">Cuardaigh nó cuir seoladh isteach</string>
   <!-- No Open Tabs Message Description -->
@@ -140,7 +140,7 @@
   <!-- Preference for language -->
   <string name="preferences_language">Teanga</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Roghanna sonraí</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Roghanna sonraí</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Bailiú sonraí</string>
   <!-- Preference for developers -->
@@ -500,7 +500,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Dúnadh an cluaisín príobháideach</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Dúnadh na cluaisíní príobháideacha</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Dúnadh na cluaisíní príobháideacha</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">CEALAIGH</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -764,4 +764,6 @@
   <!-- Login overflow menu delete button -->
   <string name="login_menu_delete_button">Scrios</string>
   <!-- Translations feature -->
+
+  <!-- TextField Design System Component -->
 </resources>

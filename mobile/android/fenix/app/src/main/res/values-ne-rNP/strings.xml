@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- App name for private browsing mode. %s is the name of the app (for example "Firefox"). -->
   <string name="app_name_private_5">निजी %s</string>
   <!-- App name for private browsing mode. %s is the name of the app (for example "Firefox"). -->
@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">थप बिकल्पहरु</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">निजी ब्राउजिङ्ग सक्षम पार्नुहोस्</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">निजी ब्राउजिङ्ग सक्षम पार्नुहोस्</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">निजी ब्राउजिङ्ग असक्षम पार्नुहोस्</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">निजी ब्राउजिङ्ग असक्षम पार्नुहोस्</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">खोज्नुहोस् वा ठेगाना प्रविष्ट गर्नुहोस्</string>
   <!-- No Open Tabs Message Description -->
@@ -40,7 +40,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s ले तपाइँको खोज र ब्राउजिङ्ग इतिहासलाई निजी ट्याबहरूबाट खाली गर्दछ जब, तपाइँ तिनीहरूलाई बन्द गर्नुहुन्छ वा एप छोड्नुहुन्छ। यद्यपि यसले तपाइँलाई वेबसाइटहरू वा तपाइँको इन्टरनेट सेवा प्रदायकको लागि गुमनाम बनाउँदैन, यसले तपाइँलाई यो यन्त्र प्रयोग गर्ने अरू कसैबाट तपाइँ अनलाइन गर्ने कुरालाई गोप्य राख्न सजिलो बनाउँछ।</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s ले तपाइँको खोज र ब्राउजिङ्ग इतिहासलाई निजी ट्याबहरूबाट खाली गर्दछ जब, तपाइँ तिनीहरूलाई बन्द गर्नुहुन्छ वा एप छोड्नुहुन्छ। यद्यपि यसले तपाइँलाई वेबसाइटहरू वा तपाइँको इन्टरनेट सेवा प्रदायकको लागि गुमनाम बनाउँदैन, यसले तपाइँलाई यो यन्त्र प्रयोग गर्ने अरू कसैबाट तपाइँ अनलाइन गर्ने कुरालाई गोप्य राख्न सजिलो बनाउँछ।</string>
   <string name="private_browsing_common_myths">निजी ब्राउजिङ्ग बारे सामान्य मिथकहरू</string>
   <!-- Text for the positive action button -->
   <string name="open_in_app_cfr_positive_button_text">सेटिङ्गहरुमा जानुहोस्</string>
@@ -210,7 +210,7 @@
   <!-- Preference for language -->
   <string name="preferences_language">भाषा</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">डाटा बिकल्पहरु</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">डाटा बिकल्पहरु</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">डाटा सङ्कलन</string>
   <!-- Preference title for switch preference to show search suggestions -->
@@ -234,7 +234,7 @@
   <!-- Preference for open links in third party apps -->
   <string name="preferences_open_links_in_apps">एपहरुमा लिङ्कहरु खोल्नुहोस्</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">बाहिरी डाउनलोड प्रबन्धक</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">बाहिरी डाउनलोड प्रबन्धक</string>
   <!-- Preference for notifications -->
   <string name="preferences_notifications">सूचनाहरु</string>
   <!-- Button caption to confirm the add-on collection configuration -->
@@ -461,4 +461,6 @@
   <!-- Content description (not visible, for screen readers etc.): Close tab button. Closes the current session when pressed -->
   <string name="close_tab">ट्याब बन्द गर्नुहोस्</string>
   <!-- Translations feature -->
+
+  <!-- TextField Design System Component -->
 </resources>

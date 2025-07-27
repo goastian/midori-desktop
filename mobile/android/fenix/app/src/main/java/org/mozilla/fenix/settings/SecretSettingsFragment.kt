@@ -113,16 +113,6 @@ class SecretSettingsFragment : PreferenceFragmentCompat() {
             }
         }
 
-        requirePreference<SwitchPreference>(R.string.pref_key_pocket_content_recommendations).apply {
-            isChecked = context.settings().showContentRecommendations
-            onPreferenceChangeListener = object : SharedPreferenceUpdater() {
-                override fun onPreferenceChange(preference: Preference, newValue: Any?): Boolean {
-                    activity?.recreate()
-                    return super.onPreferenceChange(preference, newValue)
-                }
-            }
-        }
-
         requirePreference<SwitchPreference>(R.string.pref_key_enable_unified_trust_panel).apply {
             isVisible = Config.channel.isNightlyOrDebug
             isChecked = context.settings().enableUnifiedTrustPanel
@@ -171,12 +161,6 @@ class SecretSettingsFragment : PreferenceFragmentCompat() {
         requirePreference<SwitchPreference>(R.string.pref_key_doh_settings_enabled).apply {
             isVisible = true
             isChecked = context.settings().showDohEntryPoint
-            onPreferenceChangeListener = SharedPreferenceUpdater()
-        }
-
-        requirePreference<SwitchPreference>(R.string.pref_key_should_enable_felt_privacy).apply {
-            isVisible = true
-            isChecked = context.settings().feltPrivateBrowsingEnabled
             onPreferenceChangeListener = SharedPreferenceUpdater()
         }
 

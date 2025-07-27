@@ -12,8 +12,9 @@ import mozilla.components.concept.engine.EngineView
 import mozilla.components.ui.widgets.behavior.EngineViewClippingBehavior
 import mozilla.components.ui.widgets.behavior.EngineViewScrollingBehavior
 import org.mozilla.focus.R
-import mozilla.components.ui.widgets.behavior.ToolbarPosition as engineToolbarPosition
 import mozilla.components.ui.widgets.behavior.ViewPosition as browserToolbarPosition
+
+private const val BOTTOM_TOOLBAR_HEIGHT = 0
 
 /**
  * Collapse the toolbar and block it from appearing until calling [enableDynamicBehavior].
@@ -53,7 +54,7 @@ fun BrowserToolbar.enableDynamicBehavior(context: Context, engineView: EngineVie
             null,
             engineView.asView(),
             toolbarHeight,
-            engineToolbarPosition.TOP,
+            BOTTOM_TOOLBAR_HEIGHT,
         )
     }
 }

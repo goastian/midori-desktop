@@ -35,11 +35,11 @@ android {
 
 dependencies {
     implementation platform(libs.androidx.compose.bom)
-    implementation project(":concept-awesomebar")
-    implementation project(":browser-state")
-    implementation project(":support-base")
-    implementation project(":support-utils")
-    implementation project(":ui-icons")
+    implementation project(":components:concept-awesomebar")
+    implementation project(":components:browser-state")
+    implementation project(":components:support-base")
+    implementation project(":components:support-utils")
+    implementation project(":components:ui-icons")
 
     implementation libs.kotlin.coroutines
 
@@ -47,11 +47,11 @@ dependencies {
     implementation libs.androidx.compose.ui
     implementation libs.androidx.compose.ui.tooling.preview
     implementation libs.androidx.compose.foundation
-    implementation libs.androidx.compose.material
+    implementation libs.androidx.compose.material3
 
     debugImplementation libs.androidx.compose.ui.tooling
 
-    testImplementation project(':support-test')
+    testImplementation project(':components:support-test')
     testImplementation libs.androidx.compose.ui.test
     testImplementation libs.androidx.test.core
     testImplementation libs.androidx.test.junit

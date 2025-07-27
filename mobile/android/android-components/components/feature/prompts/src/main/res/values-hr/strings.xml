@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources xmlns:tools="http://schemas.android.com/tools">
+<resources xmlns:tools="http://schemas.android.com/tools" xmlns:moz="http://mozac.org/tools">
   <!-- Text for confirmation for a positive action in dialog -->
   <string name="mozac_feature_prompts_ok">U redu</string>
   <!-- Text for confirmation for a negative action in dialog. -->
@@ -35,9 +35,9 @@
   <!-- Prompt message displayed when app detects a user has entered a new username and password and user decides if app should save the new password. -->
   <string name="mozac_feature_prompt_login_save_headline_2">Spremiti lozinku?</string>
   <!-- Prompt message displayed when app detects a user has entered a new password for an existing login and user decides if app should update the password. -->
-  <string name="mozac_feature_prompt_login_update_headline_2">Ažurirati lozinku?</string>
+  <string name="mozac_feature_prompt_login_update_headline_2">Aktualizirati lozinku?</string>
   <!-- Prompt message displayed when app detects a user has entered a username for an existing login without a username and user decides if app should update the login. -->
-  <string name="mozac_feature_prompt_login_add_username_headline_2">Ažurirati korisničko ime?</string>
+  <string name="mozac_feature_prompt_login_add_username_headline_2">Aktualizirati korisničko ime?</string>
   <!--
     Text for a label for the field when prompt requesting a text is shown.
 
@@ -111,11 +111,11 @@
   <!-- Pressing this will dismiss the suggested strong password dialog -->
   <string name="mozac_feature_prompts_suggest_strong_password_dismiss">Ne sada</string>
   <!-- Title for showing the suggest strong password saved confirmation snackbar -->
-  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title">Lozinka spremljena</string>
+  <string name="mozac_feature_prompts_suggest_strong_password_saved_snackbar_title" tools:ignore="UnusedResources" moz:removedIn="142">Lozinka spremljena</string>
   <!-- Title for showing the suggest strong password updated confirmation snackbar -->
-  <string name="mozac_feature_prompts_suggest_strong_password_updated_snackbar_title">Lozinka je ažurirana</string>
+  <string name="mozac_feature_prompts_suggest_strong_password_updated_snackbar_title">Lozinka je aktualizirana</string>
   <!-- Title for showing the username updated confirmation snackbar -->
-  <string name="mozac_feature_prompt_login_snackbar_username_updated">Korisničko ime je ažurirano</string>
+  <string name="mozac_feature_prompt_login_snackbar_username_updated" tools:ignore="UnusedResources" moz:removedIn="142">Korisničko ime je aktualizirano</string>
   <!-- Strings shown in a dialog that appear when users try to refresh a certain kind of webpages -->
   <string name="mozac_feature_prompt_repost_title">Ponovno poslati podatke ovoj stranici?</string>
   <string name="mozac_feature_prompt_repost_message">Osvježavanje ove stranice moglo bi ponoviti nedavne radnje, kao što su dvostruko plaćanje ili komentiranje.</string>
@@ -123,6 +123,14 @@
   <string name="mozac_feature_prompt_repost_positive_button_text">Ponovno pošalji podatke</string>
   <!-- Pressing this will dismiss the dialog and not refresh the webpage -->
   <string name="mozac_feature_prompt_repost_negative_button_text">Odustani</string>
+  <!-- Strings show in a dialog that appear when user confirm folder upload -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_title">Prenijeti datoteke?</string>
+  <!-- Prompt message displayed when user selects a specific folder. %1$s is a folder / directory name. -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_message">Prije nego što učitaš iz „%1$s” provjeri je li vjeruješ ovoj stranici.</string>
+  <!-- Pressing this will dismiss the dialog and allow to upload folder -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_positive_button_text">Prenesi</string>
+  <!-- Pressing this will dismiss the dialog and disallow to upload folder -->
+  <string name="mozac_feature_prompt_folder_upload_confirm_negative_button_text">Odustani</string>
   <!--
     Credit Card Autofill
 
@@ -138,7 +146,7 @@
   <!-- Text for the title of a save credit card dialog. -->
   <string name="mozac_feature_prompts_save_credit_card_prompt_title">Sigurno spremiti ovu karticu?</string>
   <!-- Text for the title of an update credit card dialog. -->
-  <string name="mozac_feature_prompts_update_credit_card_prompt_title">Ažuriraj datum isteka kartice?</string>
+  <string name="mozac_feature_prompts_update_credit_card_prompt_title">Aktualizirati datum isteka kartice?</string>
   <!-- Subtitle text displayed under the title of the saved card dialog. %s is the name of the app (for example "Firefox"). -->
   <string name="mozac_feature_prompts_save_credit_card_prompt_body_2">%s šifrira broj vaše kartice. Vaš sigurnosni kod neće biti spremljen.</string>
   <!--

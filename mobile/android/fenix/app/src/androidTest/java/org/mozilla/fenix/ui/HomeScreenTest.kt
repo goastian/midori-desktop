@@ -48,14 +48,11 @@ class HomeScreenTest : TestSetup() {
             verifyHomeWordmark()
             verifyHomePrivateBrowsingButton()
             verifyExistingTopSitesTabs(activityTestRule, "Wikipedia")
-            verifyExistingTopSitesTabs(activityTestRule, "Top Articles")
             verifyExistingTopSitesTabs(activityTestRule, "Google")
             verifyCollectionsHeader(activityTestRule)
             verifyNoCollectionsText(activityTestRule)
             scrollToPocketProvokingStories()
             verifyThoughtProvokingStories(true)
-            verifyStoriesByTopicItems()
-            verifyCustomizeHomepageButton(activityTestRule, true)
             verifyNavigationToolbar()
             verifyHomeMenuButton()
             verifyTabButton()
@@ -70,7 +67,7 @@ class HomeScreenTest : TestSetup() {
 
         homeScreen {
             verifyPrivateBrowsingHomeScreenItems()
-        }.openCommonMythsLink {
+        }.openPrivateBrowsingModeLearnMoreLink(activityTestRule) {
             verifyUrl("common-myths-about-private-browsing")
         }
     }
@@ -124,30 +121,6 @@ class HomeScreenTest : TestSetup() {
 
         homeScreen {
             verifyJumpBackInSectionIsNotDisplayed(activityTestRule)
-        }
-    }
-
-    // TestRail link: https://mozilla.testrail.io/index.php?/cases/view/1569839
-    @Test
-    fun verifyCustomizeHomepageButtonTest() {
-        val defaultWebPage = TestAssetHelper.getGenericAsset(mockWebServer, 1)
-
-        navigationToolbar {
-        }.enterURLAndEnterToBrowser(defaultWebPage.url) {
-        }.goToHomescreen(activityTestRule) {
-        }.openCustomizeHomepage(activityTestRule) {
-            clickShortcutsButton()
-            clickJumpBackInButton()
-            clickRecentBookmarksButton()
-            clickRecentSearchesButton()
-            clickPocketButton()
-        }.goBackToHomeScreen {
-            verifyCustomizeHomepageButton(activityTestRule, false)
-        }.openThreeDotMenu {
-        }.openCustomizeHome {
-            clickShortcutsButton()
-        }.goBackToHomeScreen {
-            verifyCustomizeHomepageButton(activityTestRule, true)
         }
     }
 }

@@ -10,9 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -35,7 +33,6 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.tooling.preview.PreviewLightDark
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import mozilla.components.compose.base.button.TertiaryButton
 import mozilla.telemetry.glean.private.NoExtras
 import org.mozilla.fenix.GleanMetrics.History
 import org.mozilla.fenix.GleanMetrics.HomeBookmarks
@@ -65,10 +62,7 @@ import org.mozilla.fenix.home.recentvisits.interactor.RecentVisitsInteractor
 import org.mozilla.fenix.home.recentvisits.view.RecentVisitMenuItem
 import org.mozilla.fenix.home.recentvisits.view.RecentlyVisited
 import org.mozilla.fenix.home.sessioncontrol.CollectionInteractor
-import org.mozilla.fenix.home.sessioncontrol.CustomizeHomeIteractor
 import org.mozilla.fenix.home.sessioncontrol.MessageCardInteractor
-import org.mozilla.fenix.home.sessioncontrol.viewholders.FeltPrivacyModeInfoCard
-import org.mozilla.fenix.home.sessioncontrol.viewholders.PrivateBrowsingDescription
 import org.mozilla.fenix.home.setup.ui.SetupChecklist
 import org.mozilla.fenix.home.store.HomepageState
 import org.mozilla.fenix.home.store.NimbusMessageState
@@ -110,53 +104,49 @@ internal fun Homepage(
             .verticalScroll(scrollState),
     ) {
         HomepageHeader(
+            showPrivateBrowsingButton = state.showPrivateBrowsingButton,
             browsingMode = state.browsingMode,
             browsingModeChanged = interactor::onPrivateModeButtonClicked,
         )
 
-        with(state) {
-            when (this) {
-                is HomepageState.Private -> {
-                    Box(modifier = Modifier.padding(horizontal = horizontalMargin)) {
-                        if (feltPrivateBrowsingEnabled) {
-                            FeltPrivacyModeInfoCard(
-                                onLearnMoreClick = interactor::onLearnMoreClicked,
-                            )
-                        } else {
+        if (state.firstFrameDrawn) {
+            with(state) {
+                when (this) {
+                    is HomepageState.Private -> {
+                        Box(modifier = Modifier.padding(horizontal = horizontalMargin)) {
                             PrivateBrowsingDescription(
                                 onLearnMoreClick = interactor::onLearnMoreClicked,
                             )
                         }
                     }
-                }
 
-                is HomepageState.Normal -> {
-                    nimbusMessage?.let {
-                        NimbusMessageCardSection(
-                            nimbusMessage = nimbusMessage,
-                            interactor = interactor,
-                        )
-                    }
+                    is HomepageState.Normal -> {
+                        nimbusMessage?.let {
+                            NimbusMessageCardSection(
+                                nimbusMessage = nimbusMessage,
+                                interactor = interactor,
+                            )
+                        }
 
-                    if (showTopSites) {
-                        TopSites(
-                            topSites = topSites,
-                            topSiteColors = topSiteColors,
-                            interactor = interactor,
-                            onTopSitesItemBound = onTopSitesItemBound,
-                        )
-                    }
+                        if (showTopSites) {
+                            TopSites(
+                                topSites = topSites,
+                                topSiteColors = topSiteColors,
+                                interactor = interactor,
+                                onTopSitesItemBound = onTopSitesItemBound,
+                            )
+                        }
 
-                    if (searchBarEnabled) {
-                        val atTopOfList by remember {
-                            derivedStateOf {
-                                scrollState.value < MIDDLE_SEARCH_SCROLL_THRESHOLD_PX
+                        if (searchBarEnabled) {
+                            val atTopOfList by remember {
+                                derivedStateOf {
+                                    scrollState.value < MIDDLE_SEARCH_SCROLL_THRESHOLD_PX
+                                }
                             }
-                        }
 
-                        LaunchedEffect(atTopOfList) {
-                            onMiddleSearchBarVisibilityChanged(atTopOfList)
-                        }
+                            LaunchedEffect(atTopOfList) {
+                                onMiddleSearchBarVisibilityChanged(atTopOfList)
+                            }
 
                             val alpha by animateFloatAsState(
                                 targetValue = if (showSearchBar && atTopOfList) 1f else 0f,
@@ -168,73 +158,67 @@ internal fun Homepage(
                             )
                         }
 
-                    MaybeAddSetupChecklist(setupChecklistState, interactor)
+                        MaybeAddSetupChecklist(setupChecklistState, interactor)
 
-                    if (showRecentTabs) {
-                        RecentTabsSection(
-                            interactor = interactor,
-                            cardBackgroundColor = cardBackgroundColor,
-                            recentTabs = recentTabs,
-                        )
+                        if (showRecentTabs) {
+                            RecentTabsSection(
+                                interactor = interactor,
+                                cardBackgroundColor = cardBackgroundColor,
+                                recentTabs = recentTabs,
+                            )
 
-                        if (showRecentSyncedTab) {
-                            Box(
-                                modifier = Modifier.padding(
-                                    start = horizontalMargin,
-                                    end = horizontalMargin,
-                                    top = verticalMargin,
-                                ),
-                            ) {
-                                RecentSyncedTab(
-                                    tab = syncedTab,
-                                    backgroundColor = cardBackgroundColor,
-                                    buttonBackgroundColor = buttonBackgroundColor,
-                                    buttonTextColor = buttonTextColor,
-                                    onRecentSyncedTabClick = interactor::onRecentSyncedTabClicked,
-                                    onSeeAllSyncedTabsButtonClick = interactor::onSyncedTabShowAllClicked,
-                                    onRemoveSyncedTab = interactor::onRemovedRecentSyncedTab,
-                                )
+                            if (showRecentSyncedTab) {
+                                Box(
+                                    modifier = Modifier.padding(
+                                        start = horizontalMargin,
+                                        end = horizontalMargin,
+                                        top = verticalMargin,
+                                    ),
+                                ) {
+                                    RecentSyncedTab(
+                                        tab = syncedTab,
+                                        backgroundColor = cardBackgroundColor,
+                                        buttonBackgroundColor = buttonBackgroundColor,
+                                        buttonTextColor = buttonTextColor,
+                                        onRecentSyncedTabClick = interactor::onRecentSyncedTabClicked,
+                                        onSeeAllSyncedTabsButtonClick = interactor::onSyncedTabShowAllClicked,
+                                        onRemoveSyncedTab = interactor::onRemovedRecentSyncedTab,
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    if (showBookmarks) {
-                        BookmarksSection(
-                            bookmarks = bookmarks,
-                            cardBackgroundColor = cardBackgroundColor,
+                        if (showBookmarks) {
+                            BookmarksSection(
+                                bookmarks = bookmarks,
+                                cardBackgroundColor = cardBackgroundColor,
+                                interactor = interactor,
+                            )
+                        }
+
+                        if (showRecentlyVisited) {
+                            RecentlyVisitedSection(
+                                recentVisits = recentlyVisited,
+                                cardBackgroundColor = cardBackgroundColor,
+                                interactor = interactor,
+                            )
+                        }
+
+                        CollectionsSection(
+                            collectionsState = collectionsState,
                             interactor = interactor,
                         )
+
+                        if (showPocketStories) {
+                            PocketSection(
+                                state = pocketState,
+                                cardBackgroundColor = cardBackgroundColor,
+                                interactor = interactor,
+                            )
+                        }
+
+                        Spacer(Modifier.height(bottomSpacerHeight))
                     }
-
-                    if (showRecentlyVisited) {
-                        RecentlyVisitedSection(
-                            recentVisits = recentlyVisited,
-                            cardBackgroundColor = cardBackgroundColor,
-                            interactor = interactor,
-                        )
-                    }
-
-                    CollectionsSection(
-                        collectionsState = collectionsState,
-                        interactor = interactor,
-                    )
-
-                    if (showPocketStories) {
-                        PocketSection(
-                            state = pocketState,
-                            cardBackgroundColor = cardBackgroundColor,
-                            interactor = interactor,
-                        )
-                    }
-
-                    if (showCustomizeHome) {
-                        CustomizeHomeButton(
-                            buttonBackgroundColor = customizeHomeButtonBackgroundColor,
-                            interactor = interactor,
-                        )
-                    }
-
-                    Spacer(Modifier.height(bottomSpacerHeight))
                 }
             }
         }
@@ -437,21 +421,6 @@ private fun CollectionsSection(
 }
 
 @Composable
-private fun CustomizeHomeButton(buttonBackgroundColor: Color, interactor: CustomizeHomeIteractor) {
-    Spacer(modifier = Modifier.height(24.dp))
-
-    TertiaryButton(
-        text = stringResource(R.string.browser_menu_customize_home_1),
-        modifier = Modifier
-            .heightIn(min = 48.dp)
-            .padding(horizontal = dimensionResource(R.dimen.home_item_horizontal_margin))
-            .fillMaxWidth(),
-        backgroundColor = buttonBackgroundColor,
-        onClick = interactor::openCustomizeHomePage,
-    )
-}
-
-@Composable
 @PreviewLightDark
 private fun HomepagePreview() {
     FirefoxTheme {
@@ -476,14 +445,15 @@ private fun HomepagePreview() {
                     showBookmarks = true,
                     showRecentlyVisited = true,
                     showPocketStories = true,
+                    showPrivateBrowsingButton = true,
                     searchBarEnabled = false,
+                    firstFrameDrawn = true,
                     showSearchBar = true,
                     setupChecklistState = null,
                     topSiteColors = TopSiteColors.colors(),
                     cardBackgroundColor = WallpaperState.default.cardBackgroundColor,
                     buttonTextColor = WallpaperState.default.buttonTextColor,
                     buttonBackgroundColor = WallpaperState.default.buttonBackgroundColor,
-                    customizeHomeButtonBackgroundColor = FirefoxTheme.colors.actionTertiary,
                     bottomSpacerHeight = 188.dp,
                 ),
                 interactor = FakeHomepagePreview.homepageInteractor,
@@ -514,14 +484,15 @@ private fun HomepagePreviewCollections() {
                 showBookmarks = false,
                 showRecentlyVisited = true,
                 showPocketStories = true,
-                searchBarEnabled = false,
+                showPrivateBrowsingButton = true,
                 showSearchBar = true,
+                searchBarEnabled = false,
+                firstFrameDrawn = true,
                 setupChecklistState = null,
                 topSiteColors = TopSiteColors.colors(),
                 cardBackgroundColor = WallpaperState.default.cardBackgroundColor,
                 buttonTextColor = WallpaperState.default.buttonTextColor,
                 buttonBackgroundColor = WallpaperState.default.buttonBackgroundColor,
-                customizeHomeButtonBackgroundColor = FirefoxTheme.colors.actionTertiary,
                 bottomSpacerHeight = 188.dp,
             ),
             interactor = FakeHomepagePreview.homepageInteractor,
@@ -542,7 +513,8 @@ private fun PrivateHomepagePreview() {
         ) {
             Homepage(
                 HomepageState.Private(
-                    feltPrivateBrowsingEnabled = false,
+                    showPrivateBrowsingButton = true,
+                    firstFrameDrawn = true,
                     bottomSpacerHeight = 188.dp,
                 ),
                 interactor = FakeHomepagePreview.homepageInteractor,

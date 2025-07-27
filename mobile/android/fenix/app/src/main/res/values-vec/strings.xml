@@ -7,9 +7,9 @@
   -->
   <string name="content_description_menu">Altre opsion</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Ativa navigasion anonima</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Ativa navigasion anonima</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Dixativa navigasion anonima</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Dixativa navigasion anonima</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
   <string name="search_hint">Serca o scrìvi on indiriso</string>
   <!-- No Open Tabs Message Description -->
@@ -144,7 +144,7 @@
   <!-- Preference for language -->
   <string name="preferences_language">Ƚengua</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Condivixion dati</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Condivixion dati</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Rancura dati</string>
   <!-- Preference for developers -->
@@ -512,7 +512,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Scheda anonima sarà</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Schede anonime sarà</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Schede anonime sarà</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
   <string name="snackbar_deleted_undo">ANUȽA</string>
   <!-- Text shown in snackbar when user removes a top site -->
@@ -802,4 +802,6 @@
   <!-- Positive action of a dialog asking to delete -->
   <string name="dialog_delete_positive">Rimovi</string>
   <!-- Translations feature -->
+
+  <!-- TextField Design System Component -->
 </resources>

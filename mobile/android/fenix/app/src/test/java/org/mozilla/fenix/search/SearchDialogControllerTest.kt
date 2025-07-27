@@ -53,7 +53,7 @@ import org.mozilla.fenix.components.search.TABS_SEARCH_ENGINE_ID
 import org.mozilla.fenix.components.usecases.FenixBrowserUseCases
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.helpers.FenixGleanTestRule
-import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
+import org.mozilla.fenix.search.SearchDialogFragmentDirections.Companion.actionCrashListFragment
 import org.mozilla.fenix.search.SearchDialogFragmentDirections.Companion.actionGleanDebugToolsFragment
 import org.mozilla.fenix.search.SearchDialogFragmentDirections.Companion.actionGlobalAddonsManagementFragment
 import org.mozilla.fenix.search.SearchDialogFragmentDirections.Companion.actionGlobalBrowser
@@ -61,8 +61,9 @@ import org.mozilla.fenix.search.SearchDialogFragmentDirections.Companion.actionG
 import org.mozilla.fenix.search.toolbar.SearchSelectorMenu
 import org.mozilla.fenix.settings.SupportUtils
 import org.mozilla.fenix.utils.Settings
+import org.robolectric.RobolectricTestRunner
 
-@RunWith(FenixRobolectricTestRunner::class) // for gleanTestRule
+@RunWith(RobolectricTestRunner::class) // for gleanTestRule
 class SearchDialogControllerTest {
 
     @MockK(relaxed = true)
@@ -317,19 +318,13 @@ class SearchDialogControllerTest {
     @Test
     fun handleCrashesUrlCommitted() {
         val url = "about:crashes"
-        every { activity.packageName } returns "org.mozilla.fenix"
+        val directions = actionCrashListFragment()
 
         createController().handleUrlCommitted(url)
 
         browserStore.waitUntilIdle()
 
-        verify {
-            activity.startActivity(any())
-        }
-
-        middleware.assertLastAction(AwesomeBarAction.EngagementFinished::class) { action ->
-            assertFalse(action.abandoned)
-        }
+        verify { navController.navigate(directions) }
     }
 
     @Test
@@ -424,6 +419,10 @@ class SearchDialogControllerTest {
 
         verify { store.dispatch(SearchFragmentAction.UpdateQuery(text)) }
 
+        val actionSlot = mutableListOf<SearchFragmentAction>()
+        verify { store.dispatch(capture(actionSlot)) }
+        assertTrue(actionSlot.any { it is SearchFragmentAction.AllowSearchSuggestionsInPrivateModePrompt })
+
         middleware.assertNotDispatched(AwesomeBarAction.EngagementFinished::class)
     }
 
@@ -436,40 +435,6 @@ class SearchDialogControllerTest {
         browserStore.waitUntilIdle()
 
         verify { store.dispatch(SearchFragmentAction.UpdateQuery(text)) }
-
-        middleware.assertNotDispatched(AwesomeBarAction.EngagementFinished::class)
-    }
-
-    @Test
-    fun `WHEN felt privacy is enabled THEN do not dispatch AllowSearchSuggestionsInPrivateModePrompt`() {
-        every { settings.feltPrivateBrowsingEnabled } returns true
-
-        val text = "mozilla"
-
-        createController().handleTextChanged(text)
-
-        browserStore.waitUntilIdle()
-
-        val actionSlot = mutableListOf<SearchFragmentAction>()
-        verify { store.dispatch(capture(actionSlot)) }
-        assertFalse(actionSlot.any { it is SearchFragmentAction.AllowSearchSuggestionsInPrivateModePrompt })
-
-        middleware.assertNotDispatched(AwesomeBarAction.EngagementFinished::class)
-    }
-
-    @Test
-    fun `WHEN felt privacy is disabled THEN dispatch AllowSearchSuggestionsInPrivateModePrompt`() {
-        every { settings.feltPrivateBrowsingEnabled } returns false
-
-        val text = "mozilla"
-
-        createController().handleTextChanged(text)
-
-        browserStore.waitUntilIdle()
-
-        val actionSlot = mutableListOf<SearchFragmentAction>()
-        verify { store.dispatch(capture(actionSlot)) }
-        assertTrue(actionSlot.any { it is SearchFragmentAction.AllowSearchSuggestionsInPrivateModePrompt })
 
         middleware.assertNotDispatched(AwesomeBarAction.EngagementFinished::class)
     }

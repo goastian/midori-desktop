@@ -28,12 +28,12 @@ import org.mozilla.fenix.components.appstate.AppAction.ContentRecommendationsAct
 import org.mozilla.fenix.ext.components
 import org.mozilla.fenix.ext.getPreferenceKey
 import org.mozilla.fenix.ext.settings
-import org.mozilla.fenix.helpers.FenixRobolectricTestRunner
 import org.mozilla.fenix.home.pocket.ContentRecommendationsFeatureHelper
 import org.mozilla.fenix.utils.Settings
 import org.robolectric.Robolectric
+import org.robolectric.RobolectricTestRunner
 
-@RunWith(FenixRobolectricTestRunner::class)
+@RunWith(RobolectricTestRunner::class)
 internal class HomeSettingsFragmentTest {
     private lateinit var homeSettingsFragment: HomeSettingsFragment
     private lateinit var appSettings: Settings
@@ -137,9 +137,7 @@ internal class HomeSettingsFragmentTest {
     }
 
     @Test
-    fun `GIVEN the setting for Pocket sponsored stories is checked WHEN tapping it THEN toggle it, delete Pocket profile and remove sponsored stories from showing`() {
-        every { appSettings.showContentRecommendations } returns false
-
+    fun `GIVEN sponsored stories is enabled WHEN toggling the sponsored stories to disabled THEN delete Pocket profile and remove sponsored stories from showing`() {
         activateFragment()
 
         val result = getSponsoredStoriesPreference().callChangeListener(false)
@@ -151,16 +149,14 @@ internal class HomeSettingsFragmentTest {
             appStore.dispatch(
                 ContentRecommendationsAction.PocketSponsoredStoriesChange(
                     sponsoredStories = emptyList(),
-                    showContentRecommendations = false,
                 ),
             )
         }
     }
 
     @Test
-    fun `GIVEN the setting for Pocket sponsored stories is checked WHEN tapping it THEN toggle it, delete Pocket profile and remove sponsored contents from showing`() {
+    fun `GIVEN sponsored stories is enabled and MARS API is enabled WHEN toggling the sponsored stories setting to disabled THEN delete Pocket profile and remove sponsored contents from showing`() {
         every { appSettings.marsAPIEnabled } returns true
-        every { appSettings.showContentRecommendations } returns false
 
         activateFragment()
 
@@ -173,7 +169,6 @@ internal class HomeSettingsFragmentTest {
             appStore.dispatch(
                 ContentRecommendationsAction.SponsoredContentsChange(
                     sponsoredContents = emptyList(),
-                    showContentRecommendations = false,
                 ),
             )
         }

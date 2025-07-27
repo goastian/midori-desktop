@@ -8,9 +8,14 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.Icon
@@ -18,11 +23,11 @@ import androidx.compose.material.IconButton
 import androidx.compose.material.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.painter.Painter
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -42,6 +47,8 @@ import org.mozilla.fenix.theme.FirefoxTheme
 private val MENU_ITEM_HEIGHT_WITHOUT_DESC = 52.dp
 
 private val MENU_ITEM_HEIGHT_WITH_DESC = 56.dp
+
+private val BADGE_ROUNDED_CORNER = 100.dp
 
 private val ROUNDED_CORNER_SHAPE = RoundedCornerShape(4.dp)
 
@@ -103,7 +110,11 @@ internal fun MenuItem(
                     this.contentDescription = label
                 }
             }
-            .wrapContentSize(),
+            .wrapContentSize()
+            .clip(shape = ROUNDED_CORNER_SHAPE)
+            .background(
+                color = FirefoxTheme.colors.layer3,
+            ),
         labelModifier = labelModifier,
         labelTextColor = labelTextColor,
         maxLabelLines = 2,
@@ -132,13 +143,17 @@ internal fun MenuItem(
  * An [IconListItem] wrapper for menu items in a [MenuGroup] with an optional icon at the end.
  *
  * @param label The label in the menu item.
+ * @param modifier [Modifier] to be applied to the layout.
  * @param description An optional description text below the label.
+ * @param iconPainter [Painter] used to display an [Icon] after the list item.
  * @param onClick Invoked when the user clicks on the item.
  */
 @Composable
 internal fun MenuTextItem(
     label: String,
+    modifier: Modifier = Modifier,
     description: String? = null,
+    iconPainter: Painter? = null,
     onClick: (() -> Unit)? = null,
 ) {
     TextListItem(
@@ -150,6 +165,12 @@ internal fun MenuTextItem(
         } else {
             MENU_ITEM_HEIGHT_WITHOUT_DESC
         },
+        modifier = modifier
+            .clip(shape = ROUNDED_CORNER_SHAPE)
+            .background(
+                color = FirefoxTheme.colors.layer3,
+            ),
+        iconPainter = iconPainter,
         onClick = onClick,
     )
 }
@@ -159,60 +180,100 @@ internal fun MenuTextItem(
  *
  * @param label The label in the list item.
  * @param iconPainter [Painter] used to display an [Icon] before the list item.
- * @param iconTint Tint color to be applied on the [Icon].
  * @param enabled Controls the enabled state of the list item. When `false`, the list item will not
  * be clickable.
  * @param badgeText WebExtension badge text.
- * @param badgeTextColor WebExtension badge text color.
- * @param badgeBackgroundColor WebExtension badge background color.
- * @param modifier [Modifier] to be applied to the layout.
  * @param onClick Called when the user clicks on the item.
+ * @param onSettingsClick Called when the user clicks on the settings icon.
  */
 @Composable
 internal fun WebExtensionMenuItem(
     label: String,
     iconPainter: Painter,
-    iconTint: Color? = null,
     enabled: Boolean?,
     badgeText: String?,
-    badgeTextColor: Int?,
-    badgeBackgroundColor: Int?,
-    modifier: Modifier = Modifier,
     onClick: (() -> Unit)? = null,
+    onSettingsClick: (() -> Unit)? = null,
 ) {
     ImageListItem(
         label = label,
         iconPainter = iconPainter,
-        iconTint = iconTint,
         enabled = enabled == true,
-        modifier = modifier,
         onClick = onClick,
-        afterListAction = {
-            if (badgeText.isNullOrEmpty()) {
-                return@ImageListItem
+        modifier = Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = LocalIndication.current,
+            enabled = enabled == true,
+        ) { onClick?.invoke() }
+            .clearAndSetSemantics {
+                role = Role.Button
+                this.contentDescription = label
             }
-
-            Column(
-                modifier = Modifier
-                    .background(
-                        color = badgeBackgroundColor?.let { Color(it) }
-                            ?: FirefoxTheme.colors.layer2,
-                        shape = ROUNDED_CORNER_SHAPE,
-                    )
-                    .clip(shape = ROUNDED_CORNER_SHAPE)
-                    .padding(8.dp),
+            .wrapContentSize()
+            .clip(shape = ROUNDED_CORNER_SHAPE)
+            .background(
+                color = FirefoxTheme.colors.layer3,
+            ),
+        afterListItemAction = {
+            Row(
+                modifier = Modifier.padding(start = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.End),
             ) {
-                Text(
-                    text = badgeText,
-                    color = badgeTextColor?.let { Color(it) }
-                        ?: Color.White,
-                    overflow = TextOverflow.Ellipsis,
-                    style = FirefoxTheme.typography.subtitle1,
-                    maxLines = 1,
+                if (!badgeText.isNullOrEmpty()) {
+                    Badge(
+                        badgeText = badgeText,
+                        badgeBackgroundColor = FirefoxTheme.colors.layerSearch,
+                    )
+                }
+
+                Divider(
+                    modifier = Modifier
+                        .padding(vertical = 6.dp)
+                        .fillMaxHeight()
+                        .width(1.dp),
+                    color = FirefoxTheme.colors.borderPrimary,
                 )
+
+                IconButton(
+                    modifier = Modifier.size(24.dp),
+                    onClick = onSettingsClick ?: {},
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.mozac_ic_settings_24),
+                        tint = FirefoxTheme.colors.iconPrimary,
+                        contentDescription = null,
+                    )
+                }
             }
         },
     )
+}
+
+@Composable
+internal fun Badge(
+    badgeText: String,
+    state: MenuItemState = MenuItemState.ENABLED,
+    badgeBackgroundColor: Color?,
+) {
+    Column(
+        modifier = Modifier
+            .clip(shape = RoundedCornerShape(BADGE_ROUNDED_CORNER))
+            .background(
+                color = badgeBackgroundColor ?: FirefoxTheme.colors.layer2,
+            )
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = badgeText,
+            color = getLabelTextColor(state),
+            overflow = TextOverflow.Ellipsis,
+            style = FirefoxTheme.typography.subtitle2,
+            maxLines = 1,
+        )
+    }
 }
 
 /**
@@ -238,6 +299,11 @@ enum class MenuItemState {
      * The menu item is highlighted to indicate the feature behind the menu item is destructive.
      */
     WARNING,
+
+    /**
+     * The menu item is highlighted to indicate the feature behind the menu item is critical.
+     */
+    CRITICAL,
 }
 
 @Composable
@@ -264,6 +330,7 @@ private fun getIconTint(state: MenuItemState): Color {
     return when (state) {
         MenuItemState.ACTIVE -> FirefoxTheme.colors.iconAccentViolet
         MenuItemState.WARNING -> FirefoxTheme.colors.iconCritical
+        MenuItemState.CRITICAL -> Color.Unspecified
         else -> FirefoxTheme.colors.iconSecondary
     }
 }
@@ -280,10 +347,9 @@ private fun WebExtensionMenuItemPreview() {
                 label = "label",
                 iconPainter = painterResource(R.drawable.mozac_ic_web_extension_default_icon),
                 enabled = true,
-                badgeText = "badgeText",
-                badgeTextColor = Color.Black.toArgb(),
-                badgeBackgroundColor = Color.Gray.toArgb(),
+                badgeText = "17",
                 onClick = {},
+                onSettingsClick = {},
             )
         }
     }

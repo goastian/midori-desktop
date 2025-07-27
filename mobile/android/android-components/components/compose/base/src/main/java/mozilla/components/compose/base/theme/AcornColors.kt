@@ -2,8 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+@file:Suppress("MagicNumber")
+
 package mozilla.components.compose.base.theme
 
+import androidx.compose.material3.ColorScheme
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +38,7 @@ class AcornColors(
     layerCritical: Color,
     layerInformation: Color,
     layerSearch: Color,
+    layerAutofillText: Color,
     actionPrimary: Color,
     actionPrimaryDisabled: Color,
     actionSecondary: Color,
@@ -43,6 +48,7 @@ class AcornColors(
     actionSuccess: Color,
     actionCritical: Color,
     actionInformation: Color,
+    actionChipSelected: Color,
     formDefault: Color,
     formSelected: Color,
     formSurface: Color,
@@ -98,6 +104,8 @@ class AcornColors(
     ripple: Color,
     tabActive: Color,
     tabInactive: Color,
+    badgeActive: Color,
+    surfaceDimVariant: Color,
 ) {
     // Layers
 
@@ -168,6 +176,11 @@ class AcornColors(
     var layerSearch by mutableStateOf(layerSearch)
         private set
 
+    // Autofill text background
+    // Use for the background of autofill text in the address bar.
+    var layerAutofillText by mutableStateOf(layerAutofillText)
+        private set
+
     // Actions
 
     // Primary button, Snackbar, Floating action button, Chip selected
@@ -236,6 +249,10 @@ class AcornColors(
 
     // Scroll indicator inactive
     var indicatorInactive by mutableStateOf(indicatorInactive)
+        private set
+
+    // Selected chip
+    var actionChipSelected by mutableStateOf(actionChipSelected)
         private set
 
     // Text
@@ -418,6 +435,22 @@ class AcornColors(
     var tabInactive by mutableStateOf(tabInactive)
         private set
 
+    // Badge Active
+    var badgeActive by mutableStateOf(badgeActive)
+        private set
+
+    /*
+     * M3 color scheme extensions that do not have a mapped value from Acorn
+     */
+
+    /**
+     * Surface Dim Variant
+     *
+     * Slightly dimmer surface color in light theme.
+     */
+    var surfaceDimVariant by mutableStateOf(surfaceDimVariant)
+        private set
+
     /**
      * Updates the existing colors with the provided [AcornColors].
      */
@@ -503,6 +536,8 @@ class AcornColors(
         ripple = other.ripple
         tabActive = other.tabActive
         tabInactive = other.tabInactive
+        badgeActive = other.badgeActive
+        surfaceDimVariant = other.surfaceDimVariant
     }
 
     /**
@@ -527,6 +562,7 @@ class AcornColors(
         layerCritical: Color = this.layerCritical,
         layerInformation: Color = this.layerInformation,
         layerSearch: Color = this.layerSearch,
+        layerAutofillText: Color = this.layerAutofillText,
         actionPrimary: Color = this.actionPrimary,
         actionPrimaryDisabled: Color = this.actionPrimaryDisabled,
         actionSecondary: Color = this.actionSecondary,
@@ -578,6 +614,7 @@ class AcornColors(
         iconActionPrimary: Color = this.iconActionPrimary,
         iconActionSecondary: Color = this.iconActionSecondary,
         iconActionTertiary: Color = this.iconActionTertiary,
+        actionChipSelected: Color = this.actionChipSelected,
         iconGradientStart: Color = this.iconGradientStart,
         iconGradientEnd: Color = this.iconGradientEnd,
         borderPrimary: Color = this.borderPrimary,
@@ -591,6 +628,8 @@ class AcornColors(
         ripple: Color = this.ripple,
         tabActive: Color = this.tabActive,
         tabInactive: Color = this.tabInactive,
+        badgeActive: Color = this.badgeActive,
+        surfaceDimVariant: Color = this.surfaceDimVariant,
     ): AcornColors = AcornColors(
         layer1 = layer1,
         layer2 = layer2,
@@ -609,6 +648,7 @@ class AcornColors(
         layerCritical = layerCritical,
         layerInformation = layerInformation,
         layerSearch = layerSearch,
+        layerAutofillText = layerAutofillText,
         actionPrimary = actionPrimary,
         actionPrimaryDisabled = actionPrimaryDisabled,
         actionSecondary = actionSecondary,
@@ -660,6 +700,7 @@ class AcornColors(
         iconActionPrimary = iconActionPrimary,
         iconActionSecondary = iconActionSecondary,
         iconActionTertiary = iconActionTertiary,
+        actionChipSelected = actionChipSelected,
         iconGradientStart = iconGradientStart,
         iconGradientEnd = iconGradientEnd,
         borderPrimary = borderPrimary,
@@ -673,6 +714,8 @@ class AcornColors(
         ripple = ripple,
         tabActive = tabActive,
         tabInactive = tabInactive,
+        badgeActive = badgeActive,
+        surfaceDimVariant = surfaceDimVariant,
     )
 }
 
@@ -694,6 +737,7 @@ val darkColorPalette = AcornColors(
     layerCritical = PhotonColors.Pink80,
     layerInformation = PhotonColors.Blue50,
     layerSearch = PhotonColors.DarkGrey80,
+    layerAutofillText = PhotonColors.LightGrey05A34,
     actionPrimary = PhotonColors.Violet60,
     actionPrimaryDisabled = PhotonColors.Violet60A50,
     actionSecondary = PhotonColors.DarkGrey05,
@@ -745,6 +789,7 @@ val darkColorPalette = AcornColors(
     iconActionPrimary = PhotonColors.LightGrey05,
     iconActionSecondary = PhotonColors.LightGrey05,
     iconActionTertiary = PhotonColors.LightGrey05,
+    actionChipSelected = PhotonColors.Violet50A32,
     iconGradientStart = PhotonColors.Violet20,
     iconGradientEnd = PhotonColors.Blue20,
     borderPrimary = PhotonColors.DarkGrey05,
@@ -758,6 +803,8 @@ val darkColorPalette = AcornColors(
     ripple = PhotonColors.White,
     tabActive = PhotonColors.DarkGrey30,
     tabInactive = PhotonColors.DarkGrey80,
+    badgeActive = PhotonColors.Ink60,
+    surfaceDimVariant = PhotonColors.DarkGrey80,
 )
 
 val lightColorPalette = AcornColors(
@@ -778,6 +825,7 @@ val lightColorPalette = AcornColors(
     layerCritical = PhotonColors.Red10,
     layerInformation = PhotonColors.Blue50A44,
     layerSearch = PhotonColors.LightGrey30,
+    layerAutofillText = PhotonColors.DarkGrey05A43,
     actionPrimary = PhotonColors.Ink20,
     actionPrimaryDisabled = PhotonColors.Ink20A20,
     actionSecondary = PhotonColors.LightGrey30,
@@ -829,6 +877,7 @@ val lightColorPalette = AcornColors(
     iconActionPrimary = PhotonColors.LightGrey05,
     iconActionSecondary = PhotonColors.DarkGrey90,
     iconActionTertiary = PhotonColors.DarkGrey90,
+    actionChipSelected = PhotonColors.Violet50A32,
     iconGradientStart = PhotonColors.Violet50,
     iconGradientEnd = PhotonColors.Blue60,
     borderPrimary = PhotonColors.LightGrey30,
@@ -842,6 +891,8 @@ val lightColorPalette = AcornColors(
     ripple = PhotonColors.Black,
     tabActive = PhotonColors.LightGrey10,
     tabInactive = PhotonColors.LightGrey20,
+    badgeActive = PhotonColors.Violet05,
+    surfaceDimVariant = PhotonColors.LightGrey20,
 )
 
 val privateColorPalette = darkColorPalette.copy(
@@ -849,9 +900,152 @@ val privateColorPalette = darkColorPalette.copy(
     layer2 = PhotonColors.Violet90,
     layer3 = PhotonColors.Ink90,
     layerSearch = PhotonColors.Ink90,
+    layerAutofillText = PhotonColors.Violet60,
     borderPrimary = PhotonColors.Ink05,
     borderSecondary = PhotonColors.Ink10,
     borderToolbarDivider = PhotonColors.Violet80,
     tabActive = PhotonColors.Purple60,
     tabInactive = PhotonColors.Ink90,
+    surfaceDimVariant = PhotonColors.Ink90,
 )
+
+@Suppress("LongParameterList")
+private fun AcornColors.toM3ColorScheme(
+    primary: Color,
+    primaryContainer: Color,
+    inversePrimary: Color,
+    secondaryContainer: Color,
+    tertiaryContainer: Color,
+    surface: Color,
+    inverseSurface: Color,
+    errorContainer: Color,
+    outline: Color,
+    outlineVariant: Color,
+    surfaceBright: Color,
+    surfaceContainer: Color,
+    surfaceContainerHigh: Color,
+    surfaceContainerHighest: Color,
+    surfaceContainerLow: Color,
+    surfaceContainerLowest: Color,
+): ColorScheme = ColorScheme(
+    primary = primary,
+    onPrimary = textInverted,
+    primaryContainer = primaryContainer,
+    onPrimaryContainer = textPrimary,
+    inversePrimary = inversePrimary,
+    secondary = textSecondary,
+    onSecondary = textInverted,
+    secondaryContainer = secondaryContainer,
+    onSecondaryContainer = textPrimary,
+    tertiary = textAccent,
+    onTertiary = textInverted,
+    tertiaryContainer = tertiaryContainer,
+    onTertiaryContainer = textPrimary,
+    background = surface,
+    onBackground = textPrimary, // onSurface
+    surface = surface,
+    onSurface = textPrimary,
+    surfaceVariant = surfaceContainerHighest,
+    onSurfaceVariant = textSecondary,
+    surfaceTint = layerAutofillText,
+    inverseSurface = inverseSurface,
+    inverseOnSurface = textInverted,
+    error = textCritical,
+    onError = textInverted,
+    errorContainer = errorContainer,
+    onErrorContainer = textPrimary,
+    outline = outline,
+    outlineVariant = outlineVariant,
+    scrim = layerScrim,
+    surfaceBright = surfaceBright,
+    surfaceDim = layerSearch,
+    surfaceContainer = surfaceContainer,
+    surfaceContainerHigh = surfaceContainerHigh,
+    surfaceContainerHighest = surfaceContainerHighest,
+    surfaceContainerLow = surfaceContainerLow,
+    surfaceContainerLowest = surfaceContainerLowest,
+)
+
+/**
+ * Returns a dark Material color scheme mapped from Acorn.
+ */
+fun acornDarkColorScheme(): ColorScheme = darkColorPalette.toM3ColorScheme(
+    primary = PhotonColors.Violet10,
+    primaryContainer = PhotonColors.Violet80,
+    inversePrimary = PhotonColors.Violet70,
+    secondaryContainer = Color(0xFF4B3974),
+    tertiaryContainer = PhotonColors.Pink80,
+    surface = PhotonColors.DarkGrey60,
+    inverseSurface = PhotonColors.LightGrey10,
+    errorContainer = PhotonColors.Red80,
+    outline = PhotonColors.LightGrey80,
+    outlineVariant = PhotonColors.DarkGrey05,
+    surfaceBright = PhotonColors.DarkGrey40,
+    surfaceContainer = PhotonColors.DarkGrey60,
+    surfaceContainerHigh = PhotonColors.DarkGrey50,
+    surfaceContainerHighest = PhotonColors.DarkGrey40,
+    surfaceContainerLow = PhotonColors.DarkGrey70,
+    surfaceContainerLowest = PhotonColors.DarkGrey80,
+)
+
+/**
+ * Returns a light Material color scheme mapped from Acorn.
+ */
+fun acornLightColorScheme(): ColorScheme = lightColorPalette.toM3ColorScheme(
+    primary = PhotonColors.Ink20,
+    primaryContainer = PhotonColors.Violet05,
+    inversePrimary = PhotonColors.Violet20,
+    secondaryContainer = Color(0xFFE6E0F5),
+    tertiaryContainer = PhotonColors.Pink05,
+    surface = PhotonColors.LightGrey10,
+    inverseSurface = PhotonColors.DarkGrey60,
+    errorContainer = PhotonColors.Red05,
+    outline = PhotonColors.LightGrey90,
+    outlineVariant = PhotonColors.LightGrey30,
+    surfaceBright = PhotonColors.White,
+    surfaceContainer = PhotonColors.LightGrey10,
+    surfaceContainerHigh = PhotonColors.LightGrey20,
+    surfaceContainerHighest = PhotonColors.LightGrey30,
+    surfaceContainerLow = PhotonColors.LightGrey05,
+    surfaceContainerLowest = PhotonColors.White,
+)
+
+/**
+ * Returns a private Material color scheme mapped from Acorn.
+ */
+fun acornPrivateColorScheme(): ColorScheme = privateColorPalette.toM3ColorScheme(
+    primary = PhotonColors.Violet10,
+    primaryContainer = PhotonColors.Violet80,
+    inversePrimary = PhotonColors.Violet70,
+    secondaryContainer = Color(0xFF4B3974),
+    tertiaryContainer = PhotonColors.Pink80,
+    surface = Color(0xFF342B4A),
+    inverseSurface = PhotonColors.LightGrey10,
+    errorContainer = PhotonColors.Red80,
+    outline = PhotonColors.LightGrey80,
+    outlineVariant = PhotonColors.DarkGrey05,
+    surfaceBright = Color(0xFF413857),
+    surfaceContainer = Color(0xFF342B4A),
+    surfaceContainerHigh = Color(0xFF3B3251),
+    surfaceContainerHighest = Color(0xFF413857),
+    surfaceContainerLow = Color(0xFF281C3D),
+    surfaceContainerLowest = PhotonColors.Ink90,
+)
+
+/**
+ * M3 color scheme extensions
+ */
+
+/**
+ * Information
+ *
+ * Attention-grabbing color against surface for fills, icons, and text, indicating neutral information.
+ */
+val ColorScheme.information: Color
+    @Composable get() = AcornTheme.colors.iconAccentBlue
+
+/**
+ * @see AcornColors.surfaceDimVariant
+ */
+val ColorScheme.surfaceDimVariant: Color
+    @Composable get() = AcornTheme.colors.surfaceDimVariant

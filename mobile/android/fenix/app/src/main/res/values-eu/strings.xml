@@ -11,9 +11,9 @@
   -->
   <string name="content_description_menu">Aukera gehiago</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_private_browsing_button">Gaitu nabigatze pribatua</string>
+  <string name="content_description_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Gaitu nabigatze pribatua</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
-  <string name="content_description_disable_private_browsing_button">Desgaitu nabigatze pribatua</string>
+  <string name="content_description_disable_private_browsing_button" moz:removedIn="142" tools:ignore="UnusedResources">Desgaitu nabigatze pribatua</string>
   <!-- Content description (not visible, for screen readers etc.): "Private Browsing" menu button. -->
   <string name="content_description_private_browsing">Nabigatze pribatua</string>
   <!-- Placeholder text shown in the search bar before a user enters text for the default engine -->
@@ -62,7 +62,7 @@
     Explanation for private browsing displayed to users on home view when they first enable private mode.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="private_browsing_placeholder_description_2">%1$s(e)k fitxa pribatuetako zure bilaketa- eta nabigatze-historia garbitzen du hauek ixtean edo aplikaziotik irtetean. Honek ez zaitu anonimo egiten webguneen edo zure interneteko zerbitzu-hornitzailearen aurrean baina erraztu egiten du ordenagailu hau erabiltzen duten beste erabiltzaileengandik online duzun jarduera pribatu mantentzen.</string>
+  <string name="private_browsing_placeholder_description_2" moz:removedIn="141" tools:ignore="UnusedResources">%1$s(e)k fitxa pribatuetako zure bilaketa- eta nabigatze-historia garbitzen du hauek ixtean edo aplikaziotik irtetean. Honek ez zaitu anonimo egiten webguneen edo zure interneteko zerbitzu-hornitzailearen aurrean baina erraztu egiten du ordenagailu hau erabiltzen duten beste erabiltzaileengandik online duzun jarduera pribatu mantentzen.</string>
   <string name="private_browsing_common_myths">Nabigatze pribatuari buruzko ohiko mitoak</string>
   <!--
     True Private Browsing Mode
@@ -98,7 +98,7 @@
 
     Text for the message displayed in the contextual feature recommendation popup promoting the erase private browsing feature.
   -->
-  <string name="erase_action_cfr_message">Sakatu hemen nabigatze pribatuko saioa hasteko. Ezabatu zure historia, cookieak — dena.</string>
+  <string name="erase_action_cfr_message" moz:removedIn="141" tools:ignore="UnusedResources">Sakatu hemen nabigatze pribatuko saioa hasteko. Ezabatu zure historia, cookieak — dena.</string>
   <!--
     Toolbar "contextual feature recommendation" (CFR)
 
@@ -112,12 +112,8 @@
   <!--
     Address bar swipe "contextual feature recommendation" (CFR)
 
-    Text for the title displayed in the contextual feature recommendation popup promoting swipe of address bar.
+    Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar.
   -->
-  <string name="address_bar_swipe_cfr_title" tools:ignore="UnusedResources" moz:removedIn="139">Pasatu zeharka tresna-barra fitxak aldatzeko</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
-  <string name="address_bar_swipe_cfr_message" tools:ignore="UnusedResources" moz:removedIn="139">Aldatzeko, pasatu ezkerrera edo eskuinera. Fitxa berria irekitzeko, pasatu ezkerrera zure azken fitxan.</string>
-  <!-- Text for the message displayed in the contextual feature recommendation popup promoting swipe of address bar. -->
   <string name="address_bar_swipe_cfr_message_2">Fitxak aldatzeko, pasatu tresna-barra ezkerrera edo eskuinera.</string>
   <!-- Text for the info dialog when camera permissions have been denied but user tries to access a camera feature. -->
   <string name="camera_permissions_needed_message">Kamerarako sarbidea behar da. Joan Androideko ezarpenetara, sakatu baimenetan eta sakatu baimendu.</string>
@@ -326,9 +322,9 @@
     Browser menu label that navigates to the SUMO page for the Firefox for Android release notes.
     %1$s is the name of the app (for example "Firefox").
   -->
-  <string name="browser_menu_new_in_firefox">Berria %1$s(e)n</string>
+  <string name="browser_menu_new_in_firefox" moz:removedIn="141" tools:ignore="UnusedResources">Berria %1$s(e)n</string>
   <!-- Browser menu label that toggles the request for the desktop site of the currently visited page -->
-  <string name="browser_menu_switch_to_desktop_site">Aldatu mahaigaineko gunera</string>
+  <string name="browser_menu_switch_to_desktop_site" moz:removedIn="141" tools:ignore="UnusedResources">Aldatu mahaigaineko gunera</string>
   <!-- Browser menu label that toggles the request for the mobile site of the currently visited page -->
   <string name="browser_menu_switch_to_mobile_site">Aldatu mugikorrerako gunera</string>
   <!-- Browser menu label that navigates to the page tools sub-menu -->
@@ -336,7 +332,7 @@
   <!-- Content description (not visible, for screen readers etc.): Back button for all menu redesign sub-menu -->
   <string name="browser_menu_back_button_content_description" moz:removedIn="141" tools:ignore="UnusedResources">Itzuli menu nagusira</string>
   <!-- Content description (not visible, for screen readers etc.) for bottom sheet handlebar main menu. -->
-  <string name="browser_main_menu_handlebar_content_description">Itxi menu nagusiaren orria</string>
+  <string name="browser_main_menu_handlebar_content_description" moz:removedIn="142" tools:ignore="UnusedResources">Itxi menu nagusiaren orria</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu help button. -->
   <string name="browser_main_menu_content_description_help_button">Laguntza</string>
   <!-- Content description (not visible, for screen readers etc.) for main menu settings button. -->
@@ -384,7 +380,7 @@
     Browser menu label that is displayed when the current page has been translated by the translation feature.
     %1$s is the name of the language that page was translated to (e.g. English).
   -->
-  <string name="browser_menu_translated_to">%1$s hizkuntzara itzulita</string>
+  <string name="browser_menu_translated_to" moz:removedIn="141" tools:ignore="UnusedResources">%1$s hizkuntzara itzulita</string>
   <!-- Browser menu label for the print feature -->
   <string name="browser_menu_print" moz:removedIn="141" tools:ignore="UnusedResources">Inprimatu…</string>
   <!--
@@ -416,7 +412,7 @@
     Content description (not visible, for screen readers etc.): Erase button: Erase the browsing
     history and go back to the home screen.
   -->
-  <string name="browser_toolbar_erase">Ezabatu nabigatze-historia</string>
+  <string name="browser_toolbar_erase" moz:removedIn="141" tools:ignore="UnusedResources">Ezabatu nabigatze-historia</string>
   <!-- Content description for the translate page toolbar button that opens the translations dialog when no translation has occurred. -->
   <string name="browser_toolbar_translate">Itzuli orria</string>
   <!--
@@ -491,7 +487,7 @@
   <!-- Text for the button to skip the onboarding on the home onboarding dialog. -->
   <string name="onboarding_home_skip_button" moz:removedIn="141" tools:ignore="UnusedResources">Saltatu</string>
   <!-- Onboarding home screen sync popup dialog message, shown on top of Recent Synced Tabs in the Jump back in section. -->
-  <string name="sync_cfr_message">Zure fitxak sinkronizatzen ari dira! Jarraitu zure beste gailuan utzi zenuen tokitik.</string>
+  <string name="sync_cfr_message" moz:removedIn="142" tools:ignore="UnusedResources">Zure fitxak sinkronizatzen ari dira! Jarraitu zure beste gailuan utzi zenuen tokitik.</string>
   <!-- Content description (not visible, for screen readers etc.): Close button for the home onboarding dialog -->
   <string name="onboarding_home_content_description_close_button">Itxi</string>
   <!--
@@ -847,7 +843,7 @@
   <!-- Preference for translations -->
   <string name="preferences_translations">Itzulpenak</string>
   <!-- Preference for data choices -->
-  <string name="preferences_data_choices">Datu-aukerak</string>
+  <string name="preferences_data_choices" tools:ignore="UnusedResources" moz:removedIn="141">Datu-aukerak</string>
   <!-- Preference for data collection -->
   <string name="preferences_data_collection">Datu-bilketa</string>
   <!-- Preference for developers -->
@@ -909,7 +905,7 @@
   <!-- Preference for open links in third party apps never open in apps option -->
   <string name="preferences_open_links_in_apps_never">Inoiz ez</string>
   <!-- Preference for open download with an external download manager app -->
-  <string name="preferences_external_download_manager">Kanpoko deskarga-kudeatzailea</string>
+  <string name="preferences_external_download_manager" tools:ignore="UnusedResources" moz:removedIn="141">Kanpoko deskarga-kudeatzailea</string>
   <!-- Preference for enabling gecko engine logs -->
   <string name="preferences_enable_gecko_logs">Gaitu Gecko erregistroak</string>
   <!-- Message to indicate users that we are quitting the application to apply the changes -->
@@ -929,13 +925,13 @@
 
     The title of the required permissions section from addon's permissions screen
   -->
-  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources">Beharrezkoa</string>
+  <string name="addons_permissions_heading_required" tools:ignore="UnusedResources" moz:removedIn="141">Beharrezkoa</string>
   <!-- The title of the optional permissions section from addon's permissions screen -->
-  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources">Aukerakoa</string>
+  <string name="addons_permissions_heading_optional" tools:ignore="UnusedResources" moz:removedIn="141">Aukerakoa</string>
   <!-- The title of the origin permission option allowing a user to enable the extension to run on all sites -->
-  <string name="addons_permissions_allow_for_all_sites" tools:ignore="UnusedResources">Baimendu gune guztietarako</string>
+  <string name="addons_permissions_allow_for_all_sites">Baimendu gune guztietarako</string>
   <!-- The subtitle for the allow for all sites preference toggle -->
-  <string name="addons_permissions_allow_for_all_sites_subtitle" tools:ignore="UnusedResources">Hedapena fidagarritzat baduzu, webgune guztietarako baimena eman diezaiokezu.</string>
+  <string name="addons_permissions_allow_for_all_sites_subtitle">Hedapena fidagarritzat baduzu, webgune guztietarako baimena eman diezaiokezu.</string>
   <!-- The text shown when an extension does not require permissions -->
   <string name="addons_does_not_require_permissions">Hedapen honek ez du baimenik behar.</string>
   <!--
@@ -1118,9 +1114,17 @@
   <!-- Preference switch for usage and technical data collection -->
   <string name="preference_usage_data_2">Bidali datu tekniko eta interakziozkoak</string>
   <!-- Preference switch for usage and technical learn more link -->
-  <string name="preference_usage_data_learn_more">Argibide gehiago</string>
+  <string name="preference_usage_data_learn_more" tools:ignore="UnusedResources" moz:removedIn="141">Argibide gehiago</string>
   <!-- Preference description for marketing data collection. Note: The words "Firefox" should NOT be translated -->
   <string name="preferences_usage_data_description_1" tools:ignore="BrandUsage">Zure gailuaren, hardware-konfigurazioaren eta erabilpenaren inguruko datuek guztientzat Firefoxen eginbideak, errendimendua eta egonkortasuna hobetzen laguntzen dute.</string>
+  <!-- Preference switch for daily usage ping data collection -->
+  <string name="preferences_daily_usage_ping_title">Eguneroko erabilpenaren ping-a</string>
+  <string name="preferences_daily_usage_ping_description">Honek erabiltzaile aktiboen kopurua kalkulatzen laguntzen dio Mozillari.</string>
+  <string name="preferences_daily_usage_ping_learn_more">Eguneroko erabilpenari ping-ari buruzko argibide gehiago</string>
+  <!-- Preference switch title for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_title" tools:ignore="UnusedResources" moz:removedIn="142">Bidali automatikoki hutsegite-txostenak</string>
+  <!-- Preference switch description for automatically submitting crash reports -->
+  <string name="preferences_automatically_send_crashes_description" tools:ignore="UnusedResources" moz:removedIn="142">Hauek nabigatzailearen arazoak diagnostikatu eta konpontzen laguntzen digu honek. Txostenek datu pertsonal edo kontuzkoak izan litzakete.</string>
   <!-- Preference switch for campaign measurement data (marketing data) collection -->
   <string name="preferences_marketing_data_2">Kanpainen neurketa-datuak</string>
   <!--
@@ -1130,16 +1134,8 @@
   <string name="preferences_marketing_data_description_4" tools:ignore="BrandUsage">Partekatu Mozillaren marketineko teknologia-bazkideekin Firefox nola aurkitu zenuen eta erabiltzen duzula.</string>
   <!-- Learn more link for marketing data preference -->
   <string name="preferences_marketing_data_learn_more">Marketin-datuei buruzko argibide gehiago</string>
-  <!-- Preference switch for daily usage ping data collection -->
-  <string name="preferences_daily_usage_ping_title">Eguneroko erabilpenaren ping-a</string>
-  <string name="preferences_daily_usage_ping_description">Honek erabiltzaile aktiboen kopurua kalkulatzen laguntzen dio Mozillari.</string>
-  <string name="preferences_daily_usage_ping_learn_more">Eguneroko erabilpenari ping-ari buruzko argibide gehiago</string>
-  <!-- Preference switch title for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_title">Bidali automatikoki hutsegite-txostenak</string>
-  <!-- Preference switch description for automatically submitting crash reports -->
-  <string name="preferences_automatically_send_crashes_description">Hauek nabigatzailearen arazoak diagnostikatu eta konpontzen laguntzen digu honek. Txostenek datu pertsonal edo kontuzkoak izan litzakete.</string>
   <!-- Learn more link for crash reporting preference -->
-  <string name="onboarding_preferences_dialog_crash_reporting_learn_more">Hutsegite-txostenei buruzko argibide gehiago</string>
+  <string name="onboarding_preferences_dialog_crash_reporting_learn_more" tools:ignore="UnusedResources" moz:removedIn="142">Hutsegite-txostenei buruzko argibide gehiago</string>
   <!-- Title for studies preferences -->
   <string name="preference_experiments_2">Esperimentuak</string>
   <!-- Summary for studies preferences -->
@@ -1331,8 +1327,6 @@
   <!-- Learn more link for studies, links to an article for more information about studies. -->
   <string name="studies_learn_more">Argibide gehiago</string>
   <!--
-    Sessions
-
     Title for the list of tabs in the current private session used by a11y services
     The %1$s will be replaced by the number of opened private tabs
   -->
@@ -1461,8 +1455,6 @@
   <string name="download_delete_item">Ezabatu</string>
   <!-- Content description for the toolbar "Navigate back" button -->
   <string name="download_navigate_back_description">Nabigatu atzera</string>
-  <!-- Content description for the toolbar "Navigate up" button -->
-  <string name="download_navigate_up_description" moz:removedIn="139" tools:ignore="UnusedResources">Nabigatu gora</string>
   <!-- Text for the button to share the download URL -->
   <string name="download_share_url">Partekatu URLa</string>
   <!-- Text for the button to share the download file -->
@@ -1529,7 +1521,7 @@
   -->
   <string name="webcompat_reporter_screen_title">Eman hondatutako gunearen berri</string>
   <!-- The description of the Web Compat Reporter feature. %1$s is the name of the app (for example "Firefox"). -->
-  <string name="webcompat_reporter_description">Lagundu %1$s denontzat hobetzen. Mozillako langileek zuk bidalitako informazioa erabiltzen dute webguneetako arazoak konpontzeko.</string>
+  <string name="webcompat_reporter_description" moz:removedIn="142" tools:ignore="UnusedResources">Lagundu %1$s denontzat hobetzen. Mozillako langileek zuk bidalitako informazioa erabiltzen dute webguneetako arazoak konpontzeko.</string>
   <!-- The text field label of the URL text field. This is displayed above the user-inputted URL. -->
   <string name="webcompat_reporter_label_url">URLa</string>
   <!-- The error message of the URL text field when an invalid URL has been entered. -->
@@ -1537,7 +1529,7 @@
   <!-- The label/title of a field in the Web Compat Reporter feature for explaining a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_label_whats_broken_2">Zer dago hondatuta?</string>
   <!-- The placeholder text for the dropdown where a user selects a high-level reason why the site is broken. -->
-  <string name="webcompat_reporter_choose_reason">Aukeratu arrazoia</string>
+  <string name="webcompat_reporter_choose_reason" moz:removedIn="142" tools:ignore="UnusedResources">Aukeratu arrazoia</string>
   <!-- The error message of the dropdown, prompting the user to select a high-level reason why the site is broken. -->
   <string name="webcompat_reporter_choose_reason_error">Aukeratu arrazoia</string>
   <!-- The label/title of an optional field in the Web Compat Reporter feature for adding additional information. -->
@@ -1982,7 +1974,7 @@
   <!-- Text shown in snackbar when user closes a private tab -->
   <string name="snackbar_private_tab_closed">Fitxa pribatua itxita</string>
   <!-- Text shown in snackbar when user closes all private tabs -->
-  <string name="snackbar_private_tabs_closed">Fitxa pribatuak itxita</string>
+  <string name="snackbar_private_tabs_closed" moz:removedIn="141" tools:ignore="UnusedResources">Fitxa pribatuak itxita</string>
   <!-- Text shown in snackbar when user erases their private browsing data -->
   <string name="snackbar_private_data_deleted">Nabigatze pribatuko datuak ezabatuta</string>
   <!-- Text shown in snackbar to undo deleting a tab, top site or collection -->
@@ -2730,11 +2722,7 @@
   <string name="synced_tabs_expand_group">Zabaldu sinkronizatutako fitxen taldea</string>
   <!-- Content description for collapsing a group of synced tabs. -->
   <string name="synced_tabs_collapse_group">Tolestu sinkronizatutako fitxen taldea</string>
-  <!--
-    Top Sites
-
-    Title text displayed in the dialog when shortcuts limit is reached.
-  -->
+  <!-- Title text displayed in the dialog when shortcuts limit is reached. -->
   <string name="shortcut_max_limit_title">Lasterbideen mugara iritsi da</string>
   <!-- Content description text displayed in the dialog when shortcut limit is reached. -->
   <string name="shortcut_max_limit_content">Lasterbide berria gehitzeko, kendu aurretik dagoen bat. Sakatu eta mantendu gunea eta hautatu kentzeko aukera.</string>
@@ -2870,7 +2858,7 @@
   <!-- Action label for links to a website containing documentation about a wallpaper collection. Talkback will append this to say "Double tap to open link to learn more about this collection". -->
   <string name="a11y_action_label_wallpaper_collection_learn_more">ireki lotura bilduma honi buruzko argibide gehiagorako</string>
   <!-- Action label for links that point to an article. Talkback will append this to say "Double tap to read the article". -->
-  <string name="a11y_action_label_read_article">irakurri artikulua</string>
+  <string name="a11y_action_label_read_article" moz:removedIn="141" tools:ignore="UnusedResources">irakurri artikulua</string>
   <!-- Action label for links to the Firefox Pocket website. Talkback will append this to say "Double tap to open link to learn more". -->
   <string name="a11y_action_label_pocket_learn_more" moz:removedIn="140" tools:ignore="UnusedResources">ireki lotura argibide gehiagorako</string>
   <!-- Content description for headings announced by accessibility service. %s is the text of the heading. Talkback will announce the text and then speak the word "Heading" indicating to the user that this text is a heading for a section. -->
@@ -3124,9 +3112,9 @@
 
     Text for the protection panel header when the site is secure.
   -->
-  <string name="protection_panel_header_secure">Segurua</string>
+  <string name="protection_panel_header_secure" moz:removedIn="142" tools:ignore="UnusedResources">Segurua</string>
   <!-- Text for the protection panel header when the site is not secure. -->
-  <string name="protection_panel_header_not_secure">Ez-segurua</string>
+  <string name="protection_panel_header_not_secure" moz:removedIn="142" tools:ignore="UnusedResources">Ez-segurua</string>
   <!-- Title text for the protection panel banner when the site is not secure. -->
   <string name="protection_panel_banner_not_secure_title">Argi ibili gune honetan</string>
   <!-- Description text for the protection panel banner when the site is not secure. -->
@@ -3148,9 +3136,9 @@
   <!-- Label text for the Enhanced Tracking Protection toggle. -->
   <string name="protection_panel_etp_toggle_label">Jarraipenaren babes hobetua</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is enabled. -->
-  <string name="protection_panel_etp_toggle_enabled_description">Zerbaitek apurtuta badirudi gune honetan, saiatu babesak desaktibatzen.</string>
+  <string name="protection_panel_etp_toggle_enabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Zerbaitek apurtuta badirudi gune honetan, saiatu babesak desaktibatzen.</string>
   <!-- Description text for the Enhanced Tracking Protection toggle when tracking protection is disabled. -->
-  <string name="protection_panel_etp_toggle_disabled_description">Babesak desgaituta daude. Berriro ere aktibatzea gomendatzen dugu.</string>
+  <string name="protection_panel_etp_toggle_disabled_description" moz:removedIn="142" tools:ignore="UnusedResources">Babesak desgaituta daude. Berriro ere aktibatzea gomendatzen dugu.</string>
   <!--
     Text for displaying the total number of trackers blocked in the protection panel.
     %d is a placeholder for the number of trackers blocked.
@@ -3159,7 +3147,7 @@
   <!-- Text for when no trackers have been blocked. -->
   <string name="protection_panel_no_trackers_blocked">Ez da jarraipen-elementurik aurkitu</string>
   <!-- Link text to navigate to privacy and security settings from the protection panel. -->
-  <string name="protection_panel_privacy_and_security_settings">Pribatutasun- eta segurtasun-ezarpenak</string>
+  <string name="protection_panel_privacy_and_security_settings" moz:removedIn="142" tools:ignore="UnusedResources">Pribatutasun- eta segurtasun-ezarpenak</string>
   <!-- Title text for the protection panel permissions section. -->
   <string name="protection_panel_permissions_title">Baimenak</string>
   <!--
@@ -3190,7 +3178,7 @@
   <string name="connection_security_panel_not_secure">Konexio ez-segurua</string>
   <!--
     Text for the connection security panel to indicate who the certificate was verified by.
-    %s is a placeholder for the name of the certificate authority that verified the ticket
+    %s is a placeholder for the name of the certificate authority that issued the certificate.
   -->
   <string name="connection_security_panel_verified_by">Egiaztatzailea: %s</string>
   <!--
@@ -3421,14 +3409,8 @@
   <string name="certificate_warning_push_notification_pnw2_message" tools:ignore="UnusedResources">Eguneratu martxoaren 14a aurretik gehigarriak eta bestelako eginbideak erabiltzen jarraitzeko.</string>
   <!-- Push notification message about old Firefox version -->
   <string name="certificate_warning_push_notification_pnw3_message" tools:ignore="UnusedResources">Zenbait eginbide ez dira ibiliko bihartik aurrera.</string>
-  <!--
-    TextField Design System Component
+  <!-- TextField Design System Component -->
 
-    The default content description for the eye trailing icon button in TextField
-  -->
-  <string name="text_field_eye_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Erakutsi ezkutatutako testua</string>
-  <!-- The default content description for the cross trailing icon button in TextField -->
-  <string name="text_field_cross_trailing_icon_default_content_description" moz:removedIn="139" tools:ignore="UnusedResources">Garbitu testua</string>
   <!--
     Setup checklist feature
 

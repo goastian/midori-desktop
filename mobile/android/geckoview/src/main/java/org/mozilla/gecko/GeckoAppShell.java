@@ -335,6 +335,7 @@ public class GeckoAppShell {
   private static synchronized boolean enableLocationUpdates(final boolean enable) {
     locationListeningRequested = enable;
     final boolean canListen = updateLocationListeners();
+    // canListen will be true even if paused. During paused, we keep requesting status.
     if (!canListen && locationListeningRequested) {
       // Didn't successfully start listener when requested
       locationListeningRequested = false;
@@ -352,11 +353,10 @@ public class GeckoAppShell {
     }
 
     if (!shouldListen) {
-      // Could not complete request, because paused
-      if (locationListeningRequested) {
-        return false;
+      if (!locationListeningRequested) {
+        // We are paused, so stop listening.
+        lm.removeUpdates(sAndroidListeners);
       }
-      lm.removeUpdates(sAndroidListeners);
       return true;
     }
 
@@ -793,15 +793,15 @@ public class GeckoAppShell {
   }
 
   @WrapForJNI(dispatchTo = "gecko")
-  private static native void notifyAlertListener(String name, String topic, String cookie);
+  private static native void notifyAlertListener(String name, String topic, String action);
 
   /**
    * Called by the NotificationListener to notify Gecko that a previously shown notification has
    * been closed.
    */
-  public static void onNotificationClose(final String name, final String cookie) {
+  public static void onNotificationClose(final String name) {
     if (GeckoThread.isRunning()) {
-      notifyAlertListener(name, "alertfinished", cookie);
+      notifyAlertListener(name, "alertfinished", null);
     }
   }
 
@@ -809,9 +809,9 @@ public class GeckoAppShell {
    * Called by the NotificationListener to notify Gecko that a previously shown notification has
    * been clicked on.
    */
-  public static void onNotificationClick(final String name, final String cookie) {
+  public static void onNotificationClick(final String name, @Nullable final String action) {
     if (GeckoThread.isRunning()) {
-      notifyAlertListener(name, "alertclickcallback", cookie);
+      notifyAlertListener(name, "alertclickcallback", action);
     } else {
       GeckoThread.queueNativeCallUntil(
           GeckoThread.State.PROFILE_READY,
@@ -819,7 +819,8 @@ public class GeckoAppShell {
           "notifyAlertListener",
           name,
           "alertclickcallback",
-          cookie);
+          String.class,
+          action);
     }
   }
 
