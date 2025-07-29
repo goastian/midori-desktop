@@ -44,6 +44,7 @@ floorp.jar:
   content/modules/workspaces/WorkspacesElementService.mjs            (content/modules/workspaces/WorkspacesElementService.mjs)
   content/modules/workspaces/WorkspacesExternalFileService.mjs       (content/modules/workspaces/WorkspacesExternalFileService.mjs)
   content/modules/workspaces/WorkspacesIdUtils.mjs                   (content/modules/workspaces/WorkspacesIdUtils.mjs)
+  content/modules/workspaces/WorkspacesMemoryManager.mjs             (content/modules/workspaces/WorkspacesMemoryManager.mjs)
   content/modules/workspaces/WorkspacesMigratorUtils.mjs             (content/modules/workspaces/WorkspacesMigratorUtils.mjs)
 
 # Style Sheets
