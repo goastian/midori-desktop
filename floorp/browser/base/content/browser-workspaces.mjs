@@ -226,7 +226,15 @@ export const gWorkspaces = {
         `workspace-${workspaceId}`
       );
       if (workspaceToolbarButton) {
-        workspaceToolbarButton.setAttribute("label", workspace.name);
+        // Count open tabs in this workspace
+        let tabCount = 0;
+        for (let tab of window.gBrowser.tabs) {
+          if (tab.getAttribute(this.workspacesTabAttributionId) == workspaceId) {
+            tabCount++;
+          }
+        }
+        // Count open tabs in this workspace
+        workspaceToolbarButton.setAttribute("label", `${workspace.name} (${tabCount})`);
       }
     }
   },
@@ -673,6 +681,8 @@ export const gWorkspaces = {
         break;
     }
     await gWorkspaces.checkAllTabsForVisibility();
+    // Update labels immediately after switching workspaces
+    await gWorkspaces.rebuildWorkspacesLabels();
   },
 
   async changeWorkspaceToDefaultWorkspace() {
@@ -730,6 +740,8 @@ export const gWorkspaces = {
     } else {
       gWorkspaces.checkAllTabsForVisibility();
     }
+    // Update labels immediately after moving tab
+    await gWorkspaces.rebuildWorkspacesLabels();
   },
 
   async moveTabsToWorkspace(workspaceId, tabs) {
@@ -743,6 +755,8 @@ export const gWorkspaces = {
     }
 
     gWorkspaces.checkAllTabsForVisibility();
+    // Update labels immediately after moving tabs
+    await gWorkspaces.rebuildWorkspacesLabels();
   },
 
   moveTabsToWorkspaceFromTabContextMenu(workspaceId) {
