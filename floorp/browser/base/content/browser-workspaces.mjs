@@ -5,6 +5,7 @@ import { WorkspacesIdUtils } from "./modules/workspaces/WorkspacesIdUtils.mjs";
 import { WorkspacesElementService } from "./modules/workspaces/WorkspacesElementService.mjs";
 import { WorkspacesDataSaver } from "./modules/workspaces/WorkspacesDataSaver.mjs";
 import { WorkspacesWindowIdUtils } from "resource://floorp/WorkspacesWindowIdUtils.mjs";
+import { WorkspacesMemoryManager } from "./modules/workspaces/WorkspacesMemoryManager.mjs";
 import {
   WorkspacesService,
   WorkspacesReorderService,
@@ -129,6 +130,12 @@ export const gWorkspaces = {
   _workspaceToolbarButtonNotFound: false,
   _workspaceManageOnBMSMode: false,
   _workspacesTemporarilyDisabled: false,
+  _visibilityCheckInterval: null,
+  _locationChangeListener: null,
+  _isDestroyed: false,
+  _memoryManagerAvailable: false,
+  _lastVisibilityCheck: 0,
+  _visibilityCheckThrottle: 1000, // 1 second throttle
 
   /** Elements */
   get titlebar() {
@@ -921,6 +928,18 @@ export const gWorkspaces = {
 
   /* Visibility Service */
   async checkAllTabsForVisibility(initialized = false) {
+    // Early return if destroyed or temporarily disabled
+    if (this._isDestroyed || this._workspacesTemporarilyDisabled) {
+      return;
+    }
+
+    // Throttle visibility checks to prevent excessive calls
+    const currentTime = Date.now();
+    if (!initialized && (currentTime - this._lastVisibilityCheck) < this._visibilityCheckThrottle) {
+      return;
+    }
+    this._lastVisibilityCheck = currentTime;
+
     // BMS Sidebar mode
     if (
       !this._workspaceManageOnBMSMode &&
@@ -972,28 +991,37 @@ export const gWorkspaces = {
       );
     }
 
-    // Check all tabs for visibility
+    // Check all tabs for visibility - optimized to reduce DOM operations
     let tabs = window.gBrowser.tabs;
-    for (let i = 0; i < tabs.length; i++) {
-      // Set workspaceId if workspaceId is null
-      let workspaceId = gWorkspaces.getWorkspaceIdFromAttribute(tabs[i]);
-      if (
-        !(
-          workspaceId !== "" &&
-          workspaceId !== null &&
-          workspaceId !== undefined
-        )
-      ) {
-        gWorkspaces.setWorkspaceIdToAttribute(tabs[i], currentWorkspaceId);
-      }
-
-      let chackedWorkspaceId = gWorkspaces.getWorkspaceIdFromAttribute(tabs[i]);
-      if (workspacesCount > 1) {
-        if (chackedWorkspaceId == currentWorkspaceId) {
-          window.gBrowser.showTab(tabs[i]);
-        } else {
-          window.gBrowser.hideTab(tabs[i]);
+    if (tabs && tabs.length > 0) {
+      const tabsToShow = [];
+      const tabsToHide = [];
+      
+      for (let i = 0; i < tabs.length; i++) {
+        const tab = tabs[i];
+        
+        // Set workspaceId if workspaceId is null
+        let workspaceId = gWorkspaces.getWorkspaceIdFromAttribute(tab);
+        if (!workspaceId || workspaceId === "" || workspaceId === null || workspaceId === undefined) {
+          gWorkspaces.setWorkspaceIdToAttribute(tab, currentWorkspaceId);
+          workspaceId = currentWorkspaceId;
         }
+
+        if (workspacesCount > 1) {
+          if (workspaceId === currentWorkspaceId) {
+            tabsToShow.push(tab);
+          } else {
+            tabsToHide.push(tab);
+          }
+        }
+      }
+      
+      // Batch DOM operations for better performance
+      if (tabsToShow.length > 0) {
+        tabsToShow.forEach(tab => window.gBrowser.showTab(tab));
+      }
+      if (tabsToHide.length > 0) {
+        tabsToHide.forEach(tab => window.gBrowser.hideTab(tab));
       }
     }
 
@@ -1098,6 +1126,9 @@ export const gWorkspaces = {
     if (this._initialized || gBmsWindow.isBmsWindow) {
       return;
     }
+    
+    // Reset destroyed flag
+    this._isDestroyed = false;
 
     // Add toolbar popup for context menu
     gFloorpContextMenu.addToolbarContentMenuPopupSet(
@@ -1127,6 +1158,19 @@ export const gWorkspaces = {
     // toolbar button
     // eslint-disable-next-line no-undef
     await this.createWorkspacesToolbarButton();
+
+    // Initialize memory manager
+    try {
+      if (WorkspacesMemoryManager && typeof WorkspacesMemoryManager.init === 'function') {
+        WorkspacesMemoryManager.init();
+        this._memoryManagerAvailable = true;
+        console.log("Workspaces: Memory manager initialized successfully");
+      } else {
+        console.warn("Workspaces: Memory manager not available");
+      }
+    } catch (error) {
+      console.error("Workspaces: Error initializing memory manager:", error);
+    }
 
     // Initialized complete
     this._initialized = true;
@@ -1174,13 +1218,21 @@ export const gWorkspaces = {
     // Create Context Menu
     this.contextMenu.createWorkspacesTabContextMenuItems();
 
-    document.addEventListener("floorpOnLocationChangeEvent", function () {
-      gWorkspaces.checkAllTabsForVisibility();
-    });
+    // Store reference to the listener for cleanup
+    this._locationChangeListener = function () {
+      if (!gWorkspaces._isDestroyed) {
+        gWorkspaces.checkAllTabsForVisibility();
+      }
+    };
+    
+    document.addEventListener("floorpOnLocationChangeEvent", this._locationChangeListener);
 
-    setInterval(() => {
-      gWorkspaces.checkAllTabsForVisibility();
-    }, 100);
+    // Use a more reasonable interval (1 second instead of 100ms)
+    this._visibilityCheckInterval = setInterval(() => {
+      if (!gWorkspaces._isDestroyed) {
+        gWorkspaces.checkAllTabsForVisibility();
+      }
+    }, 1000);
 
     BrowserCommands.openTab = async (event, url) => {
       let werePassedURL = !!url;
@@ -1372,8 +1424,130 @@ export const gWorkspaces = {
       }
     },
   },
+
+  /**
+   * Cleanup method to free memory and remove listeners
+   * Should be called when workspaces are disabled or window is closing
+   */
+  cleanup() {
+    if (this._isDestroyed) {
+      return;
+    }
+    
+    this._isDestroyed = true;
+    
+    // Disable memory manager
+    if (this._memoryManagerAvailable && WorkspacesMemoryManager && typeof WorkspacesMemoryManager.disable === 'function') {
+      try {
+        WorkspacesMemoryManager.disable();
+      } catch (error) {
+        console.error("Workspaces: Error disabling memory manager:", error);
+      }
+    }
+    
+    // Clear the visibility check interval
+    if (this._visibilityCheckInterval) {
+      clearInterval(this._visibilityCheckInterval);
+      this._visibilityCheckInterval = null;
+    }
+    
+    // Remove the location change listener
+    if (this._locationChangeListener) {
+      document.removeEventListener("floorpOnLocationChangeEvent", this._locationChangeListener);
+      this._locationChangeListener = null;
+    }
+    
+    // Clear references to DOM elements
+    this._currentWorkspaceId = null;
+    this._popuppanelNotFound = false;
+    this._workspaceToolbarButtonNotFound = false;
+    this._workspaceManageOnBMSMode = false;
+    this._workspacesTemporarilyDisabled = false;
+    
+    // Remove injected CSS
+    const injectedCSS = document.getElementById("workspacesInjectionCSS");
+    if (injectedCSS) {
+      injectedCSS.remove();
+    }
+    
+    // Clear any remaining workspace buttons
+    const workspaceButtons = document.querySelectorAll(".workspaceButton");
+    workspaceButtons.forEach(button => {
+      button.remove();
+    });
+    
+    console.log("Workspaces cleanup completed");
+  },
+
+  /**
+   * Disable workspaces temporarily and cleanup resources
+   */
+  disable() {
+    this._workspacesTemporarilyDisabled = true;
+    this.cleanup();
+  },
+
+  /**
+   * Re-enable workspaces after being disabled
+   */
+  async enable() {
+    this._workspacesTemporarilyDisabled = false;
+    await this.init();
+  },
+
+  /**
+   * Get memory usage statistics for debugging
+   * @returns {Object|null} Memory usage information
+   */
+  getMemoryStats() {
+    if (this._memoryManagerAvailable && WorkspacesMemoryManager && typeof WorkspacesMemoryManager.getMemoryStats === 'function') {
+      try {
+        return WorkspacesMemoryManager.getMemoryStats();
+      } catch (error) {
+        console.error("Workspaces: Error getting memory stats:", error);
+        return null;
+      }
+    }
+    return null;
+  },
+
+  /**
+   * Force memory cleanup and optimization
+   */
+  forceMemoryCleanup() {
+    if (this._memoryManagerAvailable && WorkspacesMemoryManager && typeof WorkspacesMemoryManager.optimizeMemory === 'function') {
+      try {
+        WorkspacesMemoryManager.optimizeMemory();
+      } catch (error) {
+        console.error("Workspaces: Error forcing memory cleanup:", error);
+      }
+    } else {
+      console.warn("Workspaces: Memory manager not available for cleanup");
+    }
+  },
+
+  /**
+   * Set memory threshold for automatic cleanup
+   * @param {number} thresholdMB - Memory threshold in MB
+   */
+  setMemoryThreshold(thresholdMB) {
+    if (this._memoryManagerAvailable && WorkspacesMemoryManager && typeof WorkspacesMemoryManager.setMemoryThreshold === 'function') {
+      try {
+        WorkspacesMemoryManager.setMemoryThreshold(thresholdMB * 1024 * 1024);
+      } catch (error) {
+        console.error("Workspaces: Error setting memory threshold:", error);
+      }
+    }
+  },
 };
 
 window.setTimeout(() => {
   gWorkspaces.init();
 }, 1000);
+
+// Ensure cleanup when window is unloaded
+window.addEventListener("unload", () => {
+  if (window.gWorkspaces) {
+    window.gWorkspaces.cleanup();
+  }
+});
