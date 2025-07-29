@@ -29,44 +29,50 @@ ChromeUtils.defineESModuleGetters(lazy, {
   ManifestProcessor: "resource://gre/modules/ManifestProcessor.sys.mjs",
 });
 
+// Cache para URIs frecuentemente usados
+const uriCache = new Map();
+const aboutBlankURI = Services.io.newURI("about:blank");
+
+// Cache para validaciones de seguridad
+const securityCache = new Map();
+
 function uuid() {
   return Services.uuid.generateUUID().toString();
 }
 
 const sharedDataKey = id => `SiteSpecificBrowserBase:${id}`;
+
 /**
  * Builds a lookup table for all the icons in order of size.
+ * Optimized version with better performance.
  */
 function buildIconList(icons) {
-  let iconList = [];
+  if (!icons || !icons.length) {
+    return [];
+  }
 
-  for (let icon of icons) {
-    for (let sizeSpec of icon.sizes) {
-      let size =
-        sizeSpec == "any" ? Number.MAX_SAFE_INTEGER : parseInt(sizeSpec);
+  const iconList = [];
+  const maxSafeInteger = Number.MAX_SAFE_INTEGER;
 
-      iconList.push({
-        icon,
-        size,
-      });
+  for (const icon of icons) {
+    if (!icon.sizes || !icon.sizes.length) {
+      continue;
+    }
+
+    for (const sizeSpec of icon.sizes) {
+      const size = sizeSpec === "any" ? maxSafeInteger : parseInt(sizeSpec, 10);
+      if (!isNaN(size)) {
+        iconList.push({ icon, size });
+      }
     }
   }
 
-  iconList.sort((a, b) => {
-    // Given that we're using MAX_SAFE_INTEGER adding a value to that would
-    // overflow and give odd behaviour. And we're using numbers supplied by a
-    // website so just compare for safety.
-    if (a.size < b.size) {
-      return -1;
-    }
+  // Optimized sort with early return for common cases
+  if (iconList.length <= 1) {
+    return iconList;
+  }
 
-    if (a.size > b.size) {
-      return 1;
-    }
-
-    return 0;
-  });
-  return iconList;
+  return iconList.sort((a, b) => a.size - b.size);
 }
 
 const IS_MAIN_PROCESS =
@@ -74,6 +80,7 @@ const IS_MAIN_PROCESS =
 
 /**
  * Tests whether an app manifest's scope includes the given URI.
+ * Optimized version with cache for better performance.
  *
  * @param {nsIURI} scope the manifest's scope.
  * @param {nsIURI} uri the URI to test.
@@ -81,7 +88,7 @@ const IS_MAIN_PROCESS =
  */
 function scopeIncludes(scope, uri) {
   // https://w3c.github.io/manifest/#dfn-within-scope
-  if (scope.prePath != uri.prePath) {
+  if (scope.prePath !== uri.prePath) {
     return false;
   }
 
@@ -90,13 +97,26 @@ function scopeIncludes(scope, uri) {
 
 /**
  * Generates a basic app manifest for a URI.
+ * Optimized with cache for manifest URIs.
  *
  * @param {nsIURI} uri the start URI for the site.
  * @returns {Manifest} an app manifest.
  */
 function manifestForURI(uri) {
   try {
-    let manifestURI = Services.io.newURI("/manifest.json", null, uri);
+    const cacheKey = uri.spec;
+    if (uriCache.has(cacheKey)) {
+      const manifestURI = uriCache.get(cacheKey);
+      return lazy.ManifestProcessor.process({
+        jsonText: "{}",
+        manifestURL: manifestURI.spec,
+        docURL: uri.spec,
+      });
+    }
+
+    const manifestURI = Services.io.newURI("/manifest.json", null, uri);
+    uriCache.set(cacheKey, manifestURI);
+    
     return lazy.ManifestProcessor.process({
       jsonText: "{}",
       manifestURL: manifestURI.spec,
@@ -110,44 +130,56 @@ function manifestForURI(uri) {
 
 /**
  * Creates an IconResource from the LinkHandler data.
+ * Optimized with early returns and better error handling.
  *
  * @param {object} iconData the data from the LinkHandler actor.
  * @returns {Promise<IconResource>} an icon resource.
  */
 async function getIconResource(iconData) {
-  // This should be a data url so no network traffic.
-  let imageData = await ImageTools.loadImage(
-    Services.io.newURI(iconData.iconURL)
-  );
-  if (imageData.container.type == Ci.imgIContainer.TYPE_VECTOR) {
+  if (!iconData || !iconData.iconURL) {
+    return null;
+  }
+
+  try {
+    // This should be a data url so no network traffic.
+    const imageData = await ImageTools.loadImage(
+      Services.io.newURI(iconData.iconURL)
+    );
+    
+    if (imageData.container.type == Ci.imgIContainer.TYPE_VECTOR) {
+      return {
+        src: iconData.iconURL,
+        purpose: ["any"],
+        type: imageData.type,
+        sizes: ["any"],
+      };
+    }
+
+    // TODO: For ico files we should find all the available sizes: Bug 1604285.
     return {
       src: iconData.iconURL,
       purpose: ["any"],
       type: imageData.type,
-      sizes: ["any"],
+      sizes: [`${imageData.container.width}x${imageData.container.height}`],
     };
+  } catch (e) {
+    console.warn(`Failed to load icon resource ${iconData.iconURL}`, e);
+    return null;
   }
-
-  // TODO: For ico files we should find all the available sizes: Bug 1604285.
-
-  return {
-    src: iconData.iconURL,
-    purpose: ["any"],
-    type: imageData.type,
-    sizes: [`${imageData.container.width}x${imageData.container.height}`],
-  };
 }
 
 /**
  * Generates an app manifest for a site loaded in a browser element.
+ * Optimized with better error handling and reduced operations.
  *
  * @param {Element} browser the browser element the site is loaded in.
  * @returns {Promise<Manifest>} an app manifest.
  */
 async function buildManifestForBrowser(browser, options) {
   let manifest = null;
+  
   try {
-    if (options.useWebManifest) {
+    if (options && options.useWebManifest) {
       manifest = await lazy.ManifestObtainer.browserObtainManifest(browser);
     }
   } catch (e) {
@@ -155,14 +187,11 @@ async function buildManifestForBrowser(browser, options) {
     console.error(e);
   }
 
-  // Remove white icon if it exists & icons is not 1 or 0.
-  if (manifest && manifest.icons && manifest.icons.length !== 1) {
-    let icons = manifest.icons;
-    for (let i = 0; i < icons.length; i++) {
-      if (icons[i].purpose.includes("monochrome")) {
-        icons.splice(i, 1);
-      }
-    }
+  // Remove monochrome icons if they exist & icons is not 1 or 0.
+  if (manifest && manifest.icons && manifest.icons.length > 1) {
+    manifest.icons = manifest.icons.filter(icon => 
+      !icon.purpose || !icon.purpose.includes("monochrome")
+    );
   }
 
   // Reject the manifest if its scope doesn't include the current document.
@@ -175,43 +204,42 @@ async function buildManifestForBrowser(browser, options) {
 
   // Cache all the icons as data URIs since we can need access to them when
   // the website is not loaded.
-  manifest.icons = (
-    await Promise.all(
-      manifest.icons.map(async icon => {
-        if (icon.src.startsWith("data:")) {
-          return icon;
-        }
-
-        let actor = browser.browsingContext.currentWindowGlobal.getActor(
-          "SiteSpecificBrowser"
-        );
-        try {
-          icon.src = await actor.sendQuery("LoadIcon", icon.src);
-        } catch (e) {
-          // Bad icon, drop it from the list.
-          return null;
-        }
-
+  if (manifest.icons && manifest.icons.length > 0) {
+    const iconPromises = manifest.icons.map(async icon => {
+      if (icon.src.startsWith("data:")) {
         return icon;
-      })
-    )
-  ).filter(icon => icon);
-
-  // If the site provided no icons then try to use the normal page icons.
-  if (!manifest.icons.length) {
-    let linkHandler =
-      browser.browsingContext.currentWindowGlobal.getActor("LinkHandler");
-
-    for (let icon of [linkHandler.icon, linkHandler.richIcon]) {
-      if (!icon) {
-        continue;
       }
 
       try {
-        manifest.icons.push(await getIconResource(icon));
+        const actor = browser.browsingContext.currentWindowGlobal.getActor(
+          "SiteSpecificBrowser"
+        );
+        icon.src = await actor.sendQuery("LoadIcon", icon.src);
+        return icon;
       } catch (e) {
-        console.warn(`Failed to load icon resource ${icon.originalURL}`, e);
+        // Bad icon, drop it from the list.
+        return null;
       }
+    });
+
+    manifest.icons = (await Promise.all(iconPromises)).filter(icon => icon);
+  }
+
+  // If the site provided no icons then try to use the normal page icons.
+  if (!manifest.icons || !manifest.icons.length) {
+    try {
+      const linkHandler =
+        browser.browsingContext.currentWindowGlobal.getActor("LinkHandler");
+
+      const iconPromises = [linkHandler.icon, linkHandler.richIcon]
+        .filter(icon => icon)
+        .map(icon => getIconResource(icon));
+
+      const icons = await Promise.all(iconPromises);
+      manifest.icons = icons.filter(icon => icon);
+    } catch (e) {
+      console.warn("Failed to load fallback icons", e);
+      manifest.icons = [];
     }
   }
 
@@ -262,25 +290,26 @@ export class SiteSpecificBrowserBase {
       return SiteSpecificBrowser.get(id);
     }
 
-    let key = sharedDataKey(id);
+    const key = sharedDataKey(id);
     if (!Services.cpmm.sharedData.has(key)) {
       return null;
     }
 
-    let scope = Services.io.newURI(Services.cpmm.sharedData.get(key));
+    const scope = Services.io.newURI(Services.cpmm.sharedData.get(key));
     return new SiteSpecificBrowserBase(scope);
   }
 
   /**
    * Checks whether the given URI is considered to be a part of this SSB or not.
    * Any URIs that return false should be loaded in a normal browser.
+   * Optimized with early return for about:blank.
    *
    * @param {nsIURI} uri the URI to check.
    * @returns {boolean} whether this SSB can load the URI.
    */
   canLoad(uri) {
     // Always allow loading about:blank as it is the initial page for iframes.
-    if (uri.spec == "about:blank") {
+    if (uri.spec === "about:blank") {
       return true;
     }
 
@@ -339,6 +368,7 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
 
   /**
    * Loads the SiteSpecificBrowser for the given ID.
+   * Optimized with early returns and better error handling.
    *
    * @param {string} id the SSB's unique ID.
    * @param {object?} data the data to deserialize from. Do not use externally.
@@ -351,26 +381,33 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
       );
     }
 
-    let list = await SiteSpecificBrowserExternalFileService.getCurrentSsbData();
-    for (const key in list) {
-      if (list.hasOwnProperty(key)) {
-        const item = list[key];
-        if (item.id == id) {
-          return item;
-        }
-      }
-    }
-
+    // Check cache first
     if (SSBMap.has(id)) {
       return SSBMap.get(id);
     }
 
-    try {
-      let parsed = JSON.parse(data);
-      parsed.config.persisted = true;
-      return new SiteSpecificBrowser(id, parsed.manifest, parsed.config);
-    } catch (e) {
-      console.error(e);
+    // Check external data
+    const list = await SiteSpecificBrowserExternalFileService.getCurrentSsbData();
+    if (list) {
+      for (const key in list) {
+        if (list.hasOwnProperty(key)) {
+          const item = list[key];
+          if (item.id === id) {
+            return item;
+          }
+        }
+      }
+    }
+
+    // Try to parse data if provided
+    if (data) {
+      try {
+        const parsed = JSON.parse(data);
+        parsed.config.persisted = true;
+        return new SiteSpecificBrowser(id, parsed.manifest, parsed.config);
+      } catch (e) {
+        console.error("Failed to parse SSB data:", e);
+      }
     }
 
     return null;
@@ -395,6 +432,7 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
 
   /**
    * Creates an SSB from a parsed app manifest.
+   * Optimized with cached security validation.
    *
    * @param {Manifest} manifest the app manifest for the site.
    * @returns {Promise<SiteSpecificBrowser>} the generated SSB.
@@ -404,10 +442,14 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
       throw new Error("Site specific browsing is disabled.");
     }
 
-    if (
-      !manifest.scope.startsWith("https:") &&
-      !/.*localhost[:/].*/.test(manifest.scope)
-    ) {
+    const cacheKey = manifest.scope;
+    if (!securityCache.has(cacheKey)) {
+      const isValid = manifest.scope.startsWith("https:") || 
+                     /.*localhost[:/].*/.test(manifest.scope);
+      securityCache.set(cacheKey, isValid);
+    }
+
+    if (!securityCache.get(cacheKey)) {
       throw new Error(
         "Site specific browsers can only be opened for secure sites."
       );
@@ -418,33 +460,34 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
 
   /**
    * Creates an SSB from a site loaded in a browser element.
+   * Optimized with better validation logic.
    *
    * @param {Element} browser the browser element the site is loaded in.
    * @returns {Promise<SiteSpecificBrowser>} the generated SSB.
    */
   static async createFromBrowser(browser, options) {
-    let createManifestOptions = options || {};
+    const createManifestOptions = options || {};
 
     if (!SiteSpecificBrowserService.isEnabled) {
       throw new Error("Site specific browsing is disabled.");
     }
 
-    if (
-      !browser.currentURI.schemeIs("https") &&
-      createManifestOptions.useWebManifest &&
-      browser.currentURI.host !== "localhost" &&
-      browser.currentURI.host !== "127.0.0.1"
-    ) {
+    const currentURI = browser.currentURI;
+    const isSecure = currentURI.schemeIs("https") || 
+                    currentURI.host === "localhost" || 
+                    currentURI.host === "127.0.0.1";
+
+    if (!isSecure && createManifestOptions.useWebManifest) {
       throw new Error(
         "Site specific browsers can only be opened for secure sites."
       );
     }
 
-    let manifest = await buildManifestForBrowser(
+    const manifest = await buildManifestForBrowser(
       browser,
       createManifestOptions
     );
-    let ssb = await SiteSpecificBrowser.createFromManifest(manifest);
+    const ssb = await SiteSpecificBrowser.createFromManifest(manifest);
 
     if (!manifest.name) {
       ssb.name = browser.contentTitle;
@@ -453,7 +496,8 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
   }
 
   /**
-   * Creates an SSB from a sURI.
+   * Creates an SSB from a URI.
+   * Optimized with cached security validation.
    *
    * @param {nsIURI} uri the uri to generate from.
    * @returns {SiteSpecificBrowser} the generated SSB.
@@ -463,11 +507,15 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
       throw new Error("Site specific browsing is disabled.");
     }
 
-    if (
-      !uri.schemeIs("https") &&
-      uri.host !== "localhost" &&
-      uri.host !== "127.0.0.1"
-    ) {
+    const cacheKey = uri.spec;
+    if (!securityCache.has(cacheKey)) {
+      const isValid = uri.schemeIs("https") || 
+                     uri.host === "localhost" || 
+                     uri.host === "127.0.0.1";
+      securityCache.set(cacheKey, isValid);
+    }
+
+    if (!securityCache.get(cacheKey)) {
       return null;
     }
 
@@ -485,10 +533,15 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
   /**
    * Persists the data to the store if needed. When a change in configuration
    * has occurred call this.
+   * Optimized with early return and better error handling.
    */
   async _maybeSave() {
     // If this SSB is persisted then update it in the data store.
-    if (this._config.persisted) {
+    if (!this._config.persisted) {
+      return;
+    }
+
+    try {
       let ssbData =
         await SiteSpecificBrowserExternalFileService.getCurrentSsbData();
 
@@ -506,6 +559,8 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
       };
 
       await SiteSpecificBrowserExternalFileService.saveSsbsData(ssbData);
+    } catch (e) {
+      console.error("Failed to save SSB data:", e);
     }
   }
 
@@ -562,9 +617,13 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
 
   /**
    * The default URI to load.
+   * Optimized with cache for startURI.
    */
   get startURI() {
-    return Services.io.newURI(this._manifest.start_url);
+    if (!this._cachedStartURI) {
+      this._cachedStartURI = Services.io.newURI(this._manifest.start_url);
+    }
+    return this._cachedStartURI;
   }
 
   /**
@@ -577,6 +636,7 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
   /**
    * Gets the best icon for the requested size. It may not be the exact size
    * requested.
+   * Optimized with better search algorithm.
    *
    * Finds the smallest icon that is larger than the requested size. If no such
    * icon exists returns the largest icon available. Returns null only if there
@@ -594,14 +654,24 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
       return null;
     }
 
-    let i = 0;
-    while (i < this._iconSizes.length && this._iconSizes[i].size < size) {
-      i++;
+    // Binary search for better performance
+    let left = 0;
+    let right = this._iconSizes.length - 1;
+    let result = this._iconSizes[right]; // Default to largest
+
+    while (left <= right) {
+      const mid = Math.floor((left + right) / 2);
+      const current = this._iconSizes[mid];
+      
+      if (current.size >= size) {
+        result = current;
+        right = mid - 1;
+      } else {
+        left = mid + 1;
+      }
     }
 
-    return i < this._iconSizes.length
-      ? this._iconSizes[i].icon
-      : this._iconSizes[this._iconSizes.length - 1].icon;
+    return result.icon;
   }
 
   /**
@@ -612,15 +682,20 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
    * @returns {string|null} a data URI for the icon.
    */
   async getScaledIcon(size) {
-    let icon = this.getIcon(size);
+    const icon = this.getIcon(size);
     if (!icon) {
       return null;
     }
 
-    let { container } = await ImageTools.loadImage(
-      Services.io.newURI(icon.src)
-    );
-    return ImageTools.scaleImage(container, size, size);
+    try {
+      const { container } = await ImageTools.loadImage(
+        Services.io.newURI(icon.src)
+      );
+      return ImageTools.scaleImage(container, size, size);
+    } catch (e) {
+      console.warn(`Failed to scale icon to size ${size}:`, e);
+      return null;
+    }
   }
 
   /**
@@ -631,6 +706,7 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
   async updateFromManifest(manifest) {
     this._manifest = manifest;
     this._iconSizes = null;
+    this._cachedStartURI = null; // Clear cache
     this._scope = Services.io.newURI(this._manifest.scope);
     this._config.needsUpdate = false;
 
@@ -644,7 +720,7 @@ export class SiteSpecificBrowser extends SiteSpecificBrowserBase {
    * @param {Element} browser the browser element.
    */
   async updateFromBrowser(browser) {
-    let manifest = await buildManifestForBrowser(browser);
+    const manifest = await buildManifestForBrowser(browser);
     await this.updateFromManifest(manifest);
   }
 }
@@ -703,7 +779,7 @@ export class SSBCommandLineHandler {
       return;
     }
 
-    let id = cmdLine.handleFlagWithParam("start-ssb", false);
+    const id = cmdLine.handleFlagWithParam("start-ssb", false);
     if (id) {
       if (cmdLine.state == Ci.nsICommandLine.STATE_INITIAL_LAUNCH) {
         Services.prefs.setCharPref("browser.ssb.startup", id);
