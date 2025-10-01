@@ -96,7 +96,7 @@ def support_vcs_checkout(config, job, taskdesc, sparse=False):
     if is_win:
         checkoutdir = "./build"
         geckodir = f"{checkoutdir}/src"
-        hgstore = "y:/hg-shared"
+        hgstore = "d:/hg-shared"
     elif is_docker:
         checkoutdir = "{workdir}/checkouts".format(**job["run"])
         geckodir = f"{checkoutdir}/gecko"
